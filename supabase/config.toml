@@ -1,7 +1,8 @@
-{
-  "functions": {
-    "transcribe-install-memo": { "verify_jwt": true },
-    "synthesize-type-tips": { "verify_jwt": true },
-    "extract-schedule": { "verify_jwt": true }
-  }
-}
+[functions.transcribe-install-memo]
+verify_jwt = true
+
+[functions.synthesize-type-tips]
+verify_jwt = true
+
+[functions.extract-schedule]
+verify_jwt = true
