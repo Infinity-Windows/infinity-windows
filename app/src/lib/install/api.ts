@@ -230,6 +230,38 @@ export async function assignWindowToOpening(
   return data as ProjectOpening;
 }
 
+/** Save the rough-opening measurement (smallest width/height already chosen). */
+export async function setRoughOpening(
+  openingId: string,
+  widthIn: number,
+  heightIn: number,
+): Promise<ProjectOpening> {
+  const { data, error } = await supabase.rpc("set_opening_rough_opening", {
+    p_opening_id: openingId,
+    p_width_in: widthIn,
+    p_height_in: heightIn,
+    p_actor: await actor(),
+  });
+  if (error) throw error;
+  return data as ProjectOpening;
+}
+
+/** Record arrival condition of the unit at the opening. Damaged flags the unit. */
+export async function setOpeningCondition(
+  openingId: string,
+  condition: "unknown" | "ok" | "damaged",
+  note?: string | null,
+): Promise<ProjectOpening> {
+  const { data, error } = await supabase.rpc("set_opening_condition", {
+    p_opening_id: openingId,
+    p_condition: condition,
+    p_note: note ?? null,
+    p_actor: await actor(),
+  });
+  if (error) throw error;
+  return data as ProjectOpening;
+}
+
 export interface SubmitInstallParams extends Partial<MemoTopics> {
   openingId: string;
   minutes?: number | null;

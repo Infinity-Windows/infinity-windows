@@ -1,17 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { BeforeAfterCapture, type BeforeAfterValue } from "../../components/BeforeAfterCapture";
 import { Scanner } from "../../components/Scanner";
 import { getWindowByWindowId, searchUnits } from "../../lib/api";
 import {
   assignWindowToOpening,
   getOpening,
+  getTypeBrainStats,
+  setOpeningCondition,
+  setRoughOpening,
   submitInstallEvent,
 } from "../../lib/install/api";
 import {
   formatAssignMeta,
   rankAssignCandidates,
 } from "../../lib/install/assignRank";
+import { checkFit, readyToInstall, smallest } from "../../lib/install/fit";
 import {
   enqueueUpload,
   flushQueue,
@@ -31,6 +36,12 @@ function pickAudioMime(): string {
   return "";
 }
 
+const READY_LABEL: Record<string, string> = {
+  ready: "READY TO INSTALL",
+  blocked: "DO NOT INSTALL",
+  incomplete: "CHECKS INCOMPLETE",
+};
+
 export function OpeningSheet() {
   const { projectId = "", openingId = "" } = useParams();
   const navigate = useNavigate();
@@ -45,13 +56,19 @@ export function OpeningSheet() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const startedAtRef = useRef<string | null>(null);
+  const startedAtRef = useRef<string>(new Date().toISOString());
 
-  const [photos, setPhotos] = useState<File[]>([]);
+  const [photos, setPhotos] = useState<BeforeAfterValue>({ before: null, after: null });
   const [minutes, setMinutes] = useState("");
+  const [minutesTouched, setMinutesTouched] = useState(false);
   const [grade, setGrade] = useState<number | null>(null);
   const [topics, setTopics] = useState<Partial<MemoTopics>>({});
   const [pending, setPending] = useState(0);
+
+  // Rough-opening + condition local inputs
+  const [roW, setRoW] = useState<string[]>(["", "", ""]);
+  const [roH, setRoH] = useState<string[]>(["", ""]);
+  const [conditionNote, setConditionNote] = useState("");
 
   useEffect(() => {
     initQueueAutoFlush();
@@ -62,6 +79,13 @@ export function OpeningSheet() {
     queryKey: ["opening", openingId],
     queryFn: () => getOpening(openingId),
   });
+
+  const brain = useQuery({
+    queryKey: ["typeBrain", opening.data?.window_type_id],
+    queryFn: () => getTypeBrainStats(opening.data!.window_type_id!),
+    enabled: Boolean(opening.data?.window_type_id),
+  });
+
   const searchResults = useQuery({
     queryKey: ["unitSearch", search],
     queryFn: () => searchUnits(search),
@@ -75,6 +99,20 @@ export function OpeningSheet() {
       projectId,
     }).slice(0, 8);
   }, [searchResults.data, opening.data, projectId]);
+
+  // Auto-timer: minutes computed from when the sheet opened, unless overridden.
+  useEffect(() => {
+    if (minutesTouched) return;
+    const tick = () => {
+      const elapsed = Math.round(
+        (Date.now() - new Date(startedAtRef.current).getTime()) / 60000,
+      );
+      setMinutes(String(Math.max(0, elapsed)));
+    };
+    tick();
+    const id = setInterval(tick, 15000);
+    return () => clearInterval(id);
+  }, [minutesTouched]);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["opening", openingId] });
@@ -105,6 +143,32 @@ export function OpeningSheet() {
     }
   };
 
+  const saveRo = useMutation({
+    mutationFn: async () => {
+      const w = smallest(roW.map((v) => Number(v)));
+      const h = smallest(roH.map((v) => Number(v)));
+      if (w == null || h == null) {
+        throw new Error("Enter at least one width and one height measurement.");
+      }
+      return setRoughOpening(openingId, w, h);
+    },
+    onSuccess: () => {
+      setMessage("Rough opening saved.");
+      refresh();
+    },
+    onError: (e) => setMessage(String(e)),
+  });
+
+  const saveCondition = useMutation({
+    mutationFn: (condition: "ok" | "damaged") =>
+      setOpeningCondition(openingId, condition, conditionNote || null),
+    onSuccess: (_data, condition) => {
+      setMessage(condition === "damaged" ? "Marked damaged — office flagged." : "Condition OK.");
+      refresh();
+    },
+    onError: (e) => setMessage(String(e)),
+  });
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -120,7 +184,6 @@ export function OpeningSheet() {
       };
       rec.start();
       recorderRef.current = rec;
-      startedAtRef.current ??= new Date().toISOString();
       setRecording(true);
     } catch (e) {
       setMessage(`Mic unavailable: ${String(e)}`);
@@ -145,11 +208,29 @@ export function OpeningSheet() {
         ...topics,
       });
 
-      // Media goes through the offline queue: uploads survive dead spots and
-      // retry on reconnect.
       const { data: userData } = await supabase.auth.getUser();
       const createdBy = userData.user?.email ?? null;
       const stamp = Date.now();
+
+      // Enqueue photos BEFORE the voice memo so they exist in the DB by the
+      // time transcription (audio flush) runs vision on them.
+      const photoFiles: { file: File; tag: string }[] = [];
+      if (photos.before) photoFiles.push({ file: photos.before, tag: "before" });
+      if (photos.after) photoFiles.push({ file: photos.after, tag: "after" });
+      for (const [i, p] of photoFiles.entries()) {
+        await enqueueUpload(
+          {
+            bucket: "install-media",
+            path: `${projectId}/${o.opening_code}/${stamp}-${p.tag}-${i + 1}.jpg`,
+            contentType: p.file.type || "image/jpeg",
+            kind: "photo",
+            installEventId: event.id,
+            windowId: o.assigned_window_id,
+            createdBy,
+          },
+          p.file,
+        );
+      }
       if (audioBlob) {
         const ext = audioBlob.type.includes("mp4") ? "m4a" : "webm";
         await enqueueUpload(
@@ -163,20 +244,6 @@ export function OpeningSheet() {
             createdBy,
           },
           audioBlob,
-        );
-      }
-      for (const [i, photo] of photos.entries()) {
-        await enqueueUpload(
-          {
-            bucket: "install-media",
-            path: `${projectId}/${o.opening_code}/${stamp}-photo-${i + 1}.jpg`,
-            contentType: photo.type || "image/jpeg",
-            kind: "photo",
-            installEventId: event.id,
-            windowId: o.assigned_window_id,
-            createdBy,
-          },
-          photo,
         );
       }
       const flush = await flushQueue();
@@ -202,6 +269,29 @@ export function OpeningSheet() {
   if (!o) return <div className="page"><p className="error">Opening not found.</p></div>;
 
   const installed = o.status === "installed";
+  const unitType = o.windows?.window_type_id ?? null;
+  const typeMatches = !o.assigned_window_id || !o.window_type_id || unitType === o.window_type_id;
+  const unitStatus = o.windows?.status ?? null;
+  const atLocationOrLoaded =
+    unitStatus === "staged" || unitStatus === "loaded" || unitStatus === "in_warehouse";
+
+  const fit = checkFit({
+    unitWidthIn: o.window_types?.width_in,
+    unitHeightIn: o.window_types?.height_in,
+    roWidthIn: o.ro_width_in,
+    roHeightIn: o.ro_height_in,
+  });
+
+  const ready = readyToInstall({
+    hasUnit: Boolean(o.assigned_window_id),
+    typeMatches,
+    fit: fit.verdict,
+    condition: o.condition,
+    atLocationOrLoaded,
+  });
+
+  const tips = brain.data?.tips ?? [];
+  const watchOuts = brain.data?.watchOuts ?? [];
 
   return (
     <div className="page">
@@ -216,27 +306,104 @@ export function OpeningSheet() {
         <p>
           <strong>{o.window_types?.type_code ?? "Type not set"}</strong>{" "}
           <span className="muted">{o.window_types?.name}</span>
+          {o.window_types?.width_in && o.window_types?.height_in && (
+            <span className="muted">
+              {" "}· {o.window_types.width_in}×{o.window_types.height_in}"
+            </span>
+          )}
         </p>
         {o.label && <p className="muted">{o.label}</p>}
         <p>
           Status: <span className={installed ? "ok" : "warn-text"}>{o.status}</span>
         </p>
-        {o.window_types && (
-          <p>
-            <Link to={`/brain/${o.window_types.id}`} className="suggest">
-              Type brain: {o.window_types.type_code} tips →
-            </Link>
-          </p>
-        )}
         {pending > 0 && (
           <p className="warn-text">{pending} upload(s) waiting for signal.</p>
         )}
       </div>
 
       {message && (
-        <p className={message.startsWith("Window") || message.startsWith("Install") ? "ok" : "error"}>
+        <p className={message.startsWith("Window") || message.startsWith("Install") || message.startsWith("Rough") || message.startsWith("Condition") ? "ok" : "error"}>
           {message}
         </p>
+      )}
+
+      {/* --- READY-TO-INSTALL GATE --- */}
+      {!installed && (
+        <div className={`ready-banner ready-${ready.status}`}>
+          <strong>{READY_LABEL[ready.status]}</strong>
+          <ul>
+            {ready.reasons.map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* --- PRE-INSTALL BRIEFING (north-star screen) --- */}
+      {!installed && o.window_types && (
+        <div className="briefing">
+          <div className="briefing-stats">
+            <span>
+              <strong>
+                {brain.data?.medianMinutes != null
+                  ? `${Math.round(brain.data.medianMinutes)}m`
+                  : "—"}
+              </strong>
+              target
+            </span>
+            <span>
+              <strong>
+                {brain.data?.p90Minutes != null
+                  ? `${Math.round(brain.data.p90Minutes)}m`
+                  : "—"}
+              </strong>
+              P90
+            </span>
+            <span>
+              <strong>
+                {(() => {
+                  const d = brain.data?.outcomeDifficulty ?? o.window_types.difficulty_rating;
+                  return d ? "★".repeat(d) : "—";
+                })()}
+              </strong>
+              difficulty
+            </span>
+            <span>
+              <strong>
+                {brain.data?.failRate != null ? `${brain.data.failRate}%` : "—"}
+              </strong>
+              fail rate
+            </span>
+          </div>
+          {tips.length > 0 && (
+            <div className="briefing-tips">
+              <span className="field-label">Top tips</span>
+              <ol>
+                {tips.slice(0, 3).map((t) => (
+                  <li key={t}>{t}</li>
+                ))}
+              </ol>
+            </div>
+          )}
+          {watchOuts.length > 0 && (
+            <div className="briefing-tips">
+              <span className="field-label">Watch-outs</span>
+              <ul className="watch">
+                {watchOuts.slice(0, 3).map((w) => (
+                  <li key={w}>{w}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {o.window_types.tutorial_url && (
+            <a href={o.window_types.tutorial_url} className="suggest">
+              Tutorial video →
+            </a>
+          )}
+          <Link to={`/brain/${o.window_types.id}`} className="muted brain-more">
+            Full type brain →
+          </Link>
+        </div>
       )}
 
       {/* --- Assign inventory unit --- */}
@@ -246,7 +413,11 @@ export function OpeningSheet() {
           <Link to={`/w/${encodeURIComponent(o.windows.window_id)}`}>
             <strong>{o.windows.window_id}</strong>
           </Link>{" "}
-          <span className="ok">assigned</span>
+          {typeMatches ? (
+            <span className="ok">assigned</span>
+          ) : (
+            <span className="error">wrong type!</span>
+          )}
         </p>
       ) : installed ? (
         <p className="muted">Installed without a tracked unit.</p>
@@ -304,13 +475,112 @@ export function OpeningSheet() {
         </>
       )}
 
+      {/* --- FIT CHECK (rough opening) --- */}
+      {!installed && (
+        <>
+          <h2>Rough opening</h2>
+          <p className="muted">
+            Measure width at 3 points, height at 2. We use the smallest.
+          </p>
+          <label className="field-label">Width (in) — 3 points</label>
+          <div className="ro-row">
+            {roW.map((v, i) => (
+              <input
+                key={i}
+                type="number"
+                inputMode="decimal"
+                step="0.0625"
+                value={v}
+                placeholder={["top", "mid", "bot"][i]}
+                onChange={(e) => {
+                  const next = [...roW];
+                  next[i] = e.target.value;
+                  setRoW(next);
+                }}
+              />
+            ))}
+          </div>
+          <label className="field-label">Height (in) — 2 points</label>
+          <div className="ro-row">
+            {roH.map((v, i) => (
+              <input
+                key={i}
+                type="number"
+                inputMode="decimal"
+                step="0.0625"
+                value={v}
+                placeholder={["left", "right"][i]}
+                onChange={(e) => {
+                  const next = [...roH];
+                  next[i] = e.target.value;
+                  setRoH(next);
+                }}
+              />
+            ))}
+          </div>
+          <button
+            className="action-btn"
+            disabled={saveRo.isPending}
+            onClick={() => saveRo.mutate()}
+          >
+            {saveRo.isPending ? "Saving…" : "Save rough opening"}
+          </button>
+          <div className={`fit-verdict fit-${fit.verdict}`}>
+            {o.ro_width_in != null && o.ro_height_in != null ? (
+              <>
+                <strong>RO {o.ro_width_in}×{o.ro_height_in}"</strong> — {fit.message}
+              </>
+            ) : (
+              <span className="muted">{fit.message}</span>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* --- CONDITION / DAMAGE CHECK --- */}
+      {!installed && o.assigned_window_id && (
+        <>
+          <h2>Condition on arrival</h2>
+          <div className="grade-row">
+            <button
+              className={o.condition === "ok" ? "grade-btn selected" : "grade-btn"}
+              onClick={() => saveCondition.mutate("ok")}
+              disabled={saveCondition.isPending}
+            >
+              OK
+            </button>
+            <button
+              className={o.condition === "damaged" ? "grade-btn selected danger" : "grade-btn"}
+              onClick={() => saveCondition.mutate("damaged")}
+              disabled={saveCondition.isPending}
+            >
+              Damaged
+            </button>
+          </div>
+          <input
+            value={conditionNote}
+            onChange={(e) => setConditionNote(e.target.value)}
+            placeholder="Damage note (optional)"
+          />
+          {o.condition === "damaged" && (
+            <p className="error">
+              Unit flagged damaged. Don't install — swap the unit and re-check.
+            </p>
+          )}
+        </>
+      )}
+
       {/* --- Capture --- */}
       {!installed && (
         <>
+          <h2>Photos</h2>
+          <p className="muted">Before and after — the after lines up over the before.</p>
+          <BeforeAfterCapture value={photos} onChange={setPhotos} />
+
           <h2>Install memo</h2>
           <p className="muted">
-            Hit record and talk through the prompts — one take, under two
-            minutes.
+            Record once and talk it through — AI fills the fields from your voice
+            and photos. Edit anything after.
           </p>
           <button
             className={recording ? "big record-btn recording" : "big record-btn"}
@@ -345,29 +615,18 @@ export function OpeningSheet() {
             ))}
           </details>
 
-          <label className="field-label">Photos</label>
-          <label className="action-btn" style={{ cursor: "pointer" }}>
-            {photos.length > 0 ? `${photos.length} photo(s) added — add more` : "Add photos"}
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              multiple
-              style={{ display: "none" }}
-              onChange={(e) => {
-                setPhotos([...photos, ...Array.from(e.target.files ?? [])]);
-                e.target.value = "";
-              }}
-            />
+          <label className="field-label">
+            Minutes {!minutesTouched && <span className="muted">(auto-timed — tap to override)</span>}
           </label>
-
-          <label className="field-label">Minutes it took</label>
           <input
             type="number"
             inputMode="numeric"
             min={0}
             value={minutes}
-            onChange={(e) => setMinutes(e.target.value)}
+            onChange={(e) => {
+              setMinutes(e.target.value);
+              setMinutesTouched(true);
+            }}
             placeholder="e.g. 45"
           />
 
@@ -384,9 +643,16 @@ export function OpeningSheet() {
             ))}
           </div>
 
+          {ready.status === "blocked" && (
+            <p className="error">
+              This opening is blocked ({ready.reasons.join(" ")}). Resolve before
+              recording the install.
+            </p>
+          )}
+
           <button
             className="primary big"
-            disabled={submit.isPending || recording}
+            disabled={submit.isPending || recording || ready.status === "blocked"}
             onClick={() => submit.mutate()}
           >
             {submit.isPending ? "Saving…" : "Submit install"}

@@ -163,3 +163,88 @@ alter table attachments
 create index if not exists attachments_voice_pending_idx
   on attachments (created_at)
   where kind = 'voice_memo' and transcribed_at is null;
+
+-- =============================================================================
+-- 3) Fit + condition gate (Pillar 1): rough-opening dims + damage check
+-- =============================================================================
+
+alter table project_openings
+  add column if not exists ro_width_in numeric check (ro_width_in is null or ro_width_in > 0),
+  add column if not exists ro_height_in numeric check (ro_height_in is null or ro_height_in > 0),
+  add column if not exists ro_measured_by text,
+  add column if not exists ro_measured_at timestamptz,
+  add column if not exists condition text not null default 'unknown'
+    check (condition in ('unknown','ok','damaged')),
+  add column if not exists condition_note text,
+  add column if not exists condition_checked_by text,
+  add column if not exists condition_checked_at timestamptz;
+
+create or replace function set_opening_rough_opening(
+  p_opening_id uuid,
+  p_width_in numeric,
+  p_height_in numeric,
+  p_actor text default null
+)
+returns project_openings
+language plpgsql
+as $$
+declare
+  v_opening project_openings;
+begin
+  update project_openings
+  set ro_width_in = p_width_in,
+      ro_height_in = p_height_in,
+      ro_measured_by = p_actor,
+      ro_measured_at = now()
+  where id = p_opening_id
+  returning * into v_opening;
+
+  if v_opening is null then
+    raise exception 'unknown opening %', p_opening_id;
+  end if;
+  return v_opening;
+end;
+$$;
+
+create or replace function set_opening_condition(
+  p_opening_id uuid,
+  p_condition text,
+  p_note text default null,
+  p_actor text default null
+)
+returns project_openings
+language plpgsql
+as $$
+declare
+  v_opening project_openings;
+begin
+  if p_condition not in ('unknown','ok','damaged') then
+    raise exception 'invalid condition %', p_condition;
+  end if;
+
+  update project_openings
+  set condition = p_condition,
+      condition_note = p_note,
+      condition_checked_by = p_actor,
+      condition_checked_at = now()
+  where id = p_opening_id
+  returning * into v_opening;
+
+  if v_opening is null then
+    raise exception 'unknown opening %', p_opening_id;
+  end if;
+
+  if p_condition = 'damaged' and v_opening.assigned_window_id is not null then
+    update windows set status = 'damaged' where id = v_opening.assigned_window_id;
+    insert into movements (window_id, event, project_id, actor, reason)
+    values (
+      v_opening.assigned_window_id, 'damaged', v_opening.project_id, p_actor,
+      coalesce('damaged at opening ' || v_opening.opening_code ||
+        case when p_note is not null then ': ' || p_note else '' end,
+        'damaged at opening')
+    );
+  end if;
+
+  return v_opening;
+end;
+$$;

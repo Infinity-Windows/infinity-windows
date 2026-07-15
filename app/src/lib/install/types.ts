@@ -20,6 +20,7 @@ export interface Planset {
 }
 
 export type OpeningStatus = "planned" | "assigned" | "installed";
+export type OpeningCondition = "unknown" | "ok" | "damaged";
 
 export interface ProjectOpening {
   id: string;
@@ -35,6 +36,14 @@ export interface ProjectOpening {
   status: OpeningStatus;
   confirmed: boolean;
   created_at: string;
+  ro_width_in: number | null;
+  ro_height_in: number | null;
+  ro_measured_by: string | null;
+  ro_measured_at: string | null;
+  condition: OpeningCondition;
+  condition_note: string | null;
+  condition_checked_by: string | null;
+  condition_checked_at: string | null;
   window_types?: WindowType | null;
   windows?: WindowUnit | null;
   projects?: Project | null;
