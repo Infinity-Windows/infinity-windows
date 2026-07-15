@@ -407,6 +407,20 @@ export interface ScheduleRowLike {
   pageNumber: number;
 }
 
+/** Invoke tip synthesis for one type (or all eligible types when typeId omitted). */
+export async function synthesizeTypeTips(
+  typeId?: string,
+): Promise<{ results: { type_code: string; updated: boolean; installs: number }[] }> {
+  const { data, error } = await supabase.functions.invoke("synthesize-type-tips", {
+    body: typeId ? { type_id: typeId, min_installs: 3 } : { min_installs: 3 },
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(String(data.error));
+  return data as {
+    results: { type_code: string; updated: boolean; installs: number }[];
+  };
+}
+
 /** Fire-and-forget transcription after a voice attachment lands. */
 export async function requestTranscription(attachmentId: string): Promise<void> {
   const { error } = await supabase.functions.invoke("transcribe-install-memo", {

@@ -1,13 +1,21 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
-import { getTypeBrainStats } from "../../lib/install/api";
+import { getTypeBrainStats, synthesizeTypeTips } from "../../lib/install/api";
 import { MEMO_TOPICS } from "../../lib/install/types";
 
 export function TypeBrainCard() {
   const { typeId = "" } = useParams();
+  const queryClient = useQueryClient();
   const stats = useQuery({
     queryKey: ["typeBrain", typeId],
     queryFn: () => getTypeBrainStats(typeId),
+  });
+
+  const synthesize = useMutation({
+    mutationFn: () => synthesizeTypeTips(typeId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["typeBrain", typeId] });
+    },
   });
 
   if (stats.isLoading) {
@@ -27,6 +35,7 @@ export function TypeBrainCard() {
   }
 
   const difficulty = s.outcomeDifficulty ?? s.type.difficulty_rating;
+  const canSynthesize = s.installCount >= 3;
 
   return (
     <div className="page">
@@ -81,8 +90,8 @@ export function TypeBrainCard() {
       <h2>Top tips</h2>
       {s.tips.length === 0 ? (
         <p className="muted">
-          Tips appear after ~3 installs with memos (AI synthesis). Humans can
-          edit them later in the catalog.
+          Tips appear after ~3 installs with memos. Hit synthesize below once
+          you have enough.
         </p>
       ) : (
         <ol className="tip-list">
@@ -101,6 +110,22 @@ export function TypeBrainCard() {
             ))}
           </ul>
         </>
+      )}
+
+      <button
+        className="primary big"
+        disabled={!canSynthesize || synthesize.isPending}
+        onClick={() => synthesize.mutate()}
+      >
+        {synthesize.isPending
+          ? "Synthesizing…"
+          : canSynthesize
+            ? "Re-synthesize tips from installs"
+            : `Need ${3 - s.installCount} more install(s) to synthesize`}
+      </button>
+      {synthesize.isError && <p className="error">{String(synthesize.error)}</p>}
+      {synthesize.isSuccess && (
+        <p className="ok">Tips updated from install memos.</p>
       )}
 
       {s.type.tutorial_url && (
