@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
-  chatJson,
+  chatJsonVision,
   corsHeaders,
   jsonResponse,
   SUPABASE_SERVICE_ROLE_KEY,
@@ -19,7 +19,9 @@ const TOPIC_KEYS = [
   "do_again",
 ] as const;
 
-type TopicMap = Record<(typeof TOPIC_KEYS)[number], string | null>;
+type TopicMap = Record<(typeof TOPIC_KEYS)[number], string | null> & {
+  suggested_grade?: number | null;
+};
 
 interface AttachmentRecord {
   id: string;
@@ -83,15 +85,33 @@ Deno.serve(async (req) => {
     const filename = path.split("/").pop() ?? "memo.webm";
     const transcript = await whisperTranscribe(file, filename);
 
-    const topics = await chatJson<TopicMap>(
-      "You split window-install voice memos into fixed topic fields. Use null for topics not mentioned. Keep each field concise (1-3 sentences).",
-      transcript,
-      `Schema: { "difficulty": string|null, "went_well": string|null, "went_poorly": string|null, "obstacles": string|null, "tools_helped": string|null, "time_vs_estimate": string|null, "safety_notes": string|null, "do_again": string|null }`,
+    // Pull the install-event's photos for vision context (before/after).
+    const imageUrls: string[] = [];
+    const { data: photoRows } = await supabase
+      .from("attachments")
+      .select("storage_path")
+      .eq("install_event_id", attachment.install_event_id)
+      .eq("kind", "photo")
+      .limit(4);
+    for (const row of photoRows ?? []) {
+      const p: string = row.storage_path;
+      const s = p.indexOf("/");
+      const b = s >= 0 ? p.slice(0, s) : "install-media";
+      const key = s >= 0 ? p.slice(s + 1) : p;
+      const { data: signed } = await supabase.storage
+        .from(b)
+        .createSignedUrl(key, 600);
+      if (signed?.signedUrl) imageUrls.push(signed.signedUrl);
+    }
+
+    const topics = await chatJsonVision<TopicMap>(
+      "You process window-install field memos. Split the installer's voice transcript into fixed topic fields, using the before/after photos as extra context. Use null for topics not mentioned. Keep each field concise (1-3 sentences). Also suggest a quality grade 1-5 (5 = flawless install) based on the transcript and photos; use null if unclear.",
+      `Transcript:\n${transcript}`,
+      `Schema: { "difficulty": string|null, "went_well": string|null, "went_poorly": string|null, "obstacles": string|null, "tools_helped": string|null, "time_vs_estimate": string|null, "safety_notes": string|null, "do_again": string|null, "suggested_grade": number|null }`,
+      imageUrls,
     );
 
-    const patch: Record<string, string | null> = {
-      transcript_raw: transcript,
-    };
+    const patch: Record<string, string | null> = {};
     for (const key of TOPIC_KEYS) {
       const value = topics[key];
       if (typeof value === "string" && value.trim()) {
@@ -99,15 +119,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Only fill empty topic columns so typed notes are never overwritten.
+    // Only fill empty columns so typed/confirmed notes are never overwritten.
     const { data: existing, error: exErr } = await supabase
       .from("install_events")
-      .select(TOPIC_KEYS.join(","))
+      .select(`${TOPIC_KEYS.join(",")}, quality_grade`)
       .eq("id", attachment.install_event_id)
       .single();
     if (exErr) throw exErr;
 
-    const finalPatch: Record<string, string | null> = {
+    const finalPatch: Record<string, string | number | null> = {
       transcript_raw: transcript,
     };
     for (const key of TOPIC_KEYS) {
@@ -115,6 +135,18 @@ Deno.serve(async (req) => {
       if ((!current || !String(current).trim()) && patch[key]) {
         finalPatch[key] = patch[key];
       }
+    }
+
+    // Suggest grade only if the installer didn't set one.
+    const existingGrade = (existing as Record<string, number | null>).quality_grade;
+    const suggested = Number(topics.suggested_grade);
+    if (
+      (existingGrade == null) &&
+      Number.isFinite(suggested) &&
+      suggested >= 1 &&
+      suggested <= 5
+    ) {
+      finalPatch.quality_grade = Math.round(suggested);
     }
 
     const { error: upErr } = await supabase

@@ -10,6 +10,7 @@ import {
   loadWindow,
 } from "../lib/api";
 import { listOpenings } from "../lib/install/api";
+import { prefetchJobPack } from "../lib/queryClient";
 import { STATUS_LABELS, type WindowUnit } from "../lib/types";
 import { ProjectMap } from "./install/ProjectMap";
 
@@ -177,6 +178,25 @@ export function ProjectDetail() {
   );
 }
 
+function OfflineDownloadButton({ projectId }: { projectId: string }) {
+  const download = useMutation({
+    mutationFn: () => prefetchJobPack(projectId),
+  });
+  return (
+    <button
+      className="action-btn"
+      disabled={download.isPending}
+      onClick={() => download.mutate()}
+    >
+      {download.isPending
+        ? "Downloading job for offline…"
+        : download.isSuccess
+          ? `Saved offline (${download.data} type brains) — re-download`
+          : "Download job for offline use"}
+    </button>
+  );
+}
+
 function OverviewTab({
   projectId,
   unitsCount,
@@ -232,6 +252,7 @@ function OverviewTab({
         <Link to={`/projects/${projectId}/review`} className="action-btn">
           Review openings
         </Link>
+        <OfflineDownloadButton projectId={projectId} />
       </div>
 
       <h2>Needed (by type)</h2>

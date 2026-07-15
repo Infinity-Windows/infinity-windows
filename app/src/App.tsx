@@ -1,6 +1,7 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import type { Session } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
+import { persister, queryClient, shouldPersistQuery } from "./lib/queryClient";
 import {
   BrowserRouter,
   Navigate,
@@ -28,8 +29,6 @@ import { ProjectMap } from "./pages/install/ProjectMap";
 import { TypeBrainCard } from "./pages/install/TypeBrainCard";
 import { CatalogImport } from "./pages/CatalogImport";
 import "./index.css";
-
-const queryClient = new QueryClient();
 
 /** Legacy /install/:projectId/* bookmarks → unified /projects/:id hub. */
 function LegacyInstallRedirect({ suffix = "" }: { suffix?: string }) {
@@ -63,7 +62,16 @@ export default function App() {
   if (!session) return <SignIn />;
 
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister: persister!,
+        maxAge: 1000 * 60 * 60 * 24 * 7,
+        dehydrateOptions: {
+          shouldDehydrateQuery: (query) => shouldPersistQuery(query.queryKey),
+        },
+      }}
+    >
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
@@ -121,6 +129,6 @@ export default function App() {
           </Route>
         </Routes>
       </BrowserRouter>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 }

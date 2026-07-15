@@ -64,6 +64,47 @@ export async function chatJson<T>(
   return JSON.parse(content) as T;
 }
 
+/**
+ * JSON chat with optional image inputs (GPT-4o vision). Image URLs must be
+ * publicly reachable or signed. Falls back to text-only when no images.
+ */
+export async function chatJsonVision<T>(
+  system: string,
+  user: string,
+  schemaHint: string,
+  imageUrls: string[] = [],
+): Promise<T> {
+  const key = requireOpenAI();
+  const content: unknown[] = [{ type: "text", text: user }];
+  for (const url of imageUrls) {
+    content.push({ type: "image_url", image_url: { url, detail: "low" } });
+  }
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-4o",
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: system + "\n\nRespond with JSON only. " + schemaHint },
+        { role: "user", content },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`OpenAI vision chat failed: ${res.status} ${text}`);
+  }
+  const data = await res.json();
+  const out = data.choices?.[0]?.message?.content;
+  if (!out) throw new Error("OpenAI returned empty content");
+  return JSON.parse(out) as T;
+}
+
 export async function whisperTranscribe(
   audio: Blob,
   filename: string,
