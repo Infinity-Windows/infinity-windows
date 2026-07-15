@@ -118,3 +118,16 @@ begin
   where o.id = arr.id;
 end;
 $$;
+
+-- Live multi-crew sync: openings must be in the realtime publication so the
+-- lead board and every installer's "My Work" update across devices.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'project_openings'
+  ) then
+    alter publication supabase_realtime add table project_openings;
+  end if;
+end;
+$$;

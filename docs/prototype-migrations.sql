@@ -359,3 +359,15 @@ begin
   where o.id = arr.id;
 end;
 $$;
+
+-- Live multi-crew sync: add openings to the realtime publication.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'project_openings'
+  ) then
+    alter publication supabase_realtime add table project_openings;
+  end if;
+end;
+$$;
