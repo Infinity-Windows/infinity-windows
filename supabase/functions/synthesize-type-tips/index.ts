@@ -76,15 +76,29 @@ Deno.serve(async (req) => {
         })
         .join("\n\n");
 
+      // Time context so tips can call out where installs actually run long.
+      const mins = events
+        .map((e) => e.minutes)
+        .filter((m: number | null): m is number => m != null)
+        .sort((a: number, b: number) => a - b);
+      const median = mins.length ? mins[Math.floor(mins.length / 2)] : null;
+      const p90 = mins.length ? mins[Math.floor(mins.length * 0.9)] : null;
+      const grades = events
+        .map((e) => e.quality_grade)
+        .filter((g: number | null): g is number => g != null);
+      const failRate = grades.length
+        ? Math.round((grades.filter((g: number) => g <= 2).length / grades.length) * 100)
+        : null;
+
       const existingTips = Array.isArray(t.tips_json) ? t.tips_json : [];
       const existingWatch = Array.isArray(t.watch_outs_json)
         ? t.watch_outs_json
         : [];
 
       const synthesis = await chatJson<SynthesisResult>(
-        `You synthesize installer learning for window type ${t.type_code} (${t.name}). Mine practical tips and watch-outs from real install memos. Prefer concrete, actionable lines. Keep the best prior tips when still valid.`,
-        `Prior tips: ${JSON.stringify(existingTips)}\nPrior watch-outs: ${JSON.stringify(existingWatch)}\n\nInstall memos:\n${memoBlob}`,
-        `Schema: { "tips": string[5], "watch_outs": string[3-5], "outcome_difficulty": number 1-5 }`,
+        `You write field-ready coaching for window type ${t.type_code} (${t.name}) for the NEXT installer. Rules: every tip must be specific and actionable — name the step, the part, the tool, or the failure it prevents (e.g. "Pre-drill the hinge side; last installs cammed out screws there"). No generic advice ("work carefully", "measure twice"). Base every line on the memos below. Watch-outs are the concrete failure modes that cost time or grade. Keep the best prior lines when still true; drop anything vague. Order tips by impact on time/quality.`,
+        `Stats: median ${median ?? "?"}m, P90 ${p90 ?? "?"}m, fail rate ${failRate ?? "?"}%.\nPrior tips: ${JSON.stringify(existingTips)}\nPrior watch-outs: ${JSON.stringify(existingWatch)}\n\nInstall memos:\n${memoBlob}`,
+        `Schema: { "tips": string[3-5, specific+actionable], "watch_outs": string[2-5, concrete failure modes], "outcome_difficulty": number 1-5 }`,
       );
 
       const tips = (synthesis.tips ?? [])

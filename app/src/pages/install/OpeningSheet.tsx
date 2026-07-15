@@ -21,7 +21,9 @@ import {
   enqueueUpload,
   flushQueue,
   initQueueAutoFlush,
+  pendingTranscriptionCount,
   pendingUploadCount,
+  retryTranscriptions,
 } from "../../lib/install/queue";
 import { MEMO_TOPICS, type MemoTopics } from "../../lib/install/types";
 import { supabase } from "../../lib/supabase";
@@ -64,15 +66,21 @@ export function OpeningSheet() {
   const [grade, setGrade] = useState<number | null>(null);
   const [topics, setTopics] = useState<Partial<MemoTopics>>({});
   const [pending, setPending] = useState(0);
+  const [transcribing, setTranscribing] = useState(0);
 
   // Rough-opening + condition local inputs
   const [roW, setRoW] = useState<string[]>(["", "", ""]);
   const [roH, setRoH] = useState<string[]>(["", ""]);
   const [conditionNote, setConditionNote] = useState("");
 
+  const refreshStatus = () => {
+    pendingUploadCount().then(setPending).catch(() => {});
+    pendingTranscriptionCount().then(setTranscribing).catch(() => {});
+  };
+
   useEffect(() => {
     initQueueAutoFlush();
-    pendingUploadCount().then(setPending).catch(() => {});
+    refreshStatus();
   }, []);
 
   const opening = useQuery({
@@ -318,6 +326,22 @@ export function OpeningSheet() {
         </p>
         {pending > 0 && (
           <p className="warn-text">{pending} upload(s) waiting for signal.</p>
+        )}
+        {transcribing > 0 && (
+          <p className="muted">
+            {transcribing} memo(s) awaiting AI transcription.{" "}
+            <button
+              className="link"
+              onClick={() => {
+                void retryTranscriptions().then(() => {
+                  refreshStatus();
+                  queryClient.invalidateQueries({ queryKey: ["opening", openingId] });
+                });
+              }}
+            >
+              Retry now
+            </button>
+          </p>
         )}
       </div>
 

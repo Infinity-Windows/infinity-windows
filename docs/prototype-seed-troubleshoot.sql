@@ -135,6 +135,19 @@ on conflict (project_id, opening_code) do update set
 -- Force demand sync (also fired by trigger on confirm)
 select sync_project_windows_from_openings(id) from projects where job_code in ('SMITH','OAKRIDGE');
 
+-- Rough-opening measurements + condition so the fit/condition gate is demoable:
+--   W1 fits, W3 tight, W4 too-small (blocked), W2/W5 left unmeasured (incomplete).
+update project_openings o
+set ro_width_in = v.w, ro_height_in = v.h, ro_measured_by = 'seed', ro_measured_at = now(),
+    condition = v.cond, condition_checked_by = 'seed', condition_checked_at = now()
+from (values
+  ('W1',  30.75, 50.75, 'ok'),
+  ('W3',  30.25, 50.75, 'ok'),
+  ('W4',  27.50, 46.75, 'ok')
+) as v(code, w, h, cond)
+where o.opening_code = v.code
+  and o.project_id = (select id from projects where job_code = 'SMITH');
+
 -- ---------------------------------------------------------------------------
 -- Install events (3+ on CAS3050 so tip synthesis works)
 -- ---------------------------------------------------------------------------

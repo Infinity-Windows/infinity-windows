@@ -50,8 +50,9 @@ export function CatalogImport() {
         </Link>
       </header>
       <p className="muted">
-        Load the real ~100 window types from CSV. Upserts by{" "}
-        <code>type_code</code> — synthesized tips on existing types are kept.
+        Load the real ~100 window types from CSV (include width_in/height_in —
+        the fit check needs them). Upserts by <code>type_code</code>;
+        synthesized tips on existing types are kept.
       </p>
       <p className="muted">
         Currently in catalog: <strong>{types.data?.length ?? "—"}</strong> types
