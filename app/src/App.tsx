@@ -26,6 +26,7 @@ import { OpeningSheet } from "./pages/install/OpeningSheet";
 import { PlansetUpload } from "./pages/install/PlansetUpload";
 import { ProjectMap } from "./pages/install/ProjectMap";
 import { TypeBrainCard } from "./pages/install/TypeBrainCard";
+import { CatalogImport } from "./pages/CatalogImport";
 import "./index.css";
 
 const queryClient = new QueryClient();
@@ -89,6 +90,7 @@ export default function App() {
               element={<OpeningSheet />}
             />
             <Route path="/brain/:typeId" element={<TypeBrainCard />} />
+            <Route path="/catalog" element={<CatalogImport />} />
             <Route path="/w/:windowId" element={<WindowDetail />} />
             <Route path="/loc/:address" element={<LocationDetail />} />
             <Route path="/labels" element={<Labels />} />

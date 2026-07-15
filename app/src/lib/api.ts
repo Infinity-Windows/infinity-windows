@@ -223,3 +223,46 @@ export async function getDashboardCounts(): Promise<DashboardCounts> {
     damaged: damaged.count ?? 0,
   };
 }
+
+export interface CatalogImportResult {
+  inserted: number;
+  updated: number;
+  total: number;
+}
+
+/** Upsert catalog rows by type_code. Existing types keep synthesized tip columns. */
+export async function importWindowTypes(
+  rows: import("./catalogCsv").CatalogCsvRow[],
+): Promise<CatalogImportResult> {
+  if (rows.length === 0) return { inserted: 0, updated: 0, total: 0 };
+
+  const codes = rows.map((r) => r.type_code);
+  const { data: existing, error: exErr } = await supabase
+    .from("window_types")
+    .select("type_code")
+    .in("type_code", codes);
+  if (exErr) throw exErr;
+  const existingCodes = new Set((existing ?? []).map((r) => r.type_code));
+
+  const { error } = await supabase.from("window_types").upsert(
+    rows.map((r) => ({
+      type_code: r.type_code,
+      name: r.name,
+      category: r.category,
+      width_in: r.width_in,
+      height_in: r.height_in,
+      difficulty_rating: r.difficulty_rating,
+      tutorial_url: r.tutorial_url,
+      notes: r.notes,
+    })),
+    { onConflict: "type_code" },
+  );
+  if (error) throw error;
+
+  const updated = rows.filter((r) => existingCodes.has(r.type_code)).length;
+  return {
+    inserted: rows.length - updated,
+    updated,
+    total: rows.length,
+  };
+}

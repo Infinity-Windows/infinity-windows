@@ -6,10 +6,12 @@ Operations + training brain for a window installation company.
 
 - `app/` — Warehouse inventory + install capture PWA (React + Vite + Supabase). Scan-first: QR license plate on every window, QR address on every rack slot.
 - `supabase/migrations/` — Database schema (window types, unique windows, locations, jobs, movement log, plansets, project openings, install events) plus demo seed.
-- `scripts/weekly-report.mjs` — Inventory health report written into the vault.
-- `scripts/vault-sync.mjs` — Mirrors install memos from Supabase into `vault/windows/<type_code>/install-memos/`.
-- `docs/` — Planning and team notes, including the [warehouse reorg playbook](docs/warehouse-reorg-playbook.md) and [hardware shopping list](docs/inventory-hardware-shopping-list.md).
+- `scripts/weekly-report.mjs` — Inventory health report written into the vault (local). Prefer the scheduled `weekly-report` Edge Function in production.
+- `scripts/vault-sync.mjs` — Mirrors install memos from Supabase into `vault/windows/<type_code>/install-memos/` (local). Prefer webhook-driven `vault-autofile` Edge Function.
+- `docs/` — Planning and team notes, including the [warehouse reorg playbook](docs/warehouse-reorg-playbook.md), [hardware shopping list](docs/inventory-hardware-shopping-list.md), and [catalog CSV template](docs/window-types-template.csv).
 - `vault/` — Obsidian-friendly markdown mirror (wiki view; DB remains system of truth).
+- `supabase/functions/` — Edge Functions: Whisper transcription, tip synthesis, AI extract, vault autofile, weekly report.
+- `.github/workflows/ci.yml` — vitest + lint + build on every push.
 
 ## Inventory model
 

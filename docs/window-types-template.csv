@@ -1,0 +1,4 @@
+type_code,name,category,width_in,height_in,difficulty_rating,tutorial_url,notes
+CAS3050,Casement 30x50,casement,30,50,3,,
+DH2846,Double Hung 28x46,double-hung,28,46,2,,
+SL6040,Slider 60x40,slider,60,40,4,,

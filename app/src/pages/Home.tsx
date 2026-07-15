@@ -50,6 +50,9 @@ export function Home() {
         <Link to="/count" className="action-btn">
           Cycle count a rack
         </Link>
+        <Link to="/catalog" className="action-btn">
+          Import window catalog (CSV)
+        </Link>
       </div>
     </div>
   );
