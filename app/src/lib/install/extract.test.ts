@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  extractScheduleRows,
   matchWindowType,
   parseScheduleRows,
   rowsToDraftOpenings,
@@ -140,5 +141,45 @@ describe("rowsToDraftOpenings", () => {
     );
     expect(drafts[0].window_type_id).toBeNull();
     expect(drafts[0].type_text).toBe("AWN9999");
+  });
+});
+
+describe("extractScheduleRows", () => {
+  it("uses deterministic rows when present and skips AI", async () => {
+    const ai = vi.fn(async () => [
+      {
+        openingCode: "X1",
+        typeText: "CAS3050",
+        qty: 1,
+        label: null,
+        pageNumber: 1,
+      },
+    ]);
+    const result = await extractScheduleRows(
+      [{ pageNumber: 1, text: SCHEDULE_TEXT }],
+      ai,
+    );
+    expect(result.source).toBe("deterministic");
+    expect(result.rows.length).toBeGreaterThan(0);
+    expect(ai).not.toHaveBeenCalled();
+  });
+
+  it("falls back to AI when deterministic finds nothing", async () => {
+    const ai = vi.fn(async () => [
+      {
+        openingCode: "W9",
+        typeText: "CAS3050",
+        qty: 1,
+        label: "DEN",
+        pageNumber: 1,
+      },
+    ]);
+    const result = await extractScheduleRows(
+      [{ pageNumber: 1, text: "NO SCHEDULE HERE JUST NOTES" }],
+      ai,
+    );
+    expect(result.source).toBe("ai");
+    expect(result.rows).toHaveLength(1);
+    expect(ai).toHaveBeenCalledOnce();
   });
 });

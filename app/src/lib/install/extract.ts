@@ -1,10 +1,7 @@
-// Deterministic window-schedule extraction from planset text. No AI call in
-// v1: parse schedule-like rows with patterns, fuzzy-match type codes against
-// the catalog, and emit draft openings for human confirmation.
-//
-// An AI fallback can slot in later by implementing `ExtractStrategy` and
-// running it when `parseScheduleRows` finds nothing — the rest of the
-// pipeline (match, expand, draft save with confirm guardrails) is shared.
+// Deterministic window-schedule extraction from planset text, with an optional
+// AI fallback (`ExtractStrategy`) when `parseScheduleRows` finds nothing.
+// The rest of the pipeline (match, expand, draft save with confirm guardrails)
+// is shared — confirmed openings are never overwritten.
 
 export interface ScheduleRow {
   /** Opening mark on the plans, e.g. W1, A-101 */
@@ -37,11 +34,32 @@ export interface DraftOpening {
   page_number: number;
 }
 
-/** Future AI fallback implements this; v1 ships only the deterministic parser. */
+/** AI fallback implements this; deterministic parser is the default. */
 export type ExtractStrategy = (
   pages: { pageNumber: number; text: string }[],
 ) => ScheduleRow[] | Promise<ScheduleRow[]>;
 
+export const deterministicExtract: ExtractStrategy = (pages) =>
+  pages.flatMap((p) => parseScheduleRows(p.text, p.pageNumber));
+
+/**
+ * Run deterministic extract first; if empty and an AI fallback is provided,
+ * use that. Same draft/confirm guardrails apply downstream either way.
+ */
+export async function extractScheduleRows(
+  pages: { pageNumber: number; text: string }[],
+  aiFallback?: ExtractStrategy | null,
+): Promise<{ rows: ScheduleRow[]; source: "deterministic" | "ai" | "none" }> {
+  const deterministic = await deterministicExtract(pages);
+  if (deterministic.length > 0) {
+    return { rows: deterministic, source: "deterministic" };
+  }
+  if (aiFallback) {
+    const aiRows = await aiFallback(pages);
+    if (aiRows.length > 0) return { rows: aiRows, source: "ai" };
+  }
+  return { rows: [], source: "none" };
+}
 // Opening marks: W1, W-12, W12A, A-101, 101, 101A, WIN-3 ...
 const MARK_RE = /^(?:[A-Z]{1,3}-?\d{1,4}[A-Z]?|\d{2,4}[A-Z]?)$/;
 // Type-code-ish field: letters then digits, e.g. CAS3050, DH2846, SL-6040

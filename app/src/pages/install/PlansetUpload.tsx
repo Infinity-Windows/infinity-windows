@@ -9,7 +9,8 @@ import {
   updatePlanset,
   uploadPlanset,
 } from "../../lib/install/api";
-import { parseScheduleRows, rowsToDraftOpenings } from "../../lib/install/extract";
+import { extractScheduleRows, rowsToDraftOpenings } from "../../lib/install/extract";
+import { aiExtractSchedule } from "../../lib/install/api";
 
 export function PlansetUpload() {
   const { projectId = "" } = useParams();
@@ -50,12 +51,32 @@ export function PlansetUpload() {
 
       setProgress("Extracting window schedule\u2026");
       const pages = await extractAllText(doc);
-      const rows = pages.flatMap((p) => parseScheduleRows(p.text, p.pageNumber));
+      const catalog = (types.data ?? []).map((t) => ({
+        type_code: t.type_code,
+        name: t.name,
+      }));
+      const { rows, source } = await extractScheduleRows(pages, async (pgs) => {
+        setProgress("No schedule found — trying AI extract\u2026");
+        const aiRows = await aiExtractSchedule(pgs, catalog);
+        return aiRows.map((r) => ({
+          openingCode: r.openingCode,
+          typeText: r.typeText,
+          qty: r.qty,
+          label: r.label,
+          pageNumber: r.pageNumber,
+        }));
+      });
       const drafts = rowsToDraftOpenings(rows, types.data ?? []);
 
       const result = await saveDraftOpenings(projectId, planset.id, drafts);
       await updatePlanset(planset.id, { status: "ready" });
-      return { planset, drafts: result.inserted, skipped: result.skipped, converted: true };
+      return {
+        planset,
+        drafts: result.inserted,
+        skipped: result.skipped,
+        converted: true,
+        source,
+      };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["plansets", projectId] });
@@ -66,7 +87,7 @@ export function PlansetUpload() {
         navigate(`/projects/${projectId}/review`);
       } else {
         setProgress(
-          "No schedule rows found in the PDF text. Add openings by hand in Review, or on the map.",
+          "No schedule rows found in the PDF text (deterministic + AI). Add openings by hand in Review, or on the map.",
         );
       }
     },

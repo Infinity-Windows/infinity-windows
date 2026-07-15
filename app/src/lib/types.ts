@@ -16,6 +16,11 @@ export interface WindowType {
   difficulty_rating: number | null;
   tutorial_url: string | null;
   notes: string | null;
+  tips_json?: string[];
+  watch_outs_json?: string[];
+  outcome_difficulty?: number | null;
+  tips_synthesized_at?: string | null;
+  tips_install_count?: number;
 }
 
 export interface Location {

@@ -1,0 +1,9 @@
+{
+  "functions": {
+    "transcribe-install-memo": { "verify_jwt": true },
+    "synthesize-type-tips": { "verify_jwt": true },
+    "extract-schedule": { "verify_jwt": true },
+    "vault-autofile": { "verify_jwt": true },
+    "weekly-report": { "verify_jwt": true }
+  }
+}

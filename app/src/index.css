@@ -329,6 +329,8 @@ button:disabled {
   color: var(--text);
   text-decoration: none;
   font-size: 14px;
+  cursor: pointer;
+  display: inline-block;
 }
 
 .row-gap { display: flex; gap: 8px; }
@@ -478,5 +480,47 @@ button:disabled {
 .hub-tab.active {
   background: var(--accent);
   color: #fff;
+}
+
+/* --- Brain card v2 --- */
+
+.brain-tagline {
+  color: var(--muted);
+  margin-top: -4px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.tip-list {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin: 8px 0 16px;
+  padding: 12px 12px 12px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.tip-list.watch {
+  list-style: disc;
+  border-color: var(--warn);
+}
+
+.photo-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.photo-grid img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--card);
 }
 

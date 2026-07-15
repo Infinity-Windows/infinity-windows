@@ -162,14 +162,27 @@ export async function flushQueue(): Promise<{ sent: number; remaining: number }>
           });
         if (upErr) throw upErr;
 
-        const { error: rowErr } = await supabase.from("attachments").insert({
-          window_id: meta.windowId,
-          install_event_id: meta.installEventId,
-          kind: meta.kind,
-          storage_path: `${meta.bucket}/${meta.path}`,
-          created_by: meta.createdBy,
-        });
+        const { data: attachmentRow, error: rowErr } = await supabase
+          .from("attachments")
+          .insert({
+            window_id: meta.windowId,
+            install_event_id: meta.installEventId,
+            kind: meta.kind,
+            storage_path: `${meta.bucket}/${meta.path}`,
+            created_by: meta.createdBy,
+          })
+          .select("id")
+          .single();
         if (rowErr) throw rowErr;
+
+        if (meta.kind === "voice_memo" && attachmentRow?.id) {
+          // Fire-and-forget Whisper + topic split (Edge Function).
+          void supabase.functions
+            .invoke("transcribe-install-memo", {
+              body: { attachment_id: attachmentRow.id },
+            })
+            .catch(() => {});
+        }
 
         await removeRecord(record.id);
         sent++;

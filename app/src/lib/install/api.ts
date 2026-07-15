@@ -267,8 +267,38 @@ export interface TypeBrainStats {
   type: WindowType | null;
   installCount: number;
   medianMinutes: number | null;
+  p90Minutes: number | null;
   avgGrade: number | null;
+  failRate: number | null;
+  outcomeDifficulty: number | null;
+  tips: string[];
+  watchOuts: string[];
   recent: InstallEvent[];
+  photos: { id: string; storage_path: string; signedUrl: string | null }[];
+  voiceMemos: { id: string; storage_path: string; signedUrl: string | null; created_at: string }[];
+}
+
+function percentile(sorted: number[], p: number): number | null {
+  if (sorted.length === 0) return null;
+  if (sorted.length === 1) return sorted[0];
+  const idx = (sorted.length - 1) * p;
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sorted[lo];
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+}
+
+async function signedMedia(
+  storagePath: string,
+): Promise<string | null> {
+  const slash = storagePath.indexOf("/");
+  const bucket = slash >= 0 ? storagePath.slice(0, slash) : "install-media";
+  const path = slash >= 0 ? storagePath.slice(slash + 1) : storagePath;
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .createSignedUrl(path, 3600);
+  if (error) return null;
+  return data.signedUrl;
 }
 
 export async function getTypeBrainStats(
@@ -294,22 +324,95 @@ export async function getTypeBrainStats(
   const grades = events
     .map((e) => e.quality_grade)
     .filter((g): g is number => g !== null);
+  const fails = grades.filter((g) => g <= 2).length;
 
-  const medianMinutes =
-    minutes.length === 0
-      ? null
-      : minutes.length % 2 === 1
-        ? minutes[(minutes.length - 1) / 2]
-        : (minutes[minutes.length / 2 - 1] + minutes[minutes.length / 2]) / 2;
+  const eventIds = events.map((e) => e.id);
+  let photos: TypeBrainStats["photos"] = [];
+  let voiceMemos: TypeBrainStats["voiceMemos"] = [];
+  if (eventIds.length > 0) {
+    const { data: media, error: mediaErr } = await supabase
+      .from("attachments")
+      .select("id, kind, storage_path, created_at, install_event_id")
+      .in("install_event_id", eventIds.slice(0, 50))
+      .in("kind", ["photo", "voice_memo"])
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (mediaErr) throw mediaErr;
+    const photoRows = (media ?? []).filter((m) => m.kind === "photo").slice(0, 12);
+    const voiceRows = (media ?? []).filter((m) => m.kind === "voice_memo").slice(0, 5);
+    photos = await Promise.all(
+      photoRows.map(async (m) => ({
+        id: m.id,
+        storage_path: m.storage_path,
+        signedUrl: await signedMedia(m.storage_path),
+      })),
+    );
+    voiceMemos = await Promise.all(
+      voiceRows.map(async (m) => ({
+        id: m.id,
+        storage_path: m.storage_path,
+        signedUrl: await signedMedia(m.storage_path),
+        created_at: m.created_at,
+      })),
+    );
+  }
+
+  const type = typeRes.data as WindowType | null;
+  const tips = Array.isArray(type?.tips_json) ? type!.tips_json! : [];
+  const watchOuts = Array.isArray(type?.watch_outs_json)
+    ? type!.watch_outs_json!
+    : [];
 
   return {
-    type: typeRes.data,
+    type,
     installCount: events.length,
-    medianMinutes,
+    medianMinutes: percentile(minutes, 0.5),
+    p90Minutes: percentile(minutes, 0.9),
     avgGrade:
       grades.length === 0
         ? null
         : Math.round((grades.reduce((s, g) => s + g, 0) / grades.length) * 10) / 10,
+    failRate:
+      grades.length === 0
+        ? null
+        : Math.round((fails / grades.length) * 1000) / 10,
+    outcomeDifficulty:
+      type?.outcome_difficulty ?? type?.difficulty_rating ?? null,
+    tips: tips.slice(0, 5),
+    watchOuts: watchOuts.slice(0, 5),
     recent: events.slice(0, 10),
+    photos,
+    voiceMemos,
   };
+}
+
+/** Invoke Edge Function to extract schedule rows via GPT when deterministic parse finds nothing. */
+export async function aiExtractSchedule(
+  pages: { pageNumber: number; text: string }[],
+  catalog: { type_code: string; name: string }[],
+): Promise<ScheduleRowLike[]> {
+  const { data, error } = await supabase.functions.invoke("extract-schedule", {
+    body: { pages, catalog },
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(String(data.error));
+  return (data?.rows ?? []) as ScheduleRowLike[];
+}
+
+export interface ScheduleRowLike {
+  openingCode: string;
+  typeText: string;
+  qty: number;
+  label: string | null;
+  pageNumber: number;
+}
+
+/** Fire-and-forget transcription after a voice attachment lands. */
+export async function requestTranscription(attachmentId: string): Promise<void> {
+  const { error } = await supabase.functions.invoke("transcribe-install-memo", {
+    body: { attachment_id: attachmentId },
+  });
+  if (error) {
+    console.warn("transcribe invoke failed", error);
+  }
 }
