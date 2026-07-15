@@ -15,6 +15,12 @@ import { Scan } from "./pages/Scan";
 import { Search } from "./pages/Search";
 import { SignIn } from "./pages/SignIn";
 import { WindowDetail } from "./pages/WindowDetail";
+import { OpeningReview } from "./pages/install/OpeningReview";
+import { OpeningSheet } from "./pages/install/OpeningSheet";
+import { PlansetUpload } from "./pages/install/PlansetUpload";
+import { ProjectMap } from "./pages/install/ProjectMap";
+import { ProjectsInstall } from "./pages/install/ProjectsInstall";
+import { TypeBrainCard } from "./pages/install/TypeBrainCard";
 import "./index.css";
 
 const queryClient = new QueryClient();
@@ -52,6 +58,15 @@ export default function App() {
             <Route path="/loc/:address" element={<LocationDetail />} />
             <Route path="/labels" element={<Labels />} />
             <Route path="/count" element={<CycleCount />} />
+            <Route path="/install" element={<ProjectsInstall />} />
+            <Route path="/install/brain/:typeId" element={<TypeBrainCard />} />
+            <Route path="/install/:projectId" element={<ProjectMap />} />
+            <Route path="/install/:projectId/upload" element={<PlansetUpload />} />
+            <Route path="/install/:projectId/review" element={<OpeningReview />} />
+            <Route
+              path="/install/:projectId/opening/:openingId"
+              element={<OpeningSheet />}
+            />
           </Route>
         </Routes>
       </BrowserRouter>

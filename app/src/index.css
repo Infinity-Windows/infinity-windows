@@ -318,3 +318,136 @@ button:disabled {
 .signin .primary { margin-top: 8px; }
 
 .job-row { display: block; }
+
+/* --- Install module --- */
+
+.button-like {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.row-gap { display: flex; gap: 8px; }
+
+.plan-map {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.plan-map img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.plan-map.placing { cursor: crosshair; outline: 2px solid var(--accent); }
+
+.map-pin {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border-radius: 15px;
+  border: 2px solid rgba(0, 0, 0, 0.55);
+  color: #0b0f18;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.page-switch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin: 10px 0;
+}
+
+.map-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  margin: 8px 0;
+}
+
+.map-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+  margin-right: 4px;
+}
+
+.record-btn { font-weight: 700; }
+
+.record-btn.recording {
+  background: var(--danger);
+  border-color: var(--danger);
+  animation: rec-pulse 1.2s infinite;
+}
+
+@keyframes rec-pulse {
+  50% { opacity: 0.75; }
+}
+
+.audio-preview {
+  width: 100%;
+  margin: 10px 0;
+}
+
+.topic-prompts {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin: 12px 0;
+  padding: 12px 12px 12px 32px;
+  font-size: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.topic-prompts li.active { color: var(--text); font-weight: 600; }
+
+.topic-fields { margin: 8px 0; }
+.topic-fields summary { cursor: pointer; padding: 8px 0; }
+
+.grade-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.grade-btn { flex: 1; font-weight: 700; }
+
+.grade-btn.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.opening-review-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.opening-review-row input,
+.opening-review-row select {
+  margin-bottom: 0;
+  padding: 10px;
+}
+
+.opening-code-input { font-weight: 700; }
