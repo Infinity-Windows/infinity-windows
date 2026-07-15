@@ -9,28 +9,38 @@ import {
   listProjects,
   loadWindow,
 } from "../lib/api";
-import { listOpenings } from "../lib/install/api";
+import { getMyProfile, listOpenings } from "../lib/install/api";
 import { prefetchJobPack } from "../lib/queryClient";
+import { useRealtimeOpenings } from "../lib/useRealtimeOpenings";
 import { STATUS_LABELS, type WindowUnit } from "../lib/types";
 import { ProjectMap } from "./install/ProjectMap";
+import { DispatchBoard } from "./install/DispatchBoard";
 
-type HubTab = "overview" | "warehouse" | "map" | "brain";
-
-const TABS: { id: HubTab; label: string }[] = [
-  { id: "overview", label: "Overview" },
-  { id: "warehouse", label: "Warehouse" },
-  { id: "map", label: "Map" },
-  { id: "brain", label: "Brain" },
-];
+type HubTab = "overview" | "warehouse" | "map" | "brain" | "dispatch";
 
 export function ProjectDetail() {
   const { projectId = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
   const tab: HubTab =
-    tabParam === "warehouse" || tabParam === "map" || tabParam === "brain"
+    tabParam === "warehouse" ||
+    tabParam === "map" ||
+    tabParam === "brain" ||
+    tabParam === "dispatch"
       ? tabParam
       : "overview";
+
+  useRealtimeOpenings(projectId);
+  const myProfile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const isLead = myProfile.data?.role === "lead";
+
+  const TABS: { id: HubTab; label: string }[] = [
+    { id: "overview", label: "Overview" },
+    ...(isLead ? [{ id: "dispatch" as HubTab, label: "Dispatch" }] : []),
+    { id: "warehouse", label: "Warehouse" },
+    { id: "map", label: "Map" },
+    { id: "brain", label: "Brain" },
+  ];
 
   const setTab = (next: HubTab) => {
     if (next === "overview") {
@@ -147,6 +157,8 @@ export function ProjectDetail() {
           loaded={loaded}
         />
       )}
+
+      {tab === "dispatch" && isLead && <DispatchBoard projectId={projectId} />}
 
       {tab === "map" && <ProjectMap embedded />}
 

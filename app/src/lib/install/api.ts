@@ -7,15 +7,151 @@ import type {
   Planset,
   PlansetFormat,
   PlansetStatus,
+  Profile,
   ProjectOpening,
 } from "./types";
 
 const OPENING_SELECT =
-  "*, window_types(*), windows:assigned_window_id(*), projects(*)";
+  "*, window_types(*), windows:assigned_window_id(*), projects(*), assignee:assigned_to(*)";
 
 async function actor(): Promise<string | null> {
   const { data } = await supabase.auth.getUser();
   return data.user?.email ?? null;
+}
+
+// --- Crew profiles ---
+
+/** Ensure the signed-in user has a profile row; return it. */
+export async function ensureMyProfile(): Promise<Profile | null> {
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData.user;
+  if (!user) return null;
+
+  const { data: existing, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (error) throw error;
+  if (existing) return existing as Profile;
+
+  const displayName = (user.email ?? "installer").split("@")[0];
+  const { data: created, error: insErr } = await supabase
+    .from("profiles")
+    .insert({ id: user.id, display_name: displayName })
+    .select("*")
+    .single();
+  if (insErr) throw insErr;
+  return created as Profile;
+}
+
+export async function getMyProfile(): Promise<Profile | null> {
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData.user;
+  if (!user) return null;
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (error) throw error;
+  return data as Profile | null;
+}
+
+export async function listProfiles(): Promise<Profile[]> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .order("role", { ascending: false })
+    .order("display_name");
+  if (error) throw error;
+  return data as Profile[];
+}
+
+export async function updateProfile(
+  id: string,
+  patch: Partial<Pick<Profile, "display_name" | "skill_level" | "role" | "active">>,
+): Promise<void> {
+  const { error } = await supabase
+    .from("profiles")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+async function actorId(): Promise<string | null> {
+  const { data } = await supabase.auth.getUser();
+  return data.user?.id ?? null;
+}
+
+// --- Foreman-push assignment ---
+
+export async function assignOpeningToInstaller(
+  openingId: string,
+  profileId: string,
+  sequence?: number | null,
+): Promise<ProjectOpening> {
+  const { data, error } = await supabase.rpc("assign_opening_to_installer", {
+    p_opening_id: openingId,
+    p_profile_id: profileId,
+    p_actor_id: await actorId(),
+    p_sequence: sequence ?? null,
+  });
+  if (error) throw error;
+  return data as ProjectOpening;
+}
+
+export async function unassignOpening(openingId: string): Promise<ProjectOpening> {
+  const { data, error } = await supabase.rpc("unassign_opening", {
+    p_opening_id: openingId,
+  });
+  if (error) throw error;
+  return data as ProjectOpening;
+}
+
+export async function startOpeningWork(openingId: string): Promise<ProjectOpening> {
+  const { data, error } = await supabase.rpc("start_opening_work", {
+    p_opening_id: openingId,
+  });
+  if (error) throw error;
+  return data as ProjectOpening;
+}
+
+export async function setOpeningsSequence(openingIds: string[]): Promise<void> {
+  const { error } = await supabase.rpc("set_openings_sequence", {
+    p_opening_ids: openingIds,
+  });
+  if (error) throw error;
+}
+
+/** Openings assigned to a given installer (their work list). */
+export async function listMyOpenings(
+  projectId: string,
+  profileId: string,
+): Promise<ProjectOpening[]> {
+  const { data, error } = await supabase
+    .from("project_openings")
+    .select(OPENING_SELECT)
+    .eq("project_id", projectId)
+    .eq("assigned_to", profileId)
+    .order("sequence", { ascending: true, nullsFirst: false })
+    .order("opening_code");
+  if (error) throw error;
+  return data as ProjectOpening[];
+}
+
+/** Every opening this installer is assigned across all active jobs. */
+export async function listMyOpeningsAllJobs(
+  profileId: string,
+): Promise<ProjectOpening[]> {
+  const { data, error } = await supabase
+    .from("project_openings")
+    .select(OPENING_SELECT)
+    .eq("assigned_to", profileId)
+    .order("sequence", { ascending: true, nullsFirst: false })
+    .order("opening_code");
+  if (error) throw error;
+  return data as ProjectOpening[];
 }
 
 // --- Plansets ---

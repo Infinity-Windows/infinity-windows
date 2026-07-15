@@ -21,6 +21,17 @@ export interface Planset {
 
 export type OpeningStatus = "planned" | "assigned" | "installed";
 export type OpeningCondition = "unknown" | "ok" | "damaged";
+export type CrewRole = "installer" | "lead";
+
+export interface Profile {
+  id: string;
+  display_name: string;
+  skill_level: number;
+  role: CrewRole;
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
 
 export interface ProjectOpening {
   id: string;
@@ -44,9 +55,15 @@ export interface ProjectOpening {
   condition_note: string | null;
   condition_checked_by: string | null;
   condition_checked_at: string | null;
+  assigned_to: string | null;
+  assigned_by: string | null;
+  assigned_at: string | null;
+  sequence: number | null;
+  work_started_at: string | null;
   window_types?: WindowType | null;
   windows?: WindowUnit | null;
   projects?: Project | null;
+  assignee?: Profile | null;
 }
 
 /** Topic fields match vault/_schemas/install-memo-topics.md, in order. */

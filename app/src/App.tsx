@@ -28,6 +28,9 @@ import { PlansetUpload } from "./pages/install/PlansetUpload";
 import { ProjectMap } from "./pages/install/ProjectMap";
 import { TypeBrainCard } from "./pages/install/TypeBrainCard";
 import { CatalogImport } from "./pages/CatalogImport";
+import { Crew } from "./pages/Crew";
+import { MyWork } from "./pages/MyWork";
+import { ensureMyProfile } from "./lib/install/api";
 import "./index.css";
 
 /** Legacy /install/:projectId/* bookmarks → unified /projects/:id hub. */
@@ -51,9 +54,11 @@ export default function App() {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setReady(true);
+      if (data.session) void ensureMyProfile().catch(() => {});
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
+      if (s) void ensureMyProfile().catch(() => {});
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -99,6 +104,8 @@ export default function App() {
             />
             <Route path="/brain/:typeId" element={<TypeBrainCard />} />
             <Route path="/catalog" element={<CatalogImport />} />
+            <Route path="/crew" element={<Crew />} />
+            <Route path="/my-work" element={<MyWork />} />
             <Route path="/w/:windowId" element={<WindowDetail />} />
             <Route path="/loc/:address" element={<LocationDetail />} />
             <Route path="/labels" element={<Labels />} />

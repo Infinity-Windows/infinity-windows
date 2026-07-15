@@ -6,10 +6,12 @@ import { Scanner } from "../../components/Scanner";
 import { getWindowByWindowId, searchUnits } from "../../lib/api";
 import {
   assignWindowToOpening,
+  getMyProfile,
   getOpening,
   getTypeBrainStats,
   setOpeningCondition,
   setRoughOpening,
+  startOpeningWork,
   submitInstallEvent,
 } from "../../lib/install/api";
 import {
@@ -87,6 +89,19 @@ export function OpeningSheet() {
     queryKey: ["opening", openingId],
     queryFn: () => getOpening(openingId),
   });
+
+  const myProfile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+
+  // Mark in-progress once (soft lock so the lead board + other crew see it).
+  const startedLockRef = useRef(false);
+  useEffect(() => {
+    const o = opening.data;
+    if (!o || startedLockRef.current) return;
+    if (o.status !== "installed" && !o.work_started_at) {
+      startedLockRef.current = true;
+      void startOpeningWork(openingId).catch(() => {});
+    }
+  }, [opening.data, openingId]);
 
   const brain = useQuery({
     queryKey: ["typeBrain", opening.data?.window_type_id],
@@ -260,13 +275,20 @@ export function OpeningSheet() {
     onSuccess: (flush) => {
       refresh();
       queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["myOpenings"] });
+      // Installers loop back to their worklist (next window on top);
+      // leads return to the job map.
+      const dest =
+        myProfile.data && myProfile.data.role !== "lead"
+          ? "/my-work"
+          : `/projects/${projectId}?tab=map`;
       if (flush.remaining > 0) {
         setMessage(
           `Install recorded. ${flush.remaining} file(s) queued — they'll upload when you're back in signal.`,
         );
         setPending(flush.remaining);
       } else {
-        navigate(`/projects/${projectId}?tab=map`);
+        navigate(dest);
       }
     },
     onError: (e) => setMessage(String(e)),

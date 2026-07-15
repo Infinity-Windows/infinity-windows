@@ -165,3 +165,46 @@ export function readyToInstall(input: ReadyInput): ReadyResult {
   if (reasons.length > 0) return { status: "incomplete", reasons };
   return { status: "ready", reasons: ["Right unit, fits, undamaged, on hand."] };
 }
+
+export interface OpeningLike {
+  status: string;
+  assigned_window_id: string | null;
+  window_type_id: string | null;
+  condition: "unknown" | "ok" | "damaged";
+  ro_width_in: number | null;
+  ro_height_in: number | null;
+  window_types?: { width_in: number | null; height_in: number | null } | null;
+  windows?: { window_type_id: string; status: string } | null;
+}
+
+export interface OpeningReadiness {
+  status: ReadyStatus;
+  reasons: string[];
+  fit: FitVerdict;
+}
+
+/** Compute the ready/blocked/incomplete verdict for an opening row. */
+export function openingReadiness(o: OpeningLike): OpeningReadiness {
+  const fit = checkFit({
+    unitWidthIn: o.window_types?.width_in,
+    unitHeightIn: o.window_types?.height_in,
+    roWidthIn: o.ro_width_in,
+    roHeightIn: o.ro_height_in,
+  });
+  const typeMatches =
+    !o.assigned_window_id ||
+    !o.window_type_id ||
+    o.windows?.window_type_id === o.window_type_id;
+  const unitStatus = o.windows?.status ?? null;
+  const atLocationOrLoaded =
+    unitStatus === "staged" || unitStatus === "loaded" || unitStatus === "in_warehouse";
+
+  const result = readyToInstall({
+    hasUnit: Boolean(o.assigned_window_id),
+    typeMatches,
+    fit: fit.verdict,
+    condition: o.condition,
+    atLocationOrLoaded,
+  });
+  return { status: result.status, reasons: result.reasons, fit: fit.verdict };
+}

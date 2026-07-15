@@ -112,7 +112,19 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   };
 
   const pinTitle = (o: ProjectOpening) =>
-    `${o.opening_code}${o.window_types ? ` ${o.window_types.type_code}` : ""}`;
+    `${o.opening_code}${o.window_types ? ` ${o.window_types.type_code}` : ""}${
+      o.assignee ? ` — ${o.assignee.display_name}` : ""
+    }`;
+
+  const initials = (name?: string | null) =>
+    name
+      ? name
+          .split(/[\s._-]+/)
+          .map((s) => s[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase()
+      : "";
 
   const openOpening = (openingId: string) =>
     navigate(`/projects/${projectId}/opening/${openingId}`);
@@ -201,7 +213,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 openOpening(o.id);
               }}
             >
-              {o.opening_code}
+              {o.assignee ? initials(o.assignee.display_name) : o.opening_code}
             </button>
           ))}
         </div>

@@ -695,3 +695,95 @@ button:disabled {
   pointer-events: none;
 }
 
+/* --- Crew + dispatch --- */
+
+.crew-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crew-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.crew-name {
+  width: auto;
+  flex: 1;
+  min-width: 140px;
+  margin-bottom: 0;
+  font-weight: 700;
+}
+
+.crew-controls {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.active-pill {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.dispatch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dispatch-row select {
+  width: auto;
+  max-width: 55vw;
+  margin-bottom: 0;
+  padding: 8px;
+  font-size: 13px;
+}
+
+.dispatch-row.blocker {
+  border-color: var(--danger);
+}
+
+.blocker-head {
+  color: var(--danger);
+}
+
+.next-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 18px;
+  margin: 8px 0 4px;
+  border-radius: 14px;
+  border: 2px solid var(--accent);
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.next-label {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.next-code {
+  font-size: 30px;
+  font-weight: 800;
+}
+
+.next-meta {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.next-ready {
+  font-size: 13px;
+  margin-top: 2px;
+}
+
