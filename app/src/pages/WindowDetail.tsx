@@ -1,16 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { Scanner } from "../components/Scanner";
 import {
   getLocationByAddress,
   getMovements,
   getWindowByWindowId,
-  installWindow,
   loadWindow,
   moveWindow,
   suggestLocation,
 } from "../lib/api";
+import { listOpenings } from "../lib/install/api";
 import { downloadPdf, windowLabelsPdf } from "../lib/labels";
 import { STATUS_LABELS } from "../lib/types";
 
@@ -23,6 +23,12 @@ export function WindowDetail() {
   const unit = useQuery({
     queryKey: ["window", windowId],
     queryFn: () => getWindowByWindowId(windowId),
+  });
+
+  const openings = useQuery({
+    queryKey: ["projectOpeningsForUnit", unit.data?.project_id],
+    queryFn: () => listOpenings(unit.data!.project_id!),
+    enabled: Boolean(unit.data?.project_id),
   });
 
   const suggestion = useQuery({
@@ -63,12 +69,6 @@ export function WindowDetail() {
     onError: (e) => setActionError(String(e)),
   });
 
-  const install = useMutation({
-    mutationFn: () => installWindow(unit.data!.id),
-    onSuccess: refresh,
-    onError: (e) => setActionError(String(e)),
-  });
-
   if (unit.isLoading) return <div className="page">Loading...</div>;
   if (!unit.data) {
     return (
@@ -79,6 +79,20 @@ export function WindowDetail() {
   }
 
   const w = unit.data;
+  const projectOpenings = openings.data ?? [];
+  const hasOpenings = projectOpenings.length > 0;
+  const linkedOpening = projectOpenings.find((o) => o.assigned_window_id === w.id);
+  const matchingOpening =
+    linkedOpening ??
+    projectOpenings.find(
+      (o) =>
+        o.status !== "installed" &&
+        o.window_type_id === w.window_type_id &&
+        !o.assigned_window_id,
+    );
+  const canMarkInstalledQuick =
+    (w.status === "loaded" || w.status === "staged") && !hasOpenings;
+
   return (
     <div className="page">
       <header className="page-header">
@@ -101,7 +115,11 @@ export function WindowDetail() {
         </p>
         {w.projects && (
           <p>
-            Job: <strong>{w.projects.job_code}</strong> — {w.projects.name}
+            Job:{" "}
+            <Link to={`/projects/${w.project_id}`}>
+              <strong>{w.projects.job_code}</strong>
+            </Link>{" "}
+            — {w.projects.name}
           </p>
         )}
         {w.window_types?.difficulty_rating && (
@@ -128,10 +146,31 @@ export function WindowDetail() {
               Load on truck for {w.projects?.job_code}
             </button>
           )}
-          {(w.status === "loaded" || w.status === "staged") && (
-            <button className="action-btn" onClick={() => install.mutate()}>
-              Mark installed
-            </button>
+          {hasOpenings &&
+            (w.status === "loaded" ||
+              w.status === "staged" ||
+              w.status === "in_warehouse") && (
+              <Link
+                className="action-btn primary"
+                to={
+                  matchingOpening
+                    ? `/projects/${w.project_id}/opening/${matchingOpening.id}`
+                    : `/projects/${w.project_id}?tab=map`
+                }
+              >
+                {linkedOpening
+                  ? `Open install memo (${linkedOpening.opening_code})`
+                  : matchingOpening
+                    ? `Install via opening ${matchingOpening.opening_code}`
+                    : "Open job map to install"}
+              </Link>
+            )}
+          {canMarkInstalledQuick && (
+            <p className="muted">
+              This job has no openings mapped — use the job hub Map tab to
+              capture an install memo, or mark warehouse-only installs from the
+              opening sheet once openings exist.
+            </p>
           )}
           <button
             className="action-btn"

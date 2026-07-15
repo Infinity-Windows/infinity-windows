@@ -451,3 +451,32 @@ button:disabled {
 }
 
 .opening-code-input { font-weight: 700; }
+
+/* --- Unified project hub --- */
+
+.hub-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 12px 0 16px;
+  padding: 4px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.hub-tab {
+  flex: 1;
+  padding: 10px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hub-tab.active {
+  background: var(--accent);
+  color: #fff;
+}
+

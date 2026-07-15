@@ -1,7 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useParams,
+} from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { supabase } from "./lib/supabase";
 import { CycleCount } from "./pages/CycleCount";
@@ -19,11 +25,23 @@ import { OpeningReview } from "./pages/install/OpeningReview";
 import { OpeningSheet } from "./pages/install/OpeningSheet";
 import { PlansetUpload } from "./pages/install/PlansetUpload";
 import { ProjectMap } from "./pages/install/ProjectMap";
-import { ProjectsInstall } from "./pages/install/ProjectsInstall";
 import { TypeBrainCard } from "./pages/install/TypeBrainCard";
 import "./index.css";
 
 const queryClient = new QueryClient();
+
+/** Legacy /install/:projectId/* bookmarks → unified /projects/:id hub. */
+function LegacyInstallRedirect({ suffix = "" }: { suffix?: string }) {
+  const { projectId = "" } = useParams();
+  return <Navigate to={`/projects/${projectId}${suffix}`} replace />;
+}
+
+function LegacyInstallOpeningRedirect() {
+  const { projectId = "", openingId = "" } = useParams();
+  return (
+    <Navigate to={`/projects/${projectId}/opening/${openingId}`} replace />
+  );
+}
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -54,18 +72,49 @@ export default function App() {
             <Route path="/search" element={<Search />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/projects/:projectId" element={<ProjectDetail />} />
+            <Route
+              path="/projects/:projectId/map"
+              element={<ProjectMap />}
+            />
+            <Route
+              path="/projects/:projectId/upload"
+              element={<PlansetUpload />}
+            />
+            <Route
+              path="/projects/:projectId/review"
+              element={<OpeningReview />}
+            />
+            <Route
+              path="/projects/:projectId/opening/:openingId"
+              element={<OpeningSheet />}
+            />
+            <Route path="/brain/:typeId" element={<TypeBrainCard />} />
             <Route path="/w/:windowId" element={<WindowDetail />} />
             <Route path="/loc/:address" element={<LocationDetail />} />
             <Route path="/labels" element={<Labels />} />
             <Route path="/count" element={<CycleCount />} />
-            <Route path="/install" element={<ProjectsInstall />} />
-            <Route path="/install/brain/:typeId" element={<TypeBrainCard />} />
-            <Route path="/install/:projectId" element={<ProjectMap />} />
-            <Route path="/install/:projectId/upload" element={<PlansetUpload />} />
-            <Route path="/install/:projectId/review" element={<OpeningReview />} />
+
+            {/* Legacy install routes → unified hub */}
+            <Route path="/install" element={<Navigate to="/projects" replace />} />
+            <Route
+              path="/install/brain/:typeId"
+              element={<TypeBrainCard />}
+            />
+            <Route
+              path="/install/:projectId"
+              element={<LegacyInstallRedirect suffix="?tab=map" />}
+            />
+            <Route
+              path="/install/:projectId/upload"
+              element={<LegacyInstallRedirect suffix="/upload" />}
+            />
+            <Route
+              path="/install/:projectId/review"
+              element={<LegacyInstallRedirect suffix="/review" />}
+            />
             <Route
               path="/install/:projectId/opening/:openingId"
-              element={<OpeningSheet />}
+              element={<LegacyInstallOpeningRedirect />}
             />
           </Route>
         </Routes>

@@ -5,7 +5,6 @@ const tabs = [
   { to: "/scan", label: "Scan", icon: "\u25A3" },
   { to: "/receive", label: "Receive", icon: "\u2795" },
   { to: "/projects", label: "Jobs", icon: "\u25A6" },
-  { to: "/install", label: "Install", icon: "\u2692" },
   { to: "/search", label: "Find", icon: "\u2315" },
 ];
 

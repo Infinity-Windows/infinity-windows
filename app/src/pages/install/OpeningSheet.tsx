@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Scanner } from "../../components/Scanner";
 import { getWindowByWindowId, searchUnits } from "../../lib/api";
@@ -8,6 +8,10 @@ import {
   getOpening,
   submitInstallEvent,
 } from "../../lib/install/api";
+import {
+  formatAssignMeta,
+  rankAssignCandidates,
+} from "../../lib/install/assignRank";
 import {
   enqueueUpload,
   flushQueue,
@@ -64,9 +68,19 @@ export function OpeningSheet() {
     enabled: search.trim().length >= 2,
   });
 
+  const rankedSearch = useMemo(() => {
+    const o = opening.data;
+    return rankAssignCandidates(searchResults.data ?? [], {
+      preferredTypeId: o?.window_type_id,
+      projectId,
+    }).slice(0, 8);
+  }, [searchResults.data, opening.data, projectId]);
+
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["opening", openingId] });
     queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+    queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
+    queryClient.invalidateQueries({ queryKey: ["projectWindows", projectId] });
   };
 
   const assign = useMutation({
@@ -177,7 +191,7 @@ export function OpeningSheet() {
         );
         setPending(flush.remaining);
       } else {
-        navigate(`/install/${projectId}`);
+        navigate(`/projects/${projectId}?tab=map`);
       }
     },
     onError: (e) => setMessage(String(e)),
@@ -193,7 +207,9 @@ export function OpeningSheet() {
     <div className="page">
       <header className="page-header">
         <h1>{o.opening_code}</h1>
-        <Link to={`/install/${projectId}`} className="button-like">Map</Link>
+        <Link to={`/projects/${projectId}?tab=map`} className="button-like">
+          Map
+        </Link>
       </header>
 
       <div className="detail-card">
@@ -207,7 +223,7 @@ export function OpeningSheet() {
         </p>
         {o.window_types && (
           <p>
-            <Link to={`/install/brain/${o.window_types.id}`} className="suggest">
+            <Link to={`/brain/${o.window_types.id}`} className="suggest">
               Type brain: {o.window_types.type_code} tips →
             </Link>
           </p>
@@ -261,22 +277,28 @@ export function OpeningSheet() {
           />
           {search.trim().length >= 2 && (
             <ul className="unit-list">
-              {(searchResults.data ?? [])
-                .filter((u) => u.status !== "installed")
-                .slice(0, 8)
-                .map((u) => (
-                  <li key={u.id} className="find-row">
-                    <strong>{u.window_id}</strong>
+              {rankedSearch.map((u) => (
+                <li key={u.id} className="find-row">
+                  <div>
+                    <strong>{u.window_id}</strong>{" "}
                     <span className="muted">{u.window_types?.type_code}</span>
-                    <button
-                      className="link"
-                      style={{ marginLeft: "auto" }}
-                      onClick={() => assign.mutate(u.id)}
-                    >
-                      Assign
-                    </button>
-                  </li>
-                ))}
+                    <div className="muted" style={{ fontSize: 13 }}>
+                      {formatAssignMeta(u)}
+                      {u.project_id === projectId ? " · this job" : ""}
+                    </div>
+                  </div>
+                  <button
+                    className="link"
+                    style={{ marginLeft: "auto" }}
+                    onClick={() => assign.mutate(u.id)}
+                  >
+                    Assign
+                  </button>
+                </li>
+              ))}
+              {rankedSearch.length === 0 && (
+                <p className="muted">No matching units (type filter applied).</p>
+              )}
             </ul>
           )}
         </>

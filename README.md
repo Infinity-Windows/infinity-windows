@@ -48,6 +48,15 @@ npm install
 npm run dev
 ```
 
+## Deploy (Vercel)
+
+Root `vercel.json` builds `app/` and rewrites all routes to the SPA. Connect the GitHub repo to a Vercel project with:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+Every push to `master` should auto-deploy. Camera scanning needs HTTPS.
+
 ## One-time cloud setup
 
 1. Create a Supabase project (free tier) at supabase.com

@@ -63,7 +63,7 @@ export function PlansetUpload() {
       setProgress(null);
       if (!result.converted) return; // stay here; show conversion-queued state
       if (result.drafts > 0) {
-        navigate(`/install/${projectId}/review`);
+        navigate(`/projects/${projectId}/review`);
       } else {
         setProgress(
           "No schedule rows found in the PDF text. Add openings by hand in Review, or on the map.",
@@ -77,7 +77,9 @@ export function PlansetUpload() {
     <div className="page">
       <header className="page-header">
         <h1>Planset — {project?.job_code ?? ""}</h1>
-        <Link to={`/install/${projectId}`} className="button-like">Map</Link>
+        <Link to={`/projects/${projectId}?tab=map`} className="button-like">
+          Map
+        </Link>
       </header>
 
       <p className="muted">

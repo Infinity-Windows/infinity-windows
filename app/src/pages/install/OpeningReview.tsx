@@ -26,8 +26,10 @@ export function OpeningReview() {
     queryFn: () => listOpenings(projectId),
   });
 
-  const refresh = () =>
+  const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+    queryClient.invalidateQueries({ queryKey: ["projectWindows", projectId] });
+  };
 
   const patch = useMutation({
     mutationFn: (args: { id: string; patch: Parameters<typeof updateOpening>[1] }) =>
@@ -56,7 +58,8 @@ export function OpeningReview() {
     mutationFn: () => confirmOpenings(projectId),
     onSuccess: () => {
       refresh();
-      navigate(`/install/${projectId}`);
+      queryClient.invalidateQueries({ queryKey: ["projectWindows", projectId] });
+      navigate(`/projects/${projectId}?tab=map`);
     },
     onError: (e) => setMessage(String(e)),
   });
@@ -114,7 +117,9 @@ export function OpeningReview() {
     <div className="page">
       <header className="page-header">
         <h1>Openings — {project?.job_code ?? ""}</h1>
-        <Link to={`/install/${projectId}`} className="button-like">Map</Link>
+        <Link to={`/projects/${projectId}?tab=map`} className="button-like">
+          Map
+        </Link>
       </header>
 
       {message && <p className="error">{message}</p>}
@@ -141,8 +146,9 @@ export function OpeningReview() {
       <ul className="unit-list">{confirmed.map(row)}</ul>
       {confirmed.length === 0 && drafts.length === 0 && (
         <p className="muted">
-          Nothing yet. <Link to={`/install/${projectId}/upload`}>Upload a planset</Link>{" "}
-          or add openings by hand below.
+          Nothing yet.{" "}
+          <Link to={`/projects/${projectId}/upload`}>Upload a planset</Link> or
+          add openings by hand below.
         </p>
       )}
 

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Scanner } from "../components/Scanner";
 import {
   getProjectUnits,
@@ -9,13 +9,35 @@ import {
   listProjects,
   loadWindow,
 } from "../lib/api";
+import { listOpenings } from "../lib/install/api";
 import { STATUS_LABELS, type WindowUnit } from "../lib/types";
+import { ProjectMap } from "./install/ProjectMap";
+
+type HubTab = "overview" | "warehouse" | "map" | "brain";
+
+const TABS: { id: HubTab; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "warehouse", label: "Warehouse" },
+  { id: "map", label: "Map" },
+  { id: "brain", label: "Brain" },
+];
 
 export function ProjectDetail() {
   const { projectId = "" } = useParams();
-  const queryClient = useQueryClient();
-  const [loadingOut, setLoadingOut] = useState(false);
-  const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const tab: HubTab =
+    tabParam === "warehouse" || tabParam === "map" || tabParam === "brain"
+      ? tabParam
+      : "overview";
+
+  const setTab = (next: HubTab) => {
+    if (next === "overview") {
+      setSearchParams({}, { replace: true });
+    } else {
+      setSearchParams({ tab: next }, { replace: true });
+    }
+  };
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const project = projects.data?.find((p) => p.id === projectId);
@@ -28,8 +50,11 @@ export function ProjectDetail() {
     queryKey: ["projectUnits", projectId],
     queryFn: () => getProjectUnits(projectId),
   });
+  const openings = useQuery({
+    queryKey: ["openings", projectId],
+    queryFn: () => listOpenings(projectId),
+  });
 
-  // Pick list: warehouse units sorted by slot address = natural walk order.
   const pickList = useMemo(() => {
     return (units.data ?? [])
       .filter((u) => u.status === "in_warehouse" || u.status === "staged")
@@ -39,7 +64,215 @@ export function ProjectDetail() {
   }, [units.data]);
 
   const loaded = (units.data ?? []).filter((u) => u.status === "loaded");
-  const installed = (units.data ?? []).filter((u) => u.status === "installed");
+  const installedUnits = (units.data ?? []).filter((u) => u.status === "installed");
+  const brainTypes = useMemo(() => {
+    const map = new Map<
+      string,
+      { id: string; type_code: string; name: string; count: number }
+    >();
+    for (const o of openings.data ?? []) {
+      if (!o.window_types) continue;
+      const existing = map.get(o.window_types.id);
+      if (existing) existing.count += 1;
+      else {
+        map.set(o.window_types.id, {
+          id: o.window_types.id,
+          type_code: o.window_types.type_code,
+          name: o.window_types.name,
+          count: 1,
+        });
+      }
+    }
+    for (const n of needs.data ?? []) {
+      if (!n.window_types || map.has(n.window_types.id)) continue;
+      map.set(n.window_types.id, {
+        id: n.window_types.id,
+        type_code: n.window_types.type_code,
+        name: n.window_types.name,
+        count: n.quantity,
+      });
+    }
+    return [...map.values()].sort((a, b) => a.type_code.localeCompare(b.type_code));
+  }, [openings.data, needs.data]);
+
+  const openingsList = openings.data ?? [];
+  const openingsInstalled = openingsList.filter((o) => o.status === "installed").length;
+  const neededTotal = (needs.data ?? []).reduce((sum, n) => sum + n.quantity, 0);
+  return (
+    <div className="page">
+      <header className="page-header">
+        <h1>{project?.job_code ?? "Job"}</h1>
+        <Link to="/projects" className="button-like">
+          Jobs
+        </Link>
+      </header>
+      <p className="muted">
+        {project?.name}
+        {project?.address ? ` — ${project.address}` : ""}
+      </p>
+
+      <nav className="hub-tabs" aria-label="Project sections">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={tab === t.id ? "hub-tab active" : "hub-tab"}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "overview" && (
+        <OverviewTab
+          projectId={projectId}
+          unitsCount={units.data?.length ?? 0}
+          neededTotal={neededTotal}
+          pickCount={pickList.length}
+          loadedCount={loaded.length}
+          installedUnits={installedUnits.length}
+          openingsTotal={openingsList.length}
+          openingsInstalled={openingsInstalled}
+          needs={needs.data ?? []}
+          units={units.data ?? []}
+        />
+      )}
+
+      {tab === "warehouse" && (
+        <WarehouseTab
+          projectId={projectId}
+          pickList={pickList}
+          loaded={loaded}
+        />
+      )}
+
+      {tab === "map" && <ProjectMap embedded />}
+
+      {tab === "brain" && (
+        <div>
+          <p className="muted">
+            Type brain cards — tips and times from installs on this job&apos;s
+            window types.
+          </p>
+          <ul className="unit-list">
+            {brainTypes.map((t) => (
+              <li key={t.id}>
+                <Link to={`/brain/${t.id}`} className="job-row">
+                  <strong>{t.type_code}</strong> — {t.name}
+                  <span className="muted"> {t.count} opening(s)</span>
+                </Link>
+              </li>
+            ))}
+            {brainTypes.length === 0 && (
+              <p className="muted">
+                No types yet. Confirm openings from a planset to populate the
+                brain list.
+              </p>
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OverviewTab({
+  projectId,
+  unitsCount,
+  neededTotal,
+  pickCount,
+  loadedCount,
+  installedUnits,
+  openingsTotal,
+  openingsInstalled,
+  needs,
+  units,
+}: {
+  projectId: string;
+  unitsCount: number;
+  neededTotal: number;
+  pickCount: number;
+  loadedCount: number;
+  installedUnits: number;
+  openingsTotal: number;
+  openingsInstalled: number;
+  needs: Awaited<ReturnType<typeof getProjectWindows>>;
+  units: WindowUnit[];
+}) {
+  return (
+    <>
+      <div className="stat-grid">
+        <div className="stat-card">
+          <span className="stat-num">{unitsCount}</span>
+          <span>assigned of {neededTotal || "—"} needed</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-num">{pickCount}</span>
+          <span>in warehouse</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-num">{loadedCount}</span>
+          <span>on truck</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-num">
+            {openingsTotal > 0
+              ? `${openingsInstalled}/${openingsTotal}`
+              : installedUnits}
+          </span>
+          <span>{openingsTotal > 0 ? "openings installed" : "units installed"}</span>
+        </div>
+      </div>
+
+      <div className="action-list">
+        <Link to={`/projects/${projectId}/upload`} className="action-btn primary">
+          Upload planset
+        </Link>
+        <Link to={`/projects/${projectId}/review`} className="action-btn">
+          Review openings
+        </Link>
+      </div>
+
+      <h2>Needed (by type)</h2>
+      <p className="muted">
+        Quantities roll up from confirmed planset openings — one source of truth.
+      </p>
+      <ul className="unit-list">
+        {needs.map((n) => {
+          const have = units.filter((u) => u.window_type_id === n.window_type_id).length;
+          return (
+            <li key={n.id}>
+              <strong>{n.window_types?.type_code}</strong> {n.window_types?.name}{" "}
+              <span className={have >= n.quantity ? "ok" : "warn-text"}>
+                {have}/{n.quantity}
+              </span>
+            </li>
+          );
+        })}
+        {needs.length === 0 && (
+          <p className="muted">
+            No demand yet. Confirm openings after a planset extract to populate
+            warehouse need.
+          </p>
+        )}
+      </ul>
+    </>
+  );
+}
+
+function WarehouseTab({
+  projectId,
+  pickList,
+  loaded,
+}: {
+  projectId: string;
+  pickList: WindowUnit[];
+  loaded: WindowUnit[];
+}) {
+  const queryClient = useQueryClient();
+  const [loadingOut, setLoadingOut] = useState(false);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
 
   const loadScan = useMutation({
     mutationFn: async (windowId: string) => {
@@ -61,52 +294,8 @@ export function ProjectDetail() {
     onError: (e) => setScanMessage(String(e)),
   });
 
-  const neededTotal = (needs.data ?? []).reduce((sum, n) => sum + n.quantity, 0);
-
   return (
-    <div className="page">
-      <header className="page-header">
-        <h1>{project?.job_code ?? "Job"}</h1>
-      </header>
-      <p className="muted">{project?.name} {project?.address}</p>
-
-      <div className="stat-grid">
-        <div className="stat-card">
-          <span className="stat-num">{units.data?.length ?? "-"}</span>
-          <span>assigned of {neededTotal} needed</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-num">{pickList.length}</span>
-          <span>in warehouse</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-num">{loaded.length}</span>
-          <span>on truck</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-num">{installed.length}</span>
-          <span>installed</span>
-        </div>
-      </div>
-
-      <h2>Needed (by type)</h2>
-      <ul className="unit-list">
-        {(needs.data ?? []).map((n) => {
-          const have = (units.data ?? []).filter(
-            (u) => u.window_type_id === n.window_type_id,
-          ).length;
-          return (
-            <li key={n.id}>
-              <strong>{n.window_types?.type_code}</strong>{" "}
-              {n.window_types?.name}{" "}
-              <span className={have >= n.quantity ? "ok" : "warn-text"}>
-                {have}/{n.quantity}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-
+    <>
       <div className="row-between">
         <h2>Pick list ({pickList.length})</h2>
         <button
@@ -175,6 +364,6 @@ export function ProjectDetail() {
           </ul>
         </>
       )}
-    </div>
+    </>
   );
 }

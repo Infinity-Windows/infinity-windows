@@ -2,9 +2,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { listProjects } from "../../lib/api";
-import { downloadPlanset, listOpenings, listPlansets, updateOpening } from "../../lib/install/api";
+import {
+  downloadPlanset,
+  listOpenings,
+  listPlansets,
+  updateOpening,
+} from "../../lib/install/api";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
-import { OPENING_STATUS_COLORS, type ProjectOpening } from "../../lib/install/types";
+import {
+  OPENING_STATUS_COLORS,
+  type ProjectOpening,
+} from "../../lib/install/types";
 
 interface PageImage {
   dataUrl: string;
@@ -12,7 +20,7 @@ interface PageImage {
   height: number;
 }
 
-export function ProjectMap() {
+export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -106,30 +114,46 @@ export function ProjectMap() {
   const pinTitle = (o: ProjectOpening) =>
     `${o.opening_code}${o.window_types ? ` ${o.window_types.type_code}` : ""}`;
 
-  return (
-    <div className="page">
-      <header className="page-header">
-        <h1>{project?.job_code ?? "Job"} map</h1>
-        <div className="row-gap">
-          <Link to={`/install/${projectId}/upload`} className="button-like">
-            Planset
-          </Link>
-          <Link to={`/install/${projectId}/review`} className="button-like">
-            Openings
-          </Link>
-        </div>
-      </header>
+  const openOpening = (openingId: string) =>
+    navigate(`/projects/${projectId}/opening/${openingId}`);
+
+  const body = (
+    <>
+      {!embedded && (
+        <header className="page-header">
+          <h1>{project?.job_code ?? "Job"} map</h1>
+          <div className="row-gap">
+            <Link to={`/projects/${projectId}/upload`} className="button-like">
+              Planset
+            </Link>
+            <Link to={`/projects/${projectId}/review`} className="button-like">
+              Openings
+            </Link>
+          </div>
+        </header>
+      )}
       <p className="muted">
         {installed}/{all.length} installed
         {unplaced.length > 0 && ` — ${unplaced.length} pins to place`}
       </p>
+
+      {embedded && (
+        <div className="row-gap" style={{ marginBottom: 10 }}>
+          <Link to={`/projects/${projectId}/upload`} className="button-like">
+            Planset
+          </Link>
+          <Link to={`/projects/${projectId}/review`} className="button-like">
+            Openings
+          </Link>
+        </div>
+      )}
 
       {mapError && <p className="error">{mapError}</p>}
 
       {!pdfPlanset && (
         <p className="muted">
           No PDF planset yet.{" "}
-          <Link to={`/install/${projectId}/upload`}>Upload one</Link> to get a
+          <Link to={`/projects/${projectId}/upload`}>Upload one</Link> to get a
           map. Openings below still work without it.
         </p>
       )}
@@ -137,10 +161,11 @@ export function ProjectMap() {
       {placingId && (
         <p className="scanner-hint">
           Tap the plan where opening{" "}
-          <strong>
-            {all.find((o) => o.id === placingId)?.opening_code}
-          </strong>{" "}
-          goes. <button className="link" onClick={() => setPlacingId(null)}>Cancel</button>
+          <strong>{all.find((o) => o.id === placingId)?.opening_code}</strong>{" "}
+          goes.{" "}
+          <button className="link" onClick={() => setPlacingId(null)}>
+            Cancel
+          </button>
         </p>
       )}
 
@@ -163,8 +188,9 @@ export function ProjectMap() {
               onClick={(e) => {
                 e.stopPropagation();
                 if (placingId) {
-                  // Re-placing onto an existing pin spot still counts as a map tap.
-                  const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+                  const rect = (
+                    e.currentTarget.parentElement as HTMLElement
+                  ).getBoundingClientRect();
                   placePin.mutate({
                     id: placingId,
                     x: (e.clientX - rect.left) / rect.width,
@@ -172,7 +198,7 @@ export function ProjectMap() {
                   });
                   return;
                 }
-                navigate(`/install/${projectId}/opening/${o.id}`);
+                openOpening(o.id);
               }}
             >
               {o.opening_code}
@@ -196,9 +222,15 @@ export function ProjectMap() {
       )}
 
       <div className="map-legend muted">
-        <span><i style={{ background: OPENING_STATUS_COLORS.planned }} /> planned</span>
-        <span><i style={{ background: OPENING_STATUS_COLORS.assigned }} /> assigned</span>
-        <span><i style={{ background: OPENING_STATUS_COLORS.installed }} /> installed</span>
+        <span>
+          <i style={{ background: OPENING_STATUS_COLORS.planned }} /> planned
+        </span>
+        <span>
+          <i style={{ background: OPENING_STATUS_COLORS.assigned }} /> assigned
+        </span>
+        <span>
+          <i style={{ background: OPENING_STATUS_COLORS.installed }} /> installed
+        </span>
       </div>
 
       {unplaced.length > 0 && (
@@ -207,7 +239,7 @@ export function ProjectMap() {
           <ul className="unit-list">
             {unplaced.map((o) => (
               <li key={o.id} className="find-row">
-                <Link to={`/install/${projectId}/opening/${o.id}`}>
+                <Link to={`/projects/${projectId}/opening/${o.id}`}>
                   <strong>{o.opening_code}</strong>
                 </Link>
                 <span className="muted">
@@ -232,7 +264,7 @@ export function ProjectMap() {
       <ul className="unit-list">
         {all.map((o) => (
           <li key={o.id} className="find-row">
-            <Link to={`/install/${projectId}/opening/${o.id}`}>
+            <Link to={`/projects/${projectId}/opening/${o.id}`}>
               <strong>{o.opening_code}</strong>
             </Link>
             <span className="muted">
@@ -249,11 +281,14 @@ export function ProjectMap() {
         {all.length === 0 && (
           <p className="muted">
             No openings yet —{" "}
-            <Link to={`/install/${projectId}/upload`}>upload a planset</Link> or{" "}
-            <Link to={`/install/${projectId}/review`}>add them by hand</Link>.
+            <Link to={`/projects/${projectId}/upload`}>upload a planset</Link> or{" "}
+            <Link to={`/projects/${projectId}/review`}>add them by hand</Link>.
           </p>
         )}
       </ul>
-    </div>
+    </>
   );
+
+  if (embedded) return <div>{body}</div>;
+  return <div className="page">{body}</div>;
 }
