@@ -28,8 +28,12 @@ export function MyWork() {
       return {
         id: o.id,
         opening_code: o.opening_code,
+        window_type_id: o.window_type_id,
         difficulty:
-          o.window_types?.outcome_difficulty ?? o.window_types?.difficulty_rating ?? null,
+          o.window_types?.learned_difficulty ??
+          o.window_types?.outcome_difficulty ??
+          o.window_types?.difficulty_rating ??
+          null,
         area: areaKey(o),
         ready: r.status === "ready",
         blocked: r.status === "blocked",

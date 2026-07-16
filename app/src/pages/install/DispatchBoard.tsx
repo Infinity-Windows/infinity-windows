@@ -2,6 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
   assignOpeningToInstaller,
+  buildPerfIndex,
+  listClearances,
+  listInstallerTypeStats,
   listOpenings,
   listProfiles,
   unassignOpening,
@@ -9,6 +12,7 @@ import {
 import { openingReadiness } from "../../lib/install/fit";
 import {
   autoDistribute,
+  type DispatchContext,
   type DispatchCrew,
   type DispatchOpening,
 } from "../../lib/dispatch";
@@ -23,8 +27,12 @@ function toDispatchOpening(o: ProjectOpening): DispatchOpening {
   return {
     id: o.id,
     opening_code: o.opening_code,
+    window_type_id: o.window_type_id,
     difficulty:
-      o.window_types?.outcome_difficulty ?? o.window_types?.difficulty_rating ?? null,
+      o.window_types?.learned_difficulty ??
+      o.window_types?.outcome_difficulty ??
+      o.window_types?.difficulty_rating ??
+      null,
     area: areaKey(o),
     ready: r.status === "ready",
     blocked: r.status === "blocked",
@@ -42,6 +50,14 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
     queryFn: () => listOpenings(projectId),
   });
   const crew = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
+  const perfStats = useQuery({
+    queryKey: ["installerTypeStats"],
+    queryFn: listInstallerTypeStats,
+  });
+  const clearances = useQuery({
+    queryKey: ["clearances"],
+    queryFn: listClearances,
+  });
 
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
@@ -69,7 +85,13 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
         active: c.active,
         display_name: c.display_name,
       }));
-      const suggestions = autoDistribute(dispatchOpenings, dispatchCrew);
+      const ctx: DispatchContext = {
+        perf: buildPerfIndex(perfStats.data ?? []),
+        cleared: new Set(
+          (clearances.data ?? []).map((c) => `${c.installer_id}:${c.window_type_id}`),
+        ),
+      };
+      const suggestions = autoDistribute(dispatchOpenings, dispatchCrew, ctx);
       for (const s of suggestions) {
         await assignOpeningToInstaller(s.openingId, s.profileId);
       }

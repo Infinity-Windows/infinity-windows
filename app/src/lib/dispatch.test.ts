@@ -15,6 +15,7 @@ const crew: DispatchCrew[] = [
 
 function opening(p: Partial<DispatchOpening> & { id: string; opening_code: string }): DispatchOpening {
   return {
+    window_type_id: "type-x",
     difficulty: 2,
     area: "p1",
     ready: true,
@@ -84,6 +85,63 @@ describe("autoDistribute", () => {
       { id: "off", skill_level: 5, role: "lead", active: false },
     ]);
     expect(s).toHaveLength(0);
+  });
+
+  it("prefers the installer with proven faster time on the type", () => {
+    const openings = [
+      opening({ id: "o", opening_code: "O", difficulty: 2, window_type_id: "T" }),
+    ];
+    const two = [
+      { id: "fast", skill_level: 3, role: "installer" as const, active: true },
+      { id: "slow", skill_level: 3, role: "installer" as const, active: true },
+    ];
+    const ctx = {
+      perf: {
+        fast: { fast: undefined } as never, // placeholder, overwritten below
+      },
+    };
+    // Build a real perf index.
+    ctx.perf = {
+      fast: {
+        T: { installer_id: "fast", window_type_id: "T", n: 4, median_minutes: 30, avg_grade: 4, fail_rate: 0 },
+      },
+      slow: {
+        T: { installer_id: "slow", window_type_id: "T", n: 4, median_minutes: 55, avg_grade: 4, fail_rate: 0 },
+      },
+    } as never;
+    const s = autoDistribute(openings, two, ctx);
+    expect(s[0].profileId).toBe("fast");
+  });
+
+  it("lets a cleared apprentice take a type above their raw skill", () => {
+    const openings = [
+      opening({ id: "hard", opening_code: "H", difficulty: 5, window_type_id: "BAY" }),
+    ];
+    const onlyApprentice = [
+      { id: "app", skill_level: 1, role: "installer" as const, active: true },
+    ];
+    // Without clearance: nobody qualifies.
+    expect(autoDistribute(openings, onlyApprentice)).toHaveLength(0);
+    // With clearance: the apprentice is eligible.
+    const s = autoDistribute(openings, onlyApprentice, {
+      cleared: new Set(["app:BAY"]),
+    });
+    expect(s.map((x) => x.profileId)).toEqual(["app"]);
+  });
+
+  it("proven history on a type qualifies even below skill tier", () => {
+    const openings = [
+      opening({ id: "o", opening_code: "O", difficulty: 4, window_type_id: "T" }),
+    ];
+    const app = [{ id: "app", skill_level: 2, role: "installer" as const, active: true }];
+    const ctx = {
+      perf: {
+        app: {
+          T: { installer_id: "app", window_type_id: "T", n: 3, median_minutes: 40, avg_grade: 4, fail_rate: 0 },
+        },
+      },
+    };
+    expect(autoDistribute(openings, app, ctx).map((x) => x.profileId)).toEqual(["app"]);
   });
 });
 

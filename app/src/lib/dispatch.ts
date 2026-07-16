@@ -10,9 +10,29 @@ export interface DispatchCrew {
   display_name?: string;
 }
 
+/** Proven performance for one installer on one window type (from outcomes). */
+export interface InstallerTypePerf {
+  installer_id: string;
+  window_type_id: string;
+  n: number;
+  median_minutes: number | null;
+  avg_grade: number | null;
+  fail_rate: number | null;
+}
+
+/** Types an installer is explicitly cleared to install (training path). */
+export type ClearanceSet = Set<string>; // `${installer_id}:${window_type_id}`
+
+export interface DispatchContext {
+  /** perf[installerId][windowTypeId] -> proven stats */
+  perf?: Record<string, Record<string, InstallerTypePerf>>;
+  cleared?: ClearanceSet;
+}
+
 export interface DispatchOpening {
   id: string;
   opening_code: string;
+  window_type_id: string | null;
   /** Outcome/catalog difficulty 1-5; null treated as 2. */
   difficulty: number | null;
   /** Grouping key (e.g. page number or room) to cut walking. */
@@ -32,10 +52,60 @@ export interface Suggestion {
 
 const diffOf = (o: DispatchOpening) => o.difficulty ?? 2;
 
-function eligible(crew: DispatchCrew, difficulty: number): boolean {
+function perfOf(
+  ctx: DispatchContext | undefined,
+  crewId: string,
+  typeId: string | null,
+): InstallerTypePerf | null {
+  if (!ctx?.perf || !typeId) return null;
+  return ctx.perf[crewId]?.[typeId] ?? null;
+}
+
+function isCleared(
+  ctx: DispatchContext | undefined,
+  crewId: string,
+  typeId: string | null,
+): boolean {
+  if (!ctx?.cleared || !typeId) return false;
+  return ctx.cleared.has(`${crewId}:${typeId}`);
+}
+
+/**
+ * Eligibility now blends declared skill with LEARNED signals:
+ * - leads take anything;
+ * - proven history on the type (any successful installs) qualifies;
+ * - explicit training clearance qualifies (a cleared apprentice can go up);
+ * - otherwise fall back to the static skill tier (cold start).
+ */
+function eligible(
+  crew: DispatchCrew,
+  o: DispatchOpening,
+  ctx?: DispatchContext,
+): boolean {
   if (!crew.active) return false;
   if (crew.role === "lead") return true;
-  return crew.skill_level >= difficulty;
+  const perf = perfOf(ctx, crew.id, o.window_type_id);
+  if (perf && perf.n > 0 && (perf.fail_rate ?? 0) < 0.5) return true;
+  if (isCleared(ctx, crew.id, o.window_type_id)) return true;
+  return crew.skill_level >= diffOf(o);
+}
+
+/** Proven avg grade on this type, or null when no history (cold start). */
+function provenQuality(
+  crew: DispatchCrew,
+  o: DispatchOpening,
+  ctx?: DispatchContext,
+): number | null {
+  return perfOf(ctx, crew.id, o.window_type_id)?.avg_grade ?? null;
+}
+
+/** Proven median minutes on this type, or null when no history. */
+function provenSpeed(
+  crew: DispatchCrew,
+  o: DispatchOpening,
+  ctx?: DispatchContext,
+): number | null {
+  return perfOf(ctx, crew.id, o.window_type_id)?.median_minutes ?? null;
 }
 
 /**
@@ -49,6 +119,7 @@ function eligible(crew: DispatchCrew, difficulty: number): boolean {
 export function autoDistribute(
   openings: DispatchOpening[],
   crew: DispatchCrew[],
+  ctx?: DispatchContext,
 ): Suggestion[] {
   const active = crew.filter((c) => c.active);
   if (active.length === 0) return [];
@@ -74,7 +145,7 @@ export function autoDistribute(
   const suggestions: Suggestion[] = [];
   for (const o of queue) {
     const d = diffOf(o);
-    const candidates = active.filter((c) => eligible(c, d));
+    const candidates = active.filter((c) => eligible(c, o, ctx));
     if (candidates.length === 0) continue; // no one qualified — leave for the lead
 
     const hard = d >= 4;
@@ -83,13 +154,24 @@ export function autoDistribute(
         c,
         load: load.get(c.id) ?? 0,
         sameArea: areasByCrew.get(c.id)!.has(o.area),
+        speed: provenSpeed(c, o, ctx),
+        quality: provenQuality(c, o, ctx),
       }))
       .sort((x, y) => {
         // Prefer someone already working this area (fewer trips).
         if (x.sameArea !== y.sameArea) return x.sameArea ? -1 : 1;
         // Then least loaded.
         if (x.load !== y.load) return x.load - y.load;
-        // Tie-break by skill: hard -> highest skill; easy -> lowest skill.
+        // Proven fastest on this type wins (known speed beats unknown).
+        if (x.speed != null && y.speed != null && x.speed !== y.speed) {
+          return x.speed - y.speed;
+        }
+        if ((x.speed == null) !== (y.speed == null)) return x.speed == null ? 1 : -1;
+        // Proven quality (only when we actually have it, higher better).
+        if (x.quality != null && y.quality != null && x.quality !== y.quality) {
+          return y.quality - x.quality;
+        }
+        // Cold-start tie-break by skill: hard -> highest, easy -> lowest.
         return hard
           ? y.c.skill_level - x.c.skill_level
           : x.c.skill_level - y.c.skill_level;

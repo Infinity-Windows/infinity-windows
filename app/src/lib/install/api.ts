@@ -135,6 +135,61 @@ export async function setOpeningsSequence(openingIds: string[]): Promise<void> {
   if (error) throw error;
 }
 
+export interface InstallerTypeStat {
+  installer_id: string;
+  window_type_id: string;
+  n: number;
+  median_minutes: number | null;
+  avg_grade: number | null;
+  fail_rate: number | null;
+  last_at: string | null;
+}
+
+/** Per-installer proven performance per type (drives learned dispatch). */
+export async function listInstallerTypeStats(): Promise<InstallerTypeStat[]> {
+  const { data, error } = await supabase.from("installer_type_stats").select("*");
+  if (error) throw error;
+  return (data ?? []) as InstallerTypeStat[];
+}
+
+/** Shape installer stats into the dispatch engine's perf lookup. */
+export function buildPerfIndex(
+  stats: InstallerTypeStat[],
+): Record<string, Record<string, InstallerTypeStat>> {
+  const idx: Record<string, Record<string, InstallerTypeStat>> = {};
+  for (const s of stats) {
+    (idx[s.installer_id] ??= {})[s.window_type_id] = s;
+  }
+  return idx;
+}
+
+export interface Clearance {
+  installer_id: string;
+  window_type_id: string;
+  cleared_at: string;
+}
+
+export async function listClearances(): Promise<Clearance[]> {
+  const { data, error } = await supabase
+    .from("installer_clearance")
+    .select("installer_id, window_type_id, cleared_at");
+  if (error) throw error;
+  return (data ?? []) as Clearance[];
+}
+
+export async function setClearance(
+  installerId: string,
+  windowTypeId: string,
+  cleared: boolean,
+): Promise<void> {
+  const { error } = await supabase.rpc("set_clearance", {
+    p_installer_id: installerId,
+    p_window_type_id: windowTypeId,
+    p_cleared: cleared,
+  });
+  if (error) throw error;
+}
+
 /** Openings assigned to a given installer (their work list). */
 export async function listMyOpenings(
   projectId: string,
