@@ -14,6 +14,7 @@ import {
   startOpeningWork,
   submitInstallEvent,
   synthesizeTypeTips,
+  generateHowto,
 } from "../../lib/install/api";
 import {
   formatAssignMeta,
@@ -285,6 +286,7 @@ export function OpeningSheet() {
       const typeId = opening.data?.window_type_id;
       if (typeId && (brain.data?.installCount ?? 0) + 1 >= 3) {
         void synthesizeTypeTips(typeId)
+          .then(() => generateHowto(typeId).catch(() => {}))
           .then(() => {
             queryClient.invalidateQueries({ queryKey: ["typeBrain", typeId] });
           })

@@ -1,20 +1,51 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { useParams } from "react-router-dom";
-import { getTypeBrainStats, synthesizeTypeTips } from "../../lib/install/api";
+import {
+  generateHowto,
+  getMyProfile,
+  getTypeBrainStats,
+  synthesizeTypeTips,
+  updateTypeKnowledge,
+} from "../../lib/install/api";
 import { MEMO_TOPICS } from "../../lib/install/types";
+import type { HowtoStep } from "../../lib/types";
 
 export function TypeBrainCard() {
   const { typeId = "" } = useParams();
   const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [tipsText, setTipsText] = useState("");
+  const [watchText, setWatchText] = useState("");
   const stats = useQuery({
     queryKey: ["typeBrain", typeId],
     queryFn: () => getTypeBrainStats(typeId),
   });
+  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const isLead = me.data?.role === "lead";
+
+  const refetch = () =>
+    queryClient.invalidateQueries({ queryKey: ["typeBrain", typeId] });
 
   const synthesize = useMutation({
     mutationFn: () => synthesizeTypeTips(typeId),
+    onSuccess: refetch,
+  });
+
+  const howto = useMutation({
+    mutationFn: () => generateHowto(typeId),
+    onSuccess: refetch,
+  });
+
+  const saveEdits = useMutation({
+    mutationFn: () =>
+      updateTypeKnowledge(typeId, {
+        tips_json: tipsText.split("\n").map((l) => l.trim()).filter(Boolean),
+        watch_outs_json: watchText.split("\n").map((l) => l.trim()).filter(Boolean),
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["typeBrain", typeId] });
+      setEditing(false);
+      refetch();
     },
   });
 
@@ -87,8 +118,49 @@ export function TypeBrainCard() {
         </div>
       </div>
 
-      <h2>Top tips</h2>
-      {s.tips.length === 0 ? (
+      <div className="row-between">
+        <h2>Top tips</h2>
+        {isLead && !editing && (
+          <button
+            className="link"
+            onClick={() => {
+              setTipsText(s.tips.join("\n"));
+              setWatchText(s.watchOuts.join("\n"));
+              setEditing(true);
+            }}
+          >
+            Edit
+          </button>
+        )}
+      </div>
+      {editing ? (
+        <>
+          <label className="field-label">Tips (one per line)</label>
+          <textarea
+            className="knowledge-edit"
+            value={tipsText}
+            onChange={(e) => setTipsText(e.target.value)}
+          />
+          <label className="field-label">Watch-outs (one per line)</label>
+          <textarea
+            className="knowledge-edit"
+            value={watchText}
+            onChange={(e) => setWatchText(e.target.value)}
+          />
+          <div className="row-gap">
+            <button
+              className="primary"
+              disabled={saveEdits.isPending}
+              onClick={() => saveEdits.mutate()}
+            >
+              Save
+            </button>
+            <button className="button-like" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : s.tips.length === 0 ? (
         <p className="muted">
           Tips appear after ~3 installs with memos. Hit synthesize below once
           you have enough.
@@ -101,7 +173,7 @@ export function TypeBrainCard() {
         </ol>
       )}
 
-      {s.watchOuts.length > 0 && (
+      {!editing && s.watchOuts.length > 0 && (
         <>
           <h2>Watch-outs</h2>
           <ul className="tip-list watch">
@@ -112,20 +184,45 @@ export function TypeBrainCard() {
         </>
       )}
 
-      <button
-        className="primary big"
-        disabled={!canSynthesize || synthesize.isPending}
-        onClick={() => synthesize.mutate()}
-      >
-        {synthesize.isPending
-          ? "Synthesizing…"
-          : canSynthesize
-            ? "Re-synthesize tips from installs"
-            : `Need ${3 - s.installCount} more install(s) to synthesize`}
-      </button>
-      {synthesize.isError && <p className="error">{String(synthesize.error)}</p>}
-      {synthesize.isSuccess && (
-        <p className="ok">Tips updated from install memos.</p>
+      {/* --- How-to guide --- */}
+      {(s.type.howto_json?.length ?? 0) > 0 && (
+        <>
+          <h2>How to install</h2>
+          <ol className="howto-list">
+            {(s.type.howto_json as HowtoStep[]).map((step, i) => (
+              <li key={i}>
+                <strong>{step.title}</strong>
+                {step.detail ? <div className="muted">{step.detail}</div> : null}
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
+
+      <div className="row-gap">
+        <button
+          disabled={!canSynthesize || synthesize.isPending}
+          onClick={() => synthesize.mutate()}
+        >
+          {synthesize.isPending
+            ? "Synthesizing…"
+            : canSynthesize
+              ? "Re-synthesize tips"
+              : `Need ${3 - s.installCount} more install(s)`}
+        </button>
+        <button
+          disabled={howto.isPending || !s.type.golden_install_event_id}
+          onClick={() => howto.mutate()}
+        >
+          {howto.isPending
+            ? "Writing how-to…"
+            : s.type.howto_json?.length
+              ? "Refresh how-to"
+              : "Generate how-to"}
+        </button>
+      </div>
+      {(synthesize.isError || howto.isError) && (
+        <p className="error">{String(synthesize.error ?? howto.error)}</p>
       )}
 
       {s.type.tutorial_url && (

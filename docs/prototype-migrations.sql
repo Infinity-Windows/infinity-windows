@@ -534,5 +534,10 @@ alter table install_events
 
 alter table window_types
   add column if not exists golden_install_event_id uuid references install_events(id) on delete set null,
+  add column if not exists golden_locked boolean not null default false,
   add column if not exists howto_json jsonb,
   add column if not exists howto_generated_at timestamptz;
+
+-- Golden auto-pick + manual set are in migration 20260716005000_training_howto.sql
+-- (pick_golden_install, set_golden_install, and the rollup trigger that folds
+-- golden selection in). Re-run that file to apply here.

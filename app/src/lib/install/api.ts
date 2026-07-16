@@ -836,6 +836,38 @@ export async function synthesizeTypeTips(
   };
 }
 
+/** Generate/refresh the AI how-to for a type from its golden install + tips. */
+export async function generateHowto(typeId: string): Promise<void> {
+  const { error } = await supabase.functions.invoke("generate-howto", {
+    body: { type_id: typeId },
+  });
+  if (error) throw error;
+}
+
+/** Lead-editable knowledge on a type (tips, watch-outs, how-to steps). */
+export async function updateTypeKnowledge(
+  typeId: string,
+  patch: {
+    tips_json?: string[];
+    watch_outs_json?: string[];
+    howto_json?: import("../types").HowtoStep[];
+  },
+): Promise<void> {
+  const { error } = await supabase.from("window_types").update(patch).eq("id", typeId);
+  if (error) throw error;
+}
+
+export async function setGoldenInstall(
+  typeId: string,
+  eventId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("set_golden_install", {
+    p_type_id: typeId,
+    p_event_id: eventId,
+  });
+  if (error) throw error;
+}
+
 /** Fire-and-forget transcription after a voice attachment lands. */
 export async function requestTranscription(attachmentId: string): Promise<void> {
   const { error } = await supabase.functions.invoke("transcribe-install-memo", {

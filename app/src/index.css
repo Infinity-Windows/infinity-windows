@@ -850,3 +850,30 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+/* --- How-to + knowledge edit --- */
+
+.howto-list {
+  margin: 8px 0 16px;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 15px;
+}
+
+.howto-list li strong { display: block; }
+.howto-list .muted { font-size: 14px; margin-top: 2px; }
+
+.knowledge-edit {
+  width: 100%;
+  min-height: 96px;
+  padding: 12px;
+  font-size: 15px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  margin-bottom: 10px;
+  font-family: inherit;
+}
+
