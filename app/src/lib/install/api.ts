@@ -72,11 +72,22 @@ export async function updateProfile(
   id: string,
   patch: Partial<Pick<Profile, "display_name" | "skill_level" | "role" | "active">>,
 ): Promise<void> {
-  const { error } = await supabase
-    .from("profiles")
-    .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq("id", id);
-  if (error) throw error;
+  // Role changes go through the guarded RPC (lead-only); other fields direct.
+  const { role, ...rest } = patch;
+  if (role) {
+    const { error } = await supabase.rpc("set_profile_role", {
+      p_target: id,
+      p_role: role,
+    });
+    if (error) throw error;
+  }
+  if (Object.keys(rest).length > 0) {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ ...rest, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) throw error;
+  }
 }
 
 async function actorId(): Promise<string | null> {
@@ -404,6 +415,7 @@ export interface SubmitInstallParams extends Partial<MemoTopics> {
   qualityGrade?: number | null;
   transcriptRaw?: string | null;
   startedAt?: string | null;
+  estimateMinutes?: number | null;
 }
 
 export async function submitInstallEvent(
@@ -412,7 +424,9 @@ export async function submitInstallEvent(
   const { data, error } = await supabase.rpc("submit_install_event", {
     p_opening_id: params.openingId,
     p_installer: await actor(),
+    p_installer_id: await actorId(),
     p_minutes: params.minutes ?? null,
+    p_estimate_minutes: params.estimateMinutes ?? null,
     p_quality_grade: params.qualityGrade ?? null,
     p_difficulty: params.difficulty ?? null,
     p_went_well: params.went_well ?? null,
@@ -531,21 +545,29 @@ export async function getTypeBrainStats(
     ? type!.watch_outs_json!
     : [];
 
+  // Prefer the persisted rollups (same numbers dispatch + estimates use);
+  // fall back to live computation when the trigger hasn't populated them yet.
+  const liveMedian = percentile(minutes, 0.5);
+  const liveP90 = percentile(minutes, 0.9);
+  const liveAvg =
+    grades.length === 0
+      ? null
+      : Math.round((grades.reduce((s, g) => s + g, 0) / grades.length) * 10) / 10;
+  const liveFail =
+    grades.length === 0 ? null : Math.round((fails / grades.length) * 1000) / 10;
+
   return {
     type,
-    installCount: events.length,
-    medianMinutes: percentile(minutes, 0.5),
-    p90Minutes: percentile(minutes, 0.9),
-    avgGrade:
-      grades.length === 0
-        ? null
-        : Math.round((grades.reduce((s, g) => s + g, 0) / grades.length) * 10) / 10,
-    failRate:
-      grades.length === 0
-        ? null
-        : Math.round((fails / grades.length) * 1000) / 10,
+    installCount: type?.n_installs ?? events.length,
+    medianMinutes: type?.median_minutes ?? liveMedian,
+    p90Minutes: type?.p90_minutes ?? liveP90,
+    avgGrade: type?.avg_grade ?? liveAvg,
+    failRate: type?.fail_rate ?? liveFail,
     outcomeDifficulty:
-      type?.outcome_difficulty ?? type?.difficulty_rating ?? null,
+      type?.learned_difficulty ??
+      type?.outcome_difficulty ??
+      type?.difficulty_rating ??
+      null,
     tips: tips.slice(0, 5),
     watchOuts: watchOuts.slice(0, 5),
     recent: events.slice(0, 10),

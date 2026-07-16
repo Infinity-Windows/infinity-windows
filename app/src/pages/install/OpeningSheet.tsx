@@ -226,6 +226,9 @@ export function OpeningSheet() {
       const event = await submitInstallEvent({
         openingId,
         minutes: minutes ? Number(minutes) : null,
+        estimateMinutes: brain.data?.medianMinutes
+          ? Math.round(brain.data.medianMinutes)
+          : null,
         qualityGrade: grade,
         startedAt: startedAtRef.current,
         ...topics,

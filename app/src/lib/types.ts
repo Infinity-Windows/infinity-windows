@@ -21,6 +21,21 @@ export interface WindowType {
   outcome_difficulty?: number | null;
   tips_synthesized_at?: string | null;
   tips_install_count?: number;
+  n_installs?: number;
+  median_minutes?: number | null;
+  p90_minutes?: number | null;
+  avg_grade?: number | null;
+  fail_rate?: number | null;
+  learned_difficulty?: number | null;
+  last_install_at?: string | null;
+  golden_install_event_id?: string | null;
+  howto_json?: HowtoStep[];
+  howto_generated_at?: string | null;
+}
+
+export interface HowtoStep {
+  title: string;
+  detail: string;
 }
 
 export interface Location {
