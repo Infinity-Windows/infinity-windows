@@ -5,6 +5,7 @@ import {
   buildPerfIndex,
   listClearances,
   listInstallerTypeStats,
+  listJobNotes,
   listOpenings,
   listProfiles,
   unassignOpening,
@@ -57,6 +58,10 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
   const clearances = useQuery({
     queryKey: ["clearances"],
     queryFn: listClearances,
+  });
+  const jobNotes = useQuery({
+    queryKey: ["jobNotes", projectId],
+    queryFn: () => listJobNotes(projectId),
   });
 
   const refresh = () =>
@@ -118,7 +123,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
         continue;
       }
       const r = openingReadiness(o);
-      if (r.status === "blocked") {
+      if (r.status === "blocked" || o.flag_note) {
         blocked.push(o);
         continue;
       }
@@ -206,18 +211,41 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
           <ul className="unit-list">
             {blocked.map((o) => {
               const r = openingReadiness(o);
+              const reasons = [
+                ...(o.flag_note ? [`Flagged: ${o.flag_note}`] : []),
+                ...(r.status === "blocked" ? r.reasons : []),
+              ];
               return (
                 <li key={o.id} className="dispatch-row blocker">
                   <div>
                     <strong>{o.opening_code}</strong>{" "}
                     <span className="muted">{o.window_types?.type_code}</span>
+                    {o.assigned_to && (
+                      <span className="muted"> · {nameOf(o.assigned_to)}</span>
+                    )}
                     <div className="error" style={{ fontSize: 12 }}>
-                      {r.reasons.join(" ")}
+                      {reasons.join(" · ")}
                     </div>
                   </div>
                 </li>
               );
             })}
+          </ul>
+        </>
+      )}
+
+      {(jobNotes.data?.length ?? 0) > 0 && (
+        <>
+          <h2>Site notes from the field</h2>
+          <ul className="unit-list">
+            {jobNotes.data!.map((n) => (
+              <li key={n.id}>
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {n.created_at.slice(0, 10)} · {n.author_name ?? "crew"}
+                </span>
+                <div>{n.note}</div>
+              </li>
+            ))}
           </ul>
         </>
       )}

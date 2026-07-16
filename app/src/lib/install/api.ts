@@ -128,6 +128,46 @@ export async function startOpeningWork(openingId: string): Promise<ProjectOpenin
   return data as ProjectOpening;
 }
 
+/** Flag an opening to the lead with a reason (empty note clears the flag). */
+export async function flagOpening(
+  openingId: string,
+  note: string | null,
+): Promise<ProjectOpening> {
+  const { data, error } = await supabase.rpc("flag_opening", {
+    p_opening_id: openingId,
+    p_note: note,
+  });
+  if (error) throw error;
+  return data as ProjectOpening;
+}
+
+export interface JobNote {
+  id: string;
+  project_id: string;
+  author_name: string | null;
+  note: string;
+  created_at: string;
+}
+
+export async function addJobNote(projectId: string, note: string): Promise<void> {
+  const { error } = await supabase.rpc("add_job_note", {
+    p_project_id: projectId,
+    p_note: note,
+  });
+  if (error) throw error;
+}
+
+export async function listJobNotes(projectId: string): Promise<JobNote[]> {
+  const { data, error } = await supabase
+    .from("job_notes")
+    .select("id, project_id, author_name, note, created_at")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  return (data ?? []) as JobNote[];
+}
+
 export async function setOpeningsSequence(openingIds: string[]): Promise<void> {
   const { error } = await supabase.rpc("set_openings_sequence", {
     p_opening_ids: openingIds,

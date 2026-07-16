@@ -5,7 +5,9 @@ import { BeforeAfterCapture, type BeforeAfterValue } from "../../components/Befo
 import { Scanner } from "../../components/Scanner";
 import { getWindowByWindowId, searchUnits } from "../../lib/api";
 import {
+  addJobNote,
   assignWindowToOpening,
+  flagOpening,
   getMyProfile,
   getOpening,
   getTypeBrainStats,
@@ -77,6 +79,8 @@ export function OpeningSheet() {
   const [roW, setRoW] = useState<string[]>(["", "", ""]);
   const [roH, setRoH] = useState<string[]>(["", ""]);
   const [conditionNote, setConditionNote] = useState("");
+  const [flagText, setFlagText] = useState("");
+  const [jobNoteText, setJobNoteText] = useState("");
 
   const refreshStatus = () => {
     pendingUploadCount().then(setPending).catch(() => {});
@@ -191,6 +195,25 @@ export function OpeningSheet() {
     onSuccess: (_data, condition) => {
       setMessage(condition === "damaged" ? "Marked damaged — office flagged." : "Condition OK.");
       refresh();
+    },
+    onError: (e) => setMessage(String(e)),
+  });
+
+  const flag = useMutation({
+    mutationFn: (note: string | null) => flagOpening(openingId, note),
+    onSuccess: (_d, note) => {
+      setMessage(note ? "Flagged to your lead." : "Flag cleared.");
+      setFlagText("");
+      refresh();
+    },
+    onError: (e) => setMessage(String(e)),
+  });
+
+  const postJobNote = useMutation({
+    mutationFn: (note: string) => addJobNote(projectId, note),
+    onSuccess: () => {
+      setMessage("Site note sent to the lead.");
+      setJobNoteText("");
     },
     onError: (e) => setMessage(String(e)),
   });
@@ -400,7 +423,7 @@ export function OpeningSheet() {
       </div>
 
       {message && (
-        <p className={message.startsWith("Window") || message.startsWith("Install") || message.startsWith("Rough") || message.startsWith("Condition") ? "ok" : "error"}>
+        <p className={/^(Window|Install|Rough|Condition|Flag|Flagged|Site)/.test(message) ? "ok" : "error"}>
           {message}
         </p>
       )}
@@ -645,6 +668,54 @@ export function OpeningSheet() {
               Unit flagged damaged. Don't install — swap the unit and re-check.
             </p>
           )}
+        </>
+      )}
+
+      {/* --- Flag a problem to the lead --- */}
+      {!installed && (
+        <>
+          <h2>Flag a problem</h2>
+          {o.flag_note ? (
+            <div className="fit-verdict fit-too_small">
+              <strong>Flagged:</strong> {o.flag_note}{" "}
+              <button className="link" onClick={() => flag.mutate(null)}>
+                Clear
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className="muted">
+                Stuck or something's wrong? Send it to your lead — it shows in
+                their dispatch blockers.
+              </p>
+              <input
+                value={flagText}
+                onChange={(e) => setFlagText(e.target.value)}
+                placeholder="e.g. wrong unit delivered, access blocked"
+              />
+              <button
+                className="action-btn"
+                disabled={!flagText.trim() || flag.isPending}
+                onClick={() => flag.mutate(flagText.trim())}
+              >
+                Flag to lead
+              </button>
+            </>
+          )}
+
+          <label className="field-label">Site note for the lead (optional)</label>
+          <input
+            value={jobNoteText}
+            onChange={(e) => setJobNoteText(e.target.value)}
+            placeholder="General note about this job/site"
+          />
+          <button
+            className="action-btn"
+            disabled={!jobNoteText.trim() || postJobNote.isPending}
+            onClick={() => postJobNote.mutate(jobNoteText.trim())}
+          >
+            Send site note
+          </button>
         </>
       )}
 
