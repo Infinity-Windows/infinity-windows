@@ -152,6 +152,133 @@ export async function listInstallerTypeStats(): Promise<InstallerTypeStat[]> {
   return (data ?? []) as InstallerTypeStat[];
 }
 
+export interface InstallerLeaderRow {
+  installer_id: string;
+  display_name: string;
+  installs: number;
+  median_minutes: number | null;
+  avg_grade: number | null;
+  fail_rate: number | null;
+}
+
+/** Company analytics: per-installer install counts, speed, quality. */
+export async function getInstallerLeaderboard(): Promise<InstallerLeaderRow[]> {
+  const [profilesRes, eventsRes] = await Promise.all([
+    supabase.from("profiles").select("id, display_name"),
+    supabase
+      .from("install_events")
+      .select("installer_id, minutes, quality_grade")
+      .not("installer_id", "is", null),
+  ]);
+  if (profilesRes.error) throw profilesRes.error;
+  if (eventsRes.error) throw eventsRes.error;
+
+  const nameById = new Map(
+    (profilesRes.data ?? []).map((p) => [p.id, p.display_name]),
+  );
+  const byInstaller = new Map<
+    string,
+    { minutes: number[]; grades: number[] }
+  >();
+  for (const e of eventsRes.data ?? []) {
+    if (!e.installer_id) continue;
+    const b = byInstaller.get(e.installer_id) ?? { minutes: [], grades: [] };
+    if (e.minutes != null) b.minutes.push(e.minutes);
+    if (e.quality_grade != null) b.grades.push(e.quality_grade);
+    byInstaller.set(e.installer_id, b);
+  }
+
+  const median = (xs: number[]): number | null => {
+    if (xs.length === 0) return null;
+    const s = [...xs].sort((a, b) => a - b);
+    const m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  };
+
+  const rows: InstallerLeaderRow[] = [];
+  for (const [id, b] of byInstaller) {
+    const installs = Math.max(b.minutes.length, b.grades.length);
+    const fails = b.grades.filter((g) => g <= 2).length;
+    rows.push({
+      installer_id: id,
+      display_name: nameById.get(id) ?? "unknown",
+      installs,
+      median_minutes: median(b.minutes),
+      avg_grade:
+        b.grades.length === 0
+          ? null
+          : Math.round((b.grades.reduce((s, g) => s + g, 0) / b.grades.length) * 10) / 10,
+      fail_rate:
+        b.grades.length === 0 ? null : Math.round((fails / b.grades.length) * 1000) / 10,
+    });
+  }
+  return rows.sort((a, b) => b.installs - a.installs);
+}
+
+export interface JobVarianceRow {
+  id: string;
+  job_code: string;
+  name: string;
+  estimated_minutes: number | null;
+  actual_minutes: number;
+  installed: number;
+  openings: number;
+}
+
+/** Estimate-vs-actual per job (bid accuracy). */
+export async function getJobVariance(): Promise<JobVarianceRow[]> {
+  const { data: projects, error: pErr } = await supabase
+    .from("projects")
+    .select("id, job_code, name, estimated_minutes");
+  if (pErr) throw pErr;
+
+  const { data: openings, error: oErr } = await supabase
+    .from("project_openings")
+    .select("project_id, status");
+  if (oErr) throw oErr;
+
+  const { data: events, error: eErr } = await supabase
+    .from("install_events")
+    .select("minutes, project_opening_id");
+  if (eErr) throw eErr;
+
+  // Map opening -> project to attribute actual minutes.
+  const openingProject = new Map<string, string>();
+  const openingCounts = new Map<string, { installed: number; total: number }>();
+  for (const o of openings ?? []) {
+    const c = openingCounts.get(o.project_id) ?? { installed: 0, total: 0 };
+    c.total += 1;
+    if (o.status === "installed") c.installed += 1;
+    openingCounts.set(o.project_id, c);
+  }
+
+  const { data: openingRows } = await supabase
+    .from("project_openings")
+    .select("id, project_id");
+  for (const o of openingRows ?? []) openingProject.set(o.id, o.project_id);
+
+  const actualByProject = new Map<string, number>();
+  for (const e of events ?? []) {
+    const pid = openingProject.get(e.project_opening_id);
+    if (pid && e.minutes != null) {
+      actualByProject.set(pid, (actualByProject.get(pid) ?? 0) + e.minutes);
+    }
+  }
+
+  return (projects ?? []).map((p) => {
+    const c = openingCounts.get(p.id) ?? { installed: 0, total: 0 };
+    return {
+      id: p.id,
+      job_code: p.job_code,
+      name: p.name,
+      estimated_minutes: p.estimated_minutes ?? null,
+      actual_minutes: actualByProject.get(p.id) ?? 0,
+      installed: c.installed,
+      openings: c.total,
+    };
+  });
+}
+
 /** Shape installer stats into the dispatch engine's perf lookup. */
 export function buildPerfIndex(
   stats: InstallerTypeStat[],

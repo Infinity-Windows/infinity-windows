@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getDashboardCounts } from "../lib/api";
+import { getMyProfile } from "../lib/install/api";
 import { supabase } from "../lib/supabase";
 
 export function Home() {
@@ -8,6 +9,8 @@ export function Home() {
     queryKey: ["dashboard"],
     queryFn: getDashboardCounts,
   });
+  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const isLead = me.data?.role === "lead";
 
   return (
     <div className="page">
@@ -53,6 +56,11 @@ export function Home() {
         <Link to="/catalog" className="action-btn">
           Import window catalog (CSV)
         </Link>
+        {isLead && (
+          <Link to="/analytics" className="action-btn">
+            Analytics
+          </Link>
+        )}
       </div>
     </div>
   );

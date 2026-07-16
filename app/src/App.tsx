@@ -30,6 +30,7 @@ import { TypeBrainCard } from "./pages/install/TypeBrainCard";
 import { CatalogImport } from "./pages/CatalogImport";
 import { Crew } from "./pages/Crew";
 import { MyWork } from "./pages/MyWork";
+import { Analytics } from "./pages/Analytics";
 import { ensureMyProfile } from "./lib/install/api";
 import "./index.css";
 
@@ -105,6 +106,7 @@ export default function App() {
             <Route path="/brain/:typeId" element={<TypeBrainCard />} />
             <Route path="/catalog" element={<CatalogImport />} />
             <Route path="/crew" element={<Crew />} />
+            <Route path="/analytics" element={<Analytics />} />
             <Route path="/my-work" element={<MyWork />} />
             <Route path="/w/:windowId" element={<WindowDetail />} />
             <Route path="/loc/:address" element={<LocationDetail />} />
