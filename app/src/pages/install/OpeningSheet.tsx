@@ -65,6 +65,7 @@ export function OpeningSheet() {
   const startedAtRef = useRef<string>(new Date().toISOString());
 
   const [photos, setPhotos] = useState<BeforeAfterValue>({ before: null, after: null });
+  const [video, setVideo] = useState<File | null>(null);
   const [minutes, setMinutes] = useState("");
   const [minutesTouched, setMinutesTouched] = useState(false);
   const [grade, setGrade] = useState<number | null>(null);
@@ -257,6 +258,21 @@ export function OpeningSheet() {
             createdBy,
           },
           p.file,
+        );
+      }
+      if (video) {
+        const vext = video.name.split(".").pop() || "mp4";
+        await enqueueUpload(
+          {
+            bucket: "install-media",
+            path: `${projectId}/${o.opening_code}/${stamp}-walkthrough.${vext}`,
+            contentType: video.type || "video/mp4",
+            kind: "video",
+            installEventId: event.id,
+            windowId: o.assigned_window_id,
+            createdBy,
+          },
+          video,
         );
       }
       if (audioBlob) {
@@ -638,6 +654,21 @@ export function OpeningSheet() {
           <h2>Photos</h2>
           <p className="muted">Before and after — the after lines up over the before.</p>
           <BeforeAfterCapture value={photos} onChange={setPhotos} />
+
+          <label className="field-label">Walkthrough video (optional)</label>
+          <label className="action-btn" style={{ cursor: "pointer" }}>
+            {video ? `${video.name} — replace` : "Add a short video"}
+            <input
+              type="file"
+              accept="video/*"
+              capture="environment"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                setVideo(e.target.files?.[0] ?? null);
+                e.target.value = "";
+              }}
+            />
+          </label>
 
           <h2>Install memo</h2>
           <p className="muted">

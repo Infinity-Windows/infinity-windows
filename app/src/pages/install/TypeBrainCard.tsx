@@ -225,12 +225,19 @@ export function TypeBrainCard() {
         <p className="error">{String(synthesize.error ?? howto.error)}</p>
       )}
 
-      {s.type.tutorial_url && (
-        <p>
-          <a href={s.type.tutorial_url} className="suggest">
-            Tutorial video →
-          </a>
-        </p>
+      {(s.videos.length > 0 || s.type.tutorial_url) && (
+        <>
+          <h2>Golden video</h2>
+          {s.videos[0]?.signedUrl ? (
+            <video controls src={s.videos[0].signedUrl} className="golden-video" />
+          ) : s.type.tutorial_url ? (
+            <p>
+              <a href={s.type.tutorial_url} className="suggest">
+                Tutorial video →
+              </a>
+            </p>
+          ) : null}
+        </>
       )}
 
       {s.photos.length > 0 && (

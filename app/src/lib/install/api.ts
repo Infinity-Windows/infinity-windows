@@ -656,6 +656,7 @@ export interface TypeBrainStats {
   recent: InstallEvent[];
   photos: { id: string; storage_path: string; signedUrl: string | null }[];
   voiceMemos: { id: string; storage_path: string; signedUrl: string | null; created_at: string }[];
+  videos: { id: string; signedUrl: string | null }[];
 }
 
 function percentile(sorted: number[], p: number): number | null {
@@ -709,17 +710,27 @@ export async function getTypeBrainStats(
   const eventIds = events.map((e) => e.id);
   let photos: TypeBrainStats["photos"] = [];
   let voiceMemos: TypeBrainStats["voiceMemos"] = [];
+  let videos: TypeBrainStats["videos"] = [];
   if (eventIds.length > 0) {
+    const goldenId = (typeRes.data as WindowType | null)?.golden_install_event_id;
     const { data: media, error: mediaErr } = await supabase
       .from("attachments")
       .select("id, kind, storage_path, created_at, install_event_id")
       .in("install_event_id", eventIds.slice(0, 50))
-      .in("kind", ["photo", "voice_memo"])
+      .in("kind", ["photo", "voice_memo", "video"])
       .order("created_at", { ascending: false })
-      .limit(30);
+      .limit(40);
     if (mediaErr) throw mediaErr;
     const photoRows = (media ?? []).filter((m) => m.kind === "photo").slice(0, 12);
     const voiceRows = (media ?? []).filter((m) => m.kind === "voice_memo").slice(0, 5);
+    // Prefer the golden install's video first.
+    const videoRows = (media ?? [])
+      .filter((m) => m.kind === "video")
+      .sort((a, b) =>
+        (b.install_event_id === goldenId ? 1 : 0) -
+        (a.install_event_id === goldenId ? 1 : 0),
+      )
+      .slice(0, 3);
     photos = await Promise.all(
       photoRows.map(async (m) => ({
         id: m.id,
@@ -733,6 +744,12 @@ export async function getTypeBrainStats(
         storage_path: m.storage_path,
         signedUrl: await signedMedia(m.storage_path),
         created_at: m.created_at,
+      })),
+    );
+    videos = await Promise.all(
+      videoRows.map(async (m) => ({
+        id: m.id,
+        signedUrl: await signedMedia(m.storage_path),
       })),
     );
   }
@@ -771,6 +788,7 @@ export async function getTypeBrainStats(
     recent: events.slice(0, 10),
     photos,
     voiceMemos,
+    videos,
   };
 }
 

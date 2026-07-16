@@ -877,3 +877,11 @@ button:disabled {
   font-family: inherit;
 }
 
+.golden-video {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #000;
+  margin-bottom: 12px;
+}
+

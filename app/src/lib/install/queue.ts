@@ -9,7 +9,7 @@ export interface QueuedUploadMeta {
   bucket: "install-media" | "plansets";
   path: string;
   contentType: string;
-  kind: "photo" | "voice_memo";
+  kind: "photo" | "voice_memo" | "video";
   installEventId: string | null;
   windowId: string | null;
   createdBy: string | null;
@@ -37,7 +37,7 @@ export function deserializeUploadMeta(json: string): QueuedUploadMeta | null {
     (r.bucket !== "install-media" && r.bucket !== "plansets") ||
     typeof r.path !== "string" ||
     typeof r.contentType !== "string" ||
-    (r.kind !== "photo" && r.kind !== "voice_memo")
+    (r.kind !== "photo" && r.kind !== "voice_memo" && r.kind !== "video")
   ) {
     return null;
   }

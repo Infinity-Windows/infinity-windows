@@ -40,8 +40,14 @@ describe("upload queue serialization", () => {
       deserializeUploadMeta(JSON.stringify({ ...META, bucket: "other" })),
     ).toBeNull();
     expect(
-      deserializeUploadMeta(JSON.stringify({ ...META, kind: "video" })),
+      deserializeUploadMeta(JSON.stringify({ ...META, kind: "document" })),
     ).toBeNull();
+  });
+
+  it("accepts the video kind", () => {
+    expect(
+      deserializeUploadMeta(JSON.stringify({ ...META, kind: "video" }))?.kind,
+    ).toBe("video");
   });
 
   it("defaults createdAt when absent so old items still flush", () => {
