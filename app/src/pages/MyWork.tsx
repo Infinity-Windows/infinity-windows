@@ -1,6 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
-import { getMyProfile, listMyOpeningsAllJobs } from "../lib/install/api";
+import {
+  getMyProfile,
+  listMemosToConfirm,
+  listMyOpeningsAllJobs,
+} from "../lib/install/api";
 import { orderMyWork, type DispatchOpening } from "../lib/dispatch";
 import { openingReadiness } from "../lib/install/fit";
 import type { ProjectOpening } from "../lib/install/types";
@@ -15,6 +19,11 @@ export function MyWork() {
   const openings = useQuery({
     queryKey: ["myOpenings", me.data?.id],
     queryFn: () => listMyOpeningsAllJobs(me.data!.id),
+    enabled: Boolean(me.data?.id),
+  });
+  const toConfirm = useQuery({
+    queryKey: ["memosToConfirm", me.data?.id],
+    queryFn: () => listMemosToConfirm(me.data!.id),
     enabled: Boolean(me.data?.id),
   });
 
@@ -76,6 +85,12 @@ export function MyWork() {
       <p className="muted">
         {me.data?.display_name} · your foreman assigns these. Do the top one next.
       </p>
+
+      {(toConfirm.data?.length ?? 0) > 0 && (
+        <Link to="/review" className="action-btn">
+          Review {toConfirm.data!.length} AI-filled memo(s) →
+        </Link>
+      )}
 
       {!next && (
         <p className="muted">

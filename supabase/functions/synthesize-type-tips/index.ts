@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
       const { data: events, error: evErr } = await supabase
         .from("install_events")
         .select(
-          "minutes, quality_grade, difficulty, went_well, went_poorly, obstacles, tools_helped, safety_notes, do_again, transcript_raw",
+          "minutes, quality_grade, difficulty, went_well, went_poorly, obstacles, tools_helped, safety_notes, do_again, time_vs_estimate, transcript_raw",
         )
         .eq("window_type_id", t.id)
         .order("created_at", { ascending: false })
@@ -70,6 +70,7 @@ Deno.serve(async (req) => {
             e.tools_helped && `tools: ${e.tools_helped}`,
             e.safety_notes && `safety: ${e.safety_notes}`,
             e.do_again && `do_again: ${e.do_again}`,
+            e.time_vs_estimate && `time_vs_estimate: ${e.time_vs_estimate}`,
             e.transcript_raw && `transcript: ${e.transcript_raw.slice(0, 1500)}`,
           ].filter(Boolean);
           return parts.join("\n");

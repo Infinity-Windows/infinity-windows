@@ -31,6 +31,7 @@ import { CatalogImport } from "./pages/CatalogImport";
 import { Crew } from "./pages/Crew";
 import { MyWork } from "./pages/MyWork";
 import { Analytics } from "./pages/Analytics";
+import { MemoReview } from "./pages/MemoReview";
 import { ensureMyProfile } from "./lib/install/api";
 import "./index.css";
 
@@ -108,6 +109,7 @@ export default function App() {
             <Route path="/crew" element={<Crew />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/my-work" element={<MyWork />} />
+            <Route path="/review" element={<MemoReview />} />
             <Route path="/w/:windowId" element={<WindowDetail />} />
             <Route path="/loc/:address" element={<LocationDetail />} />
             <Route path="/labels" element={<Labels />} />

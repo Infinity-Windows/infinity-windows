@@ -21,6 +21,7 @@ const TOPIC_KEYS = [
 
 type TopicMap = Record<(typeof TOPIC_KEYS)[number], string | null> & {
   suggested_grade?: number | null;
+  photo_findings?: string[] | null;
 };
 
 interface AttachmentRecord {
@@ -105,9 +106,9 @@ Deno.serve(async (req) => {
     }
 
     const topics = await chatJsonVision<TopicMap>(
-      "You process window-install field memos. Split the installer's voice transcript into fixed topic fields, using the before/after photos as extra context. Use null for topics not mentioned. Keep each field concise (1-3 sentences). Also suggest a quality grade 1-5 (5 = flawless install) based on the transcript and photos; use null if unclear.",
+      "You process window-install field memos. Split the installer's voice transcript into fixed topic fields, using the before/after photos as extra context. Use null for topics not mentioned. Keep each field concise (1-3 sentences). Also suggest a quality grade 1-5 (5 = flawless install) from the transcript and photos (null if unclear), and list any concrete visual observations from the photos (e.g. 'shim gap uneven on latch side', 'clean flashing tape') as photo_findings.",
       `Transcript:\n${transcript}`,
-      `Schema: { "difficulty": string|null, "went_well": string|null, "went_poorly": string|null, "obstacles": string|null, "tools_helped": string|null, "time_vs_estimate": string|null, "safety_notes": string|null, "do_again": string|null, "suggested_grade": number|null }`,
+      `Schema: { "difficulty": string|null, "went_well": string|null, "went_poorly": string|null, "obstacles": string|null, "tools_helped": string|null, "time_vs_estimate": string|null, "safety_notes": string|null, "do_again": string|null, "suggested_grade": number|null, "photo_findings": string[]|null }`,
       imageUrls,
     );
 
@@ -147,6 +148,14 @@ Deno.serve(async (req) => {
       suggested <= 5
     ) {
       finalPatch.quality_grade = Math.round(suggested);
+    }
+
+    // Persist structured photo observations for later mining.
+    if (Array.isArray(topics.photo_findings) && topics.photo_findings.length > 0) {
+      (finalPatch as Record<string, unknown>).photo_findings = topics.photo_findings
+        .map((s) => String(s).trim())
+        .filter(Boolean)
+        .slice(0, 8);
     }
 
     const { error: upErr } = await supabase

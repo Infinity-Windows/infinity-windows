@@ -795,6 +795,33 @@ export interface ScheduleRowLike {
   pageNumber: number;
 }
 
+/** Install events by this installer whose AI-filled memo still needs a glance. */
+export async function listMemosToConfirm(
+  installerId: string,
+): Promise<InstallEvent[]> {
+  const { data, error } = await supabase
+    .from("install_events")
+    .select("*, window_types(type_code, name)")
+    .eq("installer_id", installerId)
+    .not("transcript_raw", "is", null)
+    .eq("ai_confirmed", false)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) throw error;
+  return (data ?? []) as InstallEvent[];
+}
+
+export async function confirmInstallMemo(
+  eventId: string,
+  patch: Partial<MemoTopics> & { quality_grade?: number | null },
+): Promise<void> {
+  const { error } = await supabase
+    .from("install_events")
+    .update({ ...patch, ai_confirmed: true })
+    .eq("id", eventId);
+  if (error) throw error;
+}
+
 /** Invoke tip synthesis for one type (or all eligible types when typeId omitted). */
 export async function synthesizeTypeTips(
   typeId?: string,

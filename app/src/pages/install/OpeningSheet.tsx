@@ -13,6 +13,7 @@ import {
   setRoughOpening,
   startOpeningWork,
   submitInstallEvent,
+  synthesizeTypeTips,
 } from "../../lib/install/api";
 import {
   formatAssignMeta,
@@ -279,6 +280,16 @@ export function OpeningSheet() {
       refresh();
       queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
       queryClient.invalidateQueries({ queryKey: ["myOpenings"] });
+      // Auto-refresh the type's tips once it crosses the synthesis threshold —
+      // no manual button needed. Fire-and-forget; the brain updates in the bg.
+      const typeId = opening.data?.window_type_id;
+      if (typeId && (brain.data?.installCount ?? 0) + 1 >= 3) {
+        void synthesizeTypeTips(typeId)
+          .then(() => {
+            queryClient.invalidateQueries({ queryKey: ["typeBrain", typeId] });
+          })
+          .catch(() => {});
+      }
       // Installers loop back to their worklist (next window on top);
       // leads return to the job map.
       const dest =

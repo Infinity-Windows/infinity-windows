@@ -519,3 +519,20 @@ begin
   end if;
 end;
 $$;
+
+-- =============================================================================
+-- 8) Job estimate (A4) + memo confirmation (A6) + training columns (B1)
+-- =============================================================================
+
+alter table projects
+  add column if not exists estimated_minutes int,
+  add column if not exists estimated_crew int,
+  add column if not exists estimated_at timestamptz;
+
+alter table install_events
+  add column if not exists ai_confirmed boolean not null default false;
+
+alter table window_types
+  add column if not exists golden_install_event_id uuid references install_events(id) on delete set null,
+  add column if not exists howto_json jsonb,
+  add column if not exists howto_generated_at timestamptz;
