@@ -56,6 +56,9 @@ export function Home() {
         <Link to="/catalog" className="action-btn">
           Import window catalog (CSV)
         </Link>
+        <Link to="/training" className="action-btn">
+          Training &amp; clearance
+        </Link>
         {isLead && (
           <Link to="/analytics" className="action-btn">
             Analytics
