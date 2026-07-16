@@ -1,16 +1,37 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   getMyProfile,
   listMemosToConfirm,
   listMyOpeningsAllJobs,
 } from "../lib/install/api";
+import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
 import { orderMyWork, type DispatchOpening } from "../lib/dispatch";
 import { openingReadiness } from "../lib/install/fit";
 import type { ProjectOpening } from "../lib/install/types";
 
 function areaKey(o: ProjectOpening): string {
   return o.label?.trim() || `page ${o.page_number}`;
+}
+
+function toDispatch(o: ProjectOpening): DispatchOpening {
+  const r = openingReadiness(o);
+  return {
+    id: o.id,
+    opening_code: o.opening_code,
+    window_type_id: o.window_type_id,
+    difficulty:
+      o.window_types?.learned_difficulty ??
+      o.window_types?.outcome_difficulty ??
+      o.window_types?.difficulty_rating ??
+      null,
+    area: areaKey(o),
+    ready: r.status === "ready",
+    blocked: r.status === "blocked",
+    assigned_to: o.assigned_to,
+    sequence: o.sequence,
+  };
 }
 
 export function MyWork() {
@@ -26,35 +47,43 @@ export function MyWork() {
     queryFn: () => listMemosToConfirm(me.data!.id),
     enabled: Boolean(me.data?.id),
   });
+  useRealtimeMyOpenings(me.data?.id);
 
   const rows = openings.data ?? [];
   const active = rows.filter((o) => o.status !== "installed");
   const done = rows.filter((o) => o.status === "installed");
 
-  const ordered = orderMyWork(
-    active.map((o): DispatchOpening => {
-      const r = openingReadiness(o);
-      return {
-        id: o.id,
-        opening_code: o.opening_code,
-        window_type_id: o.window_type_id,
-        difficulty:
-          o.window_types?.learned_difficulty ??
-          o.window_types?.outcome_difficulty ??
-          o.window_types?.difficulty_rating ??
-          null,
-        area: areaKey(o),
-        ready: r.status === "ready",
-        blocked: r.status === "blocked",
-        assigned_to: o.assigned_to,
-        sequence: o.sequence,
-      };
-    }),
-  );
+  // Toast when a new window is assigned to me while I'm looking at the list.
+  const [newlyAssigned, setNewlyAssigned] = useState(0);
+  const prevActiveRef = useRef<number | null>(null);
+  useEffect(() => {
+    const prev = prevActiveRef.current;
+    if (prev !== null && active.length > prev) {
+      setNewlyAssigned(active.length - prev);
+    }
+    prevActiveRef.current = active.length;
+  }, [active.length]);
+
   const byId = new Map(active.map((o) => [o.id, o]));
-  const orderedFull = ordered.map((d) => byId.get(d.id)!).filter(Boolean);
-  const next = orderedFull[0];
-  const rest = orderedFull.slice(1);
+  const ordered = orderMyWork(active.map(toDispatch))
+    .map((d) => byId.get(d.id)!)
+    .filter(Boolean);
+  const next = ordered[0];
+  const readyCount = active.filter((o) => openingReadiness(o).status === "ready").length;
+
+  // Group the rest by job so a multi-job installer sees where work lives.
+  const rest = ordered.slice(1);
+  const jobs = new Map<string, { code: string; name: string; items: ProjectOpening[] }>();
+  for (const o of rest) {
+    const key = o.project_id;
+    const g = jobs.get(key) ?? {
+      code: o.projects?.job_code ?? "Job",
+      name: o.projects?.name ?? "",
+      items: [],
+    };
+    g.items.push(o);
+    jobs.set(key, g);
+  }
 
   const go = (o: ProjectOpening) =>
     navigate(`/projects/${o.project_id}/opening/${o.id}`);
@@ -72,19 +101,49 @@ export function MyWork() {
     return <span className={cls}>{inProgress ? "in progress" : r.status}</span>;
   };
 
-  if (me.isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
+  const captureHint = (o: ProjectOpening) => {
+    const r = openingReadiness(o);
+    if (r.status === "ready") return "Tap to install — photos, voice memo, grade";
+    if (r.status === "blocked") return r.reasons.join(" ");
+    return r.reasons[0] ?? "Finish checks before installing";
+  };
+
+  if (me.isLoading)
+    return <div className="page"><p className="muted">Loading…</p></div>;
 
   return (
     <div className="page">
       <header className="page-header">
         <h1>My work</h1>
-        <Link to="/" className="button-like">
-          Home
+        <Link to="/training" className="button-like">
+          Training
         </Link>
       </header>
       <p className="muted">
-        {me.data?.display_name} · your foreman assigns these. Do the top one next.
+        {me.data?.display_name ? `${me.data.display_name} — ` : ""}your day. Do the
+        top window next; capture as you go.
       </p>
+
+      {newlyAssigned > 0 && (
+        <div className="assign-toast" onClick={() => setNewlyAssigned(0)}>
+          {newlyAssigned} new window{newlyAssigned > 1 ? "s" : ""} assigned to you — tap to dismiss
+        </div>
+      )}
+
+      <div className="stat-grid">
+        <div className="stat-card">
+          <span className="stat-num">{active.length}</span>
+          <span>assigned</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-num">{readyCount}</span>
+          <span>ready now</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-num">{done.length}</span>
+          <span>done today</span>
+        </div>
+      </div>
 
       {(toConfirm.data?.length ?? 0) > 0 && (
         <Link to="/review" className="action-btn">
@@ -108,28 +167,36 @@ export function MyWork() {
             {next.projects?.job_code ?? ""} · {areaKey(next)}
           </span>
           <span className="next-ready">{readinessTag(next)}</span>
+          <span className="next-capture">{captureHint(next)}</span>
         </button>
       )}
 
-      {rest.length > 0 && (
-        <>
-          <h2>Then ({rest.length})</h2>
+      {[...jobs.values()].map((job) => (
+        <div key={job.code}>
+          <h2>
+            {job.code} <span className="muted">· {job.items.length} to go</span>
+          </h2>
           <ul className="unit-list">
-            {rest.map((o) => (
-              <li key={o.id} className="find-row" onClick={() => go(o)} style={{ cursor: "pointer" }}>
+            {job.items.map((o) => (
+              <li
+                key={o.id}
+                className="find-row"
+                onClick={() => go(o)}
+                style={{ cursor: "pointer" }}
+              >
                 <div>
                   <strong>{o.opening_code}</strong>{" "}
                   <span className="muted">{o.window_types?.type_code}</span>
                   <div className="muted" style={{ fontSize: 12 }}>
-                    {o.projects?.job_code} · {areaKey(o)}
+                    {areaKey(o)} · {captureHint(o)}
                   </div>
                 </div>
                 <span style={{ marginLeft: "auto" }}>{readinessTag(o)}</span>
               </li>
             ))}
           </ul>
-        </>
-      )}
+        </div>
+      ))}
 
       {done.length > 0 && (
         <>

@@ -33,8 +33,19 @@ import { MyWork } from "./pages/MyWork";
 import { Analytics } from "./pages/Analytics";
 import { MemoReview } from "./pages/MemoReview";
 import { Training } from "./pages/Training";
-import { ensureMyProfile } from "./lib/install/api";
+import { ensureMyProfile, getMyProfile } from "./lib/install/api";
+import { useQuery } from "@tanstack/react-query";
 import "./index.css";
+
+/** Role-biased landing: installers open into their work; leads see warehouse/command Home. */
+function RoleLanding() {
+  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  if (me.isLoading) return null;
+  if (me.data && me.data.role !== "lead") {
+    return <Navigate to="/my-work" replace />;
+  }
+  return <Home />;
+}
 
 /** Legacy /install/:projectId/* bookmarks → unified /projects/:id hub. */
 function LegacyInstallRedirect({ suffix = "" }: { suffix?: string }) {
@@ -83,7 +94,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={<RoleLanding />} />
             <Route path="/scan" element={<Scan />} />
             <Route path="/receive" element={<Receive />} />
             <Route path="/search" element={<Search />} />

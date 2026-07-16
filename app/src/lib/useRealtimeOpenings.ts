@@ -39,3 +39,34 @@ export function useRealtimeOpenings(projectId: string | undefined) {
     };
   }, [projectId, queryClient]);
 }
+
+/**
+ * Keep an installer's "My Work" live: any opening change refreshes their list
+ * and confirm queue, so a foreman assignment shows up on the phone at once.
+ */
+export function useRealtimeMyOpenings(installerId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!installerId) return;
+
+    const invalidate = () => {
+      queryClient.invalidateQueries({ queryKey: ["myOpenings"] });
+      queryClient.invalidateQueries({ queryKey: ["memosToConfirm"] });
+      queryClient.invalidateQueries({ queryKey: ["myReadyCount"] });
+    };
+
+    const channel = supabase
+      .channel(`my-openings-${installerId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "project_openings" },
+        invalidate,
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [installerId, queryClient]);
+}

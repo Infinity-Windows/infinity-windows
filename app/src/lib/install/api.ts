@@ -363,6 +363,17 @@ export async function listMyOpeningsAllJobs(
   return data as ProjectOpening[];
 }
 
+/** Count of this installer's assigned, not-yet-installed openings (nav badge). */
+export async function countMyOpenOpenings(profileId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from("project_openings")
+    .select("id", { count: "exact", head: true })
+    .eq("assigned_to", profileId)
+    .neq("status", "installed");
+  if (error) return 0;
+  return count ?? 0;
+}
+
 // --- Plansets ---
 
 export function plansetFormatFromName(name: string): PlansetFormat | null {
