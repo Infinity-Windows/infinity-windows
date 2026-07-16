@@ -54,6 +54,9 @@ export interface Project {
   name: string;
   address: string | null;
   status: "active" | "completed" | "cancelled";
+  estimated_minutes?: number | null;
+  estimated_crew?: number | null;
+  estimated_at?: string | null;
 }
 
 export interface ProjectWindow {

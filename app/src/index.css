@@ -787,3 +787,66 @@ button:disabled {
   margin-top: 2px;
 }
 
+/* --- Estimate / forecast --- */
+
+.estimate-card {
+  background: var(--card);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.estimate-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.estimate-head .field-label {
+  margin: 0;
+}
+
+.estimate-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.estimate-row strong {
+  color: var(--text);
+  font-size: 18px;
+}
+
+/* --- Analytics --- */
+
+.analytics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  margin: 8px 0 16px;
+}
+
+.analytics-table th,
+.analytics-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.analytics-table th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.analytics-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+

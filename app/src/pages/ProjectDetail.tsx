@@ -9,10 +9,18 @@ import {
   listProjects,
   loadWindow,
 } from "../lib/api";
-import { getMyProfile, listOpenings } from "../lib/install/api";
+import { getMyProfile, listOpenings, saveJobEstimate } from "../lib/install/api";
+import {
+  estimateJob,
+  formatHours,
+  recommendCrew,
+  type CrewRecommendation,
+  type JobEstimate,
+  type TypeStat,
+} from "../lib/estimate";
 import { prefetchJobPack } from "../lib/queryClient";
 import { useRealtimeOpenings } from "../lib/useRealtimeOpenings";
-import { STATUS_LABELS, type WindowUnit } from "../lib/types";
+import { STATUS_LABELS, type Project, type WindowUnit } from "../lib/types";
 import { ProjectMap } from "./install/ProjectMap";
 import { DispatchBoard } from "./install/DispatchBoard";
 
@@ -109,6 +117,34 @@ export function ProjectDetail() {
   const openingsList = openings.data ?? [];
   const openingsInstalled = openingsList.filter((o) => o.status === "installed").length;
   const neededTotal = (needs.data ?? []).reduce((sum, n) => sum + n.quantity, 0);
+
+  const jobEstimate = useMemo(() => {
+    const list = openings.data ?? [];
+    if (list.length === 0) return null;
+    const typeStats: TypeStat[] = [];
+    const seen = new Set<string>();
+    for (const o of list) {
+      const t = o.window_types;
+      if (t && !seen.has(t.id)) {
+        seen.add(t.id);
+        typeStats.push({
+          window_type_id: t.id,
+          median_minutes: t.median_minutes ?? null,
+          p90_minutes: t.p90_minutes ?? null,
+          difficulty: t.learned_difficulty ?? t.difficulty_rating ?? null,
+        });
+      }
+    }
+    const est = estimateJob(
+      list.map((o) => ({
+        window_type_id: o.window_type_id,
+        installed: o.status === "installed",
+      })),
+      typeStats,
+    );
+    return { est, crew: recommendCrew(est) };
+  }, [openings.data]);
+
   return (
     <div className="page">
       <header className="page-header">
@@ -147,6 +183,9 @@ export function ProjectDetail() {
           openingsInstalled={openingsInstalled}
           needs={needs.data ?? []}
           units={units.data ?? []}
+          estimate={jobEstimate}
+          isLead={isLead}
+          project={project}
         />
       )}
 
@@ -220,6 +259,9 @@ function OverviewTab({
   openingsInstalled,
   needs,
   units,
+  estimate,
+  isLead,
+  project,
 }: {
   projectId: string;
   unitsCount: number;
@@ -231,9 +273,63 @@ function OverviewTab({
   openingsInstalled: number;
   needs: Awaited<ReturnType<typeof getProjectWindows>>;
   units: WindowUnit[];
+  estimate: { est: JobEstimate; crew: CrewRecommendation } | null;
+  isLead: boolean;
+  project?: Project;
 }) {
+  const queryClient = useQueryClient();
+  const saveEstimate = useMutation({
+    mutationFn: () =>
+      saveJobEstimate(
+        projectId,
+        estimate!.est.expectedMinutes,
+        estimate!.crew.recommendedCrew,
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
+  });
+
   return (
     <>
+      {estimate && estimate.est.remaining > 0 && (
+        <div className="estimate-card">
+          <div className="estimate-head">
+            <span className="field-label">Forecast (remaining {estimate.est.remaining})</span>
+            {isLead && (
+              <button
+                className="link"
+                disabled={saveEstimate.isPending}
+                onClick={() => saveEstimate.mutate()}
+              >
+                {project?.estimated_at ? "Update bid estimate" : "Save as bid estimate"}
+              </button>
+            )}
+          </div>
+          <div className="estimate-row">
+            <span>
+              <strong>{formatHours(estimate.est.expectedMinutes)}</strong> crew-work
+            </span>
+            <span>
+              <strong>~{estimate.crew.recommendedCrew}</strong> installer(s) to finish today
+            </span>
+            <span>
+              <strong>{formatHours(estimate.est.p90Minutes)}</strong> slow-case (P90)
+            </span>
+          </div>
+          {estimate.est.unknownTypes > 0 && (
+            <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>
+              {estimate.est.unknownTypes} opening(s) use a fallback estimate (no
+              install history yet).
+            </p>
+          )}
+          {project?.estimated_minutes != null && (
+            <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>
+              Bid estimate on file: {formatHours(project.estimated_minutes)} /{" "}
+              {project.estimated_crew} crew.
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="stat-grid">
         <div className="stat-card">
           <span className="stat-num">{unitsCount}</span>

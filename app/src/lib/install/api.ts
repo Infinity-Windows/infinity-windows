@@ -163,6 +163,22 @@ export function buildPerfIndex(
   return idx;
 }
 
+export async function saveJobEstimate(
+  projectId: string,
+  minutes: number,
+  crew: number,
+): Promise<void> {
+  const { error } = await supabase
+    .from("projects")
+    .update({
+      estimated_minutes: minutes,
+      estimated_crew: crew,
+      estimated_at: new Date().toISOString(),
+    })
+    .eq("id", projectId);
+  if (error) throw error;
+}
+
 export interface Clearance {
   installer_id: string;
   window_type_id: string;
