@@ -38,6 +38,10 @@ import { TimeClock } from "./pages/TimeClock";
 import { Costing } from "./pages/Costing";
 import { Education } from "./pages/Education";
 import { Points } from "./pages/Points";
+import { Safety } from "./pages/Safety";
+import { Tools } from "./pages/Tools";
+import { Supplies } from "./pages/Supplies";
+import { Qc } from "./pages/Qc";
 import { PinGate } from "./components/PinGate";
 import { ensureMyProfile, getMyProfile } from "./lib/install/api";
 import { isLeadLike } from "./lib/install/types";
@@ -136,6 +140,10 @@ export default function App() {
             <Route path="/costing" element={<Costing />} />
             <Route path="/learn" element={<Education />} />
             <Route path="/points" element={<Points />} />
+            <Route path="/safety" element={<Safety />} />
+            <Route path="/tools" element={<Tools />} />
+            <Route path="/supplies" element={<Supplies />} />
+            <Route path="/qc" element={<Qc />} />
             <Route path="/w/:windowId" element={<WindowDetail />} />
             <Route path="/loc/:address" element={<LocationDetail />} />
             <Route path="/labels" element={<Labels />} />

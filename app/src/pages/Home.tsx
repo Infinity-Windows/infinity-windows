@@ -49,6 +49,7 @@ export function Home() {
         { to: "/labels", label: "Print labels", show: lead },
         { to: "/tools", label: "Tools", show: lead },
         { to: "/supplies", label: "Supplies", show: lead },
+        { to: "/qc", label: "Quality (QC)", show: lead },
         { to: "/analytics", label: "Analytics", show: lead },
         { to: "/catalog", label: "Catalog import", show: lead },
         { to: "/crew", label: "Crew", show: lead },
