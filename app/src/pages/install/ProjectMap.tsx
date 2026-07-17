@@ -20,6 +20,22 @@ interface PageImage {
   height: number;
 }
 
+type PlanFilter = "all" | "open" | "windows" | "doors" | "done";
+
+const FILTERS: { id: PlanFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "open", label: "Open" },
+  { id: "windows", label: "Windows" },
+  { id: "doors", label: "Doors" },
+  { id: "done", label: "Done" },
+];
+
+function unitKind(o: ProjectOpening): "door" | "window" {
+  return (o.window_types?.category ?? "").toLowerCase().includes("door")
+    ? "door"
+    : "window";
+}
+
 export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
@@ -29,7 +45,23 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const [image, setImage] = useState<PageImage | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [placingId, setPlacingId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<PlanFilter>("all");
   const docRef = useRef<PDFDocumentProxy | null>(null);
+
+  const matchesFilter = (o: ProjectOpening): boolean => {
+    switch (filter) {
+      case "open":
+        return o.status !== "installed";
+      case "done":
+        return o.status === "installed";
+      case "windows":
+        return unitKind(o) === "window";
+      case "doors":
+        return unitKind(o) === "door";
+      default:
+        return true;
+    }
+  };
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const project = projects.data?.find((p) => p.id === projectId);
@@ -95,7 +127,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   });
 
   const all = openings.data ?? [];
-  const onThisPage = all.filter(
+  const filtered = all.filter(matchesFilter);
+  const onThisPage = filtered.filter(
     (o) => o.pin_x !== null && o.pin_y !== null && o.page_number === page,
   );
   const unplaced = all.filter((o) => o.pin_x === null || o.pin_y === null);
@@ -153,6 +186,19 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         {installed}/{all.length} installed
         {unplaced.length > 0 && ` — ${unplaced.length} pins to place`}
       </p>
+
+      <nav className="plan-filters" aria-label="Filter openings">
+        {FILTERS.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            className={filter === f.id ? "chip active" : "chip"}
+            onClick={() => setFilter(f.id)}
+          >
+            {f.label}
+          </button>
+        ))}
+      </nav>
 
       {embedded && (
         <div className="row-gap" style={{ marginBottom: 10 }}>
@@ -289,10 +335,18 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         </>
       )}
 
-      <h2>All openings ({all.length})</h2>
+      <h2>
+        {filter === "all" ? "All openings" : FILTERS.find((f) => f.id === filter)?.label}{" "}
+        ({filtered.length})
+      </h2>
       <ul className="unit-list work-list">
-        {all.map((o) => (
+        {filtered.map((o) => (
           <li key={o.id} className="find-row">
+            <span
+              className="unit-dot"
+              aria-hidden
+              style={{ background: unitKind(o) === "door" ? "var(--ok)" : "var(--info)" }}
+            />
             <Link to={`/projects/${projectId}/opening/${o.id}`}>
               <strong>{o.opening_code}</strong>
             </Link>
@@ -307,6 +361,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             </span>
           </li>
         ))}
+        {filtered.length === 0 && all.length > 0 && (
+          <p className="muted">No openings match this filter.</p>
+        )}
         {all.length === 0 && (
           <p className="muted">
             No openings yet —{" "}

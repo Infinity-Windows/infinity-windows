@@ -288,7 +288,7 @@ export function Home() {
       </div>
       <div className="home-projects">
         {projectCards.map((p) => (
-          <Link key={p.id} to={`/projects/${p.id}`} className="project-card home-project">
+          <Link key={p.id} to={`/projects/${p.id}/map`} className="project-card home-project">
             <div className="home-project-head">
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: 16 }}>{p.name}</div>
