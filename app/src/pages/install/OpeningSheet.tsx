@@ -399,7 +399,12 @@ export function OpeningSheet() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>{o.opening_code}</h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          <Link to={`/projects/${projectId}?tab=map`} className="back-chip" aria-label="Back to map">
+            ‹
+          </Link>
+          <h1 className="opening-code-title">{o.opening_code}</h1>
+        </div>
         <Link to={`/projects/${projectId}?tab=map`} className="button-like">
           Map
         </Link>
@@ -524,9 +529,9 @@ export function OpeningSheet() {
                 </div>
               )}
               {watchOuts.length > 0 && (
-                <div className="briefing-tips">
-                  <span className="field-label">Watch-outs</span>
-                  <ul className="watch">
+                <div className="briefing-tips watch-callout">
+                  <span className="field-label" style={{ color: "var(--warn)", margin: 0 }}>Watch-outs</span>
+                  <ul className="watch" style={{ margin: "6px 0 0", paddingLeft: 18 }}>
                     {watchOuts.slice(0, 5).map((w) => (
                       <li key={w}>{w}</li>
                     ))}
@@ -770,12 +775,17 @@ export function OpeningSheet() {
 
       {/* ===================== STAGE 2: INSTALL ===================== */}
       {!installed && stage === "install" && (
-        <div className="detail-card">
-          <p className="next-label">INSTALLING</p>
-          <p className="next-code">{minutes || 0} min</p>
-          <p className="muted">Timer running. Plumb, level, square — then capture it.</p>
+        <div className="install-timer">
+          <div className="install-pulse" aria-hidden>
+            ●
+          </div>
+          <p className="next-label" style={{ margin: 0 }}>Installing</p>
+          <p className="next-code">{minutes || 0}<span style={{ fontSize: 28 }}> min</span></p>
+          <p className="muted" style={{ margin: 0 }}>
+            Timer running. Plumb, level, square — then capture it.
+          </p>
           {tips.length > 0 && (
-            <ol className="tip-list">
+            <ol className="tip-list" style={{ textAlign: "left", width: "100%" }}>
               {tips.slice(0, 3).map((t) => (
                 <li key={t}>{t}</li>
               ))}
