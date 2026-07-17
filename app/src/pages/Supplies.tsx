@@ -44,16 +44,28 @@ export function Supplies() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Supplies</h1>
-        <Link to="/" className="button-like">Home</Link>
+        <div>
+          <h1>Supplies</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            Job pull lists + the company supply catalog.
+          </p>
+        </div>
+        <Link to="/" className="back-chip" aria-label="Home">‹</Link>
       </header>
-      <p className="muted">Job pull lists + the company supply catalog.</p>
 
-      <label className="field-label">Job</label>
-      <select value={proj} onChange={(e) => setProj(e.target.value)}>
-        <option value="">— pick a job —</option>
-        {(projects.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.job_code} — {p.name}</option>)}
-      </select>
+      <h2>Assign to job</h2>
+      <div className="job-chip-row">
+        {(projects.data ?? []).map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            className={proj === p.id ? "job-chip active" : "job-chip"}
+            onClick={() => setProj(p.id)}
+          >
+            {p.job_code}
+          </button>
+        ))}
+      </div>
 
       {proj && (
         <>
@@ -64,11 +76,13 @@ export function Supplies() {
               {(supplies.data ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
             <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Qty" />
-            <button className="action-btn" disabled={add.isPending || !supplyId} onClick={() => add.mutate()}>Add to job</button>
+            <button className="action-btn primary" disabled={add.isPending || !supplyId} onClick={() => add.mutate()}>
+              Add to job
+            </button>
           </div>
 
           <h2>Pull list</h2>
-          <ul className="unit-list">
+          <ul className="unit-list work-list">
             {(orders.data ?? []).map((o) => (
               <li key={o.id} className="find-row">
                 <div>
@@ -90,9 +104,13 @@ export function Supplies() {
       )}
 
       <h2>Add to catalog</h2>
-      <div className="manual-entry">
-        <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New supply type" />
-        <button disabled={addCat.isPending || !newName.trim()} onClick={() => addCat.mutate()}>Add</button>
+      <div className="detail-card">
+        <div className="manual-entry">
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New supply type" />
+          <button className="primary" disabled={addCat.isPending || !newName.trim()} onClick={() => addCat.mutate()}>
+            Add
+          </button>
+        </div>
       </div>
     </div>
   );
