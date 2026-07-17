@@ -926,6 +926,18 @@ button:disabled {
   margin-bottom: 12px;
 }
 
+.more-actions {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 12px 0;
+}
+
+.more-actions > summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+
 /* --- Home launcher tiles --- */
 
 .tile-grid {

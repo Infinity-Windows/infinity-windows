@@ -29,7 +29,6 @@ export function Home() {
         { to: "/scan", label: "Scan", show: true },
         { to: "/receive", label: "Receive", show: true },
         { to: "/search", label: "Find a unit", show: true },
-        { to: "/locate", label: "Locate", show: true },
       ],
     },
     {

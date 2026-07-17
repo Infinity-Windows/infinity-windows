@@ -69,6 +69,7 @@ export function OpeningSheet() {
 
   const [photos, setPhotos] = useState<BeforeAfterValue>({ before: null, after: null });
   const [video, setVideo] = useState<File | null>(null);
+  const [stage, setStage] = useState<"check" | "install" | "capture">("check");
   const [minutes, setMinutes] = useState("");
   const [minutesTouched, setMinutesTouched] = useState(false);
   const [grade, setGrade] = useState<number | null>(null);
@@ -442,7 +443,23 @@ export function OpeningSheet() {
         </p>
       )}
 
-      {/* --- READY-TO-INSTALL GATE --- */}
+      {/* --- Stage stepper (installer critical path) --- */}
+      {!installed && (
+        <nav className="hub-tabs" aria-label="Install steps">
+          {(["check", "install", "capture"] as const).map((s, i) => (
+            <button
+              key={s}
+              type="button"
+              className={stage === s ? "hub-tab active" : "hub-tab"}
+              onClick={() => setStage(s)}
+            >
+              {i + 1}. {s === "check" ? "Check" : s === "install" ? "Install" : "Capture"}
+            </button>
+          ))}
+        </nav>
+      )}
+
+      {/* --- READY-TO-INSTALL GATE (always visible while working) --- */}
       {!installed && (
         <div className={`ready-banner ready-${ready.status}`}>
           <strong>{READY_LABEL[ready.status]}</strong>
@@ -454,76 +471,81 @@ export function OpeningSheet() {
         </div>
       )}
 
-      {/* --- PRE-INSTALL BRIEFING (north-star screen) --- */}
-      {!installed && o.window_types && (
-        <div className="briefing">
-          <div className="briefing-stats">
-            <span>
-              <strong>
-                {brain.data?.medianMinutes != null
-                  ? `${Math.round(brain.data.medianMinutes)}m`
-                  : "—"}
-              </strong>
-              target
-            </span>
-            <span>
-              <strong>
-                {brain.data?.p90Minutes != null
-                  ? `${Math.round(brain.data.p90Minutes)}m`
-                  : "—"}
-              </strong>
-              P90
-            </span>
-            <span>
-              <strong>
-                {(() => {
-                  const d = brain.data?.outcomeDifficulty ?? o.window_types.difficulty_rating;
-                  return d ? "★".repeat(d) : "—";
-                })()}
-              </strong>
-              difficulty
-            </span>
-            <span>
-              <strong>
-                {brain.data?.failRate != null ? `${brain.data.failRate}%` : "—"}
-              </strong>
-              fail rate
-            </span>
-          </div>
-          {tips.length > 0 && (
-            <div className="briefing-tips">
-              <span className="field-label">Top tips</span>
-              <ol>
-                {tips.slice(0, 3).map((t) => (
-                  <li key={t}>{t}</li>
-                ))}
-              </ol>
+      {/* ===================== STAGE 1: CHECK ===================== */}
+      {!installed && stage === "check" && (
+        <>
+          {/* Pre-install briefing (north-star screen) */}
+          {o.window_types && (
+            <div className="briefing">
+              <div className="briefing-stats">
+                <span>
+                  <strong>
+                    {brain.data?.medianMinutes != null
+                      ? `${Math.round(brain.data.medianMinutes)}m`
+                      : "—"}
+                  </strong>
+                  target
+                </span>
+                <span>
+                  <strong>
+                    {brain.data?.p90Minutes != null
+                      ? `${Math.round(brain.data.p90Minutes)}m`
+                      : "—"}
+                  </strong>
+                  P90
+                </span>
+                <span>
+                  <strong>
+                    {(() => {
+                      const d = brain.data?.outcomeDifficulty ?? o.window_types.difficulty_rating;
+                      return d ? "★".repeat(d) : "—";
+                    })()}
+                  </strong>
+                  difficulty
+                </span>
+                <span>
+                  <strong>
+                    {brain.data?.failRate != null ? `${brain.data.failRate}%` : "—"}
+                  </strong>
+                  fail rate
+                </span>
+              </div>
+              {tips.length > 0 && (
+                <div className="briefing-tips">
+                  <span className="field-label">Top tips</span>
+                  <ol>
+                    {tips.slice(0, 5).map((t) => (
+                      <li key={t}>{t}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+              {watchOuts.length > 0 && (
+                <div className="briefing-tips">
+                  <span className="field-label">Watch-outs</span>
+                  <ul className="watch">
+                    {watchOuts.slice(0, 5).map((w) => (
+                      <li key={w}>{w}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {brain.data?.videos?.[0]?.signedUrl ? (
+                <video controls src={brain.data.videos[0].signedUrl} className="golden-video" />
+              ) : o.window_types.tutorial_url ? (
+                <a href={o.window_types.tutorial_url} className="suggest">
+                  Tutorial video →
+                </a>
+              ) : null}
+              <Link to={`/brain/${o.window_types.id}`} className="muted brain-more">
+                Full type brain →
+              </Link>
             </div>
           )}
-          {watchOuts.length > 0 && (
-            <div className="briefing-tips">
-              <span className="field-label">Watch-outs</span>
-              <ul className="watch">
-                {watchOuts.slice(0, 3).map((w) => (
-                  <li key={w}>{w}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {o.window_types.tutorial_url && (
-            <a href={o.window_types.tutorial_url} className="suggest">
-              Tutorial video →
-            </a>
-          )}
-          <Link to={`/brain/${o.window_types.id}`} className="muted brain-more">
-            Full type brain →
-          </Link>
-        </div>
-      )}
 
-      {/* --- Assign inventory unit --- */}
-      <h2>Physical window</h2>
-      {o.assigned_window_id && o.windows ? (
+          {/* Assign inventory unit */}
+          <h2>Physical window</h2>
+          {o.assigned_window_id && o.windows ? (
         <p>
           <Link to={`/w/${encodeURIComponent(o.windows.window_id)}`}>
             <strong>{o.windows.window_id}</strong>
@@ -685,10 +707,20 @@ export function OpeningSheet() {
         </>
       )}
 
-      {/* --- Flag a problem to the lead --- */}
-      {!installed && (
-        <>
-          <h2>Flag a problem</h2>
+          <button
+            className="primary big"
+            disabled={ready.status === "blocked"}
+            onClick={() => setStage("install")}
+          >
+            {ready.status === "blocked" ? "Resolve blockers to start" : "Start install →"}
+          </button>
+        </>
+      )}
+
+      {/* --- Exceptions: flag + site note (not during install screen) --- */}
+      {!installed && stage !== "install" && (
+        <details className="more-actions">
+          <summary className="muted">Flag a problem / site note</summary>
           {o.flag_note ? (
             <div className="fit-verdict fit-too_small">
               <strong>Flagged:</strong> {o.flag_note}{" "}
@@ -730,11 +762,30 @@ export function OpeningSheet() {
           >
             Send site note
           </button>
-        </>
+        </details>
       )}
 
-      {/* --- Capture --- */}
-      {!installed && (
+      {/* ===================== STAGE 2: INSTALL ===================== */}
+      {!installed && stage === "install" && (
+        <div className="detail-card">
+          <p className="next-label">INSTALLING</p>
+          <p className="next-code">{minutes || 0} min</p>
+          <p className="muted">Timer running. Plumb, level, square — then capture it.</p>
+          {tips.length > 0 && (
+            <ol className="tip-list">
+              {tips.slice(0, 3).map((t) => (
+                <li key={t}>{t}</li>
+              ))}
+            </ol>
+          )}
+          <button className="primary big" onClick={() => setStage("capture")}>
+            Done — capture it →
+          </button>
+        </div>
+      )}
+
+      {/* ===================== STAGE 3: CAPTURE ===================== */}
+      {!installed && stage === "capture" && (
         <>
           <h2>Photos</h2>
           <p className="muted">Before and after — the after lines up over the before.</p>

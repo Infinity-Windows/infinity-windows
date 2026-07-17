@@ -4,12 +4,13 @@ import { countMyOpenOpenings, getMyProfile } from "../lib/install/api";
 import { isLeadLike } from "../lib/install/types";
 import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
 
-const baseTabs = [
-  { to: "/", label: "Home", icon: "\u2302" },
-  { to: "/scan", label: "Scan", icon: "\u25A3" },
-  { to: "/receive", label: "Receive", icon: "\u2795" },
-  { to: "/projects", label: "Jobs", icon: "\u25A6" },
-  { to: "/search", label: "Find", icon: "\u2315" },
+// Leads run the warehouse; installers get an install-first bar.
+const leadTabs = [
+  { to: "/", label: "Home", icon: "\u2302", badge: 0 },
+  { to: "/scan", label: "Scan", icon: "\u25A3", badge: 0 },
+  { to: "/projects", label: "Jobs", icon: "\u25A6", badge: 0 },
+  { to: "/search", label: "Find", icon: "\u2315", badge: 0 },
+  { to: "/crew", label: "Crew", icon: "\u2691", badge: 0 },
 ];
 
 export function Layout() {
@@ -24,18 +25,15 @@ export function Layout() {
     enabled: Boolean(me.data?.id) && !isLead,
   });
 
-  // Installers get a "My work" tab (their assigned list); leads get "Crew".
-  const tabs = [
-    ...baseTabs,
-    isLead
-      ? { to: "/crew", label: "Crew", icon: "\u2691", badge: 0 }
-      : {
-          to: "/my-work",
-          label: "My work",
-          icon: "\u2692",
-          badge: openCount.data ?? 0,
-        },
-  ];
+  const tabs = isLead
+    ? leadTabs
+    : [
+        { to: "/my-work", label: "My work", icon: "\u2692", badge: openCount.data ?? 0 },
+        { to: "/clock", label: "Clock", icon: "\u23F1", badge: 0 },
+        { to: "/learn", label: "Learn", icon: "\u2605", badge: 0 },
+        { to: "/points", label: "Points", icon: "\u2726", badge: 0 },
+        { to: "/search", label: "Find", icon: "\u2315", badge: 0 },
+      ];
 
   return (
     <div className="app-shell">
