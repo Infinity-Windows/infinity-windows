@@ -27,7 +27,7 @@ export function Admin() {
       <div className="page">
         <header className="page-header">
           <h1>Admin</h1>
-          <Link to="/" className="button-like">Home</Link>
+          <Link to="/" className="back-chip" aria-label="Home">‹</Link>
         </header>
         <p className="muted">Admin is for admins and the Big Boss.</p>
       </div>
@@ -40,16 +40,20 @@ export function Admin() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Admin</h1>
-        <Link to="/" className="button-like">Home</Link>
+        <div>
+          <h1>Admin</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            Accounts, approvals and the AI connection.
+          </p>
+        </div>
+        <Link to="/" className="back-chip" aria-label="Home">‹</Link>
       </header>
-      <p className="muted">Accounts, approvals and the AI connection.</p>
 
       <h2>Access requests ({pending.length})</h2>
       {pending.length === 0 && <p className="muted">No pending requests.</p>}
-      <ul className="unit-list">
+      <ul className="unit-list work-list">
         {pending.map((r) => (
-          <li key={r.id} className="find-row">
+          <li key={r.id} className="find-row" style={{ flexWrap: "wrap" }}>
             <div>
               <strong>{r.name}</strong>{" "}
               <span className="muted">{r.requested_role}</span>
@@ -63,13 +67,13 @@ export function Admin() {
             </div>
             <div className="row-gap" style={{ marginLeft: "auto" }}>
               <button
-                className="button-like active-pill"
+                className="button-like qc-pass"
                 onClick={() => decide.mutate({ id: r.id, status: "approved" })}
               >
                 Approve ✓
               </button>
               <button
-                className="button-like"
+                className="button-like qc-callback"
                 onClick={() => decide.mutate({ id: r.id, status: "denied" })}
               >
                 Deny
@@ -81,7 +85,7 @@ export function Admin() {
 
       <h2>AI connection</h2>
       <div className="detail-card">
-        <p>
+        <p style={{ margin: 0 }}>
           OpenAI powers transcription, tips, how-to and extraction. Set the
           <code> OPENAI_API_KEY</code> Edge Function secret in Supabase. If AI
           features show errors, the key is missing or out of quota.
@@ -91,18 +95,16 @@ export function Admin() {
       {decided.length > 0 && (
         <>
           <h2>Recent decisions</h2>
-          <ul className="unit-list">
+          <ul className="unit-list work-list">
             {decided.slice(0, 10).map((r) => (
-              <li key={r.id}>
-                <strong>{r.name}</strong>{" "}
-                <span className={r.status === "approved" ? "ok" : "error"}>
+              <li key={r.id} className="find-row">
+                <strong>{r.name}</strong>
+                <span
+                  className={r.status === "approved" ? "ok" : "error"}
+                  style={{ marginLeft: "auto", fontWeight: 700, textTransform: "uppercase", fontSize: 12 }}
+                >
                   {r.status}
                 </span>
-                {r.status === "approved" && (
-                  <span className="muted" style={{ fontSize: 12 }}>
-                    {" "}— create login in Supabase Auth, then set role on Crew
-                  </span>
-                )}
               </li>
             ))}
           </ul>
