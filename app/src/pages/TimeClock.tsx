@@ -100,39 +100,45 @@ export function TimeClock() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Time clock</h1>
+        <div>
+          <h1>Time clock</h1>
+          <p className="muted" style={{ margin: 0 }}>Week: {weekTotal.toFixed(1)} h</p>
+        </div>
         <Link to="/" className="button-like">Home</Link>
       </header>
-      <p className="muted">Week: {weekTotal.toFixed(1)} h</p>
 
       {shift ? (
-        <div className="detail-card">
-          <p className="next-label">ON THE CLOCK</p>
-          <p className="next-code">{hhmm(elapsed)}</p>
-          <p className="muted">
-            {shift.projects?.job_code ?? "no job"} · {shift.cost_codes?.label ?? "no code"}
-            {onBreak ? " · on break" : ""}
+        <div className="clock-hero">
+          <p className="next-label">
+            <span className="clock-live-dot" aria-hidden />
+            On the clock
           </p>
-          <div className="row-gap">
-            <button
-              className="button-like"
-              disabled={toggleBreak.isPending}
-              onClick={() => toggleBreak.mutate(shift)}
-            >
-              {onBreak ? `End break (${hhmm(breakSec)})` : "Start break"}
-            </button>
-          </div>
-          <label className="field-label">Were you injured this shift?</label>
-          <div className="grade-row">
+          <p className="next-code">{hhmm(elapsed)}</p>
+          <p className="muted" style={{ margin: 0 }}>
+            {shift.projects?.job_code ?? "no job"} · {shift.cost_codes?.label ?? "no code"}
+          </p>
+          <button
+            type="button"
+            className={onBreak ? "break-banner on" : "break-banner"}
+            disabled={toggleBreak.isPending}
+            onClick={() => toggleBreak.mutate(shift)}
+          >
+            {onBreak ? `End break (${hhmm(breakSec)})` : "Start break"}
+          </button>
+          <label className="field-label" style={{ alignSelf: "stretch", textAlign: "left" }}>
+            Were you injured this shift?
+          </label>
+          <div className="grade-row" style={{ width: "100%" }}>
             <button className={!injured ? "grade-btn selected" : "grade-btn"} onClick={() => setInjured(false)}>No</button>
             <button className={injured ? "grade-btn selected danger" : "grade-btn"} onClick={() => setInjured(true)}>Yes</button>
           </div>
           <button
-            className="primary big"
+            type="button"
+            className="clock-out"
             disabled={doClockOut.isPending}
             onClick={() => doClockOut.mutate(shift)}
           >
-            {doClockOut.isPending ? "Signing off…" : "Clock out & sign shift"}
+            {doClockOut.isPending ? "Signing off…" : "Clock out"}
           </button>
         </div>
       ) : (
@@ -152,7 +158,7 @@ export function TimeClock() {
             ))}
           </select>
           <button
-            className="primary big"
+            className="primary big clock-in"
             disabled={doClockIn.isPending || !codeId}
             onClick={() => doClockIn.mutate()}
           >
@@ -164,15 +170,19 @@ export function TimeClock() {
       <h2>This week</h2>
       <ul className="unit-list">
         {(week.data ?? []).map((s) => (
-          <li key={s.id} className="find-row">
-            <div>
-              <strong>{new Date(s.clock_in_at).toLocaleDateString(undefined, { weekday: "short" })}</strong>{" "}
-              <span className="muted">{s.projects?.job_code ?? "—"} · {s.cost_codes?.code ?? "—"}</span>
-            </div>
-            <span style={{ marginLeft: "auto" }}>
-              {shiftHours(s).toFixed(1)}h{" "}
-              <span className={s.status === "approved" ? "ok" : "muted"}>{s.status}</span>
+          <li key={s.id} className="week-row">
+            <span className="week-day">
+              {new Date(s.clock_in_at).toLocaleDateString(undefined, { weekday: "short" })}
             </span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontWeight: 600, fontSize: 13.5 }}>
+                {s.projects?.job_code ?? "—"} · {s.cost_codes?.code ?? "—"}
+              </div>
+              <div className={s.status === "approved" ? "ok" : "muted"} style={{ fontSize: 11.5 }}>
+                {s.status}
+              </div>
+            </div>
+            <span className="week-hours">{shiftHours(s).toFixed(1)}h</span>
           </li>
         ))}
         {week.data?.length === 0 && <p className="muted">No shifts yet this week.</p>}
@@ -181,7 +191,7 @@ export function TimeClock() {
       {lead && (
         <>
           <h2>Timecards to approve ({toApprove.data?.length ?? 0})</h2>
-          <ul className="unit-list">
+          <ul className="unit-list work-list">
             {(toApprove.data ?? []).map((s: TimeShift) => (
               <li key={s.id} className="find-row">
                 <div>
