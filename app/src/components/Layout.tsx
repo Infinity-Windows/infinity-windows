@@ -3,6 +3,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { countMyOpenOpenings, getMyProfile } from "../lib/install/api";
 import { isLeadLike } from "../lib/install/types";
 import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
+import { ToastHost } from "./ToastHost";
 
 // Leads run the warehouse; installers get an install-first bar.
 const leadTabs = [
@@ -37,6 +38,7 @@ export function Layout() {
 
   return (
     <div className="app-shell">
+      <ToastHost />
       <main className="app-main">
         <Outlet />
       </main>

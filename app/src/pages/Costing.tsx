@@ -29,6 +29,8 @@ export function Costing() {
   const [costCat, setCostCat] = useState("materials");
   const [bid, setBidVal] = useState("");
   const [target, setTarget] = useState("");
+  const [coLabel, setCoLabel] = useState("");
+  const [coAmt, setCoAmt] = useState("");
   // Bid calculator
   const [calcCost, setCalcCost] = useState("");
   const [calcMargin, setCalcMargin] = useState("20");
@@ -45,7 +47,7 @@ export function Costing() {
   const addCo = useMutation({
     mutationFn: (args: { label: string; amount: number }) =>
       addChangeOrder(sel, args.label, args.amount),
-    onSuccess: refresh,
+    onSuccess: () => { setCoLabel(""); setCoAmt(""); refresh(); },
   });
 
   if (me.data && !isBigBoss(me.data.role)) {
@@ -133,11 +135,17 @@ export function Costing() {
           </select>
           <input type="number" value={costAmt} onChange={(e) => setCostAmt(e.target.value)} placeholder="Amount $" />
           <button className="action-btn" disabled={addCost.isPending || !costAmt} onClick={() => addCost.mutate()}>Add cost</button>
-          <button className="action-btn" onClick={() => {
-            const label = prompt("Change order description?");
-            const amt = Number(prompt("Change order amount $") || "0");
-            if (label && amt) addCo.mutate({ label, amount: amt });
-          }}>Add change order</button>
+
+          <label className="field-label">Change order</label>
+          <input value={coLabel} onChange={(e) => setCoLabel(e.target.value)} placeholder="Description" />
+          <input type="number" value={coAmt} onChange={(e) => setCoAmt(e.target.value)} placeholder="Amount $" />
+          <button
+            className="action-btn"
+            disabled={addCo.isPending || !coLabel.trim() || !coAmt}
+            onClick={() => addCo.mutate({ label: coLabel.trim(), amount: Number(coAmt) })}
+          >
+            Add change order
+          </button>
         </div>
       )}
 

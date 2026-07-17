@@ -1,11 +1,19 @@
-import { QueryClient } from "@tanstack/react-query";
+import { MutationCache, QueryClient } from "@tanstack/react-query";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { getProjectUnits, getProjectWindows, listProjects } from "./api";
 import { getTypeBrainStats, listOpenings, listPlansets } from "./install/api";
+import { toastError } from "./toast";
 
 // offlineFirst: when there's no connection, queries resolve from the persisted
 // cache instead of hanging — the whole install flow keeps working in dead spots.
 export const queryClient = new QueryClient({
+  // Any mutation that fails without its own onError surfaces a toast instead of
+  // failing silently.
+  mutationCache: new MutationCache({
+    onError: (error, _vars, _ctx, mutation) => {
+      if (!mutation.options.onError) toastError(error);
+    },
+  }),
   defaultOptions: {
     queries: {
       networkMode: "offlineFirst",
