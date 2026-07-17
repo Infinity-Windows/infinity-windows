@@ -595,6 +595,46 @@ button:disabled {
   border-bottom: none;
 }
 
+.planset-row {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+}
+
+.planset-open {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--card-raised, rgba(255, 255, 255, 0.04));
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.planset-open:hover,
+.planset-open:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.planset-open-cta {
+  margin-left: auto;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.planset-viewer .plan-sheet {
+  margin-top: 8px;
+}
+
 .page-switch {
   display: flex;
   align-items: center;
