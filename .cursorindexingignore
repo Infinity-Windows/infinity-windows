@@ -1,0 +1,7 @@
+# Heavy generated/dependency dirs — keep the Cursor indexer out of these.
+# These are already gitignored; this just guarantees the indexer/file-watcher
+# never traverses them, which is the most common cause of slow/hanging agents.
+node_modules/
+app/node_modules/
+dist/
+app/dist/
