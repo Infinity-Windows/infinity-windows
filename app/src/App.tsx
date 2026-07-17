@@ -35,6 +35,7 @@ import { MemoReview } from "./pages/MemoReview";
 import { Training } from "./pages/Training";
 import { Admin } from "./pages/Admin";
 import { TimeClock } from "./pages/TimeClock";
+import { Costing } from "./pages/Costing";
 import { PinGate } from "./components/PinGate";
 import { ensureMyProfile, getMyProfile } from "./lib/install/api";
 import { isLeadLike } from "./lib/install/types";
@@ -130,6 +131,7 @@ export default function App() {
             <Route path="/review" element={<MemoReview />} />
             <Route path="/training" element={<Training />} />
             <Route path="/clock" element={<TimeClock />} />
+            <Route path="/costing" element={<Costing />} />
             <Route path="/w/:windowId" element={<WindowDetail />} />
             <Route path="/loc/:address" element={<LocationDetail />} />
             <Route path="/labels" element={<Labels />} />
