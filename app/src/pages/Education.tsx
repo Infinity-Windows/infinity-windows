@@ -37,18 +37,30 @@ export function Education() {
   const [tab, setTab] = useState<Tab>("daily");
 
   const score = knowledgeScore(progress.data ?? []);
+  const mastered = (progress.data ?? []).filter((p) => p.box >= 3).length;
 
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Education</h1>
-        <Link to="/" className="button-like">Home</Link>
+        <div>
+          <h1>Education</h1>
+          <p className="muted" style={{ margin: 0 }}>Learn it before you install it.</p>
+        </div>
+        <div className="learn-header-meta">
+          <span className="streak-pill">{mastered} mastered</span>
+          <Link to="/" className="button-like">Home</Link>
+        </div>
       </header>
-      <p className="muted">Learn it before you install it.</p>
 
       <div className="stat-grid">
-        <div className="stat-card"><span className="stat-num">{score}</span><span>knowledge score</span></div>
-        <div className="stat-card"><span className="stat-num">{TERMS.length}</span><span>terms</span></div>
+        <div className="stat-card accent">
+          <span className="stat-num">{score}</span>
+          <span>knowledge score</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-num">{TERMS.length}</span>
+          <span>terms</span>
+        </div>
       </div>
 
       <nav className="hub-tabs">
@@ -121,16 +133,17 @@ function Daily({
   return (
     <div>
       <p className="muted">Card {i + 1} of {deck.length} · which term is this?</p>
-      <div className="detail-card" style={{ minHeight: 120 }}>
-        <p>{term.desc}</p>
-        {revealed && <p className="next-code" style={{ fontSize: 22 }}>{term.term}</p>}
+      <div className="detail-card learn-card">
+        <p className="next-label">Tap when you know it</p>
+        <p style={{ margin: 0, fontSize: 15, lineHeight: 1.55 }}>{term.desc}</p>
+        {revealed && <p className="next-code" style={{ margin: 0 }}>{term.term}</p>}
       </div>
       {!revealed ? (
         <button className="primary big" onClick={() => setRevealed(true)}>Tap to reveal</button>
       ) : (
         <div className="grade-row">
-          <button className="grade-btn" onClick={() => grade("again")}>Again</button>
-          <button className="grade-btn selected" onClick={() => grade("got")}>Got it ✓</button>
+          <button className="grade-btn again" onClick={() => grade("again")}>Again</button>
+          <button className="grade-btn got" onClick={() => grade("got")}>Got it ✓</button>
         </div>
       )}
     </div>
@@ -166,8 +179,8 @@ function Quiz({ profileId }: { profileId?: string }) {
       ).catch(() => {});
     }
     return (
-      <div>
-        <p className="next-code">{score}/5</p>
+      <div className="quiz-done">
+        <p className="next-code" style={{ margin: 0 }}>{score}/5</p>
         <p className="ok">+{score * POINT_RULES.quizPerCorrect} points added.</p>
         <button className="primary big" onClick={() => { setN(0); setScore(0); setAwarded(false); next(); }}>Another round</button>
       </div>
