@@ -1,14 +1,50 @@
+@import url("https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap");
+
 :root {
-  --bg: #0f1420;
-  --card: #1a2233;
-  --border: #2a3550;
-  --text: #eef2f9;
-  --muted: #8b97ad;
-  --accent: #3b82f6;
-  --ok: #34d399;
-  --warn: #fbbf24;
-  --danger: #f87171;
+  /* Infinity palette (Ammon's design) */
+  --bg: #0c0b0a;
+  --surface: #181614;
+  --card: #141210;
+  --card-raised: #1e1b18;
+  --card-hot: #26211c;
+  --border: rgba(255, 255, 255, 0.12);
+  --text: #f3f0eb;
+  --text-secondary: #d8d2c9;
+  --muted: #a39c92;
+  --faint: #5c564e;
+  --accent: #ff6a1a;
+  --accent-hover: #ff8a4a;
+  --accent-bg: #2a1a0e;
+  --ok: #3ecf6e;
+  --ok-bg: #173023;
+  --warn: #ffb020;
+  --danger: #ff5a48;
+  --info: #4a9dff;
+  --ink: #141210;
+  --font-body: "Barlow", system-ui, sans-serif;
+  --font-display: "Barlow Condensed", "Barlow", system-ui, sans-serif;
+  --radius-sm: 11px;
+  --radius-md: 14px;
+  --radius-lg: 16px;
+  --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.45);
   color-scheme: dark;
+}
+
+@keyframes infPulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 106, 26, 0.55); }
+  70% { box-shadow: 0 0 0 12px rgba(255, 106, 26, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 106, 26, 0); }
+}
+
+@keyframes infBar {
+  0% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+  100% { transform: scaleY(0.3); }
+}
+
+@keyframes infBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
 }
 
 * {
@@ -17,16 +53,28 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-body);
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent-hover);
 }
 
 .app-shell {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  background: var(--card);
+  color: var(--text);
+  font-family: var(--font-body);
 }
 
 .app-main {
@@ -49,16 +97,21 @@ body {
 }
 
 h1 {
-  font-size: 24px;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
   margin: 0;
 }
 
 h2 {
+  font-family: var(--font-display);
   font-size: 16px;
+  font-weight: 600;
   margin: 20px 0 8px;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.12em;
 }
 
 .muted { color: var(--muted); }
@@ -69,21 +122,29 @@ h2 {
 
 input, select {
   width: 100%;
-  padding: 14px;
-  font-size: 16px;
-  border-radius: 10px;
+  padding: 14px 15px;
+  min-height: 52px;
+  font-size: 15px;
+  font-family: var(--font-body);
+  border-radius: 13px;
   border: 1px solid var(--border);
-  background: var(--card);
+  background: var(--card-raised);
   color: var(--text);
   margin-bottom: 10px;
+  outline: none;
+}
+
+input:focus, select:focus {
+  border-color: rgba(255, 106, 26, 0.55);
 }
 
 button {
   padding: 12px 16px;
   font-size: 16px;
-  border-radius: 10px;
+  font-family: var(--font-body);
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
-  background: var(--card);
+  background: var(--card-raised);
   color: var(--text);
   cursor: pointer;
 }
@@ -91,13 +152,25 @@ button {
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  font-weight: 600;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+button.primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 button.big {
   width: 100%;
+  min-height: 56px;
   padding: 16px;
   margin-top: 8px;
+  border-radius: 15px;
 }
 
 button.link {
@@ -105,6 +178,8 @@ button.link {
   border: none;
   color: var(--accent);
   padding: 8px 0;
+  font-family: var(--font-body);
+  font-size: 14px;
 }
 
 button:disabled {
@@ -117,25 +192,46 @@ button:disabled {
   left: 0;
   right: 0;
   display: flex;
-  background: var(--card);
-  border-top: 1px solid var(--border);
+  background: var(--surface);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   padding-bottom: env(safe-area-inset-bottom);
+  z-index: 50;
 }
 
 .nav-tab {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 10px 0 8px;
+  gap: 4px;
+  padding: 12px 0 10px;
   text-decoration: none;
-  color: var(--muted);
-  font-size: 11px;
+  color: #7a736a;
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border-radius: 10px;
 }
 
-.nav-tab.active { color: var(--accent); }
-.nav-icon { font-size: 20px; line-height: 1; }
+.nav-tab.active {
+  color: var(--accent);
+  background: rgba(255, 106, 26, 0.12);
+}
+
+.nav-tab.active::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.nav-icon { font-size: 18px; line-height: 1; }
 
 .stat-grid {
   display: grid;
@@ -145,7 +241,7 @@ button:disabled {
 }
 
 .stat-card {
-  background: var(--card);
+  background: var(--card-raised);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 14px;
@@ -161,6 +257,7 @@ button:disabled {
 .stat-card.danger .stat-num { color: var(--danger); }
 
 .stat-num {
+  font-family: var(--font-display);
   font-size: 28px;
   font-weight: 700;
   color: var(--text);
@@ -178,7 +275,7 @@ button:disabled {
   text-align: center;
   padding: 16px;
   border-radius: 12px;
-  background: var(--card);
+  background: var(--card-raised);
   border: 1px solid var(--border);
   color: var(--text);
   text-decoration: none;
@@ -188,7 +285,11 @@ button:disabled {
 .action-btn.primary {
   background: var(--accent);
   border-color: var(--accent);
-  font-weight: 600;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
 }
 
 .scanner-viewport {
@@ -222,7 +323,7 @@ button:disabled {
 }
 
 .unit-list li {
-  background: var(--card);
+  background: var(--card-raised);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px;
@@ -246,7 +347,7 @@ button:disabled {
 }
 
 .detail-card {
-  background: var(--card);
+  background: var(--card-raised);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 16px;
@@ -306,16 +407,121 @@ button:disabled {
 }
 
 .signin {
-  max-width: 360px;
-  margin: 15vh auto 0;
-  padding: 24px;
+  max-width: 400px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 64px 22px 40px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 12px;
+  background: var(--card);
 }
 
-.signin h1 { margin-bottom: 0; }
-.signin .primary { margin-top: 8px; }
+.signin-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  text-align: center;
+}
+
+.signin-brand h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 58px;
+  line-height: 1;
+  letter-spacing: 2px;
+  color: var(--text);
+}
+
+.signin-rule {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.signin-rule::before,
+.signin-rule::after {
+  content: "";
+  width: 34px;
+  height: 2px;
+  background: var(--accent);
+}
+
+.signin-rule span {
+  font-size: 11px;
+  letter-spacing: 3.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.signin-kicker {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin: 18px 0 0;
+}
+
+.signin-footnote {
+  font-size: 12px;
+  color: var(--faint);
+  line-height: 1.6;
+  text-align: center;
+  margin: 4px 0 0;
+}
+
+.signin .primary {
+  margin-top: 4px;
+  min-height: 56px;
+  border-radius: 14px;
+}
+
+.signin button.secondary {
+  min-height: 56px;
+  border-radius: 14px;
+  background: var(--card-raised);
+  border: 1px solid rgba(255, 106, 26, 0.55);
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.signin button.secondary:hover {
+  background: var(--card-hot);
+}
+
+.signin-done {
+  background: var(--card-raised);
+  border: 1px solid rgba(62, 207, 110, 0.4);
+  border-radius: 16px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  margin-top: 12px;
+}
+
+.signin-done-check {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(62, 207, 110, 0.15);
+  border: 1.5px solid rgba(62, 207, 110, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: var(--ok);
+}
 
 .job-row { display: block; }
 
@@ -479,7 +685,7 @@ button:disabled {
 
 .hub-tab.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--ink);
 }
 
 /* --- Brain card v2 --- */
@@ -726,7 +932,7 @@ button:disabled {
 .active-pill {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--ink);
 }
 
 .dispatch-row {
@@ -762,19 +968,22 @@ button:disabled {
   margin: 8px 0 4px;
   border-radius: 14px;
   border: 2px solid var(--accent);
-  background: rgba(59, 130, 246, 0.12);
+  background: rgba(255, 106, 26, 0.12);
 }
 
 .next-label {
+  font-family: var(--font-display);
   font-size: 12px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   color: var(--accent);
   font-weight: 700;
+  text-transform: uppercase;
 }
 
 .next-code {
+  font-family: var(--font-display);
   font-size: 30px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .next-meta {
@@ -809,7 +1018,8 @@ button:disabled {
   padding: 0 4px;
   border-radius: 8px;
   background: var(--accent);
-  color: #fff;
+  color: var(--ink);
+  font-family: var(--font-display);
   font-size: 10px;
   font-weight: 700;
   line-height: 16px;
@@ -817,10 +1027,10 @@ button:disabled {
 }
 
 .assign-toast {
-  background: rgba(59, 130, 246, 0.15);
+  background: rgba(255, 106, 26, 0.15);
   border: 1px solid var(--accent);
   color: var(--text);
-  border-radius: 10px;
+  border-radius: 11px;
   padding: 12px 14px;
   margin-bottom: 12px;
   font-size: 14px;
@@ -985,33 +1195,126 @@ button:disabled {
   padding: 14px;
   border-radius: 12px;
   border: 1px solid var(--border);
-  background: var(--card);
+  background: var(--card-raised);
   color: var(--text);
   text-decoration: none;
+  font-family: var(--font-display);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.5px;
 }
 
-.tile:active { background: var(--accent); border-color: var(--accent); }
+.tile:active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--ink);
+}
 
 /* --- PIN gate --- */
 
 .pin-gate {
-  max-width: 360px;
-  margin: 18vh auto 0;
-  padding: 24px;
+  max-width: 400px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 64px 22px 40px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   align-items: center;
   text-align: center;
+  background: var(--card);
+}
+
+.pin-gate-brand {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 42px;
+  letter-spacing: 2px;
+  line-height: 1;
+  margin: 0;
+}
+
+.pin-avatar {
+  width: 58px;
+  height: 58px;
+  border-radius: 16px;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--ink);
+  margin-top: 12px;
+}
+
+.pin-name {
+  font-weight: 600;
+  font-size: 17px;
+  margin: 0;
+}
+
+.pin-hint {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.pin-dots {
+  display: flex;
+  gap: 12px;
+  margin: 8px 0 4px;
+}
+
+.pin-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.28);
+  background: transparent;
+}
+
+.pin-dot.filled {
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .pin-input {
-  width: 160px;
-  text-align: center;
-  font-size: 28px;
-  letter-spacing: 12px;
-  padding: 14px;
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 1px;
+  height: 1px;
+}
+
+.pin-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 72px);
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.pin-key {
+  height: 60px;
+  border-radius: 14px;
+  background: var(--card-raised);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--text);
+  padding: 0;
+}
+
+.pin-key:active {
+  transform: scale(0.94);
+}
+
+.pin-key.empty {
+  visibility: hidden;
 }
 
