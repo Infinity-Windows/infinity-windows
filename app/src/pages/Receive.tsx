@@ -69,7 +69,13 @@ export function Receive() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Receive</h1>
+        <div>
+          <h1>Receive</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            Create units into inventory and print labels.
+          </p>
+        </div>
+        <Link to="/" className="back-chip" aria-label="Home">‹</Link>
       </header>
 
       <label className="field-label">Window type</label>
@@ -116,17 +122,19 @@ export function Receive() {
         <>
           <div className="row-between">
             <h2>This session ({received.length})</h2>
-            <button onClick={printBatch}>Print labels</button>
+            <button className="button-like" onClick={printBatch}>Print labels</button>
           </div>
-          <ul className="unit-list">
+          <ul className="unit-list work-list">
             {received.map((r) => (
-              <li key={r.unit.id}>
+              <li key={r.unit.id} className="find-row">
                 <Link to={`/w/${encodeURIComponent(r.unit.window_id)}`}>
                   <strong>{r.unit.window_id}</strong>
                 </Link>
                 <span className="muted"> {r.typeName}</span>
                 {r.suggestedAddress && (
-                  <span className="suggest"> put in {r.suggestedAddress}</span>
+                  <span className="suggest" style={{ marginLeft: "auto" }}>
+                    put in {r.suggestedAddress}
+                  </span>
                 )}
               </li>
             ))}
