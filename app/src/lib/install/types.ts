@@ -128,6 +128,6 @@ export const MEMO_TOPICS: { key: keyof MemoTopics; prompt: string }[] = [
 
 export const OPENING_STATUS_COLORS: Record<OpeningStatus, string> = {
   planned: "#fbbf24",
-  assigned: "#3b82f6",
+  assigned: "#4A9DFF",
   installed: "#34d399",
 };
