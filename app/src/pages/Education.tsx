@@ -17,6 +17,7 @@ import {
   listPriorityTerms,
   recordCard,
 } from "../lib/learn";
+import { awardPoints, POINT_RULES } from "../lib/points";
 
 type Tab = "daily" | "quiz" | "glossary";
 
@@ -64,7 +65,7 @@ export function Education() {
           onDone={() => queryClient.invalidateQueries({ queryKey: ["learnProgress"] })}
         />
       )}
-      {tab === "quiz" && <Quiz />}
+      {tab === "quiz" && <Quiz profileId={me.data?.id} />}
       {tab === "glossary" && (
         <Glossary
           lead={lead}
@@ -133,11 +134,12 @@ function Daily({
   );
 }
 
-function Quiz() {
+function Quiz({ profileId }: { profileId?: string }) {
   const [q, setQ] = useState(() => quizQuestion(TERMS[Math.floor(Math.random() * TERMS.length)]));
   const [n, setN] = useState(0);
   const [score, setScore] = useState(0);
   const [picked, setPicked] = useState<string | null>(null);
+  const [awarded, setAwarded] = useState(false);
 
   const answer = (id: string) => {
     setPicked(id);
@@ -150,11 +152,21 @@ function Quiz() {
   };
 
   if (n >= 5) {
+    // Write real points to the ledger once per completed round.
+    if (!awarded && profileId && score > 0) {
+      setAwarded(true);
+      void awardPoints(
+        profileId,
+        [{ kind: "quiz", points: score * POINT_RULES.quizPerCorrect }],
+        undefined,
+        "confirmed",
+      ).catch(() => {});
+    }
     return (
       <div>
         <p className="next-code">{score}/5</p>
-        <p className="muted">+{score * 10} to your knowledge score.</p>
-        <button className="primary big" onClick={() => { setN(0); setScore(0); next(); }}>Another round</button>
+        <p className="ok">+{score * POINT_RULES.quizPerCorrect} points added.</p>
+        <button className="primary big" onClick={() => { setN(0); setScore(0); setAwarded(false); next(); }}>Another round</button>
       </div>
     );
   }

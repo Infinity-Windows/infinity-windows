@@ -4,6 +4,7 @@ import { getMyProfile } from "../lib/install/api";
 import { isLeadLike } from "../lib/install/types";
 import { listInstalledForQc, setQc } from "../lib/ops";
 import { addPriorityTerm } from "../lib/learn";
+import { resolvePendingPoints } from "../lib/points";
 
 export function Qc() {
   const queryClient = useQueryClient();
@@ -12,8 +13,16 @@ export function Qc() {
   const rows = useQuery({ queryKey: ["qcRows"], queryFn: listInstalledForQc, enabled: lead });
 
   const decide = useMutation({
-    mutationFn: (a: { id: string; status: "passed" | "callback" }) => setQc(a.id, a.status),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["qcRows"] }),
+    mutationFn: async (a: { id: string; status: "passed" | "callback" }) => {
+      await setQc(a.id, a.status);
+      // Pass confirms the installer's pending points; callback voids them.
+      await resolvePendingPoints(a.id, a.status === "passed" ? "confirmed" : "void");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["qcRows"] });
+      queryClient.invalidateQueries({ queryKey: ["ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["pointsLeaderboard"] });
+    },
   });
 
   if (me.data && !lead) {

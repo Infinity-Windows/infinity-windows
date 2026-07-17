@@ -262,17 +262,20 @@ export function OpeningSheet() {
         ...topics,
       });
 
-      // Award points for this install (par beat, photos, teach, quality).
+      // Award points for this install — PENDING until QC signs off. Ref is the
+      // opening id so QC can confirm/void. Par matches the displayed value.
       const uid = (await supabase.auth.getUser()).data.user?.id;
       if (uid) {
         const entries = computeInstallPoints({
           minutes: minutes ? Number(minutes) : null,
-          parMinutes: brain.data?.medianMinutes ?? null,
+          parMinutes: brain.data?.medianMinutes != null
+            ? Math.round(brain.data.medianMinutes)
+            : null,
           grade,
           hasPhotos: Boolean(photos.before || photos.after),
           hasMemo: Boolean(audioBlob),
         });
-        await awardPoints(uid, entries, event.id).catch(() => {});
+        await awardPoints(uid, entries, openingId, "pending").catch(() => {});
       }
 
       const { data: userData } = await supabase.auth.getUser();

@@ -26,9 +26,11 @@ export function Points() {
   const board = useQuery({ queryKey: ["pointsLeaderboard"], queryFn: getPointsLeaderboard });
 
   const rows = ledger.data ?? [];
-  const total = rows.reduce((s, r) => s + r.points, 0);
+  const confirmed = rows.filter((r) => r.status === "confirmed");
+  const total = confirmed.reduce((s, r) => s + r.points, 0);
+  const pending = rows.filter((r) => r.status === "pending").reduce((s, r) => s + r.points, 0);
   const byKind = new Map<string, number>();
-  for (const r of rows) byKind.set(r.kind, (byKind.get(r.kind) ?? 0) + r.points);
+  for (const r of confirmed) byKind.set(r.kind, (byKind.get(r.kind) ?? 0) + r.points);
 
   return (
     <div className="page">
@@ -39,6 +41,7 @@ export function Points() {
 
       <div className="stat-grid">
         <div className="stat-card"><span className="stat-num">{total}</span><span>points · YTD</span></div>
+        <div className="stat-card"><span className="stat-num">{pending}</span><span>pending QC</span></div>
         <div className="stat-card"><span className="stat-num">${Math.round(total * 0.25)}</span><span>est. bonus value</span></div>
       </div>
 

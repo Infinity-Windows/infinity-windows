@@ -7,11 +7,14 @@ export interface PointEntry {
   points: number;
 }
 
+export type PointStatus = "pending" | "confirmed" | "void";
+
 export interface LedgerRow {
   id: string;
   profile_id: string;
   kind: string;
   points: number;
+  status: PointStatus;
   created_at: string;
 }
 
@@ -52,6 +55,7 @@ export async function awardPoints(
   profileId: string,
   entries: PointEntry[],
   ref?: string,
+  status: PointStatus = "confirmed",
 ): Promise<void> {
   if (entries.length === 0) return;
   const { error } = await supabase.from("points_ledger").insert(
@@ -60,8 +64,22 @@ export async function awardPoints(
       kind: e.kind,
       points: e.points,
       ref: ref ?? null,
+      status,
     })),
   );
+  if (error) throw error;
+}
+
+/** Confirm (QC pass) or void (callback) pending install points for a ref. */
+export async function resolvePendingPoints(
+  ref: string,
+  status: "confirmed" | "void",
+): Promise<void> {
+  const { error } = await supabase
+    .from("points_ledger")
+    .update({ status })
+    .eq("ref", ref)
+    .eq("status", "pending");
   if (error) throw error;
 }
 
@@ -84,7 +102,7 @@ export interface LeaderRow {
 
 export async function getPointsLeaderboard(): Promise<LeaderRow[]> {
   const [ledger, profiles] = await Promise.all([
-    supabase.from("points_ledger").select("profile_id, points"),
+    supabase.from("points_ledger").select("profile_id, points").eq("status", "confirmed"),
     supabase.from("profiles").select("id, display_name"),
   ]);
   if (ledger.error) throw ledger.error;
