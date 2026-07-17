@@ -22,6 +22,7 @@ import {
   formatAssignMeta,
   rankAssignCandidates,
 } from "../../lib/install/assignRank";
+import { awardPoints, computeInstallPoints } from "../../lib/points";
 import { checkFit, readyToInstall, smallest } from "../../lib/install/fit";
 import {
   enqueueUpload,
@@ -259,6 +260,19 @@ export function OpeningSheet() {
         startedAt: startedAtRef.current,
         ...topics,
       });
+
+      // Award points for this install (par beat, photos, teach, quality).
+      const uid = (await supabase.auth.getUser()).data.user?.id;
+      if (uid) {
+        const entries = computeInstallPoints({
+          minutes: minutes ? Number(minutes) : null,
+          parMinutes: brain.data?.medianMinutes ?? null,
+          grade,
+          hasPhotos: Boolean(photos.before || photos.after),
+          hasMemo: Boolean(audioBlob),
+        });
+        await awardPoints(uid, entries, event.id).catch(() => {});
+      }
 
       const { data: userData } = await supabase.auth.getUser();
       const createdBy = userData.user?.email ?? null;
