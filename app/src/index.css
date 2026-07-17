@@ -1940,3 +1940,170 @@ button.clock-out {
   padding: 11px 13px;
 }
 
+/* --- Infinity support-screen polish --- */
+
+.talk-hero {
+  background: linear-gradient(135deg, var(--accent-bg), var(--card-raised));
+  border: 1px solid rgba(255, 106, 26, 0.45);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.talk-hero .next-label {
+  margin: 0;
+}
+
+.talk-hero h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 21px;
+  margin: 0;
+}
+
+.sev-chip-row {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.sev-chip {
+  flex: 1;
+  min-width: 70px;
+  min-height: 42px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--muted);
+  padding: 0 8px;
+}
+
+.sev-chip.active {
+  background: rgba(255, 90, 72, 0.14);
+  border-color: rgba(255, 90, 72, 0.5);
+  color: var(--danger);
+}
+
+.sev-chip.active.mild {
+  background: rgba(255, 178, 32, 0.14);
+  border-color: rgba(255, 178, 32, 0.5);
+  color: var(--warn);
+}
+
+.locate-search {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.locate-search input {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.locate-go {
+  width: 50px;
+  height: 50px;
+  border-radius: 13px;
+  background: var(--accent);
+  border: none;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 700;
+  flex: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scan-cta {
+  min-height: 54px;
+  border-radius: 14px;
+  background: var(--card-raised);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text);
+  text-decoration: none;
+  margin-bottom: 14px;
+}
+
+.scan-cta::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--accent);
+  border-radius: 3px;
+}
+
+.unit-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 11px;
+  color: #fff;
+  flex: none;
+}
+
+.pick-box {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 13px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  background: var(--card-raised);
+}
+
+.pick-row {
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--font-body);
+}
+
+.pick-row.selected {
+  background: rgba(255, 106, 26, 0.18);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.history-list {
+  list-style: none;
+  padding: 0;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-list li {
+  background: var(--card-raised);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 11px;
+  padding: 10px 12px;
+}
+
