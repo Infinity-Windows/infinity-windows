@@ -33,7 +33,10 @@ import { MyWork } from "./pages/MyWork";
 import { Analytics } from "./pages/Analytics";
 import { MemoReview } from "./pages/MemoReview";
 import { Training } from "./pages/Training";
+import { Admin } from "./pages/Admin";
+import { PinGate } from "./components/PinGate";
 import { ensureMyProfile, getMyProfile } from "./lib/install/api";
+import { isLeadLike } from "./lib/install/types";
 import { useQuery } from "@tanstack/react-query";
 import "./index.css";
 
@@ -41,7 +44,7 @@ import "./index.css";
 function RoleLanding() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   if (me.isLoading) return null;
-  if (me.data && me.data.role !== "lead") {
+  if (me.data && !isLeadLike(me.data.role)) {
     return <Navigate to="/my-work" replace />;
   }
   return <Home />;
@@ -91,6 +94,7 @@ export default function App() {
         },
       }}
     >
+      <PinGate>
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
@@ -119,6 +123,7 @@ export default function App() {
             <Route path="/brain/:typeId" element={<TypeBrainCard />} />
             <Route path="/catalog" element={<CatalogImport />} />
             <Route path="/crew" element={<Crew />} />
+            <Route path="/admin" element={<Admin />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/my-work" element={<MyWork />} />
             <Route path="/review" element={<MemoReview />} />
@@ -150,9 +155,13 @@ export default function App() {
               path="/install/:projectId/opening/:openingId"
               element={<LegacyInstallOpeningRedirect />}
             />
+
+            {/* Unknown paths → home (keeps launcher tiles safe as modules land) */}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
       </BrowserRouter>
+      </PinGate>
     </PersistQueryClientProvider>
   );
 }

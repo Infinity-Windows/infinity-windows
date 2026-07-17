@@ -21,7 +21,28 @@ export interface Planset {
 
 export type OpeningStatus = "planned" | "assigned" | "installed";
 export type OpeningCondition = "unknown" | "ok" | "damaged";
-export type CrewRole = "installer" | "lead";
+export type CrewRole = "installer" | "lead" | "foreman" | "admin" | "big_boss";
+
+export const ROLE_LABELS: Record<CrewRole, string> = {
+  installer: "Installer",
+  lead: "Lead",
+  foreman: "Foreman",
+  admin: "Admin",
+  big_boss: "Big Boss",
+};
+
+/** Lead-level privileges: anyone above a plain installer. */
+export function isLeadLike(role?: CrewRole | string | null): boolean {
+  return !!role && role !== "installer";
+}
+/** Admin-level: manage accounts/approvals. */
+export function isAdmin(role?: CrewRole | string | null): boolean {
+  return role === "admin" || role === "big_boss";
+}
+/** Big Boss: costing / margin visibility. */
+export function isBigBoss(role?: CrewRole | string | null): boolean {
+  return role === "big_boss";
+}
 
 export interface Profile {
   id: string;
@@ -29,6 +50,7 @@ export interface Profile {
   skill_level: number;
   role: CrewRole;
   active: boolean;
+  pin?: string | null;
   created_at?: string;
   updated_at?: string;
 }

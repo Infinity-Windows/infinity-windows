@@ -5,7 +5,8 @@
 export interface DispatchCrew {
   id: string;
   skill_level: number;
-  role: "installer" | "lead";
+  /** "installer" = plain installer; anything else is lead-level. */
+  role: string;
   active: boolean;
   display_name?: string;
 }
@@ -83,7 +84,7 @@ function eligible(
   ctx?: DispatchContext,
 ): boolean {
   if (!crew.active) return false;
-  if (crew.role === "lead") return true;
+  if (crew.role !== "installer") return true; // any lead-level takes anything
   const perf = perfOf(ctx, crew.id, o.window_type_id);
   if (perf && perf.n > 0 && (perf.fail_rate ?? 0) < 0.5) return true;
   if (isCleared(ctx, crew.id, o.window_type_id)) return true;

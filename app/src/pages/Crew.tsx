@@ -1,7 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getMyProfile, listProfiles, updateProfile } from "../lib/install/api";
-import type { CrewRole, Profile } from "../lib/install/types";
+import { PinSetter } from "../components/PinGate";
+import {
+  isAdmin,
+  isLeadLike,
+  ROLE_LABELS,
+  type CrewRole,
+  type Profile,
+} from "../lib/install/types";
 
 const SKILL_LABELS: Record<number, string> = {
   1: "Apprentice",
@@ -10,6 +17,8 @@ const SKILL_LABELS: Record<number, string> = {
   4: "Senior",
   5: "Lead hand",
 };
+
+const ROLE_ORDER: CrewRole[] = ["installer", "foreman", "admin", "big_boss"];
 
 export function Crew() {
   const queryClient = useQueryClient();
@@ -25,7 +34,8 @@ export function Crew() {
     },
   });
 
-  const isLead = me.data?.role === "lead";
+  const isLead = isLeadLike(me.data?.role);
+  const canSetRoles = isAdmin(me.data?.role);
 
   return (
     <div className="page">
@@ -45,6 +55,8 @@ export function Crew() {
         </p>
       )}
 
+      <PinSetter />
+
       <ul className="unit-list">
         {(crew.data ?? []).map((p) => {
           const editable = isLead || p.id === me.data?.id;
@@ -63,7 +75,9 @@ export function Crew() {
                   }}
                 />
                 <span className="muted">
-                  {p.role === "lead" ? "Lead" : SKILL_LABELS[p.skill_level]}
+                  {p.role !== "installer"
+                    ? ROLE_LABELS[p.role as CrewRole] ?? p.role
+                    : SKILL_LABELS[p.skill_level]}
                   {!p.active ? " · off today" : ""}
                 </span>
               </div>
@@ -81,18 +95,23 @@ export function Crew() {
                       </button>
                     ))}
                   </div>
-                  <div className="row-gap">
-                    <button
-                      className={p.role === "lead" ? "button-like active-pill" : "button-like"}
-                      onClick={() =>
-                        patch.mutate({
-                          id: p.id,
-                          patch: { role: (p.role === "lead" ? "installer" : "lead") as CrewRole },
-                        })
-                      }
-                    >
-                      {p.role === "lead" ? "Lead ✓" : "Make lead"}
-                    </button>
+                  {canSetRoles && (
+                    <>
+                      <label className="field-label">Role</label>
+                      <div className="row-gap" style={{ flexWrap: "wrap" }}>
+                        {ROLE_ORDER.map((r) => (
+                          <button
+                            key={r}
+                            className={p.role === r ? "button-like active-pill" : "button-like"}
+                            onClick={() => patch.mutate({ id: p.id, patch: { role: r } })}
+                          >
+                            {ROLE_LABELS[r]}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  <div className="row-gap" style={{ marginTop: 8 }}>
                     <button
                       className={p.active ? "button-like" : "button-like active-pill"}
                       onClick={() => patch.mutate({ id: p.id, patch: { active: !p.active } })}

@@ -154,7 +154,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
       {activeCrew.map((c) => (
         <option key={c.id} value={c.id}>
           {c.display_name} (skill {c.skill_level}
-          {c.role === "lead" ? ", lead" : ""})
+          {c.role !== "installer" ? `, ${c.role}` : ""})
         </option>
       ))}
     </select>
@@ -266,7 +266,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
               {c.display_name}{" "}
               <span className="muted">
                 skill {c.skill_level}
-                {c.role === "lead" ? " · lead" : ""} · {list.length} assigned
+                {c.role !== "installer" ? ` · ${c.role}` : ""} · {list.length} assigned
               </span>
             </h2>
             <ul className="unit-list">

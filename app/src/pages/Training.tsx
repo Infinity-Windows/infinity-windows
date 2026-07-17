@@ -9,6 +9,7 @@ import {
   listProfiles,
   setClearance,
 } from "../lib/install/api";
+import { isLeadLike, ROLE_LABELS, type CrewRole } from "../lib/install/types";
 
 const CLEAR_MIN_INSTALLS = 2;
 const CLEAR_MIN_GRADE = 3.5;
@@ -24,7 +25,7 @@ export function Training() {
   });
   const clearances = useQuery({ queryKey: ["clearances"], queryFn: listClearances });
 
-  const isLead = me.data?.role === "lead";
+  const isLead = isLeadLike(me.data?.role);
   const [selected, setSelected] = useState<string>("");
   const installerId = isLead ? selected || me.data?.id || "" : me.data?.id || "";
 
@@ -84,7 +85,7 @@ export function Training() {
             {(crew.data ?? []).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.display_name} (skill {c.skill_level}
-                {c.role === "lead" ? ", lead" : ""})
+                {c.role !== "installer" ? `, ${ROLE_LABELS[c.role as CrewRole] ?? c.role}` : ""})
               </option>
             ))}
           </select>

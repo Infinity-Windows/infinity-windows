@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Outlet } from "react-router-dom";
 import { countMyOpenOpenings, getMyProfile } from "../lib/install/api";
+import { isLeadLike } from "../lib/install/types";
 import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
 
 const baseTabs = [
@@ -13,7 +14,7 @@ const baseTabs = [
 
 export function Layout() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const isLead = me.data?.role === "lead";
+  const isLead = isLeadLike(me.data?.role);
 
   // Keep the badge count live across devices when a lead (re)assigns work.
   useRealtimeMyOpenings(!isLead ? me.data?.id : undefined);

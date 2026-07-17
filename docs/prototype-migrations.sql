@@ -593,3 +593,25 @@ begin
   return v_note;
 end;
 $$;
+
+-- =============================================================================
+-- 10) Merge: expanded roles + access requests + PIN (see 20260717000000)
+-- =============================================================================
+
+alter table profiles drop constraint if exists profiles_role_check;
+alter table profiles add constraint profiles_role_check
+  check (role in ('installer','lead','foreman','admin','big_boss'));
+alter table profiles add column if not exists pin text;
+
+create table if not exists access_requests (
+  id uuid primary key default gen_random_uuid(),
+  name text not null, email text, phone text,
+  requested_role text not null default 'installer'
+    check (requested_role in ('installer','foreman','admin')),
+  note text,
+  status text not null default 'pending' check (status in ('pending','approved','denied')),
+  decided_by uuid references profiles(id) on delete set null,
+  decided_at timestamptz, created_at timestamptz not null default now()
+);
+alter table access_requests enable row level security;
+-- policies + set_profile_role/set_my_pin: see migration 20260717000000_roles_expand.sql

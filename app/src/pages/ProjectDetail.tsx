@@ -21,6 +21,7 @@ import {
 import { prefetchJobPack } from "../lib/queryClient";
 import { useRealtimeOpenings } from "../lib/useRealtimeOpenings";
 import { STATUS_LABELS, type Project, type WindowUnit } from "../lib/types";
+import { isLeadLike } from "../lib/install/types";
 import { ProjectMap } from "./install/ProjectMap";
 import { DispatchBoard } from "./install/DispatchBoard";
 
@@ -40,7 +41,7 @@ export function ProjectDetail() {
 
   useRealtimeOpenings(projectId);
   const myProfile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const isLead = myProfile.data?.role === "lead";
+  const isLead = isLeadLike(myProfile.data?.role);
 
   const TABS: { id: HubTab; label: string }[] = [
     { id: "overview", label: "Overview" },

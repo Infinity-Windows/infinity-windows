@@ -68,6 +68,59 @@ export async function listProfiles(): Promise<Profile[]> {
   return data as Profile[];
 }
 
+export interface AccessRequest {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  requested_role: string;
+  note: string | null;
+  status: "pending" | "approved" | "denied";
+  created_at: string;
+}
+
+export async function submitAccessRequest(payload: {
+  name: string;
+  email?: string;
+  phone?: string;
+  requested_role?: string;
+  note?: string;
+}): Promise<void> {
+  const { error } = await supabase.from("access_requests").insert({
+    name: payload.name,
+    email: payload.email ?? null,
+    phone: payload.phone ?? null,
+    requested_role: payload.requested_role ?? "installer",
+    note: payload.note ?? null,
+  });
+  if (error) throw error;
+}
+
+export async function listAccessRequests(): Promise<AccessRequest[]> {
+  const { data, error } = await supabase
+    .from("access_requests")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as AccessRequest[];
+}
+
+export async function decideAccessRequest(
+  id: string,
+  status: "approved" | "denied",
+): Promise<void> {
+  const { error } = await supabase
+    .from("access_requests")
+    .update({ status, decided_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function setMyPin(pin: string): Promise<void> {
+  const { error } = await supabase.rpc("set_my_pin", { p_pin: pin });
+  if (error) throw error;
+}
+
 export async function updateProfile(
   id: string,
   patch: Partial<Pick<Profile, "display_name" | "skill_level" | "role" | "active">>,
