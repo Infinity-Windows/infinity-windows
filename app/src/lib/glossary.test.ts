@@ -1,13 +1,46 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDeck,
+  CATS,
   dueDateFor,
   knowledgeScore,
   nextBox,
+  nextStepQuestion,
+  PROC,
+  procSequence,
   quizQuestion,
   TERMS,
   type CardProgress,
 } from "./glossary";
+
+describe("glossary content", () => {
+  it("has the full ported catalog", () => {
+    expect(CATS.length).toBe(8);
+    expect(TERMS.length).toBe(105);
+    expect(PROC.length).toBe(18);
+  });
+  it("has no dangling term links", () => {
+    const ids = new Set(TERMS.map((t) => t.id));
+    for (const t of TERMS) for (const l of t.links ?? []) expect(ids.has(l)).toBe(true);
+  });
+});
+
+describe("install-sequence game", () => {
+  it("orders window steps by step number", () => {
+    const seq = procSequence("win");
+    for (let i = 1; i < seq.length; i++) expect(seq[i].step).toBeGreaterThanOrEqual(seq[i - 1].step);
+    expect(seq.every((s) => s.branch === "main" || s.branch === "win")).toBe(true);
+  });
+  it("the correct answer is the step that actually follows", () => {
+    let seed = 0.42;
+    const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+    const q = nextStepQuestion("door", rnd);
+    const seq = procSequence("door");
+    const idx = seq.findIndex((s) => s.id === q.current.id);
+    expect(seq[idx + 1].id).toBe(q.answer.id);
+    expect(q.options).toContainEqual(q.answer);
+  });
+});
 
 describe("Leitner SRS", () => {
   it("resets to box 0 on 'again' and advances on 'got'", () => {

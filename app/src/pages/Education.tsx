@@ -7,8 +7,10 @@ import {
   buildDeck,
   CATS,
   knowledgeScore,
+  nextStepQuestion,
   quizQuestion,
   TERMS,
+  type ProcStep,
   type Term,
 } from "../lib/glossary";
 import {
@@ -19,7 +21,7 @@ import {
 } from "../lib/learn";
 import { awardPoints, POINT_RULES } from "../lib/points";
 
-type Tab = "daily" | "quiz" | "glossary";
+type Tab = "daily" | "quiz" | "sequence" | "glossary";
 
 export function Education() {
   const queryClient = useQueryClient();
@@ -50,9 +52,9 @@ export function Education() {
       </div>
 
       <nav className="hub-tabs">
-        {(["daily", "quiz", "glossary"] as Tab[]).map((t) => (
+        {(["daily", "quiz", "sequence", "glossary"] as Tab[]).map((t) => (
           <button key={t} className={tab === t ? "hub-tab active" : "hub-tab"} onClick={() => setTab(t)}>
-            {t === "daily" ? "Daily 5" : t === "quiz" ? "Quiz" : "Glossary"}
+            {t === "daily" ? "Daily 5" : t === "quiz" ? "Quiz" : t === "sequence" ? "Sequence" : "Glossary"}
           </button>
         ))}
       </nav>
@@ -66,6 +68,7 @@ export function Education() {
         />
       )}
       {tab === "quiz" && <Quiz profileId={me.data?.id} />}
+      {tab === "sequence" && <Sequence profileId={me.data?.id} />}
       {tab === "glossary" && (
         <Glossary
           lead={lead}
@@ -196,8 +199,114 @@ function Quiz({ profileId }: { profileId?: string }) {
   );
 }
 
+function Sequence({ profileId }: { profileId?: string }) {
+  const [branch, setBranch] = useState<"win" | "door">("win");
+  const [q, setQ] = useState(() => nextStepQuestion(branch));
+  const [n, setN] = useState(0);
+  const [score, setScore] = useState(0);
+  const [picked, setPicked] = useState<string | null>(null);
+  const [awarded, setAwarded] = useState(false);
+
+  const pickBranch = (b: "win" | "door") => {
+    setBranch(b);
+    setN(0); setScore(0); setPicked(null); setAwarded(false);
+    setQ(nextStepQuestion(b));
+  };
+  const answer = (id: string) => {
+    setPicked(id);
+    if (id === q.answer.id) setScore((s) => s + 1);
+  };
+  const next = () => {
+    setPicked(null);
+    setN((x) => x + 1);
+    setQ(nextStepQuestion(branch));
+  };
+
+  return (
+    <div>
+      <div className="grade-row">
+        <button className={branch === "win" ? "grade-btn selected" : "grade-btn"} onClick={() => pickBranch("win")}>Window</button>
+        <button className={branch === "door" ? "grade-btn selected" : "grade-btn"} onClick={() => pickBranch("door")}>Door</button>
+      </div>
+      {n >= 5 ? (
+        <div>
+          <p className="next-code">{score}/5</p>
+          {(() => {
+            if (!awarded && profileId && score > 0) {
+              setAwarded(true);
+              void awardPoints(profileId, [{ kind: "quiz", points: score * POINT_RULES.quizPerCorrect }], undefined, "confirmed").catch(() => {});
+            }
+            return <p className="ok">+{score * POINT_RULES.quizPerCorrect} points added.</p>;
+          })()}
+          <button className="primary big" onClick={() => { setN(0); setScore(0); setAwarded(false); next(); }}>Another round</button>
+        </div>
+      ) : (
+        <div>
+          <p className="muted">Step {n + 1} of 5 · what comes right after this?</p>
+          <div className="detail-card">
+            <p className="next-label">STEP {q.current.step}</p>
+            <strong>{q.current.label}</strong>
+            <p className="muted" style={{ margin: "4px 0 0" }}>{q.current.desc}</p>
+          </div>
+          <div className="action-list">
+            {q.options.map((o: ProcStep) => (
+              <button
+                key={o.id}
+                className="action-btn"
+                disabled={picked != null}
+                onClick={() => answer(o.id)}
+              >
+                {o.label}
+                {picked != null && o.id === q.answer.id ? " ✓" : ""}
+              </button>
+            ))}
+          </div>
+          {picked != null && <button className="primary big" onClick={next}>Next</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Glossary({ lead, onFlag }: { lead: boolean; onFlag: (id: string) => void }) {
   const [cat, setCat] = useState(CATS[0].id);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const byId = useMemo(() => new Map(TERMS.map((t) => [t.id, t])), []);
+  const focus = focusId ? byId.get(focusId) : null;
+
+  if (focus) {
+    return (
+      <div>
+        <button className="link" onClick={() => setFocusId(null)}>← Back to glossary</button>
+        <div className="detail-card">
+          <strong style={{ fontSize: 18 }}>{focus.term}</strong>
+          <p style={{ margin: "6px 0 0" }}>{focus.desc}</p>
+        </div>
+        {focus.links && focus.links.length > 0 && (
+          <>
+            <p className="field-label">Related</p>
+            <div className="row-gap" style={{ flexWrap: "wrap" }}>
+              {focus.links.map((l) => {
+                const lt = byId.get(l);
+                if (!lt) return null;
+                return (
+                  <button key={l} className="button-like" onClick={() => setFocusId(l)}>
+                    {lt.term}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+        {lead && (
+          <button className="link" style={{ marginTop: 12 }} onClick={() => onFlag(focus.id)}>
+            Push to crew decks (callback root cause)
+          </button>
+        )}
+      </div>
+    );
+  }
+
   const terms = TERMS.filter((t) => t.cat === cat);
   return (
     <div>
@@ -207,7 +316,9 @@ function Glossary({ lead, onFlag }: { lead: boolean; onFlag: (id: string) => voi
       <ul className="unit-list">
         {terms.map((t: Term) => (
           <li key={t.id}>
-            <strong>{t.term}</strong>
+            <button className="link" onClick={() => setFocusId(t.id)} style={{ padding: 0, font: "inherit" }}>
+              <strong>{t.term}</strong>
+            </button>
             <p className="muted" style={{ margin: "4px 0 0" }}>{t.desc}</p>
             {lead && (
               <button className="link" onClick={() => onFlag(t.id)}>
