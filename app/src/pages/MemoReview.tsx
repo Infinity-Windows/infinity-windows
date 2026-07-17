@@ -69,10 +69,13 @@ export function MemoReview() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Review AI memos</h1>
-        <Link to="/my-work" className="button-like">
-          My work
-        </Link>
+        <div>
+          <h1>Review AI memos</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            Confirm fields so the brain gets smarter.
+          </p>
+        </div>
+        <Link to="/my-work" className="back-chip" aria-label="My work">‹</Link>
       </header>
       <p className="muted">
         The AI split your voice memos into fields. A quick confirm makes the
