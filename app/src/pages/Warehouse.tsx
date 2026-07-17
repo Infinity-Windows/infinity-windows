@@ -19,6 +19,7 @@ const LINKS: WarehouseLink[] = [
   { to: "/receive", label: "Receive", desc: "Log arriving units", lead: true },
   { to: "/labels", label: "Slot labels", desc: "Print rack/slot QR labels", lead: true },
   { to: "/catalog", label: "Catalog", desc: "Import window types", lead: true },
+  { to: "/supplies", label: "Supplies", desc: "Track consumables & reorder", lead: true },
 ];
 
 export function Warehouse() {

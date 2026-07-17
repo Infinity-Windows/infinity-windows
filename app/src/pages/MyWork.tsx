@@ -9,7 +9,7 @@ import {
 import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
 import { orderMyWork, type DispatchOpening } from "../lib/dispatch";
 import { openingReadiness } from "../lib/install/fit";
-import type { ProjectOpening } from "../lib/install/types";
+import { isForemanPlus, type ProjectOpening } from "../lib/install/types";
 
 function areaKey(o: ProjectOpening): string {
   return o.label?.trim() || `page ${o.page_number}`;
@@ -118,9 +118,11 @@ export function MyWork() {
           <p className="home-greeting">Your day</p>
           <h1>My work</h1>
         </div>
-        <Link to="/training" className="button-like">
-          Training
-        </Link>
+        {isForemanPlus(me.data?.role) && (
+          <Link to="/training" className="button-like">
+            Training
+          </Link>
+        )}
       </header>
       <p className="muted">
         {me.data?.display_name ? `${me.data.display_name} — ` : ""}do the top
