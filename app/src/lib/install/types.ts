@@ -130,6 +130,9 @@ export interface InstallEvent extends MemoTopics {
   quality_grade: number | null;
   transcript_raw: string | null;
   created_at: string;
+  voided_at: string | null;
+  void_reason: string | null;
+  voided_by: string | null;
 }
 
 export const MEMO_TOPICS: { key: keyof MemoTopics; prompt: string }[] = [

@@ -4,17 +4,24 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { listProjects } from "../../lib/api";
 import {
   downloadPlanset,
+  getMyProfile,
   listOpenings,
   listPlansets,
+  listVoidedInstallOpeningIds,
+  undoInstall,
   updateOpening,
 } from "../../lib/install/api";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import {
+  isForemanPlus,
   OPENING_KIND_COLORS,
   OPENING_STATUS_COLORS,
   openingMarkLabel,
   type ProjectOpening,
 } from "../../lib/install/types";
+
+/** Distinct ring for an opening whose install was undone (history preserved). */
+const VOIDED_RING_COLOR = "#ef4444";
 
 interface PageImage {
   dataUrl: string;
@@ -75,6 +82,33 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     queryKey: ["plansets", projectId],
     queryFn: () => listPlansets(projectId),
   });
+  const voided = useQuery({
+    queryKey: ["voidedOpenings", projectId],
+    queryFn: () => listVoidedInstallOpeningIds(projectId),
+  });
+  const myProfile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const isLead = isForemanPlus(myProfile.data?.role);
+  const voidedIds = voided.data ?? new Set<string>();
+
+  const undo = useMutation({
+    mutationFn: (args: { openingId: string; reason: string | null }) =>
+      undoInstall(args.openingId, args.reason ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["voidedOpenings", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["projectExceptions", projectId] });
+    },
+    onError: (e) => setMapError(String(e)),
+  });
+
+  const handleUndo = (o: ProjectOpening) => {
+    const reason = window.prompt(
+      `Undo the install on ${o.opening_code}? The install record is kept for review.\n\nReason (optional):`,
+    );
+    if (reason === null) return; // cancelled
+    undo.mutate({ openingId: o.id, reason: reason.trim() || null });
+  };
 
   const pdfPlanset = (plansets.data ?? []).find(
     (ps) =>
@@ -237,17 +271,22 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             <img src={image.dataUrl} alt={`Plan page ${page}`} />
             {onThisPage.map((o) => {
               const kind = unitKind(o);
+              const isVoided = o.status !== "installed" && voidedIds.has(o.id);
               return (
               <button
                 key={o.id}
-                className={`map-pin map-pin--${kind}`}
+                className={`map-pin map-pin--${kind}${isVoided ? " map-pin--voided" : ""}`}
                 style={{
                   left: `${(o.pin_x ?? 0) * 100}%`,
                   top: `${(o.pin_y ?? 0) * 100}%`,
                   background: OPENING_KIND_COLORS[kind],
-                  boxShadow: `0 0 0 2px ${OPENING_STATUS_COLORS[o.status]}`,
+                  boxShadow: isVoided
+                    ? `0 0 0 3px ${VOIDED_RING_COLOR}`
+                    : `0 0 0 2px ${OPENING_STATUS_COLORS[o.status]}`,
                 }}
-                title={pinTitle(o)}
+                title={
+                  isVoided ? `${pinTitle(o)} — install undone, needs re-do` : pinTitle(o)
+                }
                 onClick={(e) => {
                   e.stopPropagation();
                   if (placingId) {
@@ -264,6 +303,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                   openOpening(o.id);
                 }}
               >
+                {isVoided ? "! " : ""}
                 {openingMarkLabel(o.opening_code)}
               </button>
               );
@@ -312,6 +352,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         <span>
           <i style={{ background: OPENING_STATUS_COLORS.installed }} /> installed
         </span>
+        <span>
+          <i style={{ background: VOIDED_RING_COLOR }} /> install undone
+        </span>
       </div>
 
       {unplaced.length > 0 && (
@@ -346,7 +389,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         ({filtered.length})
       </h2>
       <ul className="unit-list work-list">
-        {filtered.map((o) => (
+        {filtered.map((o) => {
+          const isVoided = o.status !== "installed" && voidedIds.has(o.id);
+          return (
           <li key={o.id} className="find-row">
             <span
               className="unit-dot"
@@ -361,12 +406,33 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             </span>
             <span
               className="big-address"
-              style={{ color: OPENING_STATUS_COLORS[o.status] }}
+              style={{ color: isVoided ? VOIDED_RING_COLOR : OPENING_STATUS_COLORS[o.status] }}
             >
-              {o.status}
+              {isVoided ? "redo needed" : o.status}
             </span>
+            {o.status === "installed" ? (
+              isLead && (
+                <button
+                  className="link"
+                  style={{ marginLeft: 8 }}
+                  disabled={undo.isPending}
+                  onClick={() => handleUndo(o)}
+                >
+                  Undo install
+                </button>
+              )
+            ) : (
+              <Link
+                to={`/projects/${projectId}/opening/${o.id}`}
+                className="link"
+                style={{ marginLeft: 8 }}
+              >
+                {o.status === "planned" ? "Claim" : "Open"}
+              </Link>
+            )}
           </li>
-        ))}
+          );
+        })}
         {filtered.length === 0 && all.length > 0 && (
           <p className="muted">No openings match this filter.</p>
         )}

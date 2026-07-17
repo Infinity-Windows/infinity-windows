@@ -943,6 +943,111 @@ export async function submitInstallEvent(
   return data as InstallEvent;
 }
 
+/**
+ * Undo/reclaim an install (foreman+). Voids the install event (keeps history),
+ * reverts the opening to assigned/planned, returns the unit to the truck, and
+ * voids any points. Server-side guard blocks plain installers.
+ */
+export async function undoInstall(
+  openingId: string,
+  reason?: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("undo_install", {
+    p_opening_id: openingId,
+    p_reason: reason ?? null,
+  });
+  if (error) throw error;
+}
+
+export interface FailedInstall {
+  event_id: string;
+  opening_id: string;
+  opening_code: string;
+  installer: string | null;
+  voided_at: string;
+  void_reason: string | null;
+  voided_by_name: string | null;
+  created_at: string;
+}
+
+export interface ProjectExceptions {
+  /** Installs that were undone/reverted — data preserved for review. */
+  failedInstalls: FailedInstall[];
+  /** Openings a crew member flagged for the lead, or that arrived damaged. */
+  flaggedOpenings: ProjectOpening[];
+}
+
+/** Opening ids on a project that carry a voided (failed/undone) install event. */
+export async function listVoidedInstallOpeningIds(
+  projectId: string,
+): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from("install_events")
+    .select("project_opening_id, project_openings:project_opening_id!inner(project_id)")
+    .not("voided_at", "is", null)
+    .eq("project_openings.project_id", projectId);
+  if (error) throw error;
+  const rows = (data ?? []) as unknown as { project_opening_id: string }[];
+  return new Set(rows.map((r) => r.project_opening_id));
+}
+
+/**
+ * Exceptions view for foreman+: failed/undone installs (preserved), flagged
+ * openings, and damaged-condition openings on this job.
+ */
+export async function listProjectExceptions(
+  projectId: string,
+): Promise<ProjectExceptions> {
+  const [flaggedRes, voidedRes] = await Promise.all([
+    supabase
+      .from("project_openings")
+      .select(OPENING_SELECT)
+      .eq("project_id", projectId)
+      .or("flag_note.not.is.null,condition.eq.damaged")
+      .order("opening_code"),
+    supabase
+      .from("install_events")
+      .select(
+        "id, installer, voided_at, void_reason, created_at, project_opening_id, " +
+          "project_openings:project_opening_id!inner(opening_code, project_id), " +
+          "voided_by_profile:voided_by(display_name)",
+      )
+      .not("voided_at", "is", null)
+      .eq("project_openings.project_id", projectId)
+      .order("voided_at", { ascending: false }),
+  ]);
+  if (flaggedRes.error) throw flaggedRes.error;
+  if (voidedRes.error) throw voidedRes.error;
+
+  type VoidedRow = {
+    id: string;
+    installer: string | null;
+    voided_at: string;
+    void_reason: string | null;
+    created_at: string;
+    project_opening_id: string;
+    project_openings: { opening_code: string } | null;
+    voided_by_profile: { display_name: string } | null;
+  };
+  const voidedRows = (voidedRes.data ?? []) as unknown as VoidedRow[];
+
+  const failedInstalls: FailedInstall[] = voidedRows.map((e) => ({
+    event_id: e.id,
+    opening_id: e.project_opening_id,
+    opening_code: e.project_openings?.opening_code ?? "?",
+    installer: e.installer ?? null,
+    voided_at: e.voided_at,
+    void_reason: e.void_reason ?? null,
+    voided_by_name: e.voided_by_profile?.display_name ?? null,
+    created_at: e.created_at,
+  }));
+
+  return {
+    failedInstalls,
+    flaggedOpenings: (flaggedRes.data ?? []) as ProjectOpening[],
+  };
+}
+
 // --- Type brain ---
 
 export interface TypeBrainStats {
