@@ -27,6 +27,18 @@ describe("qr payloads", () => {
     expect(parseQr("S-03-B")).toEqual({ kind: "location", address: "S-03-B" });
   });
 
+  it("recognizes hand-writable short codes, case-insensitive", () => {
+    expect(parseQr("K7M2QX")).toEqual({ kind: "windowCode", code: "K7M2QX" });
+    expect(parseQr("k7m2qx")).toEqual({ kind: "windowCode", code: "K7M2QX" });
+  });
+
+  it("does not treat serials as short codes", () => {
+    expect(parseQr("W-CAS3050-0042")).toEqual({
+      kind: "window",
+      windowId: "W-CAS3050-0042",
+    });
+  });
+
   it("rejects garbage", () => {
     expect(parseQr("hello world")).toBeNull();
     expect(parseQr("")).toBeNull();

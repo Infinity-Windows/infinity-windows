@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { BeforeAfterCapture, type BeforeAfterValue } from "../../components/BeforeAfterCapture";
 import { Scanner } from "../../components/Scanner";
-import { getWindowByWindowId, searchUnits } from "../../lib/api";
+import { findWindowByCode, getWindowByWindowId, searchUnits } from "../../lib/api";
 import {
   addJobNote,
   assignWindowToOpening,
@@ -58,6 +58,7 @@ export function OpeningSheet() {
 
   const [scanOpen, setScanOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [codeInput, setCodeInput] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
   const [recording, setRecording] = useState(false);
@@ -169,6 +170,19 @@ export function OpeningSheet() {
     try {
       const unit = await getWindowByWindowId(windowId);
       if (!unit) throw new Error(`Unknown window ${windowId}`);
+      assign.mutate(unit.id);
+    } catch (e) {
+      setMessage(String(e));
+    }
+  };
+
+  // Resolve the hand-writable short code (or serial) then assign that unit.
+  const assignByCode = async (raw: string) => {
+    const value = raw.trim();
+    if (!value) return;
+    try {
+      const unit = await findWindowByCode(value);
+      if (!unit) throw new Error(`No window found for "${value}"`);
       assign.mutate(unit.id);
     } catch (e) {
       setMessage(String(e));
@@ -576,16 +590,42 @@ export function OpeningSheet() {
           </button>
           {scanOpen && (
             <Scanner
-              hint="Scan the window's license-plate QR."
+              hint="Scan the window's QR — or type its short code below."
               onScan={(payload) => {
                 if (payload.kind === "window") {
                   void assignByWindowId(payload.windowId);
+                } else if (payload.kind === "windowCode") {
+                  void assignByCode(payload.code);
                 } else {
                   setMessage("That's a slot label — scan a window label.");
                 }
               }}
             />
           )}
+          <label className="field-label">Type the window code</label>
+          <div className="manual-entry">
+            <input
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value)}
+              placeholder="6-char code or serial, e.g. K7M2QX"
+              autoCapitalize="characters"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  void assignByCode(codeInput);
+                  setCodeInput("");
+                }
+              }}
+            />
+            <button
+              disabled={!codeInput.trim() || assign.isPending}
+              onClick={() => {
+                void assignByCode(codeInput);
+                setCodeInput("");
+              }}
+            >
+              Assign
+            </button>
+          </div>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
