@@ -1,15 +1,21 @@
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { persister, queryClient, shouldPersistQuery } from "./lib/queryClient";
 import {
   BrowserRouter,
+  Link,
   Navigate,
   Route,
   Routes,
   useParams,
 } from "react-router-dom";
 import { Layout } from "./components/Layout";
+import { getMyProfile } from "./lib/install/api";
+import { canAccess, roleRank, ROLE_NAV_V2, type RoutePath } from "./lib/nav";
+import { ViewAsRoleProvider } from "./lib/viewAsRole";
+import { effectiveRole, useViewAsRole } from "./lib/viewAsRoleContext";
 import { supabase } from "./lib/supabase";
 import { AskInfinity } from "./pages/AskInfinity";
 import { CycleCount } from "./pages/CycleCount";
@@ -51,9 +57,44 @@ import { PinGate } from "./components/PinGate";
 import { ensureMyProfile } from "./lib/install/api";
 import "./index.css";
 
-/** Everyone lands on the Infinity day Home; installers still have My work in the tab bar. */
+/** Installers land on My Work; managers (foreman+) land on the Infinity day Home. */
 function RoleLanding() {
-  return <Home />;
+  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const view = useViewAsRole();
+  if (!ROLE_NAV_V2) return <Home />;
+  if (me.isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
+  const role = effectiveRole(me.data?.role, view);
+  return roleRank(role) === 0 ? <MyWork /> : <Home />;
+}
+
+/**
+ * Route-level access guard. minRole comes from the same NAV registry (via the
+ * route path), so nav visibility and route access can never drift. Uses the
+ * effective (possibly previewed) role for presentation; server mutations still
+ * run as the real user.
+ */
+function RequireRole({ path, children }: { path: RoutePath; children: ReactNode }) {
+  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const view = useViewAsRole();
+  if (!ROLE_NAV_V2) return <>{children}</>;
+  if (me.isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
+  const role = effectiveRole(me.data?.role, view);
+  if (canAccess(role, path)) return <>{children}</>;
+  return (
+    <div className="page">
+      <header className="page-header">
+        <div>
+          <p className="home-greeting">Restricted</p>
+          <h1>Not available for your role</h1>
+        </div>
+      </header>
+      <p className="muted">
+        This area is for a different role. If you think you need access, ask your
+        supervisor.
+      </p>
+      <Link to="/" className="button-like">Back to home</Link>
+    </div>
+  );
 }
 
 /** Legacy /install/:projectId/* bookmarks → unified /projects/:id hub. */
@@ -121,6 +162,7 @@ export default function App() {
       }}
     >
       <PinGate>
+      <ViewAsRoleProvider>
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
@@ -128,9 +170,15 @@ export default function App() {
             <Route path="/warehouse" element={<Warehouse />} />
             <Route path="/ask" element={<AskInfinity />} />
             <Route path="/notifications" element={<Notifications />} />
-            <Route path="/team" element={<Team />} />
+            <Route
+              path="/team"
+              element={<RequireRole path="/team"><Team /></RequireRole>}
+            />
             <Route path="/scan" element={<Scan />} />
-            <Route path="/receive" element={<Receive />} />
+            <Route
+              path="/receive"
+              element={<RequireRole path="/receive"><Receive /></RequireRole>}
+            />
             <Route path="/search" element={<Search />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/projects/:projectId" element={<ProjectDetail />} />
@@ -151,24 +199,51 @@ export default function App() {
               element={<OpeningSheet />}
             />
             <Route path="/brain/:typeId" element={<TypeBrainCard />} />
-            <Route path="/catalog" element={<CatalogImport />} />
-            <Route path="/crew" element={<Crew />} />
-            <Route path="/admin" element={<Admin />} />
-            <Route path="/analytics" element={<Analytics />} />
+            <Route
+              path="/catalog"
+              element={<RequireRole path="/catalog"><CatalogImport /></RequireRole>}
+            />
+            <Route
+              path="/crew"
+              element={<RequireRole path="/crew"><Crew /></RequireRole>}
+            />
+            <Route
+              path="/admin"
+              element={<RequireRole path="/admin"><Admin /></RequireRole>}
+            />
+            <Route
+              path="/analytics"
+              element={<RequireRole path="/analytics"><Analytics /></RequireRole>}
+            />
             <Route path="/my-work" element={<MyWork />} />
             <Route path="/review" element={<MemoReview />} />
-            <Route path="/training" element={<Training />} />
+            <Route
+              path="/training"
+              element={<RequireRole path="/training"><Training /></RequireRole>}
+            />
             <Route path="/clock" element={<TimeClock />} />
-            <Route path="/costing" element={<Costing />} />
+            <Route
+              path="/costing"
+              element={<RequireRole path="/costing"><Costing /></RequireRole>}
+            />
             <Route path="/learn" element={<Education />} />
             <Route path="/points" element={<Points />} />
             <Route path="/safety" element={<Safety />} />
             <Route path="/tools" element={<Tools />} />
-            <Route path="/supplies" element={<Supplies />} />
-            <Route path="/qc" element={<Qc />} />
+            <Route
+              path="/supplies"
+              element={<RequireRole path="/supplies"><Supplies /></RequireRole>}
+            />
+            <Route
+              path="/qc"
+              element={<RequireRole path="/qc"><Qc /></RequireRole>}
+            />
             <Route path="/w/:windowId" element={<WindowDetail />} />
             <Route path="/loc/:address" element={<LocationDetail />} />
-            <Route path="/labels" element={<Labels />} />
+            <Route
+              path="/labels"
+              element={<RequireRole path="/labels"><Labels /></RequireRole>}
+            />
             <Route path="/count" element={<CycleCount />} />
 
             {/* Legacy install routes → unified hub */}
@@ -199,6 +274,7 @@ export default function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+      </ViewAsRoleProvider>
       </PinGate>
     </PersistQueryClientProvider>
   );

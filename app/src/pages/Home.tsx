@@ -5,7 +5,9 @@ import { listProjects } from "../lib/api";
 import { orderMyWork, type DispatchOpening } from "../lib/dispatch";
 import { openingReadiness } from "../lib/install/fit";
 import { getMyProfile, listMyOpeningsAllJobs, listMemosToConfirm } from "../lib/install/api";
-import { isForemanPlus, ROLE_LABELS, type CrewRole, type ProjectOpening } from "../lib/install/types";
+import { isOwner, ROLE_LABELS, type CrewRole, type ProjectOpening } from "../lib/install/types";
+import { roleRank } from "../lib/nav";
+import { effectiveRole, useViewAsRole } from "../lib/viewAsRoleContext";
 import { TERMS } from "../lib/glossary";
 import { listMyProgress } from "../lib/learn";
 import { listLedger } from "../lib/points";
@@ -61,8 +63,10 @@ function toDispatch(o: ProjectOpening): DispatchOpening {
 
 export function Home() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const role = me.data?.role;
-  const lead = isForemanPlus(role);
+  const view = useViewAsRole();
+  const role = effectiveRole(me.data?.role, view);
+  const boss = isOwner(role);
+  const manager = roleRank(role) >= 1;
   const profileId = me.data?.id;
 
   const openShift = useQuery({
@@ -193,6 +197,76 @@ export function Home() {
         </div>
       </header>
 
+      {manager && (
+        <>
+          <div className="home-section-head">
+            <h2 style={{ margin: 0 }}>Active projects</h2>
+            <Link to="/projects" className="muted home-seeall">
+              All jobs ›
+            </Link>
+          </div>
+          <div className="home-projects">
+            {projectCards.map((p) => (
+              <Link key={p.id} to={`/projects/${p.id}/map`} className="project-card home-project">
+                <div className="home-project-head">
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 16 }}>{p.name}</div>
+                    <div className="muted" style={{ fontSize: 12 }}>{p.sub}</div>
+                  </div>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-display)",
+                      fontWeight: 700,
+                      fontSize: 15,
+                      color: p.pctColor,
+                      flex: "none",
+                    }}
+                  >
+                    {p.pctLabel}
+                  </span>
+                </div>
+                <div className="points-tier-bar" aria-hidden>
+                  <div
+                    className="points-tier-fill"
+                    style={{ width: `${p.pct}%`, background: p.pctColor }}
+                  />
+                </div>
+                <div className="home-project-meta">
+                  <span>
+                    <i className="dot-info" /> {p.winLabel}
+                  </span>
+                  <span>
+                    <i className="dot-ok" /> {p.doneLabel}
+                  </span>
+                </div>
+              </Link>
+            ))}
+            {projectCards.length === 0 && <p className="muted">No active jobs yet.</p>}
+          </div>
+
+          <div className="warehouse-grid">
+            <Link to="/team" className="warehouse-tile">
+              <strong>Team</strong>
+              <span className="muted">Crew, timecards, quality</span>
+            </Link>
+            <Link to="/warehouse" className="warehouse-tile">
+              <strong>Warehouse</strong>
+              <span className="muted">Inventory & receiving</span>
+            </Link>
+            <Link to="/analytics" className="warehouse-tile">
+              <strong>Analytics</strong>
+              <span className="muted">Bids & estimate variance</span>
+            </Link>
+            {boss && (
+              <Link to="/costing" className="warehouse-tile">
+                <strong>Job costing</strong>
+                <span className="muted">Margin, costs, change orders</span>
+              </Link>
+            )}
+          </div>
+        </>
+      )}
+
       {!openShift.data && (
         <Link to="/clock" className="home-card">
           <div className="home-card-top">
@@ -278,52 +352,51 @@ export function Home() {
         </div>
       </div>
 
-      <div className="home-section-head">
-        <h2 style={{ margin: 0 }}>Active projects</h2>
-        {lead && (
-          <Link to="/warehouse" className="muted home-seeall">
-            Warehouse ›
-          </Link>
-        )}
-      </div>
-      <div className="home-projects">
-        {projectCards.map((p) => (
-          <Link key={p.id} to={`/projects/${p.id}/map`} className="project-card home-project">
-            <div className="home-project-head">
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: 16 }}>{p.name}</div>
-                <div className="muted" style={{ fontSize: 12 }}>{p.sub}</div>
-              </div>
-              <span
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontWeight: 700,
-                  fontSize: 15,
-                  color: p.pctColor,
-                  flex: "none",
-                }}
-              >
-                {p.pctLabel}
-              </span>
-            </div>
-            <div className="points-tier-bar" aria-hidden>
-              <div
-                className="points-tier-fill"
-                style={{ width: `${p.pct}%`, background: p.pctColor }}
-              />
-            </div>
-            <div className="home-project-meta">
-              <span>
-                <i className="dot-info" /> {p.winLabel}
-              </span>
-              <span>
-                <i className="dot-ok" /> {p.doneLabel}
-              </span>
-            </div>
-          </Link>
-        ))}
-        {projectCards.length === 0 && <p className="muted">No active jobs yet.</p>}
-      </div>
+      {!manager && (
+        <>
+          <div className="home-section-head">
+            <h2 style={{ margin: 0 }}>Active projects</h2>
+          </div>
+          <div className="home-projects">
+            {projectCards.map((p) => (
+              <Link key={p.id} to={`/projects/${p.id}/map`} className="project-card home-project">
+                <div className="home-project-head">
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 16 }}>{p.name}</div>
+                    <div className="muted" style={{ fontSize: 12 }}>{p.sub}</div>
+                  </div>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-display)",
+                      fontWeight: 700,
+                      fontSize: 15,
+                      color: p.pctColor,
+                      flex: "none",
+                    }}
+                  >
+                    {p.pctLabel}
+                  </span>
+                </div>
+                <div className="points-tier-bar" aria-hidden>
+                  <div
+                    className="points-tier-fill"
+                    style={{ width: `${p.pct}%`, background: p.pctColor }}
+                  />
+                </div>
+                <div className="home-project-meta">
+                  <span>
+                    <i className="dot-info" /> {p.winLabel}
+                  </span>
+                  <span>
+                    <i className="dot-ok" /> {p.doneLabel}
+                  </span>
+                </div>
+              </Link>
+            ))}
+            {projectCards.length === 0 && <p className="muted">No active jobs yet.</p>}
+          </div>
+        </>
+      )}
     </div>
   );
 }
