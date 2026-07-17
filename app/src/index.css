@@ -543,10 +543,10 @@ button:disabled {
 
 .plan-map {
   position: relative;
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
   overflow: hidden;
-  background: #fff;
+  background: var(--surface);
 }
 
 .plan-map img {
@@ -565,7 +565,8 @@ button:disabled {
   padding: 0 6px;
   border-radius: 15px;
   border: 2px solid rgba(0, 0, 0, 0.55);
-  color: #0b0f18;
+  color: #fff;
+  font-family: var(--font-display);
   font-size: 12px;
   font-weight: 700;
   line-height: 1;
@@ -925,6 +926,14 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  background: var(--card-raised);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.crew-row.live {
+  border-color: rgba(62, 207, 110, 0.3);
 }
 
 .crew-main {
@@ -940,10 +949,18 @@ button:disabled {
   min-width: 140px;
   margin-bottom: 0;
   font-weight: 700;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 6px 8px;
+}
+
+.crew-name:focus {
+  border-color: rgba(255, 106, 26, 0.55);
+  background: var(--surface);
 }
 
 .crew-controls {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding-top: 8px;
 }
 
@@ -957,6 +974,10 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 10px;
+  background: var(--card-raised);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 13px;
+  padding: 11px 13px;
 }
 
 .dispatch-row select {
@@ -968,7 +989,8 @@ button:disabled {
 }
 
 .dispatch-row.blocker {
-  border-color: var(--danger);
+  border-color: rgba(255, 90, 72, 0.45);
+  background: rgba(255, 90, 72, 0.06);
 }
 
 .blocker-head {
@@ -1059,10 +1081,10 @@ button:disabled {
 /* --- Estimate / forecast --- */
 
 .estimate-card {
-  background: var(--card);
-  border: 1px solid var(--accent);
-  border-radius: 12px;
-  padding: 14px;
+  background: linear-gradient(135deg, var(--accent-bg), var(--card-raised));
+  border: 1px solid rgba(255, 106, 26, 0.45);
+  border-radius: 18px;
+  padding: 16px;
   margin-bottom: 14px;
 }
 
@@ -1074,6 +1096,11 @@ button:disabled {
 
 .estimate-head .field-label {
   margin: 0;
+  font-family: var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .estimate-row {
@@ -1086,8 +1113,10 @@ button:disabled {
 }
 
 .estimate-row strong {
+  font-family: var(--font-display);
   color: var(--text);
-  font-size: 18px;
+  font-size: 22px;
+  font-weight: 700;
 }
 
 /* --- Analytics --- */
@@ -1097,26 +1126,42 @@ button:disabled {
   border-collapse: collapse;
   font-size: 14px;
   margin: 8px 0 16px;
+  background: var(--card-raised);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  overflow: hidden;
 }
 
 .analytics-table th,
 .analytics-table td {
   text-align: left;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .analytics-table th {
+  font-family: var(--font-display);
   color: var(--muted);
-  font-weight: 600;
-  font-size: 12px;
+  font-weight: 700;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.1em;
+  background: var(--surface);
 }
 
 .analytics-table td.num {
   text-align: right;
+  font-family: var(--font-display);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+.analytics-table tr:last-child td {
+  border-bottom: none;
+}
+
+.analytics-table tbody tr:hover td {
+  background: rgba(255, 106, 26, 0.06);
 }
 
 /* --- How-to + knowledge edit --- */
@@ -1752,5 +1797,146 @@ button.clock-out {
 .ready-banner strong {
   font-family: var(--font-display);
   letter-spacing: 0.08em;
+}
+
+/* --- Infinity lead-path polish --- */
+
+.plan-sheet {
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 10px;
+  margin-bottom: 12px;
+}
+
+.plan-sheet .plan-map {
+  border: none;
+  border-radius: 10px;
+  margin: 0;
+}
+
+.page-switch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.page-switch button {
+  min-width: 44px;
+  border-radius: 11px;
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+.qc-pass {
+  background: rgba(62, 207, 110, 0.15) !important;
+  border: 1px solid rgba(62, 207, 110, 0.5) !important;
+  color: var(--ok) !important;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.qc-callback {
+  background: rgba(255, 90, 72, 0.12) !important;
+  border: 1px solid rgba(255, 90, 72, 0.45) !important;
+  color: var(--danger) !important;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.cost-hero {
+  background: linear-gradient(135deg, var(--accent-bg), var(--card-raised));
+  border: 1px solid rgba(255, 106, 26, 0.45);
+  border-radius: 18px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.cost-hero-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cost-margin {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 32px;
+  line-height: 1;
+}
+
+.cost-kv {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.cost-kv strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.job-chip-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.job-chip {
+  padding: 10px 13px;
+  border-radius: 12px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  background: var(--card-raised);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.job-chip.active {
+  background: rgba(255, 106, 26, 0.14);
+  border-color: rgba(255, 106, 26, 0.55);
+  color: var(--accent);
+}
+
+.bid-calc {
+  background: linear-gradient(160deg, var(--card-hot), var(--card-raised));
+  border: 1.5px solid rgba(255, 106, 26, 0.45);
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.bid-calc .next-code {
+  color: var(--accent);
+  font-size: 36px;
+  margin: 8px 0;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  margin-bottom: 16px;
+  border-radius: 14px;
+}
+
+.site-note-card {
+  background: var(--card-raised);
+  border: 1px solid rgba(255, 178, 32, 0.35);
+  border-radius: 12px;
+  padding: 11px 13px;
 }
 
