@@ -11,9 +11,12 @@ import {
 } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { supabase } from "./lib/supabase";
+import { AskInfinity } from "./pages/AskInfinity";
 import { CycleCount } from "./pages/CycleCount";
 import { Home } from "./pages/Home";
 import { Labels } from "./pages/Labels";
+import { Landing } from "./pages/Landing";
+import { Warehouse } from "./pages/Warehouse";
 import { LocationDetail } from "./pages/LocationDetail";
 import { ProjectDetail } from "./pages/ProjectDetail";
 import { Projects } from "./pages/Projects";
@@ -67,6 +70,8 @@ function LegacyInstallOpeningRedirect() {
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
+  const [entered, setEntered] = useState(false);
+  const [signInMode, setSignInMode] = useState<"signin" | "request">("signin");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -82,7 +87,23 @@ export default function App() {
   }, []);
 
   if (!ready) return null;
-  if (!session) return <SignIn />;
+  if (!session) {
+    if (!entered) {
+      return (
+        <Landing
+          onSignIn={() => {
+            setSignInMode("signin");
+            setEntered(true);
+          }}
+          onRequest={() => {
+            setSignInMode("request");
+            setEntered(true);
+          }}
+        />
+      );
+    }
+    return <SignIn initialMode={signInMode} />;
+  }
 
   return (
     <PersistQueryClientProvider
@@ -100,6 +121,8 @@ export default function App() {
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<RoleLanding />} />
+            <Route path="/warehouse" element={<Warehouse />} />
+            <Route path="/ask" element={<AskInfinity />} />
             <Route path="/scan" element={<Scan />} />
             <Route path="/receive" element={<Receive />} />
             <Route path="/search" element={<Search />} />

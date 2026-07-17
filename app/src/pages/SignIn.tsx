@@ -2,8 +2,12 @@ import { useState } from "react";
 import { supabase, supabaseConfigured } from "../lib/supabase";
 import { submitAccessRequest } from "../lib/install/api";
 
-export function SignIn() {
-  const [mode, setMode] = useState<"signin" | "request">("signin");
+export function SignIn({
+  initialMode = "signin",
+}: {
+  initialMode?: "signin" | "request";
+}) {
+  const [mode, setMode] = useState<"signin" | "request">(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);

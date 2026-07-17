@@ -2229,3 +2229,354 @@ button.clock-out {
   padding: 10px 12px;
 }
 
+/* --- Infinity IA shell: responsive left rail + phone bottom bar --- */
+
+.app-frame {
+  display: flex;
+  min-height: 100dvh;
+}
+
+.app-rail {
+  display: none;
+}
+
+.rail-brand {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  color: var(--accent);
+  text-align: center;
+  padding: 14px 0 10px;
+  text-decoration: none;
+}
+
+.rail-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  padding-bottom: 24px;
+}
+
+.rail-tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 11px 4px;
+  text-decoration: none;
+  color: #7a736a;
+}
+
+.rail-tab .rail-bar {
+  width: 3px;
+  height: 18px;
+  border-radius: 2px;
+  background: transparent;
+}
+
+.rail-tab .rail-label {
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.rail-tab.active {
+  color: var(--accent);
+  background: rgba(255, 106, 26, 0.1);
+}
+
+.rail-tab.active .rail-bar {
+  background: var(--accent);
+}
+
+.rail-badge {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+/* --- Ask Infinity FAB --- */
+
+.ask-fab {
+  position: fixed;
+  right: 16px;
+  bottom: calc(78px + env(safe-area-inset-bottom));
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
+  z-index: 60;
+}
+
+.ask-fab-diamond {
+  width: 18px;
+  height: 18px;
+  background: var(--ink);
+  transform: rotate(45deg);
+  border-radius: 3px;
+}
+
+/* --- Phone More sheet --- */
+
+.more-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 70;
+  display: flex;
+  align-items: flex-end;
+}
+
+.more-sheet {
+  width: 100%;
+  background: var(--surface);
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  padding: 10px 16px calc(20px + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.more-sheet-grip {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--faint);
+  margin: 4px auto 14px;
+}
+
+.more-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.more-sheet-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 8px;
+  border-radius: 13px;
+  background: var(--card-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-decoration: none;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.more-sheet-icon {
+  font-size: 20px;
+}
+
+/* --- Landing splash --- */
+
+.landing {
+  max-width: 400px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 96px 22px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--card);
+}
+
+.landing-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.landing-brand h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 64px;
+  line-height: 1;
+  letter-spacing: 3px;
+  color: var(--text);
+}
+
+.landing-tagline {
+  text-align: center;
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 8px 0 12px;
+}
+
+.landing-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.landing button.secondary {
+  min-height: 56px;
+  border-radius: 14px;
+  background: var(--card-raised);
+  border: 1px solid rgba(255, 106, 26, 0.55);
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* --- Warehouse hub --- */
+
+.warehouse-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.warehouse-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 15px;
+  border-radius: 14px;
+  background: var(--card-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.warehouse-tile:hover {
+  border-color: rgba(255, 106, 26, 0.45);
+}
+
+.warehouse-tile strong {
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 0.02em;
+}
+
+.warehouse-tile .muted {
+  font-size: 12px;
+}
+
+/* --- Ask Infinity chat --- */
+
+.ask-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 8px 0 14px;
+}
+
+.ask-bubble {
+  max-width: 82%;
+  align-self: flex-start;
+  background: var(--card-raised);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 11px 13px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.ask-bubble.mine {
+  align-self: flex-end;
+  background: var(--accent);
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.ask-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ask-suggestions .chip {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--card-raised);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.ask-input {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ask-input input {
+  margin-bottom: 0;
+}
+
+.ask-send {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 13px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* --- Desktop: left rail replaces bottom bar, wider content --- */
+
+@media (min-width: 860px) {
+  .app-rail {
+    display: flex;
+    flex-direction: column;
+    width: 76px;
+    flex: none;
+    background: var(--surface);
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+  }
+
+  .app-main {
+    padding-bottom: 0;
+  }
+
+  .bottom-nav {
+    display: none;
+  }
+
+  .page {
+    max-width: 1080px;
+    padding: 28px 32px 48px;
+  }
+
+  .ask-fab {
+    right: 28px;
+    bottom: 28px;
+  }
+}
+
