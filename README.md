@@ -14,10 +14,36 @@ Concept prototype for a window installation ops + training brain. Local dev only
 ## Product loops to perfect
 
 1. **Unified job hub** — `/projects/:id` tabs: Overview, Warehouse, Map, Brain.
-2. **Single install path** — every install goes through the opening memo sheet (no warehouse-only "Mark installed" when openings exist).
-3. **Smart assign** — search shows slot + status, prefers staged/loaded, sets `project_id`, logs a movement.
-4. **Demand rollup** — confirmed openings → `project_windows` quantities.
-5. **OpenAI brain** — voice → Whisper + topic fields; tip synthesis on the brain card; AI extract when deterministic PDF parse finds nothing.
+2. **Single install path** — every install goes through the opening sheet as a
+   staged **Check → Install → Capture** flow (exceptions collapse behind "More").
+3. **Installer-first** — installers land on **My work** with an install-first
+   bottom bar (My work / Clock / Learn / Points / Find); leads run the warehouse bar.
+4. **Smart assign & dispatch** — search shows slot + status, prefers staged/loaded,
+   sets `project_id`, logs a movement; the dispatch board ranks on learned
+   per-installer stats.
+5. **Demand rollup** — confirmed openings → `project_windows` quantities.
+6. **OpenAI brain** — voice → Whisper + topic fields; tip synthesis + golden video
+   in the pre-install briefing; AI extract when deterministic PDF parse finds nothing.
+
+### The flywheel (make it true)
+
+- **QC → learning** — a callback counts as a "problem" in type rollups,
+  `learned_difficulty`, and per-installer stats, so rework-prone types route to
+  proven-clean installers automatically.
+- **Points truth** — install points are **pending** until QC sign-off (confirmed
+  on pass, voided on callback); quizzes and the sequence game write real ledger points.
+- **Costing truth** — labor cost is derived from clocked `time_shifts` × role rate;
+  manual entries are adjustments on top.
+- **Education → clearance → dispatch** — a knowledge score (105-term glossary +
+  18-step procedure, spaced-repetition + games) gates clearance suggestions, which
+  gate what dispatch can assign.
+
+## Modules
+
+Time clock (server-persisted breaks), job costing, education (Daily 5 / Quiz /
+Sequence / Glossary), points & leaderboard, safety talks + incidents, tools,
+supplies, QC sign-off, crew + roles, admin access requests, and a device PIN gate
+(verified server-side; the PIN value never reaches the client).
 
 ## Running locally
 
@@ -30,10 +56,14 @@ npm run dev
 
 ## Supabase setup (prototype)
 
-1. Paste [`docs/prototype-migrations.sql`](docs/prototype-migrations.sql) into the SQL editor (after the base schema is applied).
-2. Deploy Edge Functions: `transcribe-install-memo`, `synthesize-type-tips`, `extract-schedule`.
+1. Paste [`docs/prototype-migrations.sql`](docs/prototype-migrations.sql) into the SQL editor (after the base schema is applied). It bundles all prototype migrations in order and is safe to re-run.
+2. Deploy Edge Functions: `transcribe-install-memo`, `synthesize-type-tips`, `extract-schedule`, `generate-howto`.
 3. Set Edge Function secret `OPENAI_API_KEY` (never in client / git).
-4. Create crew users under Authentication → Users.
+4. Create crew users under Authentication → Users, then set roles on the Crew screen.
+
+The bundle seeds the thin modules (tools, a week-long safety-talk rotation) and
+adds how-to guides for `CAS3050`, `DH2846`, and `PIC6060` so every screen shows
+real content out of the box.
 
 Optional vault mirror (manual):
 

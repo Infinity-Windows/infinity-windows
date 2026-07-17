@@ -1,11 +1,21 @@
--- Window Ops prototype — paste into Supabase SQL editor (project czprjcskmzzagdztqonm).
--- Run once. Safe to re-run (create or replace / if not exists).
--- Covers: smart assignment + demand rollup + AI brain columns.
+-- Window Ops prototype — paste into the Supabase SQL editor.
+-- Run once, top to bottom. Safe to re-run (create or replace / if not exists / guarded inserts).
+-- Regenerated from supabase/migrations. Assumes the base inventory schema
+-- (inventory_core, seed_demo, install_capture) is already installed.
+-- Covers: unified lifecycle, AI brain, fit/condition gate, crew dispatch,
+-- learning rollups + installer stats, estimates, memo confirm, training how-to,
+-- field flags, roles/access, time clock, job costing, education, points (+status),
+-- ops modules, QC flywheel, PIN + persisted breaks, and module seeds.
 
--- =============================================================================
--- 1) Lifecycle unify: assign logs movement + demand rollup from openings
+
+-- ============================================================================
+-- 1) lifecycle unify  [20260715200000_lifecycle_unify.sql]
 -- =============================================================================
 
+-- Phase 1 lifecycle unify: smart assignment + demand rollup from openings.
+-- Warehouse "needed vs have" becomes the planset openings source of truth.
+
+-- Allow 'assigned' in the movements event log (unit linked to an opening).
 alter table movements drop constraint if exists movements_event_check;
 alter table movements add constraint movements_event_check
   check (event in (
@@ -13,6 +23,8 @@ alter table movements add constraint movements_event_check
     'count_verified','count_missing','override','assigned'
   ));
 
+-- Link a physical inventory unit to an opening. Validates type match, sets
+-- windows.project_id, and logs a movement with p_actor.
 create or replace function assign_window_to_opening(
   p_opening_id uuid,
   p_window_id uuid,
@@ -71,11 +83,14 @@ begin
 end;
 $$;
 
+-- Roll confirmed openings (with a type) up into project_windows quantities.
+-- Called by trigger whenever openings change confirmation/type for a project.
 create or replace function sync_project_windows_from_openings(p_project_id uuid)
 returns void
 language plpgsql
 as $$
 begin
+  -- Drop demand rows that no longer have any confirmed typed openings.
   delete from project_windows pw
   where pw.project_id = p_project_id
     and not exists (
@@ -86,6 +101,7 @@ begin
         and o.window_type_id = pw.window_type_id
     );
 
+  -- Upsert quantities from confirmed openings that have a type.
   insert into project_windows (project_id, window_type_id, quantity)
   select
     p_project_id,
@@ -114,6 +130,7 @@ begin
     v_project_id := new.project_id;
   end if;
 
+  -- Also sync the previous project if an opening moved (shouldn't happen, but safe).
   if tg_op = 'UPDATE'
      and old.project_id is distinct from new.project_id then
     perform sync_project_windows_from_openings(old.project_id);
@@ -131,6 +148,7 @@ create trigger project_openings_sync_demand
   for each row
   execute function trg_sync_project_windows_from_openings();
 
+-- Backfill: sync all projects that already have confirmed openings.
 do $$
 declare
   r record;
@@ -145,9 +163,13 @@ begin
 end;
 $$;
 
+-- ============================================================================
+-- 2) ai brain  [20260715210000_ai_brain.sql]
 -- =============================================================================
--- 2) AI brain columns (tips / watch-outs / outcome difficulty + transcription flag)
--- =============================================================================
+
+-- Phase 2 (prototype): AI brain columns on window_types + transcription bookkeeping.
+-- OPENAI_API_KEY lives only as an Edge Function secret (never in git/client).
+-- Transcription is invoked from the app after voice upload (no DB webhooks).
 
 alter table window_types
   add column if not exists tips_json jsonb not null default '[]'::jsonb,
@@ -157,6 +179,13 @@ alter table window_types
   add column if not exists tips_synthesized_at timestamptz,
   add column if not exists tips_install_count int not null default 0;
 
+comment on column window_types.tips_json is
+  'Synthesized top tips from install memos (human-editable; regenerate additively).';
+comment on column window_types.watch_outs_json is
+  'Synthesized watch-outs / pitfalls from install memos.';
+comment on column window_types.outcome_difficulty is
+  'Difficulty derived from grades/times (overrides gut-feel catalog rating in UI when set).';
+
 alter table attachments
   add column if not exists transcribed_at timestamptz;
 
@@ -164,9 +193,13 @@ create index if not exists attachments_voice_pending_idx
   on attachments (created_at)
   where kind = 'voice_memo' and transcribed_at is null;
 
+-- ============================================================================
+-- 3) fit condition gate  [20260715230000_fit_condition_gate.sql]
 -- =============================================================================
--- 3) Fit + condition gate (Pillar 1): rough-opening dims + damage check
--- =============================================================================
+
+-- Pillar 1: "Never carry a window that won't go in."
+-- Rough-opening measurement + condition/damage check on each opening, so the
+-- app can flag a misfit or damaged unit BEFORE the installer carries it up.
 
 alter table project_openings
   add column if not exists ro_width_in numeric check (ro_width_in is null or ro_width_in > 0),
@@ -179,6 +212,14 @@ alter table project_openings
   add column if not exists condition_checked_by text,
   add column if not exists condition_checked_at timestamptz;
 
+comment on column project_openings.ro_width_in is
+  'Rough-opening width (in), smallest of 3 measured points.';
+comment on column project_openings.ro_height_in is
+  'Rough-opening height (in), smallest of 2 measured points.';
+comment on column project_openings.condition is
+  'Arrival condition of the assigned unit: unknown | ok | damaged. Damaged blocks install.';
+
+-- Record a rough-opening measurement (smallest width/height already chosen client-side).
 create or replace function set_opening_rough_opening(
   p_opening_id uuid,
   p_width_in numeric,
@@ -206,6 +247,7 @@ begin
 end;
 $$;
 
+-- Record the arrival condition of the unit at an opening.
 create or replace function set_opening_condition(
   p_opening_id uuid,
   p_condition text,
@@ -234,6 +276,7 @@ begin
     raise exception 'unknown opening %', p_opening_id;
   end if;
 
+  -- Damaged units flag the physical record so the office/warehouse sees it too.
   if p_condition = 'damaged' and v_opening.assigned_window_id is not null then
     update windows set status = 'damaged' where id = v_opening.assigned_window_id;
     insert into movements (window_id, event, project_id, actor, reason)
@@ -249,10 +292,15 @@ begin
 end;
 $$;
 
--- =============================================================================
--- 4) Crew dispatch: per-installer identity + foreman-push opening assignment
+-- ============================================================================
+-- 4) crew dispatch  [20260715240000_crew_dispatch.sql]
 -- =============================================================================
 
+-- Crew dispatch (1B real logins + 2B foreman push).
+-- Per-installer identity + skill, and lead-assigned openings so each installer
+-- gets an ordered "my work" list and six people never collide.
+
+-- Crew profiles, keyed to auth.users. Trusted-crew RLS like the rest of the app.
 create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   display_name text not null,
@@ -273,6 +321,9 @@ begin
 end;
 $$;
 
+-- Foreman-push assignment on openings. Person-workflow state is derived:
+--   status='installed' => done; work_started_at set => in-progress;
+--   assigned_to set => assigned; else unassigned.
 alter table project_openings
   add column if not exists assigned_to uuid references profiles(id) on delete set null,
   add column if not exists assigned_by uuid references profiles(id) on delete set null,
@@ -283,6 +334,7 @@ alter table project_openings
 create index if not exists project_openings_assigned_idx
   on project_openings (assigned_to, sequence);
 
+-- Assign (or reassign) an opening to an installer.
 create or replace function assign_opening_to_installer(
   p_opening_id uuid,
   p_profile_id uuid,
@@ -302,6 +354,7 @@ begin
       sequence = coalesce(p_sequence, sequence)
   where id = p_opening_id
   returning * into v_opening;
+
   if v_opening is null then
     raise exception 'unknown opening %', p_opening_id;
   end if;
@@ -320,6 +373,7 @@ begin
   set assigned_to = null, assigned_by = null, assigned_at = null
   where id = p_opening_id
   returning * into v_opening;
+
   if v_opening is null then
     raise exception 'unknown opening %', p_opening_id;
   end if;
@@ -327,6 +381,7 @@ begin
 end;
 $$;
 
+-- Installer taps "Next" — marks the opening in-progress (soft lock / visibility).
 create or replace function start_opening_work(p_opening_id uuid)
 returns project_openings
 language plpgsql
@@ -338,6 +393,7 @@ begin
   set work_started_at = coalesce(work_started_at, now())
   where id = p_opening_id
   returning * into v_opening;
+
   if v_opening is null then
     raise exception 'unknown opening %', p_opening_id;
   end if;
@@ -345,6 +401,7 @@ begin
 end;
 $$;
 
+-- Bulk set the walk order for a person's list.
 create or replace function set_openings_sequence(p_opening_ids uuid[])
 returns void
 language plpgsql
@@ -360,7 +417,8 @@ begin
 end;
 $$;
 
--- Live multi-crew sync: add openings to the realtime publication.
+-- Live multi-crew sync: openings must be in the realtime publication so the
+-- lead board and every installer's "My Work" update across devices.
 do $$
 begin
   if not exists (
@@ -372,9 +430,12 @@ begin
 end;
 $$;
 
+-- ============================================================================
+-- 5) learning rollups  [20260716000000_learning_rollups.sql]
 -- =============================================================================
--- 5) Learning flywheel (A): persisted rollups + learned difficulty
--- =============================================================================
+
+-- Phase A1: persist per-type learning so it drives dispatch, estimates, and UI
+-- instead of being recomputed at read-time and thrown away.
 
 alter table window_types
   add column if not exists n_installs int not null default 0,
@@ -385,14 +446,26 @@ alter table window_types
   add column if not exists learned_difficulty numeric,
   add column if not exists last_install_at timestamptz;
 
+comment on column window_types.learned_difficulty is
+  'Data-driven difficulty 1-5 from real outcomes: median-time percentile across the catalog + fail rate + inverse avg grade. No LLM.';
+
+-- Recompute one type's rollups from its install_events.
 create or replace function recompute_window_type_rollups(p_type_id uuid)
 returns void
 language plpgsql
 as $$
 declare
-  v_n int; v_median numeric; v_p90 numeric; v_avg_grade numeric; v_fail numeric;
-  v_last timestamptz; v_time_score numeric; v_grade_score numeric; v_diff numeric;
-  v_min_med numeric; v_max_med numeric;
+  v_n int;
+  v_median numeric;
+  v_p90 numeric;
+  v_avg_grade numeric;
+  v_fail numeric;
+  v_last timestamptz;
+  v_time_score numeric;
+  v_grade_score numeric;
+  v_diff numeric;
+  v_min_med numeric;
+  v_max_med numeric;
 begin
   select
     count(*) filter (where minutes is not null),
@@ -403,23 +476,31 @@ begin
       / nullif(count(*) filter (where quality_grade is not null), 0),
     max(created_at)
   into v_n, v_median, v_p90, v_avg_grade, v_fail, v_last
-  from install_events where window_type_id = p_type_id;
+  from install_events
+  where window_type_id = p_type_id;
 
-  select min(median_minutes), max(median_minutes) into v_min_med, v_max_med
-  from window_types where median_minutes is not null;
+  -- Difficulty model (1-5): where this type's median time sits across the
+  -- catalog, nudged by fail rate and low grades. Falls back to seeded rating.
+  select min(median_minutes), max(median_minutes)
+  into v_min_med, v_max_med
+  from window_types
+  where median_minutes is not null;
 
   if v_median is not null and v_max_med is not null and v_max_med > coalesce(v_min_med, 0) then
-    v_time_score := (v_median - v_min_med) / (v_max_med - v_min_med);
+    v_time_score := (v_median - v_min_med) / (v_max_med - v_min_med); -- 0..1
   else
     v_time_score := 0.5;
   end if;
-  v_grade_score := coalesce((5 - v_avg_grade) / 4.0, 0.3);
+  v_grade_score := coalesce((5 - v_avg_grade) / 4.0, 0.3); -- worse grade => harder
   v_diff := 1 + 4 * least(1, greatest(0,
     0.5 * v_time_score + 0.3 * coalesce(v_fail, 0) + 0.2 * v_grade_score));
 
   update window_types
-  set n_installs = coalesce(v_n, 0), median_minutes = v_median, p90_minutes = v_p90,
-      avg_grade = round(v_avg_grade, 2), fail_rate = round(v_fail * 100, 1),
+  set n_installs = coalesce(v_n, 0),
+      median_minutes = v_median,
+      p90_minutes = v_p90,
+      avg_grade = round(v_avg_grade, 2),
+      fail_rate = round(v_fail * 100, 1),
       learned_difficulty = case when v_n >= 2 then round(v_diff, 2) else learned_difficulty end,
       last_install_at = v_last
   where id = p_type_id;
@@ -427,11 +508,17 @@ end;
 $$;
 
 create or replace function trg_recompute_rollups()
-returns trigger language plpgsql as $$
-declare v_type uuid;
+returns trigger
+language plpgsql
+as $$
+declare
+  v_type uuid;
 begin
   v_type := coalesce(new.window_type_id, old.window_type_id);
-  if v_type is not null then perform recompute_window_type_rollups(v_type); end if;
+  if v_type is not null then
+    perform recompute_window_type_rollups(v_type);
+  end if;
+  -- On UPDATE that moved the row to a different type, refresh the old one too.
   if tg_op = 'UPDATE' and new.window_type_id is distinct from old.window_type_id
      and old.window_type_id is not null then
     perform recompute_window_type_rollups(old.window_type_id);
@@ -443,17 +530,28 @@ $$;
 drop trigger if exists install_events_rollups on install_events;
 create trigger install_events_rollups
   after insert or update or delete on install_events
-  for each row execute function trg_recompute_rollups();
+  for each row
+  execute function trg_recompute_rollups();
 
-do $$ declare r record; begin
-  for r in select distinct window_type_id from install_events where window_type_id is not null loop
+-- Backfill every type that already has installs.
+do $$
+declare r record;
+begin
+  for r in select distinct window_type_id from install_events where window_type_id is not null
+  loop
     perform recompute_window_type_rollups(r.window_type_id);
   end loop;
-end; $$;
+end;
+$$;
 
+-- ============================================================================
+-- 6) installer identity  [20260716001000_installer_identity.sql]
 -- =============================================================================
--- 6) Installer identity (A) + role guard
--- =============================================================================
+
+-- Phase A2: real installer identity on install events + a role-change guard.
+-- Turns the free-text `installer` email into a real profiles FK so we can
+-- learn per-installer performance, and captures the pre-install estimate and
+-- structured photo findings.
 
 alter table install_events
   add column if not exists installer_id uuid references profiles(id) on delete set null,
@@ -463,16 +561,110 @@ alter table install_events
 create index if not exists install_events_installer_idx
   on install_events (installer_id, window_type_id);
 
--- (See migration 20260716001000 for the full submit_install_event recreate +
--- backfill + set_profile_role guard; re-run that file to apply here.)
+-- Recreate submit_install_event with installer_id + estimate captured.
+drop function if exists submit_install_event(
+  uuid, text, int, int, text, text, text, text, text, text, text, text, text, timestamptz
+);
 
--- =============================================================================
--- 7) Per-installer stats views + training clearance (A3/B3)
+create or replace function submit_install_event(
+  p_opening_id uuid,
+  p_installer text default null,
+  p_minutes int default null,
+  p_quality_grade int default null,
+  p_difficulty text default null,
+  p_went_well text default null,
+  p_went_poorly text default null,
+  p_obstacles text default null,
+  p_tools_helped text default null,
+  p_time_vs_estimate text default null,
+  p_safety_notes text default null,
+  p_do_again text default null,
+  p_transcript_raw text default null,
+  p_started_at timestamptz default null,
+  p_installer_id uuid default null,
+  p_estimate_minutes int default null
+)
+returns install_events
+language plpgsql
+as $$
+declare
+  v_opening project_openings;
+  v_event install_events;
+begin
+  select * into v_opening from project_openings where id = p_opening_id;
+  if v_opening is null then
+    raise exception 'unknown opening %', p_opening_id;
+  end if;
+
+  insert into install_events (
+    project_opening_id, window_id, window_type_id, installer, installer_id,
+    started_at, minutes, estimate_minutes, quality_grade, difficulty, went_well,
+    went_poorly, obstacles, tools_helped, time_vs_estimate, safety_notes,
+    do_again, transcript_raw
+  ) values (
+    v_opening.id, v_opening.assigned_window_id, v_opening.window_type_id,
+    p_installer, coalesce(p_installer_id, auth.uid()), p_started_at, p_minutes,
+    p_estimate_minutes, p_quality_grade, p_difficulty, p_went_well, p_went_poorly,
+    p_obstacles, p_tools_helped, p_time_vs_estimate, p_safety_notes, p_do_again,
+    p_transcript_raw
+  )
+  returning * into v_event;
+
+  update project_openings
+  set status = 'installed', confirmed = true
+  where id = v_opening.id;
+
+  if v_opening.assigned_window_id is not null then
+    perform install_window(v_opening.assigned_window_id, p_installer);
+  end if;
+
+  return v_event;
+end;
+$$;
+
+-- Backfill installer_id from the email already stored on past events.
+update install_events e
+set installer_id = p.id
+from profiles p
+join auth.users u on u.id = p.id
+where e.installer_id is null and lower(e.installer) = lower(u.email);
+
+-- Role-change guard: only an existing lead may change roles (stops self-promotion).
+create or replace function set_profile_role(p_target uuid, p_role text)
+returns profiles
+language plpgsql
+security definer
+as $$
+declare
+  v_caller_role text;
+  v_profile profiles;
+begin
+  if p_role not in ('installer','lead') then
+    raise exception 'invalid role %', p_role;
+  end if;
+  select role into v_caller_role from profiles where id = auth.uid();
+  if v_caller_role is distinct from 'lead' then
+    raise exception 'only a lead can change roles';
+  end if;
+  update profiles set role = p_role, updated_at = now()
+  where id = p_target
+  returning * into v_profile;
+  return v_profile;
+end;
+$$;
+
+-- ============================================================================
+-- 7) installer stats  [20260716002000_installer_stats.sql]
 -- =============================================================================
 
+-- Phase A3: per-installer performance so dispatch routes by proven results,
+-- not just a hand-set skill tier.
+
+-- Per installer x window type.
 create or replace view installer_type_stats as
 select
-  e.installer_id, e.window_type_id,
+  e.installer_id,
+  e.window_type_id,
   count(*) filter (where e.minutes is not null) as n,
   percentile_cont(0.5) within group (order by e.minutes)
     filter (where e.minutes is not null) as median_minutes,
@@ -484,6 +676,23 @@ from install_events e
 where e.installer_id is not null and e.window_type_id is not null
 group by e.installer_id, e.window_type_id;
 
+-- Per installer x category (broader signal for cold-start on a new type).
+create or replace view installer_category_stats as
+select
+  e.installer_id,
+  t.category,
+  count(*) filter (where e.minutes is not null) as n,
+  percentile_cont(0.5) within group (order by e.minutes)
+    filter (where e.minutes is not null) as median_minutes,
+  avg(e.quality_grade) filter (where e.quality_grade is not null) as avg_grade
+from install_events e
+join window_types t on t.id = e.window_type_id
+where e.installer_id is not null and t.category is not null
+group by e.installer_id, t.category;
+
+-- Training clearance: which installers a lead has signed off to install a type.
+-- A cleared apprentice can take a harder type than their raw skill tier allows,
+-- so the training path visibly changes dispatch routing.
 create table if not exists installer_clearance (
   installer_id uuid not null references profiles(id) on delete cascade,
   window_type_id uuid not null references window_types(id) on delete cascade,
@@ -491,18 +700,26 @@ create table if not exists installer_clearance (
   cleared_at timestamptz not null default now(),
   primary key (installer_id, window_type_id)
 );
+
 alter table installer_clearance enable row level security;
 do $$
 begin
-  if not exists (select 1 from pg_policies where tablename='installer_clearance' and policyname='authenticated full access') then
+  if not exists (select 1 from pg_policies where tablename = 'installer_clearance' and policyname = 'authenticated full access') then
     create policy "authenticated full access" on installer_clearance
       for all to authenticated using (true) with check (true);
   end if;
 end;
 $$;
 
-create or replace function set_clearance(p_installer_id uuid, p_window_type_id uuid, p_cleared boolean)
-returns void language plpgsql security definer as $$
+create or replace function set_clearance(
+  p_installer_id uuid,
+  p_window_type_id uuid,
+  p_cleared boolean
+)
+returns void
+language plpgsql
+security definer
+as $$
 declare v_caller_role text;
 begin
   select role into v_caller_role from profiles where id = auth.uid();
@@ -520,17 +737,40 @@ begin
 end;
 $$;
 
+-- ============================================================================
+-- 8) job estimate  [20260716003000_job_estimate.sql]
 -- =============================================================================
--- 8) Job estimate (A4) + memo confirmation (A6) + training columns (B1)
--- =============================================================================
+
+-- Phase A4: capture a job's estimate at plan time so we can track bid accuracy
+-- (estimate vs actual) as installs complete.
 
 alter table projects
   add column if not exists estimated_minutes int,
   add column if not exists estimated_crew int,
   add column if not exists estimated_at timestamptz;
 
+-- ============================================================================
+-- 9) memo confirm  [20260716004000_memo_confirm.sql]
+-- =============================================================================
+
+-- Phase A6: human-in-the-loop confirmation of AI-filled memo fields.
+-- Raises training-data quality (installers correct the AI split), and lets us
+-- surface a "review AI memos" queue.
+
 alter table install_events
   add column if not exists ai_confirmed boolean not null default false;
+
+-- Mark which events still need a human glance: has a transcript (AI ran) but
+-- not yet confirmed.
+create index if not exists install_events_unconfirmed_idx
+  on install_events (installer_id)
+  where transcript_raw is not null and ai_confirmed = false;
+
+-- ============================================================================
+-- 10) training howto  [20260716005000_training_howto.sql]
+-- =============================================================================
+
+-- Phase B1: golden reference install + AI-generated how-to per type.
 
 alter table window_types
   add column if not exists golden_install_event_id uuid references install_events(id) on delete set null,
@@ -538,13 +778,82 @@ alter table window_types
   add column if not exists howto_json jsonb,
   add column if not exists howto_generated_at timestamptz;
 
--- Golden auto-pick + manual set are in migration 20260716005000_training_howto.sql
--- (pick_golden_install, set_golden_install, and the rollup trigger that folds
--- golden selection in). Re-run that file to apply here.
+-- Auto-nominate the golden install for a type: best grade, then documented
+-- (transcript + photos), most recent. Skips when a lead has locked one.
+create or replace function pick_golden_install(p_type_id uuid)
+returns void
+language plpgsql
+as $$
+declare v_locked boolean; v_golden uuid;
+begin
+  select golden_locked into v_locked from window_types where id = p_type_id;
+  if v_locked then return; end if;
 
+  select e.id into v_golden
+  from install_events e
+  where e.window_type_id = p_type_id
+  order by
+    coalesce(e.quality_grade, 0) desc,
+    (e.transcript_raw is not null) desc,
+    (exists (select 1 from attachments a
+             where a.install_event_id = e.id and a.kind = 'photo')) desc,
+    e.created_at desc
+  limit 1;
+
+  update window_types set golden_install_event_id = v_golden where id = p_type_id;
+end;
+$$;
+
+-- Fold golden selection into the rollup trigger so it stays fresh per install.
+create or replace function trg_recompute_rollups()
+returns trigger language plpgsql as $$
+declare v_type uuid;
+begin
+  v_type := coalesce(new.window_type_id, old.window_type_id);
+  if v_type is not null then
+    perform recompute_window_type_rollups(v_type);
+    perform pick_golden_install(v_type);
+  end if;
+  if tg_op = 'UPDATE' and new.window_type_id is distinct from old.window_type_id
+     and old.window_type_id is not null then
+    perform recompute_window_type_rollups(old.window_type_id);
+    perform pick_golden_install(old.window_type_id);
+  end if;
+  return coalesce(new, old);
+end;
+$$;
+
+-- Lead sets/locks a golden install manually.
+create or replace function set_golden_install(p_type_id uuid, p_event_id uuid)
+returns void
+language plpgsql
+security definer
+as $$
+declare v_role text;
+begin
+  select role into v_role from profiles where id = auth.uid();
+  if v_role is distinct from 'lead' then
+    raise exception 'only a lead can set the golden install';
+  end if;
+  update window_types
+  set golden_install_event_id = p_event_id, golden_locked = true
+  where id = p_type_id;
+end;
+$$;
+
+-- Backfill golden picks for types that already have installs.
+do $$ declare r record; begin
+  for r in select distinct window_type_id from install_events where window_type_id is not null loop
+    perform pick_golden_install(r.window_type_id);
+  end loop;
+end; $$;
+
+-- ============================================================================
+-- 11) field flags  [20260716010000_field_flags.sql]
 -- =============================================================================
--- 9) Installer-first: field flags + job notes
--- =============================================================================
+
+-- Installer-first: let the field escalate problems to the lead.
+-- An opening can be flagged (with a reason) and a job can carry general notes.
 
 alter table project_openings
   add column if not exists flag_note text,
@@ -559,59 +868,701 @@ create table if not exists job_notes (
   note text not null,
   created_at timestamptz not null default now()
 );
+
 alter table job_notes enable row level security;
 do $$
 begin
   if not exists (select 1 from pg_policies where tablename='job_notes' and policyname='authenticated full access') then
-    create policy "authenticated full access" on job_notes for all to authenticated using (true) with check (true);
+    create policy "authenticated full access" on job_notes
+      for all to authenticated using (true) with check (true);
   end if;
 end;
 $$;
+
 create index if not exists job_notes_project_idx on job_notes (project_id, created_at desc);
 
+-- Flag (or clear) an opening for the lead. Null note clears the flag.
 create or replace function flag_opening(p_opening_id uuid, p_note text)
-returns project_openings language plpgsql as $$
+returns project_openings
+language plpgsql
+as $$
 declare v_opening project_openings;
 begin
   update project_openings
   set flag_note = nullif(trim(coalesce(p_note, '')), ''),
       flagged_by = case when nullif(trim(coalesce(p_note, '')), '') is null then null else auth.uid() end,
       flagged_at = case when nullif(trim(coalesce(p_note, '')), '') is null then null else now() end
-  where id = p_opening_id returning * into v_opening;
-  if v_opening is null then raise exception 'unknown opening %', p_opening_id; end if;
+  where id = p_opening_id
+  returning * into v_opening;
+  if v_opening is null then
+    raise exception 'unknown opening %', p_opening_id;
+  end if;
   return v_opening;
 end;
 $$;
 
+-- Post a general, opening-independent job note (site conditions, etc.).
 create or replace function add_job_note(p_project_id uuid, p_note text)
-returns job_notes language plpgsql as $$
+returns job_notes
+language plpgsql
+as $$
 declare v_note job_notes; v_name text;
 begin
   select display_name into v_name from profiles where id = auth.uid();
   insert into job_notes (project_id, author_id, author_name, note)
-  values (p_project_id, auth.uid(), v_name, p_note) returning * into v_note;
+  values (p_project_id, auth.uid(), v_name, p_note)
+  returning * into v_note;
   return v_note;
 end;
 $$;
 
+-- Openings already stream via realtime; add job_notes too for the lead board.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'job_notes'
+  ) then
+    alter publication supabase_realtime add table job_notes;
+  end if;
+end;
+$$;
+
+-- ============================================================================
+-- 12) roles expand  [20260717000000_roles_expand.sql]
 -- =============================================================================
--- 10) Merge: expanded roles + access requests + PIN (see 20260717000000)
--- =============================================================================
+
+-- Merge: expand the role model to match Infinity (installer / foreman / admin /
+-- big_boss), keeping the existing 'lead' value working as a lead-level alias.
 
 alter table profiles drop constraint if exists profiles_role_check;
 alter table profiles add constraint profiles_role_check
   check (role in ('installer','lead','foreman','admin','big_boss'));
-alter table profiles add column if not exists pin text;
 
+-- Access requests: new crew submit info; an admin approves before sign-in.
 create table if not exists access_requests (
   id uuid primary key default gen_random_uuid(),
-  name text not null, email text, phone text,
+  name text not null,
+  email text,
+  phone text,
   requested_role text not null default 'installer'
     check (requested_role in ('installer','foreman','admin')),
   note text,
-  status text not null default 'pending' check (status in ('pending','approved','denied')),
+  status text not null default 'pending'
+    check (status in ('pending','approved','denied')),
   decided_by uuid references profiles(id) on delete set null,
-  decided_at timestamptz, created_at timestamptz not null default now()
+  decided_at timestamptz,
+  created_at timestamptz not null default now()
 );
+
 alter table access_requests enable row level security;
--- policies + set_profile_role/set_my_pin: see migration 20260717000000_roles_expand.sql
+do $$
+begin
+  if not exists (select 1 from pg_policies where tablename='access_requests' and policyname='authenticated full access') then
+    create policy "authenticated full access" on access_requests for all to authenticated using (true) with check (true);
+  end if;
+  -- Anyone (even anon) can submit a request.
+  if not exists (select 1 from pg_policies where tablename='access_requests' and policyname='anon can request') then
+    create policy "anon can request" on access_requests for insert to anon with check (true);
+  end if;
+end;
+$$;
+
+-- Optional device PIN for quick unlock (convenience over a real session).
+alter table profiles
+  add column if not exists pin text;
+
+-- Expand the role-change guard to the new roles; any lead-level user may set.
+create or replace function set_profile_role(p_target uuid, p_role text)
+returns profiles
+language plpgsql
+security definer
+as $$
+declare
+  v_caller_role text;
+  v_profile profiles;
+begin
+  if p_role not in ('installer','lead','foreman','admin','big_boss') then
+    raise exception 'invalid role %', p_role;
+  end if;
+  select role into v_caller_role from profiles where id = auth.uid();
+  if v_caller_role is null or v_caller_role = 'installer' then
+    raise exception 'only a lead-level user can change roles';
+  end if;
+  update profiles set role = p_role, updated_at = now()
+  where id = p_target
+  returning * into v_profile;
+  return v_profile;
+end;
+$$;
+
+-- Set/clear a personal PIN (self only).
+create or replace function set_my_pin(p_pin text)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  update profiles set pin = nullif(p_pin, ''), updated_at = now()
+  where id = auth.uid();
+end;
+$$;
+
+-- ============================================================================
+-- 13) time clock  [20260717001000_time_clock.sql]
+-- =============================================================================
+
+-- Merge: time clock / payroll. Shifts with cost-code splits, breaks, photos,
+-- and a signed sign-off. Foreman/admin approve.
+
+create table if not exists cost_codes (
+  id uuid primary key default gen_random_uuid(),
+  code text not null,
+  label text not null,
+  active boolean not null default true
+);
+
+insert into cost_codes (code, label) values
+  ('100', 'Install — windows'),
+  ('110', 'Install — doors'),
+  ('200', 'Load / unload'),
+  ('300', 'Rework / callback'),
+  ('400', 'Shop / staging'),
+  ('900', 'Travel')
+on conflict do nothing;
+
+create table if not exists time_shifts (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  project_id uuid references projects(id) on delete set null,
+  cost_code_id uuid references cost_codes(id) on delete set null,
+  clock_in_at timestamptz not null default now(),
+  clock_out_at timestamptz,
+  break_seconds int not null default 0,
+  clock_in_photo text,
+  clock_out_photo text,
+  injured boolean,
+  time_confirmed boolean,
+  signed_at timestamptz,
+  status text not null default 'open'
+    check (status in ('open','submitted','approved')),
+  approved_by uuid references profiles(id) on delete set null,
+  approved_at timestamptz,
+  edited_note text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists time_shifts_profile_idx on time_shifts (profile_id, clock_in_at desc);
+create index if not exists time_shifts_status_idx on time_shifts (status);
+
+alter table cost_codes enable row level security;
+alter table time_shifts enable row level security;
+do $$
+begin
+  if not exists (select 1 from pg_policies where tablename='cost_codes' and policyname='authenticated full access') then
+    create policy "authenticated full access" on cost_codes for all to authenticated using (true) with check (true);
+  end if;
+  if not exists (select 1 from pg_policies where tablename='time_shifts' and policyname='authenticated full access') then
+    create policy "authenticated full access" on time_shifts for all to authenticated using (true) with check (true);
+  end if;
+end;
+$$;
+
+-- Clock in.
+create or replace function clock_in(
+  p_project_id uuid, p_cost_code_id uuid, p_photo text default null
+)
+returns time_shifts language plpgsql as $$
+declare v_shift time_shifts;
+begin
+  -- Close any dangling open shift for this user first.
+  update time_shifts set clock_out_at = now(), status = 'submitted'
+  where profile_id = auth.uid() and status = 'open' and clock_out_at is null;
+
+  insert into time_shifts (profile_id, project_id, cost_code_id, clock_in_photo)
+  values (auth.uid(), p_project_id, p_cost_code_id, p_photo)
+  returning * into v_shift;
+  return v_shift;
+end;
+$$;
+
+-- Clock out + sign-off.
+create or replace function clock_out(
+  p_shift_id uuid, p_photo text default null,
+  p_injured boolean default false, p_time_confirmed boolean default true,
+  p_break_seconds int default null
+)
+returns time_shifts language plpgsql as $$
+declare v_shift time_shifts;
+begin
+  update time_shifts
+  set clock_out_at = now(),
+      clock_out_photo = coalesce(p_photo, clock_out_photo),
+      injured = p_injured,
+      time_confirmed = p_time_confirmed,
+      break_seconds = coalesce(p_break_seconds, break_seconds),
+      signed_at = now(),
+      status = 'submitted'
+  where id = p_shift_id and profile_id = auth.uid()
+  returning * into v_shift;
+  if v_shift is null then raise exception 'no open shift %', p_shift_id; end if;
+  return v_shift;
+end;
+$$;
+
+create or replace function approve_shift(p_shift_id uuid)
+returns time_shifts language plpgsql security definer as $$
+declare v_role text; v_shift time_shifts;
+begin
+  select role into v_role from profiles where id = auth.uid();
+  if v_role is null or v_role = 'installer' then
+    raise exception 'only a lead-level user can approve';
+  end if;
+  update time_shifts set status='approved', approved_by=auth.uid(), approved_at=now()
+  where id = p_shift_id returning * into v_shift;
+  return v_shift;
+end;
+$$;
+
+-- ============================================================================
+-- 14) job costing  [20260717002000_job_costing.sql]
+-- =============================================================================
+
+-- Merge: job costing / margin (Big Boss). Bid/revenue on projects, cost ledger,
+-- change orders. Margin is computed from these + labor from time_shifts.
+
+alter table projects
+  add column if not exists bid_amount numeric,
+  add column if not exists target_margin_pct numeric;
+
+create table if not exists job_costs (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  category text not null default 'other'
+    check (category in ('labor','materials','equipment','subs','other')),
+  label text,
+  amount numeric not null,
+  cost_date date not null default current_date,
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists change_orders (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  label text not null,
+  amount numeric not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists job_costs_project_idx on job_costs (project_id, cost_date desc);
+create index if not exists change_orders_project_idx on change_orders (project_id);
+
+alter table job_costs enable row level security;
+alter table change_orders enable row level security;
+do $$
+begin
+  if not exists (select 1 from pg_policies where tablename='job_costs' and policyname='authenticated full access') then
+    create policy "authenticated full access" on job_costs for all to authenticated using (true) with check (true);
+  end if;
+  if not exists (select 1 from pg_policies where tablename='change_orders' and policyname='authenticated full access') then
+    create policy "authenticated full access" on change_orders for all to authenticated using (true) with check (true);
+  end if;
+end;
+$$;
+
+-- ============================================================================
+-- 15) education  [20260717003000_education.sql]
+-- =============================================================================
+
+-- Merge: education. Per-user spaced-repetition progress over the glossary,
+-- plus callback root-cause terms that get pushed into daily decks.
+
+create table if not exists learn_progress (
+  profile_id uuid not null references profiles(id) on delete cascade,
+  term_id text not null,
+  box int not null default 0,          -- Leitner box 0..5
+  due date not null default current_date,
+  again_count int not null default 0,
+  got_count int not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (profile_id, term_id)
+);
+
+-- Terms flagged by a callback root-cause; surface first in everyone's deck.
+create table if not exists learn_priority_terms (
+  term_id text primary key,
+  reason text,
+  created_at timestamptz not null default now()
+);
+
+alter table learn_progress enable row level security;
+alter table learn_priority_terms enable row level security;
+do $$
+begin
+  if not exists (select 1 from pg_policies where tablename='learn_progress' and policyname='authenticated full access') then
+    create policy "authenticated full access" on learn_progress for all to authenticated using (true) with check (true);
+  end if;
+  if not exists (select 1 from pg_policies where tablename='learn_priority_terms' and policyname='authenticated full access') then
+    create policy "authenticated full access" on learn_priority_terms for all to authenticated using (true) with check (true);
+  end if;
+end;
+$$;
+
+-- ============================================================================
+-- 16) points  [20260717004000_points.sql]
+-- =============================================================================
+
+-- Merge: points / gamification ledger.
+create table if not exists points_ledger (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  kind text not null,
+  points int not null,
+  ref text,
+  created_at timestamptz not null default now()
+);
+create index if not exists points_ledger_profile_idx on points_ledger (profile_id, created_at desc);
+
+alter table points_ledger enable row level security;
+do $$
+begin
+  if not exists (select 1 from pg_policies where tablename='points_ledger' and policyname='authenticated full access') then
+    create policy "authenticated full access" on points_ledger for all to authenticated using (true) with check (true);
+  end if;
+end;
+$$;
+
+-- ============================================================================
+-- 17) ops modules  [20260717005000_ops_modules.sql]
+-- =============================================================================
+
+-- Merge: Safety, Tools, Supplies, and QC modules.
+
+-- Safety: toolbox talks + acknowledgements + incident log.
+create table if not exists safety_talks (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  body text not null,
+  talk_date date not null default current_date,
+  created_at timestamptz not null default now()
+);
+create table if not exists safety_acks (
+  talk_id uuid not null references safety_talks(id) on delete cascade,
+  profile_id uuid not null references profiles(id) on delete cascade,
+  ack_at timestamptz not null default now(),
+  primary key (talk_id, profile_id)
+);
+create table if not exists incidents (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid references profiles(id) on delete set null,
+  project_id uuid references projects(id) on delete set null,
+  description text not null,
+  severity text not null default 'near_miss'
+    check (severity in ('near_miss','first_aid','recordable','serious')),
+  created_at timestamptz not null default now()
+);
+
+-- Tools: who has what + calibration due.
+create table if not exists tools (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  holder_id uuid references profiles(id) on delete set null,
+  calibration_due date,
+  note text,
+  created_at timestamptz not null default now()
+);
+
+-- Supplies: company catalog + per-job orders / pull lists.
+create table if not exists supplies (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  unit text default 'ea',
+  created_at timestamptz not null default now()
+);
+create table if not exists supply_orders (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid references projects(id) on delete cascade,
+  supply_id uuid references supplies(id) on delete set null,
+  name text,
+  qty numeric not null default 1,
+  status text not null default 'needed'
+    check (status in ('needed','ordered','picked','used')),
+  created_at timestamptz not null default now()
+);
+
+-- QC: per-opening quality sign-off.
+create table if not exists qc_checks (
+  id uuid primary key default gen_random_uuid(),
+  project_opening_id uuid not null references project_openings(id) on delete cascade,
+  status text not null default 'pending'
+    check (status in ('pending','passed','callback')),
+  note text,
+  checked_by uuid references profiles(id) on delete set null,
+  checked_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (project_opening_id)
+);
+
+do $$
+declare t text;
+begin
+  foreach t in array array['safety_talks','safety_acks','incidents','tools','supplies','supply_orders','qc_checks']
+  loop
+    execute format('alter table %I enable row level security', t);
+    if not exists (select 1 from pg_policies where tablename=t and policyname='authenticated full access') then
+      execute format('create policy "authenticated full access" on %I for all to authenticated using (true) with check (true)', t);
+    end if;
+  end loop;
+end;
+$$;
+
+-- Demo seed content.
+insert into safety_talks (title, body) values
+  ('Elevated work check', 'Before any work above 6 ft: inspect the ladder/lift, tie off, and clear the drop zone below. Nobody works overhead without a spotter.')
+on conflict do nothing;
+
+insert into supplies (name, unit) values
+  ('Flashing tape 4"', 'roll'), ('Backer rod 1/2"', 'roll'), ('Low-exp foam', 'can'),
+  ('Shims (cedar)', 'bundle'), ('Sealant (grey)', 'tube'), ('Setting blocks', 'bag')
+on conflict do nothing;
+
+-- ============================================================================
+-- 18) points status  [20260717006000_points_status.sql]
+-- =============================================================================
+
+-- Quality: install points are pending until QC signs off; quiz points confirm immediately.
+alter table points_ledger
+  add column if not exists status text not null default 'confirmed'
+    check (status in ('pending','confirmed','void'));
+
+create index if not exists points_ledger_ref_idx on points_ledger (ref);
+
+-- ============================================================================
+-- 19) qc flywheel  [20260717007000_qc_flywheel.sql]
+-- =============================================================================
+
+-- Quality: QC callbacks feed the learning flywheel. A callback counts as a
+-- "problem" alongside low grades in type rollups, learned difficulty, and
+-- per-installer stats (which dispatch ranks on). Fixing rework now makes the
+-- next assignment smarter.
+
+-- Recompute type rollups with callbacks folded into the problem/fail rate.
+create or replace function recompute_window_type_rollups(p_type_id uuid)
+returns void
+language plpgsql
+as $$
+declare
+  v_n int; v_total int; v_median numeric; v_p90 numeric; v_avg_grade numeric;
+  v_problem int; v_fail numeric; v_last timestamptz;
+  v_time_score numeric; v_grade_score numeric; v_diff numeric;
+  v_min_med numeric; v_max_med numeric;
+begin
+  select
+    count(*) filter (where minutes is not null),
+    count(*),
+    percentile_cont(0.5) within group (order by minutes) filter (where minutes is not null),
+    percentile_cont(0.9) within group (order by minutes) filter (where minutes is not null),
+    avg(quality_grade) filter (where quality_grade is not null),
+    max(created_at)
+  into v_n, v_total, v_median, v_p90, v_avg_grade, v_last
+  from install_events where window_type_id = p_type_id;
+
+  -- Problem = low grade OR a QC callback on that opening.
+  select count(distinct e.id)
+  into v_problem
+  from install_events e
+  left join qc_checks q on q.project_opening_id = e.project_opening_id
+  where e.window_type_id = p_type_id
+    and (e.quality_grade <= 2 or q.status = 'callback');
+
+  v_fail := case when coalesce(v_total,0) > 0 then v_problem::numeric / v_total else null end;
+
+  select min(median_minutes), max(median_minutes) into v_min_med, v_max_med
+  from window_types where median_minutes is not null;
+
+  if v_median is not null and v_max_med is not null and v_max_med > coalesce(v_min_med, 0) then
+    v_time_score := (v_median - v_min_med) / (v_max_med - v_min_med);
+  else
+    v_time_score := 0.5;
+  end if;
+  v_grade_score := coalesce((5 - v_avg_grade) / 4.0, 0.3);
+  v_diff := 1 + 4 * least(1, greatest(0,
+    0.5 * v_time_score + 0.3 * coalesce(v_fail, 0) + 0.2 * v_grade_score));
+
+  update window_types
+  set n_installs = coalesce(v_n, 0), median_minutes = v_median, p90_minutes = v_p90,
+      avg_grade = round(v_avg_grade, 2),
+      fail_rate = round(coalesce(v_fail, 0) * 100, 1),
+      learned_difficulty = case when v_total >= 2 then round(v_diff, 2) else learned_difficulty end,
+      last_install_at = v_last
+  where id = p_type_id;
+end;
+$$;
+
+-- When a QC check changes, recompute the affected type's rollups.
+create or replace function trg_qc_recompute()
+returns trigger language plpgsql as $$
+declare v_type uuid;
+begin
+  select window_type_id into v_type from project_openings
+  where id = coalesce(new.project_opening_id, old.project_opening_id);
+  if v_type is not null then
+    perform recompute_window_type_rollups(v_type);
+  end if;
+  return coalesce(new, old);
+end;
+$$;
+
+drop trigger if exists qc_checks_recompute on qc_checks;
+create trigger qc_checks_recompute
+  after insert or update or delete on qc_checks
+  for each row execute function trg_qc_recompute();
+
+-- Per-installer stats now include callbacks in fail_rate (dispatch ranks on this).
+create or replace view installer_type_stats as
+select
+  e.installer_id, e.window_type_id,
+  count(*) filter (where e.minutes is not null) as n,
+  percentile_cont(0.5) within group (order by e.minutes)
+    filter (where e.minutes is not null) as median_minutes,
+  avg(e.quality_grade) filter (where e.quality_grade is not null) as avg_grade,
+  (count(distinct e.id) filter (where e.quality_grade <= 2 or q.status = 'callback'))::numeric
+    / nullif(count(*), 0) as fail_rate,
+  max(e.created_at) as last_at
+from install_events e
+left join qc_checks q on q.project_opening_id = e.project_opening_id
+where e.installer_id is not null and e.window_type_id is not null
+group by e.installer_id, e.window_type_id;
+
+-- Backfill.
+do $$ declare r record; begin
+  for r in select distinct window_type_id from install_events where window_type_id is not null loop
+    perform recompute_window_type_rollups(r.window_type_id);
+  end loop;
+end; $$;
+
+-- ============================================================================
+-- 20) pin and breaks  [20260717008000_pin_and_breaks.sql]
+-- =============================================================================
+
+-- Quality: PIN checked server-side (never read to the client), and break
+-- state persisted server-side so a page refresh doesn't lose it.
+
+-- Whether the current user has a PIN set (no value leaves the server).
+create or replace function my_pin_status()
+returns boolean
+language plpgsql
+security definer
+as $$
+declare v boolean;
+begin
+  select pin is not null into v from profiles where id = auth.uid();
+  return coalesce(v, false);
+end;
+$$;
+
+-- Verify a PIN attempt for the current user, server-side.
+create or replace function check_my_pin(p_pin text)
+returns boolean
+language plpgsql
+security definer
+as $$
+declare v text;
+begin
+  select pin into v from profiles where id = auth.uid();
+  return v is not null and v = p_pin;
+end;
+$$;
+
+-- Persisted break state on shifts.
+alter table time_shifts
+  add column if not exists break_started_at timestamptz;
+
+create or replace function start_break(p_shift_id uuid)
+returns time_shifts language plpgsql as $$
+declare v time_shifts;
+begin
+  update time_shifts set break_started_at = coalesce(break_started_at, now())
+  where id = p_shift_id and profile_id = auth.uid()
+  returning * into v;
+  if v is null then raise exception 'no open shift %', p_shift_id; end if;
+  return v;
+end;
+$$;
+
+create or replace function end_break(p_shift_id uuid)
+returns time_shifts language plpgsql as $$
+declare v time_shifts;
+begin
+  update time_shifts
+  set break_seconds = break_seconds
+        + greatest(0, extract(epoch from (now() - break_started_at))::int),
+      break_started_at = null
+  where id = p_shift_id and profile_id = auth.uid() and break_started_at is not null
+  returning * into v;
+  if v is null then
+    select * into v from time_shifts where id = p_shift_id and profile_id = auth.uid();
+  end if;
+  return v;
+end;
+$$;
+
+-- ============================================================================
+-- 21) seed modules  [20260717009000_seed_modules.sql]
+-- =============================================================================
+
+-- Quality: seed the empty/thin modules so every screen shows real content in
+-- the prototype (tools, a safety-talk rotation, and how-to guides beyond CAS3050).
+
+-- Tools: common commercial install kit, a couple assigned to a lead.
+insert into tools (name, calibration_due, note, holder_id)
+select v.name, v.cal::date, v.note,
+  case when v.assign then (select id from profiles order by role desc limit 1) else null end
+from (values
+  ('Hilti rotary laser',        '2026-10-01', 'Level reference for sills',           true),
+  ('6ft box level',             null,          'Primary plumb/level check',           true),
+  ('Torque screwdriver',        '2026-09-15', 'Pressure-plate torque 35-50 in-lb',   false),
+  ('Vacuum lifting cups (pair)','2026-12-01', 'Rated 150 lb/cup on clean dry glass',  false),
+  ('Moisture meter',            '2026-08-20', 'Substrate check before sealant',      false),
+  ('Sealant gun (pneumatic)',   null,          'For long perimeter runs',             false),
+  ('Digital caliper',           '2026-11-05', 'RO + shim gap verification',          false),
+  ('Anemometer',                '2026-09-30', 'Wind check before lifts above 1 story', false)
+) as v(name, cal, note, assign)
+where not exists (select 1 from tools t where t.name = v.name);
+
+-- Safety talks: a week-long rotation so a fresh one shows each day.
+insert into safety_talks (title, body, talk_date)
+select v.title, v.body, v.d::date
+from (values
+  ('Glass handling',       'Two people minimum over 150 lb. Carry lites on edge, never flat. Coated/tempered edges cut — gloves on, cups rated for the surface.', current_date + 1),
+  ('Sealant & solvents',   'Read the SDS. Ventilate when tooling in enclosed spaces, skin protection for MEKP/primer, no open flame near solvents.', current_date + 2),
+  ('Lift & rigging',       'Inspect straps and cups before every pick. Nobody under a suspended unit. Set A-frames braced and loaded evenly.', current_date + 3),
+  ('Ladders & lifts',      'Three points of contact. Level the base. Scissor/boom lift: harness, gate closed, check the ground rating.', current_date + 4),
+  ('Housekeeping',         'Clear the drop zone, cap exposed screws, sweep glass shards immediately. A clean deck is a safe deck.', current_date + 5),
+  ('Heat & hydration',     'On hot elevations rotate shade breaks, water every 20 min. Dark glass against sun cracks — and burns hands.', current_date + 6)
+) as v(title, body, d)
+where not exists (select 1 from safety_talks s where s.title = v.title);
+
+-- How-to guides beyond CAS3050: seed two more common types with structured steps.
+update window_types set
+  howto_json = '[
+    {"title":"Verify the rough opening","detail":"Width at 3 points, height at 2, both diagonals. A double-hung binds fast if the sill is not level — fix the opening, never force the frame."},
+    {"title":"Set the sill dead level","detail":"Shim at the setting points only, snug not tight. The sill is where a hung window lives or dies."},
+    {"title":"Set and check reveal","detail":"Even reveal on all four sides before fastening. A tapered reveal tells you which corner is off."},
+    {"title":"Fasten per schedule, re-check square","detail":"One over-driven screw racks the frame and drops the sashes. Check diagonals after each side."},
+    {"title":"Flash jambs then head, foam light","detail":"Laps shed downhill. Low-expansion foam in passes so the jambs do not bow and jam the balances."}
+  ]'::jsonb,
+  howto_generated_at = now()
+where type_code = 'DH2846';
+
+update window_types set
+  howto_json = '[
+    {"title":"Confirm glass spec and safety bug","detail":"A large picture unit is heavy and often tempered/laminated. Check the etched bug and recalc crew/lift gear before it comes up."},
+    {"title":"Dry-fit and stage on A-frames","detail":"Set on edge, never flat — a fixed lite this size will pop its IGU seal if racked during handling."},
+    {"title":"Set on blocks, center the reveal","detail":"Setting blocks at the quarter points carry the weight. Center the unit so the perimeter joint is uniform for backer rod."},
+    {"title":"Anchor without racking","detail":"Fixed units still rack. Fasten progressively and keep diagonals equal; a racked picture unit shows as a wavy reflection."},
+    {"title":"Backer rod + tooled sealant","detail":"Rod to half the joint width, tool the same day. Big lites move a lot thermally — the joint must stretch, not shear."}
+  ]'::jsonb,
+  howto_generated_at = now()
+where type_code = 'PIC6060';
