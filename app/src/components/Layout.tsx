@@ -7,11 +7,11 @@ import { ToastHost } from "./ToastHost";
 
 // Leads run the warehouse; installers get an install-first bar.
 const leadTabs = [
-  { to: "/", label: "Home", icon: "\u2302", badge: 0 },
-  { to: "/scan", label: "Scan", icon: "\u25A3", badge: 0 },
-  { to: "/projects", label: "Jobs", icon: "\u25A6", badge: 0 },
-  { to: "/search", label: "Find", icon: "\u2315", badge: 0 },
-  { to: "/crew", label: "Crew", icon: "\u2691", badge: 0 },
+  { to: "/", label: "Home", icon: "⌂", badge: 0 },
+  { to: "/scan", label: "Scan", icon: "▣", badge: 0 },
+  { to: "/projects", label: "Jobs", icon: "▦", badge: 0 },
+  { to: "/search", label: "Find", icon: "⌕", badge: 0 },
+  { to: "/crew", label: "Crew", icon: "⚑", badge: 0 },
 ];
 
 export function Layout() {
@@ -29,11 +29,11 @@ export function Layout() {
   const tabs = isLead
     ? leadTabs
     : [
-        { to: "/my-work", label: "My work", icon: "\u2692", badge: openCount.data ?? 0 },
-        { to: "/clock", label: "Clock", icon: "\u23F1", badge: 0 },
-        { to: "/learn", label: "Learn", icon: "\u2605", badge: 0 },
-        { to: "/points", label: "Points", icon: "\u2726", badge: 0 },
-        { to: "/search", label: "Find", icon: "\u2315", badge: 0 },
+        { to: "/my-work", label: "Work", icon: "⚒", badge: openCount.data ?? 0 },
+        { to: "/clock", label: "Time", icon: "⏱", badge: 0 },
+        { to: "/learn", label: "Learn", icon: "★", badge: 0 },
+        { to: "/points", label: "Points", icon: "✦", badge: 0 },
+        { to: "/search", label: "Find", icon: "⌕", badge: 0 },
       ];
 
   return (
@@ -42,7 +42,7 @@ export function Layout() {
       <main className="app-main">
         <Outlet />
       </main>
-      <nav className="bottom-nav">
+      <nav className="bottom-nav" aria-label="Main">
         {tabs.map((tab) => (
           <NavLink
             key={tab.to}
