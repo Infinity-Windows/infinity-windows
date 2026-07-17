@@ -34,6 +34,7 @@ import { Analytics } from "./pages/Analytics";
 import { MemoReview } from "./pages/MemoReview";
 import { Training } from "./pages/Training";
 import { Admin } from "./pages/Admin";
+import { TimeClock } from "./pages/TimeClock";
 import { PinGate } from "./components/PinGate";
 import { ensureMyProfile, getMyProfile } from "./lib/install/api";
 import { isLeadLike } from "./lib/install/types";
@@ -128,6 +129,7 @@ export default function App() {
             <Route path="/my-work" element={<MyWork />} />
             <Route path="/review" element={<MemoReview />} />
             <Route path="/training" element={<Training />} />
+            <Route path="/clock" element={<TimeClock />} />
             <Route path="/w/:windowId" element={<WindowDetail />} />
             <Route path="/loc/:address" element={<LocationDetail />} />
             <Route path="/labels" element={<Labels />} />
