@@ -8,7 +8,7 @@ import {
   synthesizeTypeTips,
   updateTypeKnowledge,
 } from "../../lib/install/api";
-import { MEMO_TOPICS, isLeadLike } from "../../lib/install/types";
+import { MEMO_TOPICS, isForemanPlus } from "../../lib/install/types";
 import type { HowtoStep } from "../../lib/types";
 
 export function TypeBrainCard() {
@@ -22,7 +22,7 @@ export function TypeBrainCard() {
     queryFn: () => getTypeBrainStats(typeId),
   });
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const isLead = isLeadLike(me.data?.role);
+  const isLead = isForemanPlus(me.data?.role);
 
   const refetch = () =>
     queryClient.invalidateQueries({ queryKey: ["typeBrain", typeId] });

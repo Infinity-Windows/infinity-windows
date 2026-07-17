@@ -26,14 +26,14 @@ async function actor(): Promise<string | null> {
 // Never select `pin` to the client; it's verified server-side via RPC.
 const PROFILE_COLS = "id, display_name, skill_level, role, active, created_at, updated_at";
 
-/** Emails that auto-promote to Big Boss on first/any sign-in. */
-const BIG_BOSS_BOOTSTRAP_EMAILS = new Set([
+/** Emails that auto-promote to Owner on first/any sign-in. */
+const OWNER_BOOTSTRAP_EMAILS = new Set([
   "ammon@horizonsolarusa.com",
   "isaacammonbarlow@gmail.com",
 ]);
 
-function isBigBossBootstrapEmail(email: string | undefined): boolean {
-  return BIG_BOSS_BOOTSTRAP_EMAILS.has((email ?? "").trim().toLowerCase());
+function isOwnerBootstrapEmail(email: string | undefined): boolean {
+  return OWNER_BOOTSTRAP_EMAILS.has((email ?? "").trim().toLowerCase());
 }
 
 /** Ensure the signed-in user has a profile row; return it. */
@@ -49,11 +49,11 @@ export async function ensureMyProfile(): Promise<Profile | null> {
     .maybeSingle();
   if (error) throw error;
 
-  const bootstrapBoss = isBigBossBootstrapEmail(user.email);
+  const bootstrapOwner = isOwnerBootstrapEmail(user.email);
 
   let profile = existing as Profile | null;
   if (!profile) {
-    const displayName = bootstrapBoss
+    const displayName = bootstrapOwner
       ? "Ammon"
       : (user.email ?? "installer").split("@")[0];
     const { data: created, error: insErr } = await supabase
@@ -61,7 +61,7 @@ export async function ensureMyProfile(): Promise<Profile | null> {
       .insert({
         id: user.id,
         display_name: displayName,
-        ...(bootstrapBoss ? { role: "big_boss", active: true } : {}),
+        ...(bootstrapOwner ? { role: "owner", active: true } : {}),
       })
       .select(PROFILE_COLS)
       .single();
@@ -69,17 +69,17 @@ export async function ensureMyProfile(): Promise<Profile | null> {
     profile = created as Profile;
   }
 
-  // Bootstrap: promote Ammon bootstrap emails to full admin (big_boss).
+  // Bootstrap: promote Ammon bootstrap emails to Owner (full access).
   if (
-    bootstrapBoss &&
-    (profile.role !== "big_boss" ||
+    bootstrapOwner &&
+    (profile.role !== "owner" ||
       profile.display_name !== "Ammon" ||
       !profile.active)
   ) {
     const { data: promoted, error: promoErr } = await supabase
       .from("profiles")
       .update({
-        role: "big_boss",
+        role: "owner",
         display_name: "Ammon",
         active: true,
         updated_at: new Date().toISOString(),

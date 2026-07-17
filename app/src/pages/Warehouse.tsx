@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { getDashboardCounts, listProjects, searchUnits } from "../lib/api";
 import { STATUS_LABELS } from "../lib/types";
 import { getMyProfile } from "../lib/install/api";
-import { isLeadLike } from "../lib/install/types";
+import { isForemanPlus } from "../lib/install/types";
 
 interface WarehouseLink {
   to: string;
@@ -23,7 +23,7 @@ const LINKS: WarehouseLink[] = [
 
 export function Warehouse() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const lead = isLeadLike(me.data?.role);
+  const lead = isForemanPlus(me.data?.role);
   const counts = useQuery({ queryKey: ["dashboard"], queryFn: getDashboardCounts });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
 

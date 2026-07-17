@@ -7,7 +7,7 @@ import {
 } from "../lib/install/api";
 import { listInstalledForQc } from "../lib/ops";
 import { listShiftsToApprove } from "../lib/timeclock";
-import { isAdmin, isLeadLike } from "../lib/install/types";
+import { isSupervisorPlus, isForemanPlus } from "../lib/install/types";
 
 interface Note {
   id: string;
@@ -21,8 +21,8 @@ export function Notifications() {
   const navigate = useNavigate();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const role = me.data?.role;
-  const lead = isLeadLike(role);
-  const admin = isAdmin(role);
+  const lead = isForemanPlus(role);
+  const admin = isSupervisorPlus(role);
   const id = me.data?.id;
 
   const memos = useQuery({

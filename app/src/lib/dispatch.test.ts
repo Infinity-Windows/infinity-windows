@@ -8,7 +8,7 @@ import {
 } from "./dispatch";
 
 const crew: DispatchCrew[] = [
-  { id: "lead", skill_level: 5, role: "lead", active: true },
+  { id: "foreman", skill_level: 5, role: "foreman", active: true },
   { id: "mid", skill_level: 3, role: "installer", active: true },
   { id: "app", skill_level: 1, role: "installer", active: true },
 ];
@@ -34,7 +34,7 @@ describe("autoDistribute", () => {
     ];
     const s = autoDistribute(openings, crew);
     const byOpening = Object.fromEntries(s.map((x) => [x.openingId, x.profileId]));
-    expect(byOpening["bay"]).toBe("lead"); // only lead qualifies for 5
+    expect(byOpening["bay"]).toBe("foreman"); // only foreman qualifies for 5
     expect(byOpening["sh"]).toBe("app"); // easy -> lowest skill eligible
   });
 
@@ -43,7 +43,7 @@ describe("autoDistribute", () => {
     const s = autoDistribute(openings, [
       { id: "app", skill_level: 1, role: "installer", active: true },
     ]);
-    expect(s).toHaveLength(0); // nobody qualified -> left for the lead
+    expect(s).toHaveLength(0); // nobody qualified -> left for the foreman
   });
 
   it("skips blocked and already-assigned openings", () => {
@@ -82,7 +82,7 @@ describe("autoDistribute", () => {
   it("ignores inactive crew", () => {
     const openings = [opening({ id: "o", opening_code: "O", difficulty: 1 })];
     const s = autoDistribute(openings, [
-      { id: "off", skill_level: 5, role: "lead", active: false },
+      { id: "off", skill_level: 5, role: "foreman", active: false },
     ]);
     expect(s).toHaveLength(0);
   });

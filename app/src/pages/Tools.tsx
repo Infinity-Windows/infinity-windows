@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { getMyProfile, listProfiles } from "../lib/install/api";
-import { isLeadLike } from "../lib/install/types";
+import { isForemanPlus } from "../lib/install/types";
 import { addTool, listTools, setToolHolder } from "../lib/ops";
 
 function dueSoon(date: string | null): boolean {
@@ -14,7 +14,7 @@ function dueSoon(date: string | null): boolean {
 export function Tools() {
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const lead = isLeadLike(me.data?.role);
+  const lead = isForemanPlus(me.data?.role);
   const tools = useQuery({ queryKey: ["tools"], queryFn: listTools });
   const crew = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
   const [name, setName] = useState("");

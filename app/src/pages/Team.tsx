@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { getMyProfile, listProfiles } from "../lib/install/api";
 import { listInstalledForQc } from "../lib/ops";
 import { listShiftsToApprove } from "../lib/timeclock";
-import { isBigBoss, isLeadLike, ROLE_LABELS, type CrewRole } from "../lib/install/types";
+import { isOwner, isForemanPlus, ROLE_LABELS, type CrewRole } from "../lib/install/types";
 
 interface TeamLink {
   to: string;
@@ -15,8 +15,8 @@ interface TeamLink {
 
 export function Team() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const lead = isLeadLike(me.data?.role);
-  const boss = isBigBoss(me.data?.role);
+  const lead = isForemanPlus(me.data?.role);
+  const boss = isOwner(me.data?.role);
 
   const crew = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
   const shifts = useQuery({

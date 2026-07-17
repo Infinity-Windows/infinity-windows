@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { countMyOpenOpenings, getMyProfile } from "../lib/install/api";
-import { isAdmin, isBigBoss, isLeadLike } from "../lib/install/types";
+import { isSupervisorPlus, isOwner, isForemanPlus } from "../lib/install/types";
 import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
 import { ToastHost } from "./ToastHost";
 
@@ -24,9 +24,9 @@ interface Tab {
 export function Layout() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const role = me.data?.role;
-  const lead = isLeadLike(role);
-  const admin = isAdmin(role);
-  const boss = isBigBoss(role);
+  const lead = isForemanPlus(role);
+  const admin = isSupervisorPlus(role);
+  const boss = isOwner(role);
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
 

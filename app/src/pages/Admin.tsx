@@ -5,7 +5,7 @@ import {
   getMyProfile,
   listAccessRequests,
 } from "../lib/install/api";
-import { isAdmin } from "../lib/install/types";
+import { isSupervisorPlus } from "../lib/install/types";
 
 export function Admin() {
   const queryClient = useQueryClient();
@@ -13,7 +13,7 @@ export function Admin() {
   const requests = useQuery({
     queryKey: ["accessRequests"],
     queryFn: listAccessRequests,
-    enabled: isAdmin(me.data?.role),
+    enabled: isSupervisorPlus(me.data?.role),
   });
 
   const decide = useMutation({
@@ -22,14 +22,14 @@ export function Admin() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["accessRequests"] }),
   });
 
-  if (me.data && !isAdmin(me.data.role)) {
+  if (me.data && !isSupervisorPlus(me.data.role)) {
     return (
       <div className="page">
         <header className="page-header">
           <h1>Admin</h1>
           <Link to="/" className="back-chip" aria-label="Home">‹</Link>
         </header>
-        <p className="muted">Admin is for admins and the Big Boss.</p>
+        <p className="muted">Admin is for supervisors and the owner.</p>
       </div>
     );
   }

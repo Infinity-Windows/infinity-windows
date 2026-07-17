@@ -32,7 +32,7 @@ import {
   pendingUploadCount,
   retryTranscriptions,
 } from "../../lib/install/queue";
-import { MEMO_TOPICS, isLeadLike, type MemoTopics } from "../../lib/install/types";
+import { MEMO_TOPICS, isForemanPlus, type MemoTopics } from "../../lib/install/types";
 import { supabase } from "../../lib/supabase";
 
 function pickAudioMime(): string {
@@ -352,7 +352,7 @@ export function OpeningSheet() {
       // Installers loop back to their worklist (next window on top);
       // leads return to the job map.
       const dest =
-        myProfile.data && !isLeadLike(myProfile.data.role)
+        myProfile.data && !isForemanPlus(myProfile.data.role)
           ? "/my-work"
           : `/projects/${projectId}?tab=map`;
       if (flush.remaining > 0) {

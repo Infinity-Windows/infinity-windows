@@ -59,7 +59,7 @@ export function SignIn({
         setInfo(`Account step finished.${already}`);
         setMode("signin");
       }
-      // Session present → App auth listener + ensureMyProfile promotes to big_boss
+      // Session present → App auth listener + ensureMyProfile promotes to owner
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Something went wrong. Try again.",
@@ -176,7 +176,7 @@ export function SignIn({
             >
               <option value="installer">Installer</option>
               <option value="foreman">Foreman</option>
-              <option value="admin">Admin</option>
+              <option value="supervisor">Supervisor</option>
             </select>
             {error && <p className="error">{error}</p>}
             <button
@@ -199,11 +199,11 @@ export function SignIn({
         )
       ) : mode === "signup" ? (
         <>
-          <p className="signin-kicker">Create your Big Boss account</p>
+          <p className="signin-kicker">Create your Owner account</p>
           <p className="muted" style={{ margin: 0, fontSize: 13, lineHeight: 1.55 }}>
             Prefills <strong>{AMMON_EMAIL}</strong> (or use{" "}
             <strong>isaacammonbarlow@gmail.com</strong>). Choose a password (6+
-            characters). After sign-in, that email is promoted to Big Boss.
+            characters). After sign-in, that email is promoted to Owner.
           </p>
           <input
             type="email"
@@ -223,7 +223,7 @@ export function SignIn({
           {error && <p className="error">{error}</p>}
           {info && <p className="muted">{info}</p>}
           <button className="primary big" onClick={signUp} disabled={busy}>
-            {busy ? "Creating account..." : "Create Big Boss account"}
+            {busy ? "Creating account..." : "Create Owner account"}
           </button>
           <button
             className="link"
@@ -268,7 +268,7 @@ export function SignIn({
               setInfo(null);
             }}
           >
-            Create Big Boss account
+            Create Owner account
           </button>
           <button className="link" onClick={resetPassword} disabled={busy}>
             Reset password

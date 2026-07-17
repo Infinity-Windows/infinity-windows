@@ -7,7 +7,7 @@ import {
   getMyProfile,
 } from "../lib/install/api";
 import { formatHours, variance } from "../lib/estimate";
-import { isLeadLike } from "../lib/install/types";
+import { isForemanPlus } from "../lib/install/types";
 
 export function Analytics() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
@@ -21,7 +21,7 @@ export function Analytics() {
     queryFn: listWindowTypes,
   });
 
-  if (me.data && !isLeadLike(me.data.role)) {
+  if (me.data && !isForemanPlus(me.data.role)) {
     return (
       <div className="page">
         <header className="page-header">

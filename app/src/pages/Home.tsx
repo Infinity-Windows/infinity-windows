@@ -5,7 +5,7 @@ import { listProjects } from "../lib/api";
 import { orderMyWork, type DispatchOpening } from "../lib/dispatch";
 import { openingReadiness } from "../lib/install/fit";
 import { getMyProfile, listMyOpeningsAllJobs, listMemosToConfirm } from "../lib/install/api";
-import { isLeadLike, ROLE_LABELS, type CrewRole, type ProjectOpening } from "../lib/install/types";
+import { isForemanPlus, ROLE_LABELS, type CrewRole, type ProjectOpening } from "../lib/install/types";
 import { TERMS } from "../lib/glossary";
 import { listMyProgress } from "../lib/learn";
 import { listLedger } from "../lib/points";
@@ -62,7 +62,7 @@ function toDispatch(o: ProjectOpening): DispatchOpening {
 export function Home() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const role = me.data?.role;
-  const lead = isLeadLike(role);
+  const lead = isForemanPlus(role);
   const profileId = me.data?.id;
 
   const openShift = useQuery({
