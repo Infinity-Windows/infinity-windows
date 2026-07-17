@@ -8,8 +8,13 @@ Read this first. It carries the full context from the planning chat so a fresh
 - The "100x quality" work is done (staged install flow, installer-first nav, the
   QC/points/costing/education flywheel, 105-term glossary, seeds). 95 tests pass;
   `npm run build`, `npm run lint`, `npm test` are all green.
-- Next effort: **reskin the app to look like Ammon's Infinity design** — same
-  features, just made to look like the mockup. Do not change logic/data, only look.
+- **Infinity reskin (Phases 1–4 + Home day hub)** is on `taylor/infinity-reskin`
+  (PR #2). Look-only chrome; Home is the mockup day composition (schedule / term /
+  active install / KPIs / project cards; warehouse tiles under “More”). Installers
+  land on Home; Work stays in the tab bar.
+- **Deferred (mockup-only — do not build yet):** dedicated Landing splash,
+  Notifications bell UI, Ask Infinity chat, Weekly report digest. SignIn covers
+  landing; Analytics ≠ weekly report; TypeBrain ≠ Ask Infinity.
 
 ## The design source (Ammon's Infinity, from Claude Design)
 Reference files are vendored into this repo under `design/infinity/`:
