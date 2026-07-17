@@ -1,6 +1,8 @@
 import type { Project, WindowType, WindowUnit } from "../types";
 
 export type PlansetFormat = "pdf" | "dwg" | "dxf";
+/** Building = floor drawings for the map; specs = schedule (mark → size/type). */
+export type PlansetKind = "building" | "specs";
 export type PlansetStatus =
   | "uploaded"
   | "converting"
@@ -16,8 +18,15 @@ export interface Planset {
   converted_pdf_path: string | null;
   page_count: number | null;
   status: PlansetStatus;
+  kind: PlansetKind;
   created_at: string;
 }
+
+/** Map pin identity color: window vs door (status is a separate ring/badge). */
+export const OPENING_KIND_COLORS = {
+  window: "#4A9DFF",
+  door: "#3ECF6E",
+} as const;
 
 export type OpeningStatus = "planned" | "assigned" | "installed";
 export type OpeningCondition = "unknown" | "ok" | "damaged";
@@ -128,6 +137,17 @@ export const MEMO_TOPICS: { key: keyof MemoTopics; prompt: string }[] = [
 
 export const OPENING_STATUS_COLORS: Record<OpeningStatus, string> = {
   planned: "#fbbf24",
-  assigned: "#4A9DFF",
+  assigned: "#94a3b8",
   installed: "#34d399",
 };
+
+/** Base mark for display: W1-2 → W1, #14-1 → 14. */
+export function openingMarkCode(openingCode: string): string {
+  const raw = openingCode.trim().replace(/^#/, "").toUpperCase();
+  return raw.replace(/-\d+$/, "") || raw;
+}
+
+/** Map label: (#14) — type mark only; details live on tap. */
+export function openingMarkLabel(openingCode: string): string {
+  return `(#${openingMarkCode(openingCode)})`;
+}

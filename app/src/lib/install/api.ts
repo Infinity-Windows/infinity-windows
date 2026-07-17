@@ -1,11 +1,13 @@
 import { supabase } from "../supabase";
 import type { WindowType } from "../types";
 import type { DraftOpening } from "./extract";
+import { markBase } from "./extract";
 import type {
   InstallEvent,
   MemoTopics,
   Planset,
   PlansetFormat,
+  PlansetKind,
   PlansetStatus,
   Profile,
   ProjectOpening,
@@ -24,6 +26,16 @@ async function actor(): Promise<string | null> {
 // Never select `pin` to the client; it's verified server-side via RPC.
 const PROFILE_COLS = "id, display_name, skill_level, role, active, created_at, updated_at";
 
+/** Emails that auto-promote to Big Boss on first/any sign-in. */
+const BIG_BOSS_BOOTSTRAP_EMAILS = new Set([
+  "ammon@horizonsolarusa.com",
+  "isaacammonbarlow@gmail.com",
+]);
+
+function isBigBossBootstrapEmail(email: string | undefined): boolean {
+  return BIG_BOSS_BOOTSTRAP_EMAILS.has((email ?? "").trim().toLowerCase());
+}
+
 /** Ensure the signed-in user has a profile row; return it. */
 export async function ensureMyProfile(): Promise<Profile | null> {
   const { data: userData } = await supabase.auth.getUser();
@@ -36,16 +48,50 @@ export async function ensureMyProfile(): Promise<Profile | null> {
     .eq("id", user.id)
     .maybeSingle();
   if (error) throw error;
-  if (existing) return existing as Profile;
 
-  const displayName = (user.email ?? "installer").split("@")[0];
-  const { data: created, error: insErr } = await supabase
-    .from("profiles")
-    .insert({ id: user.id, display_name: displayName })
-    .select(PROFILE_COLS)
-    .single();
-  if (insErr) throw insErr;
-  return created as Profile;
+  const bootstrapBoss = isBigBossBootstrapEmail(user.email);
+
+  let profile = existing as Profile | null;
+  if (!profile) {
+    const displayName = bootstrapBoss
+      ? "Ammon"
+      : (user.email ?? "installer").split("@")[0];
+    const { data: created, error: insErr } = await supabase
+      .from("profiles")
+      .insert({
+        id: user.id,
+        display_name: displayName,
+        ...(bootstrapBoss ? { role: "big_boss", active: true } : {}),
+      })
+      .select(PROFILE_COLS)
+      .single();
+    if (insErr) throw insErr;
+    profile = created as Profile;
+  }
+
+  // Bootstrap: promote Ammon bootstrap emails to full admin (big_boss).
+  if (
+    bootstrapBoss &&
+    (profile.role !== "big_boss" ||
+      profile.display_name !== "Ammon" ||
+      !profile.active)
+  ) {
+    const { data: promoted, error: promoErr } = await supabase
+      .from("profiles")
+      .update({
+        role: "big_boss",
+        display_name: "Ammon",
+        active: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", user.id)
+      .select(PROFILE_COLS)
+      .single();
+    if (promoErr) throw promoErr;
+    profile = promoted as Profile;
+  }
+
+  return profile;
 }
 
 export async function getMyProfile(): Promise<Profile | null> {
@@ -504,6 +550,7 @@ export async function listPlansets(projectId: string): Promise<Planset[]> {
 export async function uploadPlanset(
   projectId: string,
   file: File,
+  kind: PlansetKind = "building",
 ): Promise<Planset> {
   const format = plansetFormatFromName(file.name);
   if (!format) throw new Error("Only PDF, DWG, or DXF plansets are supported.");
@@ -524,6 +571,7 @@ export async function uploadPlanset(
       storage_path: path,
       source_format: format,
       status,
+      kind,
     })
     .select()
     .single();
@@ -626,6 +674,140 @@ export async function saveDraftOpenings(
   );
   if (error) throw error;
   return { inserted: fresh.length, skipped };
+}
+
+/**
+ * Upsert catalog types from a specs extract so mark #14 becomes a real
+ * window_types row (type_code = 14) with size/color/category when known.
+ * Then patch drafts that still lack a window_type_id.
+ */
+export async function ensureTypesFromSpecs(
+  drafts: DraftOpening[],
+): Promise<DraftOpening[]> {
+  if (drafts.length === 0) return drafts;
+
+  const byMark = new Map<string, DraftOpening>();
+  for (const d of drafts) {
+    if (!byMark.has(d.mark_code)) byMark.set(d.mark_code, d);
+  }
+
+  const { data: existing, error: listErr } = await supabase
+    .from("window_types")
+    .select("id, type_code, name, category, width_in, height_in, notes");
+  if (listErr) throw listErr;
+
+  const byCode = new Map(
+    (existing ?? []).map((t) => [t.type_code.toUpperCase(), t]),
+  );
+  const markToTypeId = new Map<string, string>();
+
+  for (const [mark, sample] of byMark) {
+    const code = mark.toUpperCase();
+    let row = byCode.get(code);
+    const category =
+      sample.kind === "door" ? "door" : sample.kind === "window" ? "window" : null;
+    const notesParts = [
+      sample.color ? `Color: ${sample.color}` : null,
+      sample.type_text && sample.type_text !== code
+        ? `Spec: ${sample.type_text}`
+        : null,
+    ].filter(Boolean);
+    const notes = notesParts.length ? notesParts.join(" · ") : null;
+    const name =
+      sample.type_text && sample.type_text !== code
+        ? `${sample.type_text} (#${mark})`
+        : `Mark #${mark}`;
+
+    if (!row) {
+      const { data: created, error: insErr } = await supabase
+        .from("window_types")
+        .insert({
+          type_code: code,
+          name,
+          category,
+          width_in: sample.width_in,
+          height_in: sample.height_in,
+          notes,
+        })
+        .select("id, type_code")
+        .single();
+      if (insErr) throw insErr;
+      row = {
+        id: created.id,
+        type_code: created.type_code,
+        name,
+        category,
+        width_in: sample.width_in,
+        height_in: sample.height_in,
+        notes,
+      };
+      byCode.set(code, row);
+    } else {
+      // Fill gaps only — never overwrite a catalog product's known dims.
+      const patch: Record<string, unknown> = {};
+      if (row.width_in == null && sample.width_in != null) {
+        patch.width_in = sample.width_in;
+      }
+      if (row.height_in == null && sample.height_in != null) {
+        patch.height_in = sample.height_in;
+      }
+      if (!row.category && category) patch.category = category;
+      if (notes && !(row as { notes?: string | null }).notes) patch.notes = notes;
+      if (Object.keys(patch).length > 0) {
+        const { error: upErr } = await supabase
+          .from("window_types")
+          .update(patch)
+          .eq("id", row.id);
+        if (upErr) throw upErr;
+      }
+    }
+    markToTypeId.set(mark, row.id);
+  }
+
+  return drafts.map((d) => ({
+    ...d,
+    window_type_id: d.window_type_id ?? markToTypeId.get(d.mark_code) ?? null,
+  }));
+}
+
+/**
+ * Link a specs extract onto openings already on the job (by base mark).
+ * Only updates unconfirmed / planned drafts' window_type_id when empty or
+ * when force-linking from a fresh specs upload.
+ */
+export async function linkSpecsToOpenings(
+  projectId: string,
+  drafts: DraftOpening[],
+): Promise<{ linked: number }> {
+  if (drafts.length === 0) return { linked: 0 };
+
+  const markToType = new Map<string, string>();
+  for (const d of drafts) {
+    if (d.window_type_id) markToType.set(d.mark_code, d.window_type_id);
+  }
+  if (markToType.size === 0) return { linked: 0 };
+
+  const { data: openings, error } = await supabase
+    .from("project_openings")
+    .select("id, opening_code, window_type_id, confirmed, status")
+    .eq("project_id", projectId);
+  if (error) throw error;
+
+  let linked = 0;
+  for (const o of openings ?? []) {
+    if (o.confirmed || o.status !== "planned") continue;
+    const mark = markBase(o.opening_code);
+    const typeId = markToType.get(mark);
+    if (!typeId) continue;
+    if (o.window_type_id === typeId) continue;
+    const { error: upErr } = await supabase
+      .from("project_openings")
+      .update({ window_type_id: typeId })
+      .eq("id", o.id);
+    if (upErr) throw upErr;
+    linked += 1;
+  }
+  return { linked };
 }
 
 export async function updateOpening(
@@ -931,6 +1113,10 @@ export interface ScheduleRowLike {
   qty: number;
   label: string | null;
   pageNumber: number;
+  widthIn?: number | null;
+  heightIn?: number | null;
+  color?: string | null;
+  kind?: "window" | "door";
 }
 
 /** Install events by this installer whose AI-filled memo still needs a glance. */

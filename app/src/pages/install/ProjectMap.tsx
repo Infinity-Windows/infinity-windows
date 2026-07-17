@@ -10,7 +10,9 @@ import {
 } from "../../lib/install/api";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import {
+  OPENING_KIND_COLORS,
   OPENING_STATUS_COLORS,
+  openingMarkLabel,
   type ProjectOpening,
 } from "../../lib/install/types";
 
@@ -75,6 +77,10 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   });
 
   const pdfPlanset = (plansets.data ?? []).find(
+    (ps) =>
+      (ps.kind ?? "building") === "building" &&
+      (ps.source_format === "pdf" || ps.converted_pdf_path),
+  ) ?? (plansets.data ?? []).find(
     (ps) => ps.source_format === "pdf" || ps.converted_pdf_path,
   );
 
@@ -145,19 +151,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   };
 
   const pinTitle = (o: ProjectOpening) =>
-    `${o.opening_code}${o.window_types ? ` ${o.window_types.type_code}` : ""}${
+    `${openingMarkLabel(o.opening_code)}${o.window_types ? ` ${o.window_types.type_code}` : ""}${
       o.assignee ? ` — ${o.assignee.display_name}` : ""
     }`;
-
-  const initials = (name?: string | null) =>
-    name
-      ? name
-          .split(/[\s._-]+/)
-          .map((s) => s[0])
-          .join("")
-          .slice(0, 2)
-          .toUpperCase()
-      : "";
 
   const openOpening = (openingId: string) =>
     navigate(`/projects/${projectId}/opening/${openingId}`);
@@ -174,7 +170,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           </div>
           <div className="row-gap">
             <Link to={`/projects/${projectId}/upload`} className="button-like">
-              Planset
+              Plansets
             </Link>
             <Link to={`/projects/${projectId}/review`} className="button-like">
               Openings
@@ -203,7 +199,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       {embedded && (
         <div className="row-gap" style={{ marginBottom: 10 }}>
           <Link to={`/projects/${projectId}/upload`} className="button-like">
-            Planset
+            Plansets
           </Link>
           <Link to={`/projects/${projectId}/review`} className="button-like">
             Openings
@@ -215,9 +211,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
 
       {!pdfPlanset && (
         <p className="muted">
-          No PDF planset yet.{" "}
-          <Link to={`/projects/${projectId}/upload`}>Upload one</Link> to get a
-          map. Openings below still work without it.
+          No building plan PDF yet.{" "}
+          <Link to={`/projects/${projectId}/upload`}>Upload building plan</Link>{" "}
+          for the map. Specs still create openings without it.
         </p>
       )}
 
@@ -239,14 +235,17 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             onClick={handleMapClick}
           >
             <img src={image.dataUrl} alt={`Plan page ${page}`} />
-            {onThisPage.map((o) => (
+            {onThisPage.map((o) => {
+              const kind = unitKind(o);
+              return (
               <button
                 key={o.id}
-                className="map-pin"
+                className={`map-pin map-pin--${kind}`}
                 style={{
                   left: `${(o.pin_x ?? 0) * 100}%`,
                   top: `${(o.pin_y ?? 0) * 100}%`,
-                  background: OPENING_STATUS_COLORS[o.status],
+                  background: OPENING_KIND_COLORS[kind],
+                  boxShadow: `0 0 0 2px ${OPENING_STATUS_COLORS[o.status]}`,
                 }}
                 title={pinTitle(o)}
                 onClick={(e) => {
@@ -265,9 +264,10 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                   openOpening(o.id);
                 }}
               >
-                {o.assignee ? initials(o.assignee.display_name) : o.opening_code}
+                {openingMarkLabel(o.opening_code)}
               </button>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -297,6 +297,12 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       )}
 
       <div className="map-legend muted">
+        <span>
+          <i style={{ background: OPENING_KIND_COLORS.window }} /> window (#)
+        </span>
+        <span>
+          <i style={{ background: OPENING_KIND_COLORS.door }} /> door (#)
+        </span>
         <span>
           <i style={{ background: OPENING_STATUS_COLORS.planned }} /> planned
         </span>

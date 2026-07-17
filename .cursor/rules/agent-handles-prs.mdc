@@ -1,0 +1,19 @@
+---
+description: Agent handles git — branch, commit, push, and PR by default
+alwaysApply: true
+---
+
+# Ship via PR (agent does the git)
+
+Never push straight to `master`/`main`. Never ask Ammon to type git commands.
+
+When finishing work that should land in the repo:
+
+1. Create a new descriptive branch from the latest default branch
+2. Commit with a clear message
+3. Push with `-u`
+4. Open a PR with `gh pr create` and return the URL
+
+Ammon's job is one plain-English request (the change + that it should ship). Review + merge is human. Opt out only if he says so ("local only", "don't commit", "don't PR").
+
+Do not force-push to shared branches. Do not amend pushed commits unless explicitly asked.
