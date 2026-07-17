@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { getDashboardCounts } from "../lib/api";
+import { getDashboardCounts, listProjects, searchUnits } from "../lib/api";
+import { STATUS_LABELS } from "../lib/types";
 import { getMyProfile } from "../lib/install/api";
 import { isLeadLike } from "../lib/install/types";
 
@@ -12,9 +14,7 @@ interface WarehouseLink {
 }
 
 const LINKS: WarehouseLink[] = [
-  { to: "/search", label: "Locate", desc: "Find any unit by ID or type" },
   { to: "/scan", label: "Scan", desc: "QR a window or a slot" },
-  { to: "/projects", label: "Jobs", desc: "Pick lists & load-out per job" },
   { to: "/count", label: "Cycle count", desc: "Count a slot, flag gaps" },
   { to: "/receive", label: "Receive", desc: "Log arriving units", lead: true },
   { to: "/labels", label: "Slot labels", desc: "Print rack/slot QR labels", lead: true },
@@ -25,6 +25,15 @@ export function Warehouse() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const lead = isLeadLike(me.data?.role);
   const counts = useQuery({ queryKey: ["dashboard"], queryFn: getDashboardCounts });
+  const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+
+  const [query, setQuery] = useState("");
+  const results = useQuery({
+    queryKey: ["search", query],
+    queryFn: () => searchUnits(query),
+    enabled: query.trim().length >= 2,
+  });
+
   const links = LINKS.filter((l) => !l.lead || lead);
 
   return (
@@ -36,6 +45,41 @@ export function Warehouse() {
         </div>
       </header>
 
+      <div className="locate-search">
+        <input
+          placeholder="Locate: window ID or type code…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <Link to="/scan" className="locate-go" aria-label="Scan">
+          ▣
+        </Link>
+      </div>
+
+      {query.trim().length >= 2 && (
+        <ul className="unit-list work-list" style={{ marginTop: 4 }}>
+          {(results.data ?? []).slice(0, 8).map((u) => (
+            <li key={u.id} className="find-row">
+              <span className="unit-badge" aria-hidden>
+                {(u.window_types?.type_code ?? "?").slice(0, 3)}
+              </span>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <Link to={`/w/${encodeURIComponent(u.window_id)}`}>
+                  <strong>{u.window_id}</strong>
+                </Link>
+                <div className="muted" style={{ fontSize: 12 }}>
+                  {u.window_types?.name ?? u.window_types?.type_code}
+                </div>
+              </div>
+              <span className="big-address">
+                {u.locations?.address ?? STATUS_LABELS[u.status]}
+              </span>
+            </li>
+          ))}
+          {results.data?.length === 0 && <p className="muted">Nothing found.</p>}
+        </ul>
+      )}
+
       <div className="stat-grid">
         <Link to="/search" className="stat-card">
           <span className="stat-num">{counts.data?.total ?? "-"}</span>
@@ -45,14 +89,33 @@ export function Warehouse() {
           <span className="stat-num">{counts.data?.inbound ?? "-"}</span>
           <span>need putaway</span>
         </Link>
-        <Link to="/projects" className="stat-card">
+        <div className="stat-card">
           <span className="stat-num">{counts.data?.staged ?? "-"}</span>
           <span>staged</span>
-        </Link>
-        <Link to="/search?status=damaged" className="stat-card danger">
+        </div>
+        <Link to="/search" className="stat-card danger">
           <span className="stat-num">{counts.data?.damaged ?? "-"}</span>
           <span>damaged</span>
         </Link>
+      </div>
+
+      <h2>Jobs</h2>
+      <div className="home-projects">
+        {(projects.data ?? []).slice(0, 8).map((p) => (
+          <Link key={p.id} to={`/projects/${p.id}`} className="project-card home-project">
+            <div className="home-project-head">
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 15 }}>{p.name || p.job_code}</div>
+                <div className="muted" style={{ fontSize: 12 }}>
+                  {p.job_code}
+                  {p.address ? ` · ${p.address}` : ""}
+                </div>
+              </div>
+              <span className="muted">›</span>
+            </div>
+          </Link>
+        ))}
+        {projects.data?.length === 0 && <p className="muted">No active jobs.</p>}
       </div>
 
       <h2>Tools</h2>
