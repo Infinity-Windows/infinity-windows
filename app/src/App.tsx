@@ -43,18 +43,11 @@ import { Tools } from "./pages/Tools";
 import { Supplies } from "./pages/Supplies";
 import { Qc } from "./pages/Qc";
 import { PinGate } from "./components/PinGate";
-import { ensureMyProfile, getMyProfile } from "./lib/install/api";
-import { isLeadLike } from "./lib/install/types";
-import { useQuery } from "@tanstack/react-query";
+import { ensureMyProfile } from "./lib/install/api";
 import "./index.css";
 
-/** Role-biased landing: installers open into their work; leads see warehouse/command Home. */
+/** Everyone lands on the Infinity day Home; installers still have My work in the tab bar. */
 function RoleLanding() {
-  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  if (me.isLoading) return null;
-  if (me.data && !isLeadLike(me.data.role)) {
-    return <Navigate to="/my-work" replace />;
-  }
   return <Home />;
 }
 

@@ -1417,6 +1417,128 @@ button:disabled {
   color: var(--muted);
 }
 
+/* --- Infinity Home day hub --- */
+
+.home-day .page-header {
+  align-items: flex-start;
+}
+
+.home-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--card-raised);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 15px;
+  margin-bottom: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.home-card:hover {
+  border-color: rgba(255, 106, 26, 0.45);
+}
+
+.home-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.home-term {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.home-card-cta {
+  margin-top: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.home-active {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(135deg, var(--accent-bg), var(--card-raised));
+  border: 1px solid rgba(255, 106, 26, 0.45);
+  border-radius: 16px;
+  padding: 14px;
+  margin-bottom: 12px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.home-active-clock {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  flex: none;
+}
+
+.home-projects {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 8px;
+}
+
+.home-project {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+.home-project-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.home-project-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.home-project-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dot-info,
+.dot-ok {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot-info {
+  background: var(--info);
+}
+
+.dot-ok {
+  background: var(--ok);
+}
+
+.home-more {
+  margin-top: 8px;
+  margin-bottom: 24px;
+}
+
 .stat-card .stat-num {
   font-family: var(--font-display);
 }

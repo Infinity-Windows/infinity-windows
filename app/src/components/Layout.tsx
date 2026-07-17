@@ -29,11 +29,11 @@ export function Layout() {
   const tabs = isLead
     ? leadTabs
     : [
+        { to: "/", label: "Home", icon: "⌂", badge: 0 },
         { to: "/my-work", label: "Work", icon: "⚒", badge: openCount.data ?? 0 },
         { to: "/clock", label: "Time", icon: "⏱", badge: 0 },
         { to: "/learn", label: "Learn", icon: "★", badge: 0 },
         { to: "/points", label: "Points", icon: "✦", badge: 0 },
-        { to: "/search", label: "Find", icon: "⌕", badge: 0 },
       ];
 
   return (
