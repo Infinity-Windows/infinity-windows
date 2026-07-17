@@ -114,14 +114,17 @@ export function MyWork() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>My work</h1>
+        <div>
+          <p className="home-greeting">Your day</p>
+          <h1>My work</h1>
+        </div>
         <Link to="/training" className="button-like">
           Training
         </Link>
       </header>
       <p className="muted">
-        {me.data?.display_name ? `${me.data.display_name} — ` : ""}your day. Do the
-        top window next; capture as you go.
+        {me.data?.display_name ? `${me.data.display_name} — ` : ""}do the top
+        window next; capture as you go.
       </p>
 
       {newlyAssigned > 0 && (
@@ -135,7 +138,7 @@ export function MyWork() {
           <span className="stat-num">{active.length}</span>
           <span>assigned</span>
         </div>
-        <div className="stat-card">
+        <div className="stat-card accent">
           <span className="stat-num">{readyCount}</span>
           <span>ready now</span>
         </div>
@@ -160,7 +163,7 @@ export function MyWork() {
 
       {next && (
         <button className="next-card" onClick={() => go(next)}>
-          <span className="next-label">NEXT WINDOW</span>
+          <span className="next-label">Next window</span>
           <span className="next-code">{next.opening_code}</span>
           <span className="next-meta">
             {next.window_types?.type_code ?? "type?"} ·{" "}
@@ -176,7 +179,7 @@ export function MyWork() {
           <h2>
             {job.code} <span className="muted">· {job.items.length} to go</span>
           </h2>
-          <ul className="unit-list">
+          <ul className="unit-list work-list">
             {job.items.map((o) => (
               <li
                 key={o.id}
@@ -201,12 +204,12 @@ export function MyWork() {
       {done.length > 0 && (
         <>
           <h2>Done today ({done.length})</h2>
-          <ul className="unit-list">
+          <ul className="unit-list work-list">
             {done.map((o) => (
-              <li key={o.id}>
+              <li key={o.id} className="find-row">
                 <strong>{o.opening_code}</strong>{" "}
                 <span className="muted">{o.window_types?.type_code}</span>{" "}
-                <span className="ok">installed</span>
+                <span className="ok" style={{ marginLeft: "auto" }}>installed</span>
               </li>
             ))}
           </ul>
