@@ -163,7 +163,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
   const openingRow = (o: ProjectOpening) => {
     const r = openingReadiness(o);
     return (
-      <li key={o.id} className="dispatch-row">
+      <li key={o.id} className="dispatch-row find-row">
         <div>
           <strong>{o.opening_code}</strong>{" "}
           <span className="muted">
@@ -208,7 +208,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
       {blocked.length > 0 && (
         <>
           <h2 className="blocker-head">Blockers ({blocked.length}) — resolve to unblock</h2>
-          <ul className="unit-list">
+          <ul className="unit-list work-list">
             {blocked.map((o) => {
               const r = openingReadiness(o);
               const reasons = [
@@ -216,7 +216,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
                 ...(r.status === "blocked" ? r.reasons : []),
               ];
               return (
-                <li key={o.id} className="dispatch-row blocker">
+                <li key={o.id} className="dispatch-row blocker find-row">
                   <div>
                     <strong>{o.opening_code}</strong>{" "}
                     <span className="muted">{o.window_types?.type_code}</span>
@@ -239,7 +239,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
           <h2>Site notes from the field</h2>
           <ul className="unit-list">
             {jobNotes.data!.map((n) => (
-              <li key={n.id}>
+              <li key={n.id} className="site-note-card">
                 <span className="muted" style={{ fontSize: 12 }}>
                   {n.created_at.slice(0, 10)} · {n.author_name ?? "crew"}
                 </span>
@@ -251,7 +251,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
       )}
 
       <h2>Unassigned ({unassigned.length})</h2>
-      <ul className="unit-list">
+      <ul className="unit-list work-list">
         {unassigned.map(openingRow)}
         {unassigned.length === 0 && (
           <p className="muted">Everything ready is assigned.</p>
@@ -269,7 +269,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
                 {c.role !== "installer" ? ` · ${c.role}` : ""} · {list.length} assigned
               </span>
             </h2>
-            <ul className="unit-list">
+            <ul className="unit-list work-list">
               {list.map(openingRow)}
               {list.length === 0 && <p className="muted">No windows assigned.</p>}
             </ul>
