@@ -360,7 +360,7 @@ function OverviewTab({
 
       <div className="action-list">
         <Link to={`/projects/${projectId}/upload`} className="action-btn primary">
-          Upload planset
+          Upload plansets
         </Link>
         <Link to={`/projects/${projectId}/review`} className="action-btn">
           Review openings

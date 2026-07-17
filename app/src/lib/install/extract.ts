@@ -1,23 +1,33 @@
-// Deterministic window-schedule extraction from planset text, with an optional
-// AI fallback (`ExtractStrategy`) when `parseScheduleRows` finds nothing.
-// The rest of the pipeline (match, expand, draft save with confirm guardrails)
-// is shared — confirmed openings are never overwritten.
+// Deterministic window/door-schedule extraction from planset text, with an
+// optional AI fallback (`ExtractStrategy`) when `parseScheduleRows` finds
+// nothing. Specs plansets define what a mark (#14) *is*; qty expands into
+// individual openings for install tracking (14-1, 14-2, …).
 
 export interface ScheduleRow {
-  /** Opening mark on the plans, e.g. W1, A-101 */
+  /** Opening mark on the plans, e.g. W1, A-101, #14, 14 */
   openingCode: string;
-  /** Raw type text from the schedule, e.g. CAS3050 or "CASEMENT 3050" */
+  /** Raw type/product text from the schedule, e.g. CAS3050 or "CASEMENT" */
   typeText: string;
   qty: number;
   /** Location/remarks text, e.g. "LIVING ROOM" */
   label: string | null;
   pageNumber: number;
+  /** Rough opening / unit size in inches when the schedule lists dimensions. */
+  widthIn: number | null;
+  heightIn: number | null;
+  /** Color / finish when present (e.g. WHITE, BRONZE). */
+  color: string | null;
+  /** Window vs door — from schedule header keywords or row text. */
+  kind: "window" | "door";
 }
 
 export interface TypeCandidate {
   id: string;
   type_code: string;
   name: string;
+  category?: string | null;
+  width_in?: number | null;
+  height_in?: number | null;
 }
 
 export interface TypeMatch {
@@ -32,6 +42,12 @@ export interface DraftOpening {
   match_score: number;
   label: string | null;
   page_number: number;
+  /** Base mark without instance suffix — #14 for openings 14-1, 14-2. */
+  mark_code: string;
+  width_in: number | null;
+  height_in: number | null;
+  color: string | null;
+  kind: "window" | "door";
 }
 
 /** AI fallback implements this; deterministic parser is the default. */
@@ -60,18 +76,88 @@ export async function extractScheduleRows(
   }
   return { rows: [], source: "none" };
 }
-// Opening marks: W1, W-12, W12A, A-101, 101, 101A, WIN-3 ...
-const MARK_RE = /^(?:[A-Z]{1,3}-?\d{1,4}[A-Z]?|\d{2,4}[A-Z]?)$/;
+
+// Marks: #14, 14, W1, W-12, A-101, 101A …
+const MARK_RE = /^#?(?:[A-Z]{1,3}-?\d{1,4}[A-Z]?|\d{1,4}[A-Z]?)$/;
 // Type-code-ish field: letters then digits, e.g. CAS3050, DH2846, SL-6040
 const TYPE_RE = /^[A-Z]{2,6}-?\d{3,4}$/;
-// Dimension fields like 3'-0" x 5'-0" or 36" X 60" — never a type or label.
-const SIZE_RE = /\d\s*['"x×]/i;
-const HEADER_WORDS = /\b(MARK|SYMBOL|QTY|QUANTITY|MANUF|SCHEDULE|REMARKS|R\.O\.|ROUGH)\b/i;
+// Dimension fields like 3'-0" x 5'-0", 36" X 60", 4x5, 48 x 60
+const SIZE_RE =
+  /(\d+(?:\.\d+)?)\s*(?:'|ft|’)?\s*(?:-\s*(\d+)\s*(?:"|in|”)?)?\s*[x×]\s*(\d+(?:\.\d+)?)\s*(?:'|ft|’)?\s*(?:-\s*(\d+)\s*(?:"|in|”)?)?/i;
+const SIZE_IN_RE =
+  /(\d+(?:\.\d+)?)\s*(?:"|in|”)?\s*[x×]\s*(\d+(?:\.\d+)?)\s*(?:"|in|”)?/i;
+const HEADER_WORDS =
+  /\b(MARK|SYMBOL|QTY|QUANTITY|MANUF|SCHEDULE|REMARKS|R\.O\.|ROUGH|WIDTH|HEIGHT|COLOR|FINISH)\b/i;
+const DOOR_WORDS = /\b(DOOR|DOORS|ENTRY|SLIDING\s*DOOR|FRENCH\s*DOOR)\b/i;
+const WINDOW_WORDS = /\b(WINDOW|WINDOWS|CASEMENT|DOUBLE[\s-]?HUNG|SLIDER|PICTURE)\b/i;
+const COLOR_WORDS =
+  /^(WHITE|BLACK|BRONZE|ALMOND|BEIGE|GRAY|GREY|CLAD|ANODIZED|CLEAR|PAINTED)$/i;
 
 function splitFields(line: string): string[] {
-  // Schedules come across as pipe/tab tables or column-aligned text.
   const byDelim = line.split(/\s*\|\s*|\t+|\s{2,}/).map((f) => f.trim());
   return byDelim.filter(Boolean);
+}
+
+function feetInchesToInches(
+  feet: number,
+  inches: number | undefined,
+): number {
+  return feet * 12 + (inches ?? 0);
+}
+
+/** Parse a size token into width/height inches. */
+export function parseSizeInches(
+  text: string,
+): { widthIn: number; heightIn: number } | null {
+  const m = text.match(SIZE_RE);
+  if (m) {
+    const wFeet = Number(m[1]);
+    const wIn = m[2] !== undefined ? Number(m[2]) : undefined;
+    const hFeet = Number(m[3]);
+    const hIn = m[4] !== undefined ? Number(m[4]) : undefined;
+    // Bare "4x5" without units → treat as feet (common on residential marks).
+    const hasFeetMark = /['′’ft]/i.test(text);
+    const hasInchMark = /["″in]/i.test(text);
+    if (!hasFeetMark && !hasInchMark && wIn === undefined && hIn === undefined) {
+      // Ambiguous 4x5 — prefer feet for building schedules (4'×5').
+      return { widthIn: wFeet * 12, heightIn: hFeet * 12 };
+    }
+    if (hasInchMark && !hasFeetMark && wIn === undefined && hIn === undefined) {
+      return { widthIn: wFeet, heightIn: hFeet };
+    }
+    return {
+      widthIn: feetInchesToInches(wFeet, wIn),
+      heightIn: feetInchesToInches(hFeet, hIn),
+    };
+  }
+  const inch = text.match(SIZE_IN_RE);
+  if (inch) {
+    return { widthIn: Number(inch[1]), heightIn: Number(inch[2]) };
+  }
+  return null;
+}
+
+function normalizeMark(raw: string): string {
+  return raw.trim().replace(/^#/, "").toUpperCase();
+}
+
+/** Base mark without instance suffix (14-1 → 14). */
+export function markBase(code: string): string {
+  const n = normalizeMark(code);
+  return n.replace(/-\d+$/, "") || n;
+}
+
+function detectKind(
+  line: string,
+  pageContext: string,
+  defaultKind: "window" | "door",
+): "window" | "door" {
+  if (DOOR_WORDS.test(line)) return "door";
+  if (WINDOW_WORDS.test(line)) return "window";
+  if (DOOR_WORDS.test(pageContext) && !WINDOW_WORDS.test(pageContext)) {
+    return "door";
+  }
+  return defaultKind;
 }
 
 export function parseScheduleRows(
@@ -79,6 +165,11 @@ export function parseScheduleRows(
   pageNumber = 1,
 ): ScheduleRow[] {
   const rows: ScheduleRow[] = [];
+  const pageContext = text.slice(0, 400);
+  const defaultKind: "window" | "door" = DOOR_WORDS.test(pageContext)
+    ? "door"
+    : "window";
+
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || HEADER_WORDS.test(line)) continue;
@@ -87,20 +178,38 @@ export function parseScheduleRows(
     if (fields.length < 2) fields = line.split(/\s+/);
     if (fields.length < 2) continue;
 
-    const mark = fields[0].toUpperCase();
-    if (!MARK_RE.test(mark)) continue;
+    const markUpper = fields[0].toUpperCase();
+    if (!MARK_RE.test(markUpper)) continue;
+    const mark = normalizeMark(markUpper);
 
     let typeText: string | null = null;
     let qty = 1;
     let qtySeen = false;
+    let widthIn: number | null = null;
+    let heightIn: number | null = null;
+    let color: string | null = null;
     const labelParts: string[] = [];
 
     for (const field of fields.slice(1)) {
       const f = field.trim();
-      if (!f || SIZE_RE.test(f)) continue;
+      if (!f) continue;
+
+      const size = parseSizeInches(f);
+      if (size) {
+        widthIn = size.widthIn;
+        heightIn = size.heightIn;
+        continue;
+      }
+      // SIZE_RE-ish leftovers that aren't parseable as full size — skip.
+      if (/\d\s*['"x×]/i.test(f) && /[x×]/i.test(f)) continue;
+
       if (!qtySeen && /^\d{1,3}$/.test(f)) {
         qty = Number(f);
         qtySeen = true;
+        continue;
+      }
+      if (COLOR_WORDS.test(f)) {
+        color = f.toUpperCase();
         continue;
       }
       if (!typeText && TYPE_RE.test(f.toUpperCase())) {
@@ -110,12 +219,12 @@ export function parseScheduleRows(
       if (/[A-Za-z]/.test(f)) labelParts.push(f);
     }
 
-    // Fall back to the field right after the mark (worded types like
-    // "CASEMENT 3050" land in labelParts).
     if (!typeText && labelParts.length > 0) {
       typeText = labelParts.shift()!.toUpperCase();
     }
-    if (!typeText) continue;
+    // Numeric-only marks (#14) often list product in type column; if still
+    // empty, use the mark itself as the type key (specs define what #14 is).
+    if (!typeText) typeText = mark;
 
     rows.push({
       openingCode: mark,
@@ -123,6 +232,10 @@ export function parseScheduleRows(
       qty: qty >= 1 && qty <= 500 ? qty : 1,
       label: labelParts.length ? labelParts.join(" ") : null,
       pageNumber,
+      widthIn,
+      heightIn,
+      color,
+      kind: detectKind(line, pageContext, defaultKind),
     });
   }
   return rows;
@@ -162,21 +275,28 @@ function similarity(a: string, b: string): number {
 
 /**
  * Fuzzy-match raw schedule type text against the window_types catalog.
- * Returns null type below the confidence threshold — a human picks instead.
+ * Also tries the mark itself (#14 → type_code 14). Returns null below the
+ * confidence threshold — a human picks instead.
  */
 export function matchWindowType(
   typeText: string,
   types: TypeCandidate[],
   threshold = 0.6,
+  markCode?: string,
 ): TypeMatch {
   const target = normalize(typeText);
+  const markNorm = markCode ? normalize(markCode) : "";
   let best: TypeCandidate | null = null;
   let bestScore = 0;
   for (const t of types) {
-    const score = Math.max(
-      similarity(target, normalize(t.type_code)),
+    const code = normalize(t.type_code);
+    let score = Math.max(
+      similarity(target, code),
       similarity(target, normalize(t.name)) * 0.9,
     );
+    if (markNorm) {
+      score = Math.max(score, similarity(markNorm, code));
+    }
     if (score > bestScore) {
       best = t;
       bestScore = score;
@@ -188,7 +308,7 @@ export function matchWindowType(
 
 /**
  * Expand schedule rows (qty N) into individual draft openings and attach the
- * best type match. W1 x3 becomes W1-1, W1-2, W1-3.
+ * best type match. Mark #14 ×3 becomes 14-1, 14-2, 14-3 (type mark stays 14).
  */
 export function rowsToDraftOpenings(
   rows: ScheduleRow[],
@@ -196,11 +316,12 @@ export function rowsToDraftOpenings(
 ): DraftOpening[] {
   const drafts: DraftOpening[] = [];
   for (const row of rows) {
-    const match = matchWindowType(row.typeText, types);
+    const mark = markBase(row.openingCode);
+    const match = matchWindowType(row.typeText, types, 0.6, mark);
     const codes =
       row.qty === 1
-        ? [row.openingCode]
-        : Array.from({ length: row.qty }, (_, i) => `${row.openingCode}-${i + 1}`);
+        ? [mark]
+        : Array.from({ length: row.qty }, (_, i) => `${mark}-${i + 1}`);
     for (const code of codes) {
       drafts.push({
         opening_code: code,
@@ -209,8 +330,27 @@ export function rowsToDraftOpenings(
         match_score: match.score,
         label: row.label,
         page_number: row.pageNumber,
+        mark_code: mark,
+        width_in: row.widthIn,
+        height_in: row.heightIn,
+        color: row.color,
+        kind: row.kind,
       });
     }
   }
   return drafts;
+}
+
+/** Summarize drafts for the review screen: "12× #14 windows". */
+export function summarizeDraftMarks(
+  drafts: DraftOpening[],
+): { mark: string; count: number; kind: "window" | "door" }[] {
+  const map = new Map<string, { mark: string; count: number; kind: "window" | "door" }>();
+  for (const d of drafts) {
+    const key = `${d.kind}:${d.mark_code}`;
+    const cur = map.get(key);
+    if (cur) cur.count += 1;
+    else map.set(key, { mark: d.mark_code, count: 1, kind: d.kind });
+  }
+  return [...map.values()].sort((a, b) => a.mark.localeCompare(b.mark));
 }

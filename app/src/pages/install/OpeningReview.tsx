@@ -10,6 +10,7 @@ import {
   updateOpening,
 } from "../../lib/install/api";
 import type { ProjectOpening } from "../../lib/install/types";
+import { openingMarkCode, openingMarkLabel } from "../../lib/install/types";
 
 export function OpeningReview() {
   const { projectId = "" } = useParams();
@@ -66,6 +67,19 @@ export function OpeningReview() {
 
   const drafts = (openings.data ?? []).filter((o) => !o.confirmed);
   const confirmed = (openings.data ?? []).filter((o) => o.confirmed);
+
+  const markSummary = (() => {
+    const map = new Map<string, { mark: string; count: number; door: boolean }>();
+    for (const o of drafts) {
+      const mark = openingMarkCode(o.opening_code);
+      const door = (o.window_types?.category ?? "").toLowerCase().includes("door");
+      const key = `${door ? "d" : "w"}:${mark}`;
+      const cur = map.get(key);
+      if (cur) cur.count += 1;
+      else map.set(key, { mark, count: 1, door });
+    }
+    return [...map.values()].sort((a, b) => a.mark.localeCompare(b.mark));
+  })();
 
   const row = (o: ProjectOpening) => (
     <li key={o.id} className="opening-review-row">
@@ -130,9 +144,22 @@ export function OpeningReview() {
       {drafts.length > 0 && (
         <>
           <h2>Extracted drafts ({drafts.length}) — confirm before install</h2>
+          {markSummary.length > 0 && (
+            <p className="scanner-hint">
+              We found{" "}
+              {markSummary
+                .map(
+                  (m) =>
+                    `${m.count}× ${openingMarkLabel(m.mark)} ${m.door ? "doors" : "windows"}`,
+                )
+                .join(", ")}{" "}
+              — accept or fix below.
+            </p>
+          )}
           <p className="muted">
             Fix codes and types where the extract got it wrong. Confirmed
-            openings are never overwritten by a re-extract.
+            openings are never overwritten by a re-extract. Mark #14 is a type;
+            qty is how many of that type.
           </p>
           <ul className="unit-list">{drafts.map(row)}</ul>
           <button
@@ -150,7 +177,7 @@ export function OpeningReview() {
       {confirmed.length === 0 && drafts.length === 0 && (
         <p className="muted">
           Nothing yet.{" "}
-          <Link to={`/projects/${projectId}/upload`}>Upload a planset</Link> or
+          <Link to={`/projects/${projectId}/upload`}>Upload specs</Link> or
           add openings by hand below.
         </p>
       )}

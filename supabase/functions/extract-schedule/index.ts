@@ -10,6 +10,10 @@ interface ScheduleRow {
   qty: number;
   label: string | null;
   pageNumber: number;
+  widthIn?: number | null;
+  heightIn?: number | null;
+  color?: string | null;
+  kind?: string | null;
 }
 
 Deno.serve(async (req) => {
@@ -35,19 +39,23 @@ Deno.serve(async (req) => {
       .slice(0, 60000);
 
     const result = await chatJson<{ rows: ScheduleRow[] }>(
-      "Extract window schedule rows from construction planset text. Only return openings that look like schedule marks (W1, A-101, etc). Ignore doors, notes, and compliance sentences. qty defaults to 1.",
+      "Extract window and door schedule rows from construction planset text. Return schedule marks (#14, W1, A-101, etc). Include doors. qty defaults to 1. Prefer typeText from known catalog codes when present. Capture widthIn/heightIn in inches when a size column exists, color when present, and kind window|door.",
       `Known catalog types (prefer these typeText values when matching):\n${JSON.stringify(catalog.slice(0, 200))}\n\nPlanset text:\n${joined}`,
-      `Schema: { "rows": [ { "openingCode": string, "typeText": string, "qty": number, "label": string|null, "pageNumber": number } ] }`,
+      `Schema: { "rows": [ { "openingCode": string, "typeText": string, "qty": number, "label": string|null, "pageNumber": number, "widthIn": number|null, "heightIn": number|null, "color": string|null, "kind": "window"|"door" } ] }`,
     );
 
     const rows = (result.rows ?? [])
       .filter((r) => r && typeof r.openingCode === "string" && r.openingCode.trim())
       .map((r) => ({
-        openingCode: String(r.openingCode).trim().toUpperCase(),
+        openingCode: String(r.openingCode).trim().replace(/^#/, "").toUpperCase(),
         typeText: String(r.typeText ?? "").trim().toUpperCase() || "UNKNOWN",
         qty: Math.min(500, Math.max(1, Number(r.qty) || 1)),
         label: r.label ? String(r.label).trim() : null,
         pageNumber: Number(r.pageNumber) || 1,
+        widthIn: r.widthIn != null && Number.isFinite(Number(r.widthIn)) ? Number(r.widthIn) : null,
+        heightIn: r.heightIn != null && Number.isFinite(Number(r.heightIn)) ? Number(r.heightIn) : null,
+        color: r.color ? String(r.color).trim().toUpperCase() : null,
+        kind: String(r.kind ?? "").toLowerCase() === "door" ? "door" : "window",
       }));
 
     return jsonResponse({ rows }, 200, cors);

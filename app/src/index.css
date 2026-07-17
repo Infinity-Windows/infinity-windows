@@ -560,20 +560,39 @@ button:disabled {
 .map-pin {
   position: absolute;
   transform: translate(-50%, -50%);
-  min-width: 30px;
-  height: 30px;
-  padding: 0 6px;
-  border-radius: 15px;
+  min-width: 36px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 8px;
   border: 2px solid rgba(0, 0, 0, 0.55);
   color: #fff;
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+}
+
+.map-pin--window {
+  background: var(--info);
+}
+
+.map-pin--door {
+  background: var(--ok);
+}
+
+.planset-slot {
+  margin: 18px 0 24px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.planset-slot:last-of-type {
+  border-bottom: none;
 }
 
 .page-switch {

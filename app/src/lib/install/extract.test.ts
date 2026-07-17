@@ -79,9 +79,37 @@ describe("parseScheduleRows", () => {
     ).toHaveLength(0);
   });
 
-  it("tags rows with the page number", () => {
-    const rows = parseScheduleRows("W9  DH2846  1  ATTIC", 3);
-    expect(rows[0].pageNumber).toBe(3);
+  it("parses #14-style numeric marks and 4x5 sizes as feet", () => {
+    const rows = parseScheduleRows(`
+MARK  SIZE  QTY  TYPE  COLOR
+#14  4x5  3  CASEMENT  WHITE
+#6  3'-0" x 4'-0"  2  DOOR  BRONZE
+`);
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    const fourteen = rows.find((r) => r.openingCode === "14");
+    expect(fourteen).toMatchObject({
+      qty: 3,
+      widthIn: 48,
+      heightIn: 60,
+      color: "WHITE",
+      kind: "window",
+    });
+    const six = rows.find((r) => r.openingCode === "6");
+    expect(six).toMatchObject({
+      qty: 2,
+      kind: "door",
+      color: "BRONZE",
+    });
+    expect(six?.widthIn).toBe(36);
+    expect(six?.heightIn).toBe(48);
+  });
+});
+
+describe("parseSizeInches", () => {
+  it("reads feet-inch and bare 4x5", async () => {
+    const { parseSizeInches } = await import("./extract");
+    expect(parseSizeInches(`3'-0" x 5'-0"`)).toEqual({ widthIn: 36, heightIn: 60 });
+    expect(parseSizeInches("4x5")).toEqual({ widthIn: 48, heightIn: 60 });
   });
 });
 
@@ -124,6 +152,16 @@ describe("rowsToDraftOpenings", () => {
     const drafts = rowsToDraftOpenings(rows, TYPES);
     expect(drafts.map((d) => d.opening_code)).toEqual(["W1-1", "W1-2", "W1-3"]);
     expect(drafts.every((d) => d.window_type_id === "t-cas")).toBe(true);
+    expect(drafts.every((d) => d.mark_code === "W1")).toBe(true);
+  });
+
+  it("keeps #14 as the type mark across instances", () => {
+    const drafts = rowsToDraftOpenings(
+      parseScheduleRows("#14  CASEMENT  4x5  2  WHITE"),
+      TYPES,
+    );
+    expect(drafts.map((d) => d.opening_code)).toEqual(["14-1", "14-2"]);
+    expect(drafts.every((d) => d.mark_code === "14")).toBe(true);
   });
 
   it("keeps single-qty codes as-is and carries labels", () => {
@@ -153,6 +191,10 @@ describe("extractScheduleRows", () => {
         qty: 1,
         label: null,
         pageNumber: 1,
+        widthIn: null,
+        heightIn: null,
+        color: null,
+        kind: "window" as const,
       },
     ]);
     const result = await extractScheduleRows(
@@ -172,6 +214,10 @@ describe("extractScheduleRows", () => {
         qty: 1,
         label: "DEN",
         pageNumber: 1,
+        widthIn: null,
+        heightIn: null,
+        color: null,
+        kind: "window" as const,
       },
     ]);
     const result = await extractScheduleRows(
