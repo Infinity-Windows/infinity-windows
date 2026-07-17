@@ -1,19 +1,38 @@
 ---
-description: Agent handles git — branch, commit, push, and PR by default
+description: Agent handles all git via PRs; never push to master
 alwaysApply: true
 ---
 
-# Ship via PR (agent does the git)
+# Ship via PR (the agent does all the git)
 
-Never push straight to `master`/`main`. Never ask Ammon to type git commands.
+Agents must **never push directly to `master`/`main`**, and must **never ask the
+human to type git commands**. Taylor and Ammon are non-technical — git is the
+agent's job, not theirs.
 
-When finishing work that should land in the repo:
+## When shipping a change that should land in the repo
 
-1. Create a new descriptive branch from the latest default branch
-2. Commit with a clear message
-3. Push with `-u`
-4. Open a PR with `gh pr create` and return the URL
+Always follow this loop:
 
-Ammon's job is one plain-English request (the change + that it should ship). Review + merge is human. Opt out only if he says so ("local only", "don't commit", "don't PR").
+1. Start from the **latest `master`** (`git fetch` + fast-forward first).
+2. Create a **short-lived branch** (name it for the change).
+3. Make the edit.
+4. **Run tests / a smoke check if relevant** (e.g. `npm run build`, `npm test`).
+5. **Commit** with a clear message.
+6. **Push** the branch (`git push -u origin <branch>`).
+7. Open a PR into `master` with `gh pr create`.
+8. **Return the PR URL in chat** so a human can review and click Merge.
 
-Do not force-push to shared branches. Do not amend pushed commits unless explicitly asked.
+## Rules
+
+- **One concern per PR.** If you did two unrelated things, make two PRs.
+- **Short-lived branches** — hours, not days. Merge and delete promptly.
+- **Never force-push shared branches.** Do not amend pushed commits unless
+  explicitly asked.
+- **If two edits collide,** the agent rebases/fixes the branch itself. Humans
+  never hand-edit git or resolve conflicts by hand.
+- **Humans review and click Merge.** The agent stops after opening the PR.
+
+## Opting out
+
+Only skip the PR flow if the human explicitly says **"local only"**,
+**"don't commit"**, or **"don't PR"**.

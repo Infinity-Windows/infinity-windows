@@ -15,7 +15,8 @@ understand. It's always cheaper to ask than to untangle a mess later.
 **`master` is the single source of truth.**
 
 - `master` is always the latest, correct version of the app.
-- Everyone syncs *to* `master`. Everyone pushes *to* `master`.
+- Everyone syncs *to* `master`. Nobody pushes *directly* to `master` — new work
+  lands through a **Pull Request (PR)** that a human reviews and merges.
 - What you see on your screen should match `master`. If it doesn't, you are
   behind — sync (see below).
 
@@ -93,46 +94,44 @@ echo "Latest is:    $(git log --oneline -1 origin/master)"
 
 ---
 
-## Push Your Work Often
+## How Work Ships (the PR workflow)
 
-Small and frequent beats big and rare.
+We do **not** push straight to `master` anymore. Instead, every change ships
+through a **Pull Request (PR)** — a proposed change that a human reviews and
+clicks **Merge** on.
 
-```bash
-git add -A
-git commit -m "short description of what you did"
-git push origin master
-```
+**The good news for Taylor & Ammon: you don't do any of this by hand.** Your
+Cursor agent does all the git for you. You just describe the change you want in
+plain English, and the agent will:
 
-- **Push at least a few times a day.** Don't sit on days of work — that's how
-  branches drift apart.
-- If `git push` gets rejected because someone else pushed first, just sync and
-  try again:
+1. Start from the latest `master`.
+2. Make a short-lived branch.
+3. Make the change (and run a quick build/test check when it matters).
+4. Commit, push the branch, and open a PR.
+5. Hand you a **PR link** in chat.
 
-```bash
-git pull --ff-only origin master   # get their changes
-git push origin master             # push yours on top
-```
+Your only job is to **open that link, glance at it, and click the green Merge
+button** (or ask a teammate to). Once it's merged, it becomes part of `master` —
+then everyone just syncs (see the Daily Start Routine) to get it.
 
-- If the pull isn't fast-forwardable (git complains), **stop and ask** — don't
-  force anything.
+- **Never type git commands yourself.** If you catch yourself about to run
+  `git push`, stop — that's the agent's job. Just tell the agent what you want.
+- **One PR = one concern.** If two unrelated things changed, that's two PRs.
+- **If the agent says a branch "collided" or "diverged,"** let the *agent* fix
+  it (it will rebase). Humans never hand-edit git.
 
 ---
 
 ## Branches: Keep Them Short-Lived
 
-We are **trunk-based**: most of the time, just commit straight to `master`.
+Every change lives on its **own short-lived branch**, and that branch becomes a
+PR. The agent handles creating and cleaning these up — you shouldn't need to
+think about branches at all.
 
-If you *do* need a branch (bigger experiment, risky change):
+If a branch does stick around:
 
 - Keep it alive for **hours, not days**.
-- Merge or rebase `master` into it **every day** so it never drifts:
-
-```bash
-git fetch origin
-git rebase origin/master     # replays your work on top of latest master
-```
-
-- Merge it back to `master` and delete it as soon as you can.
+- Merge or delete it as soon as its PR is merged.
 
 Long-lived branches are exactly what caused our last sync mess. Avoid them.
 
@@ -279,9 +278,10 @@ git log --oneline -1            # should match:
 git log --oneline -1 origin/master
 
 # Save + share my work:
-git add -A && git commit -m "what I did" && git push origin master
+# Just tell your Cursor agent what you changed — it opens a PR and hands you a
+# link. Open the link and click Merge. (You don't type git commands.)
 
 # Screen looks old?  ->  Hard refresh: Cmd/Ctrl + Shift + R
 
-# Anything says "diverged" or "CONFLICT"  ->  STOP AND ASK
+# Anything says "diverged" or "CONFLICT"  ->  let the agent fix it (don't force)
 ```
