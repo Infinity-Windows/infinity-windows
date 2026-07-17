@@ -2779,3 +2779,103 @@ button.clock-out {
   }
 }
 
+/* --- Toolbox talks: rich content + signature --- */
+.talk-section {
+  margin: 12px 0 4px;
+}
+.talk-section h4 {
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin: 0 0 6px;
+  color: var(--accent-hover);
+}
+.talk-section.hazards h4 { color: var(--warn); }
+.talk-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.talk-list li { line-height: 1.5; color: var(--text-secondary); }
+.talk-steps { counter-reset: step; list-style: none; padding-left: 0; }
+.talk-steps li {
+  position: relative;
+  padding-left: 30px;
+}
+.talk-steps li::before {
+  counter-increment: step;
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dodont-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.dodont-grid .do { color: var(--ok); }
+.dodont-grid .dont { color: var(--danger); }
+.talk-aids {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.talk-aid {
+  flex: 1 1 200px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  background: var(--card-raised);
+}
+.talk-aid img { width: 100%; border-radius: 8px; display: block; }
+.talk-aid .aid-caption { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.talk-aid.placeholder {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.sig-pad { display: flex; flex-direction: column; gap: 4px; }
+.sig-canvas {
+  width: 100%;
+  background: #ffffff;
+  border: 2px dashed rgba(255, 106, 26, 0.5);
+  border-radius: var(--radius-sm);
+  display: block;
+}
+.sig-hint {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  min-height: 14px;
+}
+.ack-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 6px 0;
+  cursor: pointer;
+}
+.ack-row input { width: 20px; height: 20px; margin-top: 2px; flex: none; }
+.compliance-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.compliance-row .status-yes { color: var(--ok); font-weight: 700; }
+.compliance-row .status-no { color: var(--danger); font-weight: 700; }
+

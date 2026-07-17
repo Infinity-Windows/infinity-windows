@@ -1,7 +1,25 @@
 import { supabase } from "./supabase";
 
 // --- Safety ---
-export interface SafetyTalk { id: string; title: string; body: string; talk_date: string; }
+export interface TalkSections {
+  intro?: string;
+  key_hazards?: string[];
+  steps?: string[];
+  dos?: string[];
+  donts?: string[];
+}
+export interface TalkVisualAid {
+  prompt: string;
+  url?: string;
+}
+export interface SafetyTalk {
+  id: string;
+  title: string;
+  body: string;
+  talk_date: string;
+  sections_json?: TalkSections | null;
+  visual_aids_json?: TalkVisualAid[] | null;
+}
 export interface Incident {
   id: string; description: string; severity: string; created_at: string;
   profiles?: { display_name: string } | null;
