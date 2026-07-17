@@ -24,6 +24,16 @@ async function actor(): Promise<string | null> {
 // Never select `pin` to the client; it's verified server-side via RPC.
 const PROFILE_COLS = "id, display_name, skill_level, role, active, created_at, updated_at";
 
+/** Emails that auto-promote to Big Boss on first/any sign-in. */
+const BIG_BOSS_BOOTSTRAP_EMAILS = new Set([
+  "ammon@horizonsolarusa.com",
+  "isaacammonbarlow@gmail.com",
+]);
+
+function isBigBossBootstrapEmail(email: string | undefined): boolean {
+  return BIG_BOSS_BOOTSTRAP_EMAILS.has((email ?? "").trim().toLowerCase());
+}
+
 /** Ensure the signed-in user has a profile row; return it. */
 export async function ensureMyProfile(): Promise<Profile | null> {
   const { data: userData } = await supabase.auth.getUser();
@@ -36,16 +46,50 @@ export async function ensureMyProfile(): Promise<Profile | null> {
     .eq("id", user.id)
     .maybeSingle();
   if (error) throw error;
-  if (existing) return existing as Profile;
 
-  const displayName = (user.email ?? "installer").split("@")[0];
-  const { data: created, error: insErr } = await supabase
-    .from("profiles")
-    .insert({ id: user.id, display_name: displayName })
-    .select(PROFILE_COLS)
-    .single();
-  if (insErr) throw insErr;
-  return created as Profile;
+  const bootstrapBoss = isBigBossBootstrapEmail(user.email);
+
+  let profile = existing as Profile | null;
+  if (!profile) {
+    const displayName = bootstrapBoss
+      ? "Ammon"
+      : (user.email ?? "installer").split("@")[0];
+    const { data: created, error: insErr } = await supabase
+      .from("profiles")
+      .insert({
+        id: user.id,
+        display_name: displayName,
+        ...(bootstrapBoss ? { role: "big_boss", active: true } : {}),
+      })
+      .select(PROFILE_COLS)
+      .single();
+    if (insErr) throw insErr;
+    profile = created as Profile;
+  }
+
+  // Bootstrap: promote Ammon bootstrap emails to full admin (big_boss).
+  if (
+    bootstrapBoss &&
+    (profile.role !== "big_boss" ||
+      profile.display_name !== "Ammon" ||
+      !profile.active)
+  ) {
+    const { data: promoted, error: promoErr } = await supabase
+      .from("profiles")
+      .update({
+        role: "big_boss",
+        display_name: "Ammon",
+        active: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", user.id)
+      .select(PROFILE_COLS)
+      .single();
+    if (promoErr) throw promoErr;
+    profile = promoted as Profile;
+  }
+
+  return profile;
 }
 
 export async function getMyProfile(): Promise<Profile | null> {
