@@ -13,10 +13,10 @@ import {
 } from "../lib/ops";
 
 const SEVERITY = [
-  { v: "near_miss", l: "Near miss" },
-  { v: "first_aid", l: "First aid" },
-  { v: "recordable", l: "Recordable" },
-  { v: "serious", l: "Serious" },
+  { v: "near_miss", l: "Near miss", mild: true },
+  { v: "first_aid", l: "First aid", mild: true },
+  { v: "recordable", l: "Recordable", mild: false },
+  { v: "serious", l: "Serious", mild: false },
 ];
 
 export function Safety() {
@@ -53,20 +53,25 @@ export function Safety() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Safety</h1>
-        <Link to="/" className="button-like">Home</Link>
+        <div>
+          <h1>Safety</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            Nobody gets hurt installing a window. Ever.
+          </p>
+        </div>
+        <Link to="/" className="back-chip" aria-label="Home">‹</Link>
       </header>
-      <p className="muted">Nobody gets hurt installing a window. Ever.</p>
 
       <h2>Today's toolbox talk</h2>
       {talk.data ? (
-        <div className="detail-card">
-          <p><strong>{talk.data.title}</strong></p>
-          <p className="muted">{talk.data.body}</p>
+        <div className="talk-hero">
+          <p className="next-label">Today's toolbox talk</p>
+          <h3>{talk.data.title}</h3>
+          <p className="muted" style={{ margin: 0, lineHeight: 1.65 }}>{talk.data.body}</p>
           {acked.data ? (
-            <p className="ok">Acknowledged ✓</p>
+            <p className="ok" style={{ margin: 0 }}>Acknowledged ✓</p>
           ) : (
-            <button className="primary" disabled={ack.isPending} onClick={() => ack.mutate()}>
+            <button className="primary big" disabled={ack.isPending} onClick={() => ack.mutate()}>
               I read this
             </button>
           )}
@@ -78,31 +83,56 @@ export function Safety() {
       <h2>Report an incident</h2>
       {sent && <p className="ok">Reported. Stay safe out there.</p>}
       <div className="detail-card">
+        <label className="field-label">Severity</label>
+        <div className="sev-chip-row">
+          {SEVERITY.map((s) => (
+            <button
+              key={s.v}
+              type="button"
+              className={
+                sev === s.v
+                  ? `sev-chip active${s.mild ? " mild" : ""}`
+                  : "sev-chip"
+              }
+              onClick={() => setSev(s.v)}
+            >
+              {s.l}
+            </button>
+          ))}
+        </div>
         <label className="field-label">What happened?</label>
         <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Describe the incident / near miss" />
-        <label className="field-label">Severity</label>
-        <select value={sev} onChange={(e) => setSev(e.target.value)}>
-          {SEVERITY.map((s) => <option key={s.v} value={s.v}>{s.l}</option>)}
-        </select>
         <label className="field-label">Job (optional)</label>
         <select value={proj} onChange={(e) => setProj(e.target.value)}>
           <option value="">— none —</option>
           {(projects.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.job_code}</option>)}
         </select>
-        <button className="action-btn" disabled={report.isPending || !desc.trim()} onClick={() => report.mutate()}>
+        <button className="primary big" disabled={report.isPending || !desc.trim()} onClick={() => report.mutate()}>
           Report
         </button>
+        <p className="signin-footnote" style={{ textAlign: "left" }}>
+          Recordables must hit the OSHA 300 log within 7 days — the clock starts when you hit Report.
+        </p>
       </div>
 
       {lead && (
         <>
           <h2>Incident log ({incidents.data?.length ?? 0})</h2>
-          <ul className="unit-list">
+          <ul className="unit-list work-list">
             {(incidents.data ?? []).map((i) => (
-              <li key={i.id}>
-                <strong className={i.severity === "serious" ? "error" : ""}>{i.severity}</strong>{" "}
-                <span className="muted">{i.projects?.job_code ?? ""} · {i.created_at.slice(0, 10)}</span>
-                <div>{i.description}</div>
+              <li key={i.id} className="find-row">
+                <div>
+                  <strong>{i.description}</strong>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    {i.projects?.job_code ?? ""} · {i.created_at.slice(0, 10)}
+                  </div>
+                </div>
+                <span
+                  className={i.severity === "serious" || i.severity === "recordable" ? "error" : "warn-text"}
+                  style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, textTransform: "uppercase" }}
+                >
+                  {i.severity.replace("_", " ")}
+                </span>
               </li>
             ))}
             {incidents.data?.length === 0 && <p className="muted">No incidents logged. Keep it that way.</p>}
