@@ -50,7 +50,6 @@ export interface Profile {
   skill_level: number;
   role: CrewRole;
   active: boolean;
-  pin?: string | null;
   created_at?: string;
   updated_at?: string;
 }

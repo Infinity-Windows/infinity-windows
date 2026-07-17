@@ -1,16 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { getMyProfile, setMyPin } from "../lib/install/api";
+import { checkMyPin, myPinStatus, setMyPin } from "../lib/install/api";
+import { getMyProfile } from "../lib/install/api";
 
 const UNLOCK_KEY = "wops-pin-unlocked";
 
 /**
  * Lightweight device PIN lock on top of the persisted Supabase session.
- * If the signed-in user has set a PIN, require it once per browser session.
- * Not a replacement for auth — the real session already logged in.
+ * The PIN itself never reaches the client — status and verification are RPCs.
  */
 export function PinGate({ children }: { children: React.ReactNode }) {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const hasPin = useQuery({
+    queryKey: ["myPinStatus", me.data?.id],
+    queryFn: myPinStatus,
+    enabled: Boolean(me.data?.id),
+  });
   const [entry, setEntry] = useState("");
   const [error, setError] = useState(false);
   const [unlocked, setUnlocked] = useState(
@@ -21,12 +26,12 @@ export function PinGate({ children }: { children: React.ReactNode }) {
     if (unlocked) sessionStorage.setItem(UNLOCK_KEY, "1");
   }, [unlocked]);
 
-  if (me.isLoading) return null;
-  const pin = me.data?.pin;
-  if (!pin || unlocked) return <>{children}</>;
+  if (me.isLoading || hasPin.isLoading) return null;
+  if (!hasPin.data || unlocked) return <>{children}</>;
 
-  const submit = (value: string) => {
-    if (value === pin) {
+  const submit = async (value: string) => {
+    const ok = await checkMyPin(value);
+    if (ok) {
       setUnlocked(true);
       setError(false);
     } else {
@@ -50,7 +55,7 @@ export function PinGate({ children }: { children: React.ReactNode }) {
         onChange={(e) => {
           const v = e.target.value.replace(/\D/g, "").slice(0, 4);
           setEntry(v);
-          if (v.length === 4) submit(v);
+          if (v.length === 4) void submit(v);
         }}
       />
       {error && <p className="error">Wrong PIN — try again</p>}
@@ -58,15 +63,15 @@ export function PinGate({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Small self-service control to set/clear your PIN (used on the Crew screen). */
+/** Self-service control to set/clear your PIN (used on the Crew screen). */
 export function PinSetter() {
-  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const hasPin = useQuery({ queryKey: ["myPinStatus"], queryFn: myPinStatus });
   const [pin, setPin] = useState("");
   const [saved, setSaved] = useState(false);
   return (
     <div style={{ marginTop: 8 }}>
       <label className="field-label">
-        Your quick-unlock PIN {me.data?.pin ? "(set)" : "(none)"}
+        Your quick-unlock PIN {hasPin.data ? "(set)" : "(none)"}
       </label>
       <div className="row-gap">
         <input
@@ -84,16 +89,18 @@ export function PinSetter() {
             await setMyPin(pin);
             setSaved(true);
             setPin("");
+            hasPin.refetch();
           }}
         >
           Save PIN
         </button>
-        {me.data?.pin && (
+        {hasPin.data && (
           <button
             className="button-like"
             onClick={async () => {
               await setMyPin("");
               setSaved(false);
+              hasPin.refetch();
             }}
           >
             Clear

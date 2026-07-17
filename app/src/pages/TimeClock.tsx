@@ -8,11 +8,14 @@ import {
   approveShift,
   clockIn,
   clockOut,
+  currentBreakSeconds,
+  endBreak,
   getOpenShift,
   listCostCodes,
   listMyShifts,
   listShiftsToApprove,
   shiftHours,
+  startBreak,
   startOfWeekIso,
   type TimeShift,
 } from "../lib/timeclock";
@@ -48,8 +51,6 @@ export function TimeClock() {
 
   const [projectId, setProjectId] = useState("");
   const [codeId, setCodeId] = useState("");
-  const [onBreak, setOnBreak] = useState(false);
-  const [breakSec, setBreakSec] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [injured, setInjured] = useState(false);
 
@@ -57,11 +58,6 @@ export function TimeClock() {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
-  useEffect(() => {
-    if (!onBreak) return;
-    const t = setInterval(() => setBreakSec((s) => s + 1), 1000);
-    return () => clearInterval(t);
-  }, [onBreak]);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["openShift"] });
@@ -69,21 +65,33 @@ export function TimeClock() {
     queryClient.invalidateQueries({ queryKey: ["shiftsToApprove"] });
   };
 
+  const shift = open.data;
+  // Break state lives on the server (survives refresh).
+  const onBreak = Boolean(shift?.break_started_at);
+  const breakSec = shift ? currentBreakSeconds(shift, now) : 0;
+
   const doClockIn = useMutation({
     mutationFn: () => clockIn(projectId || null, codeId || null),
-    onSuccess: () => { setBreakSec(0); setOnBreak(false); refresh(); },
+    onSuccess: refresh,
+  });
+  const toggleBreak = useMutation({
+    mutationFn: (s: TimeShift) => (s.break_started_at ? endBreak(s.id) : startBreak(s.id)),
+    onSuccess: refresh,
   });
   const doClockOut = useMutation({
-    mutationFn: (shiftId: string) =>
-      clockOut(shiftId, { injured, timeConfirmed: true, breakSeconds: breakSec }),
-    onSuccess: () => { setBreakSec(0); setOnBreak(false); setInjured(false); refresh(); },
+    mutationFn: (s: TimeShift) =>
+      clockOut(s.id, {
+        injured,
+        timeConfirmed: true,
+        breakSeconds: currentBreakSeconds(s, Date.now()),
+      }),
+    onSuccess: () => { setInjured(false); refresh(); },
   });
   const doApprove = useMutation({
     mutationFn: approveShift,
     onSuccess: refresh,
   });
 
-  const shift = open.data;
   const elapsed = shift
     ? Math.max(0, Math.floor((now - new Date(shift.clock_in_at).getTime()) / 1000) - breakSec)
     : 0;
@@ -106,8 +114,12 @@ export function TimeClock() {
             {onBreak ? " · on break" : ""}
           </p>
           <div className="row-gap">
-            <button className="button-like" onClick={() => setOnBreak((b) => !b)}>
-              {onBreak ? "End break" : "Start break"}
+            <button
+              className="button-like"
+              disabled={toggleBreak.isPending}
+              onClick={() => toggleBreak.mutate(shift)}
+            >
+              {onBreak ? `End break (${hhmm(breakSec)})` : "Start break"}
             </button>
           </div>
           <label className="field-label">Were you injured this shift?</label>
@@ -118,7 +130,7 @@ export function TimeClock() {
           <button
             className="primary big"
             disabled={doClockOut.isPending}
-            onClick={() => doClockOut.mutate(shift.id)}
+            onClick={() => doClockOut.mutate(shift)}
           >
             {doClockOut.isPending ? "Signing off…" : "Clock out & sign shift"}
           </button>

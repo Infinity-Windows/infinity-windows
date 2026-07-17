@@ -15,6 +15,7 @@ export interface TimeShift {
   clock_in_at: string;
   clock_out_at: string | null;
   break_seconds: number;
+  break_started_at: string | null;
   injured: boolean | null;
   time_confirmed: boolean | null;
   status: "open" | "submitted" | "approved";
@@ -106,6 +107,27 @@ export async function clockOut(
 export async function approveShift(shiftId: string): Promise<void> {
   const { error } = await supabase.rpc("approve_shift", { p_shift_id: shiftId });
   if (error) throw error;
+}
+
+/** Server-persisted breaks so a refresh mid-break doesn't lose the timer. */
+export async function startBreak(shiftId: string): Promise<TimeShift> {
+  const { data, error } = await supabase.rpc("start_break", { p_shift_id: shiftId });
+  if (error) throw error;
+  return data as TimeShift;
+}
+
+export async function endBreak(shiftId: string): Promise<TimeShift> {
+  const { data, error } = await supabase.rpc("end_break", { p_shift_id: shiftId });
+  if (error) throw error;
+  return data as TimeShift;
+}
+
+/** Effective break seconds including any break currently in progress. */
+export function currentBreakSeconds(s: TimeShift, now = Date.now()): number {
+  const running = s.break_started_at
+    ? Math.max(0, Math.floor((now - new Date(s.break_started_at).getTime()) / 1000))
+    : 0;
+  return (s.break_seconds ?? 0) + running;
 }
 
 export function shiftHours(s: TimeShift): number {

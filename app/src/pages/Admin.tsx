@@ -98,6 +98,11 @@ export function Admin() {
                 <span className={r.status === "approved" ? "ok" : "error"}>
                   {r.status}
                 </span>
+                {r.status === "approved" && (
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {" "}— create login in Supabase Auth, then set role on Crew
+                  </span>
+                )}
               </li>
             ))}
           </ul>

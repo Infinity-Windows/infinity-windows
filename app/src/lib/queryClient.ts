@@ -38,6 +38,19 @@ const OFFLINE_KEYS = new Set([
   "typeBrain",
   "plansets",
   "opening",
+  "myOpenings",
+  "myProfile",
+  // New modules — keep the installer's day usable in dead spots.
+  "openShift",
+  "myShifts",
+  "costCodes",
+  "learnProgress",
+  "priorityTerms",
+  "ledger",
+  "pointsLeaderboard",
+  "tools",
+  "supplies",
+  "todayTalk",
 ]);
 
 export function shouldPersistQuery(queryKey: readonly unknown[]): boolean {

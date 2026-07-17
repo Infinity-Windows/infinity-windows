@@ -21,6 +21,9 @@ async function actor(): Promise<string | null> {
 
 // --- Crew profiles ---
 
+// Never select `pin` to the client; it's verified server-side via RPC.
+const PROFILE_COLS = "id, display_name, skill_level, role, active, created_at, updated_at";
+
 /** Ensure the signed-in user has a profile row; return it. */
 export async function ensureMyProfile(): Promise<Profile | null> {
   const { data: userData } = await supabase.auth.getUser();
@@ -29,7 +32,7 @@ export async function ensureMyProfile(): Promise<Profile | null> {
 
   const { data: existing, error } = await supabase
     .from("profiles")
-    .select("*")
+    .select(PROFILE_COLS)
     .eq("id", user.id)
     .maybeSingle();
   if (error) throw error;
@@ -39,7 +42,7 @@ export async function ensureMyProfile(): Promise<Profile | null> {
   const { data: created, error: insErr } = await supabase
     .from("profiles")
     .insert({ id: user.id, display_name: displayName })
-    .select("*")
+    .select(PROFILE_COLS)
     .single();
   if (insErr) throw insErr;
   return created as Profile;
@@ -51,7 +54,7 @@ export async function getMyProfile(): Promise<Profile | null> {
   if (!user) return null;
   const { data, error } = await supabase
     .from("profiles")
-    .select("*")
+    .select(PROFILE_COLS)
     .eq("id", user.id)
     .maybeSingle();
   if (error) throw error;
@@ -61,11 +64,24 @@ export async function getMyProfile(): Promise<Profile | null> {
 export async function listProfiles(): Promise<Profile[]> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("*")
+    .select(PROFILE_COLS)
     .order("role", { ascending: false })
     .order("display_name");
   if (error) throw error;
   return data as Profile[];
+}
+
+/** PIN status/verify happen server-side; the value never reaches the client. */
+export async function myPinStatus(): Promise<boolean> {
+  const { data, error } = await supabase.rpc("my_pin_status");
+  if (error) return false;
+  return Boolean(data);
+}
+
+export async function checkMyPin(pin: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("check_my_pin", { p_pin: pin });
+  if (error) return false;
+  return Boolean(data);
 }
 
 export interface AccessRequest {
