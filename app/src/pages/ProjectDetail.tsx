@@ -9,7 +9,12 @@ import {
   listProjects,
   loadWindow,
 } from "../lib/api";
-import { getMyProfile, listOpenings, saveJobEstimate } from "../lib/install/api";
+import {
+  getMyProfile,
+  listOpenings,
+  listProjectExceptions,
+  saveJobEstimate,
+} from "../lib/install/api";
 import {
   estimateJob,
   formatHours,
@@ -25,7 +30,13 @@ import { isForemanPlus } from "../lib/install/types";
 import { ProjectMap } from "./install/ProjectMap";
 import { DispatchBoard } from "./install/DispatchBoard";
 
-type HubTab = "overview" | "warehouse" | "map" | "brain" | "dispatch";
+type HubTab =
+  | "overview"
+  | "warehouse"
+  | "map"
+  | "brain"
+  | "dispatch"
+  | "exceptions";
 
 export function ProjectDetail() {
   const { projectId = "" } = useParams();
@@ -35,7 +46,8 @@ export function ProjectDetail() {
     tabParam === "warehouse" ||
     tabParam === "map" ||
     tabParam === "brain" ||
-    tabParam === "dispatch"
+    tabParam === "dispatch" ||
+    tabParam === "exceptions"
       ? tabParam
       : "overview";
 
@@ -48,6 +60,7 @@ export function ProjectDetail() {
     ...(isLead ? [{ id: "dispatch" as HubTab, label: "Dispatch" }] : []),
     { id: "warehouse", label: "Warehouse" },
     { id: "map", label: "Map" },
+    ...(isLead ? [{ id: "exceptions" as HubTab, label: "Exceptions" }] : []),
     { id: "brain", label: "Brain" },
   ];
 
@@ -205,6 +218,10 @@ export function ProjectDetail() {
       {tab === "dispatch" && isLead && <DispatchBoard projectId={projectId} />}
 
       {tab === "map" && <ProjectMap embedded />}
+
+      {tab === "exceptions" && isLead && (
+        <ExceptionsTab projectId={projectId} />
+      )}
 
       {tab === "brain" && (
         <div>
@@ -501,5 +518,109 @@ function WarehouseTab({
         </>
       )}
     </>
+  );
+}
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleString();
+}
+
+function ExceptionsTab({ projectId }: { projectId: string }) {
+  const exceptions = useQuery({
+    queryKey: ["projectExceptions", projectId],
+    queryFn: () => listProjectExceptions(projectId),
+  });
+
+  if (exceptions.isLoading) {
+    return <p className="muted">Loading exceptions…</p>;
+  }
+  if (exceptions.isError) {
+    return <p className="error">{String(exceptions.error)}</p>;
+  }
+
+  const { failedInstalls, flaggedOpenings } = exceptions.data ?? {
+    failedInstalls: [],
+    flaggedOpenings: [],
+  };
+  const damaged = flaggedOpenings.filter((o) => o.condition === "damaged");
+  const flagged = flaggedOpenings.filter((o) => o.flag_note);
+  const nothing =
+    failedInstalls.length === 0 && damaged.length === 0 && flagged.length === 0;
+
+  return (
+    <div>
+      <p className="muted">
+        Failed/undone installs, flagged openings, and damaged units on this job.
+        Nothing is deleted — the full install record is kept for review.
+      </p>
+
+      {nothing && (
+        <p className="muted">No exceptions right now — everything looks clean.</p>
+      )}
+
+      {failedInstalls.length > 0 && (
+        <>
+          <h2>Undone installs ({failedInstalls.length})</h2>
+          <ul className="unit-list work-list">
+            {failedInstalls.map((f) => (
+              <li key={f.event_id} className="find-row">
+                <Link to={`/projects/${projectId}/opening/${f.opening_id}`}>
+                  <strong>{f.opening_code}</strong>
+                </Link>
+                <span className="muted">
+                  by {f.voided_by_name ?? "someone"} · {fmtDate(f.voided_at)}
+                  {f.installer ? ` · installed by ${f.installer}` : ""}
+                </span>
+                <span className="big-address" style={{ color: "#ef4444" }}>
+                  {f.void_reason ?? "undone"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {flagged.length > 0 && (
+        <>
+          <h2>Flagged ({flagged.length})</h2>
+          <ul className="unit-list work-list">
+            {flagged.map((o) => (
+              <li key={o.id} className="find-row">
+                <Link to={`/projects/${projectId}/opening/${o.id}`}>
+                  <strong>{o.opening_code}</strong>
+                </Link>
+                <span className="muted">
+                  {o.window_types?.type_code ?? "type?"}
+                </span>
+                <span className="big-address warn-text">{o.flag_note}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {damaged.length > 0 && (
+        <>
+          <h2>Damaged ({damaged.length})</h2>
+          <ul className="unit-list work-list">
+            {damaged.map((o) => (
+              <li key={o.id} className="find-row">
+                <Link to={`/projects/${projectId}/opening/${o.id}`}>
+                  <strong>{o.opening_code}</strong>
+                </Link>
+                <span className="muted">
+                  {o.window_types?.type_code ?? "type?"}
+                </span>
+                <span className="big-address" style={{ color: "#ef4444" }}>
+                  {o.condition_note ?? "damaged"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
   );
 }
