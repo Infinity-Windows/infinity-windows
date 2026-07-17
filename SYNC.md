@@ -138,12 +138,26 @@ Long-lived branches are exactly what caused our last sync mess. Avoid them.
 
 ---
 
-## The PWA Cache Gotcha (read this!)
+## The Stale Cache Gotcha (read this!)
 
-This app is a **PWA (Progressive Web App)**. That means your browser can quietly
-cache an *old* version of the app using a "service worker." So even after you sync
-the latest code and restart Vite, your browser might **still show the old
-design.** This is not a code bug — it's your browser being "helpful."
+Your browser can quietly keep an *old* version of the app alive using a
+"service worker" — a background script that intercepts page loads and can serve
+a cached bundle. So even after you sync the latest code and restart Vite, your
+browser might **still show the old design.** This is not a code bug — it's your
+browser being "helpful."
+
+> **Important:** this app itself does **not** use a service worker. The stale
+> worker is almost always left over from a *different* project that once ran on
+> the same address (e.g. `http://localhost:5173`). Service workers are tied to
+> the address, not the project — so an old one can hijack a brand-new app.
+
+### The durable fix (already built in)
+
+As of this fix, the app **automatically unregisters any leftover service worker
+and clears its cache on every load**, then reloads once so you see fresh code.
+You should never have to do this by hand again. If you're on the latest commit
+and still see something old, do a one-time manual clear (below) — after that the
+auto-cleanup keeps it from coming back.
 
 ### Fix: Hard Refresh
 
@@ -158,14 +172,17 @@ If a plain hard refresh isn't enough:
 2. **Click and hold** the browser's refresh button (with DevTools open).
 3. Choose **"Empty Cache and Hard Reload."**
 
-### Fix (nuclear): Unregister the Service Worker
+### Fix (nuclear, one time): Unregister the Service Worker + Clear Site Data
 
 If it's *still* showing the old version:
 
-1. DevTools → **Application** tab → **Service Workers**.
-2. Click **Unregister**.
-3. Also under **Application → Storage**, click **Clear site data**.
-4. Refresh the page.
+1. Open **DevTools** → **Application** tab → **Service Workers**.
+2. Click **Unregister** on every worker listed.
+3. Under **Application → Storage**, click **Clear site data**.
+4. Close the tab, reopen the app, and refresh.
+
+After this one-time clear, the app's built-in auto-cleanup takes over and a stale
+worker can't come back and mask new code again.
 
 > Rule of thumb: if you synced the latest code but the screen looks old, it's
 > almost always the cache. Hard refresh first.
