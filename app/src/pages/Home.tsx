@@ -11,6 +11,13 @@ interface Tile {
   show: boolean;
 }
 
+function initialsFrom(name: string | null | undefined): string {
+  if (!name?.trim()) return "∞";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 export function Home() {
   const counts = useQuery({ queryKey: ["dashboard"], queryFn: getDashboardCounts });
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
@@ -58,18 +65,31 @@ export function Home() {
     },
   ];
 
+  const today = new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+  const firstName = me.data?.display_name?.split(/\s+/)[0] ?? "crew";
+
   return (
     <div className="page">
       <header className="page-header">
         <div>
-          <h1>Infinity</h1>
+          <p className="home-greeting">{today}</p>
+          <h1>Hey, {firstName}</h1>
           <p className="muted" style={{ margin: 0 }}>
             {me.data?.display_name ?? "Windows & Doors"}
             {role && role !== "installer" ? ` · ${ROLE_LABELS[role as CrewRole] ?? role}` : ""}
           </p>
         </div>
-        <button className="link" onClick={() => supabase.auth.signOut()}>
-          Sign out
+        <button
+          type="button"
+          className="avatar-chip"
+          title="Sign out"
+          onClick={() => supabase.auth.signOut()}
+        >
+          {initialsFrom(me.data?.display_name)}
         </button>
       </header>
 
