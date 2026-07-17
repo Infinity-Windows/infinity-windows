@@ -122,6 +122,34 @@ then everyone just syncs (see the Daily Start Routine) to get it.
 
 ---
 
+## Database Changes (Supabase) — the agent's job, never yours
+
+Some changes need a matching change to the **shared database** (a "migration" —
+e.g. adding a new column or table). The app's data lives in cloud Supabase, not
+on your laptop, so a code change that expects a new column won't work until the
+database is updated too.
+
+**You never do this by hand.** If a Cursor agent ever tells you to "open
+supabase.com, paste this SQL into the SQL Editor, and click Run" — **stop, that
+is wrong.** Taylor and Ammon do not need Supabase dashboard access, and nobody
+hand-runs SQL. Applying migrations to the shared database is the **agent's job.**
+
+How it actually works:
+
+1. When your change needs a database update, the agent writes a migration file
+   into `supabase/migrations/` **as part of the same PR** (so the SQL is
+   reviewed alongside the code).
+2. The agent **applies that migration to the shared Supabase database for you**
+   (it has database access via its tools) so the live app is ready.
+3. You just review and **Merge the PR** like any other change.
+
+So if you're blocked with a "you don't have Supabase access" or "run this
+migration first" message: **you don't need access.** Paste that message to your
+Cursor agent and say *"apply the migration for me and open the PR."* The agent
+handles the database and the git; you only click Merge.
+
+---
+
 ## Branches: Keep Them Short-Lived
 
 Every change lives on its **own short-lived branch**, and that branch becomes a
