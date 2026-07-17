@@ -1,23 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { getDashboardCounts, listProjects } from "../lib/api";
-import {
-  getMyProfile,
-  listMyOpeningsAllJobs,
-} from "../lib/install/api";
-import { isAdmin, isBigBoss, isLeadLike, ROLE_LABELS, type CrewRole } from "../lib/install/types";
+import { listProjects } from "../lib/api";
+import { orderMyWork, type DispatchOpening } from "../lib/dispatch";
+import { openingReadiness } from "../lib/install/fit";
+import { getMyProfile, listMyOpeningsAllJobs, listMemosToConfirm } from "../lib/install/api";
+import { isLeadLike, ROLE_LABELS, type CrewRole, type ProjectOpening } from "../lib/install/types";
 import { TERMS } from "../lib/glossary";
 import { listMyProgress } from "../lib/learn";
 import { listLedger } from "../lib/points";
 import { supabase } from "../lib/supabase";
 import { getOpenShift } from "../lib/timeclock";
-
-interface Tile {
-  to: string;
-  label: string;
-  show: boolean;
-}
 
 interface OpeningCountRow {
   project_id: string;
@@ -47,13 +40,29 @@ function termOfDay(): (typeof TERMS)[number] {
   return TERMS[day % TERMS.length];
 }
 
+function toDispatch(o: ProjectOpening): DispatchOpening {
+  const r = openingReadiness(o);
+  return {
+    id: o.id,
+    opening_code: o.opening_code,
+    window_type_id: o.window_type_id,
+    difficulty:
+      o.window_types?.learned_difficulty ??
+      o.window_types?.outcome_difficulty ??
+      o.window_types?.difficulty_rating ??
+      null,
+    area: o.label?.trim() || `page ${o.page_number}`,
+    ready: r.status === "ready",
+    blocked: r.status === "blocked",
+    assigned_to: o.assigned_to,
+    sequence: o.sequence,
+  };
+}
+
 export function Home() {
-  const counts = useQuery({ queryKey: ["dashboard"], queryFn: getDashboardCounts });
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const role = me.data?.role;
   const lead = isLeadLike(role);
-  const admin = isAdmin(role);
-  const boss = isBigBoss(role);
   const profileId = me.data?.id;
 
   const openShift = useQuery({
@@ -74,6 +83,11 @@ export function Home() {
   const progress = useQuery({
     queryKey: ["learnProgress", profileId],
     queryFn: () => listMyProgress(profileId!),
+    enabled: Boolean(profileId),
+  });
+  const memos = useQuery({
+    queryKey: ["memosToConfirm", profileId],
+    queryFn: () => listMemosToConfirm(profileId!),
     enabled: Boolean(profileId),
   });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
@@ -102,6 +116,7 @@ export function Home() {
   const firstName = me.data?.display_name?.split(/\s+/)[0] ?? "crew";
   const tod = useMemo(() => termOfDay(), []);
   const mastered = (progress.data ?? []).filter((p) => p.box >= 3).length;
+  const notifCount = (memos.data ?? []).length;
 
   const rows = ledger.data ?? [];
   const points = rows
@@ -114,15 +129,23 @@ export function Home() {
     (r) => r.status === "confirmed" && r.kind === "install",
   ).length;
 
-  const activeOpening = (openings.data ?? []).find(
-    (o) => o.work_started_at && o.status !== "installed",
-  );
+  const active = (openings.data ?? []).filter((o) => o.status !== "installed");
+  const activeOpening = active.find((o) => o.work_started_at);
   const activeElapsed = activeOpening?.work_started_at
     ? Math.max(
         0,
         Math.floor((now - new Date(activeOpening.work_started_at).getTime()) / 1000),
       )
     : 0;
+
+  // Next ready window (excludes the one already in progress).
+  const byId = new Map(active.map((o) => [o.id, o]));
+  const ordered = orderMyWork(active.map(toDispatch))
+    .map((d) => byId.get(d.id)!)
+    .filter(Boolean);
+  const nextWindow = ordered.find(
+    (o) => o.id !== activeOpening?.id && openingReadiness(o).status === "ready",
+  );
 
   const projectCards = (projects.data ?? []).slice(0, 6).map((p) => {
     const oc = (openingCounts.data ?? []).filter((r) => r.project_id === p.id);
@@ -143,25 +166,6 @@ export function Home() {
     };
   });
 
-  const moreTiles: Tile[] = [
-    { to: "/my-work", label: "My work", show: true },
-    { to: "/scan", label: "Scan", show: true },
-    { to: "/receive", label: "Receive", show: true },
-    { to: "/search", label: "Locate", show: true },
-    { to: "/training", label: "Training", show: true },
-    { to: "/safety", label: "Safety", show: true },
-    { to: "/count", label: "Cycle count", show: lead },
-    { to: "/labels", label: "Print labels", show: lead },
-    { to: "/tools", label: "Tools", show: lead },
-    { to: "/supplies", label: "Supplies", show: lead },
-    { to: "/qc", label: "Quality", show: lead },
-    { to: "/analytics", label: "Analytics", show: lead },
-    { to: "/catalog", label: "Catalog", show: lead },
-    { to: "/crew", label: "Crew", show: lead },
-    { to: "/admin", label: "Admin", show: admin },
-    { to: "/costing", label: "Costing", show: boss },
-  ].filter((t) => t.show);
-
   return (
     <div className="page home-day">
       <header className="page-header">
@@ -173,14 +177,20 @@ export function Home() {
             {role && role !== "installer" ? ` · ${ROLE_LABELS[role as CrewRole] ?? role}` : ""}
           </p>
         </div>
-        <button
-          type="button"
-          className="avatar-chip"
-          title="Sign out"
-          onClick={() => supabase.auth.signOut()}
-        >
-          {initialsFrom(me.data?.display_name)}
-        </button>
+        <div className="home-header-actions">
+          <Link to="/notifications" className="bell-chip" aria-label="Notifications">
+            <span aria-hidden>◔</span>
+            {notifCount > 0 && <span className="bell-badge">{notifCount}</span>}
+          </Link>
+          <button
+            type="button"
+            className="avatar-chip"
+            title="Sign out"
+            onClick={() => supabase.auth.signOut()}
+          >
+            {initialsFrom(me.data?.display_name)}
+          </button>
+        </div>
       </header>
 
       {!openShift.data && (
@@ -196,20 +206,6 @@ export function Home() {
           <span className="home-card-cta">Tap to clock in ›</span>
         </Link>
       )}
-
-      <Link to="/learn" className="home-card">
-        <div className="home-card-top">
-          <span className="next-label">Term of the day</span>
-          <span className="streak-pill" style={{ padding: "4px 8px" }}>
-            {mastered}
-          </span>
-        </div>
-        <strong className="home-term">{tod.term}</strong>
-        <p className="muted" style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5 }}>
-          {tod.desc.length > 120 ? `${tod.desc.slice(0, 117)}…` : tod.desc}
-        </p>
-        <span className="home-card-cta">Do today's 5 ›</span>
-      </Link>
 
       {activeOpening && (
         <Link
@@ -232,6 +228,41 @@ export function Home() {
         </Link>
       )}
 
+      {!activeOpening && nextWindow && (
+        <Link
+          to={`/projects/${nextWindow.project_id}/opening/${nextWindow.id}`}
+          className="home-card home-next"
+        >
+          <div className="home-card-top">
+            <span className="next-label">Your next window</span>
+            <span className="ok" style={{ fontSize: 11 }}>ready</span>
+          </div>
+          <strong style={{ fontSize: 16 }}>
+            {nextWindow.opening_code}
+            {nextWindow.window_types?.type_code ? ` · ${nextWindow.window_types.type_code}` : ""}
+          </strong>
+          <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
+            {nextWindow.projects?.job_code ?? "Job"}
+            {nextWindow.label ? ` · ${nextWindow.label}` : ""}
+          </p>
+          <span className="home-card-cta">Start install ›</span>
+        </Link>
+      )}
+
+      <Link to="/learn" className="home-card">
+        <div className="home-card-top">
+          <span className="next-label">Term of the day</span>
+          <span className="streak-pill" style={{ padding: "4px 8px" }}>
+            {mastered}
+          </span>
+        </div>
+        <strong className="home-term">{tod.term}</strong>
+        <p className="muted" style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5 }}>
+          {tod.desc.length > 120 ? `${tod.desc.slice(0, 117)}…` : tod.desc}
+        </p>
+        <span className="home-card-cta">Do today's 5 ›</span>
+      </Link>
+
       <div className="stat-grid">
         <Link to="/points" className="stat-card accent">
           <span className="stat-num">{points}</span>
@@ -247,28 +278,14 @@ export function Home() {
         </div>
       </div>
 
-      {lead && (
-        <div className="stat-grid">
-          <Link to="/search" className="stat-card">
-            <span className="stat-num">{counts.data?.total ?? "-"}</span>
-            <span>on hand</span>
+      <div className="home-section-head">
+        <h2 style={{ margin: 0 }}>Active projects</h2>
+        {lead && (
+          <Link to="/warehouse" className="muted home-seeall">
+            Warehouse ›
           </Link>
-          <Link to="/scan" className="stat-card warn">
-            <span className="stat-num">{counts.data?.inbound ?? "-"}</span>
-            <span>need putaway</span>
-          </Link>
-          <Link to="/projects" className="stat-card">
-            <span className="stat-num">{counts.data?.staged ?? "-"}</span>
-            <span>staged</span>
-          </Link>
-          <Link to="/search?status=damaged" className="stat-card danger">
-            <span className="stat-num">{counts.data?.damaged ?? "-"}</span>
-            <span>damaged</span>
-          </Link>
-        </div>
-      )}
-
-      <h2>Active projects</h2>
+        )}
+      </div>
       <div className="home-projects">
         {projectCards.map((p) => (
           <Link key={p.id} to={`/projects/${p.id}`} className="project-card home-project">
@@ -305,21 +322,8 @@ export function Home() {
             </div>
           </Link>
         ))}
-        {projectCards.length === 0 && (
-          <p className="muted">No active jobs yet.</p>
-        )}
+        {projectCards.length === 0 && <p className="muted">No active jobs yet.</p>}
       </div>
-
-      <details className="more-actions home-more">
-        <summary className="muted">More tools</summary>
-        <div className="tile-grid" style={{ marginTop: 10 }}>
-          {moreTiles.map((t) => (
-            <Link key={t.label} to={t.to} className="tile">
-              {t.label}
-            </Link>
-          ))}
-        </div>
-      </details>
     </div>
   );
 }
