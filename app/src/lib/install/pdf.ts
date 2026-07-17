@@ -1,10 +1,17 @@
 // Client-side PDF rendering and text extraction with pdf.js.
 // Pages render to data-URL images for the project map background; text is
 // reconstructed into lines (grouped by y position) for the schedule parser.
+//
+// Use the *legacy* build + worker so older Safari/Chrome (missing
+// Map.prototype.getOrInsertComputed) can still open plansets.
 
-import * as pdfjs from "pdfjs-dist";
-import type { PDFDocumentProxy, TextItem } from "pdfjs-dist/types/src/display/api";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import "../mapPolyfill";
+import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
+import type {
+  PDFDocumentProxy,
+  TextItem,
+} from "pdfjs-dist/types/src/display/api";
+import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
