@@ -8,7 +8,7 @@ Concept prototype for a window installation ops + training brain. Local dev only
 - `supabase/migrations/` — Database schema + prototype upgrades (also consolidated in [`docs/prototype-migrations.sql`](docs/prototype-migrations.sql) for paste into the SQL editor).
 - `supabase/functions/` — OpenAI Edge Functions: Whisper transcription + topic split, tip synthesis, AI schedule extract fallback.
 - `scripts/weekly-report.mjs` / `scripts/vault-sync.mjs` — Manual laptop scripts that write markdown into `vault/`.
-- `docs/` — Planning notes, hardware list, [catalog CSV template](docs/window-types-template.csv), and the [$1M→$10M scaling roadmap](docs/roadmap-scale-1m-to-10m.md).
+- `docs/` — Planning notes, hardware list, [catalog CSV template](docs/window-types-template.csv), the [$1M→$10M scaling roadmap](docs/roadmap-scale-1m-to-10m.md), and the [10x plan](docs/roadmap-10x.md).
 - `vault/` — Obsidian-friendly markdown mirror (wiki view; DB remains system of truth).
 
 ## Product loops to perfect
