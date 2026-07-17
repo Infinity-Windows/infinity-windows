@@ -96,7 +96,15 @@ export function WindowDetail() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>{w.window_id}</h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          <Link to="/search" className="back-chip" aria-label="Back">‹</Link>
+          <div>
+            <h1 className="opening-code-title">{w.window_id}</h1>
+            <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+              {w.window_types?.type_code} · {STATUS_LABELS[w.status]}
+            </p>
+          </div>
+        </div>
       </header>
 
       <div className="detail-card">
