@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import {
   generateHowto,
   getMyProfile,
@@ -71,10 +71,13 @@ export function TypeBrainCard() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>{s.type.type_code}</h1>
-        <button type="button" className="button-like" onClick={() => history.back()}>
-          Back
-        </button>
+        <div>
+          <p className="home-greeting">Type brain</p>
+          <h1>{s.type.type_code}</h1>
+        </div>
+        <Link to="/" className="back-chip" aria-label="Home">
+          ‹
+        </Link>
       </header>
       <p className="muted">{s.type.name}</p>
       <p className="brain-tagline">

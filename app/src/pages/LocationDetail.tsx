@@ -31,11 +31,15 @@ export function LocationDetail() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>{loc.address}</h1>
+        <div>
+          <p className="home-greeting">{ZONE_NAMES[loc.zone]}</p>
+          <h1>{loc.address}</h1>
+        </div>
+        <Link to="/search" className="back-chip" aria-label="Back">
+          ‹
+        </Link>
       </header>
-      <p className="muted">
-        {ZONE_NAMES[loc.zone]} — capacity {loc.capacity}
-      </p>
+      <p className="muted">Capacity {loc.capacity}</p>
 
       <h2>
         In this slot ({units.data?.length ?? 0}/{loc.capacity})

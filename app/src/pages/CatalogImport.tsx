@@ -44,9 +44,12 @@ export function CatalogImport() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Catalog import</h1>
-        <Link to="/" className="button-like">
-          Home
+        <div>
+          <p className="home-greeting">Admin</p>
+          <h1>Catalog import</h1>
+        </div>
+        <Link to="/" className="back-chip" aria-label="Home">
+          ‹
         </Link>
       </header>
       <p className="muted">

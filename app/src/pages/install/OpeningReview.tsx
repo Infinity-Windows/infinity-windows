@@ -116,9 +116,12 @@ export function OpeningReview() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Openings — {project?.job_code ?? ""}</h1>
-        <Link to={`/projects/${projectId}?tab=map`} className="button-like">
-          Map
+        <div>
+          <p className="home-greeting">Openings</p>
+          <h1>{project?.job_code ?? "Review"}</h1>
+        </div>
+        <Link to={`/projects/${projectId}?tab=map`} className="back-chip" aria-label="Map">
+          ‹
         </Link>
       </header>
 

@@ -97,9 +97,12 @@ export function PlansetUpload() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Planset — {project?.job_code ?? ""}</h1>
-        <Link to={`/projects/${projectId}?tab=map`} className="button-like">
-          Map
+        <div>
+          <p className="home-greeting">Planset</p>
+          <h1>{project?.job_code ?? "Upload"}</h1>
+        </div>
+        <Link to={`/projects/${projectId}?tab=map`} className="back-chip" aria-label="Map">
+          ‹
         </Link>
       </header>
 

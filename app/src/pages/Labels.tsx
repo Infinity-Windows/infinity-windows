@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { listLocations } from "../lib/api";
 import { downloadPdf, locationLabelsPdf, ZONE_NAMES } from "../lib/labels";
 
@@ -30,7 +31,13 @@ export function Labels() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Slot labels</h1>
+        <div>
+          <p className="home-greeting">Warehouse</p>
+          <h1>Slot labels</h1>
+        </div>
+        <Link to="/" className="back-chip" aria-label="Home">
+          ‹
+        </Link>
       </header>
       <p className="muted">
         Window labels print from the Receive screen. This prints the rack/slot
@@ -49,7 +56,7 @@ export function Labels() {
       </button>
       <ul className="unit-list">
         {filtered.map((l) => (
-          <li key={l.id}>
+          <li key={l.id} className="find-row">
             <strong>{l.address}</strong>{" "}
             <span className="muted">{ZONE_NAMES[l.zone]}</span>
           </li>

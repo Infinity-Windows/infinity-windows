@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Scanner } from "../components/Scanner";
 import { getLocationByAddress, getUnitsAtLocation } from "../lib/api";
 import { supabase } from "../lib/supabase";
@@ -63,7 +63,13 @@ export function CycleCount() {
     return (
       <div className="page">
         <header className="page-header">
-          <h1>Cycle count</h1>
+          <div>
+            <p className="home-greeting">Warehouse</p>
+            <h1>Cycle count</h1>
+          </div>
+          <Link to="/" className="back-chip" aria-label="Home">
+            ‹
+          </Link>
         </header>
         <p className="scanner-hint">Scan the slot label you want to count.</p>
         <Scanner
@@ -81,7 +87,13 @@ export function CycleCount() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Counting {location.address}</h1>
+        <div>
+          <p className="home-greeting">Counting</p>
+          <h1>{location.address}</h1>
+        </div>
+        <Link to="/" className="back-chip" aria-label="Home">
+          ‹
+        </Link>
       </header>
       <p className="muted">
         Scan every window physically in this slot. Expected:{" "}
