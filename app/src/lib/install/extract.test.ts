@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildingMarksToDraftOpenings,
+  extractBuildingMarks,
   extractScheduleRows,
+  formatMarkLabel,
   matchWindowType,
+  normalizeMark,
   parseScheduleRows,
   rowsToDraftOpenings,
+  rowsToSpecMarks,
   type TypeCandidate,
 } from "./extract";
 
@@ -141,6 +146,59 @@ describe("rowsToDraftOpenings", () => {
     );
     expect(drafts[0].window_type_id).toBeNull();
     expect(drafts[0].type_text).toBe("AWN9999");
+  });
+});
+
+describe("hash marks (#14)", () => {
+  it("normalizes and formats mark labels", () => {
+    expect(normalizeMark("#14")).toBe("14");
+    expect(normalizeMark("14")).toBe("14");
+    expect(formatMarkLabel("14")).toBe("#14");
+    expect(formatMarkLabel("W1")).toBe("W1");
+  });
+
+  it("parses #14 schedule rows with size and color", () => {
+    const text = `
+MARK  SIZE  TYPE  COLOR  QTY
+#14  4'-0" x 5'-0"  CASEMENT  WHITE  1
+#6  3x5  DOOR  BLACK  2
+`;
+    const rows = parseScheduleRows(text);
+    expect(rows.some((r) => r.openingCode === "14")).toBe(true);
+    const door = rows.find((r) => r.openingCode === "6");
+    expect(door?.unitKind).toBe("door");
+    const marks = rowsToSpecMarks(rows, TYPES);
+    expect(marks.find((m) => m.mark === "14")?.size_text).toMatch(/4/);
+  });
+
+  it("extracts building-plan mark hits with pins", () => {
+    const hits = extractBuildingMarks([
+      {
+        pageNumber: 1,
+        width: 100,
+        height: 100,
+        fragments: [
+          { text: "#14", x: 10, y: 80, width: 10, height: 8 },
+          { text: "#14", x: 12, y: 81, width: 10, height: 8 }, // near-dupe
+          { text: "#6", x: 70, y: 20, width: 8, height: 8 },
+        ],
+      },
+    ]);
+    expect(hits).toHaveLength(2);
+    const drafts = buildingMarksToDraftOpenings(hits, [
+      {
+        mark: "14",
+        type_text: "CASEMENT",
+        size_text: "4x5",
+        color_text: "WHITE",
+        unit_kind: "window",
+        window_type_id: "t-cas",
+        match_score: 1,
+      },
+    ]);
+    expect(drafts.map((d) => d.opening_code)).toEqual(["#14-1", "#6-1"]);
+    expect(drafts[0].window_type_id).toBe("t-cas");
+    expect(drafts[0].pin_x).toBeGreaterThan(0);
   });
 });
 

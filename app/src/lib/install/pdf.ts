@@ -1,12 +1,28 @@
 // Client-side PDF rendering and text extraction with pdf.js.
 // Pages render to data-URL images for the project map background; text is
 // reconstructed into lines (grouped by y position) for the schedule parser.
+//
+// Use the *legacy* build + worker so older Safari/Chrome (missing
+// Map.prototype.getOrInsertComputed) can still open plansets.
 
-import * as pdfjs from "pdfjs-dist";
-import type { PDFDocumentProxy, TextItem } from "pdfjs-dist/types/src/display/api";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import "../mapPolyfill";
+import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
+import type {
+  PDFDocumentProxy,
+  TextItem,
+} from "pdfjs-dist/types/src/display/api";
+import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+
+export interface TextFragment {
+  text: string;
+  /** PDF user-space coords (origin bottom-left). */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 export async function loadPdf(data: ArrayBuffer): Promise<PDFDocumentProxy> {
   return pdfjs.getDocument({ data }).promise;
@@ -36,6 +52,34 @@ export async function renderPageImage(
   };
 }
 
+/** Raw positioned text items for a page (PDF space, origin bottom-left). */
+export async function extractPageFragments(
+  doc: PDFDocumentProxy,
+  pageNumber: number,
+): Promise<{ fragments: TextFragment[]; width: number; height: number }> {
+  const page = await doc.getPage(pageNumber);
+  const viewport = page.getViewport({ scale: 1 });
+  const content = await page.getTextContent();
+  const fragments: TextFragment[] = [];
+  for (const item of content.items) {
+    const t = item as TextItem;
+    if (!t.str || !t.str.trim()) continue;
+    const fontHeight = Math.abs(t.transform[3] || t.height || 8);
+    fragments.push({
+      text: t.str,
+      x: t.transform[4],
+      y: t.transform[5],
+      width: t.width || 0,
+      height: fontHeight,
+    });
+  }
+  return {
+    fragments,
+    width: viewport.width,
+    height: viewport.height,
+  };
+}
+
 /**
  * Extract text as lines. pdf.js returns positioned fragments; we group them
  * into rows by y coordinate and order by x, separating far-apart fragments
@@ -45,24 +89,11 @@ export async function extractPageText(
   doc: PDFDocumentProxy,
   pageNumber: number,
 ): Promise<string> {
-  const page = await doc.getPage(pageNumber);
-  const content = await page.getTextContent();
-
-  const frags: { x: number; y: number; text: string; width: number }[] = [];
-  for (const item of content.items) {
-    const t = item as TextItem;
-    if (!t.str || !t.str.trim()) continue;
-    frags.push({
-      x: t.transform[4],
-      y: t.transform[5],
-      text: t.str,
-      width: t.width,
-    });
-  }
+  const { fragments: frags } = await extractPageFragments(doc, pageNumber);
 
   // Group into lines: same row when y is within 3 units.
-  const lines: { y: number; frags: typeof frags }[] = [];
-  for (const f of frags.sort((a, b) => b.y - a.y || a.x - b.x)) {
+  const lines: { y: number; frags: TextFragment[] }[] = [];
+  for (const f of [...frags].sort((a, b) => b.y - a.y || a.x - b.x)) {
     const line = lines.find((l) => Math.abs(l.y - f.y) < 3);
     if (line) line.frags.push(f);
     else lines.push({ y: f.y, frags: [f] });

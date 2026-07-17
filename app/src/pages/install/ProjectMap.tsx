@@ -6,8 +6,10 @@ import {
   downloadPlanset,
   listOpenings,
   listPlansets,
+  listProjectMarks,
   updateOpening,
 } from "../../lib/install/api";
+import { formatMarkLabel, normalizeMark } from "../../lib/install/extract";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import {
   OPENING_STATUS_COLORS,
@@ -30,10 +32,20 @@ const FILTERS: { id: PlanFilter; label: string }[] = [
   { id: "done", label: "Done" },
 ];
 
-function unitKind(o: ProjectOpening): "door" | "window" {
+function unitKind(
+  o: ProjectOpening,
+  markKind?: "window" | "door" | null,
+): "door" | "window" {
+  if (markKind) return markKind;
   return (o.window_types?.category ?? "").toLowerCase().includes("door")
     ? "door"
     : "window";
+}
+
+/** Map chip text: (#14) from label / code mark. */
+function pinMarkText(o: ProjectOpening): string {
+  const raw = o.label || o.opening_code.split("-")[0] || o.opening_code;
+  return `(${formatMarkLabel(raw)})`;
 }
 
 export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
@@ -73,10 +85,24 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     queryKey: ["plansets", projectId],
     queryFn: () => listPlansets(projectId),
   });
-
-  const pdfPlanset = (plansets.data ?? []).find(
-    (ps) => ps.source_format === "pdf" || ps.converted_pdf_path,
+  const marks = useQuery({
+    queryKey: ["projectMarks", projectId],
+    queryFn: () => listProjectMarks(projectId),
+  });
+  const markKindByMark = new Map(
+    (marks.data ?? []).map((m) => [m.mark, m.unit_kind] as const),
   );
+
+  // Prefer a building-plan PDF for the map background; fall back to any PDF.
+  const pdfPlanset =
+    (plansets.data ?? []).find(
+      (ps) =>
+        (ps.kind ?? "building") === "building" &&
+        (ps.source_format === "pdf" || ps.converted_pdf_path),
+    ) ??
+    (plansets.data ?? []).find(
+      (ps) => ps.source_format === "pdf" || ps.converted_pdf_path,
+    );
 
   useEffect(() => {
     if (!pdfPlanset) return;
@@ -239,35 +265,50 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             onClick={handleMapClick}
           >
             <img src={image.dataUrl} alt={`Plan page ${page}`} />
-            {onThisPage.map((o) => (
-              <button
-                key={o.id}
-                className="map-pin"
-                style={{
-                  left: `${(o.pin_x ?? 0) * 100}%`,
-                  top: `${(o.pin_y ?? 0) * 100}%`,
-                  background: OPENING_STATUS_COLORS[o.status],
-                }}
-                title={pinTitle(o)}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (placingId) {
-                    const rect = (
-                      e.currentTarget.parentElement as HTMLElement
-                    ).getBoundingClientRect();
-                    placePin.mutate({
-                      id: placingId,
-                      x: (e.clientX - rect.left) / rect.width,
-                      y: (e.clientY - rect.top) / rect.height,
-                    });
-                    return;
+            {onThisPage.map((o) => {
+              const mark = normalizeMark(
+                o.label ?? o.opening_code.split("-")[0] ?? "",
+              );
+              const kind = unitKind(o, markKindByMark.get(mark));
+              return (
+                <button
+                  key={o.id}
+                  className={
+                    kind === "door" ? "map-pin map-pin-door" : "map-pin map-pin-window"
                   }
-                  openOpening(o.id);
-                }}
-              >
-                {o.assignee ? initials(o.assignee.display_name) : o.opening_code}
-              </button>
-            ))}
+                  style={{
+                    left: `${(o.pin_x ?? 0) * 100}%`,
+                    top: `${(o.pin_y ?? 0) * 100}%`,
+                    boxShadow:
+                      o.status === "installed"
+                        ? "0 0 0 2px #34d399"
+                        : o.status === "assigned"
+                          ? "0 0 0 2px #fbbf24"
+                          : undefined,
+                  }}
+                  title={pinTitle(o)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (placingId) {
+                      const rect = (
+                        e.currentTarget.parentElement as HTMLElement
+                      ).getBoundingClientRect();
+                      placePin.mutate({
+                        id: placingId,
+                        x: (e.clientX - rect.left) / rect.width,
+                        y: (e.clientY - rect.top) / rect.height,
+                      });
+                      return;
+                    }
+                    openOpening(o.id);
+                  }}
+                >
+                  {o.assignee
+                    ? initials(o.assignee.display_name)
+                    : pinMarkText(o)}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -298,7 +339,10 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
 
       <div className="map-legend muted">
         <span>
-          <i style={{ background: OPENING_STATUS_COLORS.planned }} /> planned
+          <i style={{ background: "var(--info)" }} /> window (#)
+        </span>
+        <span>
+          <i style={{ background: "var(--ok)" }} /> door (#)
         </span>
         <span>
           <i style={{ background: OPENING_STATUS_COLORS.assigned }} /> assigned
@@ -345,10 +389,20 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             <span
               className="unit-dot"
               aria-hidden
-              style={{ background: unitKind(o) === "door" ? "var(--ok)" : "var(--info)" }}
+              style={{
+                background:
+                  unitKind(
+                    o,
+                    markKindByMark.get(
+                      normalizeMark(o.label ?? o.opening_code.split("-")[0] ?? ""),
+                    ),
+                  ) === "door"
+                    ? "var(--ok)"
+                    : "var(--info)",
+              }}
             />
             <Link to={`/projects/${projectId}/opening/${o.id}`}>
-              <strong>{o.opening_code}</strong>
+              <strong>{pinMarkText(o)}</strong>
             </Link>
             <span className="muted">
               {o.window_types?.type_code ?? "type?"} {o.label ?? ""}

@@ -1,11 +1,13 @@
 import { supabase } from "../supabase";
 import type { WindowType } from "../types";
-import type { DraftOpening } from "./extract";
+import type { DraftOpening, SpecMarkDraft } from "./extract";
+import { normalizeMark } from "./extract";
 import type {
   InstallEvent,
   MemoTopics,
   Planset,
   PlansetFormat,
+  PlansetKind,
   PlansetStatus,
   Profile,
   ProjectOpening,
@@ -504,6 +506,7 @@ export async function listPlansets(projectId: string): Promise<Planset[]> {
 export async function uploadPlanset(
   projectId: string,
   file: File,
+  kind: PlansetKind = "building",
 ): Promise<Planset> {
   const format = plansetFormatFromName(file.name);
   if (!format) throw new Error("Only PDF, DWG, or DXF plansets are supported.");
@@ -523,12 +526,82 @@ export async function uploadPlanset(
       project_id: projectId,
       storage_path: path,
       source_format: format,
+      kind,
       status,
     })
     .select()
     .single();
   if (error) throw error;
   return data;
+}
+
+export interface ProjectMark {
+  id: string;
+  project_id: string;
+  mark: string;
+  window_type_id: string | null;
+  type_text: string | null;
+  size_text: string | null;
+  color_text: string | null;
+  unit_kind: "window" | "door";
+  specs_planset_id: string | null;
+}
+
+export async function listProjectMarks(projectId: string): Promise<ProjectMark[]> {
+  const { data, error } = await supabase
+    .from("project_marks")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("mark");
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Upsert specs-derived marks (#14 → size/type/color). */
+export async function saveProjectMarks(
+  projectId: string,
+  specsPlansetId: string,
+  marks: SpecMarkDraft[],
+): Promise<number> {
+  if (marks.length === 0) return 0;
+  const rows = marks.map((m) => ({
+    project_id: projectId,
+    mark: normalizeMark(m.mark),
+    window_type_id: m.window_type_id,
+    type_text: m.type_text,
+    size_text: m.size_text,
+    color_text: m.color_text,
+    unit_kind: m.unit_kind,
+    specs_planset_id: specsPlansetId,
+  }));
+  const { error } = await supabase.from("project_marks").upsert(rows, {
+    onConflict: "project_id,mark",
+  });
+  if (error) throw error;
+  return rows.length;
+}
+
+/** Apply specs marks onto existing openings that share the mark label/code. */
+export async function linkOpeningsToProjectMarks(
+  projectId: string,
+): Promise<number> {
+  const [marks, openings] = await Promise.all([
+    listProjectMarks(projectId),
+    listOpenings(projectId),
+  ]);
+  if (marks.length === 0) return 0;
+  const byMark = new Map(marks.map((m) => [m.mark, m]));
+  let updated = 0;
+  for (const o of openings) {
+    const mark = normalizeMark(o.label ?? o.opening_code.split("-")[0] ?? "");
+    const spec = byMark.get(mark);
+    if (!spec?.window_type_id) continue;
+    if (o.window_type_id === spec.window_type_id) continue;
+    if (o.confirmed || o.status !== "planned") continue;
+    await updateOpening(o.id, { window_type_id: spec.window_type_id });
+    updated += 1;
+  }
+  return updated;
 }
 
 export async function updatePlanset(
@@ -621,6 +694,8 @@ export async function saveDraftOpenings(
       window_type_id: d.window_type_id,
       label: d.label,
       page_number: d.page_number,
+      pin_x: d.pin_x ?? null,
+      pin_y: d.pin_y ?? null,
       confirmed: false,
     })),
   );

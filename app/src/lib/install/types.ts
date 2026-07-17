@@ -1,6 +1,7 @@
 import type { Project, WindowType, WindowUnit } from "../types";
 
 export type PlansetFormat = "pdf" | "dwg" | "dxf";
+export type PlansetKind = "building" | "specs";
 export type PlansetStatus =
   | "uploaded"
   | "converting"
@@ -13,6 +14,8 @@ export interface Planset {
   project_id: string;
   storage_path: string;
   source_format: PlansetFormat;
+  kind: PlansetKind;
+  story_label: string | null;
   converted_pdf_path: string | null;
   page_count: number | null;
   status: PlansetStatus;

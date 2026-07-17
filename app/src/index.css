@@ -282,6 +282,19 @@ button:disabled {
   font-size: 16px;
 }
 
+.planset-slots {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin: 12px 0 16px;
+}
+
+@media (min-width: 640px) {
+  .planset-slots {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .action-btn.primary {
   background: var(--accent);
   border-color: var(--accent);
@@ -574,6 +587,18 @@ button:disabled {
   align-items: center;
   justify-content: center;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.map-pin-window {
+  background: var(--info, #4a9dff);
+  color: #0b1220;
+  border-color: rgba(10, 40, 80, 0.55);
+}
+
+.map-pin-door {
+  background: var(--ok, #34d399);
+  color: #062016;
+  border-color: rgba(6, 40, 24, 0.55);
 }
 
 .page-switch {
