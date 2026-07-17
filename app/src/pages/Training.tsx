@@ -9,7 +9,7 @@ import {
   listProfiles,
   setClearance,
 } from "../lib/install/api";
-import { isLeadLike, ROLE_LABELS, type CrewRole } from "../lib/install/types";
+import { isForemanPlus, ROLE_LABELS, type CrewRole } from "../lib/install/types";
 import { knowledgeScore } from "../lib/glossary";
 import { listMyProgress } from "../lib/learn";
 
@@ -28,7 +28,7 @@ export function Training() {
   });
   const clearances = useQuery({ queryKey: ["clearances"], queryFn: listClearances });
 
-  const isLead = isLeadLike(me.data?.role);
+  const isLead = isForemanPlus(me.data?.role);
   const [selected, setSelected] = useState<string>("");
   const installerId = isLead ? selected || me.data?.id || "" : me.data?.id || "";
 

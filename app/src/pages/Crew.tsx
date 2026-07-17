@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import { getMyProfile, listProfiles, updateProfile } from "../lib/install/api";
 import { PinSetter } from "../components/PinGate";
 import {
-  isAdmin,
-  isLeadLike,
+  isSupervisorPlus,
+  isForemanPlus,
   ROLE_LABELS,
   type CrewRole,
   type Profile,
@@ -18,7 +18,7 @@ const SKILL_LABELS: Record<number, string> = {
   5: "Lead hand",
 };
 
-const ROLE_ORDER: CrewRole[] = ["installer", "foreman", "admin", "big_boss"];
+const ROLE_ORDER: CrewRole[] = ["installer", "foreman", "supervisor", "owner"];
 
 export function Crew() {
   const queryClient = useQueryClient();
@@ -34,8 +34,8 @@ export function Crew() {
     },
   });
 
-  const isLead = isLeadLike(me.data?.role);
-  const canSetRoles = isAdmin(me.data?.role);
+  const isLead = isForemanPlus(me.data?.role);
+  const canSetRoles = isSupervisorPlus(me.data?.role);
 
   return (
     <div className="page">

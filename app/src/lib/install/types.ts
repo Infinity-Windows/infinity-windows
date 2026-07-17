@@ -30,27 +30,35 @@ export const OPENING_KIND_COLORS = {
 
 export type OpeningStatus = "planned" | "assigned" | "installed";
 export type OpeningCondition = "unknown" | "ok" | "damaged";
-export type CrewRole = "installer" | "lead" | "foreman" | "admin" | "big_boss";
+export type CrewRole = "installer" | "foreman" | "supervisor" | "owner";
 
 export const ROLE_LABELS: Record<CrewRole, string> = {
   installer: "Installer",
-  lead: "Lead",
   foreman: "Foreman",
-  admin: "Admin",
-  big_boss: "Big Boss",
+  supervisor: "Supervisor",
+  owner: "Owner",
 };
 
-/** Lead-level privileges: anyone above a plain installer. */
-export function isLeadLike(role?: CrewRole | string | null): boolean {
+/**
+ * Foreman-level privileges: anyone above a plain installer. Legacy role names
+ * (lead/admin/big_boss) are still treated as elevated in case any row hasn't
+ * been migrated yet.
+ */
+export function isForemanPlus(role?: CrewRole | string | null): boolean {
   return !!role && role !== "installer";
 }
-/** Admin-level: manage accounts/approvals. */
-export function isAdmin(role?: CrewRole | string | null): boolean {
-  return role === "admin" || role === "big_boss";
+/** Supervisor-level: manage accounts/approvals (was admin). */
+export function isSupervisorPlus(role?: CrewRole | string | null): boolean {
+  return (
+    role === "supervisor" ||
+    role === "owner" ||
+    role === "admin" ||
+    role === "big_boss"
+  );
 }
-/** Big Boss: costing / margin visibility. */
-export function isBigBoss(role?: CrewRole | string | null): boolean {
-  return role === "big_boss";
+/** Owner: full data / costing / margin visibility (was big_boss). */
+export function isOwner(role?: CrewRole | string | null): boolean {
+  return role === "owner" || role === "big_boss";
 }
 
 export interface Profile {

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { getMyProfile } from "../lib/install/api";
-import { isBigBoss } from "../lib/install/types";
+import { isOwner } from "../lib/install/types";
 import {
   addChangeOrder,
   addJobCost,
@@ -22,7 +22,7 @@ export function Costing() {
   const jobs = useQuery({
     queryKey: ["companyCosting"],
     queryFn: getCompanyCosting,
-    enabled: isBigBoss(me.data?.role),
+    enabled: isOwner(me.data?.role),
   });
   const [sel, setSel] = useState<string>("");
   const [costAmt, setCostAmt] = useState("");
@@ -50,14 +50,14 @@ export function Costing() {
     onSuccess: () => { setCoLabel(""); setCoAmt(""); refresh(); },
   });
 
-  if (me.data && !isBigBoss(me.data.role)) {
+  if (me.data && !isOwner(me.data.role)) {
     return (
       <div className="page">
         <header className="page-header">
           <h1>Job costing</h1>
           <Link to="/" className="back-chip" aria-label="Home">‹</Link>
         </header>
-        <p className="muted">Revenue, costs and margin — Big Boss only.</p>
+        <p className="muted">Revenue, costs and margin — Owner only.</p>
       </div>
     );
   }
@@ -84,7 +84,7 @@ export function Costing() {
         <div>
           <h1>Job costing</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Revenue, costs and margin — Big Boss only.
+            Revenue, costs and margin — Owner only.
           </p>
         </div>
         <Link to="/" className="back-chip" aria-label="Home">‹</Link>

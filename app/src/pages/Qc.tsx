@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { getMyProfile } from "../lib/install/api";
-import { isLeadLike } from "../lib/install/types";
+import { isForemanPlus } from "../lib/install/types";
 import { listInstalledForQc, setQc } from "../lib/ops";
 import { addPriorityTerm } from "../lib/learn";
 import { resolvePendingPoints } from "../lib/points";
@@ -12,7 +12,7 @@ import { pushToast } from "../lib/toast";
 export function Qc() {
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const lead = isLeadLike(me.data?.role);
+  const lead = isForemanPlus(me.data?.role);
   const rows = useQuery({ queryKey: ["qcRows"], queryFn: listInstalledForQc, enabled: lead });
 
   // Which opening is mid-callback (awaiting a root-cause term), and the picked term.

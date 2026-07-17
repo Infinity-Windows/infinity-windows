@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { listProjects } from "../lib/api";
 import { getMyProfile } from "../lib/install/api";
-import { isLeadLike } from "../lib/install/types";
+import { isForemanPlus } from "../lib/install/types";
 import {
   ackTalk,
   getTodayTalk,
@@ -22,7 +22,7 @@ const SEVERITY = [
 export function Safety() {
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const lead = isLeadLike(me.data?.role);
+  const lead = isForemanPlus(me.data?.role);
   const talk = useQuery({ queryKey: ["todayTalk"], queryFn: getTodayTalk });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const acked = useQuery({

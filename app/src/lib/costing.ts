@@ -3,8 +3,11 @@ import { supabase } from "./supabase";
 /** Default hourly labor rates by role (company setting; edit as needed). */
 export const HOURLY_RATE: Record<string, number> = {
   installer: 35,
-  lead: 50,
   foreman: 50,
+  supervisor: 60,
+  owner: 75,
+  // Legacy role names kept so historical shifts still price correctly.
+  lead: 50,
   admin: 60,
   big_boss: 75,
 };

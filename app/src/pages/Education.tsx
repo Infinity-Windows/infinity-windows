@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getMyProfile } from "../lib/install/api";
-import { isLeadLike } from "../lib/install/types";
+import { isForemanPlus } from "../lib/install/types";
 import {
   buildDeck,
   CATS,
@@ -26,7 +26,7 @@ type Tab = "daily" | "quiz" | "sequence" | "glossary";
 export function Education() {
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const lead = isLeadLike(me.data?.role);
+  const lead = isForemanPlus(me.data?.role);
   const progress = useQuery({
     queryKey: ["learnProgress", me.data?.id],
     queryFn: () => listMyProgress(me.data!.id),
