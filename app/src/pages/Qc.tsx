@@ -57,19 +57,20 @@ export function Qc() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Quality</h1>
-        <Link to="/" className="button-like">Home</Link>
+        <div>
+          <h1>Quality</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            Pass installs or log a callback — callbacks push terms into learning decks.
+          </p>
+        </div>
+        <Link to="/" className="back-chip" aria-label="Home">‹</Link>
       </header>
-      <p className="muted">
-        The mock-up is the standard — match it every opening. Pass installs or log
-        a callback; callbacks push their terms into the crew's learning decks.
-      </p>
 
-      <ul className="unit-list">
+      <ul className="unit-list work-list">
         {list.map((o) => {
           const status = o.qc?.status ?? "pending";
           return (
-            <li key={o.id} className="find-row">
+            <li key={o.id} className="find-row" style={{ flexWrap: "wrap" }}>
               <div>
                 <strong>{o.opening_code}</strong>{" "}
                 <span className="muted">{o.window_types?.type_code}</span>
@@ -78,9 +79,9 @@ export function Qc() {
                 </div>
               </div>
               <div className="row-gap" style={{ marginLeft: "auto" }}>
-                <button className="button-like active-pill" onClick={() => decide.mutate({ id: o.id, status: "passed" })}>Pass ✓</button>
+                <button className="button-like qc-pass" onClick={() => decide.mutate({ id: o.id, status: "passed" })}>Pass ✓</button>
                 <button
-                  className="button-like"
+                  className="button-like qc-callback"
                   onClick={() => {
                     setCallbackFor({ id: o.id, code: o.opening_code });
                     setRootTerm("");
