@@ -10,9 +10,12 @@ import {
   setClearance,
 } from "../lib/install/api";
 import { isLeadLike, ROLE_LABELS, type CrewRole } from "../lib/install/types";
+import { knowledgeScore } from "../lib/glossary";
+import { listMyProgress } from "../lib/learn";
 
 const CLEAR_MIN_INSTALLS = 2;
 const CLEAR_MIN_GRADE = 3.5;
+const CLEAR_MIN_KNOWLEDGE = 40; // must know the terms before we clear them
 
 export function Training() {
   const queryClient = useQueryClient();
@@ -28,6 +31,13 @@ export function Training() {
   const isLead = isLeadLike(me.data?.role);
   const [selected, setSelected] = useState<string>("");
   const installerId = isLead ? selected || me.data?.id || "" : me.data?.id || "";
+
+  const progress = useQuery({
+    queryKey: ["learnProgress", installerId],
+    queryFn: () => listMyProgress(installerId),
+    enabled: Boolean(installerId),
+  });
+  const knowledge = knowledgeScore(progress.data ?? []);
 
   const clear = useMutation({
     mutationFn: (args: { typeId: string; cleared: boolean }) =>
@@ -55,13 +65,14 @@ export function Training() {
         const eligible =
           !!st &&
           (st.n ?? 0) >= CLEAR_MIN_INSTALLS &&
-          (st.avg_grade ?? 0) >= CLEAR_MIN_GRADE;
+          (st.avg_grade ?? 0) >= CLEAR_MIN_GRADE &&
+          knowledge >= CLEAR_MIN_KNOWLEDGE;
         return { type: t, st, cleared, eligible };
       })
       // Show cleared, worked, or eligible types (skip the full 100-type catalog).
       .filter((r) => r.cleared || r.st || r.eligible)
       .sort((a, b) => Number(b.cleared) - Number(a.cleared));
-  }, [types.data, stats.data, clearances.data, installerId]);
+  }, [types.data, stats.data, clearances.data, installerId, knowledge]);
 
   const allTypes = types.data ?? [];
 
@@ -91,6 +102,24 @@ export function Training() {
           </select>
         </>
       )}
+
+      <div className="stat-grid">
+        <div className="stat-card">
+          <span className="stat-num">{knowledge}</span>
+          <span>knowledge score</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-num">{rows.filter((r) => r.cleared).length}</span>
+          <span>types cleared</span>
+        </div>
+      </div>
+      <p className="muted" style={{ fontSize: 12 }}>
+        Clearance needs {CLEAR_MIN_INSTALLS}+ installs at grade {CLEAR_MIN_GRADE}+
+        AND knowledge {CLEAR_MIN_KNOWLEDGE}+.{" "}
+        {knowledge < CLEAR_MIN_KNOWLEDGE
+          ? `Do more in Education to raise the score (at ${knowledge}).`
+          : "Knowledge bar met."}
+      </p>
 
       <ul className="unit-list">
         {rows.map(({ type, st, cleared, eligible }) => (
