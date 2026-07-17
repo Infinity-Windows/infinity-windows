@@ -1,0 +1,270 @@
+# SYNC.md — How We Stay In Sync
+
+This is our team playbook for staying on the same page (and the same code). It's
+written for humans, not git experts. If you follow the routine below, you will
+almost never hit the "why does my screen look different than yours?" problem
+again.
+
+If anything here is confusing, **stop and ask** before running commands you don't
+understand. It's always cheaper to ask than to untangle a mess later.
+
+---
+
+## The One Rule
+
+**`master` is the single source of truth.**
+
+- `master` is always the latest, correct version of the app.
+- Everyone syncs *to* `master`. Everyone pushes *to* `master`.
+- What you see on your screen should match `master`. If it doesn't, you are
+  behind — sync (see below).
+
+That's the whole philosophy. Everything else is just how to keep your computer
+lined up with `master`.
+
+---
+
+## Daily Start Routine (do this every time you sit down to work)
+
+The easy way — from the repo root, just run:
+
+```bash
+npm run sync --prefix app
+```
+
+...or from inside the `app/` folder:
+
+```bash
+npm run sync
+```
+
+That runs our safe sync script for you. If you'd rather do it by hand, or want to
+understand what the script does, here are the exact steps:
+
+```bash
+# 1. Get the latest info from GitHub (does not change your files yet)
+git fetch origin
+
+# 2. Move onto the master branch
+git checkout master
+
+# 3. Pull the latest master (ff-only = no surprise merge commits)
+git pull --ff-only origin master
+
+# 4. If dependencies changed, reinstall them (safe to run every time)
+cd app && npm install && cd ..
+
+# 5. Restart Vite (stop it with Ctrl+C in its terminal, then:)
+cd app && npm run dev
+
+# 6. Hard-refresh your browser (see "The PWA Cache Gotcha" below)
+```
+
+**After syncing, your app should look exactly like everyone else's.** If it
+doesn't, jump to Troubleshooting.
+
+---
+
+## How to Confirm You Have the Latest
+
+Check the commit you're currently on:
+
+```bash
+git log --oneline -1
+```
+
+Check what the latest commit on GitHub is:
+
+```bash
+git fetch origin
+git log --oneline -1 origin/master
+```
+
+**These two should print the same commit.** If they match, you are fully synced.
+If they don't match, you are behind — run the daily sync routine above.
+
+You can also see both at once:
+
+```bash
+git fetch origin
+echo "You are on:   $(git log --oneline -1)"
+echo "Latest is:    $(git log --oneline -1 origin/master)"
+```
+
+---
+
+## Push Your Work Often
+
+Small and frequent beats big and rare.
+
+```bash
+git add -A
+git commit -m "short description of what you did"
+git push origin master
+```
+
+- **Push at least a few times a day.** Don't sit on days of work — that's how
+  branches drift apart.
+- If `git push` gets rejected because someone else pushed first, just sync and
+  try again:
+
+```bash
+git pull --ff-only origin master   # get their changes
+git push origin master             # push yours on top
+```
+
+- If the pull isn't fast-forwardable (git complains), **stop and ask** — don't
+  force anything.
+
+---
+
+## Branches: Keep Them Short-Lived
+
+We are **trunk-based**: most of the time, just commit straight to `master`.
+
+If you *do* need a branch (bigger experiment, risky change):
+
+- Keep it alive for **hours, not days**.
+- Merge or rebase `master` into it **every day** so it never drifts:
+
+```bash
+git fetch origin
+git rebase origin/master     # replays your work on top of latest master
+```
+
+- Merge it back to `master` and delete it as soon as you can.
+
+Long-lived branches are exactly what caused our last sync mess. Avoid them.
+
+---
+
+## The PWA Cache Gotcha (read this!)
+
+This app is a **PWA (Progressive Web App)**. That means your browser can quietly
+cache an *old* version of the app using a "service worker." So even after you sync
+the latest code and restart Vite, your browser might **still show the old
+design.** This is not a code bug — it's your browser being "helpful."
+
+### Fix: Hard Refresh
+
+- **Mac:** `Cmd + Shift + R`
+- **Windows/Linux:** `Ctrl + Shift + R`
+
+### Fix (stronger): Empty Cache and Hard Reload
+
+If a plain hard refresh isn't enough:
+
+1. Open **DevTools** (`Cmd/Ctrl + Option/Shift + I`, or right-click → Inspect).
+2. **Click and hold** the browser's refresh button (with DevTools open).
+3. Choose **"Empty Cache and Hard Reload."**
+
+### Fix (nuclear): Unregister the Service Worker
+
+If it's *still* showing the old version:
+
+1. DevTools → **Application** tab → **Service Workers**.
+2. Click **Unregister**.
+3. Also under **Application → Storage**, click **Clear site data**.
+4. Refresh the page.
+
+> Rule of thumb: if you synced the latest code but the screen looks old, it's
+> almost always the cache. Hard refresh first.
+
+---
+
+## Safe Git Defaults (set once per computer)
+
+Run this **once** inside the repo folder. It's repo-local (only affects this
+project) and stops git from ever making surprise merge commits when you pull:
+
+```bash
+git config --local pull.ff only
+```
+
+With this set, `git pull` will only fast-forward. If a plain fast-forward isn't
+possible, git will stop and tell you — which is exactly what we want, because it
+means it's time to **stop and ask** instead of creating a tangled history.
+
+> Note: this is *local* to this repo. It does not change your global git settings
+> or any other project.
+
+---
+
+## Troubleshooting
+
+### "My localhost shows the old design"
+
+99% of the time this is the PWA cache, not the code. In order:
+
+1. Confirm you're actually synced: `git log --oneline -1` should match
+   `git log --oneline -1 origin/master` (see "How to Confirm" above). If not,
+   run the daily sync.
+2. Make sure Vite was restarted after syncing (`Ctrl+C`, then `npm run dev`).
+3. **Hard refresh** (`Cmd/Ctrl + Shift + R`).
+4. **Empty Cache and Hard Reload** via DevTools.
+5. Unregister the service worker + Clear site data (see PWA section).
+
+### "git says my branch has diverged"
+
+This means your local history and `master` went down different paths. **Do not
+force push.** Instead:
+
+```bash
+git fetch origin
+git status          # read what it says
+```
+
+Then **stop and ask** in chat before doing anything else. Diverged history is the
+exact situation that bit us last time — it's worth 5 minutes of asking.
+
+### "I have uncommitted changes and need to switch/sync"
+
+Git won't let you switch branches with unsaved work. Either commit it:
+
+```bash
+git add -A
+git commit -m "wip: short note"
+```
+
+...or temporarily shelve it with **stash**:
+
+```bash
+git stash            # tucks your changes away safely
+git checkout master
+git pull --ff-only origin master
+git stash pop        # brings your changes back on top
+```
+
+If `git stash pop` reports a conflict, see the next section.
+
+### "Merge conflict — stop and ask"
+
+If git ever says **CONFLICT** (during pull, rebase, merge, or stash pop):
+
+- **Don't guess.** Don't delete files. Don't force push.
+- Take a screenshot of what the terminal says.
+- **Stop and ask** in chat so we can resolve it together.
+
+A conflict just means two people changed the same lines. It's routine to fix —
+but only if we do it carefully instead of panicking.
+
+---
+
+## TL;DR Cheat Sheet
+
+```bash
+# Start of every session:
+npm run sync --prefix app      # (or: cd app && npm run sync)
+
+# Am I on the latest?
+git fetch origin
+git log --oneline -1            # should match:
+git log --oneline -1 origin/master
+
+# Save + share my work:
+git add -A && git commit -m "what I did" && git push origin master
+
+# Screen looks old?  ->  Hard refresh: Cmd/Ctrl + Shift + R
+
+# Anything says "diverged" or "CONFLICT"  ->  STOP AND ASK
+```
