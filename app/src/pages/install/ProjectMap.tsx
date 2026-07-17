@@ -133,7 +133,12 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     <>
       {!embedded && (
         <header className="page-header">
-          <h1>{project?.job_code ?? "Job"} map</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <Link to={`/projects/${projectId}`} className="back-chip" aria-label="Back">
+              ‹
+            </Link>
+            <h1>{project?.job_code ?? "Job"} map</h1>
+          </div>
           <div className="row-gap">
             <Link to={`/projects/${projectId}/upload`} className="button-like">
               Planset
@@ -182,55 +187,67 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       )}
 
       {image && (
-        <div
-          className={placingId ? "plan-map placing" : "plan-map"}
-          onClick={handleMapClick}
-        >
-          <img src={image.dataUrl} alt={`Plan page ${page}`} />
-          {onThisPage.map((o) => (
-            <button
-              key={o.id}
-              className="map-pin"
-              style={{
-                left: `${(o.pin_x ?? 0) * 100}%`,
-                top: `${(o.pin_y ?? 0) * 100}%`,
-                background: OPENING_STATUS_COLORS[o.status],
-              }}
-              title={pinTitle(o)}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (placingId) {
-                  const rect = (
-                    e.currentTarget.parentElement as HTMLElement
-                  ).getBoundingClientRect();
-                  placePin.mutate({
-                    id: placingId,
-                    x: (e.clientX - rect.left) / rect.width,
-                    y: (e.clientY - rect.top) / rect.height,
-                  });
-                  return;
-                }
-                openOpening(o.id);
-              }}
-            >
-              {o.assignee ? initials(o.assignee.display_name) : o.opening_code}
-            </button>
-          ))}
+        <div className="plan-sheet">
+          <div
+            className={placingId ? "plan-map placing" : "plan-map"}
+            onClick={handleMapClick}
+          >
+            <img src={image.dataUrl} alt={`Plan page ${page}`} />
+            {onThisPage.map((o) => (
+              <button
+                key={o.id}
+                className="map-pin"
+                style={{
+                  left: `${(o.pin_x ?? 0) * 100}%`,
+                  top: `${(o.pin_y ?? 0) * 100}%`,
+                  background: OPENING_STATUS_COLORS[o.status],
+                }}
+                title={pinTitle(o)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (placingId) {
+                    const rect = (
+                      e.currentTarget.parentElement as HTMLElement
+                    ).getBoundingClientRect();
+                    placePin.mutate({
+                      id: placingId,
+                      x: (e.clientX - rect.left) / rect.width,
+                      y: (e.clientY - rect.top) / rect.height,
+                    });
+                    return;
+                  }
+                  openOpening(o.id);
+                }}
+              >
+                {o.assignee ? initials(o.assignee.display_name) : o.opening_code}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
       {pageCount > 1 && (
-        <div className="page-switch">
-          <button disabled={page <= 1} onClick={() => setPage(page - 1)}>
+        <nav className="hub-tabs page-switch" aria-label="Plan pages">
+          <button
+            type="button"
+            className="hub-tab"
+            disabled={page <= 1}
+            onClick={() => setPage(page - 1)}
+          >
             ◀
           </button>
-          <span className="muted">
+          <span className="hub-tab active" style={{ pointerEvents: "none" }}>
             Page {page} / {pageCount}
           </span>
-          <button disabled={page >= pageCount} onClick={() => setPage(page + 1)}>
+          <button
+            type="button"
+            className="hub-tab"
+            disabled={page >= pageCount}
+            onClick={() => setPage(page + 1)}
+          >
             ▶
           </button>
-        </div>
+        </nav>
       )}
 
       <div className="map-legend muted">
@@ -248,7 +265,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       {unplaced.length > 0 && (
         <>
           <h2>Needs a pin ({unplaced.length})</h2>
-          <ul className="unit-list">
+          <ul className="unit-list work-list">
             {unplaced.map((o) => (
               <li key={o.id} className="find-row">
                 <Link to={`/projects/${projectId}/opening/${o.id}`}>
@@ -273,7 +290,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       )}
 
       <h2>All openings ({all.length})</h2>
-      <ul className="unit-list">
+      <ul className="unit-list work-list">
         {all.map((o) => (
           <li key={o.id} className="find-row">
             <Link to={`/projects/${projectId}/opening/${o.id}`}>
