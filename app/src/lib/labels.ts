@@ -11,6 +11,8 @@ interface LabelSpec {
   qrPayload: string;
   title: string;
   subtitle: string;
+  /** Hand-writable short code — drawn LARGE so a worker can copy it by hand. */
+  code?: string;
 }
 
 async function buildLabelPdf(labels: LabelSpec[]): Promise<Uint8Array> {
@@ -36,6 +38,43 @@ async function buildLabelPdf(labels: LabelSpec[]): Promise<Uint8Array> {
 
     const textX = qrSize + 24;
     const maxTitleWidth = LABEL_W - textX - 8;
+
+    if (label.code) {
+      // Hybrid window label: the hand-writable code is the hero (big + bold),
+      // the serial + type sit smaller beneath it. QR still encodes the serial.
+      let codeSize = 44;
+      while (
+        codeSize > 16 &&
+        bold.widthOfTextAtSize(label.code, codeSize) > maxTitleWidth
+      ) {
+        codeSize -= 1;
+      }
+      page.drawText(label.code, {
+        x: textX,
+        y: LABEL_H - 20 - codeSize,
+        size: codeSize,
+        font: bold,
+        color: rgb(0, 0, 0),
+      });
+      page.drawText(label.title, {
+        x: textX,
+        y: 34,
+        size: 13,
+        font: regular,
+        color: rgb(0.2, 0.2, 0.2),
+        maxWidth: maxTitleWidth,
+      });
+      page.drawText(label.subtitle, {
+        x: textX,
+        y: 16,
+        size: 11,
+        font: regular,
+        color: rgb(0.35, 0.35, 0.35),
+        maxWidth: maxTitleWidth,
+      });
+      continue;
+    }
+
     let titleSize = 26;
     while (
       titleSize > 10 &&
@@ -64,13 +103,14 @@ async function buildLabelPdf(labels: LabelSpec[]): Promise<Uint8Array> {
 }
 
 export async function windowLabelsPdf(
-  windows: { window_id: string; typeName: string }[],
+  windows: { window_id: string; typeName: string; short_code?: string | null }[],
 ): Promise<Uint8Array> {
   return buildLabelPdf(
     windows.map((w) => ({
       qrPayload: encodeWindowQr(w.window_id),
       title: w.window_id,
       subtitle: w.typeName,
+      code: w.short_code ?? undefined,
     })),
   );
 }

@@ -80,6 +80,19 @@ export async function getWindowByWindowId(
   return data;
 }
 
+export async function findWindowByCode(
+  code: string,
+): Promise<WindowUnit | null> {
+  const { data, error } = await supabase.rpc("find_window_by_code", {
+    p_code: code,
+  });
+  if (error) throw error;
+  // The RPC returns SETOF windows: Supabase may hand back an array or a single
+  // row object depending on how it's typed. Normalize both to one unit or null.
+  const row = Array.isArray(data) ? data[0] : data;
+  return (row as WindowUnit | undefined) ?? null;
+}
+
 export async function getLocationByAddress(
   address: string,
 ): Promise<Location | null> {

@@ -100,6 +100,11 @@ export function WindowDetail() {
           <Link to="/search" className="back-chip" aria-label="Back">‹</Link>
           <div>
             <h1 className="opening-code-title">{w.window_id}</h1>
+            {w.short_code && (
+              <p className="short-code-hero" style={{ margin: "2px 0 0" }}>
+                Code <strong>{w.short_code}</strong>
+              </p>
+            )}
             <p className="muted" style={{ margin: 0, fontSize: 12 }}>
               {w.window_types?.type_code} · {STATUS_LABELS[w.status]}
             </p>
@@ -187,6 +192,7 @@ export function WindowDetail() {
                 {
                   window_id: w.window_id,
                   typeName: w.window_types?.name ?? "",
+                  short_code: w.short_code,
                 },
               ]);
               downloadPdf(bytes, `${w.window_id}.pdf`);

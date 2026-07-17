@@ -61,6 +61,7 @@ export function Receive() {
       received.map((r) => ({
         window_id: r.unit.window_id,
         typeName: r.typeName,
+        short_code: r.unit.short_code,
       })),
     );
     downloadPdf(bytes, "window-labels.pdf");
@@ -130,6 +131,9 @@ export function Receive() {
                 <Link to={`/w/${encodeURIComponent(r.unit.window_id)}`}>
                   <strong>{r.unit.window_id}</strong>
                 </Link>
+                {r.unit.short_code && (
+                  <span className="short-code-chip"> {r.unit.short_code}</span>
+                )}
                 <span className="muted"> {r.typeName}</span>
                 {r.suggestedAddress && (
                   <span className="suggest" style={{ marginLeft: "auto" }}>

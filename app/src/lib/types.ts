@@ -70,6 +70,8 @@ export interface ProjectWindow {
 export interface WindowUnit {
   id: string;
   window_id: string;
+  /** Short, hand-writable code (no ambiguous chars) that also resolves to this unit. */
+  short_code?: string | null;
   window_type_id: string;
   status: WindowStatus;
   project_id: string | null;

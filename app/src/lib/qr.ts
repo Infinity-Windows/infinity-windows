@@ -6,7 +6,11 @@
 
 export type QrPayload =
   | { kind: "window"; windowId: string }
-  | { kind: "location"; address: string };
+  | { kind: "location"; address: string }
+  | { kind: "windowCode"; code: string };
+
+// Short hand-writable code: 6 chars from a no-ambiguous alphabet (no O/0/I/1).
+const SHORT_CODE_RE = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/;
 
 export function encodeWindowQr(windowId: string): string {
   return `WOPS:W:${windowId}`;
@@ -30,6 +34,10 @@ export function parseQr(raw: string): QrPayload | null {
   }
   if (/^[RJSD]-[A-Z0-9]+-[A-Z]$/i.test(text)) {
     return { kind: "location", address: text.toUpperCase() };
+  }
+  // Hand-writable short code stamped on the unit alongside the serial.
+  if (SHORT_CODE_RE.test(text.toUpperCase())) {
+    return { kind: "windowCode", code: text.toUpperCase() };
   }
   return null;
 }

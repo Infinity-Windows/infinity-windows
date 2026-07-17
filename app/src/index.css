@@ -120,6 +120,31 @@ h2 {
 .warn-text { color: var(--warn); }
 .suggest { color: var(--accent); font-weight: 600; }
 
+/* Hand-writable short code shown alongside the serial license plate. */
+.short-code-chip {
+  display: inline-block;
+  margin: 0 6px;
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  font-family: var(--font-display, monospace);
+  letter-spacing: 2px;
+}
+
+.short-code-hero {
+  font-size: 15px;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.short-code-hero strong {
+  font-family: var(--font-display, monospace);
+  font-size: 22px;
+  letter-spacing: 4px;
+  color: var(--accent);
+}
+
 input, select {
   width: 100%;
   padding: 14px 15px;
