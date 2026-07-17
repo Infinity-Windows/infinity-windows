@@ -5,6 +5,15 @@ import { getMyProfile } from "../lib/install/api";
 
 const UNLOCK_KEY = "wops-pin-unlocked";
 
+const PAD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"] as const;
+
+function initialsFrom(name: string | null | undefined): string {
+  if (!name?.trim()) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 /**
  * Lightweight device PIN lock on top of the persisted Supabase session.
  * The PIN itself never reaches the client — status and verification are RPCs.
@@ -40,25 +49,83 @@ export function PinGate({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const pushDigit = (digit: string) => {
+    if (entry.length >= 4) return;
+    const next = entry + digit;
+    setEntry(next);
+    setError(false);
+    if (next.length === 4) void submit(next);
+  };
+
+  const backspace = () => {
+    setEntry((v) => v.slice(0, -1));
+    setError(false);
+  };
+
+  const name = me.data?.display_name ?? "Crew";
+
   return (
     <div className="pin-gate">
-      <h1>Infinity</h1>
-      <p className="muted">
-        {me.data?.display_name ? `${me.data.display_name} · ` : ""}enter your 4-digit PIN
-      </p>
+      <h1 className="pin-gate-brand">INFINITY</h1>
+      <div className="pin-avatar" aria-hidden>
+        {initialsFrom(name)}
+      </div>
+      <p className="pin-name">{name}</p>
+      <p className="pin-hint">Enter your 4-digit PIN</p>
+      <div className="pin-dots" aria-hidden>
+        {[0, 1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className={i < entry.length ? "pin-dot filled" : "pin-dot"}
+          />
+        ))}
+      </div>
+      {/* Hidden input keeps autofill / accessibility; pad drives the same state. */}
       <input
         className="pin-input"
         inputMode="numeric"
         maxLength={4}
         value={entry}
         autoFocus
+        aria-label="4-digit PIN"
         onChange={(e) => {
           const v = e.target.value.replace(/\D/g, "").slice(0, 4);
           setEntry(v);
+          setError(false);
           if (v.length === 4) void submit(v);
         }}
       />
       {error && <p className="error">Wrong PIN — try again</p>}
+      <div className="pin-pad">
+        {PAD_KEYS.map((key, i) => {
+          if (key === "") {
+            return <div key={`empty-${i}`} className="pin-key empty" />;
+          }
+          if (key === "⌫") {
+            return (
+              <button
+                key="back"
+                type="button"
+                className="pin-key"
+                aria-label="Delete"
+                onClick={backspace}
+              >
+                ⌫
+              </button>
+            );
+          }
+          return (
+            <button
+              key={key}
+              type="button"
+              className="pin-key"
+              onClick={() => pushDigit(key)}
+            >
+              {key}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -107,7 +174,11 @@ export function PinSetter() {
           </button>
         )}
       </div>
-      {saved && <p className="ok" style={{ fontSize: 13 }}>PIN saved.</p>}
+      {saved && (
+        <p className="ok" style={{ fontSize: 13 }}>
+          PIN saved.
+        </p>
+      )}
     </div>
   );
 }
