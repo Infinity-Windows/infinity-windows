@@ -149,15 +149,19 @@ export function ProjectDetail() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>{project?.job_code ?? "Job"}</h1>
-        <Link to="/projects" className="button-like">
-          Jobs
-        </Link>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          <Link to="/projects" className="back-chip" aria-label="Back to jobs">
+            ‹
+          </Link>
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ fontSize: 26 }}>{project?.job_code ?? "Job"}</h1>
+            <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+              {project?.name}
+              {project?.address ? ` — ${project.address}` : ""}
+            </p>
+          </div>
+        </div>
       </header>
-      <p className="muted">
-        {project?.name}
-        {project?.address ? ` — ${project.address}` : ""}
-      </p>
 
       <nav className="hub-tabs" aria-label="Project sections">
         {TABS.map((t) => (
@@ -208,9 +212,9 @@ export function ProjectDetail() {
             Type brain cards — tips and times from installs on this job&apos;s
             window types.
           </p>
-          <ul className="unit-list">
+          <ul className="unit-list work-list">
             {brainTypes.map((t) => (
-              <li key={t.id}>
+              <li key={t.id} className="find-row">
                 <Link to={`/brain/${t.id}`} className="job-row">
                   <strong>{t.type_code}</strong> — {t.name}
                   <span className="muted"> {t.count} opening(s)</span>
@@ -331,27 +335,27 @@ function OverviewTab({
         </div>
       )}
 
-      <div className="stat-grid">
-        <div className="stat-card">
-          <span className="stat-num">{unitsCount}</span>
-          <span>assigned of {neededTotal || "—"} needed</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-num">{pickCount}</span>
-          <span>in warehouse</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-num">{loadedCount}</span>
-          <span>on truck</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-num">
+      <div className="briefing-stats" style={{ marginBottom: 16 }}>
+        <span>
+          <strong>{unitsCount}</strong>
+          of {neededTotal || "—"} assigned
+        </span>
+        <span>
+          <strong>{pickCount}</strong>
+          in warehouse
+        </span>
+        <span>
+          <strong>{loadedCount}</strong>
+          on truck
+        </span>
+        <span>
+          <strong>
             {openingsTotal > 0
               ? `${openingsInstalled}/${openingsTotal}`
               : installedUnits}
-          </span>
-          <span>{openingsTotal > 0 ? "openings installed" : "units installed"}</span>
-        </div>
+          </strong>
+          {openingsTotal > 0 ? "openings done" : "units installed"}
+        </span>
       </div>
 
       <div className="action-list">
@@ -368,13 +372,15 @@ function OverviewTab({
       <p className="muted">
         Quantities roll up from confirmed planset openings — one source of truth.
       </p>
-      <ul className="unit-list">
+      <ul className="unit-list work-list">
         {needs.map((n) => {
           const have = units.filter((u) => u.window_type_id === n.window_type_id).length;
           return (
-            <li key={n.id}>
-              <strong>{n.window_types?.type_code}</strong> {n.window_types?.name}{" "}
-              <span className={have >= n.quantity ? "ok" : "warn-text"}>
+            <li key={n.id} className="find-row">
+              <div>
+                <strong>{n.window_types?.type_code}</strong> {n.window_types?.name}
+              </div>
+              <span className={have >= n.quantity ? "ok" : "warn-text"} style={{ marginLeft: "auto" }}>
                 {have}/{n.quantity}
               </span>
             </li>
@@ -462,7 +468,7 @@ function WarehouseTab({
         </>
       )}
 
-      <ul className="unit-list">
+      <ul className="unit-list work-list">
         {pickList.map((u) => (
           <li key={u.id} className="find-row">
             <Link to={`/w/${encodeURIComponent(u.window_id)}`}>
@@ -482,9 +488,9 @@ function WarehouseTab({
       {loaded.length > 0 && (
         <>
           <h2>On truck ({loaded.length})</h2>
-          <ul className="unit-list">
+          <ul className="unit-list work-list">
             {loaded.map((u) => (
-              <li key={u.id}>
+              <li key={u.id} className="find-row">
                 <Link to={`/w/${encodeURIComponent(u.window_id)}`}>
                   {u.window_id}
                 </Link>{" "}
