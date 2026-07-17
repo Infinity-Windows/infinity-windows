@@ -40,15 +40,16 @@ export function Crew() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Crew</h1>
-        <Link to="/" className="button-like">
-          Home
+        <div>
+          <h1>Crew</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            Skill tier drives who gets which window.
+          </p>
+        </div>
+        <Link to="/" className="back-chip" aria-label="Home">
+          ‹
         </Link>
       </header>
-      <p className="muted">
-        Skill tier drives who gets which window. Leads can take anything;
-        apprentices get the simpler types.
-      </p>
       {!isLead && (
         <p className="muted">
           Only leads can edit the roster. You can set your own display name.
@@ -57,12 +58,22 @@ export function Crew() {
 
       <PinSetter />
 
+      <h2>Roster</h2>
       <ul className="unit-list">
         {(crew.data ?? []).map((p) => {
           const editable = isLead || p.id === me.data?.id;
+          const initials = p.display_name
+            .split(/\s+/)
+            .map((s) => s[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase();
           return (
-            <li key={p.id} className="crew-row">
+            <li key={p.id} className={p.active ? "crew-row live" : "crew-row"}>
               <div className="crew-main">
+                <span className={p.active ? "avatar-chip" : "avatar-chip ghost"} aria-hidden>
+                  {initials || "?"}
+                </span>
                 <input
                   className="crew-name"
                   defaultValue={p.display_name}
