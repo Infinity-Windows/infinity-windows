@@ -85,6 +85,10 @@ export function Costing() {
         <div className="stat-card"><span className="stat-num">{money(totalMargin)}</span><span>margin now</span></div>
         <div className="stat-card"><span className="stat-num">{totalRev > 0 ? Math.round((totalMargin/totalRev)*100) : 0}%</span><span>margin %</span></div>
       </div>
+      <p className="muted" style={{ fontSize: 12 }}>
+        Labor cost is auto-derived from clocked time_shifts x role rate; manual
+        cost entries are adjustments on top.
+      </p>
 
       <div className="row-between">
         <h2>Jobs</h2>
@@ -114,6 +118,9 @@ export function Costing() {
       {selJob && (
         <div className="detail-card">
           <p><strong>{selJob.jobCode}</strong> — {money(selJob.revenue)} rev · {money(selJob.costs)} cost · <span className={selJob.margin>=0?"ok":"error"}>{money(selJob.margin)} margin</span></p>
+          <p className="muted" style={{ fontSize: 13 }}>
+            Labor: {selJob.laborHours}h = {money(selJob.laborCost)} (from time clock) · manual: {money(selJob.manualCosts)}
+          </p>
           <label className="field-label">Bid / est. revenue</label>
           <input type="number" value={bid} onChange={(e) => setBidVal(e.target.value)} placeholder={String(selJob.bid || "")} />
           <label className="field-label">Target margin %</label>

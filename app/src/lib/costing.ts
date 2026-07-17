@@ -1,5 +1,38 @@
 import { supabase } from "./supabase";
 
+/** Default hourly labor rates by role (company setting; edit as needed). */
+export const HOURLY_RATE: Record<string, number> = {
+  installer: 35,
+  lead: 50,
+  foreman: 50,
+  admin: 60,
+  big_boss: 75,
+};
+
+export interface LaborShift {
+  project_id: string | null;
+  clock_in_at: string;
+  clock_out_at: string | null;
+  break_seconds: number;
+  role: string;
+}
+
+/** Derived labor cost + hours per project from clocked-out shifts. */
+export function computeLabor(shifts: LaborShift[]): Map<string, { hours: number; cost: number }> {
+  const out = new Map<string, { hours: number; cost: number }>();
+  for (const s of shifts) {
+    if (!s.project_id || !s.clock_out_at) continue;
+    const ms = new Date(s.clock_out_at).getTime() - new Date(s.clock_in_at).getTime();
+    const hours = Math.max(0, ms / 3600000 - (s.break_seconds ?? 0) / 3600);
+    const rate = HOURLY_RATE[s.role] ?? HOURLY_RATE.installer;
+    const cur = out.get(s.project_id) ?? { hours: 0, cost: 0 };
+    cur.hours += hours;
+    cur.cost += hours * rate;
+    out.set(s.project_id, cur);
+  }
+  return out;
+}
+
 export interface JobCost {
   id: string;
   project_id: string;
@@ -23,7 +56,10 @@ export interface JobCosting {
   bid: number;
   changeOrders: number;
   revenue: number; // bid + change orders
-  costs: number;
+  manualCosts: number; // job_costs entries
+  laborHours: number; // derived from time_shifts
+  laborCost: number; // derived from time_shifts x rate
+  costs: number; // manualCosts + laborCost
   margin: number; // revenue - costs
   marginPct: number;
   targetMarginPct: number | null;
@@ -88,14 +124,18 @@ export async function setBid(
 
 /** Company-wide costing rollup across active jobs. */
 export async function getCompanyCosting(): Promise<JobCosting[]> {
-  const [projRes, costRes, coRes] = await Promise.all([
+  const [projRes, costRes, coRes, shiftRes] = await Promise.all([
     supabase.from("projects").select("id, job_code, name, bid_amount, target_margin_pct"),
     supabase.from("job_costs").select("project_id, amount"),
     supabase.from("change_orders").select("project_id, amount"),
+    supabase
+      .from("time_shifts")
+      .select("project_id, clock_in_at, clock_out_at, break_seconds, profiles(role)"),
   ]);
   if (projRes.error) throw projRes.error;
   if (costRes.error) throw costRes.error;
   if (coRes.error) throw coRes.error;
+  if (shiftRes.error) throw shiftRes.error;
 
   const costByProj = new Map<string, number>();
   for (const c of costRes.data ?? []) {
@@ -105,12 +145,23 @@ export async function getCompanyCosting(): Promise<JobCosting[]> {
   for (const c of coRes.data ?? []) {
     coByProj.set(c.project_id, (coByProj.get(c.project_id) ?? 0) + Number(c.amount));
   }
+  const labor = computeLabor(
+    (shiftRes.data ?? []).map((s) => ({
+      project_id: s.project_id,
+      clock_in_at: s.clock_in_at,
+      clock_out_at: s.clock_out_at,
+      break_seconds: s.break_seconds ?? 0,
+      role: (s.profiles as { role?: string } | null)?.role ?? "installer",
+    })),
+  );
 
   return (projRes.data ?? []).map((p) => {
     const bid = Number(p.bid_amount ?? 0);
     const changeOrders = coByProj.get(p.id) ?? 0;
     const revenue = bid + changeOrders;
-    const costs = costByProj.get(p.id) ?? 0;
+    const manualCosts = costByProj.get(p.id) ?? 0;
+    const lab = labor.get(p.id) ?? { hours: 0, cost: 0 };
+    const costs = manualCosts + lab.cost;
     const margin = revenue - costs;
     return {
       projectId: p.id,
@@ -119,8 +170,11 @@ export async function getCompanyCosting(): Promise<JobCosting[]> {
       bid,
       changeOrders,
       revenue,
-      costs,
-      margin,
+      manualCosts,
+      laborHours: Math.round(lab.hours * 10) / 10,
+      laborCost: Math.round(lab.cost),
+      costs: Math.round(costs),
+      margin: Math.round(margin),
       marginPct: revenue > 0 ? Math.round((margin / revenue) * 1000) / 10 : 0,
       targetMarginPct: p.target_margin_pct ?? null,
     };
@@ -134,9 +188,9 @@ export function bidForMargin(totalCost: number, targetMarginPct: number): number
 }
 
 export function toCsv(rows: JobCosting[]): string {
-  const header = "job_code,name,bid,change_orders,revenue,costs,margin,margin_pct";
+  const header = "job_code,name,bid,change_orders,revenue,labor_hours,labor_cost,manual_costs,costs,margin,margin_pct";
   const lines = rows.map((r) =>
-    [r.jobCode, `"${r.name}"`, r.bid, r.changeOrders, r.revenue, r.costs, r.margin, r.marginPct].join(","),
+    [r.jobCode, `"${r.name}"`, r.bid, r.changeOrders, r.revenue, r.laborHours, r.laborCost, r.manualCosts, r.costs, r.margin, r.marginPct].join(","),
   );
   return [header, ...lines].join("\n");
 }
