@@ -30,18 +30,22 @@ export function Tools() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Tools</h1>
-        <Link to="/" className="button-like">Home</Link>
+        <div>
+          <h1>Tools</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            Who has what — and what's due for calibration.
+          </p>
+        </div>
+        <Link to="/" className="back-chip" aria-label="Home">‹</Link>
       </header>
-      <p className="muted">Who has what — and what's due for calibration.</p>
 
-      <ul className="unit-list">
+      <ul className="unit-list work-list">
         {(tools.data ?? []).map((t) => (
           <li key={t.id} className="find-row">
             <div>
               <strong>{t.name}</strong>
               <div className="muted" style={{ fontSize: 12 }}>
-                {t.profiles?.display_name ? `with ${t.profiles.display_name}` : "in the shop"}
+                {t.profiles?.display_name ? `With ${t.profiles.display_name}` : "In the shop"}
                 {t.calibration_due && (
                   <span className={dueSoon(t.calibration_due) ? "warn-text" : ""}>
                     {" "}· calib due {t.calibration_due}
@@ -71,7 +75,7 @@ export function Tools() {
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tool name" />
             <label className="field-label">Calibration due (optional)</label>
             <input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
-            <button className="action-btn" disabled={add.isPending || !name.trim()} onClick={() => add.mutate()}>Add tool</button>
+            <button className="primary big" disabled={add.isPending || !name.trim()} onClick={() => add.mutate()}>Add tool</button>
           </div>
         </>
       )}
