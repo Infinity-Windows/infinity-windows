@@ -17,6 +17,7 @@ import { Home } from "./pages/Home";
 import { Labels } from "./pages/Labels";
 import { Landing } from "./pages/Landing";
 import { Notifications } from "./pages/Notifications";
+import { Team } from "./pages/Team";
 import { Warehouse } from "./pages/Warehouse";
 import { LocationDetail } from "./pages/LocationDetail";
 import { ProjectDetail } from "./pages/ProjectDetail";
@@ -125,6 +126,7 @@ export default function App() {
             <Route path="/warehouse" element={<Warehouse />} />
             <Route path="/ask" element={<AskInfinity />} />
             <Route path="/notifications" element={<Notifications />} />
+            <Route path="/team" element={<Team />} />
             <Route path="/scan" element={<Scan />} />
             <Route path="/receive" element={<Receive />} />
             <Route path="/search" element={<Search />} />

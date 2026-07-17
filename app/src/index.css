@@ -2576,6 +2576,29 @@ button.clock-out {
   flex: none;
 }
 
+/* --- Team hub --- */
+
+.team-tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.team-count {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--accent);
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 22px;
+  text-align: center;
+}
+
 /* --- Project plan filters --- */
 
 .plan-filters {

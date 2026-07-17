@@ -54,7 +54,7 @@ export function Layout() {
     { to: "/qc", label: "Quality", icon: "✓", show: true },
     { to: "/safety", label: "Safety", icon: "⛑", show: true },
     { to: "/tools", label: "Tools", icon: "⚙", show: true },
-    { to: "/crew", label: "Team", icon: "⚑", show: lead },
+    { to: "/team", label: "Team", icon: "⚑", show: lead },
     { to: "/admin", label: "Admin", icon: "◈", show: admin },
     { to: "/costing", label: "Cost", icon: "$", show: boss },
   ].filter((t) => t.show);
