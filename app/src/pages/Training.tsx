@@ -79,14 +79,17 @@ export function Training() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Training</h1>
-        <Link to="/" className="button-like">
-          Home
-        </Link>
+        <div>
+          <h1>Training</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            Clearance says who can install what.
+          </p>
+        </div>
+        <Link to="/" className="back-chip" aria-label="Home">‹</Link>
       </header>
       <p className="muted">
-        Clearance says who can install what. A cleared apprentice can be routed
-        to a harder type — training changes dispatch.
+        A cleared apprentice can be routed to a harder type — training changes
+        dispatch.
       </p>
 
       {isLead && (
@@ -104,7 +107,7 @@ export function Training() {
       )}
 
       <div className="stat-grid">
-        <div className="stat-card">
+        <div className="stat-card accent">
           <span className="stat-num">{knowledge}</span>
           <span>knowledge score</span>
         </div>
@@ -121,7 +124,7 @@ export function Training() {
           : "Knowledge bar met."}
       </p>
 
-      <ul className="unit-list">
+      <ul className="unit-list work-list">
         {rows.map(({ type, st, cleared, eligible }) => (
           <li key={type.id} className="find-row">
             <div>
