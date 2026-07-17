@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { listProjects } from "../lib/api";
 import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
+import { myTodayCompletion } from "../lib/toolbox";
 import {
   approveShift,
   clockIn,
@@ -47,6 +48,11 @@ export function TimeClock() {
     queryKey: ["shiftsToApprove"],
     queryFn: listShiftsToApprove,
     enabled: lead,
+  });
+  const toolboxDone = useQuery({
+    queryKey: ["toolboxToday", me.data?.id],
+    queryFn: () => myTodayCompletion(me.data!.id),
+    enabled: Boolean(me.data?.id),
   });
 
   const [projectId, setProjectId] = useState("");
@@ -97,6 +103,12 @@ export function TimeClock() {
     : 0;
   const weekTotal = (week.data ?? []).reduce((s, x) => s + shiftHours(x), 0);
 
+  // Hard gate: today's toolbox talk must be signed before the first clock-in.
+  const needsToolbox = toolboxDone.isSuccess && !toolboxDone.data;
+  const clockInError = doClockIn.isError
+    ? String((doClockIn.error as Error).message ?? "")
+    : "";
+
   return (
     <div className="page">
       <header className="page-header">
@@ -143,27 +155,50 @@ export function TimeClock() {
         </div>
       ) : (
         <div className="detail-card">
-          <label className="field-label">Clock into which project?</label>
-          <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            <option value="">— pick a job —</option>
-            {(projects.data ?? []).map((p) => (
-              <option key={p.id} value={p.id}>{p.job_code} — {p.name}</option>
-            ))}
-          </select>
-          <label className="field-label">Cost code</label>
-          <select value={codeId} onChange={(e) => setCodeId(e.target.value)}>
-            <option value="">— pick a code —</option>
-            {(costCodes.data ?? []).map((c) => (
-              <option key={c.id} value={c.id}>{c.code} · {c.label}</option>
-            ))}
-          </select>
-          <button
-            className="primary big clock-in"
-            disabled={doClockIn.isPending || !codeId}
-            onClick={() => doClockIn.mutate()}
-          >
-            {doClockIn.isPending ? "Clocking in…" : "Clock in"}
-          </button>
+          {needsToolbox ? (
+            <div className="toolbox-gate">
+              <p className="next-label" style={{ margin: 0 }}>Toolbox talk required</p>
+              <p className="muted" style={{ margin: "6px 0 12px", lineHeight: 1.5 }}>
+                Read and sign today's toolbox talk before you clock in.
+              </p>
+              <Link to="/safety" className="primary big" style={{ textAlign: "center" }}>
+                Go to today's talk
+              </Link>
+            </div>
+          ) : (
+            <>
+              <label className="field-label">Clock into which project?</label>
+              <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+                <option value="">— pick a job —</option>
+                {(projects.data ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>{p.job_code} — {p.name}</option>
+                ))}
+              </select>
+              <label className="field-label">Cost code</label>
+              <select value={codeId} onChange={(e) => setCodeId(e.target.value)}>
+                <option value="">— pick a code —</option>
+                {(costCodes.data ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>{c.code} · {c.label}</option>
+                ))}
+              </select>
+              {clockInError && (
+                <p className="error">
+                  {/[Tt]oolbox/.test(clockInError)
+                    ? "Complete today's toolbox talk before clocking in."
+                    : clockInError}
+                  {" "}
+                  <Link to="/safety">Go to talk</Link>
+                </p>
+              )}
+              <button
+                className="primary big clock-in"
+                disabled={doClockIn.isPending || !codeId}
+                onClick={() => doClockIn.mutate()}
+              >
+                {doClockIn.isPending ? "Clocking in…" : "Clock in"}
+              </button>
+            </>
+          )}
         </div>
       )}
 
