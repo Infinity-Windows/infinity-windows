@@ -26,7 +26,7 @@ export function PinGate({ children }: { children: React.ReactNode }) {
     enabled: Boolean(me.data?.id),
   });
   const [entry, setEntry] = useState("");
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<"wrong" | "network" | null>(null);
   const [unlocked, setUnlocked] = useState(
     () => sessionStorage.getItem(UNLOCK_KEY) === "1",
   );
@@ -35,16 +35,23 @@ export function PinGate({ children }: { children: React.ReactNode }) {
     if (unlocked) sessionStorage.setItem(UNLOCK_KEY, "1");
   }, [unlocked]);
 
-  if (me.isLoading || hasPin.isLoading) return null;
+  if (me.isLoading || hasPin.isLoading) {
+    return (
+      <div className="pin-gate">
+        <h1 className="pin-gate-brand">INFINITY</h1>
+        <p className="pin-hint">Checking device lock…</p>
+      </div>
+    );
+  }
   if (!hasPin.data || unlocked) return <>{children}</>;
 
   const submit = async (value: string) => {
-    const ok = await checkMyPin(value);
-    if (ok) {
+    const result = await checkMyPin(value);
+    if (result.ok) {
       setUnlocked(true);
-      setError(false);
+      setError(null);
     } else {
-      setError(true);
+      setError(result.reason);
       setEntry("");
     }
   };
@@ -53,13 +60,13 @@ export function PinGate({ children }: { children: React.ReactNode }) {
     if (entry.length >= 4) return;
     const next = entry + digit;
     setEntry(next);
-    setError(false);
+    setError(null);
     if (next.length === 4) void submit(next);
   };
 
   const backspace = () => {
     setEntry((v) => v.slice(0, -1));
-    setError(false);
+    setError(null);
   };
 
   const name = me.data?.display_name ?? "Crew";
@@ -91,11 +98,14 @@ export function PinGate({ children }: { children: React.ReactNode }) {
         onChange={(e) => {
           const v = e.target.value.replace(/\D/g, "").slice(0, 4);
           setEntry(v);
-          setError(false);
+          setError(null);
           if (v.length === 4) void submit(v);
         }}
       />
-      {error && <p className="error">Wrong PIN — try again</p>}
+      {error === "wrong" && <p className="error">Wrong PIN — try again</p>}
+      {error === "network" && (
+        <p className="error">Can&apos;t reach the server — try again</p>
+      )}
       <div className="pin-pad">
         {PAD_KEYS.map((key, i) => {
           if (key === "") {

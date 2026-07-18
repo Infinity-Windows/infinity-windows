@@ -1,15 +1,9 @@
-// Durable stale-cache guard.
+// Durable stale-cache guard (DEV only).
 //
-// This app is NOT a PWA — it never registers a service worker. But a service
-// worker is scoped to an *origin*, not a project, so any worker left behind by
-// a *previous* app on the same origin (e.g. an earlier build, or a different
-// project that once ran on http://localhost:5173) keeps intercepting requests
-// and can serve a stale, cached bundle — masking brand-new code even after a
-// git sync + Vite restart. A plain hard-refresh does not reliably kill it.
-//
-// The fix: on every boot, actively unregister any service worker on this origin
-// and delete its Cache Storage, then reload once so the page runs fresh code.
-// Because the app has no legitimate worker, this is always safe.
+// Production registers a real service worker via vite-plugin-pwa for the app
+// shell. In development we still purge any orphaned worker left on this origin
+// (from a prior prod build or another project on the same port) so hot reload
+// is never masked by a stale cached bundle.
 
 export interface ServiceWorkerGuardEnv {
   getRegistrations: () => Promise<
@@ -63,10 +57,13 @@ export async function purgeStaleServiceWorkers(
 const RELOAD_FLAG = "infinity-sw-purged";
 
 /**
- * Browser entry point. Reads globals defensively so it is a no-op in any
- * environment without the Service Worker API, and never blocks app startup.
+ * Browser entry point. In production this is a no-op — vite-plugin-pwa owns
+ * the real service worker. In DEV we still purge orphaned workers/caches so a
+ * leftover production SW (or another app on the same origin) cannot mask hot
+ * reloads with a stale bundle.
  */
 export function installServiceWorkerGuard(): void {
+  if (!import.meta.env.DEV) return;
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
     return;
   }

@@ -125,10 +125,12 @@ export async function myPinStatus(): Promise<boolean> {
   return Boolean(data);
 }
 
-export async function checkMyPin(pin: string): Promise<boolean> {
+export async function checkMyPin(
+  pin: string,
+): Promise<{ ok: true } | { ok: false; reason: "wrong" | "network" }> {
   const { data, error } = await supabase.rpc("check_my_pin", { p_pin: pin });
-  if (error) return false;
-  return Boolean(data);
+  if (error) return { ok: false, reason: "network" };
+  return data ? { ok: true } : { ok: false, reason: "wrong" };
 }
 
 export interface AccessRequest {
