@@ -41,6 +41,7 @@ export type RoutePath =
   | "/catalog"
   | "/supplies"
   | "/admin"
+  | "/cost-codes"
   | "/costing";
 
 /**
@@ -99,6 +100,7 @@ export const NAV: NavDest[] = [
   // Supervisor+.
   { id: "heartbeat", to: "/heartbeat", label: "Heartbeat", icon: "❤", minRole: "supervisor" },
   { id: "admin", to: "/admin", label: "Admin", icon: "◈", minRole: "supervisor" },
+  { id: "cost-codes", to: "/cost-codes", label: "Cost codes", icon: "☷", minRole: "supervisor" },
 
   // Owner only.
   { id: "costing", to: "/costing", label: "Cost", icon: "$", minRole: "owner" },
@@ -176,6 +178,7 @@ const SUPERVISOR_LAYOUT: LayoutItem[] = [
   { id: "learn" },
   { id: "points" },
   { id: "tools" },
+  { id: "cost-codes" },
   { id: "admin" },
 ];
 
@@ -195,6 +198,7 @@ const OWNER_LAYOUT: LayoutItem[] = [
   { id: "learn" },
   { id: "points" },
   { id: "tools" },
+  { id: "cost-codes" },
   { id: "admin" },
 ];
 
@@ -245,6 +249,71 @@ export function navForRole(role: CrewRole | string | null | undefined): RoleNav 
     phone: items.filter((i) => i.phone),
     more: items.filter((i) => !i.phone),
   };
+}
+
+/** A titled group of destinations for the desktop/tablet left sidebar. */
+export interface RailSection {
+  title: string;
+  items: NavItem[];
+}
+
+/**
+ * Desktop/tablet sidebar grouping (Horizon-style sections). On wide screens the
+ * left sidebar IS the full menu — every destination the role can reach appears
+ * here, grouped, with NO separate "More" overflow bucket. Order defines display
+ * order; empty sections (nothing the role can access) are dropped. The phone
+ * bottom bar + More sheet still come from navForRole (small-screen behavior).
+ */
+const RAIL_SECTIONS: { title: string; ids: string[] }[] = [
+  { title: "Work", ids: ["home", "my-work", "projects", "warehouse"] },
+  { title: "Time", ids: ["clock"] },
+  { title: "Field", ids: ["scan", "count", "receive", "labels", "supplies", "catalog", "tools"] },
+  { title: "Quality & safety", ids: ["qc", "safety", "issues", "service"] },
+  { title: "Team", ids: ["team", "crew", "training"] },
+  { title: "Insights", ids: ["heartbeat", "analytics", "cost-codes", "costing"] },
+  { title: "Learn", ids: ["learn", "points", "review"] },
+  { title: "System", ids: ["notifications", "search", "admin"] },
+];
+
+/** Installer "/" already lands on My Work; managers read it as Home. */
+function railLabel(
+  id: string,
+  role: CrewRole | string | null | undefined,
+  fallback: string,
+): string {
+  if (id === "home") return roleRank(role) === 0 ? "My Work" : "Home";
+  return fallback;
+}
+
+/**
+ * Grouped destinations for the desktop/tablet left sidebar. Includes every
+ * registry destination the role can access (route guards still enforce real
+ * authorization), so nothing is hidden behind a desktop overflow menu.
+ */
+export function railSectionsForRole(
+  role: CrewRole | string | null | undefined,
+): RailSection[] {
+  const installer = roleRank(role) === 0;
+  const sections: RailSection[] = [];
+  for (const sec of RAIL_SECTIONS) {
+    const items: NavItem[] = [];
+    for (const id of sec.ids) {
+      // Installer Home already IS "My Work" — skip the duplicate entry.
+      if (id === "my-work" && installer) continue;
+      const dest = NAV_BY_ID.get(id);
+      if (!dest || !canAccess(role, dest.to)) continue;
+      items.push({
+        id: dest.id,
+        to: dest.to,
+        icon: dest.icon,
+        minRole: dest.minRole,
+        label: railLabel(id, role, dest.label),
+        phone: false,
+      });
+    }
+    if (items.length > 0) sections.push({ title: sec.title, items });
+  }
+  return sections;
 }
 
 // --- Legacy fallback (ROLE_NAV_V2 === false) ---------------------------------

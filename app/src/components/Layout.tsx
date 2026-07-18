@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { countMyOpenOpenings, getMyProfile } from "../lib/install/api";
 import { ROLE_LABELS, type CrewRole } from "../lib/install/types";
-import { activeNavForRole, roleRank } from "../lib/nav";
+import { activeNavForRole, railSectionsForRole, roleRank, type NavItem } from "../lib/nav";
 import { useClock } from "../lib/clockContext";
 import { elapsedWorkSeconds, formatClock } from "../lib/timeclock";
 import { effectiveRole, useViewAsRole } from "../lib/viewAsRoleContext";
@@ -88,7 +88,43 @@ export function Layout() {
   }
 
   const nav = activeNavForRole(role);
+  // Desktop/tablet: the sidebar is the full grouped menu (no More overflow).
+  const railSections = railSectionsForRole(role);
   const previewing = view.canPreview && view.previewRole;
+
+  // One renderer for a sidebar destination — the clock tab is special (opens
+  // the clock sheet and shows the live running timer instead of navigating).
+  const renderRailTab = (tab: NavItem) =>
+    tab.id === "clock" ? (
+      <button
+        key={tab.id}
+        type="button"
+        className={shift ? "rail-tab clock-on" : "rail-tab"}
+        onClick={clock.openClock}
+      >
+        <span className="rail-icon" aria-hidden>
+          {shift ? (
+            <span className={onBreak ? "clock-nav-dot break" : "clock-nav-dot work"} />
+          ) : (
+            tab.icon
+          )}
+        </span>
+        <span className="rail-label">{shift ? clockLabel : tab.label}</span>
+      </button>
+    ) : (
+      <NavLink
+        key={tab.id}
+        to={tab.to}
+        end={tab.to === "/"}
+        className={({ isActive }) => (isActive ? "rail-tab active" : "rail-tab")}
+      >
+        <span className="rail-icon" aria-hidden>
+          {tab.icon}
+        </span>
+        <span className="rail-label">{tab.label}</span>
+        {badgeFor(tab.to) > 0 && <span className="rail-badge">{badgeFor(tab.to)}</span>}
+      </NavLink>
+    );
 
   return (
     <div className="app-shell">
@@ -101,48 +137,15 @@ export function Layout() {
             </span>
             <span className="rail-brand-word">Infinity</span>
           </Link>
-          <p className="rail-eyebrow" aria-hidden>
-            Menu
-          </p>
           <nav className="rail-tabs" aria-label="Sections">
-            {nav.rail.map((tab) =>
-              tab.id === "clock" ? (
-                <button
-                  key={tab.id}
-                  type="button"
-                  className={shift ? "rail-tab clock-on" : "rail-tab"}
-                  onClick={clock.openClock}
-                >
-                  <span className="rail-icon" aria-hidden>
-                    {shift ? (
-                      <span
-                        className={onBreak ? "clock-nav-dot break" : "clock-nav-dot work"}
-                      />
-                    ) : (
-                      tab.icon
-                    )}
-                  </span>
-                  <span className="rail-label">{shift ? clockLabel : tab.label}</span>
-                </button>
-              ) : (
-                <NavLink
-                  key={tab.id}
-                  to={tab.to}
-                  end={tab.to === "/"}
-                  className={({ isActive }) =>
-                    isActive ? "rail-tab active" : "rail-tab"
-                  }
-                >
-                  <span className="rail-icon" aria-hidden>
-                    {tab.icon}
-                  </span>
-                  <span className="rail-label">{tab.label}</span>
-                  {badgeFor(tab.to) > 0 && (
-                    <span className="rail-badge">{badgeFor(tab.to)}</span>
-                  )}
-                </NavLink>
-              ),
-            )}
+            {railSections.map((section) => (
+              <div className="rail-section" key={section.title}>
+                <p className="rail-section-title" aria-hidden>
+                  {section.title}
+                </p>
+                {section.items.map(renderRailTab)}
+              </div>
+            ))}
           </nav>
 
           {view.canPreview && (
