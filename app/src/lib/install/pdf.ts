@@ -14,10 +14,37 @@ import type {
 import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import {
   parsePlanMarkAnnotation,
+  markCentersAlongAnnotation,
   type PlanMarkCallout,
 } from "./planMarks";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+
+/** Map a PDF-user-space rect into normalized top-left page coordinates. */
+function pdfRectToNormalized(
+  rect: [number, number, number, number],
+  viewport: { width: number; height: number; transform: number[] },
+): { x1: number; y1: number; x2: number; y2: number } {
+  const [a, b, c, d, e, f] = viewport.transform;
+  const corners = [
+    [rect[0], rect[1]],
+    [rect[2], rect[1]],
+    [rect[0], rect[3]],
+    [rect[2], rect[3]],
+  ].map(([x, y]) => [a * x + c * y + e, b * x + d * y + f] as const);
+  const xs = corners.map((p) => p[0]);
+  const ys = corners.map((p) => p[1]);
+  const left = Math.min(...xs);
+  const right = Math.max(...xs);
+  const top = Math.min(...ys);
+  const bottom = Math.max(...ys);
+  return {
+    x1: left / viewport.width,
+    y1: top / viewport.height,
+    x2: right / viewport.width,
+    y2: bottom / viewport.height,
+  };
+}
 
 export async function loadPdf(data: ArrayBuffer): Promise<PDFDocumentProxy> {
   return pdfjs.getDocument({ data }).promise;
@@ -108,6 +135,8 @@ export async function extractAllText(
  * Read numbered window/door marks from FreeText annotations on a marked
  * building plan. These callouts are often drawn as annotations (not page
  * text), which is why #6 ×12 shows on the sheet but not in getTextContent.
+ * Coordinates are normalized 0–1 in the same top-left space as rendered page
+ * images, so dots can sit exactly on the plan numbers while zooming.
  */
 export async function extractPlanMarkCallouts(
   doc: PDFDocumentProxy,
@@ -135,18 +164,14 @@ export async function extractPlanMarkCallouts(
       if (!marks?.length) continue;
 
       const rect = annotation.rect as [number, number, number, number];
-      const [x1, y1, x2, y2] = rect;
-      const count = marks.length;
+      const box = pdfRectToNormalized(rect, viewport);
+      const centers = markCentersAlongAnnotation(raw);
       marks.forEach((mark, index) => {
-        const t = count === 1 ? 0.5 : (index + 0.5) / count;
-        const x = Math.min(
-          1,
-          Math.max(0, (x1 + (x2 - x1) * t) / viewport.width),
-        );
-        const y = Math.min(
-          1,
-          Math.max(0, 1 - (y1 + y2) / 2 / viewport.height),
-        );
+        const t =
+          centers[index] ??
+          (marks.length === 1 ? 0.5 : (index + 0.5) / marks.length);
+        const x = Math.min(1, Math.max(0, box.x1 + (box.x2 - box.x1) * t));
+        const y = Math.min(1, Math.max(0, (box.y1 + box.y2) / 2));
         callouts.push({ mark, pageNumber, x, y });
       });
     }

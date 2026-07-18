@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calloutsToDraftOpenings } from "./extract";
 import {
   countCalloutsByMark,
+  markCentersAlongAnnotation,
   parsePlanMarkAnnotation,
 } from "./planMarks";
 
@@ -35,6 +36,15 @@ describe("parsePlanMarkAnnotation", () => {
       parsePlanMarkAnnotation("\n#18A 1 of  2 not used (3060 C/R)..."),
     ).toBeNull();
     expect(parsePlanMarkAnnotation("see sheet A2")).toBeNull();
+  });
+});
+
+describe("markCentersAlongAnnotation", () => {
+  it("places centers under each repeated mark glyph", () => {
+    const centers = markCentersAlongAnnotation("6   6  6            6  6  6");
+    expect(centers).toHaveLength(6);
+    expect(centers[0]).toBeLessThan(centers[1]);
+    expect(centers[5]).toBeGreaterThan(0.7);
   });
 });
 

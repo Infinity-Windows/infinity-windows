@@ -43,3 +43,23 @@ export function countCalloutsByMark(
   }
   return counts;
 }
+
+const MARK_FIND_RE = /#?[A-Z]{0,3}-?\d{1,4}[A-Z]?/gi;
+
+/**
+ * Horizontal centers (0–1 along the annotation width) for each mark token in
+ * a FreeText body, so "6   6  6" lands on each glyph instead of evenly
+ * spacing blindly.
+ */
+export function markCentersAlongAnnotation(text: string): number[] {
+  const cleaned = text.replace(/^\uFEFF/, "");
+  const len = Math.max(cleaned.length, 1);
+  const centers: number[] = [];
+  MARK_FIND_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = MARK_FIND_RE.exec(cleaned)) !== null) {
+    if (!parsePlanMarkAnnotation(match[0])) continue;
+    centers.push((match.index + match[0].length / 2) / len);
+  }
+  return centers;
+}
