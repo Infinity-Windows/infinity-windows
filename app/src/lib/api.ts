@@ -46,10 +46,40 @@ export async function listProjects(): Promise<Project[]> {
   return data;
 }
 
-export interface CreateProjectInput {
+/** Fields captured on the Horizon-style add/edit project form. */
+export interface ProjectDetailsInput {
+  address?: string | null;
+  customerName?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  siteState?: string | null;
+  unitNumber?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  notes?: string | null;
+}
+
+export interface CreateProjectInput extends ProjectDetailsInput {
   jobCode: string;
   name: string;
-  address?: string | null;
+}
+
+const clean = (value: string | null | undefined): string | null =>
+  value?.trim() ? value.trim() : null;
+
+/** Shape the shared detail fields into the DB column names. */
+function detailColumns(input: ProjectDetailsInput): Record<string, string | null> {
+  return {
+    address: clean(input.address),
+    customer_name: clean(input.customerName),
+    contact_phone: clean(input.contactPhone),
+    contact_email: clean(input.contactEmail),
+    site_state: clean(input.siteState)?.toUpperCase() ?? null,
+    unit_number: clean(input.unitNumber),
+    start_date: clean(input.startDate),
+    end_date: clean(input.endDate),
+    notes: clean(input.notes),
+  };
 }
 
 /**
@@ -67,7 +97,7 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
     .insert({
       job_code: jobCode,
       name,
-      address: input.address?.trim() || null,
+      ...detailColumns(input),
     })
     .select("*")
     .single();
@@ -83,6 +113,34 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
   }
 
   return project as Project;
+}
+
+export interface UpdateProjectInput extends ProjectDetailsInput {
+  name?: string;
+  status?: Project["status"];
+}
+
+/** Edit an existing job's Horizon-style details (foreman+ from the hub). */
+export async function updateProject(
+  projectId: string,
+  input: UpdateProjectInput,
+): Promise<Project> {
+  const patch: Record<string, string | null> = detailColumns(input);
+  if (input.name !== undefined) {
+    const name = input.name.trim();
+    if (!name) throw new Error("Project name is required.");
+    patch.name = name;
+  }
+  if (input.status !== undefined) patch.status = input.status;
+
+  const { data, error } = await supabase
+    .from("projects")
+    .update(patch)
+    .eq("id", projectId)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as Project;
 }
 
 export async function getProjectWindows(
@@ -305,7 +363,7 @@ export interface UnloadResult {
 }
 
 /**
- * Jobsite unload + condition report: OK units go 'staged' (on site, ready to
+ * Jobsite unload + condition report: OK units go 'on_site' (ready to
  * install); damaged units go on hold + open a deduped damage issue. Optional
  * location note is folded into the movement log. Returns { unloaded, damaged }
  * counts. Foreman+ (enforced by the RPC).

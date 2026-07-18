@@ -5,6 +5,7 @@ import { listProjects } from "../lib/api";
 import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { CostCodePicker } from "../components/CostCodePicker";
 import { myTodayCompletion } from "../lib/toolbox";
 import {
   approveShift,
@@ -177,12 +178,12 @@ export function TimeClock() {
                 ))}
               </select>
               <label className="field-label">Cost code</label>
-              <select value={codeId} onChange={(e) => setCodeId(e.target.value)}>
-                <option value="">— pick a code —</option>
-                {(costCodes.data ?? []).map((c) => (
-                  <option key={c.id} value={c.id}>{c.code} · {c.label}</option>
-                ))}
-              </select>
+              <CostCodePicker
+                variant="select"
+                codes={costCodes.data ?? []}
+                value={codeId}
+                onChange={setCodeId}
+              />
               {clockInError && (
                 <p className="error">
                   {/[Tt]oolbox/.test(clockInError)

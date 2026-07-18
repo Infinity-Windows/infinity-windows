@@ -5,7 +5,8 @@ export type WindowStatus =
   | "staged"
   | "loaded"
   | "installed"
-  | "damaged";
+  | "damaged"
+  | "on_site";
 
 export interface WindowType {
   id: string;
@@ -55,6 +56,14 @@ export interface Project {
   name: string;
   address: string | null;
   status: "active" | "completed" | "cancelled";
+  customer_name?: string | null;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+  site_state?: string | null;
+  unit_number?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  notes?: string | null;
   estimated_minutes?: number | null;
   estimated_crew?: number | null;
   estimated_at?: string | null;
@@ -105,4 +114,5 @@ export const STATUS_LABELS: Record<WindowStatus, string> = {
   loaded: "Loaded on truck",
   installed: "Installed",
   damaged: "Damaged / hold",
+  on_site: "On site (ready to install)",
 };

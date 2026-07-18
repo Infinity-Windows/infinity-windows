@@ -15,6 +15,7 @@ import {
   preissueProjectUnits,
   reconcileProjectDeliveries,
   unloadUnits,
+  updateProject,
 } from "../lib/api";
 import { selectedLoadableIds, toggleSelected, totalReorder } from "../lib/loadout";
 import { downloadPdf, windowLabelsPdf } from "../lib/labels";
@@ -352,6 +353,8 @@ function OverviewTab({
 
   return (
     <>
+      {project && <JobDetailsPanel project={project} isLead={isLead} />}
+
       {estimate && estimate.est.remaining > 0 && (
         <div className="estimate-card">
           <div className="estimate-head">
@@ -451,6 +454,253 @@ function OverviewTab({
         )}
       </ul>
     </>
+  );
+}
+
+function fmtDay(iso: string | null | undefined): string {
+  if (!iso) return "";
+  // date columns come back as YYYY-MM-DD; render without TZ drift.
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return "";
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+/**
+ * Job details card: the Horizon-style intake fields (customer/contact, site
+ * address, scheduled dates, notes) shown on the hub, with an inline edit form
+ * for foreman+. Mirrors Horizon's add/edit-project fields in windows terms.
+ */
+function JobDetailsPanel({
+  project,
+  isLead,
+}: {
+  project: Project;
+  isLead: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(project.name);
+  const [address, setAddress] = useState(project.address ?? "");
+  const [customerName, setCustomerName] = useState(project.customer_name ?? "");
+  const [contactPhone, setContactPhone] = useState(project.contact_phone ?? "");
+  const [contactEmail, setContactEmail] = useState(project.contact_email ?? "");
+  const [unitNumber, setUnitNumber] = useState(project.unit_number ?? "");
+  const [siteState, setSiteState] = useState(project.site_state ?? "");
+  const [startDate, setStartDate] = useState(project.start_date?.slice(0, 10) ?? "");
+  const [endDate, setEndDate] = useState(project.end_date?.slice(0, 10) ?? "");
+  const [notes, setNotes] = useState(project.notes ?? "");
+
+  const resetForm = () => {
+    setName(project.name);
+    setAddress(project.address ?? "");
+    setCustomerName(project.customer_name ?? "");
+    setContactPhone(project.contact_phone ?? "");
+    setContactEmail(project.contact_email ?? "");
+    setUnitNumber(project.unit_number ?? "");
+    setSiteState(project.site_state ?? "");
+    setStartDate(project.start_date?.slice(0, 10) ?? "");
+    setEndDate(project.end_date?.slice(0, 10) ?? "");
+    setNotes(project.notes ?? "");
+  };
+
+  const save = useMutation({
+    mutationFn: () =>
+      updateProject(project.id, {
+        name,
+        address,
+        customerName,
+        contactPhone,
+        contactEmail,
+        unitNumber,
+        siteState,
+        startDate,
+        endDate,
+        notes,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      setEditing(false);
+      pushToast("Job details saved.", "info");
+    },
+    onError: (e) => toastError(e),
+  });
+
+  const detailRows: { label: string; value: string }[] = [
+    { label: "Customer / contact", value: project.customer_name ?? "" },
+    { label: "Phone", value: project.contact_phone ?? "" },
+    { label: "Email", value: project.contact_email ?? "" },
+    { label: "Site address", value: project.address ?? "" },
+    { label: "Building / unit / lot", value: project.unit_number ?? "" },
+    { label: "State", value: project.site_state ?? "" },
+    { label: "Scheduled start", value: fmtDay(project.start_date) },
+    { label: "Target completion", value: fmtDay(project.end_date) },
+  ].filter((r) => r.value);
+
+  if (!editing) {
+    const hasAny = detailRows.length > 0 || Boolean(project.notes);
+    return (
+      <section className="detail-card" style={{ marginBottom: 16 }}>
+        <div className="row-between">
+          <h2 style={{ margin: 0 }}>Job details</h2>
+          {isLead && (
+            <button type="button" className="link" onClick={() => setEditing(true)}>
+              Edit
+            </button>
+          )}
+        </div>
+        {hasAny ? (
+          <>
+            <dl
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                gap: "10px 16px",
+                margin: "10px 0 0",
+              }}
+            >
+              {detailRows.map((r) => (
+                <div key={r.label}>
+                  <dt className="field-label">{r.label}</dt>
+                  <dd style={{ margin: 0 }}>{r.value}</dd>
+                </div>
+              ))}
+            </dl>
+            {project.notes && (
+              <p className="muted" style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>
+                {project.notes}
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="muted" style={{ marginTop: 6 }}>
+            {isLead
+              ? "No customer or schedule details yet. Tap Edit to add them."
+              : "No customer or schedule details yet."}
+          </p>
+        )}
+      </section>
+    );
+  }
+
+  return (
+    <section className="detail-card" style={{ marginBottom: 16 }}>
+      <form
+        className="project-create"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save.mutate();
+        }}
+      >
+        <div className="row-between">
+          <h2 style={{ margin: 0 }}>Edit job details</h2>
+          <button
+            type="button"
+            className="link"
+            onClick={() => {
+              resetForm();
+              setEditing(false);
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+        <div className="project-create-grid">
+          <label>
+            <span className="field-label">Project name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} required />
+          </label>
+          <label>
+            <span className="field-label">Customer / contact</span>
+            <input
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              placeholder="Pecan Valley HOA · Jane Doe"
+            />
+          </label>
+          <label>
+            <span className="field-label">Contact phone</span>
+            <input
+              type="tel"
+              value={contactPhone}
+              onChange={(e) => setContactPhone(e.target.value)}
+              placeholder="(435) 555-0173"
+            />
+          </label>
+          <label>
+            <span className="field-label">Contact email</span>
+            <input
+              type="email"
+              value={contactEmail}
+              onChange={(e) => setContactEmail(e.target.value)}
+              placeholder="office@pecanvalley.com"
+            />
+          </label>
+          <label className="project-create-address">
+            <span className="field-label">Site address</span>
+            <input
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="173 Pecan Valley Dr, Hurricane, UT 84737"
+            />
+          </label>
+          <label>
+            <span className="field-label">Building / unit / lot</span>
+            <input
+              value={unitNumber}
+              onChange={(e) => setUnitNumber(e.target.value)}
+              placeholder="Building 14 · Lots 173–183"
+            />
+          </label>
+          <label>
+            <span className="field-label">State</span>
+            <input
+              value={siteState}
+              onChange={(e) => setSiteState(e.target.value)}
+              placeholder="UT"
+              maxLength={2}
+              autoCapitalize="characters"
+            />
+          </label>
+          <label>
+            <span className="field-label">Scheduled start</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+          </label>
+          <label>
+            <span className="field-label">Target completion</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+          </label>
+          <label className="project-create-address">
+            <span className="field-label">Job notes</span>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Access, gate codes, staging area, scope reminders…"
+              rows={3}
+            />
+          </label>
+        </div>
+        {save.isError && <p className="error">{String(save.error)}</p>}
+        <button
+          type="submit"
+          className="action-btn primary"
+          disabled={save.isPending || !name.trim()}
+        >
+          {save.isPending ? "Saving…" : "Save job details"}
+        </button>
+      </form>
+    </section>
   );
 }
 
@@ -873,7 +1123,7 @@ function LoadOutPanel({
 /**
  * Foreman+ action: JOBSITE UNLOAD + condition report. Every loaded unit defaults
  * to “arrived OK”; flip any that arrived damaged. Submitting sends the OK units
- * to 'staged' (on site, ready to install) and holds the damaged ones (opening a
+ * to 'on_site' (ready to install) and holds the damaged ones (opening a
  * damage issue each). Optional location note is logged on the movement.
  */
 function UnloadPanel({
@@ -1043,6 +1293,11 @@ function WarehouseTab({
         );
       }
       if (unit.status === "loaded") throw new Error(`${windowId} is already loaded.`);
+      if (unit.status !== "in_warehouse" && unit.status !== "staged") {
+        throw new Error(
+          `${windowId} is not warehouse-ready to load (${STATUS_LABELS[unit.status]}).`,
+        );
+      }
       return loadWindow(unit.id);
     },
     onSuccess: (unit: WindowUnit) => {

@@ -26,6 +26,23 @@ describe("rankAssignCandidates", () => {
     expect(ranked.map((u) => u.window_id)).toEqual(["W-A-3", "W-A-2", "W-A-1"]);
   });
 
+  it("ranks a just-unloaded on_site unit at/above warehouse stock", () => {
+    const ranked = rankAssignCandidates([
+      unit({ id: "1", window_id: "W-A-1", status: "in_warehouse" }),
+      unit({ id: "2", window_id: "W-A-2", status: "on_site" }),
+    ]);
+    expect(ranked[0].window_id).toBe("W-A-2");
+  });
+
+  it("ranks on_site alongside staged, ahead of loaded and warehouse", () => {
+    const ranked = rankAssignCandidates([
+      unit({ id: "1", window_id: "W-WHSE", status: "in_warehouse" }),
+      unit({ id: "2", window_id: "W-LOAD", status: "loaded" }),
+      unit({ id: "3", window_id: "W-ONSITE", status: "on_site" }),
+    ]);
+    expect(ranked.map((u) => u.window_id)).toEqual(["W-ONSITE", "W-LOAD", "W-WHSE"]);
+  });
+
   it("prefers same-project units, then filters by type", () => {
     const ranked = rankAssignCandidates(
       [
