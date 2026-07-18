@@ -2946,3 +2946,52 @@ button.clock-out {
 .compliance-row .status-yes { color: var(--ok); font-weight: 700; }
 .compliance-row .status-no { color: var(--danger); font-weight: 700; }
 
+/* --- Post-install spam-through modal --- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  padding: 24px 20px calc(20px + env(safe-area-inset-bottom));
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.6);
+}
+
+.done-modal { text-align: center; }
+
+.done-modal .done-check {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 8px;
+  border-radius: 50%;
+  background: var(--ok, #2ec26b);
+  color: #04210f;
+  font-size: 30px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.done-modal .primary.big { margin-top: 18px; width: 100%; }
+
+.modal-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+.modal-actions .big { width: 100%; }
+

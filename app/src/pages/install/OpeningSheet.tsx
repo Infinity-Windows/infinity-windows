@@ -11,6 +11,7 @@ import {
   getMyProfile,
   getOpening,
   getTypeBrainStats,
+  listMyOpeningsAllJobs,
   setOpeningCondition,
   setRoughOpening,
   startOpeningWork,
@@ -22,8 +23,11 @@ import {
   formatAssignMeta,
   rankAssignCandidates,
 } from "../../lib/install/assignRank";
+import { pickNextOpening } from "../../lib/install/nextOpening";
 import { awardPoints, computeInstallPoints } from "../../lib/points";
 import { checkFit, readyToInstall, smallest } from "../../lib/install/fit";
+import { getOpenShift, startBreak } from "../../lib/timeclock";
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import {
   enqueueUpload,
   flushQueue,
@@ -57,10 +61,15 @@ export function OpeningSheet() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  const { effectiveRole } = useEffectiveRole();
+
   const [scanOpen, setScanOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [codeInput, setCodeInput] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  // Post-install "spam-through" modal (installers) + start-of-task gate error.
+  const [doneModal, setDoneModal] = useState(false);
+  const [startGateError, setStartGateError] = useState<string | null>(null);
 
   const [recording, setRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -104,14 +113,54 @@ export function OpeningSheet() {
 
   const myProfile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
 
+  // Installer's assignments across all jobs — precomputed so tapping "Next one"
+  // after an install is instant (sub-5s loop goal).
+  const myOpenings = useQuery({
+    queryKey: ["myOpenings", myProfile.data?.id],
+    queryFn: () => listMyOpeningsAllJobs(myProfile.data!.id),
+    enabled: Boolean(myProfile.data?.id),
+  });
+
+  // Open shift so Lunch/Break can start a break without a round-trip.
+  const openShift = useQuery({
+    queryKey: ["openShift", myProfile.data?.id],
+    queryFn: () => getOpenShift(myProfile.data!.id),
+    enabled: Boolean(myProfile.data?.id),
+  });
+
+  const isInstaller = !isForemanPlus(effectiveRole);
+
+  // The single next window to jump to (excludes this one; ready-first ordering).
+  const nextOpening = useMemo(
+    () => pickNextOpening(myOpenings.data ?? [], openingId),
+    [myOpenings.data, openingId],
+  );
+
+  const goToNext = () => {
+    if (nextOpening) {
+      navigate(`/projects/${nextOpening.project_id}/opening/${nextOpening.id}`);
+    } else {
+      navigate("/my-work");
+    }
+  };
+
   // Mark in-progress once (soft lock so the lead board + other crew see it).
+  // start_opening_work now hard-requires an open shift + signed toolbox; if the
+  // guard fires we surface a friendly gate instead of silently failing.
   const startedLockRef = useRef(false);
   useEffect(() => {
     const o = opening.data;
     if (!o || startedLockRef.current) return;
     if (o.status !== "installed" && !o.work_started_at) {
       startedLockRef.current = true;
-      void startOpeningWork(openingId).catch(() => {});
+      void startOpeningWork(openingId).catch((e) => {
+        const msg = String((e as { message?: string })?.message ?? e);
+        if (/clock in|toolbox/i.test(msg)) {
+          setStartGateError(
+            "Clock in and sign today's toolbox talk to start this task.",
+          );
+        }
+      });
     }
   }, [opening.data, openingId]);
 
@@ -275,7 +324,9 @@ export function OpeningSheet() {
       queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
       queryClient.invalidateQueries({ queryKey: ["issues"] });
       queryClient.invalidateQueries({ queryKey: ["myOpenings"] });
-      navigate("/my-work");
+      // Don't strand the installer on a blocked unit — send them to the next
+      // ready window (same wiring as the post-install "Next one" button).
+      goToNext();
     },
     onError: (e) => setMessage(String(e)),
   });
@@ -409,22 +460,35 @@ export function OpeningSheet() {
           })
           .catch(() => {});
       }
-      // Installers loop back to their worklist (next window on top);
-      // leads return to the job map.
-      const dest =
-        myProfile.data && !isForemanPlus(myProfile.data.role)
-          ? "/my-work"
-          : `/projects/${projectId}?tab=map`;
+      // Keep the open-shift/next-window data fresh for the modal actions.
+      queryClient.invalidateQueries({ queryKey: ["openShift"] });
       if (flush.remaining > 0) {
         setMessage(
           `Install recorded. ${flush.remaining} file(s) queued — they'll upload when you're back in signal.`,
         );
         setPending(flush.remaining);
-      } else {
-        navigate(dest);
+      }
+      // Installers get the fast spam-through modal (Next / Lunch / Break);
+      // leads return to the job map.
+      if (isInstaller) {
+        setDoneModal(true);
+      } else if (flush.remaining === 0) {
+        navigate(`/projects/${projectId}?tab=map`);
       }
     },
     onError: (e) => setMessage(String(e)),
+  });
+
+  // Lunch/Break: start a shift break (so shift-time and task-time reconcile),
+  // then head to the clock. If not clocked in, just route to the clock.
+  const takeBreak = useMutation({
+    mutationFn: async () => {
+      const shift = openShift.data ?? (myProfile.data?.id
+        ? await getOpenShift(myProfile.data.id)
+        : null);
+      if (shift) await startBreak(shift.id);
+    },
+    onSettled: () => navigate("/clock"),
   });
 
   const o = opening.data;
@@ -509,6 +573,23 @@ export function OpeningSheet() {
         <p className={/^(Window|Install|Rough|Condition|Flag|Flagged|Site|Complication)/.test(message) ? "ok" : "error"}>
           {message}
         </p>
+      )}
+
+      {/* Start-of-task gate: you can't be "on a task" unless you're clocked in
+          and have signed today's toolbox talk. Friendly, non-crashing. */}
+      {startGateError && !installed && (
+        <div className="ready-banner ready-blocked">
+          <strong>Not on the clock yet</strong>
+          <p style={{ margin: "6px 0 10px" }}>{startGateError}</p>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button className="primary" onClick={() => navigate("/clock")}>
+              Clock in
+            </button>
+            <button className="action-btn" onClick={() => navigate("/safety")}>
+              Sign toolbox talk
+            </button>
+          </div>
+        </div>
       )}
 
       {/* --- Stage stepper (installer critical path) --- */}
@@ -1021,6 +1102,70 @@ export function OpeningSheet() {
           )}
         </>
       )}
+
+      {/* ===== POST-INSTALL SPAM-THROUGH MODAL (installers) ===== */}
+      {doneModal && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal-card done-modal">
+            <p className="done-check" aria-hidden>✓</p>
+            <h2 style={{ margin: 0 }}>Nice — window done.</h2>
+            <p className="muted" style={{ margin: "4px 0 0" }}>
+              {nextOpening
+                ? "Straight to the next one, or take a break."
+                : "That's your last assigned window — nice work."}
+            </p>
+            {pending > 0 && (
+              <p className="muted" style={{ margin: "8px 0 0", fontSize: 13 }}>
+                {pending} file(s) uploading in the background.
+              </p>
+            )}
+
+            <button
+              className="primary big"
+              onClick={() => {
+                setDoneModal(false);
+                goToNext();
+              }}
+            >
+              {nextOpening ? (
+                <>
+                  Next one →{" "}
+                  <span style={{ opacity: 0.85 }}>{nextOpening.opening_code}</span>
+                </>
+              ) : (
+                "All caught up — my work"
+              )}
+            </button>
+
+            <div className="modal-actions">
+              <button
+                className="big"
+                disabled={takeBreak.isPending}
+                onClick={() => takeBreak.mutate()}
+              >
+                Lunch
+              </button>
+              <button
+                className="big"
+                disabled={takeBreak.isPending}
+                onClick={() => takeBreak.mutate()}
+              >
+                Break
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+/**
+ * Route wrapper: key the sheet on the opening id so tapping "Next one" (which
+ * navigates within the same route) fully remounts the component — the timer,
+ * stage, and all per-opening state reset for a clean sub-5s transition.
+ */
+export function OpeningSheetRoute() {
+  const { openingId = "" } = useParams();
+  return <OpeningSheet key={openingId} />;
 }
