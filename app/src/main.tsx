@@ -1,15 +1,18 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./lib/mapPolyfill";
 import { installServiceWorkerGuard } from "./lib/serviceWorkerGuard";
 
-// Kill any stale/orphaned service worker on this origin before rendering so a
-// cached bundle can never mask new code (dev or prod). See serviceWorkerGuard.ts.
+// DEV only: kill orphaned service workers so a cached bundle never masks hot
+// reload. Production keeps the vite-plugin-pwa worker. See serviceWorkerGuard.ts.
 installServiceWorkerGuard();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );

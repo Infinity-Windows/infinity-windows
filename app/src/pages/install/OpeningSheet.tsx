@@ -15,7 +15,6 @@ import {
   setOpeningCondition,
   setRoughOpening,
   startOpeningWork,
-  submitInstallEvent,
   synthesizeTypeTips,
   generateHowto,
 } from "../../lib/install/api";
@@ -24,13 +23,14 @@ import {
   rankAssignCandidates,
 } from "../../lib/install/assignRank";
 import { pickNextOpening } from "../../lib/install/nextOpening";
-import { awardPoints, computeInstallPoints } from "../../lib/points";
+import { computeInstallPoints } from "../../lib/points";
 import { checkFit, isInstallReadyStatus, readyToInstall, smallest } from "../../lib/install/fit";
 import { getOpenShift, startBreak } from "../../lib/timeclock";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import {
-  enqueueUpload,
-  flushQueue,
+  submitInstallViaOutbox,
+} from "../../lib/install/installOutbox";
+import {
   initQueueAutoFlush,
   pendingTranscriptionCount,
   pendingUploadCount,
@@ -362,90 +362,99 @@ export function OpeningSheet() {
       const o = opening.data;
       if (!o) throw new Error("Opening not loaded.");
 
-      const event = await submitInstallEvent({
-        openingId,
-        minutes: minutes ? Number(minutes) : null,
-        estimateMinutes: brain.data?.medianMinutes
-          ? Math.round(brain.data.medianMinutes)
-          : null,
-        qualityGrade: grade,
-        startedAt: startedAtRef.current,
-        ...topics,
-      });
-
-      // Award points for this install — PENDING until QC signs off. Ref is the
-      // opening id so QC can confirm/void. Par matches the displayed value.
-      const uid = (await supabase.auth.getUser()).data.user?.id;
-      if (uid) {
-        const entries = computeInstallPoints({
-          minutes: minutes ? Number(minutes) : null,
-          parMinutes: brain.data?.medianMinutes != null
-            ? Math.round(brain.data.medianMinutes)
-            : null,
-          grade,
-          hasPhotos: Boolean(photos.before || photos.after),
-          hasMemo: Boolean(audioBlob),
-        });
-        await awardPoints(uid, entries, openingId, "pending").catch(() => {});
-      }
-
+      // Persist the FULL install (RPC args + media + points) locally first so a
+      // dead zone cannot wipe the capture. Flush then attempts the network.
+      const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
       const { data: userData } = await supabase.auth.getUser();
       const createdBy = userData.user?.email ?? null;
       const stamp = Date.now();
 
-      // Enqueue photos BEFORE the voice memo so they exist in the DB by the
-      // time transcription (audio flush) runs vision on them.
-      const photoFiles: { file: File; tag: string }[] = [];
-      if (photos.before) photoFiles.push({ file: photos.before, tag: "before" });
-      if (photos.after) photoFiles.push({ file: photos.after, tag: "after" });
-      for (const [i, p] of photoFiles.entries()) {
-        await enqueueUpload(
-          {
-            bucket: "install-media",
-            path: `${projectId}/${o.opening_code}/${stamp}-${p.tag}-${i + 1}.jpg`,
-            contentType: p.file.type || "image/jpeg",
-            kind: "photo",
-            installEventId: event.id,
-            windowId: o.assigned_window_id,
-            createdBy,
-          },
-          p.file,
-        );
+      const media: Array<{
+        bucket: "install-media";
+        path: string;
+        contentType: string;
+        kind: "photo" | "voice_memo" | "video";
+        blob: Blob;
+      }> = [];
+      if (photos.before) {
+        media.push({
+          bucket: "install-media",
+          path: `${projectId}/${o.opening_code}/${stamp}-before-1.jpg`,
+          contentType: photos.before.type || "image/jpeg",
+          kind: "photo",
+          blob: photos.before,
+        });
+      }
+      if (photos.after) {
+        media.push({
+          bucket: "install-media",
+          path: `${projectId}/${o.opening_code}/${stamp}-after-1.jpg`,
+          contentType: photos.after.type || "image/jpeg",
+          kind: "photo",
+          blob: photos.after,
+        });
       }
       if (video) {
         const vext = video.name.split(".").pop() || "mp4";
-        await enqueueUpload(
-          {
-            bucket: "install-media",
-            path: `${projectId}/${o.opening_code}/${stamp}-walkthrough.${vext}`,
-            contentType: video.type || "video/mp4",
-            kind: "video",
-            installEventId: event.id,
-            windowId: o.assigned_window_id,
-            createdBy,
-          },
-          video,
-        );
+        media.push({
+          bucket: "install-media",
+          path: `${projectId}/${o.opening_code}/${stamp}-walkthrough.${vext}`,
+          contentType: video.type || "video/mp4",
+          kind: "video",
+          blob: video,
+        });
       }
       if (audioBlob) {
         const ext = audioBlob.type.includes("mp4") ? "m4a" : "webm";
-        await enqueueUpload(
-          {
-            bucket: "install-media",
-            path: `${projectId}/${o.opening_code}/${stamp}-memo.${ext}`,
-            contentType: audioBlob.type || "audio/webm",
-            kind: "voice_memo",
-            installEventId: event.id,
-            windowId: o.assigned_window_id,
-            createdBy,
-          },
-          audioBlob,
-        );
+        media.push({
+          bucket: "install-media",
+          path: `${projectId}/${o.opening_code}/${stamp}-memo.${ext}`,
+          contentType: audioBlob.type || "audio/webm",
+          kind: "voice_memo",
+          blob: audioBlob,
+        });
       }
-      const flush = await flushQueue();
-      return flush;
+
+      const entries = uid
+        ? computeInstallPoints({
+            minutes: minutes ? Number(minutes) : null,
+            parMinutes: brain.data?.medianMinutes != null
+              ? Math.round(brain.data.medianMinutes)
+              : null,
+            grade,
+            hasPhotos: Boolean(photos.before || photos.after),
+            hasMemo: Boolean(audioBlob),
+          })
+        : [];
+
+      return submitInstallViaOutbox({
+        openingId,
+        projectId,
+        openingCode: o.opening_code,
+        assignedWindowId: o.assigned_window_id,
+        createdBy,
+        submitParams: {
+          openingId,
+          minutes: minutes ? Number(minutes) : null,
+          estimateMinutes: brain.data?.medianMinutes
+            ? Math.round(brain.data.medianMinutes)
+            : null,
+          qualityGrade: grade,
+          startedAt: startedAtRef.current,
+          ...topics,
+        },
+        points: uid
+          ? {
+              profileId: uid,
+              entries,
+              ref: openingId,
+              status: "pending",
+            }
+          : null,
+        media,
+      });
     },
-    onSuccess: (flush) => {
+    onSuccess: (result) => {
       refresh();
       queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
       queryClient.invalidateQueries({ queryKey: ["myOpenings"] });
@@ -462,17 +471,21 @@ export function OpeningSheet() {
       }
       // Keep the open-shift/next-window data fresh for the modal actions.
       queryClient.invalidateQueries({ queryKey: ["openShift"] });
-      if (flush.remaining > 0) {
+      const pending =
+        result.remainingInstalls + result.remainingUploads;
+      setPending(pending);
+      if (result.queued || result.remainingUploads > 0) {
         setMessage(
-          `Install recorded. ${flush.remaining} file(s) queued — they'll upload when you're back in signal.`,
+          result.queued
+            ? "Install saved on this device — will sync when you're back in signal."
+            : `Install recorded. ${result.remainingUploads} file(s) queued — they'll upload when you're back in signal.`,
         );
-        setPending(flush.remaining);
       }
       // Installers get the fast spam-through modal (Next / Lunch / Break);
       // leads return to the job map.
       if (isInstaller) {
         setDoneModal(true);
-      } else if (flush.remaining === 0) {
+      } else if (!result.queued && result.remainingUploads === 0) {
         navigate(`/projects/${projectId}?tab=map`);
       }
     },

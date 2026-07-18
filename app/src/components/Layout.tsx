@@ -2,6 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { countMyOpenOpenings, getMyProfile } from "../lib/install/api";
+import {
+  pendingInstallCount,
+  subscribeSyncListeners,
+} from "../lib/install/installOutbox";
+import { pendingUploadCount } from "../lib/install/queue";
 import { ROLE_LABELS, type CrewRole } from "../lib/install/types";
 import { activeNavForRole, railSectionsForRole, roleRank, type NavItem } from "../lib/nav";
 import { useClock } from "../lib/clockContext";
@@ -59,6 +64,27 @@ export function Layout() {
 
   const hideFab = location.pathname === "/ask";
   const readyBadge = isInstaller ? openCount.data ?? 0 : 0;
+
+  // Offline sync badge: installs waiting for RPC + media waiting for upload.
+  const [pendingSync, setPendingSync] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      void Promise.all([pendingInstallCount(), pendingUploadCount()]).then(
+        ([installs, uploads]) => {
+          if (!cancelled) setPendingSync(installs + uploads);
+        },
+      );
+    };
+    refresh();
+    const unsub = subscribeSyncListeners(refresh);
+    const t = window.setInterval(refresh, 15_000);
+    return () => {
+      cancelled = true;
+      unsub();
+      window.clearInterval(t);
+    };
+  }, []);
 
   // Ready-work badge belongs on the installer's landing tab ("/" = My Work).
   const badgeFor = (to: string) => (to === "/" && isInstaller ? readyBadge : 0);
@@ -129,6 +155,23 @@ export function Layout() {
   return (
     <div className="app-shell">
       <ToastHost />
+      {pendingSync > 0 && (
+        <div
+          className="sync-banner"
+          role="status"
+          aria-live="polite"
+          style={{
+            background: "var(--color-warn, #7a5a00)",
+            color: "#fff",
+            fontSize: 13,
+            padding: "6px 12px",
+            textAlign: "center",
+          }}
+        >
+          {pendingSync} item{pendingSync === 1 ? "" : "s"} waiting to sync —
+          will upload when you&apos;re back in signal
+        </div>
+      )}
       <div className="app-frame">
         <aside className="app-rail" aria-label="Primary">
           <Link to="/" className="rail-brand" aria-label="Infinity home">

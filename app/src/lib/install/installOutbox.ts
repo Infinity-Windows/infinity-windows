@@ -1,0 +1,381 @@
+// Offline install outbox: persist the full install intent (RPC args + media
+// blobs + points) in IndexedDB BEFORE touching the network, then flush in
+// ordered, idempotent steps. Crews in dead zones no longer lose installs.
+
+import { awardPoints, type PointEntry } from "../points";
+import { submitInstallEvent, type SubmitInstallParams } from "./api";
+import { enqueueUpload, flushQueue, type QueuedUploadMeta } from "./queue";
+
+export type InstallOutboxStep =
+  | "queued"
+  | "rpc_done"
+  | "points_done"
+  | "media_done";
+
+export interface InstallOutboxMediaMeta {
+  bucket: "install-media" | "plansets";
+  path: string;
+  contentType: string;
+  kind: "photo" | "voice_memo" | "video";
+}
+
+export interface InstallOutboxPoints {
+  profileId: string;
+  entries: PointEntry[];
+  ref: string;
+  status: "pending" | "confirmed" | "void";
+}
+
+export interface InstallOutboxPayload {
+  /** Client-generated key — survives retries; used to detect already-queued. */
+  clientKey: string;
+  openingId: string;
+  projectId: string;
+  openingCode: string;
+  assignedWindowId: string | null;
+  createdBy: string | null;
+  submitParams: SubmitInstallParams;
+  points: InstallOutboxPoints | null;
+  media: InstallOutboxMediaMeta[];
+  createdAt: string;
+}
+
+export interface InstallOutboxRecord {
+  id: string;
+  payload: InstallOutboxPayload;
+  step: InstallOutboxStep;
+  installEventId: string | null;
+}
+
+const DB_NAME = "wops-install-outbox";
+const STORE = "installs";
+const CURRENT_VERSION = 1;
+
+const syncListeners = new Set<() => void>();
+
+/** Notify Layout / OpeningSheet that pending sync counts may have changed. */
+export function notifySyncListeners(): void {
+  for (const cb of syncListeners) {
+    try {
+      cb();
+    } catch {
+      // listener errors must not break flush
+    }
+  }
+}
+
+export function subscribeSyncListeners(cb: () => void): () => void {
+  syncListeners.add(cb);
+  return () => {
+    syncListeners.delete(cb);
+  };
+}
+
+/** Pure: next step after a successful stage. */
+export function nextInstallStep(step: InstallOutboxStep): InstallOutboxStep | "complete" {
+  switch (step) {
+    case "queued":
+      return "rpc_done";
+    case "rpc_done":
+      return "points_done";
+    case "points_done":
+      return "media_done";
+    case "media_done":
+      return "complete";
+  }
+}
+
+/** Pure: which network stage to attempt for this record. */
+export function stageToAttempt(
+  step: InstallOutboxStep,
+): "rpc" | "points" | "media" | null {
+  switch (step) {
+    case "queued":
+      return "rpc";
+    case "rpc_done":
+      return "points";
+    case "points_done":
+      return "media";
+    case "media_done":
+      return null;
+  }
+}
+
+export function serializeInstallOutbox(record: InstallOutboxRecord): string {
+  return JSON.stringify({ v: CURRENT_VERSION, ...record });
+}
+
+export function deserializeInstallOutbox(json: string): InstallOutboxRecord | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== "string") return null;
+  if (
+    r.step !== "queued" &&
+    r.step !== "rpc_done" &&
+    r.step !== "points_done" &&
+    r.step !== "media_done"
+  ) {
+    return null;
+  }
+  if (typeof r.payload !== "object" || r.payload === null) return null;
+  const p = r.payload as Record<string, unknown>;
+  if (
+    typeof p.clientKey !== "string" ||
+    typeof p.openingId !== "string" ||
+    typeof p.projectId !== "string" ||
+    typeof p.openingCode !== "string" ||
+    typeof p.submitParams !== "object" ||
+    p.submitParams === null
+  ) {
+    return null;
+  }
+  return {
+    id: r.id,
+    step: r.step,
+    installEventId: typeof r.installEventId === "string" ? r.installEventId : null,
+    payload: {
+      clientKey: p.clientKey,
+      openingId: p.openingId,
+      projectId: p.projectId,
+      openingCode: p.openingCode,
+      assignedWindowId:
+        typeof p.assignedWindowId === "string" ? p.assignedWindowId : null,
+      createdBy: typeof p.createdBy === "string" ? p.createdBy : null,
+      submitParams: p.submitParams as SubmitInstallParams,
+      points: (p.points as InstallOutboxPoints | null) ?? null,
+      media: Array.isArray(p.media) ? (p.media as InstallOutboxMediaMeta[]) : [],
+      createdAt:
+        typeof p.createdAt === "string" ? p.createdAt : new Date().toISOString(),
+    },
+  };
+}
+
+// --- IndexedDB ---
+
+interface InstallStoreRow {
+  id: string;
+  meta: string;
+  blobs: Blob[];
+}
+
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(STORE)) {
+        req.result.createObjectStore(STORE, { keyPath: "id" });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function requestAsPromise<T>(req: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function putRecord(record: InstallOutboxRecord, blobs: Blob[]): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(STORE, "readwrite");
+  tx.objectStore(STORE).put({
+    id: record.id,
+    meta: serializeInstallOutbox(record),
+    blobs,
+  } satisfies InstallStoreRow);
+  await new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
+async function removeRecord(id: string): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(STORE, "readwrite");
+  tx.objectStore(STORE).delete(id);
+  await new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
+async function listRows(): Promise<InstallStoreRow[]> {
+  const db = await openDb();
+  const rows = await requestAsPromise(
+    db.transaction(STORE).objectStore(STORE).getAll(),
+  );
+  db.close();
+  return rows as InstallStoreRow[];
+}
+
+export async function pendingInstallCount(): Promise<number> {
+  const db = await openDb();
+  const count = await requestAsPromise(
+    db.transaction(STORE).objectStore(STORE).count(),
+  );
+  db.close();
+  return count;
+}
+
+export interface EnqueueInstallInput {
+  openingId: string;
+  projectId: string;
+  openingCode: string;
+  assignedWindowId: string | null;
+  createdBy: string | null;
+  submitParams: SubmitInstallParams;
+  points: InstallOutboxPoints | null;
+  media: Array<InstallOutboxMediaMeta & { blob: Blob }>;
+}
+
+/**
+ * Persist the full install intent locally FIRST. Returns the outbox id.
+ * Call flushInstallOutbox() afterward to attempt the network path.
+ */
+export async function enqueueInstall(
+  input: EnqueueInstallInput,
+): Promise<InstallOutboxRecord> {
+  const id = crypto.randomUUID();
+  const clientKey = crypto.randomUUID();
+  const media = input.media.map(({ blob: _b, ...meta }) => meta);
+  const blobs = input.media.map((m) => m.blob);
+  const record: InstallOutboxRecord = {
+    id,
+    step: "queued",
+    installEventId: null,
+    payload: {
+      clientKey,
+      openingId: input.openingId,
+      projectId: input.projectId,
+      openingCode: input.openingCode,
+      assignedWindowId: input.assignedWindowId,
+      createdBy: input.createdBy,
+      submitParams: input.submitParams,
+      points: input.points,
+      media,
+      createdAt: new Date().toISOString(),
+    },
+  };
+  await putRecord(record, blobs);
+  notifySyncListeners();
+  return record;
+}
+
+let flushingInstalls = false;
+
+/**
+ * Replay pending installs in order: RPC → points → enqueue media → drop.
+ * Each step is marked complete before the next so a retry never re-runs a
+ * finished stage. Media then rides the existing upload queue.
+ */
+export async function flushInstallOutbox(): Promise<{
+  synced: number;
+  remaining: number;
+}> {
+  if (flushingInstalls) {
+    return { synced: 0, remaining: await pendingInstallCount() };
+  }
+  flushingInstalls = true;
+  let synced = 0;
+  try {
+    const rows = await listRows();
+    for (const row of rows) {
+      const record = deserializeInstallOutbox(row.meta);
+      if (!record) {
+        await removeRecord(row.id);
+        continue;
+      }
+      try {
+        let current = record;
+        const blobs = row.blobs ?? [];
+
+        // RPC
+        if (stageToAttempt(current.step) === "rpc") {
+          const event = await submitInstallEvent(current.payload.submitParams);
+          current = {
+            ...current,
+            step: "rpc_done",
+            installEventId: event.id,
+          };
+          await putRecord(current, blobs);
+        }
+
+        // Points (optional — never block media if award fails, matching prior
+        // OpeningSheet `.catch(() => {})` behavior; avoid double-award by
+        // advancing the step even on failure).
+        if (stageToAttempt(current.step) === "points") {
+          const pts = current.payload.points;
+          if (pts && pts.entries.length > 0) {
+            try {
+              await awardPoints(pts.profileId, pts.entries, pts.ref, pts.status);
+            } catch {
+              // Left unawarded; step still advances so media can sync.
+            }
+          }
+          current = { ...current, step: "points_done" };
+          await putRecord(current, blobs);
+        }
+
+        // Hand media to the upload queue, then drop the install record
+        if (stageToAttempt(current.step) === "media") {
+          const eventId = current.installEventId;
+          for (let i = 0; i < current.payload.media.length; i++) {
+            const meta = current.payload.media[i];
+            const blob = blobs[i];
+            if (!meta || !blob) continue;
+            await enqueueUpload(
+              {
+                bucket: meta.bucket,
+                path: meta.path,
+                contentType: meta.contentType,
+                kind: meta.kind,
+                installEventId: eventId,
+                windowId: current.payload.assignedWindowId,
+                createdBy: current.payload.createdBy,
+              } satisfies Omit<QueuedUploadMeta, "id" | "createdAt">,
+              blob,
+            );
+          }
+          current = { ...current, step: "media_done" };
+          await putRecord(current, blobs);
+          await removeRecord(current.id);
+          synced++;
+        }
+      } catch {
+        // Leave for next flush / reconnect.
+      }
+    }
+  } finally {
+    flushingInstalls = false;
+    notifySyncListeners();
+  }
+  return { synced, remaining: await pendingInstallCount() };
+}
+
+/**
+ * Enqueue then immediately attempt flush (online path). Returns whether the
+ * install RPC completed this call, or is waiting for signal.
+ */
+export async function submitInstallViaOutbox(
+  input: EnqueueInstallInput,
+): Promise<{ queued: boolean; remainingInstalls: number; remainingUploads: number }> {
+  await enqueueInstall(input);
+  const flush = await flushInstallOutbox();
+  const uploads = await flushQueue();
+  return {
+    queued: flush.remaining > 0,
+    remainingInstalls: flush.remaining,
+    remainingUploads: uploads.remaining,
+  };
+}

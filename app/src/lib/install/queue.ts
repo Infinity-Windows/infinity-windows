@@ -246,15 +246,31 @@ export async function pendingTranscriptionCount(): Promise<number> {
 
 let autoFlushWired = false;
 
-/** Wire up retry-on-reconnect once per session. */
+async function flushAllPending(): Promise<void> {
+  // Dynamic import avoids a circular module init with installOutbox
+  // (which imports enqueueUpload/flushQueue from this file).
+  const { flushInstallOutbox, notifySyncListeners } = await import(
+    "./installOutbox"
+  );
+  await flushInstallOutbox();
+  await flushQueue();
+  await retryTranscriptions();
+  notifySyncListeners();
+}
+
+/** Wire up retry-on-reconnect + periodic flush once per session. */
 export function initQueueAutoFlush(): void {
   if (autoFlushWired) return;
   autoFlushWired = true;
   window.addEventListener("online", () => {
-    void flushQueue().then(() => retryTranscriptions());
+    void flushAllPending();
   });
   // Opportunistic flush + transcription retry on startup.
   if (navigator.onLine) {
-    void flushQueue().then(() => retryTranscriptions());
+    void flushAllPending();
   }
+  // Flaky LTE: "online" may stay true while RPCs fail — retry on an interval.
+  window.setInterval(() => {
+    if (navigator.onLine) void flushAllPending();
+  }, 30_000);
 }

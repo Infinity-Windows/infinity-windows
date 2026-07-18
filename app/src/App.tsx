@@ -159,7 +159,13 @@ export default function App() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  if (!ready) return null;
+  if (!ready) {
+    return (
+      <div className="page" style={{ padding: 24, textAlign: "center" }}>
+        <p className="muted">Connecting…</p>
+      </div>
+    );
+  }
   if (!session) {
     if (!entered) {
       return (
