@@ -34,15 +34,35 @@ export interface TimeShift {
   break_type?: BreakType | null;
   injured: boolean | null;
   time_confirmed: boolean | null;
-  status: "open" | "submitted" | "approved";
+  status: "open" | "submitted" | "approved" | "rejected";
   created_at: string;
   clock_in_lat?: number | null;
   clock_in_lng?: number | null;
   clock_out_lat?: number | null;
   clock_out_lng?: number | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  edited_by?: string | null;
+  edited_at?: string | null;
+  edited_note?: string | null;
+  rejected_by?: string | null;
+  rejected_at?: string | null;
+  reject_reason?: string | null;
   projects?: { job_code: string; name: string } | null;
   cost_codes?: { code: string; label: string } | null;
   profiles?: { display_name: string } | null;
+}
+
+/** A crew member's rolled-up week, for the team roster on the timecard page. */
+export interface TeamWeekSummary {
+  profileId: string;
+  displayName: string;
+  hours: number;
+  shiftCount: number;
+  submittedCount: number;
+  approvedCount: number;
+  rejectedCount: number;
+  openCount: number;
 }
 
 /** A job the user recently clocked into, for the "recent" quick-pick chips. */
@@ -104,6 +124,136 @@ export async function listShiftsToApprove(): Promise<TimeShift[]> {
     .limit(100);
   if (error) throw error;
   return (data ?? []) as TimeShift[];
+}
+
+/**
+ * Every crew member's shifts within a date window, newest first. Foreman+ only
+ * surface (installers never see this in the UI). Powers the team roster, the
+ * per-person timecard drill-down, and the weekly payroll export.
+ */
+export async function listTeamShifts(
+  sinceIso: string,
+  untilIso: string,
+): Promise<TimeShift[]> {
+  const { data, error } = await supabase
+    .from("time_shifts")
+    .select(SHIFT_SELECT)
+    .gte("clock_in_at", sinceIso)
+    .lt("clock_in_at", untilIso)
+    .order("clock_in_at", { ascending: false })
+    .limit(1000);
+  if (error) throw error;
+  return (data ?? []) as TimeShift[];
+}
+
+/** One person's shifts in a window (self view + lead drill-down). */
+export async function listShiftsForProfile(
+  profileId: string,
+  sinceIso: string,
+  untilIso: string,
+): Promise<TimeShift[]> {
+  const { data, error } = await supabase
+    .from("time_shifts")
+    .select(SHIFT_SELECT)
+    .eq("profile_id", profileId)
+    .gte("clock_in_at", sinceIso)
+    .lt("clock_in_at", untilIso)
+    .order("clock_in_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as TimeShift[];
+}
+
+/** Roll a flat list of team shifts up into per-person week summaries. */
+export function summarizeTeamWeek(shifts: TimeShift[]): TeamWeekSummary[] {
+  const byPerson = new Map<string, TeamWeekSummary>();
+  for (const s of shifts) {
+    let row = byPerson.get(s.profile_id);
+    if (!row) {
+      row = {
+        profileId: s.profile_id,
+        displayName: s.profiles?.display_name ?? "Crew",
+        hours: 0,
+        shiftCount: 0,
+        submittedCount: 0,
+        approvedCount: 0,
+        rejectedCount: 0,
+        openCount: 0,
+      };
+      byPerson.set(s.profile_id, row);
+    }
+    row.hours += shiftHours(s);
+    row.shiftCount += 1;
+    if (s.status === "submitted") row.submittedCount += 1;
+    else if (s.status === "approved") row.approvedCount += 1;
+    else if (s.status === "rejected") row.rejectedCount += 1;
+    else if (s.status === "open") row.openCount += 1;
+  }
+  return [...byPerson.values()].sort((a, b) =>
+    a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }),
+  );
+}
+
+export async function rejectShift(
+  shiftId: string,
+  reason?: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("reject_shift", {
+    p_shift_id: shiftId,
+    p_reason: reason ?? null,
+  });
+  if (error) throw error;
+}
+
+export interface LeadShiftInput {
+  profileId: string;
+  projectId: string | null;
+  costCodeId: string | null;
+  clockInAt: string;
+  clockOutAt: string | null;
+  breakSeconds: number;
+  note?: string | null;
+}
+
+/** Lead creates a punch for a crew member (fixing a missed clock-in/out). */
+export async function leadAddShift(input: LeadShiftInput): Promise<TimeShift> {
+  const { data, error } = await supabase.rpc("lead_add_shift", {
+    p_profile_id: input.profileId,
+    p_project_id: input.projectId,
+    p_cost_code_id: input.costCodeId,
+    p_clock_in_at: input.clockInAt,
+    p_clock_out_at: input.clockOutAt,
+    p_break_seconds: input.breakSeconds,
+    p_note: input.note ?? null,
+  });
+  if (error) throw error;
+  return data as TimeShift;
+}
+
+export interface LeadShiftPatch {
+  projectId?: string | null;
+  costCodeId?: string | null;
+  clockInAt?: string | null;
+  clockOutAt?: string | null;
+  breakSeconds?: number | null;
+  note?: string | null;
+}
+
+/** Lead adjusts an existing punch. Only the provided fields change. */
+export async function leadEditShift(
+  shiftId: string,
+  patch: LeadShiftPatch,
+): Promise<TimeShift> {
+  const { data, error } = await supabase.rpc("lead_edit_shift", {
+    p_shift_id: shiftId,
+    p_project_id: patch.projectId ?? null,
+    p_cost_code_id: patch.costCodeId ?? null,
+    p_clock_in_at: patch.clockInAt ?? null,
+    p_clock_out_at: patch.clockOutAt ?? null,
+    p_break_seconds: patch.breakSeconds ?? null,
+    p_note: patch.note ?? null,
+  });
+  if (error) throw error;
+  return data as TimeShift;
 }
 
 export async function clockIn(
@@ -242,9 +392,45 @@ export function shiftHours(s: TimeShift): number {
 }
 
 export function startOfWeekIso(): string {
-  const d = new Date();
-  const day = (d.getDay() + 6) % 7; // Monday = 0
-  d.setDate(d.getDate() - day);
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
+  return weekRange().startIso;
+}
+
+export function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+/** Monday-anchored week window (start inclusive, end exclusive) + a label. */
+export interface WeekRange {
+  start: Date;
+  end: Date;
+  startIso: string;
+  endIso: string;
+  label: string;
+}
+
+export function weekRange(anchor: Date = new Date()): WeekRange {
+  const start = new Date(anchor);
+  const day = (start.getDay() + 6) % 7; // Monday = 0
+  start.setDate(start.getDate() - day);
+  start.setHours(0, 0, 0, 0);
+  const end = addDays(start, 7);
+  const lastDay = addDays(start, 6);
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  const label = `${start.toLocaleDateString(undefined, opts)} – ${lastDay.toLocaleDateString(undefined, opts)}`;
+  return {
+    start,
+    end,
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
+    label,
+  };
+}
+
+/** Local calendar day (YYYY-MM-DD) a punch belongs to, for day grouping. */
+export function punchDay(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
