@@ -66,6 +66,15 @@ describe("navForRole", () => {
     expect(navForRole("supervisor").rail.map((i) => i.to)).toContain("/issues");
     expect(navForRole("owner").rail.map((i) => i.to)).toContain("/issues");
   });
+
+  it("surfaces Heartbeat for supervisor+ only, on their phone bar", () => {
+    expect(navForRole("installer").rail.map((i) => i.to)).not.toContain("/heartbeat");
+    expect(navForRole("foreman").rail.map((i) => i.to)).not.toContain("/heartbeat");
+    expect(navForRole("supervisor").rail.map((i) => i.to)).toContain("/heartbeat");
+    expect(navForRole("owner").rail.map((i) => i.to)).toContain("/heartbeat");
+    expect(navForRole("supervisor").phone.map((i) => i.to)).toContain("/heartbeat");
+    expect(navForRole("owner").phone.map((i) => i.to)).toContain("/heartbeat");
+  });
 });
 
 describe("canAccess", () => {
@@ -86,6 +95,13 @@ describe("canAccess", () => {
   it("keeps costing owner-only", () => {
     expect(canAccess("foreman", "/costing")).toBe(false);
     expect(canAccess("supervisor", "/costing")).toBe(false);
+  });
+
+  it("keeps heartbeat supervisor+ (blocked for installers and foremen)", () => {
+    expect(canAccess("installer", "/heartbeat")).toBe(false);
+    expect(canAccess("foreman", "/heartbeat")).toBe(false);
+    expect(canAccess("supervisor", "/heartbeat")).toBe(true);
+    expect(canAccess("owner", "/heartbeat")).toBe(true);
   });
 
   it("leaves open + detail/legacy routes reachable for everyone", () => {

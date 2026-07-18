@@ -30,6 +30,7 @@ export type RoutePath =
   | "/review"
   | "/team"
   | "/issues"
+  | "/heartbeat"
   | "/qc"
   | "/analytics"
   | "/crew"
@@ -94,6 +95,7 @@ export const NAV: NavDest[] = [
   { id: "supplies", to: "/supplies", label: "Supplies", icon: "⛃", minRole: "foreman" },
 
   // Supervisor+.
+  { id: "heartbeat", to: "/heartbeat", label: "Heartbeat", icon: "❤", minRole: "supervisor" },
   { id: "admin", to: "/admin", label: "Admin", icon: "◈", minRole: "supervisor" },
 
   // Owner only.
@@ -156,14 +158,30 @@ const MANAGER_LAYOUT: LayoutItem[] = [
   { id: "tools" },
 ];
 
-const SUPERVISOR_LAYOUT: LayoutItem[] = [...MANAGER_LAYOUT, { id: "admin" }];
+// Supervisor: the Heartbeat is their home base — it leads the phone bar.
+const SUPERVISOR_LAYOUT: LayoutItem[] = [
+  { id: "heartbeat", phone: true },
+  { id: "home", phone: true },
+  { id: "projects", phone: true },
+  { id: "clock", phone: true },
+  { id: "warehouse" },
+  { id: "issues" },
+  { id: "team" },
+  { id: "qc" },
+  { id: "safety" },
+  { id: "learn" },
+  { id: "points" },
+  { id: "tools" },
+  { id: "admin" },
+];
 
 // Owner: Cost joins the phone bar; Warehouse steps back to More.
 const OWNER_LAYOUT: LayoutItem[] = [
+  { id: "heartbeat", phone: true },
   { id: "home", phone: true },
   { id: "projects", phone: true },
   { id: "costing", phone: true },
-  { id: "clock", phone: true },
+  { id: "clock" },
   { id: "warehouse" },
   { id: "issues" },
   { id: "team" },

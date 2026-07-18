@@ -95,8 +95,9 @@ describe("minRoleForPath matches page-level gating", () => {
     }
   });
 
-  it("keeps admin supervisor+ and costing owner-only", () => {
+  it("keeps admin + heartbeat supervisor+ and costing owner-only", () => {
     expect(minRoleForPath("/admin")).toBe("supervisor");
+    expect(minRoleForPath("/heartbeat")).toBe("supervisor");
     expect(minRoleForPath("/costing")).toBe("owner");
   });
 });

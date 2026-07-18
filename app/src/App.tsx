@@ -42,6 +42,7 @@ import { CatalogImport } from "./pages/CatalogImport";
 import { Crew } from "./pages/Crew";
 import { MyWork } from "./pages/MyWork";
 import { Issues } from "./pages/Issues";
+import { Heartbeat } from "./pages/Heartbeat";
 import { Analytics } from "./pages/Analytics";
 import { MemoReview } from "./pages/MemoReview";
 import { Training } from "./pages/Training";
@@ -58,14 +59,22 @@ import { PinGate } from "./components/PinGate";
 import { ensureMyProfile } from "./lib/install/api";
 import "./index.css";
 
-/** Installers land on My Work; managers (foreman+) land on the Infinity day Home. */
+/**
+ * Role-aware landing: installers land on My Work, foremen on the Infinity day
+ * Home, and supervisors/owners on the cross-project Heartbeat (their pulse of
+ * every active job). View-as aware via effectiveRole; the loading state renders
+ * a neutral placeholder so we never flash the wrong landing before the profile
+ * resolves.
+ */
 function RoleLanding() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const view = useViewAsRole();
   if (!ROLE_NAV_V2) return <Home />;
   if (me.isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
-  const role = effectiveRole(me.data?.role, view);
-  return roleRank(role) === 0 ? <MyWork /> : <Home />;
+  const rank = roleRank(effectiveRole(me.data?.role, view));
+  if (rank >= 2) return <Heartbeat />;
+  if (rank >= 1) return <Home />;
+  return <MyWork />;
 }
 
 /**
@@ -178,6 +187,10 @@ export default function App() {
             <Route
               path="/issues"
               element={<RequireRole path="/issues"><Issues /></RequireRole>}
+            />
+            <Route
+              path="/heartbeat"
+              element={<RequireRole path="/heartbeat"><Heartbeat /></RequireRole>}
             />
             <Route path="/scan" element={<Scan />} />
             <Route
