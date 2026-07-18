@@ -60,6 +60,7 @@ import { Tools } from "./pages/Tools";
 import { Supplies } from "./pages/Supplies";
 import { Qc } from "./pages/Qc";
 import { PinGate } from "./components/PinGate";
+import { isAuthBypassed, setAuthBypass } from "./lib/authBypass";
 import { ensureMyProfile } from "./lib/install/api";
 import "./index.css";
 
@@ -128,6 +129,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
   const [entered, setEntered] = useState(false);
+  const [bypassed, setBypassed] = useState(() => isAuthBypassed());
   const [signInMode, setSignInMode] = useState<
     "signin" | "signup" | "request"
   >("signin");
@@ -136,17 +138,30 @@ export default function App() {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setReady(true);
-      if (data.session) void ensureMyProfile().catch(() => {});
+      if (data.session) {
+        setAuthBypass(false);
+        setBypassed(false);
+        void ensureMyProfile().catch(() => {});
+      }
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
-      if (s) void ensureMyProfile().catch(() => {});
+      if (s) {
+        setAuthBypass(false);
+        setBypassed(false);
+        void ensureMyProfile().catch(() => {});
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  const enterBypass = () => {
+    setAuthBypass(true);
+    setBypassed(true);
+  };
+
   if (!ready) return null;
-  if (!session) {
+  if (!session && !bypassed) {
     if (!entered) {
       return (
         <Landing
@@ -158,10 +173,11 @@ export default function App() {
             setSignInMode("request");
             setEntered(true);
           }}
+          onBypass={enterBypass}
         />
       );
     }
-    return <SignIn initialMode={signInMode} />;
+    return <SignIn initialMode={signInMode} onBypass={enterBypass} />;
   }
 
   return (

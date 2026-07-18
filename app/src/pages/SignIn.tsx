@@ -8,8 +8,10 @@ type Mode = "signin" | "signup" | "request";
 
 export function SignIn({
   initialMode = "signin",
+  onBypass,
 }: {
   initialMode?: Mode;
+  onBypass?: () => void;
 }) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [email, setEmail] = useState(
@@ -259,6 +261,11 @@ export function SignIn({
           <button className="primary big" onClick={signIn} disabled={busy}>
             {busy ? "Signing in..." : "Sign in"}
           </button>
+          {onBypass && (
+            <button className="secondary" onClick={onBypass}>
+              Enter without signing in
+            </button>
+          )}
           <button
             className="secondary"
             onClick={() => {
