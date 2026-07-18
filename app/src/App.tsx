@@ -34,7 +34,7 @@ import { Search } from "./pages/Search";
 import { SignIn } from "./pages/SignIn";
 import { WindowDetail } from "./pages/WindowDetail";
 import { OpeningReview } from "./pages/install/OpeningReview";
-import { OpeningSheet } from "./pages/install/OpeningSheet";
+import { OpeningSheetRoute } from "./pages/install/OpeningSheet";
 import { PlansetUpload } from "./pages/install/PlansetUpload";
 import { ProjectMap } from "./pages/install/ProjectMap";
 import { TypeBrainCard } from "./pages/install/TypeBrainCard";
@@ -214,7 +214,7 @@ export default function App() {
             />
             <Route
               path="/projects/:projectId/opening/:openingId"
-              element={<OpeningSheet />}
+              element={<OpeningSheetRoute />}
             />
             <Route path="/brain/:typeId" element={<TypeBrainCard />} />
             <Route

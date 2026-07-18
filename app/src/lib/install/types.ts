@@ -117,6 +117,7 @@ export interface ProjectOpening {
   assigned_at: string | null;
   sequence: number | null;
   work_started_at: string | null;
+  work_ended_at: string | null;
   flag_note: string | null;
   flagged_by: string | null;
   flagged_at: string | null;
