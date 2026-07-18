@@ -6,9 +6,9 @@ alwaysApply: true
 # Auto-log app edits to Slack
 
 Whenever an agent makes code or content changes to this app (the Infinity
-Windows app in this repo), it must post a short, plain-English summary to the
-Slack channel **#infinity-app-changelog** so non-technical stakeholders always
-have a running record of what changed.
+Windows app in this repo), it must post a short, **plain-English** summary to
+the Slack channel **#infinity-app-changelog** so non-technical stakeholders
+(Taylor & Ammon) always have a running record of what changed.
 
 ## Channel
 
@@ -18,31 +18,62 @@ have a running record of what changed.
 
 ## When to post
 
-Post **once per task**, right after the work is done and just before you finish
-your turn — specifically:
+Post **once per task**, right after you open the PR and just before you finish
+your turn:
 
-- After you open the PR (per the ship-via-PR rule), include the PR URL.
+- Post when the PR is **opened** (before merge), and include the PR URL. Make
+  clear it is not live yet (e.g. "Not live yet — under review").
 - If the change is explicitly "local only" / "don't PR", still post the summary
   and note that it was not shipped.
 - Do **not** post for read-only work (questions, exploration, reviews) where no
   files were changed.
 - Post only **one** summary per task, not one per file or per commit.
 
-## Message format
+## Write it like a person, not a changelog bot
 
-Keep it short and readable for non-technical people (Taylor & Ammon). Use this
-shape:
+This is the most important rule. The reader is a **non-technical** person. Your
+post must describe, in everyday language, **what we're changing and why it
+matters to them**. Lead with the human "what & why". Do **not** mention file
+names, functions, or technical terms unless there is truly no plain way to say
+it.
+
+Shape (1–3 short sentences):
 
 ```
-:hammer_and_wrench: *<short title of the change>*
-<1-3 plain-English bullet points on what changed and why it matters to users>
-PR: <url, or "local only — not shipped">
+:eyes: *<plain-English title of the change>* — <what it does and why it helps,
+in everyday words>. (Not live yet — under review.) PR: <url>
 ```
 
-Guidelines:
-- Plain English, no jargon or file dumps. Describe user-visible impact first.
-- Skip internal noise (lockfile bumps, formatting-only churn) unless that was
-  the whole point of the task.
+GOOD:
+
+```
+:eyes: *Making installer sign-in faster* — Right now crew have to re-enter their
+PIN too often. This change keeps them signed in for the whole workday so they
+can get to their jobs quicker. (Not live yet — under review.)
+PR: https://github.com/Infinity-Windows/infinity-windows/pull/123
+```
+
+BAD (never write like this):
+
+```
+Refactored auth session persistence in App.tsx; bumped maxAge to 7d.
+```
+
+More guidance:
+- Describe user-visible impact first; skip internal noise (lockfile bumps,
+  formatting-only churn) unless that was the whole point of the task.
 - Never include secrets, tokens, or credentials in the message.
 - If the Slack post fails, do not block the task — mention the failure in your
   final chat summary so it can be retried.
+
+## Also write the PR title & body in this same plain-English style
+
+A GitHub Action posts to the same channel automatically when a PR is opened and
+when it merges, but it can only see the **PR title and PR body**. So write both
+the way you'd explain the change to Taylor/Ammon:
+
+- **PR title:** a short, plain-English "what changed for users" (not
+  commit-speak). e.g. "Keep installers signed in for the whole workday".
+- **PR body:** start with 1–3 plain sentences on what changed and why it helps
+  users, before any technical detail. The Action posts the title plus the first
+  part of the body, so the human summary must come first.

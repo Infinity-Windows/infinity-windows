@@ -1,26 +1,31 @@
 name: Slack changelog
 
-# Posts a message to #infinity-app-changelog every time a PR is merged into
-# master, so there is a durable, plain-English record of every change that
-# ships — even edits made outside of Cursor.
+# Posts to #infinity-app-changelog so there is a plain-English record of every
+# change to the app — when it is first proposed (PR opened) and again when it
+# actually ships (PR merged to master). Even edits made outside Cursor land
+# here.
 
 on:
   pull_request:
-    types: [closed]
+    types: [opened, ready_for_review, closed]
     branches: [master]
 
 permissions:
   contents: read
 
 jobs:
-  post-to-slack:
-    # Only run for PRs that were actually merged (not just closed).
-    if: github.event.pull_request.merged == true
+  # Fires when a PR is opened or marked ready for review — i.e. a change is
+  # proposed but not yet merged.
+  proposed:
+    if: >-
+      github.event.action == 'opened' ||
+      github.event.action == 'ready_for_review'
     runs-on: ubuntu-latest
     steps:
-      - name: Post merged PR to Slack
+      - name: Post proposed change to Slack
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_CHANGELOG_WEBHOOK }}
+          HEADER: ":eyes: *Proposed change (not yet merged)*"
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
@@ -35,8 +40,42 @@ jobs:
           # Trim the PR body to the first ~500 chars so posts stay readable.
           summary=$(printf '%s' "$PR_BODY" | head -c 500)
 
-          text=$(printf ':rocket: *Shipped to master*\n*#%s: %s*\n%s\nby %s\n%s' \
-            "$PR_NUMBER" "$PR_TITLE" "$summary" "$PR_AUTHOR" "$PR_URL")
+          text=$(printf '%s\n*#%s: %s*\n%s\nby %s\n%s' \
+            "$HEADER" "$PR_NUMBER" "$PR_TITLE" "$summary" "$PR_AUTHOR" "$PR_URL")
+
+          # Build JSON safely with jq so quotes/newlines are escaped correctly.
+          payload=$(jq -n --arg t "$text" '{text: $t}')
+
+          curl -sS -X POST -H 'Content-type: application/json' \
+            --data "$payload" "$SLACK_WEBHOOK"
+
+  # Fires only when a PR is actually merged into master (not just closed).
+  shipped:
+    if: >-
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post shipped change to Slack
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_CHANGELOG_WEBHOOK }}
+          HEADER: ":rocket: *Shipped to master*"
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK" ]; then
+            echo "SLACK_CHANGELOG_WEBHOOK secret is not set; skipping."
+            exit 0
+          fi
+
+          # Trim the PR body to the first ~500 chars so posts stay readable.
+          summary=$(printf '%s' "$PR_BODY" | head -c 500)
+
+          text=$(printf '%s\n*#%s: %s*\n%s\nby %s\n%s' \
+            "$HEADER" "$PR_NUMBER" "$PR_TITLE" "$summary" "$PR_AUTHOR" "$PR_URL")
 
           # Build JSON safely with jq so quotes/newlines are escaped correctly.
           payload=$(jq -n --arg t "$text" '{text: $t}')
