@@ -14,6 +14,7 @@ import {
 import { Layout } from "./components/Layout";
 import { getMyProfile } from "./lib/install/api";
 import { canAccess, roleRank, ROLE_NAV_V2, type RoutePath } from "./lib/nav";
+import type { CrewRole } from "./lib/install/types";
 import { ClockProvider } from "./lib/clockContext";
 import { ViewAsRoleProvider } from "./lib/viewAsRole";
 import { effectiveRole, useViewAsRole } from "./lib/viewAsRoleContext";
@@ -85,13 +86,26 @@ function RoleLanding() {
  * effective (possibly previewed) role for presentation; server mutations still
  * run as the real user.
  */
-function RequireRole({ path, children }: { path: RoutePath; children: ReactNode }) {
+function RequireRole({
+  path,
+  minRole,
+  children,
+}: {
+  /** Registry path whose minRole gates access (nav-driven routes). */
+  path?: RoutePath;
+  /** Explicit role floor for detail routes not in the nav registry. */
+  minRole?: CrewRole;
+  children: ReactNode;
+}) {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const view = useViewAsRole();
   if (!ROLE_NAV_V2) return <>{children}</>;
   if (me.isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
   const role = effectiveRole(me.data?.role, view);
-  if (canAccess(role, path)) return <>{children}</>;
+  const allowed = minRole
+    ? roleRank(role) >= roleRank(minRole)
+    : canAccess(role, path ?? "");
+  if (allowed) return <>{children}</>;
   return (
     <div className="page">
       <header className="page-header">
@@ -213,7 +227,11 @@ export default function App() {
             />
             <Route
               path="/projects/:projectId/upload"
-              element={<PlansetUpload />}
+              element={
+                <RequireRole minRole="foreman">
+                  <PlansetUpload />
+                </RequireRole>
+              }
             />
             <Route
               path="/projects/:projectId/review"
