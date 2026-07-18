@@ -587,6 +587,39 @@ button:disabled {
   margin: 12px 0 8px;
 }
 
+.planset-picker-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  margin: 0 0 10px;
+}
+
+.planset-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: min(100%, 220px);
+  flex: 1;
+}
+
+.planset-picker span {
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.planset-picker select {
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #1e1b18;
+  color: var(--text);
+  font: inherit;
+}
+
 .pdf-source-line {
   margin: 0 0 12px;
   color: var(--muted);

@@ -3,6 +3,11 @@
 // nothing. Specs plansets define what a mark (#14) *is*; qty expands into
 // individual openings for install tracking (14-1, 14-2, …).
 
+import {
+  mergeScheduleWithDetailRows,
+  parseCadDetailScheduleRows,
+} from "./planDetails";
+
 export interface ScheduleRow {
   /** Opening mark on the plans, e.g. W1, A-101, #14, 14 */
   openingCode: string;
@@ -59,17 +64,31 @@ export const deterministicExtract: ExtractStrategy = (pages) =>
   pages.flatMap((p) => parseScheduleRows(p.text, p.pageNumber));
 
 /**
- * Run deterministic extract first; if empty and an AI fallback is provided,
- * use that. Same draft/confirm guardrails apply downstream either way.
+ * Run deterministic schedule extract, then fill missing marks from
+ * manufacturer CAD detail sheets (#4A / #4B style). AI only runs when both
+ * paths find nothing. Same draft/confirm guardrails apply downstream.
  */
 export async function extractScheduleRows(
   pages: { pageNumber: number; text: string }[],
   aiFallback?: ExtractStrategy | null,
-): Promise<{ rows: ScheduleRow[]; source: "deterministic" | "ai" | "none" }> {
+): Promise<{
+  rows: ScheduleRow[];
+  source: "deterministic" | "ai" | "details" | "merged" | "none";
+}> {
   const deterministic = await deterministicExtract(pages);
-  if (deterministic.length > 0) {
-    return { rows: deterministic, source: "deterministic" };
+  const detailRows = parseCadDetailScheduleRows(pages);
+  const merged = mergeScheduleWithDetailRows(deterministic, detailRows);
+
+  if (merged.length > 0) {
+    if (deterministic.length > 0 && detailRows.length > 0) {
+      return { rows: merged, source: "merged" };
+    }
+    if (deterministic.length > 0) {
+      return { rows: merged, source: "deterministic" };
+    }
+    return { rows: merged, source: "details" };
   }
+
   if (aiFallback) {
     const aiRows = await aiFallback(pages);
     if (aiRows.length > 0) return { rows: aiRows, source: "ai" };
@@ -181,6 +200,17 @@ export function parseScheduleRows(
     const markUpper = fields[0].toUpperCase();
     if (!MARK_RE.test(markUpper)) continue;
     const mark = normalizeMark(markUpper);
+
+    // Bare 4-digit product codes (6080 XO / 3060 FIXED) are manufacturer
+    // catalog sizes, not schedule marks — skip those lines.
+    const rest = fields.slice(1).map((f) => f.trim()).filter(Boolean);
+    if (
+      /^\d{4}$/.test(mark) &&
+      (rest.length === 0 ||
+        rest.every((f) => /^(XO|OX|FX|SC|FIXED|FROSTED)$/i.test(f)))
+    ) {
+      continue;
+    }
 
     let typeText: string | null = null;
     let qty = 1;

@@ -171,9 +171,16 @@ export function PlansetUpload() {
                 )
                 .join(", ")
             : null;
+        const sourceNote =
+          "source" in result && result.source === "details"
+            ? "Pulled from manufacturer detail sheets."
+            : "source" in result && result.source === "merged"
+              ? "Merged schedule table with detail-sheet marks."
+              : null;
         setSummary(
           [
             markLine ? `Found ${markLine}.` : null,
+            sourceNote,
             result.drafts > 0 ? `${result.drafts} draft openings.` : null,
             result.linked > 0 ? `Linked types on ${result.linked} existing openings.` : null,
           ]
