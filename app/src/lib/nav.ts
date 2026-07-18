@@ -30,6 +30,7 @@ export type RoutePath =
   | "/review"
   | "/team"
   | "/issues"
+  | "/service"
   | "/heartbeat"
   | "/qc"
   | "/analytics"
@@ -85,6 +86,7 @@ export const NAV: NavDest[] = [
   // Foreman+ (managers): coordination + warehouse ops + quality.
   { id: "team", to: "/team", label: "Team", icon: "⚑", minRole: "foreman" },
   { id: "issues", to: "/issues", label: "Issues", icon: "!", minRole: "foreman" },
+  { id: "service", to: "/service", label: "Service", icon: "⚕", minRole: "foreman" },
   { id: "qc", to: "/qc", label: "Quality", icon: "✓", minRole: "foreman" },
   { id: "analytics", to: "/analytics", label: "Analytics", icon: "◲", minRole: "foreman" },
   { id: "crew", to: "/crew", label: "Roster", icon: "☰", minRole: "foreman" },
@@ -150,6 +152,7 @@ const MANAGER_LAYOUT: LayoutItem[] = [
   { id: "warehouse", phone: true },
   { id: "clock", phone: true },
   { id: "issues" },
+  { id: "service" },
   { id: "team" },
   { id: "qc" },
   { id: "safety" },
@@ -166,6 +169,7 @@ const SUPERVISOR_LAYOUT: LayoutItem[] = [
   { id: "clock", phone: true },
   { id: "warehouse" },
   { id: "issues" },
+  { id: "service" },
   { id: "team" },
   { id: "qc" },
   { id: "safety" },
@@ -184,6 +188,7 @@ const OWNER_LAYOUT: LayoutItem[] = [
   { id: "clock" },
   { id: "warehouse" },
   { id: "issues" },
+  { id: "service" },
   { id: "team" },
   { id: "qc" },
   { id: "safety" },

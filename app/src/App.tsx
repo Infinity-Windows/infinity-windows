@@ -42,6 +42,7 @@ import { CatalogImport } from "./pages/CatalogImport";
 import { Crew } from "./pages/Crew";
 import { MyWork } from "./pages/MyWork";
 import { Issues } from "./pages/Issues";
+import { Service } from "./pages/Service";
 import { Heartbeat } from "./pages/Heartbeat";
 import { Analytics } from "./pages/Analytics";
 import { MemoReview } from "./pages/MemoReview";
@@ -187,6 +188,10 @@ export default function App() {
             <Route
               path="/issues"
               element={<RequireRole path="/issues"><Issues /></RequireRole>}
+            />
+            <Route
+              path="/service"
+              element={<RequireRole path="/service"><Service /></RequireRole>}
             />
             <Route
               path="/heartbeat"

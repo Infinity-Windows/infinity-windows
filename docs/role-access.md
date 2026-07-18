@@ -39,6 +39,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 - Team (`/team`)
 - Issues (`/issues`)
+- Service (`/service`)
 - Quality (`/qc`)
 - Analytics (`/analytics`)
 - Roster (`/crew`)
@@ -63,6 +64,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 **More menu:**
 
 - Issues (`/issues`)
+- Service (`/service`)
 - Team (`/team`)
 - Quality (`/qc`)
 - Safety (`/safety`)
@@ -70,7 +72,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Points (`/points`)
 - Tools (`/tools`)
 
-**Can reach (all 25 allowed destinations):**
+**Can reach (all 26 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -89,6 +91,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Memo review (`/review`)
 - Team (`/team`)
 - Issues (`/issues`)
+- Service (`/service`)
 - Quality (`/qc`)
 - Analytics (`/analytics`)
 - Roster (`/crew`)
@@ -117,6 +120,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 - Warehouse (`/warehouse`)
 - Issues (`/issues`)
+- Service (`/service`)
 - Team (`/team`)
 - Quality (`/qc`)
 - Safety (`/safety`)
@@ -125,7 +129,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Tools (`/tools`)
 - Admin (`/admin`)
 
-**Can reach (all 27 allowed destinations):**
+**Can reach (all 28 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -144,6 +148,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Memo review (`/review`)
 - Team (`/team`)
 - Issues (`/issues`)
+- Service (`/service`)
 - Quality (`/qc`)
 - Analytics (`/analytics`)
 - Roster (`/crew`)
@@ -173,6 +178,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Time (`/clock`)
 - Warehouse (`/warehouse`)
 - Issues (`/issues`)
+- Service (`/service`)
 - Team (`/team`)
 - Quality (`/qc`)
 - Safety (`/safety`)
@@ -181,7 +187,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Tools (`/tools`)
 - Admin (`/admin`)
 
-**Can reach (all 28 allowed destinations):**
+**Can reach (all 29 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -200,6 +206,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Memo review (`/review`)
 - Team (`/team`)
 - Issues (`/issues`)
+- Service (`/service`)
 - Quality (`/qc`)
 - Analytics (`/analytics`)
 - Roster (`/crew`)

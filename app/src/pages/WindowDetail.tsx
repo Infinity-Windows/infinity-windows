@@ -11,7 +11,14 @@ import {
   suggestLocation,
 } from "../lib/api";
 import { listOpenings } from "../lib/install/api";
+import { isForemanPlus } from "../lib/install/types";
 import { downloadPdf, windowLabelsPdf } from "../lib/labels";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
+import {
+  listWindowServiceCases,
+  openServiceCase,
+  SERVICE_STATUS_LABELS,
+} from "../lib/service";
 import { STATUS_LABELS } from "../lib/types";
 
 // Friendly labels for the movement log so the unit history reads in plain
@@ -36,8 +43,14 @@ const EVENT_LABELS: Record<string, string> = {
 export function WindowDetail() {
   const { windowId = "" } = useParams();
   const queryClient = useQueryClient();
+  const { effectiveRole } = useEffectiveRole();
+  const canService = isForemanPlus(effectiveRole);
   const [moving, setMoving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [serviceForm, setServiceForm] = useState(false);
+  const [reason, setReason] = useState("");
+  const [failPoint, setFailPoint] = useState("");
+  const [description, setDescription] = useState("");
 
   const unit = useQuery({
     queryKey: ["window", windowId],
@@ -62,11 +75,37 @@ export function WindowDetail() {
     enabled: Boolean(unit.data?.id),
   });
 
+  const serviceCases = useQuery({
+    queryKey: ["serviceCases", unit.data?.id],
+    queryFn: () => listWindowServiceCases(unit.data!.id),
+    enabled: Boolean(unit.data?.id) && canService,
+  });
+
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["window", windowId] });
     queryClient.invalidateQueries({ queryKey: ["movements"] });
     queryClient.invalidateQueries({ queryKey: ["dashboard"] });
   };
+
+  const openCase = useMutation({
+    mutationFn: () =>
+      openServiceCase({
+        windowId: unit.data!.id,
+        reason: reason.trim(),
+        failPoint: failPoint.trim() || null,
+        description: description.trim() || null,
+      }),
+    onSuccess: () => {
+      setServiceForm(false);
+      setReason("");
+      setFailPoint("");
+      setDescription("");
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["serviceCases", unit.data?.id] });
+      queryClient.invalidateQueries({ queryKey: ["serviceCasesAll"] });
+    },
+    onError: (e) => setActionError(String(e)),
+  });
 
   const moveTo = useMutation({
     mutationFn: async (address: string) => {
@@ -219,6 +258,17 @@ export function WindowDetail() {
           >
             Reprint label
           </button>
+          {canService && !serviceForm && (
+            <button
+              className="action-btn"
+              onClick={() => {
+                setActionError(null);
+                setServiceForm(true);
+              }}
+            >
+              Open service / warranty case
+            </button>
+          )}
         </div>
       ) : (
         <div>
@@ -244,6 +294,80 @@ export function WindowDetail() {
             Cancel move
           </button>
         </div>
+      )}
+
+      {canService && (
+        <>
+          <h2>Service &amp; warranty</h2>
+          {serviceForm && (
+            <div className="detail-card">
+              <p className="muted" style={{ marginTop: 0 }}>
+                Open an after-service / warranty case against this unit. We link
+                it back to the install and installer automatically.
+              </p>
+              <label className="field-label" htmlFor="svc-reason">
+                What&apos;s wrong? *
+              </label>
+              <input
+                id="svc-reason"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="e.g. Air leak at bottom sash"
+              />
+              <label className="field-label" htmlFor="svc-fail">
+                Fail point (optional)
+              </label>
+              <input
+                id="svc-fail"
+                value={failPoint}
+                onChange={(e) => setFailPoint(e.target.value)}
+                placeholder="e.g. seal / flashing / hardware / glass"
+              />
+              <label className="field-label" htmlFor="svc-desc">
+                Details (optional)
+              </label>
+              <textarea
+                id="svc-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+              />
+              <div className="action-list" style={{ marginTop: 8 }}>
+                <button
+                  className="action-btn primary"
+                  disabled={!reason.trim() || openCase.isPending}
+                  onClick={() => openCase.mutate()}
+                >
+                  {openCase.isPending ? "Opening…" : "Open case"}
+                </button>
+                <button className="link" onClick={() => setServiceForm(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+          {serviceCases.data && serviceCases.data.length > 0 ? (
+            <ul className="history-list">
+              {serviceCases.data.map((c) => (
+                <li key={c.id}>
+                  <Link to="/service">
+                    <strong>{SERVICE_STATUS_LABELS[c.status]}</strong>
+                  </Link>{" "}
+                  {c.reason ?? "service case"}
+                  {c.fail_point ? ` — ${c.fail_point}` : ""}
+                  <span className="muted">
+                    {" "}
+                    · opened {new Date(c.created_at).toLocaleDateString()}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            !serviceForm && (
+              <p className="muted">No service cases on this unit.</p>
+            )
+          )}
+        </>
       )}
 
       <h2>History</h2>
