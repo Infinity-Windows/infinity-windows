@@ -289,6 +289,48 @@ const FALLBACK_RECT: OutlinePoint[] = [
   { x: 0.12, y: 0.85 },
 ];
 
+/** Clamp a point into page space. */
+export function clampOutlinePoint(p: OutlinePoint): OutlinePoint {
+  return {
+    x: Math.min(0.995, Math.max(0.005, p.x)),
+    y: Math.min(0.995, Math.max(0.005, p.y)),
+  };
+}
+
+/** True when the polygon has enough distinct vertices to draw a shape. */
+export function isValidOutlinePolygon(points: OutlinePoint[]): boolean {
+  if (points.length < 3) return false;
+  const uniq = new Set(points.map((p) => `${p.x.toFixed(4)},${p.y.toFixed(4)}`));
+  return uniq.size >= 3;
+}
+
+/** Prefer a saved manual outline over a CAD auto-trace for the same page. */
+export function preferOutline(
+  manual: BuildingOutline | null | undefined,
+  extracted: BuildingOutline | null | undefined,
+): BuildingOutline | null {
+  if (manual && isValidOutlinePolygon(manual.points)) return manual;
+  if (extracted && extracted.points.length > 0) return extracted;
+  return extracted ?? null;
+}
+
+/** SVG path `d` for a closed polygon in a 1000 × (1000*aspect) viewBox. */
+export function outlinePathD(
+  points: OutlinePoint[],
+  aspect: number,
+): string | null {
+  if (!isValidOutlinePolygon(points)) return null;
+  const h = 1000 * aspect;
+  return (
+    points
+      .map(
+        (p, i) =>
+          `${i === 0 ? "M" : "L"}${(p.x * 1000).toFixed(1)} ${(p.y * h).toFixed(1)}`,
+      )
+      .join(" ") + " Z"
+  );
+}
+
 /**
  * Evenly distribute `count` markers around the outline perimeter, nudged
  * slightly outward so dots sit just outside the walls. Falls back to a

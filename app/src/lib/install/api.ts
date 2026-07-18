@@ -5,6 +5,7 @@ import { markBase } from "./extract";
 import type {
   InstallEvent,
   MemoTopics,
+  PlanOutline,
   Planset,
   PlansetFormat,
   PlansetKind,
@@ -597,6 +598,96 @@ export async function downloadPlanset(planset: Planset): Promise<ArrayBuffer> {
   return data.arrayBuffer();
 }
 
+// --- Manual plan outlines ---
+
+function parseOutlineRow(row: {
+  id: string;
+  project_id: string;
+  planset_id: string;
+  page_number: number;
+  points: unknown;
+  page_aspect: number | string;
+  created_at: string;
+  updated_at: string;
+}): PlanOutline {
+  const raw = Array.isArray(row.points) ? row.points : [];
+  const points = raw
+    .map((p) => {
+      if (!p || typeof p !== "object") return null;
+      const x = Number((p as { x?: unknown }).x);
+      const y = Number((p as { y?: unknown }).y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+      return {
+        x: Math.min(1, Math.max(0, x)),
+        y: Math.min(1, Math.max(0, y)),
+      };
+    })
+    .filter((p): p is { x: number; y: number } => !!p);
+  return {
+    id: row.id,
+    project_id: row.project_id,
+    planset_id: row.planset_id,
+    page_number: row.page_number,
+    points,
+    page_aspect: Number(row.page_aspect) || 0.7,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+export async function listPlanOutlines(
+  projectId: string,
+  plansetId?: string,
+): Promise<PlanOutline[]> {
+  let q = supabase
+    .from("project_plan_outlines")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("page_number");
+  if (plansetId) q = q.eq("planset_id", plansetId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []).map(parseOutlineRow);
+}
+
+export async function savePlanOutline(args: {
+  projectId: string;
+  plansetId: string;
+  pageNumber: number;
+  points: { x: number; y: number }[];
+  pageAspect: number;
+}): Promise<PlanOutline> {
+  const { data, error } = await supabase
+    .from("project_plan_outlines")
+    .upsert(
+      {
+        project_id: args.projectId,
+        planset_id: args.plansetId,
+        page_number: args.pageNumber,
+        points: args.points,
+        page_aspect: args.pageAspect,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "planset_id,page_number" },
+    )
+    .select("*")
+    .single();
+  if (error) throw error;
+  return parseOutlineRow(data);
+}
+
+export async function deletePlanOutline(
+  plansetId: string,
+  pageNumber: number,
+): Promise<void> {
+  const { error } = await supabase
+    .from("project_plan_outlines")
+    .delete()
+    .eq("planset_id", plansetId)
+    .eq("page_number", pageNumber);
+  if (error) throw error;
+}
+
 // --- Openings ---
 
 export async function listOpenings(
@@ -626,6 +717,9 @@ export async function getOpening(id: string): Promise<ProjectOpening | null> {
  * the Horizon BOM rule): confirmed openings are never deleted or overwritten
  * by a re-extract — only unconfirmed drafts are replaced, and draft codes
  * that collide with confirmed openings are skipped.
+ *
+ * Manually placed pins on unconfirmed drafts are preserved across re-extract
+ * when the same opening_code comes back.
  */
 export async function saveDraftOpenings(
   projectId: string,
@@ -636,7 +730,7 @@ export async function saveDraftOpenings(
 
   const { data: existing, error: exErr } = await supabase
     .from("project_openings")
-    .select("id, opening_code, confirmed, status")
+    .select("id, opening_code, confirmed, status, pin_x, pin_y, page_number")
     .eq("project_id", projectId);
   if (exErr) throw exErr;
 
@@ -647,6 +741,19 @@ export async function saveDraftOpenings(
   const confirmedCodes = new Set(
     existing.filter(isProtected).map((o) => o.opening_code),
   );
+  const preservedPins = new Map<
+    string,
+    { pin_x: number; pin_y: number; page_number: number }
+  >();
+  for (const o of existing) {
+    if (isProtected(o)) continue;
+    if (o.pin_x == null || o.pin_y == null) continue;
+    preservedPins.set(o.opening_code, {
+      pin_x: Number(o.pin_x),
+      pin_y: Number(o.pin_y),
+      page_number: o.page_number,
+    });
+  }
   const staleDraftIds = existing.filter((o) => !isProtected(o)).map((o) => o.id);
 
   if (staleDraftIds.length > 0) {
@@ -662,17 +769,20 @@ export async function saveDraftOpenings(
   if (fresh.length === 0) return { inserted: 0, skipped };
 
   const { error } = await supabase.from("project_openings").insert(
-    fresh.map((d) => ({
-      project_id: projectId,
-      planset_id: plansetId,
-      opening_code: d.opening_code,
-      window_type_id: d.window_type_id,
-      label: d.label,
-      page_number: d.page_number,
-      pin_x: d.pin_x ?? null,
-      pin_y: d.pin_y ?? null,
-      confirmed: false,
-    })),
+    fresh.map((d) => {
+      const kept = preservedPins.get(d.opening_code);
+      return {
+        project_id: projectId,
+        planset_id: plansetId,
+        opening_code: d.opening_code,
+        window_type_id: d.window_type_id,
+        label: d.label,
+        page_number: kept?.page_number ?? d.page_number,
+        pin_x: kept?.pin_x ?? d.pin_x ?? null,
+        pin_y: kept?.pin_y ?? d.pin_y ?? null,
+        confirmed: false,
+      };
+    }),
   );
   if (error) throw error;
   return { inserted: fresh.length, skipped };
@@ -853,11 +963,17 @@ export async function addOpening(
     window_type_id?: string | null;
     label?: string | null;
     page_number?: number;
+    planset_id?: string | null;
+    pin_x?: number | null;
+    pin_y?: number | null;
+    /** Manual map dots stay confirmed so re-extract will not wipe them. */
+    confirmed?: boolean;
   },
 ): Promise<ProjectOpening> {
+  const { confirmed = true, ...rest } = opening;
   const { data, error } = await supabase
     .from("project_openings")
-    .insert({ project_id: projectId, confirmed: true, ...opening })
+    .insert({ project_id: projectId, confirmed, ...rest })
     .select(OPENING_SELECT)
     .single();
   if (error) throw error;

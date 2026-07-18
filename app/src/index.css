@@ -956,6 +956,114 @@ button:disabled {
   transform-origin: center center;
 }
 
+.plan-model-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.plan-model-editor__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.plan-model-editor__spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.plan-model-editor__hint {
+  margin: 0;
+}
+
+.plan-model-editor__sheet {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  touch-action: none;
+  background: #181614;
+  border: 1px solid rgba(255, 106, 26, 0.35);
+}
+
+.plan-model-editor__sheet--drawing,
+.plan-model-editor__sheet--place {
+  cursor: crosshair;
+}
+
+.plan-model-editor__trace {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  opacity: 0.38;
+  filter: grayscale(1) contrast(1.1);
+  pointer-events: none;
+  user-select: none;
+}
+
+.plan-model-editor__trace-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.plan-model-editor__svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.plan-model-editor__vertex {
+  fill: #ff6a1a;
+  stroke: #141210;
+  stroke-width: 3;
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.plan-model-editor__sheet .plan-dot {
+  z-index: 3;
+}
+
+.plan-model-editor__dot-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border-radius: 12px;
+  background: #1e1b18;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.plan-model-editor__dot-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.plan-model-editor__dot-panel input {
+  min-height: 40px;
+  min-width: 120px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #141210;
+  color: var(--text);
+  font: inherit;
+  text-transform: uppercase;
+}
+
 .plan-dot:hover {
   transform: scale(1.2);
   z-index: 5;
