@@ -1,10 +1,23 @@
 import { supabase } from "./supabase";
+import type { GeoFix } from "./geo";
 
 export interface CostCode {
   id: string;
   code: string;
   label: string;
   active: boolean;
+}
+
+export type BreakType = "lunch" | "rest" | "other";
+
+export const BREAK_TYPES: { type: BreakType; label: string; icon: string }[] = [
+  { type: "lunch", label: "Lunch", icon: "🍔" },
+  { type: "rest", label: "Rest", icon: "☕" },
+  { type: "other", label: "Other", icon: "⏸" },
+];
+
+export function breakTypeLabel(t: BreakType | null | undefined): string {
+  return BREAK_TYPES.find((b) => b.type === t)?.label ?? "Break";
 }
 
 export interface TimeShift {
@@ -16,13 +29,27 @@ export interface TimeShift {
   clock_out_at: string | null;
   break_seconds: number;
   break_started_at: string | null;
+  break_type?: BreakType | null;
   injured: boolean | null;
   time_confirmed: boolean | null;
   status: "open" | "submitted" | "approved";
   created_at: string;
+  clock_in_lat?: number | null;
+  clock_in_lng?: number | null;
+  clock_out_lat?: number | null;
+  clock_out_lng?: number | null;
   projects?: { job_code: string; name: string } | null;
   cost_codes?: { code: string; label: string } | null;
   profiles?: { display_name: string } | null;
+}
+
+/** A job the user recently clocked into, for the "recent" quick-pick chips. */
+export interface RecentJob {
+  projectId: string;
+  jobCode: string;
+  name: string;
+  costCodeId: string | null;
+  lastClockInAt: string;
 }
 
 const SHIFT_SELECT =
@@ -79,11 +106,14 @@ export async function listShiftsToApprove(): Promise<TimeShift[]> {
 export async function clockIn(
   projectId: string | null,
   costCodeId: string | null,
+  geo?: GeoFix,
 ): Promise<TimeShift> {
   const { data, error } = await supabase.rpc("clock_in", {
     p_project_id: projectId,
     p_cost_code_id: costCodeId,
     p_photo: null,
+    p_lat: geo?.lat ?? null,
+    p_lng: geo?.lng ?? null,
   });
   if (error) throw error;
   return data as TimeShift;
@@ -91,7 +121,12 @@ export async function clockIn(
 
 export async function clockOut(
   shiftId: string,
-  opts: { injured: boolean; timeConfirmed: boolean; breakSeconds: number },
+  opts: {
+    injured: boolean;
+    timeConfirmed: boolean;
+    breakSeconds: number;
+    geo?: GeoFix;
+  },
 ): Promise<TimeShift> {
   const { data, error } = await supabase.rpc("clock_out", {
     p_shift_id: shiftId,
@@ -99,9 +134,53 @@ export async function clockOut(
     p_injured: opts.injured,
     p_time_confirmed: opts.timeConfirmed,
     p_break_seconds: opts.breakSeconds,
+    p_lat: opts.geo?.lat ?? null,
+    p_lng: opts.geo?.lng ?? null,
   });
   if (error) throw error;
   return data as TimeShift;
+}
+
+/**
+ * Distinct jobs the user clocked into recently, newest first, for quick-pick
+ * chips and the one-tap "resume" button. Carries the last cost code used so
+ * resuming restores the full context in one tap.
+ */
+export async function listRecentJobs(
+  profileId: string,
+  limit = 5,
+): Promise<RecentJob[]> {
+  const { data, error } = await supabase
+    .from("time_shifts")
+    .select("project_id, cost_code_id, clock_in_at, projects(job_code, name)")
+    .eq("profile_id", profileId)
+    .not("project_id", "is", null)
+    .order("clock_in_at", { ascending: false })
+    .limit(60);
+  if (error) throw error;
+  const seen = new Set<string>();
+  const out: RecentJob[] = [];
+  const rows = (data ?? []) as unknown as Array<{
+    project_id: string | null;
+    cost_code_id: string | null;
+    clock_in_at: string;
+    // Supabase types the nested relation as an array; normalize below.
+    projects?: { job_code: string; name: string } | { job_code: string; name: string }[] | null;
+  }>;
+  for (const row of rows) {
+    if (!row.project_id || seen.has(row.project_id)) continue;
+    seen.add(row.project_id);
+    const proj = Array.isArray(row.projects) ? row.projects[0] : row.projects;
+    out.push({
+      projectId: row.project_id,
+      jobCode: proj?.job_code ?? "",
+      name: proj?.name ?? "Job",
+      costCodeId: row.cost_code_id,
+      lastClockInAt: row.clock_in_at,
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 export async function approveShift(shiftId: string): Promise<void> {
@@ -110,8 +189,14 @@ export async function approveShift(shiftId: string): Promise<void> {
 }
 
 /** Server-persisted breaks so a refresh mid-break doesn't lose the timer. */
-export async function startBreak(shiftId: string): Promise<TimeShift> {
-  const { data, error } = await supabase.rpc("start_break", { p_shift_id: shiftId });
+export async function startBreak(
+  shiftId: string,
+  breakType: BreakType = "other",
+): Promise<TimeShift> {
+  const { data, error } = await supabase.rpc("start_break", {
+    p_shift_id: shiftId,
+    p_break_type: breakType,
+  });
   if (error) throw error;
   return data as TimeShift;
 }
@@ -128,6 +213,23 @@ export function currentBreakSeconds(s: TimeShift, now = Date.now()): number {
     ? Math.max(0, Math.floor((now - new Date(s.break_started_at).getTime()) / 1000))
     : 0;
   return (s.break_seconds ?? 0) + running;
+}
+
+/** Live worked seconds for an open shift: wall time minus all break time. */
+export function elapsedWorkSeconds(s: TimeShift, now = Date.now()): number {
+  const end = s.clock_out_at ? new Date(s.clock_out_at).getTime() : now;
+  const gross = Math.max(0, Math.floor((end - new Date(s.clock_in_at).getTime()) / 1000));
+  return Math.max(0, gross - currentBreakSeconds(s, now));
+}
+
+/** Format seconds as H:MM:SS for the live timer. */
+export function formatClock(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${h}:${pad(m)}:${pad(sec)}`;
 }
 
 export function shiftHours(s: TimeShift): number {

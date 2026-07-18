@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { countMyOpenOpenings, getMyProfile } from "../lib/install/api";
 import { ROLE_LABELS, type CrewRole } from "../lib/install/types";
 import { activeNavForRole, roleRank } from "../lib/nav";
+import { useClock } from "../lib/clockContext";
+import { elapsedWorkSeconds, formatClock } from "../lib/timeclock";
 import { effectiveRole, useViewAsRole } from "../lib/viewAsRoleContext";
 import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
 import { ToastHost } from "./ToastHost";
@@ -25,6 +27,17 @@ export function Layout() {
   const isInstaller = roleRank(role) === 0;
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
+
+  const clock = useClock();
+  const shift = clock.shift;
+  const onBreak = Boolean(shift?.break_started_at);
+  const [clockNow, setClockNow] = useState(Date.now());
+  useEffect(() => {
+    if (!shift) return;
+    const t = setInterval(() => setClockNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [shift?.id]);
+  const clockLabel = shift ? formatClock(elapsedWorkSeconds(shift, clockNow)) : "Time";
 
   useRealtimeMyOpenings(isInstaller ? me.data?.id : undefined);
   const openCount = useQuery({
@@ -81,24 +94,44 @@ export function Layout() {
             Menu
           </p>
           <nav className="rail-tabs" aria-label="Sections">
-            {nav.rail.map((tab) => (
-              <NavLink
-                key={tab.id}
-                to={tab.to}
-                end={tab.to === "/"}
-                className={({ isActive }) =>
-                  isActive ? "rail-tab active" : "rail-tab"
-                }
-              >
-                <span className="rail-icon" aria-hidden>
-                  {tab.icon}
-                </span>
-                <span className="rail-label">{tab.label}</span>
-                {badgeFor(tab.to) > 0 && (
-                  <span className="rail-badge">{badgeFor(tab.to)}</span>
-                )}
-              </NavLink>
-            ))}
+            {nav.rail.map((tab) =>
+              tab.id === "clock" ? (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={shift ? "rail-tab clock-on" : "rail-tab"}
+                  onClick={clock.openClock}
+                >
+                  <span className="rail-icon" aria-hidden>
+                    {shift ? (
+                      <span
+                        className={onBreak ? "clock-nav-dot break" : "clock-nav-dot work"}
+                      />
+                    ) : (
+                      tab.icon
+                    )}
+                  </span>
+                  <span className="rail-label">{shift ? clockLabel : tab.label}</span>
+                </button>
+              ) : (
+                <NavLink
+                  key={tab.id}
+                  to={tab.to}
+                  end={tab.to === "/"}
+                  className={({ isActive }) =>
+                    isActive ? "rail-tab active" : "rail-tab"
+                  }
+                >
+                  <span className="rail-icon" aria-hidden>
+                    {tab.icon}
+                  </span>
+                  <span className="rail-label">{tab.label}</span>
+                  {badgeFor(tab.to) > 0 && (
+                    <span className="rail-badge">{badgeFor(tab.to)}</span>
+                  )}
+                </NavLink>
+              ),
+            )}
           </nav>
         </aside>
 
@@ -124,20 +157,42 @@ export function Layout() {
       </div>
 
       <nav className="bottom-nav" aria-label="Main">
-        {nav.phone.map((tab) => (
-          <NavLink
-            key={tab.id}
-            to={tab.to}
-            end={tab.to === "/"}
-            className={({ isActive }) => (isActive ? "nav-tab active" : "nav-tab")}
-          >
-            <span className="nav-icon">
-              {tab.icon}
-              {badgeFor(tab.to) > 0 && <span className="nav-badge">{badgeFor(tab.to)}</span>}
-            </span>
-            <span>{tab.label}</span>
-          </NavLink>
-        ))}
+        {nav.phone.map((tab) =>
+          tab.id === "clock" ? (
+            <button
+              key={tab.id}
+              type="button"
+              className={shift ? "nav-tab clock-on" : "nav-tab"}
+              onClick={clock.openClock}
+            >
+              <span className="nav-icon">
+                {shift ? (
+                  <span
+                    className={onBreak ? "clock-nav-dot break" : "clock-nav-dot work"}
+                  />
+                ) : (
+                  tab.icon
+                )}
+              </span>
+              <span className={shift ? "nav-clock-time" : undefined}>
+                {shift ? clockLabel : tab.label}
+              </span>
+            </button>
+          ) : (
+            <NavLink
+              key={tab.id}
+              to={tab.to}
+              end={tab.to === "/"}
+              className={({ isActive }) => (isActive ? "nav-tab active" : "nav-tab")}
+            >
+              <span className="nav-icon">
+                {tab.icon}
+                {badgeFor(tab.to) > 0 && <span className="nav-badge">{badgeFor(tab.to)}</span>}
+              </span>
+              <span>{tab.label}</span>
+            </NavLink>
+          ),
+        )}
         <button
           type="button"
           className="nav-tab"
