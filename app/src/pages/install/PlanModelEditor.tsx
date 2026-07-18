@@ -9,6 +9,18 @@ import {
   updateOpening,
 } from "../../lib/install/api";
 import {
+  EMPTY_FEATURES,
+  nearestPointOnOutline,
+  newFeatureId,
+  outlinePathWithOpenings,
+  parseOutlineFeatures,
+  rectFromDrag,
+  snapPointToAxis,
+  snapVertexToNeighbors,
+  type OutlineFeatures,
+} from "../../lib/install/cad";
+import { formatApiError } from "../../lib/install/errors";
+import {
   clampOutlinePoint,
   isValidOutlinePolygon,
   outlinePathD,
@@ -23,8 +35,22 @@ import {
   type Planset,
   type ProjectOpening,
 } from "../../lib/install/types";
+import { OutlineFeatureLayer } from "./OutlineFeatureLayer";
 
-type EditTool = "outline" | "window" | "door" | "select";
+type EditTool =
+  | "outline"
+  | "rect"
+  | "divider"
+  | "wall-window"
+  | "wall-door"
+  | "window"
+  | "door"
+  | "select";
+
+/** How close (viewBox units) a click must be to the outline to attach. */
+const EDGE_ATTACH_TOLERANCE = 40;
+const WALL_WINDOW_WIDTH = 50;
+const WALL_DOOR_WIDTH = 60;
 
 interface PageImage {
   dataUrl: string;
@@ -74,6 +100,7 @@ export function PlanModelEditor(props: {
   const queryClient = useQueryClient();
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const outlineScopeRef = useRef(`${planset.id}:${page}`);
+  const squareLockRef = useRef(false);
 
   const [tool, setTool] = useState<EditTool>("outline");
   const [savedOutlines, setSavedOutlines] =
@@ -84,6 +111,9 @@ export function PlanModelEditor(props: {
   const [points, setPoints] = useState<OutlinePoint[]>(
     () => manualOutlines[0]?.points ?? [],
   );
+  const [features, setFeatures] = useState<OutlineFeatures>(() =>
+    parseOutlineFeatures(manualOutlines[0]?.features),
+  );
   const [closed, setClosed] = useState(
     () =>
       !!manualOutlines[0] &&
@@ -91,11 +121,23 @@ export function PlanModelEditor(props: {
   );
   const [history, setHistory] = useState<OutlinePoint[][]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedFeature, setSelectedFeature] = useState<{
+    id: string;
+    type: "divider" | "wall";
+  } | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [traceImage, setTraceImage] = useState<PageImage | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [vertexDrag, setVertexDrag] = useState<number | null>(null);
+  const [squareLock, setSquareLock] = useState(false);
+  const [rectDrag, setRectDrag] = useState<{
+    anchor: OutlinePoint;
+    cursor: OutlinePoint;
+    square: boolean;
+  } | null>(null);
+  const [dividerStart, setDividerStart] = useState<OutlinePoint | null>(null);
+  const [dividerCursor, setDividerCursor] = useState<OutlinePoint | null>(null);
   const [dotDrag, setDotDrag] = useState<{
     id: string;
     x: number;
@@ -105,9 +147,19 @@ export function PlanModelEditor(props: {
     Record<string, { x: number; y: number }>
   >({});
 
+  squareLockRef.current = squareLock;
+
   const activeOutline = savedOutlines.find((o) => o.id === activeOutlineId);
   const aspect = activeOutline?.page_aspect ?? pageAspect;
   const h = 1000 * aspect;
+
+  const resetDrawingState = () => {
+    setSelectedId(null);
+    setSelectedFeature(null);
+    setDividerStart(null);
+    setDividerCursor(null);
+    setRectDrag(null);
+  };
 
   useEffect(() => {
     const scope = `${planset.id}:${page}`;
@@ -122,8 +174,10 @@ export function PlanModelEditor(props: {
     setSavedOutlines(manualOutlines);
     setActiveOutlineId(first?.id ?? null);
     setPoints(first?.points ?? []);
+    setFeatures(parseOutlineFeatures(first?.features));
     setClosed(!!first && isValidOutlinePolygon(first.points));
     setHistory([]);
+    resetDrawingState();
   }, [manualOutlines, page, planset.id]);
 
   useEffect(() => {
@@ -137,7 +191,7 @@ export function PlanModelEditor(props: {
         const img = await renderPageImage(doc, page);
         if (!cancelled) setTraceImage(img);
       } catch (e) {
-        if (!cancelled) setError(String(e));
+        if (!cancelled) setError(formatApiError(e));
       }
     })();
     return () => {
@@ -145,10 +199,19 @@ export function PlanModelEditor(props: {
     };
   }, [planset, page]);
 
+  const previewPoints = rectDrag
+    ? rectFromDrag(rectDrag.anchor, rectDrag.cursor, rectDrag.square, aspect)
+    : null;
+
   const pathD = useMemo(
-    () => outlinePathD(closed ? points : points, aspect),
-    [points, closed, aspect],
+    () => outlinePathD(points, aspect),
+    [points, aspect],
   );
+  const strokePathD = useMemo(() => {
+    if (!closed) return null;
+    if (features.wallOpenings.length === 0) return pathD;
+    return outlinePathWithOpenings(points, aspect, features.wallOpenings);
+  }, [closed, points, aspect, features.wallOpenings, pathD]);
   const openPathD = useMemo(() => {
     if (points.length === 0) return null;
     return points
@@ -183,8 +246,12 @@ export function PlanModelEditor(props: {
   };
 
   const saveOutline = useMutation({
-    mutationFn: () => {
-      if (!isValidOutlinePolygon(points)) {
+    mutationFn: (override?: {
+      points?: OutlinePoint[];
+      features?: OutlineFeatures;
+    }) => {
+      const pts = override?.points ?? points;
+      if (!isValidOutlinePolygon(pts)) {
         throw new Error("Draw at least 3 points before saving.");
       }
       return savePlanOutline({
@@ -192,8 +259,9 @@ export function PlanModelEditor(props: {
         projectId,
         plansetId: planset.id,
         pageNumber: page,
-        points,
+        points: pts,
         pageAspect: aspect,
+        features: override?.features ?? features,
       });
     },
     onSuccess: (row) => {
@@ -206,9 +274,7 @@ export function PlanModelEditor(props: {
       setSavedOutlines(updateRows);
       setActiveOutlineId(row.id);
       setClosed(true);
-      setStatus(
-        `Outline ${updateRows(savedOutlines).findIndex((o) => o.id === row.id) + 1} saved for this floor.`,
-      );
+      setStatus("Outline saved for this floor.");
       queryClient.setQueryData<PlanOutline[]>(
         ["planOutlines", projectId, planset.id],
         (rows = []) => updateRows(rows),
@@ -217,8 +283,17 @@ export function PlanModelEditor(props: {
         queryKey: ["planOutlines", projectId, planset.id],
       });
     },
-    onError: (e) => setError(String(e)),
+    onError: (e) => setError(formatApiError(e)),
   });
+
+  /** Update features; auto-save when the outline already exists. */
+  const applyFeatures = (next: OutlineFeatures, message: string) => {
+    setFeatures(next);
+    setStatus(message);
+    if (activeOutlineId && isValidOutlinePolygon(points)) {
+      saveOutline.mutate({ features: next });
+    }
+  };
 
   const resetOutline = useMutation({
     mutationFn: () => deletePlanOutline(planset.id, page),
@@ -227,7 +302,9 @@ export function PlanModelEditor(props: {
       setSavedOutlines([]);
       setActiveOutlineId(null);
       setPoints(fallback);
+      setFeatures(EMPTY_FEATURES);
       setClosed(isValidOutlinePolygon(fallback));
+      resetDrawingState();
       setStatus(
         fallback.length
           ? "Cleared manual outline — using CAD extract."
@@ -246,7 +323,7 @@ export function PlanModelEditor(props: {
         queryKey: ["planOutlines", projectId, planset.id],
       });
     },
-    onError: (e) => setError(String(e)),
+    onError: (e) => setError(formatApiError(e)),
   });
 
   const removeOutline = useMutation({
@@ -258,8 +335,10 @@ export function PlanModelEditor(props: {
       setSavedOutlines(remaining);
       setActiveOutlineId(next?.id ?? null);
       setPoints(next?.points ?? []);
+      setFeatures(parseOutlineFeatures(next?.features));
       setClosed(!!next && isValidOutlinePolygon(next.points));
       setHistory([]);
+      resetDrawingState();
       setStatus("Outline removed.");
       queryClient.setQueryData<PlanOutline[]>(
         ["planOutlines", projectId, planset.id],
@@ -269,7 +348,7 @@ export function PlanModelEditor(props: {
         queryKey: ["planOutlines", projectId, planset.id],
       });
     },
-    onError: (e) => setError(String(e)),
+    onError: (e) => setError(formatApiError(e)),
   });
 
   const createDot = useMutation({
@@ -293,7 +372,7 @@ export function PlanModelEditor(props: {
       setStatus(`Added ${row.opening_code}.`);
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
     },
-    onError: (e) => setError(String(e)),
+    onError: (e) => setError(formatApiError(e)),
   });
 
   const renameDot = useMutation({
@@ -303,7 +382,7 @@ export function PlanModelEditor(props: {
       setStatus("Opening renamed.");
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
     },
-    onError: (e) => setError(String(e)),
+    onError: (e) => setError(formatApiError(e)),
   });
 
   const moveDot = useMutation({
@@ -316,7 +395,7 @@ export function PlanModelEditor(props: {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
     },
-    onError: (e) => setError(String(e)),
+    onError: (e) => setError(formatApiError(e)),
   });
 
   const removeDot = useMutation({
@@ -326,17 +405,141 @@ export function PlanModelEditor(props: {
       setStatus("Opening removed.");
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
     },
-    onError: (e) => setError(String(e)),
+    onError: (e) => setError(formatApiError(e)),
   });
+
+  // --- tool interactions ---
+
+  const beginRectDrag = (start: OutlinePoint, e: React.PointerEvent) => {
+    e.preventDefault();
+    const drag = {
+      anchor: start,
+      cursor: start,
+      square: e.shiftKey || squareLockRef.current,
+    };
+    setRectDrag(drag);
+    const onMove = (ev: PointerEvent) => {
+      const next = sheetCoords(ev.clientX, ev.clientY);
+      if (!next) return;
+      drag.cursor = next;
+      drag.square = ev.shiftKey || squareLockRef.current;
+      setRectDrag({ ...drag });
+    };
+    const onUp = (ev: PointerEvent) => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      setRectDrag(null);
+      const end = sheetCoords(ev.clientX, ev.clientY) ?? drag.cursor;
+      const dx = Math.abs(end.x - drag.anchor.x) * 1000;
+      const dy = Math.abs(end.y - drag.anchor.y) * 1000 * aspect;
+      if (dx < 15 && dy < 15) {
+        setStatus("Drag out the rectangle from its first corner.");
+        return;
+      }
+      const rect = rectFromDrag(
+        drag.anchor,
+        end,
+        ev.shiftKey || squareLockRef.current,
+        aspect,
+      );
+      pushHistory(rect);
+      setClosed(true);
+      setStatus("Rectangle placed — adjust corners or hit Save outline.");
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  };
+
+  const handleDividerClick = (pt: OutlinePoint) => {
+    if (!closed || points.length < 3) {
+      setStatus("Close an outline first, then draw dividers across it.");
+      return;
+    }
+    const hit = nearestPointOnOutline(points, pt, aspect);
+    if (!dividerStart) {
+      if (!hit || hit.dist > EDGE_ATTACH_TOLERANCE) {
+        setStatus("Start a divider on the outline edge.");
+        return;
+      }
+      setDividerStart(hit.point);
+      setDividerCursor(hit.point);
+      setStatus("Now click the opposite edge to finish the divider.");
+      return;
+    }
+    let end =
+      hit && hit.dist <= EDGE_ATTACH_TOLERANCE ? hit.point : pt;
+    end = snapPointToAxis(dividerStart, end, aspect);
+    // Re-attach to the outline after axis snapping when close enough.
+    const endHit = nearestPointOnOutline(points, end, aspect);
+    if (endHit && endHit.dist <= EDGE_ATTACH_TOLERANCE) end = endHit.point;
+    const next: OutlineFeatures = {
+      ...features,
+      dividers: [
+        ...features.dividers,
+        { id: newFeatureId(), a: dividerStart, b: end },
+      ],
+    };
+    setDividerStart(null);
+    setDividerCursor(null);
+    applyFeatures(next, "Divider added.");
+  };
+
+  const handleWallOpeningClick = (pt: OutlinePoint, kind: "window" | "door") => {
+    if (!closed || points.length < 3) {
+      setStatus("Close an outline first, then place wall openings on it.");
+      return;
+    }
+    const hit = nearestPointOnOutline(points, pt, aspect);
+    if (!hit || hit.dist > EDGE_ATTACH_TOLERANCE) {
+      setStatus("Tap directly on an outline wall to place the opening.");
+      return;
+    }
+    const next: OutlineFeatures = {
+      ...features,
+      wallOpenings: [
+        ...features.wallOpenings,
+        {
+          id: newFeatureId(),
+          edge: hit.edge,
+          t: hit.t,
+          width: kind === "door" ? WALL_DOOR_WIDTH : WALL_WINDOW_WIDTH,
+          kind,
+        },
+      ],
+    };
+    applyFeatures(next, kind === "door" ? "Door opening added." : "Window opening added.");
+  };
 
   const onSheetPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     const pt = sheetCoords(e.clientX, e.clientY);
     if (!pt) return;
 
+    if (tool === "rect") {
+      beginRectDrag(pt, e);
+      return;
+    }
+
+    if (tool === "divider") {
+      e.preventDefault();
+      handleDividerClick(pt);
+      return;
+    }
+
+    if (tool === "wall-window" || tool === "wall-door") {
+      e.preventDefault();
+      handleWallOpeningClick(pt, tool === "wall-window" ? "window" : "door");
+      return;
+    }
+
     if (tool === "window" || tool === "door") {
       e.preventDefault();
       createDot.mutate({ kind: tool, x: pt.x, y: pt.y });
+      return;
+    }
+
+    if (tool === "select") {
+      setSelectedFeature(null);
       return;
     }
 
@@ -351,9 +554,20 @@ export function PlanModelEditor(props: {
           return;
         }
       }
-      pushHistory([...points, pt]);
+      const snapped =
+        points.length > 0
+          ? snapPointToAxis(points[points.length - 1], pt, aspect)
+          : pt;
+      pushHistory([...points, snapped]);
       setStatus(`${points.length + 1} points — click first point to close.`);
     }
+  };
+
+  const onSheetPointerMove = (e: React.PointerEvent) => {
+    if (tool !== "divider" || !dividerStart) return;
+    const pt = sheetCoords(e.clientX, e.clientY);
+    if (!pt) return;
+    setDividerCursor(snapPointToAxis(dividerStart, pt, aspect));
   };
 
   const beginVertexDrag =
@@ -365,7 +579,11 @@ export function PlanModelEditor(props: {
         const next = sheetCoords(ev.clientX, ev.clientY);
         if (!next) return;
         setPoints((prev) =>
-          prev.map((p, i) => (i === index ? next : p)),
+          prev.map((p, i) =>
+            i === index
+              ? snapVertexToNeighbors(prev, index, next, aspect)
+              : p,
+          ),
         );
       };
       const onUp = () => {
@@ -431,25 +649,81 @@ export function PlanModelEditor(props: {
 
   const selectOutline = (outline: PlanOutline) => {
     setTool("outline");
-    setSelectedId(null);
     setActiveOutlineId(outline.id);
     setPoints(outline.points);
+    setFeatures(parseOutlineFeatures(outline.features));
     setClosed(isValidOutlinePolygon(outline.points));
     setHistory([]);
+    resetDrawingState();
     setStatus(null);
     setError(null);
   };
 
-  const startOutline = () => {
-    setTool("outline");
-    setSelectedId(null);
+  const startOutline = (nextTool: "outline" | "rect" = "outline") => {
+    setTool(nextTool);
     setActiveOutlineId(null);
     setPoints([]);
+    setFeatures(EMPTY_FEATURES);
     setClosed(false);
     setHistory([]);
-    setStatus("New outline — click its first corner.");
+    resetDrawingState();
+    setStatus(
+      nextTool === "rect"
+        ? "New outline — drag out a rectangle."
+        : "New outline — click its first corner.",
+    );
     setError(null);
   };
+
+  const deleteSelectedFeature = () => {
+    if (!selectedFeature) return;
+    const next: OutlineFeatures =
+      selectedFeature.type === "divider"
+        ? {
+            ...features,
+            dividers: features.dividers.filter((d) => d.id !== selectedFeature.id),
+          }
+        : {
+            ...features,
+            wallOpenings: features.wallOpenings.filter(
+              (w) => w.id !== selectedFeature.id,
+            ),
+          };
+    setSelectedFeature(null);
+    applyFeatures(
+      next,
+      selectedFeature.type === "divider" ? "Divider removed." : "Wall opening removed.",
+    );
+  };
+
+  const setDrawTool = (next: EditTool) => {
+    setTool(next);
+    resetDrawingState();
+  };
+
+  const hint = (() => {
+    switch (tool) {
+      case "outline":
+        return closed
+          ? "Drag orange handles to reshape (they auto-square near 90°), then Save outline."
+          : "Click the faded plan to place outline corners — lines auto-lock level/plumb within 2°. Click the first point to close.";
+      case "rect":
+        return "Press and drag from one corner to the opposite corner. Hold Shift or toggle Square for a perfect square.";
+      case "divider":
+        return dividerStart
+          ? "Click the opposite wall to finish the section divider (auto-locks level/plumb)."
+          : "Click an outline wall to start a straight divider that cuts the building into sections.";
+      case "wall-window":
+        return "Tap on an outline wall to cut in a window (double-line CAD symbol).";
+      case "wall-door":
+        return "Tap on an outline wall to cut in a door with a swing arc.";
+      case "window":
+      case "door":
+        return `Tap the plan to place a numbered ${tool} mark. Existing marks are hidden so they don’t block clicks.`;
+      default:
+        return "Marks are shown — drag to move, tap to rename/delete. Tap a divider or wall symbol to select it.";
+    }
+  })();
 
   return (
     <div className="plan-model-editor">
@@ -457,12 +731,54 @@ export function PlanModelEditor(props: {
         <button
           type="button"
           className={tool === "outline" ? "chip active" : "chip"}
-          onClick={() => {
-            setTool("outline");
-            setSelectedId(null);
-          }}
+          onClick={() => setDrawTool("outline")}
         >
           Trace / edit
+        </button>
+        <button
+          type="button"
+          className={tool === "rect" ? "chip active" : "chip"}
+          onClick={() => {
+            if (closed && points.length >= 3 && activeOutlineId) {
+              // A rectangle replaces the shape you're editing; start fresh.
+              startOutline("rect");
+            } else {
+              setDrawTool("rect");
+            }
+          }}
+        >
+          ▭ Rectangle
+        </button>
+        {tool === "rect" && (
+          <button
+            type="button"
+            className={squareLock ? "chip active" : "chip"}
+            onClick={() => setSquareLock((v) => !v)}
+            title="Lock 1:1 square (or hold Shift while dragging)"
+          >
+            Square
+          </button>
+        )}
+        <button
+          type="button"
+          className={tool === "divider" ? "chip active" : "chip"}
+          onClick={() => setDrawTool("divider")}
+        >
+          ┃ Divider
+        </button>
+        <button
+          type="button"
+          className={tool === "wall-window" ? "chip active" : "chip"}
+          onClick={() => setDrawTool("wall-window")}
+        >
+          ⊟ Wall window
+        </button>
+        <button
+          type="button"
+          className={tool === "wall-door" ? "chip active" : "chip"}
+          onClick={() => setDrawTool("wall-door")}
+        >
+          ◠ Wall door
         </button>
         {savedOutlines.map((outline, index) => (
           <button
@@ -478,7 +794,7 @@ export function PlanModelEditor(props: {
             Outline {index + 1}
           </button>
         ))}
-        <button type="button" className="chip" onClick={startOutline}>
+        <button type="button" className="chip" onClick={() => startOutline()}>
           + Add outline
         </button>
         {activeOutlineId && (
@@ -498,27 +814,21 @@ export function PlanModelEditor(props: {
         <button
           type="button"
           className={tool === "window" ? "chip active" : "chip"}
-          onClick={() => {
-            setTool("window");
-            setSelectedId(null);
-          }}
+          onClick={() => setDrawTool("window")}
         >
           + Window
         </button>
         <button
           type="button"
           className={tool === "door" ? "chip active" : "chip"}
-          onClick={() => {
-            setTool("door");
-            setSelectedId(null);
-          }}
+          onClick={() => setDrawTool("door")}
         >
           + Door
         </button>
         <button
           type="button"
           className={tool === "select" ? "chip active" : "chip"}
-          onClick={() => setTool("select")}
+          onClick={() => setDrawTool("select")}
         >
           Select / move
         </button>
@@ -529,7 +839,7 @@ export function PlanModelEditor(props: {
           disabled={history.length === 0}
           onClick={() => {
             const prev = history[history.length - 1];
-            setHistory((h) => h.slice(0, -1));
+            setHistory((hist) => hist.slice(0, -1));
             setPoints(prev);
             setClosed(false);
           }}
@@ -542,7 +852,9 @@ export function PlanModelEditor(props: {
           disabled={points.length === 0}
           onClick={() => {
             pushHistory([]);
+            setFeatures(EMPTY_FEATURES);
             setClosed(false);
+            resetDrawingState();
           }}
         >
           Clear
@@ -553,7 +865,7 @@ export function PlanModelEditor(props: {
           disabled={!isValidOutlinePolygon(points) || saveOutline.isPending}
           onClick={() => {
             setClosed(true);
-            saveOutline.mutate();
+            saveOutline.mutate(undefined);
           }}
         >
           {saveOutline.isPending ? "Saving…" : "Save outline"}
@@ -571,15 +883,7 @@ export function PlanModelEditor(props: {
         </button>
       </div>
 
-      <p className="muted plan-model-editor__hint">
-        {tool === "outline"
-          ? closed
-            ? "Drag orange handles to reshape, then Save outline. Marks stay hidden until Select / move."
-            : "Click the faded plan to place outline corners (existing marks are hidden). Click the first point to close."
-          : tool === "window" || tool === "door"
-            ? `Tap the plan to place a ${tool} mark. Existing marks are hidden so they don’t block clicks.`
-            : "Existing marks are shown. Drag to move; select one to rename or delete."}
-      </p>
+      <p className="muted plan-model-editor__hint">{hint}</p>
 
       {(status || error) && (
         <p className={error ? "error" : "muted"}>{error ?? status}</p>
@@ -588,10 +892,21 @@ export function PlanModelEditor(props: {
       <div
         ref={sheetRef}
         className={`plan-model-editor__sheet${
-          tool === "outline" && !closed ? " plan-model-editor__sheet--drawing" : ""
-        }${tool === "window" || tool === "door" ? " plan-model-editor__sheet--place" : ""}`}
+          (tool === "outline" && !closed) || tool === "rect"
+            ? " plan-model-editor__sheet--drawing"
+            : ""
+        }${
+          tool === "window" ||
+          tool === "door" ||
+          tool === "divider" ||
+          tool === "wall-window" ||
+          tool === "wall-door"
+            ? " plan-model-editor__sheet--place"
+            : ""
+        }`}
         style={{ aspectRatio: `1 / ${aspect}` }}
         onPointerDown={onSheetPointerDown}
+        onPointerMove={onSheetPointerMove}
       >
         {traceImage ? (
           <img
@@ -614,28 +929,50 @@ export function PlanModelEditor(props: {
           {savedOutlines
             .filter((outline) => outline.id !== activeOutlineId)
             .map((outline) => {
-              const d = outlinePathD(outline.points, aspect);
-              return d ? (
-                <path
-                  key={outline.id}
-                  d={d}
-                  className="plan-model-editor__poly plan-model-editor__poly--inactive"
-                  fill="rgba(255, 106, 26, 0.06)"
-                  stroke="rgba(255, 106, 26, 0.5)"
-                  strokeWidth={3}
-                  strokeLinejoin="round"
-                />
+              const feats = parseOutlineFeatures(outline.features);
+              const stroke =
+                feats.wallOpenings.length > 0
+                  ? outlinePathWithOpenings(outline.points, aspect, feats.wallOpenings)
+                  : outlinePathD(outline.points, aspect);
+              const fill = outlinePathD(outline.points, aspect);
+              return fill ? (
+                <g key={outline.id}>
+                  <path d={fill} fill="rgba(255, 106, 26, 0.06)" stroke="none" />
+                  {stroke && (
+                    <path
+                      d={stroke}
+                      className="plan-model-editor__poly plan-model-editor__poly--inactive"
+                      fill="none"
+                      stroke="rgba(255, 106, 26, 0.5)"
+                      strokeWidth={3}
+                      strokeLinejoin="round"
+                    />
+                  )}
+                  <OutlineFeatureLayer
+                    points={outline.points}
+                    aspect={aspect}
+                    features={feats}
+                    color="rgba(255, 106, 26, 0.5)"
+                  />
+                </g>
               ) : null;
             })}
+
           {closed && pathD ? (
-            <path
-              d={pathD}
-              className="plan-model-editor__poly"
-              fill="rgba(255, 106, 26, 0.12)"
-              stroke="#ff6a1a"
-              strokeWidth={4}
-              strokeLinejoin="round"
-            />
+            <g>
+              <path d={pathD} fill="rgba(255, 106, 26, 0.12)" stroke="none" />
+              {strokePathD && (
+                <path
+                  d={strokePathD}
+                  className="plan-model-editor__poly"
+                  fill="none"
+                  stroke="#ff6a1a"
+                  strokeWidth={4}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              )}
+            </g>
           ) : (
             openPathD && (
               <path
@@ -648,16 +985,67 @@ export function PlanModelEditor(props: {
               />
             )
           )}
-          {points.map((p, i) => (
-            <circle
-              key={`${i}-${p.x}-${p.y}`}
-              cx={p.x * 1000}
-              cy={p.y * h}
-              r={vertexDrag === i ? 14 : 11}
-              className="plan-model-editor__vertex"
-              onPointerDown={beginVertexDrag(i)}
+
+          {closed && (
+            <OutlineFeatureLayer
+              points={points}
+              aspect={aspect}
+              features={features}
+              color="#ff6a1a"
+              selectedFeatureId={selectedFeature?.id ?? null}
+              onSelectFeature={
+                tool === "select"
+                  ? (id, type) => setSelectedFeature({ id, type })
+                  : undefined
+              }
             />
-          ))}
+          )}
+
+          {previewPoints && (
+            <path
+              d={outlinePathD(previewPoints, aspect) ?? undefined}
+              fill="rgba(255, 106, 26, 0.08)"
+              stroke="#ff6a1a"
+              strokeWidth={3}
+              strokeDasharray="10 7"
+            />
+          )}
+
+          {dividerStart && (
+            <>
+              <circle
+                cx={dividerStart.x * 1000}
+                cy={dividerStart.y * h}
+                r={9}
+                fill="#ffd166"
+                stroke="#141210"
+                strokeWidth={2}
+              />
+              {dividerCursor && (
+                <line
+                  x1={dividerStart.x * 1000}
+                  y1={dividerStart.y * h}
+                  x2={dividerCursor.x * 1000}
+                  y2={dividerCursor.y * h}
+                  stroke="#ffd166"
+                  strokeWidth={2.5}
+                  strokeDasharray="10 7"
+                />
+              )}
+            </>
+          )}
+
+          {(tool === "outline" || tool === "rect") &&
+            points.map((p, i) => (
+              <circle
+                key={`${i}-${p.x}-${p.y}`}
+                cx={p.x * 1000}
+                cy={p.y * h}
+                r={vertexDrag === i ? 14 : 11}
+                className="plan-model-editor__vertex"
+                onPointerDown={beginVertexDrag(i)}
+              />
+            ))}
         </svg>
 
         {/* Hide marks while tracing/placing so they don’t steal corner clicks. */}
@@ -696,6 +1084,30 @@ export function PlanModelEditor(props: {
               );
             })}
       </div>
+
+      {selectedFeature && (
+        <div className="plan-model-editor__dot-panel">
+          <span className="muted">
+            {selectedFeature.type === "divider"
+              ? "Section divider selected"
+              : "Wall opening selected"}
+          </span>
+          <button
+            type="button"
+            className="button-like"
+            onClick={deleteSelectedFeature}
+          >
+            Delete
+          </button>
+          <button
+            type="button"
+            className="link"
+            onClick={() => setSelectedFeature(null)}
+          >
+            Deselect
+          </button>
+        </div>
+      )}
 
       {selected && (
         <div className="plan-model-editor__dot-panel">
