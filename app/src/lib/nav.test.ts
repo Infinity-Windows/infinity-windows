@@ -59,6 +59,13 @@ describe("navForRole", () => {
     expect(navForRole("supervisor").more.map((i) => i.to)).toContain("/admin");
     expect(navForRole("owner").more.map((i) => i.to)).toContain("/admin");
   });
+
+  it("surfaces Issues for foreman+ (and up) but never installers", () => {
+    expect(navForRole("installer").rail.map((i) => i.to)).not.toContain("/issues");
+    expect(navForRole("foreman").rail.map((i) => i.to)).toContain("/issues");
+    expect(navForRole("supervisor").rail.map((i) => i.to)).toContain("/issues");
+    expect(navForRole("owner").rail.map((i) => i.to)).toContain("/issues");
+  });
 });
 
 describe("canAccess", () => {

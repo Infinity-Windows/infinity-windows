@@ -41,6 +41,7 @@ import { TypeBrainCard } from "./pages/install/TypeBrainCard";
 import { CatalogImport } from "./pages/CatalogImport";
 import { Crew } from "./pages/Crew";
 import { MyWork } from "./pages/MyWork";
+import { Issues } from "./pages/Issues";
 import { Analytics } from "./pages/Analytics";
 import { MemoReview } from "./pages/MemoReview";
 import { Training } from "./pages/Training";
@@ -173,6 +174,10 @@ export default function App() {
             <Route
               path="/team"
               element={<RequireRole path="/team"><Team /></RequireRole>}
+            />
+            <Route
+              path="/issues"
+              element={<RequireRole path="/issues"><Issues /></RequireRole>}
             />
             <Route path="/scan" element={<Scan />} />
             <Route

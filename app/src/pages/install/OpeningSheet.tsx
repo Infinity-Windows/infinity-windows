@@ -33,6 +33,7 @@ import {
   retryTranscriptions,
 } from "../../lib/install/queue";
 import { MEMO_TOPICS, isForemanPlus, type MemoTopics } from "../../lib/install/types";
+import { createIssue } from "../../lib/issues";
 import { supabase } from "../../lib/supabase";
 
 function pickAudioMime(): string {
@@ -84,6 +85,7 @@ export function OpeningSheet() {
   const [conditionNote, setConditionNote] = useState("");
   const [flagText, setFlagText] = useState("");
   const [jobNoteText, setJobNoteText] = useState("");
+  const [complicationText, setComplicationText] = useState("");
 
   const refreshStatus = () => {
     pendingUploadCount().then(setPending).catch(() => {});
@@ -230,6 +232,50 @@ export function OpeningSheet() {
     onSuccess: () => {
       setMessage("Site note sent to the lead.");
       setJobNoteText("");
+    },
+    onError: (e) => setMessage(String(e)),
+  });
+
+  // Escalate a complication straight to the foreman as an urgent issue.
+  const complication = useMutation({
+    mutationFn: (note: string) =>
+      createIssue({
+        projectId,
+        openingId,
+        kind: "complication",
+        urgency: "urgent",
+        note: note || null,
+      }),
+    onSuccess: () => {
+      setMessage("Complication sent to your foreman.");
+      setComplicationText("");
+      queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["issues"] });
+    },
+    onError: (e) => setMessage(String(e)),
+  });
+
+  // Damaged unit blocks install: ensure the foreman has an issue, then let the
+  // installer move on to their next opening instead of being stuck.
+  const skip = useMutation({
+    mutationFn: async () => {
+      // A damaged unit already opened a damage issue via set_opening_condition;
+      // otherwise open a complication so nothing is silently skipped.
+      if (opening.data?.condition !== "damaged") {
+        await createIssue({
+          projectId,
+          openingId,
+          kind: "complication",
+          urgency: "urgent",
+          note: `Skipped: ${conditionNote || "blocked at opening"}`,
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["issues"] });
+      queryClient.invalidateQueries({ queryKey: ["myOpenings"] });
+      navigate("/my-work");
     },
     onError: (e) => setMessage(String(e)),
   });
@@ -460,7 +506,7 @@ export function OpeningSheet() {
       </div>
 
       {message && (
-        <p className={/^(Window|Install|Rough|Condition|Flag|Flagged|Site)/.test(message) ? "ok" : "error"}>
+        <p className={/^(Window|Install|Rough|Condition|Flag|Flagged|Site|Complication)/.test(message) ? "ok" : "error"}>
           {message}
         </p>
       )}
@@ -748,9 +794,19 @@ export function OpeningSheet() {
             placeholder="Damage note (optional)"
           />
           {o.condition === "damaged" && (
-            <p className="error">
-              Unit flagged damaged. Don't install — swap the unit and re-check.
-            </p>
+            <>
+              <p className="error">
+                Unit flagged damaged. Don't install — swap the unit and re-check.
+                Your foreman has been notified.
+              </p>
+              <button
+                className="action-btn"
+                disabled={skip.isPending}
+                onClick={() => skip.mutate()}
+              >
+                {skip.isPending ? "Skipping…" : "Skip for now — go to my work"}
+              </button>
+            </>
           )}
         </>
       )}
@@ -809,6 +865,24 @@ export function OpeningSheet() {
             onClick={() => postJobNote.mutate(jobNoteText.trim())}
           >
             Send site note
+          </button>
+
+          <label className="field-label">Hit a complication?</label>
+          <p className="muted">
+            Something needs your foreman's attention now — this opens an urgent
+            issue on the cross-job Issues board.
+          </p>
+          <input
+            value={complicationText}
+            onChange={(e) => setComplicationText(e.target.value)}
+            placeholder="e.g. rotten framing, needs a decision"
+          />
+          <button
+            className="action-btn"
+            disabled={!complicationText.trim() || complication.isPending}
+            onClick={() => complication.mutate(complicationText.trim())}
+          >
+            I have a complication — notify foreman
           </button>
         </details>
       )}

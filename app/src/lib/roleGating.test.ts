@@ -89,6 +89,7 @@ describe("minRoleForPath matches page-level gating", () => {
       "/catalog",
       "/supplies",
       "/team",
+      "/issues",
     ]) {
       expect(minRoleForPath(path)).toBe("foreman");
     }
