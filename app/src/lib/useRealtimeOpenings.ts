@@ -3,6 +3,23 @@ import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "./supabase";
 
 /**
+ * Realtime channels are keyed by topic inside the Supabase client: calling
+ * `supabase.channel(topic)` returns the EXISTING channel if one with that topic
+ * is already registered. Because `removeChannel()` is async, a fast effect
+ * re-run (a dependency change, or React's dev double-invoke) can hand back a
+ * channel that has already been `.subscribe()`d — and then `.on()` throws
+ * "cannot add postgres_changes callbacks after subscribe()", crashing the tree.
+ * A unique suffix guarantees every subscription gets its own fresh channel.
+ */
+function uniqueTopic(base: string): string {
+  const rand =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2);
+  return `${base}-${rand}`;
+}
+
+/**
  * Keep openings fresh across every crew device. Subscribes to Postgres changes
  * on project_openings for one job and invalidates the relevant React Query
  * keys so the lead board and each installer's "My Work" update live — this is
@@ -21,7 +38,7 @@ export function useRealtimeOpenings(projectId: string | undefined) {
     };
 
     const channel = supabase
-      .channel(`openings-${projectId}`)
+      .channel(uniqueTopic(`openings-${projectId}`))
       .on(
         "postgres_changes",
         {
@@ -57,7 +74,7 @@ export function useRealtimeAllOpenings(enabled: boolean) {
     };
 
     const channel = supabase
-      .channel("heartbeat-all-openings")
+      .channel(uniqueTopic("heartbeat-all-openings"))
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "project_openings" },
@@ -93,7 +110,7 @@ export function useRealtimeMyOpenings(installerId: string | undefined) {
     };
 
     const channel = supabase
-      .channel(`my-openings-${installerId}`)
+      .channel(uniqueTopic(`my-openings-${installerId}`))
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "project_openings" },
