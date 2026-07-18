@@ -9,6 +9,7 @@ import {
   getMyProfile,
   linkSpecsToOpenings,
   listOpenings,
+  listPlanOutlines,
   listPlansets,
   listVoidedInstallOpeningIds,
   saveDraftOpenings,
@@ -38,9 +39,12 @@ import {
 } from "../../lib/install/extract";
 import {
   extractBuildingOutline,
+  outlinePathD,
   perimeterPositions,
+  preferOutline,
   type BuildingOutline,
 } from "../../lib/install/outline";
+import { PlanModelEditor } from "./PlanModelEditor";
 
 function plansetLabel(ps: Planset): string {
   return ps.storage_path.split("/").pop() ?? ps.storage_path;
@@ -121,6 +125,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const [buildingPlansetId, setBuildingPlansetId] = useState<string | null>(null);
   const [specsPlansetId, setSpecsPlansetId] = useState<string | null>(null);
   const [extractNote, setExtractNote] = useState<string | null>(null);
+  const [editingModel, setEditingModel] = useState(false);
 
   const matchesFilter = (o: ProjectOpening): boolean => {
     switch (filter) {
@@ -148,6 +153,14 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     queryFn: () => listPlansets(projectId),
   });
   const types = useQuery({ queryKey: ["windowTypes"], queryFn: listWindowTypes });
+  const planOutlines = useQuery({
+    queryKey: ["planOutlines", projectId, buildingPlansetId],
+    queryFn: () =>
+      buildingPlansetId
+        ? listPlanOutlines(projectId, buildingPlansetId)
+        : Promise.resolve([]),
+    enabled: !!buildingPlansetId,
+  });
   const voided = useQuery({
     queryKey: ["voidedOpenings", projectId],
     queryFn: () => listVoidedInstallOpeningIds(projectId),
@@ -473,9 +486,27 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const activePlanset = view === "details" ? specsPdf : buildingPdf;
   const activeDetail = details.find((detail) => detail.pageNumber === page);
 
-  const outline = outlines[page] ?? null;
-  const outlineLoading = view === "outline" && outlines[page] === undefined;
-  const aspect = outline?.pageAspect ?? 0.7;
+  const extractedOutline = outlines[page] ?? null;
+  const manualOutlineRow = (planOutlines.data ?? []).find(
+    (o) => o.page_number === page,
+  );
+  const manualOutline: BuildingOutline | null = manualOutlineRow
+    ? {
+        points: manualOutlineRow.points,
+        pageAspect: manualOutlineRow.page_aspect,
+      }
+    : null;
+  const outline = preferOutline(manualOutline, extractedOutline);
+  const outlineLoading =
+    view === "outline" &&
+    !manualOutline &&
+    outlines[page] === undefined &&
+    !planOutlines.isLoading;
+  const aspect =
+    outline?.pageAspect ??
+    manualOutline?.pageAspect ??
+    extractedOutline?.pageAspect ??
+    0.7;
 
   const autoIds = autos.map((o) => o.id).join(",");
   const autoPositions = useMemo(() => {
@@ -556,6 +587,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
 
   const showView = (next: DrawingView, nextPage?: number) => {
     setView(next);
+    if (next !== "outline") setEditingModel(false);
     const pages =
       next === "details"
         ? detailPages.length > 0
@@ -591,18 +623,10 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       )
     : null;
 
-  const outlinePath = useMemo(() => {
-    if (!outline || outline.points.length < 3) return null;
-    const h = 1000 * aspect;
-    return (
-      outline.points
-        .map(
-          (p, i) =>
-            `${i === 0 ? "M" : "L"}${(p.x * 1000).toFixed(1)} ${(p.y * h).toFixed(1)}`,
-        )
-        .join(" ") + " Z"
-    );
-  }, [outline, aspect]);
+  const outlinePath = useMemo(
+    () => (outline ? outlinePathD(outline.points, aspect) : null),
+    [outline, aspect],
+  );
 
   const renderDetailCard = (o: ProjectOpening) => {
     const kind = unitKind(o);
@@ -981,12 +1005,28 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             </span>
             <div className="cartoon-sheet__head-actions">
               <span className="cartoon-sheet__status">
-                {outlineLoading
-                  ? "tracing plan…"
-                  : outlinePath
-                    ? "outline from CAD"
-                    : "outline unavailable — schematic"}
+                {editingModel
+                  ? "editing model"
+                  : outlineLoading
+                    ? "tracing plan…"
+                    : manualOutline
+                      ? "manual outline"
+                      : outlinePath
+                        ? "outline from CAD"
+                        : "outline unavailable — schematic"}
               </span>
+              {!editingModel && (
+                <button
+                  type="button"
+                  className="button-like"
+                  onClick={() => {
+                    setEditingModel(true);
+                    setFullScreen(false);
+                  }}
+                >
+                  Edit model
+                </button>
+              )}
               <button
                 type="button"
                 className="plan-fullscreen-toggle"
@@ -994,49 +1034,69 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 aria-label={fullScreen ? "Exit full screen" : "Full screen"}
                 onClick={() => setFullScreen((v) => !v)}
               >
-                {fullScreen ? "⛶" : "⛶"}
+                ⛶
               </button>
             </div>
           </div>
-          <div
-            ref={sheetRef}
-            className="cartoon-sheet"
-            style={fullScreen ? undefined : { aspectRatio: `1 / ${aspect}` }}
-          >
-            <svg
-              viewBox={`0 0 1000 ${Math.round(1000 * aspect)}`}
-              preserveAspectRatio="none"
-              aria-hidden
-            >
-              {outlinePath ? (
-                <path
-                  d={outlinePath}
-                  fill="rgba(163, 156, 146, 0.06)"
-                  stroke="rgba(163, 156, 146, 0.6)"
-                  strokeWidth={3}
-                  strokeLinejoin="round"
-                />
-              ) : (
-                !outlineLoading && (
-                  <rect
-                    x={120}
-                    y={0.15 * 1000 * aspect}
-                    width={760}
-                    height={0.7 * 1000 * aspect}
-                    rx={10}
-                    fill="rgba(163, 156, 146, 0.06)"
-                    stroke="rgba(163, 156, 146, 0.6)"
-                    strokeWidth={3}
-                  />
-                )
-              )}
-            </svg>
-            {renderOpeningDots()}
-            <div className="cartoon-sheet__source">
-              FROM CAD · {buildingPdf.storage_path.split("/").pop()}
-            </div>
-          </div>
-          {selectedOpening && renderDetailCard(selectedOpening)}
+          {editingModel ? (
+            <PlanModelEditor
+              projectId={projectId}
+              planset={buildingPdf}
+              page={page}
+              openings={all}
+              manualOutline={manualOutline}
+              extractedOutline={extractedOutline}
+              pageAspect={aspect}
+              onClose={() => setEditingModel(false)}
+            />
+          ) : (
+            <>
+              <div
+                ref={sheetRef}
+                className="cartoon-sheet"
+                style={fullScreen ? undefined : { aspectRatio: `1 / ${aspect}` }}
+              >
+                <svg
+                  viewBox={`0 0 1000 ${Math.round(1000 * aspect)}`}
+                  preserveAspectRatio="none"
+                  aria-hidden
+                >
+                  {outlinePath ? (
+                    <path
+                      d={outlinePath}
+                      fill="rgba(163, 156, 146, 0.06)"
+                      stroke={
+                        manualOutline
+                          ? "rgba(255, 106, 26, 0.85)"
+                          : "rgba(163, 156, 146, 0.6)"
+                      }
+                      strokeWidth={3}
+                      strokeLinejoin="round"
+                    />
+                  ) : (
+                    !outlineLoading && (
+                      <rect
+                        x={120}
+                        y={0.15 * 1000 * aspect}
+                        width={760}
+                        height={0.7 * 1000 * aspect}
+                        rx={10}
+                        fill="rgba(163, 156, 146, 0.06)"
+                        stroke="rgba(163, 156, 146, 0.6)"
+                        strokeWidth={3}
+                      />
+                    )
+                  )}
+                </svg>
+                {renderOpeningDots()}
+                <div className="cartoon-sheet__source">
+                  {manualOutline ? "MANUAL MODEL" : "FROM CAD"} ·{" "}
+                  {buildingPdf.storage_path.split("/").pop()}
+                </div>
+              </div>
+              {selectedOpening && renderDetailCard(selectedOpening)}
+            </>
+          )}
         </div>
       )}
 
