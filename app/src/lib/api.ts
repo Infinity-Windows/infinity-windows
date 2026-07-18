@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import type { Issue } from "./issues";
 import type {
   Location,
   Movement,
@@ -217,6 +218,42 @@ export async function preissueProjectUnits(
   });
   if (error) throw error;
   return (data ?? []) as WindowUnit[];
+}
+
+/**
+ * Receive a physical unit against the plan: match a scanned/typed code to its
+ * pre_issued ID and activate it (-> in_warehouse, or damaged + a damage issue
+ * when `damaged`). Optionally drop it straight into a storage location.
+ * Foreman+ only (enforced by the RPC). Returns the activated unit.
+ */
+export async function activatePreissuedUnit(
+  code: string,
+  locationId?: string | null,
+  damaged = false,
+): Promise<WindowUnit> {
+  const { data, error } = await supabase.rpc("activate_preissued_unit", {
+    p_code: code,
+    p_location_id: locationId ?? null,
+    p_damaged: damaged,
+    p_actor: await actor(),
+  });
+  if (error) throw error;
+  return data as WindowUnit;
+}
+
+/**
+ * Foreman-triggered delivery reconcile: flag every still-pre_issued unit for a
+ * project as a 'missing' issue (deduped per unit). Returns the issues opened.
+ * Foreman+ only (enforced by the RPC).
+ */
+export async function reconcileProjectDeliveries(
+  projectId: string,
+): Promise<Issue[]> {
+  const { data, error } = await supabase.rpc("reconcile_project_deliveries", {
+    p_project_id: projectId,
+  });
+  if (error) throw error;
+  return (data ?? []) as Issue[];
 }
 
 export async function moveWindow(

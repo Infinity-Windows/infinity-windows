@@ -12,7 +12,8 @@ export type IssueKind =
   | "flag"
   | "damage"
   | "blocker"
-  | "complication";
+  | "complication"
+  | "missing";
 export type IssueUrgency = "normal" | "urgent" | "emergency";
 export type IssueStatus = "open" | "resolved";
 
@@ -20,6 +21,8 @@ export interface Issue {
   id: string;
   project_id: string;
   opening_id: string | null;
+  /** Physical unit this issue is about (damage/missing), if unit-level. */
+  window_id: string | null;
   kind: IssueKind;
   urgency: IssueUrgency;
   status: IssueStatus;
@@ -50,6 +53,7 @@ export const KIND_LABELS: Record<IssueKind, string> = {
   damage: "Damage",
   blocker: "Blocker",
   complication: "Complication",
+  missing: "Missing delivery",
 };
 
 /**
