@@ -38,12 +38,17 @@ import {
   summarizeDraftMarks,
 } from "../../lib/install/extract";
 import {
+  outlinePathWithOpenings,
+  parseOutlineFeatures,
+} from "../../lib/install/cad";
+import {
   extractBuildingOutline,
   outlinePathD,
   perimeterPositions,
   preferOutline,
   type BuildingOutline,
 } from "../../lib/install/outline";
+import { OutlineFeatureLayer } from "./OutlineFeatureLayer";
 import { PlanModelEditor } from "./PlanModelEditor";
 
 function plansetLabel(ps: Planset): string {
@@ -635,11 +640,18 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const manualOutlinePaths = useMemo(
     () =>
       manualOutlineRows
-        .map((row) => ({
-          id: row.id,
-          d: outlinePathD(row.points, aspect),
-        }))
-        .filter((path): path is { id: string; d: string } => !!path.d),
+        .map((row) => {
+          const features = parseOutlineFeatures(row.features);
+          const fill = outlinePathD(row.points, aspect);
+          const stroke =
+            features.wallOpenings.length > 0
+              ? outlinePathWithOpenings(row.points, aspect, features.wallOpenings)
+              : fill;
+          return { id: row.id, points: row.points, fill, stroke, features };
+        })
+        .filter(
+          (path): path is typeof path & { fill: string } => !!path.fill,
+        ),
     [manualOutlineRows, aspect],
   );
 
@@ -1081,14 +1093,29 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 >
                   {manualOutlinePaths.length > 0 ? (
                     manualOutlinePaths.map((path) => (
-                      <path
-                        key={path.id}
-                        d={path.d}
-                        fill="rgba(163, 156, 146, 0.06)"
-                        stroke="rgba(255, 106, 26, 0.85)"
-                        strokeWidth={3}
-                        strokeLinejoin="round"
-                      />
+                      <g key={path.id}>
+                        <path
+                          d={path.fill}
+                          fill="rgba(163, 156, 146, 0.06)"
+                          stroke="none"
+                        />
+                        {path.stroke && (
+                          <path
+                            d={path.stroke}
+                            fill="none"
+                            stroke="rgba(255, 106, 26, 0.85)"
+                            strokeWidth={3}
+                            strokeLinejoin="round"
+                            strokeLinecap="round"
+                          />
+                        )}
+                        <OutlineFeatureLayer
+                          points={path.points}
+                          aspect={aspect}
+                          features={path.features}
+                          color="rgba(255, 106, 26, 0.85)"
+                        />
+                      </g>
                     ))
                   ) : outlinePath ? (
                     <path

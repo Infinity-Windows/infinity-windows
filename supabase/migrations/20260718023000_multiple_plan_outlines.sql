@@ -1,5 +1,5 @@
--- A planset page can contain multiple disconnected building footprints.
--- Keep each hand-traced polygon as its own row.
+-- Ensure multiple manual outlines are allowed per planset page.
+-- Safe to re-run after 20260718010000_manual_plan_outlines.sql.
 
 alter table project_plan_outlines
   drop constraint if exists project_plan_outlines_planset_id_page_number_key;

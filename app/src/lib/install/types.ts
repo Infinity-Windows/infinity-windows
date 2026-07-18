@@ -30,6 +30,8 @@ export interface PlanOutline {
   page_number: number;
   points: { x: number; y: number }[];
   page_aspect: number;
+  /** CAD-lite extras: divider lines + wall openings (see lib/install/cad.ts). */
+  features: unknown;
   created_at: string;
   updated_at: string;
 }

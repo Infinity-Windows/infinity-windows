@@ -29,7 +29,16 @@ export function pushToast(message: string, kind: Toast["kind"] = "info"): void {
 
 export function toastError(err: unknown, fallback = "Something went wrong"): void {
   const message =
-    err instanceof Error ? err.message : typeof err === "string" ? err : fallback;
+    err instanceof Error
+      ? err.message
+      : typeof err === "string"
+        ? err
+        : typeof err === "object" &&
+            err &&
+            "message" in err &&
+            typeof (err as { message: unknown }).message === "string"
+          ? (err as { message: string }).message
+          : fallback;
   pushToast(message || fallback, "error");
 }
 
