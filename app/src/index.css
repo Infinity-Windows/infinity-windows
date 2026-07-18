@@ -3062,6 +3062,28 @@ button.clock-out {
   padding: 0 12px 24px;
 }
 
+/* Horizon-style grouped sections inside the desktop/tablet sidebar. */
+.rail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rail-section + .rail-section {
+  margin-top: 10px;
+}
+
+.rail-section-title {
+  margin: 0;
+  padding: 10px 12px 4px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
 /* View-as switcher pinned to the bottom of the desktop rail (owner/supervisor). */
 .rail-viewas {
   margin-top: auto;
