@@ -1,0 +1,52 @@
+---
+description: Write PR title & body in plain English so the Slack changelog auto-post reads well
+alwaysApply: true
+---
+
+# Plain-English changelog to Slack (auto-posted)
+
+A GitHub Action already posts every change to the Infinity Windows Slack
+changelog automatically — once when a PR is **opened** ("Proposed change, not
+yet merged") and again when it **merges to master** ("Shipped to master"). You
+do **not** post to Slack yourself, and you must **not** use the Slack MCP for
+this. There is nothing to send by hand.
+
+Because the Action can only see the **PR title** and **PR body**, your job is
+simply to write both in very plain, human, non-technical English so the
+auto-post reads well for a non-technical reader (crew & office — Taylor &
+Ammon).
+
+## Write it like a person, not a changelog bot
+
+The reader is **non-technical**. Describe, in everyday language, **what changed
+and why it matters to crew/office**, and **whether it's live**. Do **not**
+mention file names, functions, or technical terms unless there is truly no plain
+way to say it.
+
+- **PR title:** a short, plain-English "what changed for users" (not
+  commit-speak). e.g. "Keep installers signed in for the whole workday".
+- **PR body:** start with 1–3 plain sentences on what changed, why it helps, and
+  whether it's live, before any technical detail. The Action posts the title
+  plus the first part of the body, so the human summary must come first.
+
+GOOD:
+
+```
+Making installer sign-in faster
+
+Right now crew have to re-enter their PIN too often. This change keeps them
+signed in for the whole workday so they can get to their jobs quicker. Not live
+yet — this is under review.
+```
+
+BAD (never write like this):
+
+```
+Refactored auth session persistence in App.tsx; bumped maxAge to 7d.
+```
+
+More guidance:
+- Describe user-visible impact first; skip internal noise (lockfile bumps,
+  formatting-only churn) unless that was the whole point of the task.
+- Say plainly whether the change is live yet or still under review.
+- Never include secrets, tokens, or credentials in the title or body.
