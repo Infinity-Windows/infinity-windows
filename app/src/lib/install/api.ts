@@ -5,6 +5,7 @@ import { markBase } from "./extract";
 import type {
   InstallEvent,
   MemoTopics,
+  PlanOutline,
   Planset,
   PlansetFormat,
   PlansetKind,
@@ -597,6 +598,263 @@ export async function downloadPlanset(planset: Planset): Promise<ArrayBuffer> {
   return data.arrayBuffer();
 }
 
+// --- Manual plan outlines ---
+
+const LOCAL_OUTLINES_KEY = "infinity.planOutlines.v1";
+
+function isMissingOutlineTable(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: unknown; message?: unknown };
+  if (e.code === "PGRST205") return true;
+  const message = typeof e.message === "string" ? e.message.toLowerCase() : "";
+  return message.includes("project_plan_outlines");
+}
+
+function isMissingFeaturesColumn(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: unknown; message?: unknown };
+  const message = typeof e.message === "string" ? e.message.toLowerCase() : "";
+  return e.code === "PGRST204" && message.includes("features");
+}
+
+function readLocalOutlines(): PlanOutline[] {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(LOCAL_OUTLINES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((row) => {
+        try {
+          return parseOutlineRow(row as Parameters<typeof parseOutlineRow>[0]);
+        } catch {
+          return null;
+        }
+      })
+      .filter((row): row is PlanOutline => !!row);
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalOutlines(rows: PlanOutline[]): void {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(LOCAL_OUTLINES_KEY, JSON.stringify(rows));
+}
+
+function listLocalOutlines(
+  projectId: string,
+  plansetId?: string,
+): PlanOutline[] {
+  return readLocalOutlines()
+    .filter(
+      (row) =>
+        row.project_id === projectId &&
+        (!plansetId || row.planset_id === plansetId),
+    )
+    .sort(
+      (a, b) =>
+        a.page_number - b.page_number ||
+        a.created_at.localeCompare(b.created_at),
+    );
+}
+
+function saveLocalOutline(args: {
+  outlineId?: string;
+  projectId: string;
+  plansetId: string;
+  pageNumber: number;
+  points: { x: number; y: number }[];
+  pageAspect: number;
+  features?: unknown;
+}): PlanOutline {
+  const now = new Date().toISOString();
+  const rows = readLocalOutlines();
+  if (args.outlineId) {
+    const idx = rows.findIndex((row) => row.id === args.outlineId);
+    if (idx >= 0) {
+      const next: PlanOutline = {
+        ...rows[idx],
+        project_id: args.projectId,
+        planset_id: args.plansetId,
+        page_number: args.pageNumber,
+        points: args.points,
+        page_aspect: args.pageAspect,
+        features: args.features ?? rows[idx].features ?? {},
+        updated_at: now,
+      };
+      rows[idx] = next;
+      writeLocalOutlines(rows);
+      return next;
+    }
+  }
+  const created: PlanOutline = {
+    id: args.outlineId ?? crypto.randomUUID(),
+    project_id: args.projectId,
+    planset_id: args.plansetId,
+    page_number: args.pageNumber,
+    points: args.points,
+    page_aspect: args.pageAspect,
+    features: args.features ?? {},
+    created_at: now,
+    updated_at: now,
+  };
+  writeLocalOutlines([...rows, created]);
+  return created;
+}
+
+function deleteLocalOutline(
+  plansetId: string,
+  pageNumber: number,
+  outlineId?: string,
+): void {
+  writeLocalOutlines(
+    readLocalOutlines().filter((row) => {
+      if (row.planset_id !== plansetId || row.page_number !== pageNumber) {
+        return true;
+      }
+      if (outlineId) return row.id !== outlineId;
+      return false;
+    }),
+  );
+}
+
+function parseOutlineRow(row: {
+  id: string;
+  project_id: string;
+  planset_id: string;
+  page_number: number;
+  points: unknown;
+  page_aspect: number | string;
+  features?: unknown;
+  created_at: string;
+  updated_at: string;
+}): PlanOutline {
+  const raw = Array.isArray(row.points) ? row.points : [];
+  const points = raw
+    .map((p) => {
+      if (!p || typeof p !== "object") return null;
+      const x = Number((p as { x?: unknown }).x);
+      const y = Number((p as { y?: unknown }).y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+      return {
+        x: Math.min(1, Math.max(0, x)),
+        y: Math.min(1, Math.max(0, y)),
+      };
+    })
+    .filter((p): p is { x: number; y: number } => !!p);
+  return {
+    id: row.id,
+    project_id: row.project_id,
+    planset_id: row.planset_id,
+    page_number: row.page_number,
+    points,
+    page_aspect: Number(row.page_aspect) || 0.7,
+    features: row.features ?? {},
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+export async function listPlanOutlines(
+  projectId: string,
+  plansetId?: string,
+): Promise<PlanOutline[]> {
+  let q = supabase
+    .from("project_plan_outlines")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("page_number")
+    .order("created_at");
+  if (plansetId) q = q.eq("planset_id", plansetId);
+  const { data, error } = await q;
+  if (error) {
+    if (isMissingOutlineTable(error)) {
+      return listLocalOutlines(projectId, plansetId);
+    }
+    throw error;
+  }
+  const remote = (data ?? []).map(parseOutlineRow);
+  // Keep any browser-local drafts until the DB table is available everywhere.
+  const local = listLocalOutlines(projectId, plansetId);
+  if (local.length === 0) return remote;
+  const byId = new Map(remote.map((row) => [row.id, row]));
+  for (const row of local) byId.set(row.id, row);
+  return [...byId.values()].sort(
+    (a, b) =>
+      a.page_number - b.page_number ||
+      a.created_at.localeCompare(b.created_at),
+  );
+}
+
+export async function savePlanOutline(args: {
+  outlineId?: string;
+  projectId: string;
+  plansetId: string;
+  pageNumber: number;
+  points: { x: number; y: number }[];
+  pageAspect: number;
+  features?: unknown;
+}): Promise<PlanOutline> {
+  const values: Record<string, unknown> = {
+    project_id: args.projectId,
+    planset_id: args.plansetId,
+    page_number: args.pageNumber,
+    points: args.points,
+    page_aspect: args.pageAspect,
+    updated_at: new Date().toISOString(),
+  };
+  if (args.features !== undefined) values.features = args.features;
+  const run = async (vals: Record<string, unknown>) => {
+    const query = args.outlineId
+      ? supabase
+          .from("project_plan_outlines")
+          .update(vals)
+          .eq("id", args.outlineId)
+      : supabase.from("project_plan_outlines").insert(vals);
+    return query.select("*").single();
+  };
+  let { data, error } = await run(values);
+  if (error && "features" in values && isMissingFeaturesColumn(error)) {
+    // DB has the table but not the newer features column yet.
+    const { features: _skipped, ...withoutFeatures } = values;
+    ({ data, error } = await run(withoutFeatures));
+  }
+  if (error) {
+    if (isMissingOutlineTable(error)) {
+      return saveLocalOutline(args);
+    }
+    throw error;
+  }
+  const saved = parseOutlineRow(data);
+  // Drop the local copy once the row is on the server.
+  deleteLocalOutline(args.plansetId, args.pageNumber, saved.id);
+  return saved;
+}
+
+export async function deletePlanOutline(
+  plansetId: string,
+  pageNumber: number,
+  outlineId?: string,
+): Promise<void> {
+  let query = supabase
+    .from("project_plan_outlines")
+    .delete()
+    .eq("planset_id", plansetId)
+    .eq("page_number", pageNumber);
+  if (outlineId) query = query.eq("id", outlineId);
+  const { error } = await query;
+  if (error) {
+    if (isMissingOutlineTable(error)) {
+      deleteLocalOutline(plansetId, pageNumber, outlineId);
+      return;
+    }
+    throw error;
+  }
+  deleteLocalOutline(plansetId, pageNumber, outlineId);
+}
+
 // --- Openings ---
 
 export async function listOpenings(
@@ -626,6 +884,9 @@ export async function getOpening(id: string): Promise<ProjectOpening | null> {
  * the Horizon BOM rule): confirmed openings are never deleted or overwritten
  * by a re-extract — only unconfirmed drafts are replaced, and draft codes
  * that collide with confirmed openings are skipped.
+ *
+ * Manually placed pins on unconfirmed drafts are preserved across re-extract
+ * when the same opening_code comes back.
  */
 export async function saveDraftOpenings(
   projectId: string,
@@ -636,7 +897,7 @@ export async function saveDraftOpenings(
 
   const { data: existing, error: exErr } = await supabase
     .from("project_openings")
-    .select("id, opening_code, confirmed, status")
+    .select("id, opening_code, confirmed, status, pin_x, pin_y, page_number")
     .eq("project_id", projectId);
   if (exErr) throw exErr;
 
@@ -647,6 +908,19 @@ export async function saveDraftOpenings(
   const confirmedCodes = new Set(
     existing.filter(isProtected).map((o) => o.opening_code),
   );
+  const preservedPins = new Map<
+    string,
+    { pin_x: number; pin_y: number; page_number: number }
+  >();
+  for (const o of existing) {
+    if (isProtected(o)) continue;
+    if (o.pin_x == null || o.pin_y == null) continue;
+    preservedPins.set(o.opening_code, {
+      pin_x: Number(o.pin_x),
+      pin_y: Number(o.pin_y),
+      page_number: o.page_number,
+    });
+  }
   const staleDraftIds = existing.filter((o) => !isProtected(o)).map((o) => o.id);
 
   if (staleDraftIds.length > 0) {
@@ -662,15 +936,20 @@ export async function saveDraftOpenings(
   if (fresh.length === 0) return { inserted: 0, skipped };
 
   const { error } = await supabase.from("project_openings").insert(
-    fresh.map((d) => ({
-      project_id: projectId,
-      planset_id: plansetId,
-      opening_code: d.opening_code,
-      window_type_id: d.window_type_id,
-      label: d.label,
-      page_number: d.page_number,
-      confirmed: false,
-    })),
+    fresh.map((d) => {
+      const kept = preservedPins.get(d.opening_code);
+      return {
+        project_id: projectId,
+        planset_id: plansetId,
+        opening_code: d.opening_code,
+        window_type_id: d.window_type_id,
+        label: d.label,
+        page_number: kept?.page_number ?? d.page_number,
+        pin_x: kept?.pin_x ?? d.pin_x ?? null,
+        pin_y: kept?.pin_y ?? d.pin_y ?? null,
+        confirmed: false,
+      };
+    }),
   );
   if (error) throw error;
   return { inserted: fresh.length, skipped };
@@ -851,11 +1130,17 @@ export async function addOpening(
     window_type_id?: string | null;
     label?: string | null;
     page_number?: number;
+    planset_id?: string | null;
+    pin_x?: number | null;
+    pin_y?: number | null;
+    /** Manual map dots stay confirmed so re-extract will not wipe them. */
+    confirmed?: boolean;
   },
 ): Promise<ProjectOpening> {
+  const { confirmed = true, ...rest } = opening;
   const { data, error } = await supabase
     .from("project_openings")
-    .insert({ project_id: projectId, confirmed: true, ...opening })
+    .insert({ project_id: projectId, confirmed, ...rest })
     .select(OPENING_SELECT)
     .single();
   if (error) throw error;

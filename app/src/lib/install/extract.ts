@@ -3,6 +3,11 @@
 // nothing. Specs plansets define what a mark (#14) *is*; qty expands into
 // individual openings for install tracking (14-1, 14-2, …).
 
+import {
+  mergeScheduleWithDetailRows,
+  parseCadDetailScheduleRows,
+} from "./planDetails";
+
 export interface ScheduleRow {
   /** Opening mark on the plans, e.g. W1, A-101, #14, 14 */
   openingCode: string;
@@ -48,6 +53,9 @@ export interface DraftOpening {
   height_in: number | null;
   color: string | null;
   kind: "window" | "door";
+  /** Normalized pin on the building plan when taken from a plan callout. */
+  pin_x?: number | null;
+  pin_y?: number | null;
 }
 
 /** AI fallback implements this; deterministic parser is the default. */
@@ -59,17 +67,31 @@ export const deterministicExtract: ExtractStrategy = (pages) =>
   pages.flatMap((p) => parseScheduleRows(p.text, p.pageNumber));
 
 /**
- * Run deterministic extract first; if empty and an AI fallback is provided,
- * use that. Same draft/confirm guardrails apply downstream either way.
+ * Run deterministic schedule extract, then fill missing marks from
+ * manufacturer CAD detail sheets (#4A / #4B style). AI only runs when both
+ * paths find nothing. Same draft/confirm guardrails apply downstream.
  */
 export async function extractScheduleRows(
   pages: { pageNumber: number; text: string }[],
   aiFallback?: ExtractStrategy | null,
-): Promise<{ rows: ScheduleRow[]; source: "deterministic" | "ai" | "none" }> {
+): Promise<{
+  rows: ScheduleRow[];
+  source: "deterministic" | "ai" | "details" | "merged" | "none";
+}> {
   const deterministic = await deterministicExtract(pages);
-  if (deterministic.length > 0) {
-    return { rows: deterministic, source: "deterministic" };
+  const detailRows = parseCadDetailScheduleRows(pages);
+  const merged = mergeScheduleWithDetailRows(deterministic, detailRows);
+
+  if (merged.length > 0) {
+    if (deterministic.length > 0 && detailRows.length > 0) {
+      return { rows: merged, source: "merged" };
+    }
+    if (deterministic.length > 0) {
+      return { rows: merged, source: "deterministic" };
+    }
+    return { rows: merged, source: "details" };
   }
+
   if (aiFallback) {
     const aiRows = await aiFallback(pages);
     if (aiRows.length > 0) return { rows: aiRows, source: "ai" };
@@ -181,6 +203,17 @@ export function parseScheduleRows(
     const markUpper = fields[0].toUpperCase();
     if (!MARK_RE.test(markUpper)) continue;
     const mark = normalizeMark(markUpper);
+
+    // Bare 4-digit product codes (6080 XO / 3060 FIXED) are manufacturer
+    // catalog sizes, not schedule marks — skip those lines.
+    const rest = fields.slice(1).map((f) => f.trim()).filter(Boolean);
+    if (
+      /^\d{4}$/.test(mark) &&
+      (rest.length === 0 ||
+        rest.every((f) => /^(XO|OX|FX|SC|FIXED|FROSTED)$/i.test(f)))
+    ) {
+      continue;
+    }
 
     let typeText: string | null = null;
     let qty = 1;
@@ -335,9 +368,77 @@ export function rowsToDraftOpenings(
         height_in: row.heightIn,
         color: row.color,
         kind: row.kind,
+        pin_x: null,
+        pin_y: null,
       });
     }
   }
+  return drafts;
+}
+
+/**
+ * One draft per building-plan callout (pinned). Spec/detail rows enrich
+ * product, size, and kind when the same mark appears there — so #6 ×12 on
+ * the marked plan becomes twelve openings even when CAD text has no QTY.
+ */
+export function calloutsToDraftOpenings(
+  callouts: {
+    mark: string;
+    pageNumber: number;
+    x: number;
+    y: number;
+  }[],
+  enrichRows: ScheduleRow[],
+  types: TypeCandidate[],
+): DraftOpening[] {
+  const byMark = new Map<string, typeof callouts>();
+  for (const callout of callouts) {
+    const list = byMark.get(callout.mark) ?? [];
+    list.push(callout);
+    byMark.set(callout.mark, list);
+  }
+
+  const enrichByMark = new Map<string, ScheduleRow>();
+  for (const row of enrichRows) {
+    const key = markBase(row.openingCode);
+    const existing = enrichByMark.get(key);
+    if (!existing) enrichByMark.set(key, row);
+  }
+
+  const drafts: DraftOpening[] = [];
+  const marks = [...byMark.keys()].sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true }),
+  );
+
+  for (const mark of marks) {
+    const list = byMark.get(mark)!;
+    const enrich = enrichByMark.get(mark);
+    const typeText = enrich?.typeText ?? mark;
+    const match = matchWindowType(typeText, types, 0.6, mark);
+    const codes =
+      list.length === 1
+        ? [mark]
+        : list.map((_, index) => `${mark}-${index + 1}`);
+
+    list.forEach((callout, index) => {
+      drafts.push({
+        opening_code: codes[index],
+        window_type_id: match.type?.id ?? null,
+        type_text: typeText,
+        match_score: match.score,
+        label: enrich?.label ?? null,
+        page_number: callout.pageNumber,
+        mark_code: mark,
+        width_in: enrich?.widthIn ?? null,
+        height_in: enrich?.heightIn ?? null,
+        color: enrich?.color ?? null,
+        kind: enrich?.kind ?? "window",
+        pin_x: callout.x,
+        pin_y: callout.y,
+      });
+    });
+  }
+
   return drafts;
 }
 

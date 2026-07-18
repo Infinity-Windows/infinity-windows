@@ -13,6 +13,7 @@ import {
   aiExtractSchedule,
 } from "../../lib/install/api";
 import {
+  calloutsToDraftOpenings,
   extractScheduleRows,
   rowsToDraftOpenings,
   summarizeDraftMarks,
@@ -69,22 +70,43 @@ export function PlansetUpload() {
         };
       }
 
-      const { extractAllText, loadPdf } = await import("../../lib/install/pdf");
+      const { extractAllText, extractPlanMarkCallouts, loadPdf } = await import(
+        "../../lib/install/pdf"
+      );
       const doc = await loadPdf(await file.arrayBuffer());
       await updatePlanset(planset.id, {
         status: kind === "specs" ? "extracting" : "ready",
         page_count: doc.numPages,
       });
 
-      // Building plans are map backgrounds only in v1 (outline/mark detect later).
+      // Marked building plans carry FreeText callouts (#6 ×12, etc.).
       if (kind === "building") {
+        setProgress("Reading mark callouts on the building plan…");
+        const callouts = await extractPlanMarkCallouts(doc);
+        if (callouts.length === 0) {
+          return {
+            planset,
+            kind,
+            drafts: 0,
+            skipped: 0,
+            linked: 0,
+            converted: true,
+          };
+        }
+        let drafts = calloutsToDraftOpenings(callouts, [], types.data ?? []);
+        drafts = await ensureTypesFromSpecs(drafts);
+        const linked = await linkSpecsToOpenings(projectId, drafts);
+        const result = await saveDraftOpenings(projectId, planset.id, drafts);
+        const marks = summarizeDraftMarks(drafts);
         return {
           planset,
           kind,
-          drafts: 0,
-          skipped: 0,
-          linked: 0,
+          drafts: result.inserted,
+          skipped: result.skipped,
+          linked: linked.linked,
           converted: true,
+          source: "details" as const,
+          marks,
         };
       }
 
@@ -150,8 +172,20 @@ export function PlansetUpload() {
           setSummary("Building plan stored. CAD conversion is queued.");
           return;
         }
+        if ("marks" in result && result.marks?.length) {
+          const markLine = result.marks
+            .map(
+              (m) =>
+                `${m.count}× #${m.mark} ${m.kind === "door" ? "doors" : "windows"}`,
+            )
+            .join(", ");
+          setSummary(
+            `Building plan ready. Loaded ${markLine} from plan callouts.`,
+          );
+          return;
+        }
         setSummary(
-          "Building plan ready for the map. Upload specs to define marks (#14 → size/type).",
+          "Building plan ready for the map. Upload specs or use Load marks on the map.",
         );
         return;
       }
@@ -171,9 +205,16 @@ export function PlansetUpload() {
                 )
                 .join(", ")
             : null;
+        const sourceNote =
+          "source" in result && result.source === "details"
+            ? "Pulled from manufacturer detail sheets."
+            : "source" in result && result.source === "merged"
+              ? "Merged schedule table with detail-sheet marks."
+              : null;
         setSummary(
           [
             markLine ? `Found ${markLine}.` : null,
+            sourceNote,
             result.drafts > 0 ? `${result.drafts} draft openings.` : null,
             result.linked > 0 ? `Linked types on ${result.linked} existing openings.` : null,
           ]

@@ -201,8 +201,24 @@ describe("extractScheduleRows", () => {
       [{ pageNumber: 1, text: SCHEDULE_TEXT }],
       ai,
     );
-    expect(result.source).toBe("deterministic");
+    expect(["deterministic", "merged"]).toContain(result.source);
     expect(result.rows.length).toBeGreaterThan(0);
+    expect(ai).not.toHaveBeenCalled();
+  });
+
+  it("builds openings from manufacturer detail marks when no schedule exists", async () => {
+    const ai = vi.fn(async () => []);
+    const result = await extractScheduleRows(
+      [
+        {
+          pageNumber: 1,
+          text: "PV Townhomes Bldg 14-#4A\n6080 XO\n#4B\n3060 FIXED",
+        },
+      ],
+      ai,
+    );
+    expect(result.source).toBe("details");
+    expect(result.rows.map((r) => r.openingCode).sort()).toEqual(["4A", "4B"]);
     expect(ai).not.toHaveBeenCalled();
   });
 

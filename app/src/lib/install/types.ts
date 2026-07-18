@@ -22,6 +22,20 @@ export interface Planset {
   created_at: string;
 }
 
+/** Hand-traced building outline for one planset page (normalized 0–1 coords). */
+export interface PlanOutline {
+  id: string;
+  project_id: string;
+  planset_id: string;
+  page_number: number;
+  points: { x: number; y: number }[];
+  page_aspect: number;
+  /** CAD-lite extras: divider lines + wall openings (see lib/install/cad.ts). */
+  features: unknown;
+  created_at: string;
+  updated_at: string;
+}
+
 /** Map pin identity color: window vs door (status is a separate ring/badge). */
 export const OPENING_KIND_COLORS = {
   window: "#4A9DFF",
