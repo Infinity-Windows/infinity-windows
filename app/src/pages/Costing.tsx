@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { getMyProfile } from "../lib/install/api";
 import { isOwner } from "../lib/install/types";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 import {
   addChangeOrder,
   addJobCost,
@@ -19,10 +20,11 @@ function money(n: number): string {
 export function Costing() {
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const { effectiveRole } = useEffectiveRole();
   const jobs = useQuery({
     queryKey: ["companyCosting"],
     queryFn: getCompanyCosting,
-    enabled: isOwner(me.data?.role),
+    enabled: isOwner(effectiveRole),
   });
   const [sel, setSel] = useState<string>("");
   const [costAmt, setCostAmt] = useState("");
@@ -50,7 +52,7 @@ export function Costing() {
     onSuccess: () => { setCoLabel(""); setCoAmt(""); refresh(); },
   });
 
-  if (me.data && !isOwner(me.data.role)) {
+  if (me.data && !isOwner(effectiveRole)) {
     return (
       <div className="page">
         <header className="page-header">

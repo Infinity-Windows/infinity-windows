@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   assignOpeningToInstaller,
   buildPerfIndex,
@@ -18,6 +19,13 @@ import {
   type DispatchOpening,
 } from "../../lib/dispatch";
 import type { ProjectOpening } from "../../lib/install/types";
+import {
+  compareIssues,
+  KIND_LABELS,
+  listProjectIssues,
+  resolveIssue,
+  URGENCY_MARK,
+} from "../../lib/issues";
 
 function areaKey(o: ProjectOpening): string {
   return o.label?.trim() || `page ${o.page_number}`;
@@ -62,6 +70,19 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
   const jobNotes = useQuery({
     queryKey: ["jobNotes", projectId],
     queryFn: () => listJobNotes(projectId),
+  });
+  const issues = useQuery({
+    queryKey: ["projectIssues", projectId],
+    queryFn: () => listProjectIssues(projectId),
+  });
+
+  const resolveIssueM = useMutation({
+    mutationFn: (id: string) => resolveIssue(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["issues"] });
+    },
+    onError: (e) => setMessage(String(e)),
   });
 
   const refresh = () =>
@@ -112,10 +133,10 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
   const all = openings.data ?? [];
   const activeCrew = (crew.data ?? []).filter((c) => c.active);
 
-  const { byInstaller, unassigned, blocked, installedCount } = useMemo(() => {
+  const { byInstaller, unassigned, readinessBlocked, installedCount } = useMemo(() => {
     const byInstaller = new Map<string, ProjectOpening[]>();
     const unassigned: ProjectOpening[] = [];
-    const blocked: ProjectOpening[] = [];
+    const readinessBlocked: ProjectOpening[] = [];
     let installedCount = 0;
     for (const o of openings.data ?? []) {
       if (o.status === "installed") {
@@ -123,10 +144,14 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
         continue;
       }
       const r = openingReadiness(o);
-      if (r.status === "blocked" || o.flag_note) {
-        blocked.push(o);
+      // Hard readiness stops (fit/type/damage) show as blockers.
+      if (r.status === "blocked") {
+        readinessBlocked.push(o);
         continue;
       }
+      // Flagged openings are handled through the issues list below and stay out
+      // of the assignable columns until the flag is resolved.
+      if (o.flag_note) continue;
       if (o.assigned_to) {
         const list = byInstaller.get(o.assigned_to) ?? [];
         list.push(o);
@@ -135,8 +160,21 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
         unassigned.push(o);
       }
     }
-    return { byInstaller, unassigned, blocked, installedCount };
+    return { byInstaller, unassigned, readinessBlocked, installedCount };
   }, [openings.data]);
+
+  // Open issues that belong in the Blockers view (field-reported problems).
+  const openIssues = (issues.data ?? [])
+    .filter(
+      (i) =>
+        i.status === "open" &&
+        (i.kind === "blocker" || i.kind === "damage" || i.kind === "flag"),
+    )
+    .sort(compareIssues);
+  const openingCodeById = new Map(
+    (openings.data ?? []).map((o) => [o.id, o.opening_code]),
+  );
+  const blockerCount = openIssues.length + readinessBlocked.length;
 
   const nameOf = (id: string) =>
     (crew.data ?? []).find((c) => c.id === id)?.display_name ?? "unknown";
@@ -205,16 +243,44 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
         {installedCount}/{all.length} installed · {activeCrew.length} on site
       </p>
 
-      {blocked.length > 0 && (
+      {blockerCount > 0 && (
         <>
-          <h2 className="blocker-head">Blockers ({blocked.length}) — resolve to unblock</h2>
+          <h2 className="blocker-head">Blockers ({blockerCount}) — resolve to unblock</h2>
           <ul className="unit-list work-list">
-            {blocked.map((o) => {
+            {openIssues.map((i) => {
+              const code = i.opening_id
+                ? openingCodeById.get(i.opening_id) ?? "opening"
+                : "job";
+              const mark = URGENCY_MARK[i.urgency];
+              return (
+                <li key={i.id} className="dispatch-row blocker find-row">
+                  <div style={{ minWidth: 0 }}>
+                    {i.opening_id ? (
+                      <Link to={`/projects/${projectId}/opening/${i.opening_id}`}>
+                        <strong>{code}</strong>
+                      </Link>
+                    ) : (
+                      <strong>{code}</strong>
+                    )}{" "}
+                    <span className="muted">{KIND_LABELS[i.kind]}</span>
+                    <div className="error" style={{ fontSize: 12 }}>
+                      {mark ? `${mark} ` : ""}
+                      {i.note ?? KIND_LABELS[i.kind]}
+                    </div>
+                  </div>
+                  <button
+                    className="link"
+                    style={{ marginLeft: "auto" }}
+                    disabled={resolveIssueM.isPending}
+                    onClick={() => resolveIssueM.mutate(i.id)}
+                  >
+                    Resolve
+                  </button>
+                </li>
+              );
+            })}
+            {readinessBlocked.map((o) => {
               const r = openingReadiness(o);
-              const reasons = [
-                ...(o.flag_note ? [`Flagged: ${o.flag_note}`] : []),
-                ...(r.status === "blocked" ? r.reasons : []),
-              ];
               return (
                 <li key={o.id} className="dispatch-row blocker find-row">
                   <div>
@@ -224,7 +290,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
                       <span className="muted"> · {nameOf(o.assigned_to)}</span>
                     )}
                     <div className="error" style={{ fontSize: 12 }}>
-                      {reasons.join(" · ")}
+                      {r.reasons.join(" · ")}
                     </div>
                   </div>
                 </li>

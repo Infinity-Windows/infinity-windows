@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import type { Issue } from "./issues";
 import type {
   Location,
   Movement,
@@ -45,10 +46,40 @@ export async function listProjects(): Promise<Project[]> {
   return data;
 }
 
-export interface CreateProjectInput {
+/** Fields captured on the Horizon-style add/edit project form. */
+export interface ProjectDetailsInput {
+  address?: string | null;
+  customerName?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  siteState?: string | null;
+  unitNumber?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  notes?: string | null;
+}
+
+export interface CreateProjectInput extends ProjectDetailsInput {
   jobCode: string;
   name: string;
-  address?: string | null;
+}
+
+const clean = (value: string | null | undefined): string | null =>
+  value?.trim() ? value.trim() : null;
+
+/** Shape the shared detail fields into the DB column names. */
+function detailColumns(input: ProjectDetailsInput): Record<string, string | null> {
+  return {
+    address: clean(input.address),
+    customer_name: clean(input.customerName),
+    contact_phone: clean(input.contactPhone),
+    contact_email: clean(input.contactEmail),
+    site_state: clean(input.siteState)?.toUpperCase() ?? null,
+    unit_number: clean(input.unitNumber),
+    start_date: clean(input.startDate),
+    end_date: clean(input.endDate),
+    notes: clean(input.notes),
+  };
 }
 
 /**
@@ -66,7 +97,7 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
     .insert({
       job_code: jobCode,
       name,
-      address: input.address?.trim() || null,
+      ...detailColumns(input),
     })
     .select("*")
     .single();
@@ -82,6 +113,34 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
   }
 
   return project as Project;
+}
+
+export interface UpdateProjectInput extends ProjectDetailsInput {
+  name?: string;
+  status?: Project["status"];
+}
+
+/** Edit an existing job's Horizon-style details (foreman+ from the hub). */
+export async function updateProject(
+  projectId: string,
+  input: UpdateProjectInput,
+): Promise<Project> {
+  const patch: Record<string, string | null> = detailColumns(input);
+  if (input.name !== undefined) {
+    const name = input.name.trim();
+    if (!name) throw new Error("Project name is required.");
+    patch.name = name;
+  }
+  if (input.status !== undefined) patch.status = input.status;
+
+  const { data, error } = await supabase
+    .from("projects")
+    .update(patch)
+    .eq("id", projectId)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as Project;
 }
 
 export async function getProjectWindows(
@@ -203,6 +262,58 @@ export async function receiveWindow(
   return data as WindowUnit;
 }
 
+/**
+ * Pre-issue physical-unit records for a project from its planned quantities.
+ * Creates one `pre_issued` window (serial + short_code + QR) per still-missing
+ * planned unit and returns the newly created rows. Idempotent server-side:
+ * re-running never exceeds the plan. Foreman+ only (enforced by the RPC).
+ */
+export async function preissueProjectUnits(
+  projectId: string,
+): Promise<WindowUnit[]> {
+  const { data, error } = await supabase.rpc("preissue_project_units", {
+    p_project_id: projectId,
+  });
+  if (error) throw error;
+  return (data ?? []) as WindowUnit[];
+}
+
+/**
+ * Receive a physical unit against the plan: match a scanned/typed code to its
+ * pre_issued ID and activate it (-> in_warehouse, or damaged + a damage issue
+ * when `damaged`). Optionally drop it straight into a storage location.
+ * Foreman+ only (enforced by the RPC). Returns the activated unit.
+ */
+export async function activatePreissuedUnit(
+  code: string,
+  locationId?: string | null,
+  damaged = false,
+): Promise<WindowUnit> {
+  const { data, error } = await supabase.rpc("activate_preissued_unit", {
+    p_code: code,
+    p_location_id: locationId ?? null,
+    p_damaged: damaged,
+    p_actor: await actor(),
+  });
+  if (error) throw error;
+  return data as WindowUnit;
+}
+
+/**
+ * Foreman-triggered delivery reconcile: flag every still-pre_issued unit for a
+ * project as a 'missing' issue (deduped per unit). Returns the issues opened.
+ * Foreman+ only (enforced by the RPC).
+ */
+export async function reconcileProjectDeliveries(
+  projectId: string,
+): Promise<Issue[]> {
+  const { data, error } = await supabase.rpc("reconcile_project_deliveries", {
+    p_project_id: projectId,
+  });
+  if (error) throw error;
+  return (data ?? []) as Issue[];
+}
+
 export async function moveWindow(
   windowUuid: string,
   locationId: string,
@@ -225,6 +336,75 @@ export async function loadWindow(windowUuid: string): Promise<WindowUnit> {
   });
   if (error) throw error;
   return data as WindowUnit;
+}
+
+/**
+ * Batch load-out: put a set of the project's in-warehouse/staged units on the
+ * truck ('loaded'). Ineligible ids (wrong job / already loaded) are skipped
+ * server-side; returns only the units actually loaded. Foreman+ (enforced by
+ * the RPC).
+ */
+export async function loadUnits(
+  windowIds: string[],
+  projectId: string,
+): Promise<WindowUnit[]> {
+  const { data, error } = await supabase.rpc("load_units", {
+    p_window_ids: windowIds,
+    p_project_id: projectId,
+    p_actor: await actor(),
+  });
+  if (error) throw error;
+  return (data ?? []) as WindowUnit[];
+}
+
+export interface UnloadResult {
+  unloaded: number;
+  damaged: number;
+}
+
+/**
+ * Jobsite unload + condition report: OK units go 'staged' (on site, ready to
+ * install); damaged units go on hold + open a deduped damage issue. Optional
+ * location note is folded into the movement log. Returns { unloaded, damaged }
+ * counts. Foreman+ (enforced by the RPC).
+ */
+export async function unloadUnits(
+  okIds: string[],
+  damagedIds: string[],
+  projectId: string,
+  locationNote?: string | null,
+): Promise<UnloadResult> {
+  const { data, error } = await supabase.rpc("unload_units", {
+    p_ok_ids: okIds,
+    p_damaged_ids: damagedIds,
+    p_project_id: projectId,
+    p_location_note: locationNote ?? null,
+    p_actor: await actor(),
+  });
+  if (error) throw error;
+  return (data ?? { unloaded: 0, damaged: 0 }) as UnloadResult;
+}
+
+export interface ReorderNeed {
+  window_type_id: string;
+  type_name: string;
+  missing_count: number;
+  damaged_count: number;
+}
+
+/**
+ * Per-type reorder rollup for a project: damaged units + still-missing
+ * deliveries, so foreman+/office can reorder fast. Foreman+ (enforced by the
+ * RPC).
+ */
+export async function listReorderNeeds(
+  projectId: string,
+): Promise<ReorderNeed[]> {
+  const { data, error } = await supabase.rpc("list_reorder_needs", {
+    p_project_id: projectId,
+  });
+  if (error) throw error;
+  return (data ?? []) as ReorderNeed[];
 }
 
 export async function installWindow(windowUuid: string): Promise<WindowUnit> {

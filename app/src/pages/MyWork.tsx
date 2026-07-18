@@ -7,36 +7,16 @@ import {
   listMyOpeningsAllJobs,
 } from "../lib/install/api";
 import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
-import { orderMyWork, type DispatchOpening } from "../lib/dispatch";
+import { orderMyWork } from "../lib/dispatch";
 import { openingReadiness } from "../lib/install/fit";
+import { areaKey, toDispatchOpening } from "../lib/install/nextOpening";
 import { isForemanPlus, type ProjectOpening } from "../lib/install/types";
-
-function areaKey(o: ProjectOpening): string {
-  return o.label?.trim() || `page ${o.page_number}`;
-}
-
-function toDispatch(o: ProjectOpening): DispatchOpening {
-  const r = openingReadiness(o);
-  return {
-    id: o.id,
-    opening_code: o.opening_code,
-    window_type_id: o.window_type_id,
-    difficulty:
-      o.window_types?.learned_difficulty ??
-      o.window_types?.outcome_difficulty ??
-      o.window_types?.difficulty_rating ??
-      null,
-    area: areaKey(o),
-    ready: r.status === "ready",
-    blocked: r.status === "blocked",
-    assigned_to: o.assigned_to,
-    sequence: o.sequence,
-  };
-}
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 
 export function MyWork() {
   const navigate = useNavigate();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const { effectiveRole } = useEffectiveRole();
   const openings = useQuery({
     queryKey: ["myOpenings", me.data?.id],
     queryFn: () => listMyOpeningsAllJobs(me.data!.id),
@@ -65,7 +45,7 @@ export function MyWork() {
   }, [active.length]);
 
   const byId = new Map(active.map((o) => [o.id, o]));
-  const ordered = orderMyWork(active.map(toDispatch))
+  const ordered = orderMyWork(active.map(toDispatchOpening))
     .map((d) => byId.get(d.id)!)
     .filter(Boolean);
   const next = ordered[0];
@@ -118,7 +98,7 @@ export function MyWork() {
           <p className="home-greeting">Your day</p>
           <h1>My work</h1>
         </div>
-        {isForemanPlus(me.data?.role) && (
+        {isForemanPlus(effectiveRole) && (
           <Link to="/training" className="button-like">
             Training
           </Link>

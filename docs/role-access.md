@@ -38,6 +38,9 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 **Blocked:**
 
 - Team (`/team`)
+- Timecard (`/timecard`)
+- Issues (`/issues`)
+- Service (`/service`)
 - Quality (`/qc`)
 - Analytics (`/analytics`)
 - Roster (`/crew`)
@@ -46,7 +49,9 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Slot labels (`/labels`)
 - Catalog (`/catalog`)
 - Supplies (`/supplies`)
+- Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
+- Cost codes (`/cost-codes`)
 - Cost (`/costing`)
 
 ## Foreman
@@ -60,14 +65,17 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 **More menu:**
 
+- Issues (`/issues`)
+- Service (`/service`)
 - Team (`/team`)
+- Timecard (`/timecard`)
 - Quality (`/qc`)
 - Safety (`/safety`)
 - Learn (`/learn`)
 - Points (`/points`)
 - Tools (`/tools`)
 
-**Can reach (all 24 allowed destinations):**
+**Can reach (all 27 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -85,6 +93,9 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Search (`/search`)
 - Memo review (`/review`)
 - Team (`/team`)
+- Timecard (`/timecard`)
+- Issues (`/issues`)
+- Service (`/service`)
 - Quality (`/qc`)
 - Analytics (`/analytics`)
 - Roster (`/crew`)
@@ -96,29 +107,36 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 **Blocked:**
 
+- Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
+- Cost codes (`/cost-codes`)
 - Cost (`/costing`)
 
 ## Supervisor
 
 **Bottom bar (phone):**
 
+- Heartbeat (`/heartbeat`)
 - Home (`/`)
 - Projects (`/projects`)
-- Warehouse (`/warehouse`)
 - Time (`/clock`)
 
 **More menu:**
 
+- Warehouse (`/warehouse`)
+- Issues (`/issues`)
+- Service (`/service`)
 - Team (`/team`)
+- Timecard (`/timecard`)
 - Quality (`/qc`)
 - Safety (`/safety`)
 - Learn (`/learn`)
 - Points (`/points`)
 - Tools (`/tools`)
+- Cost codes (`/cost-codes`)
 - Admin (`/admin`)
 
-**Can reach (all 25 allowed destinations):**
+**Can reach (all 30 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -136,6 +154,9 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Search (`/search`)
 - Memo review (`/review`)
 - Team (`/team`)
+- Timecard (`/timecard`)
+- Issues (`/issues`)
+- Service (`/service`)
 - Quality (`/qc`)
 - Analytics (`/analytics`)
 - Roster (`/crew`)
@@ -144,7 +165,9 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Slot labels (`/labels`)
 - Catalog (`/catalog`)
 - Supplies (`/supplies`)
+- Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
+- Cost codes (`/cost-codes`)
 
 **Blocked:**
 
@@ -154,23 +177,28 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 **Bottom bar (phone):**
 
+- Heartbeat (`/heartbeat`)
 - Home (`/`)
 - Projects (`/projects`)
 - Cost (`/costing`)
-- Time (`/clock`)
 
 **More menu:**
 
+- Time (`/clock`)
 - Warehouse (`/warehouse`)
+- Issues (`/issues`)
+- Service (`/service`)
 - Team (`/team`)
+- Timecard (`/timecard`)
 - Quality (`/qc`)
 - Safety (`/safety`)
 - Learn (`/learn`)
 - Points (`/points`)
 - Tools (`/tools`)
+- Cost codes (`/cost-codes`)
 - Admin (`/admin`)
 
-**Can reach (all 26 allowed destinations):**
+**Can reach (all 31 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -188,6 +216,9 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Search (`/search`)
 - Memo review (`/review`)
 - Team (`/team`)
+- Timecard (`/timecard`)
+- Issues (`/issues`)
+- Service (`/service`)
 - Quality (`/qc`)
 - Analytics (`/analytics`)
 - Roster (`/crew`)
@@ -196,7 +227,9 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Slot labels (`/labels`)
 - Catalog (`/catalog`)
 - Supplies (`/supplies`)
+- Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
+- Cost codes (`/cost-codes`)
 - Cost (`/costing`)
 
 **Blocked:**

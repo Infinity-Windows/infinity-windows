@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getMyProfile, listProfiles, updateProfile } from "../lib/install/api";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { PinSetter } from "../components/PinGate";
 import {
   isSupervisorPlus,
@@ -34,8 +35,9 @@ export function Crew() {
     },
   });
 
-  const isLead = isForemanPlus(me.data?.role);
-  const canSetRoles = isSupervisorPlus(me.data?.role);
+  const { effectiveRole } = useEffectiveRole();
+  const isLead = isForemanPlus(effectiveRole);
+  const canSetRoles = isSupervisorPlus(effectiveRole);
 
   return (
     <div className="page">

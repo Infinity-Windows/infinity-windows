@@ -1,4 +1,8 @@
-import type { CrewRole } from "./install/types";
+import { roleRank, type CrewRole } from "./install/types";
+
+// Re-exported so existing importers (Layout, tests) keep a single source of
+// truth: roleRank now lives in install/types and nav/pages share it.
+export { roleRank };
 
 /**
  * ONE registry drives navigation, route guards, the living access doc, and the
@@ -25,6 +29,10 @@ export type RoutePath =
   | "/search"
   | "/review"
   | "/team"
+  | "/timecard"
+  | "/issues"
+  | "/service"
+  | "/heartbeat"
   | "/qc"
   | "/analytics"
   | "/crew"
@@ -34,6 +42,7 @@ export type RoutePath =
   | "/catalog"
   | "/supplies"
   | "/admin"
+  | "/cost-codes"
   | "/costing";
 
 /**
@@ -43,29 +52,6 @@ export type RoutePath =
  * working so a bad rollout is one constant away from reverted.
  */
 export const ROLE_NAV_V2 = true;
-
-/**
- * Rank roles so access is a single `>=` comparison. Unknown/null defaults to
- * installer-min (0) so a missing/legacy profile can never over-expose. Legacy
- * names are mapped: admin -> supervisor(2), big_boss -> owner(3), lead -> foreman(1).
- */
-export function roleRank(role?: CrewRole | string | null): number {
-  switch (role) {
-    case "owner":
-    case "big_boss":
-      return 3;
-    case "supervisor":
-    case "admin":
-      return 2;
-    case "foreman":
-    case "lead":
-      return 1;
-    case "installer":
-      return 0;
-    default:
-      return 0;
-  }
-}
 
 export interface NavDest {
   id: string;
@@ -101,6 +87,9 @@ export const NAV: NavDest[] = [
 
   // Foreman+ (managers): coordination + warehouse ops + quality.
   { id: "team", to: "/team", label: "Team", icon: "⚑", minRole: "foreman" },
+  { id: "timecard", to: "/timecard", label: "Timecard", icon: "▥", minRole: "foreman" },
+  { id: "issues", to: "/issues", label: "Issues", icon: "!", minRole: "foreman" },
+  { id: "service", to: "/service", label: "Service", icon: "⚕", minRole: "foreman" },
   { id: "qc", to: "/qc", label: "Quality", icon: "✓", minRole: "foreman" },
   { id: "analytics", to: "/analytics", label: "Analytics", icon: "◲", minRole: "foreman" },
   { id: "crew", to: "/crew", label: "Roster", icon: "☰", minRole: "foreman" },
@@ -111,7 +100,9 @@ export const NAV: NavDest[] = [
   { id: "supplies", to: "/supplies", label: "Supplies", icon: "⛃", minRole: "foreman" },
 
   // Supervisor+.
+  { id: "heartbeat", to: "/heartbeat", label: "Heartbeat", icon: "❤", minRole: "supervisor" },
   { id: "admin", to: "/admin", label: "Admin", icon: "◈", minRole: "supervisor" },
+  { id: "cost-codes", to: "/cost-codes", label: "Cost codes", icon: "☷", minRole: "supervisor" },
 
   // Owner only.
   { id: "costing", to: "/costing", label: "Cost", icon: "$", minRole: "owner" },
@@ -164,7 +155,10 @@ const MANAGER_LAYOUT: LayoutItem[] = [
   { id: "projects", phone: true },
   { id: "warehouse", phone: true },
   { id: "clock", phone: true },
+  { id: "issues" },
+  { id: "service" },
   { id: "team" },
+  { id: "timecard" },
   { id: "qc" },
   { id: "safety" },
   { id: "learn" },
@@ -172,21 +166,44 @@ const MANAGER_LAYOUT: LayoutItem[] = [
   { id: "tools" },
 ];
 
-const SUPERVISOR_LAYOUT: LayoutItem[] = [...MANAGER_LAYOUT, { id: "admin" }];
-
-// Owner: Cost joins the phone bar; Warehouse steps back to More.
-const OWNER_LAYOUT: LayoutItem[] = [
+// Supervisor: the Heartbeat is their home base — it leads the phone bar.
+const SUPERVISOR_LAYOUT: LayoutItem[] = [
+  { id: "heartbeat", phone: true },
   { id: "home", phone: true },
   { id: "projects", phone: true },
-  { id: "costing", phone: true },
   { id: "clock", phone: true },
   { id: "warehouse" },
+  { id: "issues" },
+  { id: "service" },
   { id: "team" },
+  { id: "timecard" },
   { id: "qc" },
   { id: "safety" },
   { id: "learn" },
   { id: "points" },
   { id: "tools" },
+  { id: "cost-codes" },
+  { id: "admin" },
+];
+
+// Owner: Cost joins the phone bar; Warehouse steps back to More.
+const OWNER_LAYOUT: LayoutItem[] = [
+  { id: "heartbeat", phone: true },
+  { id: "home", phone: true },
+  { id: "projects", phone: true },
+  { id: "costing", phone: true },
+  { id: "clock" },
+  { id: "warehouse" },
+  { id: "issues" },
+  { id: "service" },
+  { id: "team" },
+  { id: "timecard" },
+  { id: "qc" },
+  { id: "safety" },
+  { id: "learn" },
+  { id: "points" },
+  { id: "tools" },
+  { id: "cost-codes" },
   { id: "admin" },
 ];
 
@@ -237,6 +254,71 @@ export function navForRole(role: CrewRole | string | null | undefined): RoleNav 
     phone: items.filter((i) => i.phone),
     more: items.filter((i) => !i.phone),
   };
+}
+
+/** A titled group of destinations for the desktop/tablet left sidebar. */
+export interface RailSection {
+  title: string;
+  items: NavItem[];
+}
+
+/**
+ * Desktop/tablet sidebar grouping (Horizon-style sections). On wide screens the
+ * left sidebar IS the full menu — every destination the role can reach appears
+ * here, grouped, with NO separate "More" overflow bucket. Order defines display
+ * order; empty sections (nothing the role can access) are dropped. The phone
+ * bottom bar + More sheet still come from navForRole (small-screen behavior).
+ */
+const RAIL_SECTIONS: { title: string; ids: string[] }[] = [
+  { title: "Work", ids: ["home", "my-work", "projects", "warehouse"] },
+  { title: "Time", ids: ["clock", "timecard"] },
+  { title: "Field", ids: ["scan", "count", "receive", "labels", "supplies", "catalog", "tools"] },
+  { title: "Quality & safety", ids: ["qc", "safety", "issues", "service"] },
+  { title: "Team", ids: ["team", "crew", "training"] },
+  { title: "Insights", ids: ["heartbeat", "analytics", "cost-codes", "costing"] },
+  { title: "Learn", ids: ["learn", "points", "review"] },
+  { title: "System", ids: ["notifications", "search", "admin"] },
+];
+
+/** Installer "/" already lands on My Work; managers read it as Home. */
+function railLabel(
+  id: string,
+  role: CrewRole | string | null | undefined,
+  fallback: string,
+): string {
+  if (id === "home") return roleRank(role) === 0 ? "My Work" : "Home";
+  return fallback;
+}
+
+/**
+ * Grouped destinations for the desktop/tablet left sidebar. Includes every
+ * registry destination the role can access (route guards still enforce real
+ * authorization), so nothing is hidden behind a desktop overflow menu.
+ */
+export function railSectionsForRole(
+  role: CrewRole | string | null | undefined,
+): RailSection[] {
+  const installer = roleRank(role) === 0;
+  const sections: RailSection[] = [];
+  for (const sec of RAIL_SECTIONS) {
+    const items: NavItem[] = [];
+    for (const id of sec.ids) {
+      // Installer Home already IS "My Work" — skip the duplicate entry.
+      if (id === "my-work" && installer) continue;
+      const dest = NAV_BY_ID.get(id);
+      if (!dest || !canAccess(role, dest.to)) continue;
+      items.push({
+        id: dest.id,
+        to: dest.to,
+        icon: dest.icon,
+        minRole: dest.minRole,
+        label: railLabel(id, role, dest.label),
+        phone: false,
+      });
+    }
+    if (items.length > 0) sections.push({ title: sec.title, items });
+  }
+  return sections;
 }
 
 // --- Legacy fallback (ROLE_NAV_V2 === false) ---------------------------------

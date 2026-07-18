@@ -855,6 +855,25 @@ export async function deletePlanOutline(
   deleteLocalOutline(plansetId, pageNumber, outlineId);
 }
 
+/** True when we can render this planset as a PDF in the app. */
+export function plansetIsViewable(planset: Planset): boolean {
+  return Boolean(
+    planset.converted_pdf_path || planset.source_format === "pdf",
+  );
+}
+
+/** Signed URL for opening/downloading the stored file (1 hour). */
+export async function getPlansetSignedUrl(
+  planset: Planset,
+): Promise<string> {
+  const path = planset.converted_pdf_path ?? planset.storage_path;
+  const { data, error } = await supabase.storage
+    .from("plansets")
+    .createSignedUrl(path, 3600);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
 // --- Openings ---
 
 export async function listOpenings(
@@ -1262,10 +1281,17 @@ export interface ProjectExceptions {
   flaggedOpenings: ProjectOpening[];
 }
 
-/** Opening ids on a project that carry a voided (failed/undone) install event. */
+/**
+ * Opening ids on a project that carry a voided (failed/undone) install event.
+ * Failed-install visibility is foreman+ only, so callers pass `canSee` (their
+ * foreman+ guard); a non-foreman caller short-circuits to an empty set and
+ * never fetches the data. (Full RLS hardening is a later follow-up.)
+ */
 export async function listVoidedInstallOpeningIds(
   projectId: string,
+  canSee = true,
 ): Promise<Set<string>> {
+  if (!canSee) return new Set<string>();
   const { data, error } = await supabase
     .from("install_events")
     .select("project_opening_id, project_openings:project_opening_id!inner(project_id)")
@@ -1282,7 +1308,9 @@ export async function listVoidedInstallOpeningIds(
  */
 export async function listProjectExceptions(
   projectId: string,
+  canSee = true,
 ): Promise<ProjectExceptions> {
+  if (!canSee) return { failedInstalls: [], flaggedOpenings: [] };
   const [flaggedRes, voidedRes] = await Promise.all([
     supabase
       .from("project_openings")

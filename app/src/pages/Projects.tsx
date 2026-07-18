@@ -18,6 +18,14 @@ export function Projects() {
   const [jobCode, setJobCode] = useState("");
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [unitNumber, setUnitNumber] = useState("");
+  const [siteState, setSiteState] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [notes, setNotes] = useState("");
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const profile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const canAdd = isForemanPlus(profile.data?.role);
@@ -32,13 +40,34 @@ export function Projects() {
     },
   });
   const addProject = useMutation({
-    mutationFn: () => createProject({ jobCode, name, address }),
+    mutationFn: () =>
+      createProject({
+        jobCode,
+        name,
+        address,
+        customerName,
+        contactPhone,
+        contactEmail,
+        unitNumber,
+        siteState,
+        startDate,
+        endDate,
+        notes,
+      }),
     onSuccess: async (project) => {
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
       setAdding(false);
       setJobCode("");
       setName("");
       setAddress("");
+      setCustomerName("");
+      setContactPhone("");
+      setContactEmail("");
+      setUnitNumber("");
+      setSiteState("");
+      setStartDate("");
+      setEndDate("");
+      setNotes("");
       navigate(`/projects/${project.id}/upload`);
     },
   });
@@ -104,12 +133,81 @@ export function Projects() {
                     required
                   />
                 </label>
+                <label>
+                  <span className="field-label">Customer / contact</span>
+                  <input
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="Pecan Valley HOA · Jane Doe"
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Contact phone</span>
+                  <input
+                    type="tel"
+                    value={contactPhone}
+                    onChange={(e) => setContactPhone(e.target.value)}
+                    placeholder="(435) 555-0173"
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Contact email</span>
+                  <input
+                    type="email"
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                    placeholder="office@pecanvalley.com"
+                  />
+                </label>
                 <label className="project-create-address">
-                  <span className="field-label">Address</span>
+                  <span className="field-label">Site address</span>
                   <input
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
-                    placeholder="Lots 173–183, Hurricane, UT 84737"
+                    placeholder="173 Pecan Valley Dr, Hurricane, UT 84737"
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Building / unit / lot</span>
+                  <input
+                    value={unitNumber}
+                    onChange={(e) => setUnitNumber(e.target.value)}
+                    placeholder="Building 14 · Lots 173–183"
+                  />
+                </label>
+                <label>
+                  <span className="field-label">State</span>
+                  <input
+                    value={siteState}
+                    onChange={(e) => setSiteState(e.target.value)}
+                    placeholder="UT"
+                    maxLength={2}
+                    autoCapitalize="characters"
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Scheduled start</span>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Target completion</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                  />
+                </label>
+                <label className="project-create-address">
+                  <span className="field-label">Job notes</span>
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Access, gate codes, staging area, scope reminders…"
+                    rows={3}
                   />
                 </label>
               </div>

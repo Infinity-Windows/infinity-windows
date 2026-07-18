@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { getMyProfile, listProfiles } from "../lib/install/api";
+import { listProfiles } from "../lib/install/api";
 import { listInstalledForQc } from "../lib/ops";
 import { listShiftsToApprove } from "../lib/timeclock";
 import { isOwner, isForemanPlus, ROLE_LABELS, type CrewRole } from "../lib/install/types";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 
 interface TeamLink {
   to: string;
@@ -14,9 +15,9 @@ interface TeamLink {
 }
 
 export function Team() {
-  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const lead = isForemanPlus(me.data?.role);
-  const boss = isOwner(me.data?.role);
+  const { effectiveRole } = useEffectiveRole();
+  const lead = isForemanPlus(effectiveRole);
+  const boss = isOwner(effectiveRole);
 
   const crew = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
   const shifts = useQuery({
@@ -60,7 +61,7 @@ export function Team() {
           <p className="home-greeting">Team</p>
           <h1>Crew command</h1>
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-            {me.data?.role ? ROLE_LABELS[me.data.role as CrewRole] ?? me.data.role : ""} view
+            {effectiveRole ? ROLE_LABELS[effectiveRole as CrewRole] ?? effectiveRole : ""} view
           </p>
         </div>
       </header>

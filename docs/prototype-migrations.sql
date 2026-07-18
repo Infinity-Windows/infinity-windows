@@ -1068,23 +1068,11 @@ begin
 end;
 $$;
 
--- Clock in.
-create or replace function clock_in(
-  p_project_id uuid, p_cost_code_id uuid, p_photo text default null
-)
-returns time_shifts language plpgsql as $$
-declare v_shift time_shifts;
-begin
-  -- Close any dangling open shift for this user first.
-  update time_shifts set clock_out_at = now(), status = 'submitted'
-  where profile_id = auth.uid() and status = 'open' and clock_out_at is null;
-
-  insert into time_shifts (profile_id, project_id, cost_code_id, clock_in_photo)
-  values (auth.uid(), p_project_id, p_cost_code_id, p_photo)
-  returning * into v_shift;
-  return v_shift;
-end;
-$$;
+-- Clock in — the single source of truth for this RPC is defined later in the
+-- toolbox talks section (with the hard toolbox-signed gate). It intentionally
+-- lives there so a full-bundle apply ends with the gated definition and the
+-- earlier ungated version can never win. See
+-- [20260718003000_toolbox_talks.sql].
 
 -- Clock out + sign-off.
 create or replace function clock_out(
@@ -1676,6 +1664,9 @@ begin
   set golden_install_event_id = p_event_id, golden_locked = true
   where id = p_type_id;
 end;
+$$;
+
+-- ============================================================================
 -- window short code  [20260718001000_window_short_code.sql]
 -- =============================================================================
 
@@ -1956,6 +1947,737 @@ begin
 end;
 $$;
 
+-- ============================================================================
+-- integration fixes  [20260718004000_integration_fixes.sql]
+-- =============================================================================
+
+-- Undo must clear the phantom "in progress" state. Recreate undo_install
+-- identically EXCEPT the opening-revert UPDATE now also clears work_started_at
+-- so Home / MyWork / Dispatch stop showing a reclaimed opening as in progress.
+
+create or replace function undo_install(p_opening_id uuid, p_reason text default null)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  v_caller_role text;
+  v_opening project_openings;
+begin
+  -- Guard: only elevated roles may undo. Only a plain installer is blocked, so
+  -- this holds for both legacy (lead/foreman/admin/big_boss) and any new role
+  -- names above installer.
+  select role into v_caller_role from profiles where id = auth.uid();
+  if v_caller_role is null or v_caller_role = 'installer' then
+    raise exception 'only a foreman-level user or above can undo an install';
+  end if;
+
+  select * into v_opening from project_openings where id = p_opening_id;
+  if v_opening is null then
+    raise exception 'unknown opening %', p_opening_id;
+  end if;
+
+  -- Void (never delete) the most recent non-voided install event.
+  update install_events
+  set voided_at = now(),
+      voided_by = auth.uid(),
+      void_reason = p_reason
+  where id = (
+    select id from install_events
+    where project_opening_id = p_opening_id
+      and voided_at is null
+    order by created_at desc
+    limit 1
+  );
+
+  -- Revert the opening back to its pre-install state. Also clear
+  -- work_started_at so the phantom "in progress" clears on Home/MyWork/Dispatch.
+  update project_openings
+  set status = case when assigned_window_id is not null then 'assigned' else 'planned' end,
+      confirmed = false,
+      work_started_at = null
+  where id = p_opening_id;
+
+  -- Return the physical unit to the truck and log the reverse movement.
+  if v_opening.assigned_window_id is not null then
+    update windows
+    set status = 'loaded', installed_at = null
+    where id = v_opening.assigned_window_id;
+
+    insert into movements (window_id, event, project_id, actor, reason)
+    values (
+      v_opening.assigned_window_id,
+      'uninstalled',
+      v_opening.project_id,
+      auth.uid()::text,
+      coalesce(p_reason, 'install undone')
+    );
+  end if;
+
+  -- Void any points earned for this install (ref stores the opening UUID as text).
+  update points_ledger
+  set status = 'void'
+  where ref = p_opening_id::text
+    and status in ('pending', 'confirmed');
+
+  -- Refresh learned rollups for this type (best-effort; skip if absent).
+  if v_opening.window_type_id is not null then
+    begin
+      perform recompute_window_type_rollups(v_opening.window_type_id);
+    exception when undefined_function then
+      null;
+    end;
+  end if;
+end;
+$$;
+
+-- issues model  [20260718005000_issues.sql]
+-- Unified tiered issues model.
+--
+-- Three scattered "problem" surfaces (ProjectDetail Exceptions tab, Dispatch
+-- Blockers, ProjectMap voided rings) plus the foreman "issues list" become ONE
+-- table. Every problem write (flag, damage, undo/failed install, complication)
+-- flows into `issues`; the Exceptions tab and Blockers become filtered views of
+-- the same data. `urgency` renders as blank / `!` / `!!!` in the UI.
+
+create table if not exists issues (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  opening_id uuid references project_openings(id) on delete set null,
+  kind text not null check (kind in ('failed_install','flag','damage','blocker','complication')),
+  urgency text not null default 'normal' check (urgency in ('normal','urgent','emergency')),
+  status text not null default 'open' check (status in ('open','resolved')),
+  note text,
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  resolved_by uuid references profiles(id) on delete set null,
+  resolved_at timestamptz
+);
+
+create index if not exists issues_status_urgency_idx on issues (status, urgency);
+create index if not exists issues_project_idx on issues (project_id);
+create index if not exists issues_opening_idx on issues (opening_id);
+
+-- RLS: same trusted-crew pattern as the other install tables. The cross-project
+-- list is additionally guarded foreman+ inside list_issues().
+alter table issues enable row level security;
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where tablename = 'issues' and policyname = 'authenticated full access'
+  ) then
+    create policy "authenticated full access" on issues
+      for all to authenticated using (true) with check (true);
+  end if;
+end;
+$$;
+
+-- Stream issues to the lead board / heartbeat like the other field tables.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'issues'
+  ) then
+    alter publication supabase_realtime add table issues;
+  end if;
+end;
+$$;
+
+-- --- RPCs -------------------------------------------------------------------
+
+-- Open a new issue (created_by = the caller). Used by the OpeningSheet
+-- "complication" / skip-damaged escalations and any future writer.
+create or replace function create_issue(
+  p_project uuid,
+  p_opening uuid,
+  p_kind text,
+  p_urgency text default 'normal',
+  p_note text default null
+)
+returns issues
+language plpgsql
+security definer
+as $$
+declare v_issue issues;
+begin
+  insert into issues (project_id, opening_id, kind, urgency, note, created_by)
+  values (p_project, p_opening, p_kind, coalesce(p_urgency, 'normal'), p_note, auth.uid())
+  returning * into v_issue;
+  return v_issue;
+end;
+$$;
+
+-- Resolve an issue (who + when). Idempotent-friendly: re-resolving is harmless.
+create or replace function resolve_issue(p_id uuid)
+returns issues
+language plpgsql
+security definer
+as $$
+declare v_issue issues;
+begin
+  update issues
+  set status = 'resolved',
+      resolved_by = auth.uid(),
+      resolved_at = now()
+  where id = p_id
+  returning * into v_issue;
+  if v_issue is null then
+    raise exception 'unknown issue %', p_id;
+  end if;
+  return v_issue;
+end;
+$$;
+
+-- Cross-project issue feed for foreman-level users and above. Returns every
+-- issue (open + resolved); the UI filters by status/kind/project.
+create or replace function list_issues()
+returns setof issues
+language plpgsql
+security definer
+as $$
+declare v_role text;
+begin
+  select role into v_role from profiles where id = auth.uid();
+  if v_role is null or v_role = 'installer' then
+    raise exception 'issues are for foreman-level users and above';
+  end if;
+  return query select * from issues order by created_at desc;
+end;
+$$;
+
+-- --- Wire existing writes into the issues table -----------------------------
+
+-- Flag (or clear) an opening for the lead. Recreated from
+-- 20260716010000_field_flags.sql, preserving all behavior, and now also opens a
+-- 'flag' issue (deduped on an existing OPEN flag for the same opening). Clearing
+-- the flag resolves any open flag issues for that opening.
+create or replace function flag_opening(p_opening_id uuid, p_note text)
+returns project_openings
+language plpgsql
+as $$
+declare
+  v_opening project_openings;
+  v_clean text;
+begin
+  v_clean := nullif(trim(coalesce(p_note, '')), '');
+
+  update project_openings
+  set flag_note = v_clean,
+      flagged_by = case when v_clean is null then null else auth.uid() end,
+      flagged_at = case when v_clean is null then null else now() end
+  where id = p_opening_id
+  returning * into v_opening;
+  if v_opening is null then
+    raise exception 'unknown opening %', p_opening_id;
+  end if;
+
+  if v_clean is null then
+    -- Flag cleared: resolve any open flag issues for this opening.
+    update issues
+    set status = 'resolved', resolved_by = auth.uid(), resolved_at = now()
+    where opening_id = p_opening_id and kind = 'flag' and status = 'open';
+  else
+    -- Flag set: open a flag issue unless one is already open.
+    if not exists (
+      select 1 from issues
+      where opening_id = p_opening_id and kind = 'flag' and status = 'open'
+    ) then
+      insert into issues (project_id, opening_id, kind, urgency, note, created_by)
+      values (v_opening.project_id, p_opening_id, 'flag', 'normal', v_clean, auth.uid());
+    end if;
+  end if;
+
+  return v_opening;
+end;
+$$;
+
+-- Record the arrival condition of the unit at an opening. Recreated from
+-- 20260715230000_fit_condition_gate.sql, preserving all behavior, and now a
+-- 'damage' issue (urgent) is opened when the unit is marked damaged (deduped on
+-- an existing OPEN damage issue). Marking OK/unknown resolves open damage issues.
+create or replace function set_opening_condition(
+  p_opening_id uuid,
+  p_condition text,
+  p_note text default null,
+  p_actor text default null
+)
+returns project_openings
+language plpgsql
+as $$
+declare
+  v_opening project_openings;
+begin
+  if p_condition not in ('unknown','ok','damaged') then
+    raise exception 'invalid condition %', p_condition;
+  end if;
+
+  update project_openings
+  set condition = p_condition,
+      condition_note = p_note,
+      condition_checked_by = p_actor,
+      condition_checked_at = now()
+  where id = p_opening_id
+  returning * into v_opening;
+
+  if v_opening is null then
+    raise exception 'unknown opening %', p_opening_id;
+  end if;
+
+  -- Damaged units flag the physical record so the office/warehouse sees it too.
+  if p_condition = 'damaged' and v_opening.assigned_window_id is not null then
+    update windows set status = 'damaged' where id = v_opening.assigned_window_id;
+    insert into movements (window_id, event, project_id, actor, reason)
+    values (
+      v_opening.assigned_window_id, 'damaged', v_opening.project_id, p_actor,
+      coalesce('damaged at opening ' || v_opening.opening_code ||
+        case when p_note is not null then ': ' || p_note else '' end,
+        'damaged at opening')
+    );
+  end if;
+
+  -- Route the condition into the issues model.
+  if p_condition = 'damaged' then
+    if not exists (
+      select 1 from issues
+      where opening_id = p_opening_id and kind = 'damage' and status = 'open'
+    ) then
+      insert into issues (project_id, opening_id, kind, urgency, note, created_by)
+      values (v_opening.project_id, p_opening_id, 'damage', 'urgent', p_note, auth.uid());
+    end if;
+  else
+    -- No longer damaged: resolve any open damage issues for this opening.
+    update issues
+    set status = 'resolved', resolved_by = auth.uid(), resolved_at = now()
+    where opening_id = p_opening_id and kind = 'damage' and status = 'open';
+  end if;
+
+  return v_opening;
+end;
+$$;
+
+-- Undo/reclaim an install. Recreated from 20260718004000_integration_fixes.sql,
+-- PRESERVING the work_started_at = null clear and all prior behavior, and now it
+-- also opens a 'failed_install' issue (urgent, note = reason), deduped on an
+-- existing OPEN failed_install issue for that opening.
+create or replace function undo_install(p_opening_id uuid, p_reason text default null)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  v_caller_role text;
+  v_opening project_openings;
+begin
+  -- Guard: only elevated roles may undo. Only a plain installer is blocked, so
+  -- this holds for both legacy (lead/foreman/admin/big_boss) and any new role
+  -- names above installer.
+  select role into v_caller_role from profiles where id = auth.uid();
+  if v_caller_role is null or v_caller_role = 'installer' then
+    raise exception 'only a foreman-level user or above can undo an install';
+  end if;
+
+  select * into v_opening from project_openings where id = p_opening_id;
+  if v_opening is null then
+    raise exception 'unknown opening %', p_opening_id;
+  end if;
+
+  -- Void (never delete) the most recent non-voided install event.
+  update install_events
+  set voided_at = now(),
+      voided_by = auth.uid(),
+      void_reason = p_reason
+  where id = (
+    select id from install_events
+    where project_opening_id = p_opening_id
+      and voided_at is null
+    order by created_at desc
+    limit 1
+  );
+
+  -- Revert the opening back to its pre-install state. Also clear
+  -- work_started_at so the phantom "in progress" clears on Home/MyWork/Dispatch.
+  update project_openings
+  set status = case when assigned_window_id is not null then 'assigned' else 'planned' end,
+      confirmed = false,
+      work_started_at = null
+  where id = p_opening_id;
+
+  -- Return the physical unit to the truck and log the reverse movement.
+  if v_opening.assigned_window_id is not null then
+    update windows
+    set status = 'loaded', installed_at = null
+    where id = v_opening.assigned_window_id;
+
+    insert into movements (window_id, event, project_id, actor, reason)
+    values (
+      v_opening.assigned_window_id,
+      'uninstalled',
+      v_opening.project_id,
+      auth.uid()::text,
+      coalesce(p_reason, 'install undone')
+    );
+  end if;
+
+  -- Void any points earned for this install (ref stores the opening UUID as text).
+  update points_ledger
+  set status = 'void'
+  where ref = p_opening_id::text
+    and status in ('pending', 'confirmed');
+
+  -- Open a failed-install issue (deduped on an open one for this opening).
+  if not exists (
+    select 1 from issues
+    where opening_id = p_opening_id and kind = 'failed_install' and status = 'open'
+  ) then
+    insert into issues (project_id, opening_id, kind, urgency, note, created_by)
+    values (v_opening.project_id, p_opening_id, 'failed_install', 'urgent', p_reason, auth.uid());
+  end if;
+
+  -- Refresh learned rollups for this type (best-effort; skip if absent).
+  if v_opening.window_type_id is not null then
+    begin
+      perform recompute_window_type_rollups(v_opening.window_type_id);
+    exception when undefined_function then
+      null;
+    end;
+  end if;
+end;
+$$;
+
+-- --- Backfill existing problems into issues (idempotent) --------------------
+
+-- Existing flags → open flag issues.
+insert into issues (project_id, opening_id, kind, urgency, note, created_by, created_at)
+select o.project_id, o.id, 'flag', 'normal', o.flag_note, o.flagged_by,
+       coalesce(o.flagged_at, now())
+from project_openings o
+where o.flag_note is not null
+  and not exists (
+    select 1 from issues i
+    where i.opening_id = o.id and i.kind = 'flag' and i.status = 'open'
+  );
+
+-- Existing damaged conditions → open damage issues (urgent).
+insert into issues (project_id, opening_id, kind, urgency, note, created_by, created_at)
+select o.project_id, o.id, 'damage', 'urgent', o.condition_note, null,
+       coalesce(o.condition_checked_at, now())
+from project_openings o
+where o.condition = 'damaged'
+  and not exists (
+    select 1 from issues i
+    where i.opening_id = o.id and i.kind = 'damage' and i.status = 'open'
+  );
+
+-- Existing voided (failed/undone) installs → open failed_install issues (urgent).
+insert into issues (project_id, opening_id, kind, urgency, note, created_by, created_at)
+select o.project_id, e.project_opening_id, 'failed_install', 'urgent',
+       e.void_reason, e.voided_by, coalesce(e.voided_at, now())
+from install_events e
+join project_openings o on o.id = e.project_opening_id
+where e.voided_at is not null
+  and not exists (
+    select 1 from issues i
+    where i.opening_id = e.project_opening_id
+      and i.kind = 'failed_install' and i.status = 'open'
+  );
+
+-- project green light  [20260718006000_project_greenlight.sql]
+-- Project green light — supervisor-controlled "go" status for the Heartbeat.
+--
+-- The supervisor Heartbeat gives one glance at every active project: live crew,
+-- anomaly flags, % complete, open-issue counts, and this green light. The green
+-- light is a supervisor-controlled "this job is cleared to run" signal that the
+-- board (and any downstream surface) can render at a glance.
+
+alter table projects add column if not exists green_light boolean not null default false;
+alter table projects add column if not exists green_light_note text;
+alter table projects add column if not exists green_light_by uuid references profiles(id) on delete set null;
+alter table projects add column if not exists green_light_at timestamptz;
+
+-- Flip a project's green light. Supervisor+ only (supervisor/owner, plus legacy
+-- admin/big_boss). A null/installer/foreman role is blocked in-RPC — matches the
+-- roleRank semantics used everywhere else (only rank >= 2 may set).
+create or replace function set_project_green_light(
+  p_project uuid,
+  p_on boolean,
+  p_note text default null
+)
+returns projects
+language plpgsql
+security definer
+as $$
+declare
+  v_role text;
+  v_project projects;
+begin
+  select role into v_role from profiles where id = auth.uid();
+  if v_role is null or v_role in ('installer', 'foreman', 'lead') then
+    raise exception 'only a supervisor or above can set a project green light';
+  end if;
+
+  update projects
+  set green_light = p_on,
+      green_light_note = p_note,
+      green_light_by = auth.uid(),
+      green_light_at = now()
+  where id = p_project
+  returning * into v_project;
+
+  if v_project is null then
+    raise exception 'unknown project %', p_project;
+  end if;
+
+  return v_project;
+end;
+$$;
+
+-- task sessions  [20260718007000_task_sessions.sql]
+-- Installer spam-through task loop + unified on-task / off-task / break time.
+--
+-- Reconciles the two previously-decoupled clocks (shift-time from time_shifts,
+-- task-time from project_openings.work_started_at) into one interval model:
+--   task_sessions rows are 'on_task' (installing a specific opening),
+--   'off_task' (between windows), or 'break' (on a shift break).
+-- start_opening_work opens an on_task session (and now hard-requires the worker
+-- be clocked in with today's toolbox signed); submit_install_event closes it and
+-- opens off_task; the break RPCs open/close 'break'. work_ended_at stamps the
+-- opening when the install is submitted so elapsed task time is exact.
+
+-- 1. When did the physical install finish for this opening.
+alter table project_openings
+  add column if not exists work_ended_at timestamptz;
+
+-- 2. On/off/break interval log per person.
+create table if not exists task_sessions (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  opening_id uuid references project_openings(id) on delete set null,
+  project_id uuid references projects(id) on delete set null,
+  state text not null check (state in ('on_task','off_task','break')),
+  started_at timestamptz not null default now(),
+  ended_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+-- Fast lookup of a person's currently-open session (ended_at is null).
+create index if not exists task_sessions_profile_open_idx
+  on task_sessions (profile_id, ended_at);
+
+alter table task_sessions enable row level security;
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where tablename = 'task_sessions' and policyname = 'authenticated full access'
+  ) then
+    create policy "authenticated full access" on task_sessions
+      for all to authenticated using (true) with check (true);
+  end if;
+end;
+$$;
+
+-- Helper: close every open session for a profile (idempotent).
+create or replace function close_open_task_sessions(p_profile uuid)
+returns void
+language plpgsql
+as $$
+begin
+  update task_sessions
+  set ended_at = now()
+  where profile_id = p_profile and ended_at is null;
+end;
+$$;
+
+-- 3. Recreate start_opening_work: guard on shift + toolbox, keep work_started_at,
+--    and open a fresh on_task session (closing any dangling ones first).
+create or replace function start_opening_work(p_opening_id uuid)
+returns project_openings
+language plpgsql
+as $$
+declare
+  v_opening project_openings;
+  v_uid uuid := auth.uid();
+begin
+  -- Gate: reconcile shift-time and task-time. You cannot be "on a task" unless
+  -- you're clocked in and have signed today's toolbox talk.
+  if not exists (
+    select 1 from time_shifts
+    where profile_id = v_uid and status = 'open' and clock_out_at is null
+  ) then
+    raise exception 'clock in and complete today''s toolbox talk before starting a task';
+  end if;
+  if not exists (
+    select 1 from toolbox_completions
+    where profile_id = v_uid and signed_at::date = current_date
+  ) then
+    raise exception 'clock in and complete today''s toolbox talk before starting a task';
+  end if;
+
+  update project_openings
+  set work_started_at = coalesce(work_started_at, now())
+  where id = p_opening_id
+  returning * into v_opening;
+
+  if v_opening is null then
+    raise exception 'unknown opening %', p_opening_id;
+  end if;
+
+  -- Reconcile task-time: close whatever the person was doing and land on_task.
+  perform close_open_task_sessions(v_uid);
+  insert into task_sessions (profile_id, opening_id, project_id, state)
+  values (v_uid, v_opening.id, v_opening.project_id, 'on_task');
+
+  return v_opening;
+end;
+$$;
+
+-- 4. Recreate submit_install_event PRESERVING the current signature + behavior
+--    (from 20260716001000_installer_identity.sql) and ALSO: stamp work_ended_at,
+--    close the open on_task session, and open an off_task session so the person
+--    is "between windows" until they tap the next one.
+create or replace function submit_install_event(
+  p_opening_id uuid,
+  p_installer text default null,
+  p_minutes int default null,
+  p_quality_grade int default null,
+  p_difficulty text default null,
+  p_went_well text default null,
+  p_went_poorly text default null,
+  p_obstacles text default null,
+  p_tools_helped text default null,
+  p_time_vs_estimate text default null,
+  p_safety_notes text default null,
+  p_do_again text default null,
+  p_transcript_raw text default null,
+  p_started_at timestamptz default null,
+  p_installer_id uuid default null,
+  p_estimate_minutes int default null
+)
+returns install_events
+language plpgsql
+as $$
+declare
+  v_opening project_openings;
+  v_event install_events;
+  v_profile uuid := coalesce(p_installer_id, auth.uid());
+begin
+  select * into v_opening from project_openings where id = p_opening_id;
+  if v_opening is null then
+    raise exception 'unknown opening %', p_opening_id;
+  end if;
+
+  insert into install_events (
+    project_opening_id, window_id, window_type_id, installer, installer_id,
+    started_at, minutes, estimate_minutes, quality_grade, difficulty, went_well,
+    went_poorly, obstacles, tools_helped, time_vs_estimate, safety_notes,
+    do_again, transcript_raw
+  ) values (
+    v_opening.id, v_opening.assigned_window_id, v_opening.window_type_id,
+    p_installer, v_profile, p_started_at, p_minutes,
+    p_estimate_minutes, p_quality_grade, p_difficulty, p_went_well, p_went_poorly,
+    p_obstacles, p_tools_helped, p_time_vs_estimate, p_safety_notes, p_do_again,
+    p_transcript_raw
+  )
+  returning * into v_event;
+
+  update project_openings
+  set status = 'installed', confirmed = true, work_ended_at = now()
+  where id = v_opening.id;
+
+  if v_opening.assigned_window_id is not null then
+    perform install_window(v_opening.assigned_window_id, p_installer);
+  end if;
+
+  -- Task-time: this window is done — close on_task, land off_task (between
+  -- windows) until they tap "Next one" (which opens the next on_task session).
+  if v_profile is not null then
+    perform close_open_task_sessions(v_profile);
+    insert into task_sessions (profile_id, opening_id, project_id, state)
+    values (v_profile, null, v_opening.project_id, 'off_task');
+  end if;
+
+  return v_event;
+end;
+$$;
+
+-- 5. start_off_task(): explicit "between windows" transition (e.g. installer
+--    backs out of a task without submitting). Closes open sessions, opens
+--    off_task. project is optional context.
+create or replace function start_off_task(p_project uuid default null)
+returns task_sessions
+language plpgsql
+as $$
+declare
+  v_session task_sessions;
+  v_uid uuid := auth.uid();
+begin
+  perform close_open_task_sessions(v_uid);
+  insert into task_sessions (profile_id, opening_id, project_id, state)
+  values (v_uid, null, p_project, 'off_task')
+  returning * into v_session;
+  return v_session;
+end;
+$$;
+
+-- 6. Recreate the break RPCs (exact current behavior from
+--    20260717008000_pin_and_breaks.sql) + mirror into task_sessions so the
+--    on/off/break model stays consistent: start_break closes the open task
+--    session and opens a 'break' session; end_break closes 'break' and lands
+--    the person off_task (ready to tap their next window).
+create or replace function start_break(p_shift_id uuid)
+returns time_shifts language plpgsql as $$
+declare
+  v time_shifts;
+begin
+  update time_shifts set break_started_at = coalesce(break_started_at, now())
+  where id = p_shift_id and profile_id = auth.uid()
+  returning * into v;
+  if v is null then raise exception 'no open shift %', p_shift_id; end if;
+
+  perform close_open_task_sessions(auth.uid());
+  insert into task_sessions (profile_id, opening_id, project_id, state)
+  values (auth.uid(), null, v.project_id, 'break');
+
+  return v;
+end;
+$$;
+
+create or replace function end_break(p_shift_id uuid)
+returns time_shifts language plpgsql as $$
+declare
+  v time_shifts;
+begin
+  update time_shifts
+  set break_seconds = break_seconds
+        + greatest(0, extract(epoch from (now() - break_started_at))::int),
+      break_started_at = null
+  where id = p_shift_id and profile_id = auth.uid() and break_started_at is not null
+  returning * into v;
+  if v is null then
+    select * into v from time_shifts where id = p_shift_id and profile_id = auth.uid();
+  end if;
+
+  perform close_open_task_sessions(auth.uid());
+  insert into task_sessions (profile_id, opening_id, project_id, state)
+  values (auth.uid(), null, v.project_id, 'off_task');
+
+  return v;
+end;
+$$;
+
+-- Live sync: task_sessions in the realtime publication so a supervisor board can
+-- watch on/off/break transitions across crews.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'task_sessions'
+  ) then
+    alter publication supabase_realtime add table task_sessions;
+  end if;
+end;
+$$;
 
 -- ============================================================================
 -- Manual plan outlines (multi-polygon per page)
@@ -2001,3 +2723,718 @@ end $$;
 
 alter table project_plan_outlines
   add column if not exists features jsonb not null default '{}'::jsonb;
+
+
+-- ============================================================================
+-- pre-issued unit ids  [20260718040000_preissue_ids.sql]
+-- =============================================================================
+
+-- Extend the windows status set to include the new pre-arrival state.
+alter table windows drop constraint if exists windows_status_check;
+alter table windows add constraint windows_status_check
+  check (status in (
+    'pre_issued','inbound','in_warehouse','staged','loaded','installed','damaged'
+  ));
+
+-- Allow logging the pre-issue event in the append-only movement log.
+alter table movements drop constraint if exists movements_event_check;
+alter table movements add constraint movements_event_check
+  check (event in (
+    'received','putaway','moved','staged','loaded','installed','damaged',
+    'count_verified','count_missing','override','assigned','uninstalled','preissued'
+  ));
+
+-- Pre-issue windows rows for a project from its planned quantities. Foreman+ only.
+-- Idempotent: only creates (planned quantity - existing units of that type, in ANY
+-- status) rows, so running twice never exceeds the plan; empty plan = safe no-op.
+create or replace function preissue_project_units(p_project_id uuid)
+returns setof windows
+language plpgsql
+security definer
+as $$
+declare
+  v_caller_role text;
+  v_need record;
+  v_existing int;
+  v_to_create int;
+  i int;
+  v_window windows;
+begin
+  select role into v_caller_role from profiles where id = auth.uid();
+  if v_caller_role is null or v_caller_role = 'installer' then
+    raise exception 'only a foreman-level user or above can pre-issue unit IDs';
+  end if;
+
+  for v_need in
+    select window_type_id, quantity
+    from project_windows
+    where project_id = p_project_id
+  loop
+    select count(*) into v_existing
+    from windows
+    where project_id = p_project_id
+      and window_type_id = v_need.window_type_id;
+
+    v_to_create := v_need.quantity - v_existing;
+
+    if v_to_create > 0 then
+      for i in 1..v_to_create loop
+        loop
+          begin
+            insert into windows (
+              window_id, short_code, window_type_id, status, project_id, location_id
+            )
+            values (
+              issue_window_id(v_need.window_type_id),
+              issue_window_short_code(),
+              v_need.window_type_id,
+              'pre_issued',
+              p_project_id,
+              null
+            )
+            returning * into v_window;
+            exit;
+          exception when unique_violation then
+            -- extremely rare short_code collision; try again
+          end;
+        end loop;
+
+        insert into movements (window_id, event, project_id, actor)
+        values (v_window.id, 'preissued', p_project_id, auth.uid()::text);
+
+        return next v_window;
+      end loop;
+    end if;
+  end loop;
+
+  return;
+end;
+$$;
+
+
+-- ============================================================================
+-- receiving + delivery  [20260718050000_receiving_delivery.sql]
+-- =============================================================================
+
+-- Link an issue to a specific physical unit (nullable — opening-level issues
+-- still use opening_id only).
+alter table issues add column if not exists window_id uuid
+  references windows(id) on delete set null;
+create index if not exists issues_window_idx on issues (window_id);
+
+-- Extend the issue kind set with 'missing' (undelivered unit).
+alter table issues drop constraint if exists issues_kind_check;
+alter table issues add constraint issues_kind_check
+  check (kind in (
+    'failed_install','flag','damage','blocker','complication','missing'
+  ));
+
+-- Receive a physical unit against the plan: match it to its pre_issued ID and
+-- activate it (-> in_warehouse, or damaged). Foreman+ only. Logs a 'received'
+-- movement and, when damaged, opens a deduped unit-level damage issue.
+create or replace function activate_preissued_unit(
+  p_code text,
+  p_location_id uuid default null,
+  p_damaged boolean default false,
+  p_actor text default null
+)
+returns windows
+language plpgsql
+security definer
+as $$
+declare
+  v_caller_role text;
+  v_unit windows;
+  v_new_status text;
+begin
+  select role into v_caller_role from profiles where id = auth.uid();
+  if v_caller_role is null or v_caller_role = 'installer' then
+    raise exception 'only a foreman-level user or above can receive against the plan';
+  end if;
+
+  select * into v_unit from find_window_by_code(p_code);
+  if v_unit.id is null then
+    raise exception 'unknown code % — no unit matches that code or serial', p_code;
+  end if;
+  if v_unit.status <> 'pre_issued' then
+    raise exception
+      'window % is not awaiting delivery (status %) — it may already be received',
+      v_unit.window_id, v_unit.status;
+  end if;
+
+  v_new_status := case when p_damaged then 'damaged' else 'in_warehouse' end;
+
+  update windows
+  set status = v_new_status,
+      location_id = coalesce(p_location_id, location_id),
+      received_at = now()
+  where id = v_unit.id
+  returning * into v_unit;
+
+  insert into movements (window_id, event, to_location_id, project_id, actor, reason)
+  values (
+    v_unit.id,
+    'received',
+    p_location_id,
+    v_unit.project_id,
+    coalesce(p_actor, auth.uid()::text),
+    case when p_damaged then 'received damaged on arrival' else null end
+  );
+
+  if p_damaged then
+    if not exists (
+      select 1 from issues
+      where window_id = v_unit.id and kind = 'damage' and status = 'open'
+    ) then
+      insert into issues (project_id, opening_id, window_id, kind, urgency, note, created_by)
+      values (v_unit.project_id, null, v_unit.id, 'damage', 'urgent',
+              'damaged on arrival', auth.uid());
+    end if;
+  end if;
+
+  return v_unit;
+end;
+$$;
+
+-- Foreman-triggered delivery reconcile: flag every still-'pre_issued' unit for a
+-- project as a 'missing' issue (deduped per window). Returns the opened issues.
+create or replace function reconcile_project_deliveries(p_project_id uuid)
+returns setof issues
+language plpgsql
+security definer
+as $$
+declare
+  v_caller_role text;
+  v_unit windows;
+  v_issue issues;
+begin
+  select role into v_caller_role from profiles where id = auth.uid();
+  if v_caller_role is null or v_caller_role = 'installer' then
+    raise exception 'only a foreman-level user or above can reconcile deliveries';
+  end if;
+
+  for v_unit in
+    select * from windows
+    where project_id = p_project_id and status = 'pre_issued'
+  loop
+    if not exists (
+      select 1 from issues
+      where window_id = v_unit.id and kind = 'missing' and status = 'open'
+    ) then
+      insert into issues (project_id, opening_id, window_id, kind, urgency, note, created_by)
+      values (
+        p_project_id, null, v_unit.id, 'missing', 'urgent',
+        'delivery missing: ' || v_unit.window_id ||
+          coalesce(' (' || v_unit.short_code || ')', ''),
+        auth.uid()
+      )
+      returning * into v_issue;
+      return next v_issue;
+    end if;
+  end loop;
+
+  return;
+end;
+$$;
+
+
+-- ============================================================================
+-- load-out + unload  [20260718060000_loadout_unload.sql]
+-- =============================================================================
+
+-- Allow logging the jobsite unload event in the append-only movement log.
+alter table movements drop constraint if exists movements_event_check;
+alter table movements add constraint movements_event_check
+  check (event in (
+    'received','putaway','moved','staged','loaded','installed','damaged',
+    'count_verified','count_missing','override','assigned','uninstalled',
+    'preissued','unloaded'
+  ));
+
+-- Batch load-out: move a set of the project's units onto the truck (batch
+-- version of load_window). For each id that belongs to the project AND is
+-- 'in_warehouse' or 'staged', set 'loaded', clear its slot, log a 'loaded'
+-- movement. Ineligible ids are skipped; only loaded units are returned.
+create or replace function load_units(
+  p_window_ids uuid[],
+  p_project_id uuid,
+  p_actor text default null
+)
+returns setof windows
+language plpgsql
+security definer
+as $$
+declare
+  v_role text;
+  v_id uuid;
+  v_from uuid;
+  v_window windows;
+begin
+  select role into v_role from profiles where id = auth.uid();
+  if v_role is null or v_role = 'installer' then
+    raise exception 'only a foreman-level user or above can load units for a run';
+  end if;
+
+  foreach v_id in array coalesce(p_window_ids, array[]::uuid[])
+  loop
+    select location_id into v_from
+    from windows
+    where id = v_id
+      and project_id = p_project_id
+      and status in ('in_warehouse', 'staged');
+    if not found then
+      continue;
+    end if;
+
+    update windows
+    set status = 'loaded', location_id = null
+    where id = v_id
+    returning * into v_window;
+
+    insert into movements (window_id, event, from_location_id, project_id, actor)
+    values (v_id, 'loaded', v_from, p_project_id, coalesce(p_actor, auth.uid()::text));
+
+    return next v_window;
+  end loop;
+
+  return;
+end;
+$$;
+
+-- Jobsite unload + condition report. OK units -> 'staged' (on site, ready to
+-- install); damaged units -> 'damaged' + a deduped 'damage' issue. Returns
+-- { unloaded, damaged } counts. Foreman+ only.
+create or replace function unload_units(
+  p_ok_ids uuid[],
+  p_damaged_ids uuid[],
+  p_project_id uuid,
+  p_location_note text default null,
+  p_actor text default null
+)
+returns jsonb
+language plpgsql
+security definer
+as $$
+declare
+  v_role text;
+  v_id uuid;
+  v_actor text;
+  v_note text;
+  v_unloaded int := 0;
+  v_damaged int := 0;
+begin
+  select role into v_role from profiles where id = auth.uid();
+  if v_role is null or v_role = 'installer' then
+    raise exception 'only a foreman-level user or above can unload a run';
+  end if;
+
+  v_actor := coalesce(p_actor, auth.uid()::text);
+  v_note := nullif(trim(coalesce(p_location_note, '')), '');
+
+  foreach v_id in array coalesce(p_ok_ids, array[]::uuid[])
+  loop
+    update windows
+    set status = 'staged'
+    where id = v_id and project_id = p_project_id and status = 'loaded';
+    if found then
+      insert into movements (window_id, event, project_id, actor, reason)
+      values (
+        v_id, 'unloaded', p_project_id, v_actor,
+        'unloaded on site' ||
+          case when v_note is not null then ' — ' || v_note else '' end
+      );
+      v_unloaded := v_unloaded + 1;
+    end if;
+  end loop;
+
+  foreach v_id in array coalesce(p_damaged_ids, array[]::uuid[])
+  loop
+    update windows
+    set status = 'damaged'
+    where id = v_id and project_id = p_project_id and status = 'loaded';
+    if found then
+      insert into movements (window_id, event, project_id, actor, reason)
+      values (v_id, 'unloaded', p_project_id, v_actor, 'damaged in transit/unload');
+
+      if not exists (
+        select 1 from issues
+        where window_id = v_id and kind = 'damage' and status = 'open'
+      ) then
+        insert into issues (project_id, opening_id, window_id, kind, urgency, note, created_by)
+        values (p_project_id, null, v_id, 'damage', 'urgent',
+                'damaged in transit/unload', auth.uid());
+      end if;
+      v_damaged := v_damaged + 1;
+    end if;
+  end loop;
+
+  return jsonb_build_object('unloaded', v_unloaded, 'damaged', v_damaged);
+end;
+$$;
+
+-- Reorder rollup: per window type, damaged units + still-missing deliveries for
+-- a project, so foreman+/office can reorder fast. Foreman+ only.
+create or replace function list_reorder_needs(p_project_id uuid)
+returns table (
+  window_type_id uuid,
+  type_name text,
+  missing_count int,
+  damaged_count int
+)
+language plpgsql
+security definer
+as $$
+declare v_role text;
+begin
+  select role into v_role from profiles where id = auth.uid();
+  if v_role is null or v_role = 'installer' then
+    raise exception 'only a foreman-level user or above can view reorder needs';
+  end if;
+
+  return query
+  with damaged as (
+    select w.window_type_id as tid, count(*)::int as cnt
+    from windows w
+    where w.project_id = p_project_id and w.status = 'damaged'
+    group by w.window_type_id
+  ),
+  missing as (
+    select w.window_type_id as tid, count(*)::int as cnt
+    from issues i
+    join windows w on w.id = i.window_id
+    where i.project_id = p_project_id
+      and i.kind = 'missing'
+      and i.status = 'open'
+    group by w.window_type_id
+  ),
+  tids as (
+    select tid from damaged
+    union
+    select tid from missing
+  )
+  select
+    t.tid,
+    wt.name,
+    coalesce(m.cnt, 0),
+    coalesce(d.cnt, 0)
+  from tids t
+  join window_types wt on wt.id = t.tid
+  left join missing m on m.tid = t.tid
+  left join damaged d on d.tid = t.tid
+  order by wt.type_code;
+end;
+$$;
+
+-- warranty / service cases  [20260718070000_service_cases.sql]
+
+-- Phase 4: warranty / after-service traceability.
+--
+-- This closes the plan-set -> warranty loop. Every physical unit already carries
+-- its full history (received -> loaded -> unloaded -> installed via movements +
+-- install_events). A service_case is opened AFTER install, against a specific
+-- installed unit, when something goes wrong in the 1-year warranty window:
+--   * open_service_case: open a case from a unit's history — derives the unit's
+--     project + window type and the latest install event + installer
+--     automatically, so the failure is attributed back to the type/installer/
+--     procedure without re-keying anything.
+--   * schedule_service_case: book the revisit (status 'scheduled').
+--   * resolve_service_case: close it out (status 'resolved' + note).
+--   * list_service_cases: cross-project feed for the foreman/owner service view,
+--     which groups callbacks by window type / installer / fail point so leads see
+--     which products, procedures, and people drive warranty work.
+--
+-- All RPCs are guarded foreman+ (a plain installer, or a missing/unknown
+-- profile, is rejected), matching the Phase 1/2/3 pattern.
+
+create table if not exists service_cases (
+  id uuid primary key default gen_random_uuid(),
+  window_id uuid not null references windows(id) on delete cascade,
+  install_event_id uuid references install_events(id) on delete set null,
+  project_id uuid references projects(id) on delete set null,
+  opening_id uuid references project_openings(id) on delete set null,
+  window_type_id uuid references window_types(id) on delete set null,
+  installer_id uuid references profiles(id) on delete set null,
+  status text not null default 'open' check (status in ('open','scheduled','resolved')),
+  reason text,
+  fail_point text,
+  description text,
+  reported_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  scheduled_at timestamptz,
+  resolved_by uuid references profiles(id) on delete set null,
+  resolved_at timestamptz,
+  resolution_note text
+);
+
+create index if not exists service_cases_status_idx on service_cases (status);
+create index if not exists service_cases_window_idx on service_cases (window_id);
+create index if not exists service_cases_type_idx on service_cases (window_type_id);
+
+-- Revisit photos/voice/docs hang off the service case (in addition to the
+-- window/install-event targets already supported).
+alter table attachments add column if not exists service_case_id uuid
+  references service_cases(id) on delete set null;
+create index if not exists attachments_service_case_idx on attachments (service_case_id);
+
+-- RLS: same trusted-crew pattern as the other install tables. The write/read
+-- RPCs below are additionally guarded foreman+.
+alter table service_cases enable row level security;
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where tablename = 'service_cases' and policyname = 'authenticated full access'
+  ) then
+    create policy "authenticated full access" on service_cases
+      for all to authenticated using (true) with check (true);
+  end if;
+end;
+$$;
+
+-- --- RPCs -------------------------------------------------------------------
+
+-- Open a warranty / after-service case against a specific physical unit. Derives
+-- the unit's project + window type and the latest (non-voided) install event +
+-- installer automatically, so the callback is attributed back to the type /
+-- installer / procedure. status 'open'; reported_by = the caller. Foreman+ only.
+create or replace function open_service_case(
+  p_window_id uuid,
+  p_reason text,
+  p_fail_point text default null,
+  p_description text default null
+)
+returns service_cases
+language plpgsql
+security definer
+as $$
+declare
+  v_role text;
+  v_window windows;
+  v_event install_events;
+  v_case service_cases;
+begin
+  select role into v_role from profiles where id = auth.uid();
+  if v_role is null or v_role = 'installer' then
+    raise exception 'only a foreman-level user or above can open a service case';
+  end if;
+
+  select * into v_window from windows where id = p_window_id;
+  if v_window is null then
+    raise exception 'unknown window %', p_window_id;
+  end if;
+
+  -- Latest non-voided install event for this unit gives us the opening,
+  -- installer, and the exact event the failure traces back to.
+  select * into v_event
+  from install_events
+  where window_id = p_window_id and voided_at is null
+  order by created_at desc
+  limit 1;
+
+  insert into service_cases (
+    window_id, install_event_id, project_id, opening_id, window_type_id,
+    installer_id, status, reason, fail_point, description, reported_by
+  ) values (
+    p_window_id,
+    v_event.id,
+    v_window.project_id,
+    v_event.project_opening_id,
+    v_window.window_type_id,
+    v_event.installer_id,
+    'open',
+    p_reason,
+    p_fail_point,
+    p_description,
+    auth.uid()
+  )
+  returning * into v_case;
+
+  return v_case;
+end;
+$$;
+
+-- Schedule the revisit for a case (status 'scheduled', scheduled_at = when).
+-- Foreman+ only.
+create or replace function schedule_service_case(p_id uuid, p_when timestamptz)
+returns service_cases
+language plpgsql
+security definer
+as $$
+declare
+  v_role text;
+  v_case service_cases;
+begin
+  select role into v_role from profiles where id = auth.uid();
+  if v_role is null or v_role = 'installer' then
+    raise exception 'only a foreman-level user or above can schedule a service case';
+  end if;
+
+  update service_cases
+  set status = 'scheduled', scheduled_at = p_when
+  where id = p_id
+  returning * into v_case;
+  if v_case is null then
+    raise exception 'unknown service case %', p_id;
+  end if;
+  return v_case;
+end;
+$$;
+
+-- Resolve a case (status 'resolved', resolved_by = caller, resolved_at = now,
+-- resolution_note = note). Foreman+ only.
+create or replace function resolve_service_case(p_id uuid, p_note text default null)
+returns service_cases
+language plpgsql
+security definer
+as $$
+declare
+  v_role text;
+  v_case service_cases;
+begin
+  select role into v_role from profiles where id = auth.uid();
+  if v_role is null or v_role = 'installer' then
+    raise exception 'only a foreman-level user or above can resolve a service case';
+  end if;
+
+  update service_cases
+  set status = 'resolved',
+      resolved_by = auth.uid(),
+      resolved_at = now(),
+      resolution_note = p_note
+  where id = p_id
+  returning * into v_case;
+  if v_case is null then
+    raise exception 'unknown service case %', p_id;
+  end if;
+  return v_case;
+end;
+$$;
+
+-- Cross-project service-case feed for the foreman/owner service view. Returns
+-- every case (open + scheduled + resolved); the UI filters + groups by window
+-- type / installer / fail point for attribution. Foreman+ only.
+create or replace function list_service_cases()
+returns setof service_cases
+language plpgsql
+security definer
+as $$
+declare v_role text;
+begin
+  select role into v_role from profiles where id = auth.uid();
+  if v_role is null or v_role = 'installer' then
+    raise exception 'service cases are for foreman-level users and above';
+  end if;
+  return query select * from service_cases order by created_at desc;
+end;
+$$;
+
+
+-- ============================================================================
+-- Horizon-style clock: typed breaks + soft GPS  [20260718040000_time_clock_horizon.sql]
+-- ============================================================================
+
+alter table time_shifts
+  add column if not exists break_type text
+    check (break_type in ('lunch', 'rest', 'other')),
+  add column if not exists clock_in_lat double precision,
+  add column if not exists clock_in_lng double precision,
+  add column if not exists clock_out_lat double precision,
+  add column if not exists clock_out_lng double precision;
+
+drop function if exists clock_in(uuid, uuid, text);
+drop function if exists clock_out(uuid, text, boolean, boolean, int);
+drop function if exists start_break(uuid);
+
+create or replace function clock_in(
+  p_project_id uuid,
+  p_cost_code_id uuid,
+  p_photo text default null,
+  p_lat double precision default null,
+  p_lng double precision default null
+)
+returns time_shifts language plpgsql as $$
+declare v_shift time_shifts;
+begin
+  if not exists (
+    select 1 from toolbox_completions
+    where profile_id = auth.uid() and signed_at::date = current_date
+  ) then
+    raise exception 'complete today''s toolbox talk before clocking in';
+  end if;
+
+  update time_shifts set clock_out_at = now(), status = 'submitted'
+  where profile_id = auth.uid() and status = 'open' and clock_out_at is null;
+
+  insert into time_shifts
+    (profile_id, project_id, cost_code_id, clock_in_photo, clock_in_lat, clock_in_lng)
+  values (auth.uid(), p_project_id, p_cost_code_id, p_photo, p_lat, p_lng)
+  returning * into v_shift;
+  return v_shift;
+end;
+$$;
+
+create or replace function clock_out(
+  p_shift_id uuid,
+  p_photo text default null,
+  p_injured boolean default false,
+  p_time_confirmed boolean default true,
+  p_break_seconds int default null,
+  p_lat double precision default null,
+  p_lng double precision default null
+)
+returns time_shifts language plpgsql as $$
+declare v_shift time_shifts;
+begin
+  update time_shifts
+  set clock_out_at = now(),
+      clock_out_photo = coalesce(p_photo, clock_out_photo),
+      injured = p_injured,
+      time_confirmed = p_time_confirmed,
+      break_seconds = coalesce(p_break_seconds, break_seconds),
+      break_started_at = null,
+      break_type = null,
+      clock_out_lat = coalesce(p_lat, clock_out_lat),
+      clock_out_lng = coalesce(p_lng, clock_out_lng),
+      signed_at = now(),
+      status = 'submitted'
+  where id = p_shift_id and profile_id = auth.uid()
+  returning * into v_shift;
+  if v_shift is null then raise exception 'no open shift %', p_shift_id; end if;
+  return v_shift;
+end;
+$$;
+
+create or replace function start_break(
+  p_shift_id uuid,
+  p_break_type text default 'other'
+)
+returns time_shifts language plpgsql as $$
+declare v time_shifts;
+begin
+  update time_shifts
+  set break_started_at = coalesce(break_started_at, now()),
+      break_type = coalesce(break_type, p_break_type)
+  where id = p_shift_id and profile_id = auth.uid()
+  returning * into v;
+  if v is null then raise exception 'no open shift %', p_shift_id; end if;
+  return v;
+end;
+$$;
+
+create or replace function end_break(p_shift_id uuid)
+returns time_shifts language plpgsql as $$
+declare v time_shifts;
+begin
+  update time_shifts
+  set break_seconds = break_seconds
+        + greatest(0, extract(epoch from (now() - break_started_at))::int),
+      break_started_at = null,
+      break_type = null
+  where id = p_shift_id and profile_id = auth.uid() and break_started_at is not null
+  returning * into v;
+  if v is null then
+    select * into v from time_shifts where id = p_shift_id and profile_id = auth.uid();
+  end if;
+  return v;
+end;
+$$;

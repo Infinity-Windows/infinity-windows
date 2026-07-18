@@ -6,7 +6,6 @@ import {
   aiExtractSchedule,
   downloadPlanset,
   ensureTypesFromSpecs,
-  getMyProfile,
   linkSpecsToOpenings,
   listOpenings,
   listPlanOutlines,
@@ -16,6 +15,7 @@ import {
   undoInstall,
   updateOpening,
 } from "../../lib/install/api";
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import {
   isForemanPlus,
@@ -167,13 +167,17 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         : Promise.resolve([]),
     enabled: !!buildingPlansetId,
   });
+  const { effectiveRole } = useEffectiveRole();
+  // Failed/undone-install markers are foreman+ only. Installers never see the
+  // voided ring, legend, or "redo needed" state; the query is also gated so the
+  // data is never fetched for a non-foreman (faithful under view-as preview too).
+  const isLead = isForemanPlus(effectiveRole);
   const voided = useQuery({
-    queryKey: ["voidedOpenings", projectId],
-    queryFn: () => listVoidedInstallOpeningIds(projectId),
+    queryKey: ["voidedOpenings", projectId, isLead],
+    queryFn: () => listVoidedInstallOpeningIds(projectId, isLead),
+    enabled: isLead,
   });
-  const myProfile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const isLead = isForemanPlus(myProfile.data?.role);
-  const voidedIds = voided.data ?? new Set<string>();
+  const voidedIds = isLead ? voided.data ?? new Set<string>() : new Set<string>();
 
   const buildingPdfs = useMemo(
     () =>
@@ -659,7 +663,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const renderDetailCard = (o: ProjectOpening) => {
     const kind = unitKind(o);
     const wt = o.window_types;
-    const isVoided = o.status !== "installed" && voidedIds.has(o.id);
+    const isVoided = isLead && o.status !== "installed" && voidedIds.has(o.id);
     return (
       <div className="map-detail-card">
         <div className="map-detail-card__head">
@@ -759,7 +763,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const renderOpeningDots = (mode: "all" | "pinned" = "all") =>
     (mode === "pinned" ? placed : [...placed, ...autos]).map((o) => {
       const kind = unitKind(o);
-      const isVoided = o.status !== "installed" && voidedIds.has(o.id);
+      const isVoided = isLead && o.status !== "installed" && voidedIds.has(o.id);
       const pos = dotPos(o);
       return (
         <button
@@ -1362,9 +1366,11 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         <span>
           <i style={{ background: OPENING_STATUS_COLORS.installed }} /> installed
         </span>
-        <span>
-          <i style={{ background: VOIDED_RING_COLOR }} /> install undone
-        </span>
+        {isLead && (
+          <span>
+            <i style={{ background: VOIDED_RING_COLOR }} /> install undone
+          </span>
+        )}
       </div>
 
       <h2>
@@ -1373,7 +1379,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       </h2>
       <ul className="unit-list work-list">
         {filtered.map((o) => {
-          const isVoided = o.status !== "installed" && voidedIds.has(o.id);
+          const isVoided = isLead && o.status !== "installed" && voidedIds.has(o.id);
           return (
           <li key={o.id} className="find-row">
             <span

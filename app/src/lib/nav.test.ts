@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAccess, navForRole, roleRank } from "./nav";
+import { canAccess, navForRole, railSectionsForRole, roleRank } from "./nav";
 
 describe("roleRank", () => {
   it("ranks the four roles", () => {
@@ -59,6 +59,81 @@ describe("navForRole", () => {
     expect(navForRole("supervisor").more.map((i) => i.to)).toContain("/admin");
     expect(navForRole("owner").more.map((i) => i.to)).toContain("/admin");
   });
+
+  it("surfaces Issues for foreman+ (and up) but never installers", () => {
+    expect(navForRole("installer").rail.map((i) => i.to)).not.toContain("/issues");
+    expect(navForRole("foreman").rail.map((i) => i.to)).toContain("/issues");
+    expect(navForRole("supervisor").rail.map((i) => i.to)).toContain("/issues");
+    expect(navForRole("owner").rail.map((i) => i.to)).toContain("/issues");
+  });
+
+  it("surfaces Service (warranty) for foreman+ but never installers", () => {
+    expect(navForRole("installer").rail.map((i) => i.to)).not.toContain("/service");
+    expect(navForRole("foreman").rail.map((i) => i.to)).toContain("/service");
+    expect(navForRole("supervisor").rail.map((i) => i.to)).toContain("/service");
+    expect(navForRole("owner").rail.map((i) => i.to)).toContain("/service");
+  });
+
+  it("surfaces Heartbeat for supervisor+ only, on their phone bar", () => {
+    expect(navForRole("installer").rail.map((i) => i.to)).not.toContain("/heartbeat");
+    expect(navForRole("foreman").rail.map((i) => i.to)).not.toContain("/heartbeat");
+    expect(navForRole("supervisor").rail.map((i) => i.to)).toContain("/heartbeat");
+    expect(navForRole("owner").rail.map((i) => i.to)).toContain("/heartbeat");
+    expect(navForRole("supervisor").phone.map((i) => i.to)).toContain("/heartbeat");
+    expect(navForRole("owner").phone.map((i) => i.to)).toContain("/heartbeat");
+  });
+});
+
+describe("railSectionsForRole (desktop sidebar)", () => {
+  const flatten = (role: Parameters<typeof railSectionsForRole>[0]) =>
+    railSectionsForRole(role).flatMap((s) => s.items);
+
+  it("surfaces the clock 'Time' tab in the sidebar for every role", () => {
+    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
+      const clock = flatten(role).find((i) => i.id === "clock");
+      expect(clock, `clock missing for ${role}`).toBeTruthy();
+      expect(clock?.label).toBe("Time");
+    }
+  });
+
+  it("groups the clock under a 'Time' section", () => {
+    const section = railSectionsForRole("installer").find((s) => s.title === "Time");
+    expect(section?.items.map((i) => i.id)).toContain("clock");
+  });
+
+  it("only exposes destinations the role can actually access", () => {
+    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
+      for (const item of flatten(role)) {
+        expect(canAccess(role, item.to), `${role} should reach ${item.to}`).toBe(true);
+      }
+    }
+  });
+
+  it("keeps manager-only surfaces out of the installer sidebar", () => {
+    const tos = flatten("installer").map((i) => i.to);
+    for (const hidden of ["/admin", "/costing", "/qc", "/team", "/heartbeat", "/service"]) {
+      expect(tos).not.toContain(hidden);
+    }
+  });
+
+  it("gives owners the full menu in the sidebar (no desktop overflow)", () => {
+    const tos = flatten("owner").map((i) => i.to);
+    for (const shown of ["/admin", "/costing", "/team", "/heartbeat", "/warehouse", "/issues"]) {
+      expect(tos).toContain(shown);
+    }
+  });
+
+  it("labels the installer landing as My Work but managers as Home", () => {
+    const installerHome = flatten("installer").find((i) => i.to === "/");
+    const ownerHome = flatten("owner").find((i) => i.to === "/");
+    expect(installerHome?.label).toBe("My Work");
+    expect(ownerHome?.label).toBe("Home");
+  });
+
+  it("does not duplicate the installer My Work entry", () => {
+    const myWorkish = flatten("installer").filter((i) => i.to === "/" || i.to === "/my-work");
+    expect(myWorkish).toHaveLength(1);
+  });
 });
 
 describe("canAccess", () => {
@@ -68,6 +143,13 @@ describe("canAccess", () => {
     expect(canAccess("installer", "/qc")).toBe(false);
     expect(canAccess("installer", "/analytics")).toBe(false);
     expect(canAccess("installer", "/supplies")).toBe(false);
+    expect(canAccess("installer", "/service")).toBe(false);
+  });
+
+  it("opens Service (warranty) to foreman+ only", () => {
+    expect(canAccess("foreman", "/service")).toBe(true);
+    expect(canAccess("supervisor", "/service")).toBe(true);
+    expect(canAccess("owner", "/service")).toBe(true);
   });
 
   it("allows each role its floor and above", () => {
@@ -79,6 +161,13 @@ describe("canAccess", () => {
   it("keeps costing owner-only", () => {
     expect(canAccess("foreman", "/costing")).toBe(false);
     expect(canAccess("supervisor", "/costing")).toBe(false);
+  });
+
+  it("keeps heartbeat supervisor+ (blocked for installers and foremen)", () => {
+    expect(canAccess("installer", "/heartbeat")).toBe(false);
+    expect(canAccess("foreman", "/heartbeat")).toBe(false);
+    expect(canAccess("supervisor", "/heartbeat")).toBe(true);
+    expect(canAccess("owner", "/heartbeat")).toBe(true);
   });
 
   it("leaves open + detail/legacy routes reachable for everyone", () => {

@@ -14,6 +14,7 @@ import {
 import { Layout } from "./components/Layout";
 import { getMyProfile } from "./lib/install/api";
 import { canAccess, roleRank, ROLE_NAV_V2, type RoutePath } from "./lib/nav";
+import { ClockProvider } from "./lib/clockContext";
 import { ViewAsRoleProvider } from "./lib/viewAsRole";
 import { effectiveRole, useViewAsRole } from "./lib/viewAsRoleContext";
 import { supabase } from "./lib/supabase";
@@ -34,18 +35,23 @@ import { Search } from "./pages/Search";
 import { SignIn } from "./pages/SignIn";
 import { WindowDetail } from "./pages/WindowDetail";
 import { OpeningReview } from "./pages/install/OpeningReview";
-import { OpeningSheet } from "./pages/install/OpeningSheet";
+import { OpeningSheetRoute } from "./pages/install/OpeningSheet";
 import { PlansetUpload } from "./pages/install/PlansetUpload";
 import { ProjectMap } from "./pages/install/ProjectMap";
 import { TypeBrainCard } from "./pages/install/TypeBrainCard";
 import { CatalogImport } from "./pages/CatalogImport";
 import { Crew } from "./pages/Crew";
 import { MyWork } from "./pages/MyWork";
+import { Issues } from "./pages/Issues";
+import { Service } from "./pages/Service";
+import { Heartbeat } from "./pages/Heartbeat";
 import { Analytics } from "./pages/Analytics";
 import { MemoReview } from "./pages/MemoReview";
 import { Training } from "./pages/Training";
 import { Admin } from "./pages/Admin";
 import { TimeClock } from "./pages/TimeClock";
+import { Timecard } from "./pages/Timecard";
+import { CostCodes } from "./pages/CostCodes";
 import { Costing } from "./pages/Costing";
 import { Education } from "./pages/Education";
 import { Points } from "./pages/Points";
@@ -57,14 +63,22 @@ import { PinGate } from "./components/PinGate";
 import { ensureMyProfile } from "./lib/install/api";
 import "./index.css";
 
-/** Installers land on My Work; managers (foreman+) land on the Infinity day Home. */
+/**
+ * Role-aware landing: installers land on My Work, foremen on the Infinity day
+ * Home, and supervisors/owners on the cross-project Heartbeat (their pulse of
+ * every active job). View-as aware via effectiveRole; the loading state renders
+ * a neutral placeholder so we never flash the wrong landing before the profile
+ * resolves.
+ */
 function RoleLanding() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const view = useViewAsRole();
   if (!ROLE_NAV_V2) return <Home />;
   if (me.isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
-  const role = effectiveRole(me.data?.role, view);
-  return roleRank(role) === 0 ? <MyWork /> : <Home />;
+  const rank = roleRank(effectiveRole(me.data?.role, view));
+  if (rank >= 2) return <Heartbeat />;
+  if (rank >= 1) return <Home />;
+  return <MyWork />;
 }
 
 /**
@@ -164,6 +178,7 @@ export default function App() {
       <PinGate>
       <ViewAsRoleProvider>
       <BrowserRouter>
+        <ClockProvider>
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<RoleLanding />} />
@@ -173,6 +188,18 @@ export default function App() {
             <Route
               path="/team"
               element={<RequireRole path="/team"><Team /></RequireRole>}
+            />
+            <Route
+              path="/issues"
+              element={<RequireRole path="/issues"><Issues /></RequireRole>}
+            />
+            <Route
+              path="/service"
+              element={<RequireRole path="/service"><Service /></RequireRole>}
+            />
+            <Route
+              path="/heartbeat"
+              element={<RequireRole path="/heartbeat"><Heartbeat /></RequireRole>}
             />
             <Route path="/scan" element={<Scan />} />
             <Route
@@ -196,7 +223,7 @@ export default function App() {
             />
             <Route
               path="/projects/:projectId/opening/:openingId"
-              element={<OpeningSheet />}
+              element={<OpeningSheetRoute />}
             />
             <Route path="/brain/:typeId" element={<TypeBrainCard />} />
             <Route
@@ -222,6 +249,14 @@ export default function App() {
               element={<RequireRole path="/training"><Training /></RequireRole>}
             />
             <Route path="/clock" element={<TimeClock />} />
+            <Route
+              path="/timecard"
+              element={<RequireRole path="/timecard"><Timecard /></RequireRole>}
+            />
+            <Route
+              path="/cost-codes"
+              element={<RequireRole path="/cost-codes"><CostCodes /></RequireRole>}
+            />
             <Route
               path="/costing"
               element={<RequireRole path="/costing"><Costing /></RequireRole>}
@@ -273,6 +308,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
+        </ClockProvider>
       </BrowserRouter>
       </ViewAsRoleProvider>
       </PinGate>

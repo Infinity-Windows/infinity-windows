@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { listProjects } from "../lib/api";
 import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 import {
   getTodayTalk,
   listIncidents,
@@ -161,7 +162,8 @@ function TalkEditor({ talk, onSaved }: { talk: SafetyTalk; onSaved: () => void }
 export function Safety() {
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const lead = isForemanPlus(me.data?.role);
+  const { effectiveRole } = useEffectiveRole();
+  const lead = isForemanPlus(effectiveRole);
   const talk = useQuery({ queryKey: ["todayTalk"], queryFn: getTodayTalk });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
 
