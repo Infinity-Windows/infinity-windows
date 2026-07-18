@@ -41,6 +41,42 @@ export function useRealtimeOpenings(projectId: string | undefined) {
 }
 
 /**
+ * Supervisor Heartbeat: subscribe to ALL project_openings changes (no project
+ * filter) so the cross-project live crew board reflects every start/finish the
+ * instant it happens. Only enable on the Heartbeat page for supervisor+ — this
+ * is a firehose across all jobs, not something to run on every device.
+ */
+export function useRealtimeAllOpenings(enabled: boolean) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const invalidate = () => {
+      queryClient.invalidateQueries({ queryKey: ["heartbeat"] });
+    };
+
+    const channel = supabase
+      .channel("heartbeat-all-openings")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "project_openings" },
+        invalidate,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "issues" },
+        invalidate,
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [enabled, queryClient]);
+}
+
+/**
  * Keep an installer's "My Work" live: any opening change refreshes their list
  * and confirm queue, so a foreman assignment shows up on the phone at once.
  */
