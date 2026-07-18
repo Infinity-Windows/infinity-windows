@@ -14,6 +14,7 @@ import {
 import { Layout } from "./components/Layout";
 import { getMyProfile } from "./lib/install/api";
 import { canAccess, roleRank, ROLE_NAV_V2, type RoutePath } from "./lib/nav";
+import { ClockProvider } from "./lib/clockContext";
 import { ViewAsRoleProvider } from "./lib/viewAsRole";
 import { effectiveRole, useViewAsRole } from "./lib/viewAsRoleContext";
 import { supabase } from "./lib/supabase";
@@ -175,6 +176,7 @@ export default function App() {
       <PinGate>
       <ViewAsRoleProvider>
       <BrowserRouter>
+        <ClockProvider>
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<RoleLanding />} />
@@ -296,6 +298,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
+        </ClockProvider>
       </BrowserRouter>
       </ViewAsRoleProvider>
       </PinGate>
