@@ -1,5 +1,6 @@
-/** Rank units for opening assignment: prefer staged/loaded, then same project. */
+/** Rank units for opening assignment: prefer on-site/staged/loaded, then same project. */
 export const ASSIGN_STATUS_RANK: Record<string, number> = {
+  on_site: 0,
   staged: 0,
   loaded: 1,
   in_warehouse: 2,

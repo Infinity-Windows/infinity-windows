@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   checkFit,
+  isInstallReadyStatus,
   openingReadiness,
   readyToInstall,
   smallest,
   DEFAULT_CLEARANCE,
+  INSTALL_READY_STATUSES,
   type OpeningLike,
 } from "./fit";
 
@@ -96,6 +98,30 @@ describe("readyToInstall", () => {
   it("exposes default clearance constants", () => {
     expect(DEFAULT_CLEARANCE.minPerSide).toBe(0.25);
     expect(DEFAULT_CLEARANCE.maxPerSide).toBe(0.5);
+  });
+});
+
+describe("isInstallReadyStatus", () => {
+  it("treats a just-unloaded on_site unit as install-ready", () => {
+    expect(isInstallReadyStatus("on_site")).toBe(true);
+  });
+
+  it("treats warehouse/staged/loaded units as install-ready", () => {
+    expect(isInstallReadyStatus("in_warehouse")).toBe(true);
+    expect(isInstallReadyStatus("staged")).toBe(true);
+    expect(isInstallReadyStatus("loaded")).toBe(true);
+  });
+
+  it("rejects not-yet-on-hand or terminal statuses", () => {
+    expect(isInstallReadyStatus("pre_issued")).toBe(false);
+    expect(isInstallReadyStatus("inbound")).toBe(false);
+    expect(isInstallReadyStatus("installed")).toBe(false);
+    expect(isInstallReadyStatus(null)).toBe(false);
+    expect(isInstallReadyStatus(undefined)).toBe(false);
+  });
+
+  it("lists on_site among the shared ready statuses", () => {
+    expect(INSTALL_READY_STATUSES).toContain("on_site");
   });
 });
 

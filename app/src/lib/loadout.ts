@@ -2,7 +2,7 @@
 //
 // Load-out batch-selects a project's in-warehouse (or staged) units onto the
 // truck ('loaded'); jobsite unload reports each unit's condition (good ->
-// 'staged' on site, damaged -> held). The reorder rollup surfaces shortfalls
+// 'on_site', ready to install; damaged -> held). The reorder rollup surfaces shortfalls
 // per type (damaged units + still-missing deliveries) so office can reorder.
 //
 // These are extracted here so selection math and the rollup counting are

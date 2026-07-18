@@ -305,7 +305,7 @@ export interface UnloadResult {
 }
 
 /**
- * Jobsite unload + condition report: OK units go 'staged' (on site, ready to
+ * Jobsite unload + condition report: OK units go 'on_site' (ready to
  * install); damaged units go on hold + open a deduped damage issue. Optional
  * location note is folded into the movement log. Returns { unloaded, damaged }
  * counts. Foreman+ (enforced by the RPC).

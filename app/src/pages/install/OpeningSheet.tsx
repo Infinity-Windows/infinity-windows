@@ -25,7 +25,7 @@ import {
 } from "../../lib/install/assignRank";
 import { pickNextOpening } from "../../lib/install/nextOpening";
 import { awardPoints, computeInstallPoints } from "../../lib/points";
-import { checkFit, readyToInstall, smallest } from "../../lib/install/fit";
+import { checkFit, isInstallReadyStatus, readyToInstall, smallest } from "../../lib/install/fit";
 import { getOpenShift, startBreak } from "../../lib/timeclock";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import {
@@ -499,8 +499,7 @@ export function OpeningSheet() {
   const unitType = o.windows?.window_type_id ?? null;
   const typeMatches = !o.assigned_window_id || !o.window_type_id || unitType === o.window_type_id;
   const unitStatus = o.windows?.status ?? null;
-  const atLocationOrLoaded =
-    unitStatus === "staged" || unitStatus === "loaded" || unitStatus === "in_warehouse";
+  const atLocationOrLoaded = isInstallReadyStatus(unitStatus);
 
   const fit = checkFit({
     unitWidthIn: o.window_types?.width_in,
