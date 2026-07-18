@@ -203,6 +203,22 @@ export async function receiveWindow(
   return data as WindowUnit;
 }
 
+/**
+ * Pre-issue physical-unit records for a project from its planned quantities.
+ * Creates one `pre_issued` window (serial + short_code + QR) per still-missing
+ * planned unit and returns the newly created rows. Idempotent server-side:
+ * re-running never exceeds the plan. Foreman+ only (enforced by the RPC).
+ */
+export async function preissueProjectUnits(
+  projectId: string,
+): Promise<WindowUnit[]> {
+  const { data, error } = await supabase.rpc("preissue_project_units", {
+    p_project_id: projectId,
+  });
+  if (error) throw error;
+  return (data ?? []) as WindowUnit[];
+}
+
 export async function moveWindow(
   windowUuid: string,
   locationId: string,

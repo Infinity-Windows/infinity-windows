@@ -1,4 +1,5 @@
 export type WindowStatus =
+  | "pre_issued"
   | "inbound"
   | "in_warehouse"
   | "staged"
@@ -97,6 +98,7 @@ export interface Movement {
 }
 
 export const STATUS_LABELS: Record<WindowStatus, string> = {
+  pre_issued: "Pre-issued",
   inbound: "Inbound (needs putaway)",
   in_warehouse: "In warehouse",
   staged: "Staged for job",
