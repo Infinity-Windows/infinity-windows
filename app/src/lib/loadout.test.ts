@@ -21,6 +21,19 @@ describe("load-out selection", () => {
     expect(isLoadable(u("d", "installed"))).toBe(false);
     expect(isLoadable(u("e", "pre_issued"))).toBe(false);
     expect(isLoadable(u("f", "damaged"))).toBe(false);
+    // On-site units have already left the warehouse — not loadable.
+    expect(isLoadable(u("g", "on_site"))).toBe(false);
+  });
+
+  it("excludes on_site units from the loadable subset and batch", () => {
+    const list = [
+      u("a", "in_warehouse"),
+      u("b", "on_site"),
+      u("c", "staged"),
+    ];
+    expect(loadableUnits(list).map((x) => x.id)).toEqual(["a", "c"]);
+    const selected = new Set(["a", "b", "c"]);
+    expect(selectedLoadableIds(list, selected)).toEqual(["a", "c"]);
   });
 
   it("filters a mixed list down to the loadable units", () => {

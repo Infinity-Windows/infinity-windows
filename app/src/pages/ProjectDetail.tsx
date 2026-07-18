@@ -1043,6 +1043,11 @@ function WarehouseTab({
         );
       }
       if (unit.status === "loaded") throw new Error(`${windowId} is already loaded.`);
+      if (unit.status !== "in_warehouse" && unit.status !== "staged") {
+        throw new Error(
+          `${windowId} is not warehouse-ready to load (${STATUS_LABELS[unit.status]}).`,
+        );
+      }
       return loadWindow(unit.id);
     },
     onSuccess: (unit: WindowUnit) => {

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   checkFit,
+  openingReadiness,
   readyToInstall,
   smallest,
   DEFAULT_CLEARANCE,
+  type OpeningLike,
 } from "./fit";
 
 describe("checkFit", () => {
@@ -94,5 +96,36 @@ describe("readyToInstall", () => {
   it("exposes default clearance constants", () => {
     expect(DEFAULT_CLEARANCE.minPerSide).toBe(0.25);
     expect(DEFAULT_CLEARANCE.maxPerSide).toBe(0.5);
+  });
+});
+
+describe("openingReadiness", () => {
+  // Right unit, measured to fit, condition ok, unit assigned.
+  const base: OpeningLike = {
+    status: "assigned",
+    assigned_window_id: "w1",
+    window_type_id: "t-cas",
+    condition: "ok",
+    ro_width_in: 30.75,
+    ro_height_in: 50.75,
+    window_types: { width_in: 30, height_in: 50 },
+    windows: { window_type_id: "t-cas", status: "staged" },
+  };
+
+  it("treats an on_site unit as install-ready", () => {
+    const r = openingReadiness({
+      ...base,
+      windows: { window_type_id: "t-cas", status: "on_site" },
+    });
+    expect(r.status).toBe("ready");
+  });
+
+  it("still marks a not-yet-on-hand unit incomplete", () => {
+    const r = openingReadiness({
+      ...base,
+      windows: { window_type_id: "t-cas", status: "pre_issued" },
+    });
+    expect(r.status).toBe("incomplete");
+    expect(r.reasons.some((m) => /staged\/loaded\/on-site/i.test(m))).toBe(true);
   });
 });

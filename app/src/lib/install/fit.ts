@@ -197,7 +197,10 @@ export function openingReadiness(o: OpeningLike): OpeningReadiness {
     o.windows?.window_type_id === o.window_type_id;
   const unitStatus = o.windows?.status ?? null;
   const atLocationOrLoaded =
-    unitStatus === "staged" || unitStatus === "loaded" || unitStatus === "in_warehouse";
+    unitStatus === "staged" ||
+    unitStatus === "loaded" ||
+    unitStatus === "in_warehouse" ||
+    unitStatus === "on_site";
 
   const result = readyToInstall({
     hasUnit: Boolean(o.assigned_window_id),
