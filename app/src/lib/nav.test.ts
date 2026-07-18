@@ -67,6 +67,13 @@ describe("navForRole", () => {
     expect(navForRole("owner").rail.map((i) => i.to)).toContain("/issues");
   });
 
+  it("surfaces Service (warranty) for foreman+ but never installers", () => {
+    expect(navForRole("installer").rail.map((i) => i.to)).not.toContain("/service");
+    expect(navForRole("foreman").rail.map((i) => i.to)).toContain("/service");
+    expect(navForRole("supervisor").rail.map((i) => i.to)).toContain("/service");
+    expect(navForRole("owner").rail.map((i) => i.to)).toContain("/service");
+  });
+
   it("surfaces Heartbeat for supervisor+ only, on their phone bar", () => {
     expect(navForRole("installer").rail.map((i) => i.to)).not.toContain("/heartbeat");
     expect(navForRole("foreman").rail.map((i) => i.to)).not.toContain("/heartbeat");
@@ -84,6 +91,13 @@ describe("canAccess", () => {
     expect(canAccess("installer", "/qc")).toBe(false);
     expect(canAccess("installer", "/analytics")).toBe(false);
     expect(canAccess("installer", "/supplies")).toBe(false);
+    expect(canAccess("installer", "/service")).toBe(false);
+  });
+
+  it("opens Service (warranty) to foreman+ only", () => {
+    expect(canAccess("foreman", "/service")).toBe(true);
+    expect(canAccess("supervisor", "/service")).toBe(true);
+    expect(canAccess("owner", "/service")).toBe(true);
   });
 
   it("allows each role its floor and above", () => {
