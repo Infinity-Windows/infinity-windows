@@ -580,6 +580,79 @@ button:disabled {
   height: auto;
 }
 
+.drawing-view-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 8px;
+}
+
+.pdf-source-line {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.plan-map--pdf-sketch {
+  background: #f5f2e9;
+}
+
+.plan-map--pdf-sketch img {
+  filter: grayscale(1) contrast(1.16) brightness(1.05);
+}
+
+.cad-detail-caption {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 12px 14px;
+  color: var(--text);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.cad-detail-caption span {
+  color: var(--muted);
+}
+
+.cad-detail-index {
+  margin: 18px 0;
+}
+
+.cad-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.cad-detail-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 12px;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.cad-detail-card.active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.cad-detail-card .field-label {
+  margin: 0;
+}
+
+.cad-detail-card span,
+.cad-detail-card small {
+  color: var(--muted);
+}
+
 .plan-map.placing { cursor: crosshair; outline: 2px solid var(--accent); }
 
 .map-pin {
@@ -1532,6 +1605,45 @@ button:disabled {
   flex-direction: column;
   gap: 0;
   margin-bottom: 8px;
+}
+
+.project-create {
+  margin: 14px 0 18px;
+}
+
+.project-create form {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.project-create form .row-between {
+  margin-top: 0;
+}
+
+.project-create-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.4fr) minmax(220px, 1fr);
+  gap: 0 12px;
+}
+
+.project-create-grid input {
+  width: 100%;
+}
+
+.project-create-address {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 640px) {
+  .project-create-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .project-create-address {
+    grid-column: auto;
+  }
 }
 
 .home-project {
