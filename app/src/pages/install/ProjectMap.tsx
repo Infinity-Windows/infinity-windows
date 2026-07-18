@@ -98,6 +98,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const [mapError, setMapError] = useState<string | null>(null);
   const [filter, setFilter] = useState<PlanFilter>("all");
   const [fullScreen, setFullScreen] = useState(false);
+  const [pdfZoom, setPdfZoom] = useState(1);
   const buildingDocRef = useRef<PDFDocumentProxy | null>(null);
   const specsDocRef = useRef<PDFDocumentProxy | null>(null);
   const [docsReady, setDocsReady] = useState(0);
@@ -518,6 +519,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           ? floorPages
           : Array.from({ length: buildingPageCount }, (_, index) => index + 1);
     setPage(nextPage ?? pages[0] ?? 1);
+    setPdfZoom(1);
+  };
+
+  const bumpZoom = (dir: 1 | -1) => {
+    setPdfZoom((z) =>
+      Math.min(4, Math.max(0.5, Math.round((z + dir * 0.25) * 100) / 100)),
+    );
   };
 
   const pinTitle = (o: ProjectOpening) =>
@@ -680,6 +688,43 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       );
     });
 
+  // Reset zoom when flipping PDF pages.
+  useEffect(() => {
+    setPdfZoom(1);
+  }, [page, view]);
+
+  const zoomControls = (view === "building" || view === "details") && (
+    <div className="plan-zoom-controls" role="group" aria-label="Zoom">
+      <button
+        type="button"
+        className="plan-zoom-btn"
+        aria-label="Zoom out"
+        disabled={pdfZoom <= 0.5}
+        onClick={() => bumpZoom(-1)}
+      >
+        −
+      </button>
+      <button
+        type="button"
+        className="plan-zoom-btn plan-zoom-btn--label"
+        aria-label="Reset zoom"
+        title="Reset zoom"
+        onClick={() => setPdfZoom(1)}
+      >
+        {Math.round(pdfZoom * 100)}%
+      </button>
+      <button
+        type="button"
+        className="plan-zoom-btn"
+        aria-label="Zoom in"
+        disabled={pdfZoom >= 4}
+        onClick={() => bumpZoom(1)}
+      >
+        +
+      </button>
+    </div>
+  );
+
   const fullscreenBar = (
     <div className="plan-fullscreen-bar">
       <button
@@ -689,6 +734,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       >
         ✕ Close
       </button>
+      {zoomControls}
       {visiblePages.length > 1 && (
         <>
           <button
@@ -955,6 +1001,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             </span>
             <div className="cartoon-sheet__head-actions">
               <span className="cartoon-sheet__status">source PDF</span>
+              {!fullScreen && zoomControls}
               <button
                 type="button"
                 className="plan-fullscreen-toggle"
@@ -967,12 +1014,25 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             </div>
           </div>
           {image ? (
-            <div ref={sheetRef} className="plan-map plan-map--pdf-sketch plan-map--with-dots">
-              <img
-                src={image.dataUrl}
-                alt={`Building plan PDF page ${page}`}
-              />
-              {renderOpeningDots()}
+            <div
+              className="plan-zoom-viewport"
+              onWheel={(e) => {
+                if (!e.ctrlKey && !e.metaKey) return;
+                e.preventDefault();
+                bumpZoom(e.deltaY < 0 ? 1 : -1);
+              }}
+            >
+              <div
+                ref={sheetRef}
+                className="plan-map plan-map--pdf-sketch plan-map--with-dots"
+                style={{ width: `${pdfZoom * 100}%` }}
+              >
+                <img
+                  src={image.dataUrl}
+                  alt={`Building plan PDF page ${page}`}
+                />
+                {renderOpeningDots()}
+              </div>
             </div>
           ) : (
             <p className="muted" style={{ padding: "12px 6px" }}>
@@ -998,6 +1058,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                   ? activeDetail.marks.map((m) => `#${m}`).join(" · ")
                   : "specs PDF"}
               </span>
+              {!fullScreen && zoomControls}
               <button
                 type="button"
                 className="plan-fullscreen-toggle"
@@ -1010,11 +1071,23 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             </div>
           </div>
           {image ? (
-            <div className="plan-map plan-map--pdf-sketch">
-              <img
-                src={image.dataUrl}
-                alt={`Window and door detail PDF page ${page}`}
-              />
+            <div
+              className="plan-zoom-viewport"
+              onWheel={(e) => {
+                if (!e.ctrlKey && !e.metaKey) return;
+                e.preventDefault();
+                bumpZoom(e.deltaY < 0 ? 1 : -1);
+              }}
+            >
+              <div
+                className="plan-map plan-map--pdf-sketch"
+                style={{ width: `${pdfZoom * 100}%` }}
+              >
+                <img
+                  src={image.dataUrl}
+                  alt={`Window and door detail PDF page ${page}`}
+                />
+              </div>
             </div>
           ) : (
             <p className="muted" style={{ padding: "12px 6px" }}>
