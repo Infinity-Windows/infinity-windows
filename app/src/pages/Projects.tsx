@@ -1,6 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { listProjects } from "../lib/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { createProject, listProjects } from "../lib/api";
+import { getMyProfile } from "../lib/install/api";
+import { isForemanPlus } from "../lib/install/types";
 import { supabase } from "../lib/supabase";
 
 interface OpeningCountRow {
@@ -9,7 +12,15 @@ interface OpeningCountRow {
 }
 
 export function Projects() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [adding, setAdding] = useState(false);
+  const [jobCode, setJobCode] = useState("");
+  const [name, setName] = useState("");
+  const [address, setAddress] = useState("");
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  const profile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const canAdd = isForemanPlus(profile.data?.role);
   const counts = useQuery({
     queryKey: ["openingCounts"],
     queryFn: async (): Promise<OpeningCountRow[]> => {
@@ -18,6 +29,17 @@ export function Projects() {
         .select("project_id, status");
       if (error) throw error;
       return data;
+    },
+  });
+  const addProject = useMutation({
+    mutationFn: () => createProject({ jobCode, name, address }),
+    onSuccess: async (project) => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      setAdding(false);
+      setJobCode("");
+      setName("");
+      setAddress("");
+      navigate(`/projects/${project.id}/upload`);
     },
   });
 
@@ -43,6 +65,66 @@ export function Projects() {
       <p className="muted">
         One hub per job — warehouse pick list, opening map, and type brain.
       </p>
+      {canAdd && (
+        <div className="project-create">
+          {!adding ? (
+            <button type="button" className="action-btn primary" onClick={() => setAdding(true)}>
+              + New project
+            </button>
+          ) : (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                addProject.mutate();
+              }}
+            >
+              <div className="row-between">
+                <h2>New project</h2>
+                <button type="button" className="link" onClick={() => setAdding(false)}>
+                  Cancel
+                </button>
+              </div>
+              <div className="project-create-grid">
+                <label>
+                  <span className="field-label">Job code</span>
+                  <input
+                    value={jobCode}
+                    onChange={(e) => setJobCode(e.target.value)}
+                    placeholder="PECAN14"
+                    autoCapitalize="characters"
+                    required
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Project name</span>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Pecan Valley Town Homes — Building 14"
+                    required
+                  />
+                </label>
+                <label className="project-create-address">
+                  <span className="field-label">Address</span>
+                  <input
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder="Lots 173–183, Hurricane, UT 84737"
+                  />
+                </label>
+              </div>
+              {addProject.isError && <p className="error">{String(addProject.error)}</p>}
+              <button
+                type="submit"
+                className="action-btn primary"
+                disabled={addProject.isPending || !jobCode.trim() || !name.trim()}
+              >
+                {addProject.isPending ? "Creating…" : "Create project and add PDFs"}
+              </button>
+            </form>
+          )}
+        </div>
+      )}
       <div className="home-projects">
         {(projects.data ?? []).map((p) => {
           const c = countFor(p.id);
