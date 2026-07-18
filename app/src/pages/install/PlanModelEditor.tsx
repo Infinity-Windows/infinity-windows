@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   addOpening,
   deleteOpening,
@@ -52,6 +52,9 @@ const EDGE_ATTACH_TOLERANCE = 40;
 const WALL_WINDOW_WIDTH = 50;
 const WALL_DOOR_WIDTH = 60;
 
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 10;
+
 interface PageImage {
   dataUrl: string;
   width: number;
@@ -98,9 +101,13 @@ export function PlanModelEditor(props: {
     onClose,
   } = props;
   const queryClient = useQueryClient();
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const outlineScopeRef = useRef(`${planset.id}:${page}`);
   const squareLockRef = useRef(false);
+  const zoomRef = useRef(1);
+  const pendingScrollRef = useRef<{ left: number; top: number } | null>(null);
 
   const [tool, setTool] = useState<EditTool>("outline");
   const [savedOutlines, setSavedOutlines] =
@@ -131,6 +138,8 @@ export function PlanModelEditor(props: {
   const [error, setError] = useState<string | null>(null);
   const [vertexDrag, setVertexDrag] = useState<number | null>(null);
   const [squareLock, setSquareLock] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [zoom, setZoom] = useState(1);
   const [rectDrag, setRectDrag] = useState<{
     anchor: OutlinePoint;
     cursor: OutlinePoint;
@@ -198,6 +207,129 @@ export function PlanModelEditor(props: {
       cancelled = true;
     };
   }, [planset, page]);
+
+  // --- zoom & fullscreen ---
+
+  zoomRef.current = zoom;
+
+  /** Zoom toward a screen point so what's under the cursor stays put. */
+  const setZoomAt = (next: number, clientX?: number, clientY?: number) => {
+    const z = clamp(next, MIN_ZOOM, MAX_ZOOM);
+    const prev = zoomRef.current;
+    const scroller = scrollerRef.current;
+    if (!scroller || z === prev) {
+      setZoom(z);
+      return;
+    }
+    const rect = scroller.getBoundingClientRect();
+    const offsetX = (clientX ?? rect.left + rect.width / 2) - rect.left;
+    const offsetY = (clientY ?? rect.top + rect.height / 2) - rect.top;
+    const scale = z / prev;
+    pendingScrollRef.current = {
+      left: (scroller.scrollLeft + offsetX) * scale - offsetX,
+      top: (scroller.scrollTop + offsetY) * scale - offsetY,
+    };
+    setZoom(z);
+  };
+
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    const pending = pendingScrollRef.current;
+    if (!scroller || !pending) return;
+    pendingScrollRef.current = null;
+    scroller.scrollLeft = pending.left;
+    scroller.scrollTop = pending.top;
+  }, [zoom]);
+
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+
+    // Ctrl/Cmd + wheel (and Mac trackpad pinch) zooms toward the cursor.
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      setZoomAt(zoomRef.current * Math.exp(-e.deltaY * 0.002), e.clientX, e.clientY);
+    };
+
+    // Two-finger touch: pinch to zoom, move together to pan.
+    let lastDist = 0;
+    let lastMid: { x: number; y: number } | null = null;
+    const gesture = (t: TouchList) => ({
+      dist: Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY),
+      mid: {
+        x: (t[0].clientX + t[1].clientX) / 2,
+        y: (t[0].clientY + t[1].clientY) / 2,
+      },
+    });
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      const g = gesture(e.touches);
+      lastDist = g.dist;
+      lastMid = g.mid;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || !lastMid || lastDist === 0) return;
+      e.preventDefault();
+      const g = gesture(e.touches);
+      scroller.scrollLeft -= g.mid.x - lastMid.x;
+      scroller.scrollTop -= g.mid.y - lastMid.y;
+      setZoomAt(zoomRef.current * (g.dist / lastDist), g.mid.x, g.mid.y);
+      lastDist = g.dist;
+      lastMid = g.mid;
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        lastDist = 0;
+        lastMid = null;
+      }
+    };
+
+    scroller.addEventListener("wheel", onWheel, { passive: false });
+    scroller.addEventListener("touchstart", onTouchStart, { passive: true });
+    scroller.addEventListener("touchmove", onTouchMove, { passive: false });
+    scroller.addEventListener("touchend", onTouchEnd);
+    scroller.addEventListener("touchcancel", onTouchEnd);
+    return () => {
+      scroller.removeEventListener("wheel", onWheel);
+      scroller.removeEventListener("touchstart", onTouchStart);
+      scroller.removeEventListener("touchmove", onTouchMove);
+      scroller.removeEventListener("touchend", onTouchEnd);
+      scroller.removeEventListener("touchcancel", onTouchEnd);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!fullscreen) {
+      setFullscreen(true);
+      // Real browser fullscreen when available; the fixed overlay is the fallback.
+      editorRef.current?.requestFullscreen?.().catch(() => {});
+    } else {
+      setFullscreen(false);
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+  };
+
+  useEffect(() => {
+    const onFsChange = () => {
+      if (!document.fullscreenElement) setFullscreen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Covers the CSS-overlay fallback where Esc has no native handler.
+      if (e.key === "Escape" && !document.fullscreenElement) {
+        setFullscreen(false);
+      }
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFsChange);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
 
   const previewPoints = rectDrag
     ? rectFromDrag(rectDrag.anchor, rectDrag.cursor, rectDrag.square, aspect)
@@ -455,9 +587,11 @@ export function PlanModelEditor(props: {
       setStatus("Close an outline first, then draw dividers across it.");
       return;
     }
+    // Tighter attach distance when zoomed in for precise placement.
+    const tolerance = EDGE_ATTACH_TOLERANCE / zoomRef.current;
     const hit = nearestPointOnOutline(points, pt, aspect);
     if (!dividerStart) {
-      if (!hit || hit.dist > EDGE_ATTACH_TOLERANCE) {
+      if (!hit || hit.dist > tolerance) {
         setStatus("Start a divider on the outline edge.");
         return;
       }
@@ -466,12 +600,11 @@ export function PlanModelEditor(props: {
       setStatus("Now click the opposite edge to finish the divider.");
       return;
     }
-    let end =
-      hit && hit.dist <= EDGE_ATTACH_TOLERANCE ? hit.point : pt;
+    let end = hit && hit.dist <= tolerance ? hit.point : pt;
     end = snapPointToAxis(dividerStart, end, aspect);
     // Re-attach to the outline after axis snapping when close enough.
     const endHit = nearestPointOnOutline(points, end, aspect);
-    if (endHit && endHit.dist <= EDGE_ATTACH_TOLERANCE) end = endHit.point;
+    if (endHit && endHit.dist <= tolerance) end = endHit.point;
     const next: OutlineFeatures = {
       ...features,
       dividers: [
@@ -490,7 +623,7 @@ export function PlanModelEditor(props: {
       return;
     }
     const hit = nearestPointOnOutline(points, pt, aspect);
-    if (!hit || hit.dist > EDGE_ATTACH_TOLERANCE) {
+    if (!hit || hit.dist > EDGE_ATTACH_TOLERANCE / zoomRef.current) {
       setStatus("Tap directly on an outline wall to place the opening.");
       return;
     }
@@ -548,7 +681,7 @@ export function PlanModelEditor(props: {
       // Close when clicking near the first vertex.
       if (points.length >= 3) {
         const first = points[0];
-        if (Math.hypot(pt.x - first.x, pt.y - first.y) < 0.025) {
+        if (Math.hypot(pt.x - first.x, pt.y - first.y) < 0.025 / zoomRef.current) {
           setClosed(true);
           setStatus("Outline closed — hit Save.");
           return;
@@ -725,8 +858,14 @@ export function PlanModelEditor(props: {
     }
   })();
 
+  // Keep handles/lines the same size on screen no matter the zoom.
+  const zs = 1 / zoom;
+
   return (
-    <div className="plan-model-editor">
+    <div
+      ref={editorRef}
+      className={`plan-model-editor${fullscreen ? " plan-model-editor--fullscreen" : ""}`}
+    >
       <div className="plan-model-editor__toolbar" role="toolbar" aria-label="Model tools">
         <button
           type="button"
@@ -835,6 +974,41 @@ export function PlanModelEditor(props: {
         <span className="plan-model-editor__spacer" />
         <button
           type="button"
+          className={fullscreen ? "chip active" : "chip"}
+          onClick={toggleFullscreen}
+        >
+          {fullscreen ? "Exit full screen" : "⛶ Full screen"}
+        </button>
+        <span className="plan-model-editor__zoom" role="group" aria-label="Zoom">
+          <button
+            type="button"
+            className="button-like"
+            disabled={zoom <= MIN_ZOOM}
+            onClick={() => setZoomAt(zoom / 1.5)}
+            aria-label="Zoom out"
+          >
+            −
+          </button>
+          <button
+            type="button"
+            className="button-like plan-model-editor__zoom-level"
+            onClick={() => setZoomAt(1)}
+            title="Reset zoom"
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+          <button
+            type="button"
+            className="button-like"
+            disabled={zoom >= MAX_ZOOM}
+            onClick={() => setZoomAt(zoom * 1.5)}
+            aria-label="Zoom in"
+          >
+            +
+          </button>
+        </span>
+        <button
+          type="button"
           className="button-like"
           disabled={history.length === 0}
           onClick={() => {
@@ -889,6 +1063,7 @@ export function PlanModelEditor(props: {
         <p className={error ? "error" : "muted"}>{error ?? status}</p>
       )}
 
+      <div ref={scrollerRef} className="plan-model-editor__scroll">
       <div
         ref={sheetRef}
         className={`plan-model-editor__sheet${
@@ -904,7 +1079,7 @@ export function PlanModelEditor(props: {
             ? " plan-model-editor__sheet--place"
             : ""
         }`}
-        style={{ aspectRatio: `1 / ${aspect}` }}
+        style={{ aspectRatio: `1 / ${aspect}`, width: `${zoom * 100}%` }}
         onPointerDown={onSheetPointerDown}
         onPointerMove={onSheetPointerMove}
       >
@@ -944,7 +1119,7 @@ export function PlanModelEditor(props: {
                       className="plan-model-editor__poly plan-model-editor__poly--inactive"
                       fill="none"
                       stroke="rgba(255, 106, 26, 0.5)"
-                      strokeWidth={3}
+                      strokeWidth={3 * zs}
                       strokeLinejoin="round"
                     />
                   )}
@@ -953,6 +1128,7 @@ export function PlanModelEditor(props: {
                     aspect={aspect}
                     features={feats}
                     color="rgba(255, 106, 26, 0.5)"
+                    strokeScale={zs}
                   />
                 </g>
               ) : null;
@@ -967,7 +1143,7 @@ export function PlanModelEditor(props: {
                   className="plan-model-editor__poly"
                   fill="none"
                   stroke="#ff6a1a"
-                  strokeWidth={4}
+                  strokeWidth={4 * zs}
                   strokeLinejoin="round"
                   strokeLinecap="round"
                 />
@@ -979,9 +1155,9 @@ export function PlanModelEditor(props: {
                 d={openPathD}
                 fill="none"
                 stroke="#ff6a1a"
-                strokeWidth={4}
+                strokeWidth={4 * zs}
                 strokeLinejoin="round"
-                strokeDasharray="12 8"
+                strokeDasharray={`${12 * zs} ${8 * zs}`}
               />
             )
           )}
@@ -992,6 +1168,7 @@ export function PlanModelEditor(props: {
               aspect={aspect}
               features={features}
               color="#ff6a1a"
+              strokeScale={zs}
               selectedFeatureId={selectedFeature?.id ?? null}
               onSelectFeature={
                 tool === "select"
@@ -1006,8 +1183,8 @@ export function PlanModelEditor(props: {
               d={outlinePathD(previewPoints, aspect) ?? undefined}
               fill="rgba(255, 106, 26, 0.08)"
               stroke="#ff6a1a"
-              strokeWidth={3}
-              strokeDasharray="10 7"
+              strokeWidth={3 * zs}
+              strokeDasharray={`${10 * zs} ${7 * zs}`}
             />
           )}
 
@@ -1016,10 +1193,10 @@ export function PlanModelEditor(props: {
               <circle
                 cx={dividerStart.x * 1000}
                 cy={dividerStart.y * h}
-                r={9}
+                r={9 * zs}
                 fill="#ffd166"
                 stroke="#141210"
-                strokeWidth={2}
+                strokeWidth={2 * zs}
               />
               {dividerCursor && (
                 <line
@@ -1028,8 +1205,8 @@ export function PlanModelEditor(props: {
                   x2={dividerCursor.x * 1000}
                   y2={dividerCursor.y * h}
                   stroke="#ffd166"
-                  strokeWidth={2.5}
-                  strokeDasharray="10 7"
+                  strokeWidth={2.5 * zs}
+                  strokeDasharray={`${10 * zs} ${7 * zs}`}
                 />
               )}
             </>
@@ -1041,8 +1218,9 @@ export function PlanModelEditor(props: {
                 key={`${i}-${p.x}-${p.y}`}
                 cx={p.x * 1000}
                 cy={p.y * h}
-                r={vertexDrag === i ? 14 : 11}
+                r={(vertexDrag === i ? 14 : 11) * zs}
                 className="plan-model-editor__vertex"
+                style={{ strokeWidth: 3 * zs }}
                 onPointerDown={beginVertexDrag(i)}
               />
             ))}
@@ -1083,6 +1261,7 @@ export function PlanModelEditor(props: {
                 </button>
               );
             })}
+      </div>
       </div>
 
       {selectedFeature && (

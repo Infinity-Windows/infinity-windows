@@ -17,11 +17,21 @@ export function OutlineFeatureLayer(props: {
   aspect: number;
   features: OutlineFeatures;
   color: string;
+  /** Multiply stroke widths by this (pass 1/zoom to keep lines screen-constant). */
+  strokeScale?: number;
   selectedFeatureId?: string | null;
   onSelectFeature?: (id: string, type: "divider" | "wall") => void;
 }) {
-  const { points, aspect, features, color, selectedFeatureId, onSelectFeature } =
-    props;
+  const {
+    points,
+    aspect,
+    features,
+    color,
+    strokeScale = 1,
+    selectedFeatureId,
+    onSelectFeature,
+  } = props;
+  const zs = strokeScale;
 
   const wallGeos = useMemo(
     () =>
@@ -46,7 +56,7 @@ export function OutlineFeatureLayer(props: {
                 x2={d.b.x * 1000}
                 y2={d.b.y * 1000 * aspect}
                 stroke="transparent"
-                strokeWidth={22}
+                strokeWidth={22 * zs}
                 style={{ pointerEvents: "stroke", cursor: "pointer" }}
                 onPointerDown={(e) => {
                   e.stopPropagation();
@@ -60,8 +70,8 @@ export function OutlineFeatureLayer(props: {
               x2={d.b.x * 1000}
               y2={d.b.y * 1000 * aspect}
               stroke={selected ? "#ffd166" : color}
-              strokeWidth={selected ? 4 : 2.5}
-              strokeDasharray="14 8"
+              strokeWidth={(selected ? 4 : 2.5) * zs}
+              strokeDasharray={`${14 * zs} ${8 * zs}`}
               strokeLinecap="round"
               style={{ pointerEvents: "none" }}
             />
@@ -78,7 +88,7 @@ export function OutlineFeatureLayer(props: {
           <circle
             cx={midX}
             cy={midY}
-            r={20}
+            r={20 * zs}
             fill="transparent"
             style={{ pointerEvents: "all", cursor: "pointer" }}
             onPointerDown={(e) => {
@@ -99,7 +109,7 @@ export function OutlineFeatureLayer(props: {
                 x2={g.bx + g.nx * off}
                 y2={g.by + g.ny * off}
                 stroke={stroke}
-                strokeWidth={2}
+                strokeWidth={2 * zs}
               />
               <line
                 x1={g.ax - g.nx * off}
@@ -107,7 +117,7 @@ export function OutlineFeatureLayer(props: {
                 x2={g.bx - g.nx * off}
                 y2={g.by - g.ny * off}
                 stroke={stroke}
-                strokeWidth={2}
+                strokeWidth={2 * zs}
               />
               <line
                 x1={g.ax}
@@ -115,7 +125,7 @@ export function OutlineFeatureLayer(props: {
                 x2={g.ax + g.nx * off * 2}
                 y2={g.ay + g.ny * off * 2}
                 stroke={stroke}
-                strokeWidth={2}
+                strokeWidth={2 * zs}
               />
               <line
                 x1={g.bx}
@@ -123,7 +133,7 @@ export function OutlineFeatureLayer(props: {
                 x2={g.bx + g.nx * off * 2}
                 y2={g.by + g.ny * off * 2}
                 stroke={stroke}
-                strokeWidth={2}
+                strokeWidth={2 * zs}
               />
               {hit}
             </g>
@@ -145,14 +155,14 @@ export function OutlineFeatureLayer(props: {
               x2={leafX}
               y2={leafY}
               stroke={stroke}
-              strokeWidth={3}
+              strokeWidth={3 * zs}
             />
             <path
               d={`M${leafX.toFixed(1)} ${leafY.toFixed(1)} A${g.width.toFixed(1)} ${g.width.toFixed(1)} 0 0 ${sweep} ${g.bx.toFixed(1)} ${g.by.toFixed(1)}`}
               fill="none"
               stroke={stroke}
-              strokeWidth={1.5}
-              strokeDasharray="6 5"
+              strokeWidth={1.5 * zs}
+              strokeDasharray={`${6 * zs} ${5 * zs}`}
             />
             {hit}
           </g>

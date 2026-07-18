@@ -962,6 +962,41 @@ button:disabled {
   gap: 10px;
 }
 
+/* Fills the entire screen; also styles the element in native fullscreen. */
+.plan-model-editor--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: #141210;
+  padding: 12px;
+  overflow: hidden;
+}
+
+.plan-model-editor__scroll {
+  overflow: auto;
+  border-radius: 10px;
+  max-height: 82vh;
+  overscroll-behavior: contain;
+}
+
+.plan-model-editor--fullscreen .plan-model-editor__scroll {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.plan-model-editor__zoom {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.plan-model-editor__zoom-level {
+  min-width: 58px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 .plan-model-editor__toolbar {
   display: flex;
   flex-wrap: wrap;
