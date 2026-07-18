@@ -12,6 +12,10 @@ import type {
   TextItem,
 } from "pdfjs-dist/types/src/display/api";
 import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
+import {
+  parsePlanMarkAnnotation,
+  type PlanMarkCallout,
+} from "./planMarks";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -98,4 +102,55 @@ export async function extractAllText(
     pages.push({ pageNumber: p, text: await extractPageText(doc, p) });
   }
   return pages;
+}
+
+/**
+ * Read numbered window/door marks from FreeText annotations on a marked
+ * building plan. These callouts are often drawn as annotations (not page
+ * text), which is why #6 ×12 shows on the sheet but not in getTextContent.
+ */
+export async function extractPlanMarkCallouts(
+  doc: PDFDocumentProxy,
+): Promise<PlanMarkCallout[]> {
+  const callouts: PlanMarkCallout[] = [];
+
+  for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
+    const page = await doc.getPage(pageNumber);
+    const viewport = page.getViewport({ scale: 1 });
+    let annotations: Awaited<ReturnType<typeof page.getAnnotations>>;
+    try {
+      annotations = await page.getAnnotations({ intent: "display" });
+    } catch {
+      continue;
+    }
+
+    for (const annotation of annotations) {
+      if (annotation.subtype !== "FreeText") continue;
+      const raw =
+        (annotation as { contentsObj?: { str?: string }; contents?: string })
+          .contentsObj?.str ??
+        (annotation as { contents?: string }).contents ??
+        "";
+      const marks = parsePlanMarkAnnotation(raw);
+      if (!marks?.length) continue;
+
+      const rect = annotation.rect as [number, number, number, number];
+      const [x1, y1, x2, y2] = rect;
+      const count = marks.length;
+      marks.forEach((mark, index) => {
+        const t = count === 1 ? 0.5 : (index + 0.5) / count;
+        const x = Math.min(
+          1,
+          Math.max(0, (x1 + (x2 - x1) * t) / viewport.width),
+        );
+        const y = Math.min(
+          1,
+          Math.max(0, 1 - (y1 + y2) / 2 / viewport.height),
+        );
+        callouts.push({ mark, pageNumber, x, y });
+      });
+    }
+  }
+
+  return callouts;
 }

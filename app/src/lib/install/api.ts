@@ -669,6 +669,8 @@ export async function saveDraftOpenings(
       window_type_id: d.window_type_id,
       label: d.label,
       page_number: d.page_number,
+      pin_x: d.pin_x ?? null,
+      pin_y: d.pin_y ?? null,
       confirmed: false,
     })),
   );

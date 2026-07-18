@@ -53,6 +53,9 @@ export interface DraftOpening {
   height_in: number | null;
   color: string | null;
   kind: "window" | "door";
+  /** Normalized pin on the building plan when taken from a plan callout. */
+  pin_x?: number | null;
+  pin_y?: number | null;
 }
 
 /** AI fallback implements this; deterministic parser is the default. */
@@ -365,9 +368,77 @@ export function rowsToDraftOpenings(
         height_in: row.heightIn,
         color: row.color,
         kind: row.kind,
+        pin_x: null,
+        pin_y: null,
       });
     }
   }
+  return drafts;
+}
+
+/**
+ * One draft per building-plan callout (pinned). Spec/detail rows enrich
+ * product, size, and kind when the same mark appears there — so #6 ×12 on
+ * the marked plan becomes twelve openings even when CAD text has no QTY.
+ */
+export function calloutsToDraftOpenings(
+  callouts: {
+    mark: string;
+    pageNumber: number;
+    x: number;
+    y: number;
+  }[],
+  enrichRows: ScheduleRow[],
+  types: TypeCandidate[],
+): DraftOpening[] {
+  const byMark = new Map<string, typeof callouts>();
+  for (const callout of callouts) {
+    const list = byMark.get(callout.mark) ?? [];
+    list.push(callout);
+    byMark.set(callout.mark, list);
+  }
+
+  const enrichByMark = new Map<string, ScheduleRow>();
+  for (const row of enrichRows) {
+    const key = markBase(row.openingCode);
+    const existing = enrichByMark.get(key);
+    if (!existing) enrichByMark.set(key, row);
+  }
+
+  const drafts: DraftOpening[] = [];
+  const marks = [...byMark.keys()].sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true }),
+  );
+
+  for (const mark of marks) {
+    const list = byMark.get(mark)!;
+    const enrich = enrichByMark.get(mark);
+    const typeText = enrich?.typeText ?? mark;
+    const match = matchWindowType(typeText, types, 0.6, mark);
+    const codes =
+      list.length === 1
+        ? [mark]
+        : list.map((_, index) => `${mark}-${index + 1}`);
+
+    list.forEach((callout, index) => {
+      drafts.push({
+        opening_code: codes[index],
+        window_type_id: match.type?.id ?? null,
+        type_text: typeText,
+        match_score: match.score,
+        label: enrich?.label ?? null,
+        page_number: callout.pageNumber,
+        mark_code: mark,
+        width_in: enrich?.widthIn ?? null,
+        height_in: enrich?.heightIn ?? null,
+        color: enrich?.color ?? null,
+        kind: enrich?.kind ?? "window",
+        pin_x: callout.x,
+        pin_y: callout.y,
+      });
+    });
+  }
+
   return drafts;
 }
 

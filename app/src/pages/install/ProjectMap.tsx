@@ -33,6 +33,7 @@ import {
 import {
   extractScheduleRows,
   rowsToDraftOpenings,
+  calloutsToDraftOpenings,
   summarizeDraftMarks,
 } from "../../lib/install/extract";
 import {
@@ -218,41 +219,71 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
 
   const reextractSpecs = useMutation({
     mutationFn: async () => {
-      if (!specsPdf) throw new Error("No specs PDF selected.");
-      setExtractNote("Reading specs PDF…");
-      const { extractAllText, loadPdf } = await import("../../lib/install/pdf");
-      const doc = await loadPdf(await downloadPlanset(specsPdf));
-      const pages = await extractAllText(doc);
-      const catalog = (types.data ?? []).map((t) => ({
-        type_code: t.type_code,
-        name: t.name,
-      }));
-      setExtractNote("Extracting window/door marks…");
-      const { rows, source } = await extractScheduleRows(pages, async (pgs) => {
-        try {
-          const aiRows = await aiExtractSchedule(pgs, catalog);
-          return aiRows.map((r) => ({
-            openingCode: r.openingCode,
-            typeText: r.typeText,
-            qty: r.qty,
-            label: r.label,
-            pageNumber: r.pageNumber,
-            widthIn: r.widthIn ?? null,
-            heightIn: r.heightIn ?? null,
-            color: r.color ?? null,
-            kind: r.kind ?? "window",
-          }));
-        } catch {
-          return [];
+      if (!specsPdf && !buildingPdf) {
+        throw new Error("No building or specs PDF selected.");
+      }
+      setExtractNote("Reading planset PDFs…");
+      const { extractAllText, extractPlanMarkCallouts, loadPdf } = await import(
+        "../../lib/install/pdf"
+      );
+
+      let rows: Awaited<ReturnType<typeof extractScheduleRows>>["rows"] = [];
+      let source: Awaited<ReturnType<typeof extractScheduleRows>>["source"] =
+        "none";
+      let pages: { pageNumber: number; text: string }[] = [];
+
+      if (specsPdf) {
+        setExtractNote("Reading specs PDF…");
+        const doc = await loadPdf(await downloadPlanset(specsPdf));
+        pages = await extractAllText(doc);
+        const catalog = (types.data ?? []).map((t) => ({
+          type_code: t.type_code,
+          name: t.name,
+        }));
+        setExtractNote("Extracting window/door marks…");
+        const extracted = await extractScheduleRows(pages, async (pgs) => {
+          try {
+            const aiRows = await aiExtractSchedule(pgs, catalog);
+            return aiRows.map((r) => ({
+              openingCode: r.openingCode,
+              typeText: r.typeText,
+              qty: r.qty,
+              label: r.label,
+              pageNumber: r.pageNumber,
+              widthIn: r.widthIn ?? null,
+              heightIn: r.heightIn ?? null,
+              color: r.color ?? null,
+              kind: r.kind ?? "window",
+            }));
+          } catch {
+            return [];
+          }
+        });
+        rows = extracted.rows;
+        source = extracted.source;
+        setDetails(extractCadDetailPages(pages));
+        specsDocRef.current = doc;
+        setSpecsPageCount(doc.numPages);
+      }
+
+      let drafts;
+      if (buildingPdf) {
+        setExtractNote("Reading mark callouts on the building plan…");
+        const buildingDoc = await loadPdf(await downloadPlanset(buildingPdf));
+        const callouts = await extractPlanMarkCallouts(buildingDoc);
+        if (callouts.length > 0) {
+          drafts = calloutsToDraftOpenings(callouts, rows, types.data ?? []);
+          source = rows.length > 0 ? "merged" : "details";
         }
-      });
-      let drafts = rowsToDraftOpenings(rows, types.data ?? []);
+      }
+      if (!drafts) {
+        drafts = rowsToDraftOpenings(rows, types.data ?? []);
+      }
+
       drafts = await ensureTypesFromSpecs(drafts);
       await linkSpecsToOpenings(projectId, drafts);
-      const result = await saveDraftOpenings(projectId, specsPdf.id, drafts);
-      setDetails(extractCadDetailPages(pages));
-      specsDocRef.current = doc;
-      setSpecsPageCount(doc.numPages);
+      const plansetId = specsPdf?.id ?? buildingPdf!.id;
+      const result = await saveDraftOpenings(projectId, plansetId, drafts);
       return { result, source, marks: summarizeDraftMarks(drafts) };
     },
     onSuccess: ({ result, source, marks }) => {
@@ -268,11 +299,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         [
           markLine ? `Loaded ${markLine}.` : "No marks found.",
           result.inserted > 0 ? `${result.inserted} new drafts.` : null,
-          result.skipped > 0 ? `${result.skipped} already confirmed — left alone.` : null,
+          result.skipped > 0
+            ? `${result.skipped} already confirmed — left alone.`
+            : null,
           source === "details"
-            ? "Source: manufacturer detail sheets."
+            ? "Source: manufacturer detail sheets / plan callouts."
             : source === "merged"
-              ? "Source: schedule + detail sheets."
+              ? "Source: plan callouts + detail sheets."
               : null,
         ]
           .filter(Boolean)
@@ -867,7 +900,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 disabled={reextractSpecs.isPending}
                 onClick={() => reextractSpecs.mutate()}
               >
-                {reextractSpecs.isPending ? "Loading marks…" : "Load marks from specs"}
+                {reextractSpecs.isPending
+                  ? "Loading marks…"
+                  : "Load marks from plans"}
               </button>
             )}
           </div>
