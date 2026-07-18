@@ -19,6 +19,7 @@ import {
   OPENING_KIND_COLORS,
   OPENING_STATUS_COLORS,
   openingMarkCode,
+  type PlanOutline,
   type Planset,
   type ProjectOpening,
 } from "../../lib/install/types";
@@ -55,7 +56,7 @@ export function PlanModelEditor(props: {
   planset: Planset;
   page: number;
   openings: ProjectOpening[];
-  manualOutline: BuildingOutline | null;
+  manualOutlines: PlanOutline[];
   extractedOutline: BuildingOutline | null;
   pageAspect: number;
   onClose: () => void;
@@ -65,20 +66,28 @@ export function PlanModelEditor(props: {
     planset,
     page,
     openings,
-    manualOutline,
+    manualOutlines,
     extractedOutline,
     pageAspect,
     onClose,
   } = props;
   const queryClient = useQueryClient();
   const sheetRef = useRef<HTMLDivElement | null>(null);
+  const outlineScopeRef = useRef(`${planset.id}:${page}`);
 
   const [tool, setTool] = useState<EditTool>("outline");
+  const [savedOutlines, setSavedOutlines] =
+    useState<PlanOutline[]>(manualOutlines);
+  const [activeOutlineId, setActiveOutlineId] = useState<string | null>(
+    manualOutlines[0]?.id ?? null,
+  );
   const [points, setPoints] = useState<OutlinePoint[]>(
-    () => manualOutline?.points ?? [],
+    () => manualOutlines[0]?.points ?? [],
   );
   const [closed, setClosed] = useState(
-    () => !!manualOutline && isValidOutlinePolygon(manualOutline.points),
+    () =>
+      !!manualOutlines[0] &&
+      isValidOutlinePolygon(manualOutlines[0].points),
   );
   const [history, setHistory] = useState<OutlinePoint[][]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -96,16 +105,26 @@ export function PlanModelEditor(props: {
     Record<string, { x: number; y: number }>
   >({});
 
-  const aspect = manualOutline?.pageAspect ?? pageAspect;
+  const activeOutline = savedOutlines.find((o) => o.id === activeOutlineId);
+  const aspect = activeOutline?.page_aspect ?? pageAspect;
   const h = 1000 * aspect;
 
   useEffect(() => {
-    setPoints(manualOutline?.points ?? []);
-    setClosed(
-      !!manualOutline && isValidOutlinePolygon(manualOutline.points ?? []),
-    );
+    const scope = `${planset.id}:${page}`;
+    if (outlineScopeRef.current === scope) {
+      // Keep server/cache changes in sync without replacing an in-progress
+      // outline or jumping back to Outline 1 after a new outline is saved.
+      setSavedOutlines(manualOutlines);
+      return;
+    }
+    outlineScopeRef.current = scope;
+    const first = manualOutlines[0];
+    setSavedOutlines(manualOutlines);
+    setActiveOutlineId(first?.id ?? null);
+    setPoints(first?.points ?? []);
+    setClosed(!!first && isValidOutlinePolygon(first.points));
     setHistory([]);
-  }, [manualOutline, page, planset.id]);
+  }, [manualOutlines, page, planset.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -169,6 +188,7 @@ export function PlanModelEditor(props: {
         throw new Error("Draw at least 3 points before saving.");
       }
       return savePlanOutline({
+        outlineId: activeOutlineId ?? undefined,
         projectId,
         plansetId: planset.id,
         pageNumber: page,
@@ -176,9 +196,23 @@ export function PlanModelEditor(props: {
         pageAspect: aspect,
       });
     },
-    onSuccess: () => {
+    onSuccess: (row) => {
+      const updateRows = (rows: PlanOutline[]) => {
+        const exists = rows.some((outline) => outline.id === row.id);
+        return exists
+          ? rows.map((outline) => (outline.id === row.id ? row : outline))
+          : [...rows, row];
+      };
+      setSavedOutlines(updateRows);
+      setActiveOutlineId(row.id);
       setClosed(true);
-      setStatus("Outline saved for this floor.");
+      setStatus(
+        `Outline ${updateRows(savedOutlines).findIndex((o) => o.id === row.id) + 1} saved for this floor.`,
+      );
+      queryClient.setQueryData<PlanOutline[]>(
+        ["planOutlines", projectId, planset.id],
+        (rows = []) => updateRows(rows),
+      );
       queryClient.invalidateQueries({
         queryKey: ["planOutlines", projectId, planset.id],
       });
@@ -190,12 +224,46 @@ export function PlanModelEditor(props: {
     mutationFn: () => deletePlanOutline(planset.id, page),
     onSuccess: () => {
       const fallback = extractedOutline?.points ?? [];
+      setSavedOutlines([]);
+      setActiveOutlineId(null);
       setPoints(fallback);
       setClosed(isValidOutlinePolygon(fallback));
       setStatus(
         fallback.length
           ? "Cleared manual outline — using CAD extract."
           : "Cleared manual outline.",
+      );
+      queryClient.setQueryData<PlanOutline[]>(
+        ["planOutlines", projectId, planset.id],
+        (rows = []) =>
+          rows.filter(
+            (outline) =>
+              outline.planset_id !== planset.id ||
+              outline.page_number !== page,
+          ),
+      );
+      queryClient.invalidateQueries({
+        queryKey: ["planOutlines", projectId, planset.id],
+      });
+    },
+    onError: (e) => setError(String(e)),
+  });
+
+  const removeOutline = useMutation({
+    mutationFn: (outlineId: string) =>
+      deletePlanOutline(planset.id, page, outlineId),
+    onSuccess: (_, removedId) => {
+      const remaining = savedOutlines.filter((o) => o.id !== removedId);
+      const next = remaining[0];
+      setSavedOutlines(remaining);
+      setActiveOutlineId(next?.id ?? null);
+      setPoints(next?.points ?? []);
+      setClosed(!!next && isValidOutlinePolygon(next.points));
+      setHistory([]);
+      setStatus("Outline removed.");
+      queryClient.setQueryData<PlanOutline[]>(
+        ["planOutlines", projectId, planset.id],
+        (rows = []) => rows.filter((outline) => outline.id !== removedId),
       );
       queryClient.invalidateQueries({
         queryKey: ["planOutlines", projectId, planset.id],
@@ -361,6 +429,28 @@ export function PlanModelEditor(props: {
     return { x: o.pin_x ?? 0.5, y: o.pin_y ?? 0.5 };
   };
 
+  const selectOutline = (outline: PlanOutline) => {
+    setTool("outline");
+    setSelectedId(null);
+    setActiveOutlineId(outline.id);
+    setPoints(outline.points);
+    setClosed(isValidOutlinePolygon(outline.points));
+    setHistory([]);
+    setStatus(null);
+    setError(null);
+  };
+
+  const startOutline = () => {
+    setTool("outline");
+    setSelectedId(null);
+    setActiveOutlineId(null);
+    setPoints([]);
+    setClosed(false);
+    setHistory([]);
+    setStatus("New outline — click its first corner.");
+    setError(null);
+  };
+
   return (
     <div className="plan-model-editor">
       <div className="plan-model-editor__toolbar" role="toolbar" aria-label="Model tools">
@@ -372,8 +462,39 @@ export function PlanModelEditor(props: {
             setSelectedId(null);
           }}
         >
-          Trace outline
+          Trace / edit
         </button>
+        {savedOutlines.map((outline, index) => (
+          <button
+            key={outline.id}
+            type="button"
+            className={
+              activeOutlineId === outline.id && tool === "outline"
+                ? "chip active"
+                : "chip"
+            }
+            onClick={() => selectOutline(outline)}
+          >
+            Outline {index + 1}
+          </button>
+        ))}
+        <button type="button" className="chip" onClick={startOutline}>
+          + Add outline
+        </button>
+        {activeOutlineId && (
+          <button
+            type="button"
+            className="button-like"
+            disabled={removeOutline.isPending}
+            onClick={() => {
+              if (window.confirm("Remove this outline?")) {
+                removeOutline.mutate(activeOutlineId);
+              }
+            }}
+          >
+            Remove outline
+          </button>
+        )}
         <button
           type="button"
           className={tool === "window" ? "chip active" : "chip"}
@@ -490,6 +611,22 @@ export function PlanModelEditor(props: {
           viewBox={`0 0 1000 ${Math.round(h)}`}
           preserveAspectRatio="none"
         >
+          {savedOutlines
+            .filter((outline) => outline.id !== activeOutlineId)
+            .map((outline) => {
+              const d = outlinePathD(outline.points, aspect);
+              return d ? (
+                <path
+                  key={outline.id}
+                  d={d}
+                  className="plan-model-editor__poly plan-model-editor__poly--inactive"
+                  fill="rgba(255, 106, 26, 0.06)"
+                  stroke="rgba(255, 106, 26, 0.5)"
+                  strokeWidth={3}
+                  strokeLinejoin="round"
+                />
+              ) : null;
+            })}
           {closed && pathD ? (
             <path
               d={pathD}

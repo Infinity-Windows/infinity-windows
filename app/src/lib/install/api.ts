@@ -643,7 +643,8 @@ export async function listPlanOutlines(
     .from("project_plan_outlines")
     .select("*")
     .eq("project_id", projectId)
-    .order("page_number");
+    .order("page_number")
+    .order("created_at");
   if (plansetId) q = q.eq("planset_id", plansetId);
   const { data, error } = await q;
   if (error) throw error;
@@ -651,27 +652,28 @@ export async function listPlanOutlines(
 }
 
 export async function savePlanOutline(args: {
+  outlineId?: string;
   projectId: string;
   plansetId: string;
   pageNumber: number;
   points: { x: number; y: number }[];
   pageAspect: number;
 }): Promise<PlanOutline> {
-  const { data, error } = await supabase
-    .from("project_plan_outlines")
-    .upsert(
-      {
-        project_id: args.projectId,
-        planset_id: args.plansetId,
-        page_number: args.pageNumber,
-        points: args.points,
-        page_aspect: args.pageAspect,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "planset_id,page_number" },
-    )
-    .select("*")
-    .single();
+  const values = {
+    project_id: args.projectId,
+    planset_id: args.plansetId,
+    page_number: args.pageNumber,
+    points: args.points,
+    page_aspect: args.pageAspect,
+    updated_at: new Date().toISOString(),
+  };
+  const query = args.outlineId
+    ? supabase
+        .from("project_plan_outlines")
+        .update(values)
+        .eq("id", args.outlineId)
+    : supabase.from("project_plan_outlines").insert(values);
+  const { data, error } = await query.select("*").single();
   if (error) throw error;
   return parseOutlineRow(data);
 }
@@ -679,12 +681,15 @@ export async function savePlanOutline(args: {
 export async function deletePlanOutline(
   plansetId: string,
   pageNumber: number,
+  outlineId?: string,
 ): Promise<void> {
-  const { error } = await supabase
+  let query = supabase
     .from("project_plan_outlines")
     .delete()
     .eq("planset_id", plansetId)
     .eq("page_number", pageNumber);
+  if (outlineId) query = query.eq("id", outlineId);
+  const { error } = await query;
   if (error) throw error;
 }
 
