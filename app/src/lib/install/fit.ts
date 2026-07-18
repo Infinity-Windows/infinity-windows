@@ -3,6 +3,24 @@
 
 export type FitVerdict = "fits" | "tight" | "too_small" | "too_big" | "unknown";
 
+/**
+ * Single source of truth for "the unit is on hand and can be installed now."
+ * A unit unloaded at the jobsite is `on_site`; warehouse stock, staged, and
+ * loaded units are also physically available to set. Keep this list here so
+ * every screen (MyWork/Dispatch via openingReadiness, and the install sheet)
+ * agrees — do not re-copy the check inline.
+ */
+export const INSTALL_READY_STATUSES = [
+  "in_warehouse",
+  "staged",
+  "loaded",
+  "on_site",
+] as const;
+
+export function isInstallReadyStatus(s: string | null | undefined): boolean {
+  return s != null && (INSTALL_READY_STATUSES as readonly string[]).includes(s);
+}
+
 export interface FitClearance {
   /** Minimum gap per side the unit needs to shim/level (inches). Default 1/4". */
   minPerSide: number;
@@ -196,8 +214,7 @@ export function openingReadiness(o: OpeningLike): OpeningReadiness {
     !o.window_type_id ||
     o.windows?.window_type_id === o.window_type_id;
   const unitStatus = o.windows?.status ?? null;
-  const atLocationOrLoaded =
-    unitStatus === "staged" || unitStatus === "loaded" || unitStatus === "in_warehouse";
+  const atLocationOrLoaded = isInstallReadyStatus(unitStatus);
 
   const result = readyToInstall({
     hasUnit: Boolean(o.assigned_window_id),

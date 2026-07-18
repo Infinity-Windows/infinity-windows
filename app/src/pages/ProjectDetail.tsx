@@ -1123,7 +1123,7 @@ function LoadOutPanel({
 /**
  * Foreman+ action: JOBSITE UNLOAD + condition report. Every loaded unit defaults
  * to “arrived OK”; flip any that arrived damaged. Submitting sends the OK units
- * to 'staged' (on site, ready to install) and holds the damaged ones (opening a
+ * to 'on_site' (ready to install) and holds the damaged ones (opening a
  * damage issue each). Optional location note is logged on the movement.
  */
 function UnloadPanel({
@@ -1293,6 +1293,11 @@ function WarehouseTab({
         );
       }
       if (unit.status === "loaded") throw new Error(`${windowId} is already loaded.`);
+      if (unit.status !== "in_warehouse" && unit.status !== "staged") {
+        throw new Error(
+          `${windowId} is not warehouse-ready to load (${STATUS_LABELS[unit.status]}).`,
+        );
+      }
       return loadWindow(unit.id);
     },
     onSuccess: (unit: WindowUnit) => {

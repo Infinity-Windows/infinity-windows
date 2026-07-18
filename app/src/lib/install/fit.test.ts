@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   checkFit,
+  isInstallReadyStatus,
+  openingReadiness,
   readyToInstall,
   smallest,
   DEFAULT_CLEARANCE,
+  INSTALL_READY_STATUSES,
+  type OpeningLike,
 } from "./fit";
 
 describe("checkFit", () => {
@@ -94,5 +98,60 @@ describe("readyToInstall", () => {
   it("exposes default clearance constants", () => {
     expect(DEFAULT_CLEARANCE.minPerSide).toBe(0.25);
     expect(DEFAULT_CLEARANCE.maxPerSide).toBe(0.5);
+  });
+});
+
+describe("isInstallReadyStatus", () => {
+  it("treats a just-unloaded on_site unit as install-ready", () => {
+    expect(isInstallReadyStatus("on_site")).toBe(true);
+  });
+
+  it("treats warehouse/staged/loaded units as install-ready", () => {
+    expect(isInstallReadyStatus("in_warehouse")).toBe(true);
+    expect(isInstallReadyStatus("staged")).toBe(true);
+    expect(isInstallReadyStatus("loaded")).toBe(true);
+  });
+
+  it("rejects not-yet-on-hand or terminal statuses", () => {
+    expect(isInstallReadyStatus("pre_issued")).toBe(false);
+    expect(isInstallReadyStatus("inbound")).toBe(false);
+    expect(isInstallReadyStatus("installed")).toBe(false);
+    expect(isInstallReadyStatus(null)).toBe(false);
+    expect(isInstallReadyStatus(undefined)).toBe(false);
+  });
+
+  it("lists on_site among the shared ready statuses", () => {
+    expect(INSTALL_READY_STATUSES).toContain("on_site");
+  });
+});
+
+describe("openingReadiness", () => {
+  // Right unit, measured to fit, condition ok, unit assigned.
+  const base: OpeningLike = {
+    status: "assigned",
+    assigned_window_id: "w1",
+    window_type_id: "t-cas",
+    condition: "ok",
+    ro_width_in: 30.75,
+    ro_height_in: 50.75,
+    window_types: { width_in: 30, height_in: 50 },
+    windows: { window_type_id: "t-cas", status: "staged" },
+  };
+
+  it("treats an on_site unit as install-ready", () => {
+    const r = openingReadiness({
+      ...base,
+      windows: { window_type_id: "t-cas", status: "on_site" },
+    });
+    expect(r.status).toBe("ready");
+  });
+
+  it("still marks a not-yet-on-hand unit incomplete", () => {
+    const r = openingReadiness({
+      ...base,
+      windows: { window_type_id: "t-cas", status: "pre_issued" },
+    });
+    expect(r.status).toBe("incomplete");
+    expect(r.reasons.some((m) => /staged\/loaded\/on-site/i.test(m))).toBe(true);
   });
 });
