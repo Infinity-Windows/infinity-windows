@@ -5,7 +5,9 @@ export interface CostCode {
   id: string;
   code: string;
   label: string;
+  description?: string | null;
   active: boolean;
+  sort_order?: number;
 }
 
 export type BreakType = "lunch" | "rest" | "other";
@@ -60,6 +62,7 @@ export async function listCostCodes(): Promise<CostCode[]> {
     .from("cost_codes")
     .select("*")
     .eq("active", true)
+    .order("sort_order")
     .order("code");
   if (error) throw error;
   return (data ?? []) as CostCode[];

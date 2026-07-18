@@ -41,6 +41,7 @@ export type RoutePath =
   | "/catalog"
   | "/supplies"
   | "/admin"
+  | "/cost-codes"
   | "/costing";
 
 /**
@@ -99,6 +100,7 @@ export const NAV: NavDest[] = [
   // Supervisor+.
   { id: "heartbeat", to: "/heartbeat", label: "Heartbeat", icon: "❤", minRole: "supervisor" },
   { id: "admin", to: "/admin", label: "Admin", icon: "◈", minRole: "supervisor" },
+  { id: "cost-codes", to: "/cost-codes", label: "Cost codes", icon: "☷", minRole: "supervisor" },
 
   // Owner only.
   { id: "costing", to: "/costing", label: "Cost", icon: "$", minRole: "owner" },
@@ -176,6 +178,7 @@ const SUPERVISOR_LAYOUT: LayoutItem[] = [
   { id: "learn" },
   { id: "points" },
   { id: "tools" },
+  { id: "cost-codes" },
   { id: "admin" },
 ];
 
@@ -195,6 +198,7 @@ const OWNER_LAYOUT: LayoutItem[] = [
   { id: "learn" },
   { id: "points" },
   { id: "tools" },
+  { id: "cost-codes" },
   { id: "admin" },
 ];
 

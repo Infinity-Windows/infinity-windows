@@ -50,6 +50,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Supplies (`/supplies`)
 - Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
+- Cost codes (`/cost-codes`)
 - Cost (`/costing`)
 
 ## Foreman
@@ -105,6 +106,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 - Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
+- Cost codes (`/cost-codes`)
 - Cost (`/costing`)
 
 ## Supervisor
@@ -127,64 +129,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Learn (`/learn`)
 - Points (`/points`)
 - Tools (`/tools`)
-- Admin (`/admin`)
-
-**Can reach (all 28 allowed destinations):**
-
-- Home (`/`)
-- Work (`/my-work`)
-- Time (`/clock`)
-- Learn (`/learn`)
-- Points (`/points`)
-- Safety (`/safety`)
-- Tools (`/tools`)
-- Scan (`/scan`)
-- Cycle count (`/count`)
-- Warehouse (`/warehouse`)
-- Projects (`/projects`)
-- Ask (`/ask`)
-- Notifications (`/notifications`)
-- Search (`/search`)
-- Memo review (`/review`)
-- Team (`/team`)
-- Issues (`/issues`)
-- Service (`/service`)
-- Quality (`/qc`)
-- Analytics (`/analytics`)
-- Roster (`/crew`)
-- Training (`/training`)
-- Receive (`/receive`)
-- Slot labels (`/labels`)
-- Catalog (`/catalog`)
-- Supplies (`/supplies`)
-- Heartbeat (`/heartbeat`)
-- Admin (`/admin`)
-
-**Blocked:**
-
-- Cost (`/costing`)
-
-## Owner
-
-**Bottom bar (phone):**
-
-- Heartbeat (`/heartbeat`)
-- Home (`/`)
-- Projects (`/projects`)
-- Cost (`/costing`)
-
-**More menu:**
-
-- Time (`/clock`)
-- Warehouse (`/warehouse`)
-- Issues (`/issues`)
-- Service (`/service`)
-- Team (`/team`)
-- Quality (`/qc`)
-- Safety (`/safety`)
-- Learn (`/learn`)
-- Points (`/points`)
-- Tools (`/tools`)
+- Cost codes (`/cost-codes`)
 - Admin (`/admin`)
 
 **Can reach (all 29 allowed destinations):**
@@ -217,6 +162,67 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Supplies (`/supplies`)
 - Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
+- Cost codes (`/cost-codes`)
+
+**Blocked:**
+
+- Cost (`/costing`)
+
+## Owner
+
+**Bottom bar (phone):**
+
+- Heartbeat (`/heartbeat`)
+- Home (`/`)
+- Projects (`/projects`)
+- Cost (`/costing`)
+
+**More menu:**
+
+- Time (`/clock`)
+- Warehouse (`/warehouse`)
+- Issues (`/issues`)
+- Service (`/service`)
+- Team (`/team`)
+- Quality (`/qc`)
+- Safety (`/safety`)
+- Learn (`/learn`)
+- Points (`/points`)
+- Tools (`/tools`)
+- Cost codes (`/cost-codes`)
+- Admin (`/admin`)
+
+**Can reach (all 30 allowed destinations):**
+
+- Home (`/`)
+- Work (`/my-work`)
+- Time (`/clock`)
+- Learn (`/learn`)
+- Points (`/points`)
+- Safety (`/safety`)
+- Tools (`/tools`)
+- Scan (`/scan`)
+- Cycle count (`/count`)
+- Warehouse (`/warehouse`)
+- Projects (`/projects`)
+- Ask (`/ask`)
+- Notifications (`/notifications`)
+- Search (`/search`)
+- Memo review (`/review`)
+- Team (`/team`)
+- Issues (`/issues`)
+- Service (`/service`)
+- Quality (`/qc`)
+- Analytics (`/analytics`)
+- Roster (`/crew`)
+- Training (`/training`)
+- Receive (`/receive`)
+- Slot labels (`/labels`)
+- Catalog (`/catalog`)
+- Supplies (`/supplies`)
+- Heartbeat (`/heartbeat`)
+- Admin (`/admin`)
+- Cost codes (`/cost-codes`)
 - Cost (`/costing`)
 
 **Blocked:**
