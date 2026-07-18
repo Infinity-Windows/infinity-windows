@@ -11,6 +11,7 @@ import { effectiveRole, useViewAsRole } from "../lib/viewAsRoleContext";
 import { TERMS } from "../lib/glossary";
 import { listMyProgress } from "../lib/learn";
 import { listLedger } from "../lib/points";
+import { setAuthBypass } from "../lib/authBypass";
 import { supabase } from "../lib/supabase";
 import { getOpenShift } from "../lib/timeclock";
 
@@ -190,7 +191,11 @@ export function Home() {
             type="button"
             className="avatar-chip"
             title="Sign out"
-            onClick={() => supabase.auth.signOut()}
+            onClick={async () => {
+              setAuthBypass(false);
+              await supabase.auth.signOut();
+              window.location.assign("/");
+            }}
           >
             {initialsFrom(me.data?.display_name)}
           </button>

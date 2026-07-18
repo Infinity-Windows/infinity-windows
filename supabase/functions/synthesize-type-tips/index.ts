@@ -6,6 +6,7 @@ import {
   SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL,
 } from "../_shared/openai.ts";
+import { requireCaller } from "../_shared/auth.ts";
 
 interface SynthesisResult {
   tips: string[];
@@ -18,6 +19,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: cors });
   }
+
+  const unauthorized = await requireCaller(req, cors);
+  if (unauthorized) return unauthorized;
 
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAccess, navForRole, roleRank } from "./nav";
+import { canAccess, navForRole, railSectionsForRole, roleRank } from "./nav";
 
 describe("roleRank", () => {
   it("ranks the four roles", () => {
@@ -81,6 +81,58 @@ describe("navForRole", () => {
     expect(navForRole("owner").rail.map((i) => i.to)).toContain("/heartbeat");
     expect(navForRole("supervisor").phone.map((i) => i.to)).toContain("/heartbeat");
     expect(navForRole("owner").phone.map((i) => i.to)).toContain("/heartbeat");
+  });
+});
+
+describe("railSectionsForRole (desktop sidebar)", () => {
+  const flatten = (role: Parameters<typeof railSectionsForRole>[0]) =>
+    railSectionsForRole(role).flatMap((s) => s.items);
+
+  it("surfaces the clock 'Time' tab in the sidebar for every role", () => {
+    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
+      const clock = flatten(role).find((i) => i.id === "clock");
+      expect(clock, `clock missing for ${role}`).toBeTruthy();
+      expect(clock?.label).toBe("Time");
+    }
+  });
+
+  it("groups the clock under a 'Time' section", () => {
+    const section = railSectionsForRole("installer").find((s) => s.title === "Time");
+    expect(section?.items.map((i) => i.id)).toContain("clock");
+  });
+
+  it("only exposes destinations the role can actually access", () => {
+    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
+      for (const item of flatten(role)) {
+        expect(canAccess(role, item.to), `${role} should reach ${item.to}`).toBe(true);
+      }
+    }
+  });
+
+  it("keeps manager-only surfaces out of the installer sidebar", () => {
+    const tos = flatten("installer").map((i) => i.to);
+    for (const hidden of ["/admin", "/costing", "/qc", "/team", "/heartbeat", "/service"]) {
+      expect(tos).not.toContain(hidden);
+    }
+  });
+
+  it("gives owners the full menu in the sidebar (no desktop overflow)", () => {
+    const tos = flatten("owner").map((i) => i.to);
+    for (const shown of ["/admin", "/costing", "/team", "/heartbeat", "/warehouse", "/issues"]) {
+      expect(tos).toContain(shown);
+    }
+  });
+
+  it("labels the installer landing as My Work but managers as Home", () => {
+    const installerHome = flatten("installer").find((i) => i.to === "/");
+    const ownerHome = flatten("owner").find((i) => i.to === "/");
+    expect(installerHome?.label).toBe("My Work");
+    expect(ownerHome?.label).toBe("Home");
+  });
+
+  it("does not duplicate the installer My Work entry", () => {
+    const myWorkish = flatten("installer").filter((i) => i.to === "/" || i.to === "/my-work");
+    expect(myWorkish).toHaveLength(1);
   });
 });
 

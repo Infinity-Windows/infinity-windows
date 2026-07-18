@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { isAuthBypassed } from "../lib/authBypass";
 import { checkMyPin, myPinStatus, setMyPin } from "../lib/install/api";
 import { getMyProfile } from "../lib/install/api";
 
@@ -19,11 +20,12 @@ function initialsFrom(name: string | null | undefined): string {
  * The PIN itself never reaches the client — status and verification are RPCs.
  */
 export function PinGate({ children }: { children: React.ReactNode }) {
+  const bypassed = isAuthBypassed();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const hasPin = useQuery({
     queryKey: ["myPinStatus", me.data?.id],
     queryFn: myPinStatus,
-    enabled: Boolean(me.data?.id),
+    enabled: Boolean(me.data?.id) && !bypassed,
   });
   const [entry, setEntry] = useState("");
   const [error, setError] = useState(false);
@@ -35,6 +37,7 @@ export function PinGate({ children }: { children: React.ReactNode }) {
     if (unlocked) sessionStorage.setItem(UNLOCK_KEY, "1");
   }, [unlocked]);
 
+  if (bypassed) return <>{children}</>;
   if (me.isLoading || hasPin.isLoading) return null;
   if (!hasPin.data || unlocked) return <>{children}</>;
 

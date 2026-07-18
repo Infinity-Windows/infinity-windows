@@ -14,6 +14,8 @@ import {
 import { Layout } from "./components/Layout";
 import { getMyProfile } from "./lib/install/api";
 import { canAccess, roleRank, ROLE_NAV_V2, type RoutePath } from "./lib/nav";
+import type { CrewRole } from "./lib/install/types";
+import { ClockProvider } from "./lib/clockContext";
 import { ViewAsRoleProvider } from "./lib/viewAsRole";
 import { effectiveRole, useViewAsRole } from "./lib/viewAsRoleContext";
 import { supabase } from "./lib/supabase";
@@ -49,6 +51,8 @@ import { MemoReview } from "./pages/MemoReview";
 import { Training } from "./pages/Training";
 import { Admin } from "./pages/Admin";
 import { TimeClock } from "./pages/TimeClock";
+import { Timecard } from "./pages/Timecard";
+import { CostCodes } from "./pages/CostCodes";
 import { Costing } from "./pages/Costing";
 import { Education } from "./pages/Education";
 import { Points } from "./pages/Points";
@@ -57,6 +61,7 @@ import { Tools } from "./pages/Tools";
 import { Supplies } from "./pages/Supplies";
 import { Qc } from "./pages/Qc";
 import { PinGate } from "./components/PinGate";
+import { isAuthBypassed, setAuthBypass } from "./lib/authBypass";
 import { ensureMyProfile } from "./lib/install/api";
 import "./index.css";
 
@@ -84,13 +89,26 @@ function RoleLanding() {
  * effective (possibly previewed) role for presentation; server mutations still
  * run as the real user.
  */
-function RequireRole({ path, children }: { path: RoutePath; children: ReactNode }) {
+function RequireRole({
+  path,
+  minRole,
+  children,
+}: {
+  /** Registry path whose minRole gates access (nav-driven routes). */
+  path?: RoutePath;
+  /** Explicit role floor for detail routes not in the nav registry. */
+  minRole?: CrewRole;
+  children: ReactNode;
+}) {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const view = useViewAsRole();
   if (!ROLE_NAV_V2) return <>{children}</>;
   if (me.isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
   const role = effectiveRole(me.data?.role, view);
-  if (canAccess(role, path)) return <>{children}</>;
+  const allowed = minRole
+    ? roleRank(role) >= roleRank(minRole)
+    : canAccess(role, path ?? "");
+  if (allowed) return <>{children}</>;
   return (
     <div className="page">
       <header className="page-header">
@@ -125,6 +143,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
   const [entered, setEntered] = useState(false);
+  const [bypassed, setBypassed] = useState(() => isAuthBypassed());
   const [signInMode, setSignInMode] = useState<
     "signin" | "signup" | "request"
   >("signin");
@@ -133,17 +152,30 @@ export default function App() {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setReady(true);
-      if (data.session) void ensureMyProfile().catch(() => {});
+      if (data.session) {
+        setAuthBypass(false);
+        setBypassed(false);
+        void ensureMyProfile().catch(() => {});
+      }
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
-      if (s) void ensureMyProfile().catch(() => {});
+      if (s) {
+        setAuthBypass(false);
+        setBypassed(false);
+        void ensureMyProfile().catch(() => {});
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  const enterBypass = () => {
+    setAuthBypass(true);
+    setBypassed(true);
+  };
+
   if (!ready) return null;
-  if (!session) {
+  if (!session && !bypassed) {
     if (!entered) {
       return (
         <Landing
@@ -155,10 +187,11 @@ export default function App() {
             setSignInMode("request");
             setEntered(true);
           }}
+          onBypass={enterBypass}
         />
       );
     }
-    return <SignIn initialMode={signInMode} />;
+    return <SignIn initialMode={signInMode} onBypass={enterBypass} />;
   }
 
   return (
@@ -175,6 +208,7 @@ export default function App() {
       <PinGate>
       <ViewAsRoleProvider>
       <BrowserRouter>
+        <ClockProvider>
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<RoleLanding />} />
@@ -211,7 +245,11 @@ export default function App() {
             />
             <Route
               path="/projects/:projectId/upload"
-              element={<PlansetUpload />}
+              element={
+                <RequireRole minRole="foreman">
+                  <PlansetUpload />
+                </RequireRole>
+              }
             />
             <Route
               path="/projects/:projectId/review"
@@ -245,6 +283,14 @@ export default function App() {
               element={<RequireRole path="/training"><Training /></RequireRole>}
             />
             <Route path="/clock" element={<TimeClock />} />
+            <Route
+              path="/timecard"
+              element={<RequireRole path="/timecard"><Timecard /></RequireRole>}
+            />
+            <Route
+              path="/cost-codes"
+              element={<RequireRole path="/cost-codes"><CostCodes /></RequireRole>}
+            />
             <Route
               path="/costing"
               element={<RequireRole path="/costing"><Costing /></RequireRole>}
@@ -296,6 +342,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
+        </ClockProvider>
       </BrowserRouter>
       </ViewAsRoleProvider>
       </PinGate>

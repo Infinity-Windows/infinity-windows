@@ -1,9 +1,10 @@
 interface LandingProps {
   onSignIn: () => void;
   onRequest: () => void;
+  onBypass: () => void;
 }
 
-export function Landing({ onSignIn, onRequest }: LandingProps) {
+export function Landing({ onSignIn, onRequest, onBypass }: LandingProps) {
   return (
     <div className="landing">
       <div className="landing-brand">
@@ -17,7 +18,10 @@ export function Landing({ onSignIn, onRequest }: LandingProps) {
         for the whole crew.
       </p>
       <div className="landing-actions">
-        <button className="primary big" onClick={onSignIn}>
+        <button className="primary big" onClick={onBypass}>
+          Enter without signing in
+        </button>
+        <button className="secondary" onClick={onSignIn}>
           Sign in
         </button>
         <button className="secondary" onClick={onRequest}>
@@ -25,7 +29,8 @@ export function Landing({ onSignIn, onRequest }: LandingProps) {
         </button>
       </div>
       <p className="signin-footnote">
-        New crew members need admin approval before their first sign-in.
+        Bypass skips login for local demos. Live data still needs a real sign-in
+        + Supabase.
       </p>
     </div>
   );

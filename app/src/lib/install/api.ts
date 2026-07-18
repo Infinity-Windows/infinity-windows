@@ -98,7 +98,10 @@ export async function ensureMyProfile(): Promise<Profile | null> {
 export async function getMyProfile(): Promise<Profile | null> {
   const { data: userData } = await supabase.auth.getUser();
   const user = userData.user;
-  if (!user) return null;
+  if (!user) {
+    const { BYPASS_PROFILE, isAuthBypassed } = await import("../authBypass");
+    return isAuthBypassed() ? BYPASS_PROFILE : null;
+  }
   const { data, error } = await supabase
     .from("profiles")
     .select(PROFILE_COLS)
@@ -853,6 +856,25 @@ export async function deletePlanOutline(
     throw error;
   }
   deleteLocalOutline(plansetId, pageNumber, outlineId);
+}
+
+/** True when we can render this planset as a PDF in the app. */
+export function plansetIsViewable(planset: Planset): boolean {
+  return Boolean(
+    planset.converted_pdf_path || planset.source_format === "pdf",
+  );
+}
+
+/** Signed URL for opening/downloading the stored file (1 hour). */
+export async function getPlansetSignedUrl(
+  planset: Planset,
+): Promise<string> {
+  const path = planset.converted_pdf_path ?? planset.storage_path;
+  const { data, error } = await supabase.storage
+    .from("plansets")
+    .createSignedUrl(path, 3600);
+  if (error) throw error;
+  return data.signedUrl;
 }
 
 // --- Openings ---
