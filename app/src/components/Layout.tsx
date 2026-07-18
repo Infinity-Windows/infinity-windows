@@ -95,7 +95,7 @@ export function Layout() {
               <span>
                 Viewing as{" "}
                 <strong>{ROLE_LABELS[view.previewRole as CrewRole] ?? view.previewRole}</strong>{" "}
-                — preview only
+                (your data)
               </span>
               <button
                 type="button"

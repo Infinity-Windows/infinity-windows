@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { listProjects } from "../lib/api";
 import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { myTodayCompletion } from "../lib/toolbox";
 import {
   approveShift,
@@ -31,7 +32,8 @@ function hhmm(totalSec: number): string {
 export function TimeClock() {
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const lead = isForemanPlus(me.data?.role);
+  const { effectiveRole } = useEffectiveRole();
+  const lead = isForemanPlus(effectiveRole);
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const costCodes = useQuery({ queryKey: ["costCodes"], queryFn: listCostCodes });
   const open = useQuery({

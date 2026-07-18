@@ -977,10 +977,17 @@ export interface ProjectExceptions {
   flaggedOpenings: ProjectOpening[];
 }
 
-/** Opening ids on a project that carry a voided (failed/undone) install event. */
+/**
+ * Opening ids on a project that carry a voided (failed/undone) install event.
+ * Failed-install visibility is foreman+ only, so callers pass `canSee` (their
+ * foreman+ guard); a non-foreman caller short-circuits to an empty set and
+ * never fetches the data. (Full RLS hardening is a later follow-up.)
+ */
 export async function listVoidedInstallOpeningIds(
   projectId: string,
+  canSee = true,
 ): Promise<Set<string>> {
+  if (!canSee) return new Set<string>();
   const { data, error } = await supabase
     .from("install_events")
     .select("project_opening_id, project_openings:project_opening_id!inner(project_id)")
@@ -997,7 +1004,9 @@ export async function listVoidedInstallOpeningIds(
  */
 export async function listProjectExceptions(
   projectId: string,
+  canSee = true,
 ): Promise<ProjectExceptions> {
+  if (!canSee) return { failedInstalls: [], flaggedOpenings: [] };
   const [flaggedRes, voidedRes] = await Promise.all([
     supabase
       .from("project_openings")

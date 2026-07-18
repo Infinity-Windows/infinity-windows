@@ -1,4 +1,8 @@
-import type { CrewRole } from "./install/types";
+import { roleRank, type CrewRole } from "./install/types";
+
+// Re-exported so existing importers (Layout, tests) keep a single source of
+// truth: roleRank now lives in install/types and nav/pages share it.
+export { roleRank };
 
 /**
  * ONE registry drives navigation, route guards, the living access doc, and the
@@ -43,29 +47,6 @@ export type RoutePath =
  * working so a bad rollout is one constant away from reverted.
  */
 export const ROLE_NAV_V2 = true;
-
-/**
- * Rank roles so access is a single `>=` comparison. Unknown/null defaults to
- * installer-min (0) so a missing/legacy profile can never over-expose. Legacy
- * names are mapped: admin -> supervisor(2), big_boss -> owner(3), lead -> foreman(1).
- */
-export function roleRank(role?: CrewRole | string | null): number {
-  switch (role) {
-    case "owner":
-    case "big_boss":
-      return 3;
-    case "supervisor":
-    case "admin":
-      return 2;
-    case "foreman":
-    case "lead":
-      return 1;
-    case "installer":
-      return 0;
-    default:
-      return 0;
-  }
-}
 
 export interface NavDest {
   id: string;

@@ -8,9 +8,11 @@ import {
 } from "../lib/install/api";
 import { formatHours, variance } from "../lib/estimate";
 import { isForemanPlus } from "../lib/install/types";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 
 export function Analytics() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const { effectiveRole } = useEffectiveRole();
   const leaders = useQuery({
     queryKey: ["installerLeaderboard"],
     queryFn: getInstallerLeaderboard,
@@ -21,7 +23,7 @@ export function Analytics() {
     queryFn: listWindowTypes,
   });
 
-  if (me.data && !isForemanPlus(me.data.role)) {
+  if (me.data && !isForemanPlus(effectiveRole)) {
     return (
       <div className="page">
         <header className="page-header">

@@ -6,14 +6,16 @@ import {
   listAccessRequests,
 } from "../lib/install/api";
 import { isSupervisorPlus } from "../lib/install/types";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 
 export function Admin() {
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const { effectiveRole } = useEffectiveRole();
   const requests = useQuery({
     queryKey: ["accessRequests"],
     queryFn: listAccessRequests,
-    enabled: isSupervisorPlus(me.data?.role),
+    enabled: isSupervisorPlus(effectiveRole),
   });
 
   const decide = useMutation({
@@ -22,7 +24,7 @@ export function Admin() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["accessRequests"] }),
   });
 
-  if (me.data && !isSupervisorPlus(me.data.role)) {
+  if (me.data && !isSupervisorPlus(effectiveRole)) {
     return (
       <div className="page">
         <header className="page-header">

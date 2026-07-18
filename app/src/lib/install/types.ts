@@ -40,25 +40,44 @@ export const ROLE_LABELS: Record<CrewRole, string> = {
 };
 
 /**
- * Foreman-level privileges: anyone above a plain installer. Legacy role names
- * (lead/admin/big_boss) are still treated as elevated in case any row hasn't
- * been migrated yet.
+ * ONE role-rank source of truth. Rank roles so access is a single `>=`
+ * comparison. Unknown/null defaults to installer-min (0) so a missing/legacy
+ * profile can never over-expose. Legacy names are mapped: lead -> foreman(1),
+ * admin -> supervisor(2), big_boss -> owner(3). nav.ts imports this so nav,
+ * route guards, and page-level gating can never disagree on unknown/legacy roles.
+ */
+export function roleRank(role?: CrewRole | string | null): number {
+  switch (role) {
+    case "owner":
+    case "big_boss":
+      return 3;
+    case "supervisor":
+    case "admin":
+      return 2;
+    case "foreman":
+    case "lead":
+      return 1;
+    case "installer":
+      return 0;
+    default:
+      return 0;
+  }
+}
+
+/**
+ * Foreman-level privileges: anyone above a plain installer. Derived from
+ * roleRank so an unknown/legacy role can never disagree with the nav/guards.
  */
 export function isForemanPlus(role?: CrewRole | string | null): boolean {
-  return !!role && role !== "installer";
+  return roleRank(role) >= 1;
 }
 /** Supervisor-level: manage accounts/approvals (was admin). */
 export function isSupervisorPlus(role?: CrewRole | string | null): boolean {
-  return (
-    role === "supervisor" ||
-    role === "owner" ||
-    role === "admin" ||
-    role === "big_boss"
-  );
+  return roleRank(role) >= 2;
 }
 /** Owner: full data / costing / margin visibility (was big_boss). */
 export function isOwner(role?: CrewRole | string | null): boolean {
-  return role === "owner" || role === "big_boss";
+  return roleRank(role) >= 3;
 }
 
 export interface Profile {
