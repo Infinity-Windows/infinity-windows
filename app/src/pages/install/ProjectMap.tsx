@@ -59,7 +59,8 @@ interface PageImage {
 }
 
 type PlanFilter = "all" | "open" | "windows" | "doors" | "done";
-type DrawingView = "floor" | "details";
+/** Outline = cartoon extract; building = original floor PDF; details = specs PDF. */
+type DrawingView = "outline" | "building" | "details";
 
 const FILTERS: { id: PlanFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -88,7 +89,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [view, setView] = useState<DrawingView>("floor");
+  const [view, setView] = useState<DrawingView>("outline");
   const [floorPages, setFloorPages] = useState<number[]>([]);
   const [buildingPageCount, setBuildingPageCount] = useState(0);
   const [specsPageCount, setSpecsPageCount] = useState(0);
@@ -96,6 +97,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const [image, setImage] = useState<PageImage | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [filter, setFilter] = useState<PlanFilter>("all");
+  const [fullScreen, setFullScreen] = useState(false);
   const buildingDocRef = useRef<PDFDocumentProxy | null>(null);
   const specsDocRef = useRef<PDFDocumentProxy | null>(null);
   const [docsReady, setDocsReady] = useState(0);
@@ -316,6 +318,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         }
         setPage(initialPage);
         setOutlines({});
+        setFullScreen(false);
         setDocsReady((ready) => ready + 1);
       } catch (e) {
         if (!cancelled) setMapError(String(e));
@@ -328,7 +331,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
 
   // Trace the building outline for the active floor page (cached per page).
   useEffect(() => {
-    if (view !== "floor") return;
+    if (view !== "outline") return;
     const doc = buildingDocRef.current;
     if (!doc || page < 1 || page > doc.numPages) return;
     if (outlines[page] !== undefined) return;
@@ -345,10 +348,10 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     };
   }, [view, page, docsReady, outlines]);
 
-  // Detail sheets still show the manufacturer PDF pages as-is.
+  // Original building PDF + specs detail sheets render as page images.
   useEffect(() => {
-    if (view !== "details") return;
-    const doc = specsDocRef.current;
+    if (view === "outline") return;
+    const doc = view === "building" ? buildingDocRef.current : specsDocRef.current;
     if (!doc || page < 1 || page > doc.numPages) return;
     let cancelled = false;
     setImage(null);
@@ -360,6 +363,21 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       cancelled = true;
     };
   }, [page, view, docsReady]);
+
+  // Escape exits fullscreen; lock body scroll while open.
+  useEffect(() => {
+    if (!fullScreen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFullScreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [fullScreen]);
 
   const placePin = useMutation({
     mutationFn: (args: { id: string; x: number; y: number }) =>
@@ -397,19 +415,19 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const installed = all.filter((o) => o.status === "installed").length;
   const detailPages = details.map((detail) => detail.pageNumber);
   const visiblePages =
-    view === "floor"
-      ? floorPages.length > 0
-        ? floorPages
-        : Array.from({ length: buildingPageCount }, (_, index) => index + 1)
-      : detailPages.length > 0
+    view === "details"
+      ? detailPages.length > 0
         ? detailPages
-        : Array.from({ length: specsPageCount }, (_, index) => index + 1);
+        : Array.from({ length: specsPageCount }, (_, index) => index + 1)
+      : floorPages.length > 0
+        ? floorPages
+        : Array.from({ length: buildingPageCount }, (_, index) => index + 1);
   const pageIndex = Math.max(0, visiblePages.indexOf(page));
-  const activePlanset = view === "floor" ? buildingPdf : specsPdf;
+  const activePlanset = view === "details" ? specsPdf : buildingPdf;
   const activeDetail = details.find((detail) => detail.pageNumber === page);
 
   const outline = outlines[page] ?? null;
-  const outlineLoading = view === "floor" && outlines[page] === undefined;
+  const outlineLoading = view === "outline" && outlines[page] === undefined;
   const aspect = outline?.pageAspect ?? 0.7;
 
   const autoIds = autos.map((o) => o.id).join(",");
@@ -492,13 +510,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const showView = (next: DrawingView, nextPage?: number) => {
     setView(next);
     const pages =
-      next === "floor"
-        ? floorPages.length > 0
-          ? floorPages
-          : Array.from({ length: buildingPageCount }, (_, index) => index + 1)
-        : detailPages.length > 0
+      next === "details"
+        ? detailPages.length > 0
           ? detailPages
-          : Array.from({ length: specsPageCount }, (_, index) => index + 1);
+          : Array.from({ length: specsPageCount }, (_, index) => index + 1)
+        : floorPages.length > 0
+          ? floorPages
+          : Array.from({ length: buildingPageCount }, (_, index) => index + 1);
     setPage(nextPage ?? pages[0] ?? 1);
   };
 
@@ -630,6 +648,74 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     );
   };
 
+  const renderOpeningDots = () =>
+    [...placed, ...autos].map((o) => {
+      const kind = unitKind(o);
+      const isVoided = o.status !== "installed" && voidedIds.has(o.id);
+      const pos = dotPos(o);
+      return (
+        <button
+          key={o.id}
+          type="button"
+          className={`plan-dot${pos.auto ? " plan-dot--auto" : ""}${
+            selectedId === o.id ? " plan-dot--selected" : ""
+          }${drag?.id === o.id ? " plan-dot--dragging" : ""}`}
+          style={{
+            left: `${pos.x * 100}%`,
+            top: `${pos.y * 100}%`,
+            background: OPENING_KIND_COLORS[kind],
+            borderColor: isVoided
+              ? VOIDED_RING_COLOR
+              : OPENING_STATUS_COLORS[o.status],
+          }}
+          title={
+            isVoided
+              ? `${pinTitle(o)} — install undone, needs re-do`
+              : pinTitle(o)
+          }
+          onPointerDown={beginDrag(o)}
+        >
+          {openingMarkCode(o.opening_code)}
+        </button>
+      );
+    });
+
+  const fullscreenBar = (
+    <div className="plan-fullscreen-bar">
+      <button
+        type="button"
+        className="button-like plan-fullscreen-close"
+        onClick={() => setFullScreen(false)}
+      >
+        ✕ Close
+      </button>
+      {visiblePages.length > 1 && (
+        <>
+          <button
+            type="button"
+            className="hub-tab"
+            disabled={pageIndex <= 0}
+            onClick={() => setPage(visiblePages[pageIndex - 1])}
+          >
+            ◀
+          </button>
+          <span className="hub-tab active" style={{ pointerEvents: "none" }}>
+            {view === "details" ? "PDF" : "Floor"} {page} · {pageIndex + 1} /{" "}
+            {visiblePages.length}
+          </span>
+          <button
+            type="button"
+            className="hub-tab"
+            disabled={pageIndex >= visiblePages.length - 1}
+            onClick={() => setPage(visiblePages[pageIndex + 1])}
+          >
+            ▶
+          </button>
+        </>
+      )}
+    </div>
+  );
+
   const body = (
     <>
       {!embedded && (
@@ -660,13 +746,22 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         <>
           <nav className="drawing-view-tabs" aria-label="PDF drawing view">
             {buildingPdf && (
-              <button
-                type="button"
-                className={view === "floor" ? "chip active" : "chip"}
-                onClick={() => showView("floor")}
-              >
-                Building plan
-              </button>
+              <>
+                <button
+                  type="button"
+                  className={view === "outline" ? "chip active" : "chip"}
+                  onClick={() => showView("outline")}
+                >
+                  Building outline
+                </button>
+                <button
+                  type="button"
+                  className={view === "building" ? "chip active" : "chip"}
+                  onClick={() => showView("building")}
+                >
+                  Original plan
+                </button>
+              </>
             )}
             {specsPdf && (
               <button
@@ -687,8 +782,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                   value={buildingPdf?.id ?? ""}
                   onChange={(e) => {
                     setBuildingPlansetId(e.target.value);
-                    setView("floor");
+                    setView("outline");
                     setOutlines({});
+                    setFullScreen(false);
                   }}
                 >
                   {buildingPdfs.map((ps) => (
@@ -707,6 +803,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                   onChange={(e) => {
                     setSpecsPlansetId(e.target.value);
                     setView("details");
+                    setFullScreen(false);
                   }}
                 >
                   {specsPdfs.map((ps) => (
@@ -732,7 +829,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           <p className="pdf-source-line">
             <strong>Viewing:</strong>{" "}
             {activePlanset ? plansetLabel(activePlanset) : "loading…"}
-            {view === "floor" && floorPages.length > 0
+            {(view === "outline" || view === "building") && floorPages.length > 0
               ? ` · ${floorPages.length} numbered floor drawing${floorPages.length === 1 ? "" : "s"}`
               : ""}
             {view === "details" && details.length > 0
@@ -777,24 +874,38 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         </p>
       )}
 
-      {view === "floor" && buildingPdf && (
-        <div className="plan-sheet plan-sheet--cad">
+      {view === "outline" && buildingPdf && (
+        <div
+          className={`plan-sheet plan-sheet--cad${fullScreen ? " plan-sheet--fullscreen" : ""}`}
+        >
+          {fullScreen && fullscreenBar}
           <div className="cartoon-sheet__head">
             <span className="cartoon-sheet__title">
               {project?.job_code ?? "PLAN"} · BUILDING OUTLINE
             </span>
-            <span className="cartoon-sheet__status">
-              {outlineLoading
-                ? "tracing plan…"
-                : outlinePath
-                  ? "outline from CAD"
-                  : "outline unavailable — schematic"}
-            </span>
+            <div className="cartoon-sheet__head-actions">
+              <span className="cartoon-sheet__status">
+                {outlineLoading
+                  ? "tracing plan…"
+                  : outlinePath
+                    ? "outline from CAD"
+                    : "outline unavailable — schematic"}
+              </span>
+              <button
+                type="button"
+                className="plan-fullscreen-toggle"
+                title={fullScreen ? "Exit full screen" : "Full screen"}
+                aria-label={fullScreen ? "Exit full screen" : "Full screen"}
+                onClick={() => setFullScreen((v) => !v)}
+              >
+                {fullScreen ? "⛶" : "⛶"}
+              </button>
+            </div>
           </div>
           <div
             ref={sheetRef}
             className="cartoon-sheet"
-            style={{ aspectRatio: `1 / ${aspect}` }}
+            style={fullScreen ? undefined : { aspectRatio: `1 / ${aspect}` }}
           >
             <svg
               viewBox={`0 0 1000 ${Math.round(1000 * aspect)}`}
@@ -824,36 +935,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 )
               )}
             </svg>
-            {[...placed, ...autos].map((o) => {
-              const kind = unitKind(o);
-              const isVoided = o.status !== "installed" && voidedIds.has(o.id);
-              const pos = dotPos(o);
-              return (
-                <button
-                  key={o.id}
-                  type="button"
-                  className={`plan-dot${pos.auto ? " plan-dot--auto" : ""}${
-                    selectedId === o.id ? " plan-dot--selected" : ""
-                  }${drag?.id === o.id ? " plan-dot--dragging" : ""}`}
-                  style={{
-                    left: `${pos.x * 100}%`,
-                    top: `${pos.y * 100}%`,
-                    background: OPENING_KIND_COLORS[kind],
-                    borderColor: isVoided
-                      ? VOIDED_RING_COLOR
-                      : OPENING_STATUS_COLORS[o.status],
-                  }}
-                  title={
-                    isVoided
-                      ? `${pinTitle(o)} — install undone, needs re-do`
-                      : pinTitle(o)
-                  }
-                  onPointerDown={beginDrag(o)}
-                >
-                  {openingMarkCode(o.opening_code)}
-                </button>
-              );
-            })}
+            {renderOpeningDots()}
             <div className="cartoon-sheet__source">
               FROM CAD · {buildingPdf.storage_path.split("/").pop()}
             </div>
@@ -862,14 +944,83 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         </div>
       )}
 
-      {view === "details" && image && (
-        <div className="plan-sheet">
-          <div className="plan-map plan-map--pdf-sketch">
-            <img
-              src={image.dataUrl}
-              alt={`Window and door detail PDF page ${page}`}
-            />
+      {view === "building" && buildingPdf && (
+        <div
+          className={`plan-sheet${fullScreen ? " plan-sheet--fullscreen" : ""}`}
+        >
+          {fullScreen && fullscreenBar}
+          <div className="cartoon-sheet__head">
+            <span className="cartoon-sheet__title">
+              {project?.job_code ?? "PLAN"} · ORIGINAL BUILDING PLAN
+            </span>
+            <div className="cartoon-sheet__head-actions">
+              <span className="cartoon-sheet__status">source PDF</span>
+              <button
+                type="button"
+                className="plan-fullscreen-toggle"
+                title={fullScreen ? "Exit full screen" : "Full screen"}
+                aria-label={fullScreen ? "Exit full screen" : "Full screen"}
+                onClick={() => setFullScreen((v) => !v)}
+              >
+                ⛶
+              </button>
+            </div>
           </div>
+          {image ? (
+            <div ref={sheetRef} className="plan-map plan-map--pdf-sketch plan-map--with-dots">
+              <img
+                src={image.dataUrl}
+                alt={`Building plan PDF page ${page}`}
+              />
+              {renderOpeningDots()}
+            </div>
+          ) : (
+            <p className="muted" style={{ padding: "12px 6px" }}>
+              Loading original plan…
+            </p>
+          )}
+          {selectedOpening && renderDetailCard(selectedOpening)}
+        </div>
+      )}
+
+      {view === "details" && (
+        <div
+          className={`plan-sheet${fullScreen ? " plan-sheet--fullscreen" : ""}`}
+        >
+          {fullScreen && fullscreenBar}
+          <div className="cartoon-sheet__head">
+            <span className="cartoon-sheet__title">
+              {project?.job_code ?? "PLAN"} · WINDOW &amp; DOOR DETAILS
+            </span>
+            <div className="cartoon-sheet__head-actions">
+              <span className="cartoon-sheet__status">
+                {activeDetail?.marks.length
+                  ? activeDetail.marks.map((m) => `#${m}`).join(" · ")
+                  : "specs PDF"}
+              </span>
+              <button
+                type="button"
+                className="plan-fullscreen-toggle"
+                title={fullScreen ? "Exit full screen" : "Full screen"}
+                aria-label={fullScreen ? "Exit full screen" : "Full screen"}
+                onClick={() => setFullScreen((v) => !v)}
+              >
+                ⛶
+              </button>
+            </div>
+          </div>
+          {image ? (
+            <div className="plan-map plan-map--pdf-sketch">
+              <img
+                src={image.dataUrl}
+                alt={`Window and door detail PDF page ${page}`}
+              />
+            </div>
+          ) : (
+            <p className="muted" style={{ padding: "12px 6px" }}>
+              Loading detail sheet…
+            </p>
+          )}
           {activeDetail && (
             <div className="cad-detail-caption">
               <strong>
@@ -888,7 +1039,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         </div>
       )}
 
-      {visiblePages.length > 1 && (
+      {visiblePages.length > 1 && !fullScreen && (
         <nav className="hub-tabs page-switch" aria-label="Plan pages">
           <button
             type="button"
@@ -899,7 +1050,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             ◀
           </button>
           <span className="hub-tab active" style={{ pointerEvents: "none" }}>
-            {view === "floor" ? "Floor" : "PDF page"} {page} · {pageIndex + 1} /{" "}
+            {view === "details" ? "PDF page" : "Floor"} {page} · {pageIndex + 1} /{" "}
             {visiblePages.length}
           </span>
           <button

@@ -703,6 +703,13 @@ button:disabled {
   padding: 4px 6px 10px;
 }
 
+.cartoon-sheet__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
 .cartoon-sheet__title {
   font-family: var(--font-display);
   font-size: 13px;
@@ -717,6 +724,80 @@ button:disabled {
   letter-spacing: 1px;
   color: #5c564e;
   text-transform: uppercase;
+}
+
+.plan-fullscreen-toggle {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 106, 26, 0.5);
+  background: #1e1b18;
+  color: #ff6a1a;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.plan-fullscreen-toggle:active {
+  transform: scale(0.94);
+}
+
+.plan-sheet--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  margin: 0;
+  border-radius: 0;
+  border: none;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  background: #141210;
+  overflow: auto;
+}
+
+.plan-sheet--fullscreen .cartoon-sheet,
+.plan-sheet--fullscreen .plan-map {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  aspect-ratio: auto;
+}
+
+.plan-sheet--fullscreen .plan-map img {
+  width: 100%;
+  height: auto;
+  max-height: calc(100vh - 160px);
+  object-fit: contain;
+  background: #181614;
+}
+
+.plan-fullscreen-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 0 0 10px;
+  pointer-events: none;
+}
+
+.plan-fullscreen-bar > * {
+  pointer-events: auto;
+}
+
+.plan-fullscreen-close {
+  background: #ff6a1a !important;
+  color: #141210 !important;
+  border: none !important;
+  font-weight: 700;
+}
+
+.plan-map--with-dots {
+  position: relative;
 }
 
 .cartoon-sheet {
