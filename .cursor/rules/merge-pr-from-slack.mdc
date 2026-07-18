@@ -1,0 +1,92 @@
+---
+description: How to safely merge a PR when asked from Slack (e.g. "@Cursor merge PR #19")
+alwaysApply: true
+---
+
+# Merging a PR when asked from Slack
+
+Taylor and Ammon are non-technical. They trigger merges by mentioning the Cursor
+Slack app in **#infinity-app-changelog** (or any channel Cursor is in), e.g.:
+
+```
+@Cursor merge PR #19
+@Cursor merge the Slack changelog PR
+@Cursor this looks good, merge it
+```
+
+When a Cloud Agent (or any Cursor agent) is asked to **merge** a pull request in
+this repo (`Infinity-Windows/infinity-windows`, default branch `master`), follow
+this exact procedure. The Slack Cursor app cannot merge on its own — it launches
+an agent, and the agent does the merge with the `gh` CLI.
+
+## Which PR?
+
+- If a PR number is given (`#19`), use it directly.
+- If described in words ("the changelog PR", "the login fix"), find it with
+  `gh pr list --state open` and match on title/branch. If the match is
+  ambiguous, ask the human to confirm the number before merging — never guess.
+
+## Pre-merge safety checks (all must pass)
+
+1. **Confirm the PR is open and mergeable:**
+
+```bash
+gh pr view <number> --json number,title,state,mergeable,mergeStateStatus,baseRefName,headRefName
+```
+
+   - `state` must be `OPEN`.
+   - `baseRefName` must be `master`. Never merge into anything else without an
+     explicit instruction.
+   - `mergeable` must not be `CONFLICTING`. If it conflicts, do NOT merge — fix
+     the branch (rebase onto latest `master`) yourself, or report back in Slack
+     that it needs conflict resolution. Humans never resolve conflicts by hand.
+
+2. **Confirm CI is green:**
+
+```bash
+gh pr checks <number>
+```
+
+   - All required checks must be passing. If checks are still running, wait and
+     re-check. If any required check has failed, do NOT merge — report the
+     failing check in Slack and (if it's your PR to fix) fix it, push, and
+     re-check.
+
+## Merge
+
+Only after every check above passes:
+
+```bash
+gh pr merge <number> --squash --delete-branch
+```
+
+- Always **squash** merge into `master`.
+- Always **delete the branch** after merging (short-lived branches).
+- **Never** force-push. **Never** merge with `--admin` to bypass failing
+  checks or reviews unless the human explicitly says to override.
+
+## After merging
+
+1. Confirm success:
+
+```bash
+gh pr view <number> --json state,mergedAt
+```
+
+2. Post a short, plain-English confirmation in **#infinity-app-changelog**
+   (channel ID `C0BJ349BJNR`) so the non-technical team has a record, e.g.:
+
+```
+:white_check_mark: Merged *<PR title>* (#<number>) into master. The branch has been cleaned up.
+```
+
+   (The Slack Cursor app also posts its own completion notice; this changelog
+   line is the human-readable record and follows the existing changelog rule.)
+
+## Never do
+
+- Never merge a PR whose CI is failing or that has conflicts.
+- Never push directly to `master` as a substitute for merging.
+- Never merge a PR into a base branch other than `master` without an explicit
+  instruction.
+- Never bypass branch protection or reviews unless explicitly told to.
