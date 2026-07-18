@@ -4,9 +4,11 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { listProjects, listWindowTypes } from "../../lib/api";
 import {
   ensureTypesFromSpecs,
+  getPlansetSignedUrl,
   linkSpecsToOpenings,
   listPlansets,
   plansetFormatFromName,
+  plansetIsViewable,
   saveDraftOpenings,
   updatePlanset,
   uploadPlanset,
@@ -20,6 +22,7 @@ import {
 } from "../../lib/install/extract";
 import { extractCadDetailPages } from "../../lib/install/planDetails";
 import type { Planset, PlansetKind } from "../../lib/install/types";
+import { PlansetViewer } from "./PlansetViewer";
 
 function fileName(ps: Planset): string {
   return ps.storage_path.split("/").pop() ?? ps.storage_path;
@@ -31,6 +34,8 @@ export function PlansetUpload() {
   const queryClient = useQueryClient();
   const [progress, setProgress] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<Planset | null>(null);
+  const [viewError, setViewError] = useState<string | null>(null);
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const project = projects.data?.find((p) => p.id === projectId);
@@ -236,6 +241,29 @@ export function PlansetUpload() {
     onError: (e) => setProgress(String(e)),
   });
 
+  const openPlanset = async (ps: Planset) => {
+    setViewError(null);
+    if (plansetIsViewable(ps)) {
+      setViewing(ps);
+      return;
+    }
+    // DWG/DXF without a converted PDF — offer a download link instead.
+    try {
+      const url = await getPlansetSignedUrl(ps);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      setViewError(String(e));
+    }
+  };
+
+  if (viewing) {
+    return (
+      <div className="page">
+        <PlansetViewer planset={viewing} onClose={() => setViewing(null)} />
+      </div>
+    );
+  }
+
   const slot = (kind: PlansetKind, title: string, blurb: string, list: Planset[]) => (
     <section className="planset-slot" key={kind}>
       <h2>{title}</h2>
@@ -256,19 +284,25 @@ export function PlansetUpload() {
       </label>
       <ul className="unit-list">
         {list.map((ps) => (
-          <li key={ps.id}>
-            <strong>{fileName(ps)}</strong>{" "}
-            <span className="muted">{ps.source_format.toUpperCase()}</span>{" "}
-            {ps.status === "converting" ? (
-              <span className="warn-text">conversion queued</span>
-            ) : (
-              <span className={ps.status === "ready" ? "ok" : "muted"}>
-                {ps.status}
+          <li key={ps.id} className="planset-row">
+            <button
+              type="button"
+              className="planset-open"
+              onClick={() => void openPlanset(ps)}
+            >
+              <strong>{fileName(ps)}</strong>
+              <span className="muted">
+                {" "}
+                {ps.source_format.toUpperCase()}
+                {ps.status === "converting"
+                  ? " · conversion queued"
+                  : ` · ${ps.status}`}
+                {ps.page_count ? ` · ${ps.page_count} pages` : ""}
               </span>
-            )}
-            {ps.page_count ? (
-              <span className="muted"> — {ps.page_count} pages</span>
-            ) : null}
+              <span className="planset-open-cta">
+                {plansetIsViewable(ps) ? "View ›" : "Download ›"}
+              </span>
+            </button>
           </li>
         ))}
         {list.length === 0 && <p className="muted">Nothing in this slot yet.</p>}
@@ -290,8 +324,8 @@ export function PlansetUpload() {
 
       <p className="muted">
         Two slots per job: the building plan for the map, and the specs/schedule
-        that defines each mark (#14 → size, color, type). Confirm drafts before
-        they drive inventory.
+        that defines each mark (#14 → size, color, type). Tap a file to view it.
+        Confirm drafts before they drive inventory.
       </p>
 
       {slot(
@@ -309,6 +343,7 @@ export function PlansetUpload() {
 
       {progress && <p className="scanner-hint">{progress}</p>}
       {summary && <p className="ok">{summary}</p>}
+      {viewError && <p className="error">{viewError}</p>}
 
       <p className="muted" style={{ marginTop: 16 }}>
         After specs extract →{" "}
