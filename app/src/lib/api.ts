@@ -45,6 +45,45 @@ export async function listProjects(): Promise<Project[]> {
   return data;
 }
 
+export interface CreateProjectInput {
+  jobCode: string;
+  name: string;
+  address?: string | null;
+}
+
+/**
+ * Create a job and its two default staging slots. The compensating delete
+ * keeps a partial job out of the list if staging setup fails.
+ */
+export async function createProject(input: CreateProjectInput): Promise<Project> {
+  const jobCode = input.jobCode.trim().toUpperCase().replace(/[^A-Z0-9-]+/g, "-");
+  const name = input.name.trim();
+  if (!jobCode) throw new Error("Job code is required.");
+  if (!name) throw new Error("Project name is required.");
+
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .insert({
+      job_code: jobCode,
+      name,
+      address: input.address?.trim() || null,
+    })
+    .select("*")
+    .single();
+  if (projectError) throw projectError;
+
+  const { error: stagingError } = await supabase.from("locations").insert([
+    { zone: "J", rack: jobCode, slot: "A", capacity: 10 },
+    { zone: "J", rack: jobCode, slot: "B", capacity: 10 },
+  ]);
+  if (stagingError) {
+    await supabase.from("projects").delete().eq("id", project.id);
+    throw stagingError;
+  }
+
+  return project as Project;
+}
+
 export async function getProjectWindows(
   projectId: string,
 ): Promise<ProjectWindow[]> {

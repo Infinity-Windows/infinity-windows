@@ -19,6 +19,11 @@ import {
   openingMarkLabel,
   type ProjectOpening,
 } from "../../lib/install/types";
+import {
+  extractCadDetailPages,
+  findFloorPlanPages,
+  type CadDetailPage,
+} from "../../lib/install/planDetails";
 
 /** Distinct ring for an opening whose install was undone (history preserved). */
 const VOIDED_RING_COLOR = "#ef4444";
@@ -30,6 +35,7 @@ interface PageImage {
 }
 
 type PlanFilter = "all" | "open" | "windows" | "doors" | "done";
+type DrawingView = "floor" | "details";
 
 const FILTERS: { id: PlanFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -50,12 +56,18 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [pageCount, setPageCount] = useState(0);
+  const [view, setView] = useState<DrawingView>("floor");
+  const [floorPages, setFloorPages] = useState<number[]>([]);
+  const [buildingPageCount, setBuildingPageCount] = useState(0);
+  const [specsPageCount, setSpecsPageCount] = useState(0);
+  const [details, setDetails] = useState<CadDetailPage[]>([]);
   const [image, setImage] = useState<PageImage | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [placingId, setPlacingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<PlanFilter>("all");
-  const docRef = useRef<PDFDocumentProxy | null>(null);
+  const buildingDocRef = useRef<PDFDocumentProxy | null>(null);
+  const specsDocRef = useRef<PDFDocumentProxy | null>(null);
+  const [docsReady, setDocsReady] = useState(0);
 
   const matchesFilter = (o: ProjectOpening): boolean => {
     switch (filter) {
@@ -114,26 +126,47 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     undo.mutate({ openingId: o.id, reason: reason.trim() || null });
   };
 
-  const pdfPlanset = (plansets.data ?? []).find(
-    (ps) =>
-      (ps.kind ?? "building") === "building" &&
-      (ps.source_format === "pdf" || ps.converted_pdf_path),
-  ) ?? (plansets.data ?? []).find(
-    (ps) => ps.source_format === "pdf" || ps.converted_pdf_path,
+  const buildingPdf = (plansets.data ?? []).find(
+    (ps) => (ps.kind ?? "building") === "building" && ps.source_format === "pdf",
+  );
+  const specsPdf = (plansets.data ?? []).find(
+    (ps) => ps.kind === "specs" && ps.source_format === "pdf",
   );
 
   useEffect(() => {
-    if (!pdfPlanset) return;
+    if (!buildingPdf && !specsPdf) return;
     let cancelled = false;
     (async () => {
       try {
-        const { loadPdf, renderPageImage } = await import("../../lib/install/pdf");
-        const buf = await downloadPlanset(pdfPlanset);
-        const doc = await loadPdf(buf);
-        if (cancelled) return;
-        docRef.current = doc;
-        setPageCount(doc.numPages);
-        setImage(await renderPageImage(doc, 1));
+        const { extractAllText, loadPdf } = await import("../../lib/install/pdf");
+        let initialPage = 1;
+
+        if (buildingPdf) {
+          const buildingDoc = await loadPdf(await downloadPlanset(buildingPdf));
+          const buildingText = await extractAllText(buildingDoc);
+          if (cancelled) return;
+          buildingDocRef.current = buildingDoc;
+          setBuildingPageCount(buildingDoc.numPages);
+          const detectedFloorPages = findFloorPlanPages(buildingText);
+          setFloorPages(detectedFloorPages);
+          initialPage = detectedFloorPages[0] ?? 1;
+        }
+
+        if (specsPdf) {
+          const specsDoc = await loadPdf(await downloadPlanset(specsPdf));
+          const specsText = await extractAllText(specsDoc);
+          if (cancelled) return;
+          specsDocRef.current = specsDoc;
+          setSpecsPageCount(specsDoc.numPages);
+          setDetails(extractCadDetailPages(specsText));
+        }
+
+        if (!buildingPdf && specsPdf) {
+          setView("details");
+          initialPage = 1;
+        }
+        setPage(initialPage);
+        setDocsReady((ready) => ready + 1);
       } catch (e) {
         if (!cancelled) setMapError(String(e));
       }
@@ -141,12 +174,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, [pdfPlanset?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [buildingPdf?.id, specsPdf?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const doc = docRef.current;
+    const doc = view === "floor" ? buildingDocRef.current : specsDocRef.current;
     if (!doc || page < 1 || page > doc.numPages) return;
     let cancelled = false;
+    setImage(null);
     import("../../lib/install/pdf")
       .then(({ renderPageImage }) => renderPageImage(doc, page))
       .then((img) => !cancelled && setImage(img))
@@ -154,7 +188,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, [page]);
+  }, [page, view, docsReady]);
 
   const placePin = useMutation({
     mutationFn: (args: { id: string; x: number; y: number }) =>
@@ -177,6 +211,32 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   );
   const unplaced = all.filter((o) => o.pin_x === null || o.pin_y === null);
   const installed = all.filter((o) => o.status === "installed").length;
+  const detailPages = details.map((detail) => detail.pageNumber);
+  const visiblePages =
+    view === "floor"
+      ? floorPages.length > 0
+        ? floorPages
+        : Array.from({ length: buildingPageCount }, (_, index) => index + 1)
+      : detailPages.length > 0
+        ? detailPages
+        : Array.from({ length: specsPageCount }, (_, index) => index + 1);
+  const pageIndex = Math.max(0, visiblePages.indexOf(page));
+  const activePlanset = view === "floor" ? buildingPdf : specsPdf;
+  const activeDetail = details.find((detail) => detail.pageNumber === page);
+
+  const showView = (next: DrawingView, nextPage?: number) => {
+    setView(next);
+    const pages =
+      next === "floor"
+        ? floorPages.length > 0
+          ? floorPages
+          : Array.from({ length: buildingPageCount }, (_, index) => index + 1)
+        : detailPages.length > 0
+          ? detailPages
+          : Array.from({ length: specsPageCount }, (_, index) => index + 1);
+    setPage(nextPage ?? pages[0] ?? 1);
+    setPlacingId(null);
+  };
 
   const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!placingId) return;
@@ -221,6 +281,38 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         {unplaced.length > 0 && ` — ${unplaced.length} pins to place`}
       </p>
 
+      {(buildingPdf || specsPdf) && (
+        <>
+          <nav className="drawing-view-tabs" aria-label="PDF drawing view">
+            {buildingPdf && (
+              <button
+                type="button"
+                className={view === "floor" ? "chip active" : "chip"}
+                onClick={() => showView("floor")}
+              >
+                2D floor plan
+              </button>
+            )}
+            {specsPdf && (
+              <button
+                type="button"
+                className={view === "details" ? "chip active" : "chip"}
+                onClick={() => showView("details")}
+              >
+                Window &amp; door details
+              </button>
+            )}
+          </nav>
+          <p className="pdf-source-line">
+            <strong>PDF source:</strong>{" "}
+            {activePlanset?.storage_path.split("/").pop() ?? "loading…"}
+            {view === "floor" && floorPages.length > 0
+              ? ` · ${floorPages.length} floor drawing${floorPages.length === 1 ? "" : "s"} found`
+              : ""}
+          </p>
+        </>
+      )}
+
       <nav className="plan-filters" aria-label="Filter openings">
         {FILTERS.map((f) => (
           <button
@@ -247,15 +339,15 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
 
       {mapError && <p className="error">{mapError}</p>}
 
-      {!pdfPlanset && (
+      {!buildingPdf && !specsPdf && (
         <p className="muted">
-          No building plan PDF yet.{" "}
+          No project PDFs yet.{" "}
           <Link to={`/projects/${projectId}/upload`}>Upload building plan</Link>{" "}
-          for the map. Specs still create openings without it.
+          and window/door details to build the 2D drawing.
         </p>
       )}
 
-      {placingId && (
+      {placingId && view === "floor" && (
         <p className="scanner-hint">
           Tap the plan where opening{" "}
           <strong>{all.find((o) => o.id === placingId)?.opening_code}</strong>{" "}
@@ -269,11 +361,14 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       {image && (
         <div className="plan-sheet">
           <div
-            className={placingId ? "plan-map placing" : "plan-map"}
+            className={`plan-map plan-map--pdf-sketch${placingId && view === "floor" ? " placing" : ""}`}
             onClick={handleMapClick}
           >
-            <img src={image.dataUrl} alt={`Plan page ${page}`} />
-            {onThisPage.map((o) => {
+            <img
+              src={image.dataUrl}
+              alt={`${view === "floor" ? "Floor plan" : "Window and door detail"} PDF page ${page}`}
+            />
+            {view === "floor" && onThisPage.map((o) => {
               const kind = unitKind(o);
               const isVoided = isLead && o.status !== "installed" && voidedIds.has(o.id);
               return (
@@ -313,31 +408,86 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               );
             })}
           </div>
+          {view === "details" && activeDetail && (
+            <div className="cad-detail-caption">
+              <strong>
+                {activeDetail.marks.length > 0
+                  ? activeDetail.marks.map((mark) => `#${mark}`).join(" · ")
+                  : `Detail sheet ${page}`}
+              </strong>
+              {activeDetail.productCodes.length > 0 && (
+                <span>{activeDetail.productCodes.join(" · ")}</span>
+              )}
+              {activeDetail.notes.length > 0 && (
+                <span>{activeDetail.notes.join(" · ")}</span>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {pageCount > 1 && (
+      {visiblePages.length > 1 && (
         <nav className="hub-tabs page-switch" aria-label="Plan pages">
           <button
             type="button"
             className="hub-tab"
-            disabled={page <= 1}
-            onClick={() => setPage(page - 1)}
+            disabled={pageIndex <= 0}
+            onClick={() => setPage(visiblePages[pageIndex - 1])}
           >
             ◀
           </button>
           <span className="hub-tab active" style={{ pointerEvents: "none" }}>
-            Page {page} / {pageCount}
+            PDF page {page} · {pageIndex + 1} / {visiblePages.length}
           </span>
           <button
             type="button"
             className="hub-tab"
-            disabled={page >= pageCount}
-            onClick={() => setPage(page + 1)}
+            disabled={pageIndex >= visiblePages.length - 1}
+            onClick={() => setPage(visiblePages[pageIndex + 1])}
           >
             ▶
           </button>
         </nav>
+      )}
+
+      {details.length > 0 && (
+        <section className="cad-detail-index">
+          <div className="row-between">
+            <h2>PDF window &amp; door details</h2>
+            {view !== "details" && (
+              <button type="button" className="link" onClick={() => showView("details")}>
+                Open detail sheets
+              </button>
+            )}
+          </div>
+          <p className="muted">
+            Marks, product codes, glazing, and hardware below are read from the
+            uploaded manufacturer PDF. No Smith demo types are mixed in.
+          </p>
+          <div className="cad-detail-grid">
+            {details.map((detail) => (
+              <button
+                key={detail.pageNumber}
+                type="button"
+                className={view === "details" && page === detail.pageNumber ? "cad-detail-card active" : "cad-detail-card"}
+                onClick={() => showView("details", detail.pageNumber)}
+              >
+                <span className="field-label">PDF page {detail.pageNumber}</span>
+                <strong>
+                  {detail.marks.length > 0
+                    ? detail.marks.map((mark) => `#${mark}`).join(" · ")
+                    : "Manufacturer detail"}
+                </strong>
+                {detail.productCodes.length > 0 && (
+                  <span>{detail.productCodes.join(" · ")}</span>
+                )}
+                {detail.notes.length > 0 && (
+                  <small>{detail.notes.join(" · ")}</small>
+                )}
+              </button>
+            ))}
+          </div>
+        </section>
       )}
 
       <div className="map-legend muted">
@@ -375,7 +525,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 <span className="muted">
                   {o.window_types?.type_code ?? "type?"} {o.label ?? ""}
                 </span>
-                {image && (
+                {image && view === "floor" && (
                   <button
                     className="link"
                     style={{ marginLeft: "auto" }}

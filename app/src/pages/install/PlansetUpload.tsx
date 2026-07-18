@@ -17,6 +17,7 @@ import {
   rowsToDraftOpenings,
   summarizeDraftMarks,
 } from "../../lib/install/extract";
+import { extractCadDetailPages } from "../../lib/install/planDetails";
 import type { Planset, PlansetKind } from "../../lib/install/types";
 
 function fileName(ps: Planset): string {
@@ -89,24 +90,31 @@ export function PlansetUpload() {
 
       setProgress("Extracting window/door schedule…");
       const pages = await extractAllText(doc);
+      const detailSheets = extractCadDetailPages(pages);
       const catalog = (types.data ?? []).map((t) => ({
         type_code: t.type_code,
         name: t.name,
       }));
       const { rows, source } = await extractScheduleRows(pages, async (pgs) => {
-        setProgress("No schedule found — trying AI extract…");
-        const aiRows = await aiExtractSchedule(pgs, catalog);
-        return aiRows.map((r) => ({
-          openingCode: r.openingCode,
-          typeText: r.typeText,
-          qty: r.qty,
-          label: r.label,
-          pageNumber: r.pageNumber,
-          widthIn: r.widthIn ?? null,
-          heightIn: r.heightIn ?? null,
-          color: r.color ?? null,
-          kind: r.kind ?? "window",
-        }));
+        try {
+          setProgress("No schedule table found — checking PDF details…");
+          const aiRows = await aiExtractSchedule(pgs, catalog);
+          return aiRows.map((r) => ({
+            openingCode: r.openingCode,
+            typeText: r.typeText,
+            qty: r.qty,
+            label: r.label,
+            pageNumber: r.pageNumber,
+            widthIn: r.widthIn ?? null,
+            heightIn: r.heightIn ?? null,
+            color: r.color ?? null,
+            kind: r.kind ?? "window",
+          }));
+        } catch {
+          // A manufacturer detail PDF can be useful without containing a
+          // schedule table. Keep it available in the 2D source viewer.
+          return [];
+        }
       });
 
       let drafts = rowsToDraftOpenings(rows, types.data ?? []);
@@ -126,6 +134,7 @@ export function PlansetUpload() {
         converted: true,
         source,
         marks,
+        detailSheets: detailSheets.length,
       };
     },
     onSuccess: (result) => {
@@ -133,6 +142,8 @@ export function PlansetUpload() {
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
       queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
       setProgress(null);
+      const detailSheetCount =
+        "detailSheets" in result ? (result.detailSheets ?? 0) : 0;
 
       if (result.kind === "building") {
         if (!result.converted) {
@@ -170,9 +181,14 @@ export function PlansetUpload() {
             .join(" "),
         );
         navigate(`/projects/${projectId}/review`);
+      } else if (detailSheetCount > 0) {
+        setSummary(
+          `Indexed ${detailSheetCount} manufacturer detail sheets from the PDF. Open the map to view them beside the 2D floor plan.`,
+        );
+        navigate(`/projects/${projectId}?tab=map`);
       } else {
-        setProgress(
-          "No schedule rows found in the specs PDF. Add openings by hand in Review, or try another file.",
+        setSummary(
+          "PDF saved as a source document. No schedule rows or marked detail sheets were found.",
         );
       }
     },
