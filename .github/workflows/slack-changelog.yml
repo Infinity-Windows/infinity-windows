@@ -1,0 +1,45 @@
+name: Slack changelog
+
+# Posts a message to #infinity-app-changelog every time a PR is merged into
+# master, so there is a durable, plain-English record of every change that
+# ships — even edits made outside of Cursor.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  post-to-slack:
+    # Only run for PRs that were actually merged (not just closed).
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post merged PR to Slack
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_CHANGELOG_WEBHOOK }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK" ]; then
+            echo "SLACK_CHANGELOG_WEBHOOK secret is not set; skipping."
+            exit 0
+          fi
+
+          # Trim the PR body to the first ~500 chars so posts stay readable.
+          summary=$(printf '%s' "$PR_BODY" | head -c 500)
+
+          text=$(printf ':rocket: *Shipped to master*\n*#%s: %s*\n%s\nby %s\n%s' \
+            "$PR_NUMBER" "$PR_TITLE" "$summary" "$PR_AUTHOR" "$PR_URL")
+
+          # Build JSON safely with jq so quotes/newlines are escaped correctly.
+          payload=$(jq -n --arg t "$text" '{text: $t}')
+
+          curl -sS -X POST -H 'Content-type: application/json' \
+            --data "$payload" "$SLACK_WEBHOOK"

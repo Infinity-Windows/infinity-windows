@@ -1,0 +1,48 @@
+---
+description: Log every app-editing session to Slack #infinity-app-changelog
+alwaysApply: true
+---
+
+# Auto-log app edits to Slack
+
+Whenever an agent makes code or content changes to this app (the Infinity
+Windows app in this repo), it must post a short, plain-English summary to the
+Slack channel **#infinity-app-changelog** so non-technical stakeholders always
+have a running record of what changed.
+
+## Channel
+
+- Channel name: `#infinity-app-changelog`
+- Channel ID: `C0BJ349BJNR`
+- Post via the Slack MCP tool `slack_send_message` (already authenticated).
+
+## When to post
+
+Post **once per task**, right after the work is done and just before you finish
+your turn — specifically:
+
+- After you open the PR (per the ship-via-PR rule), include the PR URL.
+- If the change is explicitly "local only" / "don't PR", still post the summary
+  and note that it was not shipped.
+- Do **not** post for read-only work (questions, exploration, reviews) where no
+  files were changed.
+- Post only **one** summary per task, not one per file or per commit.
+
+## Message format
+
+Keep it short and readable for non-technical people (Taylor & Ammon). Use this
+shape:
+
+```
+:hammer_and_wrench: *<short title of the change>*
+<1-3 plain-English bullet points on what changed and why it matters to users>
+PR: <url, or "local only — not shipped">
+```
+
+Guidelines:
+- Plain English, no jargon or file dumps. Describe user-visible impact first.
+- Skip internal noise (lockfile bumps, formatting-only churn) unless that was
+  the whole point of the task.
+- Never include secrets, tokens, or credentials in the message.
+- If the Slack post fails, do not block the task — mention the failure in your
+  final chat summary so it can be retried.
