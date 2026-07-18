@@ -487,9 +487,14 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const activeDetail = details.find((detail) => detail.pageNumber === page);
 
   const extractedOutline = outlines[page] ?? null;
-  const manualOutlineRow = (planOutlines.data ?? []).find(
-    (o) => o.page_number === page,
+  const manualOutlineRows = useMemo(
+    () =>
+      (planOutlines.data ?? []).filter(
+        (outline) => outline.page_number === page,
+      ),
+    [planOutlines.data, page],
   );
+  const manualOutlineRow = manualOutlineRows[0];
   const manualOutline: BuildingOutline | null = manualOutlineRow
     ? {
         points: manualOutlineRow.points,
@@ -626,6 +631,16 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const outlinePath = useMemo(
     () => (outline ? outlinePathD(outline.points, aspect) : null),
     [outline, aspect],
+  );
+  const manualOutlinePaths = useMemo(
+    () =>
+      manualOutlineRows
+        .map((row) => ({
+          id: row.id,
+          d: outlinePathD(row.points, aspect),
+        }))
+        .filter((path): path is { id: string; d: string } => !!path.d),
+    [manualOutlineRows, aspect],
   );
 
   const renderDetailCard = (o: ProjectOpening) => {
@@ -1044,10 +1059,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               planset={buildingPdf}
               page={page}
               openings={all}
-              manualOutline={manualOutline}
+              manualOutlines={manualOutlineRows}
               extractedOutline={extractedOutline}
               pageAspect={aspect}
-              onClose={() => setEditingModel(false)}
+              onClose={() => {
+                setEditingModel(false);
+                void planOutlines.refetch();
+              }}
             />
           ) : (
             <>
@@ -1061,15 +1079,22 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                   preserveAspectRatio="none"
                   aria-hidden
                 >
-                  {outlinePath ? (
+                  {manualOutlinePaths.length > 0 ? (
+                    manualOutlinePaths.map((path) => (
+                      <path
+                        key={path.id}
+                        d={path.d}
+                        fill="rgba(163, 156, 146, 0.06)"
+                        stroke="rgba(255, 106, 26, 0.85)"
+                        strokeWidth={3}
+                        strokeLinejoin="round"
+                      />
+                    ))
+                  ) : outlinePath ? (
                     <path
                       d={outlinePath}
                       fill="rgba(163, 156, 146, 0.06)"
-                      stroke={
-                        manualOutline
-                          ? "rgba(255, 106, 26, 0.85)"
-                          : "rgba(163, 156, 146, 0.6)"
-                      }
+                      stroke="rgba(163, 156, 146, 0.6)"
                       strokeWidth={3}
                       strokeLinejoin="round"
                     />
