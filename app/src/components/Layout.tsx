@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { countMyOpenOpenings, getMyProfile } from "../lib/install/api";
 import { ROLE_LABELS, type CrewRole } from "../lib/install/types";
 import { activeNavForRole, roleRank } from "../lib/nav";
@@ -26,7 +26,18 @@ export function Layout() {
   const role = effectiveRole(me.data?.role, view);
   const isInstaller = roleRank(role) === 0;
   const location = useLocation();
+  const navigate = useNavigate();
   const [moreOpen, setMoreOpen] = useState(false);
+
+  // Switching the previewed role: update the preview and land on "/" so
+  // RoleLanding drops us on that role's correct home. This prevents an
+  // owner/supervisor from being stranded on the "Restricted" screen when they
+  // preview a lower role while sitting on a page that role can't access.
+  // Real authorization (canAccess / RLS) is untouched — this is preview nav only.
+  const applyPreview = (nextRole: CrewRole | null) => {
+    view.setPreviewRole(nextRole);
+    navigate("/");
+  };
 
   const clock = useClock();
   const shift = clock.shift;
@@ -133,6 +144,41 @@ export function Layout() {
               ),
             )}
           </nav>
+
+          {view.canPreview && (
+            <div className="rail-viewas">
+              <p className="rail-eyebrow" aria-hidden>
+                View as
+              </p>
+              <div className="rail-viewas-options">
+                {PREVIEW_ROLES.map((r) => {
+                  const active = (view.previewRole ?? me.data?.role) === r;
+                  return (
+                    <button
+                      key={r}
+                      type="button"
+                      className={active ? "rail-viewas-chip active" : "rail-viewas-chip"}
+                      aria-pressed={active}
+                      onClick={() =>
+                        applyPreview(r === me.data?.role ? null : r)
+                      }
+                    >
+                      {ROLE_LABELS[r]}
+                    </button>
+                  );
+                })}
+              </div>
+              {view.previewRole && (
+                <button
+                  type="button"
+                  className="rail-viewas-reset"
+                  onClick={() => applyPreview(null)}
+                >
+                  Reset to my role
+                </button>
+              )}
+            </div>
+          )}
         </aside>
 
         <main className="app-main">
@@ -146,7 +192,7 @@ export function Layout() {
               <button
                 type="button"
                 className="view-as-reset"
-                onClick={() => view.setPreviewRole(null)}
+                onClick={() => applyPreview(null)}
               >
                 Reset
               </button>
@@ -245,7 +291,7 @@ export function Layout() {
                         type="button"
                         className={active ? "view-as-chip active" : "view-as-chip"}
                         onClick={() => {
-                          view.setPreviewRole(r === me.data?.role ? null : r);
+                          applyPreview(r === me.data?.role ? null : r);
                           setMoreOpen(false);
                         }}
                       >
@@ -259,7 +305,7 @@ export function Layout() {
                     type="button"
                     className="view-as-reset"
                     onClick={() => {
-                      view.setPreviewRole(null);
+                      applyPreview(null);
                       setMoreOpen(false);
                     }}
                   >
