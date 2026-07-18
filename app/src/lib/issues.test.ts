@@ -11,6 +11,7 @@ function makeIssue(partial: Partial<Issue>): Issue {
     id: partial.id ?? "id",
     project_id: partial.project_id ?? "proj",
     opening_id: partial.opening_id ?? null,
+    window_id: partial.window_id ?? null,
     kind: partial.kind ?? "flag",
     urgency: partial.urgency ?? "normal",
     status: partial.status ?? "open",

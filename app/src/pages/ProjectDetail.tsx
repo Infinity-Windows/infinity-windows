@@ -3,12 +3,15 @@ import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Scanner } from "../components/Scanner";
 import {
+  activatePreissuedUnit,
   getProjectUnits,
   getProjectWindows,
   getWindowByWindowId,
+  listLocations,
   listProjects,
   loadWindow,
   preissueProjectUnits,
+  reconcileProjectDeliveries,
 } from "../lib/api";
 import { downloadPdf, windowLabelsPdf } from "../lib/labels";
 import {
@@ -17,6 +20,7 @@ import {
   totalPlanned,
   totalToIssue,
 } from "../lib/preissue";
+import { computeDeliveryProgress } from "../lib/receiving";
 import { pushToast, toastError } from "../lib/toast";
 import { listOpenings, saveJobEstimate } from "../lib/install/api";
 import {
@@ -234,6 +238,9 @@ export function ProjectDetail() {
               needs={needs.data ?? []}
               units={units.data ?? []}
             />
+          )}
+          {isLead && (
+            <ReceivingPanel projectId={projectId} units={units.data ?? []} />
           )}
           <WarehouseTab
             projectId={projectId}
@@ -577,6 +584,187 @@ function PreissuePanel({
   );
 }
 
+/**
+ * Foreman+ action: RECEIVE against the plan. Scan/type a unit's code as it
+ * arrives to match it to its pre-issued ID and activate it (into the warehouse,
+ * or held as damaged). Shows a "Received X of Y expected" readout, and a
+ * reconcile action that flags any still-undelivered pre-issued units as missing
+ * issues. The ad-hoc receive_window path (unplanned units) stays on /receive.
+ */
+function ReceivingPanel({
+  projectId,
+  units,
+}: {
+  projectId: string;
+  units: WindowUnit[];
+}) {
+  const queryClient = useQueryClient();
+  const [code, setCode] = useState("");
+  const [locationId, setLocationId] = useState("");
+  const [damaged, setDamaged] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
+  const issues = useQuery({
+    queryKey: ["projectIssues", projectId],
+    queryFn: () => listProjectIssues(projectId),
+  });
+
+  const progress = useMemo(() => computeDeliveryProgress(units), [units]);
+
+  const activate = useMutation({
+    mutationFn: () => {
+      const c = code.trim();
+      if (!c) throw new Error("Scan or type a unit code first.");
+      return activatePreissuedUnit(c, locationId || null, damaged);
+    },
+    onSuccess: (unit: WindowUnit) => {
+      setMessage(
+        `${damaged ? "Received DAMAGED" : "Received"} ${unit.window_id}` +
+          (unit.locations?.address ? ` → ${unit.locations.address}` : ""),
+      );
+      setCode("");
+      setDamaged(false);
+      queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: (e) => setMessage(String(e)),
+  });
+
+  const reconcile = useMutation({
+    mutationFn: () => reconcileProjectDeliveries(projectId),
+    onSuccess: (created) => {
+      pushToast(
+        created.length > 0
+          ? `Flagged ${created.length} unit${created.length === 1 ? "" : "s"} as missing.`
+          : "No missing units — every pre-issued unit is accounted for.",
+        created.length > 0 ? "error" : "info",
+      );
+      queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["issues"] });
+    },
+    onError: (e) => toastError(e),
+  });
+
+  const openIssues = (issues.data ?? []).filter((i) => i.status === "open");
+  const missingOpen = openIssues.filter((i) => i.kind === "missing");
+  const damagedOpen = openIssues.filter((i) => i.kind === "damage");
+  const flagged = [...damagedOpen, ...missingOpen];
+
+  return (
+    <section className="detail-card" style={{ marginBottom: 16 }}>
+      <div className="row-between">
+        <h2 style={{ margin: 0 }}>Receive against the plan</h2>
+        <span className={progress.preIssuedRemaining > 0 ? "warn-text" : "ok"}>
+          Received {progress.received} of {progress.expected || "—"} expected
+        </span>
+      </div>
+      <p className="muted" style={{ marginTop: 6 }}>
+        Scan or type a unit&apos;s code as it arrives to match it to its
+        pre-issued ID and put it in the warehouse. Flip &quot;arrived
+        damaged&quot; to hold it and open a damage issue.
+      </p>
+
+      <div className="manual-entry">
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="6-char code or serial"
+          autoCapitalize="characters"
+          onKeyDown={(e) => e.key === "Enter" && activate.mutate()}
+        />
+        <button
+          disabled={activate.isPending || !code.trim()}
+          onClick={() => activate.mutate()}
+        >
+          {activate.isPending ? "…" : "Receive"}
+        </button>
+      </div>
+
+      <label className="field-label">Put in location (optional)</label>
+      <select
+        value={locationId}
+        onChange={(e) => setLocationId(e.target.value)}
+      >
+        <option value="">No slot yet</option>
+        {(locations.data ?? []).map((l) => (
+          <option key={l.id} value={l.id}>
+            {l.address}
+          </option>
+        ))}
+      </select>
+
+      <label
+        style={{
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          marginTop: 10,
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={damaged}
+          onChange={(e) => setDamaged(e.target.checked)}
+        />
+        Arrived damaged (hold + open a damage issue)
+      </label>
+
+      {message && (
+        <p className={message.startsWith("Received") ? "ok" : "error"}>
+          {message}
+        </p>
+      )}
+
+      <div className="briefing-stats" style={{ margin: "12px 0" }}>
+        <span>
+          <strong>{progress.preIssuedRemaining}</strong>
+          awaiting arrival
+        </span>
+        <span>
+          <strong>{damagedOpen.length}</strong>
+          damaged
+        </span>
+        <span>
+          <strong>{missingOpen.length}</strong>
+          missing
+        </span>
+      </div>
+
+      <div className="action-list">
+        <button
+          className="action-btn"
+          disabled={reconcile.isPending || progress.preIssuedRemaining === 0}
+          onClick={() => reconcile.mutate()}
+        >
+          {reconcile.isPending
+            ? "Reconciling delivery…"
+            : progress.preIssuedRemaining > 0
+              ? `Reconcile delivery — flag ${progress.preIssuedRemaining} missing`
+              : "All pre-issued units received"}
+        </button>
+        {flagged.length > 0 && (
+          <Link to="/issues" className="action-btn">
+            View damaged / missing issues ({flagged.length})
+          </Link>
+        )}
+      </div>
+
+      {flagged.length > 0 && (
+        <ul className="unit-list work-list">
+          {flagged.map((i) => (
+            <li key={i.id} className="find-row">
+              <strong style={{ color: "#ef4444" }}>{KIND_LABELS[i.kind]}</strong>
+              <span className="muted"> {i.note ?? ""}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function WarehouseTab({
   projectId,
   pickList,
@@ -695,6 +883,7 @@ function fmtDate(iso: string | null): string {
 const EXCEPTION_KIND_ORDER: { kind: IssueKind; heading: string }[] = [
   { kind: "failed_install", heading: "Failed / undone installs" },
   { kind: "damage", heading: "Damaged" },
+  { kind: "missing", heading: "Missing deliveries" },
   { kind: "flag", heading: "Flagged" },
   { kind: "blocker", heading: "Blockers" },
   { kind: "complication", heading: "Complications" },
