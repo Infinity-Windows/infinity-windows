@@ -143,6 +143,8 @@ function inferKind(slice: string, product: string | null): "window" | "door" {
       return "door";
     }
     if (/\b(FROSTED|FIXED|FX)\b/.test(upper)) return "window";
+    // Detail tables often say "Fixed Window" next to a bare size like 3070.
+    if (WINDOW_HINT.test(slice)) return "window";
     // Bare size codes: xx80 / xx70 are typically doors; shorter units windows.
     if (/^\d{2}(70|80)\b/.test(upper)) return "door";
     if (/^\d{4}\b/.test(upper)) return "window";
@@ -165,19 +167,40 @@ function parseSizeFromProduct(
 }
 
 /**
- * Turn manufacturer detail sheets into schedule-like rows — one per #mark.
+ * Manufacturer detail sheets list how many times a mark appears on the
+ * building (e.g. "NO: …-#6" with "QTY: 12" → twelve #6 openings).
+ */
+export function parseDetailQty(slice: string): number {
+  const labeled = slice.match(
+    /\b(?:QTY|QUANTITY)\b\s*[:=]?\s*(\d{1,3})\b/i,
+  );
+  if (labeled) {
+    const n = Number(labeled[1]);
+    if (n >= 1 && n <= 500) return n;
+  }
+  // PDF text sometimes puts the count on the next line after QTY.
+  const split = slice.match(/\b(?:QTY|QUANTITY)\b\s*[:=]?\s*[\r\n]+\s*(\d{1,3})\b/i);
+  if (split) {
+    const n = Number(split[1]);
+    if (n >= 1 && n <= 500) return n;
+  }
+  return 1;
+}
+
+/**
+ * Turn manufacturer detail sheets into schedule-like rows — one per #mark,
+ * with quantity from the detail table (QTY) so #6 ×12 becomes twelve openings.
  * Example page text:
  *   PV Townhomes Bldg 14-#4A
  *   6080 XO
- *   PV Townhomes Bldg 14-#4B
- *   Fixed
- *   3060
+ *   PV Townhomes Bldg 14-#6
+ *   QTY: 12
+ *   3070
  */
 export function parseCadDetailScheduleRows(
   pages: PdfTextPage[],
 ): ScheduleRow[] {
-  const rows: ScheduleRow[] = [];
-  const seen = new Set<string>();
+  const byMark = new Map<string, ScheduleRow>();
 
   for (const page of pages) {
     const matches = [...page.text.matchAll(MARK_CALLOUT_RE)];
@@ -186,8 +209,6 @@ export function parseCadDetailScheduleRows(
     for (let i = 0; i < matches.length; i++) {
       const match = matches[i];
       const mark = match[1].toUpperCase();
-      if (seen.has(mark)) continue;
-      seen.add(mark);
 
       const start = (match.index ?? 0) + match[0].length;
       const end =
@@ -195,14 +216,33 @@ export function parseCadDetailScheduleRows(
           ? (matches[i + 1].index ?? page.text.length)
           : page.text.length;
       const slice = page.text.slice(start, end);
+      const qty = parseDetailQty(slice);
+      const existing = byMark.get(mark);
+      if (existing) {
+        // Later slices may carry the QTY table; keep the highest count.
+        if (qty > existing.qty) existing.qty = qty;
+        if (
+          existing.typeText === mark &&
+          firstProductCode(slice)
+        ) {
+          const product = firstProductCode(slice)!;
+          const size = parseSizeFromProduct(product);
+          existing.typeText = product;
+          existing.widthIn = size?.widthIn ?? existing.widthIn;
+          existing.heightIn = size?.heightIn ?? existing.heightIn;
+          existing.kind = inferKind(slice, product);
+        }
+        continue;
+      }
+
       const product = firstProductCode(slice);
       const size = parseSizeFromProduct(product);
       const kind = inferKind(slice, product);
 
-      rows.push({
+      byMark.set(mark, {
         openingCode: mark,
         typeText: product ?? mark,
-        qty: 1,
+        qty,
         label: null,
         pageNumber: page.pageNumber,
         widthIn: size?.widthIn ?? null,
@@ -213,7 +253,7 @@ export function parseCadDetailScheduleRows(
     }
   }
 
-  return rows;
+  return [...byMark.values()];
 }
 
 /**
@@ -221,6 +261,8 @@ export function parseCadDetailScheduleRows(
  * so manufacturer PDFs without a formal schedule still populate openings.
  * Weak numeric schedule hits (bare "2"/"3" with no product code) are dropped
  * when real detail-sheet marks exist — they are almost always sheet noise.
+ * When both sources list the same mark, keep the larger quantity (detail
+ * sheets often carry the true building count).
  */
 export function mergeScheduleWithDetailRows(
   scheduleRows: ScheduleRow[],
@@ -237,7 +279,14 @@ export function mergeScheduleWithDetailRows(
   }
   for (const row of detailRows) {
     const key = row.openingCode.toUpperCase().replace(/^#/, "");
-    if (!byMark.has(key)) byMark.set(key, row);
+    const existing = byMark.get(key);
+    if (!existing) {
+      byMark.set(key, row);
+      continue;
+    }
+    if (row.qty > existing.qty) {
+      byMark.set(key, { ...existing, qty: row.qty });
+    }
   }
   return [...byMark.values()].sort((a, b) =>
     a.openingCode.localeCompare(b.openingCode, undefined, { numeric: true }),
