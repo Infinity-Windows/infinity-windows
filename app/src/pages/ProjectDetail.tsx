@@ -9,10 +9,14 @@ import {
   getWindowByWindowId,
   listLocations,
   listProjects,
+  listReorderNeeds,
+  loadUnits,
   loadWindow,
   preissueProjectUnits,
   reconcileProjectDeliveries,
+  unloadUnits,
 } from "../lib/api";
+import { selectedLoadableIds, toggleSelected, totalReorder } from "../lib/loadout";
 import { downloadPdf, windowLabelsPdf } from "../lib/labels";
 import {
   computePreissuePlan,
@@ -242,6 +246,9 @@ export function ProjectDetail() {
           {isLead && (
             <ReceivingPanel projectId={projectId} units={units.data ?? []} />
           )}
+          {isLead && <LoadOutPanel projectId={projectId} pickList={pickList} />}
+          {isLead && <UnloadPanel projectId={projectId} loaded={loaded} />}
+          {isLead && <ReorderNeedsPanel projectId={projectId} />}
           <WarehouseTab
             projectId={projectId}
             pickList={pickList}
@@ -761,6 +768,254 @@ function ReceivingPanel({
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+/**
+ * Foreman+ action: BATCH LOAD-OUT. Multi-select a project's in-warehouse /
+ * staged units (checkboxes + select-all) and load them onto the truck for a run
+ * in one go ('loaded'). Complements the scan-one-at-a-time load-out below.
+ */
+function LoadOutPanel({
+  projectId,
+  pickList,
+}: {
+  projectId: string;
+  pickList: WindowUnit[];
+}) {
+  const queryClient = useQueryClient();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Keep the selection in sync when units leave the pick list (e.g. loaded).
+  const availableIds = useMemo(() => pickList.map((u) => u.id), [pickList]);
+  const idsToLoad = selectedLoadableIds(pickList, selected);
+  const allSelected = pickList.length > 0 && idsToLoad.length === pickList.length;
+
+  const load = useMutation({
+    mutationFn: () => loadUnits(idsToLoad, projectId),
+    onSuccess: (loadedUnits) => {
+      setSelected(new Set());
+      pushToast(
+        loadedUnits.length > 0
+          ? `Loaded ${loadedUnits.length} unit${loadedUnits.length === 1 ? "" : "s"} for the run.`
+          : "Nothing eligible to load.",
+        "info",
+      );
+      queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: (e) => toastError(e),
+  });
+
+  const toggleAll = () => {
+    setSelected(allSelected ? new Set() : new Set(availableIds));
+  };
+
+  return (
+    <section className="detail-card" style={{ marginBottom: 16 }}>
+      <div className="row-between">
+        <h2 style={{ margin: 0 }}>Load out for a run</h2>
+        <span className="muted">{idsToLoad.length} selected</span>
+      </div>
+      <p className="muted" style={{ marginTop: 6 }}>
+        Tick the units going on this truck and load them all at once. They move
+        to “on truck”, ready to unload at the jobsite.
+      </p>
+
+      {pickList.length === 0 ? (
+        <p className="muted">Nothing in the warehouse for this job to load.</p>
+      ) : (
+        <>
+          <label
+            style={{ display: "flex", gap: 8, alignItems: "center", margin: "8px 0" }}
+          >
+            <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+            Select all ({pickList.length})
+          </label>
+          <ul className="unit-list work-list">
+            {pickList.map((u) => (
+              <li key={u.id} className="find-row">
+                <label
+                  style={{ display: "flex", gap: 8, alignItems: "center", flex: 1 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(u.id)}
+                    onChange={() => setSelected((s) => toggleSelected(s, u.id))}
+                  />
+                  <strong>{u.window_id}</strong>
+                  <span className="muted"> {u.window_types?.type_code}</span>
+                  <span className="big-address">
+                    {u.locations?.address ?? STATUS_LABELS[u.status]}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div className="action-list">
+            <button
+              className="action-btn primary"
+              disabled={idsToLoad.length === 0 || load.isPending}
+              onClick={() => load.mutate()}
+            >
+              {load.isPending
+                ? "Loading…"
+                : `Load ${idsToLoad.length || ""} for run`.trim()}
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Foreman+ action: JOBSITE UNLOAD + condition report. Every loaded unit defaults
+ * to “arrived OK”; flip any that arrived damaged. Submitting sends the OK units
+ * to 'staged' (on site, ready to install) and holds the damaged ones (opening a
+ * damage issue each). Optional location note is logged on the movement.
+ */
+function UnloadPanel({
+  projectId,
+  loaded,
+}: {
+  projectId: string;
+  loaded: WindowUnit[];
+}) {
+  const queryClient = useQueryClient();
+  const [damaged, setDamaged] = useState<Set<string>>(new Set());
+  const [note, setNote] = useState("");
+
+  const damagedIds = loaded.filter((u) => damaged.has(u.id)).map((u) => u.id);
+  const okIds = loaded.filter((u) => !damaged.has(u.id)).map((u) => u.id);
+
+  const unload = useMutation({
+    mutationFn: () => unloadUnits(okIds, damagedIds, projectId, note),
+    onSuccess: (res) => {
+      setDamaged(new Set());
+      setNote("");
+      pushToast(
+        `Unloaded ${res.unloaded} on site` +
+          (res.damaged > 0 ? `, ${res.damaged} held damaged.` : "."),
+        res.damaged > 0 ? "error" : "info",
+      );
+      queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["issues"] });
+      queryClient.invalidateQueries({ queryKey: ["reorderNeeds", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: (e) => toastError(e),
+  });
+
+  if (loaded.length === 0) return null;
+
+  return (
+    <section className="detail-card" style={{ marginBottom: 16 }}>
+      <div className="row-between">
+        <h2 style={{ margin: 0 }}>Unload at the jobsite</h2>
+        <span className={damagedIds.length > 0 ? "warn-text" : "ok"}>
+          {damagedIds.length > 0 ? `${damagedIds.length} flagged` : "all OK"}
+        </span>
+      </div>
+      <p className="muted" style={{ marginTop: 6 }}>
+        Confirm the truck arrived. Everything is marked good by default — flip any
+        unit that showed up damaged. Good units become on-site &amp; ready to
+        install; damaged units are held and reported.
+      </p>
+
+      <ul className="unit-list work-list">
+        {loaded.map((u) => {
+          const isDamaged = damaged.has(u.id);
+          return (
+            <li key={u.id} className="find-row">
+              <Link to={`/w/${encodeURIComponent(u.window_id)}`}>
+                <strong>{u.window_id}</strong>
+              </Link>
+              <span className="muted"> {u.window_types?.type_code}</span>
+              <button
+                className={isDamaged ? "action-btn" : "link"}
+                style={{ marginLeft: "auto", color: isDamaged ? "#ef4444" : undefined }}
+                onClick={() => setDamaged((s) => toggleSelected(s, u.id))}
+              >
+                {isDamaged ? "Damaged ✓" : "Flag damaged"}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      <label className="field-label">Where on site (optional)</label>
+      <input
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="e.g. staged in garage"
+      />
+
+      <div className="action-list" style={{ marginTop: 12 }}>
+        <button
+          className="action-btn primary"
+          disabled={unload.isPending}
+          onClick={() => unload.mutate()}
+        >
+          {unload.isPending
+            ? "Unloading…"
+            : damagedIds.length > 0
+              ? `Unload — ${okIds.length} OK, ${damagedIds.length} damaged`
+              : `Confirm arrival — unload ${okIds.length}`}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Foreman+/office ROLLUP: units that need reordering for this job — damaged
+ * units plus still-missing deliveries, grouped by window type — with a link to
+ * the Issues list so shortfalls get reordered fast.
+ */
+function ReorderNeedsPanel({ projectId }: { projectId: string }) {
+  const needs = useQuery({
+    queryKey: ["reorderNeeds", projectId],
+    queryFn: () => listReorderNeeds(projectId),
+  });
+
+  const rows = needs.data ?? [];
+  const total = totalReorder(rows);
+
+  if (needs.isLoading || rows.length === 0) {
+    // Hide the panel entirely when there's nothing to reorder.
+    return null;
+  }
+
+  return (
+    <section className="detail-card" style={{ marginBottom: 16 }}>
+      <div className="row-between">
+        <h2 style={{ margin: 0 }}>Reorder needs</h2>
+        <span className="warn-text">{total} to reorder</span>
+      </div>
+      <p className="muted" style={{ marginTop: 6 }}>
+        Units short for this job — damaged or never delivered. Reorder these so
+        the crew isn’t held up.
+      </p>
+      <ul className="unit-list work-list">
+        {rows.map((r) => (
+          <li key={r.window_type_id} className="find-row">
+            <strong>{r.type_name}</strong>
+            <span className="big-address" style={{ color: "#ef4444" }}>
+              {r.missing_count > 0 && `${r.missing_count} missing`}
+              {r.missing_count > 0 && r.damaged_count > 0 && " · "}
+              {r.damaged_count > 0 && `${r.damaged_count} damaged`}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="action-list">
+        <Link to="/issues" className="action-btn">
+          View damaged / missing issues
+        </Link>
+      </div>
     </section>
   );
 }

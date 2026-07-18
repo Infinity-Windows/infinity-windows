@@ -280,6 +280,75 @@ export async function loadWindow(windowUuid: string): Promise<WindowUnit> {
   return data as WindowUnit;
 }
 
+/**
+ * Batch load-out: put a set of the project's in-warehouse/staged units on the
+ * truck ('loaded'). Ineligible ids (wrong job / already loaded) are skipped
+ * server-side; returns only the units actually loaded. Foreman+ (enforced by
+ * the RPC).
+ */
+export async function loadUnits(
+  windowIds: string[],
+  projectId: string,
+): Promise<WindowUnit[]> {
+  const { data, error } = await supabase.rpc("load_units", {
+    p_window_ids: windowIds,
+    p_project_id: projectId,
+    p_actor: await actor(),
+  });
+  if (error) throw error;
+  return (data ?? []) as WindowUnit[];
+}
+
+export interface UnloadResult {
+  unloaded: number;
+  damaged: number;
+}
+
+/**
+ * Jobsite unload + condition report: OK units go 'staged' (on site, ready to
+ * install); damaged units go on hold + open a deduped damage issue. Optional
+ * location note is folded into the movement log. Returns { unloaded, damaged }
+ * counts. Foreman+ (enforced by the RPC).
+ */
+export async function unloadUnits(
+  okIds: string[],
+  damagedIds: string[],
+  projectId: string,
+  locationNote?: string | null,
+): Promise<UnloadResult> {
+  const { data, error } = await supabase.rpc("unload_units", {
+    p_ok_ids: okIds,
+    p_damaged_ids: damagedIds,
+    p_project_id: projectId,
+    p_location_note: locationNote ?? null,
+    p_actor: await actor(),
+  });
+  if (error) throw error;
+  return (data ?? { unloaded: 0, damaged: 0 }) as UnloadResult;
+}
+
+export interface ReorderNeed {
+  window_type_id: string;
+  type_name: string;
+  missing_count: number;
+  damaged_count: number;
+}
+
+/**
+ * Per-type reorder rollup for a project: damaged units + still-missing
+ * deliveries, so foreman+/office can reorder fast. Foreman+ (enforced by the
+ * RPC).
+ */
+export async function listReorderNeeds(
+  projectId: string,
+): Promise<ReorderNeed[]> {
+  const { data, error } = await supabase.rpc("list_reorder_needs", {
+    p_project_id: projectId,
+  });
+  if (error) throw error;
+  return (data ?? []) as ReorderNeed[];
+}
+
 export async function installWindow(windowUuid: string): Promise<WindowUnit> {
   const { data, error } = await supabase.rpc("install_window", {
     p_window_id: windowUuid,

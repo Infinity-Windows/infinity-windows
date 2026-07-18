@@ -14,6 +14,25 @@ import { listOpenings } from "../lib/install/api";
 import { downloadPdf, windowLabelsPdf } from "../lib/labels";
 import { STATUS_LABELS } from "../lib/types";
 
+// Friendly labels for the movement log so the unit history reads in plain
+// English (raw event codes fall through unchanged).
+const EVENT_LABELS: Record<string, string> = {
+  received: "Received",
+  putaway: "Put away",
+  moved: "Moved",
+  staged: "Staged for job",
+  loaded: "Loaded on truck",
+  unloaded: "Unloaded on site",
+  installed: "Installed",
+  uninstalled: "Install undone",
+  damaged: "Damaged",
+  preissued: "Pre-issued",
+  assigned: "Assigned",
+  count_verified: "Count verified",
+  count_missing: "Count missing",
+  override: "Override",
+};
+
 export function WindowDetail() {
   const { windowId = "" } = useParams();
   const queryClient = useQueryClient();
@@ -234,7 +253,7 @@ export function WindowDetail() {
             <span className="muted">
               {new Date(m.created_at).toLocaleString()}
             </span>{" "}
-            {m.event}
+            {EVENT_LABELS[m.event] ?? m.event}
             {m.actor ? ` by ${m.actor}` : ""}
             {m.reason ? ` — ${m.reason}` : ""}
           </li>
