@@ -448,14 +448,27 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const unplaced = all.filter((o) => o.pin_x === null || o.pin_y === null);
   const installed = all.filter((o) => o.status === "installed").length;
   const detailPages = details.map((detail) => detail.pageNumber);
+  const pinnedPlanPages = [
+    ...new Set(
+      all
+        .filter((o) => o.pin_x !== null && o.pin_y !== null && o.page_number != null)
+        .map((o) => o.page_number as number),
+    ),
+  ].sort((a, b) => a - b);
   const visiblePages =
     view === "details"
       ? detailPages.length > 0
         ? detailPages
         : Array.from({ length: specsPageCount }, (_, index) => index + 1)
-      : floorPages.length > 0
-        ? floorPages
-        : Array.from({ length: buildingPageCount }, (_, index) => index + 1);
+      : view === "building"
+        ? pinnedPlanPages.length > 0
+          ? pinnedPlanPages
+          : floorPages.length > 0
+            ? floorPages
+            : Array.from({ length: buildingPageCount }, (_, index) => index + 1)
+        : floorPages.length > 0
+          ? floorPages
+          : Array.from({ length: buildingPageCount }, (_, index) => index + 1);
   const pageIndex = Math.max(0, visiblePages.indexOf(page));
   const activePlanset = view === "details" ? specsPdf : buildingPdf;
   const activeDetail = details.find((detail) => detail.pageNumber === page);
@@ -548,9 +561,11 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         ? detailPages.length > 0
           ? detailPages
           : Array.from({ length: specsPageCount }, (_, index) => index + 1)
-        : floorPages.length > 0
-          ? floorPages
-          : Array.from({ length: buildingPageCount }, (_, index) => index + 1);
+        : next === "building" && pinnedPlanPages.length > 0
+          ? pinnedPlanPages
+          : floorPages.length > 0
+            ? floorPages
+            : Array.from({ length: buildingPageCount }, (_, index) => index + 1);
     setPage(nextPage ?? pages[0] ?? 1);
     setPdfZoom(1);
   };
@@ -689,8 +704,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     );
   };
 
-  const renderOpeningDots = () =>
-    [...placed, ...autos].map((o) => {
+  const renderOpeningDots = (mode: "all" | "pinned" = "all") =>
+    (mode === "pinned" ? placed : [...placed, ...autos]).map((o) => {
       const kind = unitKind(o);
       const isVoided = o.status !== "installed" && voidedIds.has(o.id);
       const pos = dotPos(o);
@@ -1065,8 +1080,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 <img
                   src={image.dataUrl}
                   alt={`Building plan PDF page ${page}`}
+                  draggable={false}
                 />
-                {renderOpeningDots()}
+                {renderOpeningDots("pinned")}
               </div>
             </div>
           ) : (
@@ -1074,6 +1090,10 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               Loading original plan…
             </p>
           )}
+          <p className="muted" style={{ marginTop: 8 }}>
+            Movable marks sit on the plan callouts. Zoom keeps them locked to
+            those numbers — drag one to nudge it.
+          </p>
           {selectedOpening && renderDetailCard(selectedOpening)}
         </div>
       )}

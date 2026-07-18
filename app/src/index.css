@@ -819,6 +819,26 @@ button:disabled {
   border: none;
   border-radius: 0;
   min-width: 100%;
+  /* Size to the PDF image so % pin coords stay locked while zooming. */
+  flex: none !important;
+  height: auto !important;
+  line-height: 0;
+  overflow: visible;
+}
+
+.plan-zoom-viewport .plan-map img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: none !important;
+  object-fit: fill;
+}
+
+.plan-sheet--fullscreen .plan-zoom-viewport .plan-map,
+.plan-sheet--fullscreen .plan-zoom-viewport .plan-map img {
+  flex: none !important;
+  max-height: none !important;
+  height: auto !important;
 }
 
 .plan-zoom-controls {
@@ -913,7 +933,7 @@ button:disabled {
   position: absolute;
   width: 30px;
   height: 30px;
-  margin: -15px;
+  margin: -15px 0 0 -15px;
   padding: 0;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.85);
@@ -927,6 +947,13 @@ button:disabled {
   cursor: grab;
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.55);
   transition: transform 0.12s ease;
+  z-index: 2;
+  touch-action: none;
+}
+
+.plan-map--with-dots .plan-dot {
+  /* Keep mark labels readable when the sheet is zoomed in. */
+  transform-origin: center center;
 }
 
 .plan-dot:hover {
