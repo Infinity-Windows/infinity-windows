@@ -1,13 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { listProjects } from "../../lib/api";
+import { listProjects, listWindowTypes } from "../../lib/api";
 import {
+  aiExtractSchedule,
   downloadPlanset,
+  ensureTypesFromSpecs,
   getMyProfile,
+  linkSpecsToOpenings,
   listOpenings,
   listPlansets,
   listVoidedInstallOpeningIds,
+  saveDraftOpenings,
   undoInstall,
   updateOpening,
 } from "../../lib/install/api";
@@ -18,6 +22,7 @@ import {
   OPENING_STATUS_COLORS,
   openingMarkCode,
   openingMarkLabel,
+  type Planset,
   type ProjectOpening,
 } from "../../lib/install/types";
 import {
@@ -26,10 +31,23 @@ import {
   type CadDetailPage,
 } from "../../lib/install/planDetails";
 import {
+  extractScheduleRows,
+  rowsToDraftOpenings,
+  summarizeDraftMarks,
+} from "../../lib/install/extract";
+import {
   extractBuildingOutline,
   perimeterPositions,
   type BuildingOutline,
 } from "../../lib/install/outline";
+
+function plansetLabel(ps: Planset): string {
+  return ps.storage_path.split("/").pop() ?? ps.storage_path;
+}
+
+function isUsablePdf(ps: Planset): boolean {
+  return ps.source_format === "pdf" || !!ps.converted_pdf_path;
+}
 
 /** Distinct ring for an opening whose install was undone (history preserved). */
 const VOIDED_RING_COLOR = "#ef4444";
@@ -52,9 +70,13 @@ const FILTERS: { id: PlanFilter; label: string }[] = [
 ];
 
 function unitKind(o: ProjectOpening): "door" | "window" {
-  return (o.window_types?.category ?? "").toLowerCase().includes("door")
-    ? "door"
-    : "window";
+  const category = (o.window_types?.category ?? "").toLowerCase();
+  if (category.includes("door")) return "door";
+  if (category.includes("window")) return "window";
+  const code = `${o.window_types?.type_code ?? ""} ${o.window_types?.name ?? ""}`.toUpperCase();
+  if (/\b\d{2}(70|80)\b/.test(code) && /\b(XO|OX|SC)\b/.test(code)) return "door";
+  if (/\bDOOR\b/.test(code)) return "door";
+  return "window";
 }
 
 function clamp(value: number, lo: number, hi: number): number {
@@ -92,6 +114,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   } | null>(null);
   const [pending, setPending] = useState<Record<string, { x: number; y: number }>>({});
   const sheetRef = useRef<HTMLDivElement | null>(null);
+  const [buildingPlansetId, setBuildingPlansetId] = useState<string | null>(null);
+  const [specsPlansetId, setSpecsPlansetId] = useState<string | null>(null);
+  const [extractNote, setExtractNote] = useState<string | null>(null);
 
   const matchesFilter = (o: ProjectOpening): boolean => {
     switch (filter) {
@@ -118,6 +143,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     queryKey: ["plansets", projectId],
     queryFn: () => listPlansets(projectId),
   });
+  const types = useQuery({ queryKey: ["windowTypes"], queryFn: listWindowTypes });
   const voided = useQuery({
     queryKey: ["voidedOpenings", projectId],
     queryFn: () => listVoidedInstallOpeningIds(projectId),
@@ -125,6 +151,47 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const myProfile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const isLead = isForemanPlus(myProfile.data?.role);
   const voidedIds = voided.data ?? new Set<string>();
+
+  const buildingPdfs = useMemo(
+    () =>
+      (plansets.data ?? []).filter(
+        (ps) => (ps.kind ?? "building") === "building" && isUsablePdf(ps),
+      ),
+    [plansets.data],
+  );
+  const specsPdfs = useMemo(
+    () =>
+      (plansets.data ?? []).filter(
+        (ps) => ps.kind === "specs" && isUsablePdf(ps),
+      ),
+    [plansets.data],
+  );
+
+  // Keep selection valid when plansets load / change.
+  useEffect(() => {
+    if (buildingPdfs.length === 0) {
+      setBuildingPlansetId(null);
+      return;
+    }
+    setBuildingPlansetId((prev) =>
+      prev && buildingPdfs.some((p) => p.id === prev) ? prev : buildingPdfs[0].id,
+    );
+  }, [buildingPdfs]);
+
+  useEffect(() => {
+    if (specsPdfs.length === 0) {
+      setSpecsPlansetId(null);
+      return;
+    }
+    setSpecsPlansetId((prev) =>
+      prev && specsPdfs.some((p) => p.id === prev) ? prev : specsPdfs[0].id,
+    );
+  }, [specsPdfs]);
+
+  const buildingPdf =
+    buildingPdfs.find((ps) => ps.id === buildingPlansetId) ?? buildingPdfs[0] ?? null;
+  const specsPdf =
+    specsPdfs.find((ps) => ps.id === specsPlansetId) ?? specsPdfs[0] ?? null;
 
   const undo = useMutation({
     mutationFn: (args: { openingId: string; reason: string | null }) =>
@@ -146,12 +213,74 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     undo.mutate({ openingId: o.id, reason: reason.trim() || null });
   };
 
-  const buildingPdf = (plansets.data ?? []).find(
-    (ps) => (ps.kind ?? "building") === "building" && ps.source_format === "pdf",
-  );
-  const specsPdf = (plansets.data ?? []).find(
-    (ps) => ps.kind === "specs" && ps.source_format === "pdf",
-  );
+  const reextractSpecs = useMutation({
+    mutationFn: async () => {
+      if (!specsPdf) throw new Error("No specs PDF selected.");
+      setExtractNote("Reading specs PDF…");
+      const { extractAllText, loadPdf } = await import("../../lib/install/pdf");
+      const doc = await loadPdf(await downloadPlanset(specsPdf));
+      const pages = await extractAllText(doc);
+      const catalog = (types.data ?? []).map((t) => ({
+        type_code: t.type_code,
+        name: t.name,
+      }));
+      setExtractNote("Extracting window/door marks…");
+      const { rows, source } = await extractScheduleRows(pages, async (pgs) => {
+        try {
+          const aiRows = await aiExtractSchedule(pgs, catalog);
+          return aiRows.map((r) => ({
+            openingCode: r.openingCode,
+            typeText: r.typeText,
+            qty: r.qty,
+            label: r.label,
+            pageNumber: r.pageNumber,
+            widthIn: r.widthIn ?? null,
+            heightIn: r.heightIn ?? null,
+            color: r.color ?? null,
+            kind: r.kind ?? "window",
+          }));
+        } catch {
+          return [];
+        }
+      });
+      let drafts = rowsToDraftOpenings(rows, types.data ?? []);
+      drafts = await ensureTypesFromSpecs(drafts);
+      await linkSpecsToOpenings(projectId, drafts);
+      const result = await saveDraftOpenings(projectId, specsPdf.id, drafts);
+      setDetails(extractCadDetailPages(pages));
+      specsDocRef.current = doc;
+      setSpecsPageCount(doc.numPages);
+      return { result, source, marks: summarizeDraftMarks(drafts) };
+    },
+    onSuccess: ({ result, source, marks }) => {
+      queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
+      const markLine = marks
+        .map(
+          (m) =>
+            `${m.count}× #${m.mark} ${m.kind === "door" ? "doors" : "windows"}`,
+        )
+        .join(", ");
+      setExtractNote(
+        [
+          markLine ? `Loaded ${markLine}.` : "No marks found.",
+          result.inserted > 0 ? `${result.inserted} new drafts.` : null,
+          result.skipped > 0 ? `${result.skipped} already confirmed — left alone.` : null,
+          source === "details"
+            ? "Source: manufacturer detail sheets."
+            : source === "merged"
+              ? "Source: schedule + detail sheets."
+              : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
+    },
+    onError: (e) => {
+      setExtractNote(null);
+      setMapError(String(e));
+    },
+  });
 
   useEffect(() => {
     if (!buildingPdf && !specsPdf) return;
@@ -549,13 +678,68 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               </button>
             )}
           </nav>
+
+          <div className="planset-picker-row">
+            {buildingPdfs.length > 0 && (
+              <label className="planset-picker">
+                <span>Building planset</span>
+                <select
+                  value={buildingPdf?.id ?? ""}
+                  onChange={(e) => {
+                    setBuildingPlansetId(e.target.value);
+                    setView("floor");
+                    setOutlines({});
+                  }}
+                >
+                  {buildingPdfs.map((ps) => (
+                    <option key={ps.id} value={ps.id}>
+                      {plansetLabel(ps)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {specsPdfs.length > 0 && (
+              <label className="planset-picker">
+                <span>Specs planset</span>
+                <select
+                  value={specsPdf?.id ?? ""}
+                  onChange={(e) => {
+                    setSpecsPlansetId(e.target.value);
+                    setView("details");
+                  }}
+                >
+                  {specsPdfs.map((ps) => (
+                    <option key={ps.id} value={ps.id}>
+                      {plansetLabel(ps)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {specsPdf && (
+              <button
+                type="button"
+                className="button-like"
+                disabled={reextractSpecs.isPending}
+                onClick={() => reextractSpecs.mutate()}
+              >
+                {reextractSpecs.isPending ? "Loading marks…" : "Load marks from specs"}
+              </button>
+            )}
+          </div>
+
           <p className="pdf-source-line">
-            <strong>PDF source:</strong>{" "}
-            {activePlanset?.storage_path.split("/").pop() ?? "loading…"}
+            <strong>Viewing:</strong>{" "}
+            {activePlanset ? plansetLabel(activePlanset) : "loading…"}
             {view === "floor" && floorPages.length > 0
-              ? ` · ${floorPages.length} floor drawing${floorPages.length === 1 ? "" : "s"} found`
+              ? ` · ${floorPages.length} numbered floor drawing${floorPages.length === 1 ? "" : "s"}`
+              : ""}
+            {view === "details" && details.length > 0
+              ? ` · ${details.length} detail sheet${details.length === 1 ? "" : "s"}`
               : ""}
           </p>
+          {extractNote && <p className="muted">{extractNote}</p>}
         </>
       )}
 
