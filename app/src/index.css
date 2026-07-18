@@ -23,10 +23,16 @@
   --ink: #141210;
   --font-body: "Barlow", system-ui, sans-serif;
   --font-display: "Barlow Condensed", "Barlow", system-ui, sans-serif;
-  --radius-sm: 11px;
-  --radius-md: 14px;
-  --radius-lg: 16px;
+  --radius-sm: 10px;
+  --radius-md: 12px;
+  --radius-lg: 14px;
   --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-glow: 0 6px 22px -10px rgba(255, 106, 26, 0.4);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  /* Horizon-style left sidebar tokens */
+  --nav-width: 244px;
+  --accent-soft: rgba(255, 106, 26, 0.12);
+  --accent-line: rgba(255, 106, 26, 0.5);
   color-scheme: dark;
 }
 
@@ -72,7 +78,7 @@ a:hover {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: var(--card);
+  background: var(--bg);
   color: var(--text);
   font-family: var(--font-body);
 }
@@ -172,6 +178,16 @@ button {
   background: var(--card-raised);
   color: var(--text);
   cursor: pointer;
+  transition: background 0.15s var(--ease-out), border-color 0.15s var(--ease-out),
+    box-shadow 0.15s var(--ease-out), transform 0.12s var(--ease-out);
+}
+
+button:hover {
+  border-color: var(--accent-line);
+}
+
+button:active {
+  transform: scale(0.98);
 }
 
 button.primary {
@@ -181,13 +197,14 @@ button.primary {
   font-family: var(--font-display);
   font-weight: 700;
   font-size: 18px;
-  letter-spacing: 2px;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
 }
 
 button.primary:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
+  box-shadow: var(--shadow-glow);
 }
 
 button.big {
@@ -2942,25 +2959,57 @@ button.clock-out {
   padding: 10px 12px;
 }
 
-/* --- Infinity IA shell: responsive left rail + phone bottom bar --- */
+/* --- Infinity IA shell: Horizon-style left sidebar + phone bottom bar --- */
 
 .app-frame {
   display: flex;
   min-height: 100dvh;
 }
 
+/* Hidden on phones (bottom-nav is primary); the desktop/tablet media query
+   below turns this into the full Horizon-style left sidebar. */
 .app-rail {
   display: none;
 }
 
+/* Brand lockup at the top of the sidebar: infinity mark + wordmark. */
 .rail-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 20px 18px 16px;
+  text-decoration: none;
+  border-bottom: 1px solid var(--border);
+}
+
+.rail-brand-mark {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 26px;
+  font-size: 30px;
+  line-height: 1;
   color: var(--accent);
-  text-align: center;
-  padding: 14px 0 10px;
-  text-decoration: none;
+  text-shadow: 0 0 16px rgba(255, 106, 26, 0.45);
+  flex: none;
+}
+
+.rail-brand-word {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.rail-eyebrow {
+  margin: 0;
+  padding: 16px 16px 6px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--faint);
 }
 
 .rail-tabs {
@@ -2968,58 +3017,74 @@ button.clock-out {
   flex-direction: column;
   gap: 2px;
   overflow-y: auto;
-  padding-bottom: 24px;
+  padding: 0 12px 24px;
 }
 
 .rail-tab {
   position: relative;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 5px;
-  padding: 11px 4px;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border-left: 2px solid transparent;
   text-decoration: none;
-  color: #7a736a;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.15s var(--ease-out), color 0.15s var(--ease-out),
+    border-color 0.15s var(--ease-out);
 }
 
-.rail-tab .rail-bar {
-  width: 3px;
-  height: 18px;
-  border-radius: 2px;
-  background: transparent;
+.rail-tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
 }
 
-.rail-tab .rail-label {
-  font-family: var(--font-display);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.rail-icon {
+  width: 22px;
+  flex: none;
+  text-align: center;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--muted);
+  transition: color 0.15s var(--ease-out);
+}
+
+.rail-label {
+  flex: 1;
+  min-width: 0;
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rail-tab.active {
   color: var(--accent);
-  background: rgba(255, 106, 26, 0.1);
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+  font-weight: 600;
 }
 
-.rail-tab.active .rail-bar {
-  background: var(--accent);
+.rail-tab.active .rail-icon {
+  color: var(--accent);
 }
 
 .rail-badge {
-  position: absolute;
-  top: 6px;
-  right: 10px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
+  margin-left: auto;
+  flex: none;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
   background: var(--accent);
   color: var(--ink);
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  line-height: 16px;
+  line-height: 20px;
   text-align: center;
 }
 
@@ -3487,16 +3552,19 @@ button.clock-out {
   .app-rail {
     display: flex;
     flex-direction: column;
-    width: 76px;
+    width: var(--nav-width);
     flex: none;
     background: var(--surface);
-    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    border-right: 1px solid var(--border);
     position: sticky;
     top: 0;
     height: 100dvh;
+    overflow: hidden;
   }
 
   .app-main {
+    flex: 1;
+    min-width: 0;
     padding-bottom: 0;
   }
 

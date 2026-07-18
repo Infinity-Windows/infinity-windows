@@ -47,7 +47,12 @@ export function Layout() {
         <ToastHost />
         <div className="app-frame">
           <aside className="app-rail" aria-label="Primary">
-            <span className="rail-brand" aria-label="Home">∞</span>
+            <span className="rail-brand" aria-label="Infinity home">
+              <span className="rail-brand-mark" aria-hidden>
+                ∞
+              </span>
+              <span className="rail-brand-word">Infinity</span>
+            </span>
           </aside>
           <main className="app-main">
             <Outlet />
@@ -66,10 +71,16 @@ export function Layout() {
       <ToastHost />
       <div className="app-frame">
         <aside className="app-rail" aria-label="Primary">
-          <Link to="/" className="rail-brand" aria-label="Home">
-            ∞
+          <Link to="/" className="rail-brand" aria-label="Infinity home">
+            <span className="rail-brand-mark" aria-hidden>
+              ∞
+            </span>
+            <span className="rail-brand-word">Infinity</span>
           </Link>
-          <div className="rail-tabs">
+          <p className="rail-eyebrow" aria-hidden>
+            Menu
+          </p>
+          <nav className="rail-tabs" aria-label="Sections">
             {nav.rail.map((tab) => (
               <NavLink
                 key={tab.id}
@@ -79,14 +90,16 @@ export function Layout() {
                   isActive ? "rail-tab active" : "rail-tab"
                 }
               >
-                <span className="rail-bar" aria-hidden />
+                <span className="rail-icon" aria-hidden>
+                  {tab.icon}
+                </span>
                 <span className="rail-label">{tab.label}</span>
                 {badgeFor(tab.to) > 0 && (
                   <span className="rail-badge">{badgeFor(tab.to)}</span>
                 )}
               </NavLink>
             ))}
-          </div>
+          </nav>
         </aside>
 
         <main className="app-main">
