@@ -9,11 +9,16 @@ import {
   listProjects,
   loadWindow,
 } from "../lib/api";
+import { listOpenings, saveJobEstimate } from "../lib/install/api";
 import {
-  listOpenings,
-  listProjectExceptions,
-  saveJobEstimate,
-} from "../lib/install/api";
+  compareIssues,
+  KIND_LABELS,
+  listProjectIssues,
+  resolveIssue,
+  URGENCY_MARK,
+  type Issue,
+  type IssueKind,
+} from "../lib/issues";
 import {
   estimateJob,
   formatHours,
@@ -219,9 +224,7 @@ export function ProjectDetail() {
 
       {tab === "map" && <ProjectMap embedded />}
 
-      {tab === "exceptions" && isLead && (
-        <ExceptionsTab projectId={projectId} canSee={isLead} />
-      )}
+      {tab === "exceptions" && isLead && <ExceptionsTab projectId={projectId} />}
 
       {tab === "brain" && (
         <div>
@@ -527,100 +530,97 @@ function fmtDate(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleString();
 }
 
-function ExceptionsTab({ projectId, canSee }: { projectId: string; canSee: boolean }) {
-  const exceptions = useQuery({
-    queryKey: ["projectExceptions", projectId],
-    queryFn: () => listProjectExceptions(projectId, canSee),
+// Kinds shown in the Exceptions tab, in triage order. Exceptions is now just a
+// per-project filtered view of the unified `issues` table.
+const EXCEPTION_KIND_ORDER: { kind: IssueKind; heading: string }[] = [
+  { kind: "failed_install", heading: "Failed / undone installs" },
+  { kind: "damage", heading: "Damaged" },
+  { kind: "flag", heading: "Flagged" },
+  { kind: "blocker", heading: "Blockers" },
+  { kind: "complication", heading: "Complications" },
+];
+
+function ExceptionsTab({ projectId }: { projectId: string }) {
+  const queryClient = useQueryClient();
+  const issues = useQuery({
+    queryKey: ["projectIssues", projectId],
+    queryFn: () => listProjectIssues(projectId),
   });
 
-  if (exceptions.isLoading) {
+  const resolve = useMutation({
+    mutationFn: (id: string) => resolveIssue(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["issues"] });
+    },
+  });
+
+  if (issues.isLoading) {
     return <p className="muted">Loading exceptions…</p>;
   }
-  if (exceptions.isError) {
-    return <p className="error">{String(exceptions.error)}</p>;
+  if (issues.isError) {
+    return <p className="error">{String(issues.error)}</p>;
   }
 
-  const { failedInstalls, flaggedOpenings } = exceptions.data ?? {
-    failedInstalls: [],
-    flaggedOpenings: [],
-  };
-  const damaged = flaggedOpenings.filter((o) => o.condition === "damaged");
-  const flagged = flaggedOpenings.filter((o) => o.flag_note);
-  const nothing =
-    failedInstalls.length === 0 && damaged.length === 0 && flagged.length === 0;
+  const open = (issues.data ?? []).filter((i) => i.status === "open");
+  const byKind = new Map<IssueKind, Issue[]>();
+  for (const i of open) {
+    const list = byKind.get(i.kind) ?? [];
+    list.push(i);
+    byKind.set(i.kind, list);
+  }
+
+  const issueRow = (i: Issue) => (
+    <li key={i.id} className="find-row">
+      {i.opening_id ? (
+        <Link to={`/projects/${projectId}/opening/${i.opening_id}`}>
+          <strong>{URGENCY_MARK[i.urgency] || "•"}</strong>
+        </Link>
+      ) : (
+        <strong>{URGENCY_MARK[i.urgency] || "•"}</strong>
+      )}
+      <span className="muted">{fmtDate(i.created_at)}</span>
+      <span
+        className="big-address"
+        style={{ color: i.urgency === "normal" ? undefined : "#ef4444" }}
+      >
+        {i.note ?? KIND_LABELS[i.kind]}
+      </span>
+      <button
+        className="link"
+        style={{ marginLeft: "auto" }}
+        disabled={resolve.isPending}
+        onClick={() => resolve.mutate(i.id)}
+      >
+        Resolve
+      </button>
+    </li>
+  );
 
   return (
     <div>
       <p className="muted">
-        Failed/undone installs, flagged openings, and damaged units on this job.
-        Nothing is deleted — the full install record is kept for review.
+        A filtered view of this job&apos;s issues — failed installs, damage,
+        flags, blockers, and complications. Same data as the cross-project{" "}
+        <Link to="/issues">Issues</Link> list; nothing is deleted.
       </p>
 
-      {nothing && (
-        <p className="muted">No exceptions right now — everything looks clean.</p>
+      {open.length === 0 && (
+        <p className="muted">No open issues right now — everything looks clean.</p>
       )}
 
-      {failedInstalls.length > 0 && (
-        <>
-          <h2>Undone installs ({failedInstalls.length})</h2>
-          <ul className="unit-list work-list">
-            {failedInstalls.map((f) => (
-              <li key={f.event_id} className="find-row">
-                <Link to={`/projects/${projectId}/opening/${f.opening_id}`}>
-                  <strong>{f.opening_code}</strong>
-                </Link>
-                <span className="muted">
-                  by {f.voided_by_name ?? "someone"} · {fmtDate(f.voided_at)}
-                  {f.installer ? ` · installed by ${f.installer}` : ""}
-                </span>
-                <span className="big-address" style={{ color: "#ef4444" }}>
-                  {f.void_reason ?? "undone"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      {flagged.length > 0 && (
-        <>
-          <h2>Flagged ({flagged.length})</h2>
-          <ul className="unit-list work-list">
-            {flagged.map((o) => (
-              <li key={o.id} className="find-row">
-                <Link to={`/projects/${projectId}/opening/${o.id}`}>
-                  <strong>{o.opening_code}</strong>
-                </Link>
-                <span className="muted">
-                  {o.window_types?.type_code ?? "type?"}
-                </span>
-                <span className="big-address warn-text">{o.flag_note}</span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      {damaged.length > 0 && (
-        <>
-          <h2>Damaged ({damaged.length})</h2>
-          <ul className="unit-list work-list">
-            {damaged.map((o) => (
-              <li key={o.id} className="find-row">
-                <Link to={`/projects/${projectId}/opening/${o.id}`}>
-                  <strong>{o.opening_code}</strong>
-                </Link>
-                <span className="muted">
-                  {o.window_types?.type_code ?? "type?"}
-                </span>
-                <span className="big-address" style={{ color: "#ef4444" }}>
-                  {o.condition_note ?? "damaged"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+      {EXCEPTION_KIND_ORDER.map(({ kind, heading }) => {
+        const list = (byKind.get(kind) ?? []).sort(compareIssues);
+        if (list.length === 0) return null;
+        return (
+          <div key={kind}>
+            <h2>
+              {heading} ({list.length})
+            </h2>
+            <ul className="unit-list work-list">{list.map(issueRow)}</ul>
+          </div>
+        );
+      })}
     </div>
   );
 }
