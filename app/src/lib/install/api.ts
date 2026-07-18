@@ -98,10 +98,7 @@ export async function ensureMyProfile(): Promise<Profile | null> {
 export async function getMyProfile(): Promise<Profile | null> {
   const { data: userData } = await supabase.auth.getUser();
   const user = userData.user;
-  if (!user) {
-    const { BYPASS_PROFILE, isAuthBypassed } = await import("../authBypass");
-    return isAuthBypassed() ? BYPASS_PROFILE : null;
-  }
+  if (!user) return null;
   const { data, error } = await supabase
     .from("profiles")
     .select(PROFILE_COLS)
