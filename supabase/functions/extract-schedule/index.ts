@@ -3,6 +3,7 @@ import {
   corsHeaders,
   jsonResponse,
 } from "../_shared/openai.ts";
+import { requireCaller } from "../_shared/auth.ts";
 
 interface ScheduleRow {
   openingCode: string;
@@ -21,6 +22,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: cors });
   }
+
+  const unauthorized = await requireCaller(req, cors);
+  if (unauthorized) return unauthorized;
 
   try {
     const body = await req.json();
