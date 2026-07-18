@@ -29,6 +29,7 @@ export type RoutePath =
   | "/search"
   | "/review"
   | "/team"
+  | "/timecard"
   | "/issues"
   | "/service"
   | "/heartbeat"
@@ -85,6 +86,7 @@ export const NAV: NavDest[] = [
 
   // Foreman+ (managers): coordination + warehouse ops + quality.
   { id: "team", to: "/team", label: "Team", icon: "⚑", minRole: "foreman" },
+  { id: "timecard", to: "/timecard", label: "Timecard", icon: "▥", minRole: "foreman" },
   { id: "issues", to: "/issues", label: "Issues", icon: "!", minRole: "foreman" },
   { id: "service", to: "/service", label: "Service", icon: "⚕", minRole: "foreman" },
   { id: "qc", to: "/qc", label: "Quality", icon: "✓", minRole: "foreman" },
@@ -154,6 +156,7 @@ const MANAGER_LAYOUT: LayoutItem[] = [
   { id: "issues" },
   { id: "service" },
   { id: "team" },
+  { id: "timecard" },
   { id: "qc" },
   { id: "safety" },
   { id: "learn" },
@@ -171,6 +174,7 @@ const SUPERVISOR_LAYOUT: LayoutItem[] = [
   { id: "issues" },
   { id: "service" },
   { id: "team" },
+  { id: "timecard" },
   { id: "qc" },
   { id: "safety" },
   { id: "learn" },
@@ -190,6 +194,7 @@ const OWNER_LAYOUT: LayoutItem[] = [
   { id: "issues" },
   { id: "service" },
   { id: "team" },
+  { id: "timecard" },
   { id: "qc" },
   { id: "safety" },
   { id: "learn" },

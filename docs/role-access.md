@@ -38,6 +38,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 **Blocked:**
 
 - Team (`/team`)
+- Timecard (`/timecard`)
 - Issues (`/issues`)
 - Service (`/service`)
 - Quality (`/qc`)
@@ -66,13 +67,14 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Issues (`/issues`)
 - Service (`/service`)
 - Team (`/team`)
+- Timecard (`/timecard`)
 - Quality (`/qc`)
 - Safety (`/safety`)
 - Learn (`/learn`)
 - Points (`/points`)
 - Tools (`/tools`)
 
-**Can reach (all 26 allowed destinations):**
+**Can reach (all 27 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -90,6 +92,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Search (`/search`)
 - Memo review (`/review`)
 - Team (`/team`)
+- Timecard (`/timecard`)
 - Issues (`/issues`)
 - Service (`/service`)
 - Quality (`/qc`)
@@ -122,6 +125,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Issues (`/issues`)
 - Service (`/service`)
 - Team (`/team`)
+- Timecard (`/timecard`)
 - Quality (`/qc`)
 - Safety (`/safety`)
 - Learn (`/learn`)
@@ -129,7 +133,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Tools (`/tools`)
 - Admin (`/admin`)
 
-**Can reach (all 28 allowed destinations):**
+**Can reach (all 29 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -147,6 +151,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Search (`/search`)
 - Memo review (`/review`)
 - Team (`/team`)
+- Timecard (`/timecard`)
 - Issues (`/issues`)
 - Service (`/service`)
 - Quality (`/qc`)
@@ -180,6 +185,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Issues (`/issues`)
 - Service (`/service`)
 - Team (`/team`)
+- Timecard (`/timecard`)
 - Quality (`/qc`)
 - Safety (`/safety`)
 - Learn (`/learn`)
@@ -187,7 +193,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Tools (`/tools`)
 - Admin (`/admin`)
 
-**Can reach (all 29 allowed destinations):**
+**Can reach (all 30 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -205,6 +211,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Search (`/search`)
 - Memo review (`/review`)
 - Team (`/team`)
+- Timecard (`/timecard`)
 - Issues (`/issues`)
 - Service (`/service`)
 - Quality (`/qc`)
