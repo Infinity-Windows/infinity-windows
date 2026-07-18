@@ -8,7 +8,16 @@ import {
   getWindowByWindowId,
   listProjects,
   loadWindow,
+  preissueProjectUnits,
 } from "../lib/api";
+import { downloadPdf, windowLabelsPdf } from "../lib/labels";
+import {
+  computePreissuePlan,
+  totalExisting,
+  totalPlanned,
+  totalToIssue,
+} from "../lib/preissue";
+import { pushToast, toastError } from "../lib/toast";
 import { listOpenings, saveJobEstimate } from "../lib/install/api";
 import {
   compareIssues,
@@ -29,7 +38,12 @@ import {
 } from "../lib/estimate";
 import { prefetchJobPack } from "../lib/queryClient";
 import { useRealtimeOpenings } from "../lib/useRealtimeOpenings";
-import { STATUS_LABELS, type Project, type WindowUnit } from "../lib/types";
+import {
+  STATUS_LABELS,
+  type Project,
+  type ProjectWindow,
+  type WindowUnit,
+} from "../lib/types";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { ProjectMap } from "./install/ProjectMap";
@@ -213,11 +227,20 @@ export function ProjectDetail() {
       )}
 
       {tab === "warehouse" && (
-        <WarehouseTab
-          projectId={projectId}
-          pickList={pickList}
-          loaded={loaded}
-        />
+        <>
+          {isLead && (
+            <PreissuePanel
+              projectId={projectId}
+              needs={needs.data ?? []}
+              units={units.data ?? []}
+            />
+          )}
+          <WarehouseTab
+            projectId={projectId}
+            pickList={pickList}
+            loaded={loaded}
+          />
+        </>
       )}
 
       {tab === "dispatch" && isLead && <DispatchBoard projectId={projectId} />}
@@ -414,6 +437,143 @@ function OverviewTab({
         )}
       </ul>
     </>
+  );
+}
+
+/**
+ * Foreman+ action: turn a project's planned quantities into pre-issued unit
+ * records (serial + short_code + QR, status pre_issued) BEFORE the windows
+ * physically arrive, then print the label batch so labels get applied on
+ * delivery. This is the front of the tracking chain — every expected unit has
+ * an ID before arrival, enabling missing-delivery detection next.
+ */
+function PreissuePanel({
+  projectId,
+  needs,
+  units,
+}: {
+  projectId: string;
+  needs: ProjectWindow[];
+  units: WindowUnit[];
+}) {
+  const queryClient = useQueryClient();
+
+  const plan = useMemo(
+    () =>
+      computePreissuePlan(
+        needs.map((n) => ({
+          window_type_id: n.window_type_id,
+          quantity: n.quantity,
+        })),
+        units.map((u) => ({ window_type_id: u.window_type_id })),
+      ),
+    [needs, units],
+  );
+  const expected = totalPlanned(plan);
+  const issued = totalExisting(plan);
+  const toIssue = totalToIssue(plan);
+
+  const preIssuedUnits = useMemo(
+    () => (units ?? []).filter((u) => u.status === "pre_issued"),
+    [units],
+  );
+
+  const preissue = useMutation({
+    mutationFn: () => preissueProjectUnits(projectId),
+    onSuccess: (created) => {
+      queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      pushToast(
+        created.length > 0
+          ? `Pre-issued ${created.length} unit ID${created.length === 1 ? "" : "s"}.`
+          : "All planned units already have IDs.",
+        "info",
+      );
+    },
+    onError: (e) => toastError(e),
+  });
+
+  const printPreIssued = async () => {
+    const list = preIssuedUnits;
+    if (list.length === 0) {
+      pushToast("No pre-issued units to print yet.", "info");
+      return;
+    }
+    try {
+      const bytes = await windowLabelsPdf(
+        list.map((u) => ({
+          window_id: u.window_id,
+          typeName: u.window_types?.name ?? u.window_types?.type_code ?? "",
+          short_code: u.short_code,
+        })),
+      );
+      downloadPdf(bytes, `preissued-labels-${projectId}.pdf`);
+    } catch (e) {
+      toastError(e);
+    }
+  };
+
+  return (
+    <section className="detail-card" style={{ marginBottom: 16 }}>
+      <div className="row-between">
+        <h2 style={{ margin: 0 }}>Pre-issue unit IDs & labels</h2>
+        <span className={toIssue > 0 ? "warn-text" : "ok"}>
+          {issued}/{expected || "—"} issued
+        </span>
+      </div>
+      <p className="muted" style={{ marginTop: 6 }}>
+        Create an ID + printable label for every expected window before it
+        arrives, so crew can label units on delivery and we can spot a missing
+        delivery later.
+      </p>
+
+      <div className="action-list">
+        <button
+          className="action-btn primary"
+          disabled={expected === 0 || toIssue === 0 || preissue.isPending}
+          onClick={() => preissue.mutate()}
+        >
+          {preissue.isPending
+            ? "Pre-issuing…"
+            : toIssue > 0
+              ? `Pre-issue ${toIssue} unit ID${toIssue === 1 ? "" : "s"}`
+              : expected === 0
+                ? "No planned windows yet"
+                : "All planned units have IDs"}
+        </button>
+        <button
+          className="action-btn"
+          disabled={preIssuedUnits.length === 0}
+          onClick={printPreIssued}
+        >
+          Print labels for pre-issued units ({preIssuedUnits.length})
+        </button>
+      </div>
+
+      {expected === 0 && (
+        <p className="muted">
+          No planned quantities yet. Confirm openings from a planset to populate
+          the plan, then pre-issue IDs here.
+        </p>
+      )}
+
+      {preIssuedUnits.length > 0 && (
+        <ul className="unit-list work-list">
+          {preIssuedUnits.map((u) => (
+            <li key={u.id} className="find-row">
+              <Link to={`/w/${encodeURIComponent(u.window_id)}`}>
+                <strong>{u.window_id}</strong>
+              </Link>
+              {u.short_code && (
+                <span className="short-code-chip"> {u.short_code}</span>
+              )}
+              <span className="muted"> {u.window_types?.type_code}</span>
+              <span className="big-address">{STATUS_LABELS[u.status]}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
