@@ -800,6 +800,68 @@ button:disabled {
   position: relative;
 }
 
+.plan-zoom-viewport {
+  overflow: auto;
+  max-height: min(70vh, 720px);
+  border-radius: 10px;
+  background: #181614;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.plan-sheet--fullscreen .plan-zoom-viewport {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.plan-zoom-viewport .plan-map {
+  border: none;
+  border-radius: 0;
+  min-width: 100%;
+}
+
+.plan-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.plan-zoom-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #1e1b18;
+  color: #f3f0eb;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.plan-zoom-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.plan-zoom-btn:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+.plan-zoom-btn--label {
+  width: auto;
+  min-width: 52px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #ff6a1a;
+  border-color: rgba(255, 106, 26, 0.45);
+}
+
 .cartoon-sheet {
   position: relative;
   border-radius: 10px;
