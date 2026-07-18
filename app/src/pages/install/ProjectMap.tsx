@@ -41,6 +41,7 @@ import {
   outlinePathWithOpenings,
   parseOutlineFeatures,
 } from "../../lib/install/cad";
+import { openingMarkerStyle } from "../../lib/install/openingMarkerScale";
 import {
   extractBuildingOutline,
   outlinePathD,
@@ -774,6 +775,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           style={{
             left: `${pos.x * 100}%`,
             top: `${pos.y * 100}%`,
+            ...openingMarkerStyle(o.id),
             background: OPENING_KIND_COLORS[kind],
             borderColor: isVoided
               ? VOIDED_RING_COLOR

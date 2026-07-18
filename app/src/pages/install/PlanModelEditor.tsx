@@ -2,7 +2,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   addOpening,
-  deleteOpening,
   deletePlanOutline,
   downloadPlanset,
   savePlanOutline,
@@ -27,6 +26,11 @@ import {
   type BuildingOutline,
   type OutlinePoint,
 } from "../../lib/install/outline";
+import {
+  getOpeningMarkerScale,
+  openingMarkerStyle,
+  setOpeningMarkerScale,
+} from "../../lib/install/openingMarkerScale";
 import {
   OPENING_KIND_COLORS,
   OPENING_STATUS_COLORS,
@@ -132,6 +136,13 @@ export function PlanModelEditor(props: {
     id: string;
     type: "divider" | "wall";
   } | null>(null);
+  const [deletedFeature, setDeletedFeature] = useState<
+    | { type: "divider"; value: OutlineFeatures["dividers"][number] }
+    | { type: "wall"; value: OutlineFeatures["wallOpenings"][number] }
+    | null
+  >(null);
+  const [selectedOutline, setSelectedOutline] = useState(false);
+  const [, setMarkerScaleVersion] = useState(0);
   const [renameValue, setRenameValue] = useState("");
   const [traceImage, setTraceImage] = useState<PageImage | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -155,16 +166,29 @@ export function PlanModelEditor(props: {
   const [pendingDots, setPendingDots] = useState<
     Record<string, { x: number; y: number }>
   >({});
+  const [deletedDot, setDeletedDot] = useState<ProjectOpening | null>(null);
 
   squareLockRef.current = squareLock;
 
   const activeOutline = savedOutlines.find((o) => o.id === activeOutlineId);
   const aspect = activeOutline?.page_aspect ?? pageAspect;
   const h = 1000 * aspect;
+  const outlineBounds = useMemo(() => {
+    if (points.length === 0) return null;
+    return {
+      minX: Math.min(...points.map((p) => p.x)),
+      maxX: Math.max(...points.map((p) => p.x)),
+      minY: Math.min(...points.map((p) => p.y)),
+      maxY: Math.max(...points.map((p) => p.y)),
+    };
+  }, [points]);
 
   const resetDrawingState = () => {
     setSelectedId(null);
     setSelectedFeature(null);
+    setSelectedOutline(false);
+    setDeletedFeature(null);
+    setDeletedDot(null);
     setDividerStart(null);
     setDividerCursor(null);
     setRectDrag(null);
@@ -427,6 +451,61 @@ export function PlanModelEditor(props: {
     }
   };
 
+  const transformFeatures = (
+    source: OutlineFeatures,
+    mapPoint: (point: OutlinePoint) => OutlinePoint,
+    widthScale = 1,
+  ): OutlineFeatures => ({
+    dividers: source.dividers.map((divider) => ({
+      ...divider,
+      a: mapPoint(divider.a),
+      b: mapPoint(divider.b),
+    })),
+    wallOpenings: source.wallOpenings.map((opening) => ({
+      ...opening,
+      width: clamp(opening.width * widthScale, 20, 240),
+    })),
+  });
+
+  const commitOutlineTransform = (
+    nextPoints: OutlinePoint[],
+    nextFeatures: OutlineFeatures,
+    message: string,
+  ) => {
+    setPoints(nextPoints);
+    setFeatures(nextFeatures);
+    setStatus(message);
+    if (activeOutlineId) {
+      saveOutline.mutate({ points: nextPoints, features: nextFeatures });
+    }
+  };
+
+  const scaleWholeOutline = (requestedFactor: number) => {
+    if (!outlineBounds) return;
+    const cx = (outlineBounds.minX + outlineBounds.maxX) / 2;
+    const cy = (outlineBounds.minY + outlineBounds.maxY) / 2;
+    let factor = requestedFactor;
+    if (factor > 1) {
+      const limits = [
+        outlineBounds.minX < cx ? cx / (cx - outlineBounds.minX) : Infinity,
+        outlineBounds.maxX > cx ? (1 - cx) / (outlineBounds.maxX - cx) : Infinity,
+        outlineBounds.minY < cy ? cy / (cy - outlineBounds.minY) : Infinity,
+        outlineBounds.maxY > cy ? (1 - cy) / (outlineBounds.maxY - cy) : Infinity,
+      ];
+      factor = Math.min(factor, ...limits);
+    }
+    const mapPoint = (point: OutlinePoint) =>
+      clampOutlinePoint({
+        x: cx + (point.x - cx) * factor,
+        y: cy + (point.y - cy) * factor,
+      });
+    commitOutlineTransform(
+      points.map(mapPoint),
+      transformFeatures(features, mapPoint, factor),
+      factor < 1 ? "Outline made smaller." : "Outline made larger.",
+    );
+  };
+
   const resetOutline = useMutation({
     mutationFn: () => deletePlanOutline(planset.id, page),
     onSuccess: () => {
@@ -531,10 +610,30 @@ export function PlanModelEditor(props: {
   });
 
   const removeDot = useMutation({
-    mutationFn: (id: string) => deleteOpening(id),
-    onSuccess: () => {
+    // Remove the mark from this planset without deleting the underlying job
+    // opening, its assignment, measurements, or install history.
+    mutationFn: (opening: ProjectOpening) =>
+      updateOpening(opening.id, { pin_x: null, pin_y: null }),
+    onSuccess: (_, opening) => {
+      setDeletedDot(opening);
       setSelectedId(null);
-      setStatus("Opening removed.");
+      setStatus(`${opening.opening_code} removed — Undo is available below.`);
+      queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+    },
+    onError: (e) => setError(formatApiError(e)),
+  });
+
+  const undoRemoveDot = useMutation({
+    mutationFn: (opening: ProjectOpening) =>
+      updateOpening(opening.id, {
+        page_number: opening.page_number,
+        pin_x: opening.pin_x,
+        pin_y: opening.pin_y,
+      }),
+    onSuccess: (_, opening) => {
+      setDeletedDot(null);
+      setSelectedId(opening.id);
+      setStatus(`${opening.opening_code} restored.`);
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
     },
     onError: (e) => setError(formatApiError(e)),
@@ -673,6 +772,8 @@ export function PlanModelEditor(props: {
 
     if (tool === "select") {
       setSelectedFeature(null);
+      setSelectedOutline(false);
+      setSelectedId(null);
       return;
     }
 
@@ -702,6 +803,99 @@ export function PlanModelEditor(props: {
     if (!pt) return;
     setDividerCursor(snapPointToAxis(dividerStart, pt, aspect));
   };
+
+  const beginOutlineMove = (e: React.PointerEvent<SVGPathElement>) => {
+    if (tool !== "select") return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedId(null);
+    setSelectedFeature(null);
+    setSelectedOutline(true);
+    const start = sheetCoords(e.clientX, e.clientY);
+    if (!start || !outlineBounds) return;
+    const sourcePoints = points;
+    const sourceFeatures = features;
+    let finalPoints = sourcePoints;
+    let finalFeatures = sourceFeatures;
+    let moved = false;
+    const onMove = (ev: PointerEvent) => {
+      const current = sheetCoords(ev.clientX, ev.clientY);
+      if (!current) return;
+      let dx = current.x - start.x;
+      let dy = current.y - start.y;
+      dx = clamp(dx, -outlineBounds.minX, 1 - outlineBounds.maxX);
+      dy = clamp(dy, -outlineBounds.minY, 1 - outlineBounds.maxY);
+      if (Math.hypot(dx, dy) < 0.001) return;
+      moved = true;
+      const mapPoint = (point: OutlinePoint) => ({
+        x: point.x + dx,
+        y: point.y + dy,
+      });
+      finalPoints = sourcePoints.map(mapPoint);
+      finalFeatures = transformFeatures(sourceFeatures, mapPoint);
+      setPoints(finalPoints);
+      setFeatures(finalFeatures);
+    };
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      if (moved) {
+        commitOutlineTransform(finalPoints, finalFeatures, "Outline moved.");
+      }
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  };
+
+  const beginOutlineResize =
+    (corner: "nw" | "ne" | "se" | "sw") =>
+    (e: React.PointerEvent<SVGCircleElement>) => {
+      if (!outlineBounds) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const sourcePoints = points;
+      const sourceFeatures = features;
+      const movingLeft = corner === "nw" || corner === "sw";
+      const movingTop = corner === "nw" || corner === "ne";
+      const anchorX = movingLeft ? outlineBounds.maxX : outlineBounds.minX;
+      const anchorY = movingTop ? outlineBounds.maxY : outlineBounds.minY;
+      const sourceX = movingLeft ? outlineBounds.minX : outlineBounds.maxX;
+      const sourceY = movingTop ? outlineBounds.minY : outlineBounds.maxY;
+      let finalPoints = sourcePoints;
+      let finalFeatures = sourceFeatures;
+      const onMove = (ev: PointerEvent) => {
+        const current = sheetCoords(ev.clientX, ev.clientY);
+        if (!current) return;
+        const targetX = movingLeft
+          ? Math.min(current.x, anchorX - 0.02)
+          : Math.max(current.x, anchorX + 0.02);
+        const targetY = movingTop
+          ? Math.min(current.y, anchorY - 0.02)
+          : Math.max(current.y, anchorY + 0.02);
+        const sx = (targetX - anchorX) / (sourceX - anchorX);
+        const sy = (targetY - anchorY) / (sourceY - anchorY);
+        const mapPoint = (point: OutlinePoint) =>
+          clampOutlinePoint({
+            x: anchorX + (point.x - anchorX) * sx,
+            y: anchorY + (point.y - anchorY) * sy,
+          });
+        finalPoints = sourcePoints.map(mapPoint);
+        finalFeatures = transformFeatures(
+          sourceFeatures,
+          mapPoint,
+          Math.sqrt(Math.abs(sx * sy)),
+        );
+        setPoints(finalPoints);
+        setFeatures(finalFeatures);
+      };
+      const onUp = () => {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        commitOutlineTransform(finalPoints, finalFeatures, "Outline resized.");
+      };
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+    };
 
   const beginVertexDrag =
     (index: number) => (e: React.PointerEvent<SVGCircleElement>) => {
@@ -733,6 +927,8 @@ export function PlanModelEditor(props: {
       if (tool !== "select") return;
       e.preventDefault();
       e.stopPropagation();
+      setSelectedOutline(false);
+      setSelectedFeature(null);
       setSelectedId(o.id);
       const start = {
         id: o.id,
@@ -792,6 +988,19 @@ export function PlanModelEditor(props: {
     setError(null);
   };
 
+  const selectWholeOutline = (outline: PlanOutline) => {
+    setTool("select");
+    setActiveOutlineId(outline.id);
+    setPoints(outline.points);
+    setFeatures(parseOutlineFeatures(outline.features));
+    setClosed(isValidOutlinePolygon(outline.points));
+    setHistory([]);
+    resetDrawingState();
+    setSelectedOutline(true);
+    setStatus("Outline selected — drag inside to move or use its corner handles.");
+    setError(null);
+  };
+
   const startOutline = (nextTool: "outline" | "rect" = "outline") => {
     setTool(nextTool);
     setActiveOutlineId(null);
@@ -810,6 +1019,15 @@ export function PlanModelEditor(props: {
 
   const deleteSelectedFeature = () => {
     if (!selectedFeature) return;
+    if (selectedFeature.type === "divider") {
+      const removed = features.dividers.find((d) => d.id === selectedFeature.id);
+      if (removed) setDeletedFeature({ type: "divider", value: removed });
+    } else {
+      const removed = features.wallOpenings.find(
+        (opening) => opening.id === selectedFeature.id,
+      );
+      if (removed) setDeletedFeature({ type: "wall", value: removed });
+    }
     const next: OutlineFeatures =
       selectedFeature.type === "divider"
         ? {
@@ -827,6 +1045,40 @@ export function PlanModelEditor(props: {
       next,
       selectedFeature.type === "divider" ? "Divider removed." : "Wall opening removed.",
     );
+  };
+
+  const undoDeletedFeature = () => {
+    if (!deletedFeature) return;
+    const next: OutlineFeatures =
+      deletedFeature.type === "divider"
+        ? { ...features, dividers: [...features.dividers, deletedFeature.value] }
+        : {
+            ...features,
+            wallOpenings: [...features.wallOpenings, deletedFeature.value],
+          };
+    applyFeatures(next, "Plan item restored.");
+    setDeletedFeature(null);
+  };
+
+  const resizeSelectedWallOpening = (delta: number) => {
+    if (!selectedFeature || selectedFeature.type !== "wall") return;
+    const next: OutlineFeatures = {
+      ...features,
+      wallOpenings: features.wallOpenings.map((opening) =>
+        opening.id === selectedFeature.id
+          ? { ...opening, width: clamp(opening.width + delta, 20, 240) }
+          : opening,
+      ),
+    };
+    applyFeatures(next, delta < 0 ? "Wall opening made smaller." : "Wall opening made larger.");
+  };
+
+  const resizeSelectedMarker = (delta: number) => {
+    if (!selected) return;
+    const current = getOpeningMarkerScale(selected.id);
+    setOpeningMarkerScale(selected.id, current + delta);
+    setMarkerScaleVersion((version) => version + 1);
+    setStatus(delta < 0 ? "Marker made smaller." : "Marker made larger.");
   };
 
   const setDrawTool = (next: EditTool) => {
@@ -1112,7 +1364,21 @@ export function PlanModelEditor(props: {
               const fill = outlinePathD(outline.points, aspect);
               return fill ? (
                 <g key={outline.id}>
-                  <path d={fill} fill="rgba(255, 106, 26, 0.06)" stroke="none" />
+                  <path
+                    d={fill}
+                    fill="rgba(255, 106, 26, 0.06)"
+                    stroke="none"
+                    style={{
+                      pointerEvents: tool === "select" ? "fill" : "none",
+                      cursor: tool === "select" ? "pointer" : undefined,
+                    }}
+                    onPointerDown={(event) => {
+                      if (tool !== "select") return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      selectWholeOutline(outline);
+                    }}
+                  />
                   {stroke && (
                     <path
                       d={stroke}
@@ -1136,7 +1402,20 @@ export function PlanModelEditor(props: {
 
           {closed && pathD ? (
             <g>
-              <path d={pathD} fill="rgba(255, 106, 26, 0.12)" stroke="none" />
+              <path
+                d={pathD}
+                fill={
+                  selectedOutline
+                    ? "rgba(255, 209, 102, 0.16)"
+                    : "rgba(255, 106, 26, 0.12)"
+                }
+                stroke="none"
+                style={{
+                  pointerEvents: tool === "select" ? "fill" : "none",
+                  cursor: tool === "select" ? "move" : undefined,
+                }}
+                onPointerDown={beginOutlineMove}
+              />
               {strokePathD && (
                 <path
                   d={strokePathD}
@@ -1172,7 +1451,11 @@ export function PlanModelEditor(props: {
               selectedFeatureId={selectedFeature?.id ?? null}
               onSelectFeature={
                 tool === "select"
-                  ? (id, type) => setSelectedFeature({ id, type })
+                  ? (id, type) => {
+                      setSelectedId(null);
+                      setSelectedOutline(false);
+                      setSelectedFeature({ id, type });
+                    }
                   : undefined
               }
             />
@@ -1212,6 +1495,42 @@ export function PlanModelEditor(props: {
             </>
           )}
 
+          {tool === "select" && selectedOutline && outlineBounds && (
+            <g>
+              <rect
+                x={outlineBounds.minX * 1000}
+                y={outlineBounds.minY * h}
+                width={(outlineBounds.maxX - outlineBounds.minX) * 1000}
+                height={(outlineBounds.maxY - outlineBounds.minY) * h}
+                fill="none"
+                stroke="#ffd166"
+                strokeWidth={2 * zs}
+                strokeDasharray={`${8 * zs} ${6 * zs}`}
+                style={{ pointerEvents: "none" }}
+              />
+              {(
+                [
+                  ["nw", outlineBounds.minX, outlineBounds.minY],
+                  ["ne", outlineBounds.maxX, outlineBounds.minY],
+                  ["se", outlineBounds.maxX, outlineBounds.maxY],
+                  ["sw", outlineBounds.minX, outlineBounds.maxY],
+                ] as const
+              ).map(([corner, x, y]) => (
+                <circle
+                  key={corner}
+                  cx={x * 1000}
+                  cy={y * h}
+                  r={10 * zs}
+                  fill="#ffd166"
+                  stroke="#141210"
+                  strokeWidth={2 * zs}
+                  style={{ pointerEvents: "all", cursor: `${corner}-resize` }}
+                  onPointerDown={beginOutlineResize(corner)}
+                />
+              ))}
+            </g>
+          )}
+
           {(tool === "outline" || tool === "rect") &&
             points.map((p, i) => (
               <circle
@@ -1247,6 +1566,7 @@ export function PlanModelEditor(props: {
                   style={{
                     left: `${pos.x * 100}%`,
                     top: `${pos.y * 100}%`,
+                    ...openingMarkerStyle(o.id),
                     background: OPENING_KIND_COLORS[kind],
                     borderColor: OPENING_STATUS_COLORS[o.status],
                   }}
@@ -1254,6 +1574,8 @@ export function PlanModelEditor(props: {
                   onPointerDown={beginDotDrag(o)}
                   onClick={(ev) => {
                     ev.stopPropagation();
+                    setSelectedOutline(false);
+                    setSelectedFeature(null);
                     setSelectedId(o.id);
                   }}
                 >
@@ -1264,6 +1586,46 @@ export function PlanModelEditor(props: {
       </div>
       </div>
 
+      {selectedOutline && activeOutlineId && (
+        <div className="plan-model-editor__dot-panel">
+          <strong>Whole outline selected</strong>
+          <span className="muted">Drag inside to move; drag a yellow corner to resize.</span>
+          <button
+            type="button"
+            className="button-like"
+            onClick={() => scaleWholeOutline(0.9)}
+          >
+            − Smaller
+          </button>
+          <button
+            type="button"
+            className="button-like"
+            onClick={() => scaleWholeOutline(1.1)}
+          >
+            + Larger
+          </button>
+          <button
+            type="button"
+            className="button-like"
+            disabled={removeOutline.isPending}
+            onClick={() => {
+              if (window.confirm("Delete this entire outline?")) {
+                removeOutline.mutate(activeOutlineId);
+              }
+            }}
+          >
+            Delete outline
+          </button>
+          <button
+            type="button"
+            className="link"
+            onClick={() => setSelectedOutline(false)}
+          >
+            Deselect
+          </button>
+        </div>
+      )}
+
       {selectedFeature && (
         <div className="plan-model-editor__dot-panel">
           <span className="muted">
@@ -1271,6 +1633,24 @@ export function PlanModelEditor(props: {
               ? "Section divider selected"
               : "Wall opening selected"}
           </span>
+          {selectedFeature.type === "wall" && (
+            <>
+              <button
+                type="button"
+                className="button-like"
+                onClick={() => resizeSelectedWallOpening(-10)}
+              >
+                − Smaller
+              </button>
+              <button
+                type="button"
+                className="button-like"
+                onClick={() => resizeSelectedWallOpening(10)}
+              >
+                + Larger
+              </button>
+            </>
+          )}
           <button
             type="button"
             className="button-like"
@@ -1288,8 +1668,43 @@ export function PlanModelEditor(props: {
         </div>
       )}
 
+      {deletedFeature && (
+        <div className="plan-model-editor__dot-panel">
+          <span className="muted">
+            {deletedFeature.type === "wall" ? "Wall opening" : "Divider"} was deleted.
+          </span>
+          <button type="button" className="button-like" onClick={undoDeletedFeature}>
+            Undo delete
+          </button>
+          <button
+            type="button"
+            className="link"
+            onClick={() => setDeletedFeature(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {selected && (
         <div className="plan-model-editor__dot-panel">
+          <strong>{selected.opening_code} selected</strong>
+          <button
+            type="button"
+            className="button-like"
+            disabled={getOpeningMarkerScale(selected.id) <= 0.6}
+            onClick={() => resizeSelectedMarker(-0.1)}
+          >
+            − Smaller
+          </button>
+          <button
+            type="button"
+            className="button-like"
+            disabled={getOpeningMarkerScale(selected.id) >= 2}
+            onClick={() => resizeSelectedMarker(0.1)}
+          >
+            + Larger
+          </button>
           <label>
             Mark
             <input
@@ -1318,16 +1733,8 @@ export function PlanModelEditor(props: {
           <button
             type="button"
             className="button-like"
-            disabled={selected.status === "installed" || removeDot.isPending}
-            onClick={() => {
-              if (
-                window.confirm(
-                  `Remove opening ${selected.opening_code} from this job?`,
-                )
-              ) {
-                removeDot.mutate(selected.id);
-              }
-            }}
+            disabled={removeDot.isPending}
+            onClick={() => removeDot.mutate(selected)}
           >
             Delete
           </button>
@@ -1337,6 +1744,23 @@ export function PlanModelEditor(props: {
             onClick={() => setSelectedId(null)}
           >
             Deselect
+          </button>
+        </div>
+      )}
+
+      {deletedDot && (
+        <div className="plan-model-editor__dot-panel">
+          <span className="muted">{deletedDot.opening_code} was deleted.</span>
+          <button
+            type="button"
+            className="button-like"
+            disabled={undoRemoveDot.isPending}
+            onClick={() => undoRemoveDot.mutate(deletedDot)}
+          >
+            {undoRemoveDot.isPending ? "Restoring…" : "Undo delete"}
+          </button>
+          <button type="button" className="link" onClick={() => setDeletedDot(null)}>
+            Dismiss
           </button>
         </div>
       )}
