@@ -311,7 +311,7 @@ export function PlanModelEditor(props: {
 
   const beginDotDrag =
     (o: ProjectOpening) => (e: React.PointerEvent<HTMLButtonElement>) => {
-      if (tool !== "select" && tool !== "outline") return;
+      if (tool !== "select") return;
       e.preventDefault();
       e.stopPropagation();
       setSelectedId(o.id);
@@ -367,21 +367,30 @@ export function PlanModelEditor(props: {
         <button
           type="button"
           className={tool === "outline" ? "chip active" : "chip"}
-          onClick={() => setTool("outline")}
+          onClick={() => {
+            setTool("outline");
+            setSelectedId(null);
+          }}
         >
           Trace outline
         </button>
         <button
           type="button"
           className={tool === "window" ? "chip active" : "chip"}
-          onClick={() => setTool("window")}
+          onClick={() => {
+            setTool("window");
+            setSelectedId(null);
+          }}
         >
           + Window
         </button>
         <button
           type="button"
           className={tool === "door" ? "chip active" : "chip"}
-          onClick={() => setTool("door")}
+          onClick={() => {
+            setTool("door");
+            setSelectedId(null);
+          }}
         >
           + Door
         </button>
@@ -444,11 +453,11 @@ export function PlanModelEditor(props: {
       <p className="muted plan-model-editor__hint">
         {tool === "outline"
           ? closed
-            ? "Drag orange handles to reshape, then Save outline."
-            : "Click the faded plan to place outline corners. Click the first point to close."
+            ? "Drag orange handles to reshape, then Save outline. Marks stay hidden until Select / move."
+            : "Click the faded plan to place outline corners (existing marks are hidden). Click the first point to close."
           : tool === "window" || tool === "door"
-            ? `Tap the plan to place a ${tool} mark.`
-            : "Drag numbered dots to move them. Select one to rename or delete."}
+            ? `Tap the plan to place a ${tool} mark. Existing marks are hidden so they don’t block clicks.`
+            : "Existing marks are shown. Drag to move; select one to rename or delete."}
       </p>
 
       {(status || error) && (
@@ -514,40 +523,41 @@ export function PlanModelEditor(props: {
           ))}
         </svg>
 
-        {pageOpenings
-          .filter((o) => o.pin_x != null && o.pin_y != null)
-          .map((o) => {
-            const kind =
-              (o.window_types?.category ?? "").toLowerCase().includes("door") ||
-              /^D\d/i.test(o.opening_code)
-                ? "door"
-                : "window";
-            const pos = dotPos(o);
-            return (
-              <button
-                key={o.id}
-                type="button"
-                className={`plan-dot${
-                  selectedId === o.id ? " plan-dot--selected" : ""
-                }${dotDrag?.id === o.id ? " plan-dot--dragging" : ""}`}
-                style={{
-                  left: `${pos.x * 100}%`,
-                  top: `${pos.y * 100}%`,
-                  background: OPENING_KIND_COLORS[kind],
-                  borderColor: OPENING_STATUS_COLORS[o.status],
-                }}
-                title={o.opening_code}
-                onPointerDown={beginDotDrag(o)}
-                onClick={(ev) => {
-                  ev.stopPropagation();
-                  setSelectedId(o.id);
-                  setTool("select");
-                }}
-              >
-                {openingMarkCode(o.opening_code)}
-              </button>
-            );
-          })}
+        {/* Hide marks while tracing/placing so they don’t steal corner clicks. */}
+        {tool === "select" &&
+          pageOpenings
+            .filter((o) => o.pin_x != null && o.pin_y != null)
+            .map((o) => {
+              const kind =
+                (o.window_types?.category ?? "").toLowerCase().includes("door") ||
+                /^D\d/i.test(o.opening_code)
+                  ? "door"
+                  : "window";
+              const pos = dotPos(o);
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  className={`plan-dot${
+                    selectedId === o.id ? " plan-dot--selected" : ""
+                  }${dotDrag?.id === o.id ? " plan-dot--dragging" : ""}`}
+                  style={{
+                    left: `${pos.x * 100}%`,
+                    top: `${pos.y * 100}%`,
+                    background: OPENING_KIND_COLORS[kind],
+                    borderColor: OPENING_STATUS_COLORS[o.status],
+                  }}
+                  title={o.opening_code}
+                  onPointerDown={beginDotDrag(o)}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    setSelectedId(o.id);
+                  }}
+                >
+                  {openingMarkCode(o.opening_code)}
+                </button>
+              );
+            })}
       </div>
 
       {selected && (
