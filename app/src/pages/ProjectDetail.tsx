@@ -10,7 +10,6 @@ import {
   loadWindow,
 } from "../lib/api";
 import {
-  getMyProfile,
   listOpenings,
   listProjectExceptions,
   saveJobEstimate,
@@ -27,6 +26,7 @@ import { prefetchJobPack } from "../lib/queryClient";
 import { useRealtimeOpenings } from "../lib/useRealtimeOpenings";
 import { STATUS_LABELS, type Project, type WindowUnit } from "../lib/types";
 import { isForemanPlus } from "../lib/install/types";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { ProjectMap } from "./install/ProjectMap";
 import { DispatchBoard } from "./install/DispatchBoard";
 
@@ -52,8 +52,8 @@ export function ProjectDetail() {
       : "overview";
 
   useRealtimeOpenings(projectId);
-  const myProfile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const isLead = isForemanPlus(myProfile.data?.role);
+  const { effectiveRole } = useEffectiveRole();
+  const isLead = isForemanPlus(effectiveRole);
 
   const TABS: { id: HubTab; label: string }[] = [
     { id: "overview", label: "Overview" },
@@ -220,7 +220,7 @@ export function ProjectDetail() {
       {tab === "map" && <ProjectMap embedded />}
 
       {tab === "exceptions" && isLead && (
-        <ExceptionsTab projectId={projectId} />
+        <ExceptionsTab projectId={projectId} canSee={isLead} />
       )}
 
       {tab === "brain" && (
@@ -527,10 +527,10 @@ function fmtDate(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleString();
 }
 
-function ExceptionsTab({ projectId }: { projectId: string }) {
+function ExceptionsTab({ projectId, canSee }: { projectId: string; canSee: boolean }) {
   const exceptions = useQuery({
     queryKey: ["projectExceptions", projectId],
-    queryFn: () => listProjectExceptions(projectId),
+    queryFn: () => listProjectExceptions(projectId, canSee),
   });
 
   if (exceptions.isLoading) {

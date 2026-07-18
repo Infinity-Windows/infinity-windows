@@ -10,6 +10,7 @@ import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
 import { orderMyWork, type DispatchOpening } from "../lib/dispatch";
 import { openingReadiness } from "../lib/install/fit";
 import { isForemanPlus, type ProjectOpening } from "../lib/install/types";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 
 function areaKey(o: ProjectOpening): string {
   return o.label?.trim() || `page ${o.page_number}`;
@@ -37,6 +38,7 @@ function toDispatch(o: ProjectOpening): DispatchOpening {
 export function MyWork() {
   const navigate = useNavigate();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const { effectiveRole } = useEffectiveRole();
   const openings = useQuery({
     queryKey: ["myOpenings", me.data?.id],
     queryFn: () => listMyOpeningsAllJobs(me.data!.id),
@@ -118,7 +120,7 @@ export function MyWork() {
           <p className="home-greeting">Your day</p>
           <h1>My work</h1>
         </div>
-        {isForemanPlus(me.data?.role) && (
+        {isForemanPlus(effectiveRole) && (
           <Link to="/training" className="button-like">
             Training
           </Link>

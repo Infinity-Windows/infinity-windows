@@ -8,6 +8,7 @@ import {
 import { listInstalledForQc } from "../lib/ops";
 import { listShiftsToApprove } from "../lib/timeclock";
 import { isSupervisorPlus, isForemanPlus } from "../lib/install/types";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 
 interface Note {
   id: string;
@@ -20,9 +21,9 @@ interface Note {
 export function Notifications() {
   const navigate = useNavigate();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const role = me.data?.role;
-  const lead = isForemanPlus(role);
-  const admin = isSupervisorPlus(role);
+  const { effectiveRole } = useEffectiveRole();
+  const lead = isForemanPlus(effectiveRole);
+  const admin = isSupervisorPlus(effectiveRole);
   const id = me.data?.id;
 
   const memos = useQuery({

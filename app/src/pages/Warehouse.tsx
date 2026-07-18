@@ -3,8 +3,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { getDashboardCounts, listProjects, searchUnits } from "../lib/api";
 import { STATUS_LABELS } from "../lib/types";
-import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 
 interface WarehouseLink {
   to: string;
@@ -23,8 +23,8 @@ const LINKS: WarehouseLink[] = [
 ];
 
 export function Warehouse() {
-  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const lead = isForemanPlus(me.data?.role);
+  const { effectiveRole } = useEffectiveRole();
+  const lead = isForemanPlus(effectiveRole);
   const counts = useQuery({ queryKey: ["dashboard"], queryFn: getDashboardCounts });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
 
