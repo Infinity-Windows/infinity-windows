@@ -197,7 +197,9 @@ export default function App() {
     >
       <PinGate>
       <ViewAsRoleProvider>
-      <BrowserRouter>
+      <BrowserRouter
+        basename={(import.meta.env.BASE_URL || "/").replace(/\/$/, "") || undefined}
+      >
         <ClockProvider>
         <Routes>
           <Route element={<Layout />}>
