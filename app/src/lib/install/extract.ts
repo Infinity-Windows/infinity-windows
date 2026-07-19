@@ -66,14 +66,67 @@ export type ExtractStrategy = (
 export const deterministicExtract: ExtractStrategy = (pages) =>
   pages.flatMap((p) => parseScheduleRows(p.text, p.pageNumber));
 
+export interface ExtractOptions {
+  /**
+   * Also run the AI fallback (and reconcile it with the deterministic result)
+   * when the deterministic + detail merge produced this many rows or fewer.
+   * Defaults to 0, i.e. AI only runs when nothing was found. Raise it so a
+   * suspiciously small deterministic result no longer suppresses AI.
+   */
+  aiWhenBelow?: number;
+}
+
+/**
+ * Union two schedule-row sets by base mark, never dropping a mark either
+ * source found. When both list the same mark we keep the larger quantity and
+ * fill in any missing product/size/color/kind — so a partial deterministic
+ * parse and the AI result reinforce each other instead of one clobbering the
+ * other.
+ */
+export function unionScheduleRows(
+  primary: ScheduleRow[],
+  secondary: ScheduleRow[],
+): ScheduleRow[] {
+  const byMark = new Map<string, ScheduleRow>();
+  const key = (row: ScheduleRow) => markBase(row.openingCode).toUpperCase();
+  for (const row of primary) byMark.set(key(row), { ...row });
+  for (const row of secondary) {
+    const k = key(row);
+    const existing = byMark.get(k);
+    if (!existing) {
+      byMark.set(k, { ...row });
+      continue;
+    }
+    existing.qty = Math.max(existing.qty, row.qty);
+    if (
+      (!existing.typeText || existing.typeText === existing.openingCode) &&
+      row.typeText &&
+      row.typeText !== row.openingCode
+    ) {
+      existing.typeText = row.typeText;
+    }
+    existing.widthIn ??= row.widthIn;
+    existing.heightIn ??= row.heightIn;
+    existing.color ??= row.color;
+    existing.label ??= row.label;
+  }
+  return [...byMark.values()].sort((a, b) =>
+    a.openingCode.localeCompare(b.openingCode, undefined, { numeric: true }),
+  );
+}
+
 /**
  * Run deterministic schedule extract, then fill missing marks from
- * manufacturer CAD detail sheets (#4A / #4B style). AI only runs when both
- * paths find nothing. Same draft/confirm guardrails apply downstream.
+ * manufacturer CAD detail sheets (#4A / #4B style). AI runs when both paths
+ * find nothing, or when the deterministic result is implausibly small
+ * (`options.aiWhenBelow`) — in which case AI is reconciled with, not
+ * substituted for, the deterministic rows. Same draft/confirm guardrails
+ * apply downstream.
  */
 export async function extractScheduleRows(
   pages: { pageNumber: number; text: string }[],
   aiFallback?: ExtractStrategy | null,
+  options?: ExtractOptions,
 ): Promise<{
   rows: ScheduleRow[];
   source: "deterministic" | "ai" | "details" | "merged" | "none";
@@ -82,20 +135,30 @@ export async function extractScheduleRows(
   const detailRows = parseCadDetailScheduleRows(pages);
   const merged = mergeScheduleWithDetailRows(deterministic, detailRows);
 
-  if (merged.length > 0) {
-    if (deterministic.length > 0 && detailRows.length > 0) {
-      return { rows: merged, source: "merged" };
-    }
-    if (deterministic.length > 0) {
-      return { rows: merged, source: "deterministic" };
-    }
-    return { rows: merged, source: "details" };
+  const baseSource: "deterministic" | "details" | "merged" =
+    deterministic.length > 0 && detailRows.length > 0
+      ? "merged"
+      : deterministic.length > 0
+        ? "deterministic"
+        : "details";
+
+  const aiWhenBelow = options?.aiWhenBelow ?? 0;
+  const wantAi = !!aiFallback && merged.length <= aiWhenBelow;
+
+  if (merged.length > 0 && !wantAi) {
+    return { rows: merged, source: baseSource };
   }
 
-  if (aiFallback) {
+  if (aiFallback && wantAi) {
     const aiRows = await aiFallback(pages);
-    if (aiRows.length > 0) return { rows: aiRows, source: "ai" };
+    if (aiRows.length > 0) {
+      if (merged.length === 0) return { rows: aiRows, source: "ai" };
+      // Reconcile: keep every deterministic mark and let AI add the rest.
+      return { rows: unionScheduleRows(merged, aiRows), source: "merged" };
+    }
   }
+
+  if (merged.length > 0) return { rows: merged, source: baseSource };
   return { rows: [], source: "none" };
 }
 
@@ -109,7 +172,18 @@ const SIZE_RE =
 const SIZE_IN_RE =
   /(\d+(?:\.\d+)?)\s*(?:"|in|”)?\s*[x×]\s*(\d+(?:\.\d+)?)\s*(?:"|in|”)?/i;
 const HEADER_WORDS =
-  /\b(MARK|SYMBOL|QTY|QUANTITY|MANUF|SCHEDULE|REMARKS|R\.O\.|ROUGH|WIDTH|HEIGHT|COLOR|FINISH)\b/i;
+  /\b(MARK|SYMBOL|QTY|QUANTITY|MANUF|SCHEDULE|REMARKS|R\.O\.|ROUGH|WIDTH|HEIGHT|COLOR|FINISH)\b/gi;
+// A single field that is purely a column header word (e.g. "QTY") — dropped so
+// it never lands in the label and so "… QTY 3 …" reads the 3 as the quantity.
+const HEADER_WORD_TOKEN_RE =
+  /^(MARK|SYMBOL|QTY|QUANTITY|QTY\.|MANUF|MFR|SCHEDULE|REMARKS|ROUGH|WIDTH|HEIGHT|COLOR|COLOUR|FINISH|SIZE|TYPE|UNIT|NO|NO\.|COUNT|EA|PCS|EACH)$/i;
+// Explicit quantity tokens, checked before the bare-number heuristic so a
+// labelled count always wins: "QTY:3", "QTY 3" (two fields), "(3)", "3 EA",
+// "x3", "×12". Bare integers are only used when nothing explicit is present.
+const QTY_LABELLED_RE = /^(?:QTY|QTY\.|QUANTITY|COUNT|NO|NO\.)[:=]?\s*(\d{1,3})$/i;
+const QTY_PAREN_RE = /^\((\d{1,3})\)$/;
+const QTY_SUFFIX_RE = /^(\d{1,3})\s*(?:EA|PCS?|PC|PLCS|UNITS?|X)$/i;
+const QTY_MULT_RE = /^[x×](\d{1,3})$/i;
 const DOOR_WORDS = /\b(DOOR|DOORS|ENTRY|SLIDING\s*DOOR|FRENCH\s*DOOR)\b/i;
 const WINDOW_WORDS = /\b(WINDOW|WINDOWS|CASEMENT|DOUBLE[\s-]?HUNG|SLIDER|PICTURE)\b/i;
 const COLOR_WORDS =
@@ -194,7 +268,7 @@ export function parseScheduleRows(
 
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
-    if (!line || HEADER_WORDS.test(line)) continue;
+    if (!line) continue;
 
     let fields = splitFields(line);
     if (fields.length < 2) fields = line.split(/\s+/);
@@ -203,6 +277,14 @@ export function parseScheduleRows(
     const markUpper = fields[0].toUpperCase();
     if (!MARK_RE.test(markUpper)) continue;
     const mark = normalizeMark(markUpper);
+
+    // The row starts with a real mark. Only reject it as a header when it is
+    // dense with column-header words (e.g. "MARK TYPE SIZE QTY LOCATION"); a
+    // data row such as "#14 CAS3050 QTY 3 LIVING" must survive even though it
+    // mentions QTY. (An upfront HEADER_WORDS skip used to drop those rows.)
+    HEADER_WORDS.lastIndex = 0;
+    const headerHits = (line.match(HEADER_WORDS) ?? []).length;
+    if (headerHits >= 2) continue;
 
     // Bare 4-digit product codes (6080 XO / 3060 FIXED) are manufacturer
     // catalog sizes, not schedule marks — skip those lines.
@@ -216,12 +298,17 @@ export function parseScheduleRows(
     }
 
     let typeText: string | null = null;
-    let qty = 1;
-    let qtySeen = false;
+    let explicitQty: number | null = null;
+    let bareQty: number | null = null;
     let widthIn: number | null = null;
     let heightIn: number | null = null;
     let color: string | null = null;
     const labelParts: string[] = [];
+
+    const takeQty = (raw: string): number | null => {
+      const n = Number(raw);
+      return Number.isFinite(n) && n >= 1 && n <= 500 ? n : null;
+    };
 
     for (const field of fields.slice(1)) {
       const f = field.trim();
@@ -236,9 +323,23 @@ export function parseScheduleRows(
       // SIZE_RE-ish leftovers that aren't parseable as full size — skip.
       if (/\d\s*['"x×]/i.test(f) && /[x×]/i.test(f)) continue;
 
-      if (!qtySeen && /^\d{1,3}$/.test(f)) {
-        qty = Number(f);
-        qtySeen = true;
+      // Labelled/explicit quantity always wins over a stray bare integer.
+      const labelled =
+        f.match(QTY_LABELLED_RE) ??
+        f.match(QTY_PAREN_RE) ??
+        f.match(QTY_SUFFIX_RE) ??
+        f.match(QTY_MULT_RE);
+      if (labelled) {
+        const n = takeQty(labelled[1]);
+        if (n != null) explicitQty = n;
+        continue;
+      }
+      // Drop bare column-header words ("QTY", "TYPE", …) so they neither
+      // pollute the label nor hide the quantity number that follows them.
+      if (HEADER_WORD_TOKEN_RE.test(f)) continue;
+
+      if (bareQty === null && /^\d{1,3}$/.test(f)) {
+        bareQty = takeQty(f);
         continue;
       }
       if (COLOR_WORDS.test(f)) {
@@ -252,6 +353,8 @@ export function parseScheduleRows(
       if (/[A-Za-z]/.test(f)) labelParts.push(f);
     }
 
+    const qty = explicitQty ?? bareQty ?? 1;
+
     if (!typeText && labelParts.length > 0) {
       typeText = labelParts.shift()!.toUpperCase();
     }
@@ -262,7 +365,7 @@ export function parseScheduleRows(
     rows.push({
       openingCode: mark,
       typeText,
-      qty: qty >= 1 && qty <= 500 ? qty : 1,
+      qty,
       label: labelParts.length ? labelParts.join(" ") : null,
       pageNumber,
       widthIn,
@@ -454,4 +557,119 @@ export function summarizeDraftMarks(
     else map.set(key, { mark: d.mark_code, count: 1, kind: d.kind });
   }
   return [...map.values()].sort((a, b) => a.mark.localeCompare(b.mark));
+}
+
+export type PlansetKindLike = "building" | "specs";
+
+/** Existing opening as seen by the draft-persistence planner. */
+export interface ExistingOpeningLite {
+  id: string;
+  opening_code: string;
+  confirmed: boolean;
+  status: string;
+  pin_x: number | null;
+  pin_y: number | null;
+  page_number: number;
+  /** Kind of the planset this opening came from. */
+  planset_kind: PlansetKindLike;
+}
+
+export interface DraftPersistencePlan {
+  /** Opening ids to delete (stale same-kind drafts + superseded marks). */
+  deleteIds: string[];
+  /** Drafts to insert, with preserved manual pins merged back in. */
+  inserts: DraftOpening[];
+  /** How many incoming drafts were skipped (protected or owned elsewhere). */
+  skipped: number;
+}
+
+/**
+ * Decide what a re-extract should delete and insert, WITHOUT wiping openings
+ * that belong to the other planset slot.
+ *
+ * The old behaviour deleted every unconfirmed opening on the whole project, so
+ * uploading the specs sheet after the marked building plan destroyed all the
+ * building-plan openings (105 → 6 on Smith Residence). This planner instead:
+ *
+ *  1. Replaces only unconfirmed drafts from a planset of the SAME kind (each
+ *     upload creates a new planset row, so we scope by kind, not planset id).
+ *  2. Treats the building plan as authoritative for openings: saving a building
+ *     plan supersedes unconfirmed specs-only openings that share its marks.
+ *  3. Never creates a second opening for a mark that already exists in the
+ *     other slot, and never touches confirmed / in-progress openings.
+ *  4. Preserves manually placed pins across a same-kind re-extract.
+ */
+export function planDraftPersistence(
+  existing: ExistingOpeningLite[],
+  drafts: DraftOpening[],
+  incomingKind: PlansetKindLike,
+): DraftPersistencePlan {
+  const isProtected = (o: ExistingOpeningLite) =>
+    o.confirmed || o.status !== "planned";
+
+  const sameKindStale = existing.filter(
+    (o) => !isProtected(o) && o.planset_kind === incomingKind,
+  );
+
+  const incomingMarks = new Set(drafts.map((d) => markBase(d.opening_code)));
+  const superseded =
+    incomingKind === "building"
+      ? existing.filter(
+          (o) =>
+            !isProtected(o) &&
+            o.planset_kind !== "building" &&
+            incomingMarks.has(markBase(o.opening_code)),
+        )
+      : [];
+
+  const deleteSet = new Set<string>(
+    [...sameKindStale, ...superseded].map((o) => o.id),
+  );
+  const survivors = existing.filter((o) => !deleteSet.has(o.id));
+
+  // Manual pins from replaced same-kind drafts, restored by opening code.
+  const preservedPins = new Map<
+    string,
+    { pin_x: number; pin_y: number; page_number: number }
+  >();
+  for (const o of sameKindStale) {
+    if (o.pin_x == null || o.pin_y == null) continue;
+    preservedPins.set(o.opening_code, {
+      pin_x: o.pin_x,
+      pin_y: o.pin_y,
+      page_number: o.page_number,
+    });
+  }
+
+  const protectedCodes = new Set(
+    survivors.filter(isProtected).map((o) => o.opening_code),
+  );
+  // Base marks already owned by a surviving opening from the OTHER slot — we
+  // won't duplicate the same physical opening across both plansets.
+  const otherKindMarks = new Set(
+    survivors
+      .filter((o) => o.planset_kind !== incomingKind)
+      .map((o) => markBase(o.opening_code)),
+  );
+
+  const inserts: DraftOpening[] = [];
+  let skipped = 0;
+  for (const d of drafts) {
+    if (
+      protectedCodes.has(d.opening_code) ||
+      otherKindMarks.has(markBase(d.opening_code))
+    ) {
+      skipped += 1;
+      continue;
+    }
+    const kept = preservedPins.get(d.opening_code);
+    inserts.push({
+      ...d,
+      page_number: kept?.page_number ?? d.page_number,
+      pin_x: kept?.pin_x ?? d.pin_x ?? null,
+      pin_y: kept?.pin_y ?? d.pin_y ?? null,
+    });
+  }
+
+  return { deleteIds: [...deleteSet], inserts, skipped };
 }

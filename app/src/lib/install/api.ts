@@ -1,7 +1,7 @@
 import { supabase } from "../supabase";
 import type { WindowType } from "../types";
-import type { DraftOpening } from "./extract";
-import { markBase } from "./extract";
+import type { DraftOpening, ExistingOpeningLite, PlansetKindLike } from "./extract";
+import { markBase, planDraftPersistence } from "./extract";
 import type {
   InstallEvent,
   MemoTopics,
@@ -903,11 +903,13 @@ export async function getOpening(id: string): Promise<ProjectOpening | null> {
 /**
  * Save a fresh extract as unconfirmed drafts. Guardrail (same philosophy as
  * the Horizon BOM rule): confirmed openings are never deleted or overwritten
- * by a re-extract — only unconfirmed drafts are replaced, and draft codes
- * that collide with confirmed openings are skipped.
+ * by a re-extract.
  *
- * Manually placed pins on unconfirmed drafts are preserved across re-extract
- * when the same opening_code comes back.
+ * Crucially, replacement is scoped by planset KIND — uploading the specs sheet
+ * no longer wipes the marked building plan's openings (that bug collapsed
+ * Smith Residence from ~105 openings down to 6). The building plan is the
+ * authoritative source of openings; specs enriches types. Manually placed pins
+ * are preserved across a same-kind re-extract. See `planDraftPersistence`.
  */
 export async function saveDraftOpenings(
   projectId: string,
@@ -916,64 +918,67 @@ export async function saveDraftOpenings(
 ): Promise<{ inserted: number; skipped: number }> {
   if (drafts.length === 0) return { inserted: 0, skipped: 0 };
 
-  const { data: existing, error: exErr } = await supabase
-    .from("project_openings")
-    .select("id, opening_code, confirmed, status, pin_x, pin_y, page_number")
-    .eq("project_id", projectId);
+  const [{ data: plansets, error: psErr }, { data: existing, error: exErr }] =
+    await Promise.all([
+      supabase
+        .from("project_plansets")
+        .select("id, kind")
+        .eq("project_id", projectId),
+      supabase
+        .from("project_openings")
+        .select("id, opening_code, confirmed, status, pin_x, pin_y, page_number, planset_id")
+        .eq("project_id", projectId),
+    ]);
+  if (psErr) throw psErr;
   if (exErr) throw exErr;
 
-  // Protected = confirmed OR already progressed past planning (assigned /
-  // installed). Only untouched drafts are replaced by a re-extract.
-  const isProtected = (o: { confirmed: boolean; status: string }) =>
-    o.confirmed || o.status !== "planned";
-  const confirmedCodes = new Set(
-    existing.filter(isProtected).map((o) => o.opening_code),
+  const normalizeKind = (kind: unknown): PlansetKindLike =>
+    kind === "specs" ? "specs" : "building";
+  const kindById = new Map(
+    (plansets ?? []).map((p) => [p.id, normalizeKind(p.kind)]),
   );
-  const preservedPins = new Map<
-    string,
-    { pin_x: number; pin_y: number; page_number: number }
-  >();
-  for (const o of existing) {
-    if (isProtected(o)) continue;
-    if (o.pin_x == null || o.pin_y == null) continue;
-    preservedPins.set(o.opening_code, {
-      pin_x: Number(o.pin_x),
-      pin_y: Number(o.pin_y),
-      page_number: o.page_number,
-    });
-  }
-  const staleDraftIds = existing.filter((o) => !isProtected(o)).map((o) => o.id);
+  const incomingKind = kindById.get(plansetId) ?? "building";
 
-  if (staleDraftIds.length > 0) {
+  const existingLite: ExistingOpeningLite[] = (existing ?? []).map((o) => ({
+    id: o.id,
+    opening_code: o.opening_code,
+    confirmed: Boolean(o.confirmed),
+    status: String(o.status ?? "planned"),
+    pin_x: o.pin_x == null ? null : Number(o.pin_x),
+    pin_y: o.pin_y == null ? null : Number(o.pin_y),
+    page_number: o.page_number ?? 1,
+    planset_kind: o.planset_id
+      ? (kindById.get(o.planset_id) ?? "building")
+      : "building",
+  }));
+
+  const plan = planDraftPersistence(existingLite, drafts, incomingKind);
+
+  if (plan.deleteIds.length > 0) {
     const { error: delErr } = await supabase
       .from("project_openings")
       .delete()
-      .in("id", staleDraftIds);
+      .in("id", plan.deleteIds);
     if (delErr) throw delErr;
   }
 
-  const fresh = drafts.filter((d) => !confirmedCodes.has(d.opening_code));
-  const skipped = drafts.length - fresh.length;
-  if (fresh.length === 0) return { inserted: 0, skipped };
+  if (plan.inserts.length === 0) return { inserted: 0, skipped: plan.skipped };
 
   const { error } = await supabase.from("project_openings").insert(
-    fresh.map((d) => {
-      const kept = preservedPins.get(d.opening_code);
-      return {
-        project_id: projectId,
-        planset_id: plansetId,
-        opening_code: d.opening_code,
-        window_type_id: d.window_type_id,
-        label: d.label,
-        page_number: kept?.page_number ?? d.page_number,
-        pin_x: kept?.pin_x ?? d.pin_x ?? null,
-        pin_y: kept?.pin_y ?? d.pin_y ?? null,
-        confirmed: false,
-      };
-    }),
+    plan.inserts.map((d) => ({
+      project_id: projectId,
+      planset_id: plansetId,
+      opening_code: d.opening_code,
+      window_type_id: d.window_type_id,
+      label: d.label,
+      page_number: d.page_number,
+      pin_x: d.pin_x ?? null,
+      pin_y: d.pin_y ?? null,
+      confirmed: false,
+    })),
   );
   if (error) throw error;
-  return { inserted: fresh.length, skipped };
+  return { inserted: plan.inserts.length, skipped: plan.skipped };
 }
 
 /**

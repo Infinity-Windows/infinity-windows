@@ -3,7 +3,12 @@ import {
   extractScheduleRows,
   matchWindowType,
   parseScheduleRows,
+  planDraftPersistence,
   rowsToDraftOpenings,
+  unionScheduleRows,
+  type DraftOpening,
+  type ExistingOpeningLite,
+  type ScheduleRow,
   type TypeCandidate,
 } from "./extract";
 
@@ -243,5 +248,196 @@ describe("extractScheduleRows", () => {
     expect(result.source).toBe("ai");
     expect(result.rows).toHaveLength(1);
     expect(ai).toHaveBeenCalledOnce();
+  });
+
+  it("reconciles AI with deterministic when the result looks low", async () => {
+    const ai = vi.fn(async () => [
+      // AI finds an extra mark the deterministic pass missed, plus a higher
+      // qty for W1 — neither should be lost.
+      { openingCode: "W1", typeText: "CAS3050", qty: 5, label: null, pageNumber: 1, widthIn: null, heightIn: null, color: null, kind: "window" as const },
+      { openingCode: "W9", typeText: "DH2846", qty: 3, label: null, pageNumber: 1, widthIn: null, heightIn: null, color: null, kind: "window" as const },
+    ]);
+    const result = await extractScheduleRows(
+      [{ pageNumber: 1, text: "W1  CAS3050  2  LIVING" }],
+      ai,
+      { aiWhenBelow: 5 },
+    );
+    expect(ai).toHaveBeenCalledOnce();
+    const w1 = result.rows.find((r) => r.openingCode === "W1");
+    const w9 = result.rows.find((r) => r.openingCode === "W9");
+    expect(w1?.qty).toBe(5); // larger qty wins
+    expect(w9).toBeDefined(); // AI-only mark is kept
+  });
+
+  it("does not call AI when merged rows exceed the low-water mark", async () => {
+    const ai = vi.fn(async () => []);
+    const result = await extractScheduleRows(
+      [{ pageNumber: 1, text: SCHEDULE_TEXT }],
+      ai,
+      { aiWhenBelow: 2 },
+    );
+    expect(ai).not.toHaveBeenCalled();
+    expect(result.rows.length).toBeGreaterThan(2);
+  });
+});
+
+// A schedule whose per-mark quantities sum to 105 openings (mirrors the real
+// Smith Residence / Pecan Valley building count). Guards against ever again
+// collapsing multi-quantity marks down to one opening each.
+const MULTI_QTY_SCHEDULE = `
+WINDOW & DOOR SCHEDULE
+MARK  TYPE  SIZE  QTY  LOCATION
+#14  CAS3050  3'-0" x 5'-0"  25  LIVING ROOM
+#17  DH2846  2'-8" x 4'-6"  16  BEDROOMS
+#6   SL6040  6'-0" x 4'-0"  12  KITCHEN
+#11  PIC4060  4'-0" x 6'-0"  5   STAIR
+#12  CAS3050  3'-0" x 5'-0"  5   BATH
+#19  DH2846  2'-8" x 4'-6"  4   LOFT
+#20  SL6040  6'-0" x 4'-0"  4   DINING
+#21  PIC4060  4'-0" x 6'-0"  4   ENTRY
+#4   ENTRY DOOR  3'-0" x 8'-0"  30  UNIT ENTRY
+`;
+
+describe("quantity expansion (sums, not counts)", () => {
+  it("reads inline 'QTY N' data rows that used to be dropped as headers", () => {
+    const rows = parseScheduleRows("#14  CAS3050  QTY 3  LIVING ROOM");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ openingCode: "14", typeText: "CAS3050", qty: 3 });
+    expect(rows[0].label ?? "").not.toMatch(/QTY/i);
+  });
+
+  it("reads explicit qty markers: (N), xN, N EA", () => {
+    expect(parseScheduleRows("W1  CAS3050  (7)  DEN")[0].qty).toBe(7);
+    expect(parseScheduleRows("W2  DH2846  x12  HALL")[0].qty).toBe(12);
+    expect(parseScheduleRows("W3  SL6040  9 EA  SHOP")[0].qty).toBe(9);
+  });
+
+  it("expands a realistic multi-mark schedule to 105 openings", () => {
+    const rows = parseScheduleRows(MULTI_QTY_SCHEDULE);
+    expect(rows).toHaveLength(9);
+    const totalQty = rows.reduce((sum, r) => sum + r.qty, 0);
+    expect(totalQty).toBe(105);
+
+    const drafts = rowsToDraftOpenings(rows, []);
+    expect(drafts).toHaveLength(105);
+    // Each mark expands into individually numbered instances.
+    expect(drafts.filter((d) => d.mark_code === "14")).toHaveLength(25);
+    expect(drafts.filter((d) => d.mark_code === "4")).toHaveLength(30);
+    expect(drafts.find((d) => d.opening_code === "14-25")).toBeDefined();
+    expect(drafts.find((d) => d.mark_code === "4")?.kind).toBe("door");
+  });
+});
+
+describe("unionScheduleRows", () => {
+  const row = (over: Partial<ScheduleRow>): ScheduleRow => ({
+    openingCode: "W1",
+    typeText: "W1",
+    qty: 1,
+    label: null,
+    pageNumber: 1,
+    widthIn: null,
+    heightIn: null,
+    color: null,
+    kind: "window",
+    ...over,
+  });
+
+  it("keeps every mark and prefers the larger quantity + richer product", () => {
+    const merged = unionScheduleRows(
+      [row({ openingCode: "14", typeText: "14", qty: 2 })],
+      [
+        row({ openingCode: "14", typeText: "CAS3050", qty: 5 }),
+        row({ openingCode: "22", typeText: "DH2846", qty: 3 }),
+      ],
+    );
+    const fourteen = merged.find((r) => r.openingCode === "14");
+    expect(fourteen?.qty).toBe(5);
+    expect(fourteen?.typeText).toBe("CAS3050");
+    expect(merged.find((r) => r.openingCode === "22")).toBeDefined();
+  });
+});
+
+describe("planDraftPersistence (per-slot re-extract, root-cause fix)", () => {
+  const draft = (code: string, kind: "window" | "door" = "window"): DraftOpening => ({
+    opening_code: code,
+    window_type_id: null,
+    type_text: code,
+    match_score: 0,
+    label: null,
+    page_number: 3,
+    mark_code: code.replace(/-\d+$/, ""),
+    width_in: null,
+    height_in: null,
+    color: null,
+    kind,
+    pin_x: 0.5,
+    pin_y: 0.5,
+  });
+
+  const existing = (
+    code: string,
+    kind: "building" | "specs",
+    over: Partial<ExistingOpeningLite> = {},
+  ): ExistingOpeningLite => ({
+    id: `${kind}:${code}`,
+    opening_code: code,
+    confirmed: false,
+    status: "planned",
+    pin_x: null,
+    pin_y: null,
+    page_number: 3,
+    planset_kind: kind,
+    ...over,
+  });
+
+  it("uploading specs does NOT wipe building-plan openings (105 stays 105)", () => {
+    // 105 building openings already exist; the specs sheet lists 6 detail marks.
+    const building = ["14-1", "14-2", "6-1", "4A", "18B-1", "13A-1"].map((c) =>
+      existing(c, "building"),
+    );
+    const specsDrafts = ["4A", "18B", "13A"].map((c) => draft(c));
+
+    const plan = planDraftPersistence(building, specsDrafts, "specs");
+    // Nothing building is deleted.
+    expect(plan.deleteIds).toHaveLength(0);
+    // Specs marks already owned by the building plan are not duplicated.
+    expect(plan.inserts).toHaveLength(0);
+    expect(plan.skipped).toBe(3);
+  });
+
+  it("re-uploading the SAME kind replaces its own unconfirmed drafts", () => {
+    const prior = [existing("14-1", "building"), existing("6-1", "building")];
+    const plan = planDraftPersistence(prior, [draft("14-1"), draft("9-1")], "building");
+    expect(plan.deleteIds.sort()).toEqual(["building:14-1", "building:6-1"].sort());
+    expect(plan.inserts.map((d) => d.opening_code).sort()).toEqual(["14-1", "9-1"]);
+  });
+
+  it("never deletes or overwrites confirmed / in-progress openings", () => {
+    const prior = [
+      existing("14-1", "building", { confirmed: true }),
+      existing("6-1", "building", { status: "assigned" }),
+      existing("7-1", "building"),
+    ];
+    const plan = planDraftPersistence(prior, [draft("14-1"), draft("7-1")], "building");
+    expect(plan.deleteIds).toEqual(["building:7-1"]);
+    // Confirmed 14-1 blocks re-inserting that code.
+    expect(plan.inserts.map((d) => d.opening_code)).toEqual(["7-1"]);
+  });
+
+  it("building plan supersedes unconfirmed specs-only openings for its marks", () => {
+    const prior = [existing("4A", "specs"), existing("99", "specs")];
+    const plan = planDraftPersistence(prior, [draft("4A"), draft("14-1")], "building");
+    // The specs 4A is superseded by the authoritative building plan.
+    expect(plan.deleteIds).toContain("specs:4A");
+    expect(plan.deleteIds).not.toContain("specs:99");
+    expect(plan.inserts.map((d) => d.opening_code).sort()).toEqual(["14-1", "4A"]);
+  });
+
+  it("preserves manual pins across a same-kind re-extract", () => {
+    const prior = [
+      existing("14-1", "building", { pin_x: 0.2, pin_y: 0.3, page_number: 4 }),
+    ];
+    const plan = planDraftPersistence(prior, [draft("14-1")], "building");
+    expect(plan.inserts[0]).toMatchObject({ pin_x: 0.2, pin_y: 0.3, page_number: 4 });
   });
 });
