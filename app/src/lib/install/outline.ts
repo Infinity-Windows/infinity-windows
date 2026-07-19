@@ -1,12 +1,25 @@
 // Best-effort building outline extraction from a floor-plan PDF page.
 //
-// The page is rasterized, thresholded to ink/no-ink, downsampled onto a
-// coarse grid, and the largest connected ink region (away from the sheet
-// border and title block) is taken to be the building. Its outer boundary
-// is traced into a polygon and simplified so the map can draw a clean
-// "cartoon" outline instead of the raw drawing.
+// Two extraction strategies feed one shared, rectilinear-aware pipeline:
+//
+//   1. VECTOR (preferred for CAD PDFs): read the page's actual vector stroke
+//      paths via `page.getOperatorList()`, apply the current transformation
+//      matrix, and rasterize the wall strokes onto a coarse occupancy grid.
+//      This sidesteps dimension text / hatching / raster noise entirely.
+//   2. RASTER (fallback): rasterize the page, Otsu-threshold to ink/no-ink and
+//      downsample onto the same occupancy grid.
+//
+// Either way we then run the SAME grid pipeline: crop the sheet border, close
+// wall gaps (doorways/windows), keep the largest mass, fill its interior, open
+// away thin dimension/leader lines, trace the outer boundary and simplify it,
+// then snap edges to right angles so the result reads like a clean "cartoon"
+// building footprint instead of the raw drawing.
+//
+// The geometry helpers are exported as PURE functions (operating on synthetic
+// grids / segment lists) so they can be unit-tested without a DOM/canvas.
 
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
+import { OPS } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 export interface OutlinePoint {
   /** 0..1 across the page width. */
@@ -22,15 +35,31 @@ export interface BuildingOutline {
   pageAspect: number;
 }
 
+/** A straight wall segment in normalized (0..1) page space. */
+export interface WallSegment {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
 const TARGET_WIDTH = 1000;
 /** Pixels per occupancy-grid cell (also dilates thin wall lines together). */
 const CELL = 5;
 /** Ignore ink this close to the page edge (sheet border, title block edge). */
 const EDGE_MARGIN = 0.045;
-const DARK_LUMA = 160;
-const MIN_DARK_PER_CELL = 3;
 /** Reject "outlines" smaller than this fraction of the page area (noise). */
 const MIN_BBOX_FRACTION = 0.08;
+const MIN_DARK_PER_CELL = 3;
+
+// Grid-pipeline tuning (in grid cells). Derived from CELL so the physical
+// scale stays roughly constant even if CELL changes.
+/** Close radius: bridges wall breaks at doors/windows into one loop. */
+const CLOSE_RADIUS = 3;
+/** Open radius: sheds thin dimension strings / leader lines after fill. */
+const OPEN_RADIUS = 2;
+/** Angle (degrees) within which an edge is snapped to horizontal/vertical. */
+const RECTILINEAR_TOL_DEG = 10;
 
 export async function extractBuildingOutline(
   doc: PDFDocumentProxy,
@@ -44,6 +73,229 @@ export async function extractBuildingOutline(
   const height = Math.ceil(viewport.height);
   const pageAspect = height / width;
 
+  const cols = Math.floor(width / CELL);
+  const rows = Math.floor(height / CELL);
+  if (cols < 4 || rows < 4) return { points: [], pageAspect };
+
+  // Strategy 1: vector geometry. Preferred, but only trust it when it yields a
+  // believable footprint; otherwise fall back to the raster path below.
+  try {
+    const segments = await extractWallSegments(page);
+    if (segments.length >= 8) {
+      const occ = segmentsToOccupancy(segments, rows, cols);
+      const points = footprintFromOccupancy(occ, rows, cols);
+      if (points && bboxFraction(points) >= MIN_BBOX_FRACTION) {
+        return { points, pageAspect };
+      }
+    }
+  } catch {
+    // Vector parsing is best-effort; fall through to raster.
+  }
+
+  // Strategy 2: improved raster CV.
+  const occ = await rasterOccupancy(page, viewport, width, height, rows, cols);
+  if (!occ) return { points: [], pageAspect };
+  const points = footprintFromOccupancy(occ, rows, cols);
+  if (!points || bboxFraction(points) < MIN_BBOX_FRACTION) {
+    return { points: [], pageAspect };
+  }
+  return { points, pageAspect };
+}
+
+/* ------------------------------------------------------------------ *
+ * Vector strategy
+ * ------------------------------------------------------------------ */
+
+// DrawOPS path encoding used by pdf.js operator lists (flat number arrays).
+const DRAW_MOVE_TO = 0;
+const DRAW_LINE_TO = 1;
+const DRAW_CURVE_TO = 2;
+const DRAW_QUAD_TO = 3;
+const DRAW_CLOSE = 4;
+
+type Matrix = [number, number, number, number, number, number];
+
+/** Compose two PDF matrices: result applies `b` first, then `a`. */
+function composeMatrix(a: Matrix, b: Matrix): Matrix {
+  return [
+    a[0] * b[0] + a[2] * b[1],
+    a[1] * b[0] + a[3] * b[1],
+    a[0] * b[2] + a[2] * b[3],
+    a[1] * b[2] + a[3] * b[3],
+    a[0] * b[4] + a[2] * b[5] + a[4],
+    a[1] * b[4] + a[3] * b[5] + a[5],
+  ];
+}
+
+function applyMatrix(m: Matrix, x: number, y: number): [number, number] {
+  return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+}
+
+/**
+ * Read the vector stroke/fill paths of a page and return them as straight wall
+ * segments in normalized (0..1, y-down) page space. Curves are flattened to
+ * their endpoints (walls are straight); the current transformation matrix is
+ * tracked through save/restore/transform so nested content lands in page space.
+ */
+async function extractWallSegments(
+  page: Awaited<ReturnType<PDFDocumentProxy["getPage"]>>,
+): Promise<WallSegment[]> {
+  const opList = await page.getOperatorList();
+  const viewport = page.getViewport({ scale: 1 });
+  const base = viewport.transform as unknown as Matrix;
+  const w = viewport.width;
+  const h = viewport.height;
+
+  const stack: Matrix[] = [];
+  let ctm: Matrix = base;
+  const segments: WallSegment[] = [];
+
+  const { fnArray, argsArray } = opList;
+  for (let i = 0; i < fnArray.length; i++) {
+    const fn = fnArray[i];
+    switch (fn) {
+      case OPS.save:
+        stack.push(ctm);
+        break;
+      case OPS.restore:
+        ctm = stack.pop() ?? base;
+        break;
+      case OPS.transform: {
+        const a = argsArray[i] as unknown as number[];
+        ctm = composeMatrix(ctm, [a[0], a[1], a[2], a[3], a[4], a[5]]);
+        break;
+      }
+      case OPS.constructPath: {
+        const args = argsArray[i] as unknown as [number, number[][], unknown];
+        const data = args?.[1]?.[0] as unknown as ArrayLike<number> | undefined;
+        if (data) collectPathSegments(data, ctm, w, h, segments);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return segments;
+}
+
+/** Decode a flat DrawOPS path into normalized straight segments. */
+function collectPathSegments(
+  data: ArrayLike<number>,
+  ctm: Matrix,
+  w: number,
+  h: number,
+  out: WallSegment[],
+): void {
+  let sx = 0;
+  let sy = 0; // subpath start
+  let px = 0;
+  let py = 0; // current point
+  let has = false;
+  const push = (x1: number, y1: number, x2: number, y2: number) => {
+    out.push({ x1: x1 / w, y1: y1 / h, x2: x2 / w, y2: y2 / h });
+  };
+  for (let i = 0; i < data.length; ) {
+    const op = data[i++];
+    switch (op) {
+      case DRAW_MOVE_TO: {
+        const [x, y] = applyMatrix(ctm, data[i++], data[i++]);
+        px = x;
+        py = y;
+        sx = x;
+        sy = y;
+        has = true;
+        break;
+      }
+      case DRAW_LINE_TO: {
+        const [x, y] = applyMatrix(ctm, data[i++], data[i++]);
+        if (has) push(px, py, x, y);
+        px = x;
+        py = y;
+        break;
+      }
+      case DRAW_CURVE_TO: {
+        // Flatten a cubic to its endpoint (walls are straight lines).
+        i += 4;
+        const [x, y] = applyMatrix(ctm, data[i++], data[i++]);
+        if (has) push(px, py, x, y);
+        px = x;
+        py = y;
+        break;
+      }
+      case DRAW_QUAD_TO: {
+        i += 2;
+        const [x, y] = applyMatrix(ctm, data[i++], data[i++]);
+        if (has) push(px, py, x, y);
+        px = x;
+        py = y;
+        break;
+      }
+      case DRAW_CLOSE: {
+        if (has) push(px, py, sx, sy);
+        px = sx;
+        py = sy;
+        break;
+      }
+      default:
+        return; // unknown op; stop decoding this path defensively
+    }
+  }
+}
+
+/**
+ * Rasterize normalized wall segments onto a `rows × cols` occupancy grid.
+ * Segments outside the drawing area (deep in the edge margin) are dropped so
+ * the sheet border does not seed the footprint.
+ */
+export function segmentsToOccupancy(
+  segments: WallSegment[],
+  rows: number,
+  cols: number,
+): Uint8Array {
+  const occ = new Uint8Array(rows * cols);
+  const set = (c: number, r: number) => {
+    if (r >= 0 && c >= 0 && r < rows && c < cols) occ[r * cols + c] = 1;
+  };
+  for (const s of segments) {
+    let c0 = Math.round(s.x1 * (cols - 1));
+    let r0 = Math.round(s.y1 * (rows - 1));
+    const c1 = Math.round(s.x2 * (cols - 1));
+    const r1 = Math.round(s.y2 * (rows - 1));
+    // Bresenham.
+    const dc = Math.abs(c1 - c0);
+    const dr = Math.abs(r1 - r0);
+    const sc = c0 < c1 ? 1 : -1;
+    const sr = r0 < r1 ? 1 : -1;
+    let err = dc - dr;
+    for (;;) {
+      set(c0, r0);
+      if (c0 === c1 && r0 === r1) break;
+      const e2 = 2 * err;
+      if (e2 > -dr) {
+        err -= dr;
+        c0 += sc;
+      }
+      if (e2 < dc) {
+        err += dc;
+        r0 += sr;
+      }
+    }
+  }
+  return occ;
+}
+
+/* ------------------------------------------------------------------ *
+ * Raster strategy
+ * ------------------------------------------------------------------ */
+
+async function rasterOccupancy(
+  page: Awaited<ReturnType<PDFDocumentProxy["getPage"]>>,
+  viewport: ReturnType<Awaited<ReturnType<PDFDocumentProxy["getPage"]>>["getViewport"]>,
+  width: number,
+  height: number,
+  rows: number,
+  cols: number,
+): Promise<Uint8Array | null> {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -54,35 +306,118 @@ export async function extractBuildingOutline(
   await page.render({ canvas, canvasContext: ctx, viewport }).promise;
   const data = ctx.getImageData(0, 0, width, height).data;
 
-  const cols = Math.floor(width / CELL);
-  const rows = Math.floor(height / CELL);
-  if (cols < 4 || rows < 4) return { points: [], pageAspect };
-
   const marginX = Math.round(width * EDGE_MARGIN);
   const marginY = Math.round(height * EDGE_MARGIN);
-
-  // Per-cell dark pixel counts (single pass over the bitmap).
-  const counts = new Uint16Array(rows * cols);
   const yMax = Math.min(rows * CELL, height - marginY);
   const xMax = Math.min(cols * CELL, width - marginX);
+
+  // Luma histogram over the drawing area for an Otsu threshold.
+  const hist = new Uint32Array(256);
+  const luma = new Uint8Array(width * height);
+  for (let y = marginY; y < yMax; y++) {
+    for (let x = marginX; x < xMax; x++) {
+      const i = (y * width + x) * 4;
+      const l =
+        (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]) | 0;
+      luma[y * width + x] = l;
+      hist[l]++;
+    }
+  }
+  const threshold = otsuThreshold(hist);
+
+  const counts = new Uint16Array(rows * cols);
   for (let y = marginY; y < yMax; y++) {
     const rowBase = Math.floor(y / CELL) * cols;
     for (let x = marginX; x < xMax; x++) {
-      const i = (y * width + x) * 4;
-      const luma = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-      if (luma < DARK_LUMA) counts[rowBase + Math.floor(x / CELL)]++;
+      if (luma[y * width + x] < threshold) counts[rowBase + Math.floor(x / CELL)]++;
     }
   }
   const occ = new Uint8Array(rows * cols);
   for (let i = 0; i < occ.length; i++) {
     if (counts[i] >= MIN_DARK_PER_CELL) occ[i] = 1;
   }
+  return occ;
+}
 
-  const comp = largestComponent(occ, rows, cols);
-  if (!comp) return { points: [], pageAspect };
+/**
+ * Otsu's method: pick the luma threshold that maximizes between-class variance.
+ * Returns a value in 1..254; falls back to 160 for a degenerate histogram.
+ */
+export function otsuThreshold(hist: ArrayLike<number>): number {
+  let total = 0;
+  let sum = 0;
+  for (let t = 0; t < 256; t++) {
+    total += hist[t];
+    sum += t * hist[t];
+  }
+  if (total === 0) return 160;
+  let sumB = 0;
+  let wB = 0;
+  let best = 0;
+  let bestT = 160;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (wB === 0) continue;
+    const wF = total - wB;
+    if (wF === 0) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const between = wB * wF * (mB - mF) * (mB - mF);
+    if (between > best) {
+      best = between;
+      bestT = t;
+    }
+  }
+  return Math.min(254, Math.max(1, bestT));
+}
+
+/* ------------------------------------------------------------------ *
+ * Shared grid pipeline: occupancy grid -> clean rectilinear polygon
+ * ------------------------------------------------------------------ */
+
+/**
+ * Turn a raw occupancy grid into a clean, right-angled footprint polygon in
+ * normalized (0..1) page coordinates, or null if nothing plausible remains.
+ * Pure and deterministic — the DOM/canvas never enters here.
+ */
+export function footprintFromOccupancy(
+  occRaw: Uint8Array,
+  rows: number,
+  cols: number,
+): OutlinePoint[] | null {
+  const grid = buildFootprintPolygon(occRaw, rows, cols);
+  if (!grid) return null;
+  return grid.map(([c, r]) => ({ x: c / cols, y: r / rows }));
+}
+
+/**
+ * Core footprint extraction on a grid, returning corner-grid vertices
+ * [col, row]. Exported for testing with synthetic masks.
+ */
+export function buildFootprintPolygon(
+  occRaw: Uint8Array,
+  rows: number,
+  cols: number,
+): [number, number][] | null {
+  // 1. Drop the sheet border / title-block edge strips.
+  let mask = cropEdges(occRaw, rows, cols, EDGE_MARGIN);
+  // 2. Bridge wall breaks (doorways, window gaps) into one closed region.
+  mask = morphClose(mask, rows, cols, CLOSE_RADIUS);
+  // 3. Keep the largest connected mass (drops the title block & stray notes).
+  let comp = largestComponent(mask, rows, cols);
+  if (!comp) return null;
+  // 4. Solidify the footprint so it is one filled region.
+  comp = fillHoles(comp, rows, cols);
+  // 5. Shed thin appendages: dimension strings, leader lines, north arrows.
+  comp = morphOpen(comp, rows, cols, OPEN_RADIUS);
+  // 6. Opening can fragment/erode; re-take the main mass and re-fill.
+  const comp2 = largestComponent(comp, rows, cols);
+  if (!comp2) return null;
+  comp = fillHoles(comp2, rows, cols);
 
   const loop = traceOuterBoundary(comp, rows, cols);
-  if (loop.length < 4) return { points: [], pageAspect };
+  if (loop.length < 4) return null;
 
   let simplified = collapseCollinear(loop);
   let eps = 1.6;
@@ -92,23 +427,175 @@ export async function extractBuildingOutline(
     simplified = rdp(simplified, eps);
   }
 
-  const points = simplified.map(([c, r]) => ({
-    x: (c * CELL) / width,
-    y: (r * CELL) / height,
-  }));
+  // 7. Snap near-axis edges to true horizontal/vertical and tidy the polygon.
+  let snapped = snapRectilinear(simplified, RECTILINEAR_TOL_DEG);
+  snapped = collapseCollinear(snapped);
+  snapped = dedupeClosePoints(snapped);
+  if (snapped.length < 3) return null;
+  return snapped;
+}
 
-  // Sanity: the traced region must cover a meaningful share of the page.
+/** bbox area (fraction of page) of a normalized polygon. */
+function bboxFraction(points: OutlinePoint[]): number {
+  if (points.length === 0) return 0;
   const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
-  const bboxArea =
-    (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
-  if (bboxArea < MIN_BBOX_FRACTION) return { points: [], pageAspect };
+  return (
+    (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys))
+  );
+}
 
-  return { points, pageAspect };
+/** Zero out cells within `marginFrac` of any edge (sheet border/title edge). */
+export function cropEdges(
+  occ: Uint8Array,
+  rows: number,
+  cols: number,
+  marginFrac: number,
+): Uint8Array {
+  const out = occ.slice();
+  const mr = Math.round(rows * marginFrac);
+  const mc = Math.round(cols * marginFrac);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (r < mr || r >= rows - mr || c < mc || c >= cols - mc) {
+        out[r * cols + c] = 0;
+      }
+    }
+  }
+  return out;
+}
+
+/** Grid-square dilation by Chebyshev radius `r` (separable H then V). */
+export function dilate(
+  mask: Uint8Array,
+  rows: number,
+  cols: number,
+  r: number,
+): Uint8Array {
+  if (r <= 0) return mask.slice();
+  const tmp = new Uint8Array(rows * cols);
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      let on = 0;
+      for (let dx = -r; dx <= r && !on; dx++) {
+        const nx = x + dx;
+        if (nx >= 0 && nx < cols && mask[y * cols + nx]) on = 1;
+      }
+      tmp[y * cols + x] = on;
+    }
+  }
+  const out = new Uint8Array(rows * cols);
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      let on = 0;
+      for (let dy = -r; dy <= r && !on; dy++) {
+        const ny = y + dy;
+        if (ny >= 0 && ny < rows && tmp[ny * cols + x]) on = 1;
+      }
+      out[y * cols + x] = on;
+    }
+  }
+  return out;
+}
+
+/** Grid-square erosion by Chebyshev radius `r` (out-of-bounds counts as off). */
+export function erode(
+  mask: Uint8Array,
+  rows: number,
+  cols: number,
+  r: number,
+): Uint8Array {
+  if (r <= 0) return mask.slice();
+  const tmp = new Uint8Array(rows * cols);
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      let on = 1;
+      for (let dx = -r; dx <= r && on; dx++) {
+        const nx = x + dx;
+        if (nx < 0 || nx >= cols || !mask[y * cols + nx]) on = 0;
+      }
+      tmp[y * cols + x] = on;
+    }
+  }
+  const out = new Uint8Array(rows * cols);
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      let on = 1;
+      for (let dy = -r; dy <= r && on; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= rows || !tmp[ny * cols + x]) on = 0;
+      }
+      out[y * cols + x] = on;
+    }
+  }
+  return out;
+}
+
+/** Morphological close (dilate then erode): bridges small gaps. */
+export function morphClose(
+  mask: Uint8Array,
+  rows: number,
+  cols: number,
+  r: number,
+): Uint8Array {
+  return erode(dilate(mask, rows, cols, r), rows, cols, r);
+}
+
+/** Morphological open (erode then dilate): removes thin protrusions/specks. */
+export function morphOpen(
+  mask: Uint8Array,
+  rows: number,
+  cols: number,
+  r: number,
+): Uint8Array {
+  return dilate(erode(mask, rows, cols, r), rows, cols, r);
+}
+
+/**
+ * Fill interior holes: flood the background inward from the grid border; any
+ * background cell not reachable from the border is enclosed and gets set.
+ */
+export function fillHoles(
+  mask: Uint8Array,
+  rows: number,
+  cols: number,
+): Uint8Array {
+  const outside = new Uint8Array(rows * cols);
+  const queue = new Int32Array(rows * cols);
+  let head = 0;
+  let tail = 0;
+  const enq = (r: number, c: number) => {
+    const idx = r * cols + c;
+    if (mask[idx] || outside[idx]) return;
+    outside[idx] = 1;
+    queue[tail++] = idx;
+  };
+  for (let c = 0; c < cols; c++) {
+    enq(0, c);
+    enq(rows - 1, c);
+  }
+  for (let r = 0; r < rows; r++) {
+    enq(r, 0);
+    enq(r, cols - 1);
+  }
+  while (head < tail) {
+    const idx = queue[head++];
+    const r = Math.floor(idx / cols);
+    const c = idx % cols;
+    if (r > 0) enq(r - 1, c);
+    if (r < rows - 1) enq(r + 1, c);
+    if (c > 0) enq(r, c - 1);
+    if (c < cols - 1) enq(r, c + 1);
+  }
+  const out = new Uint8Array(rows * cols);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = mask[i] || !outside[i] ? 1 : 0;
+  }
+  return out;
 }
 
 /** Mask (1/0) of the largest 8-connected occupied component, or null. */
-function largestComponent(
+export function largestComponent(
   occ: Uint8Array,
   rows: number,
   cols: number,
@@ -163,7 +650,7 @@ function largestComponent(
  * into closed loops; the loop with the largest area is the outer boundary.
  * Returns corner-grid vertices as [col, row].
  */
-function traceOuterBoundary(
+export function traceOuterBoundary(
   mask: Uint8Array,
   rows: number,
   cols: number,
@@ -233,8 +720,8 @@ function shoelace(pts: [number, number][]): number {
   return sum / 2;
 }
 
-/** Drop intermediate points on straight runs of unit steps. */
-function collapseCollinear(pts: [number, number][]): [number, number][] {
+/** Drop intermediate points on straight runs. */
+export function collapseCollinear(pts: [number, number][]): [number, number][] {
   if (pts.length < 3) return pts;
   const result: [number, number][] = [];
   for (let i = 0; i < pts.length; i++) {
@@ -251,7 +738,7 @@ function collapseCollinear(pts: [number, number][]): [number, number][] {
 }
 
 /** Ramer–Douglas–Peucker simplification (open path over the loop order). */
-function rdp(pts: [number, number][], eps: number): [number, number][] {
+export function rdp(pts: [number, number][], eps: number): [number, number][] {
   if (pts.length < 3) return pts;
   const keep = new Uint8Array(pts.length);
   keep[0] = 1;
@@ -280,6 +767,62 @@ function rdp(pts: [number, number][], eps: number): [number, number][] {
     }
   }
   return pts.filter((_, i) => keep[i] === 1);
+}
+
+/**
+ * Snap a nearly-rectilinear polygon so each edge that is within `tolDeg` of an
+ * axis becomes exactly horizontal or vertical. Buildings are overwhelmingly
+ * right-angled, so this removes the staircased/diagonal grid noise. Edges that
+ * are genuinely diagonal (beyond tolerance) are left untouched.
+ */
+export function snapRectilinear(
+  pts: [number, number][],
+  tolDeg: number,
+): [number, number][] {
+  const n = pts.length;
+  if (n < 3) return pts;
+  const tol = (tolDeg * Math.PI) / 180;
+  const out: [number, number][] = pts.map((p) => [p[0], p[1]]);
+  for (let i = 1; i < n; i++) {
+    const prev = out[i - 1];
+    const cur = out[i];
+    const dx = cur[0] - prev[0];
+    const dy = cur[1] - prev[1];
+    if (dx === 0 && dy === 0) continue;
+    const ang = Math.atan2(Math.abs(dy), Math.abs(dx)); // 0=horiz, pi/2=vert
+    if (ang <= tol) {
+      // near-horizontal: keep x, lock y to previous vertex
+      out[i] = [cur[0], prev[1]];
+    } else if (ang >= Math.PI / 2 - tol) {
+      // near-vertical: keep y, lock x to previous vertex
+      out[i] = [prev[0], cur[1]];
+    }
+  }
+  return out;
+}
+
+/** Remove consecutive points closer than `minDist` (grid units). */
+export function dedupeClosePoints(
+  pts: [number, number][],
+  minDist = 0.5,
+): [number, number][] {
+  if (pts.length < 3) return pts;
+  const out: [number, number][] = [];
+  for (let i = 0; i < pts.length; i++) {
+    const cur = pts[i];
+    const prev = out[out.length - 1];
+    if (prev && Math.hypot(cur[0] - prev[0], cur[1] - prev[1]) < minDist) {
+      continue;
+    }
+    out.push(cur);
+  }
+  // Also collapse the wrap-around duplicate.
+  if (out.length >= 2) {
+    const first = out[0];
+    const last = out[out.length - 1];
+    if (Math.hypot(first[0] - last[0], first[1] - last[1]) < minDist) out.pop();
+  }
+  return out;
 }
 
 const FALLBACK_RECT: OutlinePoint[] = [
