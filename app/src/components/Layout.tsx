@@ -1,29 +1,29 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Camera, Clock as ClockIcon, Coffee, LayoutGrid, Menu as MenuIcon, Plus } from "lucide-react";
 import { countMyOpenOpenings, getMyProfile } from "../lib/install/api";
-import {
-  pendingInstallCount,
-  subscribeSyncListeners,
-} from "../lib/install/installOutbox";
-import { pendingUploadCount } from "../lib/install/queue";
 import { ROLE_LABELS, type CrewRole } from "../lib/install/types";
-import { activeNavForRole, railSectionsForRole, roleRank, type NavItem } from "../lib/nav";
+import { menuForRole, roleRank, type MenuAction } from "../lib/nav";
 import { useClock } from "../lib/clockContext";
 import { elapsedWorkSeconds, formatClock } from "../lib/timeclock";
 import { effectiveRole, useViewAsRole } from "../lib/viewAsRoleContext";
 import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
+import { supabase } from "../lib/supabase";
 import { ToastHost } from "./ToastHost";
+import { InfinityLogo } from "./brand/InfinityLogo";
+import { AppMenu } from "./nav/AppMenu";
+import { AppMenuDrawer } from "./nav/AppMenuDrawer";
+import { CaptureSheet } from "./nav/CaptureSheet";
 
 const PREVIEW_ROLES: CrewRole[] = ["installer", "foreman", "supervisor", "owner"];
 
 /**
- * One nav model for both viewports (Infinity IA), now driven by the shared NAV
- * registry via `activeNavForRole`:
- * - Desktop (>=860px): full left rail.
- * - Phone: slim bottom bar of the `phone` tabs + a More sheet for the rest.
- * Renders as the effective (possibly previewed) role; a role-loading skeleton
- * avoids flashing the wrong tab set while the profile query resolves.
+ * Infinity Windows app shell — reskinned to the "Horizon Windows Hub" visual
+ * system. Desktop (>=860px) shows the grouped left sidebar; phone shows a fixed
+ * bottom bar (Menu / Jobs / Capture(+) / Clock / Photos) where "Menu" opens the
+ * full grouped slide-out drawer and the center Capture is an overhanging coral
+ * FAB. The menu content + role gating flow from the shared NAV registry.
  */
 export function Layout() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
@@ -32,17 +32,8 @@ export function Layout() {
   const isInstaller = roleRank(role) === 0;
   const location = useLocation();
   const navigate = useNavigate();
-  const [moreOpen, setMoreOpen] = useState(false);
-
-  // Switching the previewed role: update the preview and land on "/" so
-  // RoleLanding drops us on that role's correct home. This prevents an
-  // owner/supervisor from being stranded on the "Restricted" screen when they
-  // preview a lower role while sitting on a page that role can't access.
-  // Real authorization (canAccess / RLS) is untouched — this is preview nav only.
-  const applyPreview = (nextRole: CrewRole | null) => {
-    view.setPreviewRole(nextRole);
-    navigate("/");
-  };
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [captureOpen, setCaptureOpen] = useState(false);
 
   const clock = useClock();
   const shift = clock.shift;
@@ -53,7 +44,7 @@ export function Layout() {
     const t = setInterval(() => setClockNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, [shift?.id]);
-  const clockLabel = shift ? formatClock(elapsedWorkSeconds(shift, clockNow)) : "Time";
+  const clockLabel = shift ? formatClock(elapsedWorkSeconds(shift, clockNow)) : "Clock";
 
   useRealtimeMyOpenings(isInstaller ? me.data?.id : undefined);
   const openCount = useQuery({
@@ -61,170 +52,112 @@ export function Layout() {
     queryFn: () => countMyOpenOpenings(me.data!.id),
     enabled: Boolean(me.data?.id) && isInstaller,
   });
-
-  const hideFab = location.pathname === "/ask";
   const readyBadge = isInstaller ? openCount.data ?? 0 : 0;
 
-  // Offline sync badge: installs waiting for RPC + media waiting for upload.
-  const [pendingSync, setPendingSync] = useState(0);
+  // Close overlays whenever the route changes.
   useEffect(() => {
-    let cancelled = false;
-    const refresh = () => {
-      void Promise.all([pendingInstallCount(), pendingUploadCount()]).then(
-        ([installs, uploads]) => {
-          if (!cancelled) setPendingSync(installs + uploads);
-        },
-      );
-    };
-    refresh();
-    const unsub = subscribeSyncListeners(refresh);
-    const t = window.setInterval(refresh, 15_000);
-    return () => {
-      cancelled = true;
-      unsub();
-      window.clearInterval(t);
-    };
-  }, []);
+    setMenuOpen(false);
+    setCaptureOpen(false);
+  }, [location.pathname]);
 
-  // Ready-work badge belongs on the installer's landing tab ("/" = My Work).
-  const badgeFor = (to: string) => (to === "/" && isInstaller ? readyBadge : 0);
+  const applyPreview = (nextRole: CrewRole | null) => {
+    view.setPreviewRole(nextRole);
+    navigate("/");
+  };
 
-  // While the role is still loading, render a minimal shell (no tabs) so we
-  // never flash the wrong role's navigation.
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+  };
+
+  const sections = menuForRole(role);
+  const isActionActive = (action: MenuAction) => (action === "open-clock" ? clock.isOpen : false);
+  const onMenuAction = (action: MenuAction) => {
+    if (action === "open-clock") {
+      setMenuOpen(false);
+      setCaptureOpen(false);
+      clock.openClock();
+    }
+  };
+
+  const openMenu = () => {
+    setCaptureOpen(false);
+    setMenuOpen((o) => !o);
+  };
+  const openCapture = () => {
+    setMenuOpen(false);
+    setCaptureOpen((o) => !o);
+  };
+  const openClockSheet = () => {
+    setMenuOpen(false);
+    setCaptureOpen(false);
+    clock.openClock();
+  };
+
   if (me.isLoading) {
     return (
       <div className="app-shell">
         <ToastHost />
         <div className="app-frame">
           <aside className="app-rail" aria-label="Primary">
-            <span className="rail-brand" aria-label="Infinity home">
-              <span className="rail-brand-mark" aria-hidden>
-                ∞
-              </span>
-              <span className="rail-brand-word">Infinity</span>
+            <span className="rail-brand" aria-label="Infinity Windows home">
+              <InfinityLogo variant="full" size={22} />
             </span>
           </aside>
           <main className="app-main">
             <Outlet />
           </main>
         </div>
-        <nav className="bottom-nav" aria-label="Main" aria-busy="true" />
+        <nav className="tabbar" aria-label="Main" aria-busy="true" />
       </div>
     );
   }
 
-  const nav = activeNavForRole(role);
-  // Desktop/tablet: the sidebar is the full grouped menu (no More overflow).
-  const railSections = railSectionsForRole(role);
   const previewing = view.canPreview && view.previewRole;
 
-  // One renderer for a sidebar destination — the clock tab is special (opens
-  // the clock sheet and shows the live running timer instead of navigating).
-  const renderRailTab = (tab: NavItem) =>
-    tab.id === "clock" ? (
-      <button
-        key={tab.id}
-        type="button"
-        className={shift ? "rail-tab clock-on" : "rail-tab"}
-        onClick={clock.openClock}
-      >
-        <span className="rail-icon" aria-hidden>
-          {shift ? (
-            <span className={onBreak ? "clock-nav-dot break" : "clock-nav-dot work"} />
-          ) : (
-            tab.icon
-          )}
-        </span>
-        <span className="rail-label">{shift ? clockLabel : tab.label}</span>
-      </button>
-    ) : (
-      <NavLink
-        key={tab.id}
-        to={tab.to}
-        end={tab.to === "/"}
-        className={({ isActive }) => (isActive ? "rail-tab active" : "rail-tab")}
-      >
-        <span className="rail-icon" aria-hidden>
-          {tab.icon}
-        </span>
-        <span className="rail-label">{tab.label}</span>
-        {badgeFor(tab.to) > 0 && <span className="rail-badge">{badgeFor(tab.to)}</span>}
-      </NavLink>
-    );
+  const viewAsPicker = view.canPreview ? (
+    <div className="view-as-picker">
+      <p className="view-as-title">View as role (preview)</p>
+      <div className="view-as-options">
+        {PREVIEW_ROLES.map((r) => {
+          const active = (view.previewRole ?? me.data?.role) === r;
+          return (
+            <button
+              key={r}
+              type="button"
+              className={active ? "view-as-chip active" : "view-as-chip"}
+              aria-pressed={active}
+              onClick={() => applyPreview(r === me.data?.role ? null : r)}
+            >
+              {ROLE_LABELS[r]}
+            </button>
+          );
+        })}
+      </div>
+      {view.previewRole && (
+        <button type="button" className="view-as-reset" onClick={() => applyPreview(null)}>
+          Reset to my role
+        </button>
+      )}
+    </div>
+  ) : null;
 
   return (
     <div className="app-shell">
       <ToastHost />
-      {pendingSync > 0 && (
-        <div
-          className="sync-banner"
-          role="status"
-          aria-live="polite"
-          style={{
-            background: "var(--color-warn, #7a5a00)",
-            color: "#fff",
-            fontSize: 13,
-            padding: "6px 12px",
-            textAlign: "center",
-          }}
-        >
-          {pendingSync} item{pendingSync === 1 ? "" : "s"} waiting to sync —
-          will upload when you&apos;re back in signal
-        </div>
-      )}
       <div className="app-frame">
         <aside className="app-rail" aria-label="Primary">
-          <Link to="/" className="rail-brand" aria-label="Infinity home">
-            <span className="rail-brand-mark" aria-hidden>
-              ∞
-            </span>
-            <span className="rail-brand-word">Infinity</span>
+          <Link to="/" className="rail-brand" aria-label="Infinity Windows home">
+            <InfinityLogo variant="full" size={22} />
           </Link>
-          <nav className="rail-tabs" aria-label="Sections">
-            {railSections.map((section) => (
-              <div className="rail-section" key={section.title}>
-                <p className="rail-section-title" aria-hidden>
-                  {section.title}
-                </p>
-                {section.items.map(renderRailTab)}
-              </div>
-            ))}
+          <nav className="rail-scroll" aria-label="Sections">
+            <AppMenu
+              sections={sections}
+              onAction={onMenuAction}
+              isActionActive={isActionActive}
+              onSignOut={handleSignOut}
+            />
           </nav>
-
-          {view.canPreview && (
-            <div className="rail-viewas">
-              <p className="rail-eyebrow" aria-hidden>
-                View as
-              </p>
-              <div className="rail-viewas-options">
-                {PREVIEW_ROLES.map((r) => {
-                  const active = (view.previewRole ?? me.data?.role) === r;
-                  return (
-                    <button
-                      key={r}
-                      type="button"
-                      className={active ? "rail-viewas-chip active" : "rail-viewas-chip"}
-                      aria-pressed={active}
-                      onClick={() =>
-                        applyPreview(r === me.data?.role ? null : r)
-                      }
-                    >
-                      {ROLE_LABELS[r]}
-                    </button>
-                  );
-                })}
-              </div>
-              {view.previewRole && (
-                <button
-                  type="button"
-                  className="rail-viewas-reset"
-                  onClick={() => applyPreview(null)}
-                >
-                  Reset to my role
-                </button>
-              )}
-            </div>
-          )}
+          {viewAsPicker && <div className="rail-viewas">{viewAsPicker}</div>}
         </aside>
 
         <main className="app-main">
@@ -235,11 +168,7 @@ export function Layout() {
                 <strong>{ROLE_LABELS[view.previewRole as CrewRole] ?? view.previewRole}</strong>{" "}
                 (your data)
               </span>
-              <button
-                type="button"
-                className="view-as-reset"
-                onClick={() => applyPreview(null)}
-              >
+              <button type="button" className="view-as-reset" onClick={() => applyPreview(null)}>
                 Reset
               </button>
             </div>
@@ -248,121 +177,111 @@ export function Layout() {
         </main>
       </div>
 
-      <nav className="bottom-nav" aria-label="Main">
-        {nav.phone.map((tab) =>
-          tab.id === "clock" ? (
-            <button
-              key={tab.id}
-              type="button"
-              className={shift ? "nav-tab clock-on" : "nav-tab"}
-              onClick={clock.openClock}
-            >
-              <span className="nav-icon">
-                {shift ? (
-                  <span
-                    className={onBreak ? "clock-nav-dot break" : "clock-nav-dot work"}
-                  />
-                ) : (
-                  tab.icon
-                )}
-              </span>
-              <span className={shift ? "nav-clock-time" : undefined}>
-                {shift ? clockLabel : tab.label}
-              </span>
-            </button>
-          ) : (
-            <NavLink
-              key={tab.id}
-              to={tab.to}
-              end={tab.to === "/"}
-              className={({ isActive }) => (isActive ? "nav-tab active" : "nav-tab")}
-            >
-              <span className="nav-icon">
-                {tab.icon}
-                {badgeFor(tab.to) > 0 && <span className="nav-badge">{badgeFor(tab.to)}</span>}
-              </span>
-              <span>{tab.label}</span>
-            </NavLink>
-          ),
-        )}
+      <nav className="tabbar" aria-label="Main">
+        <TabButton
+          label="Menu"
+          icon={<MenuIcon size={20} />}
+          active={menuOpen}
+          onClick={openMenu}
+          ariaLabel="Open menu"
+          ariaExpanded={menuOpen}
+        />
+        <TabLink label="Jobs" to="/projects" icon={<LayoutGrid size={20} />} badge={readyBadge} />
+        <div className="tab tab-capture">
+          <button
+            type="button"
+            className={`capture-fab${captureOpen ? " open" : ""}`}
+            aria-label="Quick capture"
+            aria-expanded={captureOpen}
+            onClick={openCapture}
+          >
+            <Plus size={24} className="capture-fab-plus" />
+          </button>
+          <span className={`tab-label${captureOpen ? " active" : ""}`}>Capture</span>
+        </div>
         <button
           type="button"
-          className="nav-tab"
-          onClick={() => setMoreOpen(true)}
-          aria-label="More"
+          className={`tab${shift ? " clock-on" : ""}`}
+          aria-label={onBreak ? "On break — open time tracking" : shift ? "On the clock" : "Clock in"}
+          onClick={openClockSheet}
         >
-          <span className="nav-icon">⋯</span>
-          <span>More</span>
+          <span className="tab-icon">
+            {shift ? (
+              <span className="clock-tab-live">
+                {onBreak ? <Coffee size={20} /> : <ClockIcon size={20} />}
+                <span className={onBreak ? "clock-nav-dot break" : "clock-nav-dot work"} />
+              </span>
+            ) : (
+              <ClockIcon size={20} />
+            )}
+          </span>
+          <span className={`tab-label${shift ? " nav-clock-time" : ""}`}>{clockLabel}</span>
         </button>
+        <TabLink label="Photos" to="/photos" icon={<Camera size={20} />} />
       </nav>
 
-      {!hideFab && (
-        <Link to="/ask" className="ask-fab" aria-label="Ask Infinity">
-          <span className="ask-fab-diamond" aria-hidden />
-        </Link>
-      )}
-
-      {moreOpen && (
-        <div className="more-sheet-backdrop" onClick={() => setMoreOpen(false)}>
-          <div
-            className="more-sheet"
-            role="dialog"
-            aria-label="More"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="more-sheet-grip" aria-hidden />
-            <div className="more-sheet-grid">
-              {nav.more.map((tab) => (
-                <NavLink
-                  key={tab.id}
-                  to={tab.to}
-                  onClick={() => setMoreOpen(false)}
-                  className="more-sheet-item"
-                >
-                  <span className="more-sheet-icon">{tab.icon}</span>
-                  {tab.label}
-                </NavLink>
-              ))}
-            </div>
-
-            {view.canPreview && (
-              <div className="view-as-picker">
-                <p className="view-as-title">View as role (preview)</p>
-                <div className="view-as-options">
-                  {PREVIEW_ROLES.map((r) => {
-                    const active = (view.previewRole ?? me.data?.role) === r;
-                    return (
-                      <button
-                        key={r}
-                        type="button"
-                        className={active ? "view-as-chip active" : "view-as-chip"}
-                        onClick={() => {
-                          applyPreview(r === me.data?.role ? null : r);
-                          setMoreOpen(false);
-                        }}
-                      >
-                        {ROLE_LABELS[r]}
-                      </button>
-                    );
-                  })}
-                </div>
-                {view.previewRole && (
-                  <button
-                    type="button"
-                    className="view-as-reset"
-                    onClick={() => {
-                      applyPreview(null);
-                      setMoreOpen(false);
-                    }}
-                  >
-                    Reset to my role
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <CaptureSheet open={captureOpen} onClose={() => setCaptureOpen(false)} />
+      <AppMenuDrawer
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        sections={sections}
+        onNavigate={() => setMenuOpen(false)}
+        onAction={onMenuAction}
+        isActionActive={isActionActive}
+        onSignOut={handleSignOut}
+        footer={viewAsPicker}
+      />
     </div>
+  );
+}
+
+function TabButton({
+  label,
+  icon,
+  active,
+  onClick,
+  ariaLabel,
+  ariaExpanded,
+}: {
+  label: string;
+  icon: ReactNode;
+  active: boolean;
+  onClick: () => void;
+  ariaLabel?: string;
+  ariaExpanded?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={`tab${active ? " active" : ""}`}
+      onClick={onClick}
+      aria-label={ariaLabel}
+      aria-expanded={ariaExpanded}
+    >
+      <span className="tab-icon">{icon}</span>
+      <span className={`tab-label${active ? " active" : ""}`}>{label}</span>
+    </button>
+  );
+}
+
+function TabLink({
+  label,
+  to,
+  icon,
+  badge,
+}: {
+  label: string;
+  to: string;
+  icon: ReactNode;
+  badge?: number;
+}) {
+  return (
+    <NavLink to={to} className={({ isActive }) => `tab${isActive ? " active" : ""}`}>
+      <span className="tab-icon">
+        {icon}
+        {badge != null && badge > 0 && <span className="tab-badge">{badge > 99 ? "99+" : badge}</span>}
+      </span>
+      <span className="tab-label">{label}</span>
+    </NavLink>
   );
 }

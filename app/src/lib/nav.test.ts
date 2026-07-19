@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { canAccess, navForRole, railSectionsForRole, roleRank } from "./nav";
+import {
+  canAccess,
+  menuForRole,
+  navForRole,
+  railSectionsForRole,
+  roleRank,
+} from "./nav";
+import type { CrewRole } from "./install/types";
 
 describe("roleRank", () => {
   it("ranks the four roles", () => {
@@ -176,5 +183,78 @@ describe("canAccess", () => {
     expect(canAccess("installer", "/projects")).toBe(true);
     expect(canAccess("installer", "/w/abc123")).toBe(true);
     expect(canAccess("installer", "/projects/xyz/map")).toBe(true);
+  });
+
+  it("gates the new Horizon-menu stub destinations by role", () => {
+    // Installer-floor stubs everyone can reach.
+    for (const p of ["/photos", "/completed-installs", "/milestones", "/first-pane", "/toolbox-history", "/profile", "/public-site"] as const) {
+      expect(canAccess("installer", p)).toBe(true);
+    }
+    // Foreman-floor stubs blocked for installers.
+    for (const p of ["/daily-logs", "/conditions", "/contacts"] as const) {
+      expect(canAccess("installer", p)).toBe(false);
+      expect(canAccess("foreman", p)).toBe(true);
+    }
+  });
+});
+
+describe("menuForRole (Horizon grouped menu)", () => {
+  const flatten = (role: CrewRole) =>
+    menuForRole(role).flatMap((s) => s.items);
+  const titles = (role: CrewRole) =>
+    menuForRole(role)
+      .map((s) => s.title)
+      .filter((t): t is string => !!t);
+
+  it("labels the landing '/' as My Work for installers, Home for others", () => {
+    const installerHome = flatten("installer").find((i) => i.to === "/");
+    const ownerHome = flatten("owner").find((i) => i.to === "/");
+    expect(installerHome?.label).toBe("My Work");
+    expect(ownerHome?.label).toBe("Home");
+  });
+
+  it("always renders the Time tracking pill (clock action) for every role", () => {
+    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
+      const pill = menuForRole(role).find((s) => s.title === "Time tracking");
+      expect(pill?.pill, `Time tracking pill missing for ${role}`).toBe(true);
+      expect(pill?.items.some((i) => i.action === "open-clock")).toBe(true);
+    }
+  });
+
+  it("hides the Business pill from installers but shows it to managers", () => {
+    expect(titles("installer")).not.toContain("Business");
+    expect(titles("foreman")).toContain("Business");
+    expect(titles("owner")).toContain("Business");
+  });
+
+  it("only surfaces destinations the role can actually access", () => {
+    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
+      for (const item of flatten(role)) {
+        if (item.to) {
+          expect(canAccess(role, item.to), `${role} should reach ${item.to}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("keeps Admin (supervisor+) out of the installer/foreman menu", () => {
+    expect(flatten("installer").map((i) => i.to)).not.toContain("/admin");
+    expect(flatten("foreman").map((i) => i.to)).not.toContain("/admin");
+    expect(flatten("supervisor").map((i) => i.to)).toContain("/admin");
+    expect(flatten("owner").map((i) => i.to)).toContain("/admin");
+  });
+
+  it("exposes Infinity AI to everyone under Tools", () => {
+    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
+      const ai = flatten(role).find((i) => i.to === "/ask");
+      expect(ai?.label, `Infinity AI missing for ${role}`).toBe("Infinity AI");
+    }
+  });
+
+  it("renders the Horizon section names", () => {
+    const t = titles("owner");
+    for (const name of ["Time tracking", "Business", "Company", "Tools", "Account"]) {
+      expect(t).toContain(name);
+    }
   });
 });

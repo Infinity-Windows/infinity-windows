@@ -61,6 +61,7 @@ import { Tools } from "./pages/Tools";
 import { Supplies } from "./pages/Supplies";
 import { Qc } from "./pages/Qc";
 import { PinGate } from "./components/PinGate";
+import { ComingSoon } from "./pages/ComingSoon";
 import { ensureMyProfile } from "./lib/install/api";
 import "./index.css";
 
@@ -304,6 +305,46 @@ export default function App() {
               element={<RequireRole path="/labels"><Labels /></RequireRole>}
             />
             <Route path="/count" element={<CycleCount />} />
+
+            {/* Horizon-menu stub destinations → shared "Coming soon" page.
+                Role gating still flows from the NAV registry via RequireRole. */}
+            <Route path="/photos" element={<ComingSoon title="Photos & receipts" />} />
+            <Route
+              path="/daily-logs"
+              element={
+                <RequireRole path="/daily-logs">
+                  <ComingSoon title="Daily logs" />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/completed-installs"
+              element={<ComingSoon title="Completed installs" />}
+            />
+            <Route path="/milestones" element={<ComingSoon title="Milestones" />} />
+            <Route path="/first-pane" element={<ComingSoon title="First Pane" />} />
+            <Route
+              path="/toolbox-history"
+              element={<ComingSoon title="Toolbox talk history" />}
+            />
+            <Route
+              path="/conditions"
+              element={
+                <RequireRole path="/conditions">
+                  <ComingSoon title="Conditions" />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/contacts"
+              element={
+                <RequireRole path="/contacts">
+                  <ComingSoon title="Contacts" />
+                </RequireRole>
+              }
+            />
+            <Route path="/profile" element={<ComingSoon title="Profile" />} />
+            <Route path="/public-site" element={<ComingSoon title="Public site" />} />
 
             {/* Legacy install routes → unified hub */}
             <Route path="/install" element={<Navigate to="/projects" replace />} />

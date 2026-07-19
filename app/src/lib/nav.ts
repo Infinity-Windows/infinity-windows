@@ -1,3 +1,36 @@
+import type { ComponentType } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  Bell,
+  BookOpen,
+  Boxes,
+  CalendarClock,
+  CheckCircle2,
+  ClipboardList,
+  Clock,
+  Contact,
+  DollarSign,
+  Globe,
+  GraduationCap,
+  Hash,
+  Images,
+  LayoutGrid,
+  ListChecks,
+  NotebookPen,
+  PackageCheck,
+  ScanLine,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Sunrise,
+  Trophy,
+  User,
+  Users,
+  Warehouse as WarehouseIcon,
+  Wrench,
+} from "lucide-react";
 import { roleRank, type CrewRole } from "./install/types";
 
 // Re-exported so existing importers (Layout, tests) keep a single source of
@@ -43,7 +76,18 @@ export type RoutePath =
   | "/supplies"
   | "/admin"
   | "/cost-codes"
-  | "/costing";
+  | "/costing"
+  // Horizon-menu stub destinations (no feature yet → "Coming soon" page).
+  | "/photos"
+  | "/daily-logs"
+  | "/completed-installs"
+  | "/milestones"
+  | "/first-pane"
+  | "/toolbox-history"
+  | "/conditions"
+  | "/contacts"
+  | "/profile"
+  | "/public-site";
 
 /**
  * Rollout flag. Flip to `false` to instantly revert to the previous flat nav
@@ -106,6 +150,19 @@ export const NAV: NavDest[] = [
 
   // Owner only.
   { id: "costing", to: "/costing", label: "Cost", icon: "$", minRole: "owner" },
+
+  // ---- Horizon-menu stub destinations (render a shared "Coming soon" page) ----
+  // Access still flows through this registry so role-gating never drifts.
+  { id: "photos", to: "/photos", label: "Photos & receipts", icon: "▨", minRole: "installer" },
+  { id: "daily-logs", to: "/daily-logs", label: "Daily logs", icon: "❐", minRole: "foreman" },
+  { id: "completed-installs", to: "/completed-installs", label: "Completed installs", icon: "✔", minRole: "installer" },
+  { id: "milestones", to: "/milestones", label: "Milestones", icon: "★", minRole: "installer" },
+  { id: "first-pane", to: "/first-pane", label: "First Pane", icon: "☀", minRole: "installer" },
+  { id: "toolbox-history", to: "/toolbox-history", label: "Toolbox talk history", icon: "⛑", minRole: "installer" },
+  { id: "conditions", to: "/conditions", label: "Conditions", icon: "❑", minRole: "foreman" },
+  { id: "contacts", to: "/contacts", label: "Contacts", icon: "☏", minRole: "foreman" },
+  { id: "profile", to: "/profile", label: "Profile", icon: "◉", minRole: "installer" },
+  { id: "public-site", to: "/public-site", label: "View public site", icon: "◎", minRole: "installer" },
 ];
 
 const NAV_BY_ID = new Map(NAV.map((d) => [d.id, d]));
@@ -368,4 +425,144 @@ export function legacyNavForRole(role: CrewRole | string | null | undefined): Ro
 /** Nav for the active rollout mode. */
 export function activeNavForRole(role: CrewRole | string | null | undefined): RoleNav {
   return ROLE_NAV_V2 ? navForRole(role) : legacyNavForRole(role);
+}
+
+// =============================================================================
+// Horizon-style grouped menu (desktop sidebar + mobile slide-out drawer)
+// =============================================================================
+//
+// This is the single grouped menu shared by the desktop sidebar and the mobile
+// Menu drawer, mirroring the "Horizon Windows Hub" layout: a top group (no
+// header), two solid coral collapsible pills (TIME TRACKING / BUSINESS), then
+// the COMPANY / TOOLS / ACCOUNT sections. Every route item is gated by the same
+// `canAccess` registry above, so nav visibility and route guards never drift.
+
+type IconComponent = ComponentType<{ className?: string; size?: number }>;
+
+/** Overlay actions a menu row can trigger instead of navigating. */
+export type MenuAction = "open-clock";
+
+export interface MenuItem {
+  label: string;
+  Icon: IconComponent;
+  /** Registry path — gated via canAccess. Omit when `action` is set. */
+  to?: RoutePath;
+  /** Overlay action (e.g. open the clock sheet). */
+  action?: MenuAction;
+  /** Opens in a new tab / links out of the SPA. */
+  external?: boolean;
+}
+
+export interface MenuSection {
+  /** Uppercase section label. Omit for the flush top group. */
+  title?: string;
+  /** Render as a solid coral collapsible pill launcher (TIME TRACKING/BUSINESS). */
+  pill?: boolean;
+  /** Collapsible section (chevron toggles the item list). */
+  collapsible?: boolean;
+  defaultOpen?: boolean;
+  /** Leading icon for pill / section headers. */
+  Icon?: IconComponent;
+  items: MenuItem[];
+}
+
+/** Raw (unfiltered) menu definition — the Horizon Hub structure. */
+const MENU_DEF: MenuSection[] = [
+  {
+    // Flush top group — no header.
+    items: [
+      { to: "/", label: "Home", Icon: LayoutGrid },
+      { to: "/projects", label: "Jobs", Icon: LayoutGrid },
+      { to: "/photos", label: "Photos & receipts", Icon: Images },
+      { to: "/daily-logs", label: "Daily logs", Icon: NotebookPen },
+    ],
+  },
+  {
+    title: "Time tracking",
+    pill: true,
+    collapsible: true,
+    Icon: Clock,
+    items: [
+      { action: "open-clock", label: "Clock in / out", Icon: Clock },
+      { to: "/timecard", label: "My timecard", Icon: CalendarClock },
+      { to: "/cost-codes", label: "Cost codes", Icon: Hash },
+    ],
+  },
+  {
+    title: "Business",
+    pill: true,
+    collapsible: true,
+    Icon: DollarSign,
+    items: [
+      { to: "/costing", label: "Cost", Icon: DollarSign },
+      { to: "/analytics", label: "Analytics", Icon: BarChart3 },
+      { to: "/heartbeat", label: "Heartbeat", Icon: Activity },
+      { to: "/issues", label: "Issues", Icon: AlertTriangle },
+      { to: "/service", label: "Service", Icon: Wrench },
+      { to: "/qc", label: "Quality", Icon: CheckCircle2 },
+    ],
+  },
+  {
+    title: "Company",
+    items: [
+      { to: "/completed-installs", label: "Completed installs", Icon: CheckCircle2 },
+      { to: "/training", label: "Training", Icon: GraduationCap },
+      { to: "/milestones", label: "Milestones", Icon: Trophy },
+      { to: "/first-pane", label: "First Pane", Icon: Sunrise },
+      { to: "/toolbox-history", label: "Toolbox talk history", Icon: ShieldCheck },
+      { to: "/team", label: "Team", Icon: Users },
+      { to: "/crew", label: "Roster", Icon: Users },
+    ],
+  },
+  {
+    title: "Tools",
+    items: [
+      { to: "/supplies", label: "Materials", Icon: Boxes },
+      { to: "/conditions", label: "Conditions", Icon: ClipboardList },
+      { to: "/ask", label: "Infinity AI", Icon: Sparkles },
+      { to: "/contacts", label: "Contacts", Icon: Contact },
+      { to: "/warehouse", label: "Warehouse", Icon: WarehouseIcon },
+      { to: "/scan", label: "Scan", Icon: ScanLine },
+      { to: "/count", label: "Cycle count", Icon: ListChecks },
+      { to: "/catalog", label: "Catalog", Icon: BookOpen },
+      { to: "/receive", label: "Receive", Icon: PackageCheck },
+      { to: "/labels", label: "Slot labels", Icon: Hash },
+      { to: "/search", label: "Search", Icon: Search },
+      { to: "/learn", label: "Learn", Icon: BookOpen },
+      { to: "/points", label: "Points", Icon: Trophy },
+      { to: "/review", label: "Memo review", Icon: ClipboardList },
+      { to: "/safety", label: "Safety", Icon: ShieldCheck },
+      { to: "/tools", label: "Toolkit", Icon: Wrench },
+    ],
+  },
+  {
+    title: "Account",
+    items: [
+      { to: "/profile", label: "Profile", Icon: User },
+      { to: "/notifications", label: "Notifications", Icon: Bell },
+      { to: "/admin", label: "Admin", Icon: ShieldCheck },
+      { to: "/public-site", label: "View public site", Icon: Globe, external: false },
+    ],
+  },
+];
+
+/**
+ * The grouped Horizon-style menu for a role. Route items are filtered through
+ * `canAccess` (same registry the route guards use); action items always show.
+ * Empty sections/pills are dropped. Installer "/" reads "My Work"; others
+ * "Home".
+ */
+export function menuForRole(role: CrewRole | string | null | undefined): MenuSection[] {
+  const installer = roleRank(role) === 0;
+  const out: MenuSection[] = [];
+  for (const section of MENU_DEF) {
+    const items = section.items
+      .filter((it) => (it.to ? canAccess(role, it.to) : true))
+      .map((it) =>
+        it.to === "/" ? { ...it, label: installer ? "My Work" : "Home" } : it,
+      );
+    if (items.length === 0) continue;
+    out.push({ ...section, items });
+  }
+  return out;
 }
