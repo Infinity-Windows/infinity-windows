@@ -1,10 +1,11 @@
 // Tiny toast bus so swallowed errors surface to the user instead of failing
 // silently. No dependency; a host component subscribes and renders.
+import { formatApiError } from "./errors";
 
 export interface Toast {
   id: number;
   message: string;
-  kind: "error" | "info";
+  kind: "error" | "success" | "info";
 }
 
 type Listener = (toasts: Toast[]) => void;
@@ -27,19 +28,13 @@ export function pushToast(message: string, kind: Toast["kind"] = "info"): void {
   }, 4500);
 }
 
-export function toastError(err: unknown, fallback = "Something went wrong"): void {
-  const message =
-    err instanceof Error
-      ? err.message
-      : typeof err === "string"
-        ? err
-        : typeof err === "object" &&
-            err &&
-            "message" in err &&
-            typeof (err as { message: unknown }).message === "string"
-          ? (err as { message: string }).message
-          : fallback;
-  pushToast(message || fallback, "error");
+/** Convenience: show a success toast for a completed write. */
+export function toastSuccess(message: string): void {
+  pushToast(message, "success");
+}
+
+export function toastError(err: unknown, fallback = "Something went wrong. Please try again."): void {
+  pushToast(formatApiError(err, fallback), "error");
 }
 
 export function subscribeToasts(fn: Listener): () => void {

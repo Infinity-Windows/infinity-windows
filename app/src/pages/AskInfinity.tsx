@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Sparkles } from "lucide-react";
 import { CATS, TERMS } from "../lib/glossary";
 
 interface ChatMsg {
@@ -49,7 +50,7 @@ export function AskInfinity() {
   const [messages, setMessages] = useState<ChatMsg[]>([
     {
       who: "infinity",
-      text: "Hey — I'm Infinity. Ask me a window term or how to use the app.",
+      text: "Hey — I'm Infinity AI. Ask me a window term or how to use the app.",
     },
   ]);
 
@@ -73,7 +74,9 @@ export function AskInfinity() {
     <div className="page ask-page">
       <header className="page-header">
         <div>
-          <p className="home-greeting">Ask Infinity</p>
+          <p className="home-greeting ai-eyebrow">
+            <Sparkles size={13} /> Infinity AI
+          </p>
           <h1>Company brain</h1>
         </div>
         <button type="button" className="back-chip" aria-label="Back" onClick={() => navigate(-1)}>

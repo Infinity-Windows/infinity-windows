@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { ScanLine } from "lucide-react";
 import { getDashboardCounts, listProjects, searchUnits } from "../lib/api";
 import { STATUS_LABELS } from "../lib/types";
 import { isForemanPlus } from "../lib/install/types";
@@ -53,7 +54,7 @@ export function Warehouse() {
           onChange={(e) => setQuery(e.target.value)}
         />
         <Link to="/scan" className="locate-go" aria-label="Scan">
-          ▣
+          <ScanLine size={20} />
         </Link>
       </div>
 

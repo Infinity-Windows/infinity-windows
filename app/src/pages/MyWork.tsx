@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { CheckCircle2 } from "lucide-react";
+import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import {
   getMyProfile,
   listMemosToConfirm,
@@ -88,8 +90,37 @@ export function MyWork() {
     return r.reasons[0] ?? "Finish checks before installing";
   };
 
-  if (me.isLoading)
-    return <div className="page"><p className="muted">Loading…</p></div>;
+  if (me.isLoading || (Boolean(me.data?.id) && openings.isLoading)) {
+    return (
+      <div className="page">
+        <header className="page-header">
+          <div>
+            <p className="home-greeting">Your day</p>
+            <h1>My work</h1>
+          </div>
+        </header>
+        <SkeletonList rows={5} />
+      </div>
+    );
+  }
+
+  if (openings.isError) {
+    return (
+      <div className="page">
+        <header className="page-header">
+          <div>
+            <p className="home-greeting">Your day</p>
+            <h1>My work</h1>
+          </div>
+        </header>
+        <QueryError
+          error={openings.error}
+          onRetry={() => void openings.refetch()}
+          label="Couldn't load your work"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="page">
@@ -137,10 +168,16 @@ export function MyWork() {
       )}
 
       {!next && (
-        <p className="muted">
-          Nothing assigned right now. Check with your lead, or help stage the
-          next windows.
-        </p>
+        <EmptyState
+          icon={<CheckCircle2 size={22} />}
+          title="Nothing assigned right now"
+          message="Check with your lead, or help stage the next windows."
+          action={
+            <Link to="/projects" className="button-like">
+              Browse jobs
+            </Link>
+          }
+        />
       )}
 
       {next && (

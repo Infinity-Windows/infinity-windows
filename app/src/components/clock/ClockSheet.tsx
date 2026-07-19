@@ -1,10 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import {
+  ArrowLeftRight,
+  Coffee,
+  Pause,
+  Play,
+  Square,
+  UtensilsCrossed,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { listProjects } from "../../lib/api";
-import { myTodayCompletion } from "../../lib/toolbox";
 import { captureGeoSoft } from "../../lib/geo";
-import { pushToast, toastError } from "../../lib/toast";
+import { pushToast, toastError, toastSuccess } from "../../lib/toast";
+import { ToolboxTalkNagBanner } from "../time/ToolboxTalkNagBanner";
 import {
   BREAK_TYPES,
   breakTypeLabel,
@@ -20,6 +30,12 @@ import {
   type BreakType,
   type TimeShift,
 } from "../../lib/timeclock";
+
+const BREAK_ICONS: Record<BreakType, LucideIcon> = {
+  lunch: UtensilsCrossed,
+  rest: Coffee,
+  other: Pause,
+};
 
 type Mode = "pick" | "main" | "break-type" | "switch";
 
@@ -49,11 +65,6 @@ export function ClockSheet({
   const recents = useQuery({
     queryKey: ["recentJobs", profileId],
     queryFn: () => listRecentJobs(profileId!),
-    enabled: Boolean(profileId),
-  });
-  const toolbox = useQuery({
-    queryKey: ["toolboxToday", profileId],
-    queryFn: () => myTodayCompletion(profileId!),
     enabled: Boolean(profileId),
   });
 
@@ -94,8 +105,9 @@ export function ClockSheet({
       : 0;
   const workSec = shift ? elapsedWorkSeconds(shift, now) : 0;
 
-  const needsToolbox = toolbox.isSuccess && !toolbox.data;
-  const canStart = Boolean(pickProjectId && pickCostCodeId) && !needsToolbox;
+  // Clock-in is no longer gated on today's toolbox talk — installers can always
+  // start their shift. A non-blocking nag banner (below) nudges them to sign it.
+  const canStart = Boolean(pickProjectId && pickCostCodeId);
 
   const doStart = useMutation({
     mutationFn: async () => {
@@ -103,7 +115,7 @@ export function ClockSheet({
       return clockIn(pickProjectId || null, pickCostCodeId || null, geo);
     },
     onSuccess: () => {
-      pushToast("Clocked in", "info");
+      toastSuccess("Clocked in");
       refresh();
       onClose();
     },
@@ -117,7 +129,7 @@ export function ClockSheet({
       return clockIn(pickProjectId || null, pickCostCodeId || null, geo);
     },
     onSuccess: () => {
-      pushToast("Switched project", "info");
+      toastSuccess("Switched project");
       refresh();
       onClose();
     },
@@ -130,7 +142,7 @@ export function ClockSheet({
       return clockIn(shift?.project_id ?? null, costCodeId, geo);
     },
     onSuccess: () => {
-      pushToast("Switched phase", "info");
+      toastSuccess("Switched phase");
       refresh();
     },
     onError: (e) => toastError(e),
@@ -149,7 +161,7 @@ export function ClockSheet({
   const doBreakEnd = useMutation({
     mutationFn: () => endBreak(shift!.id),
     onSuccess: () => {
-      pushToast("Back on the clock", "info");
+      toastSuccess("Back on the clock");
       refresh();
     },
     onError: (e) => toastError(e),
@@ -166,7 +178,7 @@ export function ClockSheet({
       });
     },
     onSuccess: () => {
-      pushToast("Clocked out", "info");
+      toastSuccess("Clocked out");
       setInjured(false);
       refresh();
       onClose();
@@ -197,8 +209,7 @@ export function ClockSheet({
     !shift &&
     resumeJob &&
     pickProjectId === resumeJob.projectId &&
-    Boolean(pickCostCodeId) &&
-    !needsToolbox;
+    Boolean(pickCostCodeId);
 
   const title =
     mode === "switch"
@@ -226,13 +237,18 @@ export function ClockSheet({
         <div className="clock-sheet-head">
           <h2 className="clock-sheet-title">{title}</h2>
           <button type="button" className="clock-sheet-x" onClick={onClose} aria-label="Close">
-            ✕
+            <X size={18} />
           </button>
         </div>
 
         {/* ---- ON THE CLOCK ---- */}
         {mode === "main" && shift && (
           <div className="clock-sheet-body">
+            <ToolboxTalkNagBanner
+              profileId={profileId}
+              clockedIn={Boolean(shift)}
+              onNavigate={onClose}
+            />
             <div className={onBreak ? "clock-hero-card break" : "clock-hero-card work"}>
               <span className={onBreak ? "clock-status-pill break" : "clock-status-pill work"}>
                 <span className="clock-live-dot" aria-hidden />
@@ -274,7 +290,9 @@ export function ClockSheet({
                   </span>
                 )}
               </span>
-              <span className="clock-job-chip-arrow" aria-hidden>⇄</span>
+              <span className="clock-job-chip-arrow" aria-hidden>
+                <ArrowLeftRight size={16} />
+              </span>
             </button>
 
             {/* Switch phase — one tap, same job */}
@@ -308,7 +326,7 @@ export function ClockSheet({
                 disabled={busy}
                 onClick={() => doBreakEnd.mutate()}
               >
-                ▶ Resume work
+                <Play size={18} aria-hidden /> Resume work
               </button>
             ) : (
               <button
@@ -317,7 +335,7 @@ export function ClockSheet({
                 disabled={busy}
                 onClick={() => setMode("break-type")}
               >
-                ☕ Go on break
+                <Coffee size={18} aria-hidden /> Go on break
               </button>
             )}
 
@@ -336,7 +354,13 @@ export function ClockSheet({
               disabled={busy}
               onClick={() => doClockOut.mutate()}
             >
-              {doClockOut.isPending ? "Clocking out…" : "■ Clock out"}
+              {doClockOut.isPending ? (
+                "Clocking out…"
+              ) : (
+                <>
+                  <Square size={16} aria-hidden /> Clock out
+                </>
+              )}
             </button>
 
             <Link to="/clock" className="clock-timecard-link" onClick={onClose}>
@@ -352,18 +376,23 @@ export function ClockSheet({
               Your timecard pauses until you tap Resume.
             </p>
             <div className="clock-break-grid">
-              {BREAK_TYPES.map((b) => (
-                <button
-                  key={b.type}
-                  type="button"
-                  className="clock-break-option"
-                  disabled={busy}
-                  onClick={() => doBreakStart.mutate(b.type)}
-                >
-                  <span className="clock-break-icon" aria-hidden>{b.icon}</span>
-                  <span className="clock-break-name">{b.label}</span>
-                </button>
-              ))}
+              {BREAK_TYPES.map((b) => {
+                const BreakIcon = BREAK_ICONS[b.type];
+                return (
+                  <button
+                    key={b.type}
+                    type="button"
+                    className="clock-break-option"
+                    disabled={busy}
+                    onClick={() => doBreakStart.mutate(b.type)}
+                  >
+                    <span className="clock-break-icon" aria-hidden>
+                      <BreakIcon size={22} />
+                    </span>
+                    <span className="clock-break-name">{b.label}</span>
+                  </button>
+                );
+              })}
             </div>
             <button type="button" className="clock-cancel" onClick={() => setMode("main")}>
               Cancel
@@ -374,15 +403,7 @@ export function ClockSheet({
         {/* ---- PICK / SWITCH JOB ---- */}
         {(mode === "pick" || mode === "switch") && (
           <div className="clock-sheet-body">
-            {needsToolbox && mode === "pick" ? (
-              <div className="clock-gate">
-                <p className="clock-gate-title">Toolbox talk required</p>
-                <p className="muted">Read and sign today's toolbox talk before clocking in.</p>
-                <Link to="/safety" className="clock-btn primary" onClick={onClose}>
-                  Go to today's talk
-                </Link>
-              </div>
-            ) : (
+            {
               <>
                 {mode === "switch" && shift && (
                   <p className="muted clock-switch-note">
@@ -485,15 +506,24 @@ export function ClockSheet({
                   disabled={busy || !canStart}
                   onClick={() => (mode === "switch" ? doSwitch.mutate() : doStart.mutate())}
                 >
-                  {mode === "switch"
-                    ? doSwitch.isPending
-                      ? "Switching…"
-                      : "⇄ Switch project"
-                    : doStart.isPending
-                      ? "Clocking in…"
-                      : canResume
-                        ? `▶ Resume on ${resumeJob?.jobCode || resumeJob?.name}`
-                        : "▶ Start clock"}
+                  {mode === "switch" ? (
+                    doSwitch.isPending ? (
+                      "Switching…"
+                    ) : (
+                      <>
+                        <ArrowLeftRight size={18} aria-hidden /> Switch project
+                      </>
+                    )
+                  ) : doStart.isPending ? (
+                    "Clocking in…"
+                  ) : (
+                    <>
+                      <Play size={18} aria-hidden />{" "}
+                      {canResume
+                        ? `Resume on ${resumeJob?.jobCode || resumeJob?.name}`
+                        : "Start clock"}
+                    </>
+                  )}
                 </button>
                 {mode === "switch" && (
                   <button type="button" className="clock-cancel" onClick={() => setMode("main")}>
@@ -501,7 +531,7 @@ export function ClockSheet({
                   </button>
                 )}
               </>
-            )}
+            }
           </div>
         )}
       </div>

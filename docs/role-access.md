@@ -17,7 +17,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Scan (`/scan`)
 - Tools (`/tools`)
 
-**Can reach (all 15 allowed destinations):**
+**Can reach (all 22 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -34,6 +34,13 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Search (`/search`)
 - Memo review (`/review`)
+- Photos & receipts (`/photos`)
+- Completed installs (`/completed-installs`)
+- Milestones (`/milestones`)
+- First Pane (`/first-pane`)
+- Toolbox talk history (`/toolbox-history`)
+- Profile (`/profile`)
+- View public site (`/public-site`)
 
 **Blocked:**
 
@@ -53,6 +60,9 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Cost codes (`/cost-codes`)
 - Cost (`/costing`)
+- Daily logs (`/daily-logs`)
+- Conditions (`/conditions`)
+- Contacts (`/contacts`)
 
 ## Foreman
 
@@ -75,7 +85,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Points (`/points`)
 - Tools (`/tools`)
 
-**Can reach (all 27 allowed destinations):**
+**Can reach (all 37 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -104,6 +114,16 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Slot labels (`/labels`)
 - Catalog (`/catalog`)
 - Supplies (`/supplies`)
+- Photos & receipts (`/photos`)
+- Daily logs (`/daily-logs`)
+- Completed installs (`/completed-installs`)
+- Milestones (`/milestones`)
+- First Pane (`/first-pane`)
+- Toolbox talk history (`/toolbox-history`)
+- Conditions (`/conditions`)
+- Contacts (`/contacts`)
+- Profile (`/profile`)
+- View public site (`/public-site`)
 
 **Blocked:**
 
@@ -136,7 +156,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Cost codes (`/cost-codes`)
 - Admin (`/admin`)
 
-**Can reach (all 30 allowed destinations):**
+**Can reach (all 40 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -168,6 +188,16 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
 - Cost codes (`/cost-codes`)
+- Photos & receipts (`/photos`)
+- Daily logs (`/daily-logs`)
+- Completed installs (`/completed-installs`)
+- Milestones (`/milestones`)
+- First Pane (`/first-pane`)
+- Toolbox talk history (`/toolbox-history`)
+- Conditions (`/conditions`)
+- Contacts (`/contacts`)
+- Profile (`/profile`)
+- View public site (`/public-site`)
 
 **Blocked:**
 
@@ -198,7 +228,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Cost codes (`/cost-codes`)
 - Admin (`/admin`)
 
-**Can reach (all 31 allowed destinations):**
+**Can reach (all 41 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -231,6 +261,16 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Cost codes (`/cost-codes`)
 - Cost (`/costing`)
+- Photos & receipts (`/photos`)
+- Daily logs (`/daily-logs`)
+- Completed installs (`/completed-installs`)
+- Milestones (`/milestones`)
+- First Pane (`/first-pane`)
+- Toolbox talk history (`/toolbox-history`)
+- Conditions (`/conditions`)
+- Contacts (`/contacts`)
+- Profile (`/profile`)
+- View public site (`/public-site`)
 
 **Blocked:**
 

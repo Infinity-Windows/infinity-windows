@@ -1,7 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { LayoutGrid } from "lucide-react";
 import { createProject, listProjects } from "../lib/api";
+import { formatApiError } from "../lib/errors";
+import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
 import { supabase } from "../lib/supabase";
@@ -211,7 +214,7 @@ export function Projects() {
                   />
                 </label>
               </div>
-              {addProject.isError && <p className="error">{String(addProject.error)}</p>}
+              {addProject.isError && <p className="error">{formatApiError(addProject.error)}</p>}
               <button
                 type="submit"
                 className="action-btn primary"
@@ -224,7 +227,17 @@ export function Projects() {
         </div>
       )}
       <div className="home-projects">
-        {(projects.data ?? []).map((p) => {
+        {projects.isLoading && <SkeletonList rows={4} />}
+        {projects.isError && (
+          <QueryError
+            error={projects.error}
+            onRetry={() => void projects.refetch()}
+            label="Couldn't load jobs"
+          />
+        )}
+        {!projects.isLoading &&
+          !projects.isError &&
+          (projects.data ?? []).map((p) => {
           const c = countFor(p.id);
           const pctColor =
             c.pct >= 80 ? "var(--ok)" : c.pct >= 40 ? "var(--accent)" : "var(--warn)";
@@ -271,8 +284,16 @@ export function Projects() {
             </Link>
           );
         })}
-        {projects.data?.length === 0 && (
-          <p className="muted">No active jobs.</p>
+        {!projects.isLoading && !projects.isError && projects.data?.length === 0 && (
+          <EmptyState
+            icon={<LayoutGrid size={22} />}
+            title="No active jobs yet"
+            message={
+              canAdd
+                ? "Create your first job to start tracking installs, photos, and time."
+                : "Jobs will show up here once your office adds them."
+            }
+          />
         )}
       </div>
     </div>
