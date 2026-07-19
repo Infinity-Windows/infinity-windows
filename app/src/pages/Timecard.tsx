@@ -1,7 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { listProjects } from "../lib/api";
+import { formatApiError } from "../lib/errors";
+import { QueryError, SkeletonList } from "../components/ui/States";
 import { getMyProfile, listProfiles } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
@@ -205,9 +208,7 @@ function ShiftEditor({
         placeholder="e.g. forgot to clock out"
         onChange={(e) => setNote(e.target.value)}
       />
-      {save.isError && (
-        <p className="error">{String((save.error as Error).message)}</p>
-      )}
+      {save.isError && <p className="error">{formatApiError(save.error)}</p>}
       <div className="row-gap" style={{ marginTop: 10 }}>
         <button
           className="button-like active-pill"
@@ -341,9 +342,7 @@ export function Timecard() {
             {isLead ? "Crew hours, approvals & payroll" : "Your hours this week"}
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">
-          ‹
-        </Link>
+        <Link to="/" className="back-chip" aria-label="Home" />
       </header>
 
       {/* Week navigation */}
@@ -353,7 +352,7 @@ export function Timecard() {
           onClick={() => setAnchor((d) => addDays(d, -7))}
           aria-label="Previous week"
         >
-          ‹
+          <ChevronLeft size={18} />
         </button>
         <button
           className="button-like"
@@ -367,7 +366,7 @@ export function Timecard() {
           onClick={() => setAnchor((d) => addDays(d, 7))}
           aria-label="Next week"
         >
-          ›
+          <ChevronRight size={18} />
         </button>
       </div>
 
@@ -477,6 +476,18 @@ export function Timecard() {
         />
       )}
 
+      {(isLead ? teamShifts.isError : mineShifts.isError) && (
+        <QueryError
+          error={isLead ? teamShifts.error : mineShifts.error}
+          onRetry={() => void (isLead ? teamShifts.refetch() : mineShifts.refetch())}
+          label="Couldn't load the timecard"
+        />
+      )}
+      {(isLead ? teamShifts.isLoading : mineShifts.isLoading) && (
+        <div style={{ marginTop: 12 }}>
+          <SkeletonList rows={3} />
+        </div>
+      )}
       {dayGroups.map((g) => (
         <div key={g.day} style={{ marginTop: 12 }}>
           <div
@@ -526,7 +537,7 @@ export function Timecard() {
                         disabled={approve.isPending}
                         onClick={() => approve.mutate(s.id)}
                       >
-                        Approve ✓
+                        <Check size={14} aria-hidden /> Approve
                       </button>
                     )}
                     {s.status !== "rejected" && (
@@ -588,11 +599,13 @@ export function Timecard() {
           </ul>
         </div>
       ))}
-      {dayGroups.length === 0 && (
-        <p className="muted" style={{ marginTop: 12 }}>
-          No shifts for {isLead ? "this person" : "you"} this week.
-        </p>
-      )}
+      {dayGroups.length === 0 &&
+        !(isLead ? teamShifts.isLoading : mineShifts.isLoading) &&
+        !(isLead ? teamShifts.isError : mineShifts.isError) && (
+          <p className="muted" style={{ marginTop: 12 }}>
+            No shifts for {isLead ? "this person" : "you"} this week.
+          </p>
+        )}
     </div>
   );
 }

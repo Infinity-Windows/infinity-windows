@@ -1,7 +1,8 @@
-import { useEffect, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { InfinityMark } from "../brand/InfinityLogo";
 import { AppMenu } from "./AppMenu";
+import { useFocusTrap } from "../../lib/useFocusTrap";
 import type { MenuAction, MenuSection } from "../../lib/nav";
 
 interface AppMenuDrawerProps {
@@ -30,14 +31,8 @@ export function AppMenuDrawer({
   onSignOut,
   footer,
 }: AppMenuDrawerProps) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  const drawerRef = useRef<HTMLElement>(null);
+  useFocusTrap(drawerRef, open, onClose);
 
   if (!open) return null;
 
@@ -45,6 +40,7 @@ export function AppMenuDrawer({
     <>
       <div className="menu-drawer-backdrop overlay-enter" onClick={onClose} aria-hidden />
       <aside
+        ref={drawerRef}
         className="menu-drawer sheet-enter"
         role="dialog"
         aria-modal="true"

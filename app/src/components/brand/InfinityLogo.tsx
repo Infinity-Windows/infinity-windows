@@ -20,10 +20,12 @@ interface InfinityMarkProps {
 }
 
 /**
- * Infinity Windows mark — a rounded-square window with a cross mullion (four
- * panes) and a subtle sunrise arc rising behind it. Drawn on a 24×24 viewBox
- * with coral `--primary` (or currentColor) strokes, mirroring the spirit of
- * Horizon's sun-over-horizon glyph.
+ * Infinity Windows mark — a rounded-square window frame with a full cross
+ * mullion (four equal panes) in coral `--primary`, plus a small sunrise sun
+ * rising over the horizontal mullion *inside* the frame (a sun seen through
+ * the window). Drawn on a 24×24 viewBox. Deliberately a WINDOW, never a lock:
+ * the frame fills the glyph and the arc lives inside it, so there is no
+ * shackle-over-body silhouette.
  */
 export function InfinityMark({ size = 24, tone = "default", className }: InfinityMarkProps) {
   const color = TONES[tone];
@@ -38,27 +40,27 @@ export function InfinityMark({ size = 24, tone = "default", className }: Infinit
       aria-hidden="true"
       focusable="false"
     >
-      {/* Sunrise arc rising behind the window */}
+      {/* Sunrise sun rising over the mullion "horizon", clipped inside the frame */}
       <path
-        d="M7 6.5a5 5 0 0 1 10 0"
+        d="M6.75 12a2.6 2.6 0 0 1 5.2 0"
         stroke={color}
-        strokeWidth={1.7}
+        strokeWidth={1.5}
         strokeLinecap="round"
-        opacity={0.85}
+        opacity={0.9}
       />
-      {/* Window frame */}
+      {/* Window frame — fills the glyph so it reads unmistakably as a window */}
       <rect
-        x="4.75"
-        y="8.25"
-        width="14.5"
-        height="11"
-        rx="2.4"
+        x="3.5"
+        y="3.5"
+        width="17"
+        height="17"
+        rx="3.2"
         stroke={color}
         strokeWidth={1.9}
       />
-      {/* Cross mullion — four panes */}
+      {/* Full cross mullion — four equal panes */}
       <path
-        d="M12 8.75v9.75M5.25 13.75h13.5"
+        d="M12 3.75v16.5M3.75 12h16.5"
         stroke={color}
         strokeWidth={1.7}
         strokeLinecap="round"

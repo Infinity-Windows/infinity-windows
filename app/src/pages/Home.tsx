@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Bell } from "lucide-react";
+import { QueryError, SkeletonList } from "../components/ui/States";
 import { listProjects } from "../lib/api";
 import { orderMyWork, type DispatchOpening } from "../lib/dispatch";
 import { openingReadiness } from "../lib/install/fit";
@@ -13,6 +15,7 @@ import { listMyProgress } from "../lib/learn";
 import { listLedger } from "../lib/points";
 import { supabase } from "../lib/supabase";
 import { getOpenShift } from "../lib/timeclock";
+import { ToolboxTalkNagBanner } from "../components/time/ToolboxTalkNagBanner";
 
 interface OpeningCountRow {
   project_id: string;
@@ -183,7 +186,7 @@ export function Home() {
         </div>
         <div className="home-header-actions">
           <Link to="/notifications" className="bell-chip" aria-label="Notifications">
-            <span aria-hidden>◔</span>
+            <Bell size={18} aria-hidden />
             {notifCount > 0 && <span className="bell-badge">{notifCount}</span>}
           </Link>
           <button
@@ -196,6 +199,8 @@ export function Home() {
           </button>
         </div>
       </header>
+
+      <ToolboxTalkNagBanner profileId={profileId} clockedIn={Boolean(openShift.data)} />
 
       {manager && (
         <>
@@ -241,7 +246,17 @@ export function Home() {
                 </div>
               </Link>
             ))}
-            {projectCards.length === 0 && <p className="muted">No active jobs yet.</p>}
+            {projects.isLoading && <SkeletonList rows={3} />}
+            {projects.isError && (
+              <QueryError
+                error={projects.error}
+                onRetry={() => void projects.refetch()}
+                label="Couldn't load jobs"
+              />
+            )}
+            {!projects.isLoading && !projects.isError && projectCards.length === 0 && (
+              <p className="muted">No active jobs yet.</p>
+            )}
           </div>
 
           <div className="warehouse-grid">
@@ -393,7 +408,17 @@ export function Home() {
                 </div>
               </Link>
             ))}
-            {projectCards.length === 0 && <p className="muted">No active jobs yet.</p>}
+            {projects.isLoading && <SkeletonList rows={3} />}
+            {projects.isError && (
+              <QueryError
+                error={projects.error}
+                onRetry={() => void projects.refetch()}
+                label="Couldn't load jobs"
+              />
+            )}
+            {!projects.isLoading && !projects.isError && projectCards.length === 0 && (
+              <p className="muted">No active jobs yet.</p>
+            )}
           </div>
         </>
       )}

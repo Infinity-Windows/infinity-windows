@@ -15,6 +15,7 @@ import { InfinityLogo } from "./brand/InfinityLogo";
 import { AppMenu } from "./nav/AppMenu";
 import { AppMenuDrawer } from "./nav/AppMenuDrawer";
 import { CaptureSheet } from "./nav/CaptureSheet";
+import { FeatureTip } from "./assistant/FeatureTip";
 
 const PREVIEW_ROLES: CrewRole[] = ["installer", "foreman", "supervisor", "owner"];
 
@@ -176,6 +177,8 @@ export function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {!menuOpen && !captureOpen && !clock.isOpen && <FeatureTip />}
 
       <nav className="tabbar" aria-label="Main">
         <TabButton

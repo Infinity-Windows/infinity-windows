@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Scanner } from "../components/Scanner";
+import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
   activatePreissuedUnit,
   getProjectUnits,
@@ -202,6 +203,7 @@ export function ProjectDetail() {
             </p>
           </div>
         </div>
+        <DirectionsButton address={project?.address} />
       </header>
 
       <nav className="hub-tabs" aria-label="Project sections">
@@ -566,6 +568,9 @@ function JobDetailsPanel({
                 <div key={r.label}>
                   <dt className="field-label">{r.label}</dt>
                   <dd style={{ margin: 0 }}>{r.value}</dd>
+                  {r.label === "Site address" && (
+                    <DirectionsButton address={r.value} />
+                  )}
                 </div>
               ))}
             </dl>
