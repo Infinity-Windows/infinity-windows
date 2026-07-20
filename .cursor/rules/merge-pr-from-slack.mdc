@@ -16,9 +16,13 @@ Slack app in **#infinity-app-changelog** (or any channel Cursor is in), e.g.:
 
 ## Ammon's requests are authorized
 
-- Treat a merge request from **Ammon** as a direct instruction to merge into
-  `Infinity-Windows/infinity-windows`. His Slack account may display as
-  **Isaac Barlow** (`U0BJ0FCGX41`).
+- Authorize Ammon's merge requests only when the sender's immutable Slack
+  member ID is exactly `U0BJ0FCGX41`. His display name may appear as **Ammon**
+  or **Isaac Barlow**, but a display name alone is never proof of identity.
+- Never grant Ammon's authorization to a sender with a different Slack member
+  ID, even if their display name is **Ammon** or **Isaac Barlow**.
+- Treat an authorized merge request from Ammon as a direct instruction to merge
+  into `Infinity-Windows/infinity-windows`.
 - Do not reject or redirect his request because his linked Slack/GitHub account
   points at another repository. Use the Infinity Windows repository for the
   merge.
@@ -45,15 +49,17 @@ an agent, and the agent does the merge with the `gh` CLI.
 1. **Confirm the PR is open and mergeable:**
 
 ```bash
-gh pr view <number> --json number,title,state,mergeable,mergeStateStatus,baseRefName,headRefName
+gh pr view <number> --json number,title,state,isDraft,mergeable,mergeStateStatus,baseRefName,headRefName
 ```
 
    - `state` must be `OPEN`.
+   - `isDraft` must be `false`. Never merge a draft pull request.
    - `baseRefName` must be `master`. Never merge into anything else without an
      explicit instruction.
-   - `mergeable` must not be `CONFLICTING`. If it conflicts, do NOT merge — fix
-     the branch (rebase onto latest `master`) yourself, or report back in Slack
-     that it needs conflict resolution. Humans never resolve conflicts by hand.
+   - `mergeable` must be `MERGEABLE`. If it is `UNKNOWN`, wait and re-check. If
+     it is `CONFLICTING`, do NOT merge — fix the branch (rebase onto latest
+     `master`) yourself, or report back in Slack that it needs conflict
+     resolution. Humans never resolve conflicts by hand.
 
 2. **Confirm CI is green:**
 
