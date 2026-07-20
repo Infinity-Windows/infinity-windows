@@ -18,6 +18,10 @@ export default defineConfig({
         // App shell + built assets. Do NOT cache Supabase API — TanStack owns
         // that offline read cache.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest,woff2}'],
+        // The app-shell JS bundle is >2 MB, above workbox's default precache
+        // ceiling. Raise it so the whole shell is precached — offline-first
+        // (this outbox feature) depends on the shell loading with no signal.
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         navigateFallback: `${base}index.html`,
         runtimeCaching: [
           {
