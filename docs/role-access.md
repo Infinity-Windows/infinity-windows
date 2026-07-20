@@ -6,16 +6,27 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 **Bottom bar (phone):**
 
-- My Work (`/`)
-- Time (`/clock`)
-- Learn (`/learn`)
-- Safety (`/safety`)
-
-**More menu:**
-
-- Points (`/points`)
+- Menu (opens the drawer)
+- Today (`/`)
 - Scan (`/scan`)
-- Tools (`/tools`)
+- Clock (time tracking sheet)
+- Ask (`/ask`)
+
+**Menu drawer:**
+
+- My Work (`/`)
+- Photos & receipts (`/photos`)
+- Clock in / out (action)
+- Infinity AI (`/ask`)
+- Warehouse (`/warehouse`)
+- Scan (`/scan`)
+- Learn (`/learn`)
+- Points (`/points`)
+- Memo review (`/review`)
+- Safety (`/safety`)
+- Profile (`/profile`)
+- Notifications (`/notifications`)
+- Notifications & location (`/settings`)
 
 **Can reach (all 22 allowed destinations):**
 
@@ -68,22 +79,51 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 **Bottom bar (phone):**
 
+- Menu (opens the drawer)
+- Jobs (`/projects`)
+- Capture (quick-capture sheet)
+- Clock (time tracking sheet)
+- Photos (`/photos`)
+
+**Menu drawer:**
+
 - Home (`/`)
-- Projects (`/projects`)
-- Warehouse (`/warehouse`)
-- Time (`/clock`)
-
-**More menu:**
-
+- Jobs (`/projects`)
+- Photos & receipts (`/photos`)
+- Daily logs (`/daily-logs`)
+- Clock in / out (action)
+- My timecard (`/timecard`)
+- Analytics (`/analytics`)
 - Issues (`/issues`)
 - Service (`/service`)
-- Team (`/team`)
-- Timecard (`/timecard`)
 - Quality (`/qc`)
-- Safety (`/safety`)
+- Completed installs (`/completed-installs`)
+- Training (`/training`)
+- Milestones (`/milestones`)
+- First Pane (`/first-pane`)
+- Toolbox talk history (`/toolbox-history`)
+- Team (`/team`)
+- Roster (`/crew`)
+- Materials (`/supplies`)
+- Conditions (`/conditions`)
+- Infinity AI (`/ask`)
+- Contacts (`/contacts`)
+- Warehouse (`/warehouse`)
+- Scan (`/scan`)
+- Cycle count (`/count`)
+- Catalog (`/catalog`)
+- Receive (`/receive`)
+- Slot labels (`/labels`)
+- Search (`/search`)
 - Learn (`/learn`)
 - Points (`/points`)
-- Tools (`/tools`)
+- Memo review (`/review`)
+- Safety (`/safety`)
+- Toolkit (`/tools`)
+- Profile (`/profile`)
+- Notifications (`/notifications`)
+- Notifications & location (`/settings`)
+- View public site (`/public-site`)
 
 **Can reach (all 37 allowed destinations):**
 
@@ -136,25 +176,54 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 **Bottom bar (phone):**
 
-- Heartbeat (`/heartbeat`)
+- Menu (opens the drawer)
+- Jobs (`/projects`)
+- Capture (quick-capture sheet)
+- Clock (time tracking sheet)
+- Photos (`/photos`)
+
+**Menu drawer:**
+
 - Home (`/`)
-- Projects (`/projects`)
-- Time (`/clock`)
-
-**More menu:**
-
-- Warehouse (`/warehouse`)
+- Jobs (`/projects`)
+- Photos & receipts (`/photos`)
+- Daily logs (`/daily-logs`)
+- Clock in / out (action)
+- My timecard (`/timecard`)
+- Cost codes (`/cost-codes`)
+- Analytics (`/analytics`)
+- Heartbeat (`/heartbeat`)
 - Issues (`/issues`)
 - Service (`/service`)
-- Team (`/team`)
-- Timecard (`/timecard`)
 - Quality (`/qc`)
-- Safety (`/safety`)
+- Completed installs (`/completed-installs`)
+- Training (`/training`)
+- Milestones (`/milestones`)
+- First Pane (`/first-pane`)
+- Toolbox talk history (`/toolbox-history`)
+- Team (`/team`)
+- Roster (`/crew`)
+- Materials (`/supplies`)
+- Conditions (`/conditions`)
+- Infinity AI (`/ask`)
+- Contacts (`/contacts`)
+- Warehouse (`/warehouse`)
+- Scan (`/scan`)
+- Cycle count (`/count`)
+- Catalog (`/catalog`)
+- Receive (`/receive`)
+- Slot labels (`/labels`)
+- Search (`/search`)
 - Learn (`/learn`)
 - Points (`/points`)
-- Tools (`/tools`)
-- Cost codes (`/cost-codes`)
+- Memo review (`/review`)
+- Safety (`/safety`)
+- Toolkit (`/tools`)
+- Profile (`/profile`)
+- Notifications (`/notifications`)
+- Notifications & location (`/settings`)
 - Admin (`/admin`)
+- View public site (`/public-site`)
 
 **Can reach (all 40 allowed destinations):**
 
@@ -207,26 +276,55 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 **Bottom bar (phone):**
 
-- Heartbeat (`/heartbeat`)
+- Menu (opens the drawer)
+- Jobs (`/projects`)
+- Capture (quick-capture sheet)
+- Clock (time tracking sheet)
+- Photos (`/photos`)
+
+**Menu drawer:**
+
 - Home (`/`)
-- Projects (`/projects`)
+- Jobs (`/projects`)
+- Photos & receipts (`/photos`)
+- Daily logs (`/daily-logs`)
+- Clock in / out (action)
+- My timecard (`/timecard`)
+- Cost codes (`/cost-codes`)
 - Cost (`/costing`)
-
-**More menu:**
-
-- Time (`/clock`)
-- Warehouse (`/warehouse`)
+- Analytics (`/analytics`)
+- Heartbeat (`/heartbeat`)
 - Issues (`/issues`)
 - Service (`/service`)
-- Team (`/team`)
-- Timecard (`/timecard`)
 - Quality (`/qc`)
-- Safety (`/safety`)
+- Completed installs (`/completed-installs`)
+- Training (`/training`)
+- Milestones (`/milestones`)
+- First Pane (`/first-pane`)
+- Toolbox talk history (`/toolbox-history`)
+- Team (`/team`)
+- Roster (`/crew`)
+- Materials (`/supplies`)
+- Conditions (`/conditions`)
+- Infinity AI (`/ask`)
+- Contacts (`/contacts`)
+- Warehouse (`/warehouse`)
+- Scan (`/scan`)
+- Cycle count (`/count`)
+- Catalog (`/catalog`)
+- Receive (`/receive`)
+- Slot labels (`/labels`)
+- Search (`/search`)
 - Learn (`/learn`)
 - Points (`/points`)
-- Tools (`/tools`)
-- Cost codes (`/cost-codes`)
+- Memo review (`/review`)
+- Safety (`/safety`)
+- Toolkit (`/tools`)
+- Profile (`/profile`)
+- Notifications (`/notifications`)
+- Notifications & location (`/settings`)
 - Admin (`/admin`)
+- View public site (`/public-site`)
 
 **Can reach (all 41 allowed destinations):**
 

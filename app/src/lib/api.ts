@@ -26,6 +26,28 @@ export async function listWindowTypes(): Promise<WindowType[]> {
   return data;
 }
 
+/**
+ * Search the real install brain (the closed catalog) for a free-text query.
+ * Matches on type code, name, or category so "Ask Infinity" can answer with a
+ * type's seeded/learned tips, watch-outs, difficulty and median install time
+ * instead of a hardcoded glossary. Provisional (job spec-extract) types are
+ * excluded so answers only ever reflect real catalog products.
+ */
+export async function searchBrainTypes(query: string): Promise<WindowType[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const like = `%${q.replace(/[%_]/g, (m) => `\\${m}`)}%`;
+  const { data, error } = await supabase
+    .from("window_types")
+    .select("*")
+    .eq("provisional", false)
+    .or(`type_code.ilike.${like},name.ilike.${like},category.ilike.${like}`)
+    .order("n_installs", { ascending: false })
+    .limit(4);
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function listLocations(): Promise<Location[]> {
   const { data, error } = await supabase
     .from("locations")
