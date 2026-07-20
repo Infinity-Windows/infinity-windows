@@ -4,12 +4,14 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { listProjects, listWindowTypes } from "../../lib/api";
 import {
   aiExtractSchedule,
+  assignOpeningToInstaller,
   downloadPlanset,
   ensureTypesFromSpecs,
   linkSpecsToOpenings,
   listOpenings,
   listPlanOutlines,
   listPlansets,
+  listProfiles,
   listVoidedInstallOpeningIds,
   saveDraftOpenings,
   undoInstall,
@@ -26,6 +28,13 @@ import {
   type Planset,
   type ProjectOpening,
 } from "../../lib/install/types";
+import {
+  buildSequenceAssignments,
+  installerColorMap,
+  installerInitials,
+  maxExistingSequence,
+  toggleSelection,
+} from "../../lib/install/mapDispatch";
 import {
   extractCadDetailPages,
   findFloorPlanPages,
@@ -133,6 +142,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const [extractNote, setExtractNote] = useState<string | null>(null);
   const [editingModel, setEditingModel] = useState(false);
 
+  // Map-based ordered dispatch (foreman+). Tapping pins builds an ordered
+  // selection for the chosen installer; the tap order IS the completion order.
+  const [dispatchMode, setDispatchMode] = useState(false);
+  const [dispatchInstaller, setDispatchInstaller] = useState("");
+  const [selection, setSelection] = useState<string[]>([]);
+  const [dispatchNote, setDispatchNote] = useState<string | null>(null);
+
   const matchesFilter = (o: ProjectOpening): boolean => {
     switch (filter) {
       case "open":
@@ -172,6 +188,22 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   // voided ring, legend, or "redo needed" state; the query is also gated so the
   // data is never fetched for a non-foreman (faithful under view-as preview too).
   const isLead = isForemanPlus(effectiveRole);
+  // Crew list drives the dispatch installer picker + at-a-glance pin coloring.
+  // The color layer is visible to everyone, so this query is not lead-gated.
+  const crew = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
+  const activeCrew = useMemo(
+    () => (crew.data ?? []).filter((c) => c.active),
+    [crew.data],
+  );
+  // Stable installer → color map keyed on active-crew order (see mapDispatch).
+  const crewColors = useMemo(
+    () => installerColorMap(activeCrew.map((c) => c.id)),
+    [activeCrew],
+  );
+  const crewNameById = useMemo(
+    () => new Map((crew.data ?? []).map((c) => [c.id, c.display_name])),
+    [crew.data],
+  );
   const voided = useQuery({
     queryKey: ["voidedOpenings", projectId, isLead],
     queryFn: () => listVoidedInstallOpeningIds(projectId, isLead),
@@ -449,6 +481,38 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     onError: (e) => setMapError(String(e)),
   });
 
+  // Commit the ordered selection: assign each opening to the installer in tap
+  // order. We pass the sequence per call so the new work APPENDS after the
+  // installer's existing list (continuing past their current max) rather than
+  // clobbering it.
+  const assignSelection = useMutation({
+    mutationFn: async (args: { installerId: string; orderedIds: string[] }) => {
+      const startAfter = maxExistingSequence(
+        openings.data ?? [],
+        args.installerId,
+        args.orderedIds,
+      );
+      const plan = buildSequenceAssignments(args.orderedIds, startAfter);
+      for (const step of plan) {
+        await assignOpeningToInstaller(
+          step.openingId,
+          args.installerId,
+          step.sequence,
+        );
+      }
+      return plan.length;
+    },
+    onSuccess: (count, args) => {
+      const name = crewNameById.get(args.installerId) ?? "installer";
+      setDispatchNote(
+        `Assigned ${count} opening${count === 1 ? "" : "s"} to ${name} in order.`,
+      );
+      setSelection([]);
+      queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+    },
+    onError: (e) => setMapError(String(e)),
+  });
+
   // Drop optimistic positions once fresh data arrives.
   useEffect(() => {
     setPending({});
@@ -590,6 +654,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         if (d.moved) {
           setPending((prev) => ({ ...prev, [d.id]: { x: d.x, y: d.y } }));
           placePin.mutate({ id: d.id, x: d.x, y: d.y });
+        } else if (dispatchMode) {
+          // A no-move tap toggles the pin into/out of the ordered selection.
+          setSelection((prev) => toggleSelection(prev, d.id));
         } else {
           setSelectedId((prev) => (prev === d.id ? null : d.id));
         }
@@ -625,13 +692,43 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
 
   const pinTitle = (o: ProjectOpening) =>
     `${openingMarkLabel(o.opening_code)}${o.window_types ? ` ${o.window_types.type_code}` : ""}${
-      o.assignee ? ` — ${o.assignee.display_name}` : ""
+      o.assignee
+        ? ` — ${o.assignee.display_name}${o.sequence != null ? ` · #${o.sequence}` : ""}`
+        : ""
     }`;
 
   const openOpening = (openingId: string) =>
     navigate(`/projects/${projectId}/opening/${openingId}`);
 
   const selectedOpening = all.find((o) => o.id === selectedId) ?? null;
+
+  // Ordered openings currently in the dispatch selection (tap order preserved).
+  const selectedOpenings = selection
+    .map((id) => all.find((o) => o.id === id))
+    .filter((o): o is ProjectOpening => !!o);
+  const installerExistingCount = dispatchInstaller
+    ? all.filter(
+        (o) => o.assigned_to === dispatchInstaller && !selection.includes(o.id),
+      ).length
+    : 0;
+  // Installers with assignments among the pins currently rendered → legend.
+  const legendInstallers = (() => {
+    const seen = new Set<string>();
+    const rows: { id: string; name: string; color: string }[] = [];
+    for (const o of [...placed, ...autos]) {
+      if (!o.assigned_to || seen.has(o.assigned_to)) continue;
+      seen.add(o.assigned_to);
+      rows.push({
+        id: o.assigned_to,
+        name:
+          o.assignee?.display_name ??
+          crewNameById.get(o.assigned_to) ??
+          "installer",
+        color: crewColors.get(o.assigned_to) ?? "#a39c92",
+      });
+    }
+    return rows;
+  })();
   const selectedDetail = selectedOpening
     ? details.find((d) =>
         d.marks.includes(openingMarkCode(selectedOpening.opening_code)),
@@ -714,7 +811,20 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           {o.assignee && (
             <div>
               <dt>Assigned</dt>
-              <dd>{o.assignee.display_name}</dd>
+              <dd>
+                <span
+                  className="map-detail-card__installer"
+                  style={{
+                    background: crewColors.get(o.assignee.id) ?? "#a39c92",
+                  }}
+                  aria-hidden
+                >
+                  {installerInitials(o.assignee.display_name)}
+                </span>
+                {o.assignee.display_name}
+                {o.sequence != null && ` · #${o.sequence}`}
+                {` · ${o.status}`}
+              </dd>
             </div>
           )}
           {o.ro_width_in != null && o.ro_height_in != null && (
@@ -765,13 +875,20 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       const kind = unitKind(o);
       const isVoided = isLead && o.status !== "installed" && voidedIds.has(o.id);
       const pos = dotPos(o);
+      const selIndex = selection.indexOf(o.id);
+      const installerColor = o.assigned_to
+        ? crewColors.get(o.assigned_to)
+        : undefined;
       return (
         <button
           key={o.id}
           type="button"
+          aria-pressed={dispatchMode ? selIndex >= 0 : undefined}
           className={`plan-dot${pos.auto ? " plan-dot--auto" : ""}${
             selectedId === o.id ? " plan-dot--selected" : ""
-          }${drag?.id === o.id ? " plan-dot--dragging" : ""}`}
+          }${drag?.id === o.id ? " plan-dot--dragging" : ""}${
+            selIndex >= 0 ? " plan-dot--dispatch-selected" : ""
+          }`}
           style={{
             left: `${pos.x * 100}%`,
             top: `${pos.y * 100}%`,
@@ -789,6 +906,20 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           onPointerDown={beginDrag(o)}
         >
           {openingMarkCode(o.opening_code)}
+          {installerColor && selIndex < 0 && (
+            <span
+              className="plan-dot__installer"
+              style={{ background: installerColor }}
+              aria-hidden
+            >
+              {installerInitials(o.assignee?.display_name ?? "?")}
+            </span>
+          )}
+          {selIndex >= 0 && (
+            <span className="plan-dot__seq" aria-hidden>
+              {selIndex + 1}
+            </span>
+          )}
         </button>
       );
     });
@@ -863,6 +994,112 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             ▶
           </button>
         </>
+      )}
+    </div>
+  );
+
+  const assignLabel = (() => {
+    const n = selection.length;
+    if (!dispatchInstaller) return `Assign ${n}`;
+    const name = crewNameById.get(dispatchInstaller) ?? "installer";
+    return installerExistingCount > 0
+      ? `Add ${n} to ${name}'s list`
+      : `Assign ${n} to ${name}`;
+  })();
+
+  const dispatchControls = isLead && (
+    <div className="dispatch-map-controls">
+      <div className="row-gap dispatch-map-controls__top">
+        <button
+          type="button"
+          className={dispatchMode ? "chip active" : "chip"}
+          aria-pressed={dispatchMode}
+          onClick={() => {
+            setDispatchMode((on) => !on);
+            setSelection([]);
+            setDispatchNote(null);
+            setSelectedId(null);
+          }}
+        >
+          {dispatchMode ? "Dispatch: on" : "Dispatch"}
+        </button>
+        {dispatchMode && (
+          <label className="dispatch-map-controls__picker">
+            <span className="field-label">Installer</span>
+            <select
+              value={dispatchInstaller}
+              onChange={(e) => setDispatchInstaller(e.target.value)}
+            >
+              <option value="">Choose an installer…</option>
+              {activeCrew.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.display_name}
+                  {c.role !== "installer" ? ` (${c.role})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
+
+      {dispatchMode && (
+        <div className="dispatch-panel">
+          <div className="dispatch-panel__head">
+            <strong>Tap pins in the order they should be installed</strong>
+            {selection.length > 0 && (
+              <button
+                type="button"
+                className="link"
+                onClick={() => setSelection([])}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          {selectedOpenings.length === 0 ? (
+            <p className="muted">
+              No pins picked yet — tap window/door pins on the map to build the
+              order.
+            </p>
+          ) : (
+            <ol className="dispatch-panel__list">
+              {selectedOpenings.map((o, i) => (
+                <li key={o.id}>
+                  <span className="dispatch-panel__seq">{i + 1}</span>
+                  <span>#{openingMarkCode(o.opening_code)}</span>
+                  <button
+                    type="button"
+                    className="dispatch-panel__remove"
+                    aria-label={`Remove #${openingMarkCode(o.opening_code)} from order`}
+                    onClick={() =>
+                      setSelection((prev) => toggleSelection(prev, o.id))
+                    }
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ol>
+          )}
+          <button
+            type="button"
+            className="button-like button-like--primary dispatch-panel__assign"
+            disabled={
+              !dispatchInstaller ||
+              selection.length === 0 ||
+              assignSelection.isPending
+            }
+            onClick={() =>
+              assignSelection.mutate({
+                installerId: dispatchInstaller,
+                orderedIds: selection,
+              })
+            }
+          >
+            {assignSelection.isPending ? "Assigning…" : assignLabel}
+          </button>
+          {dispatchNote && <p className="dispatch-panel__note">{dispatchNote}</p>}
+        </div>
       )}
     </div>
   );
@@ -1005,6 +1242,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           </button>
         ))}
       </nav>
+
+      {dispatchControls}
 
       {embedded && (
         <div className="row-gap" style={{ marginBottom: 10 }}>
@@ -1372,6 +1611,20 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           </span>
         )}
       </div>
+
+      {legendInstallers.length > 0 && (
+        <div className="map-legend map-legend--installers muted">
+          <span className="map-legend__label">Assigned to:</span>
+          {legendInstallers.map((inst) => (
+            <span key={inst.id}>
+              <i className="map-legend__initials" style={{ background: inst.color }}>
+                {installerInitials(inst.name)}
+              </i>{" "}
+              {inst.name}
+            </span>
+          ))}
+        </div>
+      )}
 
       <h2>
         {filter === "all" ? "All openings" : FILTERS.find((f) => f.id === filter)?.label}{" "}
