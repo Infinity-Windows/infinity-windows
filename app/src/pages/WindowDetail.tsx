@@ -4,11 +4,13 @@ import { Link, useParams } from "react-router-dom";
 import { Scanner } from "../components/Scanner";
 import {
   getLocationByAddress,
+  getLocationBySerial,
   getMovements,
   getWindowByWindowId,
   loadWindow,
   moveWindow,
   suggestLocation,
+  updateWindow,
 } from "../lib/api";
 import { listOpenings } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
@@ -51,6 +53,8 @@ export function WindowDetail() {
   const [reason, setReason] = useState("");
   const [failPoint, setFailPoint] = useState("");
   const [description, setDescription] = useState("");
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
 
   const unit = useQuery({
     queryKey: ["window", windowId],
@@ -127,6 +131,16 @@ export function WindowDetail() {
     onError: (e) => setActionError(String(e)),
   });
 
+  const saveName = useMutation({
+    mutationFn: () => updateWindow(unit.data!.id, { display_name: nameDraft }),
+    onSuccess: () => {
+      setEditingName(false);
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["window", windowId] });
+    },
+    onError: (e) => setActionError(String(e)),
+  });
+
   if (unit.isLoading) return <div className="page">Loading...</div>;
   if (!unit.data) {
     return (
@@ -175,6 +189,41 @@ export function WindowDetail() {
           <strong>{w.window_types?.name}</strong>{" "}
           <span className="muted">({w.window_types?.type_code})</span>
         </p>
+        {w.serial && (
+          <p className="muted" style={{ margin: 0 }}>
+            Serial: <strong>{w.serial}</strong>
+          </p>
+        )}
+        {!editingName ? (
+          <p>
+            Name: <strong>{w.display_name || "—"}</strong>{" "}
+            <button
+              className="link"
+              onClick={() => {
+                setNameDraft(w.display_name ?? "");
+                setActionError(null);
+                setEditingName(true);
+              }}
+            >
+              Edit
+            </button>
+          </p>
+        ) : (
+          <div className="manual-entry" style={{ marginTop: 4 }}>
+            <input
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              placeholder="Friendly name (optional)"
+              aria-label="Window display name"
+            />
+            <button disabled={saveName.isPending} onClick={() => saveName.mutate()}>
+              {saveName.isPending ? "…" : "Save"}
+            </button>
+            <button className="link" onClick={() => setEditingName(false)}>
+              Cancel
+            </button>
+          </div>
+        )}
         <p>
           Status: <strong>{STATUS_LABELS[w.status]}</strong>
         </p>
@@ -251,6 +300,8 @@ export function WindowDetail() {
                   window_id: w.window_id,
                   typeName: w.window_types?.name ?? "",
                   short_code: w.short_code,
+                  serial: w.serial,
+                  display_name: w.display_name,
                 },
               ]);
               downloadPdf(bytes, `${w.window_id}.pdf`);
@@ -282,9 +333,13 @@ export function WindowDetail() {
           )}
           <p className="scanner-hint">Or scan the destination slot label:</p>
           <Scanner
-            onScan={(payload) => {
+            onScan={async (payload) => {
               if (payload.kind === "location") {
                 moveTo.mutate(payload.address);
+              } else if (payload.kind === "locationSerial") {
+                const loc = await getLocationBySerial(payload.serial);
+                if (loc) moveTo.mutate(loc.address);
+                else setActionError(`No slot found for serial ${payload.serial}.`);
               } else {
                 setActionError("That's a window label — scan a slot label.");
               }

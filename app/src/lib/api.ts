@@ -178,6 +178,37 @@ export async function getWindowByWindowId(
   return data;
 }
 
+export async function findWindowBySerial(
+  serial: string,
+): Promise<WindowUnit | null> {
+  const { data, error } = await supabase
+    .from("windows")
+    .select(WINDOW_SELECT)
+    .eq("serial", serial.trim())
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/** Edit a window's friendly display name (foreman+ via the trusted-crew RLS). */
+export async function updateWindow(
+  id: string,
+  patch: { display_name?: string | null },
+): Promise<WindowUnit> {
+  const update: Record<string, string | null> = {};
+  if (patch.display_name !== undefined) {
+    update.display_name = patch.display_name?.trim() ? patch.display_name.trim() : null;
+  }
+  const { data, error } = await supabase
+    .from("windows")
+    .update(update)
+    .eq("id", id)
+    .select(WINDOW_SELECT)
+    .single();
+  if (error) throw error;
+  return data as WindowUnit;
+}
+
 export async function findWindowByCode(
   code: string,
 ): Promise<WindowUnit | null> {
@@ -201,6 +232,56 @@ export async function getLocationByAddress(
     .maybeSingle();
   if (error) throw error;
   return data;
+}
+
+export async function getLocationBySerial(
+  serial: string,
+): Promise<Location | null> {
+  const { data, error } = await supabase
+    .from("locations")
+    .select("*")
+    .eq("serial", serial.trim())
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Edit a slot's address and/or friendly display name (foreman+ via the
+ * trusted-crew RLS). `address` is a GENERATED column (zone-rack-slot), so we
+ * parse ZONE-RACK-SLOT and update the underlying parts; the address then
+ * regenerates. The permanent serial is never touched, so printed QRs keep
+ * scanning even after a rename.
+ */
+export async function updateLocation(
+  id: string,
+  patch: { address?: string; display_name?: string | null },
+): Promise<Location> {
+  const update: Record<string, string | null> = {};
+  if (patch.display_name !== undefined) {
+    update.display_name = patch.display_name?.trim() ? patch.display_name.trim() : null;
+  }
+  if (patch.address !== undefined) {
+    const parts = patch.address.trim().toUpperCase().split("-").filter(Boolean);
+    if (parts.length < 3) {
+      throw new Error("Address must look like ZONE-RACK-SLOT, e.g. S-03-B.");
+    }
+    const zone = parts[0];
+    if (!["R", "J", "S", "D"].includes(zone)) {
+      throw new Error(`Zone must be R, J, S or D (got "${zone}").`);
+    }
+    update.zone = zone;
+    update.slot = parts[parts.length - 1];
+    update.rack = parts.slice(1, -1).join("-");
+  }
+  const { data, error } = await supabase
+    .from("locations")
+    .update(update)
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as Location;
 }
 
 export async function getUnitsAtLocation(

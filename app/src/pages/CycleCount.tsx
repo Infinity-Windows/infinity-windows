@@ -2,7 +2,12 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Scanner } from "../components/Scanner";
-import { getLocationByAddress, getUnitsAtLocation } from "../lib/api";
+import {
+  findWindowBySerial,
+  getLocationByAddress,
+  getLocationBySerial,
+  getUnitsAtLocation,
+} from "../lib/api";
 import { supabase } from "../lib/supabase";
 import type { Location, WindowUnit } from "../lib/types";
 
@@ -77,6 +82,9 @@ export function CycleCount() {
             if (payload.kind === "location") {
               const loc = await getLocationByAddress(payload.address);
               if (loc) setLocation(loc);
+            } else if (payload.kind === "locationSerial") {
+              const loc = await getLocationBySerial(payload.serial);
+              if (loc) setLocation(loc);
             }
           }}
         />
@@ -103,15 +111,22 @@ export function CycleCount() {
 
       {!saved && (
         <Scanner
-          onScan={(payload) => {
-            if (payload.kind !== "window") return;
+          onScan={async (payload) => {
+            let windowId: string | null = null;
+            if (payload.kind === "window") {
+              windowId = payload.windowId;
+            } else if (payload.kind === "windowSerial") {
+              const unit = await findWindowBySerial(payload.serial);
+              windowId = unit?.window_id ?? null;
+            }
+            if (!windowId) return;
             const known = (expected.data ?? []).some(
-              (u) => u.window_id === payload.windowId,
+              (u) => u.window_id === windowId,
             );
             if (known) {
-              setScanned((prev) => new Set(prev).add(payload.windowId));
-            } else if (!unexpected.includes(payload.windowId)) {
-              setUnexpected((prev) => [...prev, payload.windowId]);
+              setScanned((prev) => new Set(prev).add(windowId!));
+            } else if (!unexpected.includes(windowId)) {
+              setUnexpected((prev) => [...prev, windowId!]);
             }
           }}
         />

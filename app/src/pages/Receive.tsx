@@ -62,6 +62,8 @@ export function Receive() {
         window_id: r.unit.window_id,
         typeName: r.typeName,
         short_code: r.unit.short_code,
+        serial: r.unit.serial,
+        display_name: r.unit.display_name,
       })),
     );
     downloadPdf(bytes, "window-labels.pdf");
