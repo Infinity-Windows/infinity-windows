@@ -3,7 +3,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { BeforeAfterCapture, type BeforeAfterValue } from "../../components/BeforeAfterCapture";
 import { Scanner } from "../../components/Scanner";
-import { findWindowByCode, getWindowByWindowId, searchUnits } from "../../lib/api";
+import {
+  findWindowByCode,
+  findWindowBySerial,
+  getWindowByWindowId,
+  searchUnits,
+} from "../../lib/api";
 import {
   addJobNote,
   assignWindowToOpening,
@@ -234,6 +239,17 @@ export function OpeningSheet() {
     try {
       const unit = await findWindowByCode(value);
       if (!unit) throw new Error(`No window found for "${value}"`);
+      assign.mutate(unit.id);
+    } catch (e) {
+      setMessage(String(e));
+    }
+  };
+
+  // Resolve a permanent serial (from a serial-encoded QR) then assign the unit.
+  const assignBySerial = async (serial: string) => {
+    try {
+      const unit = await findWindowBySerial(serial);
+      if (!unit) throw new Error(`No window found for serial "${serial}"`);
       assign.mutate(unit.id);
     } catch (e) {
       setMessage(String(e));
@@ -735,6 +751,8 @@ export function OpeningSheet() {
                   void assignByWindowId(payload.windowId);
                 } else if (payload.kind === "windowCode") {
                   void assignByCode(payload.code);
+                } else if (payload.kind === "windowSerial") {
+                  void assignBySerial(payload.serial);
                 } else {
                   setMessage("That's a slot label — scan a window label.");
                 }

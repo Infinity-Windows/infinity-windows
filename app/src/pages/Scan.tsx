@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Scanner } from "../components/Scanner";
-import { findWindowByCode } from "../lib/api";
+import {
+  findWindowByCode,
+  findWindowBySerial,
+  getLocationBySerial,
+} from "../lib/api";
 
 export function Scan() {
   const navigate = useNavigate();
@@ -28,6 +32,35 @@ export function Scan() {
     }
   };
 
+  // A serial-encoded QR resolves to the same destination as a legacy label.
+  const resolveWindowSerial = async (serial: string) => {
+    setMessage(null);
+    setLooking(true);
+    try {
+      const unit = await findWindowBySerial(serial);
+      if (unit) navigate(`/w/${encodeURIComponent(unit.window_id)}`);
+      else setMessage(`No window found for serial "${serial}".`);
+    } catch (e) {
+      setMessage(String(e));
+    } finally {
+      setLooking(false);
+    }
+  };
+
+  const resolveLocationSerial = async (serial: string) => {
+    setMessage(null);
+    setLooking(true);
+    try {
+      const loc = await getLocationBySerial(serial);
+      if (loc) navigate(`/loc/${encodeURIComponent(loc.address)}`);
+      else setMessage(`No slot found for serial "${serial}".`);
+    } catch (e) {
+      setMessage(String(e));
+    } finally {
+      setLooking(false);
+    }
+  };
+
   return (
     <div className="page">
       <header className="page-header">
@@ -47,6 +80,10 @@ export function Scan() {
               navigate(`/w/${encodeURIComponent(payload.windowId)}`);
             } else if (payload.kind === "windowCode") {
               void resolveCode(payload.code);
+            } else if (payload.kind === "windowSerial") {
+              void resolveWindowSerial(payload.serial);
+            } else if (payload.kind === "locationSerial") {
+              void resolveLocationSerial(payload.serial);
             } else {
               navigate(`/loc/${encodeURIComponent(payload.address)}`);
             }

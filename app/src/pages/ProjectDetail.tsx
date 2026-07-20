@@ -5,6 +5,7 @@ import { Scanner } from "../components/Scanner";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
   activatePreissuedUnit,
+  findWindowBySerial,
   getProjectUnits,
   getProjectWindows,
   getWindowByWindowId,
@@ -774,6 +775,8 @@ function PreissuePanel({
           window_id: u.window_id,
           typeName: u.window_types?.name ?? u.window_types?.type_code ?? "",
           short_code: u.short_code,
+          serial: u.serial,
+          display_name: u.display_name,
         })),
       );
       downloadPdf(bytes, `preissued-labels-${projectId}.pdf`);
@@ -1340,9 +1343,13 @@ function WarehouseTab({
             </p>
           )}
           <Scanner
-            onScan={(payload) => {
+            onScan={async (payload) => {
               if (payload.kind === "window") {
                 loadScan.mutate(payload.windowId);
+              } else if (payload.kind === "windowSerial") {
+                const unit = await findWindowBySerial(payload.serial);
+                if (unit) loadScan.mutate(unit.window_id);
+                else setScanMessage(`No window found for serial ${payload.serial}.`);
               } else {
                 setScanMessage("That's a slot label — scan a window label.");
               }

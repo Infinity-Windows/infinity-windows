@@ -46,6 +46,10 @@ export interface Location {
   rack: string;
   slot: string;
   address: string;
+  /** Permanent auto-generated serial (e.g. SLOT-000123). Encoded by the QR. */
+  serial?: string | null;
+  /** Optional friendly display name, editable without breaking scans. */
+  display_name?: string | null;
   capacity: number;
   active: boolean;
 }
@@ -82,6 +86,10 @@ export interface WindowUnit {
   window_id: string;
   /** Short, hand-writable code (no ambiguous chars) that also resolves to this unit. */
   short_code?: string | null;
+  /** Permanent auto-generated serial (e.g. WIN-000123). Encoded by the QR. */
+  serial?: string | null;
+  /** Optional friendly display name, editable without breaking scans. */
+  display_name?: string | null;
   window_type_id: string;
   status: WindowStatus;
   project_id: string | null;

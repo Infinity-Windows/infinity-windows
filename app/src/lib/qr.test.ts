@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { encodeLocationQr, encodeWindowQr, parseQr } from "./qr";
+import {
+  encodeLocationQr,
+  encodeLocationSerialQr,
+  encodeWindowQr,
+  encodeWindowSerialQr,
+  parseQr,
+} from "./qr";
 
 describe("qr payloads", () => {
   it("round-trips window labels", () => {
@@ -10,6 +16,35 @@ describe("qr payloads", () => {
   it("round-trips location labels", () => {
     const payload = parseQr(encodeLocationQr("S-03-B"));
     expect(payload).toEqual({ kind: "location", address: "S-03-B" });
+  });
+
+  it("round-trips window serial labels", () => {
+    expect(encodeWindowSerialQr("WIN-000123")).toBe("WOPS:WS:WIN-000123");
+    expect(parseQr(encodeWindowSerialQr("WIN-000123"))).toEqual({
+      kind: "windowSerial",
+      serial: "WIN-000123",
+    });
+  });
+
+  it("round-trips location serial labels", () => {
+    expect(encodeLocationSerialQr("SLOT-000123")).toBe("WOPS:LS:SLOT-000123");
+    expect(parseQr(encodeLocationSerialQr("SLOT-000123"))).toEqual({
+      kind: "locationSerial",
+      serial: "SLOT-000123",
+    });
+  });
+
+  it("matches serial (WS/LS) tags before single-letter (W/L) tags", () => {
+    // A serial payload must never be mis-parsed as a window/location payload
+    // whose id happens to start with S.
+    expect(parseQr("WOPS:WS:WIN-000123")).toEqual({
+      kind: "windowSerial",
+      serial: "WIN-000123",
+    });
+    expect(parseQr("WOPS:LS:SLOT-000123")).toEqual({
+      kind: "locationSerial",
+      serial: "SLOT-000123",
+    });
   });
 
   it("accepts bare window IDs typed by hand, case-insensitive", () => {
