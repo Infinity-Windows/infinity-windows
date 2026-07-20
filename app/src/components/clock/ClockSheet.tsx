@@ -14,6 +14,14 @@ import {
 import { listProjects } from "../../lib/api";
 import { captureGeoSoft } from "../../lib/geo";
 import { pushToast, toastError, toastSuccess } from "../../lib/toast";
+import { isNetworkError } from "../../lib/offline/outbox-core";
+import {
+  enqueueBreakStart,
+  enqueueBreakStop,
+  enqueueClockIn,
+  enqueueClockOut,
+  pendingRefForShift,
+} from "../../lib/offline/outbox";
 import { ToolboxTalkNagBanner } from "../time/ToolboxTalkNagBanner";
 import {
   BREAK_TYPES,
@@ -97,6 +105,226 @@ export function ClockSheet({
     onChanged();
   };
 
+  // A punch either goes straight through (online + healthy) or gets saved to
+  // the offline outbox and synced later. Callers show the right copy off this.
+  type PunchResult = { queued: boolean };
+
+  const shouldQueue = (err: unknown) =>
+    typeof navigator !== "undefined" && navigator.onLine === false
+      ? true
+      : isNetworkError(err);
+
+  const openShiftKey = ["openShift", profileId] as const;
+
+  /** Optimistically drop a synthetic open shift into the cache while queued. */
+  const setOptimisticShift = (next: TimeShift | null) => {
+    queryClient.setQueryData(openShiftKey, next);
+    onChanged();
+  };
+
+  const synthOpenShift = (
+    entryId: string,
+    projectId: string | null,
+    costCodeId: string | null,
+  ): TimeShift => {
+    const proj = (projects.data ?? []).find((p) => p.id === projectId);
+    const cc = (costCodes.data ?? []).find((c) => c.id === costCodeId);
+    const nowIso = new Date().toISOString();
+    return {
+      id: pendingRefForShift(entryId),
+      profile_id: profileId ?? "",
+      project_id: projectId,
+      cost_code_id: costCodeId,
+      clock_in_at: nowIso,
+      clock_out_at: null,
+      break_seconds: 0,
+      break_started_at: null,
+      break_type: null,
+      injured: null,
+      time_confirmed: null,
+      status: "open",
+      created_at: nowIso,
+      projects: proj ? { job_code: proj.job_code, name: proj.name } : null,
+      cost_codes: cc ? { code: cc.code, label: cc.label } : null,
+    };
+  };
+
+  const doStart = useMutation<PunchResult>({
+    mutationFn: async () => {
+      const geo = await captureGeoSoft();
+      const projectId = pickProjectId || null;
+      const costCodeId = pickCostCodeId || null;
+      try {
+        await clockIn(projectId, costCodeId, geo);
+        return { queued: false };
+      } catch (e) {
+        if (!shouldQueue(e)) throw e;
+        const entryId = await enqueueClockIn({
+          projectId,
+          costCodeId,
+          lat: geo?.lat ?? null,
+          lng: geo?.lng ?? null,
+        });
+        setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId));
+        return { queued: true };
+      }
+    },
+    onSuccess: (r) => {
+      toastSuccess(r.queued ? "Clocked in — we'll sync it when you're back online" : "Clocked in");
+      if (!r.queued) refresh();
+      onClose();
+    },
+    onError: (e) => toastError(e),
+  });
+
+  const doSwitch = useMutation<PunchResult>({
+    mutationFn: async () => {
+      const geo = await captureGeoSoft();
+      const projectId = pickProjectId || null;
+      const costCodeId = pickCostCodeId || null;
+      try {
+        // clock_in auto-closes the prior open shift, so switching leaves no gap.
+        await clockIn(projectId, costCodeId, geo);
+        return { queued: false };
+      } catch (e) {
+        if (!shouldQueue(e)) throw e;
+        const entryId = await enqueueClockIn({
+          projectId,
+          costCodeId,
+          lat: geo?.lat ?? null,
+          lng: geo?.lng ?? null,
+        });
+        setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId));
+        return { queued: true };
+      }
+    },
+    onSuccess: (r) => {
+      toastSuccess(r.queued ? "Switch saved — we'll sync it when you're back online" : "Switched project");
+      if (!r.queued) refresh();
+      onClose();
+    },
+    onError: (e) => toastError(e),
+  });
+
+  const doPhaseSwitch = useMutation<PunchResult, Error, string>({
+    mutationFn: async (costCodeId: string) => {
+      const geo = await captureGeoSoft();
+      const projectId = shift?.project_id ?? null;
+      try {
+        await clockIn(projectId, costCodeId, geo);
+        return { queued: false };
+      } catch (e) {
+        if (!shouldQueue(e)) throw e;
+        const entryId = await enqueueClockIn({
+          projectId,
+          costCodeId,
+          lat: geo?.lat ?? null,
+          lng: geo?.lng ?? null,
+        });
+        setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId));
+        return { queued: true };
+      }
+    },
+    onSuccess: (r) => {
+      toastSuccess(r.queued ? "Phase saved — will sync when online" : "Switched phase");
+      if (!r.queued) refresh();
+    },
+    onError: (e) => toastError(e),
+  });
+
+  const doBreakStart = useMutation<PunchResult, Error, BreakType>({
+    mutationFn: async (type: BreakType) => {
+      try {
+        await startBreak(shift!.id, type);
+        return { queued: false };
+      } catch (e) {
+        if (!shouldQueue(e)) throw e;
+        await enqueueBreakStart(shift!.id, type);
+        if (shift) {
+          setOptimisticShift({
+            ...shift,
+            break_started_at: new Date().toISOString(),
+            break_type: type,
+          });
+        }
+        return { queued: true };
+      }
+    },
+    onSuccess: (r, type) => {
+      pushToast(
+        r.queued
+          ? `On ${breakTypeLabel(type).toLowerCase()} break — will sync when online`
+          : `On ${breakTypeLabel(type).toLowerCase()} break`,
+        "info",
+      );
+      setMode("main");
+      if (!r.queued) refresh();
+    },
+    onError: (e) => toastError(e),
+  });
+
+  const doBreakEnd = useMutation<PunchResult>({
+    mutationFn: async () => {
+      try {
+        await endBreak(shift!.id);
+        return { queued: false };
+      } catch (e) {
+        if (!shouldQueue(e)) throw e;
+        await enqueueBreakStop(shift!.id);
+        if (shift) {
+          setOptimisticShift({
+            ...shift,
+            break_seconds: currentBreakSeconds(shift, Date.now()),
+            break_started_at: null,
+            break_type: null,
+          });
+        }
+        return { queued: true };
+      }
+    },
+    onSuccess: (r) => {
+      toastSuccess(r.queued ? "Back on the clock — will sync when online" : "Back on the clock");
+      if (!r.queued) refresh();
+    },
+    onError: (e) => toastError(e),
+  });
+
+  const doClockOut = useMutation<PunchResult>({
+    mutationFn: async () => {
+      const geo = await captureGeoSoft();
+      const breakSeconds = currentBreakSeconds(shift!, Date.now());
+      try {
+        await clockOut(shift!.id, {
+          injured,
+          timeConfirmed: true,
+          breakSeconds,
+          geo,
+        });
+        return { queued: false };
+      } catch (e) {
+        if (!shouldQueue(e)) throw e;
+        await enqueueClockOut({
+          shiftRef: shift!.id,
+          injured,
+          timeConfirmed: true,
+          breakSeconds,
+          lat: geo?.lat ?? null,
+          lng: geo?.lng ?? null,
+        });
+        // Optimistically clear the open shift — the crew is off the clock now.
+        setOptimisticShift(null);
+        return { queued: true };
+      }
+    },
+    onSuccess: (r) => {
+      toastSuccess(r.queued ? "Clocked out — we'll sync it when you're back online" : "Clocked out");
+      setInjured(false);
+      if (!r.queued) refresh();
+      onClose();
+    },
+    onError: (e) => toastError(e),
+  });
+
   const onBreak = Boolean(shift?.break_started_at);
   const breakSec = shift ? currentBreakSeconds(shift, now) : 0;
   const runningBreakSec =
@@ -108,83 +336,6 @@ export function ClockSheet({
   // Clock-in is no longer gated on today's toolbox talk — installers can always
   // start their shift. A non-blocking nag banner (below) nudges them to sign it.
   const canStart = Boolean(pickProjectId && pickCostCodeId);
-
-  const doStart = useMutation({
-    mutationFn: async () => {
-      const geo = await captureGeoSoft();
-      return clockIn(pickProjectId || null, pickCostCodeId || null, geo);
-    },
-    onSuccess: () => {
-      toastSuccess("Clocked in");
-      refresh();
-      onClose();
-    },
-    onError: (e) => toastError(e),
-  });
-
-  const doSwitch = useMutation({
-    mutationFn: async () => {
-      const geo = await captureGeoSoft();
-      // clock_in auto-closes the prior open shift, so switching leaves no gap.
-      return clockIn(pickProjectId || null, pickCostCodeId || null, geo);
-    },
-    onSuccess: () => {
-      toastSuccess("Switched project");
-      refresh();
-      onClose();
-    },
-    onError: (e) => toastError(e),
-  });
-
-  const doPhaseSwitch = useMutation({
-    mutationFn: async (costCodeId: string) => {
-      const geo = await captureGeoSoft();
-      return clockIn(shift?.project_id ?? null, costCodeId, geo);
-    },
-    onSuccess: () => {
-      toastSuccess("Switched phase");
-      refresh();
-    },
-    onError: (e) => toastError(e),
-  });
-
-  const doBreakStart = useMutation({
-    mutationFn: (type: BreakType) => startBreak(shift!.id, type),
-    onSuccess: (_data, type) => {
-      pushToast(`On ${breakTypeLabel(type).toLowerCase()} break`, "info");
-      setMode("main");
-      refresh();
-    },
-    onError: (e) => toastError(e),
-  });
-
-  const doBreakEnd = useMutation({
-    mutationFn: () => endBreak(shift!.id),
-    onSuccess: () => {
-      toastSuccess("Back on the clock");
-      refresh();
-    },
-    onError: (e) => toastError(e),
-  });
-
-  const doClockOut = useMutation({
-    mutationFn: async () => {
-      const geo = await captureGeoSoft();
-      return clockOut(shift!.id, {
-        injured,
-        timeConfirmed: true,
-        breakSeconds: currentBreakSeconds(shift!, Date.now()),
-        geo,
-      });
-    },
-    onSuccess: () => {
-      toastSuccess("Clocked out");
-      setInjured(false);
-      refresh();
-      onClose();
-    },
-    onError: (e) => toastError(e),
-  });
 
   const busy =
     doStart.isPending ||

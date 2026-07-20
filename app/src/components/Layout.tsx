@@ -16,6 +16,7 @@ import { AppMenu } from "./nav/AppMenu";
 import { AppMenuDrawer } from "./nav/AppMenuDrawer";
 import { CaptureSheet } from "./nav/CaptureSheet";
 import { FeatureTip } from "./assistant/FeatureTip";
+import { SyncStatusPill } from "./offline/SyncStatusPill";
 
 const PREVIEW_ROLES: CrewRole[] = ["installer", "foreman", "supervisor", "owner"];
 
@@ -145,11 +146,17 @@ export function Layout() {
   return (
     <div className="app-shell">
       <ToastHost />
+      <div className="sync-pill-mobile">
+        <SyncStatusPill compact />
+      </div>
       <div className="app-frame">
         <aside className="app-rail" aria-label="Primary">
           <Link to="/" className="rail-brand" aria-label="Infinity Windows home">
             <InfinityLogo variant="full" size={22} />
           </Link>
+          <div className="rail-sync">
+            <SyncStatusPill />
+          </div>
           <nav className="rail-scroll" aria-label="Sections">
             <AppMenu
               sections={sections}

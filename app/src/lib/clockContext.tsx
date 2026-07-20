@@ -10,6 +10,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getMyProfile } from "./install/api";
 import { getOpenShift, type TimeShift } from "./timeclock";
+import { subscribeSynced } from "./offline/outbox";
 import { ClockSheet } from "../components/clock/ClockSheet";
 
 /**
@@ -60,6 +61,18 @@ export function ClockProvider({ children }: { children: ReactNode }) {
     window.addEventListener(OPEN_CLOCK_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_CLOCK_EVENT, onOpen);
   }, []);
+
+  // When the offline outbox syncs queued punches, refetch the real shift state
+  // so any optimistic "pending" shift is replaced by the server's version.
+  useEffect(
+    () =>
+      subscribeSynced(() => {
+        void queryClient.invalidateQueries({ queryKey: ["openShift"] });
+        void queryClient.invalidateQueries({ queryKey: ["myShifts"] });
+        void queryClient.invalidateQueries({ queryKey: ["recentJobs"] });
+      }),
+    [queryClient],
+  );
 
   const value = useMemo<ClockContextValue>(
     () => ({
