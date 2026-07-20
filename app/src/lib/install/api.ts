@@ -1033,6 +1033,9 @@ export async function ensureTypesFromSpecs(
           width_in: sample.width_in,
           height_in: sample.height_in,
           notes,
+          // Not part of the closed ~100 catalog. Flag it so it never
+          // silently masquerades as a real catalog product in the brain.
+          provisional: true,
         })
         .select("id, type_code")
         .single();
