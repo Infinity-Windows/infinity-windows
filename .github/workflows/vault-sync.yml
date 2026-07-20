@@ -1,0 +1,72 @@
+# Mirror the install brain (Supabase) into the Obsidian vault as markdown.
+# One-way: DB = truth, vault = wiki. Regenerates per-type profiles + synthesized
+# tips/pitfalls every run, appends new per-memo files, and commits the result so
+# a git-synced Obsidian vault always reflects the brain.
+#
+# Required repo secret: SUPABASE_SERVICE_ROLE_KEY (service role — bypasses RLS so
+# it can read every install event and window type). Add it in
+# Settings -> Secrets and variables -> Actions.
+
+name: Vault brain sync
+
+on:
+  schedule:
+    # Daily at 08:00 UTC (~1-2am Mountain).
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vault-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: app/.nvmrc
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install app dependencies (pinned @supabase/supabase-js)
+        working-directory: app
+        run: npm ci
+
+      - name: Expose deps to the root script
+        # scripts/vault-sync.mjs resolves its bare import from ../node_modules.
+        run: ln -sfn app/node_modules node_modules
+
+      - name: Sync the vault from Supabase
+        env:
+          SUPABASE_URL: https://czprjcskmzzagdztqonm.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::error::SUPABASE_SERVICE_ROLE_KEY secret is not set — add it in repo Settings > Secrets > Actions."
+            exit 1
+          fi
+          node scripts/vault-sync.mjs
+
+      - name: Remove the temporary symlink
+        if: always()
+        run: rm -f node_modules
+
+      - name: Commit vault changes
+        run: |
+          git config user.name "vault-sync[bot]"
+          git config user.email "vault-sync@users.noreply.github.com"
+          if git status --porcelain vault | grep -q .; then
+            git add vault
+            git commit -m "chore(vault): sync install brain from Supabase [skip ci]"
+            git push
+          else
+            echo "No vault changes."
+          fi
