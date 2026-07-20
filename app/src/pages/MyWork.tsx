@@ -10,6 +10,7 @@ import {
 } from "../lib/install/api";
 import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
 import { orderMyWork } from "../lib/dispatch";
+import { orderNumberMap } from "../lib/install/mapDispatch";
 import { openingReadiness } from "../lib/install/fit";
 import { areaKey, toDispatchOpening } from "../lib/install/nextOpening";
 import { isForemanPlus, type ProjectOpening } from "../lib/install/types";
@@ -51,6 +52,11 @@ export function MyWork() {
     .map((d) => byId.get(d.id)!)
     .filter(Boolean);
   const next = ordered[0];
+  // Explicit first→last numbering over the do-order list, so every card/row can
+  // show "you are here" (#1 is the Next card; #2, #3 … follow). Derived from the
+  // shared orderMyWork result — orderMyWork itself is left untouched.
+  const orderNumbers = orderNumberMap(ordered.map((o) => o.id));
+  const totalOrder = ordered.length;
   const readyCount = active.filter((o) => openingReadiness(o).status === "ready").length;
 
   // Group the rest by job so a multi-job installer sees where work lives.
@@ -182,7 +188,9 @@ export function MyWork() {
 
       {next && (
         <button className="next-card" onClick={() => go(next)}>
-          <span className="next-label">Next window</span>
+          <span className="next-label">
+            Next · 1 of {totalOrder}
+          </span>
           <span className="next-code">{next.opening_code}</span>
           <span className="next-meta">
             {next.window_types?.type_code ?? "type?"} ·{" "}
@@ -206,6 +214,12 @@ export function MyWork() {
                 onClick={() => go(o)}
                 style={{ cursor: "pointer" }}
               >
+                <span
+                  className="order-badge"
+                  aria-label={`Order number ${orderNumbers.get(o.id)} of ${totalOrder}`}
+                >
+                  #{orderNumbers.get(o.id)}
+                </span>
                 <div>
                   <strong>{o.opening_code}</strong>{" "}
                   <span className="muted">{o.window_types?.type_code}</span>

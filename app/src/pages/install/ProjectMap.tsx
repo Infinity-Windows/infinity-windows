@@ -14,6 +14,8 @@ import {
   listProfiles,
   listVoidedInstallOpeningIds,
   saveDraftOpenings,
+  setOpeningsSequence,
+  unassignOpening,
   undoInstall,
   updateOpening,
 } from "../../lib/install/api";
@@ -29,10 +31,13 @@ import {
   type ProjectOpening,
 } from "../../lib/install/types";
 import {
+  buildInstallerWorklist,
   buildSequenceAssignments,
   installerColorMap,
   installerInitials,
   maxExistingSequence,
+  reorderById,
+  sortedAssignedIds,
   toggleSelection,
 } from "../../lib/install/mapDispatch";
 import {
@@ -505,9 +510,36 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     onSuccess: (count, args) => {
       const name = crewNameById.get(args.installerId) ?? "installer";
       setDispatchNote(
-        `Assigned ${count} opening${count === 1 ? "" : "s"} to ${name} in order.`,
+        `Added ${count} opening${count === 1 ? "" : "s"} to ${name}'s list.`,
       );
       setSelection([]);
+      queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+    },
+    onError: (e) => setMapError(String(e)),
+  });
+
+  // Drop an EXISTING assignment off the installer's route, then renumber the
+  // openings they keep so the saved sequence stays a clean 1..M with no gaps.
+  const removeExisting = useMutation({
+    mutationFn: async (args: { installerId: string; openingId: string }) => {
+      const remaining = sortedAssignedIds(
+        openings.data ?? [],
+        args.installerId,
+      ).filter((id) => id !== args.openingId);
+      await unassignOpening(args.openingId);
+      if (remaining.length > 0) await setOpeningsSequence(remaining);
+    },
+    onSuccess: () => {
+      setDispatchNote("Removed from the list — the rest were renumbered.");
+      queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+    },
+    onError: (e) => setMapError(String(e)),
+  });
+
+  // Persist a reordered existing route (up/down within the saved list).
+  const reorderExisting = useMutation({
+    mutationFn: (orderedIds: string[]) => setOpeningsSequence(orderedIds),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
     },
     onError: (e) => setMapError(String(e)),
@@ -702,15 +734,33 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
 
   const selectedOpening = all.find((o) => o.id === selectedId) ?? null;
 
-  // Ordered openings currently in the dispatch selection (tap order preserved).
-  const selectedOpenings = selection
-    .map((id) => all.find((o) => o.id === id))
-    .filter((o): o is ProjectOpening => !!o);
   const installerExistingCount = dispatchInstaller
     ? all.filter(
         (o) => o.assigned_to === dispatchInstaller && !selection.includes(o.id),
       ).length
     : 0;
+  // The chosen installer's FULL ordered worklist: already-assigned openings in
+  // saved sequence order, then the pins tapped now appended after them. This is
+  // what the foreman sees in the panel and the numbers stamped on the map.
+  const worklist =
+    dispatchMode && dispatchInstaller
+      ? buildInstallerWorklist(all, dispatchInstaller, selection)
+      : [];
+  const worklistOpenings = worklist
+    .map((item) => {
+      const opening = all.find((o) => o.id === item.id);
+      return opening ? { ...item, opening } : null;
+    })
+    .filter((row): row is typeof row & { opening: ProjectOpening } => !!row);
+  // id → route order number and id → is-newly-tapped, for the map overlay.
+  const routeOrder = new Map(worklist.map((w) => [w.id, w.order]));
+  const routeNewIds = new Set(
+    worklist.filter((w) => w.isNew).map((w) => w.id),
+  );
+  const hasRoute = dispatchMode && !!dispatchInstaller;
+  const existingRouteIds = hasRoute
+    ? sortedAssignedIds(all, dispatchInstaller, selection)
+    : [];
   // Installers with assignments among the pins currently rendered → legend.
   const legendInstallers = (() => {
     const seen = new Set<string>();
@@ -879,15 +929,27 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       const installerColor = o.assigned_to
         ? crewColors.get(o.assigned_to)
         : undefined;
+      // When an installer is chosen, number THEIR route (existing + pending)
+      // and dim everything else so the foreman can read the route at a glance.
+      const routeNum = hasRoute ? routeOrder.get(o.id) : undefined;
+      const onRoute = routeNum != null;
+      const isNewOnRoute = onRoute && routeNewIds.has(o.id);
+      const dimmed = hasRoute && !onRoute;
+      // Fall back to the plain tap-order number when no installer is chosen yet.
+      const seqNum = onRoute ? routeNum : selIndex >= 0 ? selIndex + 1 : null;
+      const showInstallerBadge =
+        installerColor && seqNum == null && !dimmed;
       return (
         <button
           key={o.id}
           type="button"
-          aria-pressed={dispatchMode ? selIndex >= 0 : undefined}
+          aria-pressed={dispatchMode ? selIndex >= 0 || isNewOnRoute : undefined}
           className={`plan-dot${pos.auto ? " plan-dot--auto" : ""}${
             selectedId === o.id ? " plan-dot--selected" : ""
           }${drag?.id === o.id ? " plan-dot--dragging" : ""}${
-            selIndex >= 0 ? " plan-dot--dispatch-selected" : ""
+            selIndex >= 0 || isNewOnRoute ? " plan-dot--dispatch-selected" : ""
+          }${onRoute && !isNewOnRoute ? " plan-dot--dispatch-route" : ""}${
+            dimmed ? " plan-dot--dispatch-dim" : ""
           }`}
           style={{
             left: `${pos.x * 100}%`,
@@ -906,7 +968,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           onPointerDown={beginDrag(o)}
         >
           {openingMarkCode(o.opening_code)}
-          {installerColor && selIndex < 0 && (
+          {showInstallerBadge && (
             <span
               className="plan-dot__installer"
               style={{ background: installerColor }}
@@ -915,9 +977,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               {installerInitials(o.assignee?.display_name ?? "?")}
             </span>
           )}
-          {selIndex >= 0 && (
+          {seqNum != null && (
             <span className="plan-dot__seq" aria-hidden>
-              {selIndex + 1}
+              {seqNum}
             </span>
           )}
         </button>
@@ -1045,42 +1107,120 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       {dispatchMode && (
         <div className="dispatch-panel">
           <div className="dispatch-panel__head">
-            <strong>Tap pins in the order they should be installed</strong>
+            <strong>
+              {dispatchInstaller
+                ? `${crewNameById.get(dispatchInstaller) ?? "Installer"}'s install order`
+                : "Tap pins in the order they should be installed"}
+            </strong>
             {selection.length > 0 && (
               <button
                 type="button"
                 className="link"
                 onClick={() => setSelection([])}
               >
-                Clear
+                Clear taps
               </button>
             )}
           </div>
-          {selectedOpenings.length === 0 ? (
+
+          {!dispatchInstaller ? (
             <p className="muted">
-              No pins picked yet — tap window/door pins on the map to build the
-              order.
+              Choose an installer above to see their full order and add
+              window/door pins to their list.
+            </p>
+          ) : worklistOpenings.length === 0 ? (
+            <p className="muted">
+              {crewNameById.get(dispatchInstaller) ?? "This installer"} has no
+              openings yet — tap window/door pins on the map, in order, to build
+              their list.
             </p>
           ) : (
-            <ol className="dispatch-panel__list">
-              {selectedOpenings.map((o, i) => (
-                <li key={o.id}>
-                  <span className="dispatch-panel__seq">{i + 1}</span>
-                  <span>#{openingMarkCode(o.opening_code)}</span>
-                  <button
-                    type="button"
-                    className="dispatch-panel__remove"
-                    aria-label={`Remove #${openingMarkCode(o.opening_code)} from order`}
-                    onClick={() =>
-                      setSelection((prev) => toggleSelection(prev, o.id))
-                    }
+            <ol className="dispatch-worklist">
+              {worklistOpenings.map((row) => {
+                const code = openingMarkCode(row.opening.opening_code);
+                const isFirstExisting = !row.isNew && row.order === 1;
+                const isLastExisting =
+                  !row.isNew && row.order === existingRouteIds.length;
+                const busy =
+                  removeExisting.isPending || reorderExisting.isPending;
+                return (
+                  <li
+                    key={row.id}
+                    className={`dispatch-worklist__row${
+                      row.isNew
+                        ? " dispatch-worklist__row--new"
+                        : " dispatch-worklist__row--existing"
+                    }`}
                   >
-                    ✕
-                  </button>
-                </li>
-              ))}
+                    <span className="dispatch-panel__seq">{row.order}</span>
+                    <span className="dispatch-worklist__code">#{code}</span>
+                    {row.isNew ? (
+                      <span className="dispatch-worklist__tag dispatch-worklist__tag--new">
+                        adding now
+                      </span>
+                    ) : (
+                      <span className="dispatch-worklist__tag">on list</span>
+                    )}
+                    <span className="dispatch-worklist__controls">
+                      {!row.isNew && existingRouteIds.length > 1 && (
+                        <>
+                          <button
+                            type="button"
+                            className="dispatch-worklist__move"
+                            aria-label={`Move #${code} earlier`}
+                            disabled={isFirstExisting || busy}
+                            onClick={() =>
+                              reorderExisting.mutate(
+                                reorderById(existingRouteIds, row.id, -1),
+                              )
+                            }
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            className="dispatch-worklist__move"
+                            aria-label={`Move #${code} later`}
+                            disabled={isLastExisting || busy}
+                            onClick={() =>
+                              reorderExisting.mutate(
+                                reorderById(existingRouteIds, row.id, 1),
+                              )
+                            }
+                          >
+                            ↓
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        className="dispatch-panel__remove"
+                        aria-label={
+                          row.isNew
+                            ? `Remove #${code} from the new taps`
+                            : `Remove #${code} from ${crewNameById.get(dispatchInstaller) ?? "installer"}'s list`
+                        }
+                        disabled={busy}
+                        onClick={() =>
+                          row.isNew
+                            ? setSelection((prev) =>
+                                toggleSelection(prev, row.id),
+                              )
+                            : removeExisting.mutate({
+                                installerId: dispatchInstaller,
+                                openingId: row.id,
+                              })
+                        }
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  </li>
+                );
+              })}
             </ol>
           )}
+
           <button
             type="button"
             className="button-like button-like--primary dispatch-panel__assign"
@@ -1096,7 +1236,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               })
             }
           >
-            {assignSelection.isPending ? "Assigning…" : assignLabel}
+            {assignSelection.isPending ? "Adding…" : assignLabel}
           </button>
           {dispatchNote && <p className="dispatch-panel__note">{dispatchNote}</p>}
         </div>
