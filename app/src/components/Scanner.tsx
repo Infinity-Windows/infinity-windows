@@ -1,4 +1,4 @@
-import { Html5Qrcode } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeScannerState } from "html5-qrcode";
 import { useEffect, useRef, useState } from "react";
 import { parseQr, type QrPayload } from "../lib/qr";
 
@@ -44,10 +44,32 @@ export function Scanner({ onScan, hint }: ScannerProps) {
 
     return () => {
       stopped = true;
-      scanner
-        .stop()
-        .then(() => scanner.clear())
-        .catch(() => {});
+      try {
+        const state = scanner.getState();
+        if (
+          state === Html5QrcodeScannerState.SCANNING ||
+          state === Html5QrcodeScannerState.PAUSED
+        ) {
+          scanner
+            .stop()
+            .then(() => {
+              try {
+                scanner.clear();
+              } catch {
+                /* ignore */
+              }
+            })
+            .catch(() => {});
+        } else {
+          try {
+            scanner.clear();
+          } catch {
+            /* ignore */
+          }
+        }
+      } catch {
+        /* scanner never initialized; nothing to clean up */
+      }
     };
   }, []);
 
