@@ -10,24 +10,18 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock,
-  Contact,
   DollarSign,
-  Globe,
   GraduationCap,
   Hash,
-  Images,
   LayoutGrid,
   ListChecks,
-  NotebookPen,
   PackageCheck,
   ScanLine,
   Search,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
-  Sunrise,
   Trophy,
-  User,
   Users,
   Warehouse as WarehouseIcon,
   Wrench,
@@ -279,8 +273,6 @@ const MENU_DEF: MenuSection[] = [
     items: [
       { to: "/", label: "Home", Icon: LayoutGrid },
       { to: "/projects", label: "Jobs", Icon: LayoutGrid },
-      { to: "/photos", label: "Photos & receipts", Icon: Images },
-      { to: "/daily-logs", label: "Daily logs", Icon: NotebookPen },
     ],
   },
   {
@@ -311,11 +303,7 @@ const MENU_DEF: MenuSection[] = [
   {
     title: "Company",
     items: [
-      { to: "/completed-installs", label: "Completed installs", Icon: CheckCircle2 },
       { to: "/training", label: "Training", Icon: GraduationCap },
-      { to: "/milestones", label: "Milestones", Icon: Trophy },
-      { to: "/first-pane", label: "First Pane", Icon: Sunrise },
-      { to: "/toolbox-history", label: "Toolbox talk history", Icon: ShieldCheck },
       { to: "/team", label: "Team", Icon: Users },
       { to: "/crew", label: "Roster", Icon: Users },
     ],
@@ -324,9 +312,7 @@ const MENU_DEF: MenuSection[] = [
     title: "Tools",
     items: [
       { to: "/supplies", label: "Materials", Icon: Boxes },
-      { to: "/conditions", label: "Conditions", Icon: ClipboardList },
       { to: "/ask", label: "Infinity AI", Icon: Sparkles },
-      { to: "/contacts", label: "Contacts", Icon: Contact },
       { to: "/warehouse", label: "Warehouse", Icon: WarehouseIcon },
       { to: "/scan", label: "Scan", Icon: ScanLine },
       { to: "/count", label: "Cycle count", Icon: ListChecks },
@@ -344,11 +330,9 @@ const MENU_DEF: MenuSection[] = [
   {
     title: "Account",
     items: [
-      { to: "/profile", label: "Profile", Icon: User },
       { to: "/notifications", label: "Notifications", Icon: Bell },
       { to: "/settings", label: "Notifications & location", Icon: SlidersHorizontal },
       { to: "/admin", label: "Admin", Icon: ShieldCheck },
-      { to: "/public-site", label: "View public site", Icon: Globe, external: false },
     ],
   },
 ];
@@ -366,14 +350,12 @@ const INSTALLER_MENU_PATHS = new Set<string>([
   "/ask",
   // Occasional extras.
   "/timecard",
-  "/photos",
   "/learn",
   "/points",
   "/review",
   "/safety",
   "/warehouse",
   "/supplies",
-  "/profile",
   "/notifications",
   "/settings",
 ]);

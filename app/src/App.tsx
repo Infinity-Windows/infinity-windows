@@ -248,7 +248,11 @@ export default function App() {
             />
             <Route
               path="/projects/:projectId/review"
-              element={<OpeningReview />}
+              element={
+                <RequireRole minRole="foreman">
+                  <OpeningReview />
+                </RequireRole>
+              }
             />
             <Route
               path="/projects/:projectId/opening/:openingId"
