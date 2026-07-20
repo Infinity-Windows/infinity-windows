@@ -1,5 +1,8 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
+import { Settings2 } from "lucide-react";
+import { notifyLocal } from "../lib/permissions/notifyLocal";
 import {
   getMyProfile,
   listAccessRequests,
@@ -91,6 +94,18 @@ export function Notifications() {
     });
   }
 
+  // Local-notification seam: mirror the in-app "what needs you" list to a device
+  // notification. No-op unless the user granted notifications; deduped by tag so
+  // each distinct item only pings once per session. This is a real client-side
+  // hook (no server events) — when web push lands it will deliver the same
+  // {title, body, tag, url} shape from the server instead. See notifyLocal.ts.
+  const noteSignature = notes.map((n) => n.id).join("|");
+  useEffect(() => {
+    for (const n of notes) {
+      void notifyLocal({ title: n.title, body: n.sub, tag: `needs-you-${n.id}`, url: n.to });
+    }
+  }, [noteSignature]);
+
   return (
     <div className="page">
       <header className="page-header">
@@ -102,6 +117,12 @@ export function Notifications() {
           ‹
         </button>
       </header>
+
+      <Link to="/settings" className="notif-settings-link">
+        <Settings2 size={16} aria-hidden />
+        <span>Notifications &amp; location settings</span>
+        <span className="muted" aria-hidden>›</span>
+      </Link>
 
       {notes.length === 0 ? (
         <p className="muted">You're all caught up.</p>
