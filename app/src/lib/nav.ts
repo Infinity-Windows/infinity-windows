@@ -167,7 +167,6 @@ export const NAV: NavDest[] = [
   { id: "public-site", to: "/public-site", label: "View public site", icon: "◎", minRole: "installer" },
 ];
 
-const NAV_BY_ID = new Map(NAV.map((d) => [d.id, d]));
 const NAV_BY_PATH = new Map(NAV.map((d) => [d.to, d]));
 
 /** minRole for a path, or null for detail/legacy routes not in the registry. */
@@ -186,248 +185,53 @@ export function canAccess(role: CrewRole | string | null | undefined, path: stri
   return roleRank(role) >= roleRank(dest.minRole);
 }
 
-interface LayoutItem {
-  id: string;
-  /** Appears in the phone bottom bar (otherwise it lives in the More sheet). */
-  phone?: boolean;
-  /** Per-role label override (e.g. installer Home reads "My Work"). */
-  label?: string;
-}
+// =============================================================================
+// Phone bottom bar (single source for Layout + the role-access doc)
+// =============================================================================
+//
+// The mobile bottom bar is intentionally tiny. Installers get the whole job
+// loop — Today / Scan / Clock / Ask — and nothing else competes for a tap;
+// managers keep Jobs / Capture / Clock / Photos. The leading Menu button and
+// the Clock/Capture controls are actions, not destinations. Layout renders
+// these; roleAccessDoc reads them so the docs can never drift from the UI.
 
-/**
- * Per-role ordered menus (existing routes only). navForRole composes these from
- * NAV, so presentation varies by role while access still flows from one registry.
- * Installer "/" is their My Work landing; managers land on Home.
- */
-const INSTALLER_LAYOUT: LayoutItem[] = [
-  { id: "home", phone: true, label: "My Work" },
-  { id: "clock", phone: true },
-  { id: "learn", phone: true },
-  { id: "safety", phone: true },
-  { id: "points" },
-  { id: "scan" },
-  { id: "tools" },
-];
+export type BottomTab =
+  | { kind: "menu" }
+  | { kind: "capture" }
+  | { kind: "clock" }
+  | {
+      kind: "link";
+      id: string;
+      to: RoutePath;
+      label: string;
+      /** Match the route exactly (needed for "/"). */
+      end?: boolean;
+      /** Show the installer "ready now" count. */
+      readyBadge?: boolean;
+    };
 
-const MANAGER_LAYOUT: LayoutItem[] = [
-  { id: "home", phone: true },
-  { id: "projects", phone: true },
-  { id: "warehouse", phone: true },
-  { id: "clock", phone: true },
-  { id: "issues" },
-  { id: "service" },
-  { id: "team" },
-  { id: "timecard" },
-  { id: "qc" },
-  { id: "safety" },
-  { id: "learn" },
-  { id: "points" },
-  { id: "tools" },
-];
-
-// Supervisor: the Heartbeat is their home base — it leads the phone bar.
-const SUPERVISOR_LAYOUT: LayoutItem[] = [
-  { id: "heartbeat", phone: true },
-  { id: "home", phone: true },
-  { id: "projects", phone: true },
-  { id: "clock", phone: true },
-  { id: "warehouse" },
-  { id: "issues" },
-  { id: "service" },
-  { id: "team" },
-  { id: "timecard" },
-  { id: "qc" },
-  { id: "safety" },
-  { id: "learn" },
-  { id: "points" },
-  { id: "tools" },
-  { id: "cost-codes" },
-  { id: "admin" },
-];
-
-// Owner: Cost joins the phone bar; Warehouse steps back to More.
-const OWNER_LAYOUT: LayoutItem[] = [
-  { id: "heartbeat", phone: true },
-  { id: "home", phone: true },
-  { id: "projects", phone: true },
-  { id: "costing", phone: true },
-  { id: "clock" },
-  { id: "warehouse" },
-  { id: "issues" },
-  { id: "service" },
-  { id: "team" },
-  { id: "timecard" },
-  { id: "qc" },
-  { id: "safety" },
-  { id: "learn" },
-  { id: "points" },
-  { id: "tools" },
-  { id: "cost-codes" },
-  { id: "admin" },
-];
-
-function layoutForRole(role: CrewRole | string | null | undefined): LayoutItem[] {
-  const rank = roleRank(role);
-  if (rank >= 3) return OWNER_LAYOUT;
-  if (rank >= 2) return SUPERVISOR_LAYOUT;
-  if (rank >= 1) return MANAGER_LAYOUT;
-  return INSTALLER_LAYOUT;
-}
-
-export interface NavItem {
-  id: string;
-  to: RoutePath;
-  label: string;
-  icon: string;
-  minRole: CrewRole;
-  phone: boolean;
-}
-
-export interface RoleNav {
-  /** All visible destinations in order (used for the desktop rail). */
-  rail: NavItem[];
-  /** Phone bottom-bar destinations. */
-  phone: NavItem[];
-  /** More-sheet destinations. */
-  more: NavItem[];
-}
-
-/** Visible destinations for a role, split into rail / phone bar / More. */
-export function navForRole(role: CrewRole | string | null | undefined): RoleNav {
-  const items: NavItem[] = layoutForRole(role)
-    .map((li) => {
-      const dest = NAV_BY_ID.get(li.id);
-      if (!dest || !canAccess(role, dest.to)) return null;
-      return {
-        id: dest.id,
-        to: dest.to,
-        icon: dest.icon,
-        minRole: dest.minRole,
-        label: li.label ?? dest.label,
-        phone: !!li.phone,
-      } satisfies NavItem;
-    })
-    .filter((i): i is NavItem => i !== null);
-  return {
-    rail: items,
-    phone: items.filter((i) => i.phone),
-    more: items.filter((i) => !i.phone),
-  };
-}
-
-/** A titled group of destinations for the desktop/tablet left sidebar. */
-export interface RailSection {
-  title: string;
-  items: NavItem[];
-}
-
-/**
- * Desktop/tablet sidebar grouping (Horizon-style sections). On wide screens the
- * left sidebar IS the full menu — every destination the role can reach appears
- * here, grouped, with NO separate "More" overflow bucket. Order defines display
- * order; empty sections (nothing the role can access) are dropped. The phone
- * bottom bar + More sheet still come from navForRole (small-screen behavior).
- */
-const RAIL_SECTIONS: { title: string; ids: string[] }[] = [
-  { title: "Work", ids: ["home", "my-work", "projects", "warehouse"] },
-  { title: "Time", ids: ["clock", "timecard"] },
-  { title: "Field", ids: ["scan", "count", "receive", "labels", "supplies", "catalog", "tools"] },
-  { title: "Quality & safety", ids: ["qc", "safety", "issues", "service"] },
-  { title: "Team", ids: ["team", "crew", "training"] },
-  { title: "Insights", ids: ["heartbeat", "analytics", "cost-codes", "costing"] },
-  { title: "Learn", ids: ["learn", "points", "review"] },
-  { title: "System", ids: ["notifications", "search", "admin"] },
-];
-
-/** Installer "/" already lands on My Work; managers read it as Home. */
-function railLabel(
-  id: string,
+/** The ordered phone bottom-bar tabs for a role. */
+export function bottomBarForRole(
   role: CrewRole | string | null | undefined,
-  fallback: string,
-): string {
-  if (id === "home") return roleRank(role) === 0 ? "My Work" : "Home";
-  return fallback;
-}
-
-/**
- * Grouped destinations for the desktop/tablet left sidebar. Includes every
- * registry destination the role can access (route guards still enforce real
- * authorization), so nothing is hidden behind a desktop overflow menu.
- */
-export function railSectionsForRole(
-  role: CrewRole | string | null | undefined,
-): RailSection[] {
-  const installer = roleRank(role) === 0;
-  const sections: RailSection[] = [];
-  for (const sec of RAIL_SECTIONS) {
-    const items: NavItem[] = [];
-    for (const id of sec.ids) {
-      // Installer Home already IS "My Work" — skip the duplicate entry.
-      if (id === "my-work" && installer) continue;
-      const dest = NAV_BY_ID.get(id);
-      if (!dest || !canAccess(role, dest.to)) continue;
-      items.push({
-        id: dest.id,
-        to: dest.to,
-        icon: dest.icon,
-        minRole: dest.minRole,
-        label: railLabel(id, role, dest.label),
-        phone: false,
-      });
-    }
-    if (items.length > 0) sections.push({ title: sec.title, items });
+): BottomTab[] {
+  if (roleRank(role) === 0) {
+    return [
+      { kind: "menu" },
+      { kind: "link", id: "today", to: "/", label: "Today", end: true, readyBadge: true },
+      { kind: "link", id: "scan", to: "/scan", label: "Scan" },
+      { kind: "clock" },
+      { kind: "link", id: "ask", to: "/ask", label: "Ask" },
+    ];
   }
-  return sections;
+  return [
+    { kind: "menu" },
+    { kind: "link", id: "jobs", to: "/projects", label: "Jobs", readyBadge: true },
+    { kind: "capture" },
+    { kind: "clock" },
+    { kind: "link", id: "photos", to: "/photos", label: "Photos" },
+  ];
 }
 
-// --- Legacy fallback (ROLE_NAV_V2 === false) ---------------------------------
-
-interface LegacyTab {
-  id: string;
-  to: RoutePath;
-  label: string;
-  icon: string;
-  minRank: number;
-  phone?: boolean;
-}
-
-const LEGACY_TABS: LegacyTab[] = [
-  { id: "home", to: "/", label: "Home", icon: "⌂", minRank: 0, phone: true },
-  { id: "my-work", to: "/my-work", label: "Work", icon: "⚒", minRank: 0, phone: true },
-  { id: "warehouse", to: "/warehouse", label: "Warehouse", icon: "▦", minRank: 0, phone: true },
-  { id: "clock", to: "/clock", label: "Time", icon: "⏱", minRank: 0, phone: true },
-  { id: "points", to: "/points", label: "Points", icon: "✦", minRank: 0 },
-  { id: "learn", to: "/learn", label: "Learn", icon: "★", minRank: 0 },
-  { id: "qc", to: "/qc", label: "Quality", icon: "✓", minRank: 0 },
-  { id: "safety", to: "/safety", label: "Safety", icon: "⛑", minRank: 0 },
-  { id: "tools", to: "/tools", label: "Tools", icon: "⚙", minRank: 0 },
-  { id: "team", to: "/team", label: "Team", icon: "⚑", minRank: 1 },
-  { id: "admin", to: "/admin", label: "Admin", icon: "◈", minRank: 2 },
-  { id: "costing", to: "/costing", label: "Cost", icon: "$", minRank: 3 },
-];
-
-/** Previous flat nav, kept functional for an instant rollback via ROLE_NAV_V2. */
-export function legacyNavForRole(role: CrewRole | string | null | undefined): RoleNav {
-  const rank = roleRank(role);
-  const items: NavItem[] = LEGACY_TABS.filter((t) => rank >= t.minRank).map((t) => ({
-    id: t.id,
-    to: t.to,
-    label: t.label,
-    icon: t.icon,
-    minRole: "installer" as CrewRole,
-    phone: !!t.phone,
-  }));
-  return {
-    rail: items,
-    phone: items.filter((i) => i.phone),
-    more: items.filter((i) => !i.phone),
-  };
-}
-
-/** Nav for the active rollout mode. */
-export function activeNavForRole(role: CrewRole | string | null | undefined): RoleNav {
-  return ROLE_NAV_V2 ? navForRole(role) : legacyNavForRole(role);
-}
 
 // =============================================================================
 // Horizon-style grouped menu (desktop sidebar + mobile slide-out drawer)
@@ -550,6 +354,31 @@ const MENU_DEF: MenuSection[] = [
 ];
 
 /**
+ * Installer-first: the bottom bar already carries the whole job loop
+ * (Today / Scan / Clock / Ask). The installer drawer is deliberately short —
+ * only the extras a crew member reaches occasionally. Everyone above installer
+ * keeps the full grouped menu. Action items (e.g. clock) always show.
+ */
+const INSTALLER_MENU_PATHS = new Set<string>([
+  // Core loop (also the phone bottom bar; kept here for the desktop rail).
+  "/",
+  "/scan",
+  "/ask",
+  // Occasional extras.
+  "/timecard",
+  "/photos",
+  "/learn",
+  "/points",
+  "/review",
+  "/safety",
+  "/warehouse",
+  "/supplies",
+  "/profile",
+  "/notifications",
+  "/settings",
+]);
+
+/**
  * The grouped Horizon-style menu for a role. Route items are filtered through
  * `canAccess` (same registry the route guards use); action items always show.
  * Empty sections/pills are dropped. Installer "/" reads "My Work"; others
@@ -560,7 +389,13 @@ export function menuForRole(role: CrewRole | string | null | undefined): MenuSec
   const out: MenuSection[] = [];
   for (const section of MENU_DEF) {
     const items = section.items
-      .filter((it) => (it.to ? canAccess(role, it.to) : true))
+      .filter((it) => {
+        if (it.to && !canAccess(role, it.to)) return false;
+        // Installers get a trimmed drawer: only the allow-listed extras plus
+        // action items (which have no `to`, e.g. clock in/out).
+        if (installer && it.to && !INSTALLER_MENU_PATHS.has(it.to)) return false;
+        return true;
+      })
       .map((it) =>
         it.to === "/" ? { ...it, label: installer ? "My Work" : "Home" } : it,
       );

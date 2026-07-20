@@ -1,10 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Camera, Clock as ClockIcon, Coffee, LayoutGrid, Menu as MenuIcon, Plus } from "lucide-react";
+import {
+  Camera,
+  Clock as ClockIcon,
+  Coffee,
+  Hammer,
+  LayoutGrid,
+  Menu as MenuIcon,
+  Plus,
+  ScanLine,
+  Sparkles,
+} from "lucide-react";
 import { countMyOpenOpenings, getMyProfile } from "../lib/install/api";
 import { ROLE_LABELS, type CrewRole } from "../lib/install/types";
-import { menuForRole, roleRank, type MenuAction } from "../lib/nav";
+import { bottomBarForRole, menuForRole, roleRank, type MenuAction } from "../lib/nav";
 import { useClock } from "../lib/clockContext";
 import { elapsedWorkSeconds, formatClock } from "../lib/timeclock";
 import { effectiveRole, useViewAsRole } from "../lib/viewAsRoleContext";
@@ -26,6 +36,15 @@ import {
 } from "../lib/permissions/wizardBus";
 
 const PREVIEW_ROLES: CrewRole[] = ["installer", "foreman", "supervisor", "owner"];
+
+/** Icons for the registry-driven bottom-bar link tabs (see `bottomBarForRole`). */
+const TAB_ICONS: Record<string, ReactNode> = {
+  today: <Hammer size={20} />,
+  scan: <ScanLine size={20} />,
+  ask: <Sparkles size={20} />,
+  jobs: <LayoutGrid size={20} />,
+  photos: <Camera size={20} />,
+};
 
 /**
  * Infinity Windows app shell — reskinned to the "Horizon Windows Hub" visual
@@ -130,6 +149,28 @@ export function Layout() {
 
   const previewing = view.canPreview && view.previewRole;
 
+  const clockTab = (
+    <button
+      key="clock"
+      type="button"
+      className={`tab${shift ? " clock-on" : ""}`}
+      aria-label={onBreak ? "On break — open time tracking" : shift ? "On the clock" : "Clock in"}
+      onClick={openClockSheet}
+    >
+      <span className="tab-icon">
+        {shift ? (
+          <span className="clock-tab-live">
+            {onBreak ? <Coffee size={20} /> : <ClockIcon size={20} />}
+            <span className={onBreak ? "clock-nav-dot break" : "clock-nav-dot work"} />
+          </span>
+        ) : (
+          <ClockIcon size={20} />
+        )}
+      </span>
+      <span className={`tab-label${shift ? " nav-clock-time" : ""}`}>{clockLabel}</span>
+    </button>
+  );
+
   const viewAsPicker = view.canPreview ? (
     <div className="view-as-picker">
       <p className="view-as-title">View as role (preview)</p>
@@ -202,46 +243,50 @@ export function Layout() {
       {!menuOpen && !captureOpen && !clock.isOpen && <FeatureTip />}
 
       <nav className="tabbar" aria-label="Main">
-        <TabButton
-          label="Menu"
-          icon={<MenuIcon size={20} />}
-          active={menuOpen}
-          onClick={openMenu}
-          ariaLabel="Open menu"
-          ariaExpanded={menuOpen}
-        />
-        <TabLink label="Jobs" to="/projects" icon={<LayoutGrid size={20} />} badge={readyBadge} />
-        <div className="tab tab-capture">
-          <button
-            type="button"
-            className={`capture-fab${captureOpen ? " open" : ""}`}
-            aria-label="Quick capture"
-            aria-expanded={captureOpen}
-            onClick={openCapture}
-          >
-            <Plus size={24} className="capture-fab-plus" />
-          </button>
-          <span className={`tab-label${captureOpen ? " active" : ""}`}>Capture</span>
-        </div>
-        <button
-          type="button"
-          className={`tab${shift ? " clock-on" : ""}`}
-          aria-label={onBreak ? "On break — open time tracking" : shift ? "On the clock" : "Clock in"}
-          onClick={openClockSheet}
-        >
-          <span className="tab-icon">
-            {shift ? (
-              <span className="clock-tab-live">
-                {onBreak ? <Coffee size={20} /> : <ClockIcon size={20} />}
-                <span className={onBreak ? "clock-nav-dot break" : "clock-nav-dot work"} />
-              </span>
-            ) : (
-              <ClockIcon size={20} />
-            )}
-          </span>
-          <span className={`tab-label${shift ? " nav-clock-time" : ""}`}>{clockLabel}</span>
-        </button>
-        <TabLink label="Photos" to="/photos" icon={<Camera size={20} />} />
+        {bottomBarForRole(role).map((tab) => {
+          if (tab.kind === "menu") {
+            return (
+              <TabButton
+                key="menu"
+                label="Menu"
+                icon={<MenuIcon size={20} />}
+                active={menuOpen}
+                onClick={openMenu}
+                ariaLabel="Open menu"
+                ariaExpanded={menuOpen}
+              />
+            );
+          }
+          if (tab.kind === "capture") {
+            return (
+              <div className="tab tab-capture" key="capture">
+                <button
+                  type="button"
+                  className={`capture-fab${captureOpen ? " open" : ""}`}
+                  aria-label="Quick capture"
+                  aria-expanded={captureOpen}
+                  onClick={openCapture}
+                >
+                  <Plus size={24} className="capture-fab-plus" />
+                </button>
+                <span className={`tab-label${captureOpen ? " active" : ""}`}>Capture</span>
+              </div>
+            );
+          }
+          if (tab.kind === "clock") {
+            return clockTab;
+          }
+          return (
+            <TabLink
+              key={tab.id}
+              label={tab.label}
+              to={tab.to}
+              end={tab.end}
+              icon={TAB_ICONS[tab.id] ?? <LayoutGrid size={20} />}
+              badge={tab.readyBadge ? readyBadge : undefined}
+            />
+          );
+        })}
       </nav>
 
       <CaptureSheet open={captureOpen} onClose={() => setCaptureOpen(false)} />
@@ -294,14 +339,16 @@ function TabLink({
   to,
   icon,
   badge,
+  end,
 }: {
   label: string;
   to: string;
   icon: ReactNode;
   badge?: number;
+  end?: boolean;
 }) {
   return (
-    <NavLink to={to} className={({ isActive }) => `tab${isActive ? " active" : ""}`}>
+    <NavLink to={to} end={end} className={({ isActive }) => `tab${isActive ? " active" : ""}`}>
       <span className="tab-icon">
         {icon}
         {badge != null && badge > 0 && <span className="tab-badge">{badge > 99 ? "99+" : badge}</span>}

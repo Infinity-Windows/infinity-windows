@@ -1,6 +1,6 @@
 import type { CrewRole } from "./install/types";
 import { ROLE_LABELS } from "./install/types";
-import { canAccess, NAV, navForRole } from "./nav";
+import { bottomBarForRole, canAccess, menuForRole, NAV } from "./nav";
 
 /**
  * Generates docs/role-access.md straight from the NAV registry so the
@@ -23,24 +23,28 @@ export function generateRoleAccessDoc(): string {
   lines.push("");
 
   for (const role of ROLES) {
-    const nav = navForRole(role);
     lines.push(`## ${ROLE_LABELS[role]}`);
     lines.push("");
 
     lines.push("**Bottom bar (phone):**");
     lines.push("");
-    for (const item of nav.phone) {
-      lines.push(`- ${item.label} (\`${item.to}\`)`);
+    for (const tab of bottomBarForRole(role)) {
+      if (tab.kind === "menu") lines.push("- Menu (opens the drawer)");
+      else if (tab.kind === "capture") lines.push("- Capture (quick-capture sheet)");
+      else if (tab.kind === "clock") lines.push("- Clock (time tracking sheet)");
+      else lines.push(`- ${tab.label} (\`${tab.to}\`)`);
     }
     lines.push("");
 
-    lines.push("**More menu:**");
+    lines.push("**Menu drawer:**");
     lines.push("");
-    if (nav.more.length === 0) {
+    const menuItems = menuForRole(role).flatMap((s) => s.items);
+    if (menuItems.length === 0) {
       lines.push("- _(none)_");
     } else {
-      for (const item of nav.more) {
-        lines.push(`- ${item.label} (\`${item.to}\`)`);
+      for (const item of menuItems) {
+        if (item.to) lines.push(`- ${item.label} (\`${item.to}\`)`);
+        else lines.push(`- ${item.label} (action)`);
       }
     }
     lines.push("");
