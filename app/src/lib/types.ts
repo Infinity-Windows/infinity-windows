@@ -18,6 +18,8 @@ export interface WindowType {
   difficulty_rating: number | null;
   tutorial_url: string | null;
   notes: string | null;
+  /** true = created ad hoc from a job spec extract, not part of the closed catalog. */
+  provisional?: boolean;
   tips_json?: string[];
   watch_outs_json?: string[];
   outcome_difficulty?: number | null;
