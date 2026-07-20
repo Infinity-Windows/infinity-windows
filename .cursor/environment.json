@@ -1,4 +1,4 @@
 {
   "name": "Infinity Windows",
-  "install": "npm ci && npm --prefix app ci"
+  "install": "npm --prefix app ci"
 }
