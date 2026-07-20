@@ -5698,6 +5698,12 @@ body {
   padding: 8px 16px;
   flex: none;
 }
+.perm-row-off {
+  margin-top: 10px;
+  min-height: 44px;
+  font-size: 13px;
+  color: var(--muted);
+}
 .perm-badge {
   font-size: 11px;
   font-weight: 700;

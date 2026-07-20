@@ -3,3 +3,4 @@ dist/
 .env
 .DS_Store
 supabase/.temp/
+.vapid-keys.local.json

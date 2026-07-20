@@ -14,25 +14,21 @@ export default defineConfig({
       registerType: 'autoUpdate',
       // Keep the existing public/manifest.webmanifest + icons.
       manifest: false,
-      workbox: {
+      // Custom SW source (src/sw.ts) so we can add web-push handlers. The SW
+      // still precaches the app shell + runtime-caches images exactly as before
+      // (that behavior now lives in src/sw.ts). Switched from generateSW to
+      // injectManifest ONLY to inject the push/notificationclick handlers.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      injectManifest: {
         // App shell + built assets. Do NOT cache Supabase API — TanStack owns
         // that offline read cache.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest,woff2}'],
         // The app-shell JS bundle is >2 MB, above workbox's default precache
         // ceiling. Raise it so the whole shell is precached — offline-first
-        // (this outbox feature) depends on the shell loading with no signal.
+        // (the outbox feature) depends on the shell loading with no signal.
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
-        navigateFallback: `${base}index.html`,
-        runtimeCaching: [
-          {
-            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'infinity-images',
-              expiration: { maxEntries: 64, maxAgeSeconds: 60 * 60 * 24 * 30 },
-            },
-          },
-        ],
       },
       devOptions: {
         // Keep DEV free of a sticky SW — serviceWorkerGuard purges orphans.

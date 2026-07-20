@@ -127,11 +127,13 @@ export async function notifyLocalWith(
  * Wire this to existing client-side "what needs you" events (e.g. a new toolbox
  * talk to sign, a timecard approval you can see) — do NOT invent server events.
  *
- * ── WEB-PUSH SEAM ────────────────────────────────────────────────────────────
- * When server/web-push lands (deferred PR), the server will deliver the SAME
- * shape ({title, body, tag, url}) via a push event handled in the service
- * worker, which calls registration.showNotification with identical options.
- * Keep this contract stable so both the local and pushed paths render the same.
+ * ── WEB-PUSH SEAM (now implemented) ──────────────────────────────────────────
+ * Server/web-push delivers the SAME shape ({title, body, tag, url}) via a `push`
+ * event handled in the service worker (src/sw.ts), which calls
+ * registration.showNotification with identical options — so local and pushed
+ * notifications render the same. The server side is the send-push edge function
+ * (supabase/functions/send-push); devices subscribe via pushSubscribe.ts. Keep
+ * this contract stable across all three.
  */
 export function notifyLocal(opts: LocalNotification): Promise<NotifyPlan> {
   return notifyLocalWith(browserNotifyEnv, seenTags, opts);

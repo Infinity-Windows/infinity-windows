@@ -5,6 +5,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
 import { supabase } from "./supabase";
 import type { SafetyTalk, TalkSections, TalkVisualAid } from "./ops";
+import { sendPush } from "./permissions/pushServer";
 
 const BUCKET = "toolbox-records";
 
@@ -375,7 +376,22 @@ export async function generateToolboxTalk(params: {
   });
   if (error) throw error;
   if (data?.error) throw new Error(String(data.error));
-  return data as { talk_id: string; title: string; images: number; aids: number };
+  const result = data as { talk_id: string; title: string; images: number; aids: number };
+  // Web-push seam: when a lead publishes a BRAND-NEW toolbox talk (no talkId =
+  // fresh topic), broadcast to every subscribed device so crew get pinged to
+  // sign it before clock-in — even with the app closed. Regenerating an
+  // existing talk (talkId present) does NOT re-notify. Fire-and-forget.
+  if (!params.talkId) {
+    void sendPush({
+      title: "New toolbox talk to sign",
+      body: result.title
+        ? `Sign "${result.title}" before you clock in.`
+        : "Sign today's safety talk before you clock in.",
+      tag: `toolbox-talk-${result.talk_id}`,
+      url: "/safety",
+    });
+  }
+  return result;
 }
 
 /** Save foreman edits to a talk's structured content (kept editable by leads). */

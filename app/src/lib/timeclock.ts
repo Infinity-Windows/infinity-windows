@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import type { GeoFix } from "./geo";
+import { sendPush } from "./permissions/pushServer";
 
 export interface CostCode {
   id: string;
@@ -197,11 +198,24 @@ export async function rejectShift(
   shiftId: string,
   reason?: string,
 ): Promise<void> {
-  const { error } = await supabase.rpc("reject_shift", {
+  const { data, error } = await supabase.rpc("reject_shift", {
     p_shift_id: shiftId,
     p_reason: reason ?? null,
   });
   if (error) throw error;
+  // Web-push seam: tell the crew member their timecard was sent back, so it
+  // reaches them even with the app closed. Same {title,body,tag,url} shape as
+  // the local path. Fire-and-forget — never blocks the reject.
+  const ownerId = (data as { profile_id?: string } | null)?.profile_id;
+  if (ownerId) {
+    void sendPush({
+      profileIds: [ownerId],
+      title: "Timecard needs changes",
+      body: reason?.trim() ? reason.trim() : "A supervisor sent your timecard back.",
+      tag: `timecard-rejected-${shiftId}`,
+      url: "/clock",
+    });
+  }
 }
 
 export interface LeadShiftInput {
@@ -337,8 +351,20 @@ export async function listRecentJobs(
 }
 
 export async function approveShift(shiftId: string): Promise<void> {
-  const { error } = await supabase.rpc("approve_shift", { p_shift_id: shiftId });
+  const { data, error } = await supabase.rpc("approve_shift", { p_shift_id: shiftId });
   if (error) throw error;
+  // Web-push seam: let the crew member know their hours were approved (arrives
+  // even when the app is closed). Fire-and-forget — never blocks the approval.
+  const ownerId = (data as { profile_id?: string } | null)?.profile_id;
+  if (ownerId) {
+    void sendPush({
+      profileIds: [ownerId],
+      title: "Timecard approved",
+      body: "Your submitted hours were approved.",
+      tag: `timecard-approved-${shiftId}`,
+      url: "/clock",
+    });
+  }
 }
 
 /** Server-persisted breaks so a refresh mid-break doesn't lose the timer. */
