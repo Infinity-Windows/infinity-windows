@@ -15,14 +15,24 @@ import {
 } from "./permissionEnv";
 import type { PermissionStatus, WizardChoice } from "./permissionCore";
 import { notifyLocal } from "./notifyLocal";
+import { disablePush, enablePush } from "./pushSubscribe";
+import type { PushDecision } from "./pushCore";
 
 export interface PermissionsState {
   notifications: PermissionStatus;
   location: PermissionStatus;
   ready: boolean;
+  /**
+   * Why the last web-push attempt was skipped (e.g. "ios-not-installed" to show
+   * the home-screen hint), or null when subscribed / not yet attempted. Local
+   * notifications work regardless of this.
+   */
+  pushReason: PushDecision["reason"] | null;
   refresh: () => Promise<void>;
   enableNotifications: () => Promise<PermissionStatus>;
   enableLocation: () => Promise<PermissionStatus>;
+  /** Turn OFF web push on this device (unsubscribe + drop the server row). */
+  disableDevicePush: () => Promise<void>;
   setWizardChoice: (choice: WizardChoice) => void;
 }
 
@@ -30,6 +40,7 @@ export function usePermissions(env: PermissionEnv = browserPermissionEnv): Permi
   const [notifications, setNotifications] = useState<PermissionStatus>("prompt");
   const [location, setLocation] = useState<PermissionStatus>("prompt");
   const [ready, setReady] = useState(false);
+  const [pushReason, setPushReason] = useState<PushDecision["reason"] | null>(null);
 
   const refresh = useCallback(async () => {
     const [n, l] = await Promise.all([
@@ -39,6 +50,12 @@ export function usePermissions(env: PermissionEnv = browserPermissionEnv): Permi
     setNotifications(n);
     setLocation(l);
     setReady(true);
+    // If notifications are already granted, keep the push subscription fresh
+    // (idempotent upsert). This also re-registers after a subscription expiry
+    // when no client was open at rotation time. Degrades silently.
+    if (n === "granted") {
+      void enablePush().then((r) => setPushReason(r.ok ? null : r.reason));
+    }
   }, [env]);
 
   useEffect(() => {
@@ -55,6 +72,10 @@ export function usePermissions(env: PermissionEnv = browserPermissionEnv): Permi
         body: "We'll let you know when something needs you.",
         tag: "welcome-notifications",
       });
+      // Then subscribe to web push so alerts arrive even when the app is fully
+      // closed. Skips silently when unsupported; surfaces the iOS install hint.
+      const r = await enablePush();
+      setPushReason(r.ok ? null : r.reason);
     }
     return status;
   }, [env]);
@@ -65,6 +86,11 @@ export function usePermissions(env: PermissionEnv = browserPermissionEnv): Permi
     return status;
   }, [env]);
 
+  const disableDevicePush = useCallback(async () => {
+    await disablePush();
+    setPushReason(null);
+  }, []);
+
   const setWizardChoice = useCallback(
     (choice: WizardChoice) => env.writeWizardChoice(choice),
     [env],
@@ -74,9 +100,11 @@ export function usePermissions(env: PermissionEnv = browserPermissionEnv): Permi
     notifications,
     location,
     ready,
+    pushReason,
     refresh,
     enableNotifications,
     enableLocation,
+    disableDevicePush,
     setWizardChoice,
   };
 }

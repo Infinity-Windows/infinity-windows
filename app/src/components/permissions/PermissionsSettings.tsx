@@ -42,6 +42,14 @@ export function PermissionsSettings() {
           name="Notifications"
           status={perms.notifications}
           onEnable={perms.enableNotifications}
+          extraHint={
+            perms.notifications === "granted" && perms.pushReason === "ios-not-installed"
+              ? "Add Infinity to your home screen to get alerts when the app is closed."
+              : undefined
+          }
+          onDisable={
+            perms.notifications === "granted" ? perms.disableDevicePush : undefined
+          }
         />
         <PermissionRow
           kind="location"
@@ -61,12 +69,18 @@ function PermissionRow({
   name,
   status,
   onEnable,
+  extraHint,
+  onDisable,
 }: {
   kind: PermissionKind;
   Icon: LucideIcon;
   name: string;
   status: PermissionStatus;
   onEnable: () => Promise<PermissionStatus>;
+  /** Optional extra guidance under the row (e.g. the iOS install hint). */
+  extraHint?: string;
+  /** When provided, shows a "Turn off on this device" action (web push off). */
+  onDisable?: () => Promise<void>;
 }) {
   const view = settingsView(kind, status);
 
@@ -81,6 +95,17 @@ function PermissionRow({
           <span className={`perm-badge perm-badge-${view.tone}`}>{view.label}</span>
         </div>
         <p className="perm-row-hint muted">{view.hint}</p>
+        {extraHint && <p className="perm-row-hint muted">{extraHint}</p>}
+        {onDisable && (
+          <button
+            type="button"
+            className="button-like perm-row-off"
+            onClick={() => void onDisable()}
+            aria-label={`Turn off ${name} on this device`}
+          >
+            Turn off on this device
+          </button>
+        )}
       </div>
       {view.canRequest && (
         <button

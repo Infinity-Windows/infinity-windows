@@ -161,6 +161,11 @@ export function OnboardingWizard({ open, onClose }: OnboardingWizardProps) {
                 {notifLine.text}
               </p>
             )}
+            {perms.pushReason === "ios-not-installed" && (
+              <p className="wizard-status wizard-status-muted" role="status">
+                Add Infinity to your home screen to get alerts when the app is closed.
+              </p>
+            )}
             <div className="wizard-actions">
               {notifActed ? (
                 <button type="button" className="wizard-btn primary" onClick={advance}>
