@@ -51,16 +51,25 @@ export function MyWork() {
   const ordered = orderMyWork(active.map(toDispatchOpening))
     .map((d) => byId.get(d.id)!)
     .filter(Boolean);
-  const next = ordered[0];
+  // The core loop resumes what you started: an in-progress window jumps to the
+  // top as "Continue", and "Next" becomes the following window so Done -> Next
+  // stays one tap.
+  const activeInstall = ordered.find(
+    (o) => o.work_started_at && o.status !== "installed",
+  );
+  const queue = activeInstall
+    ? ordered.filter((o) => o.id !== activeInstall.id)
+    : ordered;
+  const next = queue[0];
   // Explicit first→last numbering over the do-order list, so every card/row can
   // show "you are here" (#1 is the Next card; #2, #3 … follow). Derived from the
   // shared orderMyWork result — orderMyWork itself is left untouched.
-  const orderNumbers = orderNumberMap(ordered.map((o) => o.id));
-  const totalOrder = ordered.length;
+  const orderNumbers = orderNumberMap(queue.map((o) => o.id));
+  const totalOrder = queue.length;
   const readyCount = active.filter((o) => openingReadiness(o).status === "ready").length;
 
   // Group the rest by job so a multi-job installer sees where work lives.
-  const rest = ordered.slice(1);
+  const rest = queue.slice(1);
   const jobs = new Map<string, { code: string; name: string; items: ProjectOpening[] }>();
   for (const o of rest) {
     const key = o.project_id;
@@ -173,7 +182,24 @@ export function MyWork() {
         </Link>
       )}
 
-      {!next && (
+      {activeInstall && (
+        <button
+          className="next-card resume-card"
+          onClick={() => go(activeInstall)}
+        >
+          <span className="next-label">Continue install</span>
+          <span className="next-code">{activeInstall.opening_code}</span>
+          <span className="next-meta">
+            {activeInstall.window_types?.type_code ?? "type?"} ·{" "}
+            {activeInstall.projects?.job_code ?? ""} · {areaKey(activeInstall)}
+          </span>
+          <span className="next-capture">
+            You started this one — tap to finish and grade it.
+          </span>
+        </button>
+      )}
+
+      {!activeInstall && !next && (
         <EmptyState
           icon={<CheckCircle2 size={22} />}
           title="Nothing assigned right now"
