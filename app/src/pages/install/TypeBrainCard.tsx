@@ -3,12 +3,12 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   generateHowto,
-  getMyProfile,
   getTypeBrainStats,
   synthesizeTypeTips,
   updateTypeKnowledge,
 } from "../../lib/install/api";
 import { MEMO_TOPICS, isForemanPlus } from "../../lib/install/types";
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import type { HowtoStep } from "../../lib/types";
 
 export function TypeBrainCard() {
@@ -21,8 +21,11 @@ export function TypeBrainCard() {
     queryKey: ["typeBrain", typeId],
     queryFn: () => getTypeBrainStats(typeId),
   });
-  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const isLead = isForemanPlus(me.data?.role);
+  // Gate the Edit affordance on the effective (view-as aware) role so an owner
+  // previewing "installer" faithfully sees the read-only card. Server mutations
+  // still run as the real signed-in user.
+  const { effectiveRole } = useEffectiveRole();
+  const isLead = isForemanPlus(effectiveRole);
 
   const refetch = () =>
     queryClient.invalidateQueries({ queryKey: ["typeBrain", typeId] });
