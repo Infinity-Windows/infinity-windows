@@ -11,7 +11,11 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt' (not autoUpdate) so a new deploy shows an "update available —
+      // Refresh" banner instead of silently reloading mid-task. The register
+      // helper (virtual:pwa-register/react) surfaces onNeedRefresh, and src/sw.ts
+      // waits for a SKIP_WAITING message before taking over. See PwaBanners.
+      registerType: 'prompt',
       // Keep the existing public/manifest.webmanifest + icons.
       manifest: false,
       // Custom SW source (src/sw.ts) so we can add web-push handlers. The SW

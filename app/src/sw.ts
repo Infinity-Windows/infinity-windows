@@ -42,9 +42,16 @@ registerRoute(
   }),
 );
 
-// autoUpdate parity: activate a new worker immediately.
-self.addEventListener("install", () => {
-  void self.skipWaiting();
+// Update flow (registerType: 'prompt'): a freshly installed worker WAITS
+// instead of skipping straight to active, so the app can surface an "update
+// available — Refresh" banner (see PwaBanners). The waiting worker only takes
+// over when the client explicitly asks via a SKIP_WAITING message (posted by
+// vite-plugin-pwa's updateServiceWorker(true)). Once activated it claims all
+// open clients so the reload runs the new shell.
+self.addEventListener("message", (event) => {
+  if ((event.data as { type?: string } | undefined)?.type === "SKIP_WAITING") {
+    void self.skipWaiting();
+  }
 });
 self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
