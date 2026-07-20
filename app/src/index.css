@@ -2061,6 +2061,14 @@ button:disabled {
   background: linear-gradient(135deg, var(--accent-bg), var(--card-raised));
 }
 
+/* An install already in progress — stronger accent so "finish what you
+   started" reads before the next queued window. */
+.resume-card {
+  border-width: 2px;
+  border-color: rgba(255, 106, 26, 0.9);
+  box-shadow: 0 0 0 3px rgba(255, 106, 26, 0.12);
+}
+
 .next-label {
   font-family: var(--font-display);
   font-size: 12px;
