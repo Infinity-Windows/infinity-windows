@@ -10,6 +10,52 @@ export interface GeoFix {
   accuracyM?: number;
 }
 
+/** Outcome of a one-shot geolocation priming call. */
+export type GeoPrimeResult = "granted" | "denied" | "unavailable";
+
+/**
+ * Prime the geolocation permission with a single position request. Unlike
+ * {@link captureGeoSoft} (which is fire-and-forget mid-punch and only cares
+ * about coordinates), this exists so the onboarding wizard can trigger the real
+ * OS prompt *after* the user opts in, and learn whether they allowed it,
+ * blocked it, or the fix was simply unavailable. It never throws.
+ *
+ * PERMISSION_DENIED (code 1) is the only hard "denied"; a timeout or
+ * position-unavailable is reported as "unavailable" so we can ask again later.
+ */
+export async function primeGeolocation(
+  timeoutMs = 12_000,
+): Promise<GeoPrimeResult> {
+  if (typeof navigator === "undefined" || !navigator.geolocation) {
+    return "unavailable";
+  }
+  return new Promise<GeoPrimeResult>((resolve) => {
+    let settled = false;
+    const done = (r: GeoPrimeResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(r);
+    };
+    const timer = setTimeout(() => done("unavailable"), timeoutMs + 500);
+    try {
+      navigator.geolocation.getCurrentPosition(
+        () => {
+          clearTimeout(timer);
+          done("granted");
+        },
+        (err) => {
+          clearTimeout(timer);
+          done(err && err.code === err.PERMISSION_DENIED ? "denied" : "unavailable");
+        },
+        { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 30_000 },
+      );
+    } catch {
+      clearTimeout(timer);
+      done("unavailable");
+    }
+  });
+}
+
 export async function captureGeoSoft(timeoutMs = 12_000): Promise<GeoFix> {
   if (typeof navigator === "undefined" || !navigator.geolocation) return {};
   return new Promise<GeoFix>((resolve) => {

@@ -33,6 +33,7 @@ import { Projects } from "./pages/Projects";
 import { Receive } from "./pages/Receive";
 import { Scan } from "./pages/Scan";
 import { Search } from "./pages/Search";
+import { Settings } from "./pages/Settings";
 import { SignIn } from "./pages/SignIn";
 import { WindowDetail } from "./pages/WindowDetail";
 import { OpeningReview } from "./pages/install/OpeningReview";
@@ -208,6 +209,7 @@ export default function App() {
             <Route path="/warehouse" element={<Warehouse />} />
             <Route path="/ask" element={<AskInfinity />} />
             <Route path="/notifications" element={<Notifications />} />
+            <Route path="/settings" element={<Settings />} />
             <Route
               path="/team"
               element={<RequireRole path="/team"><Team /></RequireRole>}

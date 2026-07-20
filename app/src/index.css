@@ -5398,3 +5398,328 @@ body {
     display: none;
   }
 }
+
+/* ===== Permissions onboarding wizard (p1-10) ============================== */
+.wizard-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: oklch(0.08 0.012 35 / 0.66);
+}
+.wizard-card {
+  position: fixed;
+  z-index: 81;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  background: var(--card-raised);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow-soft);
+  padding: 28px 22px 22px;
+}
+/* Reuse the sheet-enter easing but slide from center, not the bottom edge. */
+@starting-style {
+  .wizard-card.sheet-enter {
+    opacity: 0;
+    transform: translate(-50%, -46%);
+  }
+}
+.wizard-card.sheet-enter {
+  transform: translate(-50%, -50%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .wizard-card.sheet-enter {
+    transition: opacity 180ms var(--ease-out);
+  }
+  @starting-style {
+    .wizard-card.sheet-enter {
+      opacity: 0;
+      transform: translate(-50%, -50%);
+    }
+  }
+}
+.wizard-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.wizard-close:hover {
+  background: var(--card-hot);
+  color: var(--text);
+}
+.wizard-progress {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 0;
+}
+.wizard-dot {
+  width: 24px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.wizard-dot.active {
+  background: var(--primary);
+}
+.wizard-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.wizard-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--accent-soft);
+  color: var(--primary);
+  margin-bottom: 14px;
+}
+.wizard-title {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 700;
+}
+.wizard-body {
+  margin: 0 0 8px;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.wizard-status {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.wizard-status-ok {
+  color: var(--ok);
+}
+.wizard-status-warn {
+  color: oklch(0.85 0.13 60);
+}
+.wizard-status-muted {
+  color: var(--muted);
+}
+.wizard-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 18px;
+}
+.wizard-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.wizard-btn.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.wizard-btn.primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+.wizard-btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+.wizard-btn.ghost:hover {
+  background: var(--card-hot);
+  color: var(--text);
+}
+.wizard-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.wizard-recap {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wizard-recap li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 14px;
+}
+.wizard-recap li span {
+  flex: 1;
+  text-align: left;
+}
+.wizard-recap li strong {
+  font-size: 13px;
+}
+.wizard-recap li strong.on {
+  color: var(--ok);
+}
+.wizard-recap li strong.off {
+  color: var(--muted);
+}
+
+/* ===== Notifications & location settings section ========================== */
+.notif-settings-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+}
+.notif-settings-link span:first-of-type {
+  flex: 1;
+}
+.notif-settings-link:hover {
+  border-color: var(--accent-line);
+}
+.perm-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.perm-settings-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.perm-settings-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+.perm-settings-sub {
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+.perm-rewizard {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  white-space: nowrap;
+}
+.perm-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.perm-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+.perm-row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--primary);
+}
+.perm-row-main {
+  flex: 1;
+  min-width: 0;
+}
+.perm-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.perm-row-name {
+  font-size: 15px;
+  font-weight: 700;
+}
+.perm-row-hint {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.perm-row-action {
+  align-self: center;
+  min-height: 44px;
+  padding: 8px 16px;
+  flex: none;
+}
+.perm-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+.perm-badge-ok {
+  color: var(--ok);
+  border-color: oklch(0.5 0.12 155);
+  background: oklch(0.3 0.08 155 / 0.3);
+}
+.perm-badge-warn {
+  color: oklch(0.92 0.08 45);
+  border-color: oklch(0.62 0.16 45);
+  background: oklch(0.32 0.11 45 / 0.4);
+}
+.perm-badge-info {
+  color: var(--text-secondary);
+}
+.perm-badge-muted {
+  color: var(--muted);
+}

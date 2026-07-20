@@ -23,6 +23,7 @@ import {
   ScanLine,
   Search,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Sunrise,
   Trophy,
@@ -87,6 +88,7 @@ export type RoutePath =
   | "/conditions"
   | "/contacts"
   | "/profile"
+  | "/settings"
   | "/public-site";
 
 /**
@@ -540,6 +542,7 @@ const MENU_DEF: MenuSection[] = [
     items: [
       { to: "/profile", label: "Profile", Icon: User },
       { to: "/notifications", label: "Notifications", Icon: Bell },
+      { to: "/settings", label: "Notifications & location", Icon: SlidersHorizontal },
       { to: "/admin", label: "Admin", Icon: ShieldCheck },
       { to: "/public-site", label: "View public site", Icon: Globe, external: false },
     ],

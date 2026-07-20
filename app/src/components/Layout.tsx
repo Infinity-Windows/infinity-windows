@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Camera, Clock as ClockIcon, Coffee, LayoutGrid, Menu as MenuIcon, Plus } from "lucide-react";
 import { countMyOpenOpenings, getMyProfile } from "../lib/install/api";
@@ -17,6 +17,13 @@ import { AppMenuDrawer } from "./nav/AppMenuDrawer";
 import { CaptureSheet } from "./nav/CaptureSheet";
 import { FeatureTip } from "./assistant/FeatureTip";
 import { SyncStatusPill } from "./offline/SyncStatusPill";
+import { OnboardingWizard } from "./permissions/OnboardingWizard";
+import {
+  closeOnboardingWizard,
+  getWizardOpen,
+  maybeAutoOpenWizard,
+  subscribeWizard,
+} from "../lib/permissions/wizardBus";
 
 const PREVIEW_ROLES: CrewRole[] = ["installer", "foreman", "supervisor", "owner"];
 
@@ -36,6 +43,13 @@ export function Layout() {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
+
+  // First-run permissions onboarding: auto-open once when warranted; also
+  // re-openable from Settings via the shared wizard bus.
+  const wizardOpen = useSyncExternalStore(subscribeWizard, getWizardOpen, getWizardOpen);
+  useEffect(() => {
+    void maybeAutoOpenWizard();
+  }, []);
 
   const clock = useClock();
   const shift = clock.shift;
@@ -241,6 +255,7 @@ export function Layout() {
         onSignOut={handleSignOut}
         footer={viewAsPicker}
       />
+      <OnboardingWizard open={wizardOpen} onClose={closeOnboardingWizard} />
     </div>
   );
 }
