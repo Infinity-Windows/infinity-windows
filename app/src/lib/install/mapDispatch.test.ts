@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildInstallerWorklist,
   buildSequenceAssignments,
   installerColorMap,
   installerInitials,
   INSTALLER_PALETTE,
   maxExistingSequence,
+  orderNumberMap,
+  reorderById,
+  sortedAssignedIds,
   toggleSelection,
 } from "./mapDispatch";
 
@@ -91,5 +95,86 @@ describe("buildSequenceAssignments", () => {
   });
   it("returns empty for an empty selection", () => {
     expect(buildSequenceAssignments([])).toEqual([]);
+  });
+});
+
+describe("sortedAssignedIds", () => {
+  const openings = [
+    { id: "b", assigned_to: "ammon", sequence: 2 },
+    { id: "a", assigned_to: "ammon", sequence: 1 },
+    { id: "t", assigned_to: "taylor", sequence: 1 },
+    { id: "n", assigned_to: "ammon", sequence: null },
+    { id: "c", assigned_to: "ammon", sequence: 3 },
+  ];
+  it("returns the installer's ids in saved sequence order, nulls last", () => {
+    expect(sortedAssignedIds(openings, "ammon")).toEqual(["a", "b", "c", "n"]);
+  });
+  it("excludes ids being (re)assigned now", () => {
+    expect(sortedAssignedIds(openings, "ammon", ["b"])).toEqual(["a", "c", "n"]);
+  });
+  it("returns empty for an installer with no work", () => {
+    expect(sortedAssignedIds(openings, "nobody")).toEqual([]);
+  });
+});
+
+describe("buildInstallerWorklist", () => {
+  const openings = [
+    { id: "a", assigned_to: "ammon", sequence: 1 },
+    { id: "b", assigned_to: "ammon", sequence: 2 },
+    { id: "t", assigned_to: "taylor", sequence: 5 },
+    { id: "new1", assigned_to: null, sequence: null },
+    { id: "new2", assigned_to: null, sequence: null },
+  ];
+  it("numbers existing (by sequence) then new taps continuously", () => {
+    expect(buildInstallerWorklist(openings, "ammon", ["new1", "new2"])).toEqual([
+      { id: "a", order: 1, isNew: false, sequence: 1 },
+      { id: "b", order: 2, isNew: false, sequence: 2 },
+      { id: "new1", order: 3, isNew: true, sequence: null },
+      { id: "new2", order: 4, isNew: true, sequence: null },
+    ]);
+  });
+  it("treats a re-tapped already-assigned opening as new (appended)", () => {
+    expect(buildInstallerWorklist(openings, "ammon", ["a"])).toEqual([
+      { id: "b", order: 1, isNew: false, sequence: 2 },
+      { id: "a", order: 2, isNew: true, sequence: null },
+    ]);
+  });
+  it("is just the existing route when nothing is tapped", () => {
+    expect(buildInstallerWorklist(openings, "ammon", [])).toEqual([
+      { id: "a", order: 1, isNew: false, sequence: 1 },
+      { id: "b", order: 2, isNew: false, sequence: 2 },
+    ]);
+  });
+});
+
+describe("reorderById", () => {
+  it("moves an id up", () => {
+    expect(reorderById(["a", "b", "c"], "b", -1)).toEqual(["b", "a", "c"]);
+  });
+  it("moves an id down", () => {
+    expect(reorderById(["a", "b", "c"], "b", 1)).toEqual(["a", "c", "b"]);
+  });
+  it("is a no-op past the top edge", () => {
+    expect(reorderById(["a", "b", "c"], "a", -1)).toEqual(["a", "b", "c"]);
+  });
+  it("is a no-op past the bottom edge", () => {
+    expect(reorderById(["a", "b", "c"], "c", 1)).toEqual(["a", "b", "c"]);
+  });
+  it("is a no-op for an unknown id and does not mutate input", () => {
+    const input = ["a", "b"];
+    expect(reorderById(input, "z", 1)).toEqual(["a", "b"]);
+    expect(input).toEqual(["a", "b"]);
+  });
+});
+
+describe("orderNumberMap", () => {
+  it("maps each id to its 1..N position", () => {
+    const map = orderNumberMap(["x", "y", "z"]);
+    expect(map.get("x")).toBe(1);
+    expect(map.get("y")).toBe(2);
+    expect(map.get("z")).toBe(3);
+  });
+  it("keeps the first position for a duplicated id", () => {
+    expect(orderNumberMap(["x", "y", "x"]).get("x")).toBe(1);
   });
 });
