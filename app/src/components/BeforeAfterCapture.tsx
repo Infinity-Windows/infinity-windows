@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { capturePhotoMeta, stampPhotoFile, type StampMeta } from "../lib/photo/stampPhoto";
 
 export interface BeforeAfterValue {
   before: File | null;
   after: File | null;
+  /** Capture metadata (GPS + timestamp) burned into each shot, for persistence. */
+  beforeMeta?: StampMeta | null;
+  afterMeta?: StampMeta | null;
 }
 
 /**
@@ -14,12 +18,30 @@ export interface BeforeAfterValue {
 export function BeforeAfterCapture({
   value,
   onChange,
+  label,
 }: {
   value: BeforeAfterValue;
   onChange: (next: BeforeAfterValue) => void;
+  /** Optional job/opening label burned into the watermark. */
+  label?: string | null;
 }) {
   const [mode, setMode] = useState<"idle" | "before" | "after">("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [stamping, setStamping] = useState(false);
+
+  const metaKey = (slot: "before" | "after"): "beforeMeta" | "afterMeta" =>
+    slot === "before" ? "beforeMeta" : "afterMeta";
+
+  const applyPhoto = async (slot: "before" | "after", raw: File) => {
+    setStamping(true);
+    try {
+      const meta = await capturePhotoMeta(label ?? null, 8000);
+      const stamped = await stampPhotoFile(raw, meta);
+      onChange({ ...value, [slot]: stamped, [metaKey(slot)]: meta });
+    } finally {
+      setStamping(false);
+    }
+  };
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -66,7 +88,8 @@ export function BeforeAfterCapture({
 
   const snap = () => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || mode === "idle") return;
+    const slot = mode;
     const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth || 1280;
     canvas.height = video.videoHeight || 720;
@@ -76,11 +99,11 @@ export function BeforeAfterCapture({
     canvas.toBlob(
       (blob) => {
         if (!blob) return;
-        const file = new File([blob], `${mode}-${Date.now()}.jpg`, {
+        const file = new File([blob], `${slot}-${Date.now()}.jpg`, {
           type: "image/jpeg",
         });
-        onChange({ ...value, [mode]: file });
         setMode("idle");
+        void applyPhoto(slot, file);
       },
       "image/jpeg",
       0.85,
@@ -91,7 +114,7 @@ export function BeforeAfterCapture({
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = e.target.files?.[0];
-    if (file) onChange({ ...value, [slot]: file });
+    if (file) void applyPhoto(slot, file);
     e.target.value = "";
   };
 
@@ -151,6 +174,11 @@ export function BeforeAfterCapture({
           </div>
         );
       })}
+      {stamping && (
+        <p className="muted" style={{ gridColumn: "1 / -1" }}>
+          Stamping GPS &amp; time…
+        </p>
+      )}
       {cameraError && (
         <p className="muted" style={{ gridColumn: "1 / -1" }}>
           Camera unavailable — use File instead.

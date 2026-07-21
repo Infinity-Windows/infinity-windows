@@ -158,13 +158,28 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       storage_path: `${bucket}/${path}`,
       created_by: str(p.createdBy),
     };
-    // Preferred: dedupe the attachments row on client_id.
+    // Additive geo/feed columns (20260721002000). Applied opportunistically —
+    // any of these can be absent pre-migration, so we peel them back in tiers.
+    const geoRow = {
+      ...row,
+      project_id: str(p.projectId),
+      lat: num(p.lat),
+      lng: num(p.lng),
+      accuracy_m: num(p.accuracyM),
+      taken_at: str(p.takenAt),
+      caption: str(p.caption),
+    };
+    // Tier 1: dedupe on client_id AND persist geo (fully-migrated DB).
     let res = await supabase
       .from("attachments")
-      .upsert({ ...row, client_id: entry.id }, { onConflict: "client_id" });
+      .upsert({ ...geoRow, client_id: entry.id }, { onConflict: "client_id" });
     if (res.error && isMissingColumn(res.error)) {
-      // Migration not applied — plain insert; storage upsert already prevents
-      // duplicate blobs, so a rare double row is the worst case.
+      // Tier 2: geo present but client_id column absent — plain insert with geo.
+      res = await supabase.from("attachments").insert(geoRow);
+    }
+    if (res.error && isMissingColumn(res.error)) {
+      // Tier 3: geo columns absent too — base insert. Storage upsert already
+      // prevents duplicate blobs, so a rare double row is the worst case.
       res = await supabase.from("attachments").insert(row);
     }
     if (res.error) throw res.error;

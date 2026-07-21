@@ -38,14 +38,15 @@ const ACTIONS: CaptureAction[] = [
     label: "Take or upload a photo",
     hint: "Attach a progress or install photo",
     Icon: Camera,
-    to: (p) => (p ? `/projects/${p}` : "/photos"),
+    to: (p) => (p ? `/photos?project=${p}&capture=1` : "/photos?capture=1"),
   },
   {
     key: "receipt",
     label: "Add a receipt",
     hint: "Snap or upload a materials receipt",
     Icon: Receipt,
-    to: (p) => (p ? `/photos?project=${p}&kind=receipt` : "/photos?kind=receipt"),
+    to: (p) =>
+      p ? `/photos?project=${p}&kind=receipt&capture=1` : "/photos?kind=receipt&capture=1",
   },
   {
     key: "daily-log",
@@ -59,7 +60,7 @@ const ACTIONS: CaptureAction[] = [
     label: "Open gallery",
     hint: "Browse the photo & receipt library",
     Icon: FolderOpen,
-    to: (p) => (p ? `/projects/${p}` : "/photos"),
+    to: (p) => (p ? `/photos?project=${p}` : "/photos"),
   },
   {
     key: "scan",

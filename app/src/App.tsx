@@ -56,6 +56,7 @@ import { Timecard } from "./pages/Timecard";
 import { CostCodes } from "./pages/CostCodes";
 import { Costing } from "./pages/Costing";
 import { Education } from "./pages/Education";
+import { Photos } from "./pages/Photos";
 import { Points } from "./pages/Points";
 import { Safety } from "./pages/Safety";
 import { Tools } from "./pages/Tools";
@@ -316,7 +317,7 @@ export default function App() {
 
             {/* Horizon-menu stub destinations → shared "Coming soon" page.
                 Role gating still flows from the NAV registry via RequireRole. */}
-            <Route path="/photos" element={<ComingSoon title="Photos & receipts" />} />
+            <Route path="/photos" element={<Photos />} />
             <Route
               path="/daily-logs"
               element={

@@ -14,6 +14,12 @@ export interface QueuedUploadMeta {
   windowId: string | null;
   createdBy: string | null;
   createdAt: string;
+  /** Additive geo/feed fields (persisted when the DB has the columns). */
+  projectId?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  accuracyM?: number | null;
+  takenAt?: string | null;
 }
 
 const CURRENT_VERSION = 1;
@@ -51,7 +57,21 @@ export function deserializeUploadMeta(json: string): QueuedUploadMeta | null {
     windowId: typeof r.windowId === "string" ? r.windowId : null,
     createdBy: typeof r.createdBy === "string" ? r.createdBy : null,
     createdAt: typeof r.createdAt === "string" ? r.createdAt : new Date().toISOString(),
+    projectId: typeof r.projectId === "string" ? r.projectId : null,
+    lat: typeof r.lat === "number" ? r.lat : null,
+    lng: typeof r.lng === "number" ? r.lng : null,
+    accuracyM: typeof r.accuracyM === "number" ? r.accuracyM : null,
+    takenAt: typeof r.takenAt === "string" ? r.takenAt : null,
   };
+}
+
+/** Missing-column / PostgREST-schema errors mean the additive migration
+ * (geo/feed columns) isn't applied yet; callers peel geo back and retry. */
+function isMissingColumn(err: unknown): boolean {
+  const code = (err as { code?: string })?.code;
+  if (code === "PGRST204" || code === "42703") return true;
+  const msg = String((err as { message?: string })?.message ?? err).toLowerCase();
+  return msg.includes("column") && msg.includes("does not exist");
 }
 
 // --- IndexedDB plumbing ---
@@ -162,17 +182,35 @@ export async function flushQueue(): Promise<{ sent: number; remaining: number }>
           });
         if (upErr) throw upErr;
 
-        const { data: attachmentRow, error: rowErr } = await supabase
+        const baseRow = {
+          window_id: meta.windowId,
+          install_event_id: meta.installEventId,
+          kind: meta.kind,
+          storage_path: `${meta.bucket}/${meta.path}`,
+          created_by: meta.createdBy,
+        };
+        const geoRow = {
+          ...baseRow,
+          project_id: meta.projectId ?? null,
+          lat: meta.lat ?? null,
+          lng: meta.lng ?? null,
+          accuracy_m: meta.accuracyM ?? null,
+          taken_at: meta.takenAt ?? null,
+        };
+        let ins = await supabase
           .from("attachments")
-          .insert({
-            window_id: meta.windowId,
-            install_event_id: meta.installEventId,
-            kind: meta.kind,
-            storage_path: `${meta.bucket}/${meta.path}`,
-            created_by: meta.createdBy,
-          })
+          .insert(geoRow)
           .select("id")
           .single();
+        if (ins.error && isMissingColumn(ins.error)) {
+          // Migration not applied — persist the base row without geo columns.
+          ins = await supabase
+            .from("attachments")
+            .insert(baseRow)
+            .select("id")
+            .single();
+        }
+        const { data: attachmentRow, error: rowErr } = ins;
         if (rowErr) throw rowErr;
 
         if (meta.kind === "voice_memo" && attachmentRow?.id) {

@@ -17,6 +17,11 @@ export interface InstallOutboxMediaMeta {
   path: string;
   contentType: string;
   kind: "photo" | "voice_memo" | "video";
+  /** Additive geo/feed fields captured at snap time (photos only). */
+  lat?: number | null;
+  lng?: number | null;
+  accuracyM?: number | null;
+  takenAt?: string | null;
 }
 
 export interface InstallOutboxPoints {
@@ -343,6 +348,11 @@ export async function flushInstallOutbox(): Promise<{
                 installEventId: eventId,
                 windowId: current.payload.assignedWindowId,
                 createdBy: current.payload.createdBy,
+                projectId: current.payload.projectId,
+                lat: meta.lat ?? null,
+                lng: meta.lng ?? null,
+                accuracyM: meta.accuracyM ?? null,
+                takenAt: meta.takenAt ?? null,
               } satisfies Omit<QueuedUploadMeta, "id" | "createdAt">,
               blob,
             );
