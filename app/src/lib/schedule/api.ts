@@ -6,6 +6,7 @@
 
 import { supabase } from "../supabase";
 import { addDaysISO } from "./dates";
+import { filterMyPublished } from "./myPublished";
 import type {
   AssignmentMember,
   AssignmentPatch,
@@ -252,23 +253,37 @@ export async function listMyPublished(
   fromISO: string,
   toISO: string,
 ): Promise<ScheduleAssignment[]> {
+  // Two-step: first the ids the user is a member of, then the full rows with the
+  // single members embed. Embedding the members relationship a second time (as a
+  // `!inner` filter) makes PostgREST emit SQL that trips Postgres' "aggregate
+  // functions are not allowed in FROM clause of their own query level", and an
+  // `!inner` filter would also collapse the crew list to just this user.
+  const memberRes = await supabase
+    .from("schedule_assignment_members")
+    .select("assignment_id")
+    .eq("profile_id", profileId);
+  if (memberRes.error) {
+    if (isMissingScheduleTable(memberRes.error)) {
+      return filterMyPublished(readLocal(), profileId, fromISO, toISO);
+    }
+    throw memberRes.error;
+  }
+  const ids = (memberRes.data ?? []).map(
+    (r) => (r as { assignment_id: string }).assignment_id,
+  );
+  if (ids.length === 0) return [];
+
   const { data, error } = await supabase
     .from("schedule_assignments")
-    .select(`${SELECT}, schedule_assignment_members!inner(profile_id)`)
+    .select(SELECT)
+    .in("id", ids)
     .eq("status", "published")
     .lte("start_date", toISO)
     .gte("end_date", fromISO)
-    .eq("schedule_assignment_members.profile_id", profileId)
     .order("start_date");
   if (error) {
     if (isMissingScheduleTable(error)) {
-      return localStore
-        .list(fromISO, toISO)
-        .filter(
-          (a) =>
-            a.status === "published" &&
-            a.members.some((m) => m.profile_id === profileId),
-        );
+      return filterMyPublished(readLocal(), profileId, fromISO, toISO);
     }
     throw error;
   }
