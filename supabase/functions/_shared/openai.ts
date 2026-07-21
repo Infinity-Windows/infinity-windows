@@ -105,6 +105,38 @@ export async function chatJsonVision<T>(
   return JSON.parse(out) as T;
 }
 
+/**
+ * Batch-embed texts with text-embedding-3-small (1536 dims). Returns one
+ * vector per input, in the same order. The OpenAI embeddings endpoint accepts
+ * an array input, so a whole chunk batch is one request.
+ */
+export async function embed(texts: string[]): Promise<number[][]> {
+  if (texts.length === 0) return [];
+  const key = requireOpenAI();
+  const res = await fetch("https://api.openai.com/v1/embeddings", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "text-embedding-3-small",
+      input: texts,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`OpenAI embeddings failed: ${res.status} ${text}`);
+  }
+  const data = await res.json();
+  const rows = (data.data ?? []) as Array<{ index: number; embedding: number[] }>;
+  // Sort by index so the returned order always matches the input order.
+  return rows
+    .slice()
+    .sort((a, b) => a.index - b.index)
+    .map((r) => r.embedding);
+}
+
 export async function whisperTranscribe(
   audio: Blob,
   filename: string,

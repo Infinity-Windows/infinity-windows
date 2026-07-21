@@ -15,3 +15,9 @@ verify_jwt = true
 
 [functions.send-push]
 verify_jwt = true
+
+[functions.ingest-knowledge]
+verify_jwt = true
+
+[functions.ask]
+verify_jwt = true

@@ -4104,6 +4104,89 @@ button.clock-out {
   border-color: var(--accent);
 }
 
+.ask-msg {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.ask-msg.mine {
+  align-items: flex-end;
+}
+
+.ask-sources {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 11.5px;
+  max-width: 82%;
+}
+
+/* --- AI Knowledge (vault) page --- */
+
+.action-btn.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.doc-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.doc-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.doc-path {
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-count {
+  flex: none;
+  font-size: 12px;
+}
+
+.icon-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--card-raised);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
 .ask-suggestions {
   display: flex;
   flex-wrap: wrap;

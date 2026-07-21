@@ -4,17 +4,26 @@ import { Sparkles } from "lucide-react";
 import { CATS, TERMS } from "../lib/glossary";
 import { searchBrainTypes } from "../lib/api";
 import type { WindowType } from "../lib/types";
+import { supabaseConfigured } from "../lib/supabase";
+import {
+  askInfinity,
+  shouldUseLLM,
+  type KnowledgeSource,
+} from "../lib/knowledge";
 
 interface ChatMsg {
   who: "me" | "infinity";
   text: string;
+  sources?: KnowledgeSource[];
 }
 
 /**
- * Ask Infinity — answers from the real install brain first (the closed catalog:
- * per-type tips, watch-outs, difficulty and median install time), then falls
- * back to the window glossary + app guide. A live AI relay can be layered on
- * later; today it already surfaces the company's own accumulated knowledge.
+ * Ask Infinity — real, business-specific AI. It calls the cloud `ask` function
+ * (RAG over the company's Obsidian vault + live app data, grounded with
+ * citations) and, whenever that's unavailable (offline, not configured, or an
+ * error), transparently falls back to the bundled offline brain: the closed
+ * install catalog (per-type tips, watch-outs, difficulty, median time), then
+ * the window glossary + app guide. The chat therefore never goes dark.
  */
 const APP_GUIDE =
   "Home is your day: clock-in, term of the day, active install, points and your projects. " +
@@ -59,8 +68,8 @@ function brainAnswer(t: WindowType): string {
   return lines.join("\n");
 }
 
-/** Real-brain first, then glossary, then app guide. */
-async function answer(q: string): Promise<string> {
+/** Offline fallback: real-brain first, then glossary, then app guide. */
+async function localAnswer(q: string): Promise<string> {
   const query = q.toLowerCase().trim();
   if (!query) return "Ask me about a window type, a term, or how to use any part of the app.";
 
@@ -107,29 +116,55 @@ export function AskInfinity() {
   const [messages, setMessages] = useState<ChatMsg[]>([
     {
       who: "infinity",
-      text: "Hey — I'm Infinity AI. Ask me about any window type (tips, watch-outs, install time), a term, or how to use the app.",
+      text: "Hey — I'm Infinity AI. Ask me anything about our jobs, our notes, a window type, or how to use the app.",
     },
   ]);
 
   const [thinking, setThinking] = useState(false);
 
   const suggestions = useMemo(
-    () => ["Single hung tips", "How do I install a slider?", "What is flashing?"],
+    () => ["What's on our schedule?", "Single hung tips", "What is flashing?"],
     [],
   );
 
   const send = (text: string) => {
     const q = text.trim();
     if (!q || thinking) return;
+
+    // History for the LLM: the running conversation so far (skip the greeting).
+    const history = messages
+      .slice(1)
+      .map((m) => ({
+        role: m.who === "me" ? ("user" as const) : ("assistant" as const),
+        content: m.text,
+      }))
+      .slice(-8);
+
     setMessages((m) => [...m, { who: "me", text: q }]);
     setInput("");
     setThinking(true);
-    void answer(q)
-      .then((reply) => setMessages((m) => [...m, { who: "infinity", text: reply }]))
+
+    const online = typeof navigator === "undefined" ? true : navigator.onLine;
+    const useCloud = shouldUseLLM({ online, supabaseConfigured });
+
+    const run = async (): Promise<ChatMsg> => {
+      if (useCloud) {
+        try {
+          const { answer, sources } = await askInfinity(q, history);
+          if (answer) return { who: "infinity", text: answer, sources };
+        } catch {
+          // Cloud unavailable — fall back to the offline brain below.
+        }
+      }
+      return { who: "infinity", text: await localAnswer(q) };
+    };
+
+    void run()
+      .then((reply) => setMessages((m) => [...m, reply]))
       .catch(() =>
         setMessages((m) => [
           ...m,
-          { who: "infinity", text: "Something went wrong reaching the brain. Try again." },
+          { who: "infinity", text: "Something went wrong. Try again." },
         ]),
       )
       .finally(() => setThinking(false));
@@ -151,12 +186,18 @@ export function AskInfinity() {
 
       <div className="ask-thread">
         {messages.map((m, i) => (
-          <div
-            key={i}
-            className={m.who === "me" ? "ask-bubble mine" : "ask-bubble"}
-            style={{ whiteSpace: "pre-line" }}
-          >
-            {m.text}
+          <div key={i} className={m.who === "me" ? "ask-msg mine" : "ask-msg"}>
+            <div
+              className={m.who === "me" ? "ask-bubble mine" : "ask-bubble"}
+              style={{ whiteSpace: "pre-line" }}
+            >
+              {m.text}
+            </div>
+            {m.sources && m.sources.length > 0 && (
+              <p className="ask-sources muted">
+                Sources: {m.sources.map((s) => s.title).join(", ")}
+              </p>
+            )}
           </div>
         ))}
         {thinking && (
@@ -176,7 +217,7 @@ export function AskInfinity() {
 
       <div className="ask-input">
         <input
-          placeholder="Ask a term or how-to…"
+          placeholder="Ask about jobs, notes, or how-to…"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send(input)}

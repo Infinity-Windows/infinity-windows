@@ -67,6 +67,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Slot labels (`/labels`)
 - Catalog (`/catalog`)
 - Supplies (`/supplies`)
+- AI Knowledge (`/knowledge`)
 - Scheduling (`/scheduling`)
 - Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
@@ -160,6 +161,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 **Blocked:**
 
+- AI Knowledge (`/knowledge`)
 - Scheduling (`/scheduling`)
 - Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
@@ -195,6 +197,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Roster (`/crew`)
 - Materials (`/supplies`)
 - Infinity AI (`/ask`)
+- AI Knowledge (`/knowledge`)
 - Warehouse (`/warehouse`)
 - Scan (`/scan`)
 - Cycle count (`/count`)
@@ -211,7 +214,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications & location (`/settings`)
 - Admin (`/admin`)
 
-**Can reach (all 42 allowed destinations):**
+**Can reach (all 43 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -241,6 +244,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Slot labels (`/labels`)
 - Catalog (`/catalog`)
 - Supplies (`/supplies`)
+- AI Knowledge (`/knowledge`)
 - Scheduling (`/scheduling`)
 - Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
@@ -290,6 +294,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Roster (`/crew`)
 - Materials (`/supplies`)
 - Infinity AI (`/ask`)
+- AI Knowledge (`/knowledge`)
 - Warehouse (`/warehouse`)
 - Scan (`/scan`)
 - Cycle count (`/count`)
@@ -306,7 +311,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications & location (`/settings`)
 - Admin (`/admin`)
 
-**Can reach (all 43 allowed destinations):**
+**Can reach (all 44 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -336,6 +341,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Slot labels (`/labels`)
 - Catalog (`/catalog`)
 - Supplies (`/supplies`)
+- AI Knowledge (`/knowledge`)
 - Scheduling (`/scheduling`)
 - Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
