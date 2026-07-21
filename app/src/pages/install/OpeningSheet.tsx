@@ -391,6 +391,10 @@ export function OpeningSheet() {
         contentType: string;
         kind: "photo" | "voice_memo" | "video";
         blob: Blob;
+        lat?: number | null;
+        lng?: number | null;
+        accuracyM?: number | null;
+        takenAt?: string | null;
       }> = [];
       if (photos.before) {
         media.push({
@@ -399,6 +403,10 @@ export function OpeningSheet() {
           contentType: photos.before.type || "image/jpeg",
           kind: "photo",
           blob: photos.before,
+          lat: photos.beforeMeta?.lat ?? null,
+          lng: photos.beforeMeta?.lng ?? null,
+          accuracyM: photos.beforeMeta?.accuracyM ?? null,
+          takenAt: photos.beforeMeta?.takenAt?.toISOString() ?? null,
         });
       }
       if (photos.after) {
@@ -408,6 +416,10 @@ export function OpeningSheet() {
           contentType: photos.after.type || "image/jpeg",
           kind: "photo",
           blob: photos.after,
+          lat: photos.afterMeta?.lat ?? null,
+          lng: photos.afterMeta?.lng ?? null,
+          accuracyM: photos.afterMeta?.accuracyM ?? null,
+          takenAt: photos.afterMeta?.takenAt?.toISOString() ?? null,
         });
       }
       if (video) {
@@ -1027,7 +1039,7 @@ export function OpeningSheet() {
         <>
           <h2>Photos</h2>
           <p className="muted">Before and after — the after lines up over the before.</p>
-          <BeforeAfterCapture value={photos} onChange={setPhotos} />
+          <BeforeAfterCapture value={photos} onChange={setPhotos} label={o.opening_code} />
 
           <label className="field-label">Walkthrough video (optional)</label>
           <label className="action-btn" style={{ cursor: "pointer" }}>

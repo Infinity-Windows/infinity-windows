@@ -15,6 +15,11 @@ const META: QueuedUploadMeta = {
   windowId: "w1",
   createdBy: "installer@crew.com",
   createdAt: "2026-07-15T12:00:00.000Z",
+  projectId: "proj-1",
+  lat: 37.7749,
+  lng: -122.4194,
+  accuracyM: 8.6,
+  takenAt: "2026-07-15T11:59:00.000Z",
 };
 
 describe("upload queue serialization", () => {

@@ -271,6 +271,14 @@ export interface UploadInput {
   windowId?: string | null;
   installEventId?: string | null;
   createdBy?: string | null;
+  /** Job this media belongs to (feed + per-job filtering). */
+  projectId?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  accuracyM?: number | null;
+  /** ISO capture time; distinct from the server's created_at. */
+  takenAt?: string | null;
+  caption?: string | null;
   blob: Blob;
 }
 
@@ -288,6 +296,12 @@ export function enqueueUpload(input: UploadInput): Promise<string> {
         windowId: input.windowId ?? null,
         installEventId: input.installEventId ?? null,
         createdBy: input.createdBy ?? null,
+        projectId: input.projectId ?? null,
+        lat: input.lat ?? null,
+        lng: input.lng ?? null,
+        accuracyM: input.accuracyM ?? null,
+        takenAt: input.takenAt ?? null,
+        caption: input.caption ?? null,
       },
     },
     input.blob,
