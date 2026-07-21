@@ -71,7 +71,9 @@ export function AssignmentEditor({
   const [endDate, setEndDate] = useState(
     assignment?.end_date ?? assignment?.start_date ?? defaults?.start_date ?? horizon.from,
   );
-  const [startTime, setStartTime] = useState(assignment?.start_time ?? "");
+  const [startTime, setStartTime] = useState(
+    assignment ? (assignment.start_time ?? "") : "06:30",
+  );
   const [color, setColor] = useState(assignment?.color ?? "");
   const [note, setNote] = useState(assignment?.note ?? "");
   const [members, setMembers] = useState<AssignmentMember[]>(
