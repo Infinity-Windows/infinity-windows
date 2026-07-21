@@ -5,6 +5,8 @@ import type { Project } from "../../lib/types";
 import { INSTALLER_PALETTE } from "../../lib/install/mapDispatch";
 import { addDaysISO, daysBetween } from "../../lib/schedule/dates";
 import { conflictingMembersFor } from "../../lib/schedule/conflicts";
+import { removeWarning } from "../../lib/schedule/removeWarning";
+import { useFocusTrap } from "../../lib/useFocusTrap";
 import type {
   AssignmentMember,
   CrewMemberRole,
@@ -74,6 +76,21 @@ export function AssignmentEditor({
   const [note, setNote] = useState(assignment?.note ?? "");
   const [members, setMembers] = useState<AssignmentMember[]>(
     assignment?.members.map((m) => ({ ...m })) ?? [],
+  );
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  const confirmRef = useRef<HTMLDivElement>(null);
+  const cancelDelete = () => setConfirmingDelete(false);
+  useFocusTrap(confirmRef, confirmingDelete, cancelDelete);
+
+  const warning = useMemo(
+    () =>
+      removeWarning({
+        status: assignment?.status ?? "draft",
+        jobLabel: assignment?.project?.job_code ?? assignment?.project?.name ?? null,
+        crewCount: assignment?.members.length ?? 0,
+      }),
+    [assignment?.status, assignment?.project?.job_code, assignment?.project?.name, assignment?.members.length],
   );
 
   const noteRef = useRef<HTMLTextAreaElement>(null);
@@ -297,7 +314,11 @@ export function AssignmentEditor({
 
         <div className="sched-sheet-actions">
           {assignment && onDelete && (
-            <button className="button-like danger-outline" onClick={onDelete} disabled={saving}>
+            <button
+              className="button-like danger-outline"
+              onClick={() => setConfirmingDelete(true)}
+              disabled={saving}
+            >
               <Trash2 size={15} aria-hidden /> Remove
             </button>
           )}
@@ -316,6 +337,50 @@ export function AssignmentEditor({
           </p>
         )}
       </div>
+
+      {assignment && onDelete && confirmingDelete && (
+        <div
+          className="sched-sheet-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sched-remove-title"
+        >
+          <div className="sched-sheet" ref={confirmRef}>
+            <div className="sched-sheet-head">
+              <h2 id="sched-remove-title" style={{ margin: 0 }}>
+                {warning.title}
+              </h2>
+            </div>
+            <div
+              className={`sched-conflict-inline${warning.published ? " is-emphasized" : ""}`}
+              role="alert"
+            >
+              <AlertTriangle size={16} aria-hidden />
+              <div>
+                {warning.lines.map((line, i) => (
+                  <p key={i} style={{ margin: i === 0 ? 0 : "6px 0 0" }}>
+                    {line}
+                  </p>
+                ))}
+              </div>
+            </div>
+            <div className="sched-sheet-actions">
+              <button className="button-like" onClick={cancelDelete} disabled={saving}>
+                Cancel
+              </button>
+              <button
+                className="button-like danger-outline"
+                style={{ marginLeft: "auto" }}
+                onClick={onDelete}
+                disabled={saving}
+              >
+                <Trash2 size={15} aria-hidden />{" "}
+                {saving ? "Removing…" : warning.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
