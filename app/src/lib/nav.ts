@@ -7,6 +7,7 @@ import {
   BookOpen,
   Boxes,
   CalendarClock,
+  CalendarDays,
   CheckCircle2,
   ClipboardList,
   Clock,
@@ -58,6 +59,8 @@ export type RoutePath =
   | "/review"
   | "/team"
   | "/timecard"
+  | "/scheduling"
+  | "/my-schedule"
   | "/issues"
   | "/service"
   | "/heartbeat"
@@ -124,6 +127,7 @@ export const NAV: NavDest[] = [
   { id: "notifications", to: "/notifications", label: "Notifications", icon: "◔", minRole: "installer" },
   { id: "search", to: "/search", label: "Search", icon: "⌕", minRole: "installer" },
   { id: "review", to: "/review", label: "Memo review", icon: "✍", minRole: "installer" },
+  { id: "my-schedule", to: "/my-schedule", label: "My Schedule", icon: "◷", minRole: "installer" },
 
   // Foreman+ (managers): coordination + warehouse ops + quality.
   { id: "team", to: "/team", label: "Team", icon: "⚑", minRole: "foreman" },
@@ -140,6 +144,7 @@ export const NAV: NavDest[] = [
   { id: "supplies", to: "/supplies", label: "Supplies", icon: "⛃", minRole: "foreman" },
 
   // Supervisor+.
+  { id: "scheduling", to: "/scheduling", label: "Scheduling", icon: "🗓", minRole: "supervisor" },
   { id: "heartbeat", to: "/heartbeat", label: "Heartbeat", icon: "❤", minRole: "supervisor" },
   { id: "admin", to: "/admin", label: "Admin", icon: "◈", minRole: "supervisor" },
   { id: "cost-codes", to: "/cost-codes", label: "Cost codes", icon: "☷", minRole: "supervisor" },
@@ -303,6 +308,8 @@ const MENU_DEF: MenuSection[] = [
   {
     title: "Company",
     items: [
+      { to: "/scheduling", label: "Scheduling", Icon: CalendarDays },
+      { to: "/my-schedule", label: "My schedule", Icon: CalendarClock },
       { to: "/training", label: "Training", Icon: GraduationCap },
       { to: "/team", label: "Team", Icon: Users },
       { to: "/crew", label: "Roster", Icon: Users },
@@ -350,6 +357,7 @@ const INSTALLER_MENU_PATHS = new Set<string>([
   "/ask",
   // Occasional extras.
   "/timecard",
+  "/my-schedule",
   "/learn",
   "/points",
   "/review",

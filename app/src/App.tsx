@@ -53,6 +53,8 @@ import { Training } from "./pages/Training";
 import { Admin } from "./pages/Admin";
 import { TimeClock } from "./pages/TimeClock";
 import { Timecard } from "./pages/Timecard";
+import { Scheduling } from "./pages/Scheduling";
+import { MySchedule } from "./pages/MySchedule";
 import { CostCodes } from "./pages/CostCodes";
 import { Costing } from "./pages/Costing";
 import { Education } from "./pages/Education";
@@ -286,6 +288,14 @@ export default function App() {
             <Route
               path="/timecard"
               element={<RequireRole path="/timecard"><Timecard /></RequireRole>}
+            />
+            <Route
+              path="/scheduling"
+              element={<RequireRole path="/scheduling"><Scheduling /></RequireRole>}
+            />
+            <Route
+              path="/my-schedule"
+              element={<RequireRole path="/my-schedule"><MySchedule /></RequireRole>}
             />
             <Route
               path="/cost-codes"

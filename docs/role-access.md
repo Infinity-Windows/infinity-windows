@@ -16,6 +16,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 - My Work (`/`)
 - Clock in / out (action)
+- My schedule (`/my-schedule`)
 - Infinity AI (`/ask`)
 - Warehouse (`/warehouse`)
 - Scan (`/scan`)
@@ -26,7 +27,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Notifications & location (`/settings`)
 
-**Can reach (all 22 allowed destinations):**
+**Can reach (all 23 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -43,6 +44,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Search (`/search`)
 - Memo review (`/review`)
+- My Schedule (`/my-schedule`)
 - Photos & receipts (`/photos`)
 - Completed installs (`/completed-installs`)
 - Milestones (`/milestones`)
@@ -65,6 +67,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Slot labels (`/labels`)
 - Catalog (`/catalog`)
 - Supplies (`/supplies`)
+- Scheduling (`/scheduling`)
 - Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
 - Cost codes (`/cost-codes`)
@@ -93,6 +96,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Issues (`/issues`)
 - Service (`/service`)
 - Quality (`/qc`)
+- My schedule (`/my-schedule`)
 - Training (`/training`)
 - Team (`/team`)
 - Roster (`/crew`)
@@ -113,7 +117,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Notifications & location (`/settings`)
 
-**Can reach (all 37 allowed destinations):**
+**Can reach (all 38 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -130,6 +134,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Search (`/search`)
 - Memo review (`/review`)
+- My Schedule (`/my-schedule`)
 - Team (`/team`)
 - Timecard (`/timecard`)
 - Issues (`/issues`)
@@ -155,6 +160,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 **Blocked:**
 
+- Scheduling (`/scheduling`)
 - Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
 - Cost codes (`/cost-codes`)
@@ -182,6 +188,8 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Issues (`/issues`)
 - Service (`/service`)
 - Quality (`/qc`)
+- Scheduling (`/scheduling`)
+- My schedule (`/my-schedule`)
 - Training (`/training`)
 - Team (`/team`)
 - Roster (`/crew`)
@@ -203,7 +211,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications & location (`/settings`)
 - Admin (`/admin`)
 
-**Can reach (all 40 allowed destinations):**
+**Can reach (all 42 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -220,6 +228,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Search (`/search`)
 - Memo review (`/review`)
+- My Schedule (`/my-schedule`)
 - Team (`/team`)
 - Timecard (`/timecard`)
 - Issues (`/issues`)
@@ -232,6 +241,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Slot labels (`/labels`)
 - Catalog (`/catalog`)
 - Supplies (`/supplies`)
+- Scheduling (`/scheduling`)
 - Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
 - Cost codes (`/cost-codes`)
@@ -273,6 +283,8 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Issues (`/issues`)
 - Service (`/service`)
 - Quality (`/qc`)
+- Scheduling (`/scheduling`)
+- My schedule (`/my-schedule`)
 - Training (`/training`)
 - Team (`/team`)
 - Roster (`/crew`)
@@ -294,7 +306,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications & location (`/settings`)
 - Admin (`/admin`)
 
-**Can reach (all 41 allowed destinations):**
+**Can reach (all 43 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -311,6 +323,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Search (`/search`)
 - Memo review (`/review`)
+- My Schedule (`/my-schedule`)
 - Team (`/team`)
 - Timecard (`/timecard`)
 - Issues (`/issues`)
@@ -323,6 +336,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Slot labels (`/labels`)
 - Catalog (`/catalog`)
 - Supplies (`/supplies`)
+- Scheduling (`/scheduling`)
 - Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
 - Cost codes (`/cost-codes`)
