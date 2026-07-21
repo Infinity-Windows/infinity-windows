@@ -6,6 +6,7 @@ import {
   Bell,
   BookOpen,
   Boxes,
+  BrainCircuit,
   CalendarClock,
   CalendarDays,
   CheckCircle2,
@@ -54,6 +55,7 @@ export type RoutePath =
   | "/scan"
   | "/count"
   | "/ask"
+  | "/knowledge"
   | "/notifications"
   | "/search"
   | "/review"
@@ -144,6 +146,7 @@ export const NAV: NavDest[] = [
   { id: "supplies", to: "/supplies", label: "Supplies", icon: "⛃", minRole: "foreman" },
 
   // Supervisor+.
+  { id: "knowledge", to: "/knowledge", label: "AI Knowledge", icon: "◈", minRole: "supervisor" },
   { id: "scheduling", to: "/scheduling", label: "Scheduling", icon: "🗓", minRole: "supervisor" },
   { id: "heartbeat", to: "/heartbeat", label: "Heartbeat", icon: "❤", minRole: "supervisor" },
   { id: "admin", to: "/admin", label: "Admin", icon: "◈", minRole: "supervisor" },
@@ -320,6 +323,7 @@ const MENU_DEF: MenuSection[] = [
     items: [
       { to: "/supplies", label: "Materials", Icon: Boxes },
       { to: "/ask", label: "Infinity AI", Icon: Sparkles },
+      { to: "/knowledge", label: "AI Knowledge", Icon: BrainCircuit },
       { to: "/warehouse", label: "Warehouse", Icon: WarehouseIcon },
       { to: "/scan", label: "Scan", Icon: ScanLine },
       { to: "/count", label: "Cycle count", Icon: ListChecks },
