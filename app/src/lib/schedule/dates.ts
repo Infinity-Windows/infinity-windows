@@ -116,6 +116,90 @@ export function agendaDayLabel(iso: string): string {
   });
 }
 
+/** "March 2026" title for the month containing `iso`. */
+export function monthLabel(iso: string): string {
+  return new Date(isoToUtc(startOfMonthISO(iso))).toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/** A contiguous run of days that all fall in the same calendar month. */
+export interface MonthSection {
+  /** "YYYY-MM" key, unique per month in the horizon. */
+  key: string;
+  /** Human title, e.g. "March 2026". */
+  label: string;
+  /** Every day string in this month within the requested horizon. */
+  days: string[];
+}
+
+/**
+ * Split an inclusive [from, to] horizon into month sections (one per calendar
+ * month it touches), each carrying its day strings in order. Drives the
+ * month-stacked vertical calendar's sticky headers + day rows.
+ */
+export function groupDaysByMonth(
+  fromISO: string,
+  toISO: string,
+  cap = 400,
+): MonthSection[] {
+  const sections: MonthSection[] = [];
+  let current: MonthSection | null = null;
+  for (const day of enumerateDays(fromISO, toISO, cap)) {
+    const key = day.slice(0, 7);
+    if (!current || current.key !== key) {
+      current = { key, label: monthLabel(day), days: [] };
+      sections.push(current);
+    }
+    current.days.push(day);
+  }
+  return sections;
+}
+
+/**
+ * Map each day in `days` to the items active on it. A multi-day item appears
+ * under every day it spans. Item order within a day mirrors input order, so the
+ * calendar's per-day stacking is stable across renders.
+ */
+export function mapItemsToDays<T extends { start_date: string; end_date: string }>(
+  items: T[],
+  days: string[],
+): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  for (const day of days) {
+    map.set(
+      day,
+      items.filter((it) => it.start_date <= day && it.end_date >= day),
+    );
+  }
+  return map;
+}
+
+/**
+ * Friendly label for a clash day-span: "Mar 3" (single day), "Mar 3–5"
+ * (same month) or "Mar 30 – Apr 2" (crossing a month boundary).
+ */
+export function clashRangeLabel(startISO: string, endISO: string): string {
+  const dayOnly = (iso: string) =>
+    new Date(isoToUtc(iso)).toLocaleDateString(undefined, {
+      day: "numeric",
+      timeZone: "UTC",
+    });
+  const monthDay = (iso: string) =>
+    new Date(isoToUtc(iso)).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      timeZone: "UTC",
+    });
+  if (startISO === endISO) return monthDay(startISO);
+  if (startISO.slice(0, 7) === endISO.slice(0, 7)) {
+    return `${monthDay(startISO)}–${dayOnly(endISO)}`;
+  }
+  return `${monthDay(startISO)} – ${monthDay(endISO)}`;
+}
+
 /** Format an optional "HH:MM[:SS]" clock string to a friendly "8:30 AM". */
 export function formatStartTime(time: string | null | undefined): string | null {
   if (!time) return null;

@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   addDaysISO,
   clampISO,
+  clashRangeLabel,
   daysBetween,
   enumerateDays,
   endOfMonthISO,
   formatStartTime,
+  groupDaysByMonth,
   isISODate,
+  mapItemsToDays,
   monthGridRange,
+  monthLabel,
   rangeLengthDays,
   rangesOverlap,
   startOfMonthISO,
@@ -90,5 +94,75 @@ describe("formatStartTime", () => {
     expect(formatStartTime("08:30:00")).toMatch(/8:30/);
     expect(formatStartTime(null)).toBeNull();
     expect(formatStartTime("")).toBeNull();
+  });
+});
+
+describe("monthLabel", () => {
+  it("titles the month containing a date (any day in the month)", () => {
+    expect(monthLabel("2026-03-01")).toMatch(/2026/);
+    expect(monthLabel("2026-03-31")).toBe(monthLabel("2026-03-01"));
+  });
+});
+
+describe("groupDaysByMonth", () => {
+  it("splits a horizon into one section per calendar month, in order", () => {
+    const sections = groupDaysByMonth("2026-02-27", "2026-04-02");
+    expect(sections.map((s) => s.key)).toEqual(["2026-02", "2026-03", "2026-04"]);
+    expect(sections[0].days).toEqual(["2026-02-27", "2026-02-28"]);
+    expect(sections[1].days).toHaveLength(31);
+    expect(sections[1].days[0]).toBe("2026-03-01");
+    expect(sections[2].days).toEqual(["2026-04-01", "2026-04-02"]);
+    expect(sections[1].label).toMatch(/2026/);
+  });
+
+  it("returns a single section for a within-month range and none for reversed", () => {
+    expect(groupDaysByMonth("2026-05-10", "2026-05-12")).toHaveLength(1);
+    expect(groupDaysByMonth("2026-05-12", "2026-05-10")).toEqual([]);
+  });
+});
+
+describe("mapItemsToDays", () => {
+  const item = (id: string, start: string, end: string) => ({
+    id,
+    start_date: start,
+    end_date: end,
+  });
+
+  it("places a multi-day item under every day it spans, empties stay empty", () => {
+    const days = enumerateDays("2026-03-01", "2026-03-05");
+    const map = mapItemsToDays([item("x", "2026-03-02", "2026-03-04")], days);
+    expect(map.get("2026-03-01")).toEqual([]);
+    expect(map.get("2026-03-02")?.map((i) => i.id)).toEqual(["x"]);
+    expect(map.get("2026-03-03")?.map((i) => i.id)).toEqual(["x"]);
+    expect(map.get("2026-03-04")?.map((i) => i.id)).toEqual(["x"]);
+    expect(map.get("2026-03-05")).toEqual([]);
+  });
+
+  it("keeps input order stable within a day", () => {
+    const days = ["2026-03-03"];
+    const map = mapItemsToDays(
+      [
+        item("a", "2026-03-01", "2026-03-05"),
+        item("b", "2026-03-03", "2026-03-03"),
+        item("c", "2026-03-02", "2026-03-04"),
+      ],
+      days,
+    );
+    expect(map.get("2026-03-03")?.map((i) => i.id)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("clashRangeLabel", () => {
+  it("formats single day, same-month span and cross-month span", () => {
+    const single = clashRangeLabel("2026-03-03", "2026-03-03");
+    expect(single).toMatch(/3/);
+    expect(single).not.toContain("–");
+
+    expect(clashRangeLabel("2026-03-03", "2026-03-05")).toContain("3–5");
+
+    const cross = clashRangeLabel("2026-03-30", "2026-04-02");
+    expect(cross).toContain(" – ");
+    expect(cross).toMatch(/30/);
+    expect(cross).toMatch(/2/);
   });
 });

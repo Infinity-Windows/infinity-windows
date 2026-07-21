@@ -30,6 +30,8 @@ interface Props {
   crew: Profile[];
   /** Other assignments in the loaded window, for the inline conflict warning. */
   others: ScheduleAssignment[];
+  /** Crew ids to emphasize (opened from the conflict banner's "Fix"). */
+  highlightMemberIds?: string[];
   horizon: { from: string; to: string };
   saving?: boolean;
   onSave: (result: EditorResult) => void;
@@ -47,12 +49,17 @@ export function AssignmentEditor({
   projects,
   crew,
   others,
+  highlightMemberIds,
   horizon,
   saving,
   onSave,
   onDelete,
   onClose,
 }: Props) {
+  const highlightSet = useMemo(
+    () => new Set(highlightMemberIds ?? []),
+    [highlightMemberIds],
+  );
   const [projectId, setProjectId] = useState(
     assignment?.project_id ?? defaults?.project_id ?? "",
   );
@@ -203,11 +210,12 @@ export function AssignmentEditor({
         <div className="sched-chips">
           {foremen.map((p) => {
             const picked = members.find((m) => m.profile_id === p.id)?.role === "foreman";
+            const clash = highlightSet.has(p.id) && memberIds.has(p.id);
             return (
               <button
                 key={p.id}
                 type="button"
-                className={`sched-chip${picked ? " is-picked" : ""}`}
+                className={`sched-chip${picked ? " is-picked" : ""}${clash ? " is-clash" : ""}`}
                 onClick={() => toggleMember(p.id, "foreman")}
               >
                 {p.display_name}
@@ -221,11 +229,12 @@ export function AssignmentEditor({
         <div className="sched-chips">
           {installers.map((p) => {
             const picked = members.find((m) => m.profile_id === p.id)?.role === "installer";
+            const clash = highlightSet.has(p.id) && memberIds.has(p.id);
             return (
               <button
                 key={p.id}
                 type="button"
-                className={`sched-chip${picked ? " is-picked" : ""}`}
+                className={`sched-chip${picked ? " is-picked" : ""}${clash ? " is-clash" : ""}`}
                 onClick={() => toggleMember(p.id, "installer")}
               >
                 {p.display_name}
@@ -241,7 +250,10 @@ export function AssignmentEditor({
         )}
 
         {inlineConflicts.length > 0 && (
-          <div className="sched-conflict-inline" role="alert">
+          <div
+            className={`sched-conflict-inline${highlightSet.size > 0 ? " is-emphasized" : ""}`}
+            role="alert"
+          >
             <AlertTriangle size={15} aria-hidden />
             <span>
               Double-booked: {inlineConflicts.map((id) => nameOf(crew, id)).join(", ")} already

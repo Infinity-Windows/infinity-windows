@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   type ConflictAssignment,
   assignmentsOverlap,
+  conflictBannerEntries,
   conflictPairs,
   conflictingAssignmentIds,
   conflictingMembersFor,
   detectConflicts,
+  overlapDays,
 } from "./conflicts";
 
 const A = (
@@ -82,5 +84,51 @@ describe("conflictingMembersFor", () => {
       A("t", "2026-07-05", "2026-07-08", ["p1", "p2", "p3"]),
     ];
     expect(conflictingMembersFor(target, others)).toEqual(["p2"]);
+  });
+});
+
+describe("overlapDays", () => {
+  it("returns the inclusive shared span for a partial overlap", () => {
+    expect(
+      overlapDays(A("a", "2026-03-01", "2026-03-05", []), A("b", "2026-03-03", "2026-03-09", [])),
+    ).toEqual({ start: "2026-03-03", end: "2026-03-05" });
+  });
+
+  it("returns the contained range when one nests inside the other", () => {
+    expect(
+      overlapDays(A("a", "2026-03-01", "2026-03-10", []), A("b", "2026-03-04", "2026-03-06", [])),
+    ).toEqual({ start: "2026-03-04", end: "2026-03-06" });
+  });
+
+  it("returns null when the ranges don't touch", () => {
+    expect(
+      overlapDays(A("a", "2026-03-01", "2026-03-02", []), A("b", "2026-03-03", "2026-03-04", [])),
+    ).toBeNull();
+  });
+});
+
+describe("conflictBannerEntries", () => {
+  it("shapes each double-booking into person + both jobs + clash days", () => {
+    const rows = conflictBannerEntries([
+      A("smith", "2026-03-01", "2026-03-05", ["ammon", "kb"]),
+      A("jones", "2026-03-03", "2026-03-08", ["ammon"]),
+      A("far", "2026-06-01", "2026-06-02", ["kb"]),
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({
+      profileId: "ammon",
+      aId: "smith",
+      bId: "jones",
+      overlap: { start: "2026-03-03", end: "2026-03-05" },
+    });
+  });
+
+  it("returns no rows when nobody is double-booked", () => {
+    expect(
+      conflictBannerEntries([
+        A("a", "2026-03-01", "2026-03-02", ["p1"]),
+        A("b", "2026-03-01", "2026-03-02", ["p2"]),
+      ]),
+    ).toEqual([]);
   });
 });
