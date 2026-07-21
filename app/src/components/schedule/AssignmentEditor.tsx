@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Trash2, X } from "lucide-react";
 import type { Profile } from "../../lib/install/types";
 import type { Project } from "../../lib/types";
@@ -69,6 +69,14 @@ export function AssignmentEditor({
     assignment?.members.map((m) => ({ ...m })) ?? [],
   );
 
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = noteRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [note]);
+
   const foremen = useMemo(
     () => crew.filter((p) => p.active && (p.role === "foreman" || p.role === "supervisor" || p.role === "owner")),
     [crew],
@@ -124,8 +132,8 @@ export function AssignmentEditor({
       <div className="sched-sheet">
         <div className="sched-sheet-head">
           <h2 style={{ margin: 0 }}>{assignment ? "Edit assignment" : "New assignment"}</h2>
-          <button className="icon-button" onClick={onClose} aria-label="Close">
-            <X size={18} />
+          <button className="icon-button sched-sheet-close" onClick={onClose} aria-label="Close">
+            <X size={20} strokeWidth={2.5} />
           </button>
         </div>
 
@@ -266,8 +274,10 @@ export function AssignmentEditor({
         </div>
 
         <label className="field-label">Note (optional)</label>
-        <input
-          type="text"
+        <textarea
+          ref={noteRef}
+          className="sched-note-input"
+          rows={2}
           value={note}
           placeholder="e.g. bring the big ladder"
           onChange={(e) => setNote(e.target.value)}

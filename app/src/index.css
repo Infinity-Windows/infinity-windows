@@ -6685,7 +6685,33 @@ body {
   justify-content: space-between;
   margin-bottom: 8px;
 }
+.sched-sheet-close {
+  flex-shrink: 0;
+  padding: 0;
+  color: var(--text);
+  background: var(--card-raised);
+}
 .sched-sheet-actions { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+
+.sched-note-input {
+  width: 100%;
+  min-height: 52px;
+  padding: 14px 15px;
+  font-size: 15px;
+  font-family: var(--font-body);
+  line-height: 1.4;
+  border-radius: 13px;
+  border: 1px solid var(--border);
+  background: var(--card-raised);
+  color: var(--text);
+  margin-bottom: 10px;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.sched-note-input:focus { border-color: rgba(255, 106, 26, 0.55); }
 .sched-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
 .sched-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
@@ -6705,12 +6731,18 @@ body {
   font-weight: 600;
 }
 .sched-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 30px;
   height: 30px;
+  padding: 0;
   border-radius: 8px;
   border: 2px solid transparent;
   cursor: pointer;
   font-size: 10px;
+  line-height: 1;
+  text-align: center;
   color: #fff;
 }
 .sched-swatch.is-picked { border-color: var(--text); box-shadow: 0 0 0 2px var(--bg); }
