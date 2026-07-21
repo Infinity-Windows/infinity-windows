@@ -1,0 +1,299 @@
+import { useMemo, useState } from "react";
+import { AlertTriangle, Trash2, X } from "lucide-react";
+import type { Profile } from "../../lib/install/types";
+import type { Project } from "../../lib/types";
+import { INSTALLER_PALETTE } from "../../lib/install/mapDispatch";
+import { addDaysISO, daysBetween } from "../../lib/schedule/dates";
+import { conflictingMembersFor } from "../../lib/schedule/conflicts";
+import type {
+  AssignmentMember,
+  CrewMemberRole,
+  ScheduleAssignment,
+} from "../../lib/schedule/types";
+
+export interface EditorResult {
+  project_id: string;
+  start_date: string;
+  end_date: string;
+  start_time: string | null;
+  color: string | null;
+  note: string | null;
+  members: AssignmentMember[];
+}
+
+interface Props {
+  /** Existing assignment to edit, or null to create a new one. */
+  assignment: ScheduleAssignment | null;
+  /** Prefill for a brand-new assignment (day tapped / project from tray). */
+  defaults?: { start_date?: string; project_id?: string };
+  projects: Project[];
+  crew: Profile[];
+  /** Other assignments in the loaded window, for the inline conflict warning. */
+  others: ScheduleAssignment[];
+  horizon: { from: string; to: string };
+  saving?: boolean;
+  onSave: (result: EditorResult) => void;
+  onDelete?: () => void;
+  onClose: () => void;
+}
+
+function nameOf(crew: Profile[], id: string): string {
+  return crew.find((p) => p.id === id)?.display_name ?? "Crew";
+}
+
+export function AssignmentEditor({
+  assignment,
+  defaults,
+  projects,
+  crew,
+  others,
+  horizon,
+  saving,
+  onSave,
+  onDelete,
+  onClose,
+}: Props) {
+  const [projectId, setProjectId] = useState(
+    assignment?.project_id ?? defaults?.project_id ?? "",
+  );
+  const [startDate, setStartDate] = useState(
+    assignment?.start_date ?? defaults?.start_date ?? horizon.from,
+  );
+  const [endDate, setEndDate] = useState(
+    assignment?.end_date ?? assignment?.start_date ?? defaults?.start_date ?? horizon.from,
+  );
+  const [startTime, setStartTime] = useState(assignment?.start_time ?? "");
+  const [color, setColor] = useState(assignment?.color ?? "");
+  const [note, setNote] = useState(assignment?.note ?? "");
+  const [members, setMembers] = useState<AssignmentMember[]>(
+    assignment?.members.map((m) => ({ ...m })) ?? [],
+  );
+
+  const foremen = useMemo(
+    () => crew.filter((p) => p.active && (p.role === "foreman" || p.role === "supervisor" || p.role === "owner")),
+    [crew],
+  );
+  const installers = useMemo(
+    () => crew.filter((p) => p.active),
+    [crew],
+  );
+
+  const memberIds = new Set(members.map((m) => m.profile_id));
+
+  function toggleMember(profileId: string, role: CrewMemberRole) {
+    setMembers((prev) => {
+      const existing = prev.find((m) => m.profile_id === profileId);
+      if (existing) {
+        // Second tap in a different role slot switches the role; same slot removes.
+        if (existing.role === role) return prev.filter((m) => m.profile_id !== profileId);
+        return prev.map((m) => (m.profile_id === profileId ? { ...m, role } : m));
+      }
+      return [...prev, { profile_id: profileId, role }];
+    });
+  }
+
+  const normalizedEnd = daysBetween(startDate, endDate) < 0 ? startDate : endDate;
+
+  const inlineConflicts = useMemo(() => {
+    const target = {
+      id: assignment?.id ?? "__new__",
+      start_date: startDate,
+      end_date: normalizedEnd,
+      members: members.map((m) => ({ profile_id: m.profile_id })),
+    };
+    return conflictingMembersFor(target, others);
+  }, [assignment?.id, startDate, normalizedEnd, members, others]);
+
+  const canSave = projectId !== "" && members.length > 0 && Boolean(startDate);
+
+  function submit() {
+    if (!canSave) return;
+    onSave({
+      project_id: projectId,
+      start_date: startDate,
+      end_date: normalizedEnd,
+      start_time: startTime.trim() ? startTime : null,
+      color: color || null,
+      note: note.trim() ? note.trim() : null,
+      members,
+    });
+  }
+
+  return (
+    <div className="sched-sheet-backdrop" role="dialog" aria-modal="true">
+      <div className="sched-sheet">
+        <div className="sched-sheet-head">
+          <h2 style={{ margin: 0 }}>{assignment ? "Edit assignment" : "New assignment"}</h2>
+          <button className="icon-button" onClick={onClose} aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+
+        <label className="field-label">Job</label>
+        <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+          <option value="">— pick a job —</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.job_code} — {p.name}
+            </option>
+          ))}
+        </select>
+
+        <div className="sched-row-2">
+          <div>
+            <label className="field-label">Start</label>
+            <input
+              type="date"
+              value={startDate}
+              min={horizon.from}
+              max={horizon.to}
+              onChange={(e) => {
+                setStartDate(e.target.value);
+                if (daysBetween(e.target.value, endDate) < 0) setEndDate(e.target.value);
+              }}
+            />
+          </div>
+          <div>
+            <label className="field-label">End</label>
+            <input
+              type="date"
+              value={normalizedEnd}
+              min={startDate}
+              max={horizon.to}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="sched-row-2">
+          <div>
+            <label className="field-label">Start time (optional)</label>
+            <input
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="field-label">Quick length</label>
+            <div className="row-gap">
+              {[1, 3, 5].map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  className="button-like"
+                  onClick={() => setEndDate(addDaysISO(startDate, d - 1))}
+                >
+                  {d}d
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <label className="field-label">Foremen</label>
+        <div className="sched-chips">
+          {foremen.map((p) => {
+            const picked = members.find((m) => m.profile_id === p.id)?.role === "foreman";
+            return (
+              <button
+                key={p.id}
+                type="button"
+                className={`sched-chip${picked ? " is-picked" : ""}`}
+                onClick={() => toggleMember(p.id, "foreman")}
+              >
+                {p.display_name}
+              </button>
+            );
+          })}
+          {foremen.length === 0 && <p className="muted">No foremen on the roster yet.</p>}
+        </div>
+
+        <label className="field-label">Installers</label>
+        <div className="sched-chips">
+          {installers.map((p) => {
+            const picked = members.find((m) => m.profile_id === p.id)?.role === "installer";
+            return (
+              <button
+                key={p.id}
+                type="button"
+                className={`sched-chip${picked ? " is-picked" : ""}`}
+                onClick={() => toggleMember(p.id, "installer")}
+              >
+                {p.display_name}
+              </button>
+            );
+          })}
+        </div>
+
+        {memberIds.size > 0 && (
+          <p className="muted" style={{ fontSize: 12 }}>
+            Crew: {members.map((m) => nameOf(crew, m.profile_id)).join(", ")}
+          </p>
+        )}
+
+        {inlineConflicts.length > 0 && (
+          <div className="sched-conflict-inline" role="alert">
+            <AlertTriangle size={15} aria-hidden />
+            <span>
+              Double-booked: {inlineConflicts.map((id) => nameOf(crew, id)).join(", ")} already
+              on another job in these dates. You can still schedule — just a heads-up.
+            </span>
+          </div>
+        )}
+
+        <label className="field-label">Color</label>
+        <div className="sched-chips">
+          <button
+            type="button"
+            className={`sched-swatch${color === "" ? " is-picked" : ""}`}
+            style={{ background: "var(--card-hot)" }}
+            onClick={() => setColor("")}
+            aria-label="Auto color by crew"
+          >
+            auto
+          </button>
+          {INSTALLER_PALETTE.map((c) => (
+            <button
+              key={c}
+              type="button"
+              className={`sched-swatch${color === c ? " is-picked" : ""}`}
+              style={{ background: c }}
+              onClick={() => setColor(c)}
+              aria-label={`Color ${c}`}
+            />
+          ))}
+        </div>
+
+        <label className="field-label">Note (optional)</label>
+        <input
+          type="text"
+          value={note}
+          placeholder="e.g. bring the big ladder"
+          onChange={(e) => setNote(e.target.value)}
+        />
+
+        <div className="sched-sheet-actions">
+          {assignment && onDelete && (
+            <button className="button-like danger-outline" onClick={onDelete} disabled={saving}>
+              <Trash2 size={15} aria-hidden /> Remove
+            </button>
+          )}
+          <button
+            className="button-like active-pill"
+            style={{ marginLeft: "auto" }}
+            onClick={submit}
+            disabled={!canSave || saving}
+          >
+            {saving ? "Saving…" : assignment ? "Save changes" : "Add to draft"}
+          </button>
+        </div>
+        {!canSave && (
+          <p className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>
+            Pick a job and at least one crew member.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
