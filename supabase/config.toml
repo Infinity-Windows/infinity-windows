@@ -19,5 +19,8 @@ verify_jwt = true
 [functions.ingest-knowledge]
 verify_jwt = true
 
+[functions.vault-config]
+verify_jwt = true
+
 [functions.ask]
 verify_jwt = true
