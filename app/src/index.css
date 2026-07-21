@@ -6638,85 +6638,136 @@ body {
 .sched-dot.is-conflict { box-shadow: 0 0 0 2px var(--danger); }
 .sched-month-more { font-size: 10px; color: var(--muted); }
 
-/* ---- Timeline / Gantt ---- */
-.sched-timeline {
-  position: relative;
-  overflow: auto;
-  max-height: 60vh;
+/* ---- Calendar (vertical, month-stacked day rows) ---- */
+.sched-cal {
+  max-height: min(72vh, 900px);
+  overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
-.sched-timeline-inner { position: relative; }
-.sched-timeline-header {
+.sched-cal-month { }
+.sched-cal-monthhead {
   position: sticky;
   top: 0;
-  height: 34px;
-  z-index: 3;
+  z-index: 2;
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
   background: var(--card-raised);
   border-bottom: 1px solid var(--border);
 }
-.sched-tl-daycell {
-  position: absolute;
-  top: 0;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10.5px;
-  color: var(--muted);
-  border-left: 1px solid var(--border);
-}
-.sched-tl-daycell.is-today { color: var(--accent); font-weight: 700; }
-.sched-timeline-grid {
-  position: absolute;
-  background-image:
-    linear-gradient(to right, var(--border) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--border) 1px, transparent 1px);
-  opacity: 0.25;
-  pointer-events: none;
-}
-.sched-timeline-today {
-  position: absolute;
-  width: 2px;
-  background: var(--accent);
-  z-index: 2;
-  pointer-events: none;
-}
-.sched-timeline-row { position: absolute; left: 0; right: 0; }
-.sched-tl-rowlabel {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  height: 100%;
-  padding: 0 8px;
-  font-size: 12px;
-  font-weight: 600;
-  background: var(--card);
-  border-right: 1px solid var(--border);
+.sched-cal-dayrow {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 8px;
+  min-height: 44px;
+  padding: 5px 10px 5px 0;
   border-bottom: 1px solid var(--border);
 }
-.sched-tl-track { position: absolute; top: 0; bottom: 0; }
-.sched-tl-bar {
-  position: absolute;
-  border: none;
-  border-radius: 6px;
-  color: #fff;
-  font-size: 11px;
-  padding: 0 6px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  cursor: pointer;
-  box-shadow: var(--shadow-soft);
+.sched-cal-dayrow:last-child { border-bottom: none; }
+.sched-cal-dayrow.is-weekend { background: color-mix(in oklab, var(--muted) 6%, transparent); }
+.sched-cal-dayrow.is-empty { min-height: 34px; }
+.sched-cal-dayrow.is-today {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
-.sched-tl-bar.is-draft { opacity: 0.72; border: 1px dashed rgba(255, 255, 255, 0.7); }
-.sched-tl-bar.is-conflict { outline: 2px solid var(--danger); outline-offset: -1px; }
-.sched-tl-bar.clip-start { border-top-left-radius: 0; border-bottom-left-radius: 0; }
-.sched-tl-bar.clip-end { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.sched-tl-bar-label { pointer-events: none; }
+.sched-cal-daylabel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-top: 2px;
+  color: var(--muted);
+}
+.sched-cal-dow { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; }
+.sched-cal-date { font-size: 16px; font-weight: 700; color: var(--text); line-height: 1.1; }
+.sched-cal-dayrow.is-today .sched-cal-dow,
+.sched-cal-dayrow.is-today .sched-cal-date { color: var(--accent); }
+.sched-cal-entries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-content: flex-start;
+  padding: 2px 0;
+}
+.sched-cal-entry {
+  --sched-color: var(--accent);
+  text-align: left;
+  border: none;
+  border-left: 4px solid var(--sched-color);
+  background: color-mix(in oklab, var(--sched-color) 22%, var(--card-hot));
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 5px 9px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 120px;
+}
+.sched-cal-entry.is-draft {
+  border-left-style: dashed;
+  background: color-mix(in oklab, var(--sched-color) 10%, transparent);
+  opacity: 0.85;
+}
+.sched-cal-entry.is-conflict { outline: 2px solid var(--danger); outline-offset: -1px; }
+.sched-cal-entry-title { font-size: 12.5px; font-weight: 600; }
+.sched-cal-entry-sub { font-size: 11px; color: var(--muted); }
+
+/* ---- Actionable double-booking banner ---- */
+.sched-conflict-banner {
+  background: color-mix(in oklab, var(--danger) 12%, var(--card));
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.sched-conflict-banner-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--danger);
+  font-size: 13.5px;
+  margin-bottom: 6px;
+}
+.sched-conflict-banner-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 210px;
+  overflow-y: auto;
+}
+.sched-conflict-banner-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+}
+.sched-conflict-banner-text { font-size: 12.5px; color: var(--text); }
+.sched-conflict-banner-fix {
+  flex-shrink: 0;
+  border-color: var(--danger);
+  color: var(--danger);
+  font-weight: 600;
+  padding: 4px 12px;
+}
+
+.sched-conflict-inline.is-emphasized {
+  box-shadow: 0 0 0 2px var(--danger);
+}
+.sched-chip.is-clash {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--danger) 45%, transparent);
+}
 
 /* ---- Publish bar ---- */
 .sched-publishbar {

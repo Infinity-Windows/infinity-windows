@@ -5,6 +5,22 @@
 
 import { rangesOverlap } from "./dates";
 
+/** The inclusive day-span two assignments share. */
+export interface OverlapRange {
+  start: string;
+  end: string;
+}
+
+/** One row of the actionable double-booking banner. */
+export interface ConflictBannerEntry {
+  profileId: string;
+  /** The two clashing assignment ids (order stable: as reported by conflictPairs). */
+  aId: string;
+  bId: string;
+  /** The days on which they clash. */
+  overlap: OverlapRange;
+}
+
 /** Minimal shape the conflict math needs from an assignment. */
 export interface ConflictAssignment {
   id: string;
@@ -95,6 +111,42 @@ export function conflictingAssignmentIds(
     ids.add(p.bId);
   }
   return ids;
+}
+
+/**
+ * The inclusive day-span two assignments share, or null when they don't
+ * overlap at all. Drives the "days they clash" text in the conflict banner.
+ */
+export function overlapDays(
+  a: ConflictAssignment,
+  b: ConflictAssignment,
+): OverlapRange | null {
+  if (!assignmentsOverlap(a, b)) return null;
+  const start = a.start_date >= b.start_date ? a.start_date : b.start_date;
+  const end = a.end_date <= b.end_date ? a.end_date : b.end_date;
+  return { start, end };
+}
+
+/**
+ * Shape every double-booking into a banner row: the person, the two clashing
+ * assignments, and the days they clash. One row per (person, pair); pairs are
+ * already de-duplicated by `conflictPairs`.
+ */
+export function conflictBannerEntries(
+  assignments: ConflictAssignment[],
+): ConflictBannerEntry[] {
+  const byId = new Map<string, ConflictAssignment>();
+  for (const a of assignments) byId.set(a.id, a);
+  const out: ConflictBannerEntry[] = [];
+  for (const pair of conflictPairs(assignments)) {
+    const a = byId.get(pair.aId);
+    const b = byId.get(pair.bId);
+    if (!a || !b) continue;
+    const overlap = overlapDays(a, b);
+    if (!overlap) continue;
+    out.push({ profileId: pair.profileId, aId: pair.aId, bId: pair.bId, overlap });
+  }
+  return out;
 }
 
 /**

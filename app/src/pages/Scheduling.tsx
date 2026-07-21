@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, Send } from "lucide-react";
+import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Plus, Send } from "lucide-react";
 import { listProjects } from "../lib/api";
 import { getMyProfile, listProfiles } from "../lib/install/api";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
@@ -11,11 +11,13 @@ import { TimelineView } from "../components/schedule/TimelineView";
 import { AssignmentEditor, type EditorResult } from "../components/schedule/AssignmentEditor";
 import {
   addDaysISO,
+  clashRangeLabel,
   monthGridRange,
   startOfMonthISO,
   startOfWeekISO,
 } from "../lib/schedule/dates";
 import {
+  conflictBannerEntries,
   conflictingAssignmentIds,
   detectConflicts,
 } from "../lib/schedule/conflicts";
@@ -55,6 +57,8 @@ function myScheduleUrl(): string {
 interface EditorState {
   assignment: ScheduleAssignment | null;
   defaults?: { start_date?: string; project_id?: string };
+  /** Crew ids to emphasize as the clash when opened from the conflict banner. */
+  highlightMemberIds?: string[];
 }
 
 export function Scheduling() {
@@ -77,8 +81,8 @@ export function Scheduling() {
       const grid = monthGridRange(startOfMonthISO(anchor));
       return { from: grid.from, to: grid.to, label: monthLabel(anchor) };
     }
-    const from = startOfWeekISO(anchor);
-    const to = addDaysISO(from, 55);
+    const from = startOfMonthISO(anchor);
+    const to = addDaysISO(from, 183);
     return { from, to, label: rangeLabel(from, to) };
   }, [view, anchor]);
 
@@ -206,22 +210,55 @@ export function Scheduling() {
   }
 
   const draftList = useMemo(() => drafts.data ?? [], [drafts.data]);
-  const publishConflicts = useMemo(() => {
-    // Conflicts across drafts + everything currently loaded (deduped).
+
+  // Everything currently in play (loaded window + all drafts), deduped. Drives
+  // the conflict banner, the red outlines and the pre-publish summary alike.
+  const knownById = useMemo(() => {
     const byId = new Map<string, ScheduleAssignment>();
     for (const a of [...loaded, ...draftList]) byId.set(a.id, a);
-    return detectConflicts(
-      [...byId.values()].map((a) => ({
+    return byId;
+  }, [loaded, draftList]);
+
+  const conflictInput = useMemo(
+    () =>
+      [...knownById.values()].map((a) => ({
         id: a.id,
         start_date: a.start_date,
         end_date: a.end_date,
         members: a.members.map((m) => ({ profile_id: m.profile_id })),
       })),
-    );
-  }, [loaded, draftList]);
+    [knownById],
+  );
+
+  const publishConflicts = useMemo(
+    () => detectConflicts(conflictInput),
+    [conflictInput],
+  );
 
   const nameOf = (id: string) =>
     crew.data?.find((p) => p.id === id)?.display_name ?? "Crew";
+
+  const jobLabelOf = (assignmentId: string) => {
+    const a = knownById.get(assignmentId);
+    return a?.project?.job_code ?? a?.project?.name ?? "a job";
+  };
+
+  const bannerConflicts = useMemo(
+    () => conflictBannerEntries(conflictInput),
+    [conflictInput],
+  );
+
+  function fixConflict(entry: { aId: string; bId: string; profileId: string }) {
+    const a = knownById.get(entry.aId);
+    const b = knownById.get(entry.bId);
+    // Prefer the later-starting (then more-recently-edited) assignment to edit.
+    const pick =
+      !a ? b : !b ? a : a.start_date !== b.start_date
+          ? a.start_date > b.start_date ? a : b
+          : (a.updated_at ?? "") >= (b.updated_at ?? "") ? a : b;
+    if (!pick) return;
+    setEditor({ assignment: pick, highlightMemberIds: [entry.profileId] });
+  }
 
   const tray = useMemo(() => {
     if (!projects.data) return [];
@@ -234,10 +271,10 @@ export function Scheduling() {
   }, [projects.data, loaded, draftList, today]);
 
   function step(dir: -1 | 1) {
-    if (view === "month") {
+    if (view === "month" || view === "timeline") {
       setAnchor((a) => addDaysISO(startOfMonthISO(a), dir > 0 ? 32 : -1));
     } else {
-      setAnchor((a) => addDaysISO(a, dir * (view === "timeline" ? 28 : 7)));
+      setAnchor((a) => addDaysISO(a, dir * 7));
     }
   }
 
@@ -253,6 +290,34 @@ export function Scheduling() {
         <Link to="/" className="back-chip" aria-label="Home" />
       </header>
 
+      {bannerConflicts.length > 0 && (
+        <div className="sched-conflict-banner" role="alert">
+          <div className="sched-conflict-banner-head">
+            <AlertTriangle size={16} aria-hidden />
+            <strong>
+              {bannerConflicts.length} double-booking
+              {bannerConflicts.length === 1 ? "" : "s"} to sort out
+            </strong>
+          </div>
+          <ul className="sched-conflict-banner-list">
+            {bannerConflicts.map((c) => (
+              <li key={`${c.profileId}-${c.aId}-${c.bId}`} className="sched-conflict-banner-row">
+                <span className="sched-conflict-banner-text">
+                  <strong>{nameOf(c.profileId)}</strong> — {jobLabelOf(c.aId)} &amp;{" "}
+                  {jobLabelOf(c.bId)}, {clashRangeLabel(c.overlap.start, c.overlap.end)}
+                </span>
+                <button
+                  className="button-like sched-conflict-banner-fix"
+                  onClick={() => fixConflict(c)}
+                >
+                  Fix
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="sched-toolbar">
         <div className="sched-viewswitch" role="tablist">
           {(["week", "month", "timeline"] as View[]).map((v) => (
@@ -263,7 +328,7 @@ export function Scheduling() {
               className={`sched-viewtab${view === v ? " is-active" : ""}`}
               onClick={() => setView(v)}
             >
-              {v === "week" ? "Week" : v === "month" ? "Month" : "Timeline"}
+              {v === "week" ? "Week" : v === "month" ? "Month" : "Calendar"}
             </button>
           ))}
         </div>
@@ -375,6 +440,7 @@ export function Scheduling() {
           projects={projects.data ?? []}
           crew={crew.data ?? []}
           others={loaded}
+          highlightMemberIds={editor.highlightMemberIds}
           horizon={horizon}
           saving={save.isPending || remove.isPending}
           onSave={(result) => save.mutate(result)}
