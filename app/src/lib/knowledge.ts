@@ -25,6 +25,24 @@ export interface VaultNote {
   content: string;
 }
 
+/**
+ * A Supabase Edge Function non-2xx surfaces as a generic FunctionsHttpError
+ * whose real message lives in the (unparsed) Response on `.context`. Pull our
+ * clear `{ error }` body out so wrong-PIN / role errors reach the UI verbatim.
+ */
+async function functionError(error: unknown): Promise<Error> {
+  const ctx = (error as { context?: Response } | null)?.context;
+  if (ctx && typeof ctx.json === "function") {
+    try {
+      const body = await ctx.json();
+      if (body?.error) return new Error(String(body.error));
+    } catch {
+      // fall through to the generic message
+    }
+  }
+  return error instanceof Error ? error : new Error(String(error));
+}
+
 export interface AskResult {
   answer: string;
   sources: KnowledgeSource[];
@@ -95,17 +113,23 @@ export function pageNotes(
 }
 
 /**
- * Send a vault to the `ingest-knowledge` function, paged. `replaceMissing`
- * (re-upload = refresh) deactivates notes no longer present, finalised after
- * the last page with the full path list.
+ * Send a vault to the `ingest-knowledge` function, paged. Every call is
+ * PIN-gated server-side, so the owner-set vault `pin` is threaded into each
+ * request. `replaceMissing` (re-upload = refresh) deactivates notes no longer
+ * present, finalised after the last page with the full path list. Pass an
+ * explicit `knownPaths` (auto-sync) when the `notes` you send are only the
+ * changed/added subset but removal should be scoped to the full scanned set.
  */
 export async function ingestKnowledge(
   notes: VaultNote[],
   opts: {
+    pin: string;
     replaceMissing?: boolean;
+    knownPaths?: string[];
     onProgress?: (done: number, total: number) => void;
-  } = {},
+  },
 ): Promise<IngestSummary> {
+  const { pin } = opts;
   const { data: userData } = await supabase.auth.getUser();
   const createdBy = userData.user?.id ?? null;
 
@@ -116,9 +140,9 @@ export async function ingestKnowledge(
 
   for (const page of pages) {
     const { data, error } = await supabase.functions.invoke("ingest-knowledge", {
-      body: { files: page, createdBy },
+      body: { files: page, createdBy, pin },
     });
-    if (error) throw error;
+    if (error) throw await functionError(error);
     if (data?.error) throw new Error(String(data.error));
     summary.docsAdded += Number(data?.docsAdded ?? 0);
     summary.docsUpdated += Number(data?.docsUpdated ?? 0);
@@ -129,15 +153,17 @@ export async function ingestKnowledge(
   }
 
   if (opts.replaceMissing) {
+    const knownPaths = opts.knownPaths ?? notes.map((n) => n.path);
     const { data, error } = await supabase.functions.invoke("ingest-knowledge", {
       body: {
         files: [],
         replaceMissing: true,
-        knownPaths: notes.map((n) => n.path),
+        knownPaths,
         createdBy,
+        pin,
       },
     });
-    if (error) throw error;
+    if (error) throw await functionError(error);
     if (data?.error) throw new Error(String(data.error));
     summary.docsRemoved += Number(data?.docsRemoved ?? 0);
   }
@@ -149,6 +175,8 @@ export interface KnowledgeDoc {
   id: string;
   path: string;
   title: string;
+  /** Server-computed content hash — lets auto-sync diff without re-uploading. */
+  contentHash: string;
   updatedAt: string;
   chunkCount: number;
 }
@@ -186,7 +214,7 @@ export async function listKnowledgeDocs(): Promise<KnowledgeState> {
   try {
     const { data: docs, error: docErr } = await supabase
       .from("knowledge_docs")
-      .select("id, path, title, updated_at")
+      .select("id, path, title, content_hash, updated_at")
       .eq("active", true)
       .order("updated_at", { ascending: false })
       .limit(500);
@@ -208,6 +236,7 @@ export async function listKnowledgeDocs(): Promise<KnowledgeState> {
       id: String(d.id),
       path: String(d.path),
       title: String(d.title) || deriveTitle(String(d.path), ""),
+      contentHash: String((d as { content_hash?: unknown }).content_hash ?? ""),
       updatedAt: String(d.updated_at),
       chunkCount: counts.get(String(d.id)) ?? 0,
     }));
@@ -224,20 +253,60 @@ export async function listKnowledgeDocs(): Promise<KnowledgeState> {
   }
 }
 
-/** Deactivate one note (hidden from retrieval; chunks kept until re-upload). */
-export async function deactivateKnowledgeDoc(id: string): Promise<void> {
-  const { error } = await supabase
-    .from("knowledge_docs")
-    .update({ active: false })
-    .eq("id", id);
-  if (error) throw error;
+/**
+ * Deactivate one note (hidden from retrieval; chunks kept until re-upload).
+ * PIN-gated: routed through the `ingest-knowledge` function so it enforces the
+ * owner-set vault PIN + supervisor+ role rather than writing directly.
+ */
+export async function deactivateKnowledgeDoc(id: string, pin: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke("ingest-knowledge", {
+    body: { action: "deactivate", docId: id, pin },
+  });
+  if (error) throw await functionError(error);
+  if (data?.error) throw new Error(String(data.error));
 }
 
 /** Clear the whole knowledge base from retrieval (deactivate every note). */
-export async function clearKnowledge(): Promise<void> {
-  const { error } = await supabase
-    .from("knowledge_docs")
-    .update({ active: false })
-    .eq("active", true);
-  if (error) throw error;
+export async function clearKnowledge(pin: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke("ingest-knowledge", {
+    body: { action: "clear", pin },
+  });
+  if (error) throw await functionError(error);
+  if (data?.error) throw new Error(String(data.error));
+}
+
+export interface VaultPinStatus {
+  /** False when the migration/RPC isn't applied yet (treat as "no PIN"). */
+  available: boolean;
+  pinSet: boolean;
+}
+
+/**
+ * Whether a vault PIN exists — via the boolean-only `vault_pin_is_set` RPC so
+ * the hash never reaches the client. Degrades to available:false (owner setup
+ * state) when the migration hasn't been applied.
+ */
+export async function getVaultPinStatus(): Promise<VaultPinStatus> {
+  if (!supabaseConfigured) return { available: false, pinSet: false };
+  const { data, error } = await supabase.rpc("vault_pin_is_set");
+  if (error) {
+    if (isMissingRelation(error) || (error as { code?: string }).code === "PGRST202") {
+      return { available: false, pinSet: false };
+    }
+    // Unknown error → don't crash the page; behave as not-yet-configured.
+    return { available: false, pinSet: false };
+  }
+  return { available: true, pinSet: Boolean(data) };
+}
+
+/** Owner-only: set or change the shared vault PIN (via the `vault-config` fn). */
+export async function setVaultPin(args: {
+  newPin: string;
+  currentPin?: string;
+}): Promise<void> {
+  const { data, error } = await supabase.functions.invoke("vault-config", {
+    body: { action: "set", newPin: args.newPin, currentPin: args.currentPin ?? "" },
+  });
+  if (error) throw await functionError(error);
+  if (data?.error) throw new Error(String(data.error));
 }
