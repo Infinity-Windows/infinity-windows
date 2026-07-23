@@ -13,6 +13,7 @@ import {
   shouldUseLLM,
 } from "../../../supabase/functions/_shared/knowledge";
 import { liveAnswer, pageNotes, type AskLiveData, type VaultNote } from "./knowledge";
+import { addDaysISO } from "./schedule/dates";
 
 describe("chunkMarkdown", () => {
   const words = Array.from({ length: 400 }, (_, i) => `word${i}`).join(" ");
@@ -309,6 +310,103 @@ describe("liveAnswer (offline grounding from the query cache)", () => {
       }),
     ).toContain("Nothing on your published schedule");
     expect(liveAnswer("my schedule this week", base)).toBeNull();
+  });
+
+  const vehicleLink = (over: Record<string, unknown>) =>
+    ({
+      id: "vl1",
+      vehicle_id: "v1",
+      project_id: "p1",
+      assignment_id: "s1",
+      start_date: TODAY,
+      end_date: TODAY,
+      note: null,
+      vehicle: {
+        id: "v1",
+        kind: "pickup",
+        trailer_subtype: null,
+        year: 2021,
+        make: "Ford",
+        model: "F-150",
+        color: "White",
+        plate: "ABC-1234",
+      },
+      ...over,
+    }) as unknown as NonNullable<AskLiveData["scheduleVehicles"]>[number];
+
+  const trip = (over: Record<string, unknown>) =>
+    ({
+      id: "t1",
+      project_id: "p1",
+      name: "Boise install",
+      destination: "Boise, ID",
+      start_date: TODAY,
+      end_date: addDaysISO(TODAY, 2),
+      timezone: null,
+      notes: null,
+      status: "published",
+      published_at: "2026-07-20T00:00:00Z",
+      created_by: null,
+      created_at: "2026-07-20T00:00:00Z",
+      updated_at: "2026-07-20T00:00:00Z",
+      crew: [{ profile_id: "me", role: "installer" }],
+      ...over,
+    }) as unknown as NonNullable<AskLiveData["trips"]>[number];
+
+  it("weaves the truck and travel ties into the schedule answer", () => {
+    const answer = liveAnswer("what's on our schedule?", {
+      ...base,
+      profileId: "me",
+      schedule: [assignment({})],
+      scheduleVehicles: [vehicleLink({})],
+      trips: [trip({})],
+    });
+    expect(answer).toContain("Maple St");
+    expect(answer).toContain("Truck: 2021 Ford F-150");
+    expect(answer).toContain("Travel: Boise, ID");
+  });
+
+  it("answers 'my truck today' from the published schedule's vehicle tie", () => {
+    const answer = liveAnswer("my truck today", {
+      ...base,
+      schedule: [assignment({})],
+      scheduleVehicles: [vehicleLink({})],
+    });
+    expect(answer).toContain("Your truck today:");
+    expect(answer).toContain("2021 Ford F-150");
+    expect(answer).toContain("Maple St");
+  });
+
+  it("says no truck is assigned when nothing is linked, null when cold", () => {
+    expect(
+      liveAnswer("my truck this week", { ...base, schedule: [assignment({})] }),
+    ).toContain("No truck is assigned to your schedule this week.");
+    expect(liveAnswer("my truck this week", base)).toBeNull();
+  });
+
+  it("answers 'my travel this week' with the crew's published trips", () => {
+    const answer = liveAnswer("my travel this week", {
+      ...base,
+      profileId: "me",
+      trips: [trip({})],
+    });
+    expect(answer).toContain("Your travel:");
+    expect(answer).toContain("Boise, ID");
+  });
+
+  it("hides drafts, past trips, and trips the user isn't crew on", () => {
+    expect(
+      liveAnswer("travel this week", {
+        ...base,
+        profileId: "me",
+        trips: [
+          trip({ id: "t2", status: "draft" }),
+          trip({ id: "t3", start_date: "2026-01-01", end_date: "2026-01-03" }),
+          trip({ id: "t4", crew: [{ profile_id: "other", role: "installer" }] }),
+        ],
+      }),
+    ).toContain("No travel on your schedule right now.");
+    expect(liveAnswer("travel this week", base)).toBeNull();
   });
 
   const issue = (over: Record<string, unknown>) =>

@@ -21,7 +21,9 @@ import { addDaysISO, agendaDayLabel, formatStartTime } from "./schedule/dates";
 import type { ScheduleAssignment } from "./schedule/types";
 import { serviceBadge, serviceLevel } from "./vehicles/service";
 import { vehicleTitle } from "./vehicles/display";
-import type { VehicleWithMeta } from "./vehicles/types";
+import type { ScheduleVehicleLink, VehicleWithMeta } from "./vehicles/types";
+import { tripPhase } from "./travel/status";
+import type { Trip } from "./travel/types";
 import type { Project } from "./types";
 
 export {
@@ -345,6 +347,10 @@ export interface AskLiveData {
   issues?: Issue[] | null;
   projects?: Array<Pick<Project, "id" | "job_code" | "name">> | null;
   vehicles?: VehicleWithMeta[] | null;
+  /** Vehicle links for the user's published schedule (My Schedule's truck line). */
+  scheduleVehicles?: ScheduleVehicleLink[] | null;
+  /** Trips the user can see (My Schedule's travel line + "my travel" answers). */
+  trips?: Trip[] | null;
 }
 
 function wantsNextWindow(q: string): boolean {
@@ -360,6 +366,14 @@ function wantsVehicleService(q: string): boolean {
   const subject = /\b(truck|trucks|vehicle|vehicles|fleet|rig|van|machinery|equipment)\b/.test(q);
   const topic = /\b(service|overdue|maintenance|due|shop|oil|inspection)\b/.test(q);
   return (subject && topic) || /\bvehicle service\b/.test(q);
+}
+
+function wantsMyVehicle(q: string): boolean {
+  return /\b(my|our)\s+(truck|trucks|vehicle|vehicles|van|rig)\b/.test(q);
+}
+
+function wantsMyTravel(q: string): boolean {
+  return /\b(travel|trip|trips)\b/.test(q);
 }
 
 function wantsIssues(q: string): boolean {
@@ -401,6 +415,24 @@ function answerNextWindow(data: AskLiveData): string | null {
   return lines.join("\n");
 }
 
+/** Truck-per-assignment map — the same tie My Schedule renders on each card. */
+function vehicleByAssignment(data: AskLiveData): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const l of data.scheduleVehicles ?? []) {
+    if (l.assignment_id && l.vehicle) map.set(l.assignment_id, vehicleTitle(l.vehicle));
+  }
+  return map;
+}
+
+/** Trip-per-project map — the same tie My Schedule renders on each card. */
+function tripByProject(data: AskLiveData): Map<string, { id: string; label: string }> {
+  const map = new Map<string, { id: string; label: string }>();
+  for (const t of data.trips ?? []) {
+    if (t.project_id) map.set(t.project_id, { id: t.id, label: t.destination || t.name });
+  }
+  return map;
+}
+
 function answerSchedule(data: AskLiveData): string | null {
   const schedule = data.schedule;
   if (!schedule) return null;
@@ -409,6 +441,8 @@ function answerSchedule(data: AskLiveData): string | null {
   if (agenda.length === 0) {
     return "Nothing on your published schedule for the next 7 days.";
   }
+  const trucks = vehicleByAssignment(data);
+  const trips = tripByProject(data);
   const lines: string[] = ["Your schedule this week:"];
   for (const day of agenda) {
     for (const entry of day.entries) {
@@ -420,7 +454,57 @@ function answerSchedule(data: AskLiveData): string | null {
       const mates = data.profileId ? crewmateNames(a, data.profileId) : [];
       const withLine = mates.length > 0 ? ` (with ${mates.join(", ")})` : "";
       lines.push(`• ${bits.join(" · ")}${withLine}`);
+      const truck = trucks.get(a.id);
+      if (truck) lines.push(`   Truck: ${truck}`);
+      const trip = trips.get(a.project_id);
+      if (trip) lines.push(`   Travel: ${trip.label}`);
     }
+  }
+  return lines.join("\n");
+}
+
+function answerMyVehicle(question: string, data: AskLiveData): string | null {
+  const schedule = data.schedule;
+  if (!schedule) return null;
+  const today = /\btoday\b/.test(question);
+  const from = data.todayISO;
+  const to = today ? data.todayISO : addDaysISO(data.todayISO, 6);
+  const agenda = buildAgenda(schedule, from, to);
+  const trucks = vehicleByAssignment(data);
+  const lines: string[] = [];
+  const seen = new Set<string>();
+  for (const day of agenda) {
+    for (const entry of day.entries) {
+      const a = entry.assignment;
+      const truck = trucks.get(a.id);
+      if (!truck || seen.has(a.id)) continue;
+      seen.add(a.id);
+      const job = a.project?.name ?? a.project?.job_code ?? "Job";
+      lines.push(`• ${agendaDayLabel(entry.day)} · ${job} — ${truck}`);
+    }
+  }
+  const scope = today ? "today" : "this week";
+  if (lines.length === 0) return `No truck is assigned to your schedule ${scope}.`;
+  return [`Your truck ${scope}:`, ...lines].join("\n");
+}
+
+function answerMyTravel(data: AskLiveData): string | null {
+  const trips = data.trips;
+  if (!trips) return null;
+  const mine = trips
+    .filter((t) => t.status === "published")
+    .filter((t) => tripPhase(t.start_date, t.end_date, data.todayISO) !== "past")
+    .filter((t) => !data.profileId || t.crew.some((c) => c.profile_id === data.profileId))
+    .sort((a, b) => a.start_date.localeCompare(b.start_date));
+  if (mine.length === 0) return "No travel on your schedule right now.";
+  const lines: string[] = ["Your travel:"];
+  for (const t of mine) {
+    const label = t.destination || t.name;
+    const when =
+      t.start_date === t.end_date
+        ? agendaDayLabel(t.start_date)
+        : `${agendaDayLabel(t.start_date)} – ${agendaDayLabel(t.end_date)}`;
+    lines.push(`• ${label} · ${when}`);
   }
   return lines.join("\n");
 }
@@ -523,6 +607,8 @@ export function liveAnswer(question: string, data: AskLiveData): string | null {
   if (!q) return null;
   if (wantsNextWindow(q)) return answerNextWindow(data);
   if (wantsVehicleService(q)) return answerVehicleService(data);
+  if (wantsMyVehicle(q)) return answerMyVehicle(q, data);
+  if (wantsMyTravel(q)) return answerMyTravel(data);
   if (wantsIssues(q)) return answerIssues(q, data);
   if (wantsSchedule(q)) return answerSchedule(data);
   return null;

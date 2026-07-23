@@ -16,7 +16,8 @@ import {
 import type { Profile, ProjectOpening } from "../lib/install/types";
 import type { Issue } from "../lib/issues";
 import type { ScheduleAssignment } from "../lib/schedule/types";
-import type { VehicleWithMeta } from "../lib/vehicles/types";
+import type { ScheduleVehicleLink, VehicleWithMeta } from "../lib/vehicles/types";
+import type { Trip } from "../lib/travel/types";
 
 interface ChatMsg {
   who: "me" | "infinity";
@@ -155,6 +156,10 @@ function gatherLiveData(): AskLiveData {
   const vehicles =
     queryClient.getQueryData<VehicleWithMeta[]>(["vehicles"]) ??
     queryClient.getQueryData<VehicleWithMeta[]>(["notifVehicles"]);
+  const scheduleVehicles = mergeCached(
+    queryClient.getQueriesData<ScheduleVehicleLink[]>({ queryKey: ["myScheduleVehicles"] }),
+  );
+  const trips = queryClient.getQueryData<Trip[]>(["trips"]);
   return {
     role: profile?.role ?? null,
     profileId: profile?.id ?? null,
@@ -164,6 +169,8 @@ function gatherLiveData(): AskLiveData {
     issues: issues.length > 0 ? issues : null,
     projects: projects ?? null,
     vehicles: vehicles ?? null,
+    scheduleVehicles: scheduleVehicles.length > 0 ? scheduleVehicles : null,
+    trips: trips ?? null,
   };
 }
 
@@ -185,6 +192,8 @@ export function AskInfinity() {
     () => [
       "What's on our schedule?",
       "My next window",
+      "My truck today",
+      "Travel this week",
       "Single hung tips",
       "What is flashing?",
     ],
