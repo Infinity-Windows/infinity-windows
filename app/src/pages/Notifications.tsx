@@ -12,6 +12,12 @@ import { listInstalledForQc } from "../lib/ops";
 import { listShiftsToApprove } from "../lib/timeclock";
 import { isSupervisorPlus, isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { listProjects, listReorderNeeds } from "../lib/api";
+import { listVehicles } from "../lib/vehicles/api";
+import { serviceBadge } from "../lib/vehicles/service";
+import { vehicleTitle } from "../lib/vehicles/display";
+import { listAssignments, horizonRange } from "../lib/schedule/api";
+import { conflictBannerEntries } from "../lib/schedule/conflicts";
 
 interface Note {
   id: string;
@@ -48,6 +54,63 @@ export function Notifications() {
     queryKey: ["accessRequests"],
     queryFn: listAccessRequests,
     enabled: admin,
+  });
+
+  // Supervisor+ only: surface signals already computed elsewhere so the office
+  // sees fleet, warehouse and scheduling problems without hunting for them.
+  // Each query degrades to an empty list on error (React Query catches throws)
+  // so a single failing source never blanks the page.
+  const todayISO = new Date().toISOString().slice(0, 10);
+
+  const vehicles = useQuery({
+    queryKey: ["notifVehicles"],
+    queryFn: listVehicles,
+    enabled: admin,
+  });
+
+  const activeProjects = useQuery({
+    queryKey: ["notifReorderProjects"],
+    queryFn: listProjects,
+    enabled: admin,
+  });
+  const projectIds = (activeProjects.data ?? []).map((p) => p.id);
+  const reorder = useQuery({
+    queryKey: ["notifReorder", projectIds.join(",")],
+    enabled: admin && projectIds.length > 0,
+    queryFn: async () => {
+      const rows = await Promise.all(
+        (activeProjects.data ?? []).map(async (p) => {
+          try {
+            const needs = await listReorderNeeds(p.id);
+            const total = needs.reduce(
+              (sum, n) => sum + n.missing_count + n.damaged_count,
+              0,
+            );
+            return { project: p, total };
+          } catch {
+            return { project: p, total: 0 };
+          }
+        }),
+      );
+      return rows.filter((r) => r.total > 0);
+    },
+  });
+
+  const conflicts = useQuery({
+    queryKey: ["notifScheduleConflicts", todayISO],
+    enabled: admin,
+    queryFn: async () => {
+      const { from, to } = horizonRange(todayISO);
+      const list = await listAssignments(from, to);
+      return conflictBannerEntries(
+        list.map((a) => ({
+          id: a.id,
+          start_date: a.start_date,
+          end_date: a.end_date,
+          members: a.members.map((m) => ({ profile_id: m.profile_id })),
+        })),
+      );
+    },
   });
 
   const notes: Note[] = [];
@@ -91,6 +154,43 @@ export function Notifications() {
       title: `${pendingReq.length} access request${pendingReq.length > 1 ? "s" : ""}`,
       sub: "Approve or deny new crew",
       to: "/admin",
+    });
+  }
+
+  for (const v of vehicles.data ?? []) {
+    const badge = serviceBadge({
+      todayISO,
+      nextServiceDate: v.next_service_date,
+      odometer: v.odometer,
+    });
+    if (!badge) continue;
+    notes.push({
+      id: `vehicle-${v.id}`,
+      dot: badge.tone === "overdue" ? "warn" : "info",
+      title: `${vehicleTitle(v)} — ${badge.label}`,
+      sub: "Schedule fleet service",
+      to: `/vehicles/${v.id}`,
+    });
+  }
+
+  for (const r of reorder.data ?? []) {
+    notes.push({
+      id: `reorder-${r.project.id}`,
+      dot: "warn",
+      title: `${r.project.job_code}: ${r.total} unit${r.total > 1 ? "s" : ""} to reorder`,
+      sub: "Damaged or missing — reorder to keep the crew moving",
+      to: `/projects/${r.project.id}?tab=warehouse`,
+    });
+  }
+
+  const conflictPeople = new Set((conflicts.data ?? []).map((c) => c.profileId)).size;
+  if (conflictPeople > 0) {
+    notes.push({
+      id: "schedule-conflicts",
+      dot: "warn",
+      title: `${conflictPeople} crew double-booked`,
+      sub: "Overlapping schedule assignments — resolve before publishing",
+      to: "/scheduling",
     });
   }
 

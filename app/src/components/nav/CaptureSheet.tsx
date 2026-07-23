@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Camera,
   FolderOpen,
-  NotebookPen,
   Receipt,
   ScanLine,
   Search,
@@ -48,13 +47,16 @@ const ACTIONS: CaptureAction[] = [
     to: (p) =>
       p ? `/photos?project=${p}&kind=receipt&capture=1` : "/photos?kind=receipt&capture=1",
   },
-  {
-    key: "daily-log",
-    label: "New daily log",
-    hint: "Log today's progress and notes",
-    Icon: NotebookPen,
-    to: (p) => (p ? `/daily-logs?project=${p}` : "/daily-logs"),
-  },
+  // "New daily log" is hidden until /daily-logs ships — it currently lands on a
+  // Coming-soon stub, so a primary capture action would dead-end. Re-add this
+  // entry once the daily-log page exists:
+  // {
+  //   key: "daily-log",
+  //   label: "New daily log",
+  //   hint: "Log today's progress and notes",
+  //   Icon: NotebookPen,
+  //   to: (p) => (p ? `/daily-logs?project=${p}` : "/daily-logs"),
+  // },
   {
     key: "gallery",
     label: "Open gallery",
