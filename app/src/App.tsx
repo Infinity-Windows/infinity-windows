@@ -56,6 +56,8 @@ import { TimeClock } from "./pages/TimeClock";
 import { Timecard } from "./pages/Timecard";
 import { Scheduling } from "./pages/Scheduling";
 import { MySchedule } from "./pages/MySchedule";
+import { Travel } from "./pages/Travel";
+import { TripDetail } from "./pages/TripDetail";
 import { Vehicles } from "./pages/Vehicles";
 import { VehicleDetail } from "./pages/VehicleDetail";
 import { FleetMap } from "./pages/FleetMap";
@@ -325,6 +327,11 @@ export default function App() {
               path="/my-schedule"
               element={<RequireRole path="/my-schedule"><MySchedule /></RequireRole>}
             />
+            <Route
+              path="/travel"
+              element={<RequireRole path="/travel"><Travel /></RequireRole>}
+            />
+            <Route path="/travel/:tripId" element={<TripDetail />} />
             <Route
               path="/cost-codes"
               element={<RequireRole path="/cost-codes"><CostCodes /></RequireRole>}

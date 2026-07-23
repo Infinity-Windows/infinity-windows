@@ -17,6 +17,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - My Work (`/`)
 - Clock in / out (action)
 - My schedule (`/my-schedule`)
+- Travel (`/travel`)
 - Infinity AI (`/ask`)
 - Warehouse (`/warehouse`)
 - Scan (`/scan`)
@@ -27,7 +28,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Notifications & location (`/settings`)
 
-**Can reach (all 23 allowed destinations):**
+**Can reach (all 24 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -45,6 +46,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Search (`/search`)
 - Memo review (`/review`)
 - My Schedule (`/my-schedule`)
+- Travel (`/travel`)
 - Photos & receipts (`/photos`)
 - Completed installs (`/completed-installs`)
 - Milestones (`/milestones`)
@@ -99,6 +101,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Service (`/service`)
 - Quality (`/qc`)
 - My schedule (`/my-schedule`)
+- Travel (`/travel`)
 - Training (`/training`)
 - Team (`/team`)
 - Roster (`/crew`)
@@ -119,7 +122,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Notifications & location (`/settings`)
 
-**Can reach (all 38 allowed destinations):**
+**Can reach (all 39 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -137,6 +140,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Search (`/search`)
 - Memo review (`/review`)
 - My Schedule (`/my-schedule`)
+- Travel (`/travel`)
 - Team (`/team`)
 - Timecard (`/timecard`)
 - Issues (`/issues`)
@@ -195,6 +199,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Scheduling (`/scheduling`)
 - Vehicles (`/vehicles`)
 - My schedule (`/my-schedule`)
+- Travel (`/travel`)
 - Training (`/training`)
 - Team (`/team`)
 - Roster (`/crew`)
@@ -217,7 +222,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications & location (`/settings`)
 - Admin (`/admin`)
 
-**Can reach (all 44 allowed destinations):**
+**Can reach (all 45 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -235,6 +240,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Search (`/search`)
 - Memo review (`/review`)
 - My Schedule (`/my-schedule`)
+- Travel (`/travel`)
 - Team (`/team`)
 - Timecard (`/timecard`)
 - Issues (`/issues`)
@@ -294,6 +300,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Scheduling (`/scheduling`)
 - Vehicles (`/vehicles`)
 - My schedule (`/my-schedule`)
+- Travel (`/travel`)
 - Training (`/training`)
 - Team (`/team`)
 - Roster (`/crew`)
@@ -316,7 +323,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications & location (`/settings`)
 - Admin (`/admin`)
 
-**Can reach (all 45 allowed destinations):**
+**Can reach (all 46 allowed destinations):**
 
 - Home (`/`)
 - Work (`/my-work`)
@@ -334,6 +341,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Search (`/search`)
 - Memo review (`/review`)
 - My Schedule (`/my-schedule`)
+- Travel (`/travel`)
 - Team (`/team`)
 - Timecard (`/timecard`)
 - Issues (`/issues`)
