@@ -16,8 +16,13 @@ import { listProjects, listReorderNeeds } from "../lib/api";
 import { listVehicles } from "../lib/vehicles/api";
 import { serviceBadge } from "../lib/vehicles/service";
 import { vehicleTitle } from "../lib/vehicles/display";
-import { listAssignments, horizonRange } from "../lib/schedule/api";
+import { listAssignments, horizonRange, listMyPublished } from "../lib/schedule/api";
 import { conflictBannerEntries } from "../lib/schedule/conflicts";
+import { addDaysISO } from "../lib/schedule/dates";
+import { buildPublishDigests, digestMessage } from "../lib/schedule/notify";
+import { listTrips } from "../lib/travel/api";
+import { tripPublishMessage } from "../lib/travel/notify";
+import { tripPhase } from "../lib/travel/status";
 import { listMyMentions } from "../lib/chat/api";
 
 interface Note {
@@ -35,6 +40,7 @@ export function Notifications() {
   const lead = isForemanPlus(effectiveRole);
   const admin = isSupervisorPlus(effectiveRole);
   const id = me.data?.id;
+  const todayISO = new Date().toISOString().slice(0, 10);
 
   const memos = useQuery({
     queryKey: ["memosToConfirm", id],
@@ -46,6 +52,21 @@ export function Notifications() {
   const mentions = useQuery({
     queryKey: ["chatMentions", id],
     queryFn: () => listMyMentions(),
+    enabled: Boolean(id),
+  });
+  // Publish digests are the durable in-app echo of the schedule/travel pushes:
+  // the field crew who were scheduled or booked on a trip. Batched (one row for
+  // the whole schedule; one per trip) to mirror the push behaviour, never a row
+  // per edit. Recipients follow the same crew-membership rule the pushes use.
+  const scheduleTo = addDaysISO(todayISO, 42);
+  const myPublished = useQuery({
+    queryKey: ["mySchedule", id, todayISO, scheduleTo],
+    queryFn: () => listMyPublished(id!, todayISO, scheduleTo),
+    enabled: Boolean(id),
+  });
+  const trips = useQuery({
+    queryKey: ["trips"],
+    queryFn: listTrips,
     enabled: Boolean(id),
   });
   const qc = useQuery({
@@ -68,8 +89,6 @@ export function Notifications() {
   // sees fleet, warehouse and scheduling problems without hunting for them.
   // Each query degrades to an empty list on error (React Query catches throws)
   // so a single failing source never blanks the page.
-  const todayISO = new Date().toISOString().slice(0, 10);
-
   const vehicles = useQuery({
     queryKey: ["notifVehicles"],
     queryFn: listVehicles,
@@ -143,6 +162,40 @@ export function Notifications() {
       title: `${author} mentioned you · ${item.jobLabel}`,
       sub: snippet || "Open the job chat",
       to: `/projects/${item.projectId}?tab=chat`,
+    });
+  }
+
+  // One batched row for the whole published schedule (mirrors the digest push),
+  // built from the same per-person publish digest the push uses.
+  if (id && (myPublished.data ?? []).length > 0) {
+    const digest = buildPublishDigests(myPublished.data ?? []).find(
+      (d) => d.profileId === id,
+    );
+    if (digest && digest.assignmentIds.length > 0) {
+      const msg = digestMessage(digest.assignmentIds.length);
+      notes.push({
+        id: "schedule-published",
+        dot: "info",
+        title: msg.title,
+        sub: msg.body,
+        to: "/my-schedule",
+      });
+    }
+  }
+
+  // One row per published trip the viewer is crew on (mirrors the per-trip push;
+  // skip past trips). Recipient rule matches how the travel push picks crew.
+  for (const t of trips.data ?? []) {
+    if (t.status !== "published") continue;
+    if (!id || !t.crew.some((c) => c.profile_id === id)) continue;
+    if (tripPhase(t.start_date, t.end_date, todayISO) === "past") continue;
+    const msg = tripPublishMessage(t.destination || t.name);
+    notes.push({
+      id: `trip-${t.id}`,
+      dot: "info",
+      title: msg.title,
+      sub: msg.body,
+      to: `/travel/${t.id}`,
     });
   }
 
