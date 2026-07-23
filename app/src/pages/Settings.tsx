@@ -9,7 +9,7 @@ export function Settings() {
       <header className="page-header">
         <div>
           <p className="home-greeting">Settings</p>
-          <h1>Preferences</h1>
+          <h1>Settings</h1>
         </div>
         <button
           type="button"

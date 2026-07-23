@@ -53,11 +53,12 @@ describe("bottomBarForRole (phone bottom bar)", () => {
     }
   });
 
-  it("gives managers Jobs, Capture and Photos instead of the installer loop", () => {
+  it("gives managers Jobs, Capture and one-tap Ask (Photos moved to the menu)", () => {
     const foreman = bottomBarForRole("foreman");
     expect(foreman.some((t) => t.kind === "capture")).toBe(true);
-    expect(linkTos("foreman")).toEqual(["/projects", "/photos"]);
+    expect(linkTos("foreman")).toEqual(["/projects", "/ask"]);
     expect(linkTos("foreman")).not.toContain("/scan");
+    expect(linkTos("foreman")).not.toContain("/photos");
   });
 
   it("only links to destinations the role can access", () => {
@@ -170,16 +171,45 @@ describe("menuForRole (Horizon grouped menu)", () => {
     expect(flatten("owner").map((i) => i.to)).toContain("/admin");
   });
 
-  it("exposes Infinity AI to everyone under Tools", () => {
-    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
+  it("labels Ask canonically in the manager menu and drops it from the installer drawer", () => {
+    for (const role of ["foreman", "supervisor", "owner"] as const) {
       const ai = flatten(role).find((i) => i.to === "/ask");
-      expect(ai?.label, `Infinity AI missing for ${role}`).toBe("Infinity AI");
+      expect(ai?.label, `Ask missing for ${role}`).toBe("Ask");
     }
+    // Installers reach Ask on the bottom bar, so it's not duplicated in the drawer.
+    expect(flatten("installer").map((i) => i.to)).not.toContain("/ask");
   });
 
-  it("renders the Horizon section names", () => {
+  it("surfaces My Work and Photos in the manager menu (drawer/bottom-bar parity)", () => {
+    const tos = flatten("foreman").map((i) => i.to);
+    expect(tos).toContain("/my-work");
+    expect(tos).toContain("/photos");
+  });
+
+  it("trims the installer drawer to a daily loop plus a collapsible More, minus Scan/Ask", () => {
+    const sections = menuForRole("installer");
+    const tos = sections.flatMap((s) => s.items).map((i) => i.to);
+    expect(tos).not.toContain("/scan");
+    expect(tos).not.toContain("/ask");
+    const more = sections.find((s) => s.title === "More");
+    expect(more?.collapsible).toBe(true);
+    expect(more?.defaultOpen).toBe(false);
+    expect((more?.items.length ?? 0) > 0).toBe(true);
+  });
+
+  it("renders the regrouped Horizon section names", () => {
     const t = titles("owner");
-    for (const name of ["Time tracking", "Business", "Company", "Tools", "Account"]) {
+    for (const name of [
+      "Time tracking",
+      "Business",
+      "Warehouse",
+      "Problems & quality",
+      "Fleet",
+      "People",
+      "Learning",
+      "AI",
+      "Account",
+    ]) {
       expect(t).toContain(name);
     }
   });

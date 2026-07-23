@@ -7,6 +7,7 @@ import {
   BookOpen,
   Boxes,
   BrainCircuit,
+  Camera,
   CalendarClock,
   CalendarDays,
   CheckCircle2,
@@ -17,6 +18,7 @@ import {
   Hash,
   LayoutGrid,
   ListChecks,
+  MoreHorizontal,
   PackageCheck,
   Plane,
   ScanLine,
@@ -45,6 +47,7 @@ export { roleRank };
 /** Every navigable app path (nav `to` and route `path` share these literals). */
 export type RoutePath =
   | "/"
+  | "/my-work"
   | "/projects"
   | "/warehouse"
   | "/clock"
@@ -196,7 +199,8 @@ export function canAccess(role: CrewRole | string | null | undefined, path: stri
 //
 // The mobile bottom bar is intentionally tiny. Installers get the whole job
 // loop — Today / Scan / Clock / Ask — and nothing else competes for a tap;
-// managers keep Jobs / Capture / Clock / Photos. The leading Menu button and
+// managers keep Jobs / Capture / Clock / Ask (Photos moved into the menu). The
+// leading Menu button and
 // the Clock/Capture controls are actions, not destinations. Layout renders
 // these; roleAccessDoc reads them so the docs can never drift from the UI.
 
@@ -228,12 +232,14 @@ export function bottomBarForRole(
       { kind: "link", id: "ask", to: "/ask", label: "Ask" },
     ];
   }
+  // Managers keep Capture but get one-tap Ask (installers who make foreman
+  // still need the assistant in the field). Photos lives in the menu now.
   return [
     { kind: "menu" },
     { kind: "link", id: "jobs", to: "/projects", label: "Jobs", readyBadge: true },
     { kind: "capture" },
     { kind: "clock" },
-    { kind: "link", id: "photos", to: "/photos", label: "Photos" },
+    { kind: "link", id: "ask", to: "/ask", label: "Ask" },
   ];
 }
 
@@ -277,13 +283,21 @@ export interface MenuSection {
   items: MenuItem[];
 }
 
-/** Raw (unfiltered) menu definition — the Horizon Hub structure. */
+/**
+ * Raw (unfiltered) menu definition — the Horizon Hub structure. The old sprawling
+ * "Company" and "Tools" lists are split into small, scannable hubs (Problems &
+ * quality / Fleet / People / Learning / AI) so nothing runs past ~6 rows. Every
+ * destination and its role gate are preserved; this is grouping only.
+ */
 const MENU_DEF: MenuSection[] = [
   {
-    // Flush top group — no header.
+    // Flush top group — no header. My Work is the personal install queue for
+    // foremen who still install (installers reach it via the landing "/").
     items: [
       { to: "/", label: "Home", Icon: LayoutGrid },
+      { to: "/my-work", label: "My Work", Icon: ListChecks },
       { to: "/projects", label: "Jobs", Icon: LayoutGrid },
+      { to: "/photos", label: "Photos & receipts", Icon: Camera },
     ],
   },
   {
@@ -306,9 +320,6 @@ const MENU_DEF: MenuSection[] = [
       { to: "/costing", label: "Cost", Icon: DollarSign },
       { to: "/analytics", label: "Analytics", Icon: BarChart3 },
       { to: "/heartbeat", label: "Heartbeat", Icon: Activity },
-      { to: "/issues", label: "Issues", Icon: AlertTriangle },
-      { to: "/service", label: "Service", Icon: Wrench },
-      { to: "/qc", label: "Quality", Icon: CheckCircle2 },
     ],
   },
   {
@@ -327,32 +338,50 @@ const MENU_DEF: MenuSection[] = [
     ],
   },
   {
-    title: "Company",
+    title: "Problems & quality",
+    items: [
+      { to: "/issues", label: "Issues", Icon: AlertTriangle },
+      { to: "/service", label: "Service", Icon: Wrench },
+      { to: "/qc", label: "Quality", Icon: CheckCircle2 },
+    ],
+  },
+  {
+    title: "Fleet",
     items: [
       { to: "/scheduling", label: "Scheduling", Icon: CalendarDays },
       { to: "/vehicles", label: "Vehicles", Icon: Truck },
-      { to: "/my-schedule", label: "My schedule", Icon: CalendarClock },
+      { to: "/my-schedule", label: "My Schedule", Icon: CalendarClock },
       { to: "/travel", label: "Travel", Icon: Plane },
-      { to: "/training", label: "Training", Icon: GraduationCap },
+    ],
+  },
+  {
+    title: "People",
+    items: [
       { to: "/team", label: "Team", Icon: Users },
       { to: "/crew", label: "Roster", Icon: Users },
     ],
   },
   {
-    title: "Tools",
+    title: "Learning",
     items: [
-      { to: "/ask", label: "Infinity AI", Icon: Sparkles },
-      { to: "/knowledge", label: "AI Knowledge", Icon: BrainCircuit },
       { to: "/learn", label: "Learn", Icon: BookOpen },
+      { to: "/training", label: "Training", Icon: GraduationCap },
       { to: "/points", label: "Points", Icon: Trophy },
       { to: "/review", label: "Memo review", Icon: ClipboardList },
       { to: "/safety", label: "Safety", Icon: ShieldCheck },
-      { to: "/tools", label: "Tools", Icon: Wrench },
+    ],
+  },
+  {
+    title: "AI",
+    items: [
+      { to: "/ask", label: "Ask", Icon: Sparkles },
+      { to: "/knowledge", label: "AI Knowledge", Icon: BrainCircuit },
     ],
   },
   {
     title: "Account",
     items: [
+      { to: "/tools", label: "Tools", Icon: Wrench },
       { to: "/notifications", label: "Notifications", Icon: Bell },
       { to: "/settings", label: "Settings", Icon: SlidersHorizontal },
       { to: "/admin", label: "Admin", Icon: ShieldCheck },
@@ -360,52 +389,75 @@ const MENU_DEF: MenuSection[] = [
   },
 ];
 
+/** Fast path→item lookup so the installer drawer can reuse labels + icons. */
+const MENU_ITEM_BY_PATH = new Map<string, MenuItem>();
+for (const section of MENU_DEF) {
+  for (const item of section.items) {
+    if (item.to) MENU_ITEM_BY_PATH.set(item.to, item);
+  }
+}
+
 /**
- * Installer-first: the bottom bar already carries the whole job loop
- * (Today / Scan / Clock / Ask). The installer drawer is deliberately short —
- * only the extras a crew member reaches occasionally. Everyone above installer
- * keeps the full grouped menu. Action items (e.g. clock) always show.
+ * Installer-first: the phone bottom bar already carries the whole job loop
+ * (Today / Scan / Clock / Ask), so the installer drawer drops the duplicate
+ * Scan/Ask rows and shows only the short daily loop up top. Everything else an
+ * installer can reach folds under a collapsible "More". Managers keep the full
+ * grouped menu. Action items (e.g. clock) always show.
  */
-const INSTALLER_MENU_PATHS = new Set<string>([
-  // Core loop (also the phone bottom bar; kept here for the desktop rail).
-  "/",
-  "/scan",
-  "/ask",
-  // Occasional extras.
-  "/timecard",
-  "/my-schedule",
+const INSTALLER_LOOP_PATHS: RoutePath[] = ["/", "/warehouse", "/my-schedule"];
+const INSTALLER_MORE_PATHS: RoutePath[] = [
   "/travel",
   "/learn",
   "/points",
   "/review",
   "/safety",
-  "/warehouse",
   "/supplies",
   "/notifications",
   "/settings",
-]);
+];
+
+function installerMenu(role: CrewRole | string | null | undefined): MenuSection[] {
+  const pick = (paths: RoutePath[]): MenuItem[] =>
+    paths
+      .map((p) => MENU_ITEM_BY_PATH.get(p))
+      .filter((it): it is MenuItem => Boolean(it?.to) && canAccess(role, it!.to!))
+      .map((it) => (it.to === "/" ? { ...it, label: "My Work" } : it));
+
+  const out: MenuSection[] = [{ items: pick(INSTALLER_LOOP_PATHS) }];
+
+  // Keep the Time tracking pill (clock in/out) — installers clock in daily.
+  const timePill = MENU_DEF.find((s) => s.title === "Time tracking");
+  if (timePill) {
+    const items = timePill.items.filter((it) => !it.to || canAccess(role, it.to));
+    if (items.length) out.push({ ...timePill, items });
+  }
+
+  const more = pick(INSTALLER_MORE_PATHS);
+  if (more.length) {
+    // Reuse the collapsible pill so "More" folds with a chevron and no new CSS.
+    out.push({
+      title: "More",
+      pill: true,
+      collapsible: true,
+      defaultOpen: false,
+      Icon: MoreHorizontal,
+      items: more,
+    });
+  }
+  return out;
+}
 
 /**
- * The grouped Horizon-style menu for a role. Route items are filtered through
- * `canAccess` (same registry the route guards use); action items always show.
- * Empty sections/pills are dropped. Installer "/" reads "My Work"; others
- * "Home".
+ * The grouped Horizon-style menu for a role. Installers get the trimmed
+ * daily-loop drawer (with a "More" fold); everyone else gets the full grouped
+ * menu filtered through `canAccess` (the same registry the route guards use),
+ * with empty sections dropped. Non-installer "/" reads "Home".
  */
 export function menuForRole(role: CrewRole | string | null | undefined): MenuSection[] {
-  const installer = roleRank(role) === 0;
+  if (roleRank(role) === 0) return installerMenu(role);
   const out: MenuSection[] = [];
   for (const section of MENU_DEF) {
-    const items = section.items
-      .filter((it) => {
-        if (it.to && !canAccess(role, it.to)) return false;
-        // Installers get a trimmed drawer: only the allow-listed extras plus
-        // action items (which have no `to`, e.g. clock in/out).
-        if (installer && it.to && !INSTALLER_MENU_PATHS.has(it.to)) return false;
-        return true;
-      })
-      .map((it) =>
-        it.to === "/" ? { ...it, label: installer ? "My Work" : "Home" } : it,
-      );
+    const items = section.items.filter((it) => !it.to || canAccess(role, it.to));
     if (items.length === 0) continue;
     out.push({ ...section, items });
   }
