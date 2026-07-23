@@ -50,7 +50,7 @@ export function Supplies() {
             Job pull lists + the company supply catalog.
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">‹</Link>
+        <Link to="/warehouse" className="back-chip" aria-label="Warehouse">‹</Link>
       </header>
 
       <h2>Assign to job</h2>

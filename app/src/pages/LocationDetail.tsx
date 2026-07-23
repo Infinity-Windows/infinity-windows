@@ -35,7 +35,7 @@ export function LocationDetail() {
           <p className="home-greeting">{ZONE_NAMES[loc.zone]}</p>
           <h1>{loc.address}</h1>
         </div>
-        <Link to="/search" className="back-chip" aria-label="Back">
+        <Link to="/warehouse" className="back-chip" aria-label="Back">
           ‹
         </Link>
       </header>

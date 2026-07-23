@@ -78,7 +78,7 @@ export function Receive() {
             Create units into inventory and print labels.
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">‹</Link>
+        <Link to="/warehouse" className="back-chip" aria-label="Warehouse">‹</Link>
       </header>
 
       <label className="field-label">Window type</label>

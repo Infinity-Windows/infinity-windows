@@ -20,7 +20,6 @@ import {
   PackageCheck,
   Plane,
   ScanLine,
-  Search,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
@@ -46,7 +45,6 @@ export { roleRank };
 /** Every navigable app path (nav `to` and route `path` share these literals). */
 export type RoutePath =
   | "/"
-  | "/my-work"
   | "/projects"
   | "/warehouse"
   | "/clock"
@@ -119,7 +117,6 @@ export interface NavDest {
 export const NAV: NavDest[] = [
   // Open to everyone (installer floor) — execution + shared surfaces.
   { id: "home", to: "/", label: "Home", icon: "⌂", minRole: "installer" },
-  { id: "my-work", to: "/my-work", label: "Work", icon: "⚒", minRole: "installer" },
   { id: "clock", to: "/clock", label: "Time", icon: "⏱", minRole: "installer" },
   { id: "learn", to: "/learn", label: "Learn", icon: "★", minRole: "installer" },
   { id: "points", to: "/points", label: "Points", icon: "✦", minRole: "installer" },
@@ -315,6 +312,21 @@ const MENU_DEF: MenuSection[] = [
     ],
   },
   {
+    title: "Warehouse",
+    pill: true,
+    collapsible: true,
+    Icon: WarehouseIcon,
+    items: [
+      { to: "/warehouse", label: "Hub", Icon: WarehouseIcon },
+      { to: "/scan", label: "Scan", Icon: ScanLine },
+      { to: "/count", label: "Cycle count", Icon: ListChecks },
+      { to: "/receive", label: "Receive", Icon: PackageCheck },
+      { to: "/labels", label: "Slot labels", Icon: Hash },
+      { to: "/catalog", label: "Catalog", Icon: BookOpen },
+      { to: "/supplies", label: "Supplies", Icon: Boxes },
+    ],
+  },
+  {
     title: "Company",
     items: [
       { to: "/scheduling", label: "Scheduling", Icon: CalendarDays },
@@ -329,16 +341,8 @@ const MENU_DEF: MenuSection[] = [
   {
     title: "Tools",
     items: [
-      { to: "/supplies", label: "Supplies", Icon: Boxes },
       { to: "/ask", label: "Infinity AI", Icon: Sparkles },
       { to: "/knowledge", label: "AI Knowledge", Icon: BrainCircuit },
-      { to: "/warehouse", label: "Warehouse", Icon: WarehouseIcon },
-      { to: "/scan", label: "Scan", Icon: ScanLine },
-      { to: "/count", label: "Cycle count", Icon: ListChecks },
-      { to: "/catalog", label: "Catalog", Icon: BookOpen },
-      { to: "/receive", label: "Receive", Icon: PackageCheck },
-      { to: "/labels", label: "Slot labels", Icon: Hash },
-      { to: "/search", label: "Search", Icon: Search },
       { to: "/learn", label: "Learn", Icon: BookOpen },
       { to: "/points", label: "Points", Icon: Trophy },
       { to: "/review", label: "Memo review", Icon: ClipboardList },

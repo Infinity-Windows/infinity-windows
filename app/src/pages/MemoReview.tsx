@@ -75,7 +75,7 @@ export function MemoReview() {
             Confirm fields so the brain gets smarter.
           </p>
         </div>
-        <Link to="/my-work" className="back-chip" aria-label="My work">‹</Link>
+        <Link to="/" className="back-chip" aria-label="My work">‹</Link>
       </header>
       <p className="muted">
         The AI split your voice memos into fields. A quick confirm makes the
