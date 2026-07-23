@@ -190,6 +190,30 @@ export interface LiveContext {
     start_time?: string | null;
   }>;
   windowTypes?: Array<{ type_code?: string; name?: string; n_installs?: number }>;
+  /** Currently-open issues company-wide (most recent first, capped upstream). */
+  issues?: Array<{
+    job?: string;
+    kind?: string;
+    urgency?: string;
+    note?: string | null;
+    ageDays?: number;
+  }>;
+  /** Compact stock snapshot: overall buckets + top on-hand types + outstanding supplies. */
+  inventory?: {
+    onHand?: number;
+    staged?: number;
+    damaged?: number;
+    inbound?: number;
+    topOnHand?: Array<{ type_code?: string; name?: string; count?: number }>;
+    supplies?: Array<{ name?: string; qty?: number; status?: string }>;
+  };
+  /** Recent per-job chat, scoped to jobs the asking user is on (most recent first). */
+  chat?: Array<{
+    job?: string;
+    sender?: string;
+    body?: string;
+    when?: string;
+  }>;
 }
 
 function truncate(text: string, max: number): string {
@@ -251,6 +275,77 @@ export function buildContextBlock(
         .join("; ")}`,
     );
   }
+
+  const issues = live.issues ?? [];
+  if (issues.length > 0) {
+    live_lines.push(
+      `Open issues: ${issues
+        .slice(0, 20)
+        .map((i) => {
+          const mark =
+            i.urgency === "emergency" ? "!!! " : i.urgency === "urgent" ? "! " : "";
+          const kind = (i.kind ?? "issue").replace(/_/g, " ");
+          const note = i.note ? ` — ${truncate(String(i.note), 120)}` : "";
+          const age =
+            typeof i.ageDays === "number"
+              ? ` (${i.ageDays === 0 ? "today" : `${i.ageDays}d old`})`
+              : "";
+          return `${mark}${kind} on ${i.job ?? "job"}${note}${age}`;
+        })
+        .join("; ")}`,
+    );
+  }
+
+  const inv = live.inventory;
+  if (inv) {
+    const buckets = [
+      typeof inv.onHand === "number" ? `${inv.onHand} on hand` : "",
+      typeof inv.staged === "number" ? `${inv.staged} staged` : "",
+      typeof inv.damaged === "number" ? `${inv.damaged} damaged` : "",
+      typeof inv.inbound === "number" ? `${inv.inbound} inbound` : "",
+    ].filter(Boolean);
+    const parts: string[] = [];
+    if (buckets.length > 0) parts.push(buckets.join(", "));
+    const top = inv.topOnHand ?? [];
+    if (top.length > 0) {
+      parts.push(
+        `top on hand by type: ${top
+          .slice(0, 15)
+          .map(
+            (t) =>
+              `${[t.type_code, t.name].filter(Boolean).join(" ").trim() || "type"}×${t.count ?? 0}`,
+          )
+          .join("; ")}`,
+      );
+    }
+    const supplies = inv.supplies ?? [];
+    if (supplies.length > 0) {
+      parts.push(
+        `supplies outstanding: ${supplies
+          .slice(0, 10)
+          .map(
+            (s) =>
+              `${s.name ?? "supply"}${typeof s.qty === "number" ? ` ×${s.qty}` : ""}${s.status ? ` (${s.status})` : ""}`,
+          )
+          .join("; ")}`,
+      );
+    }
+    if (parts.length > 0) live_lines.push(`Inventory: ${parts.join(". ")}`);
+  }
+
+  const chat = live.chat ?? [];
+  if (chat.length > 0) {
+    live_lines.push(
+      `Recent job chat (most recent first): ${chat
+        .slice(0, 15)
+        .map(
+          (m) =>
+            `[${m.job ?? "job"}] ${m.sender ?? "someone"}: ${truncate(String(m.body ?? ""), 120)}`,
+        )
+        .join(" | ")}`,
+    );
+  }
+
   if (live_lines.length > 0) {
     sections.push(`## Live app data\n${live_lines.join("\n")}`);
   }
@@ -260,9 +355,12 @@ export function buildContextBlock(
 
 export const ASK_SYSTEM_PROMPT =
   "You are Infinity AI, the assistant for a windows-installation company. " +
-  "Answer using ONLY the provided company notes and app data. If the answer " +
-  "isn't in them, say you don't have that in the company knowledge yet and " +
-  "suggest where to look (a person, a page in the app, or which note to add). " +
+  "Answer using ONLY the provided company notes and app data. The app data may " +
+  "include active projects, schedules, open issues, inventory/stock levels, and " +
+  "recent job chat — use it to answer real-time operational questions. If the " +
+  "answer isn't in the provided context, say you don't have that in the company " +
+  "knowledge yet and suggest where to look (a person, a page in the app, or " +
+  "which note to add); don't guess at numbers or details you weren't given. " +
   "Be concise and practical — you're talking to installers and office crew in " +
   "the field. When you use a company note, cite its title in your answer.";
 
