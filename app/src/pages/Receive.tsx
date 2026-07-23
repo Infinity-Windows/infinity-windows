@@ -1,9 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listProjects, receiveWindow, suggestLocation } from "../lib/api";
 import { WindowTypePicker } from "../components/WindowTypePicker";
+import {
+  allIdsSelected,
+  clampReceiveCount,
+  runBulkSequential,
+  toggleAllIds,
+  toggleId,
+} from "../lib/bulk";
 import { downloadPdf, windowLabelsPdf } from "../lib/labels";
+import { pushToast, toastError } from "../lib/toast";
 import type { WindowType, WindowUnit } from "../lib/types";
 
 interface ReceivedRow {
@@ -17,30 +25,52 @@ export function Receive() {
   const [typeId, setTypeId] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<WindowType | null>(null);
   const [projectId, setProjectId] = useState<string>("");
+  const [qty, setQty] = useState(1);
   const [received, setReceived] = useState<ReceivedRow[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+
+  const createOne = async (): Promise<ReceivedRow> => {
+    if (!typeId) throw new Error("Pick a window type first");
+    const unit = await receiveWindow(typeId, projectId || null);
+    const suggestion = await suggestLocation(unit.id).catch(() => null);
+    return {
+      unit,
+      typeName: selectedType?.name ?? "",
+      suggestedAddress: suggestion?.address ?? null,
+    };
+  };
 
   const receive = useMutation({
     mutationFn: async () => {
       if (!typeId) throw new Error("Pick a window type first");
-      const unit = await receiveWindow(typeId, projectId || null);
-      const suggestion = await suggestLocation(unit.id).catch(() => null);
-      return {
-        unit,
-        typeName: selectedType?.name ?? "",
-        suggestedAddress: suggestion?.address ?? null,
-      };
+      const n = clampReceiveCount(qty);
+      return runBulkSequential(n, () => createOne());
     },
-    onSuccess: (row) => {
-      setReceived((prev) => [row, ...prev]);
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    onSuccess: ({ successes, failures }) => {
+      if (successes.length > 0) {
+        // Newest first, matching the single-receive ordering.
+        setReceived((prev) => [...[...successes].reverse(), ...prev]);
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+        pushToast(
+          `Received ${successes.length} window${successes.length === 1 ? "" : "s"}.`,
+          "success",
+        );
+      }
+      if (failures.length > 0) {
+        toastError(
+          failures[0].error,
+          `Couldn't receive ${failures.length} of the windows. Please try again.`,
+        );
+      }
     },
   });
 
-  const printBatch = async () => {
+  const printRows = async (rows: ReceivedRow[], filename: string) => {
+    if (rows.length === 0) return;
     const bytes = await windowLabelsPdf(
-      received.map((r) => ({
+      rows.map((r) => ({
         window_id: r.unit.window_id,
         typeName: r.typeName,
         short_code: r.unit.short_code,
@@ -48,8 +78,19 @@ export function Receive() {
         display_name: r.unit.display_name,
       })),
     );
-    downloadPdf(bytes, "window-labels.pdf");
+    downloadPdf(bytes, filename);
   };
+
+  const allIds = useMemo(() => received.map((r) => r.unit.id), [received]);
+  const allSelected = allIdsSelected(allIds, selected);
+  const selectedRows = received.filter((r) => selected.has(r.unit.id));
+
+  const removeSelected = () => {
+    setReceived((prev) => prev.filter((r) => !selected.has(r.unit.id)));
+    setSelected(new Set());
+  };
+
+  const clampedQty = clampReceiveCount(qty);
 
   return (
     <div className="page">
@@ -93,12 +134,46 @@ export function Receive() {
         ))}
       </select>
 
+      <label className="field-label">How many?</label>
+      <div className="qty-stepper" role="group" aria-label="How many windows to receive">
+        <button
+          type="button"
+          className="qty-btn"
+          aria-label="One fewer"
+          disabled={clampedQty <= 1 || receive.isPending}
+          onClick={() => setQty((q) => clampReceiveCount(q - 1))}
+        >
+          −
+        </button>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={50}
+          value={qty}
+          aria-label="Quantity"
+          onChange={(e) => setQty(Number(e.target.value))}
+          onBlur={() => setQty((q) => clampReceiveCount(q))}
+        />
+        <button
+          type="button"
+          className="qty-btn"
+          aria-label="One more"
+          disabled={clampedQty >= 50 || receive.isPending}
+          onClick={() => setQty((q) => clampReceiveCount(q + 1))}
+        >
+          +
+        </button>
+      </div>
+
       <button
         className="primary big"
         disabled={!typeId || receive.isPending}
         onClick={() => receive.mutate()}
       >
-        {receive.isPending ? "Creating..." : "Receive 1 window"}
+        {receive.isPending
+          ? "Creating..."
+          : `Receive ${clampedQty} window${clampedQty === 1 ? "" : "s"}`}
       </button>
       {receive.error && <p className="error">{String(receive.error)}</p>}
 
@@ -106,11 +181,54 @@ export function Receive() {
         <>
           <div className="row-between">
             <h2>This session ({received.length})</h2>
-            <button className="button-like" onClick={printBatch}>Print labels</button>
+            <button
+              className="button-like"
+              onClick={() => printRows(received, "window-labels.pdf")}
+            >
+              Print labels
+            </button>
           </div>
+
+          <label
+            style={{ display: "flex", gap: 8, alignItems: "center", margin: "8px 0" }}
+          >
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={() => setSelected((s) => toggleAllIds(allIds, s))}
+            />
+            Select all ({received.length})
+          </label>
+
+          {selectedRows.length > 0 && (
+            <div className="action-list">
+              <button
+                className="action-btn"
+                onClick={() =>
+                  printRows(selectedRows, "window-labels-selected.pdf")
+                }
+              >
+                Print labels for selected ({selectedRows.length})
+              </button>
+              <button
+                className="action-btn danger-outline"
+                onClick={removeSelected}
+              >
+                Remove selected ({selectedRows.length})
+              </button>
+            </div>
+          )}
+
           <ul className="unit-list work-list">
             {received.map((r) => (
               <li key={r.unit.id} className="find-row">
+                <input
+                  type="checkbox"
+                  aria-label={`Select ${r.unit.window_id}`}
+                  checked={selected.has(r.unit.id)}
+                  onChange={() => setSelected((s) => toggleId(s, r.unit.id))}
+                  style={{ marginRight: 8 }}
+                />
                 <Link to={`/w/${encodeURIComponent(r.unit.window_id)}`}>
                   <strong>{r.unit.window_id}</strong>
                 </Link>

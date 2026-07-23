@@ -355,6 +355,35 @@ button:disabled {
   text-transform: uppercase;
 }
 
+.action-btn.danger-outline {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* Quantity stepper (e.g. bulk-receive "how many"). */
+.qty-stepper {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.qty-stepper input {
+  flex: 1;
+  text-align: center;
+}
+.qty-btn {
+  width: 52px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  background: var(--card-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+}
+.qty-btn:disabled {
+  opacity: 0.4;
+}
+
 .scanner-viewport {
   border-radius: 12px;
   overflow: hidden;
