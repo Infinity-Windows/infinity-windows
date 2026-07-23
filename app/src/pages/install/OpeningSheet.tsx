@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { BeforeAfterCapture, type BeforeAfterValue } from "../../components/BeforeAfterCapture";
+import { PhotoCaptureSheet, type BeforeAfterValue } from "../../components/PhotoCaptureSheet";
 import { Scanner } from "../../components/Scanner";
 import {
   findWindowByCode,
@@ -1039,7 +1039,12 @@ export function OpeningSheet() {
         <>
           <h2>Photos</h2>
           <p className="muted">Before and after — the after lines up over the before.</p>
-          <BeforeAfterCapture value={photos} onChange={setPhotos} label={o.opening_code} />
+          <PhotoCaptureSheet
+            mode="beforeAfter"
+            value={photos}
+            onChange={setPhotos}
+            label={o.opening_code}
+          />
 
           <label className="field-label">Walkthrough video (optional)</label>
           <label className="action-btn" style={{ cursor: "pointer" }}>
