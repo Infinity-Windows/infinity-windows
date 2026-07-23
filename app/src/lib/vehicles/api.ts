@@ -242,6 +242,12 @@ const localStore = {
   getFinancials(vehicleId: string): VehicleFinancials | null {
     return readDB().financials.find((f) => f.vehicle_id === vehicleId) ?? null;
   },
+  listFinancials(): VehicleFinancials[] {
+    return readDB().financials;
+  },
+  listAllService(): VehicleServiceRecord[] {
+    return readDB().service;
+  },
   saveFinancials(vehicleId: string, input: Omit<VehicleFinancials, "vehicle_id">): VehicleFinancials {
     const db = readDB();
     const row: VehicleFinancials = { ...input, vehicle_id: vehicleId, updated_at: nowISO() };
@@ -523,6 +529,30 @@ export async function getFinancials(vehicleId: string): Promise<VehicleFinancial
     throw error;
   }
   return (data as VehicleFinancials | null) ?? null;
+}
+
+/**
+ * Owner-only fleet-wide financials for the money rollup. RLS returns no rows to
+ * non-owners; the UI never calls this unless the REAL role is owner and not
+ * previewing (same gate as the per-vehicle section).
+ */
+export async function listAllFinancials(): Promise<VehicleFinancials[]> {
+  const { data, error } = await supabase.from("vehicle_financials").select("*");
+  if (error) {
+    if (isMissingVehicleTable(error)) return localStore.listFinancials();
+    throw error;
+  }
+  return (data ?? []) as VehicleFinancials[];
+}
+
+/** All service/maintenance cost records across the fleet (for the rollup). */
+export async function listAllServiceRecords(): Promise<VehicleServiceRecord[]> {
+  const { data, error } = await supabase.from("vehicle_service_records").select("*");
+  if (error) {
+    if (isMissingVehicleTable(error)) return localStore.listAllService();
+    throw error;
+  }
+  return (data ?? []) as VehicleServiceRecord[];
 }
 
 export async function saveFinancials(
