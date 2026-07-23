@@ -67,7 +67,39 @@ export interface VehicleProjectAssignment {
   project_id: string;
   assigned_at: string;
   note: string | null;
+  /** Set when the link is tied to a specific scheduled crew block. Optional
+   * until the date-aware migration is applied. */
+  assignment_id?: string | null;
+  /** Days the vehicle is committed (mirrors the assignment range). Optional
+   * until the date-aware migration is applied. */
+  start_date?: string | null;
+  end_date?: string | null;
   project?: Pick<Project, "id" | "job_code" | "name" | "address"> | null;
+}
+
+/** A vehicle link surfaced next to a schedule assignment / job (read views). */
+export interface ScheduleVehicleLink {
+  id: string;
+  vehicle_id: string;
+  project_id: string;
+  assignment_id: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  note: string | null;
+  vehicle: Pick<
+    Vehicle,
+    "id" | "kind" | "trailer_subtype" | "year" | "make" | "model" | "color" | "plate"
+  > | null;
+}
+
+/** Input to tie a vehicle/trailer to a scheduled crew block. */
+export interface VehicleScheduleLinkInput {
+  vehicleId: string;
+  projectId: string;
+  assignmentId: string;
+  startDate: string;
+  endDate: string;
+  note?: string | null;
 }
 
 export interface Vehicle {
