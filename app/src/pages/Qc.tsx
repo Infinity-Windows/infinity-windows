@@ -10,6 +10,7 @@ import { resolvePendingPoints } from "../lib/points";
 import { openServiceCase } from "../lib/service";
 import { CATS, TERMS } from "../lib/glossary";
 import { pushToast } from "../lib/toast";
+import { SkeletonList } from "../components/ui/States";
 
 export function Qc() {
   const queryClient = useQueryClient();
@@ -125,6 +126,9 @@ export function Qc() {
         </div>
       )}
 
+      {rows.isLoading ? (
+        <SkeletonList rows={6} />
+      ) : (
       <ul className="unit-list work-list">
         {list.map((o) => {
           const status = o.qc?.status ?? "pending";
@@ -136,6 +140,15 @@ export function Qc() {
                 <div className={status === "passed" ? "ok" : status === "callback" ? "error" : "muted"} style={{ fontSize: 12 }}>
                   {status}
                 </div>
+                {status === "callback" && (
+                  <Link
+                    to={`/projects/${o.project_id}?tab=exceptions`}
+                    className="link"
+                    style={{ fontSize: 12 }}
+                  >
+                    See this job&apos;s open issues →
+                  </Link>
+                )}
               </div>
               <div className="row-gap" style={{ marginLeft: "auto" }}>
                 <button className="button-like qc-pass" onClick={() => decide.mutate({ id: o.id, status: "passed" })}>Pass ✓</button>
@@ -186,6 +199,7 @@ export function Qc() {
         })}
         {list.length === 0 && <p className="muted">No installed openings to review.</p>}
       </ul>
+      )}
     </div>
   );
 }

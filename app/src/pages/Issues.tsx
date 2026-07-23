@@ -12,6 +12,8 @@ import {
   type IssueKind,
   type IssueStatus,
 } from "../lib/issues";
+import { listServiceCases } from "../lib/service";
+import { listInstalledForQc } from "../lib/ops";
 
 interface ProjectLite {
   id: string;
@@ -69,6 +71,10 @@ export function Issues() {
 
   const issuesQ = useQuery({ queryKey: ["issues"], queryFn: listIssues });
   const refsQ = useQuery({ queryKey: ["issueRefs"], queryFn: fetchIssueRefs });
+  // Cross-links into the quality surfaces: an open warranty case on the same
+  // unit, or the QC result on the same opening.
+  const servicesQ = useQuery({ queryKey: ["serviceCasesAll"], queryFn: listServiceCases });
+  const qcQ = useQuery({ queryKey: ["qcInstalled"], queryFn: listInstalledForQc });
 
   const resolve = useMutation({
     mutationFn: (id: string) => resolveIssue(id),
@@ -92,6 +98,23 @@ export function Issues() {
   }, [refsQ.data]);
 
   const all = useMemo(() => issuesQ.data ?? [], [issuesQ.data]);
+
+  // Units with an open (not-yet-resolved) warranty/service case.
+  const openCaseWindows = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of servicesQ.data ?? []) {
+      if (c.status !== "resolved") s.add(c.window_id);
+    }
+    return s;
+  }, [servicesQ.data]);
+  // QC result keyed by opening id.
+  const qcByOpening = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const o of qcQ.data ?? []) {
+      if (o.qc?.status) m.set(o.id, o.qc.status);
+    }
+    return m;
+  }, [qcQ.data]);
 
   // Projects that actually have issues (keeps the filter tidy).
   const projectOptions = useMemo(() => {
@@ -118,6 +141,8 @@ export function Issues() {
     const mark = URGENCY_MARK[i.urgency];
     const who = i.created_by ? (nameById.get(i.created_by) ?? "someone") : "system";
     const urgent = i.urgency !== "normal";
+    const hasOpenCase = Boolean(i.window_id && openCaseWindows.has(i.window_id));
+    const qcStatus = i.opening_id ? qcByOpening.get(i.opening_id) : undefined;
     return (
       <li key={i.id} className="find-row dispatch-row">
         <div style={{ minWidth: 0 }}>
@@ -150,6 +175,20 @@ export function Issues() {
                 }`
               : `opened by ${who} · ${fmtWhen(i.created_at)}`}
           </div>
+          {(hasOpenCase || qcStatus) && (
+            <div style={{ fontSize: 12, marginTop: 2, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {qcStatus && (
+                <Link to="/qc" className={qcStatus === "callback" ? "error" : "muted"}>
+                  QC: {qcStatus}
+                </Link>
+              )}
+              {hasOpenCase && (
+                <Link to="/service" className="warn-text">
+                  Open service case →
+                </Link>
+              )}
+            </div>
+          )}
         </div>
         {i.status === "open" && (
           <button
@@ -172,6 +211,9 @@ export function Issues() {
           <p className="home-greeting">Cross-project</p>
           <h1>Issues</h1>
         </div>
+        <Link to="/service" className="button-like">
+          Warranty / service →
+        </Link>
       </header>
 
       <p className="muted">

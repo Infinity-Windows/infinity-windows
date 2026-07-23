@@ -275,6 +275,9 @@ export function Service() {
           <p className="home-greeting">Cross-project · warranty</p>
           <h1>Service</h1>
         </div>
+        <Link to="/issues" className="button-like">
+          Issues →
+        </Link>
       </header>
 
       <p className="muted">
