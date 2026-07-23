@@ -128,7 +128,7 @@ export const NAV: NavDest[] = [
   { id: "scan", to: "/scan", label: "Scan", icon: "▣", minRole: "installer" },
   { id: "count", to: "/count", label: "Cycle count", icon: "#", minRole: "installer" },
   { id: "warehouse", to: "/warehouse", label: "Warehouse", icon: "▦", minRole: "installer" },
-  { id: "projects", to: "/projects", label: "Projects", icon: "▤", minRole: "installer" },
+  { id: "projects", to: "/projects", label: "Jobs", icon: "▤", minRole: "installer" },
   { id: "ask", to: "/ask", label: "Ask", icon: "?", minRole: "installer" },
   { id: "notifications", to: "/notifications", label: "Notifications", icon: "◔", minRole: "installer" },
   { id: "search", to: "/search", label: "Search", icon: "⌕", minRole: "installer" },
@@ -329,7 +329,7 @@ const MENU_DEF: MenuSection[] = [
   {
     title: "Tools",
     items: [
-      { to: "/supplies", label: "Materials", Icon: Boxes },
+      { to: "/supplies", label: "Supplies", Icon: Boxes },
       { to: "/ask", label: "Infinity AI", Icon: Sparkles },
       { to: "/knowledge", label: "AI Knowledge", Icon: BrainCircuit },
       { to: "/warehouse", label: "Warehouse", Icon: WarehouseIcon },
@@ -343,14 +343,14 @@ const MENU_DEF: MenuSection[] = [
       { to: "/points", label: "Points", Icon: Trophy },
       { to: "/review", label: "Memo review", Icon: ClipboardList },
       { to: "/safety", label: "Safety", Icon: ShieldCheck },
-      { to: "/tools", label: "Toolkit", Icon: Wrench },
+      { to: "/tools", label: "Tools", Icon: Wrench },
     ],
   },
   {
     title: "Account",
     items: [
       { to: "/notifications", label: "Notifications", Icon: Bell },
-      { to: "/settings", label: "Notifications & location", Icon: SlidersHorizontal },
+      { to: "/settings", label: "Settings", Icon: SlidersHorizontal },
       { to: "/admin", label: "Admin", Icon: ShieldCheck },
     ],
   },

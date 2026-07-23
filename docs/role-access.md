@@ -26,7 +26,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Memo review (`/review`)
 - Safety (`/safety`)
 - Notifications (`/notifications`)
-- Notifications & location (`/settings`)
+- Settings (`/settings`)
 
 **Can reach (all 24 allowed destinations):**
 
@@ -40,7 +40,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Scan (`/scan`)
 - Cycle count (`/count`)
 - Warehouse (`/warehouse`)
-- Projects (`/projects`)
+- Jobs (`/projects`)
 - Ask (`/ask`)
 - Notifications (`/notifications`)
 - Search (`/search`)
@@ -105,7 +105,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Training (`/training`)
 - Team (`/team`)
 - Roster (`/crew`)
-- Materials (`/supplies`)
+- Supplies (`/supplies`)
 - Infinity AI (`/ask`)
 - Warehouse (`/warehouse`)
 - Scan (`/scan`)
@@ -118,9 +118,9 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Points (`/points`)
 - Memo review (`/review`)
 - Safety (`/safety`)
-- Toolkit (`/tools`)
+- Tools (`/tools`)
 - Notifications (`/notifications`)
-- Notifications & location (`/settings`)
+- Settings (`/settings`)
 
 **Can reach (all 39 allowed destinations):**
 
@@ -134,7 +134,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Scan (`/scan`)
 - Cycle count (`/count`)
 - Warehouse (`/warehouse`)
-- Projects (`/projects`)
+- Jobs (`/projects`)
 - Ask (`/ask`)
 - Notifications (`/notifications`)
 - Search (`/search`)
@@ -203,7 +203,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Training (`/training`)
 - Team (`/team`)
 - Roster (`/crew`)
-- Materials (`/supplies`)
+- Supplies (`/supplies`)
 - Infinity AI (`/ask`)
 - AI Knowledge (`/knowledge`)
 - Warehouse (`/warehouse`)
@@ -217,9 +217,9 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Points (`/points`)
 - Memo review (`/review`)
 - Safety (`/safety`)
-- Toolkit (`/tools`)
+- Tools (`/tools`)
 - Notifications (`/notifications`)
-- Notifications & location (`/settings`)
+- Settings (`/settings`)
 - Admin (`/admin`)
 
 **Can reach (all 45 allowed destinations):**
@@ -234,7 +234,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Scan (`/scan`)
 - Cycle count (`/count`)
 - Warehouse (`/warehouse`)
-- Projects (`/projects`)
+- Jobs (`/projects`)
 - Ask (`/ask`)
 - Notifications (`/notifications`)
 - Search (`/search`)
@@ -304,7 +304,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Training (`/training`)
 - Team (`/team`)
 - Roster (`/crew`)
-- Materials (`/supplies`)
+- Supplies (`/supplies`)
 - Infinity AI (`/ask`)
 - AI Knowledge (`/knowledge`)
 - Warehouse (`/warehouse`)
@@ -318,9 +318,9 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Points (`/points`)
 - Memo review (`/review`)
 - Safety (`/safety`)
-- Toolkit (`/tools`)
+- Tools (`/tools`)
 - Notifications (`/notifications`)
-- Notifications & location (`/settings`)
+- Settings (`/settings`)
 - Admin (`/admin`)
 
 **Can reach (all 46 allowed destinations):**
@@ -335,7 +335,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Scan (`/scan`)
 - Cycle count (`/count`)
 - Warehouse (`/warehouse`)
-- Projects (`/projects`)
+- Jobs (`/projects`)
 - Ask (`/ask`)
 - Notifications (`/notifications`)
 - Search (`/search`)

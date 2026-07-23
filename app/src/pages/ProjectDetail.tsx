@@ -59,6 +59,7 @@ import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { ProjectMap } from "./install/ProjectMap";
 import { DispatchBoard } from "./install/DispatchBoard";
+import { PhotoFeed } from "../components/photos/PhotoFeed";
 
 type HubTab =
   | "overview"
@@ -66,7 +67,8 @@ type HubTab =
   | "map"
   | "brain"
   | "dispatch"
-  | "exceptions";
+  | "exceptions"
+  | "photos";
 
 export function ProjectDetail() {
   const { projectId = "" } = useParams();
@@ -77,7 +79,8 @@ export function ProjectDetail() {
     tabParam === "map" ||
     tabParam === "brain" ||
     tabParam === "dispatch" ||
-    tabParam === "exceptions"
+    tabParam === "exceptions" ||
+    tabParam === "photos"
       ? tabParam
       : "overview";
 
@@ -89,6 +92,7 @@ export function ProjectDetail() {
     { id: "overview", label: "Overview" },
     ...(isLead ? [{ id: "dispatch" as HubTab, label: "Dispatch" }] : []),
     { id: "warehouse", label: "Warehouse" },
+    { id: "photos", label: "Photos" },
     { id: "map", label: "Map" },
     ...(isLead ? [{ id: "exceptions" as HubTab, label: "Exceptions" }] : []),
     { id: "brain", label: "Brain" },
@@ -262,6 +266,10 @@ export function ProjectDetail() {
       )}
 
       {tab === "dispatch" && isLead && <DispatchBoard projectId={projectId} />}
+
+      {tab === "photos" && (
+        <PhotoFeed projectId={projectId} selectedJobCode={project?.job_code ?? null} />
+      )}
 
       {tab === "map" && <ProjectMap embedded />}
 

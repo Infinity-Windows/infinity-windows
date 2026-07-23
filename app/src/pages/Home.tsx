@@ -210,54 +210,13 @@ export function Home() {
               All jobs ›
             </Link>
           </div>
-          <div className="home-projects">
-            {projectCards.map((p) => (
-              <Link key={p.id} to={`/projects/${p.id}/map`} className="project-card home-project">
-                <div className="home-project-head">
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 16 }}>{p.name}</div>
-                    <div className="muted" style={{ fontSize: 12 }}>{p.sub}</div>
-                  </div>
-                  <span
-                    style={{
-                      fontFamily: "var(--font-display)",
-                      fontWeight: 700,
-                      fontSize: 15,
-                      color: p.pctColor,
-                      flex: "none",
-                    }}
-                  >
-                    {p.pctLabel}
-                  </span>
-                </div>
-                <div className="points-tier-bar" aria-hidden>
-                  <div
-                    className="points-tier-fill"
-                    style={{ width: `${p.pct}%`, background: p.pctColor }}
-                  />
-                </div>
-                <div className="home-project-meta">
-                  <span>
-                    <i className="dot-info" /> {p.winLabel}
-                  </span>
-                  <span>
-                    <i className="dot-ok" /> {p.doneLabel}
-                  </span>
-                </div>
-              </Link>
-            ))}
-            {projects.isLoading && <SkeletonList rows={3} />}
-            {projects.isError && (
-              <QueryError
-                error={projects.error}
-                onRetry={() => void projects.refetch()}
-                label="Couldn't load jobs"
-              />
-            )}
-            {!projects.isLoading && !projects.isError && projectCards.length === 0 && (
-              <p className="muted">No active jobs yet.</p>
-            )}
-          </div>
+          <HomeProjectsGrid
+            cards={projectCards}
+            isLoading={projects.isLoading}
+            isError={projects.isError}
+            error={projects.error}
+            onRetry={() => void projects.refetch()}
+          />
 
           <div className="warehouse-grid">
             <Link to="/team" className="warehouse-tile">
@@ -372,55 +331,86 @@ export function Home() {
           <div className="home-section-head">
             <h2 style={{ margin: 0 }}>Active projects</h2>
           </div>
-          <div className="home-projects">
-            {projectCards.map((p) => (
-              <Link key={p.id} to={`/projects/${p.id}/map`} className="project-card home-project">
-                <div className="home-project-head">
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 16 }}>{p.name}</div>
-                    <div className="muted" style={{ fontSize: 12 }}>{p.sub}</div>
-                  </div>
-                  <span
-                    style={{
-                      fontFamily: "var(--font-display)",
-                      fontWeight: 700,
-                      fontSize: 15,
-                      color: p.pctColor,
-                      flex: "none",
-                    }}
-                  >
-                    {p.pctLabel}
-                  </span>
-                </div>
-                <div className="points-tier-bar" aria-hidden>
-                  <div
-                    className="points-tier-fill"
-                    style={{ width: `${p.pct}%`, background: p.pctColor }}
-                  />
-                </div>
-                <div className="home-project-meta">
-                  <span>
-                    <i className="dot-info" /> {p.winLabel}
-                  </span>
-                  <span>
-                    <i className="dot-ok" /> {p.doneLabel}
-                  </span>
-                </div>
-              </Link>
-            ))}
-            {projects.isLoading && <SkeletonList rows={3} />}
-            {projects.isError && (
-              <QueryError
-                error={projects.error}
-                onRetry={() => void projects.refetch()}
-                label="Couldn't load jobs"
-              />
-            )}
-            {!projects.isLoading && !projects.isError && projectCards.length === 0 && (
-              <p className="muted">No active jobs yet.</p>
-            )}
-          </div>
+          <HomeProjectsGrid
+            cards={projectCards}
+            isLoading={projects.isLoading}
+            isError={projects.isError}
+            error={projects.error}
+            onRetry={() => void projects.refetch()}
+          />
         </>
+      )}
+    </div>
+  );
+}
+
+interface HomeProjectCard {
+  id: string;
+  name: string;
+  sub: string;
+  pct: number;
+  pctLabel: string;
+  pctColor: string;
+  winLabel: string;
+  doneLabel: string;
+}
+
+function HomeProjectsGrid({
+  cards,
+  isLoading,
+  isError,
+  error,
+  onRetry,
+}: {
+  cards: HomeProjectCard[];
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="home-projects">
+      {cards.map((p) => (
+        <Link key={p.id} to={`/projects/${p.id}/map`} className="project-card home-project">
+          <div className="home-project-head">
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 16 }}>{p.name}</div>
+              <div className="muted" style={{ fontSize: 12 }}>{p.sub}</div>
+            </div>
+            <span
+              style={{
+                fontFamily: "var(--font-display)",
+                fontWeight: 700,
+                fontSize: 15,
+                color: p.pctColor,
+                flex: "none",
+              }}
+            >
+              {p.pctLabel}
+            </span>
+          </div>
+          <div className="points-tier-bar" aria-hidden>
+            <div
+              className="points-tier-fill"
+              style={{ width: `${p.pct}%`, background: p.pctColor }}
+            />
+          </div>
+          <div className="home-project-meta">
+            <span>
+              <i className="dot-info" /> {p.winLabel}
+            </span>
+            <span>
+              <i className="dot-ok" /> {p.doneLabel}
+            </span>
+          </div>
+        </Link>
+      ))}
+      {isLoading && <SkeletonList rows={3} />}
+      {isError && (
+        <QueryError error={error} onRetry={onRetry} label="Couldn't load jobs" />
+      )}
+      {!isLoading && !isError && cards.length === 0 && (
+        <p className="muted">No active jobs yet.</p>
       )}
     </div>
   );

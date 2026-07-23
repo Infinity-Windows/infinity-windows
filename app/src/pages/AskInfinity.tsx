@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Sparkles } from "lucide-react";
 import { CATS, TERMS } from "../lib/glossary";
@@ -122,10 +122,27 @@ export function AskInfinity() {
 
   const [thinking, setThinking] = useState(false);
 
-  const suggestions = useMemo(
-    () => ["What's on our schedule?", "Single hung tips", "What is flashing?"],
-    [],
+  const [online, setOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine,
   );
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
+
+  // The offline brain can't answer "what's on our schedule" (it has no live app
+  // data), so only offer that chip when the cloud Ask path is actually usable.
+  const canAskLive = shouldUseLLM({ online, supabaseConfigured });
+  const suggestions = useMemo(() => {
+    const base = ["Single hung tips", "What is flashing?"];
+    return canAskLive ? ["What's on our schedule?", ...base] : base;
+  }, [canAskLive]);
 
   const send = (text: string) => {
     const q = text.trim();
