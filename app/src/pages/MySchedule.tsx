@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { CalendarClock, Clock, MapPin, Users } from "lucide-react";
@@ -72,9 +72,10 @@ export function MySchedule() {
               {day.entries.map((entry) => {
                 const a = entry.assignment;
                 const mates = myId ? crewmateNames(a, myId) : [];
+                const isToday = day.day === today && entry.isFirstDay;
                 return (
+                  <Fragment key={`${a.id}-${entry.day}`}>
                   <Link
-                    key={`${a.id}-${entry.day}`}
                     to={`/projects/${a.project_id}?tab=map`}
                     className="sched-agenda-card"
                     style={{ borderLeftColor: assignmentColor(a) }}
@@ -101,6 +102,12 @@ export function MySchedule() {
                       {!entry.isFirstDay && <span className="muted" style={{ fontSize: 11 }}>cont.</span>}
                     </div>
                   </Link>
+                  {isToday && (
+                    <Link to="/my-work" className="button-like sched-start-work">
+                      Start work ›
+                    </Link>
+                  )}
+                  </Fragment>
                 );
               })}
             </section>

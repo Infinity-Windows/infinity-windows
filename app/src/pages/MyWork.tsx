@@ -15,6 +15,15 @@ import { openingReadiness } from "../lib/install/fit";
 import { areaKey, toDispatchOpening } from "../lib/install/nextOpening";
 import { isForemanPlus, type ProjectOpening } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { getOpenShift } from "../lib/timeclock";
+import { listMyPublished } from "../lib/schedule/api";
+import { formatStartTime } from "../lib/schedule/dates";
+
+function todayLocalISO(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 export function MyWork() {
   const navigate = useNavigate();
@@ -28,6 +37,17 @@ export function MyWork() {
   const toConfirm = useQuery({
     queryKey: ["memosToConfirm", me.data?.id],
     queryFn: () => listMemosToConfirm(me.data!.id),
+    enabled: Boolean(me.data?.id),
+  });
+  const todayISO = todayLocalISO();
+  const openShift = useQuery({
+    queryKey: ["openShift", me.data?.id],
+    queryFn: () => getOpenShift(me.data!.id),
+    enabled: Boolean(me.data?.id),
+  });
+  const todayPublished = useQuery({
+    queryKey: ["mySchedule", me.data?.id, todayISO, todayISO],
+    queryFn: () => listMyPublished(me.data!.id, todayISO, todayISO),
     enabled: Boolean(me.data?.id),
   });
   useRealtimeMyOpenings(me.data?.id);
@@ -57,9 +77,19 @@ export function MyWork() {
   const activeInstall = ordered.find(
     (o) => o.work_started_at && o.status !== "installed",
   );
-  const queue = activeInstall
+  // Today's published assignment anchors the day: that job's openings sort first
+  // (stable within orderMyWork) so My Work opens on where you're expected today.
+  const todayAssignment = (todayPublished.data ?? [])[0] ?? null;
+  const todayJobId = todayAssignment?.project_id ?? null;
+  const baseQueue = activeInstall
     ? ordered.filter((o) => o.id !== activeInstall.id)
     : ordered;
+  const queue = todayJobId
+    ? [
+        ...baseQueue.filter((o) => o.project_id === todayJobId),
+        ...baseQueue.filter((o) => o.project_id !== todayJobId),
+      ]
+    : baseQueue;
   const next = queue[0];
   // Explicit first→last numbering over the do-order list, so every card/row can
   // show "you are here" (#1 is the Next card; #2, #3 … follow). Derived from the
@@ -154,6 +184,34 @@ export function MyWork() {
         {me.data?.display_name ? `${me.data.display_name} — ` : ""}do the top
         window next; capture as you go.
       </p>
+
+      {todayAssignment && (
+        <div className="today-strip home-card">
+          <div className="home-card-top">
+            <span className="next-label">Today</span>
+            {todayAssignment.start_time && (
+              <span className="muted" style={{ fontSize: 12 }}>
+                {formatStartTime(todayAssignment.start_time)}
+              </span>
+            )}
+          </div>
+          <strong style={{ fontSize: 15 }}>
+            {todayAssignment.project?.name ??
+              todayAssignment.project?.job_code ??
+              "Your job today"}
+          </strong>
+          {todayAssignment.project?.address && (
+            <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
+              {todayAssignment.project.address}
+            </p>
+          )}
+          {!openShift.data && (
+            <Link to="/clock" className="home-card-cta">
+              Clock in for this job ›
+            </Link>
+          )}
+        </div>
+      )}
 
       {newlyAssigned > 0 && (
         <div className="assign-toast" onClick={() => setNewlyAssigned(0)}>

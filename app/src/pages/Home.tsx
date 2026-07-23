@@ -14,7 +14,10 @@ import { TERMS } from "../lib/glossary";
 import { listMyProgress } from "../lib/learn";
 import { listLedger } from "../lib/points";
 import { supabase } from "../lib/supabase";
-import { getOpenShift } from "../lib/timeclock";
+import { getOpenShift, listShiftsToApprove } from "../lib/timeclock";
+import { listInstalledForQc } from "../lib/ops";
+import { getHeartbeat } from "../lib/heartbeat";
+import { listAssignments } from "../lib/schedule/api";
 import { ToolboxTalkNagBanner } from "../components/time/ToolboxTalkNagBanner";
 
 interface OpeningCountRow {
@@ -70,6 +73,9 @@ export function Home() {
   const role = effectiveRole(me.data?.role, view);
   const boss = isOwner(role);
   const manager = roleRank(role) >= 1;
+  // Exactly foreman (not supervisor/owner): lead their Home with what's awaiting
+  // them + today's crews instead of the installer-first content.
+  const foreman = roleRank(role) === 1;
   const profileId = me.data?.id;
 
   const openShift = useQuery({
@@ -98,6 +104,35 @@ export function Home() {
     enabled: Boolean(profileId),
   });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+
+  // Foreman-only "Awaiting you" + "Today's crews" sources. These reuse the exact
+  // computations from Notifications (QC / timecards) and Heartbeat (open issues),
+  // and share their query keys so the cache is warm across pages.
+  const todayISO = useMemo(() => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }, []);
+  const qcPending = useQuery({
+    queryKey: ["qcInstalled"],
+    queryFn: listInstalledForQc,
+    enabled: foreman,
+  });
+  const shiftsToApprove = useQuery({
+    queryKey: ["shiftsToApprove"],
+    queryFn: listShiftsToApprove,
+    enabled: foreman,
+  });
+  const heartbeat = useQuery({
+    queryKey: ["heartbeat"],
+    queryFn: getHeartbeat,
+    enabled: foreman,
+  });
+  const todayCrews = useQuery({
+    queryKey: ["homeTodayCrews", todayISO],
+    queryFn: () => listAssignments(todayISO, todayISO),
+    enabled: foreman,
+  });
   const openingCounts = useQuery({
     queryKey: ["openingCounts"],
     queryFn: async (): Promise<OpeningCountRow[]> => {
@@ -154,6 +189,16 @@ export function Home() {
     (o) => o.id !== activeOpening?.id && openingReadiness(o).status === "ready",
   );
 
+  const pendingQc = (qcPending.data ?? []).filter(
+    (r) => !r.qc || r.qc.status !== "passed",
+  );
+  const timecards = shiftsToApprove.data ?? [];
+  const openIssues = (heartbeat.data?.projects ?? []).reduce(
+    (s, p) => s + p.openIssues,
+    0,
+  );
+  const crews = (todayCrews.data ?? []).filter((a) => a.status === "published");
+
   const projectCards = (projects.data ?? []).slice(0, 6).map((p) => {
     const oc = (openingCounts.data ?? []).filter((r) => r.project_id === p.id);
     const total = oc.length;
@@ -202,6 +247,112 @@ export function Home() {
 
       <ToolboxTalkNagBanner profileId={profileId} clockedIn={Boolean(openShift.data)} />
 
+      {foreman ? (
+        <>
+          <div className="home-section-head">
+            <h2 style={{ margin: 0 }}>Awaiting you</h2>
+            <Link to="/notifications" className="muted home-seeall">
+              All ›
+            </Link>
+          </div>
+          {pendingQc.length === 0 && timecards.length === 0 && openIssues === 0 ? (
+            <p className="muted">You're all caught up.</p>
+          ) : (
+            <div className="notif-list">
+              {pendingQc.length > 0 && (
+                <Link to="/qc" className="notif-row">
+                  <i className="dot-warn" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600 }}>
+                      {pendingQc.length} install{pendingQc.length > 1 ? "s" : ""} awaiting QC
+                    </div>
+                    <div className="muted" style={{ fontSize: 12.5 }}>
+                      Sign off passes and callbacks
+                    </div>
+                  </div>
+                  <span className="muted">›</span>
+                </Link>
+              )}
+              {timecards.length > 0 && (
+                <Link to="/clock" className="notif-row">
+                  <i className="dot-warn" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600 }}>
+                      {timecards.length} timecard{timecards.length > 1 ? "s" : ""} to approve
+                    </div>
+                    <div className="muted" style={{ fontSize: 12.5 }}>
+                      Review submitted shifts
+                    </div>
+                  </div>
+                  <span className="muted">›</span>
+                </Link>
+              )}
+              {openIssues > 0 && (
+                <Link to="/issues" className="notif-row">
+                  <i className="dot-warn" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600 }}>
+                      {openIssues} open blocker{openIssues > 1 ? "s" : ""}
+                    </div>
+                    <div className="muted" style={{ fontSize: 12.5 }}>
+                      Open issues on active jobs
+                    </div>
+                  </div>
+                  <span className="muted">›</span>
+                </Link>
+              )}
+            </div>
+          )}
+
+          <div className="home-section-head">
+            <h2 style={{ margin: 0 }}>Today's crews</h2>
+            <Link to="/scheduling" className="muted home-seeall">
+              Schedule ›
+            </Link>
+          </div>
+          {crews.length === 0 ? (
+            <p className="muted">No crews scheduled today.</p>
+          ) : (
+            <div className="notif-list">
+              {crews.map((a) => (
+                <Link
+                  key={a.id}
+                  to={`/projects/${a.project_id}?tab=map`}
+                  className="notif-row"
+                >
+                  <i className="dot-info" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600 }}>
+                      {a.project?.name ?? a.project?.job_code ?? "Job"}
+                    </div>
+                    <div className="muted" style={{ fontSize: 12.5 }}>
+                      {a.members.length > 0
+                        ? a.members.map((m) => m.display_name ?? "crew").join(", ")
+                        : "No crew assigned"}
+                    </div>
+                  </div>
+                  <span className="muted">›</span>
+                </Link>
+              ))}
+            </div>
+          )}
+
+          <div className="home-section-head">
+            <h2 style={{ margin: 0 }}>Active projects</h2>
+            <Link to="/projects" className="muted home-seeall">
+              All jobs ›
+            </Link>
+          </div>
+          <HomeProjectsGrid
+            cards={projectCards}
+            isLoading={projects.isLoading}
+            isError={projects.isError}
+            error={projects.error}
+            onRetry={() => void projects.refetch()}
+          />
+        </>
+      ) : (
+        <>
       {manager && (
         <>
           <div className="home-section-head">
@@ -338,6 +489,8 @@ export function Home() {
             error={projects.error}
             onRetry={() => void projects.refetch()}
           />
+        </>
+      )}
         </>
       )}
     </div>
