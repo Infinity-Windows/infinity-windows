@@ -4928,6 +4928,49 @@ button.clock-out {
 .clock-project-code { font-weight: 700; font-size: 13.5px; }
 .clock-project-name { font-size: 12px; color: var(--muted); }
 
+/* Cost-code picker: full code + label, wraps instead of truncating. */
+.clock-costcode-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.clock-costcode-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--card-raised);
+  padding: 10px 14px;
+  cursor: pointer;
+  color: var(--text);
+}
+.clock-costcode-item:hover { border-color: var(--accent-line); }
+.clock-costcode-item.selected { border-color: var(--ok); background: rgba(62, 207, 110, 0.14); }
+.clock-costcode-code {
+  font-weight: 600;
+  font-size: 13.5px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.clock-costcode-desc { font-size: 12px; color: var(--muted); white-space: normal; }
+
+/* Optional worker note at clock-in. */
+.clock-note-input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--card-raised);
+  color: var(--text);
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+  min-height: 64px;
+}
+.clock-note-input:focus { outline: none; border-color: var(--accent-line); }
+
 .clock-pick-summary {
   margin: 0;
   text-align: center;

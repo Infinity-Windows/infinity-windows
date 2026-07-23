@@ -206,6 +206,8 @@ export interface ClockInInput {
   costCodeId: string | null;
   lat?: number | null;
   lng?: number | null;
+  /** Optional worker note for the office, carried through to sync. */
+  note?: string | null;
 }
 
 /** Enqueue a clock-in. Returns the entry id, usable as a pending shift ref. */
@@ -217,6 +219,7 @@ export function enqueueClockIn(input: ClockInInput): Promise<string> {
       costCodeId: input.costCodeId,
       lat: input.lat ?? null,
       lng: input.lng ?? null,
+      note: input.note ?? null,
     },
   });
 }
