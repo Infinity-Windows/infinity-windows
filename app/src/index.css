@@ -7160,7 +7160,7 @@ body {
   margin-top: 8px;
 }
 
-.pin-input {
+.vault-pin-input {
   width: 100%;
   padding: 10px 12px;
   border-radius: 9px;
@@ -7171,7 +7171,7 @@ body {
   letter-spacing: 0.08em;
 }
 
-.pin-input:focus {
+.vault-pin-input:focus {
   outline: none;
   border-color: var(--accent-line);
 }
