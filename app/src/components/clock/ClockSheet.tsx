@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { listProjects } from "../../lib/api";
+import { listMyPublished } from "../../lib/schedule/api";
 import { captureGeoSoft } from "../../lib/geo";
 import { pushToast, toastError, toastSuccess } from "../../lib/toast";
 import { isNetworkError } from "../../lib/offline/outbox-core";
@@ -45,6 +46,12 @@ const BREAK_ICONS: Record<BreakType, LucideIcon> = {
   other: Pause,
 };
 
+function todayLocalISO(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 type Mode = "pick" | "main" | "break-type" | "switch";
 
 export function ClockSheet({
@@ -75,6 +82,13 @@ export function ClockSheet({
     queryFn: () => listRecentJobs(profileId!),
     enabled: Boolean(profileId),
   });
+  const todayISO = todayLocalISO();
+  const scheduledToday = useQuery({
+    queryKey: ["mySchedule", profileId, todayISO, todayISO],
+    queryFn: () => listMyPublished(profileId!, todayISO, todayISO),
+    enabled: Boolean(profileId) && !shift,
+  });
+  const scheduled = scheduledToday.data?.[0] ?? null;
 
   // Follow the shift state: entering a shift -> main; leaving -> pick.
   useEffect(() => {
@@ -87,16 +101,25 @@ export function ClockSheet({
     return () => clearInterval(t);
   }, []);
 
-  // Prime the picker with the most recent job so "Resume" is one tap.
+  // Prime the picker with today's scheduled job when there is one (fewer wrong
+  // clock-ins), otherwise fall back to the most recent job so "Resume" is one tap.
   useEffect(() => {
     if (primedRef.current || shift) return;
     const r = recents.data?.[0];
+    if (scheduled) {
+      primedRef.current = true;
+      setPickProjectId(scheduled.project_id);
+      const match = recents.data?.find((j) => j.projectId === scheduled.project_id);
+      const costCodeId = match?.costCodeId ?? r?.costCodeId;
+      if (costCodeId) setPickCostCodeId(costCodeId);
+      return;
+    }
     if (r) {
       primedRef.current = true;
       setPickProjectId(r.projectId);
       if (r.costCodeId) setPickCostCodeId(r.costCodeId);
     }
-  }, [recents.data, shift]);
+  }, [scheduled, recents.data, shift]);
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["openShift"] });
@@ -561,6 +584,28 @@ export function ClockSheet({
                     Currently on <strong>{shift.projects?.job_code ?? "a job"}</strong> — no gap, the
                     switch closes it cleanly.
                   </p>
+                )}
+
+                {/* Scheduled today — pre-selects the right job for clock-in */}
+                {!shift && scheduled && (
+                  <div className="clock-chip-row-wrap">
+                    <p className="clock-row-label">Scheduled today</p>
+                    <div className="clock-chip-row">
+                      <button
+                        type="button"
+                        className={
+                          pickProjectId === scheduled.project_id
+                            ? "clock-chip current"
+                            : "clock-chip"
+                        }
+                        onClick={() => setPickProjectId(scheduled.project_id)}
+                      >
+                        {scheduled.project?.job_code ??
+                          scheduled.project?.name ??
+                          "Today's job"}
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 {/* Recent jobs chips */}

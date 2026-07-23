@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Plane, Truck } from "lucide-react";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
+import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
   getMyProfile,
   listMemosToConfirm,
@@ -18,6 +19,9 @@ import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { getOpenShift } from "../lib/timeclock";
 import { listMyPublished } from "../lib/schedule/api";
 import { formatStartTime } from "../lib/schedule/dates";
+import { listVehicleLinksForAssignments } from "../lib/vehicles/api";
+import { vehicleTitle } from "../lib/vehicles/display";
+import { listTrips } from "../lib/travel/api";
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -50,6 +54,19 @@ export function MyWork() {
     queryFn: () => listMyPublished(me.data!.id, todayISO, todayISO),
     enabled: Boolean(me.data?.id),
   });
+  // Same read-only helpers My Schedule uses, so the Today strip can show the
+  // assigned truck and any travel for today's job.
+  const todayAssignmentId = (todayPublished.data ?? [])[0]?.id ?? null;
+  const todayVehicles = useQuery({
+    queryKey: ["myScheduleVehicles", todayAssignmentId ? [todayAssignmentId] : []],
+    queryFn: () => listVehicleLinksForAssignments([todayAssignmentId!]),
+    enabled: Boolean(todayAssignmentId),
+  });
+  const trips = useQuery({
+    queryKey: ["trips"],
+    queryFn: listTrips,
+    enabled: Boolean(todayAssignmentId),
+  });
   useRealtimeMyOpenings(me.data?.id);
 
   const rows = openings.data ?? [];
@@ -81,6 +98,13 @@ export function MyWork() {
   // (stable within orderMyWork) so My Work opens on where you're expected today.
   const todayAssignment = (todayPublished.data ?? [])[0] ?? null;
   const todayJobId = todayAssignment?.project_id ?? null;
+  const todayVehicleLink = (todayVehicles.data ?? []).find((l) => l.vehicle);
+  const todayTruck = todayVehicleLink?.vehicle
+    ? vehicleTitle(todayVehicleLink.vehicle)
+    : null;
+  const todayTrip = todayJobId
+    ? (trips.data ?? []).find((t) => t.project_id === todayJobId) ?? null
+    : null;
   const baseQueue = activeInstall
     ? ordered.filter((o) => o.id !== activeInstall.id)
     : ordered;
@@ -195,21 +219,63 @@ export function MyWork() {
               </span>
             )}
           </div>
-          <strong style={{ fontSize: 15 }}>
-            {todayAssignment.project?.name ??
-              todayAssignment.project?.job_code ??
-              "Your job today"}
-          </strong>
-          {todayAssignment.project?.address && (
-            <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
-              {todayAssignment.project.address}
-            </p>
+          <Link
+            to={`/projects/${todayAssignment.project_id}`}
+            style={{ display: "block", color: "inherit", textDecoration: "none" }}
+          >
+            <strong style={{ fontSize: 15 }}>
+              {todayAssignment.project?.name ??
+                todayAssignment.project?.job_code ??
+                "Your job today"}
+            </strong>
+            {todayAssignment.project?.address && (
+              <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
+                {todayAssignment.project.address}
+              </p>
+            )}
+          </Link>
+          {(todayTruck || todayTrip) && (
+            <div
+              className="muted"
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 12,
+                marginTop: 6,
+                fontSize: 12.5,
+              }}
+            >
+              {todayTruck && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <Truck size={13} aria-hidden /> {todayTruck}
+                </span>
+              )}
+              {todayTrip && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <Plane size={13} aria-hidden /> Travel: {todayTrip.destination || todayTrip.name}
+                </span>
+              )}
+            </div>
           )}
-          {!openShift.data && (
-            <Link to="/clock" className="home-card-cta">
-              Clock in for this job ›
-            </Link>
-          )}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 10,
+              marginTop: 8,
+            }}
+          >
+            <DirectionsButton
+              address={todayAssignment.project?.address}
+              title="Directions to today's job"
+            />
+            {!openShift.data && (
+              <Link to="/clock" className="home-card-cta">
+                Clock in for this job ›
+              </Link>
+            )}
+          </div>
         </div>
       )}
 

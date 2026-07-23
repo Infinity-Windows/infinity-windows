@@ -12,8 +12,15 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { listProjects } from "../../lib/api";
 import { listRecentJobs } from "../../lib/timeclock";
+import { listMyPublished } from "../../lib/schedule/api";
 import { useClock } from "../../lib/clockContext";
 import { useFocusTrap } from "../../lib/useFocusTrap";
+
+function todayLocalISO(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 interface CaptureSheetProps {
   open: boolean;
@@ -76,16 +83,23 @@ const ACTIONS: CaptureAction[] = [
 /** Quick-capture bottom sheet opened by the center Capture (+) FAB. */
 export function CaptureSheet({ open, onClose }: CaptureSheetProps) {
   const navigate = useNavigate();
-  const { profileId } = useClock();
+  const { profileId, shift } = useClock();
   const [selectedId, setSelectedId] = useState<string>("");
   const [search, setSearch] = useState("");
   const [showList, setShowList] = useState(false);
+  const primedRef = useRef(false);
   const sheetRef = useRef<HTMLDivElement>(null);
   useFocusTrap(sheetRef, open, onClose);
 
   const recents = useQuery({
     queryKey: ["recentJobs", profileId],
     queryFn: () => listRecentJobs(profileId!),
+    enabled: open && Boolean(profileId),
+  });
+  const todayISO = todayLocalISO();
+  const scheduledToday = useQuery({
+    queryKey: ["mySchedule", profileId, todayISO, todayISO],
+    queryFn: () => listMyPublished(profileId!, todayISO, todayISO),
     enabled: open && Boolean(profileId),
   });
   const projects = useQuery({
@@ -99,8 +113,20 @@ export function CaptureSheet({ open, onClose }: CaptureSheetProps) {
       setSelectedId("");
       setSearch("");
       setShowList(false);
+      primedRef.current = false;
     }
   }, [open]);
+
+  // Default the capture context to today's job — the open shift you're on, or
+  // today's published assignment — so captures land on the right job by default.
+  useEffect(() => {
+    if (!open || primedRef.current) return;
+    const todayJob = shift?.project_id ?? scheduledToday.data?.[0]?.project_id ?? null;
+    if (todayJob) {
+      primedRef.current = true;
+      setSelectedId(todayJob);
+    }
+  }, [open, shift?.project_id, scheduledToday.data]);
 
   const filtered = useMemo(() => {
     const list = projects.data ?? [];
