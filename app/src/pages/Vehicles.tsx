@@ -6,8 +6,11 @@ import { listProfiles } from "../lib/install/api";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { VehicleCard } from "../components/vehicles/VehicleCard";
 import { VehicleEditor } from "../components/vehicles/VehicleEditor";
+import { FleetFinancialsSection } from "../components/vehicles/FleetFinancialsSection";
 import { createVehicle, listVehicles } from "../lib/vehicles/api";
 import { filterBySegment, segmentCounts, sortVehicles } from "../lib/vehicles/localFilters";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { canSeeFinancials } from "../lib/vehicles/financials";
 import { toastSuccess } from "../lib/toast";
 import type { VehicleInput, VehicleSegment } from "../lib/vehicles/types";
 
@@ -31,6 +34,8 @@ export function Vehicles() {
   const nowMs = Date.now();
   const [segment, setSegment] = useState<VehicleSegment>("all");
   const [editing, setEditing] = useState(false);
+  const { realRole, isPreviewing } = useEffectiveRole();
+  const showFinancials = canSeeFinancials({ realRole, isPreviewing });
 
   const vehicles = useQuery({ queryKey: ["vehicles"], queryFn: listVehicles });
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
@@ -83,6 +88,8 @@ export function Vehicles() {
           </button>
         </div>
       </div>
+
+      {showFinancials && all.length > 0 && <FleetFinancialsSection vehicleCount={all.length} />}
 
       {vehicles.isError && (
         <QueryError error={vehicles.error} onRetry={() => void vehicles.refetch()} label="Couldn't load the fleet" />
