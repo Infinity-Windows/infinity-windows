@@ -6928,6 +6928,8 @@ body {
   color: var(--muted);
 }
 .sched-agenda-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.sched-start-work { align-self: flex-start; margin: -4px 0 12px; }
+.today-strip { border-left: 5px solid var(--accent); }
 .sched-agenda-time {
   display: inline-flex;
   align-items: center;

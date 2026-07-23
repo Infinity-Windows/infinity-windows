@@ -12,7 +12,7 @@ import {
   shapeMatches,
   shouldUseLLM,
 } from "../../../supabase/functions/_shared/knowledge";
-import { pageNotes, type VaultNote } from "./knowledge";
+import { liveAnswer, pageNotes, type AskLiveData, type VaultNote } from "./knowledge";
 
 describe("chunkMarkdown", () => {
   const words = Array.from({ length: 400 }, (_, i) => `word${i}`).join(" ");
@@ -211,5 +211,170 @@ describe("pageNotes (upload batching)", () => {
     const pages = pageNotes([note("big.md", 5000)], 100, 1000);
     expect(pages).toHaveLength(1);
     expect(pages[0][0].path).toBe("big.md");
+  });
+});
+
+describe("liveAnswer (offline grounding from the query cache)", () => {
+  const TODAY = "2026-07-23"; // a Thursday
+
+  const opening = (over: Record<string, unknown>) =>
+    ({
+      id: "o1",
+      project_id: "p1",
+      opening_code: "W1",
+      status: "assigned",
+      window_type_id: null,
+      assigned_window_id: null,
+      condition: "unknown",
+      ro_width_in: null,
+      ro_height_in: null,
+      sequence: null,
+      work_started_at: null,
+      label: "Kitchen",
+      page_number: 1,
+      window_types: { type_code: "SL7248" },
+      projects: { job_code: "J12" },
+      ...over,
+    }) as unknown as NonNullable<AskLiveData["openings"]>[number];
+
+  const base: AskLiveData = { todayISO: TODAY };
+
+  it("returns null for an unrelated question so the caller falls back", () => {
+    expect(liveAnswer("what is a nail fin?", { ...base, openings: [opening({})] })).toBeNull();
+  });
+
+  it("routes 'my next window' to the top of the ordered worklist", () => {
+    const data: AskLiveData = {
+      ...base,
+      openings: [
+        opening({ id: "a", opening_code: "W9", sequence: 2 }),
+        opening({ id: "b", opening_code: "W3", sequence: 1 }),
+      ],
+    };
+    const answer = liveAnswer("what's my next window?", data);
+    expect(answer).toContain("Your next window:");
+    expect(answer).toContain("W3");
+    expect(answer).toContain("1 more in your queue");
+  });
+
+  it("surfaces an in-progress install as mid-install", () => {
+    const data: AskLiveData = {
+      ...base,
+      openings: [
+        opening({ id: "a", opening_code: "W9", sequence: 2, work_started_at: "2026-07-23T15:00:00Z" }),
+        opening({ id: "b", opening_code: "W3", sequence: 1 }),
+      ],
+    };
+    const answer = liveAnswer("what's next?", data);
+    expect(answer).toContain("You're mid-install:");
+    expect(answer).toContain("W9");
+  });
+
+  it("says caught up when everything is installed, null when the cache is cold", () => {
+    expect(
+      liveAnswer("my next window", { ...base, openings: [opening({ status: "installed" })] }),
+    ).toContain("caught up");
+    expect(liveAnswer("my next window", base)).toBeNull();
+  });
+
+  const assignment = (over: Record<string, unknown>) =>
+    ({
+      id: "s1",
+      project_id: "p1",
+      start_date: TODAY,
+      end_date: TODAY,
+      start_time: "06:30:00",
+      status: "published",
+      members: [],
+      project: { job_code: "J12", name: "Maple St" },
+      ...over,
+    }) as unknown as NonNullable<AskLiveData["schedule"]>[number];
+
+  it("summarizes this week's published schedule", () => {
+    const data: AskLiveData = {
+      ...base,
+      profileId: "me",
+      schedule: [assignment({})],
+    };
+    const answer = liveAnswer("what's on our schedule?", data);
+    expect(answer).toContain("Your schedule this week:");
+    expect(answer).toContain("Maple St");
+  });
+
+  it("reports an empty week and null when the schedule cache is cold", () => {
+    expect(
+      liveAnswer("my schedule this week", {
+        ...base,
+        schedule: [assignment({ start_date: "2026-09-01", end_date: "2026-09-01" })],
+      }),
+    ).toContain("Nothing on your published schedule");
+    expect(liveAnswer("my schedule this week", base)).toBeNull();
+  });
+
+  const issue = (over: Record<string, unknown>) =>
+    ({
+      id: "i1",
+      project_id: "p1",
+      opening_id: null,
+      window_id: null,
+      kind: "blocker",
+      urgency: "urgent",
+      status: "open",
+      note: "Missing brackets",
+      created_at: "2026-07-20T00:00:00Z",
+      ...over,
+    }) as unknown as NonNullable<AskLiveData["issues"]>[number];
+
+  const issuesData = (role: string | null): AskLiveData => ({
+    ...base,
+    role,
+    issues: [issue({}), issue({ id: "i2", status: "resolved" })],
+    projects: [{ id: "p1", job_code: "J12", name: "Maple St" }],
+  });
+
+  it("lists open issues on a named job for a foreman+", () => {
+    const answer = liveAnswer("open issues on job J12", issuesData("foreman"));
+    expect(answer).toContain("Open issues on J12");
+    expect(answer).toContain("Blocker");
+    expect(answer).toContain("Missing brackets");
+  });
+
+  it("hides issues from a plain installer (role scoping)", () => {
+    expect(liveAnswer("open issues on job J12", issuesData("installer"))).toBeNull();
+  });
+
+  it("falls back when the named job can't be found", () => {
+    expect(liveAnswer("open issues on job ZZ99", issuesData("foreman"))).toBeNull();
+  });
+
+  const vehicle = (over: Record<string, unknown>) =>
+    ({
+      id: "v1",
+      kind: "pickup",
+      year: 2021,
+      make: "Ford",
+      model: "F-150",
+      plate: "ABC-1234",
+      odometer: null,
+      next_service_date: "2026-06-01",
+      ...over,
+    }) as unknown as NonNullable<AskLiveData["vehicles"]>[number];
+
+  it("flags overdue trucks for a supervisor+", () => {
+    const answer = liveAnswer("which trucks are overdue for service?", {
+      ...base,
+      role: "supervisor",
+      vehicles: [vehicle({}), vehicle({ id: "v2", next_service_date: "2027-01-01" })],
+    });
+    expect(answer).toContain("overdue for service");
+    expect(answer).toContain("2021 Ford F-150");
+    expect(answer).toContain("ABC-1234");
+  });
+
+  it("hides vehicle service from a foreman and degrades on a cold cache", () => {
+    expect(
+      liveAnswer("trucks overdue", { ...base, role: "foreman", vehicles: [vehicle({})] }),
+    ).toBeNull();
+    expect(liveAnswer("vehicle service", { ...base, role: "supervisor" })).toBeNull();
   });
 });
