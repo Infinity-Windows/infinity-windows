@@ -1,15 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Sparkles } from "lucide-react";
 import { CATS, TERMS } from "../lib/glossary";
 import { searchBrainTypes } from "../lib/api";
-import type { WindowType } from "../lib/types";
+import type { Project, WindowType } from "../lib/types";
 import { supabaseConfigured } from "../lib/supabase";
+import { queryClient } from "../lib/queryClient";
 import {
   askInfinity,
+  liveAnswer,
   shouldUseLLM,
+  type AskLiveData,
   type KnowledgeSource,
 } from "../lib/knowledge";
+import type { Profile, ProjectOpening } from "../lib/install/types";
+import type { Issue } from "../lib/issues";
+import type { ScheduleAssignment } from "../lib/schedule/types";
+import type { VehicleWithMeta } from "../lib/vehicles/types";
 
 interface ChatMsg {
   who: "me" | "infinity";
@@ -110,6 +117,56 @@ async function localAnswer(q: string): Promise<string> {
   );
 }
 
+function todayLocalISO(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Union the rows of every matching cached query, de-duped by id. */
+function mergeCached<T extends { id: string }>(
+  groups: Array<[readonly unknown[], T[] | undefined]>,
+): T[] {
+  const byId = new Map<string, T>();
+  for (const [, rows] of groups) {
+    for (const row of rows ?? []) byId.set(row.id, row);
+  }
+  return [...byId.values()];
+}
+
+/**
+ * Assemble the live snapshot the offline fallback reads from — straight out of
+ * the app's TanStack Query cache, scoped to the signed-in user's role/profile.
+ * Cold entries are left null so the fallback degrades to the static brain.
+ */
+function gatherLiveData(): AskLiveData {
+  const profile = queryClient.getQueryData<Profile>(["myProfile"]);
+  const openings = mergeCached(
+    queryClient.getQueriesData<ProjectOpening[]>({ queryKey: ["myOpenings"] }),
+  );
+  const schedule = mergeCached(
+    queryClient.getQueriesData<ScheduleAssignment[]>({ queryKey: ["mySchedule"] }),
+  );
+  const issues = mergeCached([
+    ...queryClient.getQueriesData<Issue[]>({ queryKey: ["issues"] }),
+    ...queryClient.getQueriesData<Issue[]>({ queryKey: ["projectIssues"] }),
+  ]);
+  const projects = queryClient.getQueryData<Project[]>(["projects"]);
+  const vehicles =
+    queryClient.getQueryData<VehicleWithMeta[]>(["vehicles"]) ??
+    queryClient.getQueryData<VehicleWithMeta[]>(["notifVehicles"]);
+  return {
+    role: profile?.role ?? null,
+    profileId: profile?.id ?? null,
+    todayISO: todayLocalISO(),
+    openings: openings.length > 0 ? openings : null,
+    schedule: schedule.length > 0 ? schedule : null,
+    issues: issues.length > 0 ? issues : null,
+    projects: projects ?? null,
+    vehicles: vehicles ?? null,
+  };
+}
+
 export function AskInfinity() {
   const navigate = useNavigate();
   const [input, setInput] = useState("");
@@ -122,27 +179,17 @@ export function AskInfinity() {
 
   const [thinking, setThinking] = useState(false);
 
-  const [online, setOnline] = useState(
-    typeof navigator === "undefined" ? true : navigator.onLine,
+  // The offline fallback now grounds itself in the live query cache, so the
+  // schedule/next-window chips answer even when the cloud path is unavailable.
+  const suggestions = useMemo(
+    () => [
+      "What's on our schedule?",
+      "My next window",
+      "Single hung tips",
+      "What is flashing?",
+    ],
+    [],
   );
-  useEffect(() => {
-    const on = () => setOnline(true);
-    const off = () => setOnline(false);
-    window.addEventListener("online", on);
-    window.addEventListener("offline", off);
-    return () => {
-      window.removeEventListener("online", on);
-      window.removeEventListener("offline", off);
-    };
-  }, []);
-
-  // The offline brain can't answer "what's on our schedule" (it has no live app
-  // data), so only offer that chip when the cloud Ask path is actually usable.
-  const canAskLive = shouldUseLLM({ online, supabaseConfigured });
-  const suggestions = useMemo(() => {
-    const base = ["Single hung tips", "What is flashing?"];
-    return canAskLive ? ["What's on our schedule?", ...base] : base;
-  }, [canAskLive]);
 
   const send = (text: string) => {
     const q = text.trim();
@@ -173,6 +220,9 @@ export function AskInfinity() {
           // Cloud unavailable — fall back to the offline brain below.
         }
       }
+      // Ground the offline path in live cached data first, then the static brain.
+      const live = liveAnswer(q, gatherLiveData());
+      if (live) return { who: "infinity", text: live };
       return { who: "infinity", text: await localAnswer(q) };
     };
 
