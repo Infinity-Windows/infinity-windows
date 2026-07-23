@@ -48,7 +48,7 @@ export function CatalogImport() {
           <p className="home-greeting">Admin</p>
           <h1>Catalog import</h1>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">
+        <Link to="/warehouse" className="back-chip" aria-label="Warehouse">
           ‹
         </Link>
       </header>

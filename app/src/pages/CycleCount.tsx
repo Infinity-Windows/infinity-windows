@@ -72,7 +72,7 @@ export function CycleCount() {
             <p className="home-greeting">Warehouse</p>
             <h1>Cycle count</h1>
           </div>
-          <Link to="/" className="back-chip" aria-label="Home">
+          <Link to="/warehouse" className="back-chip" aria-label="Warehouse">
             ‹
           </Link>
         </header>
@@ -99,7 +99,7 @@ export function CycleCount() {
           <p className="home-greeting">Counting</p>
           <h1>{location.address}</h1>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">
+        <Link to="/warehouse" className="back-chip" aria-label="Warehouse">
           ‹
         </Link>
       </header>

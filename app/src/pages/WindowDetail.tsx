@@ -169,7 +169,7 @@ export function WindowDetail() {
     <div className="page">
       <header className="page-header">
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-          <Link to="/search" className="back-chip" aria-label="Back">‹</Link>
+          <Link to="/warehouse" className="back-chip" aria-label="Back">‹</Link>
           <div>
             <h1 className="opening-code-title">{w.window_id}</h1>
             {w.short_code && (

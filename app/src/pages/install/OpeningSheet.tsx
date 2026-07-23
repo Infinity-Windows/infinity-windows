@@ -145,7 +145,7 @@ export function OpeningSheet() {
     if (nextOpening) {
       navigate(`/projects/${nextOpening.project_id}/opening/${nextOpening.id}`);
     } else {
-      navigate("/my-work");
+      navigate("/");
     }
   };
 

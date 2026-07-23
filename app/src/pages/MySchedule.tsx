@@ -143,7 +143,7 @@ export function MySchedule() {
                     </div>
                   </Link>
                   {isToday && (
-                    <Link to="/my-work" className="button-like sched-start-work">
+                    <Link to="/" className="button-like sched-start-work">
                       Start work ›
                     </Link>
                   )}

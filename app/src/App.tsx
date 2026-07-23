@@ -33,7 +33,6 @@ import { ProjectDetail } from "./pages/ProjectDetail";
 import { Projects } from "./pages/Projects";
 import { Receive } from "./pages/Receive";
 import { Scan } from "./pages/Scan";
-import { Search } from "./pages/Search";
 import { Settings } from "./pages/Settings";
 import { SignIn } from "./pages/SignIn";
 import { WindowDetail } from "./pages/WindowDetail";
@@ -244,7 +243,7 @@ export default function App() {
               path="/receive"
               element={<RequireRole path="/receive"><Receive /></RequireRole>}
             />
-            <Route path="/search" element={<Search />} />
+            <Route path="/search" element={<Navigate to="/warehouse" replace />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/projects/:projectId" element={<ProjectDetail />} />
             <Route
@@ -288,7 +287,7 @@ export default function App() {
               path="/analytics"
               element={<RequireRole path="/analytics"><Analytics /></RequireRole>}
             />
-            <Route path="/my-work" element={<MyWork />} />
+            <Route path="/my-work" element={<Navigate to="/" replace />} />
             <Route path="/review" element={<MemoReview />} />
             <Route
               path="/training"
