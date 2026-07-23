@@ -1,7 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { importWindowTypes, listWindowTypes } from "../lib/api";
+import { importWindowTypes } from "../lib/api";
+import { useWindowTypes } from "../components/WindowTypePicker";
 import { parseCatalogCsv, type CatalogCsvRow } from "../lib/catalogCsv";
 
 const TEMPLATE = `type_code,name,category,width_in,height_in,difficulty_rating,tutorial_url,notes
@@ -15,7 +16,7 @@ export function CatalogImport() {
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
 
-  const types = useQuery({ queryKey: ["windowTypes"], queryFn: listWindowTypes });
+  const types = useWindowTypes();
 
   const importRows = useMutation({
     mutationFn: () => importWindowTypes(preview),

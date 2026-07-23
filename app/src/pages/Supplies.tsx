@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { listProjects } from "../lib/api";
 import {
   addOrder,
@@ -14,9 +14,11 @@ const STATUSES = ["needed", "ordered", "picked", "used"];
 
 export function Supplies() {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const supplies = useQuery({ queryKey: ["supplies"], queryFn: listSupplies });
-  const [proj, setProj] = useState("");
+  // Deep-link from a job hub ("Supplies for this job") preselects that job.
+  const [proj, setProj] = useState(searchParams.get("job") ?? "");
   const [supplyId, setSupplyId] = useState("");
   const [qty, setQty] = useState("1");
   const [newName, setNewName] = useState("");

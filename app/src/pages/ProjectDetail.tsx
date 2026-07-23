@@ -5,6 +5,7 @@ import { Scanner } from "../components/Scanner";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
   activatePreissuedUnit,
+  findWindowByCode,
   findWindowBySerial,
   getProjectUnits,
   getProjectWindows,
@@ -61,12 +62,17 @@ import { listProjectAssignments } from "../lib/schedule/api";
 import { listVehicleLinksForProject } from "../lib/vehicles/api";
 import { vehicleTitle } from "../lib/vehicles/display";
 import { listTrips } from "../lib/travel/api";
+import { listRoster } from "../lib/chat/api";
+import { mergeJobPeople } from "../lib/whoOnJob";
 import { CalendarClock, Plane, Truck, Users } from "lucide-react";
+import { resolveWindowFromScan } from "../lib/scanResolve";
 import { ProjectMap } from "./install/ProjectMap";
 import { DispatchBoard } from "./install/DispatchBoard";
 import { PhotoFeed } from "../components/photos/PhotoFeed";
 import { JobChat } from "../components/chat/JobChat";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
+
+const windowLookups = { getWindowByWindowId, findWindowByCode, findWindowBySerial };
 
 type HubTab =
   | "overview"
@@ -269,13 +275,13 @@ export function ProjectDetail() {
           {isLead && (
             <ReceivingPanel projectId={projectId} units={units.data ?? []} />
           )}
-          {isLead && <LoadOutPanel projectId={projectId} pickList={pickList} />}
           {isLead && <UnloadPanel projectId={projectId} loaded={loaded} />}
           {isLead && <ReorderNeedsPanel projectId={projectId} />}
           <WarehouseTab
             projectId={projectId}
             pickList={pickList}
             loaded={loaded}
+            isLead={isLead}
           />
         </>
       )}
@@ -390,6 +396,8 @@ function OverviewTab({
 
       <ScheduledCrewPanel projectId={projectId} />
 
+      <WhoOnJobPanel projectId={projectId} />
+
       {estimate && estimate.est.remaining > 0 && (
         <div className="estimate-card">
           <div className="estimate-head">
@@ -459,6 +467,9 @@ function OverviewTab({
         </Link>
         <Link to={`/projects/${projectId}/review`} className="action-btn">
           Review openings
+        </Link>
+        <Link to={`/supplies?job=${projectId}`} className="action-btn">
+          Supplies for this job
         </Link>
         <OfflineDownloadButton projectId={projectId} />
       </div>
@@ -531,14 +542,15 @@ function ScheduledCrewPanel({ projectId }: { projectId: string }) {
     <section className="detail-card" style={{ marginBottom: 16 }}>
       <div className="row-between">
         <h2 style={{ margin: 0 }}>
-          <CalendarClock size={16} aria-hidden /> Scheduled crew
+          <CalendarClock size={16} aria-hidden /> Published crew dates
         </h2>
         <Link to="/scheduling" className="link">
           Scheduling
         </Link>
       </div>
       <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
-        From the published schedule. Edit dates &amp; crew on the Scheduling board.
+        The dates &amp; crew that actually work this job, from the published
+        schedule (not the bid / target window). Edit them on the Scheduling board.
       </p>
 
       {list.length === 0 ? (
@@ -580,6 +592,109 @@ function ScheduledCrewPanel({ projectId }: { projectId: string }) {
             </li>
           ))}
         </ul>
+      )}
+    </section>
+  );
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  schedule: "scheduled",
+  dispatch: "dispatched",
+  chat: "chat",
+};
+
+/**
+ * Read-only "Who's on this job?" — merges the published schedule crew, the
+ * installers dispatched to openings, and the job chat roster into one deduped
+ * people list, plus any linked vehicle/trailer. Pulls from the existing sources
+ * (does not edit or collapse any of them); each of those surfaces keeps its own
+ * detailed view.
+ */
+function WhoOnJobPanel({ projectId }: { projectId: string }) {
+  const assignments = useQuery({
+    queryKey: ["projectSchedule", projectId],
+    queryFn: () => listProjectAssignments(projectId),
+  });
+  const openings = useQuery({
+    queryKey: ["openings", projectId],
+    queryFn: () => listOpenings(projectId),
+  });
+  const roster = useQuery({
+    queryKey: ["projectRoster", projectId],
+    queryFn: () => listRoster(projectId),
+  });
+  const vlinks = useQuery({
+    queryKey: ["projectVehicleLinks", projectId],
+    queryFn: () => listVehicleLinksForProject(projectId),
+  });
+
+  const people = useMemo(
+    () =>
+      mergeJobPeople({
+        scheduleMembers: (assignments.data ?? []).flatMap((a) =>
+          a.members.map((m) => ({
+            profile_id: m.profile_id,
+            display_name: m.display_name ?? null,
+            role: m.role,
+          })),
+        ),
+        openingAssignees: (openings.data ?? [])
+          .filter((o) => o.assigned_to)
+          .map((o) => ({
+            id: o.assigned_to as string,
+            display_name: o.assignee?.display_name ?? null,
+            role: o.assignee?.role ?? null,
+          })),
+        rosterMembers: roster.data?.members ?? [],
+      }),
+    [assignments.data, openings.data, roster.data],
+  );
+
+  const vehicles = useMemo(() => {
+    const names = (vlinks.data ?? [])
+      .map((l) => (l.vehicle ? vehicleTitle(l.vehicle) : null))
+      .filter((n): n is string => Boolean(n));
+    return [...new Set(names)];
+  }, [vlinks.data]);
+
+  if (people.length === 0 && vehicles.length === 0) return null;
+
+  return (
+    <section className="detail-card" style={{ marginBottom: 16 }}>
+      <div className="row-between">
+        <h2 style={{ margin: 0 }}>
+          <Users size={16} aria-hidden /> Who&apos;s on this job?
+        </h2>
+      </div>
+      <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+        Everyone attached to this job — from the schedule, dispatched openings,
+        and the job chat.
+      </p>
+
+      {people.length > 0 ? (
+        <ul className="unit-list work-list" style={{ marginTop: 8 }}>
+          {people.map((p) => (
+            <li key={p.id} className="find-row">
+              <div>
+                <strong>{p.name}</strong>
+                {p.role && <span className="muted"> · {p.role}</span>}
+              </div>
+              <span className="muted" style={{ marginLeft: "auto", fontSize: 12 }}>
+                {p.sources.map((s) => SOURCE_LABELS[s]).join(" · ")}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted" style={{ marginTop: 8 }}>
+          No one assigned yet.
+        </p>
+      )}
+
+      {vehicles.length > 0 && (
+        <p className="muted" style={{ marginTop: 8 }}>
+          <Truck size={13} aria-hidden /> {vehicles.join(", ")}
+        </p>
       )}
     </section>
   );
@@ -664,9 +779,11 @@ function JobDetailsPanel({
     { label: "Site address", value: project.address ?? "" },
     { label: "Building / unit / lot", value: project.unit_number ?? "" },
     { label: "State", value: project.site_state ?? "" },
-    { label: "Scheduled start", value: fmtDay(project.start_date) },
-    { label: "Target completion", value: fmtDay(project.end_date) },
+    { label: "Bid / target start", value: fmtDay(project.start_date) },
+    { label: "Bid / target completion", value: fmtDay(project.end_date) },
   ].filter((r) => r.value);
+  const hasTargetDates =
+    Boolean(project.start_date) || Boolean(project.end_date);
 
   if (!editing) {
     const hasAny = detailRows.length > 0 || Boolean(project.notes);
@@ -703,6 +820,12 @@ function JobDetailsPanel({
             {project.notes && (
               <p className="muted" style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>
                 {project.notes}
+              </p>
+            )}
+            {hasTargetDates && (
+              <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                Your bid / target window. The dates crew actually work are the
+                published crew dates on the schedule (shown above).
               </p>
             )}
           </>
@@ -797,7 +920,7 @@ function JobDetailsPanel({
             />
           </label>
           <label>
-            <span className="field-label">Scheduled start</span>
+            <span className="field-label">Bid / target start</span>
             <input
               type="date"
               value={startDate}
@@ -805,7 +928,7 @@ function JobDetailsPanel({
             />
           </label>
           <label>
-            <span className="field-label">Target completion</span>
+            <span className="field-label">Bid / target completion</span>
             <input
               type="date"
               value={endDate}
@@ -1053,7 +1176,10 @@ function ReceivingPanel({
       <p className="muted" style={{ marginTop: 6 }}>
         Scan or type a unit&apos;s code as it arrives to match it to its
         pre-issued ID and put it in the warehouse. Flip &quot;arrived
-        damaged&quot; to hold it and open a damage issue.
+        damaged&quot; to hold it and open a damage issue.{" "}
+        <Link to="/receive" className="link">
+          Extra / unplanned stock? Receive it here →
+        </Link>
       </p>
 
       <div className="manual-entry">
@@ -1150,104 +1276,6 @@ function ReceivingPanel({
             </li>
           ))}
         </ul>
-      )}
-    </section>
-  );
-}
-
-/**
- * Foreman+ action: BATCH LOAD-OUT. Multi-select a project's in-warehouse /
- * staged units (checkboxes + select-all) and load them onto the truck for a run
- * in one go ('loaded'). Complements the scan-one-at-a-time load-out below.
- */
-function LoadOutPanel({
-  projectId,
-  pickList,
-}: {
-  projectId: string;
-  pickList: WindowUnit[];
-}) {
-  const queryClient = useQueryClient();
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-
-  // Keep the selection in sync when units leave the pick list (e.g. loaded).
-  const availableIds = useMemo(() => pickList.map((u) => u.id), [pickList]);
-  const idsToLoad = selectedLoadableIds(pickList, selected);
-  const allSelected = pickList.length > 0 && idsToLoad.length === pickList.length;
-
-  const load = useMutation({
-    mutationFn: () => loadUnits(idsToLoad, projectId),
-    onSuccess: (loadedUnits) => {
-      setSelected(new Set());
-      pushToast(
-        loadedUnits.length > 0
-          ? `Loaded ${loadedUnits.length} unit${loadedUnits.length === 1 ? "" : "s"} for the run.`
-          : "Nothing eligible to load.",
-        "info",
-      );
-      queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
-    onError: (e) => toastError(e),
-  });
-
-  const toggleAll = () => {
-    setSelected(allSelected ? new Set() : new Set(availableIds));
-  };
-
-  return (
-    <section className="detail-card" style={{ marginBottom: 16 }}>
-      <div className="row-between">
-        <h2 style={{ margin: 0 }}>Load out for a run</h2>
-        <span className="muted">{idsToLoad.length} selected</span>
-      </div>
-      <p className="muted" style={{ marginTop: 6 }}>
-        Tick the units going on this truck and load them all at once. They move
-        to “on truck”, ready to unload at the jobsite.
-      </p>
-
-      {pickList.length === 0 ? (
-        <p className="muted">Nothing in the warehouse for this job to load.</p>
-      ) : (
-        <>
-          <label
-            style={{ display: "flex", gap: 8, alignItems: "center", margin: "8px 0" }}
-          >
-            <input type="checkbox" checked={allSelected} onChange={toggleAll} />
-            Select all ({pickList.length})
-          </label>
-          <ul className="unit-list work-list">
-            {pickList.map((u) => (
-              <li key={u.id} className="find-row">
-                <label
-                  style={{ display: "flex", gap: 8, alignItems: "center", flex: 1 }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected.has(u.id)}
-                    onChange={() => setSelected((s) => toggleSelected(s, u.id))}
-                  />
-                  <strong>{u.window_id}</strong>
-                  <span className="muted"> {u.window_types?.type_code}</span>
-                  <span className="big-address">
-                    {u.locations?.address ?? STATUS_LABELS[u.status]}
-                  </span>
-                </label>
-              </li>
-            ))}
-          </ul>
-          <div className="action-list">
-            <button
-              className="action-btn primary"
-              disabled={idsToLoad.length === 0 || load.isPending}
-              onClick={() => load.mutate()}
-            >
-              {load.isPending
-                ? "Loading…"
-                : `Load ${idsToLoad.length || ""} for run`.trim()}
-            </button>
-          </div>
-        </>
       )}
     </section>
   );
@@ -1403,96 +1431,200 @@ function ReorderNeedsPanel({ projectId }: { projectId: string }) {
   );
 }
 
+/**
+ * Pick list + one merged load-out for a run. Two modes over the same list:
+ * Scan (scan units one at a time onto the truck — available to everyone) and
+ * Select all (foreman+ multi-select a batch and load in one go). Keeps both
+ * server actions: `loadWindow` per scan, `loadUnits` for the batch.
+ */
 function WarehouseTab({
   projectId,
   pickList,
   loaded,
+  isLead,
 }: {
   projectId: string;
   pickList: WindowUnit[];
   loaded: WindowUnit[];
+  isLead: boolean;
 }) {
   const queryClient = useQueryClient();
-  const [loadingOut, setLoadingOut] = useState(false);
+  const [mode, setMode] = useState<"scan" | "select">("scan");
+  const [scanning, setScanning] = useState(false);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
+  const selectMode = mode === "select" && isLead;
+
+  // Keep the batch selection in sync when units leave the pick list (loaded).
+  const availableIds = useMemo(() => pickList.map((u) => u.id), [pickList]);
+  const idsToLoad = selectedLoadableIds(pickList, selected);
+  const allSelected = pickList.length > 0 && idsToLoad.length === pickList.length;
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+  };
+
+  // Scan one unit onto the truck. The unit comes pre-resolved from the shared
+  // scan helper; we only re-check it belongs here and is warehouse-ready.
   const loadScan = useMutation({
-    mutationFn: async (windowId: string) => {
-      const unit = await getWindowByWindowId(windowId);
-      if (!unit) throw new Error(`Unknown window ${windowId}`);
+    mutationFn: async (unit: WindowUnit) => {
       if (unit.project_id !== projectId) {
         throw new Error(
-          `${windowId} belongs to ${unit.projects?.job_code ?? "no job"} — not this job!`,
+          `${unit.window_id} belongs to ${unit.projects?.job_code ?? "no job"} — not this job!`,
         );
       }
-      if (unit.status === "loaded") throw new Error(`${windowId} is already loaded.`);
+      if (unit.status === "loaded") {
+        throw new Error(`${unit.window_id} is already loaded.`);
+      }
       if (unit.status !== "in_warehouse" && unit.status !== "staged") {
         throw new Error(
-          `${windowId} is not warehouse-ready to load (${STATUS_LABELS[unit.status]}).`,
+          `${unit.window_id} is not warehouse-ready to load (${STATUS_LABELS[unit.status]}).`,
         );
       }
       return loadWindow(unit.id);
     },
     onSuccess: (unit: WindowUnit) => {
       setScanMessage(`Loaded ${unit.window_id}`);
-      queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      invalidate();
     },
     onError: (e) => setScanMessage(String(e)),
   });
 
+  const loadBatch = useMutation({
+    mutationFn: () => loadUnits(idsToLoad, projectId),
+    onSuccess: (loadedUnits) => {
+      setSelected(new Set());
+      pushToast(
+        loadedUnits.length > 0
+          ? `Loaded ${loadedUnits.length} unit${loadedUnits.length === 1 ? "" : "s"} for the run.`
+          : "Nothing eligible to load.",
+        "info",
+      );
+      invalidate();
+    },
+    onError: (e) => toastError(e),
+  });
+
+  const toggleAll = () => {
+    setSelected(allSelected ? new Set() : new Set(availableIds));
+  };
+
   return (
     <>
       <div className="row-between">
-        <h2>Pick list ({pickList.length})</h2>
-        <button
-          className={loadingOut ? "" : "primary"}
-          onClick={() => {
-            setLoadingOut(!loadingOut);
-            setScanMessage(null);
-          }}
-        >
-          {loadingOut ? "Stop load-out" : "Start load-out"}
-        </button>
+        <h2 style={{ margin: 0 }}>Pick list ({pickList.length})</h2>
+        {isLead && pickList.length > 0 && (
+          <nav className="hub-tabs" aria-label="Load-out mode" style={{ margin: 0 }}>
+            <button
+              type="button"
+              className={mode === "scan" ? "hub-tab active" : "hub-tab"}
+              onClick={() => setMode("scan")}
+            >
+              Scan
+            </button>
+            <button
+              type="button"
+              className={mode === "select" ? "hub-tab active" : "hub-tab"}
+              onClick={() => setMode("select")}
+            >
+              Select all
+            </button>
+          </nav>
+        )}
       </div>
 
-      {loadingOut && (
+      {pickList.length > 0 && !selectMode && (
         <>
-          <p className="scanner-hint">
-            Scan each window as it goes on the truck. Wrong-job windows are
-            rejected automatically.
-          </p>
-          {scanMessage && (
-            <p className={scanMessage.startsWith("Loaded") ? "ok" : "error"}>
-              {scanMessage}
-            </p>
-          )}
-          <Scanner
-            onScan={async (payload) => {
-              if (payload.kind === "window") {
-                loadScan.mutate(payload.windowId);
-              } else if (payload.kind === "windowSerial") {
-                const unit = await findWindowBySerial(payload.serial);
-                if (unit) loadScan.mutate(unit.window_id);
-                else setScanMessage(`No window found for serial ${payload.serial}.`);
-              } else {
-                setScanMessage("That's a slot label — scan a window label.");
-              }
+          <button
+            className={scanning ? "" : "primary"}
+            onClick={() => {
+              setScanning(!scanning);
+              setScanMessage(null);
             }}
-          />
+          >
+            {scanning ? "Stop load-out" : "Start load-out"}
+          </button>
+          {scanning && (
+            <>
+              <p className="scanner-hint">
+                Scan each window as it goes on the truck. Wrong-job windows are
+                rejected automatically.
+              </p>
+              {scanMessage && (
+                <p className={scanMessage.startsWith("Loaded") ? "ok" : "error"}>
+                  {scanMessage}
+                </p>
+              )}
+              <Scanner
+                onScan={async (payload) => {
+                  const res = await resolveWindowFromScan(payload, windowLookups);
+                  if (res.status === "ok") {
+                    loadScan.mutate(res.unit);
+                  } else if (res.status === "not-found") {
+                    setScanMessage(`No window found for ${res.query}.`);
+                  } else {
+                    setScanMessage("That's a slot label — scan a window label.");
+                  }
+                }}
+              />
+            </>
+          )}
+        </>
+      )}
+
+      {selectMode && pickList.length > 0 && (
+        <>
+          <label
+            style={{ display: "flex", gap: 8, alignItems: "center", margin: "8px 0" }}
+          >
+            <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+            Select all ({pickList.length})
+          </label>
+          <div className="action-list">
+            <button
+              className="action-btn primary"
+              disabled={idsToLoad.length === 0 || loadBatch.isPending}
+              onClick={() => loadBatch.mutate()}
+            >
+              {loadBatch.isPending
+                ? "Loading…"
+                : `Load ${idsToLoad.length || ""} for run`.trim()}
+            </button>
+          </div>
         </>
       )}
 
       <ul className="unit-list work-list">
         {pickList.map((u) => (
           <li key={u.id} className="find-row">
-            <Link to={`/w/${encodeURIComponent(u.window_id)}`}>
-              <strong>{u.window_id}</strong>
-            </Link>
-            <span className="muted"> {u.window_types?.type_code}</span>
-            <span className="big-address">
-              {u.locations?.address ?? STATUS_LABELS[u.status]}
-            </span>
+            {selectMode ? (
+              <label
+                style={{ display: "flex", gap: 8, alignItems: "center", flex: 1 }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(u.id)}
+                  onChange={() => setSelected((s) => toggleSelected(s, u.id))}
+                />
+                <strong>{u.window_id}</strong>
+                <span className="muted"> {u.window_types?.type_code}</span>
+                <span className="big-address">
+                  {u.locations?.address ?? STATUS_LABELS[u.status]}
+                </span>
+              </label>
+            ) : (
+              <>
+                <Link to={`/w/${encodeURIComponent(u.window_id)}`}>
+                  <strong>{u.window_id}</strong>
+                </Link>
+                <span className="muted"> {u.window_types?.type_code}</span>
+                <span className="big-address">
+                  {u.locations?.address ?? STATUS_LABELS[u.status]}
+                </span>
+              </>
+            )}
           </li>
         ))}
         {pickList.length === 0 && (

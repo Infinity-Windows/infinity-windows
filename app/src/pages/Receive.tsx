@@ -1,14 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  listProjects,
-  listWindowTypes,
-  receiveWindow,
-  suggestLocation,
-} from "../lib/api";
+import { listProjects, receiveWindow, suggestLocation } from "../lib/api";
+import { WindowTypePicker } from "../components/WindowTypePicker";
 import { downloadPdf, windowLabelsPdf } from "../lib/labels";
-import type { WindowUnit } from "../lib/types";
+import type { WindowType, WindowUnit } from "../lib/types";
 
 interface ReceivedRow {
   unit: WindowUnit;
@@ -18,26 +14,12 @@ interface ReceivedRow {
 
 export function Receive() {
   const queryClient = useQueryClient();
-  const [typeQuery, setTypeQuery] = useState("");
   const [typeId, setTypeId] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<WindowType | null>(null);
   const [projectId, setProjectId] = useState<string>("");
   const [received, setReceived] = useState<ReceivedRow[]>([]);
 
-  const types = useQuery({ queryKey: ["types"], queryFn: listWindowTypes });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
-
-  const filteredTypes = useMemo(() => {
-    const q = typeQuery.trim().toLowerCase();
-    const all = types.data ?? [];
-    if (!q) return all;
-    return all.filter(
-      (t) =>
-        t.type_code.toLowerCase().includes(q) ||
-        t.name.toLowerCase().includes(q),
-    );
-  }, [types.data, typeQuery]);
-
-  const selectedType = types.data?.find((t) => t.id === typeId) ?? null;
 
   const receive = useMutation({
     mutationFn: async () => {
@@ -73,34 +55,33 @@ export function Receive() {
     <div className="page">
       <header className="page-header">
         <div>
-          <h1>Receive</h1>
+          <h1>Receive extra stock</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Create units into inventory and print labels.
+            Add unplanned / extra units into inventory and print labels.
           </p>
         </div>
         <Link to="/warehouse" className="back-chip" aria-label="Warehouse">‹</Link>
       </header>
 
-      <label className="field-label">Window type</label>
-      <input
-        placeholder="Search types (code or name)"
-        value={typeQuery}
-        onChange={(e) => setTypeQuery(e.target.value)}
-      />
-      <div className="pick-box">
-        {filteredTypes.map((t) => (
-          <button
-            key={t.id}
-            className={t.id === typeId ? "pick-row selected" : "pick-row"}
-            onClick={() => setTypeId(t.id)}
-          >
-            <strong>{t.type_code}</strong> {t.name}
-          </button>
-        ))}
-        {filteredTypes.length === 0 && (
-          <p className="muted">No matching types.</p>
-        )}
+      <div className="detail-card" style={{ marginBottom: 16 }}>
+        <strong>Receiving a planned delivery instead?</strong>
+        <p className="muted" style={{ margin: "4px 0 8px" }}>
+          For windows that were pre-ordered for a job, use “Receive against the
+          plan” on that job so each unit matches its expected ID.
+        </p>
+        <Link to="/projects" className="action-btn">
+          Open a job to receive against the plan →
+        </Link>
       </div>
+
+      <label className="field-label">Window type</label>
+      <WindowTypePicker
+        value={typeId}
+        onChange={(id, type) => {
+          setTypeId(id || null);
+          setSelectedType(type);
+        }}
+      />
 
       <label className="field-label">Sold to job (optional)</label>
       <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
