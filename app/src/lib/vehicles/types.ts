@@ -61,6 +61,28 @@ export interface VehicleFinancials {
   updated_at?: string;
 }
 
+/**
+ * One automatically-detected drive for a vehicle (from the GPS fix stream).
+ * `business` is true only when the driver was clocked in during the drive — the
+ * year-end write-off sums business drives only. `driver_id` records who drove.
+ */
+export interface VehicleDriveSession {
+  id: string;
+  vehicle_id: string;
+  started_at: string;
+  ended_at: string;
+  duration_seconds: number;
+  distance_miles: number;
+  start_lat: number | null;
+  start_lng: number | null;
+  end_lat: number | null;
+  end_lng: number | null;
+  business: boolean;
+  driver_id: string | null;
+  source: string;
+  created_at: string;
+}
+
 export interface VehicleProjectAssignment {
   id: string;
   vehicle_id: string;

@@ -9,11 +9,14 @@ import { supabase } from "../supabase";
 import { listProjects } from "../api";
 import type { Project } from "../types";
 import { normalizeDrivers } from "./drivers";
+import { detectDriveSessions, filterSessionsByYear, type DriveFix } from "./driveDetection";
+import { classifyDrive, shiftsToIntervals, type ClockShiftLike } from "./driveClassification";
 import type {
   ManualLocationInput,
   ScheduleVehicleLink,
   ServiceRecordInput,
   Vehicle,
+  VehicleDriveSession,
   VehicleDriver,
   VehicleFinancials,
   VehicleInput,
@@ -73,6 +76,7 @@ interface LocalDB {
   service: VehicleServiceRecord[];
   financials: VehicleFinancials[];
   assignments: VehicleProjectAssignment[];
+  driveSessions: VehicleDriveSession[];
 }
 
 function emptyDB(): LocalDB {
@@ -84,6 +88,7 @@ function emptyDB(): LocalDB {
     service: [],
     financials: [],
     assignments: [],
+    driveSessions: [],
   };
 }
 
@@ -199,6 +204,7 @@ const localStore = {
     db.service = db.service.filter((s) => s.vehicle_id !== id);
     db.financials = db.financials.filter((f) => f.vehicle_id !== id);
     db.assignments = db.assignments.filter((a) => a.vehicle_id !== id);
+    db.driveSessions = db.driveSessions.filter((d) => d.vehicle_id !== id);
     writeDB(db);
   },
   updateLocation(vehicleId: string, input: ManualLocationInput): VehicleLocation {
@@ -303,6 +309,25 @@ const localStore = {
   linksFor(predicate: (a: VehicleProjectAssignment) => boolean): ScheduleVehicleLink[] {
     const db = readDB();
     return db.assignments.filter(predicate).map((a) => localLink(db, a));
+  },
+  historyFixes(vehicleId: string): DriveFix[] {
+    return readDB()
+      .history.filter((h) => h.vehicle_id === vehicleId)
+      .map((h) => ({ lat: h.lat, lng: h.lng, at: h.recorded_at }));
+  },
+  listDriveSessions(vehicleId: string, year?: number): VehicleDriveSession[] {
+    let rows = readDB()
+      .driveSessions.filter((d) => d.vehicle_id === vehicleId)
+      .sort((a, b) => b.started_at.localeCompare(a.started_at));
+    if (year != null) rows = filterSessionsByYear(rows, year);
+    return rows;
+  },
+  replaceDriveSessions(vehicleId: string, rows: VehicleDriveSession[]): VehicleDriveSession[] {
+    const db = readDB();
+    db.driveSessions = db.driveSessions.filter((d) => d.vehicle_id !== vehicleId);
+    db.driveSessions.push(...rows);
+    writeDB(db);
+    return this.listDriveSessions(vehicleId);
   },
 };
 
@@ -794,4 +819,159 @@ export async function listAllVehicleLinks(): Promise<ScheduleVehicleLink[]> {
 /** Active projects for the "assign to a job" picker (reuses the projects API). */
 export async function listAssignableProjects(): Promise<Project[]> {
   return listProjects();
+}
+
+// --- Drive sessions (automatic driving timer + mileage log) -----------------
+// A drive is detected from the vehicle's GPS breadcrumb trail
+// (vehicle_locations_history). It only counts as BUSINESS mileage when the
+// driver was clocked in during it (time_shifts). Everything degrades gracefully:
+// no history → empty log; table not migrated → browser-local fallback; no
+// shift data → drives stay PERSONAL (safety default). When a real tracker feeds
+// fixes into history, drives log automatically.
+
+/** Candidate driver profile ids for a vehicle (primary first, then insured). */
+function candidateDriverIds(vehicle: VehicleWithMeta | null): string[] {
+  const drivers = vehicle?.drivers ?? [];
+  const primary = drivers
+    .filter((d) => d.relation === "primary" && d.profile_id)
+    .map((d) => d.profile_id as string);
+  const insured = drivers
+    .filter((d) => d.relation !== "primary" && d.profile_id)
+    .map((d) => d.profile_id as string);
+  return [...primary, ...insured];
+}
+
+function toLocalDriveSession(
+  vehicleId: string,
+  s: DriveFixSessionInput,
+): VehicleDriveSession {
+  return {
+    id: newId(),
+    vehicle_id: vehicleId,
+    started_at: s.started_at,
+    ended_at: s.ended_at,
+    duration_seconds: s.duration_seconds,
+    distance_miles: s.distance_miles,
+    start_lat: s.start_lat,
+    start_lng: s.start_lng,
+    end_lat: s.end_lat,
+    end_lng: s.end_lng,
+    business: s.business,
+    driver_id: s.driver_id,
+    source: "gps",
+    created_at: nowISO(),
+  };
+}
+
+interface DriveFixSessionInput {
+  started_at: string;
+  ended_at: string;
+  duration_seconds: number;
+  distance_miles: number;
+  start_lat: number;
+  start_lng: number;
+  end_lat: number;
+  end_lng: number;
+  business: boolean;
+  driver_id: string | null;
+}
+
+/** Detected drives for a vehicle, newest first; optionally one calendar year. */
+export async function listDriveSessions(
+  vehicleId: string,
+  year?: number,
+): Promise<VehicleDriveSession[]> {
+  let query = supabase
+    .from("vehicle_drive_sessions")
+    .select("*")
+    .eq("vehicle_id", vehicleId)
+    .order("started_at", { ascending: false });
+  if (year != null) {
+    query = query
+      .gte("started_at", `${year}-01-01T00:00:00.000Z`)
+      .lt("started_at", `${year + 1}-01-01T00:00:00.000Z`);
+  }
+  const { data, error } = await query;
+  if (error) {
+    if (isMissingVehicleTable(error)) return localStore.listDriveSessions(vehicleId, year);
+    throw error;
+  }
+  return (data ?? []) as VehicleDriveSession[];
+}
+
+/**
+ * Re-derive drive sessions from the vehicle's location history, classify each
+ * as business/personal against the drivers' clock-ins, and upsert them. Safe to
+ * call repeatedly (idempotent on vehicle_id+started_at). Falls back to the
+ * browser-local store when the tables aren't migrated yet.
+ */
+export async function recomputeDriveSessionsFromHistory(
+  vehicleId: string,
+): Promise<VehicleDriveSession[]> {
+  const vehicle = await getVehicle(vehicleId).catch(() => null);
+  const driverIds = candidateDriverIds(vehicle);
+  const fallbackDriverId = driverIds[0] ?? null;
+
+  // 1. Load the ordered fix stream (remote history → local fallback).
+  let fixes: DriveFix[];
+  let remote = true;
+  const hist = await supabase
+    .from("vehicle_locations_history")
+    .select("lat, lng, recorded_at")
+    .eq("vehicle_id", vehicleId)
+    .order("recorded_at", { ascending: true });
+  if (hist.error) {
+    if (!isMissingVehicleTable(hist.error)) throw hist.error;
+    remote = false;
+    fixes = localStore.historyFixes(vehicleId);
+  } else {
+    fixes = ((hist.data ?? []) as { lat: number; lng: number; recorded_at: string }[]).map(
+      (r) => ({ lat: r.lat, lng: r.lng, at: r.recorded_at }),
+    );
+  }
+
+  const detected = detectDriveSessions(fixes);
+
+  // 2. Load overlapping clock-ins for the candidate drivers (best-effort — no
+  // shift data means every drive stays personal, which is the safe default).
+  let intervals: ReturnType<typeof shiftsToIntervals> = [];
+  if (remote && driverIds.length > 0 && detected.length > 0) {
+    const lastEndMs = detected.reduce((m, s) => Math.max(m, Date.parse(s.ended_at)), 0);
+    const shiftRes = await supabase
+      .from("time_shifts")
+      .select("profile_id, clock_in_at, clock_out_at")
+      .in("profile_id", driverIds)
+      .lte("clock_in_at", new Date(lastEndMs).toISOString());
+    if (!shiftRes.error) {
+      intervals = shiftsToIntervals((shiftRes.data ?? []) as ClockShiftLike[], Date.now());
+    }
+  }
+
+  // 3. Classify each detected drive.
+  const classified: DriveFixSessionInput[] = detected.map((s) => {
+    const c = classifyDrive(s, driverIds, intervals, fallbackDriverId);
+    return { ...s, business: c.business, driver_id: c.driver_id };
+  });
+
+  // 4. Persist (upsert remote, or replace the local set).
+  if (!remote) {
+    return localStore.replaceDriveSessions(
+      vehicleId,
+      classified.map((s) => toLocalDriveSession(vehicleId, s)),
+    );
+  }
+  if (classified.length > 0) {
+    const { error } = await supabase.from("vehicle_drive_sessions").upsert(
+      classified.map((s) => ({ vehicle_id: vehicleId, source: "gps", ...s })),
+      { onConflict: "vehicle_id,started_at" },
+    );
+    if (error) {
+      if (!isMissingVehicleTable(error)) throw error;
+      return localStore.replaceDriveSessions(
+        vehicleId,
+        classified.map((s) => toLocalDriveSession(vehicleId, s)),
+      );
+    }
+  }
+  return listDriveSessions(vehicleId);
 }
