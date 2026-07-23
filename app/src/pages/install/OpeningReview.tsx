@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { listProjects, listWindowTypes } from "../../lib/api";
+import { listProjects } from "../../lib/api";
+import { WindowTypePicker } from "../../components/WindowTypePicker";
 import {
   addOpening,
   confirmOpenings,
@@ -21,7 +22,6 @@ export function OpeningReview() {
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const project = projects.data?.find((p) => p.id === projectId);
-  const types = useQuery({ queryKey: ["windowTypes"], queryFn: listWindowTypes });
   const openings = useQuery({
     queryKey: ["openings", projectId],
     queryFn: () => listOpenings(projectId),
@@ -93,22 +93,16 @@ export function OpeningReview() {
           }
         }}
       />
-      <select
-        value={o.window_type_id ?? ""}
-        onChange={(e) =>
+      <WindowTypePicker
+        variant="select"
+        value={o.window_type_id ?? null}
+        onChange={(id) =>
           patch.mutate({
             id: o.id,
-            patch: { window_type_id: e.target.value || null },
+            patch: { window_type_id: id || null },
           })
         }
-      >
-        <option value="">— pick type —</option>
-        {(types.data ?? []).map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.type_code} {t.name}
-          </option>
-        ))}
-      </select>
+      />
       <input
         placeholder="Location (e.g. Living room N)"
         defaultValue={o.label ?? ""}
