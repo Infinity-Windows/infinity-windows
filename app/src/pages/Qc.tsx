@@ -7,6 +7,7 @@ import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { listInstalledForQc, setQc } from "../lib/ops";
 import { addPriorityTerm } from "../lib/learn";
 import { resolvePendingPoints } from "../lib/points";
+import { openServiceCase } from "../lib/service";
 import { CATS, TERMS } from "../lib/glossary";
 import { pushToast } from "../lib/toast";
 
@@ -20,6 +21,12 @@ export function Qc() {
   // Which opening is mid-callback (awaiting a root-cause term), and the picked term.
   const [callbackFor, setCallbackFor] = useState<{ id: string; code: string } | null>(null);
   const [rootTerm, setRootTerm] = useState("");
+  // After a callback is logged, offer to open a linked warranty/service case so
+  // QC and after-service tracking don't diverge. Only offerable when the opening
+  // is backed by a physical window unit (assigned_window_id).
+  const [caseOffer, setCaseOffer] = useState<
+    { code: string; windowId: string; term: string } | null
+  >(null);
 
   const decide = useMutation({
     mutationFn: async (a: { id: string; status: "passed" | "callback" }) => {
@@ -35,15 +42,38 @@ export function Qc() {
   });
 
   const logCallback = useMutation({
-    mutationFn: async (a: { id: string; code: string; term: string }) => {
+    mutationFn: async (a: {
+      id: string;
+      code: string;
+      term: string;
+      windowId: string | null;
+    }) => {
       await decide.mutateAsync({ id: a.id, status: "callback" });
       if (a.term) await addPriorityTerm(a.term, `callback on ${a.code}`);
     },
-    onSuccess: () => {
+    onSuccess: (_data, a) => {
       pushToast("Callback logged — root cause pushed to crew decks.");
       setCallbackFor(null);
       setRootTerm("");
+      setCaseOffer(
+        a.windowId ? { code: a.code, windowId: a.windowId, term: a.term } : null,
+      );
     },
+  });
+
+  const openCase = useMutation({
+    mutationFn: (a: { windowId: string; code: string; term: string }) =>
+      openServiceCase({
+        windowId: a.windowId,
+        reason: "QC callback",
+        failPoint: a.term || null,
+        description: `Opened from QC callback on ${a.code}`,
+      }),
+    onSuccess: () => {
+      pushToast("Service case opened — linked to this callback for warranty tracking.");
+      setCaseOffer(null);
+    },
+    onError: (e) => pushToast(String(e)),
   });
 
   if (me.data && !lead) {
@@ -67,6 +97,33 @@ export function Qc() {
         </div>
         <Link to="/" className="back-chip" aria-label="Home">‹</Link>
       </header>
+
+      {caseOffer && (
+        <div className="detail-card" style={{ marginBottom: 12 }}>
+          <strong>Open a service case for {caseOffer.code}?</strong>
+          <p className="muted" style={{ margin: "4px 0 8px" }}>
+            Links this callback to warranty tracking so QC and after-service stay in sync.
+          </p>
+          <div className="row-gap">
+            <button
+              className="primary big"
+              disabled={openCase.isPending}
+              onClick={() =>
+                openCase.mutate({
+                  windowId: caseOffer.windowId,
+                  code: caseOffer.code,
+                  term: caseOffer.term,
+                })
+              }
+            >
+              Open service case
+            </button>
+            <button className="button-like" onClick={() => setCaseOffer(null)}>
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
 
       <ul className="unit-list work-list">
         {list.map((o) => {
@@ -109,7 +166,14 @@ export function Qc() {
                     <button
                       className="primary big"
                       disabled={logCallback.isPending}
-                      onClick={() => logCallback.mutate({ id: o.id, code: o.opening_code, term: rootTerm })}
+                      onClick={() =>
+                        logCallback.mutate({
+                          id: o.id,
+                          code: o.opening_code,
+                          term: rootTerm,
+                          windowId: o.assigned_window_id,
+                        })
+                      }
                     >
                       Log callback
                     </button>

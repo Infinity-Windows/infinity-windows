@@ -115,12 +115,13 @@ export async function setOrderStatus(id: string, status: string): Promise<void> 
 // --- QC ---
 export interface QcRow {
   id: string; opening_code: string; project_id: string; status: string;
+  assigned_window_id: string | null;
   window_types?: { type_code: string } | null;
   qc?: { status: string } | null;
 }
 export async function listInstalledForQc(): Promise<QcRow[]> {
   const { data, error } = await supabase.from("project_openings")
-    .select("id, opening_code, project_id, status, window_types(type_code), qc:qc_checks(status)")
+    .select("id, opening_code, project_id, status, assigned_window_id, window_types(type_code), qc:qc_checks(status)")
     .eq("status", "installed").order("opening_code").limit(100);
   if (error) throw error;
   return (data ?? []) as unknown as QcRow[];
