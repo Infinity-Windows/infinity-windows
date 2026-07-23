@@ -2,6 +2,8 @@
 // bottom nav. "Don't show again" persists per tip in localStorage so a tip
 // never nags a returning user.
 
+import { roleRank, type CrewRole } from "./install/types";
+
 export interface FeatureTipDef {
   /** Stable key (also the localStorage id). */
   key: string;
@@ -10,12 +12,24 @@ export interface FeatureTipDef {
 }
 
 export const FEATURE_TIPS: Record<string, FeatureTipDef> = {
+  // Managers land on the day Home and have the center Capture (+) button.
   home: {
     key: "home",
     title: "Your day at a glance",
     steps: [
       "Your jobs and urgent items live here",
       "Tap Capture (+) to add a photo or log",
+      "Tap Clock to start your shift",
+    ],
+  },
+  // Installers land on My Work and have no Capture (+) — Scan and Ask instead.
+  home_installer: {
+    key: "home_installer",
+    title: "Your day at a glance",
+    steps: [
+      "Your ready-now work lives here",
+      "Tap Scan to check parts in and out",
+      "Tap Ask for specs, how-tos & answers",
       "Tap Clock to start your shift",
     ],
   },
@@ -46,14 +60,50 @@ export const FEATURE_TIPS: Record<string, FeatureTipDef> = {
       "Everything stays with the project",
     ],
   },
+  chat: {
+    key: "chat",
+    title: "Job chat",
+    steps: [
+      "Message the whole crew on this job",
+      "@mention someone to ping them directly",
+      "Photos and updates stay with the job",
+    ],
+  },
+  schedule: {
+    key: "schedule",
+    title: "My Schedule",
+    steps: [
+      "See where you're booked, day by day",
+      "Tap a day for crew and job details",
+      "Check for changes before you head out",
+    ],
+  },
+  travel: {
+    key: "travel",
+    title: "Travel",
+    steps: [
+      "Flights, hotels and drive plans for out-of-town jobs",
+      "Tap a trip for times, addresses and who's going",
+      "Directions and details stay in one place",
+    ],
+  },
 };
 
-/** The tip key to consider for a route, or null if none. */
-export function tipKeyForRoute(pathname: string): string | null {
-  if (pathname === "/") return "home";
+/**
+ * The tip key to consider for a route, or null if none. The landing "/" tip is
+ * role-aware: installers (no Capture button) get the Scan + Ask variant.
+ */
+export function tipKeyForRoute(
+  pathname: string,
+  role?: CrewRole | string | null,
+): string | null {
+  if (pathname === "/") return roleRank(role) === 0 ? "home_installer" : "home";
   if (pathname.startsWith("/my-work")) return "my_work";
   if (pathname.startsWith("/projects")) return "projects";
   if (pathname.startsWith("/photos")) return "photos";
+  if (pathname.startsWith("/chat")) return "chat";
+  if (pathname.startsWith("/my-schedule")) return "schedule";
+  if (pathname.startsWith("/travel")) return "travel";
   return null;
 }
 

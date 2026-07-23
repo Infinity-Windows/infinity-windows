@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { Lightbulb, X } from "lucide-react";
 import {
@@ -7,6 +8,8 @@ import {
   isTipDismissed,
   tipKeyForRoute,
 } from "../../lib/featureTips";
+import { getMyProfile } from "../../lib/install/api";
+import { effectiveRole, useViewAsRole } from "../../lib/viewAsRoleContext";
 
 /**
  * First-run micro-tip anchored just above the bottom nav. Shows at most one tip
@@ -15,7 +18,10 @@ import {
  */
 export function FeatureTip() {
   const location = useLocation();
-  const key = tipKeyForRoute(location.pathname);
+  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const view = useViewAsRole();
+  const role = effectiveRole(me.data?.role, view);
+  const key = tipKeyForRoute(location.pathname, role);
   const [visibleKey, setVisibleKey] = useState<string | null>(null);
 
   // Decide whether to show a tip when the route settles. A short delay avoids

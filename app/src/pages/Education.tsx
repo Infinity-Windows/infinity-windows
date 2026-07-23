@@ -43,7 +43,7 @@ export function Education() {
     <div className="page">
       <header className="page-header">
         <div>
-          <h1>Education</h1>
+          <h1>Learn</h1>
           <p className="muted" style={{ margin: 0 }}>Learn it before you install it.</p>
         </div>
         <div className="learn-header-meta">
