@@ -54,7 +54,6 @@ export type RoutePath =
   | "/learn"
   | "/points"
   | "/safety"
-  | "/tools"
   | "/scan"
   | "/count"
   | "/ask"
@@ -124,7 +123,6 @@ export const NAV: NavDest[] = [
   { id: "learn", to: "/learn", label: "Learn", icon: "★", minRole: "installer" },
   { id: "points", to: "/points", label: "Points", icon: "✦", minRole: "installer" },
   { id: "safety", to: "/safety", label: "Safety", icon: "⛑", minRole: "installer" },
-  { id: "tools", to: "/tools", label: "Tools", icon: "⚙", minRole: "installer" },
   { id: "scan", to: "/scan", label: "Scan", icon: "▣", minRole: "installer" },
   { id: "count", to: "/count", label: "Cycle count", icon: "#", minRole: "installer" },
   { id: "warehouse", to: "/warehouse", label: "Warehouse", icon: "▦", minRole: "installer" },
@@ -381,7 +379,6 @@ const MENU_DEF: MenuSection[] = [
   {
     title: "Account",
     items: [
-      { to: "/tools", label: "Tools", Icon: Wrench },
       { to: "/notifications", label: "Notifications", Icon: Bell },
       { to: "/settings", label: "Settings", Icon: SlidersHorizontal },
       { to: "/admin", label: "Admin", Icon: ShieldCheck },
