@@ -87,6 +87,152 @@ async function loadLiveContext(
     }
   }
 
+  // Open issues (company-wide): compact list of what's currently broken/blocked.
+  try {
+    const { data } = await supabase
+      .from("issues")
+      .select("kind, urgency, note, created_at, projects(name, job_code)")
+      .eq("status", "open")
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if (data) {
+      live.issues = data.map((r) => {
+        const proj = r.projects as { name?: string; job_code?: string } | null;
+        const created = r.created_at ? new Date(r.created_at as string) : null;
+        const ageDays =
+          created && !Number.isNaN(created.getTime())
+            ? Math.max(0, Math.floor((Date.now() - created.getTime()) / 86_400_000))
+            : undefined;
+        return {
+          job: [proj?.job_code, proj?.name].filter(Boolean).join(" ").trim() || "job",
+          kind: (r.kind as string) ?? "issue",
+          urgency: (r.urgency as string) ?? "normal",
+          note: (r.note as string | null) ?? null,
+          ageDays,
+        };
+      });
+    }
+  } catch (_e) {
+    // no-op: issues unavailable
+  }
+
+  // Inventory (company-wide): cheap aggregate buckets + top on-hand types +
+  // outstanding supplies. Prefer counts/aggregates over dumping every unit.
+  try {
+    const inventory: NonNullable<LiveContext["inventory"]> = {};
+    const headCount = () =>
+      supabase.from("windows").select("id", { count: "exact", head: true });
+    const [onHand, staged, damaged, inbound] = await Promise.all([
+      headCount().not("status", "in", "(installed,loaded)"),
+      headCount().eq("status", "staged"),
+      headCount().eq("status", "damaged"),
+      headCount().eq("status", "inbound"),
+    ]);
+    if (typeof onHand.count === "number") inventory.onHand = onHand.count;
+    if (typeof staged.count === "number") inventory.staged = staged.count;
+    if (typeof damaged.count === "number") inventory.damaged = damaged.count;
+    if (typeof inbound.count === "number") inventory.inbound = inbound.count;
+
+    // Top on-hand types: aggregate a bounded projection client-side (indexed on
+    // status) so we can answer "how many X do we have" without a per-type query.
+    try {
+      const { data } = await supabase
+        .from("windows")
+        .select("window_types(type_code, name)")
+        .in("status", ["in_warehouse", "staged"])
+        .limit(3000);
+      if (data && data.length > 0) {
+        const counts = new Map<string, { type_code?: string; name?: string; count: number }>();
+        for (const row of data) {
+          const wt = row.window_types as { type_code?: string; name?: string } | null;
+          const key = (wt?.type_code ?? wt?.name ?? "").trim();
+          if (!key) continue;
+          const cur = counts.get(key);
+          if (cur) cur.count += 1;
+          else counts.set(key, { type_code: wt?.type_code, name: wt?.name, count: 1 });
+        }
+        inventory.topOnHand = [...counts.values()]
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 15);
+      }
+    } catch (_e) {
+      // no-op: per-type rollup unavailable
+    }
+
+    // Outstanding supply orders (needed/ordered), most recent first.
+    try {
+      const { data } = await supabase
+        .from("supply_orders")
+        .select("name, qty, status, supplies(name)")
+        .in("status", ["needed", "ordered"])
+        .order("created_at", { ascending: false })
+        .limit(15);
+      if (data && data.length > 0) {
+        inventory.supplies = data.map((r) => {
+          const s = r.supplies as { name?: string } | null;
+          return {
+            name: ((r.name as string | null) ?? s?.name ?? "supply").trim() || "supply",
+            qty: typeof r.qty === "number" ? (r.qty as number) : Number(r.qty ?? 0) || undefined,
+            status: (r.status as string) ?? undefined,
+          };
+        });
+      }
+    } catch (_e) {
+      // no-op: supplies unavailable
+    }
+
+    if (Object.keys(inventory).length > 0) live.inventory = inventory;
+  } catch (_e) {
+    // no-op: inventory unavailable
+  }
+
+  // Recent job chat, scoped to jobs the ASKING USER is on (never leak other
+  // crews' threads). Mirrors can_access_project_chat: schedule crew + assigned
+  // openings decide which projects' messages this user may see.
+  if (userId) {
+    try {
+      const projectIds = new Set<string>();
+      const { data: memberRows } = await supabase
+        .from("schedule_assignment_members")
+        .select("schedule_assignments(project_id)")
+        .eq("profile_id", userId);
+      for (const m of memberRows ?? []) {
+        const a = m.schedule_assignments as { project_id?: string } | null;
+        if (a?.project_id) projectIds.add(a.project_id);
+      }
+      const { data: openingRows } = await supabase
+        .from("project_openings")
+        .select("project_id")
+        .eq("assigned_to", userId);
+      for (const o of openingRows ?? []) {
+        if (o.project_id) projectIds.add(o.project_id as string);
+      }
+
+      if (projectIds.size > 0) {
+        const { data } = await supabase
+          .from("project_messages")
+          .select("body, created_at, profiles(display_name), projects(name, job_code)")
+          .in("project_id", [...projectIds])
+          .order("created_at", { ascending: false })
+          .limit(15);
+        if (data) {
+          live.chat = data.map((m) => {
+            const proj = m.projects as { name?: string; job_code?: string } | null;
+            const author = m.profiles as { display_name?: string } | null;
+            return {
+              job: [proj?.job_code, proj?.name].filter(Boolean).join(" ").trim() || "job",
+              sender: author?.display_name ?? "someone",
+              body: (m.body as string) ?? "",
+              when: (m.created_at as string | null) ?? undefined,
+            };
+          });
+        }
+      }
+    } catch (_e) {
+      // no-op: chat unavailable
+    }
+  }
+
   return live;
 }
 

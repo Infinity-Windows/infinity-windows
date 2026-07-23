@@ -160,6 +160,75 @@ describe("buildContextBlock / buildAskUserMessage", () => {
     expect(buildContextBlock([], {})).toBe("");
   });
 
+  it("renders open issues with urgency markers, age, and their job", () => {
+    const block = buildContextBlock([], {
+      issues: [
+        { job: "J12 Maple St", kind: "failed_install", urgency: "urgent", note: "Sill rotted", ageDays: 3 },
+        { job: "J99 Smith", kind: "blocker", urgency: "emergency", note: "Gas line", ageDays: 0 },
+        { job: "J12 Maple St", kind: "flag", urgency: "normal", note: null },
+      ],
+    });
+    expect(block).toContain("Open issues:");
+    expect(block).toContain("! failed install on J12 Maple St — Sill rotted (3d old)");
+    expect(block).toContain("!!! blocker on J99 Smith — Gas line (today)");
+    expect(block).toContain("flag on J12 Maple St");
+  });
+
+  it("renders an inventory snapshot with buckets, top types, and supplies", () => {
+    const block = buildContextBlock([], {
+      inventory: {
+        onHand: 120,
+        staged: 18,
+        damaged: 4,
+        inbound: 30,
+        topOnHand: [
+          { type_code: "SL7248", name: "Slider", count: 22 },
+          { type_code: "CAS3050", name: "Casement", count: 9 },
+        ],
+        supplies: [{ name: "Flashing tape 4\"", qty: 6, status: "needed" }],
+      },
+    });
+    expect(block).toContain("Inventory:");
+    expect(block).toContain("120 on hand, 18 staged, 4 damaged, 30 inbound");
+    expect(block).toContain("SL7248 Slider×22");
+    expect(block).toContain("supplies outstanding: Flashing tape 4\" ×6 (needed)");
+  });
+
+  it("renders recent job chat with sender, job, and body", () => {
+    const block = buildContextBlock([], {
+      chat: [
+        { job: "J77 Warehouse", sender: "Cody", body: "Crane is booked for Tuesday", when: "2026-07-23T15:00:00Z" },
+        { job: "J12 Maple St", sender: "Ana", body: "Need more shims", when: "2026-07-23T14:00:00Z" },
+      ],
+    });
+    expect(block).toContain("Recent job chat");
+    expect(block).toContain("[J77 Warehouse] Cody: Crane is booked for Tuesday");
+    expect(block).toContain("[J12 Maple St] Ana: Need more shims");
+  });
+
+  it("omits new live sections entirely when they're absent or degraded to empty", () => {
+    const block = buildContextBlock(chunks, {
+      projects: [{ job_code: "J1", name: "Oak", status: "active" }],
+      issues: [],
+      inventory: {},
+      chat: [],
+    });
+    expect(block).toContain("Active projects");
+    expect(block).not.toContain("Open issues");
+    expect(block).not.toContain("Inventory:");
+    expect(block).not.toContain("Recent job chat");
+  });
+
+  it("caps long issue notes and chat bodies so a few items can't blow the prompt", () => {
+    const long = "x".repeat(400);
+    const block = buildContextBlock([], {
+      issues: [{ job: "J1", kind: "blocker", urgency: "normal", note: long }],
+      chat: [{ job: "J1", sender: "Sam", body: long }],
+    });
+    expect(block).toContain("…");
+    expect(block).not.toContain(long);
+  });
+
   it("embeds the question and context; handles the no-context branch", () => {
     const withCtx = buildAskUserMessage("How do I flash?", buildContextBlock(chunks, {}));
     expect(withCtx).toContain("How do I flash?");
