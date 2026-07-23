@@ -26,14 +26,13 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Settings (`/settings`)
 
-**Can reach (all 23 allowed destinations):**
+**Can reach (all 22 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
 - Learn (`/learn`)
 - Points (`/points`)
 - Safety (`/safety`)
-- Tools (`/tools`)
 - Scan (`/scan`)
 - Cycle count (`/count`)
 - Warehouse (`/warehouse`)
@@ -116,18 +115,16 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Memo review (`/review`)
 - Safety (`/safety`)
 - Ask (`/ask`)
-- Tools (`/tools`)
 - Notifications (`/notifications`)
 - Settings (`/settings`)
 
-**Can reach (all 38 allowed destinations):**
+**Can reach (all 37 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
 - Learn (`/learn`)
 - Points (`/points`)
 - Safety (`/safety`)
-- Tools (`/tools`)
 - Scan (`/scan`)
 - Cycle count (`/count`)
 - Warehouse (`/warehouse`)
@@ -215,19 +212,17 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Safety (`/safety`)
 - Ask (`/ask`)
 - AI Knowledge (`/knowledge`)
-- Tools (`/tools`)
 - Notifications (`/notifications`)
 - Settings (`/settings`)
 - Admin (`/admin`)
 
-**Can reach (all 44 allowed destinations):**
+**Can reach (all 43 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
 - Learn (`/learn`)
 - Points (`/points`)
 - Safety (`/safety`)
-- Tools (`/tools`)
 - Scan (`/scan`)
 - Cycle count (`/count`)
 - Warehouse (`/warehouse`)
@@ -316,19 +311,17 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Safety (`/safety`)
 - Ask (`/ask`)
 - AI Knowledge (`/knowledge`)
-- Tools (`/tools`)
 - Notifications (`/notifications`)
 - Settings (`/settings`)
 - Admin (`/admin`)
 
-**Can reach (all 45 allowed destinations):**
+**Can reach (all 44 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
 - Learn (`/learn`)
 - Points (`/points`)
 - Safety (`/safety`)
-- Tools (`/tools`)
 - Scan (`/scan`)
 - Cycle count (`/count`)
 - Warehouse (`/warehouse`)

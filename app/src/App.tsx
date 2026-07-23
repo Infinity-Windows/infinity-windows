@@ -66,7 +66,6 @@ import { Education } from "./pages/Education";
 import { Photos } from "./pages/Photos";
 import { Points } from "./pages/Points";
 import { Safety } from "./pages/Safety";
-import { Tools } from "./pages/Tools";
 import { Supplies } from "./pages/Supplies";
 import { Qc } from "./pages/Qc";
 import { PinGate } from "./components/PinGate";
@@ -342,7 +341,6 @@ export default function App() {
             <Route path="/learn" element={<Education />} />
             <Route path="/points" element={<Points />} />
             <Route path="/safety" element={<Safety />} />
-            <Route path="/tools" element={<Tools />} />
             <Route
               path="/supplies"
               element={<RequireRole path="/supplies"><Supplies /></RequireRole>}
