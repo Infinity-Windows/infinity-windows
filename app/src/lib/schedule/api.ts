@@ -290,6 +290,27 @@ export async function listMyPublished(
   return ((data ?? []) as unknown as RawAssignmentRow[]).map(mapRow);
 }
 
+/** Published assignments for one job (read-only view on the project hub). */
+export async function listProjectAssignments(
+  projectId: string,
+): Promise<ScheduleAssignment[]> {
+  const { data, error } = await supabase
+    .from("schedule_assignments")
+    .select(SELECT)
+    .eq("project_id", projectId)
+    .eq("status", "published")
+    .order("start_date");
+  if (error) {
+    if (isMissingScheduleTable(error)) {
+      return readLocal()
+        .filter((a) => a.project_id === projectId && a.status === "published")
+        .sort((a, b) => a.start_date.localeCompare(b.start_date));
+    }
+    throw error;
+  }
+  return ((data ?? []) as unknown as RawAssignmentRow[]).map(mapRow);
+}
+
 export async function createAssignment(
   input: NewAssignmentInput,
 ): Promise<ScheduleAssignment> {

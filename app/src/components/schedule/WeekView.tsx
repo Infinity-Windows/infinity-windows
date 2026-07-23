@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Plus, Truck } from "lucide-react";
 import {
   addDaysISO,
   agendaDayLabel,
@@ -13,6 +13,8 @@ interface Props {
   todayISO: string;
   assignments: ScheduleAssignment[];
   conflictIds: Set<string>;
+  /** assignment id → short vehicle label to show on the block. */
+  vehicleLabels?: Map<string, string>;
   onOpen: (a: ScheduleAssignment) => void;
   onCreate: (day: string) => void;
 }
@@ -22,6 +24,7 @@ export function WeekView({
   todayISO,
   assignments,
   conflictIds,
+  vehicleLabels,
   onOpen,
   onCreate,
 }: Props) {
@@ -62,6 +65,11 @@ export function WeekView({
                     {a.start_time ? ` · ${formatStartTime(a.start_time)}` : ""}
                     {a.start_date === day && a.end_date > day ? " · starts" : ""}
                   </span>
+                  {vehicleLabels?.get(a.id) && (
+                    <span className="sched-block-sub">
+                      <Truck size={11} aria-hidden /> {vehicleLabels.get(a.id)}
+                    </span>
+                  )}
                 </button>
               ))}
               {dayItems.length === 0 && (

@@ -1,13 +1,16 @@
 import { Fragment, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { CalendarClock, Clock, MapPin, Users } from "lucide-react";
+import { CalendarClock, Clock, MapPin, Plane, Truck, Users } from "lucide-react";
 import { getMyProfile } from "../lib/install/api";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { addDaysISO, agendaDayLabel, formatStartTime } from "../lib/schedule/dates";
 import { buildAgenda, crewmateNames } from "../lib/schedule/grouping";
 import { assignmentColor } from "../lib/schedule/color";
 import { listMyPublished } from "../lib/schedule/api";
+import { listVehicleLinksForAssignments } from "../lib/vehicles/api";
+import { vehicleTitle } from "../lib/vehicles/display";
+import { listTrips } from "../lib/travel/api";
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -33,6 +36,33 @@ export function MySchedule() {
     () => (schedule.data ? buildAgenda(schedule.data, today, to) : []),
     [schedule.data, today, to],
   );
+
+  const assignmentIds = useMemo(
+    () => (schedule.data ?? []).map((a) => a.id),
+    [schedule.data],
+  );
+  const vehicleLinks = useQuery({
+    queryKey: ["myScheduleVehicles", assignmentIds],
+    queryFn: () => listVehicleLinksForAssignments(assignmentIds),
+    enabled: assignmentIds.length > 0,
+  });
+  const trips = useQuery({ queryKey: ["trips"], queryFn: listTrips });
+
+  const vehicleByAssignment = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const l of vehicleLinks.data ?? []) {
+      if (l.assignment_id && l.vehicle) map.set(l.assignment_id, vehicleTitle(l.vehicle));
+    }
+    return map;
+  }, [vehicleLinks.data]);
+
+  const tripByProject = useMemo(() => {
+    const map = new Map<string, { id: string; label: string }>();
+    for (const t of trips.data ?? []) {
+      if (t.project_id) map.set(t.project_id, { id: t.id, label: t.destination || t.name });
+    }
+    return map;
+  }, [trips.data]);
 
   return (
     <div className="page sched-mine">
@@ -90,6 +120,16 @@ export function MySchedule() {
                       {mates.length > 0 && (
                         <span className="sched-agenda-crew">
                           <Users size={13} aria-hidden /> with {mates.join(", ")}
+                        </span>
+                      )}
+                      {vehicleByAssignment.get(a.id) && (
+                        <span className="sched-agenda-crew">
+                          <Truck size={13} aria-hidden /> {vehicleByAssignment.get(a.id)}
+                        </span>
+                      )}
+                      {tripByProject.get(a.project_id) && (
+                        <span className="sched-agenda-crew">
+                          <Plane size={13} aria-hidden /> Travel: {tripByProject.get(a.project_id)!.label}
                         </span>
                       )}
                     </div>

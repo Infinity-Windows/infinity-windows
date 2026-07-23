@@ -57,6 +57,11 @@ import {
 } from "../lib/types";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { listProjectAssignments } from "../lib/schedule/api";
+import { listVehicleLinksForProject } from "../lib/vehicles/api";
+import { vehicleTitle } from "../lib/vehicles/display";
+import { listTrips } from "../lib/travel/api";
+import { CalendarClock, Plane, Truck, Users } from "lucide-react";
 import { ProjectMap } from "./install/ProjectMap";
 import { DispatchBoard } from "./install/DispatchBoard";
 import { PhotoFeed } from "../components/photos/PhotoFeed";
@@ -366,6 +371,8 @@ function OverviewTab({
     <>
       {project && <JobDetailsPanel project={project} isLead={isLead} />}
 
+      <ScheduledCrewPanel projectId={projectId} />
+
       {estimate && estimate.est.remaining > 0 && (
         <div className="estimate-card">
           <div className="estimate-head">
@@ -465,6 +472,99 @@ function OverviewTab({
         )}
       </ul>
     </>
+  );
+}
+
+/**
+ * Read-only view of the PUBLISHED schedule for this job: crew + dates, plus any
+ * linked vehicle/trailer and planned trips. Sources everything from the
+ * scheduling board (does not duplicate or edit it) and sits alongside the
+ * hand-typed project.start_date/end_date in Job details.
+ */
+function ScheduledCrewPanel({ projectId }: { projectId: string }) {
+  const assignments = useQuery({
+    queryKey: ["projectSchedule", projectId],
+    queryFn: () => listProjectAssignments(projectId),
+  });
+  const vlinks = useQuery({
+    queryKey: ["projectVehicleLinks", projectId],
+    queryFn: () => listVehicleLinksForProject(projectId),
+  });
+  const trips = useQuery({ queryKey: ["trips"], queryFn: listTrips });
+
+  const list = assignments.data ?? [];
+  const vehicleByAssignment = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const l of vlinks.data ?? []) {
+      if (l.assignment_id && l.vehicle) map.set(l.assignment_id, vehicleTitle(l.vehicle));
+    }
+    return map;
+  }, [vlinks.data]);
+  const projectTrips = useMemo(
+    () => (trips.data ?? []).filter((t) => t.project_id === projectId),
+    [trips.data, projectId],
+  );
+
+  if (list.length === 0 && projectTrips.length === 0) return null;
+
+  const dateRange = (start: string, end: string) =>
+    start === end ? fmtDay(start) : `${fmtDay(start)} – ${fmtDay(end)}`;
+
+  return (
+    <section className="detail-card" style={{ marginBottom: 16 }}>
+      <div className="row-between">
+        <h2 style={{ margin: 0 }}>
+          <CalendarClock size={16} aria-hidden /> Scheduled crew
+        </h2>
+        <Link to="/scheduling" className="link">
+          Scheduling
+        </Link>
+      </div>
+      <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+        From the published schedule. Edit dates &amp; crew on the Scheduling board.
+      </p>
+
+      {list.length === 0 ? (
+        <p className="muted" style={{ marginTop: 8 }}>
+          No published crew assignment yet.
+        </p>
+      ) : (
+        <ul className="unit-list work-list" style={{ marginTop: 8 }}>
+          {list.map((a) => {
+            const vehicle = vehicleByAssignment.get(a.id);
+            const crew = a.members.map((m) => m.display_name ?? "Crew").join(", ");
+            return (
+              <li key={a.id} className="find-row" style={{ display: "block" }}>
+                <div>
+                  <strong>{dateRange(a.start_date, a.end_date)}</strong>
+                </div>
+                <div className="muted" style={{ fontSize: 13 }}>
+                  <Users size={13} aria-hidden /> {crew || "No crew"}
+                </div>
+                {vehicle && (
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    <Truck size={13} aria-hidden /> {vehicle}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {projectTrips.length > 0 && (
+        <ul className="unit-list work-list" style={{ marginTop: 8 }}>
+          {projectTrips.map((t) => (
+            <li key={t.id} className="find-row">
+              <Link to={`/travel/${t.id}`} className="job-row">
+                <Plane size={13} aria-hidden /> {t.destination || t.name}
+                <span className="muted"> · {dateRange(t.start_date, t.end_date)}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

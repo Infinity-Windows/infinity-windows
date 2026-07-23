@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Plus, Send } from "lucide-react";
 import { listProjects } from "../lib/api";
 import { getMyProfile, listProfiles } from "../lib/install/api";
@@ -37,6 +37,17 @@ import {
   updateAssignment,
 } from "../lib/schedule/api";
 import type { ScheduleAssignment } from "../lib/schedule/types";
+import {
+  linkVehicleToSchedule,
+  listAllVehicleLinks,
+  listVehicles,
+  unlinkVehicleFromSchedule,
+} from "../lib/vehicles/api";
+import { vehicleTitle } from "../lib/vehicles/display";
+import type { VehicleBooking } from "../lib/vehicles/scheduleConflicts";
+import { isOutOfTown } from "../lib/travel/homeBase";
+import type { NewTripInput } from "../lib/travel/types";
+import { TripEditor } from "../components/travel/TripEditor";
 import { sendPush } from "../lib/permissions/pushServer";
 import { notifyLocal } from "../lib/permissions/notifyLocal";
 
@@ -63,6 +74,7 @@ interface EditorState {
 
 export function Scheduling() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const today = todayLocalISO();
   const horizon = useMemo(() => horizonRange(today), [today]);
 
@@ -71,6 +83,7 @@ export function Scheduling() {
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [travelDraft, setTravelDraft] = useState<NewTripInput | null>(null);
 
   const range = useMemo(() => {
     if (view === "week") {
@@ -97,20 +110,68 @@ export function Scheduling() {
     queryKey: ["scheduleDrafts"],
     queryFn: listDraftAssignments,
   });
+  const vehicles = useQuery({ queryKey: ["vehicles"], queryFn: listVehicles });
+  const vehicleLinks = useQuery({ queryKey: ["vehicleLinks"], queryFn: listAllVehicleLinks });
 
   const loaded = useMemo(() => assignments.data ?? [], [assignments.data]);
   const conflictIds = useMemo(() => conflictingAssignmentIds(loaded), [loaded]);
 
+  const vehicleByAssignment = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const l of vehicleLinks.data ?? []) {
+      if (l.assignment_id) map.set(l.assignment_id, l.vehicle_id);
+    }
+    return map;
+  }, [vehicleLinks.data]);
+
+  const vehicleBookings = useMemo<VehicleBooking[]>(
+    () =>
+      (vehicleLinks.data ?? []).map((l) => ({
+        vehicle_id: l.vehicle_id,
+        assignment_id: l.assignment_id,
+        start_date: l.start_date,
+        end_date: l.end_date,
+      })),
+    [vehicleLinks.data],
+  );
+
+  const vehicleLabelByAssignment = useMemo(() => {
+    const byId = new Map((vehicles.data ?? []).map((v) => [v.id, v]));
+    const map = new Map<string, string>();
+    for (const l of vehicleLinks.data ?? []) {
+      if (!l.assignment_id) continue;
+      const v = byId.get(l.vehicle_id);
+      map.set(l.assignment_id, v ? vehicleTitle(v) : "Vehicle");
+    }
+    return map;
+  }, [vehicleLinks.data, vehicles.data]);
+
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["scheduleAssignments"] });
     qc.invalidateQueries({ queryKey: ["scheduleDrafts"] });
+    qc.invalidateQueries({ queryKey: ["vehicleLinks"] });
   };
+
+  async function syncVehicleLink(result: EditorResult, assignmentId: string) {
+    if (result.vehicle_id) {
+      await linkVehicleToSchedule({
+        vehicleId: result.vehicle_id,
+        projectId: result.project_id,
+        assignmentId,
+        startDate: result.start_date,
+        endDate: result.end_date,
+      });
+    } else {
+      await unlinkVehicleFromSchedule(assignmentId);
+    }
+  }
 
   const save = useMutation({
     mutationFn: async (result: EditorResult) => {
       const existing = editor?.assignment ?? null;
       if (!existing) {
-        await createAssignment(result);
+        const created = await createAssignment(result);
+        await syncVehicleLink(result, created.id);
         return;
       }
       const beforeMembers = existing.members.map((m) => m.profile_id);
@@ -120,6 +181,7 @@ export function Scheduling() {
         existing.end_date !== result.end_date ||
         (existing.start_time ?? null) !== result.start_time;
       await updateAssignment(existing.id, result);
+      await syncVehicleLink(result, existing.id);
       // Re-notify only affected people when editing an already-published block.
       if (existing.status === "published") {
         const affected = affectedByEdit({
@@ -278,6 +340,35 @@ export function Scheduling() {
     }
   }
 
+  const projectById = useMemo(
+    () => new Map((projects.data ?? []).map((p) => [p.id, p])),
+    [projects.data],
+  );
+
+  function openTravelDraft(a: ScheduleAssignment) {
+    const project = projectById.get(a.project_id) ?? null;
+    const label = project?.name || project?.job_code || a.project?.name || "Job";
+    setEditor(null);
+    setTravelDraft({
+      name: `${label} travel`,
+      destination: project?.address ?? a.project?.address ?? null,
+      start_date: a.start_date,
+      end_date: a.end_date,
+      project_id: a.project_id,
+      crew: a.members.map((m) => ({
+        profile_id: m.profile_id,
+        role: m.role,
+        display_name: m.display_name ?? null,
+      })),
+    });
+  }
+
+  const editingAssignment = editor?.assignment ?? null;
+  const canPlanTravel =
+    editingAssignment != null &&
+    editingAssignment.status === "published" &&
+    isOutOfTown(projectById.get(editingAssignment.project_id)?.site_state);
+
   return (
     <div className="page sched-page">
       <header className="page-header">
@@ -392,6 +483,7 @@ export function Scheduling() {
           todayISO={today}
           assignments={loaded}
           conflictIds={conflictIds}
+          vehicleLabels={vehicleLabelByAssignment}
           onOpen={(a) => setEditor({ assignment: a })}
           onCreate={(day) => setEditor({ assignment: null, defaults: { start_date: day } })}
         />
@@ -442,10 +534,33 @@ export function Scheduling() {
           others={loaded}
           highlightMemberIds={editor.highlightMemberIds}
           horizon={horizon}
+          vehicles={vehicles.data ?? []}
+          currentVehicleId={
+            editor.assignment ? (vehicleByAssignment.get(editor.assignment.id) ?? null) : null
+          }
+          vehicleBookings={vehicleBookings}
+          onPlanTravel={
+            canPlanTravel && editingAssignment
+              ? () => openTravelDraft(editingAssignment)
+              : undefined
+          }
           saving={save.isPending || remove.isPending}
           onSave={(result) => save.mutate(result)}
           onDelete={editor.assignment ? () => remove.mutate() : undefined}
           onClose={() => setEditor(null)}
+        />
+      )}
+
+      {travelDraft && (
+        <TripEditor
+          trip={null}
+          defaults={travelDraft}
+          onClose={() => setTravelDraft(null)}
+          onSaved={(saved) => {
+            setTravelDraft(null);
+            navigate(`/travel/${saved.id}`);
+          }}
+          onDeleted={() => setTravelDraft(null)}
         />
       )}
 

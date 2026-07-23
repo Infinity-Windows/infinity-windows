@@ -11,6 +11,7 @@ import type { Project } from "../types";
 import { normalizeDrivers } from "./drivers";
 import type {
   ManualLocationInput,
+  ScheduleVehicleLink,
   ServiceRecordInput,
   Vehicle,
   VehicleDriver,
@@ -18,6 +19,7 @@ import type {
   VehicleInput,
   VehicleLocation,
   VehicleProjectAssignment,
+  VehicleScheduleLinkInput,
   VehicleServiceRecord,
   VehicleWithMeta,
 } from "./types";
@@ -34,6 +36,16 @@ function isMissingVehicleTable(error: unknown): boolean {
     msg.includes("vehicle") ||
     (msg.includes("does not exist") && msg.includes("relation"))
   );
+}
+
+/** A "column not found" error means the date-aware link migration isn't
+ * applied yet (the table exists, but start_date/end_date/assignment_id don't). */
+function isMissingColumn(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: unknown; message?: unknown };
+  if (e.code === "42703" || e.code === "PGRST204") return true;
+  const msg = typeof e.message === "string" ? e.message.toLowerCase() : "";
+  return msg.includes("column") && msg.includes("does not exist");
 }
 
 function nowISO(): string {
@@ -256,7 +268,12 @@ const localStore = {
     writeDB(db);
     return row;
   },
-  assign(vehicleId: string, projectId: string, note: string | null): VehicleProjectAssignment {
+  assign(
+    vehicleId: string,
+    projectId: string,
+    note: string | null,
+    extra?: { assignment_id?: string | null; start_date?: string | null; end_date?: string | null },
+  ): VehicleProjectAssignment {
     const db = readDB();
     const row: VehicleProjectAssignment = {
       id: newId(),
@@ -264,6 +281,9 @@ const localStore = {
       project_id: projectId,
       assigned_at: nowISO(),
       note,
+      assignment_id: extra?.assignment_id ?? null,
+      start_date: extra?.start_date ?? null,
+      end_date: extra?.end_date ?? null,
       project: null,
     };
     db.assignments.push(row);
@@ -275,7 +295,41 @@ const localStore = {
     db.assignments = db.assignments.filter((a) => a.vehicle_id !== vehicleId);
     writeDB(db);
   },
+  unlinkAssignment(assignmentId: string): void {
+    const db = readDB();
+    db.assignments = db.assignments.filter((a) => a.assignment_id !== assignmentId);
+    writeDB(db);
+  },
+  linksFor(predicate: (a: VehicleProjectAssignment) => boolean): ScheduleVehicleLink[] {
+    const db = readDB();
+    return db.assignments.filter(predicate).map((a) => localLink(db, a));
+  },
 };
+
+function localLink(db: LocalDB, a: VehicleProjectAssignment): ScheduleVehicleLink {
+  const v = db.vehicles.find((x) => x.id === a.vehicle_id) ?? null;
+  return {
+    id: a.id,
+    vehicle_id: a.vehicle_id,
+    project_id: a.project_id,
+    assignment_id: a.assignment_id ?? null,
+    start_date: a.start_date ?? null,
+    end_date: a.end_date ?? null,
+    note: a.note,
+    vehicle: v
+      ? {
+          id: v.id,
+          kind: v.kind,
+          trailer_subtype: v.trailer_subtype,
+          year: v.year,
+          make: v.make,
+          model: v.model,
+          color: v.color,
+          plate: v.plate,
+        }
+      : null,
+  };
+}
 
 // --- Row mapping (remote) ---------------------------------------------------
 
@@ -293,6 +347,9 @@ interface RawAssignmentRow {
   project_id: string;
   assigned_at: string;
   note: string | null;
+  assignment_id?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
   projects?: { id: string; job_code: string; name: string; address: string | null } | null;
 }
 interface RawVehicleRow extends Vehicle {
@@ -318,6 +375,9 @@ function mapAssignment(row: RawAssignmentRow): VehicleProjectAssignment {
     project_id: row.project_id,
     assigned_at: row.assigned_at,
     note: row.note,
+    assignment_id: row.assignment_id ?? null,
+    start_date: row.start_date ?? null,
+    end_date: row.end_date ?? null,
     project: row.projects ?? null,
   };
 }
@@ -598,6 +658,137 @@ export async function unassignProject(vehicleId: string): Promise<void> {
     if (isMissingVehicleTable(error)) return localStore.unassign(vehicleId);
     throw error;
   }
+}
+
+// --- Schedule links (date-aware vehicle ↔ scheduled crew block) -------------
+
+const LINK_SELECT =
+  "*, vehicles(id, kind, trailer_subtype, year, make, model, color, plate)";
+
+interface RawLinkRow {
+  id: string;
+  vehicle_id: string;
+  project_id: string;
+  assignment_id?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  note: string | null;
+  vehicles?: ScheduleVehicleLink["vehicle"];
+}
+
+function mapLink(row: RawLinkRow): ScheduleVehicleLink {
+  return {
+    id: row.id,
+    vehicle_id: row.vehicle_id,
+    project_id: row.project_id,
+    assignment_id: row.assignment_id ?? null,
+    start_date: row.start_date ?? null,
+    end_date: row.end_date ?? null,
+    note: row.note,
+    vehicle: row.vehicles ?? null,
+  };
+}
+
+/**
+ * Tie a vehicle/trailer to a scheduled crew block (one link per assignment).
+ * Replaces any prior link on that assignment so re-picking is idempotent.
+ * Degrades gracefully: falls back to a base (date-less) link if the columns
+ * aren't migrated, and to the browser-local store if the table is missing.
+ */
+export async function linkVehicleToSchedule(
+  input: VehicleScheduleLinkInput,
+): Promise<VehicleProjectAssignment | null> {
+  await unlinkVehicleFromSchedule(input.assignmentId);
+  const res = await supabase
+    .from("vehicle_project_assignments")
+    .insert({
+      vehicle_id: input.vehicleId,
+      project_id: input.projectId,
+      assignment_id: input.assignmentId,
+      start_date: input.startDate,
+      end_date: input.endDate,
+      note: input.note ?? null,
+    })
+    .select("*, projects(id, job_code, name, address)")
+    .single();
+  if (res.error) {
+    // Columns not migrated yet OR table missing: keep the whole link local so
+    // it stays date-aware and readable through the local fallback path.
+    if (isMissingColumn(res.error) || isMissingVehicleTable(res.error)) {
+      return localStore.assign(input.vehicleId, input.projectId, input.note ?? null, {
+        assignment_id: input.assignmentId,
+        start_date: input.startDate,
+        end_date: input.endDate,
+      });
+    }
+    throw res.error;
+  }
+  return mapAssignment(res.data as unknown as RawAssignmentRow);
+}
+
+/** Remove whatever vehicle is linked to a scheduled crew block. */
+export async function unlinkVehicleFromSchedule(assignmentId: string): Promise<void> {
+  const { error } = await supabase
+    .from("vehicle_project_assignments")
+    .delete()
+    .eq("assignment_id", assignmentId);
+  if (error) {
+    if (isMissingColumn(error) || isMissingVehicleTable(error)) {
+      return localStore.unlinkAssignment(assignmentId);
+    }
+    throw error;
+  }
+}
+
+/** Vehicle links for a set of scheduled crew blocks (My Schedule / board). */
+export async function listVehicleLinksForAssignments(
+  assignmentIds: string[],
+): Promise<ScheduleVehicleLink[]> {
+  if (assignmentIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("vehicle_project_assignments")
+    .select(LINK_SELECT)
+    .in("assignment_id", assignmentIds);
+  if (error) {
+    if (isMissingColumn(error) || isMissingVehicleTable(error)) {
+      const set = new Set(assignmentIds);
+      return localStore.linksFor((a) => Boolean(a.assignment_id) && set.has(a.assignment_id!));
+    }
+    throw error;
+  }
+  return ((data ?? []) as unknown as RawLinkRow[]).map(mapLink);
+}
+
+/** Every vehicle link touching a job (both schedule-linked + job-level). */
+export async function listVehicleLinksForProject(
+  projectId: string,
+): Promise<ScheduleVehicleLink[]> {
+  const { data, error } = await supabase
+    .from("vehicle_project_assignments")
+    .select(LINK_SELECT)
+    .eq("project_id", projectId)
+    .order("assigned_at", { ascending: false });
+  if (error) {
+    if (isMissingColumn(error) || isMissingVehicleTable(error)) {
+      return localStore.linksFor((a) => a.project_id === projectId);
+    }
+    throw error;
+  }
+  return ((data ?? []) as unknown as RawLinkRow[]).map(mapLink);
+}
+
+/** All vehicle links (drives the board's double-booking heads-up). */
+export async function listAllVehicleLinks(): Promise<ScheduleVehicleLink[]> {
+  const { data, error } = await supabase
+    .from("vehicle_project_assignments")
+    .select(LINK_SELECT);
+  if (error) {
+    if (isMissingColumn(error) || isMissingVehicleTable(error)) {
+      return localStore.linksFor(() => true);
+    }
+    throw error;
+  }
+  return ((data ?? []) as unknown as RawLinkRow[]).map(mapLink);
 }
 
 /** Active projects for the "assign to a job" picker (reuses the projects API). */
