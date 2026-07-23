@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Trash2, X } from "lucide-react";
+import { AlertTriangle, Plane, Trash2, Truck, X } from "lucide-react";
 import type { Profile } from "../../lib/install/types";
 import type { Project } from "../../lib/types";
 import { INSTALLER_PALETTE } from "../../lib/install/mapDispatch";
@@ -7,6 +7,12 @@ import { addDaysISO, daysBetween } from "../../lib/schedule/dates";
 import { conflictingMembersFor } from "../../lib/schedule/conflicts";
 import { removeWarning } from "../../lib/schedule/removeWarning";
 import { useFocusTrap } from "../../lib/useFocusTrap";
+import type { VehicleWithMeta } from "../../lib/vehicles/types";
+import { vehicleSubtitle, vehicleTitle } from "../../lib/vehicles/display";
+import {
+  isVehicleDoubleBooked,
+  type VehicleBooking,
+} from "../../lib/vehicles/scheduleConflicts";
 import type {
   AssignmentMember,
   CrewMemberRole,
@@ -21,6 +27,8 @@ export interface EditorResult {
   color: string | null;
   note: string | null;
   members: AssignmentMember[];
+  /** Vehicle/trailer to tie to this block, or null to leave/clear it. */
+  vehicle_id: string | null;
 }
 
 interface Props {
@@ -35,6 +43,14 @@ interface Props {
   /** Crew ids to emphasize (opened from the conflict banner's "Fix"). */
   highlightMemberIds?: string[];
   horizon: { from: string; to: string };
+  /** Fleet to pick a vehicle/trailer from (optional). */
+  vehicles?: VehicleWithMeta[];
+  /** Vehicle already tied to this block (edit mode). */
+  currentVehicleId?: string | null;
+  /** All existing vehicle bookings, for the double-booking heads-up. */
+  vehicleBookings?: VehicleBooking[];
+  /** Shown for a published, out-of-town block: opens a prefilled TripEditor. */
+  onPlanTravel?: () => void;
   saving?: boolean;
   onSave: (result: EditorResult) => void;
   onDelete?: () => void;
@@ -53,6 +69,10 @@ export function AssignmentEditor({
   others,
   highlightMemberIds,
   horizon,
+  vehicles,
+  currentVehicleId,
+  vehicleBookings,
+  onPlanTravel,
   saving,
   onSave,
   onDelete,
@@ -76,6 +96,16 @@ export function AssignmentEditor({
   );
   const [color, setColor] = useState(assignment?.color ?? "");
   const [note, setNote] = useState(assignment?.note ?? "");
+  const [vehicleId, setVehicleId] = useState(currentVehicleId ?? "");
+  const vehicleSynced = useRef(currentVehicleId !== undefined);
+  useEffect(() => {
+    // Adopt the linked vehicle once the (async) lookup resolves, but never
+    // clobber a choice the user has already made.
+    if (!vehicleSynced.current && currentVehicleId !== undefined) {
+      vehicleSynced.current = true;
+      setVehicleId(currentVehicleId ?? "");
+    }
+  }, [currentVehicleId]);
   const [members, setMembers] = useState<AssignmentMember[]>(
     assignment?.members.map((m) => ({ ...m })) ?? [],
   );
@@ -140,6 +170,28 @@ export function AssignmentEditor({
 
   const canSave = projectId !== "" && members.length > 0 && Boolean(startDate);
 
+  const vehicleClash = useMemo(() => {
+    if (!vehicleId) return false;
+    return isVehicleDoubleBooked(
+      {
+        vehicle_id: vehicleId,
+        assignment_id: assignment?.id ?? "__new__",
+        start_date: startDate,
+        end_date: normalizedEnd,
+      },
+      vehicleBookings ?? [],
+    );
+  }, [vehicleId, assignment?.id, startDate, normalizedEnd, vehicleBookings]);
+
+  const sortedVehicles = useMemo(
+    () =>
+      (vehicles ?? [])
+        .filter((v) => v.status !== "sold")
+        .slice()
+        .sort((a, b) => vehicleTitle(a).localeCompare(vehicleTitle(b))),
+    [vehicles],
+  );
+
   function submit() {
     if (!canSave) return;
     onSave({
@@ -150,6 +202,7 @@ export function AssignmentEditor({
       color: color || null,
       note: note.trim() ? note.trim() : null,
       members,
+      vehicle_id: vehicleId || null,
     });
   }
 
@@ -279,6 +332,42 @@ export function AssignmentEditor({
               on another job in these dates. You can still schedule — just a heads-up.
             </span>
           </div>
+        )}
+
+        {sortedVehicles.length > 0 && (
+          <>
+            <label className="field-label">
+              <Truck size={13} aria-hidden /> Vehicle / trailer (optional)
+            </label>
+            <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
+              <option value="">— no vehicle —</option>
+              {sortedVehicles.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {vehicleTitle(v)} · {vehicleSubtitle(v)}
+                </option>
+              ))}
+            </select>
+            {vehicleClash && (
+              <div className="sched-conflict-inline" role="alert">
+                <AlertTriangle size={15} aria-hidden />
+                <span>
+                  That truck is already booked on another job in these dates. You can still assign
+                  it — just a heads-up.
+                </span>
+              </div>
+            )}
+          </>
+        )}
+
+        {onPlanTravel && (
+          <button
+            type="button"
+            className="button-like"
+            style={{ marginTop: 10 }}
+            onClick={onPlanTravel}
+          >
+            <Plane size={15} aria-hidden /> Plan travel for this crew
+          </button>
         )}
 
         <label className="field-label">Color</label>
