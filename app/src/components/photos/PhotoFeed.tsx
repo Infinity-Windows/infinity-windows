@@ -4,7 +4,7 @@ import { Camera, ImageIcon, MapPin } from "lucide-react";
 import { groupPhotosByDay, listPhotos, photoTime, type FeedPhoto } from "../../lib/photos";
 import { subscribeSynced } from "../../lib/offline/outbox";
 import { EmptyState, QueryError, SkeletonCard } from "../ui/States";
-import { JobPhotoCapture } from "../JobPhotoCapture";
+import { PhotoCaptureSheet } from "../PhotoCaptureSheet";
 
 function whoLabel(createdBy: string | null): string {
   if (!createdBy) return "Someone";
@@ -144,7 +144,8 @@ export function PhotoFeed({
         ))}
 
       {capturing && (
-        <JobPhotoCapture
+        <PhotoCaptureSheet
+          mode="job"
           projectId={projectId}
           label={selectedJobCode}
           kind={kind}
