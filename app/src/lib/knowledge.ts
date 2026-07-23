@@ -7,6 +7,22 @@ import {
   deriveTitle,
   type KnowledgeSource,
 } from "../../../supabase/functions/_shared/knowledge.ts";
+import { orderMyWork } from "./dispatch";
+import { areaKey, toDispatchOpening } from "./install/nextOpening";
+import {
+  isForemanPlus,
+  isSupervisorPlus,
+  type CrewRole,
+  type ProjectOpening,
+} from "./install/types";
+import { compareIssues, KIND_LABELS, URGENCY_MARK, type Issue } from "./issues";
+import { buildAgenda, crewmateNames } from "./schedule/grouping";
+import { addDaysISO, agendaDayLabel, formatStartTime } from "./schedule/dates";
+import type { ScheduleAssignment } from "./schedule/types";
+import { serviceBadge, serviceLevel } from "./vehicles/service";
+import { vehicleTitle } from "./vehicles/display";
+import type { VehicleWithMeta } from "./vehicles/types";
+import type { Project } from "./types";
 
 export {
   chunkMarkdown,
@@ -309,4 +325,205 @@ export async function setVaultPin(args: {
   });
   if (error) throw await functionError(error);
   if (data?.error) throw new Error(String(data.error));
+}
+
+/**
+ * Live snapshot the offline fallback reads from — the app's TanStack Query cache
+ * assembled by the caller (AskInfinity). Every field is optional so a cold cache
+ * degrades gracefully: a missing entry just means that class of question isn't
+ * answered locally and the caller falls through to the static brain/glossary.
+ */
+export interface AskLiveData {
+  /** The signed-in user's real role — gates data a role shouldn't surface. */
+  role?: CrewRole | string | null;
+  /** The signed-in user's profile id — scopes "with" names on the schedule. */
+  profileId?: string | null;
+  /** Local calendar day "YYYY-MM-DD" for schedule/service windows. */
+  todayISO: string;
+  openings?: ProjectOpening[] | null;
+  schedule?: ScheduleAssignment[] | null;
+  issues?: Issue[] | null;
+  projects?: Array<Pick<Project, "id" | "job_code" | "name">> | null;
+  vehicles?: VehicleWithMeta[] | null;
+}
+
+function wantsNextWindow(q: string): boolean {
+  return (
+    /\bmy next\b/.test(q) ||
+    /\bwhat'?s next\b/.test(q) ||
+    /\bwhats next\b/.test(q) ||
+    /\bnext (window|opening|install|one|job|unit)\b/.test(q)
+  );
+}
+
+function wantsVehicleService(q: string): boolean {
+  const subject = /\b(truck|trucks|vehicle|vehicles|fleet|rig|van|machinery|equipment)\b/.test(q);
+  const topic = /\b(service|overdue|maintenance|due|shop|oil|inspection)\b/.test(q);
+  return (subject && topic) || /\bvehicle service\b/.test(q);
+}
+
+function wantsIssues(q: string): boolean {
+  return /\bissues?\b/.test(q) || /\bblockers?\b/.test(q);
+}
+
+function wantsSchedule(q: string): boolean {
+  return /\bschedule[d]?\b/.test(q) || /\bthis week\b/.test(q) || /\bmy week\b/.test(q);
+}
+
+function opening_line(o: ProjectOpening): string {
+  const type = o.window_types?.type_code ?? "type?";
+  const job = o.projects?.job_code ?? "job?";
+  return `${o.opening_code} — ${type} · ${job} · ${areaKey(o)}`;
+}
+
+function answerNextWindow(data: AskLiveData): string | null {
+  const openings = data.openings;
+  if (!openings) return null;
+  const active = openings.filter((o) => o.status !== "installed");
+  if (active.length === 0) {
+    return "You're all caught up — nothing assigned to you right now.";
+  }
+  const byId = new Map(active.map((o) => [o.id, o]));
+  const ordered = orderMyWork(active.map(toDispatchOpening))
+    .map((d) => byId.get(d.id))
+    .filter((o): o is ProjectOpening => Boolean(o));
+  const inProgress = ordered.find((o) => o.work_started_at && o.status !== "installed");
+  const next = inProgress ?? ordered[0];
+  if (!next) return null;
+  const lines = [
+    inProgress ? "You're mid-install:" : "Your next window:",
+    opening_line(next),
+  ];
+  const remaining = ordered.filter((o) => o.id !== next.id).length;
+  if (remaining > 0) {
+    lines.push(`${remaining} more in your queue after this.`);
+  }
+  return lines.join("\n");
+}
+
+function answerSchedule(data: AskLiveData): string | null {
+  const schedule = data.schedule;
+  if (!schedule) return null;
+  const weekEnd = addDaysISO(data.todayISO, 6);
+  const agenda = buildAgenda(schedule, data.todayISO, weekEnd);
+  if (agenda.length === 0) {
+    return "Nothing on your published schedule for the next 7 days.";
+  }
+  const lines: string[] = ["Your schedule this week:"];
+  for (const day of agenda) {
+    for (const entry of day.entries) {
+      const a = entry.assignment;
+      const job = a.project?.name ?? a.project?.job_code ?? "Job";
+      const bits = [agendaDayLabel(entry.day), job];
+      const when = formatStartTime(a.start_time);
+      if (when) bits.push(when);
+      const mates = data.profileId ? crewmateNames(a, data.profileId) : [];
+      const withLine = mates.length > 0 ? ` (with ${mates.join(", ")})` : "";
+      lines.push(`• ${bits.join(" · ")}${withLine}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+function extractJobToken(q: string): string | null {
+  const jobMatch = q.match(/\bjob\s+([a-z0-9][a-z0-9-]*)/);
+  if (jobMatch) return jobMatch[1];
+  const onMatch = q.match(/\b(?:on|for|at)\s+(.+?)[?.!]*$/);
+  if (onMatch) return onMatch[1].trim();
+  return null;
+}
+
+function answerIssues(q: string, data: AskLiveData): string | null {
+  if (!isForemanPlus(data.role)) return null;
+  const issues = data.issues;
+  if (!issues) return null;
+  const projects = data.projects ?? [];
+  const token = extractJobToken(q);
+  let project: Pick<Project, "id" | "job_code" | "name"> | undefined;
+  if (token) {
+    project = projects.find(
+      (p) =>
+        p.job_code.toLowerCase() === token ||
+        p.job_code.toLowerCase().includes(token) ||
+        p.name.toLowerCase().includes(token),
+    );
+    if (!project) return null;
+  }
+  let open = issues.filter((i) => i.status === "open");
+  if (project) open = open.filter((i) => i.project_id === project!.id);
+
+  const label = project
+    ? `${project.job_code}${project.name ? ` (${project.name})` : ""}`
+    : "";
+  if (open.length === 0) {
+    return project ? `No open issues on ${label}.` : "No open issues right now.";
+  }
+  const codeById = new Map(projects.map((p) => [p.id, p.job_code]));
+  const sorted = [...open].sort(compareIssues).slice(0, 8);
+  const header = project ? `Open issues on ${label}:` : `Open issues (${open.length}):`;
+  const lines = [header];
+  for (const i of sorted) {
+    const mark = URGENCY_MARK[i.urgency] ? `${URGENCY_MARK[i.urgency]} ` : "";
+    const jobPrefix = project ? "" : `${codeById.get(i.project_id) ?? "Job"} · `;
+    const note = i.note ? ` — ${i.note}` : "";
+    lines.push(`• ${mark}${jobPrefix}${KIND_LABELS[i.kind]}${note}`);
+  }
+  if (open.length > sorted.length) {
+    lines.push(`…and ${open.length - sorted.length} more.`);
+  }
+  return lines.join("\n");
+}
+
+function answerVehicleService(data: AskLiveData): string | null {
+  if (!isSupervisorPlus(data.role)) return null;
+  const vehicles = data.vehicles;
+  if (!vehicles) return null;
+  const flagged = vehicles
+    .map((v) => ({
+      vehicle: v,
+      level: serviceLevel({
+        todayISO: data.todayISO,
+        nextServiceDate: v.next_service_date,
+        odometer: v.odometer,
+      }),
+      badge: serviceBadge({
+        todayISO: data.todayISO,
+        nextServiceDate: v.next_service_date,
+        odometer: v.odometer,
+      }),
+    }))
+    .filter((r) => r.badge != null);
+  if (flagged.length === 0) {
+    return "No vehicles are overdue or due for service.";
+  }
+  const rank = { overdue: 0, due_soon: 1, ok: 2, none: 3 } as const;
+  flagged.sort((a, b) => rank[a.level] - rank[b.level]);
+  const overdue = flagged.filter((r) => r.level === "overdue").length;
+  const lines = [
+    overdue > 0
+      ? `${overdue} vehicle${overdue > 1 ? "s" : ""} overdue for service:`
+      : "Vehicles due for service soon:",
+  ];
+  for (const r of flagged) {
+    const plate = r.vehicle.plate ? ` (${r.vehicle.plate})` : "";
+    lines.push(`• ${vehicleTitle(r.vehicle)}${plate} — ${r.badge!.label}`);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Offline grounding: answer a few high-value structured questions straight from
+ * the app's live query cache (next window, my schedule, open issues on a job,
+ * vehicle service) so the fallback isn't limited to the static brain. Returns
+ * null when the question isn't one of these or the backing cache is cold, so
+ * the caller can fall through to the bundled brain/glossary/app-guide answer.
+ */
+export function liveAnswer(question: string, data: AskLiveData): string | null {
+  const q = question.toLowerCase().trim();
+  if (!q) return null;
+  if (wantsNextWindow(q)) return answerNextWindow(data);
+  if (wantsVehicleService(q)) return answerVehicleService(data);
+  if (wantsIssues(q)) return answerIssues(q, data);
+  if (wantsSchedule(q)) return answerSchedule(data);
+  return null;
 }
