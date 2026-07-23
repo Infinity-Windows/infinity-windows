@@ -9,10 +9,12 @@ import { LocationSection } from "../components/vehicles/LocationSection";
 import { ServiceSection } from "../components/vehicles/ServiceSection";
 import { JobAssignmentSection } from "../components/vehicles/JobAssignmentSection";
 import { FinancialsSection } from "../components/vehicles/FinancialsSection";
+import { DrivingLogSection } from "../components/vehicles/DrivingLogSection";
 import { deleteVehicle, getVehicle, updateVehicle } from "../lib/vehicles/api";
 import { listProfiles } from "../lib/install/api";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { canSeeFinancials } from "../lib/vehicles/financials";
+import { canSeeDriveLog } from "../lib/vehicles/driveLog";
 import { vehicleSubtitle, vehicleTitle, usageLabel } from "../lib/vehicles/display";
 import { driverDisplayName, insuredDrivers, primaryDriver } from "../lib/vehicles/drivers";
 import { VEHICLE_STATUS_LABELS } from "../lib/vehicles/types";
@@ -26,6 +28,7 @@ export function VehicleDetail() {
   const [editing, setEditing] = useState(false);
   const { realRole, isPreviewing } = useEffectiveRole();
   const showFinancials = canSeeFinancials({ realRole, isPreviewing });
+  const showDriveLog = canSeeDriveLog({ realRole, isPreviewing });
 
   const vehicle = useQuery({
     queryKey: ["vehicle", vehicleId],
@@ -139,6 +142,7 @@ export function VehicleDetail() {
       <LocationSection vehicle={v} />
       <ServiceSection vehicle={v} />
       <JobAssignmentSection vehicle={v} />
+      {showDriveLog && <DrivingLogSection vehicle={v} />}
       {showFinancials && <FinancialsSection vehicleId={v.id} />}
 
       {editing && (
