@@ -25,6 +25,7 @@ import { InfinityLogo } from "./brand/InfinityLogo";
 import { AppMenu } from "./nav/AppMenu";
 import { AppMenuDrawer } from "./nav/AppMenuDrawer";
 import { CaptureSheet } from "./nav/CaptureSheet";
+import { GlobalAskFab } from "./nav/GlobalAskFab";
 import { FeatureTip } from "./assistant/FeatureTip";
 import { SyncStatusPill } from "./offline/SyncStatusPill";
 import { OnboardingWizard } from "./permissions/OnboardingWizard";
@@ -239,6 +240,8 @@ export function Layout() {
           <Outlet />
         </main>
       </div>
+
+      <GlobalAskFab />
 
       {!menuOpen && !captureOpen && !clock.isOpen && <FeatureTip />}
 
