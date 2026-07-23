@@ -58,6 +58,9 @@ import { Scheduling } from "./pages/Scheduling";
 import { MySchedule } from "./pages/MySchedule";
 import { Travel } from "./pages/Travel";
 import { TripDetail } from "./pages/TripDetail";
+import { Vehicles } from "./pages/Vehicles";
+import { VehicleDetail } from "./pages/VehicleDetail";
+import { FleetMap } from "./pages/FleetMap";
 import { CostCodes } from "./pages/CostCodes";
 import { Costing } from "./pages/Costing";
 import { Education } from "./pages/Education";
@@ -299,6 +302,26 @@ export default function App() {
             <Route
               path="/scheduling"
               element={<RequireRole path="/scheduling"><Scheduling /></RequireRole>}
+            />
+            <Route
+              path="/vehicles"
+              element={<RequireRole path="/vehicles"><Vehicles /></RequireRole>}
+            />
+            <Route
+              path="/vehicles/map"
+              element={
+                <RequireRole minRole="supervisor">
+                  <FleetMap />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/vehicles/:vehicleId"
+              element={
+                <RequireRole minRole="supervisor">
+                  <VehicleDetail />
+                </RequireRole>
+              }
             />
             <Route
               path="/my-schedule"
