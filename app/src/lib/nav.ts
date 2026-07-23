@@ -24,6 +24,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Trophy,
+  Truck,
   Users,
   Warehouse as WarehouseIcon,
   Wrench,
@@ -62,6 +63,7 @@ export type RoutePath =
   | "/team"
   | "/timecard"
   | "/scheduling"
+  | "/vehicles"
   | "/my-schedule"
   | "/issues"
   | "/service"
@@ -148,6 +150,7 @@ export const NAV: NavDest[] = [
   // Supervisor+.
   { id: "knowledge", to: "/knowledge", label: "AI Knowledge", icon: "◈", minRole: "supervisor" },
   { id: "scheduling", to: "/scheduling", label: "Scheduling", icon: "🗓", minRole: "supervisor" },
+  { id: "vehicles", to: "/vehicles", label: "Vehicles", icon: "🚚", minRole: "supervisor" },
   { id: "heartbeat", to: "/heartbeat", label: "Heartbeat", icon: "❤", minRole: "supervisor" },
   { id: "admin", to: "/admin", label: "Admin", icon: "◈", minRole: "supervisor" },
   { id: "cost-codes", to: "/cost-codes", label: "Cost codes", icon: "☷", minRole: "supervisor" },
@@ -312,6 +315,7 @@ const MENU_DEF: MenuSection[] = [
     title: "Company",
     items: [
       { to: "/scheduling", label: "Scheduling", Icon: CalendarDays },
+      { to: "/vehicles", label: "Vehicles", Icon: Truck },
       { to: "/my-schedule", label: "My schedule", Icon: CalendarClock },
       { to: "/training", label: "Training", Icon: GraduationCap },
       { to: "/team", label: "Team", Icon: Users },

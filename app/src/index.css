@@ -7023,3 +7023,362 @@ body {
   background: var(--card);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
 }
+
+/* =========================================================================
+   Vehicles & Machinery fleet
+   ========================================================================= */
+.veh-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.veh-segments {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  flex: 1;
+  min-width: 0;
+}
+.veh-seg-count {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 5px;
+  margin-left: 4px;
+  border-radius: 999px;
+  background: var(--card-hot);
+  font-size: 11px;
+  line-height: 17px;
+  text-align: center;
+}
+.veh-toolbar-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.veh-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+@media (min-width: 560px) {
+  .veh-grid { grid-template-columns: 1fr 1fr; }
+}
+
+.veh-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  transition: border-color 0.15s var(--ease-out), transform 0.15s var(--ease-out);
+}
+.veh-card:hover {
+  border-color: var(--accent-line);
+  transform: translateY(-1px);
+  color: var(--text);
+}
+.veh-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.veh-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.veh-card-heading { flex: 1; min-width: 0; }
+.veh-card-title-row { display: flex; align-items: center; gap: 6px; }
+.veh-color-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  flex: none;
+}
+.veh-card-title { font-weight: 600; font-size: 15px; }
+.veh-card-subtitle { display: block; font-size: 12.5px; }
+
+.veh-badge {
+  flex: none;
+  align-self: flex-start;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.veh-badge-overdue { background: var(--danger); color: #fff; }
+.veh-badge-due_soon { background: var(--warn); color: #1c1200; }
+
+.veh-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.veh-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+}
+.veh-loc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+}
+.veh-loc-live { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
+.veh-loc-recent { color: var(--warn); border-color: color-mix(in oklch, var(--warn), transparent 55%); }
+.veh-loc-stale { color: var(--faint); }
+.veh-loc-none { color: var(--faint); }
+
+/* Sheet + driver picker ---------------------------------------------------- */
+.veh-sheet { max-height: 88vh; overflow-y: auto; }
+
+.veh-drivers { display: flex; flex-direction: column; gap: 12px; margin: 8px 0; }
+.veh-driver-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.veh-driver-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px 5px 12px;
+  border-radius: 999px;
+  background: var(--card-hot);
+  border: 1px solid var(--border);
+  font-size: 13px;
+}
+.veh-driver-chip.is-primary { border-color: var(--accent-line); }
+.veh-driver-chip button {
+  display: inline-flex;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 50%;
+}
+.veh-driver-chip button:hover { color: var(--danger); }
+.veh-add-driver { align-self: flex-start; }
+.veh-driver-add {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.veh-driver-matches { display: flex; flex-wrap: wrap; gap: 6px; }
+.veh-driver-match {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.veh-driver-match:hover { border-color: var(--accent-line); }
+.veh-driver-match.is-typed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-style: dashed;
+  color: var(--accent);
+}
+
+/* Detail sections ---------------------------------------------------------- */
+.veh-detail-heading { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.veh-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.veh-status-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+}
+.veh-status-active { color: var(--ok); border-color: color-mix(in oklch, var(--ok), transparent 55%); }
+.veh-status-in_shop { color: var(--warn); border-color: color-mix(in oklch, var(--warn), transparent 55%); }
+.veh-status-out_of_service { color: var(--danger); border-color: color-mix(in oklch, var(--danger), transparent 55%); }
+.veh-status-sold { color: var(--faint); }
+
+.veh-section {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  margin-bottom: 12px;
+}
+.veh-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.veh-section-head h2 { font-size: 16px; margin: 0; }
+
+.veh-details-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  margin: 0;
+}
+.veh-details-grid dt { color: var(--muted); font-size: 13px; }
+.veh-details-grid dd { margin: 0; font-size: 13px; text-align: right; }
+.veh-notes { margin: 10px 0 0; font-size: 13.5px; color: var(--text-secondary); }
+
+.veh-drivers-view { display: flex; flex-direction: column; gap: 8px; }
+.veh-driver-line { display: flex; align-items: center; gap: 10px; }
+.veh-driver-role {
+  width: 64px;
+  flex: none;
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.veh-driver-name { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; }
+
+.veh-loc-actions { margin: 10px 0; }
+.veh-loc-manual { display: flex; flex-direction: column; gap: 8px; }
+
+.veh-service-summary { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12.5px; margin-bottom: 10px; }
+.veh-add-service { margin-bottom: 10px; }
+.veh-service-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  margin-bottom: 12px;
+}
+.veh-service-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.veh-service-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.veh-service-item-top { display: flex; align-items: baseline; gap: 8px; }
+.veh-service-desc { margin: 4px 0 0; font-size: 13.5px; }
+.veh-service-sub { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; margin: 4px 0 0; }
+
+.veh-assignment { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.veh-assignment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+}
+.veh-assign-form { display: flex; flex-direction: column; gap: 8px; }
+
+.veh-financials { border-color: var(--accent-line); }
+.veh-owner-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.veh-check { display: flex; align-items: center; gap: 8px; margin: 4px 0 10px; font-size: 14px; }
+.veh-check input { width: 18px; height: 18px; }
+
+/* Map ---------------------------------------------------------------------- */
+.veh-map { z-index: 0; }
+.veh-map-placeholder {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.veh-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.veh-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.veh-tracker-note {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px dashed var(--border);
+  background: var(--surface);
+  color: var(--accent);
+}
+.veh-tracker-note p { color: var(--muted); }
+
+/* Leaflet themed pulsing dot (divIcon — no default marker asset needed) */
+.veh-map-marker { background: transparent; border: none; }
+.veh-map-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-sizing: border-box;
+}
+.veh-map-dot-live {
+  background: #f15b00;
+  animation: vehDotPulse 1.6s ease-out infinite;
+}
+.veh-map-dot-recent { background: #e0a100; opacity: 0.85; }
+.veh-map-dot-stale { background: #8b8d91; }
+.veh-map-dot-none { background: #8b8d91; }
+@keyframes vehDotPulse {
+  0% { box-shadow: 0 0 0 0 rgba(241, 91, 0, 0.55); }
+  70% { box-shadow: 0 0 0 10px rgba(241, 91, 0, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(241, 91, 0, 0); }
+}
+/* Leaflet popup on the dark theme */
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--card);
+  color: var(--text);
+}
+.leaflet-popup-content { font-family: var(--font-body); }
+.leaflet-container { background: #1a1a1c; }
