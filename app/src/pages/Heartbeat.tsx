@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getMyProfile } from "../lib/install/api";
+import { SkeletonList } from "../components/ui/States";
 import { isSupervisorPlus } from "../lib/install/types";
 import { effectiveRole, useViewAsRole } from "../lib/viewAsRoleContext";
 import {
@@ -103,7 +104,7 @@ export function Heartbeat() {
       </p>
 
       {greenLight.isError && <p className="error">{String(greenLight.error)}</p>}
-      {hb.isLoading && <p className="muted">Loading the pulse…</p>}
+      {hb.isLoading && <SkeletonList rows={4} />}
       {hb.isError && <p className="error">{String(hb.error)}</p>}
 
       {/* Quick project pulse cards */}
@@ -115,7 +116,10 @@ export function Heartbeat() {
             return (
               <div key={p.id} className="project-card home-project">
                 <div className="home-project-head">
-                  <div style={{ minWidth: 0 }}>
+                  <Link
+                    to={`/projects/${p.id}?tab=dispatch`}
+                    style={{ minWidth: 0, color: "inherit", textDecoration: "none" }}
+                  >
                     <div style={{ fontWeight: 600, fontSize: 16 }}>
                       <span
                         aria-hidden
@@ -138,7 +142,7 @@ export function Heartbeat() {
                         ? ` · ${p.activeTasks.length} on task`
                         : ""}
                     </div>
-                  </div>
+                  </Link>
                   <span
                     style={{
                       fontFamily: "var(--font-display)",

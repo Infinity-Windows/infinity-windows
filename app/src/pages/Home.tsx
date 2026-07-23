@@ -279,7 +279,7 @@ export function Home() {
                 </Link>
               )}
               {timecards.length > 0 && (
-                <Link to="/clock" className="notif-row">
+                <Link to="/timecard" className="notif-row">
                   <i className="dot-warn" />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600 }}>
@@ -322,7 +322,7 @@ export function Home() {
               {crews.map((a) => (
                 <Link
                   key={a.id}
-                  to={`/projects/${a.project_id}?tab=map`}
+                  to={`/projects/${a.project_id}?tab=chat`}
                   className="notif-row"
                 >
                   <i className="dot-info" />
@@ -530,7 +530,7 @@ function HomeProjectsGrid({
   return (
     <div className="home-projects">
       {cards.map((p) => (
-        <Link key={p.id} to={`/projects/${p.id}/map`} className="project-card home-project">
+        <Link key={p.id} to={`/projects/${p.id}`} className="project-card home-project">
           <div className="home-project-head">
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 600, fontSize: 16, display: "flex", alignItems: "center", gap: 6 }}>
