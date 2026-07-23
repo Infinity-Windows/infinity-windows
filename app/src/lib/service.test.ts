@@ -3,6 +3,7 @@ import {
   activeCaseCount,
   attributeServiceCases,
   ATTRIBUTION_UNKNOWN,
+  FAIL_POINT_OPTIONS,
   type ServiceCase,
   type ServiceCaseStatus,
 } from "./service";
@@ -96,6 +97,38 @@ describe("attributeServiceCases", () => {
 
   it("is empty for no cases", () => {
     expect(attributeServiceCases([], "window_type")).toEqual([]);
+  });
+});
+
+describe("FAIL_POINT_OPTIONS", () => {
+  it("offers Manufacturer alongside the existing fail points", () => {
+    expect(FAIL_POINT_OPTIONS).toContain("Manufacturer");
+    // The pre-existing free-text values stay first-class options.
+    for (const existing of ["Seal", "Flashing", "Hardware", "Glass"]) {
+      expect(FAIL_POINT_OPTIONS).toContain(existing);
+    }
+  });
+
+  it("has no duplicate options", () => {
+    expect(new Set(FAIL_POINT_OPTIONS).size).toBe(FAIL_POINT_OPTIONS.length);
+  });
+
+  it("rolls a Manufacturer fail point up under fail-point attribution", () => {
+    const rows = attributeServiceCases(
+      [
+        mk("m1", "open", { fail_point: "Manufacturer" }),
+        mk("m2", "resolved", { fail_point: "Manufacturer" }),
+        mk("s1", "open", { fail_point: "Seal" }),
+      ],
+      "fail_point",
+    );
+    expect(rows[0]).toEqual({
+      key: "Manufacturer",
+      total: 2,
+      open: 1,
+      scheduled: 0,
+      resolved: 1,
+    });
   });
 });
 

@@ -31,6 +31,14 @@ export interface Issue {
   created_at: string;
   resolved_by: string | null;
   resolved_at: string | null;
+  /**
+   * Who is responsible for fixing this problem (the assignee). Optional: the
+   * column ships in 20260723060000_issue_assignee_fault.sql, so it may be absent
+   * (undefined) until that migration is applied — treat as null when missing.
+   */
+  assigned_to?: string | null;
+  /** Whose fault it was, if determined (fault attribution). See note above. */
+  fault_by?: string | null;
 }
 
 /** Higher rank sorts first: emergency > urgent > normal. */
@@ -105,6 +113,37 @@ export async function createIssue(params: {
 
 export async function resolveIssue(id: string): Promise<Issue> {
   const { data, error } = await supabase.rpc("resolve_issue", { p_id: id });
+  if (error) throw error;
+  return data as Issue;
+}
+
+/**
+ * Assign an issue to someone (or clear it with null). Foreman+ (guarded by the
+ * RPC). Ships in 20260723060000_issue_assignee_fault.sql — before that migration
+ * lands the RPC won't exist and this throws, so callers show a friendly error
+ * rather than crashing.
+ */
+export async function assignIssue(
+  id: string,
+  assignee: string | null,
+): Promise<Issue> {
+  const { data, error } = await supabase.rpc("assign_issue", {
+    p_id: id,
+    p_assignee: assignee,
+  });
+  if (error) throw error;
+  return data as Issue;
+}
+
+/** Attribute (or clear) whose fault an issue was. Foreman+ (guarded by the RPC). */
+export async function setIssueFault(
+  id: string,
+  faultBy: string | null,
+): Promise<Issue> {
+  const { data, error } = await supabase.rpc("set_issue_fault", {
+    p_id: id,
+    p_fault_by: faultBy,
+  });
   if (error) throw error;
   return data as Issue;
 }

@@ -41,6 +41,24 @@ export const SERVICE_STATUS_LABELS: Record<ServiceCaseStatus, string> = {
 };
 
 /**
+ * Fail-point attribution options offered when opening a warranty / service case.
+ * `fail_point` is free text in the DB (no enum / CHECK constraint), so these are
+ * suggestions surfaced in a picker — any of these OR a custom value is accepted,
+ * and every existing free-text value keeps working. "Manufacturer" attributes a
+ * callback to a factory / defective-unit fault (vs an install or product fault),
+ * and then rolls up under the Service page's "By fail point" attribution.
+ */
+export const FAIL_POINT_OPTIONS = [
+  "Installation",
+  "Seal",
+  "Flashing",
+  "Hardware",
+  "Glass",
+  "Manufacturer",
+  "Other",
+] as const;
+
+/**
  * Open a warranty / after-service case against a physical unit. The server
  * derives project + window type + the latest install event + installer.
  * Foreman+ (enforced by the RPC). Returns the new case.

@@ -18,6 +18,7 @@ import { isForemanPlus } from "../lib/install/types";
 import { downloadPdf, windowLabelsPdf } from "../lib/labels";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import {
+  FAIL_POINT_OPTIONS,
   listWindowServiceCases,
   openServiceCase,
   SERVICE_STATUS_LABELS,
@@ -377,10 +378,16 @@ export function WindowDetail() {
               </label>
               <input
                 id="svc-fail"
+                list="svc-fail-options"
                 value={failPoint}
                 onChange={(e) => setFailPoint(e.target.value)}
-                placeholder="e.g. seal / flashing / hardware / glass"
+                placeholder="e.g. Installation / Seal / Hardware / Manufacturer"
               />
+              <datalist id="svc-fail-options">
+                {FAIL_POINT_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt} />
+                ))}
+              </datalist>
               <label className="field-label" htmlFor="svc-desc">
                 Details (optional)
               </label>
