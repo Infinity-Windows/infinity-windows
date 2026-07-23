@@ -43,7 +43,11 @@ import {
 } from "../../lib/install/queue";
 import { MEMO_TOPICS, isForemanPlus, type MemoTopics } from "../../lib/install/types";
 import { createIssue } from "../../lib/issues";
+import type { QrPayload } from "../../lib/qr";
+import { resolveWindowFromScan } from "../../lib/scanResolve";
 import { supabase } from "../../lib/supabase";
+
+const windowLookups = { getWindowByWindowId, findWindowByCode, findWindowBySerial };
 
 function pickAudioMime(): string {
   const candidates = ["audio/webm", "audio/mp4", "audio/ogg"];
@@ -222,38 +226,28 @@ export function OpeningSheet() {
     onError: (e) => setMessage(String(e)),
   });
 
-  const assignByWindowId = async (windowId: string) => {
+  // Any scanned label (window id / short code / serial) resolves to one unit,
+  // which we then assign to this opening. A slot label is nudged back.
+  const assignFromScan = async (payload: QrPayload) => {
     try {
-      const unit = await getWindowByWindowId(windowId);
-      if (!unit) throw new Error(`Unknown window ${windowId}`);
-      assign.mutate(unit.id);
+      const res = await resolveWindowFromScan(payload, windowLookups);
+      if (res.status === "ok") {
+        assign.mutate(res.unit.id);
+      } else if (res.status === "not-found") {
+        setMessage(`No window found for "${res.query}".`);
+      } else {
+        setMessage("That's a slot label — scan a window label.");
+      }
     } catch (e) {
       setMessage(String(e));
     }
   };
 
-  // Resolve the hand-writable short code (or serial) then assign that unit.
+  // Typed entry accepts a 6-char code or a serial (the RPC handles both).
   const assignByCode = async (raw: string) => {
     const value = raw.trim();
     if (!value) return;
-    try {
-      const unit = await findWindowByCode(value);
-      if (!unit) throw new Error(`No window found for "${value}"`);
-      assign.mutate(unit.id);
-    } catch (e) {
-      setMessage(String(e));
-    }
-  };
-
-  // Resolve a permanent serial (from a serial-encoded QR) then assign the unit.
-  const assignBySerial = async (serial: string) => {
-    try {
-      const unit = await findWindowBySerial(serial);
-      if (!unit) throw new Error(`No window found for serial "${serial}"`);
-      assign.mutate(unit.id);
-    } catch (e) {
-      setMessage(String(e));
-    }
+    await assignFromScan({ kind: "windowCode", code: value });
   };
 
   const saveRo = useMutation({
@@ -758,17 +752,7 @@ export function OpeningSheet() {
           {scanOpen && (
             <Scanner
               hint="Scan the window's QR — or type its short code below."
-              onScan={(payload) => {
-                if (payload.kind === "window") {
-                  void assignByWindowId(payload.windowId);
-                } else if (payload.kind === "windowCode") {
-                  void assignByCode(payload.code);
-                } else if (payload.kind === "windowSerial") {
-                  void assignBySerial(payload.serial);
-                } else {
-                  setMessage("That's a slot label — scan a window label.");
-                }
-              }}
+              onScan={(payload) => void assignFromScan(payload)}
             />
           )}
           <label className="field-label">Type the window code</label>

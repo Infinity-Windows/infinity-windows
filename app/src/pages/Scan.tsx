@@ -4,8 +4,15 @@ import { Scanner } from "../components/Scanner";
 import {
   findWindowByCode,
   findWindowBySerial,
+  getLocationByAddress,
   getLocationBySerial,
+  getWindowByWindowId,
 } from "../lib/api";
+import type { QrPayload } from "../lib/qr";
+import { resolveLocationFromScan, resolveWindowFromScan } from "../lib/scanResolve";
+
+const windowLookups = { getWindowByWindowId, findWindowByCode, findWindowBySerial };
+const locationLookups = { getLocationByAddress, getLocationBySerial };
 
 export function Scan() {
   const navigate = useNavigate();
@@ -13,17 +20,28 @@ export function Scan() {
   const [message, setMessage] = useState<string | null>(null);
   const [looking, setLooking] = useState(false);
 
-  const resolveCode = async (raw: string) => {
-    const value = raw.trim();
-    if (!value) return;
+  // One resolver for every scanned label: a window/short-code/serial jumps to
+  // the unit, a slot label jumps to the slot, anything else explains itself.
+  const handleScan = async (payload: QrPayload) => {
     setMessage(null);
     setLooking(true);
     try {
-      const unit = await findWindowByCode(value);
-      if (unit) {
-        navigate(`/w/${encodeURIComponent(unit.window_id)}`);
+      if (payload.kind === "location" || payload.kind === "locationSerial") {
+        const res = await resolveLocationFromScan(payload, locationLookups);
+        if (res.status === "ok") {
+          navigate(`/loc/${encodeURIComponent(res.location.address)}`);
+        } else if (res.status === "not-found") {
+          setMessage(`No slot found for "${res.query}".`);
+        }
+        return;
+      }
+      const res = await resolveWindowFromScan(payload, windowLookups);
+      if (res.status === "ok") {
+        navigate(`/w/${encodeURIComponent(res.unit.window_id)}`);
+      } else if (res.status === "not-found") {
+        setMessage(`No window found for "${res.query}".`);
       } else {
-        setMessage(`No window found for "${value}".`);
+        setMessage("That's a slot label — scan a window label.");
       }
     } catch (e) {
       setMessage(String(e));
@@ -32,28 +50,23 @@ export function Scan() {
     }
   };
 
-  // A serial-encoded QR resolves to the same destination as a legacy label.
-  const resolveWindowSerial = async (serial: string) => {
+  // Typed entry accepts a 6-char code or a serial — resolve it as a window code
+  // (the RPC handles both) and jump straight to the unit.
+  const resolveTyped = async (raw: string) => {
+    const value = raw.trim();
+    if (!value) return;
     setMessage(null);
     setLooking(true);
     try {
-      const unit = await findWindowBySerial(serial);
-      if (unit) navigate(`/w/${encodeURIComponent(unit.window_id)}`);
-      else setMessage(`No window found for serial "${serial}".`);
-    } catch (e) {
-      setMessage(String(e));
-    } finally {
-      setLooking(false);
-    }
-  };
-
-  const resolveLocationSerial = async (serial: string) => {
-    setMessage(null);
-    setLooking(true);
-    try {
-      const loc = await getLocationBySerial(serial);
-      if (loc) navigate(`/loc/${encodeURIComponent(loc.address)}`);
-      else setMessage(`No slot found for serial "${serial}".`);
+      const res = await resolveWindowFromScan(
+        { kind: "windowCode", code: value },
+        windowLookups,
+      );
+      if (res.status === "ok") {
+        navigate(`/w/${encodeURIComponent(res.unit.window_id)}`);
+      } else {
+        setMessage(`No window found for "${value}".`);
+      }
     } catch (e) {
       setMessage(String(e));
     } finally {
@@ -75,19 +88,7 @@ export function Scan() {
       <div className="detail-card" style={{ padding: 12 }}>
         <Scanner
           hint="Scan a window label to see or move it. Scan a slot label to see what's in it."
-          onScan={(payload) => {
-            if (payload.kind === "window") {
-              navigate(`/w/${encodeURIComponent(payload.windowId)}`);
-            } else if (payload.kind === "windowCode") {
-              void resolveCode(payload.code);
-            } else if (payload.kind === "windowSerial") {
-              void resolveWindowSerial(payload.serial);
-            } else if (payload.kind === "locationSerial") {
-              void resolveLocationSerial(payload.serial);
-            } else {
-              navigate(`/loc/${encodeURIComponent(payload.address)}`);
-            }
-          }}
+          onScan={(payload) => void handleScan(payload)}
         />
       </div>
 
@@ -98,9 +99,9 @@ export function Scan() {
           onChange={(e) => setCode(e.target.value)}
           placeholder="6-char code or serial, e.g. K7M2QX"
           autoCapitalize="characters"
-          onKeyDown={(e) => e.key === "Enter" && resolveCode(code)}
+          onKeyDown={(e) => e.key === "Enter" && resolveTyped(code)}
         />
-        <button disabled={looking || !code.trim()} onClick={() => resolveCode(code)}>
+        <button disabled={looking || !code.trim()} onClick={() => resolveTyped(code)}>
           {looking ? "…" : "Go"}
         </button>
       </div>

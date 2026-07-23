@@ -3,13 +3,19 @@ import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Scanner } from "../components/Scanner";
 import {
+  findWindowByCode,
   findWindowBySerial,
   getLocationByAddress,
   getLocationBySerial,
   getUnitsAtLocation,
+  getWindowByWindowId,
 } from "../lib/api";
+import { resolveLocationFromScan, resolveWindowFromScan } from "../lib/scanResolve";
 import { supabase } from "../lib/supabase";
 import type { Location, WindowUnit } from "../lib/types";
+
+const windowLookups = { getWindowByWindowId, findWindowByCode, findWindowBySerial };
+const locationLookups = { getLocationByAddress, getLocationBySerial };
 
 export function CycleCount() {
   const [params] = useSearchParams();
@@ -79,13 +85,8 @@ export function CycleCount() {
         <p className="scanner-hint">Scan the slot label you want to count.</p>
         <Scanner
           onScan={async (payload) => {
-            if (payload.kind === "location") {
-              const loc = await getLocationByAddress(payload.address);
-              if (loc) setLocation(loc);
-            } else if (payload.kind === "locationSerial") {
-              const loc = await getLocationBySerial(payload.serial);
-              if (loc) setLocation(loc);
-            }
+            const res = await resolveLocationFromScan(payload, locationLookups);
+            if (res.status === "ok") setLocation(res.location);
           }}
         />
       </div>
@@ -112,21 +113,16 @@ export function CycleCount() {
       {!saved && (
         <Scanner
           onScan={async (payload) => {
-            let windowId: string | null = null;
-            if (payload.kind === "window") {
-              windowId = payload.windowId;
-            } else if (payload.kind === "windowSerial") {
-              const unit = await findWindowBySerial(payload.serial);
-              windowId = unit?.window_id ?? null;
-            }
-            if (!windowId) return;
+            const res = await resolveWindowFromScan(payload, windowLookups);
+            if (res.status !== "ok") return;
+            const windowId = res.unit.window_id;
             const known = (expected.data ?? []).some(
               (u) => u.window_id === windowId,
             );
             if (known) {
-              setScanned((prev) => new Set(prev).add(windowId!));
+              setScanned((prev) => new Set(prev).add(windowId));
             } else if (!unexpected.includes(windowId)) {
-              setUnexpected((prev) => [...prev, windowId!]);
+              setUnexpected((prev) => [...prev, windowId]);
             }
           }}
         />

@@ -12,6 +12,7 @@ import {
   suggestLocation,
   updateWindow,
 } from "../lib/api";
+import { resolveLocationFromScan } from "../lib/scanResolve";
 import { listOpenings } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
 import { downloadPdf, windowLabelsPdf } from "../lib/labels";
@@ -334,12 +335,14 @@ export function WindowDetail() {
           <p className="scanner-hint">Or scan the destination slot label:</p>
           <Scanner
             onScan={async (payload) => {
-              if (payload.kind === "location") {
-                moveTo.mutate(payload.address);
-              } else if (payload.kind === "locationSerial") {
-                const loc = await getLocationBySerial(payload.serial);
-                if (loc) moveTo.mutate(loc.address);
-                else setActionError(`No slot found for serial ${payload.serial}.`);
+              const res = await resolveLocationFromScan(payload, {
+                getLocationByAddress,
+                getLocationBySerial,
+              });
+              if (res.status === "ok") {
+                moveTo.mutate(res.location.address);
+              } else if (res.status === "not-found") {
+                setActionError(`No slot found for ${res.query}.`);
               } else {
                 setActionError("That's a window label — scan a slot label.");
               }
