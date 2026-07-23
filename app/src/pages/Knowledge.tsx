@@ -120,7 +120,7 @@ function PinModal({
           inputMode="text"
           autoFocus
           autoComplete="off"
-          className="pin-input"
+          className="vault-pin-input"
           placeholder="Vault PIN"
           value={pin}
           disabled={busy}
@@ -277,7 +277,7 @@ function VaultPinSection({
             <input
               type="password"
               autoComplete="off"
-              className="pin-input"
+              className="vault-pin-input"
               placeholder="Current PIN"
               value={currentPin}
               disabled={busy}
@@ -287,7 +287,7 @@ function VaultPinSection({
           <input
             type="password"
             autoComplete="off"
-            className="pin-input"
+            className="vault-pin-input"
             placeholder="New PIN (4–10 letters/numbers)"
             value={newPin}
             disabled={busy}
@@ -299,7 +299,7 @@ function VaultPinSection({
           <input
             type="password"
             autoComplete="off"
-            className="pin-input"
+            className="vault-pin-input"
             placeholder="Confirm new PIN"
             value={confirmPin}
             disabled={busy}
