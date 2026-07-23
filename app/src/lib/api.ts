@@ -306,6 +306,33 @@ export async function updateLocation(
   return data as Location;
 }
 
+/**
+ * Retire a slot. Locations are soft-deleted (active = false) rather than hard
+ * deleted: movements/cycle-count history and any windows still sitting in the
+ * slot reference the row, so a hard delete would either break history or be
+ * blocked by foreign keys. `listLocations` already only returns active slots,
+ * so flipping the flag makes the slot disappear from every picker and label
+ * list while keeping the audit trail intact. Foreman+ via the same trusted-crew
+ * RLS that guards `updateLocation`.
+ */
+export async function deleteLocation(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("locations")
+    .update({ active: false })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+/** Retire several slots in one round-trip (bulk "delete selected"). */
+export async function deleteLocations(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const { error } = await supabase
+    .from("locations")
+    .update({ active: false })
+    .in("id", ids);
+  if (error) throw error;
+}
+
 export async function getUnitsAtLocation(
   locationId: string,
 ): Promise<WindowUnit[]> {
