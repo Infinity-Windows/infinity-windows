@@ -18,6 +18,7 @@ import {
   LayoutGrid,
   ListChecks,
   PackageCheck,
+  Plane,
   ScanLine,
   Search,
   ShieldCheck,
@@ -63,6 +64,7 @@ export type RoutePath =
   | "/timecard"
   | "/scheduling"
   | "/my-schedule"
+  | "/travel"
   | "/issues"
   | "/service"
   | "/heartbeat"
@@ -130,6 +132,7 @@ export const NAV: NavDest[] = [
   { id: "search", to: "/search", label: "Search", icon: "⌕", minRole: "installer" },
   { id: "review", to: "/review", label: "Memo review", icon: "✍", minRole: "installer" },
   { id: "my-schedule", to: "/my-schedule", label: "My Schedule", icon: "◷", minRole: "installer" },
+  { id: "travel", to: "/travel", label: "Travel", icon: "✈", minRole: "installer" },
 
   // Foreman+ (managers): coordination + warehouse ops + quality.
   { id: "team", to: "/team", label: "Team", icon: "⚑", minRole: "foreman" },
@@ -313,6 +316,7 @@ const MENU_DEF: MenuSection[] = [
     items: [
       { to: "/scheduling", label: "Scheduling", Icon: CalendarDays },
       { to: "/my-schedule", label: "My schedule", Icon: CalendarClock },
+      { to: "/travel", label: "Travel", Icon: Plane },
       { to: "/training", label: "Training", Icon: GraduationCap },
       { to: "/team", label: "Team", Icon: Users },
       { to: "/crew", label: "Roster", Icon: Users },
@@ -362,6 +366,7 @@ const INSTALLER_MENU_PATHS = new Set<string>([
   // Occasional extras.
   "/timecard",
   "/my-schedule",
+  "/travel",
   "/learn",
   "/points",
   "/review",

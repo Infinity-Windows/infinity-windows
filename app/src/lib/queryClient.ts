@@ -59,6 +59,9 @@ const OFFLINE_KEYS = new Set([
   "tools",
   "supplies",
   "todayTalk",
+  // Travel Info — assigned trips must be viewable in transit / dead zones.
+  "trips",
+  "trip",
 ]);
 
 export function shouldPersistQuery(queryKey: readonly unknown[]): boolean {
