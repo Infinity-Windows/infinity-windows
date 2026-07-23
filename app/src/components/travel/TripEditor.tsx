@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
-import type { Trip } from "../../lib/travel/types";
+import type { NewTripInput, Trip } from "../../lib/travel/types";
 import { createTrip, deleteTrip, updateTrip } from "../../lib/travel/api";
 import { listProfiles } from "../../lib/install/api";
 import { listProjects } from "../../lib/api";
@@ -14,11 +14,14 @@ const ZONE_OPTIONS = COMMON_TIMEZONES.map((z) => ({ value: z.id, label: z.label 
 
 export function TripEditor({
   trip,
+  defaults,
   onClose,
   onSaved,
   onDeleted,
 }: {
   trip: Trip | null;
+  /** Prefill for a brand-new trip (e.g. from a scheduled crew block). */
+  defaults?: Partial<NewTripInput>;
   onClose: () => void;
   onSaved: (trip: Trip) => void;
   onDeleted: () => void;
@@ -26,17 +29,17 @@ export function TripEditor({
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
 
-  const [zone, setZone] = useState(trip?.timezone ?? guessTimezone());
-  const [projectId, setProjectId] = useState(trip?.project_id ?? "");
+  const [zone, setZone] = useState(trip?.timezone ?? defaults?.timezone ?? guessTimezone());
+  const [projectId, setProjectId] = useState(trip?.project_id ?? defaults?.project_id ?? "");
   const [crew, setCrew] = useState<Set<string>>(
-    () => new Set((trip?.crew ?? []).map((m) => m.profile_id)),
+    () => new Set((trip?.crew ?? defaults?.crew ?? []).map((m) => m.profile_id)),
   );
   const [form, setForm] = useState({
-    name: trip?.name ?? "",
-    destination: trip?.destination ?? "",
-    start_date: trip?.start_date ?? "",
-    end_date: trip?.end_date ?? "",
-    notes: trip?.notes ?? "",
+    name: trip?.name ?? defaults?.name ?? "",
+    destination: trip?.destination ?? defaults?.destination ?? "",
+    start_date: trip?.start_date ?? defaults?.start_date ?? "",
+    end_date: trip?.end_date ?? defaults?.end_date ?? "",
+    notes: trip?.notes ?? defaults?.notes ?? "",
   });
   const [saving, setSaving] = useState(false);
   const set = (k: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
