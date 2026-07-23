@@ -3859,29 +3859,56 @@ button.clock-out {
   text-align: center;
 }
 
-/* --- Ask Infinity FAB --- */
+/* --- Global "Ask Infinity" FAB ---
+   Always-on entry point to the AI assistant, rendered in the app shell so it
+   floats over every route. Sits above the mobile bottom bar (never overlapping
+   it) and below sheets/drawers/modals (z-index 60+) so overlays always win. */
 
 .ask-fab {
   position: fixed;
   right: 16px;
-  bottom: calc(78px + env(safe-area-inset-bottom));
-  width: 54px;
-  height: 54px;
-  border-radius: 50%;
-  background: var(--accent);
-  display: flex;
+  bottom: calc(3rem + 14px + env(safe-area-inset-bottom));
+  z-index: 45;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
-  z-index: 60;
+  gap: 7px;
+  min-height: 44px;
+  padding: 0 16px 0 13px;
+  border-radius: 999px;
+  border: none;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45), var(--shadow-glow);
+  transition: transform 0.15s var(--ease-out), background 0.15s var(--ease-out),
+    color 0.15s var(--ease-out);
 }
 
-.ask-fab-diamond {
-  width: 18px;
-  height: 18px;
-  background: var(--ink);
-  transform: rotate(45deg);
-  border-radius: 3px;
+.ask-fab:hover {
+  background: var(--accent-hover);
+  color: var(--primary-foreground);
+}
+
+.ask-fab:active {
+  transform: scale(0.96);
+}
+
+.ask-fab:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+
+.ask-fab-icon {
+  flex: none;
+}
+
+.ask-fab-label {
+  line-height: 1;
 }
 
 /* --- Phone More sheet --- */
@@ -4431,6 +4458,7 @@ button.clock-out {
     padding: 28px 32px 48px;
   }
 
+  /* Desktop drops the bottom bar, so anchor the FAB to the viewport corner. */
   .ask-fab {
     right: 28px;
     bottom: 28px;
