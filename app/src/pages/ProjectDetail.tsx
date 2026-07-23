@@ -65,6 +65,7 @@ import { CalendarClock, Plane, Truck, Users } from "lucide-react";
 import { ProjectMap } from "./install/ProjectMap";
 import { DispatchBoard } from "./install/DispatchBoard";
 import { PhotoFeed } from "../components/photos/PhotoFeed";
+import { JobChat } from "../components/chat/JobChat";
 
 type HubTab =
   | "overview"
@@ -73,7 +74,8 @@ type HubTab =
   | "brain"
   | "dispatch"
   | "exceptions"
-  | "photos";
+  | "photos"
+  | "chat";
 
 export function ProjectDetail() {
   const { projectId = "" } = useParams();
@@ -85,7 +87,8 @@ export function ProjectDetail() {
     tabParam === "brain" ||
     tabParam === "dispatch" ||
     tabParam === "exceptions" ||
-    tabParam === "photos"
+    tabParam === "photos" ||
+    tabParam === "chat"
       ? tabParam
       : "overview";
 
@@ -97,6 +100,7 @@ export function ProjectDetail() {
     { id: "overview", label: "Overview" },
     ...(isLead ? [{ id: "dispatch" as HubTab, label: "Dispatch" }] : []),
     { id: "warehouse", label: "Warehouse" },
+    { id: "chat", label: "Chat" },
     { id: "photos", label: "Photos" },
     { id: "map", label: "Map" },
     ...(isLead ? [{ id: "exceptions" as HubTab, label: "Exceptions" }] : []),
@@ -274,6 +278,13 @@ export function ProjectDetail() {
 
       {tab === "photos" && (
         <PhotoFeed projectId={projectId} selectedJobCode={project?.job_code ?? null} />
+      )}
+
+      {tab === "chat" && (
+        <JobChat
+          projectId={projectId}
+          jobLabel={project?.job_code ?? project?.name ?? "this job"}
+        />
       )}
 
       {tab === "map" && <ProjectMap embedded />}
