@@ -287,7 +287,7 @@ export default function App() {
               path="/analytics"
               element={<RequireRole path="/analytics"><Analytics /></RequireRole>}
             />
-            <Route path="/my-work" element={<Navigate to="/" replace />} />
+            <Route path="/my-work" element={<MyWork />} />
             <Route path="/review" element={<MemoReview />} />
             <Route
               path="/training"
