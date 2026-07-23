@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   BrainCircuit,
@@ -42,6 +42,9 @@ import {
 } from "../lib/vaultSync";
 import { getMyProfile } from "../lib/install/api";
 import { roleRank } from "../lib/install/types";
+import { formatApiError } from "../lib/errors";
+import { pinSetupBlockMessage, vaultPinPhase } from "../lib/vaultPinUx";
+import { validateNewPin } from "../../../supabase/functions/_shared/pin.ts";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 
 const NOTE_RE = /\.(md|markdown|mdx|txt)$/i;
@@ -145,19 +148,24 @@ function PinModal({
   );
 }
 
-/** Owner-only set/change of the shared vault PIN. */
+/** Owner-only first-time set / later change of the shared vault PIN. */
 function VaultPinSection({
   isOwner,
   available,
   pinSet,
   onChanged,
+  rootRef,
 }: {
   isOwner: boolean;
   available: boolean;
   pinSet: boolean;
   onChanged: () => void;
+  rootRef?: React.RefObject<HTMLDivElement | null>;
 }) {
-  const [open, setOpen] = useState(false);
+  // When no PIN exists yet the setup form is the section's primary content, so
+  // it's shown by default. When one is set, the form stays collapsed behind a
+  // "Change PIN" toggle.
+  const [changing, setChanging] = useState(false);
   const [currentPin, setCurrentPin] = useState("");
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -167,10 +175,15 @@ function VaultPinSection({
 
   if (!available) {
     return (
-      <div className="pin-section">
+      <div className="pin-section" ref={rootRef}>
+        <div className="section-head" style={{ marginTop: 0 }}>
+          <h2 style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <KeyRound size={16} /> Vault PIN
+          </h2>
+        </div>
         <p className="muted" style={{ fontSize: 13, margin: 0 }}>
-          <ShieldCheck size={13} /> The vault PIN needs a database update before it
-          can be set. Once that's applied, an owner can set the shared PIN here.
+          <ShieldCheck size={13} /> The vault PIN needs a quick database update before
+          it can be set. Once that's applied, an owner can set the shared PIN here.
         </p>
       </div>
     );
@@ -178,7 +191,15 @@ function VaultPinSection({
 
   if (!isOwner) {
     return (
-      <div className="pin-section">
+      <div className="pin-section" ref={rootRef}>
+        <div className="section-head" style={{ marginTop: 0 }}>
+          <h2 style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <KeyRound size={16} /> Vault PIN
+          </h2>
+          <span className="muted" style={{ fontSize: 12 }}>
+            {pinSet ? "PIN set" : "No PIN yet"}
+          </span>
+        </div>
         <p className="muted" style={{ fontSize: 13, margin: 0 }}>
           <ShieldCheck size={13} />{" "}
           {pinSet
@@ -188,6 +209,9 @@ function VaultPinSection({
       </div>
     );
   }
+
+  // Owner + available: this is where the PIN is created or changed.
+  const formVisible = !pinSet || changing;
 
   const reset = () => {
     setCurrentPin("");
@@ -199,8 +223,17 @@ function VaultPinSection({
   const submit = async () => {
     setError(null);
     setOk(false);
+    if (pinSet && !currentPin.trim()) {
+      setError("Enter the current PIN to change it.");
+      return;
+    }
+    const check = validateNewPin(newPin);
+    if (!check.ok) {
+      setError(check.error ?? "Enter a valid PIN.");
+      return;
+    }
     if (newPin.trim() !== confirmPin.trim()) {
-      setError("The new PIN and confirmation don't match.");
+      setError("The PIN and confirmation don't match.");
       return;
     }
     setBusy(true);
@@ -211,34 +244,34 @@ function VaultPinSection({
       });
       setOk(true);
       reset();
-      setOpen(false);
+      setChanging(false);
       onChanged();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatApiError(e));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="pin-section">
+    <div className="pin-section" ref={rootRef}>
       <div className="section-head" style={{ marginTop: 0 }}>
         <h2 style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <KeyRound size={16} /> Vault PIN
         </h2>
-        {!open && (
-          <button type="button" className="link-btn" onClick={() => setOpen(true)}>
-            {pinSet ? "Change PIN" : "Set PIN"}
+        {pinSet && !changing && (
+          <button type="button" className="link-btn" onClick={() => setChanging(true)}>
+            Change PIN
           </button>
         )}
       </div>
       <p className="muted" style={{ fontSize: 13 }}>
         {pinSet
           ? "A shared PIN is set. Everyone who adds, refreshes or removes notes must enter it."
-          : "Set a shared PIN. Supervisors will need it every time they add, refresh or remove notes."}
+          : "No vault PIN is set yet. Create one below — supervisors will need it every time they add, refresh or remove notes."}
       </p>
       {ok && <p className="ok" style={{ marginTop: 0 }}>Vault PIN updated.</p>}
-      {open && (
+      {formVisible && (
         <div className="pin-form">
           {pinSet && (
             <input
@@ -259,6 +292,9 @@ function VaultPinSection({
             value={newPin}
             disabled={busy}
             onChange={(e) => setNewPin(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void submit();
+            }}
           />
           <input
             type="password"
@@ -268,27 +304,32 @@ function VaultPinSection({
             value={confirmPin}
             disabled={busy}
             onChange={(e) => setConfirmPin(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void submit();
+            }}
           />
           {error && <p className="error" style={{ marginBottom: 0 }}>{error}</p>}
           <div className="action-list" style={{ flexDirection: "row", gap: 8 }}>
-            <button
-              type="button"
-              className="action-btn"
-              disabled={busy}
-              onClick={() => {
-                reset();
-                setOpen(false);
-              }}
-            >
-              Cancel
-            </button>
+            {pinSet && (
+              <button
+                type="button"
+                className="action-btn"
+                disabled={busy}
+                onClick={() => {
+                  reset();
+                  setChanging(false);
+                }}
+              >
+                Cancel
+              </button>
+            )}
             <button
               type="button"
               className="action-btn primary"
               disabled={busy}
               onClick={() => void submit()}
             >
-              {busy ? "Saving…" : pinSet ? "Change PIN" : "Set PIN"}
+              {busy ? "Saving…" : pinSet ? "Change PIN" : "Set vault PIN"}
             </button>
           </div>
         </div>
@@ -331,7 +372,27 @@ export function Knowledge() {
 
   const role = profile.data?.role ?? null;
   const isOwner = roleRank(role) >= 3;
-  const pinReady = Boolean(pinStatus.data?.available && pinStatus.data?.pinSet);
+  const pinAvailable = Boolean(pinStatus.data?.available);
+  const pinSet = Boolean(pinStatus.data?.pinSet);
+  const pinReady = pinAvailable && pinSet;
+  const pinPhase = vaultPinPhase({ available: pinAvailable, pinSet });
+
+  // The setup form lives in <VaultPinSection>; this lets a blocked mutation
+  // scroll the owner straight to it instead of leaving them on a dead prompt.
+  const pinSectionRef = useRef<HTMLDivElement | null>(null);
+
+  // Guard run before any vault mutation prompt: when no PIN has been created
+  // yet, steer the user to the setup flow instead of asking them to "enter"
+  // a PIN that was never established.
+  const requirePinSet = (): boolean => {
+    const block = pinSetupBlockMessage({ available: pinAvailable, pinSet, isOwner });
+    if (block) {
+      setMessage(block);
+      pinSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return false;
+    }
+    return true;
+  };
 
   const state = docs.data;
   const ready = state && !state.setupNeeded ? state : null;
@@ -358,12 +419,13 @@ export function Knowledge() {
     },
     onError: (e) => {
       setProgress(null);
-      setMessage(e instanceof Error ? e.message : String(e));
+      setMessage(formatApiError(e));
     },
   });
 
   const onPick = async (fileList: FileList | null) => {
     setMessage(null);
+    if (!requirePinSet()) return;
     const notes = await readNotes(fileList);
     if (notes.length === 0) {
       setMessage("No markdown notes found in that selection.");
@@ -380,6 +442,7 @@ export function Knowledge() {
 
   const requestRemove = (id: string, title: string) => {
     setMessage(null);
+    if (!requirePinSet()) return;
     setPinPrompt({
       title: "Remove note",
       hint: `Enter the vault PIN to remove "${title}" from the vault.`,
@@ -392,6 +455,7 @@ export function Knowledge() {
 
   const requestClear = () => {
     setMessage(null);
+    if (!requirePinSet()) return;
     setPinPrompt({
       title: "Clear the whole vault",
       hint: "Enter the vault PIN to hide every note from Ask Infinity.",
@@ -508,12 +572,13 @@ export function Knowledge() {
     },
     onError: (e) => {
       setProgress(null);
-      setSyncMsg(e instanceof Error ? e.message : String(e));
+      setSyncMsg(formatApiError(e));
     },
   });
 
   const requestApprove = () => {
     if (!diff) return;
+    if (!requirePinSet()) return;
     const s = summarizeDiff(diff);
     setPinPrompt({
       title: "Approve & sync",
@@ -555,8 +620,9 @@ export function Knowledge() {
 
       <VaultPinSection
         isOwner={isOwner}
-        available={Boolean(pinStatus.data?.available)}
-        pinSet={Boolean(pinStatus.data?.pinSet)}
+        available={pinAvailable}
+        pinSet={pinSet}
+        rootRef={pinSectionRef}
         onChanged={() => {
           void queryClient.invalidateQueries({ queryKey: ["vaultPinStatus"] });
         }}
@@ -685,6 +751,13 @@ export function Knowledge() {
           ? "Prefer a one-off upload, or on a browser without auto-sync? Choose a folder or files — you'll enter the vault PIN to index them."
           : "Auto-sync isn't available in this browser, so upload your vault folder or files manually — you'll enter the vault PIN to index them."}
       </p>
+      {pinPhase === "needs-setup" && (
+        <p className="muted" style={{ fontSize: 12 }}>
+          {isOwner
+            ? "First set a vault PIN above — then you can add notes."
+            : "A vault PIN must be set by an owner before notes can be added."}
+        </p>
+      )}
       <div className="action-list">
         <label
           className={`action-btn primary${busy ? " disabled" : ""}`}
