@@ -16,6 +16,7 @@ import {
   shapeMatches,
   type LiveContext,
 } from "../_shared/knowledge.ts";
+import { appGuideForRole, guideRank, renderAppGuide } from "../_shared/appGuide.ts";
 
 interface HistoryTurn {
   role: string;
@@ -30,6 +31,36 @@ async function loadLiveContext(
 ): Promise<LiveContext> {
   const live: LiveContext = {};
   const today = new Date().toISOString().slice(0, 10);
+
+  // The asking user's role is the single gate for everything below. Fetched on
+  // the service-role key (which bypasses RLS), so role-based access control MUST
+  // be enforced here in code — nothing else stops the AI leaking restricted data.
+  // Unknown/missing role degrades to installer (rank 0), never over-exposes.
+  let role: string | null = null;
+  if (userId) {
+    try {
+      const { data } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", userId)
+        .maybeSingle();
+      role = (data?.role as string | undefined) ?? null;
+    } catch (_e) {
+      // no-op: role unavailable → treated as installer floor below.
+    }
+  }
+  const rank = guideRank(role);
+  const isForemanPlus = rank >= 1;
+  const isManagement = rank >= 2; // supervisor+ — the financials/sensitive gate.
+  if (role) live.role = role;
+
+  // (A) Role-aware app guide: only the tabs this user's role can reach.
+  try {
+    const guide = renderAppGuide(appGuideForRole(role));
+    if (guide) live.appGuide = guide;
+  } catch (_e) {
+    // no-op: app guide unavailable
+  }
 
   try {
     const { data } = await supabase
@@ -87,6 +118,57 @@ async function loadLiveContext(
     }
   }
 
+  // (B) The asking user's own assigned windows/doors + where each unit is (all
+  // roles). Joins opening → assigned unit → warehouse location so the AI can
+  // answer "what am I assigned and where are the units?".
+  if (userId) {
+    try {
+      const { data } = await supabase
+        .from("project_openings")
+        .select(
+          "opening_code, label, status, window_types(category), windows(window_id, status, locations(address)), projects(name, job_code)",
+        )
+        .eq("assigned_to", userId)
+        .order("sequence", { nullsFirst: false })
+        .limit(40);
+      if (data && data.length > 0) {
+        live.assignments = data.map((o) => {
+          const wt = o.window_types as { category?: string } | null;
+          const unit = o.windows as
+            | { window_id?: string; status?: string; locations?: { address?: string } | null }
+            | null;
+          const proj = o.projects as { name?: string; job_code?: string } | null;
+          const code = (o.opening_code as string | null) ?? "";
+          const isDoor =
+            (wt?.category ?? "").toLowerCase().includes("door") || /^D\d/i.test(code);
+          const addr = unit?.locations?.address ?? null;
+          const unitStatus = unit?.status ?? null;
+          const location =
+            addr ??
+            (unitStatus === "loaded"
+              ? "on the truck"
+              : unitStatus === "installed"
+                ? "installed"
+                : unitStatus === "damaged"
+                  ? "damaged / hold"
+                  : null);
+          return {
+            kind: (isDoor ? "door" : "window") as "window" | "door",
+            code,
+            label: (o.label as string | null) ?? null,
+            status: (o.status as string | null) ?? undefined,
+            job:
+              [proj?.job_code, proj?.name].filter(Boolean).join(" ").trim() || "job",
+            unit: unit?.window_id ?? null,
+            location,
+          };
+        });
+      }
+    } catch (_e) {
+      // no-op: assignments unavailable
+    }
+  }
+
   // Open issues (company-wide): compact list of what's currently broken/blocked.
   try {
     const { data } = await supabase
@@ -133,30 +215,71 @@ async function loadLiveContext(
     if (typeof damaged.count === "number") inventory.damaged = damaged.count;
     if (typeof inbound.count === "number") inventory.inbound = inbound.count;
 
-    // Top on-hand types: aggregate a bounded projection client-side (indexed on
-    // status) so we can answer "how many X do we have" without a per-type query.
+    // One bounded projection (indexed on status) rolled up three ways client-side:
+    // top on-hand types, stock by warehouse slot (where units live), and units
+    // staged per job. All roles may see where units are — the task keeps field
+    // roles able to locate units; we keep it compact via caps.
     try {
       const { data } = await supabase
         .from("windows")
-        .select("window_types(type_code, name)")
+        .select(
+          "status, window_types(type_code, name), locations(address, zone), projects(job_code, name)",
+        )
         .in("status", ["in_warehouse", "staged"])
         .limit(3000);
       if (data && data.length > 0) {
-        const counts = new Map<string, { type_code?: string; name?: string; count: number }>();
+        const typeCounts = new Map<
+          string,
+          { type_code?: string; name?: string; count: number }
+        >();
+        const locCounts = new Map<string, { address?: string; zone?: string; count: number }>();
+        const jobCounts = new Map<string, { job?: string; count: number }>();
         for (const row of data) {
           const wt = row.window_types as { type_code?: string; name?: string } | null;
-          const key = (wt?.type_code ?? wt?.name ?? "").trim();
-          if (!key) continue;
-          const cur = counts.get(key);
-          if (cur) cur.count += 1;
-          else counts.set(key, { type_code: wt?.type_code, name: wt?.name, count: 1 });
+          const tKey = (wt?.type_code ?? wt?.name ?? "").trim();
+          if (tKey) {
+            const cur = typeCounts.get(tKey);
+            if (cur) cur.count += 1;
+            else typeCounts.set(tKey, { type_code: wt?.type_code, name: wt?.name, count: 1 });
+          }
+
+          const loc = row.locations as { address?: string; zone?: string } | null;
+          const lKey = (loc?.address ?? "").trim();
+          if (lKey) {
+            const cur = locCounts.get(lKey);
+            if (cur) cur.count += 1;
+            else locCounts.set(lKey, { address: loc?.address, zone: loc?.zone, count: 1 });
+          }
+
+          if (row.status === "staged") {
+            const proj = row.projects as { job_code?: string; name?: string } | null;
+            const jKey =
+              [proj?.job_code, proj?.name].filter(Boolean).join(" ").trim();
+            if (jKey) {
+              const cur = jobCounts.get(jKey);
+              if (cur) cur.count += 1;
+              else jobCounts.set(jKey, { job: jKey, count: 1 });
+            }
+          }
         }
-        inventory.topOnHand = [...counts.values()]
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 15);
+        if (typeCounts.size > 0) {
+          inventory.topOnHand = [...typeCounts.values()]
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 15);
+        }
+        if (locCounts.size > 0) {
+          inventory.byLocation = [...locCounts.values()]
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 15);
+        }
+        if (jobCounts.size > 0) {
+          inventory.stagedForJobs = [...jobCounts.values()]
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 10);
+        }
       }
     } catch (_e) {
-      // no-op: per-type rollup unavailable
+      // no-op: per-type/location rollup unavailable
     }
 
     // Outstanding supply orders (needed/ordered), most recent first.
@@ -184,6 +307,126 @@ async function loadLiveContext(
     if (Object.keys(inventory).length > 0) live.inventory = inventory;
   } catch (_e) {
     // no-op: inventory unavailable
+  }
+
+  // (Scheduled work) Foreman+ also see the crew/job schedule (who's scheduled
+  // where). Installers already get their own schedule above; this adds the
+  // coordination view for managers only.
+  if (isForemanPlus) {
+    try {
+      const { data } = await supabase
+        .from("schedule_assignments")
+        .select(
+          "start_date, end_date, start_time, projects(name, job_code), schedule_assignment_members(profiles(display_name))",
+        )
+        .eq("status", "published")
+        .gte("end_date", today)
+        .order("start_date")
+        .limit(20);
+      if (data && data.length > 0) {
+        live.crewSchedule = data.map((a) => {
+          const proj = a.projects as { name?: string; job_code?: string } | null;
+          const members = (a.schedule_assignment_members ?? []) as Array<{
+            profiles?: { display_name?: string } | null;
+          }>;
+          const crew = members
+            .map((m) => m.profiles?.display_name)
+            .filter((n): n is string => Boolean(n));
+          return {
+            job:
+              [proj?.job_code, proj?.name].filter(Boolean).join(" ").trim() || "job",
+            start_date: a.start_date as string,
+            end_date: a.end_date as string,
+            start_time: (a.start_time as string | null) ?? null,
+            crew,
+          };
+        });
+      }
+    } catch (_e) {
+      // no-op: crew schedule unavailable
+    }
+  }
+
+  // (Financials / sensitive) MANAGEMENT-ONLY (supervisor+). Bids, costs and
+  // margins are NEVER fetched for installer/foreman — the block simply doesn't
+  // run for them, so the model can't be given data it must not reveal.
+  if (isManagement) {
+    try {
+      const { data: projs } = await supabase
+        .from("projects")
+        .select("id, name, job_code, bid_amount, target_margin_pct")
+        .eq("status", "active")
+        .not("bid_amount", "is", null)
+        .order("bid_amount", { ascending: false })
+        .limit(15);
+      const rows = (projs ?? []) as Array<{
+        id: string;
+        name?: string;
+        job_code?: string;
+        bid_amount?: number | null;
+        target_margin_pct?: number | null;
+      }>;
+      if (rows.length > 0) {
+        const ids = rows.map((r) => r.id);
+        const costsByProject = new Map<string, number>();
+        try {
+          const { data: costs } = await supabase
+            .from("job_costs")
+            .select("project_id, amount")
+            .in("project_id", ids)
+            .limit(3000);
+          for (const c of (costs ?? []) as Array<{ project_id?: string; amount?: number }>) {
+            if (!c.project_id) continue;
+            costsByProject.set(
+              c.project_id,
+              (costsByProject.get(c.project_id) ?? 0) + (Number(c.amount) || 0),
+            );
+          }
+        } catch (_e) {
+          // no-op: cost ledger unavailable → margins degrade to bid-only.
+        }
+        const changeByProject = new Map<string, number>();
+        try {
+          const { data: cos } = await supabase
+            .from("change_orders")
+            .select("project_id, amount")
+            .in("project_id", ids)
+            .limit(2000);
+          for (const c of (cos ?? []) as Array<{ project_id?: string; amount?: number }>) {
+            if (!c.project_id) continue;
+            changeByProject.set(
+              c.project_id,
+              (changeByProject.get(c.project_id) ?? 0) + (Number(c.amount) || 0),
+            );
+          }
+        } catch (_e) {
+          // no-op: change orders unavailable
+        }
+
+        let totalBid = 0;
+        let totalCosts = 0;
+        const jobs = rows.map((r) => {
+          const bid = Number(r.bid_amount) || 0;
+          const revenue = bid + (changeByProject.get(r.id) ?? 0);
+          const costs = costsByProject.get(r.id) ?? 0;
+          totalBid += revenue;
+          totalCosts += costs;
+          const marginPct =
+            revenue > 0 ? ((revenue - costs) / revenue) * 100 : undefined;
+          return {
+            job: [r.job_code, r.name].filter(Boolean).join(" ").trim() || "job",
+            bid: revenue,
+            costs,
+            marginPct,
+            targetMarginPct:
+              typeof r.target_margin_pct === "number" ? r.target_margin_pct : undefined,
+          };
+        });
+        live.financials = { jobs, totalBid, totalCosts };
+      }
+    } catch (_e) {
+      // no-op: financials unavailable
+    }
   }
 
   // Recent job chat, scoped to jobs the ASKING USER is on (never leak other

@@ -180,8 +180,18 @@ export function formatSourcesLine(sources: KnowledgeSource[]): string {
   return `Sources: ${titles.join(", ")}`;
 }
 
-/** Compact live-app-data context passed alongside the vault notes. */
+/** Compact live-app-data context passed alongside the vault notes.
+ *
+ * IMPORTANT: every block here is already ROLE-FILTERED upstream (in the `ask`
+ * function's `loadLiveContext`, which runs on the RLS-bypassing service-role
+ * key). A block being present means the asking user's role is allowed to see it;
+ * `buildContextBlock` never re-checks the role, it just renders what it's given.
+ */
 export interface LiveContext {
+  /** The asking user's role (installer/foreman/supervisor/owner), for labelling. */
+  role?: string;
+  /** Role-filtered app guide (pre-rendered "what each tab is + how to use it"). */
+  appGuide?: string;
   projects?: Array<{ name?: string; job_code?: string; status?: string }>;
   schedule?: Array<{
     project?: string;
@@ -190,6 +200,20 @@ export interface LiveContext {
     start_time?: string | null;
   }>;
   windowTypes?: Array<{ type_code?: string; name?: string; n_installs?: number }>;
+  /** The asking user's own assigned openings (windows/doors) + warehouse location.
+   * All roles. Answers "what am I assigned and where are the units?" */
+  assignments?: Array<{
+    /** blue = window, green = door (from window_types.category / opening code). */
+    kind?: "window" | "door";
+    code?: string;
+    label?: string | null;
+    status?: string;
+    job?: string;
+    /** The physical unit's license-plate id, when a unit is assigned. */
+    unit?: string | null;
+    /** Where the unit physically is: warehouse slot address, or on-truck/installed. */
+    location?: string | null;
+  }>;
   /** Currently-open issues company-wide (most recent first, capped upstream). */
   issues?: Array<{
     job?: string;
@@ -205,7 +229,32 @@ export interface LiveContext {
     damaged?: number;
     inbound?: number;
     topOnHand?: Array<{ type_code?: string; name?: string; count?: number }>;
+    /** Where stock lives: top warehouse slots by on-hand count. */
+    byLocation?: Array<{ address?: string; zone?: string; count?: number }>;
+    /** Units staged for a job, grouped by job (staging bays). */
+    stagedForJobs?: Array<{ job?: string; count?: number }>;
     supplies?: Array<{ name?: string; qty?: number; status?: string }>;
+  };
+  /** Crew/job schedule (who's scheduled where). Foreman+ only. */
+  crewSchedule?: Array<{
+    job?: string;
+    start_date?: string;
+    end_date?: string;
+    start_time?: string | null;
+    crew?: string[];
+  }>;
+  /** Job costing / margins. Management-only (supervisor+) — never populated for
+   * installer/foreman. When present it's safe to discuss for the asking user. */
+  financials?: {
+    jobs?: Array<{
+      job?: string;
+      bid?: number;
+      costs?: number;
+      marginPct?: number;
+      targetMarginPct?: number;
+    }>;
+    totalBid?: number;
+    totalCosts?: number;
   };
   /** Recent per-job chat, scoped to jobs the asking user is on (most recent first). */
   chat?: Array<{
@@ -219,6 +268,16 @@ export interface LiveContext {
 function truncate(text: string, max: number): string {
   const t = text.trim();
   return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
+}
+
+/** Deterministic "$1,234" money formatting (locale-independent for stable output). */
+function money(n: number): string {
+  const rounded = Math.round(n);
+  const sign = rounded < 0 ? "-" : "";
+  const digits = Math.abs(rounded)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${sign}$${digits}`;
 }
 
 /**
@@ -240,6 +299,16 @@ export function buildContextBlock(
       )
       .join("\n\n");
     sections.push(`## Company notes (from the Obsidian vault)\n${notes}`);
+  }
+
+  // Role-aware app guide: only the tabs this user's role can reach (already
+  // filtered upstream). Lets the AI walk the user through the app accurately.
+  const guide = (live.appGuide ?? "").trim();
+  if (guide) {
+    const roleLabel = live.role ? ` for a ${live.role}` : "";
+    sections.push(
+      `## App guide — tabs you can use${roleLabel} (describe these when asked how to use the app)\n${guide}`,
+    );
   }
 
   const live_lines: string[] = [];
@@ -265,6 +334,25 @@ export function buildContextBlock(
         .join("; ")}`,
     );
   }
+  const assignments = live.assignments ?? [];
+  if (assignments.length > 0) {
+    live_lines.push(
+      `Your assigned windows/doors (and where the unit is): ${assignments
+        .slice(0, 30)
+        .map((a) => {
+          const kind = a.kind === "door" ? "door" : "window";
+          const code = a.code ?? "opening";
+          const where = a.label ? ` (${truncate(String(a.label), 40)})` : "";
+          const job = a.job ? ` on ${a.job}` : "";
+          const status = a.status ? ` [${a.status}]` : "";
+          const unit = a.unit ? ` unit ${a.unit}` : "";
+          const loc = a.location ? ` @ ${a.location}` : "";
+          return `${code}${where} ${kind}${job}${status}${unit}${loc}`.trim();
+        })
+        .join("; ")}`,
+    );
+  }
+
   const types = live.windowTypes ?? [];
   if (types.length > 0) {
     live_lines.push(
@@ -272,6 +360,22 @@ export function buildContextBlock(
         .slice(0, 20)
         .map((t) => [t.type_code, t.name].filter(Boolean).join(" ").trim())
         .filter(Boolean)
+        .join("; ")}`,
+    );
+  }
+
+  const crewSchedule = live.crewSchedule ?? [];
+  if (crewSchedule.length > 0) {
+    live_lines.push(
+      `Crew schedule (who's scheduled where): ${crewSchedule
+        .slice(0, 20)
+        .map((s) => {
+          const when = [s.start_date, s.end_date].filter(Boolean).join("→");
+          const time = s.start_time ? ` ${s.start_time}` : "";
+          const crew =
+            s.crew && s.crew.length > 0 ? ` — ${s.crew.slice(0, 8).join(", ")}` : "";
+          return `${s.job ?? "job"} (${when}${time})${crew}`;
+        })
         .join("; ")}`,
     );
   }
@@ -318,6 +422,24 @@ export function buildContextBlock(
           .join("; ")}`,
       );
     }
+    const byLocation = inv.byLocation ?? [];
+    if (byLocation.length > 0) {
+      parts.push(
+        `stock by warehouse slot: ${byLocation
+          .slice(0, 15)
+          .map((l) => `${l.address ?? "slot"}×${l.count ?? 0}`)
+          .join("; ")}`,
+      );
+    }
+    const stagedForJobs = inv.stagedForJobs ?? [];
+    if (stagedForJobs.length > 0) {
+      parts.push(
+        `staged for jobs: ${stagedForJobs
+          .slice(0, 10)
+          .map((s) => `${s.job ?? "job"}×${s.count ?? 0}`)
+          .join("; ")}`,
+      );
+    }
     const supplies = inv.supplies ?? [];
     if (supplies.length > 0) {
       parts.push(
@@ -331,6 +453,43 @@ export function buildContextBlock(
       );
     }
     if (parts.length > 0) live_lines.push(`Inventory: ${parts.join(". ")}`);
+  }
+
+  // Financials are management-only: this block is only ever populated upstream
+  // for supervisor+ (never installer/foreman). Present ⇒ safe to discuss.
+  const fin = live.financials;
+  if (fin) {
+    const parts: string[] = [];
+    if (typeof fin.totalBid === "number" || typeof fin.totalCosts === "number") {
+      const totals = [
+        typeof fin.totalBid === "number" ? `${money(fin.totalBid)} bid` : "",
+        typeof fin.totalCosts === "number" ? `${money(fin.totalCosts)} costs to date` : "",
+      ].filter(Boolean);
+      if (totals.length > 0) parts.push(`active jobs: ${totals.join(", ")}`);
+    }
+    const jobs = fin.jobs ?? [];
+    if (jobs.length > 0) {
+      parts.push(
+        `by job: ${jobs
+          .slice(0, 12)
+          .map((j) => {
+            const bid = typeof j.bid === "number" ? `${money(j.bid)} bid` : "";
+            const costs = typeof j.costs === "number" ? `${money(j.costs)} costs` : "";
+            const margin =
+              typeof j.marginPct === "number" ? `${Math.round(j.marginPct)}% margin` : "";
+            const target =
+              typeof j.targetMarginPct === "number"
+                ? `target ${Math.round(j.targetMarginPct)}%`
+                : "";
+            const bits = [bid, costs, margin, target].filter(Boolean).join(", ");
+            return `${j.job ?? "job"}${bits ? ` (${bits})` : ""}`;
+          })
+          .join("; ")}`,
+      );
+    }
+    if (parts.length > 0) {
+      live_lines.push(`Financials (management-only): ${parts.join(". ")}`);
+    }
   }
 
   const chat = live.chat ?? [];
@@ -356,13 +515,23 @@ export function buildContextBlock(
 export const ASK_SYSTEM_PROMPT =
   "You are Infinity AI, the assistant for a windows-installation company. " +
   "Answer using ONLY the provided company notes and app data. The app data may " +
-  "include active projects, schedules, open issues, inventory/stock levels, and " +
-  "recent job chat — use it to answer real-time operational questions. If the " +
-  "answer isn't in the provided context, say you don't have that in the company " +
-  "knowledge yet and suggest where to look (a person, a page in the app, or " +
-  "which note to add); don't guess at numbers or details you weren't given. " +
-  "Be concise and practical — you're talking to installers and office crew in " +
-  "the field. When you use a company note, cite its title in your answer.";
+  "include an app guide (what each tab is and how to use it), active projects, " +
+  "schedules, the user's assigned windows/doors and where those units are, " +
+  "inventory/stock and warehouse locations, crew schedules, open issues, and " +
+  "recent job chat — use it to answer real-time operational and how-to questions. " +
+  "CRITICAL ACCESS RULE: the context you are given has ALREADY been filtered to " +
+  "exactly what this user's role is allowed to see. Treat it as the complete set " +
+  "of what they may know. Do NOT speculate about, infer, or reveal data that was " +
+  "not provided — especially financials (costs, bids, pay, margins, pricing), " +
+  "restricted tabs, or other crews' data. If something isn't in the context, it " +
+  "is either not available or not something this user is permitted to see: say " +
+  "you don't have that (and, when it's a permissions matter, that it may be " +
+  "restricted to management) rather than guessing. Never invent numbers, " +
+  "locations, names, or details you weren't given. When asked how to use the " +
+  "app, describe only the tabs listed in the app guide. If the answer isn't in " +
+  "the context, suggest where to look (a person, a page in the app, or which " +
+  "note to add). Be concise and practical — you're talking to installers and " +
+  "office crew in the field. When you use a company note, cite its title.";
 
 /** The user turn: the question plus the grounding context. */
 export function buildAskUserMessage(question: string, contextBlock: string): string {
