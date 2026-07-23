@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Bell } from "lucide-react";
+import { Bell, MessagesSquare } from "lucide-react";
 import { QueryError, SkeletonList } from "../components/ui/States";
 import { listProjects } from "../lib/api";
 import { orderMyWork, type DispatchOpening } from "../lib/dispatch";
@@ -19,6 +19,8 @@ import { listInstalledForQc } from "../lib/ops";
 import { getHeartbeat } from "../lib/heartbeat";
 import { listAssignments } from "../lib/schedule/api";
 import { ToolboxTalkNagBanner } from "../components/time/ToolboxTalkNagBanner";
+import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
+import { totalUnread } from "../lib/chat/unread";
 
 interface OpeningCountRow {
   project_id: string;
@@ -104,6 +106,7 @@ export function Home() {
     enabled: Boolean(profileId),
   });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  const unread = useUnreadCounts();
 
   // Foreman-only "Awaiting you" + "Today's crews" sources. These reuse the exact
   // computations from Notifications (QC / timecards) and Heartbeat (open issues),
@@ -158,7 +161,8 @@ export function Home() {
   const firstName = me.data?.display_name?.split(/\s+/)[0] ?? "crew";
   const tod = useMemo(() => termOfDay(), []);
   const mastered = (progress.data ?? []).filter((p) => p.box >= 3).length;
-  const notifCount = (memos.data ?? []).length;
+  const unreadCounts = unread.data ?? {};
+  const notifCount = (memos.data ?? []).length + totalUnread(unreadCounts);
 
   const rows = ledger.data ?? [];
   const points = rows
@@ -215,6 +219,7 @@ export function Home() {
       pctColor,
       winLabel: `${total} openings`,
       doneLabel: `${installed} done`,
+      chatUnread: unreadCounts[p.id] ?? 0,
     };
   });
 
@@ -506,6 +511,7 @@ interface HomeProjectCard {
   pctColor: string;
   winLabel: string;
   doneLabel: string;
+  chatUnread: number;
 }
 
 function HomeProjectsGrid({
@@ -527,7 +533,17 @@ function HomeProjectsGrid({
         <Link key={p.id} to={`/projects/${p.id}/map`} className="project-card home-project">
           <div className="home-project-head">
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 16 }}>{p.name}</div>
+              <div style={{ fontWeight: 600, fontSize: 16, display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {p.name}
+                </span>
+                {p.chatUnread > 0 && (
+                  <span className="chat-badge" title={`${p.chatUnread} unread message${p.chatUnread > 1 ? "s" : ""}`}>
+                    <MessagesSquare size={11} aria-hidden />
+                    {p.chatUnread}
+                  </span>
+                )}
+              </div>
               <div className="muted" style={{ fontSize: 12 }}>{p.sub}</div>
             </div>
             <span

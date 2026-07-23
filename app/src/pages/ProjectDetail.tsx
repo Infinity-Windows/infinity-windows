@@ -66,6 +66,7 @@ import { ProjectMap } from "./install/ProjectMap";
 import { DispatchBoard } from "./install/DispatchBoard";
 import { PhotoFeed } from "../components/photos/PhotoFeed";
 import { JobChat } from "../components/chat/JobChat";
+import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
 
 type HubTab =
   | "overview"
@@ -95,6 +96,8 @@ export function ProjectDetail() {
   useRealtimeOpenings(projectId);
   const { effectiveRole } = useEffectiveRole();
   const isLead = isForemanPlus(effectiveRole);
+  const unread = useUnreadCounts();
+  const chatUnread = unread.data?.[projectId] ?? 0;
 
   const TABS: { id: HubTab; label: string }[] = [
     { id: "overview", label: "Overview" },
@@ -229,6 +232,9 @@ export function ProjectDetail() {
             onClick={() => setTab(t.id)}
           >
             {t.label}
+            {t.id === "chat" && chatUnread > 0 && (
+              <span className="chat-badge hub-tab-badge">{chatUnread}</span>
+            )}
           </button>
         ))}
       </nav>

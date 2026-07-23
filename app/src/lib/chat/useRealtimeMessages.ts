@@ -30,6 +30,9 @@ export function useRealtimeMessages(projectId: string | undefined): void {
 
     const invalidate = () => {
       queryClient.invalidateQueries({ queryKey: ["projectMessages", projectId] });
+      // Keep unread badges fresh: a new message on any job the user can see may
+      // change its unread count (the query is shared across Home/Projects/tabs).
+      queryClient.invalidateQueries({ queryKey: ["chatUnread"] });
     };
 
     const channel = supabase

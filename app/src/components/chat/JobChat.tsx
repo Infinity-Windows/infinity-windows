@@ -10,6 +10,7 @@ import { MessagesSquare } from "lucide-react";
 import {
   listMessages,
   listRoster,
+  markRead,
   sendMessage,
   type ChatMessage,
   type ChatRoster,
@@ -102,6 +103,16 @@ export function JobChat({
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages.data?.length]);
+
+  // Viewing the thread clears its unread badge: mark the job read whenever the
+  // tab is open and messages land, then refresh the shared unread counts.
+  const messageCount = messages.data?.length ?? 0;
+  useEffect(() => {
+    if (messageCount === 0) return;
+    void markRead(projectId).then(() => {
+      void queryClient.invalidateQueries({ queryKey: ["chatUnread"] });
+    });
+  }, [projectId, messageCount, queryClient]);
 
   const send = useMutation({
     mutationFn: async (text: string) => {
