@@ -83,10 +83,19 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       p_lat: num(p.lat),
       p_lng: num(p.lng),
     };
-    // Preferred path: server dedupes on the stable client id.
-    let res = await supabase.rpc("clock_in", { ...base, p_client_id: entry.id });
+    const note = str(p.note);
+    // Tier 1: dedupe on client id AND persist the worker note (fully-migrated).
+    let res = await supabase.rpc("clock_in", {
+      ...base,
+      p_client_id: entry.id,
+      p_note: note,
+    });
     if (res.error && isMissingFunction(res.error)) {
-      // Migration not applied — best-effort punch, client-side dedupe only.
+      // Tier 2: note overload absent — dedupe on client id, drop the note.
+      res = await supabase.rpc("clock_in", { ...base, p_client_id: entry.id });
+    }
+    if (res.error && isMissingFunction(res.error)) {
+      // Tier 3: idempotency migration absent too — best-effort plain punch.
       res = await supabase.rpc("clock_in", base);
     }
     if (res.error) throw res.error;

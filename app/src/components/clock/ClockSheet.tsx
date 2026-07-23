@@ -71,6 +71,7 @@ export function ClockSheet({
   const [pickCostCodeId, setPickCostCodeId] = useState<string>("");
   const [search, setSearch] = useState("");
   const [showFullList, setShowFullList] = useState(false);
+  const [note, setNote] = useState("");
   const [injured, setInjured] = useState(false);
   const [now, setNow] = useState(Date.now());
   const primedRef = useRef(false);
@@ -149,6 +150,7 @@ export function ClockSheet({
     entryId: string,
     projectId: string | null,
     costCodeId: string | null,
+    noteText: string | null = null,
   ): TimeShift => {
     const proj = (projects.data ?? []).find((p) => p.id === projectId);
     const cc = (costCodes.data ?? []).find((c) => c.id === costCodeId);
@@ -167,6 +169,7 @@ export function ClockSheet({
       time_confirmed: null,
       status: "open",
       created_at: nowIso,
+      note: noteText,
       projects: proj ? { job_code: proj.job_code, name: proj.name } : null,
       cost_codes: cc ? { code: cc.code, label: cc.label } : null,
     };
@@ -177,8 +180,9 @@ export function ClockSheet({
       const geo = await captureGeoSoft();
       const projectId = pickProjectId || null;
       const costCodeId = pickCostCodeId || null;
+      const noteText = note.trim() || null;
       try {
-        await clockIn(projectId, costCodeId, geo);
+        await clockIn(projectId, costCodeId, geo, noteText);
         return { queued: false };
       } catch (e) {
         if (!shouldQueue(e)) throw e;
@@ -187,8 +191,9 @@ export function ClockSheet({
           costCodeId,
           lat: geo?.lat ?? null,
           lng: geo?.lng ?? null,
+          note: noteText,
         });
-        setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId));
+        setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId, noteText));
         return { queued: true };
       }
     },
@@ -205,9 +210,10 @@ export function ClockSheet({
       const geo = await captureGeoSoft();
       const projectId = pickProjectId || null;
       const costCodeId = pickCostCodeId || null;
+      const noteText = note.trim() || null;
       try {
         // clock_in auto-closes the prior open shift, so switching leaves no gap.
-        await clockIn(projectId, costCodeId, geo);
+        await clockIn(projectId, costCodeId, geo, noteText);
         return { queued: false };
       } catch (e) {
         if (!shouldQueue(e)) throw e;
@@ -216,8 +222,9 @@ export function ClockSheet({
           costCodeId,
           lat: geo?.lat ?? null,
           lng: geo?.lng ?? null,
+          note: noteText,
         });
-        setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId));
+        setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId, noteText));
         return { queued: true };
       }
     },
@@ -483,6 +490,7 @@ export function ClockSheet({
                         className={current ? "clock-chip current" : "clock-chip"}
                         disabled={busy || current}
                         onClick={() => doPhaseSwitch.mutate(c.id)}
+                        title={`${c.code} — ${c.label}`}
                       >
                         {c.code}
                         {current ? " · now" : ""}
@@ -672,27 +680,56 @@ export function ClockSheet({
                   </div>
                 )}
 
-                {/* Cost code */}
+                {/* Cost code — full label so the worker sees exactly what
+                    they're charging to, not just the bare code. */}
                 <p className="clock-row-label">Cost code</p>
-                <div className="clock-chip-row wrap">
+                <div className="clock-costcode-list">
                   {(costCodes.data ?? []).map((c) => (
                     <button
                       key={c.id}
                       type="button"
-                      className={pickCostCodeId === c.id ? "clock-chip current" : "clock-chip"}
+                      className={
+                        pickCostCodeId === c.id
+                          ? "clock-costcode-item selected"
+                          : "clock-costcode-item"
+                      }
                       onClick={() => setPickCostCodeId(c.id)}
                     >
-                      {c.code}
+                      <span className="clock-costcode-code">
+                        {c.code} — {c.label}
+                      </span>
+                      {c.description && (
+                        <span className="clock-costcode-desc">{c.description}</span>
+                      )}
                     </button>
                   ))}
                 </div>
+
+                {/* Optional note the worker can add for the office. */}
+                <label className="clock-row-label" htmlFor="clock-note">
+                  Notes for the office (optional)
+                </label>
+                <textarea
+                  id="clock-note"
+                  className="clock-note-input"
+                  rows={3}
+                  maxLength={1000}
+                  placeholder="Anything the cost code doesn't cover, or an explanation for the office…"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                />
 
                 {pickedProject && (
                   <p className="clock-pick-summary">
                     {mode === "switch" ? "To: " : "On: "}
                     <strong>{pickedProject.job_code}</strong> · {pickedProject.name}
                     {pickCostCodeId &&
-                      ` · ${(costCodes.data ?? []).find((c) => c.id === pickCostCodeId)?.code ?? ""}`}
+                      (() => {
+                        const cc = (costCodes.data ?? []).find(
+                          (c) => c.id === pickCostCodeId,
+                        );
+                        return cc ? ` · ${cc.code} — ${cc.label}` : "";
+                      })()}
                   </p>
                 )}
 

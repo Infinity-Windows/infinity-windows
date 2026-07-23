@@ -524,6 +524,14 @@ export function Timecard() {
                       “{s.reject_reason}”
                     </div>
                   )}
+                  {s.note && (
+                    <div
+                      className="muted"
+                      style={{ fontSize: 11.5, marginTop: 2, fontStyle: "italic" }}
+                    >
+                      Note: {s.note}
+                    </div>
+                  )}
                 </div>
                 <span className="week-hours">{shiftHours(s).toFixed(1)}h</span>
                 {isLead && (

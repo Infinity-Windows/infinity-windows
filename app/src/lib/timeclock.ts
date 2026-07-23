@@ -1,6 +1,9 @@
 import { supabase } from "./supabase";
 import type { GeoFix } from "./geo";
 import { sendPush } from "./permissions/pushServer";
+import { isMissingClockInOverload, normalizeNote } from "./timeclockNote";
+
+export { isMissingClockInOverload, normalizeNote } from "./timeclockNote";
 
 export interface CostCode {
   id: string;
@@ -37,6 +40,8 @@ export interface TimeShift {
   time_confirmed: boolean | null;
   status: "open" | "submitted" | "approved" | "rejected";
   created_at: string;
+  /** Optional free-text note the worker adds at clock-in, for the office. */
+  note?: string | null;
   clock_in_lat?: number | null;
   clock_in_lng?: number | null;
   clock_out_lat?: number | null;
@@ -274,16 +279,23 @@ export async function clockIn(
   projectId: string | null,
   costCodeId: string | null,
   geo?: GeoFix,
+  note?: string | null,
 ): Promise<TimeShift> {
-  const { data, error } = await supabase.rpc("clock_in", {
+  const base = {
     p_project_id: projectId,
     p_cost_code_id: costCodeId,
     p_photo: null,
     p_lat: geo?.lat ?? null,
     p_lng: geo?.lng ?? null,
-  });
-  if (error) throw error;
-  return data as TimeShift;
+  };
+  // Preferred path: persist the worker note (migration 20260723060000).
+  let res = await supabase.rpc("clock_in", { ...base, p_note: normalizeNote(note) });
+  if (res.error && isMissingClockInOverload(res.error)) {
+    // Migration not applied yet — punch in without the note so clock-in works.
+    res = await supabase.rpc("clock_in", base);
+  }
+  if (res.error) throw res.error;
+  return res.data as TimeShift;
 }
 
 export async function clockOut(
