@@ -18,6 +18,7 @@ import { serviceBadge } from "../lib/vehicles/service";
 import { vehicleTitle } from "../lib/vehicles/display";
 import { listAssignments, horizonRange } from "../lib/schedule/api";
 import { conflictBannerEntries } from "../lib/schedule/conflicts";
+import { listMyMentions } from "../lib/chat/api";
 
 interface Note {
   id: string;
@@ -38,6 +39,13 @@ export function Notifications() {
   const memos = useQuery({
     queryKey: ["memosToConfirm", id],
     queryFn: () => listMemosToConfirm(id!),
+    enabled: Boolean(id),
+  });
+  // @-mentions are the durable in-app signal for everyone — supervisors/owners
+  // only get pushed on a mention, so this is where they see them. All roles.
+  const mentions = useQuery({
+    queryKey: ["chatMentions", id],
+    queryFn: () => listMyMentions(),
     enabled: Boolean(id),
   });
   const qc = useQuery({
@@ -122,6 +130,19 @@ export function Notifications() {
       title: "Confirm your install memo",
       sub: "AI filled the fields — review and confirm",
       to: "/review",
+    });
+  }
+
+  for (const item of mentions.data ?? []) {
+    const author = item.message.author_name ?? "Someone";
+    const body = item.message.body.trim();
+    const snippet = body.length > 90 ? `${body.slice(0, 89)}…` : body;
+    notes.push({
+      id: `mention-${item.message.id}`,
+      dot: "info",
+      title: `${author} mentioned you · ${item.jobLabel}`,
+      sub: snippet || "Open the job chat",
+      to: `/projects/${item.projectId}?tab=chat`,
     });
   }
 

@@ -8,6 +8,8 @@ import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
 import { supabase } from "../lib/supabase";
+import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
+import { MessagesSquare } from "lucide-react";
 
 interface OpeningCountRow {
   project_id: string;
@@ -30,6 +32,7 @@ export function Projects() {
   const [endDate, setEndDate] = useState("");
   const [notes, setNotes] = useState("");
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  const unread = useUnreadCounts();
   const profile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const canAdd = isForemanPlus(profile.data?.role);
   const counts = useQuery({
@@ -239,14 +242,23 @@ export function Projects() {
           !projects.isError &&
           (projects.data ?? []).map((p) => {
           const c = countFor(p.id);
+          const chatUnread = unread.data?.[p.id] ?? 0;
           const pctColor =
             c.pct >= 80 ? "var(--ok)" : c.pct >= 40 ? "var(--accent)" : "var(--warn)";
           return (
             <Link key={p.id} to={`/projects/${p.id}`} className="project-card home-project">
               <div className="home-project-head">
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 16 }}>
-                    {p.name || p.job_code}
+                  <div style={{ fontWeight: 600, fontSize: 16, display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {p.name || p.job_code}
+                    </span>
+                    {chatUnread > 0 && (
+                      <span className="chat-badge" title={`${chatUnread} unread message${chatUnread > 1 ? "s" : ""}`}>
+                        <MessagesSquare size={11} aria-hidden />
+                        {chatUnread}
+                      </span>
+                    )}
                   </div>
                   <div className="muted" style={{ fontSize: 12 }}>
                     {p.job_code}

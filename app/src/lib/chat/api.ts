@@ -9,6 +9,8 @@ import { supabase } from "../supabase";
 import { getMyProfile, listProfiles } from "../install/api";
 import { roleRank } from "../install/types";
 import { listProjectAssignments } from "../schedule/api";
+import { resolveMentions } from "./mentions";
+import { countUnreadByProject, type UnreadMessage } from "./unread";
 
 export interface ChatMessage {
   id: string;
@@ -37,6 +39,7 @@ export interface ChatRoster {
 }
 
 const LOCAL_KEY = "infinity.chat.messages.v1";
+const LOCAL_READS_KEY = "infinity.chat.reads.v1";
 
 /** Missing-table / missing-column errors mean the migration isn't applied. */
 function isMissingChatTable(error: unknown): boolean {
@@ -46,6 +49,18 @@ function isMissingChatTable(error: unknown): boolean {
   const msg = typeof e.message === "string" ? e.message.toLowerCase() : "";
   return (
     msg.includes("project_messages") ||
+    (msg.includes("does not exist") && msg.includes("relation"))
+  );
+}
+
+/** Missing read-cursor table means the 20260723050000 migration isn't applied. */
+function isMissingReadsTable(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: unknown; message?: unknown };
+  if (e.code === "PGRST205" || e.code === "42P01") return true;
+  const msg = typeof e.message === "string" ? e.message.toLowerCase() : "";
+  return (
+    msg.includes("project_message_reads") ||
     (msg.includes("does not exist") && msg.includes("relation"))
   );
 }
@@ -69,6 +84,31 @@ function writeLocal(rows: ChatMessage[]): void {
     localStorage.setItem(LOCAL_KEY, JSON.stringify(rows));
   } catch {
     /* quota — the in-memory view for this session still works */
+  }
+}
+
+/** Local read cursors keyed by project id (ISO last_read_at). */
+function readLocalCursors(): Record<string, string> {
+  if (typeof localStorage === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(LOCAL_READS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : {};
+    return parsed && typeof parsed === "object"
+      ? (parsed as Record<string, string>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalCursor(projectId: string, iso: string): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    const cursors = readLocalCursors();
+    cursors[projectId] = iso;
+    localStorage.setItem(LOCAL_READS_KEY, JSON.stringify(cursors));
+  } catch {
+    /* quota — best effort; unread simply won't persist this session */
   }
 }
 
@@ -223,4 +263,150 @@ export async function listRoster(projectId: string): Promise<ChatRoster> {
   );
 
   return { members, assignedCrewIds, supervisorOwnerIds };
+}
+
+// --- Unread tracking --------------------------------------------------------
+
+/** The signed-in user's id, or null when unauthenticated. */
+async function currentUserId(): Promise<string | null> {
+  const { data } = await supabase.auth.getUser();
+  return data.user?.id ?? null;
+}
+
+/** The user's per-project read cursors, from the table or the local fallback. */
+async function fetchReadCursors(): Promise<Record<string, string>> {
+  const { data, error } = await supabase
+    .from("project_message_reads")
+    .select("project_id, last_read_at");
+  if (error) {
+    if (isMissingReadsTable(error)) return readLocalCursors();
+    throw error;
+  }
+  const out: Record<string, string> = {};
+  for (const row of (data ?? []) as {
+    project_id: string;
+    last_read_at: string;
+  }[]) {
+    out[row.project_id] = row.last_read_at;
+  }
+  return out;
+}
+
+/**
+ * Unread message counts keyed by project id, for every job the user can see.
+ * Counts messages created after the user's last_read_at for that job, excluding
+ * the user's own messages. RLS scopes `project_messages` to visible jobs, so the
+ * result is naturally limited to jobs the user participates in / can access.
+ * Projects with no unread messages are omitted.
+ */
+export async function getUnreadCounts(): Promise<Record<string, number>> {
+  const selfId = await currentUserId();
+
+  let messages: UnreadMessage[];
+  const { data, error } = await supabase
+    .from("project_messages")
+    .select("project_id, author_id, created_at");
+  if (error) {
+    if (isMissingChatTable(error)) {
+      messages = readLocal().map((m) => ({
+        project_id: m.project_id,
+        author_id: m.author_id,
+        created_at: m.created_at,
+      }));
+    } else {
+      throw error;
+    }
+  } else {
+    messages = (data ?? []) as UnreadMessage[];
+  }
+
+  const cursors = await fetchReadCursors();
+  return countUnreadByProject(messages, cursors, selfId);
+}
+
+/** Mark a job's chat read for the signed-in user (upsert last_read_at = now). */
+export async function markRead(projectId: string): Promise<void> {
+  const selfId = await currentUserId();
+  const now = new Date().toISOString();
+  if (!selfId) {
+    writeLocalCursor(projectId, now);
+    return;
+  }
+  const { error } = await supabase
+    .from("project_message_reads")
+    .upsert(
+      { project_id: projectId, profile_id: selfId, last_read_at: now },
+      { onConflict: "project_id,profile_id" },
+    );
+  if (error) {
+    if (isMissingReadsTable(error)) {
+      writeLocalCursor(projectId, now);
+      return;
+    }
+    throw error;
+  }
+}
+
+// --- @-mention inbox --------------------------------------------------------
+
+export interface MentionInboxItem {
+  message: ChatMessage;
+  projectId: string;
+  jobLabel: string;
+}
+
+interface RawMentionRow extends RawMessageRow {
+  project?: { job_code?: string | null; name?: string | null } | null;
+}
+
+const MENTION_SELECT =
+  "id, project_id, author_id, body, mentions, created_at, author:author_id(display_name), project:project_id(job_code, name)";
+
+/**
+ * Messages that @-mention the signed-in user, newest first — the durable in-app
+ * signal for everyone (supervisors/owners only ever get pushed on a mention, so
+ * this is where they see them). RLS scopes the query to jobs the user can see;
+ * the user's own messages are excluded.
+ */
+export async function listMyMentions(limit = 30): Promise<MentionInboxItem[]> {
+  const selfId = await currentUserId();
+  if (!selfId) return [];
+
+  const toItem = (m: ChatMessage, jobLabel: string): MentionInboxItem => ({
+    message: m,
+    projectId: m.project_id,
+    jobLabel,
+  });
+
+  const { data, error } = await supabase
+    .from("project_messages")
+    .select(MENTION_SELECT)
+    .contains("mentions", [selfId])
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) {
+    if (isMissingChatTable(error)) {
+      const me = await getMyProfile();
+      const selfRoster = [{ id: selfId, display_name: me?.display_name ?? null }];
+      return readLocal()
+        .filter(
+          (m) =>
+            m.author_id !== selfId &&
+            (m.mentions.includes(selfId) ||
+              resolveMentions(m.body, selfRoster).includes(selfId)),
+        )
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))
+        .slice(0, limit)
+        .map((m) => toItem(m, m.project_id));
+    }
+    throw error;
+  }
+
+  return ((data ?? []) as unknown as RawMentionRow[])
+    .filter((row) => row.author_id !== selfId)
+    .map((row) => {
+      const jobLabel =
+        row.project?.job_code ?? row.project?.name ?? "this job";
+      return toItem(mapRow(row), jobLabel);
+    });
 }

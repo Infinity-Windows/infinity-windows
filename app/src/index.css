@@ -1742,6 +1742,28 @@ button:disabled {
   color: var(--ink);
 }
 
+.chat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 17px;
+  flex: none;
+}
+
+.hub-tab-badge {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
 /* --- Job group chat --- */
 
 .chat {
