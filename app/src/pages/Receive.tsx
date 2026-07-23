@@ -55,13 +55,24 @@ export function Receive() {
     <div className="page">
       <header className="page-header">
         <div>
-          <h1>Receive</h1>
+          <h1>Receive extra stock</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Create units into inventory and print labels.
+            Add unplanned / extra units into inventory and print labels.
           </p>
         </div>
         <Link to="/warehouse" className="back-chip" aria-label="Warehouse">‹</Link>
       </header>
+
+      <div className="detail-card" style={{ marginBottom: 16 }}>
+        <strong>Receiving a planned delivery instead?</strong>
+        <p className="muted" style={{ margin: "4px 0 8px" }}>
+          For windows that were pre-ordered for a job, use “Receive against the
+          plan” on that job so each unit matches its expected ID.
+        </p>
+        <Link to="/projects" className="action-btn">
+          Open a job to receive against the plan →
+        </Link>
+      </div>
 
       <label className="field-label">Window type</label>
       <WindowTypePicker

@@ -468,6 +468,9 @@ function OverviewTab({
         <Link to={`/projects/${projectId}/review`} className="action-btn">
           Review openings
         </Link>
+        <Link to={`/supplies?job=${projectId}`} className="action-btn">
+          Supplies for this job
+        </Link>
         <OfflineDownloadButton projectId={projectId} />
       </div>
 
@@ -539,14 +542,15 @@ function ScheduledCrewPanel({ projectId }: { projectId: string }) {
     <section className="detail-card" style={{ marginBottom: 16 }}>
       <div className="row-between">
         <h2 style={{ margin: 0 }}>
-          <CalendarClock size={16} aria-hidden /> Scheduled crew
+          <CalendarClock size={16} aria-hidden /> Published crew dates
         </h2>
         <Link to="/scheduling" className="link">
           Scheduling
         </Link>
       </div>
       <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
-        From the published schedule. Edit dates &amp; crew on the Scheduling board.
+        The dates &amp; crew that actually work this job, from the published
+        schedule (not the bid / target window). Edit them on the Scheduling board.
       </p>
 
       {list.length === 0 ? (
@@ -775,9 +779,11 @@ function JobDetailsPanel({
     { label: "Site address", value: project.address ?? "" },
     { label: "Building / unit / lot", value: project.unit_number ?? "" },
     { label: "State", value: project.site_state ?? "" },
-    { label: "Scheduled start", value: fmtDay(project.start_date) },
-    { label: "Target completion", value: fmtDay(project.end_date) },
+    { label: "Bid / target start", value: fmtDay(project.start_date) },
+    { label: "Bid / target completion", value: fmtDay(project.end_date) },
   ].filter((r) => r.value);
+  const hasTargetDates =
+    Boolean(project.start_date) || Boolean(project.end_date);
 
   if (!editing) {
     const hasAny = detailRows.length > 0 || Boolean(project.notes);
@@ -814,6 +820,12 @@ function JobDetailsPanel({
             {project.notes && (
               <p className="muted" style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>
                 {project.notes}
+              </p>
+            )}
+            {hasTargetDates && (
+              <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                Your bid / target window. The dates crew actually work are the
+                published crew dates on the schedule (shown above).
               </p>
             )}
           </>
@@ -908,7 +920,7 @@ function JobDetailsPanel({
             />
           </label>
           <label>
-            <span className="field-label">Scheduled start</span>
+            <span className="field-label">Bid / target start</span>
             <input
               type="date"
               value={startDate}
@@ -916,7 +928,7 @@ function JobDetailsPanel({
             />
           </label>
           <label>
-            <span className="field-label">Target completion</span>
+            <span className="field-label">Bid / target completion</span>
             <input
               type="date"
               value={endDate}
@@ -1164,7 +1176,10 @@ function ReceivingPanel({
       <p className="muted" style={{ marginTop: 6 }}>
         Scan or type a unit&apos;s code as it arrives to match it to its
         pre-issued ID and put it in the warehouse. Flip &quot;arrived
-        damaged&quot; to hold it and open a damage issue.
+        damaged&quot; to hold it and open a damage issue.{" "}
+        <Link to="/receive" className="link">
+          Extra / unplanned stock? Receive it here →
+        </Link>
       </p>
 
       <div className="manual-entry">
