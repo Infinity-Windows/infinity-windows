@@ -2,6 +2,8 @@ import { supabase } from "../supabase";
 import type { WindowType } from "../types";
 import type { DraftOpening, ExistingOpeningLite, PlansetKindLike } from "./extract";
 import { markBase, planDraftPersistence } from "./extract";
+import type { MarkSpecDraft, ProjectMarkSpec } from "./specs";
+import { mergeSpecsByMark, parseSpecRow } from "./specs";
 import type {
   InstallEvent,
   MemoTopics,
@@ -1149,6 +1151,179 @@ export async function confirmOpenings(projectId: string): Promise<void> {
     .update({ confirmed: true })
     .eq("project_id", projectId)
     .eq("confirmed", false);
+  if (error) throw error;
+}
+
+// --- Per-mark specs (rich line-item, shared across a mark's openings) ---
+
+/** True when the specs table hasn't been migrated yet — degrade to hidden. */
+function isMissingSpecsTable(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: unknown; message?: unknown };
+  if (e.code === "PGRST205" || e.code === "42P01") return true;
+  const message = typeof e.message === "string" ? e.message.toLowerCase() : "";
+  return message.includes("project_mark_specs");
+}
+
+/**
+ * All confirmed + draft specs on a project, keyed later by markBase. Best-effort:
+ * returns [] when the table doesn't exist yet so no page can crash.
+ */
+export async function listMarkSpecs(
+  projectId: string,
+): Promise<ProjectMarkSpec[]> {
+  if (!projectId) return [];
+  const { data, error } = await supabase
+    .from("project_mark_specs")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("mark_code");
+  if (error) {
+    if (isMissingSpecsTable(error)) return [];
+    throw error;
+  }
+  return (data ?? [])
+    .map(parseSpecRow)
+    .filter((s): s is ProjectMarkSpec => s !== null);
+}
+
+/** Invoke the edge function to pull rich per-mark specs from planset page text. */
+export async function aiExtractSpecs(
+  pages: { pageNumber: number; text: string }[],
+  projectId?: string,
+): Promise<MarkSpecDraft[]> {
+  const { data, error } = await supabase.functions.invoke("extract-specs", {
+    body: { pages, projectId },
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(String(data.error));
+  return mergeSpecsByMark((data?.specs ?? []) as unknown[], "ai");
+}
+
+/** DB column set we persist for a mark spec draft (never writes confirmed). */
+function specDraftColumns(
+  projectId: string,
+  spec: MarkSpecDraft,
+): Record<string, unknown> {
+  return {
+    project_id: projectId,
+    mark_code: spec.mark_code,
+    style: spec.style,
+    glass: spec.glass,
+    color: spec.color,
+    size_code: spec.size_code,
+    width_in: spec.width_in,
+    height_in: spec.height_in,
+    operation: spec.operation,
+    tempered: spec.tempered,
+    egress: spec.egress,
+    u_factor: spec.u_factor,
+    shgc: spec.shgc,
+    grids: spec.grids,
+    screen: spec.screen,
+    product_line: spec.product_line,
+    extra: spec.extra ?? {},
+    source: spec.source,
+  };
+}
+
+/**
+ * Extract rich specs from the specs-planset page text and upsert them as
+ * unconfirmed drafts keyed by (project_id, mark_code). Guardrail: a mark whose
+ * spec is already CONFIRMED is never clobbered by a re-extract (same philosophy
+ * as saveDraftOpenings). Best-effort: a missing table or a failed AI call
+ * degrades to { saved: 0 } instead of blowing up the upload flow.
+ */
+export async function extractAndSaveMarkSpecs(
+  projectId: string,
+  pages: { pageNumber: number; text: string }[],
+): Promise<{ saved: number; skipped: number }> {
+  if (!projectId || pages.length === 0) return { saved: 0, skipped: 0 };
+
+  let drafts: MarkSpecDraft[];
+  try {
+    drafts = await aiExtractSpecs(pages, projectId);
+  } catch {
+    // AI unavailable / errored — leave any existing specs untouched.
+    return { saved: 0, skipped: 0 };
+  }
+  if (drafts.length === 0) return { saved: 0, skipped: 0 };
+
+  // Which marks are already confirmed? Never overwrite those.
+  let confirmedMarks = new Set<string>();
+  try {
+    const existing = await listMarkSpecs(projectId);
+    confirmedMarks = new Set(
+      existing.filter((s) => s.confirmed).map((s) => s.mark_code.toUpperCase()),
+    );
+  } catch {
+    // If we can't read existing rows we simply won't skip any.
+  }
+
+  const toSave = drafts.filter(
+    (d) => !confirmedMarks.has(d.mark_code.toUpperCase()),
+  );
+  const skipped = drafts.length - toSave.length;
+  if (toSave.length === 0) return { saved: 0, skipped };
+
+  const rows = toSave.map((d) => specDraftColumns(projectId, d));
+  const { error } = await supabase
+    .from("project_mark_specs")
+    .upsert(rows, { onConflict: "project_id,mark_code" });
+  if (error) {
+    if (isMissingSpecsTable(error)) return { saved: 0, skipped };
+    throw error;
+  }
+  return { saved: toSave.length, skipped };
+}
+
+/** Foreman edit of one mark spec (marks it source='manual'). */
+export async function updateMarkSpec(
+  id: string,
+  patch: Partial<
+    Pick<
+      ProjectMarkSpec,
+      | "style"
+      | "glass"
+      | "color"
+      | "size_code"
+      | "width_in"
+      | "height_in"
+      | "operation"
+      | "tempered"
+      | "egress"
+      | "u_factor"
+      | "shgc"
+      | "grids"
+      | "screen"
+      | "product_line"
+      | "extra"
+    >
+  >,
+): Promise<void> {
+  const { error } = await supabase
+    .from("project_mark_specs")
+    .update({ ...patch, source: "manual" })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+/** Confirm all draft specs on a project (foreman+). */
+export async function confirmMarkSpecs(projectId: string): Promise<void> {
+  const { error } = await supabase
+    .from("project_mark_specs")
+    .update({ confirmed: true })
+    .eq("project_id", projectId)
+    .eq("confirmed", false);
+  if (error) throw error;
+}
+
+/** Confirm a single mark spec (foreman+). */
+export async function confirmMarkSpec(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("project_mark_specs")
+    .update({ confirmed: true })
+    .eq("id", id);
   if (error) throw error;
 }
 

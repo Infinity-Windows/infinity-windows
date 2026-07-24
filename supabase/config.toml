@@ -7,6 +7,9 @@ verify_jwt = true
 [functions.extract-schedule]
 verify_jwt = true
 
+[functions.extract-specs]
+verify_jwt = true
+
 [functions.generate-howto]
 verify_jwt = true
 

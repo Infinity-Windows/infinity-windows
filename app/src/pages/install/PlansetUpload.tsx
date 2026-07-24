@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { listProjects, listWindowTypes } from "../../lib/api";
 import {
   ensureTypesFromSpecs,
+  extractAndSaveMarkSpecs,
   getPlansetSignedUrl,
   linkSpecsToOpenings,
   listPlansets,
@@ -149,6 +150,15 @@ export function PlansetUpload() {
       drafts = await ensureTypesFromSpecs(drafts);
       const linked = await linkSpecsToOpenings(projectId, drafts);
       const result = await saveDraftOpenings(projectId, planset.id, drafts);
+
+      // Pull the FULL per-mark line-item specs (style/glass/color/energy/…) via
+      // Claude and store them as unconfirmed drafts. Best-effort: never blocks
+      // or fails the upload if AI/table is unavailable.
+      setProgress("Reading detailed window/door specs…");
+      const specsResult = await extractAndSaveMarkSpecs(projectId, pages).catch(
+        () => ({ saved: 0, skipped: 0 }),
+      );
+
       await updatePlanset(planset.id, { status: "ready" });
 
       const marks = summarizeDraftMarks(drafts);
@@ -158,6 +168,7 @@ export function PlansetUpload() {
         drafts: result.inserted,
         skipped: result.skipped,
         linked: linked.linked,
+        specs: specsResult.saved,
         converted: true,
         source,
         marks,
@@ -168,6 +179,7 @@ export function PlansetUpload() {
       queryClient.invalidateQueries({ queryKey: ["plansets", projectId] });
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
       queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
+      queryClient.invalidateQueries({ queryKey: ["markSpecs", projectId] });
       setProgress(null);
       const detailSheetCount =
         "detailSheets" in result ? (result.detailSheets ?? 0) : 0;
@@ -216,12 +228,14 @@ export function PlansetUpload() {
             : "source" in result && result.source === "merged"
               ? "Merged schedule table with detail-sheet marks."
               : null;
+        const specsSaved = "specs" in result ? (result.specs ?? 0) : 0;
         setSummary(
           [
             markLine ? `Found ${markLine}.` : null,
             sourceNote,
             result.drafts > 0 ? `${result.drafts} draft openings.` : null,
             result.linked > 0 ? `Linked types on ${result.linked} existing openings.` : null,
+            specsSaved > 0 ? `Read detailed specs for ${specsSaved} mark(s).` : null,
           ]
             .filter(Boolean)
             .join(" "),

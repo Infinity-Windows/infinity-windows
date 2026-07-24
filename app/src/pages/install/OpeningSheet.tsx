@@ -16,6 +16,7 @@ import {
   getMyProfile,
   getOpening,
   getTypeBrainStats,
+  listMarkSpecs,
   listMyOpeningsAllJobs,
   setOpeningCondition,
   setRoughOpening,
@@ -42,6 +43,8 @@ import {
   retryTranscriptions,
 } from "../../lib/install/queue";
 import { MEMO_TOPICS, isForemanPlus, type MemoTopics } from "../../lib/install/types";
+import { indexSpecsByMark, specForOpeningCode } from "../../lib/install/specs";
+import { SpecCard } from "../../components/install/SpecCard";
 import { createIssue } from "../../lib/issues";
 import type { QrPayload } from "../../lib/qr";
 import { resolveWindowFromScan } from "../../lib/scanResolve";
@@ -178,6 +181,21 @@ export function OpeningSheet() {
     queryFn: () => getTypeBrainStats(opening.data!.window_type_id!),
     enabled: Boolean(opening.data?.window_type_id),
   });
+
+  // Rich per-mark spec (shared across this mark's openings). Best-effort read.
+  const markSpecs = useQuery({
+    queryKey: ["markSpecs", projectId],
+    queryFn: () => listMarkSpecs(projectId),
+    enabled: Boolean(projectId),
+  });
+  const openingSpec = useMemo(
+    () =>
+      specForOpeningCode(
+        indexSpecsByMark(markSpecs.data ?? []),
+        opening.data?.opening_code,
+      ),
+    [markSpecs.data, opening.data?.opening_code],
+  );
 
   const searchResults = useQuery({
     queryKey: ["unitSearch", search],
@@ -602,6 +620,8 @@ export function OpeningSheet() {
           </p>
         )}
       </div>
+
+      {openingSpec && <SpecCard spec={openingSpec} />}
 
       {message && (
         <p className={/^(Window|Install|Rough|Condition|Flag|Flagged|Site|Complication)/.test(message) ? "ok" : "error"}>

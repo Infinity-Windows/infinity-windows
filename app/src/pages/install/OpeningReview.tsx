@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { listProjects } from "../../lib/api";
 import { WindowTypePicker } from "../../components/WindowTypePicker";
+import { SpecReviewSection } from "../../components/install/SpecReviewSection";
 import {
   addOpening,
   confirmOpenings,
@@ -175,6 +176,8 @@ export function OpeningReview() {
           add openings by hand below.
         </p>
       )}
+
+      <SpecReviewSection projectId={projectId} />
 
       <h2>Add opening</h2>
       <div className="manual-entry">
