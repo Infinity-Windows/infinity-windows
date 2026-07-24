@@ -221,18 +221,24 @@ export function AskInfinity() {
     const useCloud = shouldUseLLM({ online, supabaseConfigured });
 
     const run = async (): Promise<ChatMsg> => {
+      // Only true when the cloud AI was expected to answer but actually errored
+      // (network / outage / 500) — used to be honest that we've dropped to the
+      // offline brain, rather than silently passing a canned tour off as the AI.
+      let cloudErrored = false;
       if (useCloud) {
         try {
           const { answer, sources } = await askInfinity(q, history);
           if (answer) return { who: "infinity", text: answer, sources };
         } catch {
-          // Cloud unavailable — fall back to the offline brain below.
+          // Cloud unavailable — fall back to the offline brain below, and note it.
+          cloudErrored = true;
         }
       }
       // Ground the offline path in live cached data first, then the static brain.
+      const prefix = cloudErrored ? "(Offline mode — cloud AI unavailable.)\n\n" : "";
       const live = liveAnswer(q, gatherLiveData());
-      if (live) return { who: "infinity", text: live };
-      return { who: "infinity", text: await localAnswer(q) };
+      if (live) return { who: "infinity", text: prefix + live };
+      return { who: "infinity", text: prefix + (await localAnswer(q)) };
     };
 
     void run()

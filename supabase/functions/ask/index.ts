@@ -3,13 +3,14 @@ import {
   corsHeaders,
   embed,
   jsonResponse,
-  requireOpenAI,
   SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL,
 } from "../_shared/openai.ts";
+import { anthropicChat, requireAnthropic } from "../_shared/anthropic.ts";
 import { verifyCaller } from "../_shared/auth.ts";
 import {
   ASK_SYSTEM_PROMPT,
+  buildAnthropicMessages,
   buildAskUserMessage,
   buildContextBlock,
   dedupeSources,
@@ -543,7 +544,9 @@ Deno.serve(async (req) => {
   const userId = auth.status === "ok" ? auth.user.id : null;
 
   try {
-    const key = requireOpenAI();
+    // The function's one hard dependency is now the Anthropic key (Claude
+    // generates the answer). OpenAI/embeddings are best-effort below.
+    requireAnthropic();
     const body = await req.json().catch(() => ({}));
     const question = String(body.question ?? "").trim();
     if (!question) {
@@ -561,49 +564,41 @@ Deno.serve(async (req) => {
           .slice(-8)
       : [];
 
-    // (a) embed the question.
-    const [queryEmbedding] = await embed([question]);
-
-    // (b) + (c) retrieve vault chunks and a compact live-data snapshot.
+    // (a) + (b) retrieve vault chunks (RAG) and (c) a compact live-data
+    // snapshot. RAG is OPTIONAL: it needs OpenAI embeddings, so if no OpenAI key
+    // is set (or embedding / the RPC fails) we simply answer from live data
+    // only. This step must NEVER throw the whole function.
     let chunks: ReturnType<typeof shapeMatches> = [];
     let live: LiveContext = {};
     if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-      try {
-        const { data } = await supabase.rpc("match_knowledge_chunks", {
-          query_embedding: queryEmbedding,
-          match_count: 8,
-          min_similarity: 0.0,
-        });
-        chunks = shapeMatches(data);
-      } catch (_e) {
-        // no-op: RAG store not applied yet → answer from live data only.
+      if (Deno.env.get("OPENAI_API_KEY")) {
+        try {
+          const [queryEmbedding] = await embed([question]);
+          const { data } = await supabase.rpc("match_knowledge_chunks", {
+            query_embedding: queryEmbedding,
+            match_count: 8,
+            min_similarity: 0.0,
+          });
+          chunks = shapeMatches(data);
+        } catch (_e) {
+          // no-op: embeddings/RAG unavailable → answer from live data only.
+          chunks = [];
+        }
       }
       live = await loadLiveContext(supabase, userId);
     }
 
-    // (d) ground gpt-4o with the assembled context.
+    // (d) ground Claude with the assembled context.
     const contextBlock = buildContextBlock(chunks, live);
-    const messages = [
-      { role: "system", content: ASK_SYSTEM_PROMPT },
-      ...history.map((h) => ({ role: h.role, content: h.content })),
-      { role: "user", content: buildAskUserMessage(question, contextBlock) },
-    ];
-
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ model: "gpt-4o", temperature: 0.2, messages }),
+    const messages = buildAnthropicMessages(
+      history,
+      buildAskUserMessage(question, contextBlock),
+    );
+    const answer = await anthropicChat({
+      system: ASK_SYSTEM_PROMPT,
+      messages,
     });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`OpenAI chat failed: ${res.status} ${text}`);
-    }
-    const data = await res.json();
-    const answer = String(data.choices?.[0]?.message?.content ?? "").trim();
 
     return jsonResponse(
       { answer, sources: dedupeSources(chunks) },
