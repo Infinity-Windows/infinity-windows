@@ -4,6 +4,7 @@ import { getMyProfile } from "../lib/install/api";
 import {
   getPointsLeaderboard,
   listLedger,
+  pointsByCategory,
   POINT_RULES,
 } from "../lib/points";
 
@@ -12,7 +13,7 @@ const KIND_LABELS: Record<string, string> = {
   par: "Beat par time",
   photos: "Proof photos",
   teach: "Taught the crew",
-  quality: "Quality grade",
+  quality: "Quality (QC grade)",
   quiz: "Quiz",
 };
 
@@ -59,12 +60,8 @@ export function Points() {
   const confirmed = rows.filter((r) => r.status === "confirmed");
   const total = confirmed.reduce((s, r) => s + r.points, 0);
   const pending = rows.filter((r) => r.status === "pending").reduce((s, r) => s + r.points, 0);
-  const byKind = new Map<string, number>();
-  for (const r of confirmed) byKind.set(r.kind, (byKind.get(r.kind) ?? 0) + r.points);
-  const teach = byKind.get("teach") ?? 0;
-  const pbs = byKind.get("par") ?? 0;
+  const categories = pointsByCategory(rows);
   const tier = tierFor(total);
-  const bonus = Math.round(total * 0.25);
 
   return (
     <div className="page">
@@ -81,10 +78,7 @@ export function Points() {
       <div className="points-hero">
         <div className="points-hero-top">
           <div className="points-total">{total}</div>
-          <div>
-            <div className="points-bonus-label">est. bonus value</div>
-            <div className="points-bonus">${bonus}</div>
-          </div>
+          <div className="points-total-label">total points</div>
         </div>
         <div className="points-tier-bar" aria-hidden>
           <div className="points-tier-fill" style={{ width: `${tier.pct}%` }} />
@@ -97,14 +91,6 @@ export function Points() {
           <div className="points-mini warn">
             <span>Pending QC</span>
             <strong>{pending}</strong>
-          </div>
-          <div className="points-mini">
-            <span>Teach pts</span>
-            <strong>{teach}</strong>
-          </div>
-          <div className="points-mini">
-            <span>Par beats</span>
-            <strong>{pbs}</strong>
           </div>
         </div>
       </div>
@@ -121,17 +107,17 @@ export function Points() {
         </ul>
       </div>
 
-      <h2>Ledger</h2>
+      <h2>Points by category</h2>
+      <p className="muted" style={{ marginTop: 0, fontSize: 12 }}>
+        Raw confirmed subtotals — each category tracked separately.
+      </p>
       <ul className="unit-list work-list">
-        {[...byKind.entries()].map(([k, p]) => (
-          <li key={k} className="find-row">
-            <span>{KIND_LABELS[k] ?? k}</span>
-            <span className="ledger-pts">+{p}</span>
+        {categories.map(({ kind, points }) => (
+          <li key={kind} className="find-row">
+            <span>{KIND_LABELS[kind] ?? kind}</span>
+            <span className="ledger-pts">+{points}</span>
           </li>
         ))}
-        {rows.length === 0 && (
-          <p className="muted">No points yet — install a window to start.</p>
-        )}
       </ul>
 
       <h2>Team · this year</h2>

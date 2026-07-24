@@ -2,6 +2,16 @@ import { supabase } from "./supabase";
 
 export type PointKind = "install" | "par" | "photos" | "teach" | "quality" | "quiz";
 
+/** Canonical display/ordering for the six point categories. */
+export const POINT_KINDS: PointKind[] = [
+  "install",
+  "par",
+  "photos",
+  "teach",
+  "quality",
+  "quiz",
+];
+
 export interface PointEntry {
   kind: PointKind;
   points: number;
@@ -49,6 +59,27 @@ export function computeInstallPoints(input: {
 
 export function sumPoints(entries: PointEntry[]): number {
   return entries.reduce((s, e) => s + e.points, 0);
+}
+
+/**
+ * Raw, unweighted point subtotals per category.
+ *
+ * Sums only CONFIRMED rows and returns every category in the canonical order
+ * (install, par, photos, teach, quality, quiz), including zero entries for
+ * kinds that have no confirmed points. No weighting is applied — these are the
+ * raw subtotals the owner weights externally.
+ */
+export function pointsByCategory(
+  rows: Array<{ kind: string; points: number; status: string }>,
+): Array<{ kind: PointKind; points: number }> {
+  const totals = new Map<PointKind, number>();
+  for (const kind of POINT_KINDS) totals.set(kind, 0);
+  for (const r of rows) {
+    if (r.status !== "confirmed") continue;
+    if (!totals.has(r.kind as PointKind)) continue;
+    totals.set(r.kind as PointKind, (totals.get(r.kind as PointKind) ?? 0) + r.points);
+  }
+  return POINT_KINDS.map((kind) => ({ kind, points: totals.get(kind) ?? 0 }));
 }
 
 export async function awardPoints(

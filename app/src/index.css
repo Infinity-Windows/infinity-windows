@@ -2985,7 +2985,7 @@ button:disabled {
 .points-hero-top {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
+  gap: 10px;
 }
 
 .points-total {
@@ -2996,18 +2996,11 @@ button:disabled {
   color: var(--accent);
 }
 
-.points-bonus-label {
+.points-total-label {
   font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
   color: var(--muted);
-  text-align: right;
-}
-
-.points-bonus {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 24px;
-  color: var(--ok);
-  text-align: right;
 }
 
 .points-tier-bar {
