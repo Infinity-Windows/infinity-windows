@@ -200,8 +200,11 @@ export interface LiveContext {
     start_time?: string | null;
   }>;
   windowTypes?: Array<{ type_code?: string; name?: string; n_installs?: number }>;
-  /** The asking user's own assigned openings (windows/doors) + warehouse location.
-   * All roles. Answers "what am I assigned and where are the units?" */
+  /** The asking user's OWN assigned openings (windows/doors) + warehouse
+   * location, as the COMPLETE list in install/dispatch order (project_openings
+   * ordered by `sequence`). All roles. Answers "what am I installing today and
+   * in what order, and where are the units?" — render every entry, not just the
+   * next one. */
   assignments?: Array<{
     /** blue = window, green = door (from window_types.category / opening code). */
     kind?: "window" | "door";
@@ -337,9 +340,9 @@ export function buildContextBlock(
   const assignments = live.assignments ?? [];
   if (assignments.length > 0) {
     live_lines.push(
-      `Your assigned windows/doors (and where the unit is): ${assignments
-        .slice(0, 30)
-        .map((a) => {
+      `Your assigned openings (in install order — this is the COMPLETE ordered list of every window/door assigned to you, sequenced 1..N in the order to install them, plus where each unit is): ${assignments
+        .slice(0, 50)
+        .map((a, i) => {
           const kind = a.kind === "door" ? "door" : "window";
           const code = a.code ?? "opening";
           const where = a.label ? ` (${truncate(String(a.label), 40)})` : "";
@@ -347,7 +350,7 @@ export function buildContextBlock(
           const status = a.status ? ` [${a.status}]` : "";
           const unit = a.unit ? ` unit ${a.unit}` : "";
           const loc = a.location ? ` @ ${a.location}` : "";
-          return `${code}${where} ${kind}${job}${status}${unit}${loc}`.trim();
+          return `${i + 1}) ${code}${where} ${kind}${job}${status}${unit}${loc}`.trim();
         })
         .join("; ")}`,
     );
@@ -519,6 +522,10 @@ export const ASK_SYSTEM_PROMPT =
   "schedules, the user's assigned windows/doors and where those units are, " +
   "inventory/stock and warehouse locations, crew schedules, open issues, and " +
   "recent job chat — use it to answer real-time operational and how-to questions. " +
+  "When the context lists the user's assigned openings 'in install order', that " +
+  "is the COMPLETE ordered list of every window/door assigned to them: if they " +
+  "ask what they're installing (today) or in what order, enumerate ALL of them " +
+  "in that order rather than replying with only the next one. " +
   "CRITICAL ACCESS RULE: the context you are given has ALREADY been filtered to " +
   "exactly what this user's role is allowed to see. Treat it as the complete set " +
   "of what they may know. Do NOT speculate about, infer, or reveal data that was " +
