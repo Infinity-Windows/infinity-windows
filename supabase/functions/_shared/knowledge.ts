@@ -556,6 +556,42 @@ export function buildAskUserMessage(question: string, contextBlock: string): str
 }
 
 /**
+ * Shape a conversation history into the `messages` array the Anthropic Messages
+ * API expects: only `user`/`assistant` turns, and the array MUST start with a
+ * user turn. We keep it minimal and deterministic:
+ *   - drop anything whose role isn't exactly "user"/"assistant" or whose
+ *     content isn't a non-empty string;
+ *   - drop any LEADING assistant turns so the first entry is a user turn
+ *     (Anthropic rejects a leading assistant turn);
+ *   - append the final `{ role: "user", content: userMessage }`.
+ * We intentionally do NOT force strict alternation beyond the leading-assistant
+ * trim — Anthropic tolerates consecutive same-role turns and the client already
+ * alternates in practice.
+ */
+export function buildAnthropicMessages(
+  history: Array<{ role: string; content: string }>,
+  userMessage: string,
+): Array<{ role: "user" | "assistant"; content: string }> {
+  const cleaned = (Array.isArray(history) ? history : [])
+    .filter(
+      (h): h is { role: "user" | "assistant"; content: string } =>
+        !!h &&
+        typeof h.content === "string" &&
+        h.content.trim().length > 0 &&
+        (h.role === "user" || h.role === "assistant"),
+    )
+    .map((h) => ({ role: h.role, content: h.content }));
+
+  // Drop leading assistant turns so the array starts with a user turn.
+  let start = 0;
+  while (start < cleaned.length && cleaned[start].role === "assistant") {
+    start++;
+  }
+
+  return [...cleaned.slice(start), { role: "user", content: userMessage }];
+}
+
+/**
  * The client's use-the-LLM-vs-local-brain decision. The smarter cloud answer
  * needs network + a configured Supabase; otherwise the chat falls back to the
  * bundled offline brain so it never goes dark.
