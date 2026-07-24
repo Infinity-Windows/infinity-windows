@@ -384,6 +384,25 @@ export const APP_GUIDE: AppGuideEntry[] = [
   },
 ];
 
+/**
+ * How the AI may surface open issues, matching the in-app Issues gate.
+ * - "company": the whole open-issues list (foreman+, who can open the Issues tab).
+ * - "own-jobs": only issues on jobs the user is on (installers — they can't open
+ *   the tab, so they must never receive company-wide issues).
+ * - "none": nothing to show (an installer who is on no jobs).
+ */
+export type IssuesScope = "company" | "own-jobs" | "none";
+
+/** Decide an asking user's issues scope from their role and how many jobs
+ * they're on. Foreman+ (rank ≥ 1) → company-wide; installers → own jobs only. */
+export function issuesScopeForRole(
+  role: string | null | undefined,
+  onJobCount: number,
+): IssuesScope {
+  if (guideRank(role) >= 1) return "company";
+  return onJobCount > 0 ? "own-jobs" : "none";
+}
+
 /** Filter the guide to the destinations a role can actually reach. */
 export function appGuideForRole(role?: string | null): AppGuideEntry[] {
   const rank = guideRank(role);

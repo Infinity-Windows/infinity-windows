@@ -3,6 +3,7 @@ import {
   APP_GUIDE,
   appGuideForRole,
   guideRank,
+  issuesScopeForRole,
   renderAppGuide,
   type GuideRole,
 } from "../../../supabase/functions/_shared/appGuide";
@@ -107,6 +108,29 @@ describe("appGuideForRole (role filtering)", () => {
   it("treats an unknown/null role as installer (never over-exposes)", () => {
     expect(paths(null)).toEqual(paths("installer"));
     expect(paths("mystery")).toEqual(paths("installer"));
+  });
+});
+
+describe("issuesScopeForRole (matches the in-app foreman+ Issues gate)", () => {
+  it("gives foreman+ the company-wide open list, regardless of jobs on", () => {
+    for (const role of ["foreman", "supervisor", "owner", "lead", "admin", "big_boss"]) {
+      expect(issuesScopeForRole(role, 0)).toBe("company");
+      expect(issuesScopeForRole(role, 5)).toBe("company");
+    }
+  });
+
+  it("scopes an installer to their own jobs only (never company-wide)", () => {
+    expect(issuesScopeForRole("installer", 3)).toBe("own-jobs");
+    // an installer on no jobs gets nothing — no company issues leak
+    expect(issuesScopeForRole("installer", 0)).toBe("none");
+  });
+
+  it("treats an unknown/null role as an installer (never over-exposes)", () => {
+    expect(issuesScopeForRole(null, 2)).toBe("own-jobs");
+    expect(issuesScopeForRole(undefined, 0)).toBe("none");
+    expect(issuesScopeForRole("mystery", 0)).toBe("none");
+    // crucially, an unknown role NEVER gets the company-wide list
+    expect(issuesScopeForRole("mystery", 9)).toBe("own-jobs");
   });
 });
 

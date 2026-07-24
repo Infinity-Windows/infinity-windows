@@ -16,11 +16,51 @@ import {
   shapeMatches,
   type LiveContext,
 } from "../_shared/knowledge.ts";
-import { appGuideForRole, guideRank, renderAppGuide } from "../_shared/appGuide.ts";
+import {
+  appGuideForRole,
+  guideRank,
+  issuesScopeForRole,
+  renderAppGuide,
+} from "../_shared/appGuide.ts";
 
 interface HistoryTurn {
   role: string;
   content: string;
+}
+
+/** The set of project ids the asking user is on: the crews they're scheduled on
+ * plus any openings assigned to them. Mirrors the `can_access_project_chat`
+ * membership test and is reused to scope BOTH an installer's issues and their
+ * job chat to jobs they can actually reach. Best-effort — degrades to empty. */
+async function loadMyProjectIds(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<Set<string>> {
+  const projectIds = new Set<string>();
+  try {
+    const { data: memberRows } = await supabase
+      .from("schedule_assignment_members")
+      .select("schedule_assignments(project_id)")
+      .eq("profile_id", userId);
+    for (const m of memberRows ?? []) {
+      const a = m.schedule_assignments as { project_id?: string } | null;
+      if (a?.project_id) projectIds.add(a.project_id);
+    }
+  } catch (_e) {
+    // no-op: schedule membership unavailable
+  }
+  try {
+    const { data: openingRows } = await supabase
+      .from("project_openings")
+      .select("project_id")
+      .eq("assigned_to", userId);
+    for (const o of openingRows ?? []) {
+      if (o.project_id) projectIds.add(o.project_id as string);
+    }
+  } catch (_e) {
+    // no-op: assigned openings unavailable
+  }
+  return projectIds;
 }
 
 /** Best-effort compact snapshot of live app data for grounding. Every query
@@ -169,30 +209,50 @@ async function loadLiveContext(
     }
   }
 
-  // Open issues (company-wide): compact list of what's currently broken/blocked.
+  // Project-id set the asking user is on — computed once and reused to scope an
+  // installer's issues and their job chat (mirrors can_access_project_chat).
+  const myProjects = userId
+    ? await loadMyProjectIds(supabase, userId)
+    : new Set<string>();
+
+  // Open issues. In-app the Issues feature is foreman+ (list_issues/assign_issue
+  // are guarded to foreman-and-above), so:
+  //   - foreman+ get the company-wide open list (top 20), matching the tab.
+  //   - an installer NEVER gets company-wide issues; they only see issues on the
+  //     jobs THEY are on, so "any issues on my job?" works without leaking other
+  //     crews'/company issues. On no jobs, the block is simply empty.
   try {
-    const { data } = await supabase
-      .from("issues")
-      .select("kind, urgency, note, created_at, projects(name, job_code)")
-      .eq("status", "open")
-      .order("created_at", { ascending: false })
-      .limit(20);
-    if (data) {
-      live.issues = data.map((r) => {
-        const proj = r.projects as { name?: string; job_code?: string } | null;
-        const created = r.created_at ? new Date(r.created_at as string) : null;
-        const ageDays =
-          created && !Number.isNaN(created.getTime())
-            ? Math.max(0, Math.floor((Date.now() - created.getTime()) / 86_400_000))
-            : undefined;
-        return {
-          job: [proj?.job_code, proj?.name].filter(Boolean).join(" ").trim() || "job",
-          kind: (r.kind as string) ?? "issue",
-          urgency: (r.urgency as string) ?? "normal",
-          note: (r.note as string | null) ?? null,
-          ageDays,
-        };
-      });
+    const scope = issuesScopeForRole(role, myProjects.size);
+    if (scope !== "none") {
+      // Apply the installer project-scope filter BEFORE order/limit (filter
+      // methods live on the filter builder). Foreman+ ("company") skip it.
+      let filter = supabase
+        .from("issues")
+        .select("kind, urgency, note, created_at, projects(name, job_code)")
+        .eq("status", "open");
+      if (scope === "own-jobs") {
+        filter = filter.in("project_id", [...myProjects]);
+      }
+      const { data } = await filter
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (data) {
+        live.issues = data.map((r) => {
+          const proj = r.projects as { name?: string; job_code?: string } | null;
+          const created = r.created_at ? new Date(r.created_at as string) : null;
+          const ageDays =
+            created && !Number.isNaN(created.getTime())
+              ? Math.max(0, Math.floor((Date.now() - created.getTime()) / 86_400_000))
+              : undefined;
+          return {
+            job: [proj?.job_code, proj?.name].filter(Boolean).join(" ").trim() || "job",
+            kind: (r.kind as string) ?? "issue",
+            urgency: (r.urgency as string) ?? "normal",
+            note: (r.note as string | null) ?? null,
+            ageDays,
+          };
+        });
+      }
     }
   } catch (_e) {
     // no-op: issues unavailable
@@ -431,26 +491,11 @@ async function loadLiveContext(
 
   // Recent job chat, scoped to jobs the ASKING USER is on (never leak other
   // crews' threads). Mirrors can_access_project_chat: schedule crew + assigned
-  // openings decide which projects' messages this user may see.
+  // openings decide which projects' messages this user may see. Reuses the same
+  // project-id set computed above for the installer issues scope.
   if (userId) {
     try {
-      const projectIds = new Set<string>();
-      const { data: memberRows } = await supabase
-        .from("schedule_assignment_members")
-        .select("schedule_assignments(project_id)")
-        .eq("profile_id", userId);
-      for (const m of memberRows ?? []) {
-        const a = m.schedule_assignments as { project_id?: string } | null;
-        if (a?.project_id) projectIds.add(a.project_id);
-      }
-      const { data: openingRows } = await supabase
-        .from("project_openings")
-        .select("project_id")
-        .eq("assigned_to", userId);
-      for (const o of openingRows ?? []) {
-        if (o.project_id) projectIds.add(o.project_id as string);
-      }
-
+      const projectIds = myProjects;
       if (projectIds.size > 0) {
         const { data } = await supabase
           .from("project_messages")
