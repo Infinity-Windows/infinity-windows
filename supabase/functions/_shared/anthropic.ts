@@ -51,12 +51,17 @@ export async function anthropicChat(opts: AnthropicChatOptions): Promise<string>
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
+    // NOTE: `temperature` is only included when a caller explicitly sets it.
+    // Newer Claude models (e.g. claude-sonnet-5) reject `temperature` with a
+    // 400 "deprecated for this model", so we must not send a default.
     body: JSON.stringify({
       model: opts.model ?? ANTHROPIC_MODEL,
       max_tokens: opts.maxTokens ?? 1024,
       system: opts.system,
       messages: opts.messages,
-      temperature: opts.temperature ?? 0.2,
+      ...(typeof opts.temperature === "number"
+        ? { temperature: opts.temperature }
+        : {}),
     }),
   });
   if (!res.ok) {
