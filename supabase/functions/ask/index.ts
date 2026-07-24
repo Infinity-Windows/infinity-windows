@@ -158,9 +158,14 @@ async function loadLiveContext(
     }
   }
 
-  // (B) The asking user's own assigned windows/doors + where each unit is (all
-  // roles). Joins opening → assigned unit → warehouse location so the AI can
-  // answer "what am I assigned and where are the units?".
+  // (B) The asking user's OWN complete, install-ordered list of assigned
+  // windows/doors + where each unit is (all roles). Joins opening → assigned
+  // unit → warehouse location so the AI can answer "what am I installing and in
+  // what order, and where are the units?". `sequence` is the dispatch/walk order
+  // set by the lead (crew_dispatch: `set_openings_sequence`); order by it with
+  // `opening_code` as a stable tiebreaker so unsequenced openings still sort
+  // deterministically. Apply `.eq` on the filter builder BEFORE `.order`/`.limit`.
+  // Strictly scoped to assigned_to = the asking user — never broadened.
   if (userId) {
     try {
       const { data } = await supabase
@@ -170,7 +175,8 @@ async function loadLiveContext(
         )
         .eq("assigned_to", userId)
         .order("sequence", { nullsFirst: false })
-        .limit(40);
+        .order("opening_code", { nullsFirst: false })
+        .limit(50);
       if (data && data.length > 0) {
         live.assignments = data.map((o) => {
           const wt = o.window_types as { category?: string } | null;

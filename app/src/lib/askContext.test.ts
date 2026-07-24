@@ -27,7 +27,7 @@ describe("buildContextBlock — role-aware app guide section", () => {
   });
 });
 
-describe("buildContextBlock — assigned windows/doors + warehouse location", () => {
+describe("buildContextBlock — assigned openings (complete list, install order)", () => {
   it("renders the kind, opening, job, status, unit and its slot address", () => {
     const block = buildContextBlock([], {
       assignments: [
@@ -51,14 +51,44 @@ describe("buildContextBlock — assigned windows/doors + warehouse location", ()
         },
       ],
     });
-    expect(block).toContain("Your assigned windows/doors");
-    expect(block).toContain("W3 (Kitchen north) window on J12 Maple St [assigned] unit W-CAS3050-0042 @ S-03-B");
-    expect(block).toContain("D1 (Front entry) door on J12 Maple St [assigned] unit W-DR3680-0007 @ on the truck");
+    expect(block).toContain("Your assigned openings (in install order");
+    expect(block).toContain("1) W3 (Kitchen north) window on J12 Maple St [assigned] unit W-CAS3050-0042 @ S-03-B");
+    expect(block).toContain("2) D1 (Front entry) door on J12 Maple St [assigned] unit W-DR3680-0007 @ on the truck");
+  });
+
+  it("lists EVERY assigned opening as a numbered list in the given (dispatch) order, not just the next one", () => {
+    // Provided already sorted by project_openings.sequence upstream; the render
+    // must number them 1..N in that exact order and keep them all.
+    const block = buildContextBlock([], {
+      assignments: [
+        { kind: "window", code: "W1", job: "J12 Maple St", location: "S-01-A" },
+        { kind: "window", code: "W2", job: "J12 Maple St", location: "S-01-B" },
+        { kind: "door", code: "D1", job: "J12 Maple St", location: "on the truck" },
+        { kind: "window", code: "W5", job: "J12 Maple St", location: "S-02-C" },
+      ],
+    });
+    // Signals to the model that this is the whole ordered list.
+    expect(block).toContain("COMPLETE ordered list");
+    expect(block).toContain("in install order");
+    // All four appear, each with its 1-based position prefix.
+    expect(block).toContain("1) W1 window on J12 Maple St @ S-01-A");
+    expect(block).toContain("2) W2 window on J12 Maple St @ S-01-B");
+    expect(block).toContain("3) D1 door on J12 Maple St @ on the truck");
+    expect(block).toContain("4) W5 window on J12 Maple St @ S-02-C");
+    // Ordering is preserved: W1 before W2 before D1 before W5.
+    const iW1 = block.indexOf("1) W1");
+    const iW2 = block.indexOf("2) W2");
+    const iD1 = block.indexOf("3) D1");
+    const iW5 = block.indexOf("4) W5");
+    expect(iW1).toBeGreaterThanOrEqual(0);
+    expect(iW1).toBeLessThan(iW2);
+    expect(iW2).toBeLessThan(iD1);
+    expect(iD1).toBeLessThan(iW5);
   });
 
   it("omits the block when there are no assignments", () => {
     expect(buildContextBlock([], { assignments: [] })).not.toContain(
-      "Your assigned windows/doors",
+      "Your assigned openings",
     );
   });
 });
