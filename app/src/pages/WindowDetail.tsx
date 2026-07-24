@@ -13,8 +13,10 @@ import {
   updateWindow,
 } from "../lib/api";
 import { resolveLocationFromScan } from "../lib/scanResolve";
-import { listOpenings } from "../lib/install/api";
+import { listMarkSpecs, listOpenings } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
+import { indexSpecsByMark, specForOpeningCode } from "../lib/install/specs";
+import { SpecCard } from "../components/install/SpecCard";
 import { downloadPdf, windowLabelsPdf } from "../lib/labels";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import {
@@ -66,6 +68,12 @@ export function WindowDetail() {
   const openings = useQuery({
     queryKey: ["projectOpeningsForUnit", unit.data?.project_id],
     queryFn: () => listOpenings(unit.data!.project_id!),
+    enabled: Boolean(unit.data?.project_id),
+  });
+
+  const markSpecs = useQuery({
+    queryKey: ["markSpecs", unit.data?.project_id],
+    queryFn: () => listMarkSpecs(unit.data!.project_id!),
     enabled: Boolean(unit.data?.project_id),
   });
 
@@ -167,6 +175,13 @@ export function WindowDetail() {
   const canMarkInstalledQuick =
     (w.status === "loaded" || w.status === "staged") && !hasOpenings;
 
+  // Rich spec for the opening this unit is linked to (or would fill).
+  const unitOpening = linkedOpening ?? matchingOpening;
+  const unitSpec = specForOpeningCode(
+    indexSpecsByMark(markSpecs.data ?? []),
+    unitOpening?.opening_code,
+  );
+
   return (
     <div className="page">
       <header className="page-header">
@@ -255,6 +270,8 @@ export function WindowDetail() {
           </p>
         )}
       </div>
+
+      {unitSpec && <SpecCard spec={unitSpec} />}
 
       {actionError && <p className="error">{actionError}</p>}
 

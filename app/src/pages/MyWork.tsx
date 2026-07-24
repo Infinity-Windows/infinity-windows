@@ -1,14 +1,21 @@
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { CheckCircle2, Plane, Truck } from "lucide-react";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
   getMyProfile,
+  listMarkSpecs,
   listMemosToConfirm,
   listMyOpeningsAllJobs,
 } from "../lib/install/api";
+import {
+  indexSpecsByMark,
+  specForOpeningCode,
+  type ProjectMarkSpec,
+} from "../lib/install/specs";
+import { SpecCard } from "../components/install/SpecCard";
 import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
 import { orderMyWork } from "../lib/dispatch";
 import { orderNumberMap } from "../lib/install/mapDispatch";
@@ -72,6 +79,32 @@ export function MyWork() {
   const rows = openings.data ?? [];
   const active = rows.filter((o) => o.status !== "installed");
   const done = rows.filter((o) => o.status === "installed");
+
+  // Rich per-mark specs for every job I have work on. One query per project;
+  // best-effort, so a missing table just leaves specs hidden.
+  const projectIds = useMemo(
+    () => [...new Set((openings.data ?? []).map((o) => o.project_id))],
+    [openings.data],
+  );
+  const specQueries = useQueries({
+    queries: projectIds.map((pid) => ({
+      queryKey: ["markSpecs", pid],
+      queryFn: () => listMarkSpecs(pid),
+      enabled: Boolean(pid),
+    })),
+  });
+  const specIndexByProject = useMemo(() => {
+    const m = new Map<string, Map<string, ProjectMarkSpec>>();
+    projectIds.forEach((pid, i) => {
+      m.set(pid, indexSpecsByMark(specQueries[i]?.data ?? []));
+    });
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectIds, specQueries.map((q) => q.data)]);
+  const specFor = (o: ProjectOpening): ProjectMarkSpec | null => {
+    const idx = specIndexByProject.get(o.project_id);
+    return idx ? specForOpeningCode(idx, o.opening_code) : null;
+  };
 
   // Toast when a new window is assigned to me while I'm looking at the list.
   const [newlyAssigned, setNewlyAssigned] = useState(0);
@@ -348,6 +381,10 @@ export function MyWork() {
           </span>
           <span className="next-ready">{readinessTag(next)}</span>
           <span className="next-capture">{captureHint(next)}</span>
+          {(() => {
+            const s = specFor(next);
+            return s ? <SpecCard spec={s} compact /> : null;
+          })()}
         </button>
       )}
 
@@ -376,6 +413,10 @@ export function MyWork() {
                   <div className="muted" style={{ fontSize: 12 }}>
                     {areaKey(o)} · {captureHint(o)}
                   </div>
+                  {(() => {
+                    const s = specFor(o);
+                    return s ? <SpecCard spec={s} compact /> : null;
+                  })()}
                 </div>
                 <span style={{ marginLeft: "auto" }}>{readinessTag(o)}</span>
               </li>
