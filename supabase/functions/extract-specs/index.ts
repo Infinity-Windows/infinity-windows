@@ -8,7 +8,12 @@
 // normalization/merge, so this function just returns best-effort raw fields.
 
 import { corsHeaders, jsonResponse } from "../_shared/openai.ts";
-import { anthropicChat, requireAnthropic } from "../_shared/anthropic.ts";
+import {
+  anthropicChat,
+  anthropicVisionChat,
+  dataUrlToImage,
+  requireAnthropic,
+} from "../_shared/anthropic.ts";
 import { requireCaller } from "../_shared/auth.ts";
 
 interface RawSpec {
@@ -103,6 +108,60 @@ function cleanSpec(raw: unknown): RawSpec | null {
   };
 }
 
+/** A verbatim vision transcription of one mark, before client normalization. */
+interface RawVisionMark {
+  mark: string;
+  style: string | null;
+  glass: string | null;
+  color: string | null;
+  size_code: string | null;
+  operation: string | null;
+  qty: string | null;
+}
+
+/** Coerce one loose vision object into a RawVisionMark, or null (no mark). */
+function cleanVisionMark(raw: unknown): RawVisionMark | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const mark = str(o.mark) ?? str(o.mark_code) ?? str(o.markCode);
+  if (!mark) return null;
+  return {
+    // Kept verbatim (e.g. "PV Townhomes Bldg 14-#4A"); the client strips the
+    // project prefix / '#' with the unit-tested normalizeMarkLabel.
+    mark,
+    style: str(o.style) ?? str(o.type),
+    glass: str(o.glass) ?? str(o.glazing),
+    color: str(o.color) ?? str(o.colour) ?? str(o.finish),
+    size_code: str(o.size_code) ?? str(o.sizeCode) ?? str(o.size),
+    operation: str(o.operation) ?? str(o.config),
+    qty: str(o.qty) ?? str(o.quantity) ?? str(o.count),
+  };
+}
+
+const VISION_SYSTEM =
+  "You transcribe a window & door manufacturer SHOP-DRAWING / spec sheet from " +
+  "an IMAGE. The rich per-mark details (style, glass makeup, color, size code, " +
+  "operation) are drawn into the sheet as graphics/text you must READ. " +
+  "Transcribe the spec table EXACTLY as printed — do not paraphrase, do not " +
+  "invent any value that is not visible (use null). Output one object per " +
+  "distinct window/door MARK. Return STRICT JSON only, no prose, no markdown.";
+
+const VISION_SCHEMA =
+  'Return exactly: { "marks": [ { ' +
+  '"mark": string, ' +
+  '"style": string|null, ' +
+  '"glass": string|null, ' +
+  '"color": string|null, ' +
+  '"size_code": string|null, ' +
+  '"operation": string|null, ' +
+  '"qty": string|null ' +
+  "} ] }. " +
+  'mark is the label exactly as printed on the sheet (e.g. "PV Townhomes Bldg ' +
+  '14-#4A" or "#1"). Do NOT collapse two marks into one. size_code is the ' +
+  'manufacturer call size like "3060" or "6080 XO" (keep the operation token ' +
+  "if printed with it). operation is Fixed / Sliding / XO / OX / Casement / " +
+  "etc. glass is the full glass makeup string if shown. One object per mark.";
+
 const SYSTEM =
   "You extract rich per-mark window and door line-item specifications from a " +
   "construction specs/schedule planset. Each MARK (e.g. 1, W3, A-101) is one " +
@@ -148,8 +207,77 @@ Deno.serve(async (req) => {
     const pages = body.pages as
       | { pageNumber: number; text: string }[]
       | undefined;
+    const images = body.images as
+      | { pageNumber: number; dataUrl: string }[]
+      | undefined;
+
+    // PRIMARY path: page images. The rich per-mark specs on manufacturer shop
+    // drawings (STRATA-style) are drawn into the PDF as graphics, so their text
+    // layer is empty/scrambled — Claude VISION reads them perfectly. One page
+    // per LLM call (page PNGs/JPEGs are large); cap total pages.
+    if (Array.isArray(images) && images.length > 0) {
+      const MAX_VISION_PAGES = 12;
+      const limitedImages = images.slice(0, MAX_VISION_PAGES);
+
+      const pageResults = await Promise.all(
+        limitedImages.map(async (img) => {
+          const parsedImg = dataUrlToImage(img.dataUrl ?? "");
+          if (!parsedImg) return [] as RawVisionMark[];
+          try {
+            const reply = await anthropicVisionChat({
+              system: `${VISION_SYSTEM}\n\n${VISION_SCHEMA}`,
+              text:
+                `This is page ${img.pageNumber} of a window/door spec sheet. ` +
+                "Transcribe every distinct mark's line-item and return the JSON now.",
+              images: [parsedImg],
+              maxTokens: 4096,
+            });
+            const parsed = parseJsonLoose(reply) as
+              | { marks?: unknown[] }
+              | unknown[]
+              | null;
+            const arr = Array.isArray(parsed)
+              ? parsed
+              : Array.isArray(parsed?.marks)
+                ? parsed!.marks
+                : [];
+            return arr
+              .map(cleanVisionMark)
+              .filter((s): s is RawVisionMark => s !== null);
+          } catch (err) {
+            console.error("extract-specs vision page failed", err);
+            return [] as RawVisionMark[];
+          }
+        }),
+      );
+
+      // Merge by raw mark string so a mark split across pages is reunited
+      // without one page clobbering another's non-null values.
+      const byMark = new Map<string, RawVisionMark>();
+      for (const mark of pageResults.flat()) {
+        const key = mark.mark.trim().toUpperCase();
+        const existing = byMark.get(key);
+        if (!existing) {
+          byMark.set(key, mark);
+          continue;
+        }
+        for (const k of Object.keys(mark) as (keyof RawVisionMark)[]) {
+          if (k === "mark") continue;
+          if (existing[k] == null && mark[k] != null) {
+            (existing as Record<string, unknown>)[k] = mark[k];
+          }
+        }
+      }
+
+      return jsonResponse(
+        { specs: [...byMark.values()], mode: "vision" },
+        200,
+        cors,
+      );
+    }
+
     if (!Array.isArray(pages) || pages.length === 0) {
-      return jsonResponse({ error: "pages[] required" }, 400, cors);
+      return jsonResponse({ error: "pages[] or images[] required" }, 400, cors);
     }
 
     // Cap input like extract-schedule: keep a lot per page, batch under a char
@@ -225,7 +353,7 @@ Deno.serve(async (req) => {
     }
     const specs = [...byMark.values()];
 
-    return jsonResponse({ specs }, 200, cors);
+    return jsonResponse({ specs, mode: "text" }, 200, cors);
   } catch (e) {
     console.error(e);
     return jsonResponse({ error: String(e) }, 500, cors);
