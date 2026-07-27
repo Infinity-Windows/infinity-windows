@@ -37,6 +37,84 @@ interface AnthropicTextBlock {
   text?: string;
 }
 
+/** A base64 image ready for an Anthropic image content block. */
+export interface AnthropicImage {
+  /** e.g. "image/jpeg" or "image/png". */
+  mediaType: string;
+  /** Raw base64 (no `data:` prefix). */
+  data: string;
+}
+
+interface AnthropicVisionOptions {
+  /** Top-level system prompt. */
+  system: string;
+  /** The instruction text shown alongside the image(s). */
+  text: string;
+  /** One or more images to transcribe/reason over. */
+  images: AnthropicImage[];
+  model?: string;
+  maxTokens?: number;
+}
+
+/**
+ * Split a `data:<mime>;base64,<data>` URL into an {@link AnthropicImage}.
+ * Returns null when the string isn't a base64 data URL.
+ */
+export function dataUrlToImage(dataUrl: string): AnthropicImage | null {
+  const m = /^data:([^;,]+);base64,([\s\S]+)$/.exec(dataUrl ?? "");
+  if (!m) return null;
+  return { mediaType: m[1], data: m[2] };
+}
+
+/**
+ * Vision chat: send text + image content blocks to the Anthropic Messages API
+ * and return the assistant's text. Uses the same model/headers as
+ * {@link anthropicChat}; `claude-sonnet-5` supports image inputs. As with the
+ * text helper, `temperature` is intentionally never sent (newer models reject
+ * it). Throws on any non-2xx status with the body for debugging.
+ */
+export async function anthropicVisionChat(
+  opts: AnthropicVisionOptions,
+): Promise<string> {
+  const key = requireAnthropic();
+  const content: unknown[] = [{ type: "text", text: opts.text }];
+  for (const img of opts.images) {
+    content.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: img.mediaType,
+        data: img.data,
+      },
+    });
+  }
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: opts.model ?? ANTHROPIC_MODEL,
+      max_tokens: opts.maxTokens ?? 4096,
+      system: opts.system,
+      messages: [{ role: "user", content }],
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Anthropic vision chat failed: ${res.status} ${text}`);
+  }
+  const data = await res.json();
+  const blocks = (data.content ?? []) as AnthropicTextBlock[];
+  return blocks
+    .filter((b) => b.type === "text")
+    .map((b) => b.text ?? "")
+    .join("")
+    .trim();
+}
+
 /**
  * POST to the Anthropic Messages API and return the assistant's text, formed by
  * concatenating the text blocks of the response. Throws on any non-2xx status,

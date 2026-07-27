@@ -4,6 +4,8 @@ import type { DraftOpening, ExistingOpeningLite, PlansetKindLike } from "./extra
 import { markBase, planDraftPersistence } from "./extract";
 import type { MarkSpecDraft, ProjectMarkSpec } from "./specs";
 import { mergeSpecsByMark, parseSpecRow } from "./specs";
+import { extractSpecsDeterministic } from "./specsDeterministic";
+import { visionMarksToDrafts, type RawVisionMark } from "./specsVision";
 import type {
   InstallEvent,
   MemoTopics,
@@ -1187,17 +1189,31 @@ export async function listMarkSpecs(
     .filter((s): s is ProjectMarkSpec => s !== null);
 }
 
-/** Invoke the edge function to pull rich per-mark specs from planset page text. */
+/**
+ * Invoke the edge function to pull rich per-mark specs from a planset.
+ *
+ * VISION is primary: when `images` (base64 page renders) are supplied, Claude
+ * reads the drawn-in spec table off the image — the only way to recover
+ * style/glass/color from a manufacturer shop drawing whose text layer is empty.
+ * The function replies `mode: "vision"` with verbatim marks, which we normalize
+ * client-side (strip project prefix, split size/operation, derive
+ * tempered/egress) before merging. Text mode is the legacy schedule-table path.
+ */
 export async function aiExtractSpecs(
   pages: { pageNumber: number; text: string }[],
   projectId?: string,
+  images?: { pageNumber: number; dataUrl: string }[],
 ): Promise<MarkSpecDraft[]> {
   const { data, error } = await supabase.functions.invoke("extract-specs", {
-    body: { pages, projectId },
+    body: { pages, images, projectId },
   });
   if (error) throw error;
   if (data?.error) throw new Error(String(data.error));
-  return mergeSpecsByMark((data?.specs ?? []) as unknown[], "ai");
+  const raw = (data?.specs ?? []) as unknown[];
+  if (data?.mode === "vision") {
+    return visionMarksToDrafts(raw as RawVisionMark[]);
+  }
+  return mergeSpecsByMark(raw, "ai");
 }
 
 /** DB column set we persist for a mark spec draft (never writes confirmed). */
@@ -1231,22 +1247,43 @@ function specDraftColumns(
  * Extract rich specs from the specs-planset page text and upsert them as
  * unconfirmed drafts keyed by (project_id, mark_code). Guardrail: a mark whose
  * spec is already CONFIRMED is never clobbered by a re-extract (same philosophy
- * as saveDraftOpenings). Best-effort: a missing table or a failed AI call
- * degrades to { saved: 0 } instead of blowing up the upload flow.
+ * as saveDraftOpenings). Best-effort: a missing table degrades to { saved: 0 }
+ * instead of blowing up the upload flow.
+ *
+ * Two extractors run and are MERGED (never one replacing the other):
+ *   1. Claude VISION (`extract-specs`) reads the rich line-item — style, glass,
+ *      color, size, operation — off the rendered page IMAGES. This is the
+ *      primary source: manufacturer shop drawings draw the spec table as
+ *      graphics, so it's the only way to recover glass/color/style.
+ *   2. A deterministic text parser (`extractSpecsDeterministic`) is the OFFLINE
+ *      / no-API fallback: it pulls size codes, decoded dims, operation,
+ *      frosted/egress, and hardware from the scrambled text layer with no
+ *      network call.
+ * The vision result is the base so its richer fields win; the deterministic
+ * result fills size/operation gaps and adds marks vision missed. If the vision
+ * call fails or no images are supplied, we still save the deterministic result.
  */
 export async function extractAndSaveMarkSpecs(
   projectId: string,
   pages: { pageNumber: number; text: string }[],
+  images?: { pageNumber: number; dataUrl: string }[],
 ): Promise<{ saved: number; skipped: number }> {
   if (!projectId || pages.length === 0) return { saved: 0, skipped: 0 };
 
-  let drafts: MarkSpecDraft[];
+  let aiDrafts: MarkSpecDraft[] = [];
   try {
-    drafts = await aiExtractSpecs(pages, projectId);
+    aiDrafts = await aiExtractSpecs(pages, projectId, images);
   } catch {
-    // AI unavailable / errored — leave any existing specs untouched.
-    return { saved: 0, skipped: 0 };
+    // Vision unavailable / errored — fall back to the deterministic parser.
+    aiDrafts = [];
   }
+
+  const deterministic = extractSpecsDeterministic(pages);
+
+  // AI first so its richer, higher-confidence fields are the base that
+  // deterministic size/operation data reinforces (fills gaps) rather than
+  // overwrites. Distinct marks from either source both survive.
+  const drafts = mergeSpecsByMark([...aiDrafts, ...deterministic], "deterministic");
   if (drafts.length === 0) return { saved: 0, skipped: 0 };
 
   // Which marks are already confirmed? Never overwrite those.

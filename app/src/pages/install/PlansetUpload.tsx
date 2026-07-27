@@ -79,6 +79,9 @@ export function PlansetUpload() {
       const { extractAllText, extractPlanMarkCallouts, loadPdf } = await import(
         "../../lib/install/pdf"
       );
+      const { renderSpecPageImages } = await import(
+        "../../lib/install/renderSpecImages"
+      );
       const doc = await loadPdf(await file.arrayBuffer());
       await updatePlanset(planset.id, {
         status: kind === "specs" ? "extracting" : "ready",
@@ -151,13 +154,24 @@ export function PlansetUpload() {
       const linked = await linkSpecsToOpenings(projectId, drafts);
       const result = await saveDraftOpenings(projectId, planset.id, drafts);
 
-      // Pull the FULL per-mark line-item specs (style/glass/color/energy/…) via
-      // Claude and store them as unconfirmed drafts. Best-effort: never blocks
-      // or fails the upload if AI/table is unavailable.
+      // Pull the FULL per-mark line-item specs (style/glass/color/…) via Claude
+      // VISION off the rendered page images — manufacturer shop drawings draw
+      // the spec table as graphics, so the image is the only way to recover
+      // glass/color/style. Deterministic text parsing is the offline fallback.
+      // Best-effort: never blocks or fails the upload if AI/table is down.
       setProgress("Reading detailed window/door specs…");
-      const specsResult = await extractAndSaveMarkSpecs(projectId, pages).catch(
-        () => ({ saved: 0, skipped: 0 }),
-      );
+      let specImages: { pageNumber: number; dataUrl: string }[] = [];
+      try {
+        specImages = await renderSpecPageImages(doc);
+      } catch {
+        // Rendering failed (e.g. memory) — vision is skipped, text fallback runs.
+        specImages = [];
+      }
+      const specsResult = await extractAndSaveMarkSpecs(
+        projectId,
+        pages,
+        specImages,
+      ).catch(() => ({ saved: 0, skipped: 0 }));
 
       await updatePlanset(planset.id, { status: "ready" });
 
