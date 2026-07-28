@@ -13,7 +13,15 @@ export type IssueKind =
   | "damage"
   | "blocker"
   | "complication"
-  | "missing";
+  | "missing"
+  /**
+   * The supplier's paperwork disagrees with the plans — a mark with no spec
+   * sheet, or a spec for a window nobody asked for. Kept separate from
+   * `missing`, which means an undelivered physical unit and is wired into
+   * receiving and reorder counts; this one is chased with the supplier's
+   * office, not the warehouse.
+   */
+  | "spec_gap";
 export type IssueUrgency = "normal" | "urgent" | "emergency";
 export type IssueStatus = "open" | "resolved";
 
@@ -62,6 +70,7 @@ export const KIND_LABELS: Record<IssueKind, string> = {
   blocker: "Blocker",
   complication: "Complication",
   missing: "Missing delivery",
+  spec_gap: "Spec sheet gap",
 };
 
 /**

@@ -13,9 +13,16 @@
 // repeated here so the component can't leak if it's ever reused somewhere open.
 //
 // Says NOTHING when the two documents agree. A clean job must stay silent.
+//
+// Labelling a discrepancy "we know about this" also opens a trackable issue the
+// first time, so a missing sheet is chased rather than merely silenced; taking
+// the label back off resolves that issue. Both are foreman+ actions, enforced
+// server-side in the RPC as well as by the gate below.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router-dom";
+import { listProjects } from "../../lib/api";
 import {
   acknowledgeSpecDiscrepancy,
   listSpecDiscrepancyAcks,
@@ -25,6 +32,10 @@ import { formatApiError } from "../../lib/install/errors";
 import { isForemanPlus } from "../../lib/install/types";
 import type { ProjectOpening } from "../../lib/install/types";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
+import {
+  describeDiscrepancyForIssue,
+  projectLabel,
+} from "../../lib/install/specDiscrepancyIssues";
 import {
   describeAcknowledged,
   markLabel,
@@ -71,8 +82,20 @@ export function SpecReconciliationReport({ projectId, openings, specs }: Props) 
     enabled: isLead && Boolean(projectId),
   });
 
-  const refresh = () =>
+  // Only so the raised issue can name the job to someone reading the Issues
+  // list days later. Shares the cache key the review screen already populated.
+  const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  const jobLabel = projectLabel(
+    projects.data?.find((p) => p.id === projectId) ?? null,
+  );
+
+  const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["specDiscrepancyAcks", projectId] });
+    // Labelling raises (or resolves) a trackable issue, so the boards that
+    // show issues are now stale.
+    queryClient.invalidateQueries({ queryKey: ["issues"] });
+    queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
+  };
 
   const label = useMutation({
     mutationFn: (args: { d: Discrepancy; note: string | null }) =>
@@ -81,6 +104,11 @@ export function SpecReconciliationReport({ projectId, openings, specs }: Props) 
         markCode: args.d.mark,
         kind: args.d.kind,
         note: args.note,
+        issueNote: describeDiscrepancyForIssue({
+          projectLabel: jobLabel,
+          discrepancy: args.d,
+          note: args.note,
+        }),
       }),
     onSuccess: () => {
       setNoteFor(null);
@@ -120,7 +148,11 @@ export function SpecReconciliationReport({ projectId, openings, specs }: Props) 
   const actions = (d: Discrepancy) => {
     if (d.acknowledged) {
       return (
-        <button className="link" onClick={() => unlabel.mutate(d)}>
+        <button
+          className="link"
+          disabled={unlabel.isPending}
+          onClick={() => unlabel.mutate(d)}
+        >
           Not a known gap
         </button>
       );
@@ -166,7 +198,8 @@ export function SpecReconciliationReport({ projectId, openings, specs }: Props) 
       <strong>What doesn't add up</strong>
       <p className="muted" style={{ margin: "2px 0 8px" }}>
         The spec sheet checked against the building plans. {report.planMarkCount}{" "}
-        marks on the plans, {report.specMarkCount} on the sheet.
+        marks on the plans, {report.specMarkCount} on the sheet. Marking one
+        "we know about this" opens an issue so someone chases the supplier.
       </p>
 
       {message && <p className="error">{message}</p>}
@@ -216,7 +249,8 @@ export function SpecReconciliationReport({ projectId, openings, specs }: Props) 
       {chased && (
         <div style={{ marginTop: 12 }}>
           <p className="muted" style={{ margin: 0 }}>
-            {chased} Crews see these as known gaps, not blanks.
+            {chased} Crews see these as known gaps, not blanks, and each one is
+            tracked in <Link to="/issues">Issues</Link> until it's sorted.
           </p>
           <ul className="unit-list" style={{ marginTop: 4 }}>
             {report.acknowledged.map((d) => (
