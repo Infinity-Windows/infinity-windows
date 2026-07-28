@@ -12,8 +12,9 @@
 // which ones are missing their drawing? It is PURE — no DB, no network — so the
 // report is unit-tested against that real 24-mark set rather than eyeballed.
 //
-// Marks are compared through `markBase` (so opening "14-18" and mark "18" are
-// the same thing) and case-insensitively ("13a" === "13A"), because the mark
+// Marks are compared through `markBase`, which strips the INSTANCE suffix (so
+// opening "14-18" is the 18th instance of mark "14", and "18B-3" is mark
+// "18B") and case-insensitively ("13a" === "13A"), because the mark
 // text comes from three different places: the schedule table, the plan
 // callouts, and a vision transcription.
 

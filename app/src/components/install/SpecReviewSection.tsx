@@ -20,7 +20,7 @@ import {
 import { decodeSizeCode, formatSize, type ProjectMarkSpec } from "../../lib/install/specs";
 import { MarkDrawing } from "./MarkDrawing";
 import { formatApiError } from "../../lib/install/errors";
-import { SpecCoverageSummary } from "./SpecCoverageSummary";
+import { SpecReconciliationReport } from "./SpecReconciliationReport";
 import { SpecSizeWarnings } from "./SpecSizeWarnings";
 
 interface Props {
@@ -55,8 +55,9 @@ export function SpecReviewSection({ projectId }: Props) {
     queryFn: () => listMarkSpecs(projectId),
   });
 
-  // The marks this job actually needs specs for come from its openings, so the
-  // coverage check can name the ones that got missed.
+  // The plans side of the reconciliation: the marks this job actually has
+  // openings for, so the report can name what the spec sheet missed — and what
+  // it covers that the plans never asked for.
   const openings = useQuery({
     queryKey: ["openings", projectId],
     queryFn: () => listOpenings(projectId),
@@ -159,8 +160,9 @@ export function SpecReviewSection({ projectId }: Props) {
         extractor found the mark's elevation drawing, it's shown above the
         fields — check the picture matches the mark before confirming.
       </p>
-      <SpecCoverageSummary
-        openingCodes={(openings.data ?? []).map((o) => o.opening_code)}
+      <SpecReconciliationReport
+        projectId={projectId}
+        openings={openings.data ?? []}
         specs={rows}
       />
       <SpecSizeWarnings specs={rows} />

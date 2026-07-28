@@ -17,6 +17,7 @@ import { listMarkSpecs, listOpenings } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
 import { indexSpecsByMark, specForOpeningCode } from "../lib/install/specs";
 import { SpecCard } from "../components/install/SpecCard";
+import { MissingSpecNotice } from "../components/install/MissingSpecNotice";
 import { downloadPdf, windowLabelsPdf } from "../lib/labels";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import {
@@ -272,8 +273,18 @@ export function WindowDetail() {
         )}
       </div>
 
-      {unitSpec && (
+      {unitSpec ? (
         <SpecCard spec={unitSpec} projectId={unit.data?.project_id ?? null} />
+      ) : (
+        // Same calm note as the install sheet, and on the same terms: only when
+        // the specs sheet has been read and this mark still isn't in it.
+        unitOpening &&
+        (markSpecs.data?.length ?? 0) > 0 && (
+          <MissingSpecNotice
+            projectId={unit.data?.project_id ?? null}
+            openingCode={unitOpening.opening_code}
+          />
+        )
       )}
 
       {actionError && <p className="error">{actionError}</p>}
