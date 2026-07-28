@@ -72,6 +72,23 @@ describe("cropCacheKey", () => {
   it("rounds a fractional scale so a device pixel ratio can't fragment the cache", () => {
     expect(cropCacheKey({ ...base, scale: 2600.4 })).toBe(cropCacheKey(base));
   });
+
+  it("keeps a plain spec crop keyed exactly as before", () => {
+    // Crops already cached on installers' phones must still be found.
+    expect(cropCacheKey({ ...base, variant: undefined })).toBe(cropCacheKey(base));
+  });
+
+  it("separates a ringed elevation crop from an inverted spec crop", () => {
+    // Both are "this mark, this box, this planset" but they are different
+    // pictures — one is white-on-black line art, the other has a red ring on it.
+    expect(cropCacheKey({ ...base, variant: "elev" })).not.toBe(cropCacheKey(base));
+  });
+
+  it("separates two variants of the same box", () => {
+    expect(cropCacheKey({ ...base, variant: "elev" })).not.toBe(
+      cropCacheKey({ ...base, variant: "other" }),
+    );
+  });
 });
 
 describe("estimateSize", () => {

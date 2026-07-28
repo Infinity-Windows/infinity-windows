@@ -5,26 +5,38 @@ import { CheckCircle2, Plane, Truck } from "lucide-react";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
+  findBuildingPlanset,
   findSpecsPlanset,
   getMyProfile,
+  listElevationViews,
   listMarkSpecs,
   listMemosToConfirm,
   listMyOpeningsAllJobs,
   listPlansets,
 } from "../lib/install/api";
-import { schedulePrefetchMarkDrawings } from "../lib/install/prefetchDrawings";
+import {
+  schedulePrefetchElevationCrops,
+  schedulePrefetchMarkDrawings,
+} from "../lib/install/prefetchDrawings";
+import { pickElevationViews } from "../lib/install/elevationViews";
+import { markBase } from "../lib/install/extract";
 import {
   indexSpecsByMark,
   specForOpeningCode,
   type ProjectMarkSpec,
 } from "../lib/install/specs";
 import { SpecCard } from "../components/install/SpecCard";
+import { MarkElevationViews } from "../components/install/MarkElevationViews";
 import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
 import { orderMyWork } from "../lib/dispatch";
 import { orderNumberMap } from "../lib/install/mapDispatch";
 import { openingReadiness } from "../lib/install/fit";
 import { areaKey, toDispatchOpening } from "../lib/install/nextOpening";
-import { isForemanPlus, type ProjectOpening } from "../lib/install/types";
+import {
+  isForemanPlus,
+  type MarkElevationView,
+  type ProjectOpening,
+} from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { getOpenShift } from "../lib/timeclock";
 import { listMyPublished } from "../lib/schedule/api";
@@ -155,6 +167,67 @@ export function MyWork() {
     // planset query objects themselves change identity every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plansetIds, myMarkSpecs]);
+
+  // Same favour for "where does it go on the building": warm the elevation
+  // reference for the marks I'm actually holding today, off the BUILDING
+  // planset, so tapping a window in a dead zone still shows the wall.
+  const elevationQueries = useQueries({
+    queries: projectIds.map((pid) => ({
+      queryKey: ["elevationViews", pid],
+      queryFn: () => listElevationViews(pid),
+      enabled: Boolean(pid),
+    })),
+  });
+  const myElevationViews = useMemo(() => {
+    const byProject = new Map<string, MarkElevationView[]>();
+    projectIds.forEach((pid, i) => {
+      const rows = elevationQueries[i]?.data ?? [];
+      if (rows.length === 0) return;
+      const myMarks = new Set(
+        (openings.data ?? [])
+          .filter((o) => o.project_id === pid && o.status !== "installed")
+          .map((o) => markBase(o.opening_code).toUpperCase()),
+      );
+      const wanted = rows.filter((row) =>
+        myMarks.has(row.mark_code.toUpperCase()),
+      );
+      // One picture per mark — the same one the card will lead with.
+      const best = [...myMarks]
+        .map((mark) =>
+          pickElevationViews(
+            wanted.filter((row) => row.mark_code.toUpperCase() === mark),
+          ).at(0),
+        )
+        .filter((row): row is NonNullable<typeof row> => !!row);
+      if (best.length > 0) byProject.set(pid, best);
+    });
+    return byProject;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectIds, openings.data, elevationQueries.map((q) => q.data)]);
+
+  const buildingPlansetIds = projectIds
+    .map((pid, i) => {
+      const list = plansetQueries[i]?.data;
+      return `${pid}:${(list && findBuildingPlanset(list)?.id) ?? ""}`;
+    })
+    .join(",");
+  useEffect(() => {
+    const cancels: (() => void)[] = [];
+    projectIds.forEach((pid, i) => {
+      const list = plansetQueries[i]?.data;
+      const planset = list ? findBuildingPlanset(list) : null;
+      const views = myElevationViews.get(pid);
+      if (!planset || !views || views.length === 0) return;
+      cancels.push(
+        schedulePrefetchElevationCrops(
+          planset,
+          views.filter((row) => row.planset_id === planset.id),
+        ),
+      );
+    });
+    return () => cancels.forEach((c) => c());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildingPlansetIds, myElevationViews]);
 
   // Toast when a new window is assigned to me while I'm looking at the list.
   const [newlyAssigned, setNewlyAssigned] = useState(0);
@@ -403,6 +476,11 @@ export function MyWork() {
           <span className="next-capture">
             You started this one — tap to finish and grade it.
           </span>
+          <MarkElevationViews
+            projectId={activeInstall.project_id}
+            markCode={activeInstall.opening_code}
+            variant="thumb"
+          />
         </button>
       )}
 
@@ -437,6 +515,12 @@ export function MyWork() {
               <SpecCard spec={s} projectId={next.project_id} compact />
             ) : null;
           })()}
+          {/* Which hole in which wall, on the card you tap to start it. */}
+          <MarkElevationViews
+            projectId={next.project_id}
+            markCode={next.opening_code}
+            variant="thumb"
+          />
         </button>
       )}
 

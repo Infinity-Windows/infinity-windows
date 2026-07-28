@@ -18,6 +18,7 @@ import { isForemanPlus } from "../lib/install/types";
 import { indexSpecsByMark, specForOpeningCode } from "../lib/install/specs";
 import { SpecCard } from "../components/install/SpecCard";
 import { MissingSpecNotice } from "../components/install/MissingSpecNotice";
+import { MarkElevationViews } from "../components/install/MarkElevationViews";
 import { downloadPdf, windowLabelsPdf } from "../lib/labels";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import {
@@ -286,6 +287,13 @@ export function WindowDetail() {
           />
         )
       )}
+
+      {/* Unguarded: it renders nothing of its own accord when there is no
+          elevation to show. */}
+      <MarkElevationViews
+        projectId={unit.data?.project_id ?? null}
+        markCode={unitOpening?.opening_code}
+      />
 
       {actionError && <p className="error">{actionError}</p>}
 

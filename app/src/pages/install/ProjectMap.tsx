@@ -6,8 +6,10 @@ import {
   aiExtractSchedule,
   assignOpeningToInstaller,
   downloadPlanset,
+  elevationAppearancesFromDoc,
   ensureTypesFromSpecs,
   linkSpecsToOpenings,
+  listElevationViews,
   listMarkSpecs,
   listOpenings,
   listPlanOutlines,
@@ -15,11 +17,13 @@ import {
   listProfiles,
   listVoidedInstallOpeningIds,
   saveDraftOpenings,
+  saveElevationViews,
   setOpeningsSequence,
   unassignOpening,
   undoInstall,
   updateOpening,
 } from "../../lib/install/api";
+import { MarkElevationViews } from "../../components/install/MarkElevationViews";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import {
@@ -42,9 +46,9 @@ import {
   toggleSelection,
 } from "../../lib/install/mapDispatch";
 import {
-  calloutsOnFloorPlanSheets,
   extractCadDetailPages,
   findFloorPlanPages,
+  splitCalloutsByFloorPlan,
   type PdfTextPage,
 } from "../../lib/install/planDetails";
 import {
@@ -189,6 +193,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const markSpecs = useQuery({
     queryKey: ["markSpecs", projectId],
     queryFn: () => listMarkSpecs(projectId),
+    enabled: !!projectId,
+  });
+  // Where each mark is drawn on the elevation sheets — reference pictures for
+  // the pin details, and the check that tells us whether this job has them yet.
+  const elevationViews = useQuery({
+    queryKey: ["elevationViews", projectId],
+    queryFn: () => listElevationViews(projectId),
     enabled: !!projectId,
   });
   const planOutlines = useQuery({
@@ -357,19 +368,32 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
 
       let drafts;
       let repeatViewCallouts = 0;
+      let elevationViews = 0;
       if (buildingPdf) {
         setExtractNote("Reading mark callouts on the building plan…");
         const buildingDoc = await loadPdf(await downloadPlanset(buildingPdf));
         const callouts = await extractPlanMarkCallouts(buildingDoc);
         if (callouts.length > 0) {
           // Elevation sheets re-number the same windows the floor plan already
-          // numbers; only the floor drawings decide the opening count.
-          const planCallouts = calloutsOnFloorPlanSheets(
+          // numbers; only the floor drawings decide the opening count. The
+          // repeats are kept as a reference — where each window sits outside.
+          const split = splitCalloutsByFloorPlan(
             callouts,
             await extractAllText(buildingDoc),
           );
-          repeatViewCallouts = callouts.length - planCallouts.length;
-          drafts = calloutsToDraftOpenings(planCallouts, rows, types.data ?? []);
+          repeatViewCallouts = split.repeatViewCallouts.length;
+          elevationViews = (
+            await saveElevationViews(
+              projectId,
+              buildingPdf.id,
+              await elevationAppearancesFromDoc(buildingDoc),
+            )
+          ).saved;
+          drafts = calloutsToDraftOpenings(
+            split.planCallouts,
+            rows,
+            types.data ?? [],
+          );
           source = rows.length > 0 ? "merged" : "details";
         }
       }
@@ -386,11 +410,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         source,
         marks: summarizeDraftMarks(drafts),
         repeatViewCallouts,
+        elevationViews,
       };
     },
-    onSuccess: ({ result, source, marks, repeatViewCallouts }) => {
+    onSuccess: ({ result, source, marks, repeatViewCallouts, elevationViews }) => {
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
       queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
+      queryClient.invalidateQueries({ queryKey: ["elevationViews", projectId] });
       const markLine = marks.map(describeMarkCount).join(", ");
       setExtractNote(
         [
@@ -401,6 +427,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             : null,
           repeatViewCallouts > 0
             ? `Ignored ${repeatViewCallouts} repeat number${repeatViewCallouts === 1 ? "" : "s"} on the elevation sheets — those draw the same openings again.`
+            : null,
+          elevationViews > 0
+            ? `Saved ${elevationViews} of them as a reference, so the crew can see where each window sits on the outside.`
             : null,
           source === "details"
             ? "Source: manufacturer detail sheets / plan callouts."
@@ -470,6 +499,61 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       cancelled = true;
     };
   }, [buildingPdf?.id, specsPdf?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Jobs whose plans were read before the elevation reference existed have
+   * openings but no reference rows, and nobody is going to re-upload a planset
+   * to get pictures. The building PDF is already open in this tab, so read them
+   * off it once, in the background, the first time a lead opens the map.
+   *
+   * Deliberately narrow: leads only (installers cannot write these rows), only
+   * when this planset has none stored, once per planset per visit, and silent on
+   * failure. It cannot touch openings — it writes one table, and that table is
+   * read by nothing that counts.
+   */
+  const backfilledElevations = useRef<string | null>(null);
+  const buildingPdfId = buildingPdf?.id ?? null;
+  const storedElevations = elevationViews.data;
+  useEffect(() => {
+    if (!isLead || !buildingPdfId || !elevationViews.isFetched) return;
+    const doc = buildingDocRef.current;
+    if (!doc) return;
+    if (backfilledElevations.current === buildingPdfId) return;
+    if ((storedElevations ?? []).some((row) => row.planset_id === buildingPdfId)) {
+      return;
+    }
+    backfilledElevations.current = buildingPdfId;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const appearances = await elevationAppearancesFromDoc(doc);
+        if (cancelled || appearances.length === 0) return;
+        const { saved } = await saveElevationViews(
+          projectId,
+          buildingPdfId,
+          appearances,
+        );
+        if (!cancelled && saved > 0) {
+          queryClient.invalidateQueries({
+            queryKey: ["elevationViews", projectId],
+          });
+        }
+      } catch {
+        // Reference material. A plan we can't read this way just has no pictures.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isLead,
+    buildingPdfId,
+    elevationViews.isFetched,
+    storedElevations,
+    docsReady,
+    projectId,
+    queryClient,
+  ]);
 
   // Trace the building outline for the active floor page (cached per page).
   useEffect(() => {
@@ -946,6 +1030,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             {selectedDetail.notes.join(" · ")}
           </p>
         )}
+        {/* The plan says which room; the elevation says which hole in the wall.
+            Renders nothing when this mark isn't drawn on a named elevation. */}
+        <MarkElevationViews
+          projectId={projectId}
+          markCode={o.opening_code}
+          variant="bare"
+        />
         <div className="map-detail-card__actions">
           <button
             type="button"

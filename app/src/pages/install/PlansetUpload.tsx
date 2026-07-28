@@ -10,8 +10,10 @@ import {
   listPlansets,
   plansetFormatFromName,
   plansetIsViewable,
+  elevationAppearancesFromDoc,
   runSpecExtraction,
   saveDraftOpenings,
+  saveElevationViews,
   updatePlanset,
   uploadPlanset,
   aiExtractSchedule,
@@ -39,8 +41,8 @@ import {
 } from "../../lib/install/extract";
 import { formatApiError } from "../../lib/install/errors";
 import {
-  calloutsOnFloorPlanSheets,
   extractCadDetailPages,
+  splitCalloutsByFloorPlan,
 } from "../../lib/install/planDetails";
 import type { Planset, PlansetKind } from "../../lib/install/types";
 import { PlansetViewer } from "./PlansetViewer";
@@ -198,10 +200,17 @@ export function PlansetUpload() {
           };
         }
         // Elevation sheets re-number the same windows the floor plan already
-        // numbers, so only the floor drawings decide how many openings there are.
-        const planCallouts = calloutsOnFloorPlanSheets(
+        // numbers, so only the floor drawings decide how many openings there
+        // are. The repeats are not waste: they are where each window sits on the
+        // building, which is the one thing a floor plan cannot show a crew.
+        const { planCallouts, repeatViewCallouts } = splitCalloutsByFloorPlan(
           callouts,
           await extractAllText(doc),
+        );
+        const elevationViews = await saveElevationViews(
+          projectId,
+          planset.id,
+          await elevationAppearancesFromDoc(doc),
         );
         let drafts = calloutsToDraftOpenings(planCallouts, [], types.data ?? []);
         drafts = await ensureTypesFromSpecs(drafts);
@@ -217,7 +226,8 @@ export function PlansetUpload() {
           converted: true,
           source: "details" as const,
           marks,
-          repeatViewCallouts: callouts.length - planCallouts.length,
+          repeatViewCallouts: repeatViewCallouts.length,
+          elevationViews: elevationViews.saved,
         };
       }
 
@@ -330,11 +340,16 @@ export function PlansetUpload() {
           const markLine = result.marks.map(describeMarkCount).join(", ");
           const repeats =
             "repeatViewCallouts" in result ? (result.repeatViewCallouts ?? 0) : 0;
+          const elevations =
+            "elevationViews" in result ? (result.elevationViews ?? 0) : 0;
           setSummary(
             [
               `Building plan ready. Loaded ${markLine} from plan callouts.`,
               repeats > 0
                 ? `Ignored ${repeats} repeat number${repeats === 1 ? "" : "s"} on the elevation sheets — those draw the same openings again.`
+                : null,
+              elevations > 0
+                ? `Kept them as a reference instead: the crew can now see where ${elevations === 1 ? "a window" : "each window"} sits on the outside of the building.`
                 : null,
             ]
               .filter(Boolean)

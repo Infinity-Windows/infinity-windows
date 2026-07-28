@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { rowsToDraftOpenings } from "./extract";
 import {
   calloutsOnFloorPlanSheets,
+  splitCalloutsByFloorPlan,
   countPlanMarkCallouts,
   extractCadDetailPages,
   findFloorPlanPages,
@@ -151,6 +152,81 @@ describe("calloutsOnFloorPlanSheets", () => {
       text: BLACK_DESERT_ELEVATION_SHEET,
     }));
     expect(calloutsOnFloorPlanSheets(callouts, pages)).toHaveLength(2);
+  });
+});
+
+// The elevation reference is built from the other half of this split. These
+// guarantee the reference can never feed the opening count, however either side
+// changes.
+describe("splitCalloutsByFloorPlan", () => {
+  const BLACK_DESERT = {
+    callouts: [
+      ...Array.from({ length: 42 }, (_, i) => ({ pageNumber: 1, id: `p1-${i}` })),
+      ...Array.from({ length: 28 }, (_, i) => ({ pageNumber: 2, id: `p2-${i}` })),
+      ...Array.from({ length: 22 }, (_, i) => ({ pageNumber: 3, id: `p3-${i}` })),
+      ...Array.from({ length: 7 }, (_, i) => ({ pageNumber: 4, id: `p4-${i}` })),
+    ],
+    pages: [
+      { pageNumber: 1, text: BLACK_DESERT_FLOOR_SHEET },
+      { pageNumber: 2, text: BLACK_DESERT_ELEVATION_SHEET },
+      { pageNumber: 3, text: BLACK_DESERT_ELEVATION_SHEET },
+      { pageNumber: 4, text: BLACK_DESERT_ELEVATION_SHEET },
+    ],
+  };
+
+  it("splits Black Desert 42 / 57", () => {
+    const split = splitCalloutsByFloorPlan(BLACK_DESERT.callouts, BLACK_DESERT.pages);
+    expect(split.planCallouts).toHaveLength(42);
+    expect(split.repeatViewCallouts).toHaveLength(57);
+  });
+
+  it("never lets one callout be both an opening and a reference", () => {
+    const split = splitCalloutsByFloorPlan(BLACK_DESERT.callouts, BLACK_DESERT.pages);
+    const counted = new Set(split.planCallouts.map((c) => c.id));
+    expect(split.repeatViewCallouts.some((c) => counted.has(c.id))).toBe(false);
+    expect(split.planCallouts.length + split.repeatViewCallouts.length).toBe(
+      BLACK_DESERT.callouts.length,
+    );
+  });
+
+  it("gives Smith's textless plan no reference callouts at all", () => {
+    // No positive evidence of an elevation anywhere, so all 105 stay openings
+    // and there is nothing to build a reference from.
+    const callouts = Array.from({ length: 105 }, (_, i) => ({
+      pageNumber: (i % 4) + 1,
+      id: `c-${i}`,
+    }));
+    const split = splitCalloutsByFloorPlan(
+      callouts,
+      [1, 2, 3, 4].map((pageNumber) => ({ pageNumber, text: "" })),
+    );
+    expect(split.planCallouts).toHaveLength(105);
+    expect(split.repeatViewCallouts).toEqual([]);
+  });
+
+  it("builds no reference when that would cost the job its openings", () => {
+    // Every page reads as an elevation. Keeping the openings wins, and the
+    // reference gets nothing rather than the count getting emptied.
+    const split = splitCalloutsByFloorPlan(
+      [{ pageNumber: 1, id: "a" }, { pageNumber: 2, id: "b" }],
+      [1, 2].map((pageNumber) => ({
+        pageNumber,
+        text: BLACK_DESERT_ELEVATION_SHEET,
+      })),
+    );
+    expect(split.planCallouts).toHaveLength(2);
+    expect(split.repeatViewCallouts).toEqual([]);
+  });
+
+  it("is stable when run again — re-extracting cannot grow either side", () => {
+    const once = splitCalloutsByFloorPlan(BLACK_DESERT.callouts, BLACK_DESERT.pages);
+    const twice = splitCalloutsByFloorPlan(BLACK_DESERT.callouts, BLACK_DESERT.pages);
+    expect(twice.planCallouts.map((c) => c.id)).toEqual(
+      once.planCallouts.map((c) => c.id),
+    );
+    expect(twice.repeatViewCallouts.map((c) => c.id)).toEqual(
+      once.repeatViewCallouts.map((c) => c.id),
+    );
   });
 });
 

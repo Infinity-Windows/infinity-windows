@@ -145,6 +145,89 @@ export async function extractAllText(
   return pages;
 }
 
+/** Same row when two fragments sit this close vertically (fraction of page). */
+const LINE_TOLERANCE = 0.004;
+/** A gap this wide (fraction of page) ends a run of text. */
+const SEGMENT_GAP = 0.02;
+
+/**
+ * Page text as positioned RUNS, in the same normalized top-left space as the
+ * rendered page image and the mark callouts.
+ *
+ * `extractPageText` deliberately groups fragments by their raw PDF y, which is
+ * all the schedule parser needs — but on a rotated sheet (Black Desert's plans
+ * are all /Rotate 270) raw y runs across the screen, so those "lines" are
+ * columns and carry no usable position. The elevation reference needs to know
+ * WHERE a drawing's caption sits to work out which drawing a callout belongs to,
+ * so this walks the viewport-transformed coordinates instead.
+ *
+ * Fragments are joined only while they stay adjacent: a caption is a contiguous
+ * run ("FRONT" + "RIGHT COURTYARD ELEVETAION" is one caption drawn in two
+ * pieces), whereas text far away on the same row is a different thing entirely
+ * and joining them would produce a line that reads like neither.
+ */
+export async function extractSheetTextLines(
+  doc: PDFDocumentProxy,
+): Promise<{ pageNumber: number; text: string; x: number; y: number }[]> {
+  const out: { pageNumber: number; text: string; x: number; y: number }[] = [];
+
+  for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
+    const page = await doc.getPage(pageNumber);
+    const viewport = page.getViewport({ scale: 1 });
+    const [a, b, c, d, e, f] = viewport.transform;
+    let content: Awaited<ReturnType<typeof page.getTextContent>>;
+    try {
+      content = await page.getTextContent();
+    } catch {
+      continue;
+    }
+
+    const frags: { x: number; y: number; w: number; text: string }[] = [];
+    for (const item of content.items) {
+      const t = item as TextItem;
+      if (!t.str || !t.str.trim()) continue;
+      const px = a * t.transform[4] + c * t.transform[5] + e;
+      const py = b * t.transform[4] + d * t.transform[5] + f;
+      frags.push({
+        x: px / viewport.width,
+        y: py / viewport.height,
+        w: Math.abs(t.width) / viewport.width,
+        text: t.str.trim(),
+      });
+    }
+
+    const rows: { y: number; frags: typeof frags }[] = [];
+    for (const frag of frags.sort((p, q) => p.y - q.y || p.x - q.x)) {
+      const row = rows.find((r) => Math.abs(r.y - frag.y) < LINE_TOLERANCE);
+      if (row) row.frags.push(frag);
+      else rows.push({ y: frag.y, frags: [frag] });
+    }
+
+    for (const row of rows) {
+      const sorted = row.frags.sort((p, q) => p.x - q.x);
+      let run: typeof frags = [];
+      const flush = () => {
+        if (run.length === 0) return;
+        out.push({
+          pageNumber,
+          text: run.map((r) => r.text).join(" "),
+          x: run[0].x,
+          y: row.y,
+        });
+        run = [];
+      };
+      for (const frag of sorted) {
+        const prev = run[run.length - 1];
+        if (prev && frag.x - (prev.x + prev.w) > SEGMENT_GAP) flush();
+        run.push(frag);
+      }
+      flush();
+    }
+  }
+
+  return out;
+}
+
 /**
  * Read numbered window/door marks from FreeText annotations on a marked
  * building plan. These callouts are often drawn as annotations (not page
@@ -180,13 +263,19 @@ export async function extractPlanMarkCallouts(
       const rect = annotation.rect as [number, number, number, number];
       const box = pdfRectToNormalized(rect, viewport);
       const centers = markCentersAlongAnnotation(raw);
+      // How big the drawn number itself is: one annotation can hold several
+      // ("2  2" over a pair of identical windows), so its width is shared out.
+      // The elevation reference rings the number with this, rather than guessing
+      // a radius that would sometimes swallow the window next door.
+      const labelW = (box.x2 - box.x1) / marks.length;
+      const labelH = box.y2 - box.y1;
       marks.forEach((mark, index) => {
         const t =
           centers[index] ??
           (marks.length === 1 ? 0.5 : (index + 0.5) / marks.length);
         const x = Math.min(1, Math.max(0, box.x1 + (box.x2 - box.x1) * t));
         const y = Math.min(1, Math.max(0, (box.y1 + box.y2) / 2));
-        callouts.push({ mark, pageNumber, x, y });
+        callouts.push({ mark, pageNumber, x, y, labelW, labelH });
       });
     }
   }

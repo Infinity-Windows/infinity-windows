@@ -36,6 +36,31 @@ export interface PlanOutline {
   updated_at: string;
 }
 
+/**
+ * Where one mark is drawn on an exterior elevation sheet — a REFERENCE, never
+ * an opening. See supabase/migrations/…_mark_elevation_views.sql: an elevation
+ * re-draws windows the floor plan already numbered, so these rows exist to show
+ * a crew where a window sits on the building and are counted by nothing.
+ */
+export interface MarkElevationView {
+  id: string;
+  project_id: string;
+  /** Building planset the coordinates were measured against. */
+  planset_id: string | null;
+  mark_code: string;
+  page_number: number;
+  /** Which captioned drawing on that page, 0-based top to bottom. */
+  region_index: number;
+  /** The sheet's own caption, verbatim, or null when it never named the view. */
+  view_name: string | null;
+  pin_x: number;
+  pin_y: number;
+  label_w: number | null;
+  label_h: number | null;
+  /** Normalized [x0,y0,x1,y1] of the drawing region to crop. */
+  crop_bbox: unknown;
+}
+
 /** Map pin identity color: window vs door (status is a separate ring/badge). */
 export const OPENING_KIND_COLORS = {
   window: "#4A9DFF",
