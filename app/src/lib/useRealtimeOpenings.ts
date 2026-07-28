@@ -35,6 +35,12 @@ export function useRealtimeOpenings(projectId: string | undefined) {
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
       queryClient.invalidateQueries({ queryKey: ["myOpenings"] });
       queryClient.invalidateQueries({ queryKey: ["dispatch", projectId] });
+      // A re-extract replaces every opening ROW, so an open single-opening
+      // screen is looking at an id that no longer exists. Refetching is what
+      // turns a silent dead page into the "this opening moved" recovery.
+      queryClient.invalidateQueries({ queryKey: ["opening"] });
+      queryClient.invalidateQueries({ queryKey: ["openingCounts"] });
+      queryClient.invalidateQueries({ queryKey: ["voidedOpenings", projectId] });
     };
 
     const channel = supabase

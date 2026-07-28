@@ -25,6 +25,7 @@ import {
 } from "../../lib/install/api";
 import { MarkElevationViews } from "../../components/install/MarkElevationViews";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
+import { useRealtimeOpenings } from "../../lib/useRealtimeOpenings";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import {
   isForemanPlus,
@@ -121,6 +122,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const { projectId = "" } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // Standalone /map is its own route, so it needs its own subscription; when
+  // embedded, ProjectDetail already has one and a second would be a duplicate.
+  useRealtimeOpenings(embedded ? undefined : projectId);
   const [page, setPage] = useState(1);
   const [view, setView] = useState<DrawingView>("outline");
   const [floorPages, setFloorPages] = useState<number[]>([]);
@@ -417,6 +421,14 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
       queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
       queryClient.invalidateQueries({ queryKey: ["elevationViews", projectId] });
+      // Every opening row is new, so anything keyed off an opening id or a
+      // count of openings is now describing rows that were just deleted.
+      queryClient.invalidateQueries({ queryKey: ["opening"] });
+      queryClient.invalidateQueries({ queryKey: ["myOpenings"] });
+      queryClient.invalidateQueries({ queryKey: ["dispatch", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["openingCounts"] });
+      queryClient.invalidateQueries({ queryKey: ["voidedOpenings", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["markSpecs", projectId] });
       const markLine = marks.map(describeMarkCount).join(", ");
       setExtractNote(
         [
