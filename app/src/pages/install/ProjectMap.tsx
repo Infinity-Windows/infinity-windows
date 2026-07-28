@@ -47,6 +47,7 @@ import {
   type CadDetailPage,
 } from "../../lib/install/planDetails";
 import {
+  describeMarkCount,
   extractScheduleRows,
   rowsToDraftOpenings,
   calloutsToDraftOpenings,
@@ -364,12 +365,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     onSuccess: ({ result, source, marks, repeatViewCallouts }) => {
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
       queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
-      const markLine = marks
-        .map(
-          (m) =>
-            `${m.count}× #${m.mark} ${m.kind === "door" ? "doors" : "windows"}`,
-        )
-        .join(", ");
+      const markLine = marks.map(describeMarkCount).join(", ");
       setExtractNote(
         [
           markLine ? `Loaded ${markLine}.` : "No marks found.",
