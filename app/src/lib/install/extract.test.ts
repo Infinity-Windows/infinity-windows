@@ -441,6 +441,67 @@ describe("planDraftPersistence (per-slot re-extract, root-cause fix)", () => {
     const plan = planDraftPersistence(prior, [draft("14-1")], "building");
     expect(plan.inserts[0]).toMatchObject({ pin_x: 0.2, pin_y: 0.3, page_number: 4 });
   });
+
+  // `confirmed || status !== 'planned'` is not the whole picture. Several RPCs
+  // record real field work WITHOUT moving either flag, and one of them —
+  // undo_install — actively resets an installed opening back to
+  // planned/unconfirmed while deliberately KEEPING the install event. Deleting
+  // that row cascades the install event and the QC check away with it.
+  describe("field work is never deleted by a re-extract", () => {
+    it("keeps an opening someone has measured (set_opening_rough_opening)", () => {
+      const prior = [existing("14-1", "building", { ro_width_in: 35.5, ro_height_in: 60 })];
+      const plan = planDraftPersistence(prior, [draft("14-1")], "building");
+      expect(plan.deleteIds).toEqual([]);
+    });
+
+    it("keeps an opening whose arrival condition was checked", () => {
+      const prior = [existing("14-1", "building", { condition: "damaged" })];
+      const plan = planDraftPersistence(prior, [draft("14-1")], "building");
+      expect(plan.deleteIds).toEqual([]);
+    });
+
+    it("keeps an opening dispatched to an installer", () => {
+      const prior = [existing("14-1", "building", { assigned_to: "profile-1" })];
+      const plan = planDraftPersistence(prior, [draft("14-1")], "building");
+      expect(plan.deleteIds).toEqual([]);
+    });
+
+    it("keeps an opening someone has already started work on", () => {
+      const prior = [
+        existing("14-1", "building", { work_started_at: "2026-07-28T10:00:00Z" }),
+      ];
+      const plan = planDraftPersistence(prior, [draft("14-1")], "building");
+      expect(plan.deleteIds).toEqual([]);
+    });
+
+    // undo_install sets status='planned', confirmed=false and voids (never
+    // deletes) the install event. install_events + qc_checks are ON DELETE
+    // CASCADE, so deleting this row destroys the install record for good.
+    it("keeps an undone install, whose install event is only voided", () => {
+      const prior = [existing("14-1", "building", { referenced: true })];
+      const plan = planDraftPersistence(prior, [draft("14-1")], "building");
+      expect(plan.deleteIds).toEqual([]);
+    });
+
+    it("still replaces a plain untouched draft", () => {
+      const prior = [existing("14-1", "building")];
+      const plan = planDraftPersistence(prior, [draft("14-1")], "building");
+      expect(plan.deleteIds).toEqual(["building:14-1"]);
+    });
+
+    it("does not insert a duplicate over an opening kept for field work", () => {
+      const prior = [existing("14-1", "building", { assigned_to: "profile-1" })];
+      const plan = planDraftPersistence(prior, [draft("14-1"), draft("9-1")], "building");
+      expect(plan.inserts.map((d) => d.opening_code)).toEqual(["9-1"]);
+      expect(plan.skipped).toBe(1);
+    });
+
+    it("a specs re-extract cannot supersede a building opening with field work", () => {
+      const prior = [existing("4A", "specs", { ro_width_in: 35.5 })];
+      const plan = planDraftPersistence(prior, [draft("4A")], "building");
+      expect(plan.deleteIds).toEqual([]);
+    });
+  });
 });
 
 // "3× #9 windows" was read on site as one window built from three pieces, and
