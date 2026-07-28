@@ -24,6 +24,11 @@ Always follow this loop:
 9. **Merge it yourself once the build and tests pass**, then finish the job:
    apply any migration the PR needs and deploy any function it changed. A PR
    that is merged but not applied is not shipped.
+10. **Restart the dev server** (`screen` session `iwdev`, port 5173) so the
+    running app is serving what you just shipped, and confirm it answers before
+    saying you're done. Taylor and Ammon look at the app, not at git — if the
+    browser is still running the old bundle, the fix does not exist yet. Tell
+    them to hard-refresh.
 
 ## Rules
 
