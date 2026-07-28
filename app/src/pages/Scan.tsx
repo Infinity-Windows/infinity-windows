@@ -10,6 +10,7 @@ import {
 } from "../lib/api";
 import type { QrPayload } from "../lib/qr";
 import { resolveLocationFromScan, resolveWindowFromScan } from "../lib/scanResolve";
+import { formatApiError } from "../lib/errors";
 
 const windowLookups = { getWindowByWindowId, findWindowByCode, findWindowBySerial };
 const locationLookups = { getLocationByAddress, getLocationBySerial };
@@ -44,7 +45,7 @@ export function Scan() {
         setMessage("That's a slot label — scan a window label.");
       }
     } catch (e) {
-      setMessage(String(e));
+      setMessage(formatApiError(e));
     } finally {
       setLooking(false);
     }
@@ -68,7 +69,7 @@ export function Scan() {
         setMessage(`No window found for "${value}".`);
       }
     } catch (e) {
-      setMessage(String(e));
+      setMessage(formatApiError(e));
     } finally {
       setLooking(false);
     }

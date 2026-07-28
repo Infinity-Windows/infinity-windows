@@ -9,6 +9,7 @@ import {
   toggleId,
 } from "../lib/bulk";
 import { downloadPdf, locationLabelsPdf, ZONE_NAMES } from "../lib/labels";
+import { formatApiError } from "../lib/errors";
 import { toastError, toastSuccess } from "../lib/toast";
 
 export function Labels() {
@@ -39,7 +40,7 @@ export function Labels() {
       queryClient.invalidateQueries({ queryKey: ["locations"] });
       queryClient.invalidateQueries({ queryKey: ["location"] });
     },
-    onError: (e) => setEditError(String(e)),
+    onError: (e) => setEditError(formatApiError(e)),
   });
 
   const bulkDelete = useMutation({

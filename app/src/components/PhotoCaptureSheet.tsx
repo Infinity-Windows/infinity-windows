@@ -9,6 +9,7 @@ import {
   type StampMeta,
 } from "../lib/photo/stampPhoto";
 import { supabase } from "../lib/supabase";
+import { formatApiError } from "../lib/errors";
 
 export interface BeforeAfterValue {
   before: File | null;
@@ -83,7 +84,7 @@ function useCameraStream(active: boolean, onError: (message: string) => void) {
           await videoRef.current.play().catch(() => {});
         }
       } catch (e) {
-        onError(String(e));
+        onError(formatApiError(e));
       }
     })();
     return () => {

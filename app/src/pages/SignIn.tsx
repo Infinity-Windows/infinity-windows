@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatApiError } from "../lib/errors";
 import { supabase, supabaseConfigured } from "../lib/supabase";
 import { submitAccessRequest } from "../lib/install/api";
 
@@ -99,7 +100,7 @@ export function SignIn({
       });
       setRequested(true);
     } catch (e) {
-      setError(String(e));
+      setError(formatApiError(e));
     }
     setBusy(false);
   };

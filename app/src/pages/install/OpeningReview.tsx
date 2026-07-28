@@ -13,6 +13,7 @@ import {
 } from "../../lib/install/api";
 import type { ProjectOpening } from "../../lib/install/types";
 import { openingMarkCode, openingMarkLabel } from "../../lib/install/types";
+import { formatApiError } from "../../lib/install/errors";
 
 export function OpeningReview() {
   const { projectId = "" } = useParams();
@@ -37,13 +38,13 @@ export function OpeningReview() {
     mutationFn: (args: { id: string; patch: Parameters<typeof updateOpening>[1] }) =>
       updateOpening(args.id, args.patch),
     onSuccess: refresh,
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   const remove = useMutation({
     mutationFn: deleteOpening,
     onSuccess: refresh,
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   const add = useMutation({
@@ -53,7 +54,7 @@ export function OpeningReview() {
       setNewCode("");
       refresh();
     },
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   const confirm = useMutation({
@@ -63,7 +64,7 @@ export function OpeningReview() {
       queryClient.invalidateQueries({ queryKey: ["projectWindows", projectId] });
       navigate(`/projects/${projectId}?tab=map`);
     },
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   const drafts = (openings.data ?? []).filter((o) => !o.confirmed);

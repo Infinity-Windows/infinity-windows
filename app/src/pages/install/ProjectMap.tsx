@@ -55,6 +55,7 @@ import {
   outlinePathWithOpenings,
   parseOutlineFeatures,
 } from "../../lib/install/cad";
+import { formatApiError } from "../../lib/install/errors";
 import { openingMarkerStyle } from "../../lib/install/openingMarkerScale";
 import {
   extractBuildingOutline,
@@ -266,7 +267,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
       queryClient.invalidateQueries({ queryKey: ["projectExceptions", projectId] });
     },
-    onError: (e) => setMapError(String(e)),
+    onError: (e) => setMapError(formatApiError(e)),
   });
 
   const handleUndo = (o: ProjectOpening) => {
@@ -374,7 +375,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     },
     onError: (e) => {
       setExtractNote(null);
-      setMapError(String(e));
+      setMapError(formatApiError(e));
     },
   });
 
@@ -415,7 +416,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         setFullScreen(false);
         setDocsReady((ready) => ready + 1);
       } catch (e) {
-        if (!cancelled) setMapError(String(e));
+        if (!cancelled) setMapError(formatApiError(e));
       }
     })();
     return () => {
@@ -452,7 +453,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     import("../../lib/install/pdf")
       .then(({ renderPageImage }) => renderPageImage(doc, page))
       .then((img) => !cancelled && setImage(img))
-      .catch((e) => !cancelled && setMapError(String(e)));
+      .catch((e) => !cancelled && setMapError(formatApiError(e)));
     return () => {
       cancelled = true;
     };
@@ -483,7 +484,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
     },
-    onError: (e) => setMapError(String(e)),
+    onError: (e) => setMapError(formatApiError(e)),
   });
 
   // Commit the ordered selection: assign each opening to the installer in tap
@@ -515,7 +516,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       setSelection([]);
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
     },
-    onError: (e) => setMapError(String(e)),
+    onError: (e) => setMapError(formatApiError(e)),
   });
 
   // Drop an EXISTING assignment off the installer's route, then renumber the
@@ -533,7 +534,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       setDispatchNote("Removed from the list — the rest were renumbered.");
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
     },
-    onError: (e) => setMapError(String(e)),
+    onError: (e) => setMapError(formatApiError(e)),
   });
 
   // Persist a reordered existing route (up/down within the saved list).
@@ -542,7 +543,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
     },
-    onError: (e) => setMapError(String(e)),
+    onError: (e) => setMapError(formatApiError(e)),
   });
 
   // Drop optimistic positions once fresh data arrives.

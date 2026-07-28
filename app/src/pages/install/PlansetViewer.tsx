@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { downloadPlanset } from "../../lib/install/api";
+import { formatApiError } from "../../lib/install/errors";
 import type { Planset } from "../../lib/install/types";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 
@@ -40,7 +41,7 @@ export function PlansetViewer({ planset, onClose }: PlansetViewerProps) {
         const img = await renderPageImage(doc, 1);
         if (!cancelled) setImageUrl(img.dataUrl);
       } catch (e) {
-        if (!cancelled) setError(String(e));
+        if (!cancelled) setError(formatApiError(e));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -61,7 +62,7 @@ export function PlansetViewer({ planset, onClose }: PlansetViewerProps) {
         if (!cancelled) setImageUrl(img.dataUrl);
       })
       .catch((e) => {
-        if (!cancelled) setError(String(e));
+        if (!cancelled) setError(formatApiError(e));
       });
     return () => {
       cancelled = true;

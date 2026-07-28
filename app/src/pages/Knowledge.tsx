@@ -102,7 +102,7 @@ function PinModal({
       await onSubmit(pin.trim());
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatApiError(e));
     } finally {
       setBusy(false);
     }

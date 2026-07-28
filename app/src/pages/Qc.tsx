@@ -9,7 +9,7 @@ import { addPriorityTerm } from "../lib/learn";
 import { resolvePendingPoints } from "../lib/points";
 import { openServiceCase } from "../lib/service";
 import { CATS, TERMS } from "../lib/glossary";
-import { pushToast } from "../lib/toast";
+import { pushToast, toastError } from "../lib/toast";
 import { SkeletonList } from "../components/ui/States";
 
 export function Qc() {
@@ -74,7 +74,7 @@ export function Qc() {
       pushToast("Service case opened — linked to this callback for warranty tracking.");
       setCaseOffer(null);
     },
-    onError: (e) => pushToast(String(e)),
+    onError: (e) => toastError(e),
   });
 
   if (me.data && !lead) {
