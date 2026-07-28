@@ -397,6 +397,29 @@ button:disabled {
   margin: 8px 0;
 }
 
+.extract-summary {
+  margin: 8px 0;
+}
+.extract-summary p {
+  margin: 4px 0;
+}
+.extract-summary-headline {
+  color: var(--text);
+  font-weight: 600;
+}
+.extract-summary-breakdown > summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 6px 0;
+}
+.extract-summary-breakdown ul {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 4px 0 0;
+  padding-left: 20px;
+}
+
 .manual-entry {
   display: flex;
   gap: 8px;
