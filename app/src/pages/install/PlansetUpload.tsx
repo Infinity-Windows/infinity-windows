@@ -37,7 +37,10 @@ import {
   summarizeDraftMarks,
 } from "../../lib/install/extract";
 import { formatApiError } from "../../lib/install/errors";
-import { extractCadDetailPages } from "../../lib/install/planDetails";
+import {
+  calloutsOnFloorPlanSheets,
+  extractCadDetailPages,
+} from "../../lib/install/planDetails";
 import type { Planset, PlansetKind } from "../../lib/install/types";
 import { PlansetViewer } from "./PlansetViewer";
 
@@ -193,7 +196,13 @@ export function PlansetUpload() {
             converted: true,
           };
         }
-        let drafts = calloutsToDraftOpenings(callouts, [], types.data ?? []);
+        // Elevation sheets re-number the same windows the floor plan already
+        // numbers, so only the floor drawings decide how many openings there are.
+        const planCallouts = calloutsOnFloorPlanSheets(
+          callouts,
+          await extractAllText(doc),
+        );
+        let drafts = calloutsToDraftOpenings(planCallouts, [], types.data ?? []);
         drafts = await ensureTypesFromSpecs(drafts);
         const linked = await linkSpecsToOpenings(projectId, drafts);
         const result = await saveDraftOpenings(projectId, planset.id, drafts);
@@ -207,6 +216,7 @@ export function PlansetUpload() {
           converted: true,
           source: "details" as const,
           marks,
+          repeatViewCallouts: callouts.length - planCallouts.length,
         };
       }
 
@@ -313,8 +323,17 @@ export function PlansetUpload() {
                 `${m.count}× #${m.mark} ${m.kind === "door" ? "doors" : "windows"}`,
             )
             .join(", ");
+          const repeats =
+            "repeatViewCallouts" in result ? (result.repeatViewCallouts ?? 0) : 0;
           setSummary(
-            `Building plan ready. Loaded ${markLine} from plan callouts.`,
+            [
+              `Building plan ready. Loaded ${markLine} from plan callouts.`,
+              repeats > 0
+                ? `Ignored ${repeats} repeat number${repeats === 1 ? "" : "s"} on the elevation sheets — those draw the same openings again.`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" "),
           );
           return;
         }

@@ -70,6 +70,88 @@ export function countPlanMarkCallouts(text: string): number {
 }
 
 /**
+ * Phrases that only ever appear in the title block, legend, or general notes of
+ * an elevation or section sheet — never on a floor plan.
+ *
+ * Measured against Black Desert's real plan set: page 1 is A.102 MAIN LvL FLOOR
+ * PLAN, and pages 2–4 are A.201/A.202/A.203 EXTERIOR ELEVATIONS. Each elevation
+ * sheet scores 110+ on these; the floor plan scores 0 even though its keyed
+ * notes say "VERIFY W/ THE EXTERIOR ELEVATION FOR THE SILL HEIGHT". That is why
+ * the test is a set of whole phrases and not the word "elevation".
+ */
+const ELEVATION_SHEET_PHRASES: { re: RegExp; weight: number }[] = [
+  { re: /ELEVATION\s+MATERIAL\s+LEGEND/i, weight: 40 },
+  { re: /EXTERIOR\s+ELEVATION\s+GENERAL\s+NOTES/i, weight: 40 },
+  { re: /ELEVATION\s+(?:HEIGHT|KEYNOTE|KEYED)\s+NOTES/i, weight: 30 },
+  { re: /\bBUILDING\s+SECTIONS?\b/i, weight: 40 },
+  { re: /\bOVERALL\s+HEIGHT\b/i, weight: 10 },
+];
+
+const COMPASS_OR_FACE = "FRONT|REAR|LEFT|RIGHT|SIDE|NORTH|SOUTH|EAST|WEST|COURTYARD|PROPERTY";
+/**
+ * A drawing title naming a face of the building — "FRONT ELEVATION - SOUTH",
+ * "REAR PROPERTY ELEVATION". Every word before ELEVATION must itself be a face
+ * word, so the floor plan's "VERIFY W/ THE EXTERIOR ELEVATION" and its
+ * "FOUNDATION ELEVATION ARE RELATIVE TO…" note do not match.
+ */
+const ELEVATION_VIEW_TITLE_RE = new RegExp(
+  `\\b(?:${COMPASS_OR_FACE})(?:\\s+(?:${COMPASS_OR_FACE}))*\\s+ELEVATION\\b`,
+  "gi",
+);
+
+/** A floor drawing always names itself, in the title block and the keyed notes. */
+const FLOOR_PLAN_RE = /\bFLOOR\s+PLAN\b/i;
+
+/**
+ * Is this page an elevation or section sheet rather than a floor drawing?
+ *
+ * It matters for counting. An elevation draws the SAME windows the floor plan
+ * already numbers, seen from outside, and the draughtsman numbers them again on
+ * every view they appear in. Black Desert's four-page set numbers 42 openings on
+ * its one floor plan and then re-numbers 57 of them across three elevation
+ * sheets — two of which draw the same façade twice. Counting every callout gave
+ * 99 openings for a 42-opening house.
+ *
+ * Deliberately one-sided: a page is only rejected on positive evidence that it
+ * is an elevation AND the absence of any floor-plan evidence. Smith's plan set
+ * has no extractable text at all, so it is never rejected.
+ */
+export function isElevationSheet(text: string): boolean {
+  if (FLOOR_PLAN_RE.test(text)) return false;
+  let score = 0;
+  for (const { re, weight } of ELEVATION_SHEET_PHRASES) {
+    if (re.test(text)) score += weight;
+  }
+  const titles = new Set(
+    [...text.matchAll(ELEVATION_VIEW_TITLE_RE)].map((m) =>
+      m[0].replace(/\s+/g, " ").toUpperCase(),
+    ),
+  );
+  score += Math.min(40, titles.size * 20);
+  return score >= 40;
+}
+
+/**
+ * Drop the callouts that sit on elevation or section sheets, so one physical
+ * window becomes one opening however many views it is drawn in.
+ *
+ * Never returns an empty list: if every page reads as an elevation the set is
+ * kept whole, because losing the job's openings is far worse than counting one
+ * twice.
+ */
+export function calloutsOnFloorPlanSheets<T extends { pageNumber: number }>(
+  callouts: T[],
+  pages: PdfTextPage[],
+): T[] {
+  const elevationPages = new Set(
+    pages.filter((page) => isElevationSheet(page.text)).map((p) => p.pageNumber),
+  );
+  if (elevationPages.size === 0) return callouts;
+  const kept = callouts.filter((c) => !elevationPages.has(c.pageNumber));
+  return kept.length > 0 ? kept : callouts;
+}
+
+/**
  * Pages that are actual floor drawings, preferring sheets that already have
  * opening numbers around the building (the “numbered” plan).
  *
@@ -78,7 +160,8 @@ export function countPlanMarkCallouts(text: string): number {
  * carries its numbers as FreeText annotations, not page text — `getTextContent`
  * never sees them. Scoring on text alone made Black Desert, whose 96 callouts
  * are all annotations, look like it had a single numbered drawing when all four
- * of its pages are marked.
+ * of its pages are marked. Marked elevation sheets are excluded outright: they
+ * are covered in numbers but they are not floor drawings.
  */
 export function findFloorPlanPages(
   pages: PdfTextPage[],
@@ -92,27 +175,29 @@ export function findFloorPlanPages(
     );
   }
 
-  const scored = pages.map((page) => {
-    const titleHit = /SHEET\s+TITLE\s*:\s*[\s\S]{0,80}\bFLOOR\s+PLAN\b/i.test(
-      page.text,
-    )
-      ? 40
-      : 0;
-    const floorHits = (page.text.match(/\bFLOOR\s+PLAN\b/gi) ?? []).length;
-    const floorScore = floorHits >= 2 ? 25 : floorHits === 1 ? 10 : 0;
-    const marks =
-      countPlanMarkCallouts(page.text) +
-      (annotationMarks.get(page.pageNumber) ?? 0);
-    const markScore = Math.min(40, marks * 4);
-    const levelHit = /\b(LEVEL|FIRST|SECOND|THIRD)\s+FLOOR\b/i.test(page.text)
-      ? 8
-      : 0;
-    return {
-      pageNumber: page.pageNumber,
-      score: titleHit + floorScore + markScore + levelHit,
-      marks,
-    };
-  });
+  const scored = pages
+    .filter((page) => !isElevationSheet(page.text))
+    .map((page) => {
+      const titleHit = /SHEET\s+TITLE\s*:\s*[\s\S]{0,80}\bFLOOR\s+PLAN\b/i.test(
+        page.text,
+      )
+        ? 40
+        : 0;
+      const floorHits = (page.text.match(/\bFLOOR\s+PLAN\b/gi) ?? []).length;
+      const floorScore = floorHits >= 2 ? 25 : floorHits === 1 ? 10 : 0;
+      const marks =
+        countPlanMarkCallouts(page.text) +
+        (annotationMarks.get(page.pageNumber) ?? 0);
+      const markScore = Math.min(40, marks * 4);
+      const levelHit = /\b(LEVEL|FIRST|SECOND|THIRD)\s+FLOOR\b/i.test(page.text)
+        ? 8
+        : 0;
+      return {
+        pageNumber: page.pageNumber,
+        score: titleHit + floorScore + markScore + levelHit,
+        marks,
+      };
+    });
 
   const candidates = scored
     .filter((page) => page.score >= 15)
