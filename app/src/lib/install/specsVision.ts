@@ -64,6 +64,74 @@ export function normalizeMarkLabel(raw: unknown): string | null {
 }
 
 /**
+ * A plausible bare mark code once the project prefix and '#' are stripped:
+ * a run of digits with an optional single trailing letter, e.g. "4A", "13B",
+ * "18", "7". We only ever SPLIT a combined mark into pieces that all look like
+ * this, so we never accidentally tear apart a legitimate single mark that just
+ * happens to contain a separator character.
+ */
+const BARE_MARK_CODE = /^[0-9]+[A-Z]?$/;
+
+/**
+ * Separators the vision model uses when it collapses two adjacent paired marks
+ * into one string: an ampersand, a slash, or the word "and" — each optionally
+ * padded with whitespace. Splitting on this turns
+ *   "PV Townhomes Bldg 14-#4A& PV Townhomes Bldg 14-#4B" → two pieces,
+ *   "#4A & #4B" → two pieces, "4A&4B" → two pieces, "4A / 4B and 4C" → three.
+ */
+const MARK_SEPARATORS = /\s*&\s*|\s*\/\s*|\s+and\s+/i;
+
+/**
+ * Detect a combined mark object — where Claude vision merged two (or more)
+ * adjacent paired marks into ONE entry, e.g.
+ *   { mark: "PV Townhomes Bldg 14-#4A& PV Townhomes Bldg 14-#4B", qty: "1&1" }
+ * — and expand it into one raw mark per piece, each carrying the SAME
+ * style/glass/color/size/operation and its own bare mark. When the qty is in
+ * the matching "a&b" form ("1&1", "3&2") it's split per mark; otherwise the
+ * original qty rides along on every piece unchanged.
+ *
+ * To avoid false positives we only split when the mark actually contains a
+ * separator AND every resulting piece normalizes (via {@link normalizeMarkLabel})
+ * to a plausible short mark code like "4A"/"13B". A legitimate single mark that
+ * merely contains a separator (or doesn't yield clean codes on both sides) is
+ * returned untouched as a one-element list. PURE — no side effects.
+ */
+export function splitCombinedMark(raw: RawVisionMark): RawVisionMark[] {
+  const markStr = str(raw.mark ?? raw.mark_code);
+  if (!markStr || !MARK_SEPARATORS.test(markStr)) return [raw];
+
+  const pieces = markStr
+    .split(MARK_SEPARATORS)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (pieces.length < 2) return [raw];
+
+  // Every piece must reduce to a plausible bare mark code, else this "&" is
+  // part of a single legitimate mark and we must not tear it apart.
+  const codes = pieces.map((p) => normalizeMarkLabel(p));
+  if (!codes.every((c) => c != null && BARE_MARK_CODE.test(c))) return [raw];
+
+  // Split the qty only when it's in the same "a&b" shape with a matching count
+  // (e.g. "1&1" → ["1","1"]); otherwise keep the original qty on every piece.
+  const qtyStr = str(raw.qty);
+  let qtyPieces: string[] | null = null;
+  if (qtyStr) {
+    const qs = qtyStr
+      .split(MARK_SEPARATORS)
+      .map((q) => q.trim())
+      .filter(Boolean);
+    if (qs.length === pieces.length) qtyPieces = qs;
+  }
+
+  return pieces.map((piece, i) => ({
+    ...raw,
+    mark: piece,
+    mark_code: undefined,
+    qty: qtyPieces ? qtyPieces[i] : raw.qty,
+  }));
+}
+
+/**
  * Split a size string into a 4-digit call size and (when present) its trailing
  * operation token:
  *   ("6080 XO", null)      → { size_code: "6080", operation: "XO" }
@@ -147,5 +215,6 @@ export function prepVisionSpec(raw: RawVisionMark): Record<string, unknown> {
  * unconfirmed — the foreman review/confirm step still applies.
  */
 export function visionMarksToDrafts(raws: RawVisionMark[]): MarkSpecDraft[] {
-  return mergeSpecsByMark(raws.map(prepVisionSpec), "ai");
+  const expanded = raws.flatMap(splitCombinedMark);
+  return mergeSpecsByMark(expanded.map(prepVisionSpec), "ai");
 }

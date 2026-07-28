@@ -5,6 +5,7 @@ import {
   deriveTempered,
   normalizeMarkLabel,
   prepVisionSpec,
+  splitCombinedMark,
   splitSizeCodeOperation,
   visionMarksToDrafts,
   type RawVisionMark,
@@ -214,5 +215,171 @@ describe("visionMarksToDrafts (proven page-1 output)", () => {
   it("preserves qty in extra and marks rows as unconfirmed AI drafts", () => {
     expect(map.get("1")!.extra).toMatchObject({ qty: "2" });
     for (const d of drafts) expect(d.source).toBe("ai");
+  });
+});
+
+describe("splitCombinedMark", () => {
+  it("splits a fully-prefixed combined mark and its a&b qty", () => {
+    const pieces = splitCombinedMark({
+      mark: "PV Townhomes Bldg 14-#4A& PV Townhomes Bldg 14-#4B",
+      qty: "1&1",
+    });
+    expect(pieces).toHaveLength(2);
+    expect(pieces.map((p) => normalizeMarkLabel(p.mark))).toEqual(["4A", "4B"]);
+    expect(pieces.map((p) => p.qty)).toEqual(["1", "1"]);
+  });
+
+  it("splits an uneven a&b qty across the two marks", () => {
+    const pieces = splitCombinedMark({
+      mark: "PV Townhomes Bldg 14-#13A& PV Townhomes Bldg 14-#13B",
+      qty: "3&2",
+    });
+    expect(pieces.map((p) => normalizeMarkLabel(p.mark))).toEqual([
+      "13A",
+      "13B",
+    ]);
+    expect(pieces.map((p) => p.qty)).toEqual(["3", "2"]);
+  });
+
+  it("handles bare '#a & #b' and 'a&b' forms and '/' and 'and'", () => {
+    expect(
+      splitCombinedMark({ mark: "#4A & #4B" }).map((p) =>
+        normalizeMarkLabel(p.mark),
+      ),
+    ).toEqual(["4A", "4B"]);
+    expect(
+      splitCombinedMark({ mark: "4A&4B" }).map((p) =>
+        normalizeMarkLabel(p.mark),
+      ),
+    ).toEqual(["4A", "4B"]);
+    expect(
+      splitCombinedMark({ mark: "4A / 4B" }).map((p) =>
+        normalizeMarkLabel(p.mark),
+      ),
+    ).toEqual(["4A", "4B"]);
+    expect(
+      splitCombinedMark({ mark: "18A and 18B" }).map((p) =>
+        normalizeMarkLabel(p.mark),
+      ),
+    ).toEqual(["18A", "18B"]);
+  });
+
+  it("copies the shared spec fields onto every split piece", () => {
+    const combined: RawVisionMark = {
+      mark: "PV Townhomes Bldg 14-#18A& PV Townhomes Bldg 14-#18B",
+      style: "Thermal Break Aluminum Crank Casement window",
+      glass: "insulating tempered Low-E glass",
+      color: "Black",
+      size_code: "3060",
+      operation: "Crank Casement, Outward Open",
+      qty: "2&2",
+    };
+    const pieces = splitCombinedMark(combined);
+    for (const p of pieces) {
+      expect(p).toMatchObject({
+        style: combined.style,
+        glass: combined.glass,
+        color: combined.color,
+        size_code: combined.size_code,
+        operation: combined.operation,
+      });
+    }
+  });
+
+  it("leaves qty untouched on both pieces when it isn't in a&b form", () => {
+    const pieces = splitCombinedMark({ mark: "4A&4B", qty: "5" });
+    expect(pieces.map((p) => p.qty)).toEqual(["5", "5"]);
+  });
+
+  it("does NOT split a legitimate single mark", () => {
+    // No separator at all.
+    expect(splitCombinedMark({ mark: "PV Townhomes Bldg 14-#4A" })).toHaveLength(
+      1,
+    );
+    // Contains '&' but the pieces are not plausible bare mark codes.
+    const notCodes = splitCombinedMark({
+      mark: "Tempered glass & argon fill",
+    });
+    expect(notCodes).toHaveLength(1);
+    expect(notCodes[0].mark).toBe("Tempered glass & argon fill");
+  });
+});
+
+describe("visionMarksToDrafts (combined A/B marks from vision)", () => {
+  // Real live output: Claude vision sometimes merges two adjacent paired marks
+  // into ONE object on the Smith / PV Townhomes sheet.
+  const COMBINED: RawVisionMark[] = [
+    {
+      mark: "PV Townhomes Bldg 14-#4A& PV Townhomes Bldg 14-#4B",
+      style: "Thermal Break Aluminum Crank Casement window (Outward Open)",
+      glass: "insulating tempered Low-E glass",
+      color: "Black",
+      size_code: "3060",
+      operation: "Crank Casement, Outward Open",
+      qty: "1&1",
+    },
+    {
+      mark: "PV Townhomes Bldg 14-#13A& PV Townhomes Bldg 14-#13B",
+      style: "Thermal Break Aluminum Fixed Window",
+      glass: "insulating tempered Low-E glass",
+      color: "Black",
+      size_code: "6080 XO",
+      operation: "Sliding",
+      qty: "3&2",
+    },
+    {
+      mark: "PV Townhomes Bldg 14-#18A& PV Townhomes Bldg 14-#18B",
+      style: "Thermal Break Aluminum Crank Casement window",
+      glass: "insulating tempered Low-E glass",
+      color: "Black",
+      size_code: "3060",
+      operation: "Crank Casement",
+      qty: "2&2",
+    },
+  ];
+
+  const drafts = visionMarksToDrafts(COMBINED);
+  const map = byMark(drafts);
+
+  it("expands each combined entry into its two separate marks", () => {
+    expect(new Set(drafts.map((d) => d.mark_code))).toEqual(
+      new Set(["4A", "4B", "13A", "13B", "18A", "18B"]),
+    );
+  });
+
+  it("shares identical spec fields across a split pair", () => {
+    const fields = (m: string) => {
+      const s = map.get(m)!;
+      return {
+        style: s.style,
+        glass: s.glass,
+        color: s.color,
+        size_code: s.size_code,
+        operation: s.operation,
+        width_in: s.width_in,
+        height_in: s.height_in,
+        tempered: s.tempered,
+      };
+    };
+    expect(fields("4A")).toEqual(fields("4B"));
+    expect(fields("13A")).toEqual(fields("13B"));
+    expect(fields("18A")).toEqual(fields("18B"));
+    // ...and the shared values decoded/derived as expected.
+    expect(map.get("13A")).toMatchObject({
+      size_code: "6080",
+      operation: "Sliding",
+      width_in: 72,
+      height_in: 96,
+      tempered: true,
+    });
+  });
+
+  it("splits qty when it's in a&b form", () => {
+    expect(map.get("4A")!.extra).toMatchObject({ qty: "1" });
+    expect(map.get("4B")!.extra).toMatchObject({ qty: "1" });
+    expect(map.get("13A")!.extra).toMatchObject({ qty: "3" });
+    expect(map.get("13B")!.extra).toMatchObject({ qty: "2" });
+    expect(map.get("18A")!.extra).toMatchObject({ qty: "2" });
+    expect(map.get("18B")!.extra).toMatchObject({ qty: "2" });
   });
 });
