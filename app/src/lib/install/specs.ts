@@ -24,9 +24,13 @@ export interface MarkSpec {
   color: string | null;
   /** Raw manufacturer call size, e.g. "3060". Kept verbatim. */
   size_code: string | null;
-  /** Decoded width in inches (from size_code) — null when it can't decode. */
+  /**
+   * Width in inches. Usually decoded from `size_code`, but the dimension
+   * PRINTED on the drawing wins when the two disagree (see `printedSize.ts`),
+   * so this is FRACTIONAL — 35.5 is as ordinary as 36.
+   */
   width_in: number | null;
-  /** Decoded height in inches (from size_code) — null when it can't decode. */
+  /** Height in inches — fractional, same as {@link MarkSpec.width_in}. */
   height_in: number | null;
   /** e.g. "XO", "OX", "Fixed", "Casement". */
   operation: string | null;
@@ -137,19 +141,55 @@ export function decodeSizeCode(raw: string | null | undefined): DecodedSize | nu
   };
 }
 
-/** Format total inches as feet-inches, e.g. 36 → `3'0"`. */
+/**
+ * Vulgar-fraction glyph per eighth of an inch, indexed 0–7. Eighths is as fine
+ * as a tape measure is marked and finer than any shop drawing dimensions to, so
+ * it's where display rounding stops: a spec card must never show a crew
+ * `35.47244094488189"` (a millimetre figure converted) nor `36"` (a half inch
+ * silently rounded away). Index 0 is empty so a whole inch stays clean.
+ */
+const EIGHTH_GLYPHS = ["", "⅛", "¼", "⅜", "½", "⅝", "¾", "⅞"] as const;
+
+/**
+ * Split inches into a whole part plus a count of eighths, rounding to the
+ * nearest eighth: 35.5 → 35 + 4/8, 35.47 → 35 + 4/8, 35.94 → 36 + 0/8.
+ * DISPLAY only — the stored value keeps whatever precision it was measured at.
+ */
+function splitInches(totalInches: number): { whole: number; eighths: number } {
+  const eighths = Math.round(totalInches * 8);
+  const whole = Math.floor(eighths / 8);
+  return { whole, eighths: eighths - whole * 8 };
+}
+
+/**
+ * Inches the way a carpenter reads them: 36 → `36"`, 35.5 → `35½"`,
+ * 35.375 → `35⅜"`. Whole numbers stay whole (never `36.0"`).
+ */
+export function formatInches(totalInches: number | null | undefined): string | null {
+  if (totalInches == null || !Number.isFinite(totalInches) || totalInches < 0) {
+    return null;
+  }
+  const { whole, eighths } = splitInches(totalInches);
+  return `${whole}${EIGHTH_GLYPHS[eighths]}"`;
+}
+
+/**
+ * Format total inches as feet-inches: 36 → `3'0"`, 35.5 → `2'11½"`. The
+ * fraction rides on the inches, same as it's called out on a plan.
+ */
 export function formatFeetInches(totalInches: number | null | undefined): string | null {
   if (totalInches == null || !Number.isFinite(totalInches) || totalInches < 0) {
     return null;
   }
-  const whole = Math.round(totalInches);
+  const { whole, eighths } = splitInches(totalInches);
   const feet = Math.floor(whole / 12);
   const inches = whole % 12;
-  return `${feet}'${inches}"`;
+  return `${feet}'${inches}${EIGHTH_GLYPHS[eighths]}"`;
 }
 
 /**
- * Human-friendly size string for display: `3'0" × 6'0" (36" × 72")`.
+ * Human-friendly size string for display: `3'0" × 6'0" (36" × 72")`, or
+ * `7'5½" × 9'11½" (89½" × 119½")` when the sheet dimensions a real half inch.
  * Prefers the decoded width/height; falls back to just the total inches, or to
  * the raw size code, and returns null when there's nothing to show.
  */
@@ -160,9 +200,13 @@ export function formatSize(
   if (width_in != null && height_in != null) {
     const wf = formatFeetInches(width_in);
     const hf = formatFeetInches(height_in);
+    const wi = formatInches(width_in);
+    const hi = formatInches(height_in);
     const feetPart = wf && hf ? `${wf} × ${hf}` : null;
-    const inchPart = `${Math.round(width_in)}" × ${Math.round(height_in)}"`;
-    return feetPart ? `${feetPart} (${inchPart})` : inchPart;
+    const inchPart = wi && hi ? `${wi} × ${hi}` : null;
+    if (feetPart && inchPart) return `${feetPart} (${inchPart})`;
+    if (inchPart) return inchPart;
+    if (feetPart) return feetPart;
   }
   if (size_code && size_code.trim()) return size_code.trim();
   return null;

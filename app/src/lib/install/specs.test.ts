@@ -3,6 +3,7 @@ import {
   decodeSizeCode,
   findSizeCode,
   formatFeetInches,
+  formatInches,
   formatSize,
   hasAnySpec,
   mergeSpecsByMark,
@@ -59,6 +60,67 @@ describe("formatFeetInches", () => {
     expect(formatFeetInches(undefined)).toBeNull();
     expect(formatFeetInches(-5)).toBeNull();
   });
+
+  // Black Desert's shop drawings print genuine half inches. Rounding one away
+  // used to give a crew a dimension that was half an inch wrong.
+  it("keeps a half inch instead of rounding it away", () => {
+    expect(formatFeetInches(35.5)).toBe("2'11½\"");
+    expect(formatFeetInches(59.5)).toBe("4'11½\"");
+    expect(formatFeetInches(71.5)).toBe("5'11½\"");
+    expect(formatFeetInches(89.5)).toBe("7'5½\"");
+    expect(formatFeetInches(119.5)).toBe("9'11½\"");
+    expect(formatFeetInches(137.5)).toBe("11'5½\"");
+    expect(formatFeetInches(143.5)).toBe("11'11½\"");
+    expect(formatFeetInches(179.5)).toBe("14'11½\"");
+  });
+
+  it("shows the other tape-measure fractions", () => {
+    expect(formatFeetInches(36.125)).toBe("3'0⅛\"");
+    expect(formatFeetInches(36.25)).toBe("3'0¼\"");
+    expect(formatFeetInches(36.375)).toBe("3'0⅜\"");
+    expect(formatFeetInches(36.625)).toBe("3'0⅝\"");
+    expect(formatFeetInches(36.75)).toBe("3'0¾\"");
+    expect(formatFeetInches(36.875)).toBe("3'0⅞\"");
+  });
+
+  it("rounds a millimetre conversion to the nearest eighth, never a decimal", () => {
+    // 901mm → 35.47", which is the sheet's own 35 1/2" the long way round.
+    expect(formatFeetInches(35.47)).toBe("2'11½\"");
+    // A hair under the next whole inch rolls the feet over cleanly.
+    expect(formatFeetInches(35.97)).toBe("3'0\"");
+  });
+});
+
+describe("formatInches", () => {
+  it("leaves a whole inch clean — never 36.0\"", () => {
+    expect(formatInches(36)).toBe('36"');
+    expect(formatInches(72)).toBe('72"');
+    expect(formatInches(0)).toBe('0"');
+  });
+
+  it("reads a fractional inch off a tape", () => {
+    expect(formatInches(35.5)).toBe('35½"');
+    expect(formatInches(59.5)).toBe('59½"');
+    expect(formatInches(71.5)).toBe('71½"');
+    expect(formatInches(89.5)).toBe('89½"');
+    expect(formatInches(119.5)).toBe('119½"');
+    expect(formatInches(137.5)).toBe('137½"');
+    expect(formatInches(143.5)).toBe('143½"');
+    expect(formatInches(179.5)).toBe('179½"');
+    expect(formatInches(35.375)).toBe('35⅜"');
+  });
+
+  it("never prints a long decimal", () => {
+    expect(formatInches(35.47244094488189)).toBe('35½"');
+    expect(formatInches(71.49606299212599)).toBe('71½"');
+  });
+
+  it("returns null for invalid values", () => {
+    expect(formatInches(null)).toBeNull();
+    expect(formatInches(undefined)).toBeNull();
+    expect(formatInches(-1)).toBeNull();
+    expect(formatInches(Number.NaN)).toBeNull();
+  });
 });
 
 describe("formatSize", () => {
@@ -78,6 +140,40 @@ describe("formatSize", () => {
     expect(
       formatSize({ width_in: null, height_in: null, size_code: null }),
     ).toBeNull();
+  });
+
+  // Smith Residence's whole-inch behaviour is PINNED: 3060 must keep reading
+  // exactly as it does on the crew's sheets today.
+  it("keeps Smith's 3060 exactly as it reads today", () => {
+    expect(
+      formatSize({ width_in: 36, height_in: 72, size_code: "3060" }),
+    ).toBe("3'0\" × 6'0\" (36\" × 72\")");
+    expect(
+      formatSize({ width_in: 32, height_in: 54, size_code: "2846" }),
+    ).toBe("2'8\" × 4'6\" (32\" × 54\")");
+  });
+
+  it("shows Black Desert's half inches in both forms", () => {
+    expect(
+      formatSize({ width_in: 89.5, height_in: 119.5, size_code: null }),
+    ).toBe("7'5½\" × 9'11½\" (89½\" × 119½\")");
+    expect(
+      formatSize({ width_in: 35.5, height_in: 71.5, size_code: null }),
+    ).toBe("2'11½\" × 5'11½\" (35½\" × 71½\")");
+    expect(
+      formatSize({ width_in: 143.5, height_in: 179.5, size_code: null }),
+    ).toBe("11'11½\" × 14'11½\" (143½\" × 179½\")");
+  });
+
+  it("never rounds a half inch up to the next whole inch", () => {
+    const shown = formatSize({
+      width_in: 35.5,
+      height_in: 71.5,
+      size_code: null,
+    });
+    expect(shown).not.toContain('36"');
+    expect(shown).not.toContain('72"');
+    expect(shown).not.toContain(".");
   });
 });
 

@@ -17,7 +17,7 @@
 // unparseable returns null so a garbled transcription degrades to today's
 // behaviour rather than breaking the extraction.
 
-import { decodeSizeCode } from "./specs";
+import { decodeSizeCode, formatInches } from "./specs";
 
 /** Millimetres per inch — the printed dimensions lead with a mm figure. */
 const MM_PER_INCH = 25.4;
@@ -511,10 +511,10 @@ export function checkSpecSize(spec: SizeCheckSpec): SizeMismatch | null {
   };
 }
 
-/** Short inch form for a message — `36"`, `35.5"`. Unknown reads as `?`. */
+/** Short inch form for a message — `36"`, `35½"`. Unknown reads as `?`. */
 function describeInches(inches: number | null): string {
   if (inches == null) return "?";
-  return `${round2(inches)}"`;
+  return formatInches(inches) ?? "?";
 }
 
 /**
