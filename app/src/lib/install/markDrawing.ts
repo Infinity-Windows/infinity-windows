@@ -64,6 +64,44 @@ export function padBbox(bbox: Bbox, pad = 0.032): Bbox {
   ];
 }
 
+/** The provenance fields a staleness check needs off a spec row. */
+export interface DrawingProvenance {
+  /** Normalized box locating the drawing, or null/absent when there isn't one. */
+  image_bbox?: unknown;
+  /** Specs planset the box was measured against; null when unknown/legacy. */
+  planset_id?: string | null;
+}
+
+/**
+ * True when a spec's drawing coordinates can no longer be trusted, because they
+ * were measured against a DIFFERENT specs planset than the one the project has
+ * now.
+ *
+ * This is the one failure mode worth being strict about. A missing drawing is
+ * obvious and harmless — the card shows text only. A drawing cropped from a
+ * replaced planset is neither: page 3 of the new upload is a real page, the box
+ * still lands on a real elevation, and the installer sees a confident picture of
+ * the WRONG unit with no way to tell.
+ *
+ * A null `planset_id` is treated as UNKNOWN, not stale, so we keep showing it.
+ * Every row written before the provenance column existed has a null here —
+ * including the live Smith / PV Townhomes drawings that crews are using today —
+ * and hiding those would delete working pictures from a job mid-install to guard
+ * against a re-upload that may never happen. The same reasoning applies when we
+ * don't know the project's current specs planset: no comparison is possible, so
+ * we don't pretend to have made one. PURE.
+ */
+export function isDrawingStale(
+  spec: DrawingProvenance,
+  currentSpecsPlansetId: string | null | undefined,
+): boolean {
+  if (validateBbox(spec.image_bbox) == null) return false;
+  const source = spec.planset_id;
+  if (!source) return false;
+  if (!currentSpecsPlansetId) return false;
+  return source !== currentSpecsPlansetId;
+}
+
 export interface PixelRect {
   x: number;
   y: number;

@@ -4,6 +4,7 @@ import type { DraftOpening, ExistingOpeningLite, PlansetKindLike } from "./extra
 import { markBase, planDraftPersistence } from "./extract";
 import type { MarkSpecDraft, ProjectMarkSpec } from "./specs";
 import { mergeSpecsByMark, parseSpecRow } from "./specs";
+import { dropCropsForPlanset } from "./cropCache";
 import { extractSpecsDeterministic } from "./specsDeterministic";
 import { parseSpecPageStatuses, type SpecPageStatus } from "./specPageStatus";
 import { visionMarksToDrafts, type RawVisionMark } from "./specsVision";
@@ -1260,9 +1261,13 @@ export interface SpecSaveResult {
 function specDraftColumns(
   projectId: string,
   spec: MarkSpecDraft,
+  plansetId?: string | null,
 ): Record<string, unknown> {
   return {
     project_id: projectId,
+    // Which specs planset the page/box below were measured against. Without it a
+    // replaced planset silently repoints every saved box at a different drawing.
+    planset_id: plansetId ?? spec.planset_id ?? null,
     mark_code: spec.mark_code,
     style: spec.style,
     glass: spec.glass,
@@ -1285,26 +1290,36 @@ function specDraftColumns(
   };
 }
 
-/** Columns added by the mark-drawing migration; dropped when it isn't applied. */
-const DRAWING_COLUMNS = ["image_page", "image_bbox"] as const;
+/**
+ * Spec columns that arrive with their own migration and may not exist yet:
+ * `image_page`/`image_bbox` (20260727000000_mark_spec_drawings.sql) and
+ * `planset_id` (20260728000000_mark_spec_planset.sql). Losing the picture — or
+ * the record of which file it came from — must never cost us the spec TEXT, so a
+ * write PostgREST rejects for one of these is retried without it.
+ */
+const OPTIONAL_SPEC_COLUMNS = ["image_page", "image_bbox", "planset_id"] as const;
 
 /**
- * True when the failure is PostgREST rejecting the elevation-drawing columns
- * because `20260727000000_mark_spec_drawings.sql` hasn't been applied yet.
+ * Which optional columns (if any) PostgREST is complaining about. Empty when the
+ * error is something else entirely — those must still surface.
  */
-function isMissingDrawingColumn(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
+function missingOptionalSpecColumns(error: unknown): string[] {
+  if (!error || typeof error !== "object") return [];
   const e = error as { code?: unknown; message?: unknown };
   const message = typeof e.message === "string" ? e.message.toLowerCase() : "";
-  if (!DRAWING_COLUMNS.some((c) => message.includes(c))) return false;
-  return e.code === "PGRST204" || e.code === "42703" || message.includes("column");
+  const named = OPTIONAL_SPEC_COLUMNS.filter((c) => message.includes(c));
+  if (named.length === 0) return [];
+  const looksLikeColumnError =
+    e.code === "PGRST204" || e.code === "42703" || message.includes("column");
+  return looksLikeColumnError ? [...named] : [];
 }
 
-function withoutDrawingColumns(
+function withoutColumns(
   row: Record<string, unknown>,
+  columns: Iterable<string>,
 ): Record<string, unknown> {
   const copy = { ...row };
-  for (const c of DRAWING_COLUMNS) delete copy[c];
+  for (const c of columns) delete copy[c];
   return copy;
 }
 
@@ -1337,6 +1352,8 @@ export async function extractAndSaveMarkSpecs(
   projectId: string,
   pages: { pageNumber: number; text: string }[],
   images?: { pageNumber: number; dataUrl: string }[],
+  /** The specs planset these pages/images came from, stored as provenance. */
+  plansetId?: string | null,
 ): Promise<SpecSaveResult> {
   const empty: SpecSaveResult = {
     saved: 0,
@@ -1385,23 +1402,62 @@ export async function extractAndSaveMarkSpecs(
   const skipped = drafts.length - toSave.length;
   if (toSave.length === 0) return { saved: 0, skipped, ...status };
 
-  const rows = toSave.map((d) => specDraftColumns(projectId, d));
+  const rows = toSave.map((d) => specDraftColumns(projectId, d, plansetId));
   const upsert = (payload: Record<string, unknown>[]) =>
     supabase
       .from("project_mark_specs")
       .upsert(payload, { onConflict: "project_id,mark_code" });
 
+  // Drop whichever optional column an un-migrated environment rejects and try
+  // again, one complaint at a time, rather than losing the whole extraction. Two
+  // retries covers both migrations being absent.
   let { error } = await upsert(rows);
-  if (error && isMissingDrawingColumn(error)) {
-    // The drawing migration isn't applied on this environment yet — save the
-    // spec TEXT anyway rather than losing the whole extraction over a picture.
-    ({ error } = await upsert(rows.map(withoutDrawingColumns)));
+  const dropped = new Set<string>();
+  for (let attempt = 0; attempt < OPTIONAL_SPEC_COLUMNS.length && error; attempt++) {
+    const missing = missingOptionalSpecColumns(error).filter((c) => !dropped.has(c));
+    if (missing.length === 0) break;
+    for (const c of missing) dropped.add(c);
+    ({ error } = await upsert(rows.map((r) => withoutColumns(r, dropped))));
   }
   if (error) {
     if (isMissingSpecsTable(error)) return { saved: 0, skipped, ...status };
     throw error;
   }
   return { saved: toSave.length, skipped, ...status };
+}
+
+/**
+ * Blank the drawing coordinates on any spec row that points at a DIFFERENT
+ * specs planset than `currentPlansetId` — i.e. the leftovers after a specs
+ * planset is replaced. Confirmed marks are skipped by the re-extract, so without
+ * this their boxes would keep pointing into a file that is no longer the source
+ * of truth; the client already refuses to render those, and clearing them makes
+ * the row honest instead of merely un-rendered.
+ *
+ * Rows with a null `planset_id` are left ALONE: that's legacy data whose
+ * provenance we never recorded (all pre-migration rows, including the live Smith
+ * job), and wiping working drawings to satisfy a bookkeeping rule would be a
+ * downgrade for the crew. Best-effort — nothing here is worth failing an upload.
+ */
+export async function clearStaleDrawingCoords(
+  projectId: string,
+  currentPlansetId: string,
+): Promise<number> {
+  if (!projectId || !currentPlansetId) return 0;
+  try {
+    const { data, error } = await supabase
+      .from("project_mark_specs")
+      .update({ image_page: null, image_bbox: null })
+      .eq("project_id", projectId)
+      .not("planset_id", "is", null)
+      .neq("planset_id", currentPlansetId)
+      .select("id");
+    if (error) throw error;
+    return data?.length ?? 0;
+  } catch {
+    // Table or columns not migrated yet, or no write permission — nothing to do.
+    return 0;
+  }
 }
 
 /**
@@ -1442,11 +1498,43 @@ export async function reextractSpecPages(
     ? allPages.filter((p) => wanted.has(p.pageNumber))
     : allPages;
 
-  return extractAndSaveMarkSpecs(
+  const result = await extractAndSaveMarkSpecs(
     projectId,
     textPages.length > 0 ? textPages : allPages,
     images,
+    planset.id,
   );
+  await retireReplacedSpecsPlansets(projectId, planset.id);
+  return result;
+}
+
+/**
+ * Called once a specs planset has been processed for a project: retire anything
+ * still tied to a PREVIOUS specs planset, so a replaced upload can't leave
+ * drawings pointing into a file that is no longer the source of truth.
+ *
+ * Two things retire: the saved coordinates (see
+ * {@link clearStaleDrawingCoords}) and any crop pixels already cached from those
+ * older plansets. The cache purge is best-effort on purpose — the client's
+ * staleness guard already refuses to render one of those crops, so this is
+ * housekeeping, not the safety net.
+ */
+export async function retireReplacedSpecsPlansets(
+  projectId: string,
+  currentPlansetId: string,
+): Promise<void> {
+  if (!projectId || !currentPlansetId) return;
+  await clearStaleDrawingCoords(projectId, currentPlansetId);
+  try {
+    const plansets = await listPlansets(projectId);
+    for (const ps of plansets) {
+      if (ps.kind === "specs" && ps.id !== currentPlansetId) {
+        await dropCropsForPlanset(ps.id);
+      }
+    }
+  } catch {
+    // Ignore — a stale crop is already unreachable through the staleness guard.
+  }
 }
 
 /** Foreman edit of one mark spec (marks it source='manual'). */

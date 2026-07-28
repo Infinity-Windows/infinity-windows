@@ -50,6 +50,14 @@ export interface MarkSpec {
    * `image_page`. Null when the extractor didn't return a usable box.
    */
   image_bbox: Bbox | null;
+  /**
+   * WHICH specs planset `image_page`/`image_bbox` were read from. Those
+   * coordinates only mean anything against that one file — re-upload the specs
+   * with the pages in a different order and the same box crops a different
+   * window. Null means unknown provenance (a row written before the column
+   * existed); see `isDrawingStale`.
+   */
+  planset_id: string | null;
   /** A foreman has reviewed + trusted this spec. */
   confirmed: boolean;
   /** How the spec was captured. */
@@ -274,6 +282,7 @@ export function normalizeSpec(
     extra: extra && Object.keys(extra).length > 0 ? extra : null,
     image_page: pageNumber(o.image_page ?? o.imagePage ?? o.page),
     image_bbox: validateBbox(o.image_bbox ?? o.imageBbox ?? o.bbox),
+    planset_id: str(o.planset_id ?? o.plansetId),
     source,
   };
 }
@@ -370,14 +379,17 @@ function fillGaps(base: MarkSpecDraft, next: MarkSpecDraft): MarkSpecDraft {
       (merged as Record<string, unknown>)[k] = next[k];
     }
   }
-  // The drawing's page and box only mean anything TOGETHER — a box from page 2
-  // pinned to page 1 would crop the wrong corner of the wrong sheet — so they
-  // move as a pair and only when `base` has no drawing of its own.
+  // The drawing's page, box and source planset only mean anything TOGETHER — a
+  // box from page 2 pinned to page 1, or either one pinned to the wrong file,
+  // crops the wrong drawing — so all three move as a set and only when `base`
+  // has no drawing of its own.
   if (base.image_bbox == null && next.image_bbox != null) {
     merged.image_page = next.image_page;
     merged.image_bbox = next.image_bbox;
+    merged.planset_id = next.planset_id;
   } else if (base.image_page == null && base.image_bbox == null) {
     merged.image_page = next.image_page;
+    merged.planset_id ??= next.planset_id;
   }
   if (base.extra || next.extra) {
     merged.extra = { ...(next.extra ?? {}), ...(base.extra ?? {}) };
