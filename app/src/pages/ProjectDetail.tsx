@@ -71,6 +71,7 @@ import { DispatchBoard } from "./install/DispatchBoard";
 import { PhotoFeed } from "../components/photos/PhotoFeed";
 import { JobChat } from "../components/chat/JobChat";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
+import { formatApiError } from "../lib/errors";
 
 const windowLookups = { getWindowByWindowId, findWindowByCode, findWindowBySerial };
 
@@ -1142,7 +1143,7 @@ function ReceivingPanel({
       queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   const reconcile = useMutation({
@@ -1489,7 +1490,7 @@ function WarehouseTab({
       setScanMessage(`Loaded ${unit.window_id}`);
       invalidate();
     },
-    onError: (e) => setScanMessage(String(e)),
+    onError: (e) => setScanMessage(formatApiError(e)),
   });
 
   const loadBatch = useMutation({

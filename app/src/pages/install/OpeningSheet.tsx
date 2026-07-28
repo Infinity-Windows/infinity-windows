@@ -49,6 +49,7 @@ import { createIssue } from "../../lib/issues";
 import type { QrPayload } from "../../lib/qr";
 import { resolveWindowFromScan } from "../../lib/scanResolve";
 import { supabase } from "../../lib/supabase";
+import { formatApiError } from "../../lib/install/errors";
 
 const windowLookups = { getWindowByWindowId, findWindowByCode, findWindowBySerial };
 
@@ -241,7 +242,7 @@ export function OpeningSheet() {
       setSearch("");
       refresh();
     },
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   // Any scanned label (window id / short code / serial) resolves to one unit,
@@ -257,7 +258,7 @@ export function OpeningSheet() {
         setMessage("That's a slot label — scan a window label.");
       }
     } catch (e) {
-      setMessage(String(e));
+      setMessage(formatApiError(e));
     }
   };
 
@@ -281,7 +282,7 @@ export function OpeningSheet() {
       setMessage("Rough opening saved.");
       refresh();
     },
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   const saveCondition = useMutation({
@@ -291,7 +292,7 @@ export function OpeningSheet() {
       setMessage(condition === "damaged" ? "Marked damaged — office flagged." : "Condition OK.");
       refresh();
     },
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   const flag = useMutation({
@@ -301,7 +302,7 @@ export function OpeningSheet() {
       setFlagText("");
       refresh();
     },
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   const postJobNote = useMutation({
@@ -310,7 +311,7 @@ export function OpeningSheet() {
       setMessage("Site note sent to the lead.");
       setJobNoteText("");
     },
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   // Escalate a complication straight to the foreman as an urgent issue.
@@ -329,7 +330,7 @@ export function OpeningSheet() {
       queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
       queryClient.invalidateQueries({ queryKey: ["issues"] });
     },
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   // Damaged unit blocks install: ensure the foreman has an issue, then let the
@@ -356,7 +357,7 @@ export function OpeningSheet() {
       // ready window (same wiring as the post-install "Next one" button).
       goToNext();
     },
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   const startRecording = async () => {
@@ -376,7 +377,7 @@ export function OpeningSheet() {
       recorderRef.current = rec;
       setRecording(true);
     } catch (e) {
-      setMessage(`Mic unavailable: ${String(e)}`);
+      setMessage(`Mic unavailable: ${formatApiError(e)}`);
     }
   };
 
@@ -529,7 +530,7 @@ export function OpeningSheet() {
         navigate(`/projects/${projectId}?tab=map`);
       }
     },
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   // Lunch/Break: start a shift break (so shift-time and task-time reconcile),

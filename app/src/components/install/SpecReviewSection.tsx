@@ -19,6 +19,7 @@ import {
 } from "../../lib/install/printedSize";
 import { decodeSizeCode, formatSize, type ProjectMarkSpec } from "../../lib/install/specs";
 import { MarkDrawing } from "./MarkDrawing";
+import { formatApiError } from "../../lib/install/errors";
 import { SpecCoverageSummary } from "./SpecCoverageSummary";
 import { SpecSizeWarnings } from "./SpecSizeWarnings";
 
@@ -68,19 +69,19 @@ export function SpecReviewSection({ projectId }: Props) {
     mutationFn: (args: { id: string; patch: Parameters<typeof updateMarkSpec>[1] }) =>
       updateMarkSpec(args.id, args.patch),
     onSuccess: refresh,
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   const confirmOne = useMutation({
     mutationFn: confirmMarkSpec,
     onSuccess: refresh,
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   const confirmAll = useMutation({
     mutationFn: () => confirmMarkSpecs(projectId),
     onSuccess: refresh,
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   // The table may not exist yet, or a project may simply have no specs.

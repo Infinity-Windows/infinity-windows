@@ -29,6 +29,7 @@ import {
   rowsToDraftOpenings,
   summarizeDraftMarks,
 } from "../../lib/install/extract";
+import { formatApiError } from "../../lib/install/errors";
 import { extractCadDetailPages } from "../../lib/install/planDetails";
 import type { Planset, PlansetKind } from "../../lib/install/types";
 import { PlansetViewer } from "./PlansetViewer";
@@ -306,7 +307,7 @@ export function PlansetUpload() {
         );
       }
     },
-    onError: (e) => setProgress(String(e)),
+    onError: (e) => setProgress(formatApiError(e)),
   });
 
   // Re-read only the pages that failed (or the whole sheet when the vision call
@@ -341,7 +342,7 @@ export function PlansetUpload() {
           : `Re-read worked — specs saved for ${result.saved} mark(s).`,
       );
     },
-    onError: (e) => setRetryNote(String(e)),
+    onError: (e) => setRetryNote(formatApiError(e)),
   });
 
   const specPageNote = specPages
@@ -361,7 +362,7 @@ export function PlansetUpload() {
       const url = await getPlansetSignedUrl(ps);
       window.open(url, "_blank", "noopener,noreferrer");
     } catch (e) {
-      setViewError(String(e));
+      setViewError(formatApiError(e));
     }
   };
 

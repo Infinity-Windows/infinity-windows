@@ -25,6 +25,7 @@ import type { ScheduleVehicleLink, VehicleWithMeta } from "./vehicles/types";
 import { tripPhase } from "./travel/status";
 import type { Trip } from "./travel/types";
 import type { Project } from "./types";
+import { formatApiError } from "./errors";
 
 export {
   chunkMarkdown,
@@ -58,7 +59,7 @@ async function functionError(error: unknown): Promise<Error> {
       // fall through to the generic message
     }
   }
-  return error instanceof Error ? error : new Error(String(error));
+  return error instanceof Error ? error : new Error(formatApiError(error));
 }
 
 export interface AskResult {

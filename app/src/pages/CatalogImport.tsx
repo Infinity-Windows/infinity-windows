@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { importWindowTypes } from "../lib/api";
 import { useWindowTypes } from "../components/WindowTypePicker";
 import { parseCatalogCsv, type CatalogCsvRow } from "../lib/catalogCsv";
+import { formatApiError } from "../lib/errors";
 
 const TEMPLATE = `type_code,name,category,width_in,height_in,difficulty_rating,tutorial_url,notes
 CAS3050,Casement 30x50,casement,30,50,3,,
@@ -28,7 +29,7 @@ export function CatalogImport() {
       setPreview([]);
       setParseErrors([]);
     },
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   const onFile = async (file: File) => {

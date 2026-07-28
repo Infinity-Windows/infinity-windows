@@ -11,6 +11,7 @@ import {
   listProfiles,
   unassignOpening,
 } from "../../lib/install/api";
+import { formatApiError } from "../../lib/install/errors";
 import { openingReadiness } from "../../lib/install/fit";
 import {
   autoDistribute,
@@ -82,7 +83,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
       queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
       queryClient.invalidateQueries({ queryKey: ["issues"] });
     },
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   const refresh = () =>
@@ -92,13 +93,13 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
     mutationFn: (args: { openingId: string; profileId: string }) =>
       assignOpeningToInstaller(args.openingId, args.profileId),
     onSuccess: refresh,
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   const unassign = useMutation({
     mutationFn: (openingId: string) => unassignOpening(openingId),
     onSuccess: refresh,
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   const distribute = useMutation({
@@ -127,7 +128,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
       setMessage(`Auto-distributed ${n} opening(s).`);
       refresh();
     },
-    onError: (e) => setMessage(String(e)),
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   const all = openings.data ?? [];

@@ -26,6 +26,7 @@ import {
   SERVICE_STATUS_LABELS,
 } from "../lib/service";
 import { STATUS_LABELS } from "../lib/types";
+import { formatApiError } from "../lib/errors";
 
 // Friendly labels for the movement log so the unit history reads in plain
 // English (raw event codes fall through unchanged).
@@ -118,7 +119,7 @@ export function WindowDetail() {
       queryClient.invalidateQueries({ queryKey: ["serviceCases", unit.data?.id] });
       queryClient.invalidateQueries({ queryKey: ["serviceCasesAll"] });
     },
-    onError: (e) => setActionError(String(e)),
+    onError: (e) => setActionError(formatApiError(e)),
   });
 
   const moveTo = useMutation({
@@ -132,13 +133,13 @@ export function WindowDetail() {
       setActionError(null);
       refresh();
     },
-    onError: (e) => setActionError(String(e)),
+    onError: (e) => setActionError(formatApiError(e)),
   });
 
   const load = useMutation({
     mutationFn: () => loadWindow(unit.data!.id),
     onSuccess: refresh,
-    onError: (e) => setActionError(String(e)),
+    onError: (e) => setActionError(formatApiError(e)),
   });
 
   const saveName = useMutation({
@@ -148,7 +149,7 @@ export function WindowDetail() {
       setActionError(null);
       queryClient.invalidateQueries({ queryKey: ["window", windowId] });
     },
-    onError: (e) => setActionError(String(e)),
+    onError: (e) => setActionError(formatApiError(e)),
   });
 
   if (unit.isLoading) return <div className="page">Loading...</div>;
