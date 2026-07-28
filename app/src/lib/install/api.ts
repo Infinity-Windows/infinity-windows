@@ -939,6 +939,63 @@ export async function getOpening(id: string): Promise<ProjectOpening | null> {
 }
 
 /**
+ * Every table that points at `project_openings`, with the column that does it.
+ *
+ * `install_events` and `qc_checks` are ON DELETE CASCADE — deleting the opening
+ * destroys them. The other three are ON DELETE SET NULL, which orphans the row
+ * (an installer's open flag loses the window it was about). Neither outcome is
+ * acceptable during a routine re-extract, so any opening named here is kept.
+ */
+const OPENING_REFERENCE_TABLES: { table: string; column: string }[] = [
+  { table: "install_events", column: "project_opening_id" },
+  { table: "qc_checks", column: "project_opening_id" },
+  { table: "issues", column: "opening_id" },
+  { table: "task_sessions", column: "opening_id" },
+  { table: "service_cases", column: "opening_id" },
+];
+
+/** Postgres/PostgREST codes for "that table or column isn't in this schema". */
+const MISSING_RELATION_CODES = new Set(["42P01", "42703", "PGRST205", "PGRST204"]);
+
+/**
+ * Which of these openings are referenced by install events, QC checks, issues,
+ * task sessions or service cases?
+ *
+ * A table that doesn't exist in this database is skipped; any other error is
+ * thrown, because guessing "nothing references it" would licence a delete.
+ */
+export async function openingsReferencedElsewhere(
+  openingIds: string[],
+): Promise<Set<string>> {
+  const found = new Set<string>();
+  if (openingIds.length === 0) return found;
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < openingIds.length; i += 200) {
+    chunks.push(openingIds.slice(i, i + 200));
+  }
+
+  for (const { table, column } of OPENING_REFERENCE_TABLES) {
+    for (const chunk of chunks) {
+      const { data, error } = await supabase
+        .from(table)
+        .select(column)
+        .in(column, chunk);
+      if (error) {
+        if (MISSING_RELATION_CODES.has(error.code ?? "")) break;
+        throw error;
+      }
+      for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
+        const id = row[column];
+        if (typeof id === "string") found.add(id);
+      }
+    }
+  }
+
+  return found;
+}
+
+/**
  * Save a fresh extract as unconfirmed drafts. Guardrail (same philosophy as
  * the Horizon BOM rule): confirmed openings are never deleted or overwritten
  * by a re-extract.
@@ -964,11 +1021,17 @@ export async function saveDraftOpenings(
         .eq("project_id", projectId),
       supabase
         .from("project_openings")
-        .select("id, opening_code, confirmed, status, pin_x, pin_y, page_number, planset_id")
+        .select(
+          "id, opening_code, confirmed, status, pin_x, pin_y, page_number, planset_id, assigned_to, work_started_at, ro_width_in, ro_height_in, condition",
+        )
         .eq("project_id", projectId),
     ]);
   if (psErr) throw psErr;
   if (exErr) throw exErr;
+
+  const referenced = await openingsReferencedElsewhere(
+    (existing ?? []).map((o) => o.id as string),
+  );
 
   const normalizeKind = (kind: unknown): PlansetKindLike =>
     kind === "specs" ? "specs" : "building";
@@ -988,6 +1051,12 @@ export async function saveDraftOpenings(
     planset_kind: o.planset_id
       ? (kindById.get(o.planset_id) ?? "building")
       : "building",
+    assigned_to: o.assigned_to ?? null,
+    work_started_at: o.work_started_at ?? null,
+    ro_width_in: o.ro_width_in == null ? null : Number(o.ro_width_in),
+    ro_height_in: o.ro_height_in == null ? null : Number(o.ro_height_in),
+    condition: o.condition ?? null,
+    referenced: referenced.has(o.id),
   }));
 
   const plan = planDraftPersistence(existingLite, drafts, incomingKind);
