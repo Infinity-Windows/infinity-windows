@@ -5,6 +5,7 @@ import { markBase, planDraftPersistence } from "./extract";
 import type { MarkSpecDraft, ProjectMarkSpec } from "./specs";
 import { mergeSpecsByMark, parseSpecRow } from "./specs";
 import { extractSpecsDeterministic } from "./specsDeterministic";
+import { parseSpecPageStatuses, type SpecPageStatus } from "./specPageStatus";
 import { visionMarksToDrafts, type RawVisionMark } from "./specsVision";
 import type {
   InstallEvent,
@@ -1200,6 +1201,15 @@ export async function listMarkSpecs(
     .filter((s): s is ProjectMarkSpec => s !== null);
 }
 
+/** Specs plus the per-page outcome of the extraction that produced them. */
+export interface SpecExtractionResult {
+  specs: MarkSpecDraft[];
+  /** "vision" (page images) or "text" (schedule-table fallback). */
+  mode: "vision" | "text";
+  /** Per-page status; empty in text mode, which batches pages into one call. */
+  pages: SpecPageStatus[];
+}
+
 /**
  * Invoke the edge function to pull rich per-mark specs from a planset.
  *
@@ -1209,22 +1219,41 @@ export async function listMarkSpecs(
  * The function replies `mode: "vision"` with verbatim marks, which we normalize
  * client-side (strip project prefix, split size/operation, derive
  * tempered/egress) before merging. Text mode is the legacy schedule-table path.
+ *
+ * The reply also carries a per-page status, which the caller must keep: a page
+ * whose vision call failed returns no marks, and without that status it looks
+ * exactly like a page with no marks on it.
  */
 export async function aiExtractSpecs(
   pages: { pageNumber: number; text: string }[],
   projectId?: string,
   images?: { pageNumber: number; dataUrl: string }[],
-): Promise<MarkSpecDraft[]> {
+): Promise<SpecExtractionResult> {
   const { data, error } = await supabase.functions.invoke("extract-specs", {
     body: { pages, images, projectId },
   });
   if (error) throw error;
   if (data?.error) throw new Error(String(data.error));
   const raw = (data?.specs ?? []) as unknown[];
-  if (data?.mode === "vision") {
-    return visionMarksToDrafts(raw as RawVisionMark[]);
-  }
-  return mergeSpecsByMark(raw, "ai");
+  const mode = data?.mode === "vision" ? "vision" : "text";
+  return {
+    specs:
+      mode === "vision"
+        ? visionMarksToDrafts(raw as RawVisionMark[])
+        : mergeSpecsByMark(raw, "ai"),
+    mode,
+    pages: parseSpecPageStatuses(data?.pages),
+  };
+}
+
+/** Outcome of saving an extraction: what landed, plus what went wrong where. */
+export interface SpecSaveResult {
+  saved: number;
+  skipped: number;
+  /** Per-page vision outcome; empty when vision didn't run or wasn't reported. */
+  pages: SpecPageStatus[];
+  /** True when page images were sent but the vision call itself failed outright. */
+  visionFailed: boolean;
 }
 
 /** DB column set we persist for a mark spec draft (never writes confirmed). */
@@ -1298,20 +1327,36 @@ function withoutDrawingColumns(
  * The vision result is the base so its richer fields win; the deterministic
  * result fills size/operation gaps and adds marks vision missed. If the vision
  * call fails or no images are supplied, we still save the deterministic result.
+ *
+ * The returned `pages` is the per-page vision outcome, so the caller can tell a
+ * foreman that page 5 failed instead of quietly saving 5 pages' worth of marks
+ * and calling it done. `visionFailed` covers the other silence: the whole call
+ * blew up and only the deterministic parser's thin result was saved.
  */
 export async function extractAndSaveMarkSpecs(
   projectId: string,
   pages: { pageNumber: number; text: string }[],
   images?: { pageNumber: number; dataUrl: string }[],
-): Promise<{ saved: number; skipped: number }> {
-  if (!projectId || pages.length === 0) return { saved: 0, skipped: 0 };
+): Promise<SpecSaveResult> {
+  const empty: SpecSaveResult = {
+    saved: 0,
+    skipped: 0,
+    pages: [],
+    visionFailed: false,
+  };
+  if (!projectId || pages.length === 0) return empty;
 
   let aiDrafts: MarkSpecDraft[] = [];
+  let pageStatuses: SpecPageStatus[] = [];
+  let visionFailed = false;
   try {
-    aiDrafts = await aiExtractSpecs(pages, projectId, images);
+    const result = await aiExtractSpecs(pages, projectId, images);
+    aiDrafts = result.specs;
+    pageStatuses = result.pages;
   } catch {
     // Vision unavailable / errored — fall back to the deterministic parser.
     aiDrafts = [];
+    visionFailed = Boolean(images && images.length > 0);
   }
 
   const deterministic = extractSpecsDeterministic(pages);
@@ -1320,7 +1365,8 @@ export async function extractAndSaveMarkSpecs(
   // deterministic size/operation data reinforces (fills gaps) rather than
   // overwrites. Distinct marks from either source both survive.
   const drafts = mergeSpecsByMark([...aiDrafts, ...deterministic], "deterministic");
-  if (drafts.length === 0) return { saved: 0, skipped: 0 };
+  const status = { pages: pageStatuses, visionFailed };
+  if (drafts.length === 0) return { saved: 0, skipped: 0, ...status };
 
   // Which marks are already confirmed? Never overwrite those.
   let confirmedMarks = new Set<string>();
@@ -1337,7 +1383,7 @@ export async function extractAndSaveMarkSpecs(
     (d) => !confirmedMarks.has(d.mark_code.toUpperCase()),
   );
   const skipped = drafts.length - toSave.length;
-  if (toSave.length === 0) return { saved: 0, skipped };
+  if (toSave.length === 0) return { saved: 0, skipped, ...status };
 
   const rows = toSave.map((d) => specDraftColumns(projectId, d));
   const upsert = (payload: Record<string, unknown>[]) =>
@@ -1352,10 +1398,55 @@ export async function extractAndSaveMarkSpecs(
     ({ error } = await upsert(rows.map(withoutDrawingColumns)));
   }
   if (error) {
-    if (isMissingSpecsTable(error)) return { saved: 0, skipped };
+    if (isMissingSpecsTable(error)) return { saved: 0, skipped, ...status };
     throw error;
   }
-  return { saved: toSave.length, skipped };
+  return { saved: toSave.length, skipped, ...status };
+}
+
+/**
+ * Re-run the spec extraction over a project's specs planset, optionally only
+ * over `pageNumbers` — the retry affordance for the pages the vision pass
+ * couldn't read. Downloads and renders client-side (pdf.js is imported lazily
+ * so it stays out of the app shell), then goes through the same save path, so
+ * confirmed marks are still never clobbered.
+ *
+ * Re-reading a page can only ADD to what's stored: a page that fails again
+ * leaves the marks already saved from the good pages untouched.
+ */
+export async function reextractSpecPages(
+  projectId: string,
+  planset: Planset,
+  pageNumbers?: number[],
+): Promise<SpecSaveResult> {
+  const { extractAllText, loadPdf } = await import("./pdf");
+  const { renderSpecPageImages } = await import("./renderSpecImages");
+
+  const doc = await loadPdf(await downloadPlanset(planset));
+  const allPages = await extractAllText(doc);
+  const wanted =
+    pageNumbers && pageNumbers.length > 0 ? new Set(pageNumbers) : null;
+
+  let images: { pageNumber: number; dataUrl: string }[] = [];
+  try {
+    images = await renderSpecPageImages(doc, wanted ? { pages: [...wanted] } : {});
+  } catch {
+    // Rendering failed (e.g. phone memory) — the text path still runs.
+    images = [];
+  }
+
+  // The deterministic text parser is cheap and page-scoped, so when we're
+  // retrying specific pages we hand it only those pages too. Its marks then
+  // line up with the images instead of re-deriving the whole sheet.
+  const textPages = wanted
+    ? allPages.filter((p) => wanted.has(p.pageNumber))
+    : allPages;
+
+  return extractAndSaveMarkSpecs(
+    projectId,
+    textPages.length > 0 ? textPages : allPages,
+    images,
+  );
 }
 
 /** Foreman edit of one mark spec (marks it source='manual'). */

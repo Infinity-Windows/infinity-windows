@@ -22,6 +22,12 @@ interface RenderOptions {
   quality?: number;
   maxEdge?: number;
   maxPages?: number;
+  /**
+   * Only render these 1-based pages. Used when retrying the pages whose vision
+   * call failed — re-rendering a 6-page sheet to re-read one of them is wasted
+   * time and memory on a phone.
+   */
+  pages?: number[];
 }
 
 /** Render one page (1-based) to a downscaled JPEG data URL. */
@@ -47,18 +53,19 @@ export async function renderPageJpeg(
 }
 
 /**
- * Render up to `maxPages` pages to JPEG data URLs for the vision extractor.
- * Sequential (canvas memory) and best-effort: a page that fails to render is
- * skipped (the deterministic text path still covers it).
+ * Render up to `maxPages` pages to JPEG data URLs for the vision extractor, or
+ * just the pages named in `opts.pages`. Sequential (canvas memory) and
+ * best-effort: a page that fails to render is skipped (the deterministic text
+ * path still covers it).
  */
 export async function renderSpecPageImages(
   doc: PDFDocumentProxy,
   opts: RenderOptions = {},
 ): Promise<SpecPageImage[]> {
-  const { maxPages = 12, ...pageOpts } = opts;
+  const { maxPages = 12, pages, ...pageOpts } = opts;
   const out: SpecPageImage[] = [];
-  const count = Math.min(doc.numPages, maxPages);
-  for (let p = 1; p <= count; p++) {
+  const wanted = selectedPages(doc.numPages, maxPages, pages);
+  for (const p of wanted) {
     try {
       out.push({ pageNumber: p, dataUrl: await renderPageJpeg(doc, p, pageOpts) });
     } catch {
@@ -66,4 +73,24 @@ export async function renderSpecPageImages(
     }
   }
   return out;
+}
+
+/**
+ * Which 1-based pages to render: the explicit list (deduped, in order, and
+ * clamped to pages the document actually has) or the first `maxPages`. PURE.
+ */
+export function selectedPages(
+  numPages: number,
+  maxPages: number,
+  pages?: number[],
+): number[] {
+  if (pages && pages.length > 0) {
+    const seen = new Set<number>();
+    for (const p of pages) {
+      if (Number.isInteger(p) && p >= 1 && p <= numPages) seen.add(p);
+    }
+    return [...seen].sort((a, b) => a - b).slice(0, maxPages);
+  }
+  const count = Math.min(numPages, maxPages);
+  return Array.from({ length: Math.max(0, count) }, (_, i) => i + 1);
 }

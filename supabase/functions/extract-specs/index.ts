@@ -173,6 +173,53 @@ function cleanVisionMark(raw: unknown, pageNumber: number): RawVisionMark | null
   };
 }
 
+/**
+ * What happened on ONE page of the specs planset. Returned alongside the marks
+ * so a FAILED page is never mistaken for an EMPTY one — the whole point of this
+ * shape. On the real Smith job a page's vision call came back with zero marks
+ * and the client had no way to tell that from "this sheet has no marks on it",
+ * so a mark quietly lost its drawing.
+ *
+ *   ok        — the last attempt completed without throwing. A page can be
+ *               `ok` with `markCount: 0` (a genuine cover/detail sheet).
+ *   attempts  — how many vision calls we made (1–3), so the UI can say
+ *               "failed after 3 attempts".
+ *   error     — short, sanitized reason, only present when `ok` is false.
+ */
+interface VisionPageStatus {
+  pageNumber: number;
+  ok: boolean;
+  attempts: number;
+  markCount: number;
+  error?: string;
+}
+
+/** One initial vision call plus at most two retries per page. */
+const VISION_PAGE_ATTEMPTS = 3;
+/** Backoff before attempt 2 and attempt 3 — short; a foreman is waiting. */
+const VISION_RETRY_DELAYS_MS = [400, 1200];
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Reduce an unknown thrown value to a SHORT, safe message for the client.
+ * Upstream errors carry the whole provider response body, which is noisy and is
+ * exactly the sort of thing that must not be piped into a foreman's screen, so
+ * anything key-shaped is redacted, base64/data-url blobs are dropped, and the
+ * result is clipped hard.
+ */
+function shortError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err ?? "");
+  const cleaned = raw
+    .replace(/data:[^;,\s]+;base64,[A-Za-z0-9+/=]+/g, "[image]")
+    .replace(/\b(?:sk|sk-ant|api)[-_][A-Za-z0-9-_]{8,}/gi, "[redacted]")
+    .replace(/[A-Za-z0-9+/=]{80,}/g, "[redacted]")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "vision call failed";
+  return cleaned.length > 160 ? `${cleaned.slice(0, 157)}…` : cleaned;
+}
+
 const VISION_SYSTEM =
   "You transcribe a window & door manufacturer SHOP-DRAWING / spec sheet from " +
   "an IMAGE. The rich per-mark details (style, glass makeup, color, size code, " +
@@ -238,6 +285,96 @@ const SCHEMA =
   "you find (hardware, spacer, frame depth, mulls, notes) into extra as a flat " +
   "object of string values. One entry per distinct mark.";
 
+/**
+ * Run the vision pass over ONE rendered page, retrying up to
+ * {@link VISION_PAGE_ATTEMPTS} times, and report what happened.
+ *
+ * A retry is worth it in both failure shapes we actually saw in the field:
+ *   • the call THREW (provider 429/500/timeout) — obviously transient;
+ *   • the call succeeded but yielded ZERO marks on a page that plainly has a
+ *     spec table. That's the model shrugging, and asking again is the cheapest
+ *     fix; it's also why the retry can't be limited to thrown errors.
+ * The last attempt's outcome is what we report. A page that keeps returning no
+ * marks without ever throwing stays `ok` — it may genuinely be a cover sheet —
+ * but `markCount: 0` lets the client say so out loud either way.
+ */
+async function extractVisionPage(
+  img: { pageNumber: number; dataUrl: string },
+): Promise<{ marks: RawVisionMark[]; status: VisionPageStatus }> {
+  const pageNumber = img.pageNumber;
+  const parsedImg = dataUrlToImage(img.dataUrl ?? "");
+  if (!parsedImg) {
+    return {
+      marks: [],
+      status: {
+        pageNumber,
+        ok: false,
+        attempts: 0,
+        markCount: 0,
+        error: "page image was missing or not a base64 data URL",
+      },
+    };
+  }
+
+  let lastError: string | null = null;
+  for (let attempt = 1; attempt <= VISION_PAGE_ATTEMPTS; attempt++) {
+    if (attempt > 1) {
+      await sleep(VISION_RETRY_DELAYS_MS[attempt - 2] ?? 1200);
+    }
+    try {
+      const reply = await anthropicVisionChat({
+        system: `${VISION_SYSTEM}\n\n${VISION_SCHEMA}`,
+        text:
+          `This is page ${pageNumber} of a window/door spec sheet. ` +
+          "Transcribe every distinct mark's line-item, locate each " +
+          "mark's elevation drawing, and return the JSON now.",
+        images: [parsedImg],
+        maxTokens: 4096,
+      });
+      const parsed = parseJsonLoose(reply) as
+        | { marks?: unknown[] }
+        | unknown[]
+        | null;
+      const arr = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.marks)
+          ? parsed!.marks
+          : [];
+      const marks = arr
+        .map((m) => cleanVisionMark(m, pageNumber))
+        .filter((s): s is RawVisionMark => s !== null);
+
+      // Zero marks is retryable, but only while we have attempts left; the
+      // final empty answer is reported as a successful-but-empty page.
+      if (marks.length === 0 && attempt < VISION_PAGE_ATTEMPTS) {
+        lastError = "no marks returned";
+        continue;
+      }
+      return {
+        marks,
+        status: { pageNumber, ok: true, attempts: attempt, markCount: marks.length },
+      };
+    } catch (err) {
+      console.error(
+        `extract-specs vision page ${pageNumber} attempt ${attempt} failed`,
+        err,
+      );
+      lastError = shortError(err);
+    }
+  }
+
+  return {
+    marks: [],
+    status: {
+      pageNumber,
+      ok: false,
+      attempts: VISION_PAGE_ATTEMPTS,
+      markCount: 0,
+      error: lastError ?? "vision call failed",
+    },
+  };
+}
+
 Deno.serve(async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") {
@@ -266,42 +403,13 @@ Deno.serve(async (req) => {
       const limitedImages = images.slice(0, MAX_VISION_PAGES);
 
       const pageResults = await Promise.all(
-        limitedImages.map(async (img) => {
-          const parsedImg = dataUrlToImage(img.dataUrl ?? "");
-          if (!parsedImg) return [] as RawVisionMark[];
-          try {
-            const reply = await anthropicVisionChat({
-              system: `${VISION_SYSTEM}\n\n${VISION_SCHEMA}`,
-              text:
-                `This is page ${img.pageNumber} of a window/door spec sheet. ` +
-                "Transcribe every distinct mark's line-item, locate each " +
-                "mark's elevation drawing, and return the JSON now.",
-              images: [parsedImg],
-              maxTokens: 4096,
-            });
-            const parsed = parseJsonLoose(reply) as
-              | { marks?: unknown[] }
-              | unknown[]
-              | null;
-            const arr = Array.isArray(parsed)
-              ? parsed
-              : Array.isArray(parsed?.marks)
-                ? parsed!.marks
-                : [];
-            return arr
-              .map((m) => cleanVisionMark(m, img.pageNumber))
-              .filter((s): s is RawVisionMark => s !== null);
-          } catch (err) {
-            console.error("extract-specs vision page failed", err);
-            return [] as RawVisionMark[];
-          }
-        }),
+        limitedImages.map((img) => extractVisionPage(img)),
       );
 
       // Merge by raw mark string so a mark split across pages is reunited
       // without one page clobbering another's non-null values.
       const byMark = new Map<string, RawVisionMark>();
-      for (const mark of pageResults.flat()) {
+      for (const mark of pageResults.flatMap((r) => r.marks)) {
         const key = mark.mark.trim().toUpperCase();
         const existing = byMark.get(key);
         if (!existing) {
@@ -317,7 +425,11 @@ Deno.serve(async (req) => {
       }
 
       return jsonResponse(
-        { specs: [...byMark.values()], mode: "vision" },
+        {
+          specs: [...byMark.values()],
+          mode: "vision",
+          pages: pageResults.map((r) => r.status),
+        },
         200,
         cors,
       );
@@ -400,7 +512,10 @@ Deno.serve(async (req) => {
     }
     const specs = [...byMark.values()];
 
-    return jsonResponse({ specs, mode: "text" }, 200, cors);
+    // `pages` is always present so the client never has to branch on its
+    // absence; it's empty here because the text path batches several pages into
+    // one LLM call, so there is no honest per-page outcome to report.
+    return jsonResponse({ specs, mode: "text", pages: [] }, 200, cors);
   } catch (e) {
     console.error(e);
     return jsonResponse({ error: String(e) }, 500, cors);
