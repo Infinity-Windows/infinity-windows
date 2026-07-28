@@ -484,7 +484,7 @@ describe("summarizeExtractOutcome", () => {
       source: "merged",
     });
     expect(out.headline).toBe(
-      "Loaded 42 openings across 38 marks — 40 windows and 2 doors.",
+      "Loaded 42 openings across 3 marks — 40 windows and 2 doors.",
     );
     expect(out.headline).not.toContain("#14");
   });

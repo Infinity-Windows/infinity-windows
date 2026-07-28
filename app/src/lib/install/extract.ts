@@ -577,6 +577,86 @@ export function summarizeDraftMarks(
   return [...map.values()].sort((a, b) => a.mark.localeCompare(b.mark));
 }
 
+export interface MarkTally {
+  mark: string;
+  count: number;
+  kind: "window" | "door";
+}
+
+export interface ExtractOutcomeSummary {
+  /** One sentence with the numbers that matter. Always safe to show alone. */
+  headline: string;
+  /** Short supporting sentences: repeats ignored, references saved, source. */
+  notes: string[];
+  /** Mark-by-mark lines, for a disclosure — never in the headline. */
+  breakdown: string[];
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/**
+ * The message shown after "Load marks from plans".
+ *
+ * Black Desert has 38 marks, and spelling every one of them out ran to six
+ * lines on a phone — the opening count, the ignored repeats and the saved
+ * elevation references were all below the fold. The totals lead; the per-mark
+ * wording from #129 is kept verbatim and moved into the breakdown.
+ */
+export function summarizeExtractOutcome(input: {
+  marks: MarkTally[];
+  inserted: number;
+  skipped: number;
+  repeatViewCallouts: number;
+  elevationViews: number;
+  source: "none" | "schedule" | "details" | "merged" | string;
+}): ExtractOutcomeSummary {
+  const marks = [...input.marks].sort((a, b) =>
+    a.mark.localeCompare(b.mark, undefined, { numeric: true }),
+  );
+  const openings = marks.reduce((sum, m) => sum + m.count, 0);
+  const windows = marks
+    .filter((m) => m.kind === "window")
+    .reduce((sum, m) => sum + m.count, 0);
+  const doors = openings - windows;
+  // A mark can be tallied twice (a window and a door share the number), so
+  // count the distinct numbers, not the tallies.
+  const markCount = new Set(marks.map((m) => m.mark)).size;
+
+  const mix = [
+    windows > 0 ? plural(windows, "window") : null,
+    doors > 0 ? plural(doors, "door") : null,
+  ].filter(Boolean) as string[];
+
+  let headline: string;
+  if (marks.length === 0) {
+    headline = "No marks found.";
+  } else if (marks.length === 1) {
+    headline = `Loaded ${plural(openings, "opening")} — ${describeMarkCount(marks[0])}.`;
+  } else {
+    headline = `Loaded ${plural(openings, "opening")} across ${plural(
+      markCount,
+      "mark",
+    )} — ${mix.join(" and ")}.`;
+  }
+
+  const notes = [
+    input.skipped > 0 ? `${input.skipped} already confirmed — left alone.` : null,
+    input.repeatViewCallouts > 0
+      ? `Ignored ${plural(input.repeatViewCallouts, "repeat number")} on the elevation sheets — those draw the same openings again.`
+      : null,
+    input.elevationViews > 0
+      ? `Saved ${input.elevationViews} of them as a reference, so the crew can see where each window sits on the outside.`
+      : null,
+    input.source === "details"
+      ? "Source: manufacturer detail sheets / plan callouts."
+      : input.source === "merged"
+        ? "Source: plan callouts + detail sheets."
+        : null,
+  ].filter(Boolean) as string[];
+
+  return { headline, notes, breakdown: marks.map(describeMarkCount) };
+}
+
 export type PlansetKindLike = "building" | "specs";
 
 /** Existing opening as seen by the draft-persistence planner. */
