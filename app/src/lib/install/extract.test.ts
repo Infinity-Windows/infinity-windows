@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  describeMarkCount,
   extractScheduleRows,
   matchWindowType,
   parseScheduleRows,
@@ -439,5 +440,25 @@ describe("planDraftPersistence (per-slot re-extract, root-cause fix)", () => {
     ];
     const plan = planDraftPersistence(prior, [draft("14-1")], "building");
     expect(plan.inserts[0]).toMatchObject({ pin_x: 0.2, pin_y: 0.3, page_number: 4 });
+  });
+});
+
+// "3× #9 windows" was read on site as one window built from three pieces, and
+// the whole count was doubted because of it. A mark is a type; the number is how
+// many separate openings carry it.
+describe("describeMarkCount", () => {
+  it("says how many openings use a mark, not how many pieces it has", () => {
+    expect(describeMarkCount({ mark: "9", count: 3, kind: "window" })).toBe(
+      "3 windows use mark #9",
+    );
+    expect(describeMarkCount({ mark: "14", count: 25, kind: "window" })).toBe(
+      "25 windows use mark #14",
+    );
+    expect(describeMarkCount({ mark: "4A", count: 1, kind: "door" })).toBe(
+      "1 door uses mark #4A",
+    );
+    expect(describeMarkCount({ mark: "6", count: 12, kind: "door" })).toBe(
+      "12 doors use mark #6",
+    );
   });
 });
