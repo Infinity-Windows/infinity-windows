@@ -20,7 +20,10 @@ Always follow this loop:
 5. **Commit** with a clear message.
 6. **Push** the branch (`git push -u origin <branch>`).
 7. Open a PR into `master` with `gh pr create`.
-8. **Return the PR URL in chat** so a human can review and click Merge.
+8. **Return the PR URL in chat** so a human can read what shipped.
+9. **Merge it yourself once the build and tests pass**, then finish the job:
+   apply any migration the PR needs and deploy any function it changed. A PR
+   that is merged but not applied is not shipped.
 
 ## Rules
 
@@ -30,7 +33,14 @@ Always follow this loop:
   explicitly asked.
 - **If two edits collide,** the agent rebases/fixes the branch itself. Humans
   never hand-edit git or resolve conflicts by hand.
-- **Humans review and click Merge.** The agent stops after opening the PR.
+- **Green means green.** Only self-merge when the build passes and the tests
+  that cover the change pass. Pre-existing failures that also fail on `master`
+  don't block; a failure your change introduced does.
+- **Say what you shipped.** Report the merge, the migration, and the deploy in
+  chat, so a human can always see what changed without reading git.
+- **Stop and ask** before anything destructive or irreversible — dropping or
+  rewriting data, replacing a planset, force-pushing, or a schema change that
+  loses information. Speed applies to shipping, not to demolition.
 
 ## Opting out
 
