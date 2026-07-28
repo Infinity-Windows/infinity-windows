@@ -34,10 +34,10 @@ import {
 import { ExtractionProgress } from "../../components/install/ExtractionProgress";
 import {
   calloutsToDraftOpenings,
-  describeMarkCount,
   extractScheduleRows,
   rowsToDraftOpenings,
   summarizeDraftMarks,
+  summarizeExtractOutcome,
 } from "../../lib/install/extract";
 import { formatApiError } from "../../lib/install/errors";
 import {
@@ -337,23 +337,22 @@ export function PlansetUpload() {
           return;
         }
         if ("marks" in result && result.marks?.length) {
-          const markLine = result.marks.map(describeMarkCount).join(", ");
-          const repeats =
-            "repeatViewCallouts" in result ? (result.repeatViewCallouts ?? 0) : 0;
-          const elevations =
-            "elevationViews" in result ? (result.elevationViews ?? 0) : 0;
+          const outcome = summarizeExtractOutcome({
+            marks: result.marks,
+            inserted: result.drafts,
+            skipped: result.skipped,
+            repeatViewCallouts:
+              "repeatViewCallouts" in result
+                ? (result.repeatViewCallouts ?? 0)
+                : 0,
+            elevationViews:
+              "elevationViews" in result ? (result.elevationViews ?? 0) : 0,
+            source: "none",
+          });
           setSummary(
-            [
-              `Building plan ready. Loaded ${markLine} from plan callouts.`,
-              repeats > 0
-                ? `Ignored ${repeats} repeat number${repeats === 1 ? "" : "s"} on the elevation sheets — those draw the same openings again.`
-                : null,
-              elevations > 0
-                ? `Kept them as a reference instead: the crew can now see where ${elevations === 1 ? "a window" : "each window"} sits on the outside of the building.`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(" "),
+            [`Building plan ready. ${outcome.headline}`, ...outcome.notes].join(
+              " ",
+            ),
           );
           return;
         }
@@ -371,7 +370,14 @@ export function PlansetUpload() {
       if (result.drafts > 0 || result.linked > 0) {
         const markLine =
           "marks" in result && result.marks?.length
-            ? result.marks.map(describeMarkCount).join(", ")
+            ? summarizeExtractOutcome({
+                marks: result.marks,
+                inserted: result.drafts,
+                skipped: result.skipped,
+                repeatViewCallouts: 0,
+                elevationViews: 0,
+                source: "none",
+              }).headline
             : null;
         const sourceNote =
           "source" in result && result.source === "details"
@@ -382,7 +388,7 @@ export function PlansetUpload() {
         const specsSaved = "specs" in result ? (result.specs ?? 0) : 0;
         setSummary(
           [
-            markLine ? `Found ${markLine}.` : null,
+            markLine,
             sourceNote,
             result.drafts > 0 ? `${result.drafts} draft openings.` : null,
             result.linked > 0 ? `Linked types on ${result.linked} existing openings.` : null,

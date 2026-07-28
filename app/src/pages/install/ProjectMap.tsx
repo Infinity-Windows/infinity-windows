@@ -52,11 +52,12 @@ import {
   type PdfTextPage,
 } from "../../lib/install/planDetails";
 import {
-  describeMarkCount,
   extractScheduleRows,
   rowsToDraftOpenings,
   calloutsToDraftOpenings,
   summarizeDraftMarks,
+  summarizeExtractOutcome,
+  type ExtractOutcomeSummary,
 } from "../../lib/install/extract";
 import {
   outlinePathWithOpenings,
@@ -153,6 +154,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const [buildingPlansetId, setBuildingPlansetId] = useState<string | null>(null);
   const [specsPlansetId, setSpecsPlansetId] = useState<string | null>(null);
   const [extractNote, setExtractNote] = useState<string | null>(null);
+  const [extractSummary, setExtractSummary] =
+    useState<ExtractOutcomeSummary | null>(null);
   const [editingModel, setEditingModel] = useState(false);
 
   // Map-based ordered dispatch (foreman+). Tapping pins builds an ordered
@@ -322,6 +325,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       if (!specsPdf && !buildingPdf) {
         throw new Error("No building or specs PDF selected.");
       }
+      setExtractSummary(null);
       setExtractNote("Reading planset PDFs…");
       const { extractAllText, extractPlanMarkCallouts, loadPdf } = await import(
         "../../lib/install/pdf"
@@ -417,28 +421,16 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
       queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
       queryClient.invalidateQueries({ queryKey: ["elevationViews", projectId] });
-      const markLine = marks.map(describeMarkCount).join(", ");
-      setExtractNote(
-        [
-          markLine ? `Loaded ${markLine}.` : "No marks found.",
-          result.inserted > 0 ? `${result.inserted} new drafts.` : null,
-          result.skipped > 0
-            ? `${result.skipped} already confirmed — left alone.`
-            : null,
-          repeatViewCallouts > 0
-            ? `Ignored ${repeatViewCallouts} repeat number${repeatViewCallouts === 1 ? "" : "s"} on the elevation sheets — those draw the same openings again.`
-            : null,
-          elevationViews > 0
-            ? `Saved ${elevationViews} of them as a reference, so the crew can see where each window sits on the outside.`
-            : null,
-          source === "details"
-            ? "Source: manufacturer detail sheets / plan callouts."
-            : source === "merged"
-              ? "Source: plan callouts + detail sheets."
-              : null,
-        ]
-          .filter(Boolean)
-          .join(" "),
+      setExtractNote(null);
+      setExtractSummary(
+        summarizeExtractOutcome({
+          marks,
+          inserted: result.inserted,
+          skipped: result.skipped,
+          repeatViewCallouts,
+          elevationViews,
+          source,
+        }),
       );
     },
     onError: (e) => {
@@ -1506,6 +1498,31 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               : ""}
           </p>
           {extractNote && <p className="muted">{extractNote}</p>}
+          {extractSummary && (
+            <div className="extract-summary">
+              <p className="extract-summary-headline">
+                {extractSummary.headline}
+              </p>
+              {extractSummary.notes.map((note) => (
+                <p className="muted" key={note}>
+                  {note}
+                </p>
+              ))}
+              {extractSummary.breakdown.length > 1 && (
+                <details className="extract-summary-breakdown">
+                  <summary>
+                    Show the mark-by-mark breakdown (
+                    {extractSummary.breakdown.length})
+                  </summary>
+                  <ul>
+                    {extractSummary.breakdown.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )}
         </>
       )}
 
