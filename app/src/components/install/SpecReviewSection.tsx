@@ -11,9 +11,16 @@ import {
   listOpenings,
   updateMarkSpec,
 } from "../../lib/install/api";
+import {
+  checkSpecSize,
+  readPrintedSize,
+  resolveSpecSize,
+  sizeMismatchRecord,
+} from "../../lib/install/printedSize";
 import { decodeSizeCode, formatSize, type ProjectMarkSpec } from "../../lib/install/specs";
 import { MarkDrawing } from "./MarkDrawing";
 import { SpecCoverageSummary } from "./SpecCoverageSummary";
+import { SpecSizeWarnings } from "./SpecSizeWarnings";
 
 interface Props {
   projectId: string;
@@ -101,13 +108,33 @@ export function SpecReviewSection({ projectId }: Props) {
         patch.mutate({ id: s.id, patch: { [key]: value || null } as SpecPatch })
       }
       onSizeCode={(size_code) => {
+        // A hand-edited code goes through the same precedence as an extracted
+        // one: the dimensions printed on the drawing win over a decode they
+        // disagree with, and the stored mismatch record follows the new code
+        // rather than describing the old one.
         const decoded = decodeSizeCode(size_code);
+        const printed = readPrintedSize(s.extra);
+        const size = resolveSpecSize({
+          decodedWidthIn: decoded?.widthIn ?? null,
+          decodedHeightIn: decoded?.heightIn ?? null,
+          printedWidthIn: printed.widthIn,
+          printedHeightIn: printed.heightIn,
+        });
+        const mismatch = sizeMismatchRecord(
+          size_code,
+          printed.widthIn,
+          printed.heightIn,
+        );
+        const extra = { ...(s.extra ?? {}) };
+        if (mismatch) extra.size_mismatch = mismatch;
+        else delete extra.size_mismatch;
         patch.mutate({
           id: s.id,
           patch: {
             size_code: size_code || null,
-            width_in: decoded?.widthIn ?? null,
-            height_in: decoded?.heightIn ?? null,
+            width_in: size.widthIn,
+            height_in: size.heightIn,
+            extra,
           },
         });
       }}
@@ -135,6 +162,7 @@ export function SpecReviewSection({ projectId }: Props) {
         openingCodes={(openings.data ?? []).map((o) => o.opening_code)}
         specs={rows}
       />
+      <SpecSizeWarnings specs={rows} />
       {message && <p className="error">{message}</p>}
 
       {drafts.length > 0 && (
@@ -191,6 +219,10 @@ function SpecRow({
       width_in: decoded?.widthIn ?? null,
       height_in: decoded?.heightIn ?? null,
     }) ?? (sizeCode ? "can't decode — will store the raw code" : "—");
+  // What the drawing itself says, so the foreman can see both numbers side by
+  // side when the code and the sheet disagree.
+  const printed = readPrintedSize(spec.extra);
+  const mismatch = checkSpecSize({ ...spec, size_code: sizeCode || null });
 
   return (
     <div className="detail-card" style={{ marginTop: 10 }}>
@@ -244,6 +276,15 @@ function SpecRow({
               if (v !== (spec.size_code ?? "")) onSizeCode(v);
             }}
           />
+          {(printed.widthRaw || printed.heightRaw) && (
+            <span className="muted" style={{ fontSize: 11 }}>
+              Printed on the drawing: {printed.widthRaw ?? "—"} ×{" "}
+              {printed.heightRaw ?? "—"}
+              {mismatch
+                ? " — the code disagrees, so these are the sizes we show the crew."
+                : " — matches the code."}
+            </span>
+          )}
         </label>
 
         <div style={{ display: "flex", gap: 16, alignItems: "center" }}>

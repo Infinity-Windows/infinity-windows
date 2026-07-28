@@ -5,7 +5,9 @@
 //
 // The VISION path additionally reports WHERE each mark's elevation drawing sits
 // on the page (a normalized bounding box) so the app can crop that picture out
-// of the planset and show it next to the text.
+// of the planset and show it next to the text, and transcribes the overall
+// dimensions PRINTED on that drawing so the client can verify the call size
+// decoded to the size the sheet actually states.
 //
 // Parsing is defensive: a bad/garbled line is skipped, never thrown. The client
 // (`lib/install/specs.ts`) does the deterministic size-code decode and final
@@ -121,6 +123,14 @@ interface RawVisionMark {
   size_code: string | null;
   operation: string | null;
   qty: string | null;
+  /**
+   * The overall width/height PRINTED beside the elevation, transcribed exactly
+   * as shown — e.g. "901(35 1/2\")", "1816(71 1/2\")" (millimetres with the
+   * inch equivalent in parentheses). The client uses these to verify the call
+   * size decoded to the dimensions the sheet actually states.
+   */
+  printed_width: string | null;
+  printed_height: string | null;
   /** Normalized [x0,y0,x1,y1] of this mark's elevation drawing on the page. */
   bbox: [number, number, number, number] | null;
   /** 1-based page the drawing (and this transcription) came from. */
@@ -163,6 +173,12 @@ function cleanVisionMark(raw: unknown, pageNumber: number): RawVisionMark | null
     size_code: str(o.size_code) ?? str(o.sizeCode) ?? str(o.size),
     operation: str(o.operation) ?? str(o.config),
     qty: str(o.qty) ?? str(o.quantity) ?? str(o.count),
+    // Kept verbatim, units and all — the client parses them. Only the keys we
+    // asked for are accepted: a loose `width` could just as easily be the model
+    // echoing the decoded call size, and a wrong dimension that OVERRIDES the
+    // size code is worse than no dimension at all.
+    printed_width: str(o.printed_width) ?? str(o.printedWidth),
+    printed_height: str(o.printed_height) ?? str(o.printedHeight),
     bbox,
     // The page is ours, not the model's — we know which image we sent. Only
     // meaningful alongside a box, so it rides along with one.
@@ -225,9 +241,10 @@ const VISION_SYSTEM =
   "an IMAGE. The rich per-mark details (style, glass makeup, color, size code, " +
   "operation) are drawn into the sheet as graphics/text you must READ. " +
   "Transcribe the spec table EXACTLY as printed — do not paraphrase, do not " +
-  "invent any value that is not visible (use null). You ALSO locate each " +
-  "mark's ELEVATION DRAWING (the line drawing of the unit, usually captioned " +
-  '"Outside View") and report where it sits on the page. Output one object ' +
+  "invent any value that is not visible (use null). You ALSO transcribe the " +
+  "overall dimensions PRINTED on each mark's drawing, verbatim, and locate " +
+  "each mark's ELEVATION DRAWING (the line drawing of the unit, usually " +
+  'captioned "Outside View") and report where it sits on the page. One object ' +
   "per distinct window/door MARK. Return STRICT JSON only, no prose, no " +
   "markdown.";
 
@@ -240,6 +257,8 @@ const VISION_SCHEMA =
   '"size_code": string|null, ' +
   '"operation": string|null, ' +
   '"qty": string|null, ' +
+  '"printed_width": string|null, ' +
+  '"printed_height": string|null, ' +
   '"bbox": [number, number, number, number]|null ' +
   "} ] }. " +
   'mark is the label exactly as printed on the sheet (e.g. "PV Townhomes Bldg ' +
@@ -247,6 +266,15 @@ const VISION_SCHEMA =
   'manufacturer call size like "3060" or "6080 XO" (keep the operation token ' +
   "if printed with it). operation is Fixed / Sliding / XO / OX / Casement / " +
   "etc. glass is the full glass makeup string if shown. " +
+  "printed_width and printed_height are the OVERALL width and height " +
+  "DIMENSIONS PRINTED on that mark's elevation drawing (on or beside its " +
+  "dimension lines) — the horizontal one is the width, the vertical one is " +
+  "the height. TRANSCRIBE THEM CHARACTER FOR CHARACTER, including units, " +
+  "fractions and any parenthesised inch equivalent — a sheet printing " +
+  '901(35 1/2") must come back as exactly that string, not 901 and not 35.5. ' +
+  "Do NOT convert, round, average or paraphrase them, and do NOT copy the " +
+  "call size into them. Use null when no overall dimension is printed for " +
+  "that mark. " +
   "bbox is the bounding box of THAT MARK'S ELEVATION DRAWING ONLY, as " +
   "[x0, y0, x1, y1] normalized 0..1 against the FULL page, origin at the TOP-" +
   "LEFT corner (x grows right, y grows down). INCLUDE the drawing's dimension " +
