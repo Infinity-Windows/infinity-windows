@@ -5,6 +5,9 @@ export interface PlanMarkCallout {
   /** Normalized 0–1 pin on the PDF page. */
   x: number;
   y: number;
+  /** Normalized size of the drawn number, when the annotation gave one. */
+  labelW?: number | null;
+  labelH?: number | null;
 }
 
 const MARK_TOKEN_RE = /^#?([A-Z]{0,3}-?\d{1,4}[A-Z]?)$/i;

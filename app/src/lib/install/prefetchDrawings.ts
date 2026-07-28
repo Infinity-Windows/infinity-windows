@@ -16,9 +16,14 @@
 //   • it stops at a small cap, and any failure ends the run quietly. The cards
 //     still crop on demand exactly as before.
 
-import { hasCachedCrop, markDrawingDataUrl } from "./drawingCrops";
+import {
+  elevationCropDataUrl,
+  hasCachedCrop,
+  hasCachedElevationCrop,
+  markDrawingDataUrl,
+} from "./drawingCrops";
 import { validateBbox } from "./markDrawing";
-import type { Planset } from "./types";
+import type { MarkElevationView, Planset } from "./types";
 
 /** Most drawings to warm in one pass — a crew member's day, not a whole job. */
 const MAX_PREFETCH = 12;
@@ -119,6 +124,70 @@ export function schedulePrefetchMarkDrawings(
   const cancelIdle = whenIdle(() => {
     if (cancelled) return;
     void prefetchMarkDrawings(planset, specs, () => cancelled);
+  });
+  return () => {
+    cancelled = true;
+    cancelIdle();
+  };
+}
+
+/**
+ * The same favour for the elevation references: warm "where does this go on the
+ * building" for the marks a crew member is holding today, off the BUILDING
+ * planset, while My Work is sitting idle on wifi.
+ *
+ * Behaves exactly like the spec-drawing prefetch — one at a time, yielding to
+ * idle, skipped entirely on a metered or slow connection, stops quietly on the
+ * first failure — because a phone in a canyon is the case that matters and the
+ * cards crop on demand regardless.
+ */
+export async function prefetchElevationCrops(
+  planset: Planset,
+  views: MarkElevationView[],
+  shouldStop: () => boolean = () => false,
+): Promise<number> {
+  if (connectionLooksExpensive()) return 0;
+
+  const wanted = views
+    .map((view) => ({
+      planset,
+      pageNumber: view.page_number,
+      bbox: validateBbox(view.crop_bbox),
+      markCode: view.mark_code,
+      pin: { x: view.pin_x, y: view.pin_y },
+      label: { w: view.label_w, h: view.label_h },
+    }))
+    .filter(
+      (req): req is typeof req & { bbox: NonNullable<typeof req.bbox> } =>
+        req.bbox != null && Boolean(req.markCode),
+    )
+    .slice(0, MAX_PREFETCH);
+
+  let warmed = 0;
+  for (const req of wanted) {
+    if (shouldStop()) break;
+    try {
+      if (await hasCachedElevationCrop(req)) continue;
+      await new Promise<void>((resolve) => whenIdle(() => resolve()));
+      if (shouldStop()) break;
+      await elevationCropDataUrl(req);
+      warmed += 1;
+    } catch {
+      break;
+    }
+  }
+  return warmed;
+}
+
+/** Schedule {@link prefetchElevationCrops}; returns an effect-cleanup canceller. */
+export function schedulePrefetchElevationCrops(
+  planset: Planset,
+  views: MarkElevationView[],
+): () => void {
+  let cancelled = false;
+  const cancelIdle = whenIdle(() => {
+    if (cancelled) return;
+    void prefetchElevationCrops(planset, views, () => cancelled);
   });
   return () => {
     cancelled = true;

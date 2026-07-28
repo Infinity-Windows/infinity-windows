@@ -64,25 +64,36 @@ export interface CropKeyParts {
   bbox: Bbox;
   /** Page render width the crop was sliced from — a different scale is a different image. */
   scale: number;
+  /**
+   * Which KIND of picture this is, when one planset yields more than one. The
+   * spec drawing (white-on-black, no marker) and the elevation reference (the
+   * sheet as drawn, with the mark ringed) can share a planset, page and box and
+   * are not the same image. Omitted for the spec drawing so keys already in
+   * everyone's IndexedDB keep hitting.
+   */
+  variant?: string;
 }
 
 /**
- * Cache key for one crop: `planset:MARK:boxhash:scale`. Every part changes the
- * pixels, so every part is in the key; the mark is upper-cased so "4a" and "4A"
- * share one entry. PURE.
+ * Cache key for one crop: `planset:MARK:boxhash:scale[:variant]`. Every part
+ * changes the pixels, so every part is in the key; the mark is upper-cased so
+ * "4a" and "4A" share one entry. PURE.
  */
 export function cropCacheKey({
   plansetId,
   markCode,
   bbox,
   scale,
+  variant,
 }: CropKeyParts): string {
-  return [
+  const parts = [
     plansetId,
     markCode.trim().toUpperCase(),
     hashBbox(bbox),
     Math.round(scale),
-  ].join(":");
+  ];
+  if (variant) parts.push(variant);
+  return parts.join(":");
 }
 
 /** Rough byte size of a data URL (base64 is ~4 chars per 3 bytes). */

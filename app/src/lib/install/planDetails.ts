@@ -131,24 +131,57 @@ export function isElevationSheet(text: string): boolean {
   return score >= 40;
 }
 
+/** The two sides of one decision: what counts, and what is only drawn again. */
+export interface CalloutSplit<T> {
+  /** Callouts on floor drawings — these, and only these, become openings. */
+  planCallouts: T[];
+  /** The same windows re-numbered on elevation views. Reference material only. */
+  repeatViewCallouts: T[];
+}
+
+/**
+ * Split callouts into the ones that decide the opening count and the ones that
+ * are the same windows drawn again on an elevation view.
+ *
+ * ONE decision, two outputs, deliberately: the elevation reference is built from
+ * `repeatViewCallouts` and the openings from `planCallouts`, so no callout can
+ * ever be both, and their union is always every callout that came in.
+ *
+ * `planCallouts` is never empty: if every page reads as an elevation the set is
+ * kept whole (and nothing is treated as a repeat), because losing the job's
+ * openings is far worse than counting one twice.
+ */
+export function splitCalloutsByFloorPlan<T extends { pageNumber: number }>(
+  callouts: T[],
+  pages: PdfTextPage[],
+): CalloutSplit<T> {
+  const elevationPages = new Set(
+    pages.filter((page) => isElevationSheet(page.text)).map((p) => p.pageNumber),
+  );
+  if (elevationPages.size === 0) {
+    return { planCallouts: callouts, repeatViewCallouts: [] };
+  }
+  const planCallouts = callouts.filter((c) => !elevationPages.has(c.pageNumber));
+  if (planCallouts.length === 0) {
+    return { planCallouts: callouts, repeatViewCallouts: [] };
+  }
+  return {
+    planCallouts,
+    repeatViewCallouts: callouts.filter((c) =>
+      elevationPages.has(c.pageNumber),
+    ),
+  };
+}
+
 /**
  * Drop the callouts that sit on elevation or section sheets, so one physical
  * window becomes one opening however many views it is drawn in.
- *
- * Never returns an empty list: if every page reads as an elevation the set is
- * kept whole, because losing the job's openings is far worse than counting one
- * twice.
  */
 export function calloutsOnFloorPlanSheets<T extends { pageNumber: number }>(
   callouts: T[],
   pages: PdfTextPage[],
 ): T[] {
-  const elevationPages = new Set(
-    pages.filter((page) => isElevationSheet(page.text)).map((p) => p.pageNumber),
-  );
-  if (elevationPages.size === 0) return callouts;
-  const kept = callouts.filter((c) => !elevationPages.has(c.pageNumber));
-  return kept.length > 0 ? kept : callouts;
+  return splitCalloutsByFloorPlan(callouts, pages).planCallouts;
 }
 
 /**

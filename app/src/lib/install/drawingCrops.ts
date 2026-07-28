@@ -20,6 +20,7 @@
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import { downloadPlanset } from "./api";
 import { cropCacheKey, readCrop, writeCrop } from "./cropCache";
+import { calloutRingCircle } from "./elevationViews";
 import { bboxToPixelRect, invertLineArt, padBbox, type Bbox } from "./markDrawing";
 import type { Planset } from "./types";
 
@@ -167,6 +168,124 @@ export async function hasCachedCrop(req: CropRequest): Promise<boolean> {
     bbox: req.bbox,
     scale: PAGE_RENDER_WIDTH,
   });
+  if (cropCache.has(key)) return true;
+  return (await readCrop(key)) != null;
+}
+
+// --- Elevation reference crops -------------------------------------------
+//
+// The other picture a mark can have: the exterior elevation drawing off the
+// BUILDING planset, with the mark's number ringed, so a crew member can see
+// which hole in which wall they are about to fill. It shares every cache here —
+// the same document, the same rendered page canvas, the same IndexedDB store —
+// so a job that has both kinds of drawing still downloads each planset once.
+
+/** Ring color: reads on white paper and on the sheet's own blue/green numbers. */
+const RING_COLOR = "#e11d48";
+/** Tells the elevation crops apart from the spec crop of the same box. */
+const ELEVATION_VARIANT = "elev";
+
+export interface ElevationCropRequest {
+  /** The BUILDING planset the elevation sheets live on. */
+  planset: Planset;
+  pageNumber: number;
+  /** The drawing region to show, as stored on the elevation-view row. */
+  bbox: Bbox;
+  markCode: string;
+  pin: { x: number; y: number };
+  label: { w: number | null; h: number | null };
+}
+
+function elevationKey(req: ElevationCropRequest): string {
+  return cropCacheKey({
+    plansetId: req.planset.id,
+    markCode: req.markCode,
+    bbox: req.bbox,
+    scale: PAGE_RENDER_WIDTH,
+    variant: ELEVATION_VARIANT,
+  });
+}
+
+/**
+ * Crop the drawing region and ring the mark.
+ *
+ * Deliberately NOT run through `invertLineArt`. That transform exists for
+ * manufacturer shop drawings, which are pure black line-work on white; an
+ * architectural elevation is stone hatching, glazing tones and the
+ * draughtsman's own colored numbers, and inverting it turns the materials into
+ * white blobs and throws away the color coding the crew reads. The sheet is
+ * shown as drawn.
+ */
+function cropElevation(
+  page: HTMLCanvasElement,
+  req: ElevationCropRequest,
+): string {
+  const rect = bboxToPixelRect(req.bbox, page.width, page.height);
+  const out = document.createElement("canvas");
+  out.width = rect.width;
+  out.height = rect.height;
+  const ctx = out.getContext("2d");
+  if (!ctx) throw new Error("2d canvas unavailable");
+
+  ctx.drawImage(
+    page,
+    rect.x,
+    rect.y,
+    rect.width,
+    rect.height,
+    0,
+    0,
+    rect.width,
+    rect.height,
+  );
+
+  const ring = calloutRingCircle({
+    pin: req.pin,
+    label: req.label,
+    bbox: req.bbox,
+    pageWidth: page.width,
+    pageHeight: page.height,
+  });
+  ctx.strokeStyle = RING_COLOR;
+  ctx.lineWidth = ring.lineWidth;
+  ctx.beginPath();
+  ctx.arc(ring.cx, ring.cy, ring.r, 0, Math.PI * 2);
+  ctx.stroke();
+
+  return out.toDataURL("image/png");
+}
+
+/** One mark's elevation reference as a PNG data URL. Same caching as above. */
+export async function elevationCropDataUrl(
+  req: ElevationCropRequest,
+): Promise<string> {
+  const key = elevationKey(req);
+
+  const inMemory = cropCache.get(key);
+  if (inMemory) return inMemory;
+
+  const persisted = await readCrop(key);
+  if (persisted) {
+    cropCache.set(key, persisted);
+    evict(cropCache, MAX_CACHED_CROPS);
+    return persisted;
+  }
+
+  const url = cropElevation(
+    await getPageCanvas(req.planset, req.pageNumber),
+    req,
+  );
+  cropCache.set(key, url);
+  evict(cropCache, MAX_CACHED_CROPS);
+  void writeCrop(key, url, req.planset.id);
+  return url;
+}
+
+/** True when this elevation crop needs neither the network nor the renderer. */
+export async function hasCachedElevationCrop(
+  req: ElevationCropRequest,
+): Promise<boolean> {
+  const key = elevationKey(req);
   if (cropCache.has(key)) return true;
   return (await readCrop(key)) != null;
 }

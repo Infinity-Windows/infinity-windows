@@ -19,6 +19,7 @@ import {
 } from "../../lib/install/printedSize";
 import { decodeSizeCode, formatSize, type ProjectMarkSpec } from "../../lib/install/specs";
 import { MarkDrawing } from "./MarkDrawing";
+import { MarkElevationViews } from "./MarkElevationViews";
 import { formatApiError } from "../../lib/install/errors";
 import { SpecReconciliationReport } from "./SpecReconciliationReport";
 import { SpecSizeWarnings } from "./SpecSizeWarnings";
@@ -246,6 +247,11 @@ function SpecRow({
       {/* The cropped elevation, so the foreman can see the picture matches the
           mark before confirming. */}
       <MarkDrawing spec={spec} projectId={projectId} />
+      <MarkElevationViews
+        projectId={projectId}
+        markCode={spec.mark_code}
+        variant="bare"
+      />
 
       <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
         {TEXT_FIELDS.map((f) => (

@@ -1,3 +1,4 @@
+import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import { supabase } from "../supabase";
 import type { WindowType } from "../types";
 import type { DraftOpening, ExistingOpeningLite, PlansetKindLike } from "./extract";
@@ -11,8 +12,11 @@ import { pendingPages, type StoredPageProgress } from "./extractionProgress";
 import { formatApiError } from "./errors";
 import { visionMarksToDrafts, type RawVisionMark } from "./specsVision";
 import type { DiscrepancyKind } from "./specReconciliation";
+import { elevationAppearances, type ElevationAppearance } from "./elevationViews";
+import { splitCalloutsByFloorPlan } from "./planDetails";
 import type {
   InstallEvent,
+  MarkElevationView,
   MemoTopics,
   PlanOutline,
   Planset,
@@ -884,6 +888,20 @@ export function findSpecsPlanset(plansets: Planset[]): Planset | null {
   );
 }
 
+/**
+ * The project's current BUILDING planset — the architect's sheets: the floor
+ * drawings the map is built from and the exterior elevations the reference
+ * pictures are cropped from. `kind` defaults to building on legacy rows, and
+ * `listPlansets` returns newest first.
+ */
+export function findBuildingPlanset(plansets: Planset[]): Planset | null {
+  return (
+    plansets.find(
+      (p) => (p.kind ?? "building") === "building" && plansetIsViewable(p),
+    ) ?? null
+  );
+}
+
 /** Signed URL for opening/downloading the stored file (1 hour). */
 export async function getPlansetSignedUrl(
   planset: Planset,
@@ -1170,6 +1188,116 @@ export async function confirmOpenings(projectId: string): Promise<void> {
     .eq("project_id", projectId)
     .eq("confirmed", false);
   if (error) throw error;
+}
+
+// --- Elevation references (where a mark is DRAWN, not what exists) ---
+
+/** True when the elevation-view table hasn't been migrated yet. */
+function isMissingElevationTable(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: unknown; message?: unknown };
+  if (e.code === "PGRST205" || e.code === "42P01") return true;
+  const message = typeof e.message === "string" ? e.message.toLowerCase() : "";
+  return message.includes("project_mark_elevation_views");
+}
+
+/**
+ * Every elevation reference on a project. Best-effort: returns [] when the
+ * table isn't there yet, so no page can crash and nothing is shown.
+ */
+export async function listElevationViews(
+  projectId: string,
+): Promise<MarkElevationView[]> {
+  if (!projectId) return [];
+  const { data, error } = await supabase
+    .from("project_mark_elevation_views")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("mark_code");
+  if (error) {
+    if (isMissingElevationTable(error)) return [];
+    throw error;
+  }
+  return (data ?? []) as MarkElevationView[];
+}
+
+/**
+ * Replace a building planset's elevation references with what a fresh read of
+ * that planset found.
+ *
+ * Deletes the project's rows and re-inserts, so re-reading the same plans can
+ * only ever restate the same rows — it cannot pile up duplicates, and it cannot
+ * touch openings, which live in a different table entirely. Clearing the whole
+ * project rather than just this planset is deliberate: a job has one building
+ * plan, and rows measured against a superseded one describe a file the crew is
+ * no longer working from.
+ *
+ * Best-effort by design. This is reference material; a project whose migration
+ * hasn't been applied, or a crew member without write permission, simply sees
+ * no pictures, and nothing upstream is failed because of it.
+ */
+export async function saveElevationViews(
+  projectId: string,
+  plansetId: string,
+  appearances: ElevationAppearance[],
+): Promise<{ saved: number }> {
+  if (!projectId || !plansetId) return { saved: 0 };
+  try {
+    const { error: delErr } = await supabase
+      .from("project_mark_elevation_views")
+      .delete()
+      .eq("project_id", projectId);
+    if (delErr) throw delErr;
+
+    if (appearances.length === 0) return { saved: 0 };
+    const rows = appearances.map((a) => ({
+      project_id: projectId,
+      planset_id: plansetId,
+      mark_code: a.mark,
+      page_number: a.pageNumber,
+      region_index: a.regionIndex,
+      view_name: a.viewName,
+      pin_x: a.pinX,
+      pin_y: a.pinY,
+      label_w: a.labelW,
+      label_h: a.labelH,
+      crop_bbox: a.cropBbox,
+    }));
+    const { error } = await supabase
+      .from("project_mark_elevation_views")
+      .insert(rows);
+    if (error) throw error;
+    return { saved: rows.length };
+  } catch {
+    return { saved: 0 };
+  }
+}
+
+/**
+ * Where every mark is drawn on an already-loaded building planset's elevation
+ * sheets.
+ *
+ * Shares ONE decision with the opening count (`splitCalloutsByFloorPlan`):
+ * openings come from the floor drawings, and only the callouts that decision
+ * threw out can become references. Every caller goes through here, so that
+ * cannot drift apart in one place and not another.
+ */
+export async function elevationAppearancesFromDoc(
+  doc: PDFDocumentProxy,
+): Promise<ElevationAppearance[]> {
+  const { extractAllText, extractPlanMarkCallouts, extractSheetTextLines } =
+    await import("./pdf");
+  const callouts = await extractPlanMarkCallouts(doc);
+  if (callouts.length === 0) return [];
+  const { repeatViewCallouts } = splitCalloutsByFloorPlan(
+    callouts,
+    await extractAllText(doc),
+  );
+  if (repeatViewCallouts.length === 0) return [];
+  return elevationAppearances({
+    repeatViewCallouts,
+    lines: await extractSheetTextLines(doc),
+  });
 }
 
 // --- Per-mark specs (rich line-item, shared across a mark's openings) ---
