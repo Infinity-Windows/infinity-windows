@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { rowsToDraftOpenings } from "./extract";
 import {
+  calloutsOnFloorPlanSheets,
   countPlanMarkCallouts,
   extractCadDetailPages,
   findFloorPlanPages,
+  isElevationSheet,
   mergeScheduleWithDetailRows,
   parseCadDetailScheduleRows,
   parseDetailQty,
@@ -65,6 +67,93 @@ describe("mark callout recognition", () => {
   });
 });
 
+// Verbatim from Black Desert's plan set as pdf.js reads it. Page 1 is A.102
+// MAIN LvL FLOOR PLAN; pages 2–4 are A.201–A.203 EXTERIOR ELEVATIONS, which
+// re-number the same 42 openings 57 more times.
+const BLACK_DESERT_FLOOR_SHEET = [
+  "MAIN LvL FLOOR PLAN  35  36  8",
+  "FLOOR PLAN KEYED NOTES :",
+  "36.WINDOW. SEE WINDOW SCHEDULE FOR STYLE, AND OPERATION. VERIFY W/ THE",
+  "EXTERIOR ELEVATION FOR THE SILL HEIGHT.",
+  "A.102  FLOOR PLAN  COPYRIGHT 2025 ROUGE DESIGNS LLC",
+].join("\n");
+
+const BLACK_DESERT_ELEVATION_SHEET = [
+  "ELEVATION MATERIAL LEGEND :",
+  "EXTERIOR ELEVATION GENERAL NOTES :",
+  "ELEVATION HEIGHT NOTES :",
+  "*ARCHITECTURAL + 0'-0\" ELEVATION = SURVEY ELEVATION",
+  "*FOUNDATION ELEVATION ARE RELATIVE TO ARCHITECTURAL MAIN FLOOR",
+  "19'-0\"  OVERALL HEIGHT( 19FT MAX HEIGHT )",
+  "FRONT ELEVATION - SOUTH  1/8\" = 1'-0\"",
+  "RIGHT ELEVATION - EAST  1/8\" = 1'-0\"",
+  "A.201  EXTERIOR  ELEVATIONS",
+].join("\n");
+
+describe("isElevationSheet", () => {
+  it("reads Black Desert's elevation sheets as elevations, not floor drawings", () => {
+    expect(isElevationSheet(BLACK_DESERT_ELEVATION_SHEET)).toBe(true);
+    expect(isElevationSheet(BLACK_DESERT_FLOOR_SHEET)).toBe(false);
+  });
+
+  // The floor plan's own keyed notes say "VERIFY W/ THE EXTERIOR ELEVATION" and
+  // the elevation sheets say "FOUNDATION ELEVATION ARE RELATIVE TO…". Neither is
+  // a drawing title, so neither may decide this.
+  it("is not fooled by the word elevation in prose", () => {
+    expect(
+      isElevationSheet(
+        "SEE WINDOW SCHEDULE FOR STYLE. VERIFY W/ THE EXTERIOR ELEVATION FOR THE SILL HEIGHT.",
+      ),
+    ).toBe(false);
+    expect(
+      isElevationSheet("*FOUNDATION ELEVATION ARE RELATIVE TO ARCHITECTURAL"),
+    ).toBe(false);
+  });
+
+  // Smith's marked plan has no extractable text at all — every number on it is a
+  // FreeText annotation. A page we know nothing about is never thrown away.
+  it("keeps a page with no readable text", () => {
+    expect(isElevationSheet("")).toBe(false);
+  });
+});
+
+describe("calloutsOnFloorPlanSheets", () => {
+  it("counts Black Desert's openings once, on the floor plan", () => {
+    const callouts = [
+      ...Array.from({ length: 42 }, () => ({ pageNumber: 1 })),
+      ...Array.from({ length: 28 }, () => ({ pageNumber: 2 })),
+      ...Array.from({ length: 22 }, () => ({ pageNumber: 3 })),
+      ...Array.from({ length: 7 }, () => ({ pageNumber: 4 })),
+    ];
+    const pages = [
+      { pageNumber: 1, text: BLACK_DESERT_FLOOR_SHEET },
+      { pageNumber: 2, text: BLACK_DESERT_ELEVATION_SHEET },
+      { pageNumber: 3, text: BLACK_DESERT_ELEVATION_SHEET },
+      { pageNumber: 4, text: BLACK_DESERT_ELEVATION_SHEET },
+    ];
+    expect(callouts).toHaveLength(99);
+    expect(calloutsOnFloorPlanSheets(callouts, pages)).toHaveLength(42);
+  });
+
+  it("leaves Smith's textless marked plan untouched", () => {
+    const callouts = [
+      ...Array.from({ length: 34 }, () => ({ pageNumber: 3 })),
+      ...Array.from({ length: 30 }, () => ({ pageNumber: 4 })),
+    ];
+    const pages = [1, 2, 3, 4].map((pageNumber) => ({ pageNumber, text: "" }));
+    expect(calloutsOnFloorPlanSheets(callouts, pages)).toHaveLength(64);
+  });
+
+  it("keeps every callout rather than return none", () => {
+    const callouts = [{ pageNumber: 1 }, { pageNumber: 2 }];
+    const pages = [1, 2].map((pageNumber) => ({
+      pageNumber,
+      text: BLACK_DESERT_ELEVATION_SHEET,
+    }));
+    expect(calloutsOnFloorPlanSheets(callouts, pages)).toHaveLength(2);
+  });
+});
+
 describe("findFloorPlanPages", () => {
   it("ignores a cover-sheet index and selects drawing sheets", () => {
     expect(
@@ -94,6 +183,22 @@ describe("findFloorPlanPages", () => {
     ];
     expect(findFloorPlanPages(pages)).toEqual([1]);
     expect(findFloorPlanPages(pages, callouts)).toEqual([1, 2, 3]);
+  });
+
+  it("does not call a marked-up elevation sheet a numbered floor drawing", () => {
+    const pages = [
+      { pageNumber: 1, text: BLACK_DESERT_FLOOR_SHEET },
+      { pageNumber: 2, text: BLACK_DESERT_ELEVATION_SHEET },
+      { pageNumber: 3, text: BLACK_DESERT_ELEVATION_SHEET },
+      { pageNumber: 4, text: BLACK_DESERT_ELEVATION_SHEET },
+    ];
+    const callouts = [
+      ...Array.from({ length: 42 }, () => ({ pageNumber: 1 })),
+      ...Array.from({ length: 28 }, () => ({ pageNumber: 2 })),
+      ...Array.from({ length: 22 }, () => ({ pageNumber: 3 })),
+      ...Array.from({ length: 7 }, () => ({ pageNumber: 4 })),
+    ];
+    expect(findFloorPlanPages(pages, callouts)).toEqual([1]);
   });
 
   it("leaves a text-marked plan's page order alone", () => {

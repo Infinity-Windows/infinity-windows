@@ -41,6 +41,7 @@ import {
   toggleSelection,
 } from "../../lib/install/mapDispatch";
 import {
+  calloutsOnFloorPlanSheets,
   extractCadDetailPages,
   findFloorPlanPages,
   type CadDetailPage,
@@ -328,12 +329,20 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       }
 
       let drafts;
+      let repeatViewCallouts = 0;
       if (buildingPdf) {
         setExtractNote("Reading mark callouts on the building plan…");
         const buildingDoc = await loadPdf(await downloadPlanset(buildingPdf));
         const callouts = await extractPlanMarkCallouts(buildingDoc);
         if (callouts.length > 0) {
-          drafts = calloutsToDraftOpenings(callouts, rows, types.data ?? []);
+          // Elevation sheets re-number the same windows the floor plan already
+          // numbers; only the floor drawings decide the opening count.
+          const planCallouts = calloutsOnFloorPlanSheets(
+            callouts,
+            await extractAllText(buildingDoc),
+          );
+          repeatViewCallouts = callouts.length - planCallouts.length;
+          drafts = calloutsToDraftOpenings(planCallouts, rows, types.data ?? []);
           source = rows.length > 0 ? "merged" : "details";
         }
       }
@@ -345,9 +354,14 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       await linkSpecsToOpenings(projectId, drafts);
       const plansetId = specsPdf?.id ?? buildingPdf!.id;
       const result = await saveDraftOpenings(projectId, plansetId, drafts);
-      return { result, source, marks: summarizeDraftMarks(drafts) };
+      return {
+        result,
+        source,
+        marks: summarizeDraftMarks(drafts),
+        repeatViewCallouts,
+      };
     },
-    onSuccess: ({ result, source, marks }) => {
+    onSuccess: ({ result, source, marks, repeatViewCallouts }) => {
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
       queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
       const markLine = marks
@@ -362,6 +376,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           result.inserted > 0 ? `${result.inserted} new drafts.` : null,
           result.skipped > 0
             ? `${result.skipped} already confirmed — left alone.`
+            : null,
+          repeatViewCallouts > 0
+            ? `Ignored ${repeatViewCallouts} repeat number${repeatViewCallouts === 1 ? "" : "s"} on the elevation sheets — those draw the same openings again.`
             : null,
           source === "details"
             ? "Source: manufacturer detail sheets / plan callouts."
