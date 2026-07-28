@@ -113,6 +113,15 @@ begin
     where n.nspname = 'public'
       and p.prokind = 'f'
       and p.prosecdef = true
+      -- Extensions install their functions into public too (pgvector puts
+      -- `subvector`, `l2_normalize`, … here). Those belong to the extension
+      -- owner, so altering one aborts the whole migration with "must be owner
+      -- of function". Skip anything an extension owns; hardening ours is the
+      -- point, and extension functions ship with their own search_path.
+      and not exists (
+        select 1 from pg_depend d
+        where d.objid = p.oid and d.deptype = 'e'
+      )
   loop
     execute format('alter function %s set search_path = public', fn.sig);
   end loop;
@@ -125,6 +134,10 @@ begin
     where n.nspname = 'public'
       and p.prokind = 'f'
       and p.prosecdef = false
+      and not exists (
+        select 1 from pg_depend d
+        where d.objid = p.oid and d.deptype = 'e'
+      )
       and (p.proconfig is null
            or not exists (
              select 1 from unnest(p.proconfig) c where c like 'search_path=%'
