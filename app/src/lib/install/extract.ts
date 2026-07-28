@@ -674,6 +674,41 @@ export interface ExistingOpeningLite {
   page_number: number;
   /** Kind of the planset this opening came from. */
   planset_kind: PlansetKindLike;
+  /** Dispatched to an installer (`assign_opening_to_installer`). */
+  assigned_to?: string | null;
+  /** Installer tapped "start" on this one (`start_opening_work`). */
+  work_started_at?: string | null;
+  /** Rough-opening measurements (`set_opening_rough_opening`). */
+  ro_width_in?: number | null;
+  ro_height_in?: number | null;
+  /** Arrival condition once someone has actually looked (`set_opening_condition`). */
+  condition?: string | null;
+  /**
+   * Another table points at this opening: an install event, a QC check, an
+   * issue, a task session or a service case.
+   */
+  referenced?: boolean;
+}
+
+/**
+ * Has anyone in the field touched this opening?
+ *
+ * `confirmed || status !== 'planned'` was the only guard, and it is not enough.
+ * Measuring, condition-checking, dispatching and starting work all record real
+ * effort WITHOUT moving either flag. Worse, `undo_install` deliberately resets
+ * an opening to planned/unconfirmed while KEEPING (voiding, not deleting) the
+ * install event — and `install_events` and `qc_checks` are ON DELETE CASCADE,
+ * so deleting that row would destroy the install record it was preserving.
+ */
+export function hasFieldWork(o: ExistingOpeningLite): boolean {
+  return Boolean(
+    o.assigned_to ||
+      o.work_started_at ||
+      o.ro_width_in != null ||
+      o.ro_height_in != null ||
+      (o.condition != null && o.condition !== "unknown") ||
+      o.referenced,
+  );
 }
 
 export interface DraftPersistencePlan {
@@ -700,6 +735,7 @@ export interface DraftPersistencePlan {
  *  3. Never creates a second opening for a mark that already exists in the
  *     other slot, and never touches confirmed / in-progress openings.
  *  4. Preserves manually placed pins across a same-kind re-extract.
+ *  5. Never deletes an opening that carries field work — see `hasFieldWork`.
  */
 export function planDraftPersistence(
   existing: ExistingOpeningLite[],
@@ -707,7 +743,7 @@ export function planDraftPersistence(
   incomingKind: PlansetKindLike,
 ): DraftPersistencePlan {
   const isProtected = (o: ExistingOpeningLite) =>
-    o.confirmed || o.status !== "planned";
+    o.confirmed || o.status !== "planned" || hasFieldWork(o);
 
   const sameKindStale = existing.filter(
     (o) => !isProtected(o) && o.planset_kind === incomingKind,

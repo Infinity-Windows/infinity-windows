@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "./supabase";
+import { invalidateOpeningQueries } from "./install/openingQueryKeys";
 
 /**
  * Realtime channels are keyed by topic inside the Supabase client: calling
@@ -31,11 +32,10 @@ export function useRealtimeOpenings(projectId: string | undefined) {
   useEffect(() => {
     if (!projectId) return;
 
-    const invalidate = () => {
-      queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["myOpenings"] });
-      queryClient.invalidateQueries({ queryKey: ["dispatch", projectId] });
-    };
+    // Includes the single-opening key: a re-extract replaces every opening ROW,
+    // so an open opening screen is holding an id that no longer exists, and
+    // refetching is what turns a dead page into the "this opening moved" screen.
+    const invalidate = () => invalidateOpeningQueries(queryClient, projectId);
 
     const channel = supabase
       .channel(uniqueTopic(`openings-${projectId}`))

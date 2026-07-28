@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { PhotoCaptureSheet, type BeforeAfterValue } from "../../components/PhotoCaptureSheet";
 import { Scanner } from "../../components/Scanner";
 import {
@@ -47,6 +47,9 @@ import { indexSpecsByMark, specForOpeningCode } from "../../lib/install/specs";
 import { SpecCard } from "../../components/install/SpecCard";
 import { MissingSpecNotice } from "../../components/install/MissingSpecNotice";
 import { MarkElevationViews } from "../../components/install/MarkElevationViews";
+import { OpeningMoved } from "../../components/install/OpeningMoved";
+import { rememberOpening } from "../../lib/install/staleOpening";
+import { useRealtimeOpenings } from "../../lib/useRealtimeOpenings";
 import { createIssue } from "../../lib/issues";
 import type { QrPayload } from "../../lib/qr";
 import { resolveWindowFromScan } from "../../lib/scanResolve";
@@ -75,6 +78,9 @@ export function OpeningSheet() {
   const { projectId = "", openingId = "" } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // Set when we recovered a dead opening link and sent them here instead.
+  const movedFrom = (useLocation().state as { movedFrom?: string } | null)
+    ?.movedFrom;
 
   const { effectiveRole } = useEffectiveRole();
 
@@ -125,6 +131,18 @@ export function OpeningSheet() {
     queryKey: ["opening", openingId],
     queryFn: () => getOpening(openingId),
   });
+
+  // Stream this job's openings so a phone left open on a window notices when
+  // the office reloads the plans, instead of holding a dead id until someone
+  // thinks to reload the page.
+  useRealtimeOpenings(projectId);
+
+  // The code is what survives a re-extract; the id does not. Remembering it
+  // per-device is what lets a dead link find the same window on the new plans.
+  useEffect(() => {
+    const loaded = opening.data;
+    if (loaded) rememberOpening(loaded.id, loaded.project_id, loaded.opening_code);
+  }, [opening.data]);
 
   const myProfile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
 
@@ -549,7 +567,9 @@ export function OpeningSheet() {
 
   const o = opening.data;
   if (opening.isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
-  if (!o) return <div className="page"><p className="error">Opening not found.</p></div>;
+  // Not "Opening not found." — a re-extract replaces every opening row, and the
+  // person hitting this is usually standing at the window it used to name.
+  if (!o) return <OpeningMoved projectId={projectId} openingId={openingId} />;
 
   const installed = o.status === "installed";
   const unitType = o.windows?.window_type_id ?? null;
@@ -588,6 +608,13 @@ export function OpeningSheet() {
           Map
         </Link>
       </header>
+
+      {movedFrom && (
+        <p className="muted">
+          The office reloaded the plans, so {movedFrom} has a new entry. This is
+          it — nothing you recorded is lost.
+        </p>
+      )}
 
       <div className="detail-card">
         <p>
