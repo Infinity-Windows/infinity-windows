@@ -73,6 +73,7 @@ const KIND_ORDER: IssueKind[] = [
   "flag",
   "blocker",
   "complication",
+  "spec_gap",
 ];
 
 export function Issues() {

@@ -1667,6 +1667,7 @@ const EXCEPTION_KIND_ORDER: { kind: IssueKind; heading: string }[] = [
   { kind: "flag", heading: "Flagged" },
   { kind: "blocker", heading: "Blockers" },
   { kind: "complication", heading: "Complications" },
+  { kind: "spec_gap", heading: "Spec sheet gaps" },
 ];
 
 function ExceptionsTab({ projectId }: { projectId: string }) {

@@ -1874,12 +1874,25 @@ export interface SpecDiscrepancyAck {
   note: string | null;
   acknowledged_by: string | null;
   acknowledged_at: string;
+  /**
+   * 'withdrawn' rows are kept rather than deleted so the issue link below
+   * survives a change of mind — that is what stops a re-label raising a second
+   * issue. Absent on rows written before the issues migration; treated as
+   * acknowledged.
+   */
+  status?: "acknowledged" | "withdrawn" | null;
+  /** The trackable issue this label raised, once it has raised one. */
+  issue_id?: string | null;
 }
 
 /**
- * Every discrepancy a foreman has labelled on this project. Best-effort:
- * returns [] when the table doesn't exist yet, so the report still computes
- * and simply can't be labelled until the migration lands.
+ * Every discrepancy a foreman is CURRENTLY chasing on this project.
+ *
+ * Withdrawn labels are filtered out here rather than in the query: a row
+ * written before the issues migration has no `status` at all, and filtering
+ * client-side keeps that case working without a second round-trip. Best-effort
+ * overall — returns [] when the table doesn't exist yet, so the report still
+ * computes and simply can't be labelled until the migration lands.
  */
 export async function listSpecDiscrepancyAcks(
   projectId: string,
@@ -1893,56 +1906,59 @@ export async function listSpecDiscrepancyAcks(
     if (isMissingDiscrepanciesTable(error)) return [];
     throw error;
   }
-  return (data ?? []) as SpecDiscrepancyAck[];
+  return ((data ?? []) as SpecDiscrepancyAck[]).filter(
+    (row) => row.status !== "withdrawn",
+  );
 }
 
 /**
- * Label one discrepancy as a known supplier gap being chased (foreman+).
+ * Label one discrepancy as a known supplier gap being chased, and raise a
+ * trackable issue the first time (foreman+).
  *
  * SEAM: this is the single funnel through which "a human labelled a
- * discrepancy" flows. The follow-up that raises a trackable Issue for the
- * supplier hangs off exactly here — nothing else in the app needs to change for
- * it. Idempotent by (project, mark, kind) so re-running extraction and
- * re-labelling can't create duplicates.
+ * discrepancy" flows, and the issue tie-in hangs off exactly here.
+ *
+ * The work happens inside one RPC rather than as three client writes, because
+ * the dedup guarantee depends on "check the link, insert the issue, store the
+ * link" being atomic. A half-completed client sequence could leave an issue
+ * with no link, and the next label would then raise a duplicate — which is the
+ * one thing this whole design exists to prevent.
  */
 export async function acknowledgeSpecDiscrepancy(params: {
   projectId: string;
   markCode: string;
   kind: DiscrepancyKind;
+  /** What the foreman typed, stored on the label. */
   note?: string | null;
+  /** What the issue should say; composed by `describeDiscrepancyForIssue`. */
+  issueNote?: string | null;
 }): Promise<SpecDiscrepancyAck> {
-  const { data: auth } = await supabase.auth.getUser();
-  const { data, error } = await supabase
-    .from("project_spec_discrepancies")
-    .upsert(
-      {
-        project_id: params.projectId,
-        mark_code: params.markCode,
-        kind: params.kind,
-        note: params.note?.trim() ? params.note.trim() : null,
-        acknowledged_by: auth.user?.id ?? null,
-        acknowledged_at: new Date().toISOString(),
-      },
-      { onConflict: "project_id,mark_code,kind" },
-    )
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc("acknowledge_spec_discrepancy", {
+    p_project: params.projectId,
+    p_mark: params.markCode,
+    p_kind: params.kind,
+    p_note: params.note ?? null,
+    p_issue_note: params.issueNote ?? null,
+  });
   if (error) throw error;
   return data as SpecDiscrepancyAck;
 }
 
-/** Remove the label, putting the discrepancy back on the open list (foreman+). */
+/**
+ * Take the label back off (foreman+): the discrepancy returns to the open list
+ * and its issue is RESOLVED rather than deleted, so the record of what was
+ * chased survives. Idempotent — withdrawing twice is a no-op.
+ */
 export async function unacknowledgeSpecDiscrepancy(params: {
   projectId: string;
   markCode: string;
   kind: DiscrepancyKind;
 }): Promise<void> {
-  const { error } = await supabase
-    .from("project_spec_discrepancies")
-    .delete()
-    .eq("project_id", params.projectId)
-    .eq("mark_code", params.markCode)
-    .eq("kind", params.kind);
+  const { error } = await supabase.rpc("withdraw_spec_discrepancy", {
+    p_project: params.projectId,
+    p_mark: params.markCode,
+    p_kind: params.kind,
+  });
   if (error) throw error;
 }
 
