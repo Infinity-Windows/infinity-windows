@@ -11,6 +11,7 @@ import {
   updateMarkSpec,
 } from "../../lib/install/api";
 import { decodeSizeCode, formatSize, type ProjectMarkSpec } from "../../lib/install/specs";
+import { MarkDrawing } from "./MarkDrawing";
 
 interface Props {
   projectId: string;
@@ -86,6 +87,7 @@ export function SpecReviewSection({ projectId }: Props) {
     <SpecRow
       key={s.id}
       spec={s}
+      projectId={projectId}
       onText={(key, value) =>
         patch.mutate({ id: s.id, patch: { [key]: value || null } as SpecPatch })
       }
@@ -116,7 +118,9 @@ export function SpecReviewSection({ projectId }: Props) {
       <p className="muted">
         Full window/door line-item pulled from the specs sheet — shared across
         every opening of that mark. Correct anything the extractor missed, then
-        confirm. Editing a size code updates the decoded W×H live.
+        confirm. Editing a size code updates the decoded W×H live. Where the
+        extractor found the mark's elevation drawing, it's shown above the
+        fields — check the picture matches the mark before confirming.
       </p>
       {message && <p className="error">{message}</p>}
 
@@ -151,6 +155,7 @@ export function SpecReviewSection({ projectId }: Props) {
 
 function SpecRow({
   spec,
+  projectId,
   onText,
   onSizeCode,
   onFlag,
@@ -158,6 +163,7 @@ function SpecRow({
   onConfirm,
 }: {
   spec: ProjectMarkSpec;
+  projectId: string;
   onText: (key: TextField, value: string) => void;
   onSizeCode: (sizeCode: string) => void;
   onFlag: (key: "tempered" | "egress", value: boolean) => void;
@@ -188,6 +194,10 @@ function SpecRow({
           {spec.confirmed ? "confirmed" : `draft · ${spec.source}`}
         </span>
       </div>
+
+      {/* The cropped elevation, so the foreman can see the picture matches the
+          mark before confirming. */}
+      <MarkDrawing spec={spec} projectId={projectId} />
 
       <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
         {TEXT_FIELDS.map((f) => (

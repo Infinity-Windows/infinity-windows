@@ -6,6 +6,7 @@
 // they can be unit-tested and reused on the client and (conceptually) the edge.
 
 import { markBase } from "./extract";
+import { validateBbox, type Bbox } from "./markDrawing";
 
 /**
  * The full manufacturer line-item spec for a single mark. Every field is
@@ -39,6 +40,16 @@ export interface MarkSpec {
   product_line: string | null;
   /** Flexible catch-all for any other line-item attributes found. */
   extra: Record<string, unknown> | null;
+  /**
+   * 1-based page of the SPECS planset holding this mark's elevation drawing
+   * ("Outside View"), or null when we don't know where it is.
+   */
+  image_page: number | null;
+  /**
+   * Normalized `[x0,y0,x1,y1]` (0..1, top-left origin) of that drawing on
+   * `image_page`. Null when the extractor didn't return a usable box.
+   */
+  image_bbox: Bbox | null;
   /** A foreman has reviewed + trusted this spec. */
   confirmed: boolean;
   /** How the spec was captured. */
@@ -176,6 +187,13 @@ function bool(v: unknown): boolean | null {
   return null;
 }
 
+/** A 1-based page number, or null when it isn't a sane positive integer. */
+function pageNumber(v: unknown): number | null {
+  const n = num(v);
+  if (n == null || !Number.isInteger(n) || n < 1) return null;
+  return n;
+}
+
 /** Extract a size code from either an explicit field or a free-text string. */
 export function findSizeCode(value: unknown): string | null {
   const s = str(value);
@@ -254,6 +272,8 @@ export function normalizeSpec(
       str(o.brand) ??
       str(o.series),
     extra: extra && Object.keys(extra).length > 0 ? extra : null,
+    image_page: pageNumber(o.image_page ?? o.imagePage ?? o.page),
+    image_bbox: validateBbox(o.image_bbox ?? o.imageBbox ?? o.bbox),
     source,
   };
 }
@@ -275,6 +295,7 @@ export function hasAnySpec(spec: MarkSpecDraft): boolean {
       spec.grids ||
       spec.screen ||
       spec.product_line ||
+      spec.image_bbox != null ||
       (spec.extra && Object.keys(spec.extra).length > 0),
   );
 }
@@ -348,6 +369,15 @@ function fillGaps(base: MarkSpecDraft, next: MarkSpecDraft): MarkSpecDraft {
       // Field types are heterogeneous; the null-guard above keeps this safe.
       (merged as Record<string, unknown>)[k] = next[k];
     }
+  }
+  // The drawing's page and box only mean anything TOGETHER — a box from page 2
+  // pinned to page 1 would crop the wrong corner of the wrong sheet — so they
+  // move as a pair and only when `base` has no drawing of its own.
+  if (base.image_bbox == null && next.image_bbox != null) {
+    merged.image_page = next.image_page;
+    merged.image_bbox = next.image_bbox;
+  } else if (base.image_page == null && base.image_bbox == null) {
+    merged.image_page = next.image_page;
   }
   if (base.extra || next.extra) {
     merged.extra = { ...(next.extra ?? {}), ...(base.extra ?? {}) };

@@ -3,6 +3,10 @@
 // manufacturer line-item (style, glass, color, size code, operation, energy
 // numbers, …) once per mark so the crew can see exactly what they're installing.
 //
+// The VISION path additionally reports WHERE each mark's elevation drawing sits
+// on the page (a normalized bounding box) so the app can crop that picture out
+// of the planset and show it next to the text.
+//
 // Parsing is defensive: a bad/garbled line is skipped, never thrown. The client
 // (`lib/install/specs.ts`) does the deterministic size-code decode and final
 // normalization/merge, so this function just returns best-effort raw fields.
@@ -117,14 +121,38 @@ interface RawVisionMark {
   size_code: string | null;
   operation: string | null;
   qty: string | null;
+  /** Normalized [x0,y0,x1,y1] of this mark's elevation drawing on the page. */
+  bbox: [number, number, number, number] | null;
+  /** 1-based page the drawing (and this transcription) came from. */
+  image_page: number | null;
+}
+
+/**
+ * Validate a bounding box the model returned for a mark's elevation drawing.
+ * Mirrors the client's `validateBbox`: four finite numbers in 0..1, positive
+ * width and height, and an area that is neither the whole sheet (the model
+ * shrugging) nor a speck (a tick mark it mistook for a drawing). An unusable
+ * box becomes null so the mark's TEXT still survives — a bad picture must never
+ * cost us the spec.
+ */
+function cleanBbox(raw: unknown): [number, number, number, number] | null {
+  if (!Array.isArray(raw) || raw.length !== 4) return null;
+  const nums = raw.map((v) => (typeof v === "number" ? v : Number(v)));
+  if (!nums.every((n) => Number.isFinite(n) && n >= 0 && n <= 1)) return null;
+  const [x0, y0, x1, y1] = nums as [number, number, number, number];
+  if (x1 <= x0 || y1 <= y0) return null;
+  const area = (x1 - x0) * (y1 - y0);
+  if (area > 0.9 || area < 0.002) return null;
+  return [x0, y0, x1, y1];
 }
 
 /** Coerce one loose vision object into a RawVisionMark, or null (no mark). */
-function cleanVisionMark(raw: unknown): RawVisionMark | null {
+function cleanVisionMark(raw: unknown, pageNumber: number): RawVisionMark | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   const mark = str(o.mark) ?? str(o.mark_code) ?? str(o.markCode);
   if (!mark) return null;
+  const bbox = cleanBbox(o.bbox ?? o.box ?? o.drawing_bbox);
   return {
     // Kept verbatim (e.g. "PV Townhomes Bldg 14-#4A"); the client strips the
     // project prefix / '#' with the unit-tested normalizeMarkLabel.
@@ -135,6 +163,13 @@ function cleanVisionMark(raw: unknown): RawVisionMark | null {
     size_code: str(o.size_code) ?? str(o.sizeCode) ?? str(o.size),
     operation: str(o.operation) ?? str(o.config),
     qty: str(o.qty) ?? str(o.quantity) ?? str(o.count),
+    bbox,
+    // The page is ours, not the model's — we know which image we sent. Only
+    // meaningful alongside a box, so it rides along with one.
+    image_page:
+      bbox && Number.isInteger(pageNumber) && pageNumber >= 1
+        ? pageNumber
+        : null,
   };
 }
 
@@ -143,8 +178,11 @@ const VISION_SYSTEM =
   "an IMAGE. The rich per-mark details (style, glass makeup, color, size code, " +
   "operation) are drawn into the sheet as graphics/text you must READ. " +
   "Transcribe the spec table EXACTLY as printed — do not paraphrase, do not " +
-  "invent any value that is not visible (use null). Output one object per " +
-  "distinct window/door MARK. Return STRICT JSON only, no prose, no markdown.";
+  "invent any value that is not visible (use null). You ALSO locate each " +
+  "mark's ELEVATION DRAWING (the line drawing of the unit, usually captioned " +
+  '"Outside View") and report where it sits on the page. Output one object ' +
+  "per distinct window/door MARK. Return STRICT JSON only, no prose, no " +
+  "markdown.";
 
 const VISION_SCHEMA =
   'Return exactly: { "marks": [ { ' +
@@ -154,13 +192,21 @@ const VISION_SCHEMA =
   '"color": string|null, ' +
   '"size_code": string|null, ' +
   '"operation": string|null, ' +
-  '"qty": string|null ' +
+  '"qty": string|null, ' +
+  '"bbox": [number, number, number, number]|null ' +
   "} ] }. " +
   'mark is the label exactly as printed on the sheet (e.g. "PV Townhomes Bldg ' +
   '14-#4A" or "#1"). Do NOT collapse two marks into one. size_code is the ' +
   'manufacturer call size like "3060" or "6080 XO" (keep the operation token ' +
   "if printed with it). operation is Fixed / Sliding / XO / OX / Casement / " +
-  "etc. glass is the full glass makeup string if shown. One object per mark.";
+  "etc. glass is the full glass makeup string if shown. " +
+  "bbox is the bounding box of THAT MARK'S ELEVATION DRAWING ONLY, as " +
+  "[x0, y0, x1, y1] normalized 0..1 against the FULL page, origin at the TOP-" +
+  "LEFT corner (x grows right, y grows down). INCLUDE the drawing's dimension " +
+  'lines, leader labels, and its "Outside View" caption. EXCLUDE the spec ' +
+  "table / text block printed below or beside it, and exclude every other " +
+  "mark's drawing. Use null if you cannot see a drawing for that mark. One " +
+  "object per mark.";
 
 const SYSTEM =
   "You extract rich per-mark window and door line-item specifications from a " +
@@ -228,7 +274,8 @@ Deno.serve(async (req) => {
               system: `${VISION_SYSTEM}\n\n${VISION_SCHEMA}`,
               text:
                 `This is page ${img.pageNumber} of a window/door spec sheet. ` +
-                "Transcribe every distinct mark's line-item and return the JSON now.",
+                "Transcribe every distinct mark's line-item, locate each " +
+                "mark's elevation drawing, and return the JSON now.",
               images: [parsedImg],
               maxTokens: 4096,
             });
@@ -242,7 +289,7 @@ Deno.serve(async (req) => {
                 ? parsed!.marks
                 : [];
             return arr
-              .map(cleanVisionMark)
+              .map((m) => cleanVisionMark(m, img.pageNumber))
               .filter((s): s is RawVisionMark => s !== null);
           } catch (err) {
             console.error("extract-specs vision page failed", err);

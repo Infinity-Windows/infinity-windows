@@ -29,6 +29,13 @@ export interface RawVisionMark {
   size?: unknown;
   operation?: unknown;
   qty?: unknown;
+  /** Normalized `[x0,y0,x1,y1]` of this mark's elevation drawing on the page. */
+  bbox?: unknown;
+  /** One box per piece when the model merged adjacent marks into one entry. */
+  bboxes?: unknown;
+  /** 1-based specs-planset page the drawing was found on. */
+  image_page?: unknown;
+  page?: unknown;
 }
 
 function str(v: unknown): string | null {
@@ -123,12 +130,40 @@ export function splitCombinedMark(raw: RawVisionMark): RawVisionMark[] {
     if (qs.length === pieces.length) qtyPieces = qs;
   }
 
+  const boxes = drawingBoxesForPieces(raw, pieces.length);
+
   return pieces.map((piece, i) => ({
     ...raw,
     mark: piece,
     mark_code: undefined,
     qty: qtyPieces ? qtyPieces[i] : raw.qty,
+    bbox: boxes[i],
+    bboxes: undefined,
   }));
+}
+
+/**
+ * Work out one elevation-drawing box per piece of a combined mark. Paired marks
+ * like #4A / #4B are drawn as two separate elevations side by side, so when the
+ * model returned a box for each (`bboxes`, or a `bbox` that is itself a list of
+ * boxes) they're handed out in order. When it only gave one box for the whole
+ * combined entry, both pieces share it — the same drawing on both cards beats
+ * no drawing at all. Every piece keeps the entry's page either way. PURE.
+ */
+function drawingBoxesForPieces(raw: RawVisionMark, count: number): unknown[] {
+  const listed = Array.isArray(raw.bboxes) ? raw.bboxes : null;
+  if (listed && listed.length === count) return listed;
+
+  const bbox = raw.bbox;
+  if (
+    Array.isArray(bbox) &&
+    bbox.length === count &&
+    bbox.every((b) => Array.isArray(b))
+  ) {
+    return bbox;
+  }
+
+  return Array.from({ length: count }, () => bbox);
 }
 
 /**
@@ -204,6 +239,11 @@ export function prepVisionSpec(raw: RawVisionMark): Record<string, unknown> {
     tempered: deriveTempered(glass),
     egress: deriveEgress(style, operation),
     extra: qty ? { qty } : null,
+    // Where the mark's elevation drawing sits on the specs planset. Both are
+    // validated downstream by normalizeSpec (page must be a positive integer,
+    // box must survive validateBbox) and go null when they don't hold up.
+    image_page: raw.image_page ?? raw.page,
+    image_bbox: raw.bbox,
     source: "ai",
   };
 }

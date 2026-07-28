@@ -868,6 +868,17 @@ export function plansetIsViewable(planset: Planset): boolean {
   );
 }
 
+/**
+ * The project's current SPECS planset — the manufacturer sheet that carries
+ * both the per-mark spec table and each mark's elevation drawing. `listPlansets`
+ * returns newest first, so this picks the most recent renderable one.
+ */
+export function findSpecsPlanset(plansets: Planset[]): Planset | null {
+  return (
+    plansets.find((p) => p.kind === "specs" && plansetIsViewable(p)) ?? null
+  );
+}
+
 /** Signed URL for opening/downloading the stored file (1 hour). */
 export async function getPlansetSignedUrl(
   planset: Planset,
@@ -1239,8 +1250,33 @@ function specDraftColumns(
     screen: spec.screen,
     product_line: spec.product_line,
     extra: spec.extra ?? {},
+    image_page: spec.image_page,
+    image_bbox: spec.image_bbox,
     source: spec.source,
   };
+}
+
+/** Columns added by the mark-drawing migration; dropped when it isn't applied. */
+const DRAWING_COLUMNS = ["image_page", "image_bbox"] as const;
+
+/**
+ * True when the failure is PostgREST rejecting the elevation-drawing columns
+ * because `20260727000000_mark_spec_drawings.sql` hasn't been applied yet.
+ */
+function isMissingDrawingColumn(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: unknown; message?: unknown };
+  const message = typeof e.message === "string" ? e.message.toLowerCase() : "";
+  if (!DRAWING_COLUMNS.some((c) => message.includes(c))) return false;
+  return e.code === "PGRST204" || e.code === "42703" || message.includes("column");
+}
+
+function withoutDrawingColumns(
+  row: Record<string, unknown>,
+): Record<string, unknown> {
+  const copy = { ...row };
+  for (const c of DRAWING_COLUMNS) delete copy[c];
+  return copy;
 }
 
 /**
@@ -1304,9 +1340,17 @@ export async function extractAndSaveMarkSpecs(
   if (toSave.length === 0) return { saved: 0, skipped };
 
   const rows = toSave.map((d) => specDraftColumns(projectId, d));
-  const { error } = await supabase
-    .from("project_mark_specs")
-    .upsert(rows, { onConflict: "project_id,mark_code" });
+  const upsert = (payload: Record<string, unknown>[]) =>
+    supabase
+      .from("project_mark_specs")
+      .upsert(payload, { onConflict: "project_id,mark_code" });
+
+  let { error } = await upsert(rows);
+  if (error && isMissingDrawingColumn(error)) {
+    // The drawing migration isn't applied on this environment yet — save the
+    // spec TEXT anyway rather than losing the whole extraction over a picture.
+    ({ error } = await upsert(rows.map(withoutDrawingColumns)));
+  }
   if (error) {
     if (isMissingSpecsTable(error)) return { saved: 0, skipped };
     throw error;

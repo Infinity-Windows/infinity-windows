@@ -50,12 +50,16 @@ export async function loadPdf(data: ArrayBuffer): Promise<PDFDocumentProxy> {
   return pdfjs.getDocument({ data }).promise;
 }
 
-/** Render one page (1-based) to a PNG data URL sized for phone screens. */
-export async function renderPageImage(
+/**
+ * Render one page (1-based) onto a canvas scaled to `targetWidth`. Callers that
+ * want to read pixels back (the mark-drawing crop) need the canvas itself, not
+ * a data URL, so this is the primitive and `renderPageImage` wraps it.
+ */
+export async function renderPageCanvas(
   doc: PDFDocumentProxy,
   pageNumber: number,
   targetWidth = 1600,
-): Promise<{ dataUrl: string; width: number; height: number }> {
+): Promise<HTMLCanvasElement> {
   const page = await doc.getPage(pageNumber);
   const base = page.getViewport({ scale: 1 });
   const scale = targetWidth / base.width;
@@ -67,6 +71,16 @@ export async function renderPageImage(
   const ctx = canvas.getContext("2d")!;
   await page.render({ canvas, canvasContext: ctx, viewport }).promise;
 
+  return canvas;
+}
+
+/** Render one page (1-based) to a PNG data URL sized for phone screens. */
+export async function renderPageImage(
+  doc: PDFDocumentProxy,
+  pageNumber: number,
+  targetWidth = 1600,
+): Promise<{ dataUrl: string; width: number; height: number }> {
+  const canvas = await renderPageCanvas(doc, pageNumber, targetWidth);
   return {
     dataUrl: canvas.toDataURL("image/png"),
     width: canvas.width,

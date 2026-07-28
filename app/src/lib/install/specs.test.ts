@@ -146,6 +146,51 @@ describe("normalizeSpec", () => {
     expect(normalizeSpec("nope")).toBeNull();
   });
 
+  it("keeps a valid elevation-drawing page and box", () => {
+    const spec = normalizeSpec({
+      mark: "#1",
+      style: "Fixed",
+      image_page: 1,
+      image_bbox: [0.217, 0.128, 0.3, 0.29],
+    });
+    expect(spec!.image_page).toBe(1);
+    expect(spec!.image_bbox).toEqual([0.217, 0.128, 0.3, 0.29]);
+  });
+
+  it("accepts the vision extractor's `page` / `bbox` aliases", () => {
+    const spec = normalizeSpec({
+      mark: "2",
+      style: "Sliding",
+      page: 3,
+      bbox: [0.635, 0.055, 0.758, 0.253],
+    });
+    expect(spec!.image_page).toBe(3);
+    expect(spec!.image_bbox).toEqual([0.635, 0.055, 0.758, 0.253]);
+  });
+
+  it("drops an unusable box rather than the whole mark", () => {
+    const spec = normalizeSpec({
+      mark: "4A",
+      style: "Casement",
+      image_page: 1,
+      image_bbox: [0.7, 0.5, 0.2, 0.6], // reversed
+    });
+    expect(spec!.mark_code).toBe("4A");
+    expect(spec!.style).toBe("Casement");
+    expect(spec!.image_bbox).toBeNull();
+  });
+
+  it("rejects a page number that isn't a positive whole page", () => {
+    const bad = (page: unknown) =>
+      normalizeSpec({ mark: "1", style: "x", image_page: page })!.image_page;
+    expect(bad(0)).toBeNull();
+    expect(bad(-2)).toBeNull();
+    expect(bad(1.5)).toBeNull();
+    expect(bad("page one")).toBeNull();
+    expect(bad(undefined)).toBeNull();
+    expect(bad("4")).toBe(4);
+  });
+
   it("honors an explicit source and defaults otherwise", () => {
     expect(normalizeSpec({ mark: "1", style: "x", source: "manual" })!.source).toBe(
       "manual",
@@ -164,6 +209,14 @@ describe("hasAnySpec", () => {
   });
   it("is true once any field is set", () => {
     expect(hasAnySpec(normalizeSpec({ mark: "1", color: "Black" })!)).toBe(true);
+  });
+  it("is true for a mark we only located a drawing for", () => {
+    const drawingOnly = normalizeSpec({
+      mark: "1",
+      image_page: 1,
+      image_bbox: [0.217, 0.128, 0.3, 0.29],
+    });
+    expect(hasAnySpec(drawingOnly!)).toBe(true);
   });
 });
 
@@ -203,6 +256,26 @@ describe("mergeSpecsByMark", () => {
       { mark: "1", extra: { b: 2 } },
     ]);
     expect(merged[0].extra).toEqual({ a: 1, b: 2 });
+  });
+
+  it("takes a mark's drawing page and box together, never mixed", () => {
+    // The mark is transcribed on page 1 (no drawing found) and again on page 2
+    // (drawing found). The box must arrive with page 2, not pinned to page 1.
+    const merged = mergeSpecsByMark([
+      { mark: "1", style: "Fixed", image_page: 1 },
+      { mark: "1", color: "Black", image_page: 2, image_bbox: [0.1, 0.1, 0.3, 0.4] },
+    ]);
+    expect(merged[0].image_page).toBe(2);
+    expect(merged[0].image_bbox).toEqual([0.1, 0.1, 0.3, 0.4]);
+  });
+
+  it("keeps the first drawing it found when a later page has another", () => {
+    const merged = mergeSpecsByMark([
+      { mark: "1", style: "Fixed", image_page: 1, image_bbox: [0.1, 0.1, 0.3, 0.4] },
+      { mark: "1", color: "Black", image_page: 2, image_bbox: [0.5, 0.5, 0.7, 0.8] },
+    ]);
+    expect(merged[0].image_page).toBe(1);
+    expect(merged[0].image_bbox).toEqual([0.1, 0.1, 0.3, 0.4]);
   });
 
   it("skips entries with no mark or no usable data", () => {
