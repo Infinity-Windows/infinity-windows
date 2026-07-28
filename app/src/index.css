@@ -7975,3 +7975,60 @@ body {
 }
 .leaflet-popup-content { font-family: var(--font-body); }
 .leaflet-container { background: #1a1a1c; }
+
+/* ==========================================================================
+   Mark elevation drawing ("Outside View") on spec cards.
+   The crop is already white line-work on black (the pixel transform in
+   lib/install/markDrawing does that, not CSS) — these rules only frame it.
+   ========================================================================== */
+.mark-drawing {
+  display: block;
+}
+.mark-drawing-thumb,
+.mark-drawing-skeleton {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #000;
+  overflow: hidden;
+}
+.mark-drawing-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  cursor: zoom-in;
+}
+.mark-drawing-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.mark-drawing-skeleton {
+  background: linear-gradient(90deg, #000 0%, #17171a 50%, #000 100%);
+  background-size: 200% 100%;
+  animation: markDrawingShimmer 1.4s ease-in-out infinite;
+}
+@keyframes markDrawingShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.mark-drawing-full {
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  max-height: 70vh;
+  overflow: auto;
+}
+.mark-drawing-full img {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: zoom-in;
+}
+.mark-drawing-full.magnified img {
+  width: 250%;
+  max-width: none;
+  cursor: zoom-out;
+}

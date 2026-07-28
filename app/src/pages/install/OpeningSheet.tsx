@@ -621,7 +621,7 @@ export function OpeningSheet() {
         )}
       </div>
 
-      {openingSpec && <SpecCard spec={openingSpec} />}
+      {openingSpec && <SpecCard spec={openingSpec} projectId={projectId} />}
 
       {message && (
         <p className={/^(Window|Install|Rough|Condition|Flag|Flagged|Site|Complication)/.test(message) ? "ok" : "error"}>

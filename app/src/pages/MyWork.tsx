@@ -383,7 +383,9 @@ export function MyWork() {
           <span className="next-capture">{captureHint(next)}</span>
           {(() => {
             const s = specFor(next);
-            return s ? <SpecCard spec={s} compact /> : null;
+            return s ? (
+              <SpecCard spec={s} projectId={next.project_id} compact />
+            ) : null;
           })()}
         </button>
       )}
@@ -415,7 +417,9 @@ export function MyWork() {
                   </div>
                   {(() => {
                     const s = specFor(o);
-                    return s ? <SpecCard spec={s} compact /> : null;
+                    return s ? (
+                      <SpecCard spec={s} projectId={o.project_id} compact />
+                    ) : null;
                   })()}
                 </div>
                 <span style={{ marginLeft: "auto" }}>{readinessTag(o)}</span>

@@ -271,7 +271,9 @@ export function WindowDetail() {
         )}
       </div>
 
-      {unitSpec && <SpecCard spec={unitSpec} />}
+      {unitSpec && (
+        <SpecCard spec={unitSpec} projectId={unit.data?.project_id ?? null} />
+      )}
 
       {actionError && <p className="error">{actionError}</p>}
 

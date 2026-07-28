@@ -1,11 +1,21 @@
 // Read-only display of a mark's rich line-item spec. Used on the opening/install
 // sheet, the unit detail, and (compact) on My Work. All field roles can read.
+//
+// When the caller supplies a projectId and the extractor located the mark's
+// elevation drawing on the specs planset, the card leads with that picture
+// (white line-work on black) above the text.
 
 import type { MarkSpec } from "../../lib/install/specs";
 import { formatSize } from "../../lib/install/specs";
+import { MarkDrawing } from "./MarkDrawing";
 
 interface SpecCardProps {
   spec: MarkSpec;
+  /**
+   * Project the spec belongs to. Supplying it lets the card show the mark's
+   * elevation drawing, cropped from that project's specs planset.
+   */
+  projectId?: string | null;
   /** Compact form for dense lists (My Work rows). */
   compact?: boolean;
 }
@@ -32,7 +42,7 @@ function badges(spec: MarkSpec): string[] {
  * Render a mark's spec. Degrades gracefully: renders nothing when the spec has
  * no usable content, and each field hides when absent.
  */
-export function SpecCard({ spec, compact = false }: SpecCardProps) {
+export function SpecCard({ spec, projectId, compact = false }: SpecCardProps) {
   const size = formatSize(spec);
   const chips = badges(spec);
   const energy = [
@@ -43,6 +53,7 @@ export function SpecCard({ spec, compact = false }: SpecCardProps) {
     ? Object.entries(spec.extra).filter(([, v]) => v != null && v !== "")
     : [];
 
+  const hasDrawing = Boolean(projectId && spec.image_bbox && spec.image_page);
   const hasContent =
     spec.style ||
     spec.glass ||
@@ -53,7 +64,8 @@ export function SpecCard({ spec, compact = false }: SpecCardProps) {
     spec.grids ||
     spec.screen ||
     spec.product_line ||
-    extras.length > 0;
+    extras.length > 0 ||
+    hasDrawing;
   if (!hasContent) return null;
 
   if (compact) {
@@ -65,7 +77,7 @@ export function SpecCard({ spec, compact = false }: SpecCardProps) {
       spec.tempered ? "tempered" : null,
       spec.egress ? "egress" : null,
     ].filter(Boolean) as string[];
-    if (parts.length === 0 && !spec.style) return null;
+    if (parts.length === 0 && !spec.style && !hasDrawing) return null;
     return (
       <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
         {spec.style ? <span>{spec.style}</span> : null}
@@ -75,6 +87,7 @@ export function SpecCard({ spec, compact = false }: SpecCardProps) {
             {parts.join(" · ")}
           </span>
         ) : null}
+        {hasDrawing && <MarkDrawing spec={spec} projectId={projectId} compact />}
       </div>
     );
   }
@@ -98,6 +111,8 @@ export function SpecCard({ spec, compact = false }: SpecCardProps) {
           </span>
         )}
       </div>
+
+      {hasDrawing && <MarkDrawing spec={spec} projectId={projectId} />}
 
       <Field label="Style" value={spec.style} />
       <Field label="Glass" value={spec.glass} />

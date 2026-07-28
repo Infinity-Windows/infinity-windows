@@ -291,6 +291,46 @@ describe("splitCombinedMark", () => {
     expect(pieces.map((p) => p.qty)).toEqual(["5", "5"]);
   });
 
+  it("gives both halves the same drawing when only one box came back", () => {
+    const pieces = splitCombinedMark({
+      mark: "#4A & #4B",
+      image_page: 1,
+      bbox: [0.59, 0.462, 0.672, 0.622],
+    });
+    expect(pieces.map((p) => p.bbox)).toEqual([
+      [0.59, 0.462, 0.672, 0.622],
+      [0.59, 0.462, 0.672, 0.622],
+    ]);
+    expect(pieces.map((p) => p.image_page)).toEqual([1, 1]);
+  });
+
+  it("hands out one box per half when the model located both", () => {
+    // #4A and #4B are drawn side by side; keeping their own boxes means each
+    // card shows its own elevation rather than a shared one.
+    const pieces = splitCombinedMark({
+      mark: "#4A & #4B",
+      image_page: 1,
+      bboxes: [
+        [0.59, 0.462, 0.672, 0.622],
+        [0.805, 0.462, 0.89, 0.622],
+      ],
+    });
+    expect(pieces.map((p) => p.bbox)).toEqual([
+      [0.59, 0.462, 0.672, 0.622],
+      [0.805, 0.462, 0.89, 0.622],
+    ]);
+    expect(pieces.every((p) => p.bboxes === undefined)).toBe(true);
+  });
+
+  it("does not mistake a 4-number box for four per-piece boxes", () => {
+    const pieces = splitCombinedMark({
+      mark: "4A & 4B & 4C & 4D",
+      bbox: [0.1, 0.1, 0.3, 0.4],
+    });
+    expect(pieces).toHaveLength(4);
+    for (const p of pieces) expect(p.bbox).toEqual([0.1, 0.1, 0.3, 0.4]);
+  });
+
   it("does NOT split a legitimate single mark", () => {
     // No separator at all.
     expect(splitCombinedMark({ mark: "PV Townhomes Bldg 14-#4A" })).toHaveLength(
@@ -302,6 +342,58 @@ describe("splitCombinedMark", () => {
     });
     expect(notCodes).toHaveLength(1);
     expect(notCodes[0].mark).toBe("Tempered glass & argon fill");
+  });
+});
+
+describe("visionMarksToDrafts (elevation drawing location)", () => {
+  it("carries the page and box through to the draft", () => {
+    const drafts = visionMarksToDrafts([
+      {
+        mark: "#1",
+        style: "Thermal Break Aluminum Fixed Window",
+        image_page: 1,
+        bbox: [0.217, 0.128, 0.3, 0.29],
+      },
+    ]);
+    expect(drafts[0]).toMatchObject({
+      mark_code: "1",
+      image_page: 1,
+      image_bbox: [0.217, 0.128, 0.3, 0.29],
+    });
+  });
+
+  it("keeps the spec text when the box is unusable", () => {
+    const drafts = visionMarksToDrafts([
+      {
+        mark: "#1",
+        style: "Thermal Break Aluminum Fixed Window",
+        image_page: 1,
+        bbox: [0, 0, 1, 1], // the whole sheet — not a drawing
+      },
+    ]);
+    expect(drafts[0].style).toMatch(/Fixed Window/);
+    expect(drafts[0].image_bbox).toBeNull();
+  });
+
+  it("gives each split half of a combined mark its own drawing", () => {
+    const drafts = visionMarksToDrafts([
+      {
+        mark: "PV Townhomes Bldg 14-#4A& PV Townhomes Bldg 14-#4B",
+        style: "Thermal Break Aluminum Crank Casement window",
+        size_code: "3060",
+        qty: "1&1",
+        image_page: 1,
+        bboxes: [
+          [0.59, 0.462, 0.672, 0.622],
+          [0.805, 0.462, 0.89, 0.622],
+        ],
+      },
+    ]);
+    const map = byMark(drafts);
+    expect(map.get("4A")!.image_bbox).toEqual([0.59, 0.462, 0.672, 0.622]);
+    expect(map.get("4B")!.image_bbox).toEqual([0.805, 0.462, 0.89, 0.622]);
+    expect(map.get("4A")!.image_page).toBe(1);
+    expect(map.get("4B")!.image_page).toBe(1);
   });
 });
 
