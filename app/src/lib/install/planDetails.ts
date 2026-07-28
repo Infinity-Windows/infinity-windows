@@ -14,6 +14,8 @@ export interface CadDetailPage {
 
 /** Opening mark callouts as they appear on floor drawings and detail sheets. */
 const MARK_CALLOUT_RE = /#\s*([A-Z]{0,3}-?\d{1,4}[A-Z]?)\b/gi;
+/** Any run of letters long enough to be an English word rather than a suffix. */
+const PROSE_WORD_RE = /[A-Za-z]{2,}/;
 const DOOR_HINT =
   /\b(DOOR|DOORS|SLIDING\s+DOOR|ENTRY|FRENCH\s+DOOR|PATIO)\b/i;
 const WINDOW_HINT =
@@ -23,9 +25,48 @@ function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
 }
 
+/** The whole line of `text` that contains `index`. */
+function lineAround(text: string, index: number): string {
+  const start = text.lastIndexOf("\n", index - 1) + 1;
+  const end = text.indexOf("\n", index);
+  return text.slice(start, end === -1 ? text.length : end);
+}
+
+/**
+ * Is the `#…` at `index` a real opening mark, or just prose that happens to
+ * contain a hash?
+ *
+ * Black Desert's spec sheet says "Obscure Glass #3" and "#17 Glass Obscure" —
+ * glass notes, not marks. Reading those as marks manufactured two phantom
+ * openings on a job that has none. Two shapes are genuine, and both were
+ * measured against the real Smith and Black Desert PDFs:
+ *
+ *  1. Hyphen-attached to a job code — "PV Townhomes Bldg 14-#4A". All six of
+ *     Smith's real text marks take this form.
+ *  2. A bare callout line that is nothing BUT marks — "#4A #4B #13A" or a lone
+ *     "#13B". Strip the marks out and only punctuation is left.
+ *
+ * Anything with an English word loose on the line is prose and ignored. That
+ * single test drops all eight of Black Desert's false positives while keeping
+ * every genuine Smith mark.
+ */
+export function isMarkCallout(text: string, index: number): boolean {
+  if (text[index - 1] === "-") return true;
+  const line = lineAround(text, index);
+  const withoutMarks = line.replace(MARK_CALLOUT_RE, " ");
+  return !PROSE_WORD_RE.test(withoutMarks);
+}
+
+/** Mark-callout matches in `text`, with prose hashes filtered out. */
+export function markCalloutMatches(text: string): RegExpMatchArray[] {
+  return [...text.matchAll(MARK_CALLOUT_RE)].filter((match) =>
+    isMarkCallout(text, match.index ?? 0),
+  );
+}
+
 /** Count #mark-style callouts — used to prefer the numbered floor sheet. */
 export function countPlanMarkCallouts(text: string): number {
-  return [...text.matchAll(MARK_CALLOUT_RE)].length;
+  return markCalloutMatches(text).length;
 }
 
 /**
@@ -68,9 +109,7 @@ export function findFloorPlanPages(pages: PdfTextPage[]): number[] {
 }
 
 function detailMarks(text: string): string[] {
-  return unique(
-    [...text.matchAll(MARK_CALLOUT_RE)].map((match) => match[1].toUpperCase()),
-  );
+  return unique(markCalloutMatches(text).map((match) => match[1].toUpperCase()));
 }
 
 function productCodes(text: string): string[] {
@@ -203,7 +242,7 @@ export function parseCadDetailScheduleRows(
   const byMark = new Map<string, ScheduleRow>();
 
   for (const page of pages) {
-    const matches = [...page.text.matchAll(MARK_CALLOUT_RE)];
+    const matches = markCalloutMatches(page.text);
     if (matches.length === 0) continue;
 
     for (let i = 0; i < matches.length; i++) {

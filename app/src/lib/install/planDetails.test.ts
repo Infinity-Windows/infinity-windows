@@ -1,12 +1,69 @@
 import { describe, expect, it } from "vitest";
 import { rowsToDraftOpenings } from "./extract";
 import {
+  countPlanMarkCallouts,
   extractCadDetailPages,
   findFloorPlanPages,
   mergeScheduleWithDetailRows,
   parseCadDetailScheduleRows,
   parseDetailQty,
 } from "./planDetails";
+
+// Verbatim lines from the two live jobs. Black Desert (Strata/STG) writes glass
+// notes with a hash; Smith (PV Townhomes) writes real marks as a hyphen-attached
+// job-code suffix. Reading the first kind as marks invented two openings on a
+// job that has none, so both stay pinned here as fixtures.
+const BLACK_DESERT_PROSE = [
+  "596(23 2 \")  292(11 2 \")",
+  "Obscure Glass #17",
+  "Obscure Glass #3",
+  "3 Point Lock",
+  "#17 Glass Obscure  outside  outside",
+  "#3 Glass Obscure  outside",
+].join("\n");
+
+const SMITH_DETAIL = [
+  "PV Townhomes Bldg 14-#4A",
+  "6080 XO",
+  "PV Townhomes Bldg 14-#4B",
+  "Fixed",
+  "NO: PV Townhomes Bldg 14-#6",
+  "QTY: 12",
+].join("\n");
+
+describe("mark callout recognition", () => {
+  it("ignores Black Desert's glass notes, whichever side the hash sits on", () => {
+    expect(countPlanMarkCallouts(BLACK_DESERT_PROSE)).toBe(0);
+  });
+
+  it("keeps Smith's hyphen-attached job-code marks", () => {
+    expect(countPlanMarkCallouts(SMITH_DETAIL)).toBe(3);
+    expect(
+      parseCadDetailScheduleRows([{ pageNumber: 1, text: SMITH_DETAIL }]).map(
+        (r) => r.openingCode,
+      ),
+    ).toEqual(["4A", "4B", "6"]);
+  });
+
+  it("keeps a bare callout line that is nothing but marks", () => {
+    expect(countPlanMarkCallouts("#4A #4B #13A #13B #18A #18B")).toBe(6);
+    expect(countPlanMarkCallouts("#13B")).toBe(1);
+    expect(countPlanMarkCallouts("#4A, #4B")).toBe(2);
+  });
+
+  it("does not turn Black Desert's spec sheet into openings", () => {
+    expect(
+      parseCadDetailScheduleRows([
+        { pageNumber: 3, text: BLACK_DESERT_PROSE },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("ignores a hash buried in any other prose", () => {
+    expect(countPlanMarkCallouts("See detail #5 on the sheet above")).toBe(0);
+    expect(countPlanMarkCallouts("Sill Pan #2 Aluminum")).toBe(0);
+  });
+});
 
 describe("findFloorPlanPages", () => {
   it("ignores a cover-sheet index and selects drawing sheets", () => {
