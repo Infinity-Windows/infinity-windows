@@ -12,7 +12,8 @@ import {
   updateOpening,
 } from "../../lib/install/api";
 import type { ProjectOpening } from "../../lib/install/types";
-import { openingMarkCode, openingMarkLabel } from "../../lib/install/types";
+import { openingMarkCode } from "../../lib/install/types";
+import { describeMarkCount } from "../../lib/install/extract";
 import { formatApiError } from "../../lib/install/errors";
 
 export function OpeningReview() {
@@ -144,9 +145,12 @@ export function OpeningReview() {
             <p className="scanner-hint">
               We found{" "}
               {markSummary
-                .map(
-                  (m) =>
-                    `${m.count}× ${openingMarkLabel(m.mark)} ${m.door ? "doors" : "windows"}`,
+                .map((m) =>
+                  describeMarkCount({
+                    mark: m.mark,
+                    count: m.count,
+                    kind: m.door ? "door" : "window",
+                  }),
                 )
                 .join(", ")}{" "}
               — accept or fix below.
@@ -154,8 +158,9 @@ export function OpeningReview() {
           )}
           <p className="muted">
             Fix codes and types where the extract got it wrong. Confirmed
-            openings are never overwritten by a re-extract. Mark #14 is a type;
-            qty is how many of that type.
+            openings are never overwritten by a re-extract. A mark is the number
+            written on the plan beside a type of window — mark #14 appearing 25
+            times means 25 separate windows, all the same.
           </p>
           <ul className="unit-list">{drafts.map(row)}</ul>
           <button

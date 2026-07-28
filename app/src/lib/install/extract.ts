@@ -545,7 +545,25 @@ export function calloutsToDraftOpenings(
   return drafts;
 }
 
-/** Summarize drafts for the review screen: "12× #14 windows". */
+/**
+ * One mark's tally, in words that can only mean one thing.
+ *
+ * "3× #9 windows" was read on site as one window made of three pieces, and the
+ * count was queried because of it. A mark is a TYPE — the number written on the
+ * plan next to every opening of that type — so say how many openings use it.
+ */
+export function describeMarkCount(summary: {
+  mark: string;
+  count: number;
+  kind: "window" | "door";
+}): string {
+  const noun = summary.kind === "door" ? "door" : "window";
+  return summary.count === 1
+    ? `1 ${noun} uses mark #${summary.mark}`
+    : `${summary.count} ${noun}s use mark #${summary.mark}`;
+}
+
+/** Summarize drafts for the review screen: "12 windows use mark #14". */
 export function summarizeDraftMarks(
   drafts: DraftOpening[],
 ): { mark: string; count: number; kind: "window" | "door" }[] {

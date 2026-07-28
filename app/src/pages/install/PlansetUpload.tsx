@@ -32,6 +32,7 @@ import {
 import { ExtractionProgress } from "../../components/install/ExtractionProgress";
 import {
   calloutsToDraftOpenings,
+  describeMarkCount,
   extractScheduleRows,
   rowsToDraftOpenings,
   summarizeDraftMarks,
@@ -326,12 +327,7 @@ export function PlansetUpload() {
           return;
         }
         if ("marks" in result && result.marks?.length) {
-          const markLine = result.marks
-            .map(
-              (m) =>
-                `${m.count}× #${m.mark} ${m.kind === "door" ? "doors" : "windows"}`,
-            )
-            .join(", ");
+          const markLine = result.marks.map(describeMarkCount).join(", ");
           const repeats =
             "repeatViewCallouts" in result ? (result.repeatViewCallouts ?? 0) : 0;
           setSummary(
@@ -360,12 +356,7 @@ export function PlansetUpload() {
       if (result.drafts > 0 || result.linked > 0) {
         const markLine =
           "marks" in result && result.marks?.length
-            ? result.marks
-                .map(
-                  (m) =>
-                    `${m.count}× #${m.mark} ${m.kind === "door" ? "doors" : "windows"}`,
-                )
-                .join(", ")
+            ? result.marks.map(describeMarkCount).join(", ")
             : null;
         const sourceNote =
           "source" in result && result.source === "details"
