@@ -16,7 +16,12 @@
 // code, and derive the tempered/egress booleans from the transcribed text. It
 // never invents fields — anything the sheet didn't show stays blank.
 
-import { mergeSpecsByMark, type MarkSpecDraft } from "./specs";
+import {
+  parsePrintedInches,
+  resolveSpecSize,
+  sizeMismatchRecord,
+} from "./printedSize";
+import { decodeSizeCode, mergeSpecsByMark, type MarkSpecDraft } from "./specs";
 
 /** One verbatim mark object as returned by the vision edge function. */
 export interface RawVisionMark {
@@ -29,6 +34,13 @@ export interface RawVisionMark {
   size?: unknown;
   operation?: unknown;
   qty?: unknown;
+  /**
+   * The overall dimensions PRINTED beside the mark's elevation, transcribed
+   * verbatim — `"901(35 1/2\")"`, `"1816(71 1/2\")"`. They're what lets us catch
+   * a call size decoded under the wrong convention. Null when none is visible.
+   */
+  printed_width?: unknown;
+  printed_height?: unknown;
   /** Normalized `[x0,y0,x1,y1]` of this mark's elevation drawing on the page. */
   bbox?: unknown;
   /** One box per piece when the model merged adjacent marks into one entry. */
@@ -218,6 +230,16 @@ export function deriveEgress(style: unknown, operation: unknown): boolean | null
  * Turn one verbatim vision mark into a loose object shaped for `normalizeSpec`:
  * normalized mark, split size/operation, derived tempered/egress, verbatim
  * style/glass/color, and qty tucked into `extra`.
+ *
+ * It also CROSS-CHECKS the call size against the dimensions printed on the
+ * drawing (see `printedSize.ts`). The decode assumes a feet+inches convention
+ * this supplier happens to use; a supplier using inch-based codes would have
+ * "3672" silently become 42" × 86" instead of 36" × 72". So when the two
+ * disagree beyond tolerance the PRINTED dimensions are what we store as
+ * `width_in`/`height_in` — they're drawn on the sheet in the installer's hand —
+ * the raw `size_code` is still kept verbatim, and the disagreement is recorded
+ * in `extra.size_mismatch` for the foreman's review screen. When they agree, or
+ * when the sheet printed no dimensions, nothing changes from before.
  */
 export function prepVisionSpec(raw: RawVisionMark): Record<string, unknown> {
   const mark_code = normalizeMarkLabel(raw.mark ?? raw.mark_code);
@@ -229,16 +251,41 @@ export function prepVisionSpec(raw: RawVisionMark): Record<string, unknown> {
   const style = str(raw.style);
   const qty = str(raw.qty);
 
+  const printedWidth = str(raw.printed_width);
+  const printedHeight = str(raw.printed_height);
+  const printedWidthIn = parsePrintedInches(printedWidth);
+  const printedHeightIn = parsePrintedInches(printedHeight);
+  const decoded = decodeSizeCode(size_code);
+  const size = resolveSpecSize({
+    decodedWidthIn: decoded?.widthIn ?? null,
+    decodedHeightIn: decoded?.heightIn ?? null,
+    printedWidthIn,
+    printedHeightIn,
+  });
+
+  const extra: Record<string, unknown> = {};
+  if (qty) extra.qty = qty;
+  // Verbatim first, parsed inches alongside — the strings are the evidence, the
+  // numbers save every reader re-parsing them.
+  if (printedWidth) extra.printed_width = printedWidth;
+  if (printedHeight) extra.printed_height = printedHeight;
+  if (printedWidthIn != null) extra.printed_width_in = printedWidthIn;
+  if (printedHeightIn != null) extra.printed_height_in = printedHeightIn;
+  const mismatch = sizeMismatchRecord(size_code, printedWidthIn, printedHeightIn);
+  if (mismatch) extra.size_mismatch = mismatch;
+
   return {
     mark_code,
     style,
     glass,
     color: str(raw.color),
     size_code,
+    width_in: size.widthIn,
+    height_in: size.heightIn,
     operation,
     tempered: deriveTempered(glass),
     egress: deriveEgress(style, operation),
-    extra: qty ? { qty } : null,
+    extra: Object.keys(extra).length > 0 ? extra : null,
     // Where the mark's elevation drawing sits on the specs planset. Both are
     // validated downstream by normalizeSpec (page must be a positive integer,
     // box must survive validateBbox) and go null when they don't hold up.

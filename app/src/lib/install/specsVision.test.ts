@@ -475,3 +475,111 @@ describe("visionMarksToDrafts (combined A/B marks from vision)", () => {
     expect(map.get("18B")!.extra).toMatchObject({ qty: "2" });
   });
 });
+
+// The call size is decoded as feet+inches, which is this supplier's convention
+// and not a universal one. These sheets print the real dimensions next to each
+// elevation, so we transcribe those too and check the decode against them —
+// and when they disagree, the printed dimensions are what the crew is shown.
+describe("visionMarksToDrafts (printed dimensions cross-check)", () => {
+  /** Smith mark #1 as transcribed, dimensions and all. */
+  const SMITH_MARK_1: RawVisionMark = {
+    ...PAGE_1_MARKS[0],
+    printed_width: '901(35 1/2")',
+    printed_height: '1816(71 1/2")',
+  };
+
+  /**
+   * The failure this feature exists for: a supplier whose 4-digit codes are
+   * INCHES. "3672" means 36" x 72"; decoded as feet+inches it silently becomes
+   * 42" x 86" — a wrong size on an installer's sheet with nothing to flag it.
+   */
+  const INCH_CONVENTION_MARK: RawVisionMark = {
+    mark: "#7",
+    style: "Thermal Break Aluminum Fixed Window(Nail Fins)",
+    glass: "5(Low-E 366)+12A+5(Low-E 366) insulating tempered Low-E glass",
+    color: "Black(Aluminum profile Color)",
+    size_code: "3672",
+    operation: "Fixed",
+    qty: "1",
+    printed_width: '36"',
+    printed_height: '72"',
+  };
+
+  it("keeps the nominal decoded size when the sheet agrees (real mark 1)", () => {
+    const [draft] = visionMarksToDrafts([SMITH_MARK_1]);
+    // 3060 → 36 x 72 nominal against a printed 35.5 x 71.5 frame: half an inch
+    // of deliberate slack, not a disagreement.
+    expect(draft).toMatchObject({
+      mark_code: "1",
+      size_code: "3060",
+      width_in: 36,
+      height_in: 72,
+    });
+    expect(draft.extra).toMatchObject({
+      qty: "2",
+      printed_width: '901(35 1/2")',
+      printed_height: '1816(71 1/2")',
+      printed_width_in: 35.5,
+      printed_height_in: 71.5,
+    });
+    expect(draft.extra).not.toHaveProperty("size_mismatch");
+  });
+
+  it("prefers the printed dimensions when the code disagrees", () => {
+    const [draft] = visionMarksToDrafts([INCH_CONVENTION_MARK]);
+    expect(draft).toMatchObject({
+      mark_code: "7",
+      // The raw code is still kept verbatim — we report the conflict, we don't
+      // rewrite what the sheet said.
+      size_code: "3672",
+      width_in: 36,
+      height_in: 72,
+    });
+    expect(draft.extra).toMatchObject({
+      size_mismatch: {
+        size_code: "3672",
+        decoded_width_in: 42,
+        decoded_height_in: 86,
+        printed_width_in: 36,
+        printed_height_in: 72,
+        delta_width_in: 6,
+        delta_height_in: 14,
+      },
+    });
+  });
+
+  it("behaves exactly as before when no dimensions are printed", () => {
+    const [draft] = visionMarksToDrafts([PAGE_1_MARKS[0]]);
+    expect(draft).toMatchObject({
+      mark_code: "1",
+      size_code: "3060",
+      width_in: 36,
+      height_in: 72,
+      extra: { qty: "2" },
+    });
+    expect(Object.keys(draft.extra ?? {})).toEqual(["qty"]);
+  });
+
+  it("ignores a dimension it cannot read rather than guessing", () => {
+    const [draft] = visionMarksToDrafts([
+      { ...SMITH_MARK_1, printed_width: "see detail", printed_height: null },
+    ]);
+    expect(draft).toMatchObject({ width_in: 36, height_in: 72 });
+    expect(draft.extra).toMatchObject({ printed_width: "see detail" });
+    expect(draft.extra).not.toHaveProperty("printed_width_in");
+    expect(draft.extra).not.toHaveProperty("size_mismatch");
+  });
+
+  it("fills the size from the drawing when the code cannot be decoded", () => {
+    const [draft] = visionMarksToDrafts([
+      {
+        ...SMITH_MARK_1,
+        size_code: "900x1800",
+        printed_width: '901(35 1/2")',
+        printed_height: '1816(71 1/2")',
+      },
+    ]);
+    expect(draft.width_in).toBe(35.5);
+    expect(draft.height_in).toBe(71.5);
+  });
+});

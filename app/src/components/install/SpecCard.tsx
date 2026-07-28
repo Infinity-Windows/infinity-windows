@@ -5,6 +5,10 @@
 // elevation drawing on the specs planset, the card leads with that picture
 // (white line-work on black) above the text.
 
+import {
+  checkSpecSize,
+  PRINTED_SIZE_EXTRA_KEYS,
+} from "../../lib/install/printedSize";
 import type { MarkSpec } from "../../lib/install/specs";
 import { formatSize } from "../../lib/install/specs";
 import { MarkDrawing } from "./MarkDrawing";
@@ -49,9 +53,14 @@ export function SpecCard({ spec, projectId, compact = false }: SpecCardProps) {
     spec.u_factor != null ? `U ${spec.u_factor}` : null,
     spec.shgc != null ? `SHGC ${spec.shgc}` : null,
   ].filter(Boolean) as string[];
+  // The size-check bookkeeping in `extra` is for the foreman's review screen,
+  // not the installer's card — the size shown here is already the trusted one.
   const extras = spec.extra
-    ? Object.entries(spec.extra).filter(([, v]) => v != null && v !== "")
+    ? Object.entries(spec.extra).filter(
+        ([k, v]) => v != null && v !== "" && !PRINTED_SIZE_EXTRA_KEYS.includes(k),
+      )
     : [];
+  const sizeFlagged = checkSpecSize(spec) != null;
 
   const hasDrawing = Boolean(projectId && spec.image_bbox && spec.image_page);
   const hasContent =
@@ -118,6 +127,11 @@ export function SpecCard({ spec, projectId, compact = false }: SpecCardProps) {
       <Field label="Glass" value={spec.glass} />
       <Field label="Color" value={spec.color} />
       <Field label="Size" value={size} />
+      {sizeFlagged && size && (
+        <p className="muted" style={{ margin: "0 0 2px", fontSize: 11 }}>
+          measured off the drawing — the call size disagrees, foreman checking
+        </p>
+      )}
       <Field label="Product line" value={spec.product_line} />
       <Field label="Grids" value={spec.grids} />
       <Field label="Screen" value={spec.screen} />
