@@ -72,8 +72,26 @@ export function countPlanMarkCallouts(text: string): number {
 /**
  * Pages that are actual floor drawings, preferring sheets that already have
  * opening numbers around the building (the “numbered” plan).
+ *
+ * `callouts` are the marks read from PDF annotations (see
+ * `extractPlanMarkCallouts`). They matter because a marked-up plan usually
+ * carries its numbers as FreeText annotations, not page text — `getTextContent`
+ * never sees them. Scoring on text alone made Black Desert, whose 96 callouts
+ * are all annotations, look like it had a single numbered drawing when all four
+ * of its pages are marked.
  */
-export function findFloorPlanPages(pages: PdfTextPage[]): number[] {
+export function findFloorPlanPages(
+  pages: PdfTextPage[],
+  callouts: { pageNumber: number }[] = [],
+): number[] {
+  const annotationMarks = new Map<number, number>();
+  for (const callout of callouts) {
+    annotationMarks.set(
+      callout.pageNumber,
+      (annotationMarks.get(callout.pageNumber) ?? 0) + 1,
+    );
+  }
+
   const scored = pages.map((page) => {
     const titleHit = /SHEET\s+TITLE\s*:\s*[\s\S]{0,80}\bFLOOR\s+PLAN\b/i.test(
       page.text,
@@ -82,14 +100,17 @@ export function findFloorPlanPages(pages: PdfTextPage[]): number[] {
       : 0;
     const floorHits = (page.text.match(/\bFLOOR\s+PLAN\b/gi) ?? []).length;
     const floorScore = floorHits >= 2 ? 25 : floorHits === 1 ? 10 : 0;
-    const markScore = Math.min(40, countPlanMarkCallouts(page.text) * 4);
+    const marks =
+      countPlanMarkCallouts(page.text) +
+      (annotationMarks.get(page.pageNumber) ?? 0);
+    const markScore = Math.min(40, marks * 4);
     const levelHit = /\b(LEVEL|FIRST|SECOND|THIRD)\s+FLOOR\b/i.test(page.text)
       ? 8
       : 0;
     return {
       pageNumber: page.pageNumber,
       score: titleHit + floorScore + markScore + levelHit,
-      marks: countPlanMarkCallouts(page.text),
+      marks,
     };
   });
 

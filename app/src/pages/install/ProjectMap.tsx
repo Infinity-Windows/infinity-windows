@@ -384,7 +384,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     let cancelled = false;
     (async () => {
       try {
-        const { extractAllText, loadPdf } = await import("../../lib/install/pdf");
+        const { extractAllText, extractPlanMarkCallouts, loadPdf } =
+          await import("../../lib/install/pdf");
         let initialPage = 1;
 
         if (buildingPdf) {
@@ -393,7 +394,14 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           if (cancelled) return;
           buildingDocRef.current = buildingDoc;
           setBuildingPageCount(buildingDoc.numPages);
-          const detectedFloorPages = findFloorPlanPages(buildingText);
+          // Marked plans carry their numbers as annotations, which the text
+          // layer never shows — count those too or an annotation-marked
+          // supplier looks like it has one numbered drawing.
+          const buildingCallouts = await extractPlanMarkCallouts(buildingDoc);
+          const detectedFloorPages = findFloorPlanPages(
+            buildingText,
+            buildingCallouts,
+          );
           setFloorPages(detectedFloorPages);
           initialPage = detectedFloorPages[0] ?? 1;
         }

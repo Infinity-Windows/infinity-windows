@@ -77,6 +77,42 @@ describe("findFloorPlanPages", () => {
     ).toEqual([3, 4]);
   });
 
+  // Black Desert's plan carries all 96 of its marks as FreeText annotations,
+  // which getTextContent never returns. Scoring on page text alone reported
+  // "1 numbered floor drawing" for a four-page marked-up plan.
+  it("counts marks that live in annotations, not just page text", () => {
+    const pages = [
+      { pageNumber: 1, text: "FLOOR PLAN\nrooms\nFLOOR PLAN" },
+      { pageNumber: 2, text: "elevation details" },
+      { pageNumber: 3, text: "elevation details" },
+    ];
+    // Mirrors Black Desert: every page is marked, page 1 also says FLOOR PLAN.
+    const callouts = [
+      ...Array.from({ length: 42 }, () => ({ pageNumber: 1 })),
+      ...Array.from({ length: 28 }, () => ({ pageNumber: 2 })),
+      ...Array.from({ length: 22 }, () => ({ pageNumber: 3 })),
+    ];
+    expect(findFloorPlanPages(pages)).toEqual([1]);
+    expect(findFloorPlanPages(pages, callouts)).toEqual([1, 2, 3]);
+  });
+
+  it("leaves a text-marked plan's page order alone", () => {
+    const pages = [
+      { pageNumber: 3, text: "SHEET TITLE:\nFLOOR PLAN\n#4A #4B\nFLOOR PLAN A2.1" },
+      { pageNumber: 4, text: "FLOOR PLAN\nrooms\nFLOOR PLAN A2.2" },
+    ];
+    expect(findFloorPlanPages(pages)).toEqual([3, 4]);
+    expect(findFloorPlanPages(pages, [{ pageNumber: 4 }])).toEqual([3, 4]);
+  });
+
+  it("ignores callouts on pages that were not supplied", () => {
+    expect(
+      findFloorPlanPages([{ pageNumber: 1, text: "FLOOR PLAN\nFLOOR PLAN" }], [
+        { pageNumber: 9 },
+      ]),
+    ).toEqual([1]);
+  });
+
   it("prefers the floor sheet that already has numbered opening callouts", () => {
     expect(
       findFloorPlanPages([
