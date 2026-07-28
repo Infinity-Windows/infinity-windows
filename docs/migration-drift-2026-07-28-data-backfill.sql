@@ -5,7 +5,12 @@
 -- That script is schema-only and safe to apply as a unit. This one REWRITES
 -- ROWS, so it is called out on its own rather than bundled.
 --
--- Source migration: supabase/migrations/20260721001000_seed_brain_top10_tips.sql
+-- Source: docs/optional-seeds/20260721001000_seed_brain_top10_tips.sql
+-- DECIDED (2026-07-28): declined for now, for the catalog-code reason set out
+-- below. The seed has therefore been moved OUT of supabase/migrations/ and into
+-- docs/optional-seeds/, so the migrations folder holds only files that have run
+-- or will run. See docs/optional-seeds/README.md.
+--
 -- Status: NOT APPLIED. It is not recorded in supabase_migrations.schema_migrations,
 -- and the live data confirms it never ran — zero rows in window_types have any
 -- tips (`with_tips = 0` across all 34 rows).
@@ -40,11 +45,15 @@
 -- reconciled with the real catalog codes first. That is a content decision,
 -- which is exactly why this is not bundled into the schema script.
 --
--- HOW TO APPLY
+-- HOW TO APPLY (if the codes are ever reconciled)
 -- The payload is long (ten multi-paragraph JSON tip sets) and is already
--- idempotent, so it is not duplicated here — run the migration file verbatim:
+-- idempotent, so it is not duplicated here — run the seed file verbatim:
 --
---     supabase/migrations/20260721001000_seed_brain_top10_tips.sql
+--     docs/optional-seeds/20260721001000_seed_brain_top10_tips.sql
+--
+-- Do NOT move it back into supabase/migrations/ and do NOT add a row for it to
+-- supabase_migrations.schema_migrations. It is a one-off content seed, not part
+-- of the schema chain.
 --
 -- =====================================================================
 
