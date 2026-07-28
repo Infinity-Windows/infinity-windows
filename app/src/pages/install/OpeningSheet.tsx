@@ -45,6 +45,7 @@ import {
 import { MEMO_TOPICS, isForemanPlus, type MemoTopics } from "../../lib/install/types";
 import { indexSpecsByMark, specForOpeningCode } from "../../lib/install/specs";
 import { SpecCard } from "../../components/install/SpecCard";
+import { MissingSpecNotice } from "../../components/install/MissingSpecNotice";
 import { createIssue } from "../../lib/issues";
 import type { QrPayload } from "../../lib/qr";
 import { resolveWindowFromScan } from "../../lib/scanResolve";
@@ -622,7 +623,19 @@ export function OpeningSheet() {
         )}
       </div>
 
-      {openingSpec && <SpecCard spec={openingSpec} projectId={projectId} />}
+      {openingSpec ? (
+        <SpecCard spec={openingSpec} projectId={projectId} />
+      ) : (
+        // Only once the sheet HAS been read and this mark still isn't in it —
+        // a project with no specs at all simply hasn't had them uploaded yet,
+        // and saying "no spec sheet for this mark" there would be a lie.
+        (markSpecs.data?.length ?? 0) > 0 && (
+          <MissingSpecNotice
+            projectId={projectId}
+            openingCode={opening.data?.opening_code}
+          />
+        )
+      )}
 
       {message && (
         <p className={/^(Window|Install|Rough|Condition|Flag|Flagged|Site|Complication)/.test(message) ? "ok" : "error"}>

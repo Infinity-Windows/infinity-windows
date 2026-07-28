@@ -10,6 +10,7 @@ import { parseSpecPageStatuses, type SpecPageStatus } from "./specPageStatus";
 import { pendingPages, type StoredPageProgress } from "./extractionProgress";
 import { formatApiError } from "./errors";
 import { visionMarksToDrafts, type RawVisionMark } from "./specsVision";
+import type { DiscrepancyKind } from "./specReconciliation";
 import type {
   InstallEvent,
   MemoTopics,
@@ -1846,6 +1847,102 @@ export async function confirmMarkSpec(id: string): Promise<void> {
     .from("project_mark_specs")
     .update({ confirmed: true })
     .eq("id", id);
+  if (error) throw error;
+}
+
+// --- Spec/plan reconciliation: labelling a discrepancy as a known gap ---
+//
+// The reconciliation itself is derived and never stored (see
+// `specReconciliation.ts`). Only the human answer to it is persisted, so a
+// re-extract can't wipe the office's judgement.
+
+/** True when the discrepancies table hasn't been migrated yet. */
+function isMissingDiscrepanciesTable(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: unknown; message?: unknown };
+  if (e.code === "PGRST205" || e.code === "42P01") return true;
+  const message = typeof e.message === "string" ? e.message.toLowerCase() : "";
+  return message.includes("project_spec_discrepancies");
+}
+
+/** A persisted "we know about this one" label. */
+export interface SpecDiscrepancyAck {
+  id: string;
+  project_id: string;
+  mark_code: string;
+  kind: DiscrepancyKind;
+  note: string | null;
+  acknowledged_by: string | null;
+  acknowledged_at: string;
+}
+
+/**
+ * Every discrepancy a foreman has labelled on this project. Best-effort:
+ * returns [] when the table doesn't exist yet, so the report still computes
+ * and simply can't be labelled until the migration lands.
+ */
+export async function listSpecDiscrepancyAcks(
+  projectId: string,
+): Promise<SpecDiscrepancyAck[]> {
+  if (!projectId) return [];
+  const { data, error } = await supabase
+    .from("project_spec_discrepancies")
+    .select("*")
+    .eq("project_id", projectId);
+  if (error) {
+    if (isMissingDiscrepanciesTable(error)) return [];
+    throw error;
+  }
+  return (data ?? []) as SpecDiscrepancyAck[];
+}
+
+/**
+ * Label one discrepancy as a known supplier gap being chased (foreman+).
+ *
+ * SEAM: this is the single funnel through which "a human labelled a
+ * discrepancy" flows. The follow-up that raises a trackable Issue for the
+ * supplier hangs off exactly here — nothing else in the app needs to change for
+ * it. Idempotent by (project, mark, kind) so re-running extraction and
+ * re-labelling can't create duplicates.
+ */
+export async function acknowledgeSpecDiscrepancy(params: {
+  projectId: string;
+  markCode: string;
+  kind: DiscrepancyKind;
+  note?: string | null;
+}): Promise<SpecDiscrepancyAck> {
+  const { data: auth } = await supabase.auth.getUser();
+  const { data, error } = await supabase
+    .from("project_spec_discrepancies")
+    .upsert(
+      {
+        project_id: params.projectId,
+        mark_code: params.markCode,
+        kind: params.kind,
+        note: params.note?.trim() ? params.note.trim() : null,
+        acknowledged_by: auth.user?.id ?? null,
+        acknowledged_at: new Date().toISOString(),
+      },
+      { onConflict: "project_id,mark_code,kind" },
+    )
+    .select()
+    .single();
+  if (error) throw error;
+  return data as SpecDiscrepancyAck;
+}
+
+/** Remove the label, putting the discrepancy back on the open list (foreman+). */
+export async function unacknowledgeSpecDiscrepancy(params: {
+  projectId: string;
+  markCode: string;
+  kind: DiscrepancyKind;
+}): Promise<void> {
+  const { error } = await supabase
+    .from("project_spec_discrepancies")
+    .delete()
+    .eq("project_id", params.projectId)
+    .eq("mark_code", params.markCode)
+    .eq("kind", params.kind);
   if (error) throw error;
 }
 
