@@ -640,7 +640,11 @@ export function summarizeExtractOutcome(input: {
   }
 
   const notes = [
-    input.skipped > 0 ? `${input.skipped} already confirmed — left alone.` : null,
+    // Not only confirmed ones: anything already assigned, started or installed
+    // is kept too, so don't promise the reader it was purely "confirmed".
+    input.skipped > 0
+      ? `Left ${input.skipped} alone — already confirmed or already being worked on.`
+      : null,
     input.repeatViewCallouts > 0
       ? `Ignored ${plural(input.repeatViewCallouts, "repeat number")} on the elevation sheets — those draw the same openings again.`
       : null,

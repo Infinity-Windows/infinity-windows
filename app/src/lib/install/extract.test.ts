@@ -555,6 +555,8 @@ describe("summarizeExtractOutcome", () => {
       elevationViews: 0,
       source: "merged",
     });
-    expect(out.notes).toContain("2 already confirmed — left alone.");
+    expect(out.notes).toContain(
+      "Left 2 alone — already confirmed or already being worked on.",
+    );
   });
 });
