@@ -26,6 +26,7 @@ import {
 import { MarkElevationViews } from "../../components/install/MarkElevationViews";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { useRealtimeOpenings } from "../../lib/useRealtimeOpenings";
+import { invalidateOpeningQueries } from "../../lib/install/openingQueryKeys";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import {
   isForemanPlus,
@@ -418,17 +419,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       };
     },
     onSuccess: ({ result, source, marks, repeatViewCallouts, elevationViews }) => {
-      queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+      invalidateOpeningQueries(queryClient, projectId);
       queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
       queryClient.invalidateQueries({ queryKey: ["elevationViews", projectId] });
-      // Every opening row is new, so anything keyed off an opening id or a
-      // count of openings is now describing rows that were just deleted.
-      queryClient.invalidateQueries({ queryKey: ["opening"] });
-      queryClient.invalidateQueries({ queryKey: ["myOpenings"] });
-      queryClient.invalidateQueries({ queryKey: ["dispatch", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["openingCounts"] });
-      queryClient.invalidateQueries({ queryKey: ["voidedOpenings", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["markSpecs", projectId] });
       const markLine = marks.map(describeMarkCount).join(", ");
       setExtractNote(
         [
