@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   bboxToPixelRect,
   invertLineArt,
+  isDrawingStale,
   padBbox,
   validateBbox,
   type Bbox,
@@ -72,6 +73,62 @@ describe("validateBbox", () => {
     expect(validateBbox([0.5, 0.5, 0.54, 0.54])).toBeNull();
     // Just over the floor is kept.
     expect(validateBbox([0.5, 0.5, 0.55, 0.55])).toEqual([0.5, 0.5, 0.55, 0.55]);
+  });
+});
+
+describe("isDrawingStale", () => {
+  const BOX = PAGE_1_BOXES["4A"];
+  const CURRENT = "planset-current";
+
+  it("is fine when the box came from the planset we're cropping", () => {
+    expect(isDrawingStale({ image_bbox: BOX, planset_id: CURRENT }, CURRENT)).toBe(
+      false,
+    );
+  });
+
+  it("is stale when the specs planset has been replaced", () => {
+    expect(
+      isDrawingStale({ image_bbox: BOX, planset_id: "planset-old" }, CURRENT),
+    ).toBe(true);
+  });
+
+  it("keeps legacy rows with no recorded planset — the live Smith drawings", () => {
+    expect(isDrawingStale({ image_bbox: BOX, planset_id: null }, CURRENT)).toBe(
+      false,
+    );
+    expect(isDrawingStale({ image_bbox: BOX }, CURRENT)).toBe(false);
+  });
+
+  it("is never stale when there are no coordinates to be stale", () => {
+    expect(isDrawingStale({ image_bbox: null, planset_id: "planset-old" }, CURRENT)).toBe(
+      false,
+    );
+    expect(isDrawingStale({ planset_id: "planset-old" }, CURRENT)).toBe(false);
+  });
+
+  it("treats an unusable box as no box at all", () => {
+    // Fails validateBbox (reversed), so there is nothing to mis-crop.
+    expect(
+      isDrawingStale({ image_bbox: [0.9, 0.9, 0.1, 0.1], planset_id: "old" }, CURRENT),
+    ).toBe(false);
+  });
+
+  it("does not claim staleness when the current planset is unknown", () => {
+    expect(isDrawingStale({ image_bbox: BOX, planset_id: "planset-old" }, null)).toBe(
+      false,
+    );
+    expect(
+      isDrawingStale({ image_bbox: BOX, planset_id: "planset-old" }, undefined),
+    ).toBe(false);
+    expect(isDrawingStale({ image_bbox: BOX, planset_id: "planset-old" }, "")).toBe(
+      false,
+    );
+  });
+
+  it("compares ids exactly — a near-miss uuid is a different file", () => {
+    expect(
+      isDrawingStale({ image_bbox: BOX, planset_id: `${CURRENT} ` }, CURRENT),
+    ).toBe(true);
   });
 });
 

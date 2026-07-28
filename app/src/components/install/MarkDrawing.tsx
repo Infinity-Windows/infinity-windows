@@ -1,138 +1,30 @@
 // The elevation drawing ("Outside View") for one mark, cropped live out of the
 // project's specs planset and re-colored to white line-work on black.
 //
-// Nothing is stored as an image: the spec row only remembers WHICH page of the
-// specs planset the drawing is on and WHERE on that page it sits (a normalized
-// box from the same Claude VISION pass that read the spec table). This
-// component renders that page with the app's existing pdf.js helper, crops the
-// padded box, and runs the pixel transform in `lib/install/markDrawing`.
+// Nothing is stored as an image: the spec row only remembers WHICH specs planset
+// the drawing came from, which page it's on, and where on that page it sits (a
+// normalized box from the same Claude VISION pass that read the spec table).
+// `lib/install/drawingCrops` turns that into a picture and caches it — in memory
+// and in IndexedDB, so a reload doesn't re-download a 2MB planset to redraw one
+// small drawing.
 //
-// Three things keep it cheap on a phone in the field:
-//   • the PDF and each rendered page are cached at module scope, so a sheet
-//     with a dozen marks renders the page ONCE and every card slices it;
-//   • finished crops are cached too, so revisiting an opening is instant;
-//   • nothing starts until the card is actually scrolled into view.
+// Two guardrails matter here:
+//   • nothing starts until the card is actually scrolled into view;
+//   • a drawing whose coordinates were measured against a DIFFERENT specs
+//     planset is not rendered at all. A missing picture is harmless; a
+//     confident picture of the wrong window is not.
 // Every failure path renders nothing — a missing drawing must never take a spec
-// card down with it.
+// card down with it, and the spec TEXT always survives.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
-import { downloadPlanset, findSpecsPlanset, listPlansets } from "../../lib/install/api";
-import type { Planset } from "../../lib/install/types";
+import { findSpecsPlanset, listPlansets } from "../../lib/install/api";
+import { markDrawingDataUrl } from "../../lib/install/drawingCrops";
 import type { MarkSpec } from "../../lib/install/specs";
-import {
-  bboxToPixelRect,
-  invertLineArt,
-  padBbox,
-  validateBbox,
-  type Bbox,
-} from "../../lib/install/markDrawing";
-
-/**
- * Width the specs page is rasterized to. Big enough that one mark's slice
- * (roughly a tenth of the sheet) still reads when a crew member zooms it
- * full-screen, small enough that a single cached page canvas stays sane.
- */
-const PAGE_RENDER_WIDTH = 2600;
-
-/** Only ever hold a couple of pages/documents — these canvases are megabytes. */
-const MAX_CACHED_DOCS = 2;
-const MAX_CACHED_PAGES = 2;
-/** Crops are small PNG data URLs; keep plenty so scrolling back is free. */
-const MAX_CACHED_CROPS = 150;
-
-const docCache = new Map<string, Promise<PDFDocumentProxy>>();
-const pageCache = new Map<string, Promise<HTMLCanvasElement>>();
-const cropCache = new Map<string, string>();
-
-/** Drop oldest-inserted entries until the cache is back under `max`. */
-function evict(cache: Map<string, unknown>, max: number): void {
-  while (cache.size > max) {
-    const oldest = cache.keys().next();
-    if (oldest.done) return;
-    cache.delete(oldest.value);
-  }
-}
-
-async function getDoc(planset: Planset): Promise<PDFDocumentProxy> {
-  const cached = docCache.get(planset.id);
-  if (cached) return cached;
-
-  const pending = (async () => {
-    // Dynamic, like the planset viewer: pdf.js is a large dependency and must
-    // stay out of the app shell.
-    const { loadPdf } = await import("../../lib/install/pdf");
-    return loadPdf(await downloadPlanset(planset));
-  })();
-  docCache.set(planset.id, pending);
-  pending.catch(() => docCache.delete(planset.id));
-  evict(docCache, MAX_CACHED_DOCS);
-  return pending;
-}
-
-/** Render (once) the specs page every mark on that page will be sliced from. */
-async function getPageCanvas(
-  planset: Planset,
-  pageNumber: number,
-): Promise<HTMLCanvasElement> {
-  const key = `${planset.id}:${pageNumber}:${PAGE_RENDER_WIDTH}`;
-  const cached = pageCache.get(key);
-  if (cached) return cached;
-
-  const pending = (async () => {
-    const { renderPageCanvas } = await import("../../lib/install/pdf");
-    return renderPageCanvas(await getDoc(planset), pageNumber, PAGE_RENDER_WIDTH);
-  })();
-  pageCache.set(key, pending);
-  pending.catch(() => pageCache.delete(key));
-  evict(pageCache, MAX_CACHED_PAGES);
-  return pending;
-}
-
-/** Slice the padded box out of the page and flip it to white-on-black. */
-function cropDrawing(page: HTMLCanvasElement, bbox: Bbox): string {
-  const rect = bboxToPixelRect(padBbox(bbox), page.width, page.height);
-  const out = document.createElement("canvas");
-  out.width = rect.width;
-  out.height = rect.height;
-  const ctx = out.getContext("2d");
-  if (!ctx) throw new Error("2d canvas unavailable");
-
-  ctx.drawImage(
-    page,
-    rect.x,
-    rect.y,
-    rect.width,
-    rect.height,
-    0,
-    0,
-    rect.width,
-    rect.height,
-  );
-  const pixels = ctx.getImageData(0, 0, rect.width, rect.height);
-  invertLineArt(pixels.data);
-  ctx.putImageData(pixels, 0, 0);
-  return out.toDataURL("image/png");
-}
-
-async function markDrawingDataUrl(
-  planset: Planset,
-  pageNumber: number,
-  bbox: Bbox,
-): Promise<string> {
-  const key = `${planset.id}:${pageNumber}:${bbox.join(",")}`;
-  const cached = cropCache.get(key);
-  if (cached) return cached;
-
-  const url = cropDrawing(await getPageCanvas(planset, pageNumber), bbox);
-  cropCache.set(key, url);
-  evict(cropCache, MAX_CACHED_CROPS);
-  return url;
-}
+import { isDrawingStale, validateBbox } from "../../lib/install/markDrawing";
 
 interface MarkDrawingProps {
-  spec: Pick<MarkSpec, "mark_code" | "image_page" | "image_bbox">;
+  spec: Pick<MarkSpec, "mark_code" | "image_page" | "image_bbox" | "planset_id">;
   /** Project whose specs planset the drawing is cropped from. */
   projectId: string | null | undefined;
   /** Small thumbnail for dense lists (My Work rows). */
@@ -187,13 +79,23 @@ export function MarkDrawing({ spec, projectId, compact = false }: MarkDrawingPro
   });
   const planset = plansets.data ? findSpecsPlanset(plansets.data) : null;
 
+  // The box was measured against one specific file. If the project's specs
+  // planset has since been replaced, cropping the same box out of the new one
+  // yields a real-looking drawing of the wrong unit, so we show nothing.
+  const stale = planset ? isDrawingStale(spec, planset.id) : false;
+
   useEffect(() => {
-    if (!visible || !planset || !bbox || page == null) return;
+    if (!visible || !planset || !bbox || page == null || stale) return;
     let cancelled = false;
     setFailed(false);
     void (async () => {
       try {
-        const url = await markDrawingDataUrl(planset, page, bbox);
+        const url = await markDrawingDataUrl({
+          planset,
+          pageNumber: page,
+          bbox,
+          markCode: spec.mark_code,
+        });
         if (!cancelled) setSrc(url);
       } catch {
         // A page that won't render, a planset we can't download offline, a
@@ -204,9 +106,10 @@ export function MarkDrawing({ spec, projectId, compact = false }: MarkDrawingPro
     return () => {
       cancelled = true;
     };
-  }, [visible, planset, page, bbox]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, planset, page, bbox, stale, spec.mark_code]);
 
-  if (!locatable) return null;
+  if (!locatable || stale) return null;
   // No specs planset on this project (or the lookup failed) — nothing to crop.
   if (failed || (plansets.isFetched && !planset) || plansets.isError) return null;
 
