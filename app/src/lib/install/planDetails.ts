@@ -253,15 +253,42 @@ function detailNotes(text: string): string[] {
   return notes;
 }
 
+/** A spec we already read off a page — the page's own proof it holds a window. */
+export interface ExtractedSpecPage {
+  mark_code: string;
+  image_page: number | null;
+}
+
 /**
  * Pull a compact, source-faithful index from manufacturer CAD detail sheets.
  * It intentionally does not infer geometry or invent marks absent from the PDF.
+ *
+ * `extractedSpecs` are the specs already read off this planset
+ * (`project_mark_specs.image_page` says which page each mark came from). They
+ * are the strongest evidence a page carries window or door information, and
+ * they work for any supplier: the text rules below only recognise the `#mark`
+ * habit and five phrases from Smith's sheets, so Black Desert showed 3 of its 14
+ * spec pages even though 37 specs had been read off 11 of them.
  */
-export function extractCadDetailPages(pages: PdfTextPage[]): CadDetailPage[] {
+export function extractCadDetailPages(
+  pages: PdfTextPage[],
+  extractedSpecs: ExtractedSpecPage[] = [],
+): CadDetailPage[] {
+  const specMarksByPage = new Map<number, string[]>();
+  for (const spec of extractedSpecs) {
+    if (spec.image_page == null) continue;
+    const marks = specMarksByPage.get(spec.image_page) ?? [];
+    marks.push(spec.mark_code.toUpperCase().replace(/^#/, ""));
+    specMarksByPage.set(spec.image_page, marks);
+  }
+
   return pages
     .map((page) => ({
       pageNumber: page.pageNumber,
-      marks: detailMarks(page.text),
+      marks: unique([
+        ...detailMarks(page.text),
+        ...(specMarksByPage.get(page.pageNumber) ?? []),
+      ]).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
       productCodes: productCodes(page.text),
       notes: detailNotes(page.text),
     }))

@@ -270,6 +270,49 @@ describe("extractCadDetailPages", () => {
       },
     ]);
   });
+
+  // Black Desert's 14 spec pages don't use "#4A" marks or Smith's five hardware
+  // phrases, so the text rules kept 3 of them — while 37 specs had already been
+  // read off 11. The specs themselves are the evidence.
+  it("keeps a page the extraction pulled specs from, whatever its wording", () => {
+    const pages = [
+      { pageNumber: 1, text: "Thermal Break Aluminum Fixed Window" },
+      { pageNumber: 2, text: "Outside View  Obscure Glass" },
+      { pageNumber: 3, text: "revision history" },
+    ];
+    expect(extractCadDetailPages(pages)).toEqual([]);
+    expect(
+      extractCadDetailPages(pages, [
+        { mark_code: "1", image_page: 1 },
+        { mark_code: "2", image_page: 1 },
+        { mark_code: "10", image_page: 2 },
+        { mark_code: "9", image_page: 2 },
+        { mark_code: "25", image_page: null },
+      ]),
+    ).toEqual([
+      { pageNumber: 1, marks: ["1", "2"], productCodes: [], notes: [] },
+      { pageNumber: 2, marks: ["9", "10"], productCodes: [], notes: [] },
+    ]);
+  });
+
+  it("merges spec marks with marks written on the sheet", () => {
+    expect(
+      extractCadDetailPages(
+        [{ pageNumber: 4, text: "PV Townhomes Bldg 14-#4A\n6080 XO" }],
+        [
+          { mark_code: "#4A", image_page: 4 },
+          { mark_code: "4B", image_page: 4 },
+        ],
+      ),
+    ).toEqual([
+      {
+        pageNumber: 4,
+        marks: ["4A", "4B"],
+        productCodes: ["6080 XO"],
+        notes: [],
+      },
+    ]);
+  });
 });
 
 describe("parseDetailQty", () => {

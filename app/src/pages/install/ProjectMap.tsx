@@ -8,6 +8,7 @@ import {
   downloadPlanset,
   ensureTypesFromSpecs,
   linkSpecsToOpenings,
+  listMarkSpecs,
   listOpenings,
   listPlanOutlines,
   listPlansets,
@@ -44,7 +45,7 @@ import {
   calloutsOnFloorPlanSheets,
   extractCadDetailPages,
   findFloorPlanPages,
-  type CadDetailPage,
+  type PdfTextPage,
 } from "../../lib/install/planDetails";
 import {
   extractScheduleRows,
@@ -120,7 +121,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const [floorPages, setFloorPages] = useState<number[]>([]);
   const [buildingPageCount, setBuildingPageCount] = useState(0);
   const [specsPageCount, setSpecsPageCount] = useState(0);
-  const [details, setDetails] = useState<CadDetailPage[]>([]);
+  const [specsText, setSpecsText] = useState<PdfTextPage[]>([]);
   const [image, setImage] = useState<PageImage | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [filter, setFilter] = useState<PlanFilter>("all");
@@ -182,6 +183,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     queryFn: () => listPlansets(projectId),
   });
   const types = useQuery({ queryKey: ["windowTypes"], queryFn: listWindowTypes });
+  // The specs we already read off the sheets are the surest sign of which pages
+  // hold window/door information, whoever the supplier is.
+  const markSpecs = useQuery({
+    queryKey: ["markSpecs", projectId],
+    queryFn: () => listMarkSpecs(projectId),
+    enabled: !!projectId,
+  });
   const planOutlines = useQuery({
     queryKey: ["planOutlines", projectId, buildingPlansetId],
     queryFn: () =>
@@ -259,6 +267,24 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const specsPdf =
     specsPdfs.find((ps) => ps.id === specsPlansetId) ?? specsPdfs[0] ?? null;
 
+  /**
+   * Which spec pages carry window/door details. Text rules alone kept 3 of Black
+   * Desert's 14 pages; the 37 specs already read off 11 of them say otherwise, so
+   * the extracted specs get a vote. A spec with no recorded planset is from
+   * before that column existed (Smith's live drawings) — counted, matching
+   * `isDrawingStale`, because it is unknown provenance rather than wrong.
+   */
+  const details = useMemo(
+    () =>
+      extractCadDetailPages(
+        specsText,
+        (markSpecs.data ?? []).filter(
+          (spec) => !spec.planset_id || spec.planset_id === specsPdf?.id,
+        ),
+      ),
+    [specsText, markSpecs.data, specsPdf?.id],
+  );
+
   const undo = useMutation({
     mutationFn: (args: { openingId: string; reason: string | null }) =>
       undoInstall(args.openingId, args.reason ?? undefined),
@@ -323,7 +349,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         });
         rows = extracted.rows;
         source = extracted.source;
-        setDetails(extractCadDetailPages(pages));
+        setSpecsText(pages);
         specsDocRef.current = doc;
         setSpecsPageCount(doc.numPages);
       }
@@ -425,11 +451,11 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
 
         if (specsPdf) {
           const specsDoc = await loadPdf(await downloadPlanset(specsPdf));
-          const specsText = await extractAllText(specsDoc);
+          const specsPageText = await extractAllText(specsDoc);
           if (cancelled) return;
           specsDocRef.current = specsDoc;
           setSpecsPageCount(specsDoc.numPages);
-          setDetails(extractCadDetailPages(specsText));
+          setSpecsText(specsPageText);
         }
 
         if (!buildingPdf && specsPdf) {
