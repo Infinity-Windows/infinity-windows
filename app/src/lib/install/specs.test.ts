@@ -231,6 +231,26 @@ describe("mergeSpecsByMark", () => {
     expect(merged[1].width_in).toBe(32);
   });
 
+  // A page-at-a-time extraction upserts the whole row each page, so the runner
+  // feeds the drafts merged so far back in as the base. Without that, page 2's
+  // partial view of a mark would null out what page 1 found.
+  it("reunites a mark split across pages when earlier drafts are the merge base", () => {
+    const afterPage1 = mergeSpecsByMark([{ mark: "14", style: "Fixed", size_code: "3060" }]);
+    const afterPage2 = mergeSpecsByMark([
+      ...afterPage1,
+      { mark: "14", color: "Bronze", glass: "Low-E" },
+    ]);
+    expect(afterPage2).toHaveLength(1);
+    expect(afterPage2[0]).toMatchObject({
+      mark_code: "14",
+      style: "Fixed",
+      size_code: "3060",
+      color: "Bronze",
+      glass: "Low-E",
+    });
+    expect(afterPage2[0].width_in).toBe(36);
+  });
+
   it("reinforces (fills gaps) when the same mark appears twice", () => {
     const merged = mergeSpecsByMark([
       { mark: "1", style: "Fixed", color: null },

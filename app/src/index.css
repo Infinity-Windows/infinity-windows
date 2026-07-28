@@ -8032,3 +8032,36 @@ body {
   max-width: none;
   cursor: zoom-out;
 }
+
+/* Specs-extraction progress. The run is page-by-page in the browser, so the
+   bar is the crew's only signal for whether it's worth waiting. */
+.extraction-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.extraction-progress-track {
+  margin-top: 8px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+.extraction-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--primary);
+  transition: width 240ms ease;
+}
+.extraction-progress-fill.live {
+  background: linear-gradient(
+    90deg,
+    var(--primary) 0%,
+    color-mix(in oklch, var(--primary) 55%, white) 50%,
+    var(--primary) 100%
+  );
+}
+.extraction-progress .action-btn {
+  margin-top: 10px;
+}

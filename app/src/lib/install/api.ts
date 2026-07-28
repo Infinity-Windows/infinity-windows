@@ -7,6 +7,8 @@ import { mergeSpecsByMark, parseSpecRow } from "./specs";
 import { dropCropsForPlanset } from "./cropCache";
 import { extractSpecsDeterministic } from "./specsDeterministic";
 import { parseSpecPageStatuses, type SpecPageStatus } from "./specPageStatus";
+import { pendingPages, type StoredPageProgress } from "./extractionProgress";
+import { formatApiError } from "./errors";
 import { visionMarksToDrafts, type RawVisionMark } from "./specsVision";
 import type {
   InstallEvent,
@@ -1255,6 +1257,8 @@ export interface SpecSaveResult {
   pages: SpecPageStatus[];
   /** True when page images were sent but the vision call itself failed outright. */
   visionFailed: boolean;
+  /** Merged drafts this call produced, to carry into the next page of a run. */
+  drafts: MarkSpecDraft[];
 }
 
 /** DB column set we persist for a mark spec draft (never writes confirmed). */
@@ -1354,12 +1358,22 @@ export async function extractAndSaveMarkSpecs(
   images?: { pageNumber: number; dataUrl: string }[],
   /** The specs planset these pages/images came from, stored as provenance. */
   plansetId?: string | null,
+  /**
+   * Drafts already merged from EARLIER pages of the same sheet.
+   *
+   * A page-at-a-time run must not lose a mark that spans pages: the row is
+   * upserted whole, so saving page 2's partial view of mark 14 on its own would
+   * null out the size page 1 found. Passing the running total in as the merge
+   * base keeps the reunited row that a whole-sheet call used to produce.
+   */
+  carryOver?: MarkSpecDraft[],
 ): Promise<SpecSaveResult> {
   const empty: SpecSaveResult = {
     saved: 0,
     skipped: 0,
     pages: [],
     visionFailed: false,
+    drafts: [],
   };
   if (!projectId || pages.length === 0) return empty;
 
@@ -1381,8 +1395,11 @@ export async function extractAndSaveMarkSpecs(
   // AI first so its richer, higher-confidence fields are the base that
   // deterministic size/operation data reinforces (fills gaps) rather than
   // overwrites. Distinct marks from either source both survive.
-  const drafts = mergeSpecsByMark([...aiDrafts, ...deterministic], "deterministic");
-  const status = { pages: pageStatuses, visionFailed };
+  const drafts = mergeSpecsByMark(
+    [...(carryOver ?? []), ...aiDrafts, ...deterministic],
+    "deterministic",
+  );
+  const status = { pages: pageStatuses, visionFailed, drafts };
   if (drafts.length === 0) return { saved: 0, skipped: 0, ...status };
 
   // Which marks are already confirmed? Never overwrite those.
@@ -1506,6 +1523,251 @@ export async function reextractSpecPages(
   );
   await retireReplacedSpecsPlansets(projectId, planset.id);
   return result;
+}
+
+// --- Durable per-page extraction progress (progress bar + resume) ---
+
+/** True when the progress table hasn't been migrated yet — degrade to no-op. */
+function isMissingProgressTable(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: unknown; message?: unknown };
+  if (e.code === "PGRST205" || e.code === "42P01") return true;
+  const message = typeof e.message === "string" ? e.message.toLowerCase() : "";
+  return message.includes("project_planset_pages");
+}
+
+/**
+ * Stored per-page outcomes for a planset, oldest page first. Best-effort: an
+ * environment without the migration returns [], which simply means every run
+ * starts from page 1 and the bar shows live-only progress — the pre-existing
+ * behaviour, never an error.
+ */
+export async function listPlansetPageProgress(
+  plansetId: string,
+): Promise<StoredPageProgress[]> {
+  if (!plansetId) return [];
+  const { data, error } = await supabase
+    .from("project_planset_pages")
+    .select("page_number, ok, attempts, mark_count, error, updated_at")
+    .eq("planset_id", plansetId)
+    .order("page_number");
+  if (error) {
+    if (isMissingProgressTable(error)) return [];
+    throw error;
+  }
+  return (data ?? []).map((row) => ({
+    pageNumber: Number(row.page_number),
+    ok: Boolean(row.ok),
+    attempts: Number(row.attempts ?? 0),
+    markCount: Number(row.mark_count ?? 0),
+    error: typeof row.error === "string" && row.error ? row.error : null,
+    updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
+  }));
+}
+
+/**
+ * Record one page's outcome as soon as it finishes, so the bar reflects stored
+ * state and an interrupted run knows where to pick up. Best-effort for the same
+ * reason as the read: losing a progress row must never cost us the specs that
+ * page just produced.
+ */
+export async function savePlansetPageProgress(
+  plansetId: string,
+  status: SpecPageStatus,
+): Promise<void> {
+  if (!plansetId) return;
+  const { error } = await supabase.from("project_planset_pages").upsert(
+    {
+      planset_id: plansetId,
+      page_number: status.pageNumber,
+      ok: status.ok,
+      attempts: status.attempts,
+      mark_count: status.markCount,
+      error: status.error,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "planset_id,page_number" },
+  );
+  if (error && !isMissingProgressTable(error)) throw error;
+}
+
+/** Forget a planset's progress so the next run re-reads every page. */
+export async function clearPlansetPageProgress(plansetId: string): Promise<void> {
+  if (!plansetId) return;
+  const { error } = await supabase
+    .from("project_planset_pages")
+    .delete()
+    .eq("planset_id", plansetId);
+  if (error && !isMissingProgressTable(error)) throw error;
+}
+
+/**
+ * The slice of a pdf.js document the runner needs. Structural so callers can
+ * hand over a `PDFDocumentProxy` without this module importing pdf.js types
+ * into the app shell.
+ */
+type PdfDocumentLike = Parameters<
+  typeof import("./renderSpecImages").renderPageJpeg
+>[0];
+
+/** Live callback payload for the extraction progress bar. */
+export interface SpecExtractionTick {
+  /** Page just finished, or about to start when `status` is null. */
+  pageNumber: number;
+  /** Outcome, once the page completed. */
+  status: SpecPageStatus | null;
+  /** Everything stored for this planset so far, including `status`. */
+  progress: StoredPageProgress[];
+}
+
+export interface SpecExtractionOptions {
+  /** Only these pages (a targeted retry of the ones that failed). */
+  pages?: number[];
+  /** Already-loaded document, so an upload doesn't re-download its own file. */
+  doc?: PdfDocumentLike;
+  /** Polled between pages so the UI can stop a run. */
+  isCancelled?: () => boolean;
+  onTick?: (tick: SpecExtractionTick) => void;
+}
+
+export interface SpecExtractionRunResult {
+  saved: number;
+  pages: StoredPageProgress[];
+  /** Pages read during THIS run (a resume skips the ones already done). */
+  processed: number;
+  /** True when the caller aborted part-way; the planset stays resumable. */
+  stopped: boolean;
+}
+
+/**
+ * Read a specs planset page by page, saving specs AND progress as each page
+ * lands.
+ *
+ * This replaces the old all-at-once call for the interactive paths. The edge
+ * function already made one vision call per page internally, so driving the
+ * loop from here costs nothing in extraction quality but buys three things the
+ * crew asked for: a progress bar that names the page being read, progress that
+ * survives leaving the screen, and a resume that starts at the first page which
+ * never completed instead of redoing the sheet.
+ *
+ * A page that throws is recorded as failed and the run CONTINUES — one bad page
+ * must not cost the other thirteen. The planset only goes to `ready` when every
+ * page has been attempted, so an interrupted run stays visibly resumable rather
+ * than looking finished.
+ */
+export async function runSpecExtraction(
+  projectId: string,
+  planset: Planset,
+  opts: SpecExtractionOptions = {},
+): Promise<SpecExtractionRunResult> {
+  const { extractAllText, loadPdf } = await import("./pdf");
+  const { renderPageJpeg } = await import("./renderSpecImages");
+
+  const doc = opts.doc ?? (await loadPdf(await downloadPlanset(planset)));
+  const total = doc.numPages;
+  if (planset.page_count !== total) {
+    await updatePlanset(planset.id, { page_count: total }).catch(() => {});
+  }
+
+  let stored = await listPlansetPageProgress(planset.id);
+  const queue = pendingPages(total, stored, opts.pages);
+
+  if (queue.length === 0) {
+    await finishSpecExtraction(projectId, planset, total, stored);
+    return { saved: 0, pages: stored, processed: 0, stopped: false };
+  }
+
+  await updatePlanset(planset.id, { status: "extracting" }).catch(() => {});
+
+  const allText = await extractAllText(doc);
+  const textByPage = new Map(allText.map((p) => [p.pageNumber, p]));
+
+  let saved = 0;
+  let processed = 0;
+  let stopped = false;
+  // Running merge base so a mark drawn across two pages ends up as one whole
+  // row, exactly as the old whole-sheet call produced.
+  let carryOver: MarkSpecDraft[] = [];
+
+  for (const pageNumber of queue) {
+    if (opts.isCancelled?.()) {
+      stopped = true;
+      break;
+    }
+    opts.onTick?.({ pageNumber, status: null, progress: stored });
+
+    let status: SpecPageStatus;
+    try {
+      let images: { pageNumber: number; dataUrl: string }[] = [];
+      try {
+        images = [{ pageNumber, dataUrl: await renderPageJpeg(doc, pageNumber) }];
+      } catch {
+        // Unrenderable page (phone memory) — the text parser still covers it.
+        images = [];
+      }
+      const textPage = textByPage.get(pageNumber) ?? { pageNumber, text: "" };
+      const before = carryOver.length;
+      const result = await extractAndSaveMarkSpecs(
+        projectId,
+        [textPage],
+        images,
+        planset.id,
+        carryOver,
+      );
+      carryOver = result.drafts;
+      // Each page re-saves the running merge, so this is the total written so
+      // far, not a sum of per-page counts.
+      saved = result.saved;
+      status = result.pages.find((p) => p.pageNumber === pageNumber) ?? {
+        pageNumber,
+        // No per-page status means the text path ran (it batches, so it reports
+        // none). It completed, so the page is done — that's the whole point of
+        // distinguishing "read and empty" from "never read".
+        ok: true,
+        attempts: 1,
+        markCount: Math.max(0, carryOver.length - before),
+        error: null,
+      };
+    } catch (e) {
+      status = {
+        pageNumber,
+        ok: false,
+        attempts: 1,
+        markCount: 0,
+        error: formatApiError(e),
+      };
+    }
+
+    processed += 1;
+    await savePlansetPageProgress(planset.id, status).catch(() => {});
+    stored = [
+      ...stored.filter((p) => p.pageNumber !== pageNumber),
+      { ...status, updatedAt: new Date().toISOString() },
+    ].sort((a, b) => a.pageNumber - b.pageNumber);
+    opts.onTick?.({ pageNumber, status, progress: stored });
+  }
+
+  if (!stopped) await finishSpecExtraction(projectId, planset, total, stored);
+  return { saved, pages: stored, processed, stopped };
+}
+
+/**
+ * Close out a run: retire the superseded specs planset and take the row out of
+ * `extracting`. Only called when every page has been attempted, so an
+ * interrupted run keeps its resumable state instead of being marked done.
+ */
+async function finishSpecExtraction(
+  projectId: string,
+  planset: Planset,
+  total: number,
+  stored: StoredPageProgress[],
+): Promise<void> {
+  const attempted = new Set(
+    stored.filter((p) => p.pageNumber <= total).map((p) => p.pageNumber),
+  );
+  if (total > 0 && attempted.size < total) return;
+  await retireReplacedSpecsPlansets(projectId, planset.id);
+  await updatePlanset(planset.id, { status: "ready" }).catch(() => {});
 }
 
 /**

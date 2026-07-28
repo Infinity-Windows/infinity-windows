@@ -1,21 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { listProjects, listWindowTypes } from "../../lib/api";
 import {
   ensureTypesFromSpecs,
-  extractAndSaveMarkSpecs,
   getPlansetSignedUrl,
   linkSpecsToOpenings,
+  listPlansetPageProgress,
   listPlansets,
   plansetFormatFromName,
   plansetIsViewable,
-  reextractSpecPages,
-  retireReplacedSpecsPlansets,
+  runSpecExtraction,
   saveDraftOpenings,
   updatePlanset,
   uploadPlanset,
   aiExtractSchedule,
+  type SpecExtractionOptions,
 } from "../../lib/install/api";
 import {
   describeSpecPages,
@@ -23,6 +23,13 @@ import {
   formatPageList,
   type SpecPageStatus,
 } from "../../lib/install/specPageStatus";
+import {
+  canResumeExtraction,
+  pendingPages,
+  summarizeProgress,
+  type StoredPageProgress,
+} from "../../lib/install/extractionProgress";
+import { ExtractionProgress } from "../../components/install/ExtractionProgress";
 import {
   calloutsToDraftOpenings,
   extractScheduleRows,
@@ -55,6 +62,13 @@ export function PlansetUpload() {
     visionFailed: boolean;
   } | null>(null);
   const [retryNote, setRetryNote] = useState<string | null>(null);
+  // Which planset this tab is actively reading, and where it has got to. The
+  // durable copy lives in `project_planset_pages`; this is just what's on
+  // screen between saves.
+  const [runningPlansetId, setRunningPlansetId] = useState<string | null>(null);
+  const [activePage, setActivePage] = useState<number | null>(null);
+  const [livePages, setLivePages] = useState<StoredPageProgress[] | null>(null);
+  const cancelRun = useRef(false);
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const project = projects.data?.find((p) => p.id === projectId);
@@ -68,6 +82,68 @@ export function PlansetUpload() {
     (p) => (p.kind ?? "building") === "building",
   );
   const specs = (plansets.data ?? []).filter((p) => p.kind === "specs");
+  // Newest specs planset — the one a progress bar or resume applies to.
+  const currentSpecs = specs[0] ?? null;
+
+  const storedProgress = useQuery({
+    queryKey: ["plansetProgress", currentSpecs?.id],
+    queryFn: () => listPlansetPageProgress(currentSpecs!.id),
+    enabled: !!currentSpecs,
+    // Cheap, and lets a second device watch a run happening elsewhere.
+    refetchInterval: currentSpecs?.status === "extracting" ? 5000 : false,
+  });
+
+  const pagesForBar = livePages ?? storedProgress.data ?? [];
+  const progressTotal = currentSpecs?.page_count ?? 0;
+  const barProgress = summarizeProgress(progressTotal, pagesForBar);
+  const resumable =
+    !!currentSpecs &&
+    canResumeExtraction(currentSpecs, runningPlansetId, currentSpecs.id);
+
+  /**
+   * Read a specs planset page by page, saving progress as it goes. Shared by
+   * the upload path and Resume so an interrupted run is finished by exactly the
+   * code that started it.
+   */
+  const runExtraction = useCallback(
+    async (
+      planset: Planset,
+      opts: Pick<SpecExtractionOptions, "pages" | "doc"> = {},
+    ) => {
+      cancelRun.current = false;
+      setRunningPlansetId(planset.id);
+      try {
+        return await runSpecExtraction(projectId, planset, {
+          ...opts,
+          isCancelled: () => cancelRun.current,
+          onTick: ({ pageNumber, status, progress }) => {
+            setActivePage(status ? null : pageNumber);
+            setLivePages(progress);
+          },
+        });
+      } finally {
+        setRunningPlansetId(null);
+        setActivePage(null);
+        queryClient.invalidateQueries({ queryKey: ["plansets", projectId] });
+        queryClient.invalidateQueries({ queryKey: ["plansetProgress", planset.id] });
+        queryClient.invalidateQueries({ queryKey: ["markSpecs", projectId] });
+      }
+    },
+    [projectId, queryClient],
+  );
+
+  // A run only exists in this tab, so closing it abandons the run. Progress is
+  // already saved page by page — this just stops someone losing five minutes by
+  // accident. The persistence is the fix; this is the courtesy.
+  useEffect(() => {
+    if (!runningPlansetId) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [runningPlansetId]);
 
   const upload = useMutation({
     mutationFn: async (args: { file: File; kind: PlansetKind }) => {
@@ -96,9 +172,6 @@ export function PlansetUpload() {
 
       const { extractAllText, extractPlanMarkCallouts, loadPdf } = await import(
         "../../lib/install/pdf"
-      );
-      const { renderSpecPageImages } = await import(
-        "../../lib/install/renderSpecImages"
       );
       const doc = await loadPdf(await file.arrayBuffer());
       await updatePlanset(planset.id, {
@@ -176,33 +249,22 @@ export function PlansetUpload() {
       // VISION off the rendered page images — manufacturer shop drawings draw
       // the spec table as graphics, so the image is the only way to recover
       // glass/color/style. Deterministic text parsing is the offline fallback.
-      // Best-effort: never blocks or fails the upload if AI/table is down.
+      //
+      // Page by page, saving progress after each one: the sheet can take
+      // minutes, and before this a foreman who walked away left the planset
+      // wedged in 'extracting' with nothing to show for the pages that HAD been
+      // read. The runner also retires the superseded planset and takes this row
+      // out of 'extracting' once every page has been attempted.
       setProgress("Reading detailed window/door specs…");
-      let specImages: { pageNumber: number; dataUrl: string }[] = [];
-      try {
-        specImages = await renderSpecPageImages(doc);
-      } catch {
-        // Rendering failed (e.g. memory) — vision is skipped, text fallback runs.
-        specImages = [];
-      }
-      const specsResult = await extractAndSaveMarkSpecs(
-        projectId,
-        pages,
-        specImages,
-        planset.id,
-      ).catch(() => ({
-        saved: 0,
-        skipped: 0,
-        pages: [] as SpecPageStatus[],
-        visionFailed: specImages.length > 0,
-      }));
-
-      // This upload is now the project's specs planset, so drawing coordinates
-      // measured against an earlier one are no longer trustworthy — a reordered
-      // re-upload would otherwise crop a confident picture of the wrong window.
-      await retireReplacedSpecsPlansets(projectId, planset.id);
-
-      await updatePlanset(planset.id, { status: "ready" });
+      const run = await runExtraction(
+        { ...planset, page_count: doc.numPages },
+        { doc },
+      );
+      const specsResult = {
+        saved: run.saved,
+        pages: run.pages as SpecPageStatus[],
+        visionFailed: run.pages.length > 0 && run.pages.every((p) => !p.ok),
+      };
 
       const marks = summarizeDraftMarks(drafts);
       return {
@@ -313,33 +375,39 @@ export function PlansetUpload() {
   // Re-read only the pages that failed (or the whole sheet when the vision call
   // itself died). Nothing already saved is at risk: the save path never
   // overwrites a confirmed mark and a fresh failure just changes nothing.
-  const retrySpecPages = useMutation({
+  /**
+   * Pick a stopped run back up. Resumes at the first page that never completed
+   * (and retries any that failed), so nothing already extracted is redone —
+   * this is what un-sticks a planset left in `extracting` by someone navigating
+   * away mid-run, without anyone editing the database.
+   */
+  const resumeExtraction = useMutation({
     mutationFn: async () => {
-      if (!specPages) throw new Error("Nothing to retry.");
-      const planset = (plansets.data ?? []).find(
-        (p) => p.id === specPages.plansetId,
+      if (!currentSpecs) throw new Error("No specs file on this job yet.");
+      const left = pendingPages(
+        currentSpecs.page_count ?? 0,
+        storedProgress.data ?? [],
       );
-      if (!planset) throw new Error("That specs file is no longer on this job.");
-      const failed = failedSpecPages(specPages.pages).map((p) => p.pageNumber);
       setRetryNote(
-        failed.length > 0
-          ? `Re-reading page ${formatPageList(failedSpecPages(specPages.pages))}…`
-          : "Re-reading the specs sheet…",
+        left.length > 0
+          ? `Picking up at page ${left[0]} of ${currentSpecs.page_count ?? "?"}…`
+          : "Checking the specs sheet…",
       );
-      return reextractSpecPages(projectId, planset, failed);
+      return runExtraction(currentSpecs);
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ["markSpecs", projectId] });
-      const stillFailed = failedSpecPages(result.pages);
-      setSpecPages((prev) =>
-        prev
-          ? { ...prev, pages: result.pages, visionFailed: result.visionFailed }
-          : prev,
-      );
+      const stillFailed = failedSpecPages(result.pages as SpecPageStatus[]);
+      setSpecPages({
+        plansetId: currentSpecs?.id ?? "",
+        pages: result.pages as SpecPageStatus[],
+        visionFailed: false,
+      });
       setRetryNote(
-        stillFailed.length > 0
-          ? `Still couldn't read page ${formatPageList(stillFailed)}. Try again in a minute, or fill those marks in by hand on the review screen.`
-          : `Re-read worked — specs saved for ${result.saved} mark(s).`,
+        result.stopped
+          ? "Stopped. Everything read so far is saved — resume any time."
+          : stillFailed.length > 0
+            ? `Still couldn't read page ${formatPageList(stillFailed)}. Try again in a minute, or fill those marks in by hand on the review screen.`
+            : `Done — specs saved for ${result.saved} mark(s).`,
       );
     },
     onError: (e) => setRetryNote(formatApiError(e)),
@@ -350,6 +418,14 @@ export function PlansetUpload() {
       ? "We couldn't read the detailed specs off this sheet at all — only the basics were saved."
       : describeSpecPages(specPages.pages)
     : null;
+
+  // Show the bar whenever there is something real to report: a live run, a
+  // planset parked mid-extraction, or stored progress from a previous run.
+  const showProgressBar =
+    !!currentSpecs &&
+    (runningPlansetId === currentSpecs.id ||
+      resumable ||
+      barProgress.attempted > 0);
 
   const openPlanset = async (ps: Planset) => {
     setViewError(null);
@@ -406,7 +482,11 @@ export function PlansetUpload() {
                 {ps.source_format.toUpperCase()}
                 {ps.status === "converting"
                   ? " · conversion queued"
-                  : ` · ${ps.status}`}
+                  : ps.status === "extracting"
+                    ? runningPlansetId === ps.id
+                      ? " · reading now"
+                      : " · extraction stopped — resume below"
+                    : ` · ${ps.status}`}
                 {ps.page_count ? ` · ${ps.page_count} pages` : ""}
               </span>
               <span className="planset-open-cta">
@@ -455,35 +535,21 @@ export function PlansetUpload() {
       {summary && <p className="ok">{summary}</p>}
       {viewError && <p className="error">{viewError}</p>}
 
-      {specPageNote && (
-        <div className="detail-card" style={{ marginTop: 12 }}>
-          <strong>Some specs may be missing</strong>
-          <p className="muted" style={{ marginTop: 4 }}>
-            {specPageNote}{" "}
-            {(specPages?.visionFailed ||
-              failedSpecPages(specPages?.pages ?? []).length > 0) &&
-              "Retrying usually fixes it."}
-          </p>
-          {(specPages?.visionFailed ||
-            failedSpecPages(specPages?.pages ?? []).length > 0) && (
-            <button
-              className="action-btn"
-              disabled={retrySpecPages.isPending}
-              onClick={() => retrySpecPages.mutate()}
-            >
-              {retrySpecPages.isPending
-                ? "Re-reading…"
-                : failedSpecPages(specPages?.pages ?? []).length > 0
-                  ? `Retry page ${formatPageList(failedSpecPages(specPages?.pages ?? []))}`
-                  : "Re-read the specs sheet"}
-            </button>
-          )}
-          {retryNote && (
-            <p className="muted" style={{ marginTop: 6 }}>
-              {retryNote}
-            </p>
-          )}
-        </div>
+      {showProgressBar && (
+        <ExtractionProgress
+          progress={barProgress}
+          activePage={activePage}
+          onStop={
+            runningPlansetId ? () => { cancelRun.current = true; } : undefined
+          }
+          onResume={
+            resumable && !resumeExtraction.isPending
+              ? () => resumeExtraction.mutate()
+              : undefined
+          }
+          resuming={resumeExtraction.isPending}
+          note={[specPageNote, retryNote].filter(Boolean).join(" ") || null}
+        />
       )}
 
       <p className="muted" style={{ marginTop: 16 }}>
