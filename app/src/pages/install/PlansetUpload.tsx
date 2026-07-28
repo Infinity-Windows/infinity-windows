@@ -222,7 +222,6 @@ export function PlansetUpload() {
 
       setProgress("Extracting window/door schedule…");
       const pages = await extractAllText(doc);
-      const detailSheets = extractCadDetailPages(pages);
       const catalog = (types.data ?? []).map((t) => ({
         type_code: t.type_code,
         name: t.name,
@@ -277,6 +276,16 @@ export function PlansetUpload() {
       };
 
       const marks = summarizeDraftMarks(drafts);
+      // A page counts as a detail sheet if its text reads like one OR the
+      // extraction actually pulled specs off it. The text rules only know the
+      // `#mark` habit and a handful of Smith's phrases, so on Black Desert they
+      // saw 3 pages where 11 hold real window drawings.
+      const detailSheets = new Set([
+        ...extractCadDetailPages(pages).map((d) => d.pageNumber),
+        ...specsResult.pages
+          .filter((p) => p.markCount > 0)
+          .map((p) => p.pageNumber),
+      ]);
       return {
         planset,
         kind,
@@ -289,7 +298,7 @@ export function PlansetUpload() {
         converted: true,
         source,
         marks,
-        detailSheets: detailSheets.length,
+        detailSheets: detailSheets.size,
       };
     },
     onSuccess: (result) => {
