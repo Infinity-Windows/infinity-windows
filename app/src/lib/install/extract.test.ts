@@ -6,6 +6,7 @@ import {
   parseScheduleRows,
   planDraftPersistence,
   rowsToDraftOpenings,
+  summarizeExtractOutcome,
   unionScheduleRows,
   type DraftOpening,
   type ExistingOpeningLite,
@@ -460,5 +461,100 @@ describe("describeMarkCount", () => {
     expect(describeMarkCount({ mark: "6", count: 12, kind: "door" })).toBe(
       "12 doors use mark #6",
     );
+  });
+});
+
+// Black Desert has 38 marks. Listing every one of them pushed the three facts
+// that matter — how many openings, how many repeats were ignored, how many
+// elevation references were saved — off the bottom of a phone screen.
+describe("summarizeExtractOutcome", () => {
+  const marks = [
+    { mark: "1", count: 2, kind: "door" as const },
+    { mark: "9", count: 3, kind: "window" as const },
+    { mark: "14", count: 37, kind: "window" as const },
+  ];
+
+  it("leads with the totals instead of enumerating every mark", () => {
+    const out = summarizeExtractOutcome({
+      marks,
+      inserted: 42,
+      skipped: 0,
+      repeatViewCallouts: 57,
+      elevationViews: 54,
+      source: "merged",
+    });
+    expect(out.headline).toBe(
+      "Loaded 42 openings across 38 marks — 40 windows and 2 doors.",
+    );
+    expect(out.headline).not.toContain("#14");
+  });
+
+  it("keeps the repeat and elevation counts so they can be sanity-checked", () => {
+    const out = summarizeExtractOutcome({
+      marks,
+      inserted: 42,
+      skipped: 0,
+      repeatViewCallouts: 57,
+      elevationViews: 54,
+      source: "merged",
+    });
+    expect(out.notes).toContain(
+      "Ignored 57 repeat numbers on the elevation sheets — those draw the same openings again.",
+    );
+    expect(out.notes).toContain(
+      "Saved 54 of them as a reference, so the crew can see where each window sits on the outside.",
+    );
+  });
+
+  it("keeps the approved per-mark wording in the breakdown", () => {
+    const out = summarizeExtractOutcome({
+      marks,
+      inserted: 42,
+      skipped: 0,
+      repeatViewCallouts: 0,
+      elevationViews: 0,
+      source: "merged",
+    });
+    expect(out.breakdown).toEqual([
+      "2 doors use mark #1",
+      "3 windows use mark #9",
+      "37 windows use mark #14",
+    ]);
+  });
+
+  it("uses the per-mark sentence itself when there is only one mark", () => {
+    const out = summarizeExtractOutcome({
+      marks: [{ mark: "9", count: 3, kind: "window" }],
+      inserted: 3,
+      skipped: 0,
+      repeatViewCallouts: 0,
+      elevationViews: 0,
+      source: "details",
+    });
+    expect(out.headline).toBe("Loaded 3 openings — 3 windows use mark #9.");
+  });
+
+  it("says plainly when nothing was found", () => {
+    const out = summarizeExtractOutcome({
+      marks: [],
+      inserted: 0,
+      skipped: 0,
+      repeatViewCallouts: 0,
+      elevationViews: 0,
+      source: "none",
+    });
+    expect(out.headline).toBe("No marks found.");
+  });
+
+  it("mentions confirmed openings that were left alone", () => {
+    const out = summarizeExtractOutcome({
+      marks,
+      inserted: 40,
+      skipped: 2,
+      repeatViewCallouts: 0,
+      elevationViews: 0,
+      source: "merged",
+    });
+    expect(out.notes).toContain("2 already confirmed — left alone.");
   });
 });
