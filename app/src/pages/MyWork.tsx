@@ -5,11 +5,14 @@ import { CheckCircle2, Plane, Truck } from "lucide-react";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
+  findSpecsPlanset,
   getMyProfile,
   listMarkSpecs,
   listMemosToConfirm,
   listMyOpeningsAllJobs,
+  listPlansets,
 } from "../lib/install/api";
+import { schedulePrefetchMarkDrawings } from "../lib/install/prefetchDrawings";
 import {
   indexSpecsByMark,
   specForOpeningCode,
@@ -105,6 +108,53 @@ export function MyWork() {
     const idx = specIndexByProject.get(o.project_id);
     return idx ? specForOpeningCode(idx, o.opening_code) : null;
   };
+
+  // Warm the elevation drawings for MY marks in the background. Tapping a window
+  // on site otherwise waits on a ~2MB planset download to show one small
+  // picture; doing it while the list sits idle makes the tap instant, and the
+  // crops persist so it survives a reload or a dead zone. Same query key
+  // MarkDrawing uses, so this costs no extra request.
+  const plansetQueries = useQueries({
+    queries: projectIds.map((pid) => ({
+      queryKey: ["plansets", pid],
+      queryFn: () => listPlansets(pid),
+      enabled: Boolean(pid),
+    })),
+  });
+  const myMarkSpecs = useMemo(() => {
+    const byProject = new Map<string, ProjectMarkSpec[]>();
+    for (const o of openings.data ?? []) {
+      if (o.status === "installed") continue;
+      const idx = specIndexByProject.get(o.project_id);
+      const spec = idx ? specForOpeningCode(idx, o.opening_code) : null;
+      if (!spec?.image_bbox) continue;
+      const list = byProject.get(o.project_id) ?? [];
+      if (!list.some((s) => s.mark_code === spec.mark_code)) list.push(spec);
+      byProject.set(o.project_id, list);
+    }
+    return byProject;
+  }, [openings.data, specIndexByProject]);
+
+  const plansetIds = projectIds
+    .map((pid, i) => {
+      const list = plansetQueries[i]?.data;
+      return `${pid}:${(list && findSpecsPlanset(list)?.id) ?? ""}`;
+    })
+    .join(",");
+  useEffect(() => {
+    const cancels: (() => void)[] = [];
+    projectIds.forEach((pid, i) => {
+      const list = plansetQueries[i]?.data;
+      const planset = list ? findSpecsPlanset(list) : null;
+      const specs = myMarkSpecs.get(pid);
+      if (!planset || !specs || specs.length === 0) return;
+      cancels.push(schedulePrefetchMarkDrawings(planset, specs));
+    });
+    return () => cancels.forEach((c) => c());
+    // Re-runs when my marks change or a job's specs planset resolves; the
+    // planset query objects themselves change identity every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plansetIds, myMarkSpecs]);
 
   // Toast when a new window is assigned to me while I'm looking at the list.
   const [newlyAssigned, setNewlyAssigned] = useState(0);

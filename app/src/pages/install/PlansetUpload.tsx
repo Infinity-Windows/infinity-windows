@@ -11,6 +11,7 @@ import {
   plansetFormatFromName,
   plansetIsViewable,
   reextractSpecPages,
+  retireReplacedSpecsPlansets,
   saveDraftOpenings,
   updatePlanset,
   uploadPlanset,
@@ -187,12 +188,18 @@ export function PlansetUpload() {
         projectId,
         pages,
         specImages,
+        planset.id,
       ).catch(() => ({
         saved: 0,
         skipped: 0,
         pages: [] as SpecPageStatus[],
         visionFailed: specImages.length > 0,
       }));
+
+      // This upload is now the project's specs planset, so drawing coordinates
+      // measured against an earlier one are no longer trustworthy — a reordered
+      // re-upload would otherwise crop a confident picture of the wrong window.
+      await retireReplacedSpecsPlansets(projectId, planset.id);
 
       await updatePlanset(planset.id, { status: "ready" });
 
