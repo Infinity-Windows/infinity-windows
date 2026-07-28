@@ -8,10 +8,12 @@ import {
   confirmMarkSpec,
   confirmMarkSpecs,
   listMarkSpecs,
+  listOpenings,
   updateMarkSpec,
 } from "../../lib/install/api";
 import { decodeSizeCode, formatSize, type ProjectMarkSpec } from "../../lib/install/specs";
 import { MarkDrawing } from "./MarkDrawing";
+import { SpecCoverageSummary } from "./SpecCoverageSummary";
 
 interface Props {
   projectId: string;
@@ -43,6 +45,13 @@ export function SpecReviewSection({ projectId }: Props) {
   const specs = useQuery({
     queryKey: ["markSpecs", projectId],
     queryFn: () => listMarkSpecs(projectId),
+  });
+
+  // The marks this job actually needs specs for come from its openings, so the
+  // coverage check can name the ones that got missed.
+  const openings = useQuery({
+    queryKey: ["openings", projectId],
+    queryFn: () => listOpenings(projectId),
   });
 
   const refresh = () =>
@@ -122,6 +131,10 @@ export function SpecReviewSection({ projectId }: Props) {
         extractor found the mark's elevation drawing, it's shown above the
         fields — check the picture matches the mark before confirming.
       </p>
+      <SpecCoverageSummary
+        openingCodes={(openings.data ?? []).map((o) => o.opening_code)}
+        specs={rows}
+      />
       {message && <p className="error">{message}</p>}
 
       {drafts.length > 0 && (

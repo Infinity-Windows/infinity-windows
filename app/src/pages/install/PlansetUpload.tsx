@@ -10,11 +10,18 @@ import {
   listPlansets,
   plansetFormatFromName,
   plansetIsViewable,
+  reextractSpecPages,
   saveDraftOpenings,
   updatePlanset,
   uploadPlanset,
   aiExtractSchedule,
 } from "../../lib/install/api";
+import {
+  describeSpecPages,
+  failedSpecPages,
+  formatPageList,
+  type SpecPageStatus,
+} from "../../lib/install/specPageStatus";
 import {
   calloutsToDraftOpenings,
   extractScheduleRows,
@@ -37,6 +44,15 @@ export function PlansetUpload() {
   const [summary, setSummary] = useState<string | null>(null);
   const [viewing, setViewing] = useState<Planset | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
+  // How the last spec extraction went, page by page. Kept so a page whose
+  // vision call failed is SAID OUT LOUD (and can be retried on its own) instead
+  // of looking exactly like a page with no marks on it.
+  const [specPages, setSpecPages] = useState<{
+    plansetId: string;
+    pages: SpecPageStatus[];
+    visionFailed: boolean;
+  } | null>(null);
+  const [retryNote, setRetryNote] = useState<string | null>(null);
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const project = projects.data?.find((p) => p.id === projectId);
@@ -171,7 +187,12 @@ export function PlansetUpload() {
         projectId,
         pages,
         specImages,
-      ).catch(() => ({ saved: 0, skipped: 0 }));
+      ).catch(() => ({
+        saved: 0,
+        skipped: 0,
+        pages: [] as SpecPageStatus[],
+        visionFailed: specImages.length > 0,
+      }));
 
       await updatePlanset(planset.id, { status: "ready" });
 
@@ -183,6 +204,8 @@ export function PlansetUpload() {
         skipped: result.skipped,
         linked: linked.linked,
         specs: specsResult.saved,
+        specPages: specsResult.pages,
+        specsVisionFailed: specsResult.visionFailed,
         converted: true,
         source,
         marks,
@@ -195,6 +218,16 @@ export function PlansetUpload() {
       queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
       queryClient.invalidateQueries({ queryKey: ["markSpecs", projectId] });
       setProgress(null);
+      setRetryNote(null);
+      setSpecPages(
+        "specPages" in result
+          ? {
+              plansetId: result.planset.id,
+              pages: result.specPages ?? [],
+              visionFailed: Boolean(result.specsVisionFailed),
+            }
+          : null,
+      );
       const detailSheetCount =
         "detailSheets" in result ? (result.detailSheets ?? 0) : 0;
 
@@ -268,6 +301,47 @@ export function PlansetUpload() {
     },
     onError: (e) => setProgress(String(e)),
   });
+
+  // Re-read only the pages that failed (or the whole sheet when the vision call
+  // itself died). Nothing already saved is at risk: the save path never
+  // overwrites a confirmed mark and a fresh failure just changes nothing.
+  const retrySpecPages = useMutation({
+    mutationFn: async () => {
+      if (!specPages) throw new Error("Nothing to retry.");
+      const planset = (plansets.data ?? []).find(
+        (p) => p.id === specPages.plansetId,
+      );
+      if (!planset) throw new Error("That specs file is no longer on this job.");
+      const failed = failedSpecPages(specPages.pages).map((p) => p.pageNumber);
+      setRetryNote(
+        failed.length > 0
+          ? `Re-reading page ${formatPageList(failedSpecPages(specPages.pages))}…`
+          : "Re-reading the specs sheet…",
+      );
+      return reextractSpecPages(projectId, planset, failed);
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["markSpecs", projectId] });
+      const stillFailed = failedSpecPages(result.pages);
+      setSpecPages((prev) =>
+        prev
+          ? { ...prev, pages: result.pages, visionFailed: result.visionFailed }
+          : prev,
+      );
+      setRetryNote(
+        stillFailed.length > 0
+          ? `Still couldn't read page ${formatPageList(stillFailed)}. Try again in a minute, or fill those marks in by hand on the review screen.`
+          : `Re-read worked — specs saved for ${result.saved} mark(s).`,
+      );
+    },
+    onError: (e) => setRetryNote(String(e)),
+  });
+
+  const specPageNote = specPages
+    ? specPages.visionFailed
+      ? "We couldn't read the detailed specs off this sheet at all — only the basics were saved."
+      : describeSpecPages(specPages.pages)
+    : null;
 
   const openPlanset = async (ps: Planset) => {
     setViewError(null);
@@ -372,6 +446,37 @@ export function PlansetUpload() {
       {progress && <p className="scanner-hint">{progress}</p>}
       {summary && <p className="ok">{summary}</p>}
       {viewError && <p className="error">{viewError}</p>}
+
+      {specPageNote && (
+        <div className="detail-card" style={{ marginTop: 12 }}>
+          <strong>Some specs may be missing</strong>
+          <p className="muted" style={{ marginTop: 4 }}>
+            {specPageNote}{" "}
+            {(specPages?.visionFailed ||
+              failedSpecPages(specPages?.pages ?? []).length > 0) &&
+              "Retrying usually fixes it."}
+          </p>
+          {(specPages?.visionFailed ||
+            failedSpecPages(specPages?.pages ?? []).length > 0) && (
+            <button
+              className="action-btn"
+              disabled={retrySpecPages.isPending}
+              onClick={() => retrySpecPages.mutate()}
+            >
+              {retrySpecPages.isPending
+                ? "Re-reading…"
+                : failedSpecPages(specPages?.pages ?? []).length > 0
+                  ? `Retry page ${formatPageList(failedSpecPages(specPages?.pages ?? []))}`
+                  : "Re-read the specs sheet"}
+            </button>
+          )}
+          {retryNote && (
+            <p className="muted" style={{ marginTop: 6 }}>
+              {retryNote}
+            </p>
+          )}
+        </div>
+      )}
 
       <p className="muted" style={{ marginTop: 16 }}>
         After specs extract →{" "}
