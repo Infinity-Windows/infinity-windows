@@ -36,7 +36,8 @@ merge to master
 │                                └── phones pick it up (see "Reaching phones")
 └── Deploy backend
     ├── Deploy edge functions .. every folder in supabase/functions/
-    │   └── check every required runtime secret exists in Supabase
+    │   ├── check every required runtime secret exists in Supabase
+    │   └── check the app's push key is the one this project signs with
     ├── Push migrations ........ dry run, then supabase db push
     │   └── read the live schema back and check it matches the repo
     └── Verify functions live .. probe every function for a 404
@@ -84,6 +85,32 @@ and answers from live data.
 ```bash
 python3 scripts/function_secrets.py    # no credentials needed
 ```
+
+### Can a notification actually be delivered? — `scripts/verify-push-key.sh`
+
+The check above proves the two push keys **exist**. It cannot prove they are the
+matching pair, and that distinction is the whole failure. Web push works only
+when the public half the browser subscribed with belongs to the private half
+`send-push` signs with. Cross them and `send-push` returns 200, reports every
+device as sent, nothing 500s, nothing goes red — and no notification lands on
+anyone's phone, ever.
+
+It happened. A pair generated on 2026-07-20 against `jvsyhtarnvmdilsgksdi` was
+still sitting in a laptop `app/.env` that had been repointed at
+`czprjcskmzzagdztqonm`. Push on that laptop could never have worked, and no check
+in this repo could see it.
+
+`supabase secrets list` prints a **SHA-256 digest** of each value, never the
+value. So the check hashes the public key the app is built with — public by
+design, and already readable in the published bundle — and compares it against
+the digest the platform reports. It reads no secret and prints neither key nor
+digest.
+
+The one thing that fails it is a genuine mismatch. An app built with **no** push
+key is reported and passes, because that is a different problem (nobody
+subscribes at all) and putting two causes behind one headline is how a check
+stops being read. Anything it could not measure — no answer from the CLI, an
+unreadable digest — fails, for the same reason an unanswered function probe does.
 
 ### Did the database really change? — `scripts/verify-schema.sh`
 
@@ -271,6 +298,7 @@ Settings → Secrets and variables → Actions. These let the pipeline *do* thin
 | `SLACK_CHANGELOG_WEBHOOK` | `Slack changelog`, every failure notification | No changelog posts and no failure alerts. Everything degrades quietly, which means **failures go back to being silent** — the exact problem this pipeline was built to fix. |
 | `VITE_SUPABASE_URL` | `Deploy GitHub Pages` | The published app cannot reach the database at all. |
 | `VITE_SUPABASE_ANON_KEY` | `Deploy GitHub Pages` | Same. (Not really a secret — it is compiled into public JavaScript, and row-level security is what protects the data.) |
+| `VITE_VAPID_PUBLIC_KEY` | `Deploy GitHub Pages` | No phone ever subscribes to notifications, silently. Also not really a secret — it is the public half of the push pair and is readable in the published bundle. It must be the public half of the pair whose private half is in Supabase; `scripts/verify-push-key.sh` is what proves that. |
 
 Install one:
 
@@ -381,6 +409,7 @@ migration rows that must be cleared before the first real push, is
 | `scripts/slack-notify.sh` | builds and posts the message; can never fail |
 | `scripts/verify-functions.sh` | are the functions live? |
 | `scripts/verify-function-secrets.sh` | do they have their keys? |
+| `scripts/verify-push-key.sh` | is the app's push key the one the server signs with? |
 | `scripts/function_secrets.py` | which function needs which key, read from source |
 | `scripts/verify-schema.sh` | did the database really change? |
 | `scripts/schema_verify.py` | the directional comparison, and why it is directional |

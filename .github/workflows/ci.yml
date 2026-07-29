@@ -60,6 +60,13 @@ jobs:
         shell: bash
         run: scripts/verify-function-secrets.test.sh
 
+      # The check that a notification can actually be delivered — that the app
+      # and the server hold two halves of the SAME push key. Stubs the Supabase
+      # CLI too, and hashes only a throwaway public key.
+      - name: Test scripts/verify-push-key.sh
+        shell: bash
+        run: scripts/verify-push-key.test.sh
+
   supabase-tooling:
     name: Supabase merge tooling
     runs-on: ubuntu-latest
