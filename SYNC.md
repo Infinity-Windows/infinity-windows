@@ -16,7 +16,10 @@ understand. It's always cheaper to ask than to untangle a mess later.
 
 - `master` is always the latest, correct version of the app.
 - Everyone syncs *to* `master`. Nobody pushes *directly* to `master` — new work
-  lands through a **Pull Request (PR)** that a human reviews and merges.
+  lands through a **Pull Request (PR)**, and the build and tests have to pass
+  before it can merge. This is now **enforced by GitHub**, not just a habit: a
+  direct push to `master` is refused, and a PR with a failing build cannot be
+  merged by anyone. See [docs/merge-workflow.md](docs/merge-workflow.md).
 - What you see on your screen should match `master`. If it doesn't, you are
   behind — sync (see below).
 
@@ -96,9 +99,9 @@ echo "Latest is:    $(git log --oneline -1 origin/master)"
 
 ## How Work Ships (the PR workflow)
 
-We do **not** push straight to `master` anymore. Instead, every change ships
-through a **Pull Request (PR)** — a proposed change that a human reviews and
-clicks **Merge** on.
+We do **not** push straight to `master` anymore — GitHub now refuses it. Every
+change ships through a **Pull Request (PR)**, and it can only merge once the
+build and tests pass.
 
 **The good news for Taylor & Ammon: you don't do any of this by hand.** Your
 Cursor agent does all the git for you. You just describe the change you want in
@@ -108,17 +111,28 @@ plain English, and the agent will:
 2. Make a short-lived branch.
 3. Make the change (and run a quick build/test check when it matters).
 4. Commit, push the branch, and open a PR.
-5. Hand you a **PR link** in chat.
+5. Turn on **auto-merge** (`gh pr merge <number> --squash --auto`).
+6. Hand you a **PR link** in chat.
 
-Your only job is to **open that link, glance at it, and click the green Merge
-button** (or ask a teammate to). Once it's merged, it becomes part of `master` —
-then everyone just syncs (see the Daily Start Routine) to get it.
+**You don't have to click Merge.** With auto-merge on, GitHub merges the PR by
+itself the moment the tests go green, then deletes the branch. Open the link if
+you want to read what changed — but you don't need to wait around, and you don't
+need to come back later. Once it's merged, sync (see the Daily Start Routine).
 
 - **Never type git commands yourself.** If you catch yourself about to run
   `git push`, stop — that's the agent's job. Just tell the agent what you want.
 - **One PR = one concern.** If two unrelated things changed, that's two PRs.
+- **You will never be asked to "update your branch."** If two changes land close
+  together, GitHub sorts out the ordering; nobody rebases anything by hand.
+- **If a PR won't merge,** it's nearly always because the build or tests failed.
+  Paste the message to your agent and say "this PR is blocked, fix it." Auto-merge
+  stays armed, so it lands on its own once the fix is green.
 - **If the agent says a branch "collided" or "diverged,"** let the *agent* fix
   it (it will rebase). Humans never hand-edit git.
+
+The full picture — what's enforced, why there's no merge queue, and how to
+override it in an emergency — is in
+[docs/merge-workflow.md](docs/merge-workflow.md).
 
 ---
 
@@ -306,8 +320,9 @@ git log --oneline -1            # should match:
 git log --oneline -1 origin/master
 
 # Save + share my work:
-# Just tell your Cursor agent what you changed — it opens a PR and hands you a
-# link. Open the link and click Merge. (You don't type git commands.)
+# Just tell your Cursor agent what you changed — it opens a PR, turns on
+# auto-merge, and hands you a link. It merges itself once the tests pass.
+# (You don't type git commands, and you don't click Merge.)
 
 # Screen looks old?  ->  Hard refresh: Cmd/Ctrl + Shift + R
 
