@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listWindowTypes } from "../lib/api";
+import { realCatalogTypes } from "../lib/catalogTypes";
 import {
   getMyProfile,
   listClearances,
@@ -58,7 +59,7 @@ export function Training() {
         .filter((s) => s.installer_id === installerId)
         .map((s) => [s.window_type_id, s]),
     );
-    return (types.data ?? [])
+    return realCatalogTypes(types.data ?? [])
       .map((t) => {
         const st = statByType.get(t.id);
         const cleared = clearedSet.has(t.id);
@@ -74,7 +75,7 @@ export function Training() {
       .sort((a, b) => Number(b.cleared) - Number(a.cleared));
   }, [types.data, stats.data, clearances.data, installerId, knowledge]);
 
-  const allTypes = types.data ?? [];
+  const allTypes = realCatalogTypes(types.data ?? []);
 
   return (
     <div className="page">

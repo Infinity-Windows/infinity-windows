@@ -4402,6 +4402,39 @@ button.clock-out {
   max-width: 82%;
 }
 
+/* The other two answers the brain found. A keyword search is sometimes wrong,
+   so the installer gets to pick rather than being handed one answer as gospel. */
+.ask-alternates {
+  max-width: 82%;
+  padding: 0 4px;
+}
+
+.ask-alternate {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-raised);
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+}
+
+.ask-alternate summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.ask-alternate > div {
+  margin-top: 6px;
+  color: var(--text-secondary);
+}
+
+.chip.selected {
+  background: var(--accent, #7fb7ff);
+  color: #0b0d10;
+  border-color: transparent;
+  font-weight: 600;
+}
+
 /* --- AI Knowledge (vault) page --- */
 
 .action-btn.disabled {

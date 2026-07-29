@@ -85,12 +85,26 @@ export function Admin() {
         ))}
       </ul>
 
+      <h2>What crew asked</h2>
+      <div className="detail-card">
+        <p style={{ marginTop: 0 }}>
+          Every question asked of the company brain is logged, along with whether our own
+          notes answered it. The unanswered ones tell you exactly what to write next, in
+          crew's own words.
+        </p>
+        <Link to="/ask-misses" className="button-like">
+          Read the questions →
+        </Link>
+      </div>
+
       <h2>AI connection</h2>
       <div className="detail-card">
         <p style={{ margin: 0 }}>
-          OpenAI powers transcription, tips, how-to and extraction. Set the
-          <code> OPENAI_API_KEY</code> Edge Function secret in Supabase. If AI
-          features show errors, the key is missing or out of quota.
+          Crew answers come from the company brain on the phone — no key, no cost per
+          question, and it works with no signal. OpenAI powers transcription, tips,
+          how-to and extraction only. Set the <code>OPENAI_API_KEY</code> Edge Function
+          secret in Supabase. If those features show errors, the key is missing or out of
+          quota.
         </p>
       </div>
 
