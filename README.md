@@ -222,6 +222,16 @@ fresh pair and set both sides in one go, then check that nobody is subscribed
 first (`select count(*) from push_subscriptions`) — anyone who is will stop
 receiving notifications until their device re-subscribes.
 
+To read the public half that the published app is actually using — useful for a
+laptop `.env`, and it needs no credentials because the key is compiled into the
+JavaScript we serve:
+
+```bash
+SITE=https://infinity-windows.github.io/infinity-windows
+curl -s "$SITE/$(curl -s "$SITE/" | grep -o 'assets/index-[A-Za-z0-9_-]*\.js')" \
+  | grep -oE '[`"]B[A-Za-z0-9_-]{86}[`"]' | tr -d '`"'
+```
+
 ```bash
 npx web-push generate-vapid-keys
 gh secret set VITE_VAPID_PUBLIC_KEY --repo Infinity-Windows/infinity-windows
@@ -235,6 +245,23 @@ runtime.
 Without the public key the app does not error — it just quietly never subscribes,
 and only in-app notifications work. `send-push` is more direct about it and
 returns `{"error":"VAPID keys not configured"}`.
+
+**Two halves that both exist but do not match is the worse failure, and
+`Deploy backend` now checks for it.** `scripts/verify-function-secrets.sh` can
+only see that `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` are *set*; it cannot see
+that they are the pair the app was built with. Cross them — by rotating one side,
+or by copying a key that was generated against a different Supabase project — and
+send-push returns 200, `sent` counts every device, no check goes red, and not one
+notification arrives. `scripts/verify-push-key.sh` closes that gap by hashing the
+public key the app is built with and comparing it against the digest Supabase
+reports for its own `VAPID_PUBLIC_KEY`. It reads no secret and prints neither key
+nor digest. To run it by hand:
+
+```bash
+SUPABASE_ACCESS_TOKEN=sbp_... SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm \
+  VITE_VAPID_PUBLIC_KEY=B... scripts/verify-push-key.sh
+scripts/verify-push-key.test.sh   # test the checker itself, no credentials
+```
 
 **On iPhone and iPad, push only works once the app is installed to the home
 screen.** Safari refuses web push to an ordinary browser tab, so an installer who
