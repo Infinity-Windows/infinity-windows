@@ -677,6 +677,45 @@ button:disabled {
   margin: 12px 0 8px;
 }
 
+/*
+ * Job setup, folded away. Everything in here is used while a lead is wiring a
+ * job up and never again, so it must not push the drawing down the screen.
+ */
+.plans-panel {
+  border: 1px solid rgba(163, 156, 146, 0.22);
+  border-radius: 10px;
+  margin: 0 0 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.plans-panel__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.plans-panel__summary .muted {
+  font-family: var(--font-body, inherit);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.plans-panel__body {
+  padding: 0 12px 12px;
+}
+
 .planset-picker-row {
   display: flex;
   flex-wrap: wrap;
@@ -848,12 +887,27 @@ button:disabled {
   overflow: auto;
 }
 
-.plan-sheet--fullscreen .cartoon-sheet,
 .plan-sheet--fullscreen .plan-map {
   flex: 1;
   min-height: 0;
   height: auto;
   aspect-ratio: auto;
+}
+
+/*
+ * The cartoon sheet keeps its page aspect in fullscreen rather than stretching
+ * to the screen. Pins are placed as percentages of this box while walls are
+ * drawn in the SVG viewBox, so the building is only geometrically correct while
+ * the box matches that aspect. `align-self` prevents the flex parent from
+ * stretching the width, which is what lets the aspect drive it.
+ */
+.plan-sheet--fullscreen .cartoon-sheet {
+  flex: 0 1 auto;
+  align-self: center;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: calc(100vh - 130px);
 }
 
 .plan-sheet--fullscreen .plan-map img {
@@ -1019,6 +1073,11 @@ button:disabled {
   white-space: nowrap;
 }
 
+/*
+ * A pin says two things and no more: fill = status, shape = door vs window.
+ * Text lives inside a label span so an unlabelled pin can shrink to a dot
+ * without the number forcing it wide.
+ */
 .plan-dot {
   position: absolute;
   width: 30px;
@@ -1026,19 +1085,42 @@ button:disabled {
   margin: -15px 0 0 -15px;
   padding: 0;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.85);
+  border: 2px solid rgba(20, 18, 16, 0.75);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-display);
   font-weight: 700;
   font-size: 12px;
-  color: #fff;
+  color: #14120f;
   cursor: grab;
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
   transition: transform 0.12s ease;
   z-index: 2;
   touch-action: none;
+}
+
+/* Doors are square. The one difference you need without reading anything. */
+.plan-dot--door {
+  border-radius: 4px;
+}
+
+/*
+ * Crowded pages drop the number and shrink to a countable dot. Scaling rather
+ * than resizing keeps the pin centred on its opening.
+ */
+.plan-dot--quiet {
+  transform: scale(0.6);
+}
+
+.plan-dot--quiet.plan-dot--selected,
+.plan-dot--quiet.plan-dot--dispatch-selected {
+  transform: scale(0.85);
+}
+
+.plan-dot__mark {
+  pointer-events: none;
+  line-height: 1;
 }
 
 .plan-map--with-dots .plan-dot {
@@ -1388,11 +1470,25 @@ button:disabled {
   margin: 10px 0;
 }
 
+/* One row, wrapping on a phone, instead of two stacked legends. */
 .map-legend {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
   font-size: 13px;
   margin: 8px 0;
+}
+
+/* Matches the square door pin. */
+.map-legend__door {
+  border-radius: 2px !important;
+  background: var(--muted);
+}
+
+.map-legend__voided {
+  background: transparent;
+  border: 2px solid currentColor;
 }
 
 .map-legend i {
