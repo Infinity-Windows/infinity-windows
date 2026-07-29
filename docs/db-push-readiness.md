@@ -174,11 +174,27 @@ export SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm
 scripts/cleanup-migration-phantoms.sh
 ```
 
-Expect it to report `70 migration files on disk`, `107 rows in
-schema_migrations`, `37 phantom rows`, `0 filename versions absent`, then list
-37 versions — 11 dated 2026-07-15 to 2026-07-20, and 26 dated 2026-07-29. If
-any of those numbers differ the script refuses to go further; stop and find out
-why rather than overriding it.
+It prints what it measured — files on disk, rows in the history table, phantom
+rows, and how many of those phantoms sort after every migration file — and then
+lists every row it would delete.
+
+**Read the list, not the totals.** The counts move whenever anyone merges a
+migration or applies SQL through MCP, so the script no longer asserts them; it
+reports them. (It used to pin `70` / `107` / `37` and refuse to run when any of
+the three drifted, which was after roughly every merge. A check whose expected
+value drifts under ordinary team activity only teaches people to bump it.)
+
+Two things *do* stop it, and neither has an override:
+
+* **a migration file with no applied row** — the opposite problem, and the
+  serious one: something in the repo never reached the database;
+* **two files claiming one version** — the history table is keyed by version,
+  so one of the pair can never be recorded. Rename the later file.
+
+The phantoms listed as sorting *after* every migration file are the live leak
+rather than history: something is still applying SQL outside
+`supabase/migrations/`. They are safe to delete, but see
+[Keeping it clean](#keeping-it-clean).
 
 When the preview looks right:
 
@@ -187,12 +203,13 @@ scripts/cleanup-migration-phantoms.sh --execute
 ```
 
 It deletes by an explicit list of exactly the versions it just printed, inside a
-transaction whose guard rolls the whole thing back unless the table ends up at
-70 rows with every filename version intact, then re-reads the table and checks
-again independently. Finish on:
+transaction whose guard rolls the whole thing back unless the table ends up with
+one row per migration file and every filename version intact — a figure counted
+from the files on disk during that same run, not a number committed in the
+script — then re-reads the table and checks again independently. Finish on:
 
 ```
-    70 rows, one per migration file, nothing missing
+    <N> rows, one per migration file, nothing missing
 ```
 
 Those rows hold no application data. Deleting them changes no table, no column

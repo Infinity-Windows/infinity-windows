@@ -330,14 +330,83 @@ kind was sent to either of Ammon's projects.**
 
 ### Migration history
 
-`supabase db push` cannot run against this project — it now holds 40 phantom
+`supabase db push` cannot run against this project — it holds 40 phantom
 history rows, three more than yesterday, from other work stamping through the
 MCP `apply_migration` tool. So the migration was applied directly and stamped
 by hand as version `20260729220000`. The file was renamed from `...210000` on
 discovering that version was already taken by a phantom.
-`scripts/cleanup-migration-phantoms.sh` is updated in the same PR to 73 files /
-113 rows / 40 phantoms, and its preview run accepts that state and writes
-nothing.
+
+**`scripts/cleanup-migration-phantoms.sh` was made directional in the same PR**,
+rather than having its numbers bumped again. It used to assert three committed
+integers — files on disk, rows in the history table, phantom rows — and refuse
+to run unless all three matched. Every one of them moves whenever anybody
+merges a migration or applies SQL through MCP: they were stale within hours of
+being written, twice, in a single day. The only way past a stale equality check
+is to bump the literal, which teaches everybody to bump it, which is how this
+repo has already lost checks to being permanently red.
+
+It now mirrors the decision `scripts/schema_verify.py` documents for schema
+drift:
+
+| | |
+| --- | --- |
+| a migration **file with no applied row** | **stops the script**, no override — something in the repo never reached the database |
+| **two files claiming one version** | **stops the script**, no override — the history table is keyed by version, so one of the pair can never be recorded |
+| an applied **row with no file** (a phantom) | **reported, never refused** — these are known, pre-existing and documented, and deleting them is the script's whole job |
+
+A new phantom is still visible without any baseline to keep up to date: the
+report splits phantoms into those that sort *after* every migration file — which
+can only have been stamped by something applying SQL outside
+`supabase/migrations/`, i.e. the leak is still open — and the historical rest.
+That answers the question worth asking ("is this still happening?") instead of
+the one that drifts ("is the total still 37?").
+
+One number is still enforced, and it is derived rather than committed: the
+guard inside the DELETE transaction requires the table to end up with exactly
+one row per migration file, counted from the files on disk during that same
+run. `scripts/cleanup-migration-phantoms.test.sh` (20 cases, stubbed curl, no
+token or network) pins the direction so nobody quietly turns it back into an
+equality check; it runs in CI's **Supabase merge tooling** job.
+`docs/db-push-readiness.md` step 2 is updated to match.
+
+`docs/profiles-security-2026-07-29.md` still says the script "pins its
+expectations at 70/107/37" and shows how to override them. That sentence is now
+out of date; it is another change's write-up, so it is named here rather than
+edited.
+
+### Two things a reader of `git log` should not panic about
+
+`master` carries a pair of commits from a deliberate experiment, not from
+anything broken: `1c43f26` *"test: deliberately break the build to prove red PRs
+cannot merge"* and its revert `be6b86e` *"Revert the throwaway build-break
+probe"* (#156 / #159). The break was intentional, it proved the required checks
+actually block a merge, and it was reverted immediately. Nothing shipped from
+it. A separate merge-queue experiment was also in flight the same afternoon and
+left short-lived `test: behind-branch verification` PRs; those are the same kind
+of thing.
+
+### Migration ordering, checked against what is landing alongside
+
+`20260729220000_staging_bays_guaranteed.sql` sorts last, after both
+`20260729200000_ask_question_log.sql` (#157, on master) and
+`20260729210000_ai_spend_limits.sql` (#161, pending), and neither of those
+touches `projects`, `locations` or `suggest_location`, so there is nothing to
+interleave and no conflict either way round.
+
+Two hazards spotted in passing, neither introduced here and neither this
+change's to fix — but both exactly what the rewritten check now catches:
+
+* **`master` already has two files at version `20260729200000`** —
+  `ask_question_log.sql` and `profiles_rls_lockdown.sql`. The history table is
+  keyed by version, so only one of them can ever be recorded. The rewritten
+  script stops on this; the old one could not see it at all.
+* **#161's migration is `20260729210000`, and a phantom row already holds that
+  version** (`revoke_truncate_from_clients`). Once #161 merges, that file will
+  look *applied* to `supabase db push` when in fact something unrelated stamped
+  the row — so the spend-limit tables would silently never be pushed. This is
+  the same collision that forced this change's own file to be renamed away from
+  `...210000`. Renaming #161's file to a fresh timestamp before it lands avoids
+  it.
 
 ---
 
