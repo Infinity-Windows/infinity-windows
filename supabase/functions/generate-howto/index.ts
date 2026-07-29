@@ -6,7 +6,13 @@ import {
   SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL,
 } from "../_shared/openai.ts";
-import { requireCaller } from "../_shared/auth.ts";
+import { verifyCaller } from "../_shared/auth.ts";
+import {
+  notifyOwnersOfSpend,
+  releaseAiSpend,
+  reserveAiSpend,
+  settleAiSpend,
+} from "../_shared/spendGuard.ts";
 
 interface HowtoResult {
   steps: { title: string; detail: string }[];
@@ -16,8 +22,12 @@ Deno.serve(async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
-  const unauthorized = await requireCaller(req, cors);
-  if (unauthorized) return unauthorized;
+  const auth = await verifyCaller(req);
+  if (auth.status === "unauthorized") {
+    return jsonResponse({ error: "unauthorized" }, 401, cors);
+  }
+  const callerId =
+    auth.status === "ok" && auth.user.id !== "service_role" ? auth.user.id : null;
 
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -58,11 +68,45 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Spend guard, write-time: one how-to per window type, owner-triggered,
+    // $0.0009 a go. Ceiling only — no role floor, no daily count. Placed after
+    // the "no golden install yet" skip above so a skipped type books nothing.
+    const gate = await reserveAiSpend(supabase, {
+      userId: callerId,
+      functionName: "generate-howto",
+    });
+    if (gate.alert) {
+      await notifyOwnersOfSpend(gate.alert, gate.alertProfileIds, {
+        supabaseUrl: SUPABASE_URL,
+        serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+      });
+    }
+    if (!gate.allowed) {
+      return jsonResponse(
+        {
+          skipped: true,
+          limited: true,
+          limit_reason: gate.reason,
+          reason: "the company's monthly AI budget is used up",
+        },
+        200,
+        cors,
+      );
+    }
+
+    let usage: { inputTokens: number | null; outputTokens: number | null } | null = null;
     const result = await chatJson<HowtoResult>(
       `You write a concise, field-ready how-to for installing window type ${type.type_code} (${type.name}), aimed at a newer installer. Ground every step in the reference install and tips below. 5-9 steps, each a short imperative title + 1-2 sentence detail. Include the known watch-outs where relevant. No fluff.`,
       `Tips: ${JSON.stringify(type.tips_json ?? [])}\nWatch-outs: ${JSON.stringify(type.watch_outs_json ?? [])}\nReference install: ${JSON.stringify(golden)}`,
       `Schema: { "steps": [ { "title": string, "detail": string } ] }`,
-    );
+      (u) => {
+        usage = u;
+      },
+    ).catch(async (err) => {
+      await releaseAiSpend(supabase, gate.reservationId, "provider_failed", false);
+      throw err;
+    });
+    await settleAiSpend(supabase, gate.reservationId, usage, "gpt-4o-mini");
 
     const steps = (result.steps ?? [])
       .map((s) => ({

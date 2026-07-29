@@ -6,8 +6,20 @@ import {
   SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL,
 } from "../_shared/openai.ts";
-import { anthropicChat, requireAnthropic } from "../_shared/anthropic.ts";
+import {
+  ANTHROPIC_API_KEY,
+  ANTHROPIC_MODEL,
+  anthropicChat,
+  requireAnthropic,
+  type AnthropicUsage,
+} from "../_shared/anthropic.ts";
 import { verifyCaller } from "../_shared/auth.ts";
+import {
+  notifyOwnersOfSpend,
+  releaseAiSpend,
+  reserveAiSpend,
+  settleAiSpend,
+} from "../_shared/spendGuard.ts";
 import {
   ASK_SYSTEM_PROMPT,
   buildAnthropicMessages,
@@ -544,9 +556,6 @@ Deno.serve(async (req) => {
   const userId = auth.status === "ok" ? auth.user.id : null;
 
   try {
-    // The function's one hard dependency is now the Anthropic key (Claude
-    // generates the answer). OpenAI/embeddings are best-effort below.
-    requireAnthropic();
     const body = await req.json().catch(() => ({}));
     const question = String(body.question ?? "").trim();
     if (!question) {
@@ -563,6 +572,46 @@ Deno.serve(async (req) => {
           )
           .slice(-8)
       : [];
+
+    // ---- Spend guard -------------------------------------------------------
+    // Deliberately the FIRST thing after reading the question, and deliberately
+    // outside everything below it: this decides only *whether we may pay*, and
+    // touches neither the retrieval nor the answer.
+    //
+    // A refusal is a 200 with an empty `answer` and a `note`, never an error.
+    // The client treats an empty answer as "the cloud had nothing" and serves
+    // the bundled company brain instead, so an installer at a jobsite gets a
+    // real answer whether or not a budget ran out. See docs/ai-spend-limits.md.
+    const meter =
+      SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+        ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        : null;
+    const gate = await reserveAiSpend(meter, {
+      userId: userId === "service_role" ? null : userId,
+      functionName: "ask",
+    });
+    if (gate.alert) {
+      await notifyOwnersOfSpend(gate.alert, gate.alertProfileIds, {
+        supabaseUrl: SUPABASE_URL,
+        serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+      });
+    }
+    if (!gate.allowed) {
+      return jsonResponse(
+        { answer: "", sources: [], limited: true, limit_reason: gate.reason, note: gate.note },
+        200,
+        cors,
+      );
+    }
+
+    // The function's one hard dependency is the Anthropic key (Claude generates
+    // the answer). OpenAI/embeddings are best-effort below. Hand the
+    // reservation back with the call count refunded when the key is absent: we
+    // never reached the provider, so neither the money nor the quota was used.
+    if (!ANTHROPIC_API_KEY) {
+      await releaseAiSpend(meter, gate.reservationId, "provider_unconfigured", true);
+    }
+    requireAnthropic();
 
     // (a) + (b) retrieve vault chunks (RAG) and (c) a compact live-data
     // snapshot. RAG is OPTIONAL: it needs OpenAI embeddings, so if no OpenAI key
@@ -595,10 +644,23 @@ Deno.serve(async (req) => {
       history,
       buildAskUserMessage(question, contextBlock),
     );
-    const answer = await anthropicChat({
-      system: ASK_SYSTEM_PROMPT,
-      messages,
-    });
+    let usage: AnthropicUsage | null = null;
+    let answer: string;
+    try {
+      answer = await anthropicChat({
+        system: ASK_SYSTEM_PROMPT,
+        messages,
+        onUsage: (u) => {
+          usage = u;
+        },
+      });
+    } catch (e) {
+      // Refund the money, keep the call count: a client stuck in a retry loop is
+      // the runaway this guards against, and it must still run out of quota.
+      await releaseAiSpend(meter, gate.reservationId, "provider_failed", false);
+      throw e;
+    }
+    await settleAiSpend(meter, gate.reservationId, usage, ANTHROPIC_MODEL);
 
     return jsonResponse(
       { answer, sources: dedupeSources(chunks) },

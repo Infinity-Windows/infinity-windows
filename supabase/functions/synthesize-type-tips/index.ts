@@ -6,7 +6,13 @@ import {
   SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL,
 } from "../_shared/openai.ts";
-import { requireCaller } from "../_shared/auth.ts";
+import { verifyCaller } from "../_shared/auth.ts";
+import {
+  notifyOwnersOfSpend,
+  releaseAiSpend,
+  reserveAiSpend,
+  settleAiSpend,
+} from "../_shared/spendGuard.ts";
 
 interface SynthesisResult {
   tips: string[];
@@ -20,8 +26,12 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: cors });
   }
 
-  const unauthorized = await requireCaller(req, cors);
-  if (unauthorized) return unauthorized;
+  const auth = await verifyCaller(req);
+  if (auth.status === "unauthorized") {
+    return jsonResponse({ error: "unauthorized" }, 401, cors);
+  }
+  const callerId =
+    auth.status === "ok" && auth.user.id !== "service_role" ? auth.user.id : null;
 
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -39,10 +49,21 @@ Deno.serve(async (req) => {
     const { data: types, error: typeErr } = await typesQuery;
     if (typeErr) throw typeErr;
 
-    const results: { type_code: string; updated: boolean; installs: number }[] =
-      [];
+    const results: {
+      type_code: string;
+      updated: boolean;
+      installs: number;
+      limited?: boolean;
+    }[] = [];
+    // Set when the company ceiling refuses a type: stop asking for more rather
+    // than hammering a closed door for the other hundred types.
+    let limited = false;
 
     for (const t of types ?? []) {
+      if (limited) {
+        results.push({ type_code: t.type_code, updated: false, installs: 0, limited: true });
+        continue;
+      }
       const { data: events, error: evErr } = await supabase
         .from("install_events")
         .select(
@@ -100,11 +121,43 @@ Deno.serve(async (req) => {
         ? t.watch_outs_json
         : [];
 
+      // Spend guard, per window type — one type is one paid call ($0.0009), so
+      // metering per type is what makes the owner screen's per-function total
+      // real. Write-time work: no role floor, no daily count, ceiling only.
+      const gate = await reserveAiSpend(supabase, {
+        userId: callerId,
+        functionName: "synthesize-type-tips",
+      });
+      if (gate.alert) {
+        await notifyOwnersOfSpend(gate.alert, gate.alertProfileIds, {
+          supabaseUrl: SUPABASE_URL,
+          serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+        });
+      }
+      if (!gate.allowed) {
+        limited = true;
+        results.push({
+          type_code: t.type_code,
+          updated: false,
+          installs: events.length,
+          limited: true,
+        });
+        continue;
+      }
+
+      let usage: { inputTokens: number | null; outputTokens: number | null } | null = null;
       const synthesis = await chatJson<SynthesisResult>(
         `You write field-ready coaching for window type ${t.type_code} (${t.name}) for the NEXT installer. Rules: every tip must be specific and actionable — name the step, the part, the tool, or the failure it prevents (e.g. "Pre-drill the hinge side; last installs cammed out screws there"). No generic advice ("work carefully", "measure twice"). Base every line on the memos below. Watch-outs are the concrete failure modes that cost time or grade. Keep the best prior lines when still true; drop anything vague. Order tips by impact on time/quality.`,
         `Stats: median ${median ?? "?"}m, P90 ${p90 ?? "?"}m, fail rate ${failRate ?? "?"}%.\nPrior tips: ${JSON.stringify(existingTips)}\nPrior watch-outs: ${JSON.stringify(existingWatch)}\n\nInstall memos:\n${memoBlob}`,
         `Schema: { "tips": string[3-5, specific+actionable], "watch_outs": string[2-5, concrete failure modes], "outcome_difficulty": number 1-5 }`,
-      );
+        (u) => {
+          usage = u;
+        },
+      ).catch(async (err) => {
+        await releaseAiSpend(supabase, gate.reservationId, "provider_failed", false);
+        throw err;
+      });
+      await settleAiSpend(supabase, gate.reservationId, usage, "gpt-4o-mini");
 
       const tips = (synthesis.tips ?? [])
         .map((s) => String(s).trim())
@@ -138,7 +191,20 @@ Deno.serve(async (req) => {
       });
     }
 
-    return jsonResponse({ ok: true, results }, 200, cors);
+    return jsonResponse(
+      {
+        ok: true,
+        results,
+        ...(limited
+          ? {
+              limited: true,
+              note: "Stopped early: the company's monthly AI budget is used up. An owner can raise the ceiling on the AI spend screen.",
+            }
+          : {}),
+      },
+      200,
+      cors,
+    );
   } catch (e) {
     console.error(e);
     return jsonResponse({ error: String(e) }, 500, cors);

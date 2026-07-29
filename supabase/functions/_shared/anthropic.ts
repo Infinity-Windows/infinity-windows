@@ -22,6 +22,20 @@ interface AnthropicMessage {
   content: string;
 }
 
+/** What the provider says it charged for. Reported so the spend ceiling can be
+ * reconciled against real usage instead of an estimate of call counts. */
+export interface AnthropicUsage {
+  inputTokens: number | null;
+  outputTokens: number | null;
+}
+
+/** Pull `usage` off a Messages API response, tolerating its absence. */
+function readUsage(data: { usage?: unknown }): AnthropicUsage {
+  const u = (data.usage ?? {}) as { input_tokens?: unknown; output_tokens?: unknown };
+  const num = (v: unknown) => (typeof v === "number" ? v : null);
+  return { inputTokens: num(u.input_tokens), outputTokens: num(u.output_tokens) };
+}
+
 interface AnthropicChatOptions {
   /** Top-level system prompt (NOT a message with role "system"). */
   system: string;
@@ -30,6 +44,8 @@ interface AnthropicChatOptions {
   model?: string;
   maxTokens?: number;
   temperature?: number;
+  /** Receives the token counts the API reported. Never affects the answer. */
+  onUsage?: (usage: AnthropicUsage) => void;
 }
 
 interface AnthropicTextBlock {
@@ -54,6 +70,8 @@ interface AnthropicVisionOptions {
   images: AnthropicImage[];
   model?: string;
   maxTokens?: number;
+  /** Receives the token counts the API reported. Never affects the answer. */
+  onUsage?: (usage: AnthropicUsage) => void;
 }
 
 /**
@@ -107,6 +125,7 @@ export async function anthropicVisionChat(
     throw new Error(`Anthropic vision chat failed: ${res.status} ${text}`);
   }
   const data = await res.json();
+  opts.onUsage?.(readUsage(data));
   const blocks = (data.content ?? []) as AnthropicTextBlock[];
   return blocks
     .filter((b) => b.type === "text")
@@ -147,6 +166,7 @@ export async function anthropicChat(opts: AnthropicChatOptions): Promise<string>
     throw new Error(`Anthropic chat failed: ${res.status} ${text}`);
   }
   const data = await res.json();
+  opts.onUsage?.(readUsage(data));
   const blocks = (data.content ?? []) as AnthropicTextBlock[];
   return blocks
     .filter((b) => b.type === "text")

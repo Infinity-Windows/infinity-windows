@@ -14,6 +14,11 @@ import {
 } from "../_shared/knowledge.ts";
 import { roleCanManageVault } from "../_shared/vaultGate.ts";
 import { verifyPin } from "../_shared/pin.ts";
+import {
+  notifyOwnersOfSpend,
+  reserveAiSpend,
+  settleAiSpend,
+} from "../_shared/spendGuard.ts";
 
 interface IncomingFile {
   path: string;
@@ -203,7 +208,50 @@ Deno.serve(async (req) => {
       const chunks = chunkMarkdown(content);
       for (let i = 0; i < chunks.length; i += EMBED_BATCH) {
         const batch = chunks.slice(i, i + EMBED_BATCH);
-        const vectors = await embed(batch.map((c) => c.content));
+
+        // Spend guard, write-time. Embeddings cost $0.02 per million tokens —
+        // indexing a two-million-word Obsidian vault is four cents — so this is
+        // metered purely so the owner screen has no blind spot, and it carries
+        // no role floor or daily count of its own (this function is already
+        // supervisor-plus AND vault-PIN gated, a stricter gate than any limit
+        // here). The company ceiling still applies.
+        const gate = await reserveAiSpend(supabase, {
+          userId,
+          functionName: "ingest-knowledge",
+        });
+        if (gate.alert) {
+          await notifyOwnersOfSpend(gate.alert, gate.alertProfileIds, {
+            supabaseUrl: SUPABASE_URL,
+            serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+          });
+        }
+        if (!gate.allowed) {
+          return jsonResponse(
+            {
+              ok: false,
+              limited: true,
+              limit_reason: gate.reason,
+              note: "The company's monthly AI budget is used up, so indexing stopped here. Raise the ceiling on the AI spend screen and run the sync again — notes already indexed are kept.",
+              docsAdded,
+              docsUpdated,
+              docsUnchanged,
+              chunks: chunkCount,
+            },
+            200,
+            cors,
+          );
+        }
+
+        let embedTokens = 0;
+        const vectors = await embed(batch.map((c) => c.content), (u) => {
+          embedTokens += u.inputTokens ?? 0;
+        });
+        await settleAiSpend(
+          supabase,
+          gate.reservationId,
+          { inputTokens: embedTokens, outputTokens: 0 },
+          "text-embedding-3-small",
+        );
         const rows = batch.map((c, j) => ({
           doc_id: docId,
           chunk_index: c.index,
