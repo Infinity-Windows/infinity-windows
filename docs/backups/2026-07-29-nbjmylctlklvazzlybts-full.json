@@ -1,0 +1,152 @@
+{
+  "_auth": {
+    "identities": [],
+    "password_hashes": {
+      "captured": false,
+      "note": "auth.users.encrypted_password was deliberately NOT captured. Restoring this project means users re-set their passwords or sign in again through their provider.",
+      "users_with_a_password_hash": 0
+    },
+    "user_count": 0,
+    "users": []
+  },
+  "_edge_functions": {
+    "function_count": 0,
+    "functions": [],
+    "secret_names": [],
+    "secret_values_captured": false,
+    "source_note": "Function source is not inlined here; the deployed slugs are tracked in this repository under supabase/functions/."
+  },
+  "_meta": {
+    "capture_failures": [],
+    "captured_by": "scripts/backup_project.py (read-only Management API)",
+    "database_version": "17.6.1.147",
+    "non_empty_table_count": 0,
+    "organization_id": "gdkmcyypdsmxmsdtdcgh",
+    "project_created_at": "2026-07-18T20:24:04.329615Z",
+    "project_name": "isaacammonbarlow-max's Project",
+    "project_ref": "nbjmylctlklvazzlybts",
+    "redaction_note": "no credential columns held values in this project",
+    "redactions": [],
+    "region": "ca-central-1",
+    "table_count": 0,
+    "tables": [],
+    "total_rows": 0,
+    "user_schemas": [
+      "public"
+    ],
+    "view_count": 0
+  },
+  "_migrations": [],
+  "_schema": {
+    "columns": [],
+    "constraints": [],
+    "enums": [
+      {
+        "name": "aal_level",
+        "schema": "auth",
+        "values": "{aal1,aal2,aal3}"
+      },
+      {
+        "name": "code_challenge_method",
+        "schema": "auth",
+        "values": "{s256,plain}"
+      },
+      {
+        "name": "factor_status",
+        "schema": "auth",
+        "values": "{unverified,verified}"
+      },
+      {
+        "name": "factor_type",
+        "schema": "auth",
+        "values": "{totp,webauthn,phone}"
+      },
+      {
+        "name": "oauth_authorization_status",
+        "schema": "auth",
+        "values": "{pending,approved,denied,expired}"
+      },
+      {
+        "name": "oauth_client_type",
+        "schema": "auth",
+        "values": "{public,confidential}"
+      },
+      {
+        "name": "oauth_registration_type",
+        "schema": "auth",
+        "values": "{dynamic,manual}"
+      },
+      {
+        "name": "oauth_response_type",
+        "schema": "auth",
+        "values": "{code}"
+      },
+      {
+        "name": "one_time_token_type",
+        "schema": "auth",
+        "values": "{confirmation_token,reauthentication_token,recovery_token,email_change_token_new,email_change_token_current,phone_change_token}"
+      },
+      {
+        "name": "action",
+        "schema": "realtime",
+        "values": "{INSERT,UPDATE,DELETE,TRUNCATE,ERROR}"
+      },
+      {
+        "name": "equality_op",
+        "schema": "realtime",
+        "values": "{eq,neq,lt,lte,gt,gte,in,like,ilike,is,match,imatch,isdistinct}"
+      },
+      {
+        "name": "buckettype",
+        "schema": "storage",
+        "values": "{STANDARD,ANALYTICS,VECTOR}"
+      }
+    ],
+    "extensions": [
+      {
+        "name": "pg_stat_statements",
+        "schema": "extensions",
+        "version": "1.11"
+      },
+      {
+        "name": "pgcrypto",
+        "schema": "extensions",
+        "version": "1.3"
+      },
+      {
+        "name": "plpgsql",
+        "schema": "pg_catalog",
+        "version": "1.0"
+      },
+      {
+        "name": "supabase_vault",
+        "schema": "vault",
+        "version": "0.3.1"
+      },
+      {
+        "name": "uuid-ossp",
+        "schema": "extensions",
+        "version": "1.1"
+      }
+    ],
+    "foreign_keys": [],
+    "functions": [],
+    "indexes": [],
+    "rls_enabled": [],
+    "rls_policies": [],
+    "sequences": [],
+    "triggers": [],
+    "views": []
+  },
+  "_storage": {
+    "bucket_count": 0,
+    "buckets": [],
+    "object_bytes_backed_up": true,
+    "object_bytes_note": "no objects exist in this project",
+    "object_count": 0,
+    "objects": [],
+    "total_bytes": 0
+  },
+  "exported_at": "2026-07-29T19:20:52.397Z",
+  "project_id": "nbjmylctlklvazzlybts"
+}
