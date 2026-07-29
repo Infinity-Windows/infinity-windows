@@ -20,14 +20,23 @@ import {
   keyFormatLabel,
   projectRef,
   publishableKeyRefusal,
+  readCredential,
 } from "./lib/supabase-key.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const url = process.env.SUPABASE_URL;
-const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const { value: url } = readCredential(process.env.SUPABASE_URL);
+const { value: key, trimmed } = readCredential(
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+);
 if (!url || !key) {
   console.error("Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY");
   process.exit(1);
+}
+if (trimmed) {
+  console.warn(
+    "Note: the stored SUPABASE_SERVICE_ROLE_KEY had surrounding whitespace. " +
+      "Using the trimmed value, but re-paste the secret to fix it properly.",
+  );
 }
 const refusal = publishableKeyRefusal(key);
 if (refusal) {
