@@ -83,6 +83,28 @@ never committed.)
    `VAPID_PRIVATE_KEY` (the public one also goes in `VITE_VAPID_PUBLIC_KEY`).
 4. Create crew users under Authentication → Users, then set roles on the Crew screen.
 
+### Shipping the backend
+
+`Deploy GitHub Pages` ships the frontend on every merge to master. `Deploy backend`
+([`.github/workflows/deploy-backend.yml`](.github/workflows/deploy-backend.yml))
+does the same for Edge Functions and migrations, so the two halves cannot drift
+apart the way they did through July 2026 — ten PRs merged whose backend never
+left the repo, and no build went red.
+
+It needs two repo secrets: `SUPABASE_ACCESS_TOKEN` (an `sbp_…` personal access
+token) for functions, and `SUPABASE_DB_PASSWORD` for `db push`. Until those are
+set, each job is a no-op that annotates the run with what it would have done, so
+nothing turns red on its own.
+
+The `Verify functions are live` job probes every function in
+`supabase/functions/` and reports which ones 404. Run the same check yourself
+any time — it needs no credentials:
+
+```bash
+scripts/verify-functions.sh          # warn on missing
+STRICT=1 scripts/verify-functions.sh # exit 1 on missing
+```
+
 The bundle seeds the thin modules (tools, a week-long safety-talk rotation) and
 adds how-to guides for `CAS3050`, `DH2846`, and `PIC6060` so every screen shows
 real content out of the box.
