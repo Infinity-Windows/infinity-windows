@@ -133,12 +133,12 @@ describe("isDrawingStale", () => {
 });
 
 describe("padBbox", () => {
-  it("grows the real mark #1 box by the default 3.2% on every side", () => {
+  it("grows the real mark #1 box by the default 4.5% on every side", () => {
     const [x0, y0, x1, y1] = padBbox(PAGE_1_BOXES["1"]);
-    expect(x0).toBeCloseTo(0.185, 6);
-    expect(y0).toBeCloseTo(0.096, 6);
-    expect(x1).toBeCloseTo(0.332, 6);
-    expect(y1).toBeCloseTo(0.322, 6);
+    expect(x0).toBeCloseTo(0.172, 6);
+    expect(y0).toBeCloseTo(0.083, 6);
+    expect(x1).toBeCloseTo(0.345, 6);
+    expect(y1).toBeCloseTo(0.335, 6);
   });
 
   it("clamps at the page edges instead of going negative or past 1", () => {
