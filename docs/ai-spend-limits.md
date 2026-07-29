@@ -277,9 +277,16 @@ assistant offline, so the cap would have been silently absent while the assistan
 kept answering.
 
 `scripts/test_supabase_merge.py` now fails the build if two migrations share a
-version, with a single allowance for the one pre-existing collision at
-`…200000` that is being repaired separately. That allowance is itself tested, so
-it cannot outlive the problem.
+version. It briefly carried an allowance for a second pre-existing collision at
+`…200000` (`ask_question_log` / `profiles_rls_lockdown`); that one has since been
+renamed to `…240000`, so the allowance is gone and the rule is absolute.
+
+Renaming this file was necessary but not sufficient on its own. The `…200000`
+collision was enough by itself to keep these tables off a freshly built
+database: `supabase_migrations.schema_migrations` declares `version` as its
+primary key and the CLI records each applied file with a plain `INSERT`, so the
+second file at a repeated version aborts on a duplicate key and takes every
+later migration down with it — including this one, which sorts last.
 
 ## Tables
 
