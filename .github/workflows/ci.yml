@@ -138,6 +138,13 @@ jobs:
       - name: Test the function-secret enumerator
         run: python3 scripts/test_function_secrets.py
 
+      # The misnamed-key check gives ADVICE to a human, so crying wolf is its
+      # real failure mode: one wrong suggestion and nobody reads it again. The
+      # tests check every secret this repo actually holds against every name the
+      # app requires and insist none of them is reported.
+      - name: Test the misnamed-secret check
+        run: python3 scripts/test_secret_name_audit.py
+
       # The migration-history tool decides what gets deleted from
       # supabase_migrations.schema_migrations, and it used to refuse to run at
       # all whenever a committed count went stale — which was after roughly

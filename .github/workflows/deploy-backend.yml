@@ -372,6 +372,131 @@ jobs:
           echo "${#names[@]} key(s) the app needs are not stored in GitHub:"
           printf '    %s\n' "${names[@]}"
 
+      # Catch a key that WAS added, under the wrong name.
+      #
+      # This is the one failure the rest of the pipeline is blind to by
+      # construction. Everything else works from exact names: the sync step is
+      # handed the values of the names the functions need and nothing else, so a
+      # secret stored as OPEN_AI_WINDOWS_API when the app looks for
+      # OPENAI_API_KEY is not a broken key, it is an invisible one. Nothing
+      # references that name, no check can see it, nothing goes red, and the
+      # owner has every reason to think the job is done. That happened on
+      # 2026-07-29 and cost an afternoon; a human found it by comparing two
+      # names by eye.
+      #
+      # Seeing it requires the one thing no other step looks at: the LIST OF
+      # NAMES GitHub holds. Names only — GitHub's API cannot return a secret's
+      # value to anyone, by design, so there is no value here to leak.
+      #
+      # Never a gate. It is advice, it exits 0 on every path, and when it cannot
+      # look it says so instead of guessing.
+      - name: Check no key was added under the wrong name
+        id: nearmiss
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          # A token that may list this repo's secret NAMES. The built-in
+          # GITHUB_TOKEN has no such permission — there is no `permissions:` key
+          # that grants it — so this needs its own. Least privilege is a
+          # fine-grained token limited to this one repository with a single
+          # permission, Secrets: Read-only, which allows names and timestamps and
+          # cannot read a value. See the step output for how to add it.
+          AUDIT_TOKEN: ${{ secrets.SECRET_NAME_AUDIT_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+
+          explain_unavailable() {
+            echo "::warning title=Could not check for a misnamed key::This deploy could not read the LIST OF SECRET NAMES this repository holds, so it could not tell whether a key the app needs has been added under a slightly wrong name - the mistake that cost an afternoon on 2026-07-29. Nothing is broken by this. To switch the check on, add a repository secret named SECRET_NAME_AUDIT_TOKEN containing a fine-grained personal access token limited to this repository with one permission, Secrets: Read-only. That permission can read secret NAMES and never values."
+            {
+              echo "### Could not check whether a key was added under the wrong name"
+              echo
+              echo "**Nothing is broken by this**, and nothing was changed. This"
+              echo "check simply could not look."
+              echo
+              echo "It is the one check that can catch a key added under a"
+              echo "*slightly wrong* name - the mistake that cost an afternoon on"
+              echo "2026-07-29, when the OpenAI key sat in GitHub as"
+              echo "\`OPEN_AI_WINDOWS_API\` and every other check stayed green"
+              echo "because nothing looks for that name."
+              echo
+              echo "**To switch it on**, someone with admin on this repository:"
+              echo
+              echo "1. Create a fine-grained personal access token at"
+              echo "   <https://github.com/settings/personal-access-tokens/new>."
+              echo "2. Under *Repository access*, choose **Only select"
+              echo "   repositories** and pick this one."
+              echo "3. Under *Repository permissions*, set **Secrets** to"
+              echo "   **Read-only**. Nothing else is needed."
+              echo "4. Save the token, then add it here as a repository secret"
+              echo "   named exactly \`SECRET_NAME_AUDIT_TOKEN\`"
+              echo "   (Settings -> Secrets and variables -> Actions)."
+              echo
+              echo "That permission lets this check read the **names** of secrets."
+              echo "It cannot read their values - GitHub does not let anything"
+              echo "read a secret's value back, including this."
+            } >>"$GITHUB_STEP_SUMMARY"
+          }
+
+          TOKEN="${AUDIT_TOKEN:-}"
+          [ -n "$TOKEN" ] || TOKEN="${FALLBACK_TOKEN:-}"
+          if [ -z "$TOKEN" ]; then
+            explain_unavailable
+            exit 0
+          fi
+
+          # umask before the file exists. It holds NAMES, never values, but it is
+          # still an inventory and there is no reason for it to be readable.
+          umask 077
+          names="$(mktemp)" || exit 0
+          trap 'rm -f "$names"' EXIT
+
+          if ! GH_TOKEN="$TOKEN" gh api "repos/$REPO/actions/secrets" \
+               --paginate --jq '.secrets[].name' >"$names" 2>/tmp/nearmiss-api.log; then
+            echo "The list of secret names could not be read."
+            # The API error can mention the repo and the permission, never a
+            # value, so it is safe to show and it is what tells you which.
+            sed 's/^/    /' /tmp/nearmiss-api.log || true
+            explain_unavailable
+            exit 0
+          fi
+
+          echo "Read $(wc -l <"$names" | tr -d ' ') secret name(s). No value was read;"
+          echo "GitHub does not expose secret values to anything, including this."
+          echo
+
+          report="$(python3 scripts/secret_name_audit.py \
+            --have-file "$names" --github-output 2>&1)" || {
+            echo "::warning title=Could not check for a misnamed key::The misnamed-key check could not run to completion. Nothing is broken by this."
+            printf '%s\n' "$report"
+            exit 0
+          }
+          printf '%s\n' "$report"
+
+          if printf '%s' "$report" | grep -q "may have been stored under the wrong name"; then
+            # One annotation per pair, so the run page names both the secret you
+            # have and the name the app wants.
+            printf '%s\n' "$report" | awk '
+              /^  You have a secret called / { stored=$0; sub(/^  You have a secret called /,"",stored); sub(/\.$/,"",stored) }
+              /^  Did you mean / { want=$0; sub(/^  Did you mean /,"",want); sub(/\?$/,"",want)
+                printf "::warning title=Possible misnamed key: %s::You have a secret called %s. Did you mean %s? The app only ever looks for the exact name %s, so a secret spelled any other way is invisible to it and nothing goes red. Fix: add a secret named exactly %s with the same value, then delete %s.\n", stored, stored, want, want, want, stored }
+            '
+            {
+              echo "### Action needed: a key may have been added under the wrong name"
+              echo
+              echo '```'
+              printf '%s\n' "$report"
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### No key appears to be stored under the wrong name"
+              echo
+              printf '%s\n' "$report"
+            } >>"$GITHUB_STEP_SUMMARY"
+          fi
+
       # How many devices are actually signed up for notifications. Nothing here
       # can break, and a count of zero is not a fault — it is reported because it
       # is the number that decides whether changing the push key costs anyone
