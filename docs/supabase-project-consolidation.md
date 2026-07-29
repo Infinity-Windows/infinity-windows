@@ -341,12 +341,24 @@ deployment does anything at all.
 
 ## 5. Edge functions and the secrets they need
 
-**Conclusion: only 4 of the 10 functions are running on
-`czprjcskmzzagdztqonm`. Whichever project wins needs all ten deployed and needs
-four secrets set by hand: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
+> **Superseded later the same day. Do not act on the "Not deployed" column
+> below.** The table was measured earlier on 2026-07-29, before `Deploy backend`
+> ran. As of the 20:02 UTC run against `czprjcskmzzagdztqonm`, **all ten
+> functions are deployed** — probed 401 each, 0 missing, 0 undetermined — and the
+> only secret still missing on that project is `ANTHROPIC_API_KEY`.
+> `OPENAI_API_KEY`, `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` are all set, so
+> `send-push` in particular is deployed **and** has its keys. The section is kept
+> as written because it is the record of what was true at the time; the live
+> state is in [`always-live.md`](./always-live.md), and the current answer always
+> comes from `scripts/verify-functions.sh` and
+> `scripts/verify-function-secrets.sh` rather than from this table.
+
+**Conclusion (as measured earlier on 2026-07-29): only 4 of the 10 functions are
+running on `czprjcskmzzagdztqonm`. Whichever project wins needs all ten deployed
+and needs four secrets set by hand: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
 `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`.**
 
-Re-verified by probing production on 2026-07-29. A response of 401 means the
+Verified by probing production on 2026-07-29. A response of 401 means the
 function exists and is asking for a login; 404 means it was never deployed.
 
 | Function | Live? | Secrets it needs a human to set |
