@@ -181,6 +181,10 @@ export interface CropRequest {
  * under the old behaviour are never served again. Phones hold these in
  * IndexedDB for weeks, and a crew who already has mark #2's black rectangle
  * saved would otherwise keep seeing it after the fix shipped.
+ *
+ * "repair2" is the wider `padBbox` margin: every crop that keeps its stored box
+ * — which is nearly all of them — now covers slightly more of the sheet, so
+ * every saved picture is stale.
  */
 const SPEC_VARIANT = "repair2";
 

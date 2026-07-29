@@ -52,12 +52,28 @@ export function validateBbox(raw: unknown): Bbox | null {
  * text, and the "Outside View" caption underneath — the very things an
  * installer checks — so a small uniform margin is always added.
  *
- * PLACEHOLDER VALUE WHILE THE MEASUREMENT RUNS — do not merge on this commit.
- * 3.2% was tuned by eye on the Smith Residence sheet and left Black Desert's
- * mark #16 stopping just short of its own printed overall width. 4.5% recovers
- * #16, but the number has to be shown safe on Smith before it can ship; this
- * commit exists so the work is visible, and it will either gain that evidence
- * or be reverted. PURE.
+ * 4.5%, and it is bounded on BOTH sides by measurement rather than by taste.
+ * The measure is the one PR #133 validated: a crop is correct when it contains
+ * its own mark's printed overall dimension and no other mark's, read off the
+ * sheet's text layer, which owes nothing to this code or to the vision pass
+ * that produced the boxes.
+ *
+ * The floor. 3.2% was tuned by eye on Smith Residence and left two crops
+ * stopping a whisker short of a dimension their own window needs: Black Desert
+ * #16 lost its overall width, Smith #19 its overall height. Both come back at
+ * 4.5%, taking Black Desert from 35/36 to 36/36 and Smith from 20/24 to 21/24
+ * with nothing regressing on either job. Smith holds level from 4.0% to 6.0%,
+ * so this is the middle of a plateau and not a value that happens to work.
+ *
+ * The ceiling, which is the less obvious half. `drawingCropBox` only repairs a
+ * crop when the stored box comes out near-blank, and Black Desert #2 — the
+ * black rectangle PR #133 shipped to fix — is only repaired because its box
+ * scores under `MIN_INK_DENSITY`. Padding drags the neighbouring
+ * dimension line into that box: at 4.5% it still scores 4.3–5.6 across every
+ * mask step, but by 5.0% it reaches 9.6–10.2 and the repair stops firing, which
+ * would silently give mark #2 its black rectangle back. Anything above about
+ * 4.8% undoes the previous fix, so do not raise this without re-measuring #2.
+ * PURE.
  */
 export function padBbox(bbox: Bbox, pad = 0.045): Bbox {
   const clamp = (n: number) => Math.min(1, Math.max(0, n));
