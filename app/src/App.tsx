@@ -152,9 +152,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
   const [entered, setEntered] = useState(false);
-  const [signInMode, setSignInMode] = useState<
-    "signin" | "signup" | "request"
-  >("signin");
+  const [signInMode, setSignInMode] = useState<"signin" | "request">("signin");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
