@@ -1,15 +1,31 @@
-# Migration drift — PRODUCTION (`czprjcskmzzagdztqonm`), 2026-07-29
+# Migration drift — `czprjcskmzzagdztqonm`, 2026-07-29
 
-**Measured against the production project only.** Project ref
-`czprjcskmzzagdztqonm`, confirmed from `app/.env`,
-`.github/workflows/deploy-pages.yml` and the live bundle at
-<https://infinity-windows.github.io/infinity-windows/>.
+> ## Which project is canonical is UNDER REVIEW
+>
+> This is a **read-only analysis of project `czprjcskmzzagdztqonm`** — the
+> database the deployed app and local dev pointed at as of 2026-07-29, per
+> `app/.env`, `.github/workflows/deploy-pages.yml` and the live bundle at
+> <https://infinity-windows.github.io/infinity-windows/>.
+>
+> **It is no longer settled that this is the database the team keeps.** Taylor
+> has raised that the other project, `jvsyhtarnvmdilsgksdi`, may hold the real
+> ongoing work and may be the one to adapt to. Schema repair against
+> `czprjcskmzzagdztqonm` was **halted** pending that decision — see
+> [`docs/migration-repair-2026-07-29-production.md`](./migration-repair-2026-07-29-production.md)
+> for exactly what had already been applied before the halt.
+>
+> The comparison below is still accurate and still useful: it is a factual
+> account of how far one database had diverged from `supabase/migrations/`, and
+> the same method re-run with a different `SUPABASE_PROJECT_REF` will answer the
+> same question for the other project. Nothing in *this* file changes any
+> database.
 
 The earlier audit, [`docs/migration-audit-2026-07-28.md`](./migration-audit-2026-07-28.md),
 was measured against `jvsyhtarnvmdilsgksdi` — a **different** project, which
 `scripts/pgq.sh` used to default to. Its "64 APPLIED / zero MISSING" all-clear
-does not describe production and must not be relied on. Its *diagnoses* and
-*repair SQL* are still useful.
+therefore describes `jvsyhtarnvmdilsgksdi`, not the database the app was
+pointed at. That mislabelling is the finding; it is *not* a claim about which
+project should win. Its *diagnoses* and *repair SQL* remain useful.
 
 ## Method
 
@@ -26,7 +42,7 @@ is not a usable signal on this project.
 
 ## Headline
 
-| Measure | Before repair |
+| Measure | As found, 2026-07-29 |
 | --- | --- |
 | Live relations in `public` (tables + views) | 38 (36 base tables, 2 views) |
 | Relations declared by migrations | 68 |
@@ -179,7 +195,27 @@ Confirmed present in the live catalog and left untouched:
   `pg_depend … deptype = 'e'` guard that keeps the pgvector trap from firing.
   It was not re-run.
 
-## Repair
+## What happened next
 
-See [`docs/migration-repair-2026-07-29-production.md`](./migration-repair-2026-07-29-production.md)
-for what was applied and the after-state verification.
+Repair began and was then **halted part-way through the task** when the question
+of which project is canonical was reopened. By the time it was halted, all 26
+MISSING/PARTIAL files had in fact been applied to `czprjcskmzzagdztqonm` and
+verified; no rollback was performed.
+
+[`docs/migration-repair-2026-07-29-production.md`](./migration-repair-2026-07-29-production.md)
+is the exact record of what was applied, what data was touched, and what state
+the database is in now.
+
+## Re-running this against the other project
+
+The method is project-agnostic. To produce the equivalent report for
+`jvsyhtarnvmdilsgksdi`:
+
+```bash
+export SUPABASE_ACCESS_TOKEN=sbp_...
+export SUPABASE_PROJECT_REF=jvsyhtarnvmdilsgksdi
+scripts/audit-migrations.sh
+```
+
+`SUPABASE_PROJECT_REF` is now required and has no default, so the run cannot
+silently measure a project you did not name.

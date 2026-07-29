@@ -1,12 +1,47 @@
-# Production schema repair — `czprjcskmzzagdztqonm`, 2026-07-29
+# Schema repair applied to `czprjcskmzzagdztqonm`, 2026-07-29 — HALTED
+
+> ## STOP: read this before doing anything with either database
+>
+> **The task was halted after the schema work had already completed.** Taylor
+> raised that the other project, `jvsyhtarnvmdilsgksdi`, may hold the real
+> ongoing work and may be the one the team adapts to. No further changes have
+> been made since, and **nothing has been rolled back**.
+>
+> **This file is the authoritative record of the current state of
+> `czprjcskmzzagdztqonm`.** Anyone deciding which project to keep needs it.
+>
+> Short version of where that database now stands:
+>
+> * **31 new tables exist and all 31 are empty** (0 rows, combined).
+> * **No pre-existing row was deleted, truncated or dropped.** Every original
+>   row count is unchanged.
+> * **Four small data writes did happen**, all backfills carried inside the
+>   migration files themselves: 6 `cost_codes.sort_order` values, 42
+>   `locations.serial` values, 11 `windows.serial` values, and 1 storage bucket
+>   row (`trip-attachments`, holding 0 objects). See
+>   [§3](#3-data-that-was-written) for exactly what and why.
+> * **70 rows were added to `supabase_migrations.schema_migrations`**, plus 26
+>   written automatically by the `apply_migration` tool. See [§5](#5-migration-history).
+> * The `vector` extension was installed into `public`.
+> * Two CHECK constraints were widened (`time_shifts_status_check` gained
+>   `rejected`; `issues_kind_check` gained `spec_gap`) and two columns widened
+>   (`project_mark_specs.width_in` / `.height_in`, `integer` → `numeric`).
+>
+> **Nothing is half-finished.** Every one of the 26 migrations succeeded in
+> full, so there is no partial object to clean up and no improvised rollback is
+> warranted. Leaving the 31 empty tables in place costs nothing.
+>
+> If `czprjcskmzzagdztqonm` turns out to be the database the team keeps, this
+> work stands and is complete. If `jvsyhtarnvmdilsgksdi` wins instead, the
+> effect on `czprjcskmzzagdztqonm` is 31 unused empty tables and the four
+> backfills above — none of which harms a database that is being retired.
 
 Companion to [`docs/migration-drift-2026-07-29-production.md`](./migration-drift-2026-07-29-production.md),
-which records the before-state. This file records what was applied and how it
-was verified.
+which records the before-state.
 
-Everything below was executed against production project
-**`czprjcskmzzagdztqonm`** through the Supabase MCP `apply_migration` /
-`execute_sql` tools. Project `jvsyhtarnvmdilsgksdi` was never touched.
+Everything below was executed against **`czprjcskmzzagdztqonm`** through the
+Supabase MCP `apply_migration` / `execute_sql` tools. Project
+`jvsyhtarnvmdilsgksdi` was never touched, read or written at any point.
 
 ## 1. Restore point (taken before anything was applied)
 
@@ -88,7 +123,58 @@ function in `public`, was already APPLIED and already carries the
 `not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')`
 guard. It was not re-run, so there was nothing to roll back.
 
-## 3. Verification, by catalog
+## 3. Data that was written
+
+This is the complete list. Nothing else in the database was written to.
+
+### 31 new tables — all empty
+
+Combined row count across all 31: **0**. Verified after the halt.
+
+`push_subscriptions` · `schedule_assignments` · `schedule_assignment_members` ·
+`schedule_events` · `knowledge_docs` · `knowledge_chunks` · `vault_config` ·
+`vehicles` · `vehicle_drivers` · `vehicle_devices` · `vehicle_locations_latest` ·
+`vehicle_locations_history` · `vehicle_service_records` ·
+`vehicle_service_schedules` · `vehicle_financials` ·
+`vehicle_project_assignments` · `vehicle_drive_sessions` · `trips` ·
+`trip_crew` · `flights` · `lodging` · `ground_transport` · `procedures` ·
+`trip_contacts` · `trip_attachments` · `project_messages` ·
+`project_message_reads` · `project_mark_specs` · `project_planset_pages` ·
+`project_spec_discrepancies` · `project_mark_elevation_views`
+
+### Four writes that touched real data
+
+Each is a backfill written into the migration file itself, not something
+improvised during the repair.
+
+| What | Rows | From | To |
+| --- | --- | --- | --- |
+| `cost_codes.sort_order` | 6 | `0` (the column's new default) | `10, 20, 30, 40, 50, 60` in `code` order |
+| `locations.serial` | 42 | `null` (new column) | `SLOT-000001` … `SLOT-000042` |
+| `windows.serial` | 11 | `null` (new column) | `WIN-000001` … `WIN-000011` |
+| `storage.buckets` | 1 | — | one row, `trip-attachments`, private, currently holding 0 objects |
+
+All four fill columns that did not exist minutes earlier, or a bucket that did
+not exist. **No pre-existing value was overwritten.** The `spec_discrepancy_issues`
+migration also carries a backfill loop over `project_spec_discrepancies`; that
+table was empty, so it inserted 0 rows and created 0 issues.
+
+### Schema-level changes to existing objects
+
+* `time_shifts_status_check` dropped and re-added, widened to accept
+  `'rejected'` alongside `open` / `submitted` / `approved`.
+* `issues_kind_check` dropped and re-added, widened to accept `'spec_gap'`.
+* `project_mark_specs.width_in` and `.height_in` changed `integer` → `numeric`
+  (a widening; both columns were empty).
+* New nullable columns added to `time_shifts`, `attachments`, `projects`,
+  `cost_codes`, `locations`, `windows`, `issues` — all nullable or defaulted,
+  none replacing an existing column.
+* `vector` extension installed into `public`.
+* `supabase_realtime` publication gained `project_messages`,
+  `project_mark_specs`, `project_spec_discrepancies`.
+* Grants issued to `authenticated` / `service_role` on the new tables only.
+
+## 4. Verification, by catalog
 
 | Measure | Before | After |
 | --- | --- | --- |
@@ -121,7 +207,7 @@ the two backfills carried inside the migration files themselves —
 on `locations` and `windows`, both of which fill previously-null or
 previously-zero columns and neither of which changes a row count.
 
-## 4. Migration history
+## 5. Migration history
 
 All **70** filename versions are now present in
 `supabase_migrations.schema_migrations`, inserted with
@@ -144,7 +230,7 @@ compares versions, so it will see 37 remote-only migrations with no local file.
 `docs/migration-history-phantom-cleanup-2026-07-29.sql` contains the tightly
 scoped cleanup, ready to run once a human decides.
 
-## 5. Advisors after the repair
+## 6. Advisors after the repair
 
 ### Security — 145 findings (2 ERROR, 142 WARN, 1 INFO)
 
@@ -186,7 +272,7 @@ improvises no schema.
 None of these block anything at this data volume (the largest table has 130
 rows). All are follow-up candidates, none were acted on.
 
-## 6. Deliberately not done
+## 7. Deliberately not done
 
 * **Did not run the two seed migrations.** They are not idempotent, and their
   rows are already present.
@@ -196,4 +282,24 @@ rows). All are follow-up candidates, none were acted on.
   advisor finding. All would be new schema the repo does not declare.
 * **Did not re-run `20260718090000_security_hardening`.**
 * **Did not touch `app/src`.**
-* **Did not touch project `jvsyhtarnvmdilsgksdi`.**
+* **Did not touch project `jvsyhtarnvmdilsgksdi`** — not read, not written, at
+  any point.
+
+## 8. Not rolled back, and why
+
+When the halt came, the instruction was to revert only what is *trivially safe
+and clearly incomplete* — a half-created table from a failed statement, say.
+There is nothing in that category. All 26 migrations succeeded in full; not one
+statement failed, so no object is partial.
+
+Rolling the 31 tables back would mean 31 improvised `DROP TABLE` statements
+against a live database to remove tables holding no data, which is strictly more
+risk than leaving them. The four data backfills fill columns that would have to
+be dropped alongside them. So nothing was undone.
+
+**If the decision goes to `jvsyhtarnvmdilsgksdi`,** this database is left with 31
+unused empty tables, four backfilled columns and a spare storage bucket — all
+inert, and all irrelevant to a database being retired.
+
+**If the decision stays with `czprjcskmzzagdztqonm`,** the work is already
+complete and verified: zero drift against all 70 migration files.

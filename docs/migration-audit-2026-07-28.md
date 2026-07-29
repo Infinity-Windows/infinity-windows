@@ -1,30 +1,36 @@
 # Migration drift audit — 2026-07-28
 
-> ## ⚠️ CORRECTION (2026-07-29): this audit measured the WRONG DATABASE.
+> ## ⚠️ CORRECTION (2026-07-29): this audit did not measure the database the app was using.
 >
 > Everything below — including the "Status: closed" all-clear and the
 > "64 APPLIED / zero MISSING" result — was measured against Supabase project
-> **`jvsyhtarnvmdilsgksdi`**, which is *not* the Infinity Windows production
-> database. It got there because `scripts/pgq.sh` defaulted to that ref when
-> `SUPABASE_PROJECT_REF` was unset, so every audit run silently pointed at it.
+> **`jvsyhtarnvmdilsgksdi`**. It got there unintentionally: `scripts/pgq.sh`
+> defaulted to that ref whenever `SUPABASE_PROJECT_REF` was unset, so every
+> audit run silently pointed at it without saying so.
 >
-> Production is **`czprjcskmzzagdztqonm`** (see `app/.env`,
-> `.github/workflows/deploy-pages.yml`, and the live bundle). Measured against
-> production on 2026-07-29, the database was **31 relations short of what the
-> migrations declare** — 21 files entirely MISSING and 4 PARTIAL, including all
-> of vehicles, travel, crew scheduling, project chat and the whole mark-spec
-> chain.
+> The database the deployed app and local dev were pointed at is
+> **`czprjcskmzzagdztqonm`** (`app/.env`,
+> `.github/workflows/deploy-pages.yml`, the live bundle). Measured against *that*
+> project on 2026-07-29, it was **31 relations short of what the migrations
+> declare** — 22 files entirely MISSING and 4 PARTIAL, including all of vehicles,
+> travel, crew scheduling, project chat and the whole mark-spec chain.
 >
-> **Do not treat this document's all-clear as describing production.** Its
-> *diagnosis* and *repair SQL* remain useful and are still accurate as
-> descriptions of the problems themselves.
+> So this document's all-clear is a true statement about
+> `jvsyhtarnvmdilsgksdi` and a false one about the app's database. Its
+> *diagnosis* and *repair SQL* remain accurate as descriptions of the problems
+> themselves.
 >
-> Current, production-accurate state:
+> **Which project should be canonical is now an open question**, being
+> re-evaluated by the team — `jvsyhtarnvmdilsgksdi` may hold the real ongoing
+> work. Schema repair against `czprjcskmzzagdztqonm` was halted for that reason;
+> see [`docs/migration-repair-2026-07-29-production.md`](./migration-repair-2026-07-29-production.md)
+> for exactly what had already been applied, and
 > [`docs/migration-drift-2026-07-29-production.md`](./migration-drift-2026-07-29-production.md)
-> and [`docs/migration-repair-2026-07-29-production.md`](./migration-repair-2026-07-29-production.md).
+> for the read-only comparison.
 >
-> `scripts/pgq.sh` no longer has a default ref; it now fails with a clear message
-> when `SUPABASE_PROJECT_REF` is unset, so this cannot happen again.
+> `scripts/pgq.sh` no longer has a default ref; it fails with a clear message
+> when `SUPABASE_PROJECT_REF` is unset. Whichever project wins, an audit can no
+> longer measure one database while appearing to describe another.
 
 Triggered by a live failure: "Load marks from plans" died with
 `Could not find the 'provisional' column of 'window_types' in the schema cache
