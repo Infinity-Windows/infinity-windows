@@ -262,7 +262,7 @@ export async function hasCachedCrop(req: CropRequest): Promise<boolean> {
 /** Ring color: reads on white paper and on the sheet's own blue/green numbers. */
 const RING_COLOR = "#e11d48";
 /** Tells the elevation crops apart from the spec crop of the same box. */
-const ELEVATION_VARIANT = "elev";
+const ELEVATION_VARIANT = "elev-inv1";
 
 export interface ElevationCropRequest {
   /** The BUILDING planset the elevation sheets live on. */
@@ -286,14 +286,39 @@ function elevationKey(req: ElevationCropRequest): string {
 }
 
 /**
- * Crop the drawing region and ring the mark.
+ * How the building plans are re-coloured, using the same grayscale → invert →
+ * floor/gain pipeline as the spec drawings ({@link invertLineArt}) so there is
+ * only one colour transform in the app.
  *
- * Deliberately NOT run through `invertLineArt`. That transform exists for
- * manufacturer shop drawings, which are pure black line-work on white; an
- * architectural elevation is stone hatching, glazing tones and the
- * draughtsman's own colored numbers, and inverting it turns the materials into
- * white blobs and throws away the color coding the crew reads. The sheet is
- * shown as drawn.
+ * The CONSTANTS differ from the spec sheets' 28/3 because the source document
+ * is different. A supplier spec sheet is sparse black line-work over a faint
+ * colour watermark, so it wants an aggressive floor to kill the watermark and a
+ * big gain to rescue the few faint lines left. An architectural elevation is
+ * the opposite: dense hatching, shingle and stone texture, and broad tone
+ * blocks. Measured on Black Desert's A.201/A.202 crops, floor 28 + gain 3
+ * pushes that texture to near-white and the house arrives as a pale smear with
+ * the openings lost inside it.
+ *
+ * So: the floor drops to 18, because these sheets carry no watermark to crush
+ * and their thin sash and muntin lines invert into the low 20s — 28 deleted
+ * them. The gain drops to 1.6, which lifts real line-work to a clearly readable
+ * level while leaving the hatching as mid-grey texture instead of blowing it
+ * out, so the drawn openings stay the brightest thing in the picture. Tuned
+ * here rather than in `markDrawing`, whose 28/3 was carefully validated against
+ * the supplier sheets and is not ours to move.
+ */
+const ELEVATION_FLOOR = 18;
+const ELEVATION_GAIN = 1.6;
+
+/**
+ * Crop the drawing region, flip it to white-on-black, and ring the mark.
+ *
+ * Order matters and is the whole reason the ring is stroked here rather than
+ * merged into the crop step: `invertLineArt` runs over the RAW plan pixels
+ * FIRST, and the ring is drawn on top of the finished black image afterwards.
+ * Invert a ring that is already on the canvas and red becomes CYAN — the exact
+ * complement — which on a dark drawing looks like a rendering fault rather than
+ * a marker. Nothing red must exist on this canvas before the transform.
  */
 function cropElevation(
   page: HTMLCanvasElement,
@@ -317,6 +342,10 @@ function cropElevation(
     rect.width,
     rect.height,
   );
+
+  const pixels = ctx.getImageData(0, 0, rect.width, rect.height);
+  invertLineArt(pixels.data, ELEVATION_FLOOR, ELEVATION_GAIN);
+  ctx.putImageData(pixels, 0, 0);
 
   const ring = calloutRingCircle({
     pin: req.pin,
