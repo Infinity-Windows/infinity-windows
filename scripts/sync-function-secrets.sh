@@ -150,6 +150,25 @@ for var in $names; do
   present+=("$var")
 done
 
+# Names only — the workflow puts these in the job summary and turns the
+# unmanaged list into a warning annotation, so a key GitHub does not hold cannot
+# be skimmed past.
+#
+# Emitted on every path that gets far enough to know the answer, which is why
+# this is a function rather than a block at the end. It used to be written only
+# after a successful push, so the ONE case where the warning matters most — no
+# required secret is in GitHub at all, nothing to push, exit 0 — told the
+# workflow nothing and raised no warning.
+emit_outputs() {
+  [ -n "${GITHUB_OUTPUT:-}" ] || return 0
+  {
+    echo "pushed_count=${#present[@]}"
+    echo "pushed_names=${present[*]:-}"
+    echo "unmanaged_count=${#absent[@]}"
+    echo "unmanaged_names=${absent[*]:-}"
+  } >>"$GITHUB_OUTPUT"
+}
+
 echo "project: $REF"
 
 if [ "${#present[@]}" -eq 0 ]; then
@@ -158,6 +177,7 @@ if [ "${#present[@]}" -eq 0 ]; then
   echo
   echo "This is not a failure. Whether those are set in $REF is a separate"
   echo "question, and scripts/verify-function-secrets.sh is what answers it."
+  emit_outputs
   exit 0
 fi
 
@@ -225,14 +245,6 @@ if [ "${#absent[@]}" -gt 0 ]; then
   printf '    %s\n' "${absent[@]}"
 fi
 
-# Names only — the workflow puts this in the job summary.
-if [ -n "${GITHUB_OUTPUT:-}" ]; then
-  {
-    echo "pushed_count=${#present[@]}"
-    echo "pushed_names=${present[*]}"
-    echo "unmanaged_count=${#absent[@]}"
-    echo "unmanaged_names=${absent[*]}"
-  } >>"$GITHUB_OUTPUT"
-fi
+emit_outputs
 
 exit 0

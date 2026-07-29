@@ -322,6 +322,31 @@ assert_output_var "pushed_count=1"
 assert_output_var "pushed_names=ANTHROPIC_API_KEY"
 assert_output_var "unmanaged_names=OPENAI_API_KEY"
 
+# The workflow turns unmanaged_names into a warning annotation, so this output
+# is what makes a missing key visible rather than buried in the log. It used to
+# be written only after a successful push, which meant the one case where the
+# warning matters MOST — nothing is in GitHub at all — reported nothing and
+# raised no warning. That is the state this repo was actually in.
+new_case "the workflow is told what is unmanaged even when there is nothing to push"
+run
+assert_rc 0
+assert_has "Nothing to push"
+assert_output_var "pushed_count=0"
+assert_output_var "unmanaged_count=4"
+assert_output_var "unmanaged_names=ANTHROPIC_API_KEY"
+assert_output_var "OPENAI_API_KEY"
+assert_output_var "VAPID_PRIVATE_KEY"
+assert_output_var "VAPID_PUBLIC_KEY"
+
+# Every required name being present must not leave a stale warning behind.
+new_case "nothing is reported as unmanaged when GitHub holds them all"
+run ANTHROPIC_API_KEY=sk-ant-fake OPENAI_API_KEY=sk-fake \
+  VAPID_PRIVATE_KEY=priv-fake VAPID_PUBLIC_KEY=pub-fake
+assert_rc 0
+assert_output_var "unmanaged_count=0"
+assert_output_var "unmanaged_names="
+assert_lacks "not in GitHub"
+
 echo
 echo "passed: $passed"
 echo "failed: $failed"
