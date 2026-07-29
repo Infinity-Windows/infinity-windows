@@ -477,6 +477,15 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "vehicle_financials": ("vehicle_id",),
     "vehicle_locations_latest": ("vehicle_id",),
     "vehicle_service_schedules": ("vehicle_id", "task"),
+    # -- AI spend meters. Keyed by the period they measure, but a merge cannot
+    # -- just take one side: two projects metering the same day or month each
+    # -- hold part of the real total, so the counts have to be added. See the
+    # -- "pick one winner" note below and docs/ai-spend-limits.md.
+    "ai_spend_limits": ("id",),
+    "ai_usage_days": ("user_id", "usage_day"),
+    "ai_spend_months": ("usage_month",),
+    "ai_spend_alerts": ("usage_month", "level"),
+    "ai_usage_events": None,  # one row per attempt; two attempts are two events
     # -- Surrogate UUID only. Two rows describing the same real event cannot be
     # -- told apart from two genuinely different rows, so these are appended,
     # -- never matched. Note `tools`: two crates both labelled "Hilti TE 6" are
@@ -531,6 +540,26 @@ PICK_ONE_WINNER: dict[str, str] = {
     ),
     "vault_config": (
         "Holds a single PIN hash. Two projects mean two PINs; a human picks one."
+    ),
+    "ai_spend_limits": (
+        "A single settings row (id = 1) holding the company's AI budget. Two "
+        "projects mean two budgets; a human picks one."
+    ),
+    "ai_usage_days": (
+        "A per-person-per-day call count. Matching on (user_id, usage_day) and "
+        "taking one side loses the other side's calls, which is how a merged "
+        "project would silently hand somebody a second daily quota. Recompute "
+        "as the sum of both sides per key."
+    ),
+    "ai_spend_months": (
+        "A per-month running total in micro-dollars. Same as ai_usage_days: sum "
+        "both sides per month rather than picking one, or the ceiling starts the "
+        "merged month already understated."
+    ),
+    "ai_spend_alerts": (
+        "One row per threshold already announced to the owner. Union it and the "
+        "owner is notified twice; drop it and they are notified again for spend "
+        "they already know about. Take the earlier row per (month, level)."
     ),
 }
 
