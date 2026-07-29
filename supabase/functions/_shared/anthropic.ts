@@ -1,8 +1,19 @@
 /** Shared Anthropic (Claude) helpers for Edge Functions. Deno runtime.
  *
- * Mirrors the shape of `_shared/openai.ts` so the `ask` function can generate
- * answers with Claude. The only hard dependency for chat is the Anthropic key;
- * OpenAI is now only used opportunistically for embeddings/RAG. */
+ * Mirrors the shape of `_shared/openai.ts` so every text feature can generate
+ * with Claude. The only hard dependency for chat is the Anthropic key; OpenAI is
+ * now only used for the three things Anthropic does not do — embeddings,
+ * Whisper transcription and image generation.
+ *
+ * The strict-JSON helpers below replace OpenAI's `response_format:
+ * {type: "json_object"}`. All the parsing they rely on lives in
+ * `anthropicJson.ts`, which is pure and therefore unit-tested. */
+
+import {
+  buildJsonToolRequest,
+  type JsonSchema,
+  readJsonFromContent,
+} from "./anthropicJson.ts";
 
 export const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 
@@ -132,6 +143,76 @@ export async function anthropicVisionChat(
     .map((b) => b.text ?? "")
     .join("")
     .trim();
+}
+
+interface AnthropicJsonOptions {
+  /** The task, as the top-level system prompt. */
+  system: string;
+  /** The content of the single user turn. */
+  user: string;
+  /** Prose notes about the answer shape: ranges, examples, what to leave null. */
+  schemaHint: string;
+  /** The machine-checkable answer shape, as a JSON Schema object. */
+  schema: JsonSchema;
+  /** Images to reason over. Omit for a text-only call. */
+  images?: AnthropicImage[];
+  model?: string;
+  maxTokens?: number;
+  /** Receives the token counts the API reported. Never affects the answer. */
+  onUsage?: (usage: AnthropicUsage) => void;
+}
+
+/**
+ * Ask Claude for one JSON object and return it parsed — the replacement for
+ * OpenAI's `chatJson` / `chatJsonVision`.
+ *
+ * THROWS when no JSON could be recovered, exactly as `JSON.parse` did on the
+ * OpenAI path. Returning a half-empty object instead would let a broken answer
+ * be written to the database as though it were a real one, which is the failure
+ * this whole migration has to avoid; every caller already handles a throw.
+ */
+export async function anthropicChatJson<T>(
+  opts: AnthropicJsonOptions,
+): Promise<T> {
+  const key = requireAnthropic();
+  const images = opts.images ?? [];
+  const content: unknown[] = [{ type: "text", text: opts.user }];
+  for (const img of images) {
+    content.push({
+      type: "image",
+      source: { type: "base64", media_type: img.mediaType, data: img.data },
+    });
+  }
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(
+      buildJsonToolRequest({
+        model: opts.model ?? ANTHROPIC_MODEL,
+        maxTokens: opts.maxTokens ?? 4096,
+        system: opts.system,
+        schemaHint: opts.schemaHint,
+        schema: opts.schema,
+        messages: [{ role: "user", content }],
+      }),
+    ),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Anthropic JSON chat failed: ${res.status} ${text}`);
+  }
+  const data = await res.json();
+  opts.onUsage?.(readUsage(data));
+  const parsed = readJsonFromContent(data.content);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Anthropic returned no parseable JSON object");
+  }
+  return parsed as T;
 }
 
 /**
