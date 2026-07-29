@@ -66,6 +66,7 @@ case "$url" in
 *synthesize-type-tips*) key=tips ;;
 *safety_talks*) key=talkrow ;;
 *window_types?golden*) key=goldentype ;;
+*window_types?select=id*) key=preflight ;;
 *window_types*) key=tipsrow ;;
 *install_events*) key=eventrow ;;
 esac
@@ -95,6 +96,7 @@ new_case() {
   : >"$root/fake/calls"
   # Sensible defaults: everything answers well, so a case only states its own
   # deviation and the tests read as one idea each.
+  respond preflight 200 '[{"id":"wt-1"}]'
   respond schedule 200 '{"rows":[{"openingCode":"W1","qty":4},{"openingCode":"W2","qty":1},{"openingCode":"D1","qty":2}]}'
   respond talk 200 '{"ok":true,"talk_id":"t-1","title":"Ladders: three points of contact"}'
   respond talkrow 200 '[{"title":"Ladders: three points of contact","sections_json":{"key_hazards":["a","b","c"],"steps":["1","2","3","4"]}}]'
@@ -194,14 +196,88 @@ new_case "a saved-but-empty toolbox talk is a failure, not a saved talk"
 respond talkrow 200 '[{"title":"Ladder safety","sections_json":{"key_hazards":[],"steps":[]}}]'
 run
 assert_rc 1
-assert_has "the talk is empty"
-assert_has "broken JSON path"
+assert_has "empty content"
+assert_has "an answer the app could not read"
+# The row it actually saw is printed, so nobody has to guess from a count alone.
+assert_has "key_hazards"
+
+new_case "a talk saved with no content at all is a failure"
+respond talkrow 200 '[{"title":"Ladder safety","sections_json":null}]'
+run
+assert_rc 1
+assert_has "empty content"
+
+# The three cases below are the ones this check got wrong first time out. It
+# counted the hazards in a talk, could not read the row back at all, and reported
+# that as "the feature is broken" — sending somebody to fix working code. Failing
+# to look is not the same as looking and finding nothing, and the difference has
+# to survive.
+new_case "a talk it cannot read back is reported as not tested, not as broken"
+respond talkrow 500 '{"message":"canceling statement due to statement timeout"}'
+run
+assert_rc 2
+assert_has "reading it back"
+assert_has "NOT tested"
+assert_lacks "is not working"
+
+new_case "a talk row that comes back missing is not tested either"
+respond talkrow 200 '[]'
+run
+assert_rc 2
+assert_has "reading it back"
+assert_lacks "is not working"
+
+new_case "a talk row that comes back as junk is not tested either"
+respond talkrow 200 'upstream request timeout'
+run
+assert_rc 2
+assert_has "reading it back"
+assert_lacks "is not working"
+
+new_case "tips it cannot read back are reported as not tested, not as broken"
+respond tipsrow 503 '<html>service unavailable</html>'
+run
+assert_rc 2
+assert_has "reading them back"
+assert_has "NOT tested"
+assert_lacks "is not working"
 
 new_case "tips that report success but save nothing is a failure"
 respond tipsrow 200 '[{"tips_json":[],"watch_outs_json":[]}]'
 run
 assert_rc 1
 assert_has "saved no tips"
+
+# The database read is a separate permission from calling a function, and the
+# first live run of this check hit exactly that: every read came back refused, so
+# three features looked like "no data to work with" and one looked broken. All
+# four were fine. A check that cannot see must say it cannot see.
+new_case "credentials that cannot read the database: says so, and does not blame the features"
+respond preflight 401 '{"message":"Invalid authentication credentials"}'
+run
+assert_rc 2
+assert_has "cannot read the database back"
+assert_lacks "is not working"
+# The one probe that needs no database still ran and still proved something.
+assert_has "3 schedule row(s)"
+assert_has "NOT TESTED"
+
+new_case "no talk is generated when it could not be checked or cleaned up afterwards"
+respond preflight 401 '{"message":"Invalid authentication credentials"}'
+run
+if grep -q "POST talk" "$root/fake/calls"; then
+  bad "generated a toolbox talk it could neither check nor delete. Calls: $(tr '\n' ';' <"$root/fake/calls")"
+else
+  ok "no talk generated"
+fi
+
+new_case "a failure still lists what it could not test, so nothing looks like a pass"
+respond schedule 200 '{"rows":[]}'
+respond goldentype 200 '[]'
+run
+assert_rc 1
+assert_has "NOT TESTED"
+assert_has "no window type has a reference install recorded yet"
 
 new_case "a failure still shows what IS working, so the report is actionable"
 respond schedule 200 '{"rows":[]}'
