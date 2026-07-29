@@ -133,6 +133,14 @@ describe("every strict-JSON answer is checked before it is trusted", () => {
     expect(helper).toContain("alignToSchema(opts.schema");
   });
 
+  it("asks once more for the fields a short answer left out", () => {
+    // Live, the model ended its turn deliberately having sent three of seven
+    // fields. Asking again for the rest is cheaper than a dead feature, and
+    // asking exactly once keeps a bad day from becoming a bill.
+    expect(helper).toContain("missing.length > 0");
+    expect(helper).toContain("That answer is missing");
+  });
+
   it("names what the model did send, so the next fix needs no guessing", () => {
     // The first live failure cost a deploy cycle precisely because the log said
     // what was missing and not what had arrived instead.

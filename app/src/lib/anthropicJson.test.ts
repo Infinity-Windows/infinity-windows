@@ -94,6 +94,29 @@ describe("readJsonFromContent", () => {
     ).toEqual({ a: 1 });
   });
 
+  it("keeps the whole answer when it arrives across several tool calls", () => {
+    // The live failure this fixes: a talk's title, intro and hazards came back in
+    // one call and its steps, do's and don'ts in another, and taking only the
+    // first threw half the talk away.
+    expect(
+      readJsonFromContent([
+        { type: "tool_use", name: JSON_TOOL_NAME, input: { title: "t", intro: "i" } },
+        { type: "tool_use", name: JSON_TOOL_NAME, input: { steps: ["a"], dos: ["b"] } },
+      ]),
+    ).toEqual({ title: "t", intro: "i", steps: ["a"], dos: ["b"] });
+  });
+
+  it("lets the first answer stand when a later call contradicts it", () => {
+    // A model adding to its answer is normal; a model rewriting it mid-reply is
+    // not, and the first version is the one it committed to.
+    expect(
+      readJsonFromContent([
+        { type: "tool_use", name: JSON_TOOL_NAME, input: { steps: ["real"] } },
+        { type: "tool_use", name: JSON_TOOL_NAME, input: { steps: [] } },
+      ]),
+    ).toEqual({ steps: ["real"] });
+  });
+
   it("prefers the configured tool when several tool calls came back", () => {
     expect(
       readJsonFromContent([
