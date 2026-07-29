@@ -1,0 +1,160 @@
+# Ship the BACKEND on every merge to master, the same way Deploy GitHub Pages
+# already ships the frontend.
+#
+# Why this exists: as of 2026-07-29 production was running a frontend from
+# master against a backend that had stopped tracking it. Only 4 of 10 edge
+# functions were deployed, and 26 of the 68 tables the migration files declare
+# did not exist. Roughly ten PRs merged in two days shipped UI whose backend
+# never left the repo, and nothing went red. Deploying the frontend on merge
+# while deploying the backend by hand guarantees that gap reappears.
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_ACCESS_TOKEN   a personal access token, sbp_... (edge functions)
+#   SUPABASE_DB_PASSWORD    the database password (migrations)
+#
+# Until those exist, every job here is a no-op that annotates the run with what
+# it would have done, so merging this cannot turn the build red on its own.
+
+name: Deploy backend
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never let two backend deploys race each other onto the same project.
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+env:
+  # The one shared project. See app/.env.example and README.
+  SUPABASE_PROJECT_REF: czprjcskmzzagdztqonm
+
+jobs:
+  functions:
+    name: Deploy edge functions
+    runs-on: ubuntu-latest
+    outputs:
+      deployed: ${{ steps.guard.outputs.ok }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for credentials
+        id: guard
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Edge functions not deployed::SUPABASE_ACCESS_TOKEN is not set, so this run skipped deploying edge functions. Add the secret to enable it."
+            {
+              echo "### Edge functions: skipped"
+              echo
+              echo "\`SUPABASE_ACCESS_TOKEN\` is not configured, so nothing was deployed."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Supabase CLI
+        if: steps.guard.outputs.ok == 'true'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy every function in supabase/functions
+        if: steps.guard.outputs.ok == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          failed=()
+          for dir in supabase/functions/*/; do
+            name="$(basename "$dir")"
+            # _shared holds imported helpers, not a deployable function.
+            [ "${name#_}" != "$name" ] && continue
+            echo "::group::deploy $name"
+            if supabase functions deploy "$name" \
+                 --project-ref "$SUPABASE_PROJECT_REF"; then
+              echo "deployed $name"
+            else
+              echo "::error title=Function deploy failed::$name"
+              failed+=("$name")
+            fi
+            echo "::endgroup::"
+          done
+          if [ "${#failed[@]}" -gt 0 ]; then
+            echo "failed to deploy: ${failed[*]}" >&2
+            exit 1
+          fi
+
+  migrations:
+    name: Push migrations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for credentials
+        id: guard
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$DB_PASSWORD" ]; then
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Migrations not pushed::SUPABASE_ACCESS_TOKEN and/or SUPABASE_DB_PASSWORD are not set, so migrations were not pushed."
+            {
+              echo "### Migrations: skipped"
+              echo
+              echo "Needs both \`SUPABASE_ACCESS_TOKEN\` and \`SUPABASE_DB_PASSWORD\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Supabase CLI
+        if: steps.guard.outputs.ok == 'true'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # Shows what would run before anything runs, so the log records the
+      # intended change even when the apply then fails.
+      - name: Dry run
+        if: steps.guard.outputs.ok == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          supabase link --project-ref "$SUPABASE_PROJECT_REF"
+          supabase db push --dry-run
+
+      - name: Push
+        if: steps.guard.outputs.ok == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: supabase db push
+
+  verify:
+    name: Verify functions are live
+    needs: functions
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Strict only once deploying is actually wired up. Before that a missing
+      # function is a known state, not a regression, and failing every push
+      # would train everyone to ignore this job.
+      - name: Probe every function
+        env:
+          STRICT: ${{ needs.functions.outputs.deployed == 'true' && '1' || '0' }}
+        run: scripts/verify-functions.sh | tee "$GITHUB_STEP_SUMMARY"
