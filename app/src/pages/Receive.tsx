@@ -11,13 +11,14 @@ import {
   toggleId,
 } from "../lib/bulk";
 import { downloadPdf, windowLabelsPdf } from "../lib/labels";
+import { plainSuggestion, type PutawaySuggestion } from "../lib/staging";
 import { pushToast, toastError } from "../lib/toast";
 import type { WindowType, WindowUnit } from "../lib/types";
 
 interface ReceivedRow {
   unit: WindowUnit;
   typeName: string;
-  suggestedAddress: string | null;
+  suggestion: PutawaySuggestion;
 }
 
 export function Receive() {
@@ -34,12 +35,13 @@ export function Receive() {
   const createOne = async (): Promise<ReceivedRow> => {
     if (!typeId) throw new Error("Pick a window type first");
     const unit = await receiveWindow(typeId, projectId || null);
-    const suggestion = await suggestLocation(unit.id).catch(() => null);
-    return {
-      unit,
-      typeName: selectedType?.name ?? "",
-      suggestedAddress: suggestion?.address ?? null,
-    };
+    // A failure to suggest must not lose the unit that was just received, but
+    // it must not disappear either: a blank suggestion used to be the only
+    // visible symptom of a job with no staging bay.
+    const suggestion = await suggestLocation(unit.id, projectId || null).catch(
+      () => plainSuggestion(null),
+    );
+    return { unit, typeName: selectedType?.name ?? "", suggestion };
   };
 
   const receive = useMutation({
@@ -91,6 +93,9 @@ export function Receive() {
   };
 
   const clampedQty = clampReceiveCount(qty);
+  // The newest warning wins: it is about the units the foreman is holding.
+  const stagingWarning = received.find((r) => r.suggestion.warning)?.suggestion
+    .warning;
 
   return (
     <div className="page">
@@ -177,6 +182,23 @@ export function Receive() {
       </button>
       {receive.error && <p className="error">{String(receive.error)}</p>}
 
+      {stagingWarning && (
+        <div className="sched-conflict-inline is-emphasized" role="alert">
+          <div>
+            <p style={{ margin: 0 }}>{stagingWarning}</p>
+            {projectId && (
+              <Link
+                to={`/projects/${projectId}?tab=warehouse`}
+                className="action-btn"
+                style={{ marginTop: 8 }}
+              >
+                Open this job&apos;s Warehouse tab to fix it →
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
       {received.length > 0 && (
         <>
           <div className="row-between">
@@ -236,9 +258,18 @@ export function Receive() {
                   <span className="short-code-chip"> {r.unit.short_code}</span>
                 )}
                 <span className="muted"> {r.typeName}</span>
-                {r.suggestedAddress && (
-                  <span className="suggest" style={{ marginLeft: "auto" }}>
-                    put in {r.suggestedAddress}
+                {r.suggestion.location && (
+                  <span
+                    className={r.suggestion.warning ? "warn-text" : "suggest"}
+                    style={{ marginLeft: "auto" }}
+                  >
+                    put in {r.suggestion.location.address}
+                    {r.suggestion.warning ? " (shared shelf)" : ""}
+                  </span>
+                )}
+                {r.suggestion.missingBay && (
+                  <span className="warn-text" style={{ marginLeft: "auto" }}>
+                    no staging bay
                   </span>
                 )}
               </li>

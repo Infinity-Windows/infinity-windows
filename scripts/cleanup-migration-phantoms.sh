@@ -34,9 +34,15 @@ cd "$(dirname "$0")/.."
 # The script refuses to touch anything unless the database looks exactly like
 # the state these numbers describe. Override only if you know why the state
 # has legitimately moved on since 2026-07-29.
-EXPECT_LOCAL="${EXPECT_LOCAL:-70}"      # migration files on disk
-EXPECT_REMOTE="${EXPECT_REMOTE:-107}"   # rows in schema_migrations before cleanup
-EXPECT_PHANTOMS="${EXPECT_PHANTOMS:-37}" # rows to delete
+# These move whenever anyone adds a migration, so re-measure before trusting
+# them: they were last read against production on 2026-07-29 at 21:20 UTC.
+# 20260729220000_staging_bays_guaranteed.sql accounts for exactly one of the
+# files and one of the rows; the phantom count rose from 37 to 40 because other
+# work stamped three more rows through the MCP apply_migration tool, which
+# writes its own wall-clock version.
+EXPECT_LOCAL="${EXPECT_LOCAL:-73}"      # migration files on disk
+EXPECT_REMOTE="${EXPECT_REMOTE:-113}"   # rows in schema_migrations before cleanup
+EXPECT_PHANTOMS="${EXPECT_PHANTOMS:-40}" # rows to delete
 
 execute=0
 while [ $# -gt 0 ]; do

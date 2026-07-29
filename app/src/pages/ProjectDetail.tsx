@@ -5,6 +5,7 @@ import { Scanner } from "../components/Scanner";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
   activatePreissuedUnit,
+  ensureStagingBays,
   findWindowByCode,
   findWindowBySerial,
   getProjectUnits,
@@ -29,6 +30,7 @@ import {
   totalToIssue,
 } from "../lib/preissue";
 import { computeDeliveryProgress } from "../lib/receiving";
+import { missingStagingSlots, stagingBaysFor } from "../lib/staging";
 import { pushToast, toastError } from "../lib/toast";
 import { listOpenings, saveJobEstimate } from "../lib/install/api";
 import {
@@ -266,6 +268,11 @@ export function ProjectDetail() {
 
       {tab === "warehouse" && (
         <>
+          <StagingBaysPanel
+            projectId={projectId}
+            jobCode={project?.job_code ?? null}
+            isLead={isLead}
+          />
           {isLead && (
             <PreissuePanel
               projectId={projectId}
@@ -1093,6 +1100,101 @@ function PreissuePanel({
             </li>
           ))}
         </ul>
+      )}
+    </section>
+  );
+}
+
+/**
+ * The job's two staging bays — the shelves that keep this job's windows
+ * together instead of mixed into shared stock.
+ *
+ * Normally this is a quiet one-line confirmation. It turns into a warning with
+ * a fix button when a bay is missing or has been retired, which is the state
+ * that used to be invisible: the app would just start suggesting a shared
+ * stock shelf, and the only symptom was two absent entries in a 44-item
+ * dropdown. Repairing it previously meant an engineer writing SQL against
+ * production; now it is one tap for a foreman.
+ */
+function StagingBaysPanel({
+  projectId,
+  jobCode,
+  isLead,
+}: {
+  projectId: string;
+  jobCode: string | null;
+  isLead: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
+
+  const bays = stagingBaysFor(locations.data ?? [], jobCode);
+  const missing = missingStagingSlots(locations.data ?? [], jobCode);
+
+  const create = useMutation({
+    mutationFn: () => ensureStagingBays(projectId),
+    onSuccess: () => {
+      pushToast(`Staging bays ready for ${jobCode ?? "this job"}.`, "success");
+      queryClient.invalidateQueries({ queryKey: ["locations"] });
+      queryClient.invalidateQueries({ queryKey: ["suggest"] });
+    },
+    onError: (e) => toastError(e),
+  });
+
+  // Nothing to say while the list is still loading, or before we know the job.
+  if (!jobCode || locations.isLoading) return null;
+
+  if (missing.length === 0) {
+    return (
+      <section className="detail-card" style={{ marginBottom: 16 }}>
+        <div className="row-between">
+          <h2 style={{ margin: 0 }}>Staging bays</h2>
+          <span className="ok">Ready</span>
+        </div>
+        <p className="muted" style={{ marginTop: 6 }}>
+          {bays
+            .filter((b) => b.active)
+            .map((b) => b.address)
+            .join(" and ")}{" "}
+          — this job&apos;s windows are kept together here.{" "}
+          <Link to="/labels" className="link">
+            Print the shelf labels →
+          </Link>
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="detail-card" style={{ marginBottom: 16 }} role="alert">
+      <div className="row-between">
+        <h2 style={{ margin: 0 }}>Staging bays</h2>
+        <span className="warn-text">
+          {missing.length === 2 ? "None" : "One missing"}
+        </span>
+      </div>
+      <p style={{ marginTop: 6 }}>
+        This job has no shelf of its own for{" "}
+        {missing.map((s) => `J-${jobCode}-${s}`).join(" and ")}. Until that is
+        fixed, the app will not tell anyone where to put this job&apos;s
+        windows, because the only other answer is a shared stock shelf — and
+        windows stacked with another job&apos;s material get installed at the
+        wrong address.
+      </p>
+      {isLead ? (
+        <button
+          className="action-btn primary"
+          disabled={create.isPending}
+          onClick={() => create.mutate()}
+        >
+          {create.isPending
+            ? "Creating…"
+            : `Create ${missing.length === 2 ? "both staging bays" : "the missing staging bay"}`}
+        </button>
+      ) : (
+        <p className="muted" style={{ margin: 0 }}>
+          Ask a foreman to create them from this screen.
+        </p>
       )}
     </section>
   );
