@@ -126,6 +126,11 @@ jobs:
   migrations:
     name: Push migrations
     runs-on: ubuntu-latest
+    outputs:
+      # Objects that exist in the database and no migration declares. Reported,
+      # never fatal — see the verify step below.
+      live_only_tables: ${{ steps.schema.outputs.live_only_tables }}
+      live_only_table_names: ${{ steps.schema.outputs.live_only_table_names }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -180,6 +185,28 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: supabase db push
+
+      # A push that exits 0 proves the CLI ran, not that the schema is right. On
+      # 2026-07-29 production was 26 declared tables short with every build
+      # green, so migrations get the same kind of self-check the function deploy
+      # got. Failing here means a migration did not apply and features are
+      # broken in production right now.
+      #
+      # The comparison is ONE-WAY on purpose. Something the repo declares and
+      # the database lacks fails this job. Something the database has and no
+      # migration declares — `project_marks` is the live example — is reported
+      # and does not, because a check that is red on every merge forever is a
+      # check the team stops reading. The reasoning is in scripts/schema_verify.py.
+      #
+      # No `if:` naming a status function, so GitHub's default success() applies
+      # and a failed push skips this rather than reporting on an unpushed schema.
+      - name: Verify the live schema matches the migrations
+        id: schema
+        if: steps.guard.outputs.ok == 'true'
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: scripts/verify-schema.sh
 
       # A red run here is cryptic unless you already know what the CLI is
       # complaining about, so say it in the summary rather than in a log tail.
@@ -239,4 +266,26 @@ jobs:
       detail: >-
         Some of the backend did not ship, so the app may be running against a
         database or functions that do not match the code.
+    secrets: inherit
+
+  # Not a failure, and deliberately not one: the database holds objects no
+  # migration declares, so the repo cannot recreate them. Saying it out loud
+  # every time keeps `project_marks` from quietly becoming permanent. A warning
+  # rather than a red X, because blocking on it would make every merge red.
+  notify-undeclared-objects:
+    name: Report objects no migration declares
+    needs: migrations
+    if: >-
+      needs.migrations.outputs.live_only_tables != ''
+      && needs.migrations.outputs.live_only_tables != '0'
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      kind: warning
+      detail: >-
+        ${{ needs.migrations.outputs.live_only_tables }} table(s) exist in the
+        database that no migration file declares
+        (${{ needs.migrations.outputs.live_only_table_names }}). Each one needs a
+        migration written for it, or a fresh database could not be rebuilt from
+        this repo. Nothing is broken for users.
     secrets: inherit

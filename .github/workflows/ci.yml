@@ -72,6 +72,11 @@ jobs:
       - name: Test
         run: python3 scripts/test_supabase_merge.py
 
+      # Stdlib-only and no database: the drift check is compared against
+      # snapshot fixtures, so it can be tested like anything else.
+      - name: Test the schema drift check
+        run: python3 scripts/test_schema_verify.py
+
       # The dry run must stay runnable with no credentials. If it ever needs a
       # database to plan a merge, that is a bug.
       - name: Dry run against the committed backup
