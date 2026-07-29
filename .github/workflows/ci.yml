@@ -67,6 +67,12 @@ jobs:
         shell: bash
         run: scripts/verify-push-key.test.sh
 
+      # How the nightly vault sync sends its Supabase key. Getting this wrong
+      # rejects a valid key outright, so it is pinned by tests. Dependency-free
+      # and offline: the fetch is stubbed, and no real key is involved.
+      - name: Test scripts/lib/supabase-key.mjs
+        run: node scripts/supabase-key.test.mjs
+
   supabase-tooling:
     name: Supabase merge tooling
     runs-on: ubuntu-latest

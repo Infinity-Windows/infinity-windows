@@ -11,10 +11,16 @@
 //
 // Usage: SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/vault-sync.mjs
 
-import { createClient } from "@supabase/supabase-js";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createAdminClient } from "./lib/supabase-admin.mjs";
+import {
+  explainError,
+  keyFormatLabel,
+  projectRef,
+  publishableKeyRefusal,
+} from "./lib/supabase-key.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const url = process.env.SUPABASE_URL;
@@ -23,7 +29,19 @@ if (!url || !key) {
   console.error("Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY");
   process.exit(1);
 }
-const supabase = createClient(url, key);
+const refusal = publishableKeyRefusal(key);
+if (refusal) {
+  console.error(refusal);
+  process.exit(1);
+}
+console.log(
+  `Reading project ${projectRef(url) ?? url} with a ${keyFormatLabel(key)}.`,
+);
+const supabase = createAdminClient(url, key);
+const fail = (message) => {
+  console.error(explainError(message, { url, key }));
+  process.exit(1);
+};
 
 // Order matches vault/_schemas/install-memo-topics.md.
 const TOPICS = [
@@ -43,10 +61,7 @@ const { data: events, error } = await supabase
     "*, window_types!install_events_window_type_id_fkey(type_code, name), project_openings(opening_code, label, projects(job_code, name)), windows(window_id)",
   )
   .order("created_at", { ascending: true });
-if (error) {
-  console.error(error.message);
-  process.exit(1);
-}
+if (error) fail(error.message);
 
 let written = 0;
 for (const e of events) {
@@ -101,10 +116,7 @@ const { data: types, error: typesErr } = await supabase
   )
   .eq("provisional", false)
   .order("type_code", { ascending: true });
-if (typesErr) {
-  console.error(typesErr.message);
-  process.exit(1);
-}
+if (typesErr) fail(typesErr.message);
 
 const asList = (v) => (Array.isArray(v) ? v : []);
 const num = (v) => (v == null ? null : Math.round(Number(v)));
