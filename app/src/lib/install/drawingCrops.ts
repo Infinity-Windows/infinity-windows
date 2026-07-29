@@ -177,12 +177,12 @@ export interface CropRequest {
 }
 
 /**
- * Marks the crops made by the panel-aware geometry, so the crops cached from
- * the old "trust the box" behaviour are never served again. Phones hold these
- * in IndexedDB for weeks, and a crew that already has a sliver of the wrong
- * window saved would otherwise keep seeing it after the fix shipped.
+ * Bumped whenever the crop's geometry or colouring changes, so crops cached
+ * under the old behaviour are never served again. Phones hold these in
+ * IndexedDB for weeks, and a crew who already has mark #2's black rectangle
+ * saved would otherwise keep seeing it after the fix shipped.
  */
-const SPEC_VARIANT = "panel1";
+const SPEC_VARIANT = "repair1";
 
 /**
  * The crop for one mark, as a PNG data URL, or null when the page has no

@@ -138,19 +138,30 @@ export function bboxToPixelRect(
  * Grayscale → invert → `v < floor ? 0 : min(255, v * gain)`. The floor and gain
  * come from measuring the histogram of the real sheet after inverting:
  *   • the paper background lands at 0–15 — already black, leave it;
- *   • the sheet's faint colored WATERMARK lands at ~16–31 — the floor crushes
- *     it to pure black, otherwise it shows as an ugly blob behind the drawing;
+ *   • the supplier's "Strata" WATERMARK arc sits at 14 for three quarters of its
+ *     pixels, but its edge runs up to about 27 — the floor crushes it to pure
+ *     black, otherwise it sweeps across the drawing as a thick grey band;
  *   • genuine but faint line-work (thin leaders, anti-aliased edges, hatching)
- *     clusters at ~32–63 — the gain lifts it to a readable 96–189.
+ *     has a median of 46 and runs to about 90 — the gain lifts it to a readable
+ *     138 and above.
  * A plain threshold would erase that third band along with the watermark, which
  * is why this is a floor plus a gain rather than a cutoff.
+ *
+ * The floor was 25, which left the watermark's edge alive: measured over two
+ * pages of the Black Desert sheet, 13–15% of its pixels survived and the arc was
+ * plainly visible behind a third of the drawings. 28 clears its edge — survivors
+ * fall to 2–4% and the arc disappears — and costs 1.6 percentage points more of
+ * the faintest anti-aliasing, which is invisible: mark #2's crop, the thinnest
+ * line-work on the job, is pixel-for-pixel as legible at 28 as at 25. Going
+ * further to 32 buys almost no more watermark and throws away six points more
+ * line-work, so this stops at 28.
  *
  * Alpha is left untouched. PURE in the sense that matters: deterministic, and
  * the only thing it touches is the array it was handed.
  */
 export function invertLineArt(
   data: Uint8ClampedArray,
-  floor = 25,
+  floor = 28,
   gain = 3,
 ): void {
   for (let i = 0; i + 3 < data.length; i += 4) {
