@@ -11,6 +11,7 @@ import {
   anthropicChatJson,
   requireAnthropic,
 } from "../_shared/anthropic.ts";
+import { toStringList } from "../_shared/anthropicJson.ts";
 import { verifyCaller } from "../_shared/auth.ts";
 import {
   IMAGE_MICROS,
@@ -60,10 +61,7 @@ const TALK_SCHEMA = {
 };
 
 const clean = (xs: unknown, max: number): string[] =>
-  (Array.isArray(xs) ? xs : [])
-    .map((s) => String(s ?? "").trim())
-    .filter(Boolean)
-    .slice(0, max);
+  toStringList(xs).slice(0, max);
 
 /**
  * Best-effort safety diagram. Returns a data URL on success, null on any
@@ -214,6 +212,19 @@ Deno.serve(async (req) => {
     };
     const prompts = clean(result.visual_aid_prompts, 2);
     const title = String(result.title ?? topic).trim() || topic;
+
+    // Refuse a talk with no hazards AND no steps. Stricter than the app's own
+    // "is this talk empty" test, which an intro alone satisfies — and an intro
+    // alone is exactly what came back live. A talk is the hazards and the
+    // procedure; without either, a crew member is being asked to read and sign
+    // nothing before they can clock in. The words the provider already generated
+    // are still paid for and settled: refusing to save them is not a refund.
+    if (!sections.key_hazards.length && !sections.steps.length) {
+      await settleAiSpend(supabase, gate.reservationId, usage, ANTHROPIC_MODEL, 0);
+      throw new Error(
+        "the AI returned a talk with no content in it, so nothing was saved",
+      );
+    }
 
     // Visual aids: best-effort image generation, else described placeholders.
     const visualAids: VisualAid[] = [];

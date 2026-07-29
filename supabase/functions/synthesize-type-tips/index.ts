@@ -10,6 +10,7 @@ import {
   anthropicChatJson,
   requireAnthropic,
 } from "../_shared/anthropic.ts";
+import { toStringList } from "../_shared/anthropicJson.ts";
 import { verifyCaller } from "../_shared/auth.ts";
 import {
   notifyOwnersOfSpend,
@@ -70,6 +71,8 @@ Deno.serve(async (req) => {
       updated: boolean;
       installs: number;
       limited?: boolean;
+      empty?: boolean;
+      reason?: string;
     }[] = [];
     // Set when the company ceiling refuses a type: stop asking for more rather
     // than hammering a closed door for the other hundred types.
@@ -179,17 +182,30 @@ Deno.serve(async (req) => {
       });
       await settleAiSpend(supabase, gate.reservationId, usage, ANTHROPIC_MODEL);
 
-      const tips = (synthesis.tips ?? [])
-        .map((s) => String(s).trim())
-        .filter(Boolean)
-        .slice(0, 5);
-      const watch_outs = (synthesis.watch_outs ?? [])
-        .map((s) => String(s).trim())
-        .filter(Boolean)
-        .slice(0, 5);
+      // `toStringList` rather than an array check: a model that answers a list
+      // field with one bulleted string has still answered, and treating that as
+      // nothing is what wiped a talk's contents on the live project.
+      const tips = toStringList(synthesis.tips).slice(0, 5);
+      const watch_outs = toStringList(synthesis.watch_outs).slice(0, 5);
       let outcome = Number(synthesis.outcome_difficulty);
       if (!Number.isFinite(outcome) || outcome < 1 || outcome > 5) {
         outcome = t.difficulty_rating ?? 3;
+      }
+
+      // Never replace good coaching with nothing. These columns are overwritten,
+      // not appended to, so an empty answer would delete what previous installs
+      // taught the crew and report success while doing it. Keep what is there,
+      // say why, and carry on to the next type — one bad answer must not stop the
+      // batch.
+      if (tips.length === 0) {
+        results.push({
+          type_code: t.type_code,
+          updated: false,
+          installs: events.length,
+          empty: true,
+          reason: "the AI returned no usable tips, so the existing ones were kept",
+        });
+        continue;
       }
 
       const { error: upErr } = await supabase

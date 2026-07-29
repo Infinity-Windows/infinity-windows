@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  alignToSchema,
   buildJsonToolRequest,
   JSON_TOOL_NAME,
+  missingRequiredKeys,
   parseJsonLoose,
   readJsonFromContent,
+  toStringList,
 } from "../../../supabase/functions/_shared/anthropicJson.ts";
 
 // This module is the whole reason moving text generation to Claude is safe.
@@ -137,6 +140,163 @@ describe("readJsonFromContent", () => {
         { type: "tool_use", name: JSON_TOOL_NAME, input: ["nope"] },
       ]),
     ).toBeNull();
+  });
+});
+
+describe("alignToSchema", () => {
+  const TALK = {
+    type: "object",
+    required: ["title", "intro", "key_hazards", "steps", "dos", "donts"],
+  };
+
+  it("accepts hazards answered under a near-miss name", () => {
+    // A full set of hazards is not worth throwing away over an underscore.
+    expect(
+      alignToSchema(TALK, { title: "t", hazards: ["falls", "glass"] }),
+    ).toEqual({ title: "t", key_hazards: ["falls", "glass"] });
+  });
+
+  it("accepts a longer name for a shorter field", () => {
+    expect(alignToSchema(TALK, { next_steps: ["a"] })).toEqual({ steps: ["a"] });
+  });
+
+  it("never overwrites a field the model got right", () => {
+    expect(
+      alignToSchema(TALK, { key_hazards: ["right"], hazards: ["wrong"] }),
+    ).toEqual({ key_hazards: ["right"], hazards: ["wrong"] });
+  });
+
+  it("does not let two short fields be mistaken for each other", () => {
+    // "dos" is a tail of "donts" by letters alone. Answering one with the other
+    // would be worse than failing, so the minimum length forbids it.
+    expect(alignToSchema(TALK, { donts: ["never free-hand it"] })).toEqual({
+      donts: ["never free-hand it"],
+    });
+  });
+
+  it("leaves an answer that needs no help exactly as it is", () => {
+    const answer = { rows: [{ qty: 2 }] };
+    expect(alignToSchema({ type: "object", required: ["rows"] }, answer)).toEqual(
+      answer,
+    );
+  });
+
+  it("does nothing when the schema requires nothing", () => {
+    expect(alignToSchema({ type: "object" }, { anything: 1 })).toEqual({
+      anything: 1,
+    });
+  });
+});
+
+describe("toStringList", () => {
+  // Live failure: a talk's hazards, steps, do's and don'ts all rendered empty
+  // while its title and intro were fine. Whatever the lists arrived as, the
+  // reader did not recognise it, and an unrecognised list quietly became none.
+  it("reads a real list of strings unchanged", () => {
+    expect(toStringList(["shim the sill", "check for plumb"])).toEqual([
+      "shim the sill",
+      "check for plumb",
+    ]);
+  });
+
+  it("reads a list the model wrote as one bulleted string", () => {
+    expect(toStringList("- shim the sill\n- check for plumb")).toEqual([
+      "shim the sill",
+      "check for plumb",
+    ]);
+  });
+
+  it("reads a numbered list written as one string", () => {
+    expect(toStringList("1. Dry-fit the unit\n2) Shim the sill")).toEqual([
+      "Dry-fit the unit",
+      "Shim the sill",
+    ]);
+  });
+
+  it("treats a single sentence as a list of one", () => {
+    expect(toStringList("Mind the glass edges.")).toEqual([
+      "Mind the glass edges.",
+    ]);
+  });
+
+  it("leaves a measurement at the start of a real list item alone", () => {
+    // The bullet-stripping must not eat content. "3/4" is a size, not a number
+    // in a numbered list, and a hazard that loses it is worse than useless.
+    expect(toStringList(["3/4 inch shims can walk out under load"])).toEqual([
+      "3/4 inch shims can walk out under load",
+    ]);
+  });
+
+  it("drops blank lines and blank entries rather than rendering gaps", () => {
+    expect(toStringList(["a", "", "  ", "b"])).toEqual(["a", "b"]);
+    expect(toStringList("a\n\n\nb")).toEqual(["a", "b"]);
+  });
+
+  it("returns nothing for an answer that really has nothing", () => {
+    expect(toStringList(undefined)).toEqual([]);
+    expect(toStringList(null)).toEqual([]);
+    expect(toStringList("")).toEqual([]);
+    expect(toStringList(42)).toEqual([]);
+  });
+});
+
+describe("missingRequiredKeys", () => {
+  // The failure this is for, from a live run: a toolbox talk came back with a
+  // title and an opening paragraph and no hazards, no steps, no do's, no
+  // don'ts. It saved. It looked like a talk in the list. Its entire body was
+  // missing, and nothing threw, because every field the code went looking for
+  // was `undefined` and `undefined` tidies up into an empty list.
+  const TALK = {
+    type: "object",
+    required: ["title", "intro", "key_hazards", "steps"],
+  };
+
+  it("names the fields a half-finished answer never got to", () => {
+    expect(
+      missingRequiredKeys(TALK, {
+        title: "Ladder safety",
+        intro: "Working off a ladder with a window in your hands...",
+      }),
+    ).toEqual(["key_hazards", "steps"]);
+  });
+
+  it("passes an answer that has everything", () => {
+    expect(
+      missingRequiredKeys(TALK, {
+        title: "t",
+        intro: "i",
+        key_hazards: ["a"],
+        steps: ["b"],
+      }),
+    ).toEqual([]);
+  });
+
+  it("treats an empty list as a real answer, because sometimes it is", () => {
+    // A planset with no openings in it is a true result, not a broken one.
+    expect(
+      missingRequiredKeys({ type: "object", required: ["rows"] }, { rows: [] }),
+    ).toEqual([]);
+  });
+
+  it("counts a null as missing, since callers cannot read it either", () => {
+    expect(
+      missingRequiredKeys({ type: "object", required: ["rows"] }, { rows: null }),
+    ).toEqual(["rows"]);
+  });
+
+  it("says nothing when the schema requires nothing", () => {
+    expect(missingRequiredKeys({ type: "object" }, {})).toEqual([]);
+    expect(missingRequiredKeys({ required: "not a list" }, {})).toEqual([]);
+  });
+
+  it("reports every required field when the answer is not an object at all", () => {
+    expect(missingRequiredKeys(TALK, null)).toEqual([
+      "title",
+      "intro",
+      "key_hazards",
+      "steps",
+    ]);
+    expect(missingRequiredKeys(TALK, ["nope"])).toHaveLength(4);
   });
 });
 
