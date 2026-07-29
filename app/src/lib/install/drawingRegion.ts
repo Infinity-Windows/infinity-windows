@@ -99,10 +99,6 @@ const LADDER_SPAN = 0.12;
 const LADDER_MIN = 3;
 /** Blank band (fraction of the page) that separates one drawing from the next. */
 const GUTTER = 0.022;
-/** Ink blocks thinner than this are hairlines — a stray rule, not a drawing. */
-const MIN_BLOCK = 0.006;
-/** …as is a block holding a negligible share of the region's ink. */
-const MIN_BLOCK_INK = 0.05;
 /** Breathing room around the finished crop. */
 const REGION_PAD = 0.01;
 
@@ -252,10 +248,10 @@ export function pageRules(mask: InkMask): { rows: number[]; cols: number[] } {
   }
 
   const full = (run: Float64Array, n: number) =>
-    centres(run, n, (i) => run[i] >= FULL_RUN);
+    centres(n, (i) => run[i] >= FULL_RUN);
   const solidRows = full(rowRun, h);
   const tableRows = ladders(
-    centres(rowRun, h, (i) => rowRun[i] >= PANEL_RUN && rowPale[i] > rowInk[i]),
+    centres(h, (i) => rowRun[i] >= PANEL_RUN && rowPale[i] > rowInk[i]),
     solidRows,
   );
   return {
@@ -289,14 +285,10 @@ export function columnRules(mask: InkMask, y0: number, y1: number): number[] {
     }
     return false;
   };
-  return centres(new Float64Array(0), w, isRule);
+  return centres(w, isRule);
 }
 
-function centres(
-  _run: Float64Array,
-  n: number,
-  isRule: (i: number) => boolean,
-): number[] {
+function centres(n: number, isRule: (i: number) => boolean): number[] {
   const out: number[] = [];
   let start = -1;
   for (let i = 0; i <= n; i++) {
@@ -328,29 +320,6 @@ function ladders(candidates: number[], solid: number[]): number[] {
     const near = pale.filter((o) => Math.abs(o - c) <= LADDER_SPAN);
     return near.length >= LADDER_MIN;
   });
-}
-
-function ruleCenters(
-  pale: Float64Array,
-  any: Float64Array,
-  span: number,
-  n: number,
-  includePale: boolean,
-): number[] {
-  const out: number[] = [];
-  let start = -1;
-  for (let i = 0; i <= n; i++) {
-    const isRule =
-      i < n &&
-      ((includePale && pale[i] / span >= PALE_RULE_FRAC) ||
-        any[i] / span >= SOLID_RULE_FRAC);
-    if (isRule && start < 0) start = i;
-    if (!isRule && start >= 0) {
-      out.push((start + i) / 2 / n);
-      start = -1;
-    }
-  }
-  return out;
 }
 
 /**
