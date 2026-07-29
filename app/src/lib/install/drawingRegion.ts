@@ -71,11 +71,27 @@ const RULE_LEVEL = 215;
 /** A straight ink run at least this long (fraction of the page) is structure. */
 const RUN_FRAC = 0.3;
 /**
- * A row or column at least this inky right across the page is a printed rule.
- * Half the sheet is a deliberately high bar: no panel is that wide, so nothing
- * drawn inside one — not even a 137" slider — can be mistaken for a boundary.
+ * How much of a row/column must be PALE printed line for it to be a boundary.
+ *
+ * The sheet's own furniture — the line above and below each spec table, the
+ * divider between two panels — is printed in a light grey, and the drawings are
+ * black. That difference does the work here. A third of the page is enough
+ * because a table rule only spans the panel it belongs to: on pages where one
+ * of the two panels in a row is empty, its rule covers 44% of the sheet and is
+ * still a real boundary.
  */
-const RULE_FRAC = 0.5;
+const PALE_RULE_FRAC = 0.35;
+/**
+ * …and how much must be printed line of ANY shade, for the sheet border, which
+ * is drawn black like the artwork. Four fifths of the page: nothing inside a
+ * panel comes close, so the widest slider on the job can't be mistaken for the
+ * edge of the sheet.
+ */
+const SOLID_RULE_FRAC = 0.8;
+/** How far apart the rungs of a spec table can be and still count as one table. */
+const LADDER_SPAN = 0.12;
+/** How many rungs make a ladder. */
+const LADDER_MIN = 3;
 /** Blank band (fraction of the page) that separates one drawing from the next. */
 const GUTTER = 0.022;
 /** Ink blocks thinner than this are hairlines — a stray rule, not a drawing. */
@@ -203,25 +219,68 @@ export function stripLongRuns(mask: InkMask): InkMask {
  */
 export function pageRules(mask: InkMask): { rows: number[]; cols: number[] } {
   const { width: w, height: h, data } = mask;
-  const rowInk = new Float64Array(h);
-  const colInk = new Float64Array(w);
+  const rowPale = new Float64Array(h);
+  const rowAny = new Float64Array(h);
+  const colPale = new Float64Array(w);
+  const colAny = new Float64Array(w);
   for (let y = 0; y < h; y++) {
     const row = y * w;
     for (let x = 0; x < w; x++) {
-      if (data[row + x] !== PAPER) {
-        rowInk[y] += 1;
-        colInk[x] += 1;
+      const v = data[row + x];
+      if (v === PAPER) continue;
+      rowAny[y] += 1;
+      colAny[x] += 1;
+      if (v === RULE) {
+        rowPale[y] += 1;
+        colPale[x] += 1;
       }
     }
   }
-  return { rows: ruleCenters(rowInk, w, h), cols: ruleCenters(colInk, h, w) };
+  const solidRows = ruleCenters(rowPale, rowAny, w, h, false);
+  const tableRows = ladders(ruleCenters(rowPale, rowAny, w, h, true), solidRows);
+  return {
+    rows: [...solidRows, ...tableRows].sort((a, b) => a - b),
+    // Columns take the solid test only. The pale test finds a window's mullions
+    // — it cannot tell a glazing bar from a panel divider — and cutting a cell
+    // down a mullion hands the crew a third of their window.
+    cols: ruleCenters(colPale, colAny, h, w, false),
+  };
 }
 
-function ruleCenters(ink: Float64Array, span: number, n: number): number[] {
+/**
+ * Keep only the pale lines that belong to a spec table.
+ *
+ * A table is a ladder: four or five rules stacked a few millimetres apart. A
+ * window's head rail, sill or track detail is a lone pale line, and it is
+ * every bit as long and as pale as a table rule — page 5's "Great Room" head
+ * rail runs 37% of the sheet — so length and shade cannot tell them apart, but
+ * company can. Requiring three within a short span keeps the tables and drops
+ * the drawings, which is what stops a crop from decapitating its own window.
+ */
+function ladders(candidates: number[], solid: number[]): number[] {
+  const pale = candidates.filter(
+    (c) => !solid.some((s) => Math.abs(s - c) < LADDER_SPAN / 4),
+  );
+  return pale.filter((c) => {
+    const near = pale.filter((o) => Math.abs(o - c) <= LADDER_SPAN);
+    return near.length >= LADDER_MIN;
+  });
+}
+
+function ruleCenters(
+  pale: Float64Array,
+  any: Float64Array,
+  span: number,
+  n: number,
+  includePale: boolean,
+): number[] {
   const out: number[] = [];
   let start = -1;
   for (let i = 0; i <= n; i++) {
-    const isRule = i < n && ink[i] / span >= RULE_FRAC;
+    const isRule =
+      i < n &&
+      ((includePale && pale[i] / span >= PALE_RULE_FRAC) ||
+        any[i] / span >= SOLID_RULE_FRAC);
     if (isRule && start < 0) start = i;
     if (!isRule && start >= 0) {
       out.push((start + i) / 2 / n);
@@ -231,7 +290,16 @@ function ruleCenters(ink: Float64Array, span: number, n: number): number[] {
   return out;
 }
 
-/** The region between the page rules that straddle `bbox`'s centre. PURE. */
+/**
+ * The region between the page rules that straddle `bbox`'s centre.
+ *
+ * The centre, not the box's edges. The stored boxes routinely overhang their
+ * panel — a healthy one usually takes in the spec table below the drawing, and
+ * a broken one can start on the wrong side of a rule altogether — so bounding
+ * by the edges finds no boundary at all and lets a crop run the width of the
+ * sheet. The centre is the one thing about these boxes that has been right
+ * every time. PURE.
+ */
 export function cellFor(
   bbox: Bbox,
   rules: { rows: number[]; cols: number[] },
@@ -250,120 +318,120 @@ export function cellFor(
   ];
 }
 
-interface Block {
-  start: number;
-  end: number;
-  ink: number;
+interface Rect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
 }
 
-/** Split a 1-D ink profile into blocks separated by blank runs >= `gutter`. */
-function splitBlocks(profile: Float64Array, gutter: number): Block[] {
-  const out: Block[] = [];
-  let start = -1;
-  let blank = 0;
-  let ink = 0;
-  for (let i = 0; i < profile.length; i++) {
-    if (profile[i] > 0) {
-      if (start < 0) start = i;
-      blank = 0;
-      ink += profile[i];
-    } else if (start >= 0) {
-      blank += 1;
-      if (blank >= gutter) {
-        out.push({ start, end: i - blank + 1, ink });
-        start = -1;
-        blank = 0;
-        ink = 0;
-      }
-    }
+function anyInk(m: InkMask, r: Rect): boolean {
+  for (let y = r.y0; y < r.y1; y++) {
+    const row = y * m.width;
+    for (let x = r.x0; x < r.x1; x++) if (m.data[row + x]) return true;
   }
-  if (start >= 0) out.push({ start, end: profile.length - blank, ink });
-  return out;
-}
-
-function distanceTo(b: Block, at: number): number {
-  if (at < b.start) return b.start - at;
-  if (at > b.end) return at - b.end;
-  return 0;
+  return false;
 }
 
 /**
- * Which blocks the vision box is pointing at.
+ * The ink pixel nearest the point (`px`,`py`), searched inside `cell`.
  *
- * A box that genuinely covers a block keeps it — that's the case where the
- * model got it right, and shrinking its crop would be a regression. A box that
- * only clips into blocks keeps the one it clips most. A box that lands on blank
- * paper keeps the nearest block, because being beside the drawing instead of on
- * it (mark #2) is the failure this whole module exists to fix.
+ * Only needed for the boxes that miss: mark #2's box sits on the dimension line
+ * beside its window with no ink in it at all, and without this there is nothing
+ * to grow from.
  */
-function pickBlocks(
-  blocks: Block[],
-  lo: number,
-  hi: number,
-): [number, number] | null {
-  const total = blocks.reduce((sum, b) => sum + b.ink, 0);
-  const real = blocks.filter((b) => total === 0 || b.ink / total >= MIN_BLOCK_INK);
-  const usable = real.length > 0 ? real : blocks;
-  if (usable.length === 0) return null;
-
-  const keep = usable.filter((b) => {
-    const overlap = Math.min(b.end, hi) - Math.max(b.start, lo);
-    return overlap > 0 && overlap >= 0.5 * (b.end - b.start);
-  });
-  if (keep.length === 0) {
-    let best: Block | null = null;
-    let bestOverlap = 0;
-    for (const b of usable) {
-      const overlap = Math.min(b.end, hi) - Math.max(b.start, lo);
-      if (overlap > bestOverlap) {
-        bestOverlap = overlap;
-        best = b;
+function nearestInk(
+  m: InkMask,
+  cell: Rect,
+  px: number,
+  py: number,
+): { x: number; y: number } | null {
+  let best: { x: number; y: number } | null = null;
+  let bestD = Infinity;
+  for (let y = cell.y0; y < cell.y1; y++) {
+    const row = y * m.width;
+    const dy = y - py;
+    const dy2 = dy * dy;
+    if (dy2 >= bestD) continue;
+    for (let x = cell.x0; x < cell.x1; x++) {
+      if (!m.data[row + x]) continue;
+      const dx = x - px;
+      const d = dx * dx + dy2;
+      if (d < bestD) {
+        bestD = d;
+        best = { x, y };
       }
     }
-    if (best) keep.push(best);
   }
-  if (keep.length === 0) {
-    const centre = (lo + hi) / 2;
-    keep.push(
-      usable.reduce((a, b) => (distanceTo(b, centre) < distanceTo(a, centre) ? b : a)),
-    );
-  }
-  return [
-    Math.min(...keep.map((b) => b.start)),
-    Math.max(...keep.map((b) => b.end)),
-  ];
+  return best;
 }
 
-function profileX(
-  mask: InkMask,
-  x0: number,
-  x1: number,
-  y0: number,
-  y1: number,
-): Float64Array {
-  const p = new Float64Array(x1 - x0);
-  for (let y = y0; y < y1; y++) {
-    const row = y * mask.width;
-    for (let x = x0; x < x1; x++) p[x - x0] += mask.data[row + x];
+/**
+ * Grow `seed` outwards, one side at a time, for as long as there is ink within
+ * `gap` of that side — and stop at a clean band of blank paper.
+ *
+ * This is the whole idea. A window elevation, its dimension lines and its
+ * callouts are all within a few millimetres of each other, while the next mark
+ * along is separated by a wide band of nothing. Growing until the paper goes
+ * blank therefore collects exactly one mark's drawing, whether the box we
+ * started from was a sliver of it (marks #12, #17), beside it (mark #2), or
+ * already around all of it (marks #5, #16) — and because growth can only ever
+ * cross ink, it can never step over the gutter into the neighbour's window.
+ */
+function growToBlank(m: InkMask, seed: Rect, cell: Rect, gx: number, gy: number): Rect {
+  const r = { ...seed };
+  let moved = true;
+  while (moved) {
+    moved = false;
+    if (r.x0 > cell.x0) {
+      const edge = Math.max(cell.x0, r.x0 - gx);
+      if (anyInk(m, { x0: edge, y0: r.y0, x1: r.x0, y1: r.y1 })) {
+        r.x0 = edge;
+        moved = true;
+      }
+    }
+    if (r.x1 < cell.x1) {
+      const edge = Math.min(cell.x1, r.x1 + gx);
+      if (anyInk(m, { x0: r.x1, y0: r.y0, x1: edge, y1: r.y1 })) {
+        r.x1 = edge;
+        moved = true;
+      }
+    }
+    if (r.y0 > cell.y0) {
+      const edge = Math.max(cell.y0, r.y0 - gy);
+      if (anyInk(m, { x0: r.x0, y0: edge, x1: r.x1, y1: r.y0 })) {
+        r.y0 = edge;
+        moved = true;
+      }
+    }
+    if (r.y1 < cell.y1) {
+      const edge = Math.min(cell.y1, r.y1 + gy);
+      if (anyInk(m, { x0: r.x0, y0: r.y1, x1: r.x1, y1: edge })) {
+        r.y1 = edge;
+        moved = true;
+      }
+    }
   }
-  return p;
+  return r;
 }
 
-function profileY(
-  mask: InkMask,
-  x0: number,
-  x1: number,
-  y0: number,
-  y1: number,
-): Float64Array {
-  const p = new Float64Array(y1 - y0);
-  for (let y = y0; y < y1; y++) {
-    const row = y * mask.width;
-    let sum = 0;
-    for (let x = x0; x < x1; x++) sum += mask.data[row + x];
-    p[y - y0] = sum;
+/** Shrink `r` to the bounding box of the ink inside it. */
+function trimToInk(m: InkMask, r: Rect): Rect | null {
+  let x0 = r.x1;
+  let x1 = r.x0;
+  let y0 = r.y1;
+  let y1 = r.y0;
+  for (let y = r.y0; y < r.y1; y++) {
+    const row = y * m.width;
+    for (let x = r.x0; x < r.x1; x++) {
+      if (!m.data[row + x]) continue;
+      if (x < x0) x0 = x;
+      if (x >= x1) x1 = x + 1;
+      if (y < y0) y0 = y;
+      if (y >= y1) y1 = y + 1;
+    }
   }
-  return p;
+  return x1 > x0 && y1 > y0 ? { x0, y0, x1, y1 } : null;
 }
 
 /**
@@ -379,60 +447,56 @@ export function resolveDrawingRegion(
   structure: InkMask = stripLongRuns(mask),
 ): Bbox | null {
   const { width: w, height: h } = mask;
-  const cell = cellFor(bbox, pageRules(mask));
+  const bounds = cellFor(bbox, pageRules(mask));
   // Step inside the bounding rules themselves.
   const inset = Math.max(2, Math.round(0.004 * w));
-  const cx0 = clampIndex(Math.round(cell[0] * w) + inset, w);
-  const cy0 = clampIndex(Math.round(cell[1] * h) + inset, h);
-  const cx1 = Math.max(cx0 + 1, Math.min(w, Math.round(cell[2] * w) - inset));
-  const cy1 = Math.max(cy0 + 1, Math.min(h, Math.round(cell[3] * h) - inset));
+  const cx0 = clampIndex(Math.round(bounds[0] * w) + inset, w);
+  const cy0 = clampIndex(Math.round(bounds[1] * h) + inset, h);
+  const cx1 = Math.max(cx0 + 1, Math.min(w, Math.round(bounds[2] * w) - inset));
+  const cy1 = Math.max(cy0 + 1, Math.min(h, Math.round(bounds[3] * h) - inset));
   if (cx1 - cx0 < 8 || cy1 - cy0 < 8) return null;
 
   const gx = Math.max(3, Math.round(GUTTER * w));
   const gy = Math.max(3, Math.round(GUTTER * h));
-  const minW = Math.max(2, Math.round(MIN_BLOCK * w));
-  const minH = Math.max(2, Math.round(MIN_BLOCK * h));
+  const cell: Rect = { x0: cx0, y0: cy0, x1: cx1, y1: cy1 };
 
-  // Bands first, then columns. On these sheets a row of panels shares one strip
-  // of drawings and one strip of spec tables, and the tables run edge to edge —
-  // so looking for a vertical gap before dropping the table band finds nothing
-  // and the crop swallows the whole row, neighbours included.
-  const bands = splitBlocks(profileY(structure, cx0, cx1, cy0, cy1), gy).filter(
-    (b) => b.end - b.start >= minH,
-  );
-  const yr = pickBlocks(
-    bands,
-    Math.round(bbox[1] * h) - cy0,
-    Math.round(bbox[3] * h) - cy0,
-  );
-  if (!yr) return null;
+  // Start from the vision box, clipped into its cell.
+  let seed: Rect = {
+    x0: clampIndex(Math.round(bbox[0] * w), w),
+    y0: clampIndex(Math.round(bbox[1] * h), h),
+    x1: clampIndex(Math.round(bbox[2] * w), w),
+    y1: clampIndex(Math.round(bbox[3] * h), h),
+  };
+  seed = {
+    x0: Math.max(cell.x0, Math.min(cell.x1 - 1, seed.x0)),
+    y0: Math.max(cell.y0, Math.min(cell.y1 - 1, seed.y0)),
+    x1: Math.min(cell.x1, Math.max(cell.x0 + 1, seed.x1)),
+    y1: Math.min(cell.y1, Math.max(cell.y0 + 1, seed.y1)),
+  };
 
-  const cols = splitBlocks(
-    profileX(structure, cx0, cx1, cy0 + yr[0], cy0 + yr[1]),
-    gx,
-  ).filter((b) => b.end - b.start >= minW);
-  const xr = pickBlocks(
-    cols,
-    Math.round(bbox[0] * w) - cx0,
-    Math.round(bbox[2] * w) - cx0,
-  );
-  if (!xr) return null;
+  const trimmed = trimToInk(structure, seed);
+  if (trimmed) {
+    seed = trimmed;
+  } else {
+    // The box missed the drawing entirely. Start from whatever is closest.
+    const near = nearestInk(
+      structure,
+      cell,
+      (seed.x0 + seed.x1) / 2,
+      (seed.y0 + seed.y1) / 2,
+    );
+    if (!near) return null;
+    seed = { x0: near.x, y0: near.y, x1: near.x + 1, y1: near.y + 1 };
+  }
 
-  // One more pass down, now that we know which column we're keeping: a
-  // neighbour's drawing may be taller than ours and would stretch the crop.
-  const rows2 = splitBlocks(
-    profileY(structure, cx0 + xr[0], cx0 + xr[1], cy0 + yr[0], cy0 + yr[1]),
-    gy,
-  ).filter((b) => b.end - b.start >= minH);
-  const yr2 = pickBlocks(rows2, 0, yr[1] - yr[0]);
+  const grown = trimToInk(structure, growToBlank(structure, seed, cell, gx, gy));
+  if (!grown) return null;
 
-  const top = cy0 + yr[0] + (yr2 ? yr2[0] : 0);
-  const bottom = cy0 + yr[0] + (yr2 ? yr2[1] : yr[1] - yr[0]);
   const region: Bbox = [
-    Math.max(0, (cx0 + xr[0]) / w - REGION_PAD),
-    Math.max(0, top / h - REGION_PAD),
-    Math.min(1, (cx0 + xr[1]) / w + REGION_PAD),
-    Math.min(1, bottom / h + REGION_PAD),
+    Math.max(0, grown.x0 / w - REGION_PAD),
+    Math.max(0, grown.y0 / h - REGION_PAD),
+    Math.min(1, grown.x1 / w + REGION_PAD),
+    Math.min(1, grown.y1 / h + REGION_PAD),
   ];
   if (region[2] <= region[0] || region[3] <= region[1]) return null;
   return region;
