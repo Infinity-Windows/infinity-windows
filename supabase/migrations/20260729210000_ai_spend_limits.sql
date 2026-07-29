@@ -687,8 +687,19 @@ begin
 end;
 $$;
 
+-- Table privileges are revoked from BOTH client roles before anything is
+-- granted, and `authenticated` is the one that matters. This project's default
+-- privileges hand every new table in `public` the full set — insert, update,
+-- delete, trigger, references — to `authenticated`, so adding `grant select`
+-- without revoking first leaves a signed-in crew member holding write
+-- privileges on the company's spend counters. Nothing exploits that today
+-- because RLS is on and the only policy is a SELECT one, but that makes RLS the
+-- single thing standing between a crew member and rewriting their own usage.
+-- One permissive policy added later, by anybody, and it becomes a write hole.
+-- Verified against the live catalog: before this revoke, all five tables listed
+-- INSERT/UPDATE/DELETE/TRIGGER/REFERENCES for `authenticated`.
 revoke all on ai_spend_limits, ai_usage_days, ai_spend_months,
-              ai_usage_events, ai_spend_alerts from anon;
+              ai_usage_events, ai_spend_alerts from anon, authenticated;
 grant select on ai_spend_limits, ai_usage_days, ai_spend_months,
                ai_usage_events, ai_spend_alerts to authenticated;
 grant all on ai_spend_limits, ai_usage_days, ai_spend_months,

@@ -226,6 +226,15 @@ installer -> ai_spend_set_limits(9999, 9999999, ...)
 
 - Every table is RLS-enabled. Nothing is client-writable by anyone, ever; all
   writes go through RPCs on the service-role key.
+- Table privileges are revoked from `anon` **and** `authenticated` before
+  anything is granted, then only `SELECT` is granted back. This project's
+  default privileges hand every new table in `public` the full set to
+  `authenticated`, so `grant select` on its own would have left crew members
+  holding insert/update/delete on the spend counters. RLS would still have
+  stopped them, but that makes RLS the only thing in the way — one permissive
+  policy added later and it becomes a write hole. Verified in the live catalog:
+  `authenticated` now lists `SELECT` and nothing else on all five tables, and
+  `anon` lists nothing at all.
 - `EXECUTE` on `ai_spend_reserve` / `_settle` / `_release` is **revoked** from
   `public`, `anon` and `authenticated` and granted only to `service_role` — so a
   signed-in user cannot settle their own bill or release a reservation. Supabase
