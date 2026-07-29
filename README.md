@@ -76,7 +76,19 @@ serve publicly. Row-level security, not secrecy of that key, is what protects th
 data. Service-role keys, the database password, and the private VAPID key are
 never committed.)
 
-1. Paste [`docs/prototype-migrations.sql`](docs/prototype-migrations.sql) into the SQL editor (after the base schema is applied). It bundles all prototype migrations in order and is safe to re-run.
+**None of the steps below are a human's job, and none of them need Supabase
+dashboard access.** The agent applies migrations and deploys functions with the
+`supabase` CLI and the Management API; only Taylor, who owns the Supabase
+organisation, is ever asked for a value that cannot be read programmatically. If an
+agent tells you to open supabase.com and click something, that is the agent's bug —
+see [`SYNC.md`](SYNC.md#database-changes-supabase--the-agents-job-never-yours).
+
+1. Apply the schema. On every merge to `master`, the `Push migrations` job in
+   `Deploy backend` runs `supabase db push` for you, once the two repo secrets in
+   [Shipping the backend](#shipping-the-backend) are set; until then it is a no-op
+   and the agent applies migrations directly. [`docs/prototype-migrations.sql`](docs/prototype-migrations.sql)
+   bundles all prototype migrations in order and is safe to re-run if a database
+   ever needs rebuilding from scratch.
 2. Deploy **every** Edge Function in `supabase/functions/`:
    `ask`, `extract-schedule`, `extract-specs`, `generate-howto`,
    `generate-toolbox-talk`, `ingest-knowledge`, `send-push`,
@@ -92,7 +104,9 @@ never committed.)
    what breaks without it, and [Web push notifications](#web-push-notifications)
    for how the VAPID keys relate to the `VITE_VAPID_PUBLIC_KEY` the frontend
    needs.
-4. Create crew users under Authentication → Users, then set roles on the Crew screen.
+4. Create crew users, then set roles on the Crew screen. Creating them is an
+   `auth/v1/admin/users` call with the service-role key, so the agent does it — not
+   a trip to Authentication → Users in the dashboard.
 
 ### Edge Function secrets
 
@@ -154,7 +168,10 @@ left the repo, and no build went red.
 It needs two repo secrets. Until those are set, each job is a no-op that
 annotates the run with what it would have done, so nothing turns red on its own.
 
-| Secret | What it does | Where an owner gets it |
+Both come from Taylor's Supabase account — he owns the organisation, so nobody else
+can read them. Ask Taylor, never Ammon.
+
+| Secret | What it does | Where Taylor gets it |
 | --- | --- | --- |
 | `SUPABASE_ACCESS_TOKEN` | Deploys the Edge Functions. A personal access token, starts with `sbp_`. | Supabase dashboard → avatar (top right) → Account preferences → [Access Tokens](https://supabase.com/dashboard/account/tokens) → **Generate new token**. Copy it immediately, it is shown once. |
 | `SUPABASE_DB_PASSWORD` | Lets `supabase db push` apply migrations. | Dashboard → the project → **Project Settings → Database → Database password**. If nobody still has it, **Reset database password** there — that breaks anything using the old one. |
@@ -237,8 +254,9 @@ npx web-push generate-vapid-keys
 gh secret set VITE_VAPID_PUBLIC_KEY --repo Infinity-Windows/infinity-windows
 ```
 
-Set the three Supabase secrets in the dashboard under **Edge Functions →
-Secrets**. `VITE_VAPID_PUBLIC_KEY` only takes effect on the next Pages deploy,
+Set the three Supabase secrets with `supabase secrets set`, as
+[above](#edge-function-secrets) — no dashboard needed.
+`VITE_VAPID_PUBLIC_KEY` only takes effect on the next Pages deploy,
 because Vite bakes it into the bundle at build time rather than reading it at
 runtime.
 

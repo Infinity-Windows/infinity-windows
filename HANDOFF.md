@@ -62,8 +62,9 @@ Most of the look lives in one file — `app/src/index.css` — so Phase 1 change
 4. Compare against `design/infinity/Infinity.dc.html` open in a browser tab.
 
 ## Collaboration workflow (Taylor + Ammon)
-- Always `git pull` before starting; work on your own branch (`yourname/what-you-did`); `git commit` + `git push`; open a Pull Request on GitHub; the other person merges.
-- Never both edit `master` directly at once.
-- `.env` (Supabase keys) is never committed — it's git-ignored and shared privately.
-- Repo: `taylorhorizon/infinity-windows` (private). Default branch `master`.
+- You never type git commands — your agent branches, commits, pushes, opens the PR and merges it once the checks are green. See [`SYNC.md`](SYNC.md#how-work-ships-the-pr-workflow).
+- Nobody pushes to `master` — a branch rule requires a PR with green checks, for everyone.
+- `.env` (Supabase keys) is never committed — it's git-ignored, and `app/.env.example` already points at the shared project.
+- Neither of you is ever asked for a credential or a Supabase dashboard action; the agent gets those itself and escalates to Taylor alone if it truly cannot.
+- Repo: `Infinity-Windows/infinity-windows` (private). Default branch `master`.
 - Prefer the local agent for daily work (cheap); use Slack `@Cursor` only for quick/away-from-desk tasks (cloud cost).
