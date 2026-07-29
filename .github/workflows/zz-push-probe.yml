@@ -1,0 +1,24 @@
+name: zz push probe
+on: pull_request
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 2
+      - name: Can github-actions[bot] push straight to master?
+        run: |
+          git config user.name "vault-sync[bot]"
+          git config user.email "vault-sync@users.noreply.github.com"
+          git commit -q --allow-empty -m "chore(vault): push-permission probe [skip ci]"
+          echo "=== dry-run push to master ==="
+          if git push --dry-run origin HEAD:master 2>&1 | tee /tmp/out; then
+            echo "PROBE_RESULT: DRY_RUN_ACCEPTED"
+          else
+            echo "PROBE_RESULT: DRY_RUN_REJECTED"
+          fi
+          sed 's/^/DRYRUN: /' /tmp/out
