@@ -73,6 +73,23 @@ jobs:
       - name: Test scripts/lib/supabase-key.mjs
         run: node scripts/supabase-key.test.mjs
 
+      # This one WRITES to production on every merge, so its safety properties
+      # are tested rather than reasoned about: that it only ever adds or updates
+      # the names it is given, never unsets, never renames one secret onto
+      # another, and never prints a value. Stubs the Supabase CLI; no real secret
+      # is involved.
+      - name: Test scripts/sync-function-secrets.sh
+        shell: bash
+        run: scripts/sync-function-secrets.test.sh
+
+      # The end-to-end Ask Infinity check. What matters here is that it tells
+      # apart a key that is missing, a key the provider refuses, and an AI
+      # service that was merely busy — the last of which must warn rather than go
+      # red. Stubs curl; touches no network and no key.
+      - name: Test scripts/smoke-ask.sh
+        shell: bash
+        run: scripts/smoke-ask.test.sh
+
   supabase-tooling:
     name: Supabase merge tooling
     runs-on: ubuntu-latest

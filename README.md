@@ -96,11 +96,21 @@ never committed.)
 
 ### Edge Function secrets
 
-These live in **Supabase**, not GitHub, and they are the difference between a
-function that is deployed and a function that works. A function whose secret was
-never set deploys cleanly, routes correctly, passes every check in this repo, and
-returns **500 on every real request**. That is how Ask Infinity can look healthy
-in CI and answer nothing.
+These are the difference between a function that is deployed and a function that
+works. A function whose secret was never set deploys cleanly, routes correctly,
+passes every check in this repo, and returns **500 on every real request**. That
+is how Ask Infinity looked healthy in CI and answered nothing for as long as it
+existed.
+
+They are consumed from Supabase, but **GitHub is where you set them.** Add a repo
+secret under the same name (Settings → Secrets and variables → Actions) and
+`Deploy backend` pushes it to the project on the next merge, then checks it is
+there, then asks Ask Infinity a real question to prove the key actually works.
+Rotating a key is that one change plus a re-run — no dashboard, no redeploy.
+
+Setting one in the Supabase dashboard instead still works, and nothing here will
+clear it, but it has no owner, no history, and no way back if the project is ever
+rebuilt. Prefer GitHub.
 
 | Secret | Needed by | What breaks without it |
 | --- | --- | --- |
@@ -115,8 +125,21 @@ Optional, with working defaults — set only to override: `ANTHROPIC_MODEL`,
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are injected
 by the platform. Do not set them by hand.
 
-Set them from a checkout. Each command prompts for the value and does not echo
-it, so nothing lands in your shell history or in git:
+**The recommended way** — set it once in GitHub and let the pipeline own it. The
+command prompts for the value and does not echo it, so nothing lands in your
+shell history or in git:
+
+```bash
+gh secret set ANTHROPIC_API_KEY --repo Infinity-Windows/infinity-windows
+```
+
+Then re-run **Actions → Deploy backend → Run workflow**.
+[`scripts/sync-function-secrets.sh`](scripts/sync-function-secrets.sh) pushes
+every name in the table above that exists as a repo secret. It only ever adds or
+updates those names — it never unsets anything, never renames one secret onto
+another, and never prints a value — so it is safe on every merge.
+
+Straight to Supabase also works, if you would rather:
 
 ```bash
 supabase secrets set ANTHROPIC_API_KEY --project-ref czprjcskmzzagdztqonm
@@ -135,12 +158,29 @@ python3 scripts/function_secrets.py          # who needs what, and why
 python3 scripts/function_secrets.py --names  # just the required names
 ```
 
-`Deploy backend` checks these on every merge once `SUPABASE_ACCESS_TOKEN` is set,
-and fails naming the function and the missing variable. To check by hand:
+`Deploy backend` pushes, checks and then *uses* these on every merge once
+`SUPABASE_ACCESS_TOKEN` is set. Three separate assertions, because each one sees
+something the others cannot:
+
+| Step | What it proves | What it cannot see |
+| --- | --- | --- |
+| Push the function secrets GitHub holds | The value GitHub has is now the value the project has | Anything GitHub does not hold |
+| Verify every required function secret exists | Every needed name is present on the project | Whether the value is any good |
+| Ask Infinity a real question | The key is genuinely accepted and the feature answers | — |
+
+That last one is the only check that can catch a key which exists and is
+**refused** — revoked, rotated at Anthropic, or pasted from the wrong account.
+Those are identical to a working key as far as `supabase secrets list` is
+concerned, since it reports names and digests and never values.
+
+To check by hand:
 
 ```bash
 SUPABASE_ACCESS_TOKEN=sbp_... SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm \
   scripts/verify-function-secrets.sh
+
+SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm \
+  SUPABASE_SERVICE_ROLE_KEY=eyJ... scripts/smoke-ask.sh
 ```
 
 ### Shipping the backend
