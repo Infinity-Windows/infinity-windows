@@ -202,7 +202,9 @@ no hazards, a plan set read as zero openings. Both are indistinguishable from
 "there was nothing to find" unless something checks the content, so this asks for
 output and checks what came back. A feature it cannot exercise for want of data —
 no reference install recorded, no install memos yet — is reported **NOT TESTED**,
-never as a pass.
+never as a pass. Same when the credentials on the run can call a function but not
+read the database back: three of the four probes need a row read, and "we could
+not look" must never be reported as "the feature wrote nothing".
 
 To check by hand:
 

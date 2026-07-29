@@ -164,6 +164,40 @@ else:
 ' "$@"
 }
 
+# Count two list fields on the row BODY holds, and say why when it cannot.
+#
+# The distinction this exists for: "the feature saved an empty result" and "this
+# check could not read the row back" look identical if you only count. Conflating
+# them is worse than not checking at all, because it sends somebody to fix
+# working code. So a row that cannot be read is reported as not-verified, and
+# only a row that really came back empty is a failure.
+#
+# $1 is the jsonb column the lists live inside, or "-" when they are columns in
+# their own right. Prints: <state> <count-of-$2> <count-of-$3>, where state is
+#   ok         the row was read; the counts are real
+#   norow      no row came back, or the reply was not a row at all
+#   unreadable the reply was not JSON — nothing was measured
+#   nocolumn   the row is there and the column holding the content is not
+count_two() {
+  NEST="$1" FIRST="$2" SECOND="$3" BODY="$BODY" python3 -c '
+import json, os
+
+nest, first, second = os.environ["NEST"], os.environ["FIRST"], os.environ["SECOND"]
+try:
+    rows = json.loads(os.environ["BODY"])
+except Exception:
+    print("unreadable 0 0"); raise SystemExit
+if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
+    print("norow 0 0"); raise SystemExit
+row = rows[0]
+if nest != "-":
+    row = row.get(nest)
+    if not isinstance(row, dict):
+        print("nocolumn 0 0"); raise SystemExit
+n = lambda v: len(v) if isinstance(v, list) else 0
+print("ok", n(row.get(first)), n(row.get(second)))'
+}
+
 # Is this response a spend refusal or a busy provider rather than a fault? Those
 # say nothing about whether the feature works, so they must not go red.
 soft_reason() {
@@ -185,6 +219,33 @@ soft_reason() {
   fi
   return 1
 }
+
+# ---------------------------------------------------------------------------
+# Can we read the database at all?
+# ---------------------------------------------------------------------------
+# Three of the four probes have to read a row back — to find a window type to
+# write about, and to see whether what a feature saved has anything in it. If
+# those reads are failing, an empty answer means "we could not look", and
+# reporting that as "the feature wrote nothing" would send somebody to fix code
+# that works. Credentials that run a function do not necessarily read a table:
+# the platform accepts several key formats, and they do not all work everywhere.
+#
+# So ask a harmless question first. If the answer is not a list of rows, the
+# checks that need the database say NOT TESTED and give this as the reason, and
+# the one that needs nothing still runs.
+query "window_types?select=id&limit=1"
+rest_ok=0
+if [ "$CODE" = "200" ] && [ "$(BODY="$BODY" python3 -c '
+import json, os
+try:
+    print("1" if isinstance(json.loads(os.environ["BODY"]), list) else "0")
+except Exception:
+    print("0")')" = "1" ]; then
+  rest_ok=1
+else
+  rest_why="the credentials on this run can call the functions but cannot read the database back (HTTP $CODE: $(printf '%s' "$BODY" | head -c 200)), so there is no way to see what these features saved. NOT tested."
+  soft_fail=1
+fi
 
 # ---------------------------------------------------------------------------
 # 1. Reading delivery schedules. No database write; the answer is checkable.
@@ -227,56 +288,71 @@ fi
 # with_images false on purpose: the diagrams are an OpenAI call and by far the
 # most expensive part of the feature, and they prove nothing about the writing
 # that just changed provider.
-call generate-toolbox-talk \
-  '{"topic":"Ladder safety when setting a second-storey window","with_images":false}'
-talk_id="$(field talk_id)"
-talk_title="$(field title)"
-
-if [ "$CODE" = "200" ] && [ -n "$talk_id" ] && [ -n "$talk_title" ]; then
-  # A 200 with a title is not enough. A talk whose sections came back empty is
-  # exactly what a broken strict-JSON path produces, and it would still save.
-  query "safety_talks?id=eq.$talk_id&select=title,sections_json"
-  hazards="$(BODY="$BODY" python3 -c '
-import json, os
-try:
-    rows = json.loads(os.environ["BODY"])
-    s = (rows[0] if rows else {}).get("sections_json") or {}
-    print(len(s.get("key_hazards") or []), len(s.get("steps") or []))
-except Exception:
-    print("0 0")')"
-  read -r nhaz nsteps <<<"$hazards"
-  if [ "${nhaz:-0}" -ge 1 ] && [ "${nsteps:-0}" -ge 1 ]; then
-    proved+=("toolbox talks|\"$talk_title\" — $nhaz hazard(s), $nsteps step(s)")
-  else
-    broken+=("toolbox talks|saved \"$talk_title\" with $nhaz hazard(s) and $nsteps step(s): the talk is empty, which is what a broken JSON path looks like")
-  fi
-
-  # Clean up after ourselves. A stray test talk on the Safety screen is a small
-  # thing, but it is crew-visible, and a verification step must not leave litter
-  # in the app it is verifying.
-  del="$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
-    "$REST/safety_talks?id=eq.$talk_id" \
-    -H "Authorization: Bearer $JWT" -H "apikey: $JWT" \
-    --max-time 30 2>/dev/null)"
-  case "$del" in
-  2*) : ;;
-  *) echo "NOTE: could not delete the test toolbox talk $talk_id (HTTP $del). Delete it on the Safety screen." >&2 ;;
-  esac
-elif reason="$(soft_reason)"; then
-  untested+=("toolbox talks|$reason")
-  soft_fail=1
+#
+# Skipped entirely when the database cannot be read: generating a talk saves a
+# row, and without a read we could neither check it nor delete it again, so it
+# would spend money and leave litter on the Safety screen to prove nothing.
+if [ "$rest_ok" -eq 0 ]; then
+  untested+=("toolbox talks|$rest_why")
 else
-  broken+=("toolbox talks|HTTP $CODE: $(printf '%s' "$BODY" | head -c 400)")
+  call generate-toolbox-talk \
+    '{"topic":"Ladder safety when setting a second-storey window","with_images":false}'
+  talk_id="$(field talk_id)"
+  talk_title="$(field title)"
+
+  if [ "$CODE" = "200" ] && [ -n "$talk_id" ] && [ -n "$talk_title" ]; then
+    # A 200 with a title is not enough. A talk whose sections came back empty is
+    # exactly what a broken strict-JSON path produces, and it would still save.
+    query "safety_talks?id=eq.$talk_id&select=title,sections_json"
+    read_code="$CODE"
+    saved="$(printf '%s' "$BODY" | head -c 300)"
+    read -r state nhaz nsteps <<<"$(count_two sections_json key_hazards steps)"
+
+    if [ "$state" = "ok" ] && [ "${nhaz:-0}" -ge 1 ] && [ "${nsteps:-0}" -ge 1 ]; then
+      proved+=("toolbox talks|\"$talk_title\" — $nhaz hazard(s), $nsteps step(s)")
+    elif [ "$state" = "norow" ] || [ "$state" = "unreadable" ]; then
+      # The talk saved; reading it back to inspect it did not work. That is a
+      # hole in this check, and calling the feature broken here would be a lie.
+      untested+=("toolbox talks|the talk saved as \"$talk_title\", and reading it back to check what is in it failed (HTTP $read_code: $saved). NOT tested.")
+      soft_fail=1
+    else
+      broken+=("toolbox talks|saved \"$talk_title\" with empty content: $nhaz hazard(s), $nsteps step(s) ($state). What came back: $saved")
+    fi
+
+    # Clean up after ourselves. A stray test talk on the Safety screen is a
+    # small thing, but it is crew-visible, and a verification step must not
+    # leave litter in the app it is verifying.
+    del="$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
+      "$REST/safety_talks?id=eq.$talk_id" \
+      -H "Authorization: Bearer $JWT" -H "apikey: $JWT" \
+      --max-time 30 2>/dev/null)"
+    case "$del" in
+    2*) : ;;
+    *) echo "NOTE: could not delete the test toolbox talk $talk_id (HTTP $del). Delete it on the Safety screen." >&2 ;;
+    esac
+  elif reason="$(soft_reason)"; then
+    untested+=("toolbox talks|$reason")
+    soft_fail=1
+  else
+    broken+=("toolbox talks|HTTP $CODE: $(printf '%s' "$BODY" | head -c 400)")
+  fi
 fi
 
 # ---------------------------------------------------------------------------
 # 3. How-to guides. Needs a window type with a reference ("golden") install.
 # ---------------------------------------------------------------------------
-query "window_types?golden_install_event_id=not.is.null&select=id,type_code&limit=1"
-howto_id="$(field id)"
-howto_code="$(field type_code)"
+if [ "$rest_ok" -eq 1 ]; then
+  query "window_types?golden_install_event_id=not.is.null&select=id,type_code&limit=1"
+  howto_id="$(field id)"
+  howto_code="$(field type_code)"
+else
+  howto_id=""
+  howto_code=""
+fi
 
-if [ -z "$howto_id" ]; then
+if [ "$rest_ok" -eq 0 ]; then
+  untested+=("how-to guides|$rest_why")
+elif [ -z "$howto_id" ]; then
   untested+=("how-to guides|no window type has a reference install recorded yet, so there is nothing for it to write about. NOT tested.")
 else
   call generate-howto "{\"type_id\":\"$howto_id\"}"
@@ -298,10 +374,16 @@ fi
 # ---------------------------------------------------------------------------
 # Scoped to ONE type by id. Left unscoped it would rewrite the tips of every
 # window type in the catalog, which is not a thing a verification step should do.
-query "install_events?window_type_id=not.is.null&select=window_type_id&limit=1"
-tips_id="$(field window_type_id)"
+if [ "$rest_ok" -eq 1 ]; then
+  query "install_events?window_type_id=not.is.null&select=window_type_id&limit=1"
+  tips_id="$(field window_type_id)"
+else
+  tips_id=""
+fi
 
-if [ -z "$tips_id" ]; then
+if [ "$rest_ok" -eq 0 ]; then
+  untested+=("window-type tips|$rest_why")
+elif [ -z "$tips_id" ]; then
   untested+=("window-type tips|no install has been recorded against a window type yet, so there are no memos to learn from. NOT tested.")
 else
   call synthesize-type-tips "{\"type_id\":\"$tips_id\",\"min_installs\":1}"
@@ -316,19 +398,16 @@ except Exception:
   read -r didupdate tips_code <<<"$updated"
   if [ "$CODE" = "200" ] && [ "$didupdate" = "1" ]; then
     query "window_types?id=eq.$tips_id&select=tips_json,watch_outs_json"
-    counts="$(BODY="$BODY" python3 -c '
-import json, os
-try:
-    rows = json.loads(os.environ["BODY"])
-    r = rows[0] if rows else {}
-    print(len(r.get("tips_json") or []), len(r.get("watch_outs_json") or []))
-except Exception:
-    print("0 0")')"
-    read -r ntips nwatch <<<"$counts"
-    if [ "${ntips:-0}" -ge 1 ]; then
+    read_code="$CODE"
+    saved="$(printf '%s' "$BODY" | head -c 300)"
+    read -r state ntips nwatch <<<"$(count_two - tips_json watch_outs_json)"
+    if [ "$state" = "ok" ] && [ "${ntips:-0}" -ge 1 ]; then
       proved+=("window-type tips|$ntips tip(s) and $nwatch watch-out(s) written for $tips_code")
+    elif [ "$state" != "ok" ]; then
+      untested+=("window-type tips|tips were written for $tips_code, and reading them back to check them failed (HTTP $read_code: $saved). NOT tested.")
+      soft_fail=1
     else
-      broken+=("window-type tips|reported success for $tips_code but saved no tips, which is what a broken JSON path looks like")
+      broken+=("window-type tips|reported success for $tips_code and saved no tips — empty content. What came back: $saved")
     fi
   elif [ "$CODE" = "200" ]; then
     untested+=("window-type tips|that window type has too few install memos to synthesise from. NOT tested.")
@@ -366,7 +445,7 @@ if [ "${#broken[@]}" -gt 0 ]; then
   ANTHROPIC_API_KEY and re-run Deploy backend. A name-and-digest check cannot
   see this — only a real request can."
     ;;
-  *parseable\ json* | *no\ parseable* | *broken\ json\ path*)
+  *parseable\ json* | *no\ parseable* | *empty\ content*)
     cause="an answer the app could not read"
     guidance="  The provider answered and the answer did not arrive in a shape the app can
   read. That is a code problem, not a key problem: see
@@ -402,6 +481,14 @@ if [ "${#broken[@]}" -gt 0 ]; then
       echo
       echo "  Working, for contrast:"
       print_list "${proved[@]+"${proved[@]}"}"
+    fi
+    # Printed even when something else has failed. A feature that was skipped is
+    # easy to mistake for one that passed if the report only lists winners and
+    # losers, and then the log claims more than it checked.
+    if [ "${#untested[@]}" -gt 0 ]; then
+      echo
+      echo "  NOT TESTED — read nothing into these either way:"
+      print_list "${untested[@]+"${untested[@]}"}"
     fi
     echo
     echo "  project: ${REF:-<from TEXT_SMOKE_BASE>}"
