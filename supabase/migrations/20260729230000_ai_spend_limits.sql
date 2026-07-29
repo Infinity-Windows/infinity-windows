@@ -19,6 +19,15 @@
 -- existing table or policy is touched, and the app degrades to "no cap" if this
 -- has not been applied yet (the edge-function guard fails open on a missing RPC
 -- so a migration lag can never take the assistant offline).
+--
+-- Numbered 20260729230000 rather than …210000, which is where this file started.
+-- `supabase_migrations.schema_migrations` is keyed by VERSION, not filename, and
+-- …210000 is taken by revoke_truncate_from_clients. Sharing a version means
+-- `supabase db push` sees the version already applied and skips this file
+-- silently — no error, no tables, no reserve function, and a spend cap that
+-- looks shipped and is not there. The guard degrades quietly to the local brain
+-- when the RPC is missing, so nothing would have complained. See the version
+-- uniqueness check in scripts/test_supabase_merge.py.
 
 -- ---------------------------------------------------------------------------
 -- Role rank, as its own predicate
