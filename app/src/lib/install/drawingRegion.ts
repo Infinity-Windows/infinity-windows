@@ -7,34 +7,41 @@
 // BESIDE its window, so the crew saw a black rectangle with `511 (59 ½")` in it
 // and no window at all.
 //
-// The sheet itself is far more trustworthy than the model. These are CAD sheets:
-// each mark gets a panel, panels are tiled a few to a page, the panels are ruled
-// off from each other and separated by blank paper. So we let the vision box do
-// the one job it is good at — saying roughly WHERE on the page to look — and
-// take the actual crop from the page's own ink:
+// Most of those boxes are nonetheless fine. Measured against the dimensions the
+// supplier prints on the sheet, 32 of Black Desert's 36 crops already had the
+// whole window in them: a box only a tenth of the page wide is not necessarily
+// wrong, because these elevations are drawn small — a 107" wide unit occupies
+// about three inches of paper. So the job here is NARROW. Find the crops that
+// are actually broken, and repair only those:
 //
-//   1. find the printed rules that run right across the sheet (its border, and
-//      the line above and below each row of spec tables) and cut the page into
-//      cells along them, so a crop can never reach across a printed boundary;
-//   2. inside that cell, split the ink into bands separated by blank paper, keep
-//      the band the vision box points at, then split that band into columns the
-//      same way and keep the column the box points at;
-//   3. trim to the ink and add a small margin.
+//   1. score the stored box's own crop for line-work ({@link inkDensity}). If
+//      there is a drawing in it, use it and stop — no cleverness required;
+//   2. otherwise the box has missed. Find the printed rules that run right
+//      across the sheet and cut the page into cells along them, so a repair can
+//      never reach across a printed boundary;
+//   3. inside that cell, grow out from the nearest ink until the paper goes
+//      blank, then trim to the ink and add a small margin;
+//   4. refuse the result if it reached over another mark's box — two windows in
+//      one picture is worse than no picture.
 //
-// The result is the drawing plus its dimension lines and callouts — which is
-// what the good boxes were already doing by luck, and what the bad ones missed.
+// The restraint in step 1 is the important part, and it was learned by getting
+// it wrong: an earlier version of this file derived EVERY crop from the geometry
+// below. It fixed mark #2 and broke eleven other marks on the same job, four of
+// them by showing the crew the neighbouring window. Growing a region out to
+// blank paper is a good way to find a drawing when you have nothing better; it
+// is a bad way to second-guess a box that already works.
 //
-// This is deliberately NOT a hard-coded 2×2 grid. Nothing here assumes how many
-// panels a page has, or that a page has panels at all: a sheet with one big
-// drawing yields one band with one column, and the crop is that drawing. The
-// assumptions are only that separate drawings on a sheet are separated by blank
-// paper and that printed rules are longer than anything drawn inside a panel —
-// which is what makes a drawing sheet readable to a human in the first place.
+// Nothing here assumes a 2x2 grid, or how many panels a page has, or that a page
+// has panels at all. The assumptions are only that separate drawings on a sheet
+// are separated by blank paper and that printed rules are longer than anything
+// drawn inside a panel — which is what makes a drawing sheet readable to a human
+// in the first place. Those hold for this supplier's sheets and the Smith job's;
+// see `drawingRegion.test.ts` for the shape of sheet they describe.
 //
 // Everything here is PURE — no DOM, no pdf.js. The canvas work lives in
 // `drawingCrops`.
 
-import type { Bbox } from "./markDrawing";
+import { padBbox, type Bbox } from "./markDrawing";
 
 /** Paper. */
 const PAPER = 0;
@@ -103,12 +110,31 @@ const GUTTER = 0.022;
 const REGION_PAD = 0.01;
 
 /**
- * Ink density under which a crop is not worth showing. A correct crop of a
- * window elevation is line-work on paper — sparse, but nowhere near empty.
- * Mark #2's broken crop measured 0.005; the same window resolved properly
- * measures 0.045, and the weakest correct crop on the sheet is above 0.015.
+ * Line-work per unit area under which a crop is not worth showing.
+ *
+ * NOT a share of the crop's pixels, which is what this used to be, because that
+ * number moves with {@link inkMaskFromPixels}'s `step`. Each sample takes the
+ * darkest pixel of its block, so a hairline fills a whole sample however coarse
+ * the mask is: the same crop of the same page reads 0.005 ink at a tenth-scale
+ * mask and 0.018 at a fiftieth. A fixed share therefore means one thing at one
+ * resolution and something else at another — and at the resolution the app
+ * actually renders, mark #2's black rectangle measured 0.018 against a 0.008
+ * cutoff, so the check that was supposed to catch it passed it.
+ *
+ * Multiplying by the mask width takes the resolution back out: a stroke of
+ * length L across a mask W samples wide covers about L·W samples, so
+ * coverage·W is L per unit area — a property of the drawing, not of the
+ * sampling. Measured on the Black Desert sheet, at every step from 2 to 10:
+ * mark #2's broken crop scores 4.6–6.8, and the WEAKEST correct crop on the job
+ * scores 12.2–18.9. Nine sits in that gap with a third of headroom either side
+ * whatever the step.
  */
-export const MIN_INK_COVERAGE = 0.008;
+export const MIN_INK_DENSITY = 9;
+
+/** {@link inkCoverage} with the mask's resolution divided out. PURE. */
+export function inkDensity(mask: InkMask, box: Bbox): number {
+  return inkCoverage(mask, box) * mask.width;
+}
 
 /**
  * Build an {@link InkMask} from a page canvas's RGBA pixels, shrinking by
@@ -554,14 +580,72 @@ export function resolveDrawingRegion(
 /**
  * The box to actually crop for a mark, or null to show no drawing at all.
  *
+ * Repairs the crops that are broken and LEAVES THE REST ALONE. That restraint is
+ * the whole design, and it was learned the hard way: deriving every crop from
+ * the panel geometry, which is what this did first, fixed mark #2 and broke
+ * eleven other marks on the same job. Measured against the dimensions the
+ * supplier prints on the sheet, 32 of the 36 crops on Black Desert were already
+ * right; four of the replacements swallowed the neighbouring window as well, two
+ * showed nothing at all, and five sliced the drawing they were meant to show.
+ * A crop that already has the window in it does not need our help, and the ways
+ * of getting it wrong are more numerous than the ways of getting it right.
+ *
+ * So: keep the stored box when it holds line-work, and only when it doesn't —
+ * when the crew would be looking at a near-black rectangle — go and find the
+ * drawing on the sheet.
+ *
  * Returning null is a real answer, not a failure. Some panels on these sheets
  * are genuinely blank — the supplier left mark #25's drawing out — and this
  * codebase would rather show nothing than a black rectangle that looks like a
  * broken app. PURE.
  */
 export function drawingCropBox(mask: InkMask, bbox: Bbox): Bbox | null {
+  const stored = padBbox(bbox);
+  if (inkDensity(mask, stored) >= MIN_INK_DENSITY) return stored;
+
   const region = resolveDrawingRegion(mask, bbox);
   if (!region) return null;
-  if (inkCoverage(mask, region) < MIN_INK_COVERAGE) return null;
+  if (inkDensity(mask, region) < MIN_INK_DENSITY) return null;
+  if (splitByGutter(stripLongRuns(mask), region)) return null;
   return region;
+}
+
+/**
+ * True when `region` has a band of blank paper down the middle wide enough to
+ * be the gutter between two panels — so it holds two marks' drawings, not one.
+ *
+ * The last line of defence on a repair. One window's elevation, its dimension
+ * lines and its callouts are all within a few millimetres of each other; the
+ * next mark along is across a gutter. If a repair has grown across one anyway,
+ * a crew looking at the picture cannot tell which of the two windows is theirs,
+ * and a card with no picture on it is the lesser harm. PURE.
+ */
+export function splitByGutter(structure: InkMask, region: Bbox): boolean {
+  const { width: w, height: h, data } = structure;
+  const x0 = clampIndex(Math.round(region[0] * w), w);
+  const x1 = Math.max(x0 + 1, Math.min(w, Math.round(region[2] * w)));
+  const y0 = clampIndex(Math.round(region[1] * h), h);
+  const y1 = Math.max(y0 + 1, Math.min(h, Math.round(region[3] * h)));
+  const need = Math.max(3, Math.round(GUTTER * w));
+  // Ignore the region's own blank margin at each end; only a gap with drawing
+  // on BOTH sides of it separates two drawings.
+  let seen = false;
+  let blank = 0;
+  for (let x = x0; x < x1; x++) {
+    let ink = false;
+    for (let y = y0; y < y1; y++) {
+      if (data[y * w + x]) {
+        ink = true;
+        break;
+      }
+    }
+    if (ink) {
+      if (seen && blank >= need) return true;
+      seen = true;
+      blank = 0;
+    } else if (seen) {
+      blank += 1;
+    }
+  }
+  return false;
 }

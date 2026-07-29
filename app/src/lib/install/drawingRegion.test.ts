@@ -3,12 +3,16 @@ import {
   cellFor,
   drawingCropBox,
   inkCoverage,
+  inkDensity,
   inkMaskFromPixels,
+  MIN_INK_DENSITY,
   pageRules,
   resolveDrawingRegion,
+  splitByGutter,
+  stripLongRuns,
   type InkMask,
 } from "./drawingRegion";
-import type { Bbox } from "./markDrawing";
+import { padBbox, type Bbox } from "./markDrawing";
 
 // A miniature specs sheet, drawn the way the real ones are: a black border, a
 // pale divider down the middle, two panels side by side, and under each panel a
@@ -65,7 +69,7 @@ interface Sheet {
   right: Bbox;
 }
 
-function sheet(options: { rightPanelBlank?: boolean } = {}): Sheet {
+function sheetPixels(options: { rightPanelBlank?: boolean } = {}): Uint8ClampedArray {
   const px = blankPage();
   // Sheet border, drawn black like the real one.
   box(px, 8, 8, 191, 191);
@@ -86,9 +90,12 @@ function sheet(options: { rightPanelBlank?: boolean } = {}): Sheet {
     box(px, 120, 40, 165, 100);
     fillHatch(px, 120, 40, 165, 100);
   }
+  return px;
+}
 
+function sheet(options: { rightPanelBlank?: boolean } = {}): Sheet {
   return {
-    mask: inkMaskFromPixels(px, W, H, 1),
+    mask: inkMaskFromPixels(sheetPixels(options), W, H, 1),
     left: [30 / W, 30 / H, 59 / W, 110 / H],
     right: [120 / W, 40 / H, 165 / W, 100 / H],
   };
@@ -210,16 +217,78 @@ describe("drawingCropBox", () => {
     expect(drawingCropBox(mask, right)).toBeNull();
   });
 
-  it("shows the drawing for a panel that has one", () => {
+  it("leaves a box that already has the window in it exactly as it was", () => {
+    // The reason this branch exists in the shape it does: 32 of Black Desert's
+    // 36 crops were already right, and rebuilding them from the page's geometry
+    // broke eleven of them. A working box must come back untouched.
     const { mask, right } = sheet();
-    expect(drawingCropBox(mask, right)).not.toBeNull();
+    expect(drawingCropBox(mask, right)).toEqual(padBbox(right));
+  });
+
+  it("repairs a box that missed its window and landed beside it", () => {
+    // Mark #2: the box landed off the window, on paper between it and the panel
+    // divider, so the crop the crew got was a near-black rectangle.
+    const { mask, left } = sheet();
+    const offset: Bbox = [0.35, 0.2, 0.38, 0.45];
+    expect(inkDensity(mask, padBbox(offset))).toBeLessThan(MIN_INK_DENSITY);
+
+    const crop = drawingCropBox(mask, offset);
+    expect(crop).not.toBeNull();
+    expect(crop).not.toEqual(padBbox(offset));
+    expect(contains(crop!, left)).toBe(true);
+  });
+
+  it("shows nothing rather than a repair holding two marks' windows", () => {
+    // A page whose two panels have no divider printed between them, so a repair
+    // can grow across the gutter. Two windows in one picture is worse for a crew
+    // than no picture: they cannot tell which one is theirs.
+    const px = blankPage();
+    box(px, 8, 8, 191, 191);
+    box(px, 20, 40, 60, 120);
+    fillHatch(px, 20, 40, 60, 120);
+    box(px, 140, 40, 180, 120);
+    fillHatch(px, 140, 40, 180, 120);
+    const mask = inkMaskFromPixels(px, W, H, 1);
+    const structure = stripLongRuns(mask);
+    const both: Bbox = [0.08, 0.18, 0.92, 0.62];
+    expect(splitByGutter(structure, both)).toBe(true);
+    // ...and a box aimed at one window alone is not rejected.
+    expect(splitByGutter(structure, [0.09, 0.19, 0.31, 0.61])).toBe(false);
   });
 });
 
-describe("inkCoverage", () => {
+describe("inkDensity", () => {
   it("is near zero on blank paper and substantial on a drawing", () => {
     const { mask, right } = sheet();
-    expect(inkCoverage(mask, [0.05, 0.85, 0.45, 0.95])).toBeLessThan(0.008);
-    expect(inkCoverage(mask, right)).toBeGreaterThan(0.05);
+    expect(inkDensity(mask, [0.05, 0.85, 0.45, 0.95])).toBeLessThan(MIN_INK_DENSITY);
+    expect(inkDensity(mask, right)).toBeGreaterThan(MIN_INK_DENSITY);
+  });
+
+  it("reads the same drawing the same way however coarse the mask is", () => {
+    // The bug this replaced. inkMaskFromPixels keeps the darkest pixel of each
+    // block, so a hairline fills a whole sample at any scale and a plain SHARE
+    // of the crop's pixels climbs as the mask coarsens — which is how mark #2's
+    // black rectangle came to pass a check meant to catch it. Dividing the
+    // resolution back out has to hold across the range the app might use.
+    //
+    // Line-work spaced the way a real elevation's is — a rendered sheet is
+    // thousands of pixels across, so strokes are many samples apart even at a
+    // tenth scale. (Rule them closer than the step and any measure saturates:
+    // the samples between them fill in and the drawing becomes a solid block.)
+    const px = blankPage();
+    box(px, 20, 20, 180, 180);
+    for (let x = 40; x < 180; x += 20) vLine(px, x, 20, 180, BLACK);
+    const region: Bbox = [0.1, 0.1, 0.9, 0.9];
+
+    const fine = inkMaskFromPixels(px, W, H, 1);
+    const coarse = inkMaskFromPixels(px, W, H, 5);
+
+    // Coverage drifts badly...
+    expect(inkCoverage(coarse, region) / inkCoverage(fine, region)).toBeGreaterThan(3);
+    // ...while density stays put, well inside the gap the threshold sits in.
+    const d1 = inkDensity(fine, region);
+    const d5 = inkDensity(coarse, region);
+    expect(Math.abs(d5 - d1) / d1).toBeLessThan(0.15);
+    expect(Math.min(d1, d5)).toBeGreaterThan(MIN_INK_DENSITY);
   });
 });

@@ -123,11 +123,11 @@ function getInkMask(key: string, page: HTMLCanvasElement): InkMask | null {
 /**
  * Where to actually crop, given what the vision pass stored.
  *
- * The stored box says roughly where on the sheet to look and little more: a
- * third of them on the Black Desert job are a sliver of a panel, and mark #2's
- * lands on the dimension line beside its window rather than on the window. So
- * the sheet's own ink decides the crop and the box only chooses the panel — see
- * `drawingRegion`. Returns null when there's nothing there worth showing.
+ * Usually the stored box, padded, exactly as before — most of them do have the
+ * window in them. The sheet's own ink is consulted only to check that, and to
+ * rescue the ones that miss: mark #2's box lands on the dimension line BESIDE
+ * its window, so the crew saw a black rectangle. See `drawingRegion`. Returns
+ * null when there's nothing there worth showing.
  *
  * Falls back to the stored box if the mask can't be built at all (a browser
  * that won't hand back pixels), which is what this did before.
