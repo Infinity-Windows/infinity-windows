@@ -111,6 +111,10 @@ jobs:
       # Set only when Ask Infinity was asked a real question and did not answer.
       # The case the two above cannot see: a key that exists and is refused.
       ask_smoke_cause: ${{ steps.asksmoke.outputs.ask_smoke_headline }}
+      # Set only when Anthropic itself refused the key. Needs no Supabase
+      # credential, so this is the one that still speaks when the test above
+      # cannot sign in.
+      anthropic_key_cause: ${{ steps.anthropickey.outputs.anthropic_key_headline }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -342,6 +346,72 @@ jobs:
             echo
             echo '```'
             cat /tmp/push-key-check.log
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+      # Is the key we just pushed one Anthropic will actually ACCEPT? Everything
+      # above only proves a secret of that name exists, and `secrets list` reports
+      # a digest, so a revoked key, a key from somebody else's Anthropic account
+      # and a working key are indistinguishable to it.
+      #
+      # The Ask Infinity test below would catch it, but only when CI holds a
+      # credential it can sign in with, and today it does not: `ask` identifies
+      # its caller from a JWT, and the only server key available is a new-format
+      # `sb_secret_…` one, which is not a JWT. So that test currently reports
+      # "could not tell" — which is honest, and useless as proof. This step needs
+      # no Supabase credential at all and settles the question directly.
+      #
+      # Runs on the key from the GitHub secret, which is the same value that was
+      # pushed to the project moments ago, so a bad key is caught by the run that
+      # shipped it rather than by an installer tapping Ask Infinity.
+      #
+      # Same three outcomes as everything else here: refused is red, busy is a
+      # warning. The reply is printed as proof, and the prompt is about window
+      # installation so there is no customer data in it.
+      - name: Check the AI provider accepts our key
+        id: anthropickey
+        if: ${{ !cancelled() && steps.guard.outputs.ok == 'true' }}
+        shell: bash
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set +e
+          scripts/verify-anthropic-key.sh >/tmp/anthropic-key.log 2>&1
+          rc=$?
+          cat /tmp/anthropic-key.log
+
+          if [ "$rc" -eq 0 ]; then
+            {
+              echo "### The AI key works"
+              echo
+              echo '```'
+              cat /tmp/anthropic-key.log
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          cause="$(head -n 1 /tmp/anthropic-key.log)"
+
+          if [ "$rc" -eq 2 ]; then
+            echo "::warning title=The AI key was not verified::$cause"
+            {
+              echo "### The AI key: not verified this run"
+              echo
+              echo '```'
+              cat /tmp/anthropic-key.log
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "::error title=Action needed::$cause"
+          {
+            echo "### $cause"
+            echo
+            echo '```'
+            cat /tmp/anthropic-key.log
             echo '```'
           } >>"$GITHUB_STEP_SUMMARY"
           exit "$rc"
@@ -592,7 +662,9 @@ jobs:
         && needs.functions.outputs.push_key_cause
         || (needs.functions.outputs.secret_cause != ''
         && needs.functions.outputs.secret_cause
-        || needs.functions.outputs.ask_smoke_cause) }}
+        || (needs.functions.outputs.anthropic_key_cause != ''
+        && needs.functions.outputs.anthropic_key_cause
+        || needs.functions.outputs.ask_smoke_cause)) }}
       detail: >-
         ${{ needs.functions.outputs.push_key_cause != ''
         && 'Both halves of one push key pair have to be set together, in
@@ -602,12 +674,16 @@ jobs:
         && 'Everything else shipped. Add the key as a GitHub Actions secret of
         the same name and re-run this workflow, which pushes it to Supabase for
         you.'
+        || (needs.functions.outputs.anthropic_key_cause != ''
+        && 'The key is on the project and the AI provider will not accept it, so
+        it is the wrong key, it was cancelled, or the account has no credit left.
+        The run page says which. Ask Infinity answers only from its built-in
+        notes until this is fixed.'
         || (needs.functions.outputs.ask_smoke_cause != ''
-        && 'The key is there and the AI provider would not accept it, so it is
-        the wrong key or it has been revoked. Put a working one in the GitHub
-        secret ANTHROPIC_API_KEY and re-run this workflow.'
+        && 'Ask Infinity was asked a real question and did not answer. The run
+        page has the reply it gave instead.'
         || 'Some of the backend did not ship, so the app may be running against a
-        database or functions that do not match the code.')) }}
+        database or functions that do not match the code.'))) }}
     secrets: inherit
 
   # Not a failure, and deliberately not one: the database holds objects no

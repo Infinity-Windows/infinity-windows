@@ -347,8 +347,25 @@ new_case "a gateway 401 blames the checker, not the feature"
 respond 401 '{"error":"unauthorized"}'
 run
 assert_rc 2
-assert_has "could not sign in"
+assert_has "has no way to sign in"
+assert_has "NOTHING HERE IS EVIDENCE ABOUT ASK INFINITY"
 assert_lacks "Ask Infinity is not working"
+
+# The two 401s need different fixes, so they must not share one message.
+new_case "a project-level rejection names the new-format key as the likely cause"
+respond 401 '{"message":"Invalid API key","hint":"Double check your API key."}'
+run
+assert_rc 2
+assert_has "sb_secret_"
+assert_has "not JWTs"
+assert_has "ASK_SMOKE_JWT"
+
+new_case "a function-level rejection blames the caller identity, not the key format"
+respond 401 '{"error":"unauthorized"}'
+run
+assert_rc 2
+assert_has "signs in as nobody"
+assert_lacks "sb_secret_"
 
 new_case "no caller credentials: says nothing was measured"
 JWT_OVERRIDE="" run

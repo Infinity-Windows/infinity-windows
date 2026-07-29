@@ -180,12 +180,19 @@ something the others cannot:
 | --- | --- | --- |
 | Push the function secrets GitHub holds | The value GitHub has is now the value the project has | Anything GitHub does not hold |
 | Verify every required function secret exists | Every needed name is present on the project | Whether the value is any good |
-| Ask Infinity a real question | The key is genuinely accepted and the feature answers | — |
+| Check the AI provider accepts our key | Anthropic genuinely accepts the key and generates text | Whether the function around it works |
+| Ask Infinity a real question | The whole feature answers, end to end | — |
 
-That last one is the only check that can catch a key which exists and is
-**refused** — revoked, rotated at Anthropic, or pasted from the wrong account.
-Those are identical to a working key as far as `supabase secrets list` is
-concerned, since it reports names and digests and never values.
+The third one exists because a key that is **refused** — cancelled, rotated at
+Anthropic, or pasted from the wrong account — is identical to a working key as
+far as `supabase secrets list` is concerned, which reports names and digests and
+never values. It also separates a key to replace from an account that has simply
+run out of credit, which are different jobs.
+
+The fourth needs a caller it can sign in as. `ask` identifies its caller from a
+JWT, so a new-format `sb_secret_…` key will not do — set `ASK_SMOKE_JWT` to a
+legacy service-role key or a real user's access token. Without one it reports
+"could not tell" and warns rather than failing, since it has measured nothing.
 
 To check by hand:
 
@@ -193,8 +200,10 @@ To check by hand:
 SUPABASE_ACCESS_TOKEN=sbp_... SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm \
   scripts/verify-function-secrets.sh
 
+ANTHROPIC_API_KEY=sk-ant-... scripts/verify-anthropic-key.sh
+
 SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm \
-  SUPABASE_SERVICE_ROLE_KEY=eyJ... scripts/smoke-ask.sh
+  ASK_SMOKE_JWT=eyJ... scripts/smoke-ask.sh
 ```
 
 ### Shipping the backend

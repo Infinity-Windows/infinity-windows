@@ -88,6 +88,14 @@ jobs:
         shell: bash
         run: scripts/sync-function-secrets.test.sh
 
+      # Whether the AI provider would accept the key we hold. What matters is that
+      # it separates a key to replace from an account to top up from a service
+      # that was merely busy — three different jobs for a human. Stubs curl; no
+      # key, no network, nothing spent.
+      - name: Test scripts/verify-anthropic-key.sh
+        shell: bash
+        run: scripts/verify-anthropic-key.test.sh
+
       # The end-to-end Ask Infinity check. What matters here is that it tells
       # apart a key that is missing, a key the provider refuses, and an AI
       # service that was merely busy — the last of which must warn rather than go
