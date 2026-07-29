@@ -32,7 +32,7 @@ import {
   showsVoidedInstall,
   toggleExpandedOpening,
 } from "../../lib/install/openingRowAction";
-import { openingUnitKind } from "../../lib/install/unitKind";
+import { openingUnitKindResolver } from "../../lib/install/unitKind";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { useRealtimeOpenings } from "../../lib/useRealtimeOpenings";
 import { invalidateOpeningQueries } from "../../lib/install/openingQueryKeys";
@@ -169,21 +169,6 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const [selection, setSelection] = useState<string[]>([]);
   const [dispatchNote, setDispatchNote] = useState<string | null>(null);
 
-  const matchesFilter = (o: ProjectOpening): boolean => {
-    switch (filter) {
-      case "open":
-        return o.status !== "installed";
-      case "done":
-        return o.status === "installed";
-      case "windows":
-        return openingUnitKind(o) === "window";
-      case "doors":
-        return openingUnitKind(o) === "door";
-      default:
-        return true;
-    }
-  };
-
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const project = projects.data?.find((p) => p.id === projectId);
   const openings = useQuery({
@@ -202,6 +187,28 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     queryFn: () => listMarkSpecs(projectId),
     enabled: !!projectId,
   });
+  // Window or door, from the description on the supplier's sheet. Built once
+  // here so the pin, the filter chips, the list row and the detail card all
+  // read the same answer.
+  const unitKind = useMemo(
+    () => openingUnitKindResolver(markSpecs.data ?? []),
+    [markSpecs.data],
+  );
+
+  const matchesFilter = (o: ProjectOpening): boolean => {
+    switch (filter) {
+      case "open":
+        return o.status !== "installed";
+      case "done":
+        return o.status === "installed";
+      case "windows":
+        return unitKind(o) === "window";
+      case "doors":
+        return unitKind(o) === "door";
+      default:
+        return true;
+    }
+  };
   // Where each mark is drawn on the elevation sheets — reference pictures for
   // the pin details, and the check that tells us whether this job has them yet.
   const elevationViews = useQuery({
@@ -955,7 +962,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
 
   const renderOpeningDots = (mode: "all" | "pinned" = "all") =>
     (mode === "pinned" ? placed : [...placed, ...autos]).map((o) => {
-      const kind = openingUnitKind(o);
+      const kind = unitKind(o);
       const isVoided = showsVoidedInstall(effectiveRole, o, voidedIds);
       const pos = dotPos(o);
       const selIndex = selection.indexOf(o.id);
@@ -1857,7 +1864,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 aria-hidden
                 style={{
                   background:
-                    openingUnitKind(o) === "door" ? "var(--ok)" : "var(--info)",
+                    unitKind(o) === "door" ? "var(--ok)" : "var(--info)",
                 }}
               />
               <strong>{o.opening_code}</strong>

@@ -1,9 +1,10 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   addOpening,
   deletePlanOutline,
   downloadPlanset,
+  listMarkSpecs,
   savePlanOutline,
   updateOpening,
 } from "../../lib/install/api";
@@ -39,6 +40,7 @@ import {
   type Planset,
   type ProjectOpening,
 } from "../../lib/install/types";
+import { openingUnitKindResolver } from "../../lib/install/unitKind";
 import { OutlineFeatureLayer } from "./OutlineFeatureLayer";
 
 type EditTool =
@@ -380,6 +382,18 @@ export function PlanModelEditor(props: {
 
   const pageOpenings = openings.filter((o) => o.page_number === page);
   const selected = pageOpenings.find((o) => o.id === selectedId) ?? null;
+
+  // Same window/door answer as the map, from the same spec descriptions, so a
+  // mark does not change colour when a lead opens the plan editor.
+  const markSpecs = useQuery({
+    queryKey: ["markSpecs", projectId],
+    queryFn: () => listMarkSpecs(projectId),
+    enabled: !!projectId,
+  });
+  const unitKind = useMemo(
+    () => openingUnitKindResolver(markSpecs.data ?? []),
+    [markSpecs.data],
+  );
 
   useEffect(() => {
     setRenameValue(selected?.opening_code ?? "");
@@ -1550,11 +1564,8 @@ export function PlanModelEditor(props: {
           pageOpenings
             .filter((o) => o.pin_x != null && o.pin_y != null)
             .map((o) => {
-              const kind =
-                (o.window_types?.category ?? "").toLowerCase().includes("door") ||
-                /^D\d/i.test(o.opening_code)
-                  ? "door"
-                  : "window";
+              // A code like "D1" is a door however it is described.
+              const kind = /^D\d/i.test(o.opening_code) ? "door" : unitKind(o);
               const pos = dotPos(o);
               return (
                 <button
