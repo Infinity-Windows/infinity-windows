@@ -64,6 +64,13 @@ is ever pointed at a different project it shows a red **"Wrong database"** banne
 naming both projects, because work done against the wrong database is invisible
 to everyone else.
 
+If you are deliberately working against a different project (a collaborator's,
+say), set `VITE_EXPECTED_SUPABASE_PROJECT_REF` in your own `app/.env` to that
+project's ref so the banner tracks the project you mean instead of warning on
+every screen. That only changes which project the app *expects*; `VITE_SUPABASE_URL`
+is still what it connects to. Unset — which is the default for everyone — the
+expected project stays `czprjcskmzzagdztqonm`.
+
 (The anon key is in git on purpose: it is already compiled into the JavaScript we
 serve publicly. Row-level security, not secrecy of that key, is what protects the
 data. Service-role keys, the database password, and the private VAPID key are
