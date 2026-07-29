@@ -8,16 +8,26 @@
 # proves the feature WORKS, and the gap between those is where this project keeps
 # losing weeks:
 #
-#   - `ask` was deployed and 500ing on every request for as long as it existed,
-#     because ANTHROPIC_API_KEY had never been set. Green everywhere.
+#   - `ask` was deployed and never once produced an AI answer, because
+#     ANTHROPIC_API_KEY had never been set on the project. Green everywhere.
 #   - A key that exists but is wrong — pasted from the wrong account, revoked,
 #     or rotated at Anthropic and not here — looks IDENTICAL to a correct one to
 #     every name-and-digest check. `secrets list` cannot tell you a key still
 #     works. Only using it can.
 #
+# WHAT A MISSING KEY LOOKS LIKE NOW, and why that made things worse rather than
+# better. Since the AI spend limits landed, `ask` no longer 500s without a key:
+# it returns 200 with an EMPTY answer, which is the client's signal to fall back
+# to the bundled company brain. That is the right behaviour for an installer at an
+# opening — they get an answer instead of an error — but it means a completely
+# unconfigured AI now looks, from the outside, almost exactly like a working one.
+# The feature appears to work, and nobody can tell it has never once asked Claude
+# anything. So an empty answer is treated here as a FAILURE, not a pass.
+#
 # So this makes one real request end to end: through the platform gateway, into
-# the function, out to Anthropic, and back with generated text. If that works,
-# Ask Infinity works, and there is nothing left to be quietly wrong.
+# the function, out to Anthropic, and back with generated text. Only genuinely
+# generated prose counts. If that works, Ask Infinity works, and there is nothing
+# left to be quietly wrong.
 #
 # THREE OUTCOMES, and the third is deliberately not a failure — the same
 # distinction scripts/verify-functions.sh draws between "missing" and "could not
@@ -28,8 +38,16 @@
 #   exit 1  BROKEN, and it is ours to fix: Anthropic rejected our key, or the
 #           function errored, or the key is still missing after every retry. Red.
 #   exit 2  COULD NOT TELL. No answer, Anthropic was overloaded or rate-limited,
-#           or this checker had no credentials. Nothing says we are
-#           misconfigured. Warn.
+#           a spend limit refused the call, or this checker had no credentials.
+#           Nothing says we are misconfigured. Warn.
+#
+# A SPEND LIMIT IS NOT A FAILURE, and must never be read as one. When the daily
+# or monthly cap is reached the function returns 200 with an empty answer and
+# `limited: true` — the same empty answer a missing key produces. Those two have
+# to be told apart or this check is worse than useless: it would go red every
+# time the company hit its AI budget, and green would stop meaning anything. The
+# `limited` flag is the only thing that distinguishes them, so it is what decides.
+# See docs/ai-spend-limits.md.
 #
 # RETRIES, and why "the key is not set" is one of the retryable cases. Deploy
 # backend pushes the secrets and then runs this seconds later. A secret that has
@@ -101,7 +119,8 @@ fi
 
 body="$(mktemp)" || exit 1
 err="$(mktemp)" || exit 1
-trap 'rm -f "$body" "$err"' EXIT
+answerfile="$(mktemp)" || exit 1
+trap 'rm -f "$body" "$err" "$answerfile"' EXIT
 
 # Built with python3 so a quote in an overridden question cannot break the JSON,
 # and piped to curl on stdin so it never appears in the process list.
@@ -147,19 +166,35 @@ probe() {
     return
   fi
 
-  # {"answer": "...", "sources": [...]} or {"error": "..."}. Parsed with python3
-  # rather than grep so a brace in the prose cannot fool it.
-  answer="$(python3 - "$body" <<'PY'
+  # Three shapes come back from `ask`:
+  #   {"answer": "...", "sources": [...]}                      a real answer
+  #   {"answer": "", "limited": true, "note": "..."}            a spend refusal
+  #   {"answer": ""}                                            no key set
+  #   {"error": "..."}                                          something threw
+  # Parsed with python3 rather than grep so a brace in the prose cannot fool it.
+  # The answer goes to a file because it is prose and may contain anything.
+  local flags
+  : >"$answerfile"
+  flags="$(python3 - "$body" "$answerfile" <<'PY'
 import json, sys
 try:
     with open(sys.argv[1]) as fh:
         data = json.load(fh)
 except Exception:
+    data = None
+if not isinstance(data, dict):
     sys.exit(0)
-if isinstance(data, dict) and isinstance(data.get("answer"), str):
-    sys.stdout.write(data["answer"])
+answer = data.get("answer")
+if isinstance(answer, str):
+    with open(sys.argv[2], "w") as out:
+        out.write(answer)
+print("limited=1" if data.get("limited") else "limited=0")
+note = data.get("note") or data.get("limit_reason") or ""
+if isinstance(note, str) and note.strip():
+    print("note=" + " ".join(note.split())[:200])
 PY
   )"
+  answer="$(cat "$answerfile")"
 
   if [ "$code" = "200" ] && [ -n "${answer//[[:space:]]/}" ]; then
     verdict="answered"
@@ -170,6 +205,28 @@ PY
   detail="$(tr -d '\r' <"$body" | tr '\n' ' ' | head -c 800)"
   local lower
   lower="$(printf '%s' "$detail" | tr '[:upper:]' '[:lower:]')"
+
+  # A spend cap refused the call. The key may be perfectly good — we were simply
+  # not allowed to spend, so nothing was measured about it. Checked FIRST, because
+  # this returns the same empty answer a missing key does and must not be read as
+  # one.
+  if printf '%s\n' "$flags" | grep -qx 'limited=1'; then
+    note="$(printf '%s\n' "$flags" | sed -n 's/^note=//p' | head -n 1)"
+    detail="${note:-a daily or monthly AI spend limit was reached}"
+    verdict="limited"
+    retryable=0
+    return
+  fi
+
+  # An empty answer with a 200 and no spend refusal IS the missing-key signal now:
+  # the function falls through to the company brain rather than erroring. Same
+  # verdict as the old 500, and retryable for the same reason.
+  if [ "$code" = "200" ]; then
+    detail="the function returned an empty answer, which is what it does when it has no API key"
+    verdict="not_set"
+    retryable=1
+    return
+  fi
 
   # A gateway 401 is THIS CHECKER failing to sign in. The function returns 401
   # only for an unauthenticated caller; an Anthropic 401 arrives wrapped in a
@@ -267,6 +324,21 @@ if [ "$verdict" = "busy" ]; then
   exit 2
 fi
 
+if [ "$verdict" = "limited" ]; then
+  {
+    echo "Could not tell whether Ask Infinity works: an AI spend limit stopped it"
+    echo
+    echo "$detail"
+    echo
+    echo "This is not a fault and nothing is broken. The company's daily or"
+    echo "monthly AI budget was reached, so the question was answered from the"
+    echo "company brain instead of being sent to Claude. Nothing was spent, and"
+    echo "nothing here says the API key is wrong — it was never used. Owners can"
+    echo "raise the caps on the AI Spend screen; see docs/ai-spend-limits.md."
+  } >&2
+  exit 2
+fi
+
 if [ "$verdict" = "gateway_401" ]; then
   {
     echo "Could not test Ask Infinity: this checker could not sign in"
@@ -284,12 +356,17 @@ fi
 
 case "$verdict" in
 not_set)
-  headline="Ask Infinity is not working: its API key has not been added"
-  what="  The key ANTHROPIC_API_KEY is not set on this project, so every question
-  fails. Deploy backend pushes it from the GitHub secret of the same name, so
-  either that GitHub secret is missing or the push step did not run. This was
-  still true after $attempt attempt(s), so it is not the secret taking a moment
-  to reach the running functions."
+  headline="Ask Infinity has no AI key, so it has never actually answered anything"
+  what="  ANTHROPIC_API_KEY is not set on this project, so no question has ever
+  reached Claude. This is easy to miss from the app: rather than showing an
+  error, Ask Infinity quietly answers from the bundled company brain, so it
+  looks like it is working. It is not — it is guessing from a fixed snapshot
+  and cannot see anything live.
+
+  Deploy backend pushes this key from the GitHub secret of the same name, so
+  either that GitHub secret is missing or the push step did not run. Still true
+  after $attempt attempt(s), so it is not the secret taking a moment to reach
+  the running functions."
   ;;
 rejected)
   headline="Ask Infinity is not working: the AI provider rejected our API key"
