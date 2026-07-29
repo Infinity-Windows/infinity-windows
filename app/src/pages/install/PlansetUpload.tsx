@@ -45,6 +45,7 @@ import {
   splitCalloutsByFloorPlan,
 } from "../../lib/install/planDetails";
 import type { Planset, PlansetKind } from "../../lib/install/types";
+import { claimUnsavedWork } from "../../lib/pwa/unsavedWork";
 import { PlansetViewer } from "./PlansetViewer";
 
 function fileName(ps: Planset): string {
@@ -148,7 +149,13 @@ export function PlansetUpload() {
       e.returnValue = "";
     };
     window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
+    // Same courtesy towards the PWA update flow, which would otherwise be
+    // entitled to reload a backgrounded app out from under a running extraction.
+    const release = claimUnsavedWork();
+    return () => {
+      window.removeEventListener("beforeunload", warn);
+      release();
+    };
   }, [runningPlansetId]);
 
   const upload = useMutation({

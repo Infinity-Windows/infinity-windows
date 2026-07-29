@@ -265,6 +265,15 @@ plan.
 ## Tests
 
 ```bash
-cd app && npm test                        # 1,260 frontend tests
-python3 scripts/test_supabase_merge.py    # merge tooling, stdlib only
+cd app && npm test                          # 1,313 frontend tests
+python3 scripts/test_supabase_merge.py       # merge tooling, stdlib only
+python3 scripts/test_schema_verify.py        # post-push schema drift check
+python3 scripts/test_function_secrets.py     # which function needs which secret
+scripts/verify-functions.test.sh             # the deploy probe, no network
+scripts/verify-function-secrets.test.sh      # the secret check, stubbed CLI
+scripts/slack-notify.test.sh                 # the failure notifier, posts nothing
 ```
+
+None of them need credentials or a network. What ships automatically, what
+verifies it and what alerts on failure is all written up in
+[`docs/always-live.md`](docs/always-live.md).
