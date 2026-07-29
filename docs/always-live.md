@@ -292,10 +292,10 @@ Settings → Secrets and variables → Actions. These let the pipeline *do* thin
 
 | Secret | Used by | What breaks without it |
 | --- | --- | --- |
-| `SUPABASE_ACCESS_TOKEN` | `Deploy backend` | Edge functions are never deployed, and neither the schema check nor the secret check can run. Jobs **skip with a warning** rather than failing. A personal access token, `sbp_…`. |
-| `SUPABASE_DB_PASSWORD` | `Deploy backend` | Migrations are never pushed, so the database silently stops tracking the code. Skips with a warning. |
-| `SUPABASE_SERVICE_ROLE_KEY` | `Vault brain sync` | The nightly Obsidian vault mirror fails. This one **does** fail loudly. |
-| `SLACK_CHANGELOG_WEBHOOK` | `Slack changelog`, every failure notification | No changelog posts and no failure alerts. Everything degrades quietly, which means **failures go back to being silent** — the exact problem this pipeline was built to fix. |
+| `SUPABASE_ACCESS_TOKEN` | `Deploy backend` | Edge functions are never deployed, and neither the schema check nor the secret check can run. **Fails the run.** A personal access token, `sbp_…`. |
+| `SUPABASE_DB_PASSWORD` | `Deploy backend` | Migrations are never pushed, so the database stops tracking the code. **Fails the run** — it used to skip with a warning, and that is how ten merges shipped nothing. Nothing else in this repo uses it, so it can be re-set from the Management API (`PATCH /v1/projects/{ref}/database/password`) without breaking anything here. |
+| `SUPABASE_SERVICE_ROLE_KEY` | `Vault brain sync` | The nightly Obsidian vault mirror fails. This one **does** fail loudly. Must be a key for `czprjcskmzzagdztqonm`: read it from `GET /v1/projects/{ref}/api-keys?reveal=true` and check the JWT's `ref` claim, because a key from the wrong project fails with a bare "Invalid API key". |
+| `SLACK_CHANGELOG_WEBHOOK` | `Slack changelog`, every failure notification | No changelog posts and no failure alerts. **Currently pointed at the wrong destination — see below.** |
 | `VITE_SUPABASE_URL` | `Deploy GitHub Pages` | The published app cannot reach the database at all. |
 | `VITE_SUPABASE_ANON_KEY` | `Deploy GitHub Pages` | Same. (Not really a secret — it is compiled into public JavaScript, and row-level security is what protects the data.) |
 | `VITE_VAPID_PUBLIC_KEY` | `Deploy GitHub Pages` | No phone ever subscribes to notifications, silently. Also not really a secret — it is the public half of the push pair and is readable in the published bundle. It must be the public half of the pair whose private half is in Supabase; `scripts/verify-push-key.sh` is what proves that. |
@@ -325,39 +325,54 @@ Optional, with working defaults: `ANTHROPIC_MODEL`, `VAPID_SUBJECT`.
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are injected
 by the platform into every function. Do not set them by hand.
 
-### Why the backend jobs skip instead of failing
+### The backend jobs no longer skip — they fail
 
-Until `SUPABASE_ACCESS_TOKEN` and `SUPABASE_DB_PASSWORD` exist, the backend jobs
-annotate the run with what they would have done and pass. That is deliberate and
-has been settled twice: a repo where the build is red for a reason nobody can fix
-today is a repo where red stops meaning anything. Once the secrets exist, the
-same jobs become strict — a function still 404ing after a deploy, a missing
-secret, or a schema that does not match all fail the run.
+They used to. Until a secret existed, the job it belonged to annotated the run
+with what it would have done and **passed**, on the reasoning that a build
+nobody can fix today is a build where red stops meaning anything.
 
-## The first real run will be red, on purpose
+That reasoning expired the moment the secrets existed, and it had already cost
+something real. `SUPABASE_DB_PASSWORD` was never set, so for most of 2026-07-29
+the **Push migrations** job reported *success* on every single merge while
+running `supabase db push` exactly zero times. Around ten merges shipped a
+frontend against a database that had not moved, and the pipeline said it was
+fine each time. That is the failure this whole document exists to prevent, and
+it was hiding inside the mechanism meant to prevent it.
 
-Read this before looking at Actions, because a red mark is alarming and this one
-is not a breakage.
+All four secrets are set. A missing one is therefore not an unfinished setup, it
+is a regression — something was deleted or expired — so each guard now fails and
+names the secret. The function deploy also fails if it finds **no** functions to
+deploy, because "I shipped nothing" must never look like "I shipped everything",
+and the live-function probe is now unconditionally strict rather than relaxing
+itself precisely when credentials go missing.
 
-`SUPABASE_ACCESS_TOKEN` now exists in GitHub, so the secret check runs for real.
-`ANTHROPIC_API_KEY` has never been set in Supabase, and it is the only thing
-missing anywhere. So the first `Deploy backend` after this lands will fail with
-exactly one cause:
+## The first real run
 
-> Ask Infinity and plan-set reading need an API key that has not been added yet
+It has happened. `Deploy backend` run
+[30491591544](https://github.com/Infinity-Windows/infinity-windows/actions/runs/30491591544)
+is the first end-to-end green one, and the first time a migration has ever
+reached production by itself:
 
-That is not a regression. Those two features have been failing at runtime this
-whole time — the only new thing is that the pipeline now says so out loud instead
-of shipping green over the top of it. Everything else in that run succeeds: the
-functions deploy, and the frontend ships from its own workflow regardless.
+```
+Would push these migrations:
+ • 20260730000000_deploy_pipeline_proof.sql
+Applying migration 20260730000000_deploy_pipeline_proof.sql...
+...
+deployed 11 function(s)
+```
 
-The fix is one field: Supabase dashboard → the project → **Project Settings →
-Edge Functions → Secrets** → add `ANTHROPIC_API_KEY`. Then Actions → Deploy
-backend → Run workflow. Nothing needs redeploying; the functions read the key on
-their next request.
+Read back out of the live catalog afterwards, which is the only evidence that
+counts:
 
-`SUPABASE_DB_PASSWORD` is still deliberately absent, so the migrations job and the
-schema check **skip** with a warning rather than failing.
+```sql
+select obj_description('public.locations'::regclass, 'pg_class');
+-- Warehouse and job-site locations. Comment set by migration 20260730000000 …
+```
+
+Getting there needed the migration history repaired first — 37 phantom rows and
+two files sharing a version. That is recorded in
+[`migration-history-repair-2026-07-29-executed.md`](./migration-history-repair-2026-07-29-executed.md),
+along with the digests proving no table, policy, trigger or row changed.
 
 ### What the check will not complain about
 
@@ -378,23 +393,62 @@ Both of those exclusions are pinned by tests in
 `scripts/verify-function-secrets.test.sh`, against a stub of the CLI output that
 matches the live project exactly.
 
+## The alerts are accepted by Slack and arrive nowhere
+
+This is the one part of the pipeline that is still not doing its job, and it is
+worth reading carefully because it is subtle.
+
+`scripts/slack-notify.sh` used to decide it had posted based on `curl -sS`
+exiting 0. That exit code only means the *transfer* completed — a 404 from a
+revoked webhook is a perfectly successful transfer of an error. So every
+notification printed "Posted the failure notification to Slack" whatever
+happened, and nobody checked the channel. That is how a nightly job failed for
+seven days unseen.
+
+It now checks the status code and Slack's `ok` body, and annotates the run page
+when a post does not land. With that in place, the truth turned out to be
+stranger than a dead webhook: **Slack answers `200 ok`, and the message appears
+in no channel in this workspace.** Not `#infinity-app-changelog`, not anywhere a
+workspace-wide search can reach. An incoming webhook is bound to one channel
+when it is created, so the stored URL belongs to some other destination
+entirely — a different workspace, or a channel that no longer exists.
+
+Everything posted in `#infinity-app-changelog` since 2026-07-17 was posted by an
+agent through the Slack API, not by this webhook. The webhook has never
+delivered anything there.
+
+**Fix (Taylor only — it needs Slack app admin, which no API token here has):**
+create a new incoming webhook for `#infinity-app-changelog` at
+<https://api.slack.com/apps> → the app → *Incoming Webhooks* → *Add New Webhook
+to Workspace* → pick `#infinity-app-changelog`, then
+`gh secret set SLACK_CHANGELOG_WEBHOOK`. To confirm it, re-run any workflow that
+fails; the notifier will say `Posted …` only when Slack returns `ok`, and the
+message will actually be in the channel.
+
+Until then, **failure alerts do not reach anyone**, and the run page is the only
+place a red build is visible.
+
 ## Turning it all on
 
-Order matters slightly. The runbook for the database part, including the phantom
-migration rows that must be cleared before the first real push, is
-[`db-push-readiness.md`](./db-push-readiness.md).
+Done, in this order, on 2026-07-29. Kept as the record of what was needed. The
+runbook for the database part is [`db-push-readiness.md`](./db-push-readiness.md);
+what actually happened is in
+[`migration-history-repair-2026-07-29-executed.md`](./migration-history-repair-2026-07-29-executed.md).
 
-1. ~~`gh secret set SUPABASE_ACCESS_TOKEN`~~ — **done.** Edge functions deploy, and
-   the secret check is live.
-2. Add `ANTHROPIC_API_KEY` in the Supabase dashboard under **Project Settings →
-   Edge Functions → Secrets**. This is the one thing standing between the pipeline
-   and green — see [the section above](#the-first-real-run-will-be-red-on-purpose).
-3. Run `scripts/cleanup-migration-phantoms.sh` (preview, then `--execute`).
-4. `gh secret set SUPABASE_DB_PASSWORD` — migrations start pushing, and the schema
-   check comes alive.
-5. Actions → **Deploy backend** → Run workflow, and watch it go green.
+1. ~~`gh secret set SUPABASE_ACCESS_TOKEN`~~ — **done.**
+2. ~~Add `ANTHROPIC_API_KEY` to the project~~ — **done, and it no longer needs a
+   human.** `scripts/sync-function-secrets.sh` pushes any function secret GitHub
+   holds into Supabase on every merge, so rotating a key is one GitHub secret and
+   a re-run.
+3. ~~Repair the migration history~~ — **done.** 37 phantom rows removed and two
+   version collisions resolved.
+4. ~~`gh secret set SUPABASE_DB_PASSWORD`~~ — **done**, read from the Management
+   API rather than a person.
+5. ~~Watch it go green~~ — **done.** Run 30491591544.
 6. Write a migration for `project_marks` so a fresh database can be rebuilt from
-   this repo.
+   this repo. **Still outstanding** — the only step not finished.
+7. Re-point `SLACK_CHANGELOG_WEBHOOK` at `#infinity-app-changelog`, per the
+   section above. **Still outstanding, and needs Taylor.**
 
 ## Where each piece lives
 
