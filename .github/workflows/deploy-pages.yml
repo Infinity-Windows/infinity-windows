@@ -52,3 +52,18 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # This workflow is how the app reaches users at all. If it fails, master and
+  # what installers are running have silently diverged, which is the exact gap
+  # the always-live work exists to close.
+  notify-failure:
+    name: Tell Slack if this broke
+    needs: [build, deploy]
+    if: failure()
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      detail: >-
+        The app did NOT ship. Everyone is still on the previous version until
+        this is fixed and re-run.
+    secrets: inherit

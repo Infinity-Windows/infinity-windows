@@ -226,3 +226,17 @@ jobs:
         run: |
           set -o pipefail
           scripts/verify-functions.sh | tee "$GITHUB_STEP_SUMMARY"
+
+  # The backend half of every merge. If this breaks, master and production have
+  # diverged again — which is the whole reason this workflow exists.
+  notify-failure:
+    name: Tell Slack if this broke
+    needs: [functions, migrations, verify]
+    if: failure()
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      detail: >-
+        Some of the backend did not ship, so the app may be running against a
+        database or functions that do not match the code.
+    secrets: inherit

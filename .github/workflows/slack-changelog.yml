@@ -118,3 +118,20 @@ jobs:
 
           curl -sS -X POST -H 'Content-type: application/json' \
             --data "$payload" "$SLACK_WEBHOOK"
+
+  # If the changelog itself breaks, the record of what shipped is missing and
+  # nothing else would say so. Posting the alarm through the same webhook is
+  # fine: a failure here is almost always jq/curl/payload trouble rather than
+  # the webhook being down, and if the webhook really is down this degrades to
+  # a quiet no-op rather than a second red X.
+  notify-failure:
+    name: Tell Slack if this broke
+    needs: [proposed, shipped]
+    if: failure()
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      detail: >-
+        A change landed but its changelog post did not go out, so the channel is
+        missing a record of it.
+    secrets: inherit
