@@ -23,12 +23,20 @@
 -- ---------------------------------------------------------------------------
 -- Role rank, as its own predicate
 -- ---------------------------------------------------------------------------
--- Mirrors roleRank() in app/src/lib/install/types.ts exactly, including the
--- legacy names (lead → foreman, admin → supervisor, big_boss → owner) and the
--- installer floor for anything unknown, so an unrecognised role can never
--- over-grant. SECURITY DEFINER with a pinned search_path so it can read
--- profiles no matter what the caller's own RLS allows — this deliberately does
--- not depend on the profiles policies, which are being reworked separately.
+-- The ladder itself lives in ONE place: public.role_rank(text), added by
+-- 20260729200000_profiles_rls_lockdown.sql, which mirrors roleRank() in
+-- app/src/lib/install/types.ts including the legacy aliases and the installer
+-- floor. A second copy of a ladder that decides who may spend money is a
+-- drift risk, so this only does the part role_rank cannot: look up an
+-- arbitrary user's role.
+--
+-- That difference is why my_role_rank() is not enough. The meter judges the
+-- user the edge function was called *for*, and it runs on the service-role
+-- key, so auth.uid() is null there.
+--
+-- SECURITY DEFINER with a pinned search_path so it reads profiles regardless
+-- of the caller's own RLS. It returns one integer about one account and is
+-- readable by signed-in users only.
 create or replace function public.ai_role_rank(p_uid uuid)
 returns integer
 language sql
@@ -36,15 +44,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select case (select role from profiles where id = p_uid)
-    when 'owner' then 3
-    when 'big_boss' then 3
-    when 'supervisor' then 2
-    when 'admin' then 2
-    when 'foreman' then 1
-    when 'lead' then 1
-    else 0
-  end;
+  select public.role_rank((select role from profiles where id = p_uid));
 $$;
 
 -- ---------------------------------------------------------------------------

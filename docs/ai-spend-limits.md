@@ -203,6 +203,11 @@ installer -> ai_spend_set_limits(9999, 9999999, ...)
   grants `EXECUTE` to `PUBLIC` by default, so the revoke is explicit.
 - `ai_spend_overview` and `ai_spend_set_limits` are reachable by signed-in users
   and check `auth.uid()`'s rank internally. Rank is never taken from the caller.
+- The role ladder is **not** duplicated. `ai_role_rank(uuid)` delegates to
+  `role_rank(text)` from the profiles lockdown migration, which mirrors
+  `roleRank()` in `app/src/lib/install/types.ts`. `my_role_rank()` cannot be
+  used here: the meter judges the user the edge function was called *for*, and
+  it runs on the service-role key where `auth.uid()` is null.
 - `search_path` is pinned to `public` on all six functions.
 - The migration creates only its own five tables and touches neither `profiles`
   nor any existing policy.
