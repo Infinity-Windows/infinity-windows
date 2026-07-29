@@ -157,7 +157,22 @@ the admin API — no mail is sent and his password is not touched.
 ALL CHECKS PASSED: an owner can onboard a new crew member, and a stranger cannot.
 ```
 
-E3 is the step that matters: the account is not merely created, it **authenticates**.
+E3 is the step that matters: the account is not merely created, it
+**authenticates**.
+
+### One gap to be aware of until this PR merges
+
+The edge function is **deployed to production** and works — everything above was
+measured against the live project, not a sandbox. The **Admin screen** that calls
+it ships with this PR. So between now and the merge, an owner tapping Approve in
+the live app is still running the old bundle, which only marks the row.
+
+That window is deliberate (this PR is opened unmerged for review) and it is
+short: the build is green and the change is ready. If somebody needs to be
+onboarded before it merges, merging is the fix — there is no manual workaround
+worth writing down, because avoiding manual workarounds is the entire point of
+the change. Self-signup was closed only after the server side was proved
+working, so the capability exists today; what is waiting is the button.
 
 ---
 
