@@ -34,3 +34,17 @@ jobs:
 
       - name: Test
         run: npm test
+
+  verify-script:
+    name: Deploy-verification script tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # scripts/verify-functions.sh is what decides whether a backend deploy
+      # really happened, so it gets tested like anything else. The tests stub
+      # curl and never touch the network.
+      - name: Test scripts/verify-functions.sh
+        shell: bash
+        run: scripts/verify-functions.test.sh
