@@ -382,6 +382,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
     blurb:
       "Job costing and margin — bids/revenue, the cost ledger, change orders and computed margin per job. Owner-only financial view.",
   },
+  {
+    path: "/ai-spend",
+    label: "AI spend",
+    minRole: "owner",
+    blurb:
+      "What the AI assistant costs, and the limits that stop it running away — spend so far this month, who is using it, the per-person daily allowance and the company ceiling. Owner-editable.",
+  },
 ];
 
 /**

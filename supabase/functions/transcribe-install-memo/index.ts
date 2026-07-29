@@ -7,7 +7,13 @@ import {
   SUPABASE_URL,
   whisperTranscribe,
 } from "../_shared/openai.ts";
-import { requireCaller } from "../_shared/auth.ts";
+import { verifyCaller } from "../_shared/auth.ts";
+import {
+  notifyOwnersOfSpend,
+  releaseAiSpend,
+  reserveAiSpend,
+  settleAiSpend,
+} from "../_shared/spendGuard.ts";
 
 const TOPIC_KEYS = [
   "difficulty",
@@ -39,8 +45,12 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: cors });
   }
 
-  const unauthorized = await requireCaller(req, cors);
-  if (unauthorized) return unauthorized;
+  const auth = await verifyCaller(req);
+  if (auth.status === "unauthorized") {
+    return jsonResponse({ error: "unauthorized" }, 401, cors);
+  }
+  const callerId =
+    auth.status === "ok" && auth.user.id !== "service_role" ? auth.user.id : null;
 
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -87,8 +97,41 @@ Deno.serve(async (req) => {
       .download(path);
     if (dlErr) throw dlErr;
 
+    // Spend guard, write-time. Placed after every "already done / not a memo"
+    // skip above so a no-op invocation books nothing. This one deliberately
+    // carries NO role floor and NO per-user daily count: it usually runs as a
+    // storage webhook with no end user at all, it is idempotent (a second call
+    // on the same memo exits above), and it is bounded by how many memos crew
+    // actually record. Blocking it would silently throw away field knowledge
+    // that cannot be re-recorded. The company ceiling still applies.
+    const gate = await reserveAiSpend(supabase, {
+      userId: callerId,
+      functionName: "transcribe-install-memo",
+    });
+    if (gate.alert) {
+      await notifyOwnersOfSpend(gate.alert, gate.alertProfileIds, {
+        supabaseUrl: SUPABASE_URL,
+        serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+      });
+    }
+    if (!gate.allowed) {
+      return jsonResponse(
+        {
+          skipped: true,
+          limited: true,
+          reason: "the company's monthly AI budget is used up",
+          note: "The memo is saved and will transcribe once an owner raises the AI ceiling.",
+        },
+        200,
+        cors,
+      );
+    }
+
     const filename = path.split("/").pop() ?? "memo.webm";
-    const transcript = await whisperTranscribe(file, filename);
+    const transcript = await whisperTranscribe(file, filename).catch(async (err) => {
+      await releaseAiSpend(supabase, gate.reservationId, "whisper_failed", false);
+      throw err;
+    });
 
     // Pull the install-event's photos for vision context (before/after).
     const imageUrls: string[] = [];
@@ -109,12 +152,26 @@ Deno.serve(async (req) => {
       if (signed?.signedUrl) imageUrls.push(signed.signedUrl);
     }
 
+    let usage: { inputTokens: number | null; outputTokens: number | null } | null = null;
     const topics = await chatJsonVision<TopicMap>(
       "You process window-install field memos. Split the installer's voice transcript into fixed topic fields, using the before/after photos as extra context. Use null for topics not mentioned. Keep each field concise (1-3 sentences). Also suggest a quality grade 1-5 (5 = flawless install) from the transcript and photos (null if unclear), and list any concrete visual observations from the photos (e.g. 'shim gap uneven on latch side', 'clean flashing tape') as photo_findings.",
       `Transcript:\n${transcript}`,
       `Schema: { "difficulty": string|null, "went_well": string|null, "went_poorly": string|null, "obstacles": string|null, "tools_helped": string|null, "time_vs_estimate": string|null, "safety_notes": string|null, "do_again": string|null, "suggested_grade": number|null, "photo_findings": string[]|null }`,
       imageUrls,
+      (u) => {
+        usage = u;
+      },
     );
+
+    // Whisper bills by audio minute, not tokens, so the transcript length is the
+    // only signal we have: ~150 spoken words a minute, ~5 characters a word,
+    // $0.006 a minute = 6,000 micro-dollars. The vision pass is priced from its
+    // real token counts on top.
+    const whisperMicros = Math.max(
+      1_000,
+      Math.round((transcript.length / (150 * 5)) * 6_000),
+    );
+    await settleAiSpend(supabase, gate.reservationId, usage, "gpt-4o", whisperMicros);
 
     const patch: Record<string, string | null> = {};
     for (const key of TOPIC_KEYS) {

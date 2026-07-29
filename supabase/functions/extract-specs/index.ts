@@ -13,14 +13,43 @@
 // (`lib/install/specs.ts`) does the deterministic size-code decode and final
 // normalization/merge, so this function just returns best-effort raw fields.
 
-import { corsHeaders, jsonResponse } from "../_shared/openai.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
+  corsHeaders,
+  jsonResponse,
+  SUPABASE_SERVICE_ROLE_KEY,
+  SUPABASE_URL,
+} from "../_shared/openai.ts";
+import {
+  ANTHROPIC_MODEL,
   anthropicChat,
   anthropicVisionChat,
   dataUrlToImage,
   requireAnthropic,
+  type AnthropicUsage,
 } from "../_shared/anthropic.ts";
-import { requireCaller } from "../_shared/auth.ts";
+import { verifyCaller } from "../_shared/auth.ts";
+import {
+  notifyOwnersOfSpend,
+  releaseAiSpend,
+  reserveAiSpend,
+  settleAiSpend,
+  type SpendVerdict,
+} from "../_shared/spendGuard.ts";
+
+/** Running token total for one invocation. Every provider call adds to it, so
+ * the ceiling is reconciled against what a whole planset actually cost. */
+interface UsageTally {
+  inputTokens: number;
+  outputTokens: number;
+}
+
+function tally(into: UsageTally): (u: AnthropicUsage) => void {
+  return (u) => {
+    into.inputTokens += u.inputTokens ?? 0;
+    into.outputTokens += u.outputTokens ?? 0;
+  };
+}
 
 interface RawSpec {
   mark_code: string;
@@ -328,6 +357,7 @@ const SCHEMA =
  */
 async function extractVisionPage(
   img: { pageNumber: number; dataUrl: string },
+  usage: UsageTally,
 ): Promise<{ marks: RawVisionMark[]; status: VisionPageStatus }> {
   const pageNumber = img.pageNumber;
   const parsedImg = dataUrlToImage(img.dataUrl ?? "");
@@ -358,6 +388,7 @@ async function extractVisionPage(
           "mark's elevation drawing, and return the JSON now.",
         images: [parsedImg],
         maxTokens: 4096,
+        onUsage: tally(usage),
       });
       const parsed = parseJsonLoose(reply) as
         | { marks?: unknown[] }
@@ -409,8 +440,12 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: cors });
   }
 
-  const unauthorized = await requireCaller(req, cors);
-  if (unauthorized) return unauthorized;
+  const auth = await verifyCaller(req);
+  if (auth.status === "unauthorized") {
+    return jsonResponse({ error: "unauthorized" }, 401, cors);
+  }
+  const callerId =
+    auth.status === "ok" && auth.user.id !== "service_role" ? auth.user.id : null;
 
   try {
     requireAnthropic();
@@ -422,6 +457,59 @@ Deno.serve(async (req) => {
       | { pageNumber: number; dataUrl: string }[]
       | undefined;
 
+    // Spend guard, write-time. Reading a plan set is the one AI cost in this app
+    // that is genuinely per-job rather than per-curiosity: it happens once when
+    // a planset lands, an owner or foreman triggers it from a review screen, and
+    // what it produces is the schedule the whole install runs off. So it carries
+    // NO role floor beyond the existing foreman-only route and NO per-user daily
+    // count — a 12-page spec sheet legitimately makes 12 calls in one breath.
+    // It is metered, and it stops at the company ceiling (with the write-time
+    // headroom multiplier), so it can never be the thing that surprises anyone.
+    const meter =
+      SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+        ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        : null;
+    const usage: UsageTally = { inputTokens: 0, outputTokens: 0 };
+    const units = Math.max(
+      1,
+      Array.isArray(images) && images.length > 0
+        ? Math.min(images.length, 12)
+        : Array.isArray(pages)
+          ? Math.min(pages.length, 8)
+          : 1,
+    );
+    const gate: SpendVerdict = await reserveAiSpend(meter, {
+      userId: callerId,
+      functionName: "extract-specs",
+      units,
+    });
+    if (gate.alert) {
+      await notifyOwnersOfSpend(gate.alert, gate.alertProfileIds, {
+        supabaseUrl: SUPABASE_URL,
+        serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+      });
+    }
+    if (!gate.allowed) {
+      return jsonResponse(
+        {
+          specs: [],
+          mode: "limited",
+          pages: [],
+          limited: true,
+          limit_reason: gate.reason,
+          note: "The company's monthly AI budget is used up, so this plan set wasn't read. An owner can raise the ceiling on the AI spend screen and run the extraction again.",
+        },
+        200,
+        cors,
+      );
+    }
+
+    /** Book the real cost once, on whichever path returns. */
+    const settle = () =>
+      usage.inputTokens === 0 && usage.outputTokens === 0
+        ? releaseAiSpend(meter, gate.reservationId, "no_provider_response", true)
+        : settleAiSpend(meter, gate.reservationId, usage, ANTHROPIC_MODEL);
+
     // PRIMARY path: page images. The rich per-mark specs on manufacturer shop
     // drawings (STRATA-style) are drawn into the PDF as graphics, so their text
     // layer is empty/scrambled — Claude VISION reads them perfectly. One page
@@ -431,7 +519,7 @@ Deno.serve(async (req) => {
       const limitedImages = images.slice(0, MAX_VISION_PAGES);
 
       const pageResults = await Promise.all(
-        limitedImages.map((img) => extractVisionPage(img)),
+        limitedImages.map((img) => extractVisionPage(img, usage)),
       );
 
       // Merge by raw mark string so a mark split across pages is reunited
@@ -452,6 +540,7 @@ Deno.serve(async (req) => {
         }
       }
 
+      await settle();
       return jsonResponse(
         {
           specs: [...byMark.values()],
@@ -464,6 +553,7 @@ Deno.serve(async (req) => {
     }
 
     if (!Array.isArray(pages) || pages.length === 0) {
+      await releaseAiSpend(meter, gate.reservationId, "no_pages", true);
       return jsonResponse({ error: "pages[] or images[] required" }, 400, cors);
     }
 
@@ -501,6 +591,7 @@ Deno.serve(async (req) => {
               },
             ],
             maxTokens: 4096,
+            onUsage: tally(usage),
           });
           const parsed = parseJsonLoose(reply) as
             | { specs?: unknown[] }
@@ -540,6 +631,7 @@ Deno.serve(async (req) => {
     }
     const specs = [...byMark.values()];
 
+    await settle();
     // `pages` is always present so the client never has to branch on its
     // absence; it's empty here because the text path batches several pages into
     // one LLM call, so there is no honest per-page outcome to report.

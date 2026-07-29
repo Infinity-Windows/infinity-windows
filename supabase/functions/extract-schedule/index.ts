@@ -1,9 +1,18 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
   chatJson,
   corsHeaders,
   jsonResponse,
+  SUPABASE_SERVICE_ROLE_KEY,
+  SUPABASE_URL,
 } from "../_shared/openai.ts";
-import { requireCaller } from "../_shared/auth.ts";
+import { verifyCaller } from "../_shared/auth.ts";
+import {
+  notifyOwnersOfSpend,
+  releaseAiSpend,
+  reserveAiSpend,
+  settleAiSpend,
+} from "../_shared/spendGuard.ts";
 
 interface ScheduleRow {
   openingCode: string;
@@ -23,8 +32,12 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: cors });
   }
 
-  const unauthorized = await requireCaller(req, cors);
-  if (unauthorized) return unauthorized;
+  const auth = await verifyCaller(req);
+  if (auth.status === "unauthorized") {
+    return jsonResponse({ error: "unauthorized" }, 401, cors);
+  }
+  const callerId =
+    auth.status === "ok" && auth.user.id !== "service_role" ? auth.user.id : null;
 
   try {
     const body = await req.json();
@@ -70,18 +83,70 @@ Deno.serve(async (req) => {
     const schema = `Schema: { "rows": [ { "openingCode": string, "typeText": string, "qty": number, "label": string|null, "pageNumber": number, "widthIn": number|null, "heightIn": number|null, "color": string|null, "kind": "window"|"door" } ] }`;
     const catalogHint = `Known catalog types (prefer these typeText values when matching):\n${JSON.stringify(catalog.slice(0, 200))}`;
 
+    // Spend guard, write-time flavour. Reading a planset is owner-triggered,
+    // happens once per job rather than once per curiosity, and produces the
+    // schedule the whole install runs off — so it carries NO role floor and NO
+    // per-user daily count (a 100-opening planset legitimately needs a dozen
+    // calls in one go). It is still metered, and it still stops at the company
+    // ceiling. The estimate is per batch, because that is what costs money.
+    const meter =
+      SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+        ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        : null;
+    const gate = await reserveAiSpend(meter, {
+      userId: callerId,
+      functionName: "extract-schedule",
+      units: limitedBatches.length,
+    });
+    if (gate.alert) {
+      await notifyOwnersOfSpend(gate.alert, gate.alertProfileIds, {
+        supabaseUrl: SUPABASE_URL,
+        serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+      });
+    }
+    if (!gate.allowed) {
+      return jsonResponse(
+        {
+          rows: [],
+          limited: true,
+          limit_reason: gate.reason,
+          note: "The company's monthly AI budget is used up, so this planset wasn't read. An owner can raise the ceiling on the AI spend screen and run it again.",
+        },
+        200,
+        cors,
+      );
+    }
+
+    let inTokens = 0;
+    let outTokens = 0;
     const batchResults = await Promise.all(
       limitedBatches.map((text) =>
         chatJson<{ rows: ScheduleRow[] }>(
           system,
           `${catalogHint}\n\nPlanset text:\n${text}`,
           schema,
+          (u) => {
+            inTokens += u.inputTokens ?? 0;
+            outTokens += u.outputTokens ?? 0;
+          },
         ).catch((err) => {
           console.error("batch failed", err);
           return { rows: [] as ScheduleRow[] };
         }),
       ),
     );
+
+    if (inTokens === 0 && outTokens === 0) {
+      // Every batch failed before the provider charged anything.
+      await releaseAiSpend(meter, gate.reservationId, "all_batches_failed", true);
+    } else {
+      await settleAiSpend(
+        meter,
+        gate.reservationId,
+        { inputTokens: inTokens, outputTokens: outTokens },
+        "gpt-4o-mini",
+      );
+    }
 
     const clean = batchResults
       .flatMap((r) => r.rows ?? [])

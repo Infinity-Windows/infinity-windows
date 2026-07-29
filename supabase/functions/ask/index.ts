@@ -6,8 +6,19 @@ import {
   SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL,
 } from "../_shared/openai.ts";
-import { anthropicChat, requireAnthropic } from "../_shared/anthropic.ts";
+import {
+  ANTHROPIC_API_KEY,
+  ANTHROPIC_MODEL,
+  anthropicChat,
+  type AnthropicUsage,
+} from "../_shared/anthropic.ts";
 import { verifyCaller } from "../_shared/auth.ts";
+import {
+  notifyOwnersOfSpend,
+  releaseAiSpend,
+  reserveAiSpend,
+  settleAiSpend,
+} from "../_shared/spendGuard.ts";
 import {
   ASK_SYSTEM_PROMPT,
   buildAnthropicMessages,
@@ -544,9 +555,6 @@ Deno.serve(async (req) => {
   const userId = auth.status === "ok" ? auth.user.id : null;
 
   try {
-    // The function's one hard dependency is now the Anthropic key (Claude
-    // generates the answer). OpenAI/embeddings are best-effort below.
-    requireAnthropic();
     const body = await req.json().catch(() => ({}));
     const question = String(body.question ?? "").trim();
     if (!question) {
@@ -563,6 +571,53 @@ Deno.serve(async (req) => {
           )
           .slice(-8)
       : [];
+
+    // Without the Anthropic key this function cannot spend a cent, so there is
+    // nothing to meter — and metering anyway would charge somebody's daily
+    // allowance for a call that was always free. Hence this sits BEFORE the
+    // guard, and answers the way a refusal does: an empty answer, which is
+    // already the client's signal to serve the company brain. The brain is
+    // where the answer comes from either way, so this is a silent fall-through
+    // rather than the 500 it used to be.
+    if (!ANTHROPIC_API_KEY) {
+      return jsonResponse({ answer: "", sources: [] }, 200, cors);
+    }
+
+    // ---- Spend guard -------------------------------------------------------
+    // Placed immediately before the first thing that can cost money, and after
+    // everything that cannot. Nothing above this line spends, so nothing above
+    // it is metered. Two facts make that the whole ballgame:
+    //
+    //  - A question the company brain can answer never reaches this function.
+    //    AskInfinity.tsx tries cached live data, then the bundled brain, and
+    //    only calls here when both came up empty (see step 3 there). Free
+    //    answers therefore cost nobody a question from their daily 40.
+    //  - A question that arrives when we cannot pay returns above, unmetered.
+    //
+    // A refusal is a 200 with an empty `answer` and a `note`, never an error, so
+    // an installer at a jobsite gets a real answer whether or not a budget ran
+    // out. See docs/ai-spend-limits.md.
+    const meter =
+      SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+        ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        : null;
+    const gate = await reserveAiSpend(meter, {
+      userId: userId === "service_role" ? null : userId,
+      functionName: "ask",
+    });
+    if (gate.alert) {
+      await notifyOwnersOfSpend(gate.alert, gate.alertProfileIds, {
+        supabaseUrl: SUPABASE_URL,
+        serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+      });
+    }
+    if (!gate.allowed) {
+      return jsonResponse(
+        { answer: "", sources: [], limited: true, limit_reason: gate.reason, note: gate.note },
+        200,
+        cors,
+      );
+    }
 
     // (a) + (b) retrieve vault chunks (RAG) and (c) a compact live-data
     // snapshot. RAG is OPTIONAL: it needs OpenAI embeddings, so if no OpenAI key
@@ -595,10 +650,23 @@ Deno.serve(async (req) => {
       history,
       buildAskUserMessage(question, contextBlock),
     );
-    const answer = await anthropicChat({
-      system: ASK_SYSTEM_PROMPT,
-      messages,
-    });
+    let usage: AnthropicUsage | null = null;
+    let answer: string;
+    try {
+      answer = await anthropicChat({
+        system: ASK_SYSTEM_PROMPT,
+        messages,
+        onUsage: (u) => {
+          usage = u;
+        },
+      });
+    } catch (e) {
+      // Refund the money, keep the call count: a client stuck in a retry loop is
+      // the runaway this guards against, and it must still run out of quota.
+      await releaseAiSpend(meter, gate.reservationId, "provider_failed", false);
+      throw e;
+    }
+    await settleAiSpend(meter, gate.reservationId, usage, ANTHROPIC_MODEL);
 
     return jsonResponse(
       { answer, sources: dedupeSources(chunks) },

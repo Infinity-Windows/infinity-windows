@@ -72,6 +72,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Cost codes (`/cost-codes`)
 - Cost (`/costing`)
+- AI spend (`/ai-spend`)
 - Daily logs (`/daily-logs`)
 - Conditions (`/conditions`)
 - Contacts (`/contacts`)
@@ -167,6 +168,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Cost codes (`/cost-codes`)
 - Cost (`/costing`)
+- AI spend (`/ai-spend`)
 
 ## Supervisor
 
@@ -265,6 +267,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 **Blocked:**
 
 - Cost (`/costing`)
+- AI spend (`/ai-spend`)
 
 ## Owner
 
@@ -311,11 +314,12 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Safety (`/safety`)
 - Ask (`/ask`)
 - AI Knowledge (`/knowledge`)
+- AI spend (`/ai-spend`)
 - Notifications (`/notifications`)
 - Settings (`/settings`)
 - Admin (`/admin`)
 
-**Can reach (all 44 allowed destinations):**
+**Can reach (all 45 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -351,6 +355,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Admin (`/admin`)
 - Cost codes (`/cost-codes`)
 - Cost (`/costing`)
+- AI spend (`/ai-spend`)
 - Photos & receipts (`/photos`)
 - Daily logs (`/daily-logs`)
 - Completed installs (`/completed-installs`)

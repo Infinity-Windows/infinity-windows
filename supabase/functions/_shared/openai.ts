@@ -32,10 +32,34 @@ export function jsonResponse(
   });
 }
 
+/** What the provider says it charged for, so the spend ceiling can be reconciled
+ * against real token usage rather than an estimate of call counts. */
+export interface OpenAiUsage {
+  inputTokens: number | null;
+  outputTokens: number | null;
+}
+
+export type UsageSink = (usage: OpenAiUsage) => void;
+
+/** Pull `usage` off a chat/embeddings response, tolerating its absence. */
+function readUsage(data: { usage?: unknown }): OpenAiUsage {
+  const u = (data.usage ?? {}) as {
+    prompt_tokens?: unknown;
+    completion_tokens?: unknown;
+    total_tokens?: unknown;
+  };
+  const num = (v: unknown) => (typeof v === "number" ? v : null);
+  return {
+    inputTokens: num(u.prompt_tokens) ?? num(u.total_tokens),
+    outputTokens: num(u.completion_tokens),
+  };
+}
+
 export async function chatJson<T>(
   system: string,
   user: string,
   schemaHint: string,
+  onUsage?: UsageSink,
 ): Promise<T> {
   const key = requireOpenAI();
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -59,6 +83,7 @@ export async function chatJson<T>(
     throw new Error(`OpenAI chat failed: ${res.status} ${text}`);
   }
   const data = await res.json();
+  onUsage?.(readUsage(data));
   const content = data.choices?.[0]?.message?.content;
   if (!content) throw new Error("OpenAI returned empty content");
   return JSON.parse(content) as T;
@@ -73,6 +98,7 @@ export async function chatJsonVision<T>(
   user: string,
   schemaHint: string,
   imageUrls: string[] = [],
+  onUsage?: UsageSink,
 ): Promise<T> {
   const key = requireOpenAI();
   const content: unknown[] = [{ type: "text", text: user }];
@@ -100,6 +126,7 @@ export async function chatJsonVision<T>(
     throw new Error(`OpenAI vision chat failed: ${res.status} ${text}`);
   }
   const data = await res.json();
+  onUsage?.(readUsage(data));
   const out = data.choices?.[0]?.message?.content;
   if (!out) throw new Error("OpenAI returned empty content");
   return JSON.parse(out) as T;
@@ -110,7 +137,10 @@ export async function chatJsonVision<T>(
  * vector per input, in the same order. The OpenAI embeddings endpoint accepts
  * an array input, so a whole chunk batch is one request.
  */
-export async function embed(texts: string[]): Promise<number[][]> {
+export async function embed(
+  texts: string[],
+  onUsage?: UsageSink,
+): Promise<number[][]> {
   if (texts.length === 0) return [];
   const key = requireOpenAI();
   const res = await fetch("https://api.openai.com/v1/embeddings", {
@@ -129,6 +159,7 @@ export async function embed(texts: string[]): Promise<number[][]> {
     throw new Error(`OpenAI embeddings failed: ${res.status} ${text}`);
   }
   const data = await res.json();
+  onUsage?.(readUsage(data));
   const rows = (data.data ?? []) as Array<{ index: number; embedding: number[] }>;
   // Sort by index so the returned order always matches the input order.
   return rows

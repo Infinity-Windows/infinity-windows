@@ -22,6 +22,7 @@ import { supabase } from "./lib/supabase";
 import { AskInfinity } from "./pages/AskInfinity";
 import { AskMisses } from "./pages/AskMisses";
 import { Knowledge } from "./pages/Knowledge";
+import { AiSpend } from "./pages/AiSpend";
 import { CycleCount } from "./pages/CycleCount";
 import { Home } from "./pages/Home";
 import { Labels } from "./pages/Labels";
@@ -225,6 +226,10 @@ export default function App() {
             <Route
               path="/knowledge"
               element={<RequireRole path="/knowledge"><Knowledge /></RequireRole>}
+            />
+            <Route
+              path="/ai-spend"
+              element={<RequireRole path="/ai-spend"><AiSpend /></RequireRole>}
             />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/settings" element={<Settings />} />

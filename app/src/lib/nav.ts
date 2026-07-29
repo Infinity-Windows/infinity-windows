@@ -58,6 +58,7 @@ export type RoutePath =
   | "/count"
   | "/ask"
   | "/knowledge"
+  | "/ai-spend"
   | "/notifications"
   | "/search"
   | "/review"
@@ -158,6 +159,7 @@ export const NAV: NavDest[] = [
 
   // Owner only.
   { id: "costing", to: "/costing", label: "Cost", icon: "$", minRole: "owner" },
+  { id: "ai-spend", to: "/ai-spend", label: "AI spend", icon: "◍", minRole: "owner" },
 
   // ---- Horizon-menu stub destinations (render a shared "Coming soon" page) ----
   // Access still flows through this registry so role-gating never drifts.
@@ -374,6 +376,7 @@ const MENU_DEF: MenuSection[] = [
     items: [
       { to: "/ask", label: "Ask", Icon: Sparkles },
       { to: "/knowledge", label: "AI Knowledge", Icon: BrainCircuit },
+      { to: "/ai-spend", label: "AI spend", Icon: DollarSign },
     ],
   },
   {

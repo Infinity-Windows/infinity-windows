@@ -65,6 +65,15 @@ async function functionError(error: unknown): Promise<Error> {
 export interface AskResult {
   answer: string;
   sources: KnowledgeSource[];
+  /**
+   * True when the server declined to pay for an AI answer — the asker isn't a
+   * foreman, they've used today's questions, or the company hit its monthly
+   * ceiling. NOT an error: `answer` is deliberately empty so the caller serves
+   * the bundled company brain, and `note` is one quiet line explaining why the
+   * answer came from there. See docs/ai-spend-limits.md.
+   */
+  limited?: boolean;
+  note?: string;
 }
 
 /** Ask the cloud `ask` function for a real, grounded answer. Throws on any
@@ -81,6 +90,8 @@ export async function askInfinity(
   return {
     answer: String(data?.answer ?? "").trim(),
     sources: Array.isArray(data?.sources) ? (data.sources as KnowledgeSource[]) : [],
+    ...(data?.limited ? { limited: true } : {}),
+    ...(typeof data?.note === "string" && data.note ? { note: data.note } : {}),
   };
 }
 

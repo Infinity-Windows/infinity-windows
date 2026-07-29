@@ -7,7 +7,14 @@ import {
   SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL,
 } from "../_shared/openai.ts";
-import { requireCaller } from "../_shared/auth.ts";
+import { verifyCaller } from "../_shared/auth.ts";
+import {
+  IMAGE_MICROS,
+  notifyOwnersOfSpend,
+  releaseAiSpend,
+  reserveAiSpend,
+  settleAiSpend,
+} from "../_shared/spendGuard.ts";
 
 interface TalkResult {
   title: string;
@@ -72,14 +79,44 @@ Deno.serve(async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
-  const unauthorized = await requireCaller(req, cors);
-  if (unauthorized) return unauthorized;
+  const auth = await verifyCaller(req);
+  if (auth.status === "unauthorized") {
+    return jsonResponse({ error: "unauthorized" }, 401, cors);
+  }
+  const callerId =
+    auth.status === "ok" && auth.user.id !== "service_role" ? auth.user.id : null;
 
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Supabase env not configured");
     }
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Spend guard. Treated like a crew question rather than a batch job: it is
+    // person-triggered, repeatable at will, and the two generated diagrams make
+    // it the priciest single tap in the app (~8 cents against Ask's 2.7). So it
+    // takes the same role floor and the same per-user daily count.
+    //
+    // A refusal is a 200 `skipped`, not an error — the Safety screen keeps the
+    // talk it already has rather than showing a red banner.
+    const gate = await reserveAiSpend(supabase, {
+      userId: callerId,
+      functionName: "generate-toolbox-talk",
+    });
+    if (gate.alert) {
+      await notifyOwnersOfSpend(gate.alert, gate.alertProfileIds, {
+        supabaseUrl: SUPABASE_URL,
+        serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+      });
+    }
+    if (!gate.allowed) {
+      return jsonResponse(
+        { skipped: true, limited: true, limit_reason: gate.reason, note: gate.note },
+        200,
+        cors,
+      );
+    }
+
     const body = await req.json().catch(() => ({}));
     const talkId = typeof body.talk_id === "string" ? body.talk_id : null;
     const withImages = body.with_images !== false; // opt-out; best-effort either way
@@ -95,13 +132,18 @@ Deno.serve(async (req) => {
         .eq("id", targetId)
         .maybeSingle();
       if (error) throw error;
-      if (!existing) return jsonResponse({ error: "unknown talk_id" }, 404, cors);
+      if (!existing) {
+        await releaseAiSpend(supabase, gate.reservationId, "unknown_talk_id", true);
+        return jsonResponse({ error: "unknown talk_id" }, 404, cors);
+      }
       if (!topic) topic = existing.title;
     }
     if (!topic) {
+      await releaseAiSpend(supabase, gate.reservationId, "no_topic", true);
       return jsonResponse({ error: "topic or talk_id required" }, 400, cors);
     }
 
+    let usage: { inputTokens: number | null; outputTokens: number | null } | null = null;
     const result = await chatJson<TalkResult>(
       `You are a construction safety trainer writing a daily toolbox talk for a residential/commercial window & door install crew. Make it genuinely educational, not boilerplate: explain WHY each hazard matters and HOW to work safely in plain, direct language a busy installer will actually read. Be specific to the topic. Keep every line concrete and actionable.`,
       `Topic: ${topic}`,
@@ -114,6 +156,9 @@ Deno.serve(async (req) => {
         "donts": string[3-5] (short don'ts),
         "visual_aid_prompts": string[1-2] (image descriptions for a simple safety diagram)
       }`,
+      (u) => {
+        usage = u;
+      },
     );
 
     const sections = {
@@ -174,6 +219,16 @@ Deno.serve(async (req) => {
       if (insErr) throw insErr;
       targetId = created.id;
     }
+
+    // Real cost = the words the provider charged for, plus a flat charge per
+    // image that actually came back. Images that failed cost nothing.
+    await settleAiSpend(
+      supabase,
+      gate.reservationId,
+      usage,
+      "gpt-4o-mini",
+      visualAids.filter((v) => v.url).length * IMAGE_MICROS,
+    );
 
     return jsonResponse(
       {
