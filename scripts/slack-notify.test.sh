@@ -32,6 +32,11 @@ PAYLOAD=""
 # A fake curl that writes the POST body to a file so the test can read the exact
 # JSON the real one would have sent. CURL_EXIT lets a case simulate an
 # unreachable webhook.
+#
+# It also answers the way Slack does — a short body, then the status code from
+# the script's `-w '\n%{http_code}'`. CURL_BODY and CURL_HTTP let a case play a
+# revoked webhook, which the real curl reports as a perfectly successful
+# transfer of a 404. Defaults are Slack's success answer.
 write_fake_curl() {
   cat >"$root/bin/curl" <<'FAKE'
 #!/usr/bin/env bash
@@ -42,7 +47,11 @@ for arg in "$@"; do
   [ "$arg" = "--data" ] && next=1
 done
 printf '%s' "$body" >"$CURL_LOG"
-exit "${CURL_EXIT:-0}"
+if [ "${CURL_EXIT:-0}" != 0 ]; then
+  echo "curl: (6) Could not resolve host" >&2
+  exit "$CURL_EXIT"
+fi
+printf '%s\n%s' "${CURL_BODY:-ok}" "${CURL_HTTP:-200}"
 FAKE
   chmod +x "$root/bin/curl"
 }
@@ -308,6 +317,75 @@ run \
   ACTOR="someone"
 assert_rc 0
 assert_out_has "not posted"
+
+# --- delivered is not the same as accepted ---------------------------------
+# The bug these pin: `curl -sS` exits 0 for a completed transfer of an HTTP
+# error, so a revoked webhook used to print "Posted ... to Slack" and the run
+# went green. Nothing arrived in the channel for eleven days.
+
+new_case "a revoked webhook (404 no_service) is reported as NOT posted"
+run \
+  CURL_HTTP=404 CURL_BODY="no_service" \
+  SLACK_WEBHOOK="https://hooks.example/T/B/X" \
+  WORKFLOW_NAME="Deploy backend" \
+  RUN_URL="https://example/run" \
+  COMMIT_SHA="abc" \
+  ACTOR="someone"
+assert_rc 0
+assert_out_has "NOT posted"
+assert_out_has "404"
+# Must not claim success anywhere in the output.
+case "$OUT" in
+  *"Posted the"*)
+    echo "  FAIL [$current]: claimed it posted after a 404"
+    failed=$((failed + 1)) ;;
+  *) passed=$((passed + 1)) ;;
+esac
+
+new_case "a rejected webhook annotates the run page, not just the log"
+run \
+  CURL_HTTP=403 CURL_BODY="invalid_token" \
+  SLACK_WEBHOOK="https://hooks.example/T/B/X" \
+  WORKFLOW_NAME="Deploy backend" \
+  RUN_URL="https://example/run" \
+  COMMIT_SHA="abc" \
+  ACTOR="someone"
+assert_rc 0
+assert_out_has "::warning title=Slack notification rejected"
+
+new_case "an unreachable webhook also annotates the run page"
+run \
+  CURL_EXIT=7 \
+  SLACK_WEBHOOK="https://hooks.example/T/B/X" \
+  WORKFLOW_NAME="CI" \
+  RUN_URL="https://example/run" \
+  COMMIT_SHA="abc" \
+  ACTOR="someone"
+assert_rc 0
+assert_out_has "::warning title=Slack notification not delivered"
+
+new_case "Slack's plain ok/200 is reported as posted"
+run \
+  SLACK_WEBHOOK="https://hooks.example/T/B/X" \
+  WORKFLOW_NAME="Deploy backend" \
+  RUN_URL="https://example/run" \
+  COMMIT_SHA="abc" \
+  ACTOR="someone"
+assert_rc 0
+assert_out_has "Posted the failure notification for Deploy backend to Slack."
+
+new_case "a 200 that is not Slack's ok body is still NOT posted"
+# A captive portal or a proxy answering 200 with HTML is not a delivered
+# notification, and treating it as one is the same mistake one layer up.
+run \
+  CURL_HTTP=200 CURL_BODY="<html>sign in</html>" \
+  SLACK_WEBHOOK="https://hooks.example/T/B/X" \
+  WORKFLOW_NAME="CI" \
+  RUN_URL="https://example/run" \
+  COMMIT_SHA="abc" \
+  ACTOR="someone"
+assert_rc 0
+assert_out_has "NOT posted"
 
 new_case "a totally empty environment still exits 0"
 run

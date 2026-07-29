@@ -19,11 +19,10 @@
 #                           https://supabase.com/dashboard/account/tokens
 #
 #   SUPABASE_DB_PASSWORD    The Postgres password for the project, used by
-#                           `supabase db push`.
-#                           Dashboard -> pick the project -> Project Settings
-#                           -> Database -> "Database password". If nobody has
-#                           it any more, "Reset database password" there —
-#                           which breaks anything still using the old one.
+#                           `supabase db push`. Nothing else in this repo uses
+#                           it — not the app, not the other workflows, not the
+#                           scripts — so it can be re-set from the Management
+#                           API without breaking anything here.
 #
 # GITHUB IS NOW THE SOURCE OF TRUTH FOR THE FUNCTIONS' RUNTIME SECRETS.
 #
@@ -62,12 +61,13 @@
 #   gh secret set SUPABASE_ACCESS_TOKEN --repo Infinity-Windows/infinity-windows
 #   gh secret set SUPABASE_DB_PASSWORD  --repo Infinity-Windows/infinity-windows
 #
-# Then re-run: Actions -> Deploy backend -> "Run workflow".
-#
-# Until those exist, every job here is a no-op that annotates the run with what
-# it would have done, so merging this cannot turn the build red on its own.
-# Once they exist the verify job below becomes strict, and a function that is
-# still 404 after a deploy fails the run.
+# THESE JOBS ARE NO LONGER NO-OPS WHEN A SECRET IS ABSENT. They used to warn and
+# pass, on the reasoning that a build nobody can fix today should not be red.
+# That reasoning expired the moment the secrets existed, and it had already cost
+# something: for most of 2026-07-29 the migrations job reported SUCCESS on every
+# single merge while pushing nothing, because SUPABASE_DB_PASSWORD was unset.
+# Ten green ticks that mean "shipped nothing" are worse than one red one. A
+# missing secret is now a regression: it fails, and it says which one.
 
 name: Deploy backend
 
@@ -115,6 +115,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # This used to warn and pass. That is the exact shape of failure this
+      # workflow exists to stop: on 2026-07-29 the migrations job reported
+      # SUCCESS on every merge for hours while pushing nothing at all, because
+      # its password was absent. A green tick that means "we did nothing" is
+      # worse than a red one, because it is believed. Both credentials are set
+      # now, so their absence is a regression and is treated as one.
       - name: Check for credentials
         id: guard
         env:
@@ -122,15 +128,18 @@ jobs:
         run: |
           if [ -z "$TOKEN" ]; then
             echo "ok=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=Edge functions not deployed::SUPABASE_ACCESS_TOKEN is not set, so this run skipped deploying edge functions. Add the secret to enable it."
+            echo "::error title=Edge functions not deployed::SUPABASE_ACCESS_TOKEN is missing, so no function could be deployed. It was set on 2026-07-29, so it has been removed or has expired."
             {
-              echo "### Edge functions: skipped"
+              echo "### Edge functions: NOT deployed"
               echo
-              echo "\`SUPABASE_ACCESS_TOKEN\` is not configured, so nothing was deployed."
+              echo "\`SUPABASE_ACCESS_TOKEN\` is missing, so nothing was deployed."
+              echo "It existed on 2026-07-29 — it has been removed or has expired."
+              echo
+              echo "Re-add it: \`gh secret set SUPABASE_ACCESS_TOKEN\`"
             } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "ok=true" >> "$GITHUB_OUTPUT"
+            exit 1
           fi
+          echo "ok=true" >> "$GITHUB_OUTPUT"
 
       - name: Set up Supabase CLI
         if: steps.guard.outputs.ok == 'true'
@@ -145,6 +154,7 @@ jobs:
         run: |
           set -euo pipefail
           failed=()
+          deployed=0
           for dir in supabase/functions/*/; do
             name="$(basename "$dir")"
             # _shared holds imported helpers, not a deployable function.
@@ -153,6 +163,7 @@ jobs:
             if supabase functions deploy "$name" \
                  --project-ref "$SUPABASE_PROJECT_REF"; then
               echo "deployed $name"
+              deployed=$((deployed + 1))
             else
               echo "::error title=Function deploy failed::$name"
               failed+=("$name")
@@ -163,6 +174,16 @@ jobs:
             echo "failed to deploy: ${failed[*]}" >&2
             exit 1
           fi
+          # A loop over a glob that matches nothing runs zero times and exits 0.
+          # This job would then report success having shipped absolutely
+          # nothing — the silent no-op again, just from a moved directory or a
+          # bad checkout rather than a missing secret. There is never a correct
+          # run of this workflow that deploys no functions.
+          if [ "$deployed" -eq 0 ]; then
+            echo "::error title=Nothing was deployed::No function directories were found under supabase/functions/, so this run shipped nothing."
+            exit 1
+          fi
+          echo "deployed $deployed function(s)"
 
       # Put the secrets there BEFORE anything checks for them. This step is the
       # difference between a pipeline that reports Ask Infinity is broken and one
@@ -418,17 +439,25 @@ jobs:
           TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
-          if [ -z "$TOKEN" ] || [ -z "$DB_PASSWORD" ]; then
+          missing=""
+          [ -z "$TOKEN" ] && missing="SUPABASE_ACCESS_TOKEN"
+          [ -z "$DB_PASSWORD" ] && missing="${missing:+$missing and }SUPABASE_DB_PASSWORD"
+          if [ -n "$missing" ]; then
             echo "ok=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=Migrations not pushed::SUPABASE_ACCESS_TOKEN and/or SUPABASE_DB_PASSWORD are not set, so migrations were not pushed."
+            echo "::error title=Migrations not pushed::$missing is missing, so no database change in this merge reached production."
             {
-              echo "### Migrations: skipped"
+              echo "### Migrations: NOT pushed"
               echo
-              echo "Needs both \`SUPABASE_ACCESS_TOKEN\` and \`SUPABASE_DB_PASSWORD\`."
+              echo "\`$missing\` is missing, so **no database change in this merge"
+              echo "reached production**. The app may now be running code against"
+              echo "a database that does not have the tables it expects."
+              echo
+              echo "Both were set on 2026-07-29. A missing one means it was"
+              echo "removed or has expired, not that setup is unfinished."
             } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "ok=true" >> "$GITHUB_OUTPUT"
+            exit 1
           fi
+          echo "ok=true" >> "$GITHUB_OUTPUT"
 
       - name: Set up Supabase CLI
         if: steps.guard.outputs.ok == 'true'
@@ -512,9 +541,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Strict only once deploying is actually wired up. Before that a missing
-      # function is a known state, not a regression, and failing every push
-      # would train everyone to ignore this job.
+      # Always strict now. This used to derive STRICT from whether the deploy
+      # job had credentials, which left a hole big enough to drive the original
+      # bug through: if the token went missing the deploy job skipped, STRICT
+      # became 0, and this job went green while reporting that functions were
+      # missing. "We could not check" is not "everything is fine" — the same
+      # reasoning that makes an unanswered probe a failure inside the script
+      # makes an unrunnable deploy a failure here. An unreachable project fails.
       #
       # `shell: bash` is load-bearing. Without it GitHub runs the step under
       # `bash -e` with no pipefail, so a pipeline reports the exit code of the
@@ -526,7 +559,7 @@ jobs:
       - name: Probe every function
         shell: bash
         env:
-          STRICT: ${{ needs.functions.outputs.deployed == 'true' && '1' || '0' }}
+          STRICT: "1"
         run: |
           set -o pipefail
           scripts/verify-functions.sh | tee "$GITHUB_STEP_SUMMARY"
