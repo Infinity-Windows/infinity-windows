@@ -268,5 +268,50 @@ class FunctionSecretsTest(unittest.TestCase):
         self.assertIn("send-push", text)
 
 
+class PlainEnglishNames(unittest.TestCase):
+    """The failure message is read by someone who is not an engineer.
+
+    A label is the only part of this tool that cannot be derived from source, so it
+    is the only part that can rot. These tests are the thing that stops it: adding
+    a function without a label fails CI instead of shipping a message that tells
+    the owner "extract-specs is broken", which is not English.
+    """
+
+    def test_every_function_has_a_plain_english_name(self):
+        for name in fs.function_names():
+            self.assertIn(
+                name,
+                fs.FEATURE_NAMES,
+                "add %r to FEATURE_NAMES in scripts/function_secrets.py so the "
+                "failure message can name it in English" % name,
+            )
+
+    def test_no_label_names_a_function_that_no_longer_exists(self):
+        existing = set(fs.function_names())
+        for name in fs.FEATURE_NAMES:
+            self.assertIn(name, existing, "%s was deleted; drop its label" % name)
+
+    def test_labels_stay_short_enough_for_a_one_line_headline(self):
+        for name, label in fs.FEATURE_NAMES.items():
+            self.assertLessEqual(len(label), 40, "%s: %r is too long" % (name, label))
+
+    def test_no_label_contains_the_list_separator(self):
+        """features_needing joins on '|', so a label containing one would split."""
+        for name, label in fs.FEATURE_NAMES.items():
+            self.assertNotIn("|", label, name)
+
+    def test_no_label_is_just_the_directory_name(self):
+        for name, label in fs.FEATURE_NAMES.items():
+            self.assertNotEqual(name, label, "%s needs a real English name" % name)
+
+    def test_the_anthropic_headline_names_both_features(self):
+        """The exact case that will be red on the first real run."""
+        got = fs.features_needing(fs.all_requirements(), "ANTHROPIC_API_KEY")
+        self.assertEqual(got, "Ask Infinity|plan-set reading")
+
+    def test_an_unknown_function_falls_back_to_its_directory_name(self):
+        self.assertEqual(fs.feature_name("not-a-function"), "not-a-function")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

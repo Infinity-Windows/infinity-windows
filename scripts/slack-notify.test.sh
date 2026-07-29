@@ -154,6 +154,101 @@ assert_rc 0
 assert_payload_has "Headline here"
 assert_payload_lacks "A long body"
 
+# --- leading with the actual cause -----------------------------------------
+#
+# The owner is not an engineer. ":rotating_light: Deploy backend FAILED" tells him
+# only to worry; the first thing he reads should be what is wrong and what to do
+# about it. The known first case is the Anthropic key that has never been set.
+
+assert_first_text_line_has() {
+  local first
+  first="$(printf '%s' "$PAYLOAD" | jq -r '.text' 2>/dev/null | head -n 1)"
+  if printf '%s' "$first" | grep -qF -- "$1"; then
+    ok
+  else
+    bad "first line of the post should contain '$1' but was: $first"
+  fi
+}
+
+new_case "a cause becomes the first line, ahead of the workflow name"
+run \
+  SLACK_WEBHOOK="https://hooks.example/T/B/X" \
+  WORKFLOW_NAME="Deploy backend" \
+  RUN_URL="https://example/run" \
+  COMMIT_SHA="deadbeef" \
+  ACTOR="taylorhorizon" \
+  CAUSE="Ask Infinity and plan-set reading need an API key that has not been added yet" \
+  DETAIL="Everything else shipped."
+assert_rc 0
+assert_valid_json
+assert_first_text_line_has "Ask Infinity and plan-set reading need an API key"
+assert_payload_lacks "Deploy backend FAILED"
+# The workflow still has to be identifiable, just not first.
+assert_payload_has "Deploy backend"
+assert_payload_has "Everything else shipped."
+
+new_case "a cause does not claim the whole run shipped nothing"
+run \
+  SLACK_WEBHOOK="https://hooks.example/T/B/X" \
+  WORKFLOW_NAME="Deploy backend" \
+  RUN_URL="https://example/run" \
+  COMMIT_SHA="deadbeef" \
+  ACTOR="someone" \
+  CAUSE="Ask Infinity needs an API key that has not been added yet"
+assert_rc 0
+assert_payload_lacks "Nothing shipped from this run"
+assert_payload_has "what to do is in the run"
+
+new_case "only the first line of a multi-line cause is used"
+run \
+  SLACK_WEBHOOK="https://hooks.example/T/B/X" \
+  WORKFLOW_NAME="Deploy backend" \
+  RUN_URL="https://example/run" \
+  COMMIT_SHA="deadbeef" \
+  ACTOR="someone" \
+  CAUSE="$(printf 'The one line\nWHAT THIS MEANS\nmore detail')"
+assert_rc 0
+assert_valid_json
+assert_first_text_line_has "The one line"
+assert_payload_lacks "WHAT THIS MEANS"
+
+new_case "no cause falls back to the workflow-name header"
+run \
+  SLACK_WEBHOOK="https://hooks.example/T/B/X" \
+  WORKFLOW_NAME="Deploy backend" \
+  RUN_URL="https://example/run" \
+  COMMIT_SHA="deadbeef" \
+  ACTOR="someone"
+assert_rc 0
+assert_payload_has "Deploy backend FAILED"
+assert_payload_has "Nothing shipped from this run"
+
+new_case "an empty cause is treated as absent, not as a blank first line"
+run \
+  SLACK_WEBHOOK="https://hooks.example/T/B/X" \
+  WORKFLOW_NAME="CI" \
+  RUN_URL="https://example/run" \
+  COMMIT_SHA="deadbeef" \
+  ACTOR="someone" \
+  CAUSE=""
+assert_rc 0
+assert_valid_json
+assert_first_text_line_has "CI FAILED"
+
+new_case "a warning can lead with a cause too"
+run \
+  NOTIFY_KIND="warning" \
+  SLACK_WEBHOOK="https://hooks.example/T/B/X" \
+  WORKFLOW_NAME="Deploy backend" \
+  RUN_URL="https://example/run" \
+  COMMIT_SHA="deadbeef" \
+  ACTOR="someone" \
+  CAUSE="1 table exists that no migration describes"
+assert_rc 0
+assert_first_text_line_has "1 table exists that no migration describes"
+assert_payload_lacks "FAILED"
+assert_payload_has "Nothing is broken for users"
+
 new_case "a warning is worded as not-broken and does not say FAILED"
 run \
   NOTIFY_KIND="warning" \

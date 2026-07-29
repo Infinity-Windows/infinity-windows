@@ -266,12 +266,12 @@ plan.
 
 ```bash
 cd app && npm test                          # 1,313 frontend tests
-python3 scripts/test_supabase_merge.py       # merge tooling, stdlib only
-python3 scripts/test_schema_verify.py        # post-push schema drift check
-python3 scripts/test_function_secrets.py     # which function needs which secret
-scripts/verify-functions.test.sh             # the deploy probe, no network
-scripts/verify-function-secrets.test.sh      # the secret check, stubbed CLI
-scripts/slack-notify.test.sh                 # the failure notifier, posts nothing
+python3 scripts/test_supabase_merge.py       # 52  merge tooling, stdlib only
+python3 scripts/test_schema_verify.py        # 25  post-push schema drift check
+python3 scripts/test_function_secrets.py     # 32  which function needs which secret
+scripts/verify-functions.test.sh             # 39  the deploy probe, no network
+scripts/verify-function-secrets.test.sh      # 59  the secret check, stubbed CLI
+scripts/slack-notify.test.sh                 # 57  the failure notifier, posts nothing
 ```
 
 None of them need credentials or a network. What ships automatically, what

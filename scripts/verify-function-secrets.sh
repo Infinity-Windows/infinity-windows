@@ -111,43 +111,109 @@ fi
 
 missing=()
 missing_users=()
+missing_features=()
+checklist=()
 
-echo "project: $REF"
-echo "required by the functions in this repo:"
-while IFS=$'\t' read -r var users; do
+# Everything is worked out BEFORE anything is printed, so the plain-English
+# verdict can lead and the variable-by-variable checklist can follow it. The
+# person who has to act on this is the owner, who is not an engineer: if the
+# first thing he reads is a table of environment variables he has learned
+# nothing, and if it takes him three screens to reach "what do I do" the check
+# has failed at its actual job.
+while IFS=$'\t' read -r var users features; do
   [ -z "$var" ] && continue
   if printf '%s\n' "$present" | grep -qx -- "$var"; then
-    printf '  set      %-24s (%s)\n' "$var" "$users"
+    checklist+=("$(printf '  set      %-24s (%s)' "$var" "$users")")
   else
-    printf '  MISSING  %-24s (%s)\n' "$var" "$users"
+    checklist+=("$(printf '  MISSING  %-24s (%s)' "$var" "$users")")
     missing+=("$var")
     missing_users+=("$users")
+    missing_features+=("${features:-$users}")
   fi
 done <<<"$needs"
 
 if [ "${#missing[@]}" -eq 0 ]; then
+  echo "project: $REF"
+  echo "required by the functions in this repo:"
+  printf '%s\n' "${checklist[@]}"
   echo
   echo "All required Edge Function secrets are set in $REF."
   exit 0
 fi
 
+# One sentence, in the words the reader uses, naming the feature rather than the
+# variable. This is also what goes to Slack as the headline and into the GitHub
+# error annotation, so it has to stand alone with no surrounding output and it has
+# to stay short enough to read at a glance.
+if [ "${#missing[@]}" -eq 1 ]; then
+  IFS='|' read -r -a feats <<<"${missing_features[0]}"
+  case "${#feats[@]}" in
+    1) subject="${feats[0]} needs" ;;
+    2) subject="${feats[0]} and ${feats[1]} need" ;;
+    *) subject="${#feats[@]} app features need" ;;
+  esac
+  headline="$subject an API key that has not been added yet"
+else
+  headline="${#missing[@]} features need API keys that have not been added yet"
+fi
+
 {
+  echo "$headline"
   echo
-  echo "FAIL: ${#missing[@]} required Edge Function secret(s) are not set in $REF."
+  echo "WHAT THIS MEANS"
   echo
   for i in "${!missing[@]}"; do
-    echo "  ${missing[$i]} is missing — ${missing_users[$i]} will return 500 at runtime."
+    echo "  These stop working until someone adds the key ${missing[$i]}:"
+    IFS='|' read -r -a feats <<<"${missing_features[$i]}"
+    for f in "${feats[@]}"; do
+      echo "    - $f"
+    done
+    echo
   done
+  echo "  Everything else shipped fine. This is not something that broke — it is a"
+  echo "  key that was never added, and the app has been failing that way already."
   echo
-  echo "These functions are DEPLOYED and BROKEN: they route, they answer a probe,"
-  echo "and they fail on every real request. Set each one (the command prompts for"
-  echo "the value and does not echo it):"
+  echo "WHAT TO DO"
   echo
+  echo "  1. Open the Supabase dashboard: https://supabase.com/dashboard"
+  echo "  2. Pick the project ($REF)."
+  echo "  3. Go to Project Settings -> Edge Functions -> Secrets."
+  echo "  4. Add:"
   for var in "${missing[@]}"; do
-    echo "  supabase secrets set $var --project-ref $REF"
+    echo "       $var    (paste the key as the value)"
+  done
+  echo "  5. Re-run this workflow: Actions -> Deploy backend -> Run workflow."
+  echo
+  echo "  Nothing needs redeploying afterwards — the functions pick the key up on"
+  echo "  their next request."
+  echo
+  echo "  Same thing from a terminal, if you would rather (it prompts for the"
+  echo "  value and does not echo it):"
+  for var in "${missing[@]}"; do
+    echo "       supabase secrets set $var --project-ref $REF"
   done
   echo
-  echo "Full list and what each is for: README.md, 'Edge Function secrets'."
+  echo "TECHNICAL DETAIL"
+  echo
+  echo "  project: $REF"
+  printf '%s\n' "${checklist[@]}"
+  echo
+  for i in "${!missing[@]}"; do
+    echo "  ${missing[$i]} is not set, so ${missing_users[$i]} return 500 at runtime."
+  done
+  echo
+  echo "  Those functions are DEPLOYED and BROKEN: they route, they answer the 404"
+  echo "  probe, and they fail on every real request. Which function needs which"
+  echo "  key, and why: README.md, 'Edge Function secrets'."
 } >&2
+
+# Hand the one-line cause to the workflow so the Slack post leads with it instead
+# of with a workflow name. Written before the non-zero exit, so it survives it.
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  {
+    echo "missing_count=${#missing[@]}"
+    echo "missing_headline=$headline"
+  } >>"$GITHUB_OUTPUT"
+fi
 
 exit 1

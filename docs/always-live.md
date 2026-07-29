@@ -240,6 +240,12 @@ Three properties it is built to have:
   worse than none.
 - **It degrades quietly.** No `SLACK_CHANGELOG_WEBHOOK`, no jq, an unreachable
   webhook — all log a line and stay green.
+- **It leads with the cause, not the workflow name.** When the failing job can say
+  what actually went wrong it passes a one-line `cause`, and that becomes the first
+  line of the post: *"Ask Infinity and plan-set reading need an API key that has
+  not been added yet"*, with `Deploy backend` demoted to the line below. A reader
+  who is told only "Deploy backend FAILED" learns to worry and nothing else. Jobs
+  that cannot name a cause fall back to the workflow-name header.
 
 **CI failures on a pull request are deliberately not posted.** Whoever opened it
 can see the red mark, and posting every red PR into a channel read by
@@ -300,18 +306,64 @@ today is a repo where red stops meaning anything. Once the secrets exist, the
 same jobs become strict — a function still 404ing after a deploy, a missing
 secret, or a schema that does not match all fail the run.
 
+## The first real run will be red, on purpose
+
+Read this before looking at Actions, because a red mark is alarming and this one
+is not a breakage.
+
+`SUPABASE_ACCESS_TOKEN` now exists in GitHub, so the secret check runs for real.
+`ANTHROPIC_API_KEY` has never been set in Supabase, and it is the only thing
+missing anywhere. So the first `Deploy backend` after this lands will fail with
+exactly one cause:
+
+> Ask Infinity and plan-set reading need an API key that has not been added yet
+
+That is not a regression. Those two features have been failing at runtime this
+whole time — the only new thing is that the pipeline now says so out loud instead
+of shipping green over the top of it. Everything else in that run succeeds: the
+functions deploy, and the frontend ships from its own workflow regardless.
+
+The fix is one field: Supabase dashboard → the project → **Project Settings →
+Edge Functions → Secrets** → add `ANTHROPIC_API_KEY`. Then Actions → Deploy
+backend → Run workflow. Nothing needs redeploying; the functions read the key on
+their next request.
+
+`SUPABASE_DB_PASSWORD` is still deliberately absent, so the migrations job and the
+schema check **skip** with a warning rather than failing.
+
+### What the check will not complain about
+
+The value of a check is destroyed the first time it cries wolf, so this one is
+narrow on purpose:
+
+- **Optional variables are never reported.** `ANTHROPIC_MODEL` and `VAPID_SUBJECT`
+  have working defaults in the function source (`?? "some-default"`), so a missing
+  one changes nothing at runtime. `scripts/function_secrets.py` reads that pattern
+  out of the code and classifies them as optional.
+- **Platform-injected variables are never reported.** `SUPABASE_URL`,
+  `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are supplied by Supabase to
+  every function. Asking a human to set them would be asking for the impossible.
+- **Anything already set is not reported.** `OPENAI_API_KEY` and all three VAPID
+  keys are present, so they appear as `set`.
+
+Both of those exclusions are pinned by tests in
+`scripts/verify-function-secrets.test.sh`, against a stub of the CLI output that
+matches the live project exactly.
+
 ## Turning it all on
 
 Order matters slightly. The runbook for the database part, including the phantom
 migration rows that must be cleared before the first real push, is
 [`db-push-readiness.md`](./db-push-readiness.md).
 
-1. `gh secret set SUPABASE_ACCESS_TOKEN` — edge functions start deploying, and
-   both the secret check and the schema check come alive.
-2. Run `scripts/cleanup-migration-phantoms.sh` (preview, then `--execute`).
-3. `gh secret set SUPABASE_DB_PASSWORD` — migrations start pushing.
-4. Set the Edge Function secrets in Supabase, if they are not already set. The
-   deploy will tell you which are missing.
+1. ~~`gh secret set SUPABASE_ACCESS_TOKEN`~~ — **done.** Edge functions deploy, and
+   the secret check is live.
+2. Add `ANTHROPIC_API_KEY` in the Supabase dashboard under **Project Settings →
+   Edge Functions → Secrets**. This is the one thing standing between the pipeline
+   and green — see [the section above](#the-first-real-run-will-be-red-on-purpose).
+3. Run `scripts/cleanup-migration-phantoms.sh` (preview, then `--execute`).
+4. `gh secret set SUPABASE_DB_PASSWORD` — migrations start pushing, and the schema
+   check comes alive.
 5. Actions → **Deploy backend** → Run workflow, and watch it go green.
 6. Write a migration for `project_marks` so a fresh database can be rebuilt from
    this repo.

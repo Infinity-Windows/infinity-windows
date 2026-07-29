@@ -70,6 +70,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       deployed: ${{ steps.guard.outputs.ok }}
+      # Empty unless the secret check found something missing. A failed step still
+      # publishes the outputs it wrote before exiting, which is what lets the
+      # Slack post below lead with the real cause instead of "Deploy backend
+      # FAILED". If it ever comes through empty the notification simply falls back
+      # to the generic wording, so this degrades rather than breaks.
+      secret_cause: ${{ steps.secrets.outputs.missing_headline }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -133,23 +139,45 @@ jobs:
       #
       # `supabase secrets list` prints names and digests, never values.
       - name: Verify every required function secret exists
+        id: secrets
         if: steps.guard.outputs.ok == 'true'
         shell: bash
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          # `set +e` and PIPESTATUS, not pipefail: the script's exit code has to
-          # survive the tee AND the closing code fence still has to be written,
-          # which an -e abort in the middle of the pipeline would skip.
           set +e
+          scripts/verify-function-secrets.sh >/tmp/secret-check.log 2>&1
+          rc=$?
+          cat /tmp/secret-check.log
+
+          if [ "$rc" -eq 0 ]; then
+            {
+              echo "### Edge function secrets: all set"
+              echo
+              echo '```'
+              cat /tmp/secret-check.log
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # The script leads its failure output with a one-line plain-English
+          # cause (a tested contract — see scripts/verify-function-secrets.test.sh).
+          # Lifting it out to the annotation and the summary heading means the
+          # owner sees "Ask Infinity ... needs an API key" at the top of the run
+          # page, not a wall of shell output he has to interpret.
+          cause="$(head -n 1 /tmp/secret-check.log)"
+          echo "::error title=Action needed::$cause"
           {
-            echo "### Edge function secrets"
+            echo "### $cause"
+            echo
+            echo "Nothing broke in this run. A key that the app needs was never"
+            echo "added. Full instructions, including where to add it:"
             echo
             echo '```'
+            cat /tmp/secret-check.log
+            echo '```'
           } >>"$GITHUB_STEP_SUMMARY"
-          scripts/verify-function-secrets.sh 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
-          rc=${PIPESTATUS[0]}
-          echo '```' >>"$GITHUB_STEP_SUMMARY"
           exit "$rc"
 
   migrations:
@@ -292,9 +320,18 @@ jobs:
     uses: ./.github/workflows/notify-failure.yml
     with:
       workflow: ${{ github.workflow }}
+      # When the cause is a missing function secret we know exactly what to say,
+      # so say that instead of a workflow name. The known first case of this is
+      # ANTHROPIC_API_KEY, which has never been set: the owner will see "Ask
+      # Infinity ... needs an API key that has not been added yet" in Slack rather
+      # than a red X he can only read as "something is broken".
+      cause: ${{ needs.functions.outputs.secret_cause }}
       detail: >-
-        Some of the backend did not ship, so the app may be running against a
-        database or functions that do not match the code.
+        ${{ needs.functions.outputs.secret_cause == ''
+        && 'Some of the backend did not ship, so the app may be running against a
+        database or functions that do not match the code.'
+        || 'Everything else shipped. The key is added in the Supabase dashboard
+        under Project Settings -> Edge Functions -> Secrets.' }}
     secrets: inherit
 
   # Not a failure, and deliberately not one: the database holds objects no
@@ -311,10 +348,11 @@ jobs:
     with:
       workflow: ${{ github.workflow }}
       kind: warning
+      cause: >-
+        ${{ needs.migrations.outputs.live_only_tables }} table(s) in the database
+        are not written down anywhere in this repo
       detail: >-
-        ${{ needs.migrations.outputs.live_only_tables }} table(s) exist in the
-        database that no migration file declares
-        (${{ needs.migrations.outputs.live_only_table_names }}). Each one needs a
+        ${{ needs.migrations.outputs.live_only_table_names }}. Each one needs a
         migration written for it, or a fresh database could not be rebuilt from
-        this repo. Nothing is broken for users.
+        this repo.
     secrets: inherit

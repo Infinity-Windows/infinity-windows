@@ -40,6 +40,16 @@ on:
         required: false
         default: ""
         type: string
+      cause:
+        description: >-
+          Optional one-line, specific, plain-English reason, which becomes the
+          FIRST line of the Slack post with the workflow name demoted below it.
+          Pass this whenever the failing job can say what actually went wrong, so
+          the reader sees "Ask Infinity needs an API key" rather than "Deploy
+          backend FAILED". Leave unset when the cause is not known.
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -57,6 +67,7 @@ jobs:
           SLACK_WEBHOOK: ${{ secrets.SLACK_CHANGELOG_WEBHOOK }}
           NOTIFY_KIND: ${{ inputs.kind }}
           DETAIL: ${{ inputs.detail }}
+          CAUSE: ${{ inputs.cause }}
           WORKFLOW_NAME: ${{ inputs.workflow }}
           RUN_URL: >-
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{

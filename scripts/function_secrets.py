@@ -32,7 +32,7 @@ the sources instead:
 Usage:
     scripts/function_secrets.py            # readable per-function report
     scripts/function_secrets.py --names    # required secret names, one per line
-    scripts/function_secrets.py --users    # "VAR<tab>func,func" per required var
+    scripts/function_secrets.py --users    # VAR<tab>funcs<tab>feature|feature
     scripts/function_secrets.py --json     # machine-readable
 
 Normally invoked through scripts/verify-function-secrets.sh, which compares this
@@ -60,6 +60,48 @@ PLATFORM_PROVIDED = frozenset({
     'SUPABASE_DB_URL',
     'SUPABASE_PUBLISHABLE_KEY',
 })
+
+# What each function IS, for whoever reads the failure. The person who has to act
+# on "ANTHROPIC_API_KEY is missing" is the owner, who is not an engineer: `ask`
+# means nothing to him, "Ask Infinity" is the button he has tapped.
+#
+# This is presentation only — it never affects whether a secret is judged
+# required, so a wrong or missing label cannot produce a wrong verdict. It is the
+# one thing here that cannot be derived from source, since no amount of reading
+# index.ts yields the words "Ask Infinity". test_function_secrets.py asserts every
+# function has an entry, so adding a function without one fails CI rather than
+# quietly falling back to the directory name.
+#
+# Keep them short. They get assembled into a one-line headline that goes to Slack
+# and into a GitHub error annotation, and a label that reads like a sentence makes
+# that line unreadable.
+FEATURE_NAMES = {
+    'ask': 'Ask Infinity',
+    'extract-schedule': 'reading delivery schedules',
+    'extract-specs': 'plan-set reading',
+    'generate-howto': 'how-to guides',
+    'generate-toolbox-talk': 'toolbox talks',
+    'ingest-knowledge': 'adding documents to the brain',
+    'send-push': 'push notifications',
+    'synthesize-type-tips': 'window-type tips',
+    'transcribe-install-memo': 'install voice memos',
+    'vault-config': 'the vault PIN screen',
+}
+
+
+def feature_name(function: str) -> str:
+    """Plain-English name for a function, falling back to its directory name."""
+    return FEATURE_NAMES.get(function, function)
+
+
+def features_needing(reqs: dict, var: str) -> str:
+    """Pipe-separated feature labels, e.g. 'Ask Infinity|plan-set reading'.
+
+    Pipe rather than comma because the labels are reassembled into a list by the
+    caller, and a comma-separated string cannot be split back apart safely the
+    moment one label contains a comma.
+    """
+    return '|'.join(feature_name(n) for n in needing(reqs, var))
 
 
 def strip_comments(src: str) -> str:
@@ -310,8 +352,11 @@ def main(argv):
     elif '--names' in argv:
         sys.stdout.write('\n'.join(required_union(reqs)) + '\n')
     elif '--users' in argv:
+        # VAR <tab> function,function <tab> feature label|feature label
         for var in required_union(reqs):
-            sys.stdout.write('%s\t%s\n' % (var, ','.join(needing(reqs, var))))
+            sys.stdout.write('%s\t%s\t%s\n' % (
+                var, ','.join(needing(reqs, var)), features_needing(reqs, var),
+            ))
     else:
         sys.stdout.write(render(reqs))
     return 0

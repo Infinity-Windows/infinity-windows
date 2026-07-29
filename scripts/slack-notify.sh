@@ -28,6 +28,13 @@
 #   REPO             owner/name, for the fallback commit link.
 #   BRANCH           Optional ref name.
 #   DETAIL           Optional extra plain-English line(s).
+#   CAUSE            Optional. The actual, specific, plain-English reason, in the
+#                    words the reader uses. When set it becomes the FIRST line and
+#                    the workflow name is demoted below it. "Ask Infinity needs an
+#                    API key" tells the owner what to do; "Deploy backend FAILED"
+#                    tells him only to worry, and he is not an engineer. A caller
+#                    that cannot compute a specific cause leaves this unset and
+#                    gets the workflow-name header.
 #
 # Tuning (used by scripts/slack-notify.test.sh, rarely otherwise):
 #   JQ_BIN           Name/path of the jq binary. The test suite points this at
@@ -57,11 +64,21 @@ actor="${ACTOR:-unknown}"
 repo="${REPO:-}"
 branch="${BRANCH:-}"
 detail="${DETAIL:-}"
+# First line only, in case a caller hands over a multi-line message.
+cause="$(printf '%s' "${CAUSE:-}" | head -n 1)"
 
 # First line only: a squash-merge commit body can be dozens of lines.
 headline="$(printf '%s' "${COMMIT_MESSAGE:-}" | head -n 1)"
 
-if [ "$kind" = "warning" ]; then
+if [ -n "$cause" ]; then
+  # Lead with what is actually wrong. The workflow name is bookkeeping and moves
+  # down to the context line.
+  if [ "$kind" = "warning" ]; then
+    header=":warning: *$cause*"
+  else
+    header=":rotating_light: *$cause*"
+  fi
+elif [ "$kind" = "warning" ]; then
   header=":warning: *$workflow needs a look*"
 else
   header=":rotating_light: *$workflow FAILED*"
@@ -75,6 +92,9 @@ if [ -z "$link" ] && [ -n "$repo" ] && [ -n "$sha" ]; then
 fi
 
 lines=("$header")
+# With a cause up top, the workflow name still has to appear somewhere or nobody
+# can tell which run to open.
+[ -n "$cause" ] && lines+=("_from the $workflow workflow_")
 [ -n "$headline" ] && lines+=("*$headline*")
 
 commit_line=""
@@ -92,6 +112,10 @@ fi
 
 if [ "$kind" = "warning" ]; then
   lines+=("Nothing is broken for users. Details in the run:")
+elif [ -n "$cause" ]; then
+  # A specific cause means the caller knows what failed, so do not overclaim that
+  # the whole run shipped nothing — parts of it may well have.
+  lines+=("The full explanation and what to do is in the run:")
 else
   lines+=("Nothing shipped from this run. Open it to see what broke:")
 fi
