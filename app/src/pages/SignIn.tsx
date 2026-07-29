@@ -3,9 +3,18 @@ import { formatApiError } from "../lib/errors";
 import { supabase, supabaseConfigured } from "../lib/supabase";
 import { submitAccessRequest } from "../lib/install/api";
 
-const AMMON_EMAIL = "ammon@horizonsolarusa.com";
-
-type Mode = "signin" | "signup" | "request";
+/**
+ * There is no "create your own account" here any more.
+ *
+ * Anyone with an email address used to be able to sign themselves up, which
+ * put them straight into the crew directory and the twenty-odd screens an
+ * installer can reach. Self-signup is now switched off in the project's auth
+ * settings, so the only way in is: request access, a supervisor or the owner
+ * approves it on the Admin screen, and that approval creates the login and
+ * hands them a one-time password. Leaving the old button here would just show
+ * everyone "Signups not allowed for this instance".
+ */
+type Mode = "signin" | "request";
 
 export function SignIn({
   initialMode = "signin",
@@ -13,9 +22,7 @@ export function SignIn({
   initialMode?: Mode;
 }) {
   const [mode, setMode] = useState<Mode>(initialMode);
-  const [email, setEmail] = useState(
-    initialMode === "signup" ? AMMON_EMAIL : "",
-  );
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -37,35 +44,6 @@ export function SignIn({
       password,
     });
     if (error) setError(error.message);
-    setBusy(false);
-  };
-
-  const signUp = async () => {
-    setBusy(true);
-    setError(null);
-    setInfo(null);
-    try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-      if (signUpError) {
-        setError(signUpError.message);
-      } else if (!data.session) {
-        // Empty identities usually means the email already exists.
-        const already =
-          (data.user?.identities?.length ?? 0) === 0
-            ? " That email already has an account — try Sign in, or Reset password below."
-            : " If you aren't signed in yet, ask Taylor to auto-confirm the user in Supabase Auth, then Sign in.";
-        setInfo(`Account step finished.${already}`);
-        setMode("signin");
-      }
-      // Session present → App auth listener + ensureMyProfile promotes to owner
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Something went wrong. Try again.",
-      );
-    }
     setBusy(false);
   };
 
@@ -159,16 +137,19 @@ export function SignIn({
               value={reqName}
               onChange={(e) => setReqName(e.target.value)}
             />
+            {/* Required, not optional: the email IS the login. Approving a
+                request with no email cannot create an account, which is how
+                approvals used to end in nothing happening. */}
+            <input
+              type="email"
+              placeholder="Email"
+              value={reqEmail}
+              onChange={(e) => setReqEmail(e.target.value)}
+            />
             <input
               placeholder="Cell phone (optional)"
               value={reqPhone}
               onChange={(e) => setReqPhone(e.target.value)}
-            />
-            <input
-              type="email"
-              placeholder="Email (optional)"
-              value={reqEmail}
-              onChange={(e) => setReqEmail(e.target.value)}
             />
             <label className="field-label">Role you're joining as</label>
             <select
@@ -183,7 +164,7 @@ export function SignIn({
             <button
               className="primary big"
               onClick={submitRequest}
-              disabled={busy || !reqName.trim()}
+              disabled={busy || !reqName.trim() || !reqEmail.trim()}
             >
               {busy ? "Submitting..." : "Submit request"}
             </button>
@@ -198,45 +179,6 @@ export function SignIn({
             </button>
           </>
         )
-      ) : mode === "signup" ? (
-        <>
-          <p className="signin-kicker">Create your Owner account</p>
-          <p className="muted" style={{ margin: 0, fontSize: 13, lineHeight: 1.55 }}>
-            Prefills <strong>{AMMON_EMAIL}</strong> (or use{" "}
-            <strong>isaacammonbarlow@gmail.com</strong>). Choose a password (6+
-            characters). After sign-in, that email is promoted to Owner.
-          </p>
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            autoComplete="email"
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            autoComplete="new-password"
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && signUp()}
-          />
-          {error && <p className="error">{error}</p>}
-          {info && <p className="muted">{info}</p>}
-          <button className="primary big" onClick={signUp} disabled={busy}>
-            {busy ? "Creating account..." : "Create Owner account"}
-          </button>
-          <button
-            className="link"
-            onClick={() => {
-              setMode("signin");
-              setError(null);
-              setInfo(null);
-            }}
-          >
-            Already have an account? Sign in
-          </button>
-        </>
       ) : (
         <>
           <p className="signin-kicker">Sign in to your portal</p>
@@ -259,17 +201,6 @@ export function SignIn({
           {info && <p className="muted">{info}</p>}
           <button className="primary big" onClick={signIn} disabled={busy}>
             {busy ? "Signing in..." : "Sign in"}
-          </button>
-          <button
-            className="secondary"
-            onClick={() => {
-              setMode("signup");
-              setEmail(AMMON_EMAIL);
-              setError(null);
-              setInfo(null);
-            }}
-          >
-            Create Owner account
           </button>
           <button className="link" onClick={resetPassword} disabled={busy}>
             Reset password

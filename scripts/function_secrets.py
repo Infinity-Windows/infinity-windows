@@ -76,6 +76,7 @@ PLATFORM_PROVIDED = frozenset({
 # and into a GitHub error annotation, and a label that reads like a sentence makes
 # that line unreadable.
 FEATURE_NAMES = {
+    'approve-access-request': 'letting a new crew member in',
     'ask': 'Ask Infinity',
     'extract-schedule': 'reading delivery schedules',
     'extract-specs': 'plan-set reading',

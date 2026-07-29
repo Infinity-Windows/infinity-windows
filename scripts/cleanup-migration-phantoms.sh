@@ -34,9 +34,27 @@ cd "$(dirname "$0")/.."
 # The script refuses to touch anything unless the database looks exactly like
 # the state these numbers describe. Override only if you know why the state
 # has legitimately moved on since 2026-07-29.
-EXPECT_LOCAL="${EXPECT_LOCAL:-70}"      # migration files on disk
-EXPECT_REMOTE="${EXPECT_REMOTE:-107}"   # rows in schema_migrations before cleanup
-EXPECT_PHANTOMS="${EXPECT_PHANTOMS:-37}" # rows to delete
+#
+# Moved from 70/107/37 on 2026-07-29. Three things happened that day:
+#
+#   * The profiles lockdown added 2 migrations and the security follow-ups
+#     (docs/security-followups-2026-07-29.md) added 3. All five were applied
+#     directly and then recorded under their own filename versions, so all five
+#     are files on disk AND history rows, and NONE of them is a phantom.
+#
+#   * `20260729200000_ask_question_log.sql` merged the same afternoon.
+#
+#   * A 38th phantom appeared that belongs to nobody's file yet:
+#     `20260729220000 staging_bays_guaranteed`, applied to production while its
+#     migration was still on an unmerged branch. It stops being a phantom the
+#     moment that file reaches master, at which point the right numbers are
+#     77 / 113 / 37 — set them explicitly then.
+#
+# These are a measurement, not a target. If the script refuses, read the counts
+# it prints rather than widening the numbers to make it run.
+EXPECT_LOCAL="${EXPECT_LOCAL:-76}"      # migration files on disk
+EXPECT_REMOTE="${EXPECT_REMOTE:-113}"   # rows in schema_migrations before cleanup
+EXPECT_PHANTOMS="${EXPECT_PHANTOMS:-38}" # rows to delete
 
 execute=0
 while [ $# -gt 0 ]; do
