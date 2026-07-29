@@ -181,8 +181,12 @@ export interface CropRequest {
  * under the old behaviour are never served again. Phones hold these in
  * IndexedDB for weeks, and a crew who already has mark #2's black rectangle
  * saved would otherwise keep seeing it after the fix shipped.
+ *
+ * "repair2" is the wider `padBbox` margin: every crop that keeps its stored box
+ * — which is nearly all of them — now covers slightly more of the sheet, so
+ * every saved picture is stale.
  */
-const SPEC_VARIANT = "repair1";
+const SPEC_VARIANT = "repair2";
 
 /**
  * The crop for one mark, as a PNG data URL, or null when the page has no
@@ -255,10 +259,16 @@ export async function hasCachedCrop(req: CropRequest): Promise<boolean> {
 // the same document, the same rendered page canvas, the same IndexedDB store —
 // so a job that has both kinds of drawing still downloads each planset once.
 
-/** Ring color: reads on white paper and on the sheet's own blue/green numbers. */
+/**
+ * Ring color. Kept exactly as it was when these crops were shown on white
+ * paper: checked against the inverted drawing on all five Black Desert walls
+ * and it still reads at a glance, because it is now surrounded by pure black
+ * rather than by white paper and is the only colour left in the picture.
+ * Brightening it was available and turned out not to be needed.
+ */
 const RING_COLOR = "#e11d48";
 /** Tells the elevation crops apart from the spec crop of the same box. */
-const ELEVATION_VARIANT = "elev";
+const ELEVATION_VARIANT = "elev-inv1";
 
 export interface ElevationCropRequest {
   /** The BUILDING planset the elevation sheets live on. */
@@ -282,14 +292,53 @@ function elevationKey(req: ElevationCropRequest): string {
 }
 
 /**
- * Crop the drawing region and ring the mark.
+ * How the building plans are re-coloured: the same grayscale → invert →
+ * floor/gain pipeline as the spec drawings ({@link invertLineArt}), so there is
+ * one colour transform in the app, but with constants measured for THIS source.
  *
- * Deliberately NOT run through `invertLineArt`. That transform exists for
- * manufacturer shop drawings, which are pure black line-work on white; an
- * architectural elevation is stone hatching, glazing tones and the
- * draughtsman's own colored numbers, and inverting it turns the materials into
- * white blobs and throws away the color coding the crew reads. The sheet is
- * shown as drawn.
+ * The GAIN is the decision that matters. A supplier spec sheet is sparse
+ * line-work with little else on it, so 3 is free there. An architectural
+ * elevation is mostly broad tone: stone hatching, shingle, glazing fills. At
+ * gain 3 those mid-greys are lifted with everything else, and measured over
+ * marks #1, #9 and #11 the crop ends up ~50% brighter overall (mean luma 25–27
+ * against 17–18) with 2.5× as many blown-out pixels (4.0–4.1% at 250+ against
+ * 1.6–1.7%). It is still readable — not a smear — but the tone blocks come up
+ * to compete with the line-work, so the drawn openings stop being the brightest
+ * thing on the card. 1.6 keeps the hatching as background texture and leaves
+ * the openings and callout numbers plainly brightest.
+ *
+ * The FLOOR barely matters for legibility, contrary to what you might expect:
+ * checked at 1:1 on the finest thing on these sheets — the leader text and
+ * dimension ticks — the line-work survives identically at 12, 18 and 28. What
+ * the floor removes is the faint background tone below it (raising it from 0 to
+ * 18 takes the pure-black share of the crop from 76.1% to 81.1%). 18 is chosen
+ * as the point where the paper's own scan mottle is gone without discarding the
+ * genuine faint tone in the 18–28 band, which is 2.4% of the crop and which
+ * these sheets have no watermark reason to throw away.
+ *
+ * Tuned here rather than in `markDrawing`: its 28/3 was validated against the
+ * supplier sheets and their watermark, and is not ours to move.
+ */
+const ELEVATION_FLOOR = 18;
+const ELEVATION_GAIN = 1.6;
+
+/**
+ * Crop the drawing region, flip it to white-on-black, and ring the mark.
+ *
+ * ORDER MATTERS, and is the whole reason the ring is stroked here rather than
+ * folded into the crop step: `invertLineArt` runs over the RAW plan pixels
+ * first, and the ring goes on top of the finished black image afterwards.
+ *
+ * Ring an already-inverted image and the ring survives as drawn. Invert an
+ * image that is already ringed and the ring is destroyed — and note HOW, because
+ * it is not the obvious way: `invertLineArt` reduces every pixel to luma before
+ * it inverts, so it has no notion of hue and cannot produce a complement. The
+ * ring's #e11d48 has a luma of 92, which inverts to 163, which the gain drives
+ * past 255 — so it comes out PURE WHITE, not cyan, and is indistinguishable
+ * from the surrounding line-work. Verified by rendering it: 0% of the ring's
+ * pixels stay red and the stroke's mean colour is (255,255,255). A silent,
+ * invisible marker is worse than a wrong-coloured one, which is why nothing
+ * coloured may be drawn on this canvas before the transform runs.
  */
 function cropElevation(
   page: HTMLCanvasElement,
@@ -313,6 +362,10 @@ function cropElevation(
     rect.width,
     rect.height,
   );
+
+  const pixels = ctx.getImageData(0, 0, rect.width, rect.height);
+  invertLineArt(pixels.data, ELEVATION_FLOOR, ELEVATION_GAIN);
+  ctx.putImageData(pixels, 0, 0);
 
   const ring = calloutRingCircle({
     pin: req.pin,

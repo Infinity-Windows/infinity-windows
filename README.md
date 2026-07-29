@@ -88,9 +88,60 @@ never committed.)
 3. Set the Edge Function secrets (never in client / git): `OPENAI_API_KEY`,
    `ANTHROPIC_API_KEY`, and the web-push keys `VAPID_PUBLIC_KEY`,
    `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` — see
-   [Web push notifications](#web-push-notifications) for how those relate to the
-   `VITE_VAPID_PUBLIC_KEY` the frontend needs.
+   [the table below](#edge-function-secrets) for which function needs which and
+   what breaks without it, and [Web push notifications](#web-push-notifications)
+   for how the VAPID keys relate to the `VITE_VAPID_PUBLIC_KEY` the frontend
+   needs.
 4. Create crew users under Authentication → Users, then set roles on the Crew screen.
+
+### Edge Function secrets
+
+These live in **Supabase**, not GitHub, and they are the difference between a
+function that is deployed and a function that works. A function whose secret was
+never set deploys cleanly, routes correctly, passes every check in this repo, and
+returns **500 on every real request**. That is how Ask Infinity can look healthy
+in CI and answer nothing.
+
+| Secret | Needed by | What breaks without it |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | `ask`, `extract-specs` | Ask Infinity answers nothing, and reading specs off a planset fails. |
+| `OPENAI_API_KEY` | `extract-schedule`, `generate-howto`, `generate-toolbox-talk`, `ingest-knowledge`, `synthesize-type-tips`, `transcribe-install-memo` | Voice memos are never transcribed, how-tos and toolbox talks cannot be generated, and nothing new can be added to the brain. |
+| `VAPID_PRIVATE_KEY` | `send-push` | Push notifications silently stop. The public half also goes in the app as `VITE_VAPID_PUBLIC_KEY`. |
+| `VAPID_PUBLIC_KEY` | `send-push` | Same. |
+
+Optional, with working defaults — set only to override: `ANTHROPIC_MODEL`,
+`VAPID_SUBJECT`.
+
+`SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are injected
+by the platform. Do not set them by hand.
+
+Set them from a checkout. Each command prompts for the value and does not echo
+it, so nothing lands in your shell history or in git:
+
+```bash
+supabase secrets set ANTHROPIC_API_KEY --project-ref czprjcskmzzagdztqonm
+supabase secrets set OPENAI_API_KEY    --project-ref czprjcskmzzagdztqonm
+supabase secrets set VAPID_PUBLIC_KEY  --project-ref czprjcskmzzagdztqonm
+supabase secrets set VAPID_PRIVATE_KEY --project-ref czprjcskmzzagdztqonm
+```
+
+The table above is **derived from the function sources**, not maintained by hand
+— the old list of "four functions to deploy" was wrong for months once there
+were ten, and a stale secret list would go the same way. Regenerate it any time,
+no credentials needed:
+
+```bash
+python3 scripts/function_secrets.py          # who needs what, and why
+python3 scripts/function_secrets.py --names  # just the required names
+```
+
+`Deploy backend` checks these on every merge once `SUPABASE_ACCESS_TOKEN` is set,
+and fails naming the function and the missing variable. To check by hand:
+
+```bash
+SUPABASE_ACCESS_TOKEN=sbp_... SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm \
+  scripts/verify-function-secrets.sh
+```
 
 ### Shipping the backend
 
@@ -171,6 +222,16 @@ fresh pair and set both sides in one go, then check that nobody is subscribed
 first (`select count(*) from push_subscriptions`) — anyone who is will stop
 receiving notifications until their device re-subscribes.
 
+To read the public half that the published app is actually using — useful for a
+laptop `.env`, and it needs no credentials because the key is compiled into the
+JavaScript we serve:
+
+```bash
+SITE=https://infinity-windows.github.io/infinity-windows
+curl -s "$SITE/$(curl -s "$SITE/" | grep -o 'assets/index-[A-Za-z0-9_-]*\.js')" \
+  | grep -oE '[`"]B[A-Za-z0-9_-]{86}[`"]' | tr -d '`"'
+```
+
 ```bash
 npx web-push generate-vapid-keys
 gh secret set VITE_VAPID_PUBLIC_KEY --repo Infinity-Windows/infinity-windows
@@ -184,6 +245,23 @@ runtime.
 Without the public key the app does not error — it just quietly never subscribes,
 and only in-app notifications work. `send-push` is more direct about it and
 returns `{"error":"VAPID keys not configured"}`.
+
+**Two halves that both exist but do not match is the worse failure, and
+`Deploy backend` now checks for it.** `scripts/verify-function-secrets.sh` can
+only see that `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` are *set*; it cannot see
+that they are the pair the app was built with. Cross them — by rotating one side,
+or by copying a key that was generated against a different Supabase project — and
+send-push returns 200, `sent` counts every device, no check goes red, and not one
+notification arrives. `scripts/verify-push-key.sh` closes that gap by hashing the
+public key the app is built with and comparing it against the digest Supabase
+reports for its own `VAPID_PUBLIC_KEY`. It reads no secret and prints neither key
+nor digest. To run it by hand:
+
+```bash
+SUPABASE_ACCESS_TOKEN=sbp_... SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm \
+  VITE_VAPID_PUBLIC_KEY=B... scripts/verify-push-key.sh
+scripts/verify-push-key.test.sh   # test the checker itself, no credentials
+```
 
 **On iPhone and iPad, push only works once the app is installed to the home
 screen.** Safari refuses web push to an ordinary browser tab, so an installer who
@@ -214,6 +292,15 @@ plan.
 ## Tests
 
 ```bash
-cd app && npm test                        # 1,260 frontend tests
-python3 scripts/test_supabase_merge.py    # merge tooling, stdlib only
+cd app && npm test                          # 1,313 frontend tests
+python3 scripts/test_supabase_merge.py       # 52  merge tooling, stdlib only
+python3 scripts/test_schema_verify.py        # 25  post-push schema drift check
+python3 scripts/test_function_secrets.py     # 32  which function needs which secret
+scripts/verify-functions.test.sh             # 39  the deploy probe, no network
+scripts/verify-function-secrets.test.sh      # 59  the secret check, stubbed CLI
+scripts/slack-notify.test.sh                 # 57  the failure notifier, posts nothing
 ```
+
+None of them need credentials or a network. What ships automatically, what
+verifies it and what alerts on failure is all written up in
+[`docs/always-live.md`](docs/always-live.md).

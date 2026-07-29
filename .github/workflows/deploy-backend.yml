@@ -70,6 +70,14 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       deployed: ${{ steps.guard.outputs.ok }}
+      # Empty unless the secret check found something missing. A failed step still
+      # publishes the outputs it wrote before exiting, which is what lets the
+      # Slack post below lead with the real cause instead of "Deploy backend
+      # FAILED". If it ever comes through empty the notification simply falls back
+      # to the generic wording, so this degrades rather than breaks.
+      secret_cause: ${{ steps.secrets.outputs.missing_headline }}
+      # Set only when the app's push key and the project's push key disagree.
+      push_key_cause: ${{ steps.pushkey.outputs.push_key_headline }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -123,9 +131,117 @@ jobs:
             exit 1
           fi
 
+      # A deployed function and a WORKING function are different things. The
+      # runtime secrets live in Supabase, not GitHub, so `ask` can deploy
+      # cleanly, route correctly, satisfy the 404 probe in the verify job below,
+      # and still 500 on every real request because ANTHROPIC_API_KEY was never
+      # set. Every check in this repo would be green. scripts/function_secrets.py
+      # derives what each function needs by reading its source, so this cannot
+      # rot the way the README's list of four deployable functions did.
+      #
+      # `supabase secrets list` prints names and digests, never values.
+      - name: Verify every required function secret exists
+        id: secrets
+        if: steps.guard.outputs.ok == 'true'
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set +e
+          scripts/verify-function-secrets.sh >/tmp/secret-check.log 2>&1
+          rc=$?
+          cat /tmp/secret-check.log
+
+          if [ "$rc" -eq 0 ]; then
+            {
+              echo "### Edge function secrets: all set"
+              echo
+              echo '```'
+              cat /tmp/secret-check.log
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # The script leads its failure output with a one-line plain-English
+          # cause (a tested contract — see scripts/verify-function-secrets.test.sh).
+          # Lifting it out to the annotation and the summary heading means the
+          # owner sees "Ask Infinity ... needs an API key" at the top of the run
+          # page, not a wall of shell output he has to interpret.
+          cause="$(head -n 1 /tmp/secret-check.log)"
+          echo "::error title=Action needed::$cause"
+          {
+            echo "### $cause"
+            echo
+            echo "Nothing broke in this run. A key that the app needs was never"
+            echo "added. Full instructions, including where to add it:"
+            echo
+            echo '```'
+            cat /tmp/secret-check.log
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+      # A VAPID secret that EXISTS and a VAPID secret that MATCHES THE APP are
+      # different things, and the step above can only see the first. Web push
+      # needs a pair: the browser subscribes with the public half compiled into
+      # the bundle from the repo secret VITE_VAPID_PUBLIC_KEY, and send-push
+      # signs with VAPID_PRIVATE_KEY from Supabase. Cross those two pairs and
+      # every check in this repo stays green while no notification ever arrives
+      # on a phone. That is not hypothetical: a pair generated against
+      # jvsyhtarnvmdilsgksdi was found in a laptop .env pointing at this
+      # project on 2026-07-29.
+      #
+      # It compares a SHA-256 of the public key against the digest the platform
+      # reports, so no secret is read and none is printed.
+      #
+      # `!cancelled()` rather than the default success(): the secret step above
+      # is red today for an unrelated missing key (ANTHROPIC_API_KEY), and a
+      # push-key mismatch is exactly the kind of silent breakage that must not
+      # be hidden behind an earlier failure.
+      - name: Verify the app's push key matches this project's
+        id: pushkey
+        if: ${{ !cancelled() && steps.guard.outputs.ok == 'true' }}
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
+        run: |
+          set +e
+          scripts/verify-push-key.sh >/tmp/push-key-check.log 2>&1
+          rc=$?
+          cat /tmp/push-key-check.log
+
+          if [ "$rc" -eq 0 ]; then
+            {
+              echo "### Push notifications: the app and the server agree"
+              echo
+              echo '```'
+              cat /tmp/push-key-check.log
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          cause="$(head -n 1 /tmp/push-key-check.log)"
+          echo "::error title=Action needed::$cause"
+          {
+            echo "### $cause"
+            echo
+            echo '```'
+            cat /tmp/push-key-check.log
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
   migrations:
     name: Push migrations
     runs-on: ubuntu-latest
+    outputs:
+      # Objects that exist in the database and no migration declares. Reported,
+      # never fatal — see the verify step below.
+      live_only_tables: ${{ steps.schema.outputs.live_only_tables }}
+      live_only_table_names: ${{ steps.schema.outputs.live_only_table_names }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -181,6 +297,28 @@ jobs:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: supabase db push
 
+      # A push that exits 0 proves the CLI ran, not that the schema is right. On
+      # 2026-07-29 production was 26 declared tables short with every build
+      # green, so migrations get the same kind of self-check the function deploy
+      # got. Failing here means a migration did not apply and features are
+      # broken in production right now.
+      #
+      # The comparison is ONE-WAY on purpose. Something the repo declares and
+      # the database lacks fails this job. Something the database has and no
+      # migration declares — `project_marks` is the live example — is reported
+      # and does not, because a check that is red on every merge forever is a
+      # check the team stops reading. The reasoning is in scripts/schema_verify.py.
+      #
+      # No `if:` naming a status function, so GitHub's default success() applies
+      # and a failed push skips this rather than reporting on an unpushed schema.
+      - name: Verify the live schema matches the migrations
+        id: schema
+        if: steps.guard.outputs.ok == 'true'
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: scripts/verify-schema.sh
+
       # A red run here is cryptic unless you already know what the CLI is
       # complaining about, so say it in the summary rather than in a log tail.
       - name: Explain a failed push
@@ -226,3 +364,62 @@ jobs:
         run: |
           set -o pipefail
           scripts/verify-functions.sh | tee "$GITHUB_STEP_SUMMARY"
+
+  # The backend half of every merge. If this breaks, master and production have
+  # diverged again — which is the whole reason this workflow exists.
+  notify-failure:
+    name: Tell Slack if this broke
+    needs: [functions, migrations, verify]
+    if: failure()
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      # When the cause is a missing function secret, or a push key that does not
+      # match, we know exactly what to say — so say that instead of a workflow
+      # name. The known first case is ANTHROPIC_API_KEY, which has never been
+      # set: the owner sees "Ask Infinity ... needs an API key that has not been
+      # added yet" in Slack rather than a red X he can only read as "something is
+      # broken".
+      #
+      # A push-key mismatch leads when both are true. It is the more severe of
+      # the two — nobody's phone gets any notification at all — and the more
+      # surprising, because nothing else in the pipeline can see it. The run page
+      # always lists every cause.
+      cause: >-
+        ${{ needs.functions.outputs.push_key_cause != ''
+        && needs.functions.outputs.push_key_cause
+        || needs.functions.outputs.secret_cause }}
+      detail: >-
+        ${{ needs.functions.outputs.push_key_cause != ''
+        && 'Both halves of one push key pair have to be set together, in
+        Supabase and in GitHub, and the app then has to be rebuilt. The run page
+        has the exact steps.'
+        || (needs.functions.outputs.secret_cause != ''
+        && 'Everything else shipped. The key is added in the Supabase dashboard
+        under Project Settings -> Edge Functions -> Secrets.'
+        || 'Some of the backend did not ship, so the app may be running against a
+        database or functions that do not match the code.') }}
+    secrets: inherit
+
+  # Not a failure, and deliberately not one: the database holds objects no
+  # migration declares, so the repo cannot recreate them. Saying it out loud
+  # every time keeps `project_marks` from quietly becoming permanent. A warning
+  # rather than a red X, because blocking on it would make every merge red.
+  notify-undeclared-objects:
+    name: Report objects no migration declares
+    needs: migrations
+    if: >-
+      needs.migrations.outputs.live_only_tables != ''
+      && needs.migrations.outputs.live_only_tables != '0'
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      kind: warning
+      cause: >-
+        ${{ needs.migrations.outputs.live_only_tables }} table(s) in the database
+        are not written down anywhere in this repo
+      detail: >-
+        ${{ needs.migrations.outputs.live_only_table_names }}. Each one needs a
+        migration written for it, or a fresh database could not be rebuilt from
+        this repo.
+    secrets: inherit

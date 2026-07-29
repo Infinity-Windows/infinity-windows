@@ -27,8 +27,12 @@ import type {
   ProjectOpening,
 } from "./types";
 
-const OPENING_SELECT =
-  "*, window_types(*), windows:assigned_window_id(*), projects(*), assignee:assigned_to(*)";
+// The assignee embed lists profile columns explicitly rather than `*`: profiles
+// holds a credential column (pin_hash) that no client role may read, so a `*`
+// against that table now fails outright — and should keep failing if another
+// secret column is ever added.
+export const OPENING_SELECT =
+  "*, window_types(*), windows:assigned_window_id(*), projects(*), assignee:assigned_to(id, display_name, skill_level, role, active)";
 
 async function actor(): Promise<string | null> {
   const { data } = await supabase.auth.getUser();
@@ -37,8 +41,11 @@ async function actor(): Promise<string | null> {
 
 // --- Crew profiles ---
 
-// Never select `pin` to the client; it's verified server-side via RPC.
-const PROFILE_COLS = "id, display_name, skill_level, role, active, created_at, updated_at";
+// Never select the PIN to the client; it's verified server-side via RPC. Since
+// 20260729200000_profiles_rls_lockdown.sql the database enforces this too — the
+// authenticated role holds column privileges on exactly this list.
+export const PROFILE_COLS =
+  "id, display_name, skill_level, role, active, created_at, updated_at";
 
 /** Emails that auto-promote to Owner on first/any sign-in. */
 const OWNER_BOOTSTRAP_EMAILS = new Set([
@@ -48,6 +55,15 @@ const OWNER_BOOTSTRAP_EMAILS = new Set([
 
 function isOwnerBootstrapEmail(email: string | undefined): boolean {
   return OWNER_BOOTSTRAP_EMAILS.has((email ?? "").trim().toLowerCase());
+}
+
+/** A database that predates the RPC, rather than the RPC refusing the caller. */
+export function isMissingFunction(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: unknown; message?: unknown };
+  if (e.code === "PGRST202" || e.code === "42883") return true;
+  const msg = typeof e.message === "string" ? e.message.toLowerCase() : "";
+  return msg.includes("does not exist") && msg.includes("function");
 }
 
 /** Ensure the signed-in user has a profile row; return it. */
@@ -70,39 +86,40 @@ export async function ensureMyProfile(): Promise<Profile | null> {
     const displayName = bootstrapOwner
       ? "Ammon"
       : (user.email ?? "installer").split("@")[0];
+    // `role` is deliberately not sent. The authenticated role has no INSERT
+    // privilege on profiles.role, so every new account lands on the 'installer'
+    // column default and only a supervisor can lift it from there.
     const { data: created, error: insErr } = await supabase
       .from("profiles")
-      .insert({
-        id: user.id,
-        display_name: displayName,
-        ...(bootstrapOwner ? { role: "owner", active: true } : {}),
-      })
+      .insert({ id: user.id, display_name: displayName })
       .select(PROFILE_COLS)
       .single();
     if (insErr) throw insErr;
     profile = created as Profile;
   }
 
-  // Bootstrap: promote Ammon bootstrap emails to Owner (full access).
+  // Bootstrap: promote the founder emails to Owner. This happens server-side —
+  // claim_owner_bootstrap() re-checks the email against the verified JWT, so the
+  // browser is asking for the promotion rather than granting it to itself.
   if (
     bootstrapOwner &&
     (profile.role !== "owner" ||
       profile.display_name !== "Ammon" ||
       !profile.active)
   ) {
-    const { data: promoted, error: promoErr } = await supabase
-      .from("profiles")
-      .update({
-        role: "owner",
-        display_name: "Ammon",
-        active: true,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", user.id)
-      .select(PROFILE_COLS)
-      .single();
-    if (promoErr) throw promoErr;
-    profile = promoted as Profile;
+    const { error: bootErr } = await supabase.rpc("claim_owner_bootstrap");
+    // A database that predates the RPC still signs in, just unpromoted; any
+    // other failure is real and should surface.
+    if (bootErr && !isMissingFunction(bootErr)) throw bootErr;
+    if (!bootErr) {
+      const { data: reread, error: rereadErr } = await supabase
+        .from("profiles")
+        .select(PROFILE_COLS)
+        .eq("id", user.id)
+        .maybeSingle();
+      if (rereadErr) throw rereadErr;
+      profile = (reread as Profile | null) ?? profile;
+    }
   }
 
   return profile;

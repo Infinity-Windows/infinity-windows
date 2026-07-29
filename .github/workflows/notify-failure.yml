@@ -1,0 +1,80 @@
+# Tell a human, in Slack, when a workflow breaks.
+#
+# Called by every other workflow in this repo from a final job gated on
+# `if: failure()`. It exists as ONE reusable workflow rather than the same
+# fifteen lines pasted into five files, so the message format and the
+# never-fail guarantee only have to be right once.
+#
+# Why it is a reusable workflow and not a composite action: a composite action
+# has to be checked out before it can run, and two of the callers (the Pages
+# `deploy` job, the Slack changelog jobs) have no checkout step. A reusable
+# workflow runs on its own runner and does its own checkout, so a caller needs
+# nothing but the `uses:` line.
+#
+# The message building lives in scripts/slack-notify.sh, which has its own test
+# suite (scripts/slack-notify.test.sh) and cannot fail the build.
+#
+# Uses SLACK_CHANGELOG_WEBHOOK, the same secret the Slack changelog already
+# posts with, so no new secret is needed. Callers must pass `secrets: inherit`.
+
+name: Notify failure
+
+on:
+  workflow_call:
+    inputs:
+      workflow:
+        description: >-
+          Name of the workflow that failed, as the reader should see it. Callers
+          pass the github.workflow context. It is an explicit input rather than
+          being read here because inside a reusable workflow that context refers
+          to the calling run, and relying on that is easy to get subtly wrong.
+        required: true
+        type: string
+      kind:
+        description: failure (default) or warning — a warning did not fail the job.
+        required: false
+        default: failure
+        type: string
+      detail:
+        description: Optional extra plain-English line about what broke.
+        required: false
+        default: ""
+        type: string
+      cause:
+        description: >-
+          Optional one-line, specific, plain-English reason, which becomes the
+          FIRST line of the Slack post with the workflow name demoted below it.
+          Pass this whenever the failing job can say what actually went wrong, so
+          the reader sees "Ask Infinity needs an API key" rather than "Deploy
+          backend FAILED". Leave unset when the cause is not known.
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    name: Post to Slack
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Post the notification
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_CHANGELOG_WEBHOOK }}
+          NOTIFY_KIND: ${{ inputs.kind }}
+          DETAIL: ${{ inputs.detail }}
+          CAUSE: ${{ inputs.cause }}
+          WORKFLOW_NAME: ${{ inputs.workflow }}
+          RUN_URL: >-
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{
+            github.run_id }}/attempts/${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+        run: scripts/slack-notify.sh

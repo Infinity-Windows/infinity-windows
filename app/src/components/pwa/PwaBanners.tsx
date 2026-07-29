@@ -8,9 +8,16 @@ import {
   writeInstallDismissedAt,
   type InstallPromptMode,
 } from "../../lib/pwa/installCore";
-
-/** How often to poll for a new deployed service worker (once an hour). */
-const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+import { BUILD_ID } from "../../lib/pwa/buildInfo";
+import {
+  createHiddenClock,
+  fetchPublishedVersion,
+} from "../../lib/pwa/checkForUpdate";
+import {
+  decideUpdateAction,
+  VERSION_POLL_INTERVAL_MS,
+} from "../../lib/pwa/updateCore";
+import { hasUnsavedWork } from "../../lib/pwa/unsavedWork";
 
 /**
  * The Chromium-only `beforeinstallprompt` event. Not in the DOM lib, so we
@@ -41,21 +48,103 @@ export function PwaBanners() {
   );
 }
 
+/**
+ * Update surface.
+ *
+ * The old behaviour was a single `registration.update()` on an hour-long timer.
+ * That timer does not tick while a PWA is backgrounded, which on a job site is
+ * most of the day, so a phone could stay a whole shift behind master — and a
+ * collaborator once sat on an old build for hours. Three things changed:
+ *
+ *   1. version.json is polled, and checked again the moment the app comes back
+ *      into view, so returning to the app is enough to notice a new build.
+ *   2. Noticing triggers the service-worker check that produces the waiting
+ *      worker, instead of waiting for the top of the hour.
+ *   3. When it is provably safe — nothing unsaved, and the app has been out of
+ *      sight long enough that nobody is mid-tap — it applies the update itself
+ *      rather than asking. Otherwise it asks, exactly as before.
+ *
+ * The safety rule lives in updateCore.ts, with the reasoning about why an
+ * installer's in-memory capture outranks being up to date.
+ */
 function PwaUpdateBanner() {
+  const registration = useRef<ServiceWorkerRegistration | null>(null);
+  const hiddenClock = useRef(createHiddenClock());
+  // Applying an update reloads the page, so re-entering that path while it is
+  // already under way would only fight itself.
+  const applying = useRef(false);
+
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW({
-    onRegisteredSW(_swUrl, registration) {
-      // Periodically ask the browser to check for a new deploy so the banner
-      // can appear without a manual reload during a long shift.
-      if (registration) {
-        setInterval(() => {
-          void registration.update();
-        }, UPDATE_CHECK_INTERVAL_MS);
-      }
+    onRegisteredSW(_swUrl, reg) {
+      registration.current = reg ?? null;
     },
   });
+
+  // Held in a ref so the effect below does not re-subscribe on every render
+  // just because the helper is a fresh closure each time.
+  const apply = useRef(updateServiceWorker);
+  apply.current = updateServiceWorker;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    /**
+     * One decision cycle. `returning` is true when triggered by the app coming
+     * back into view, which is the only case allowed to consume the hidden
+     * duration and therefore the only case that can auto-apply.
+     */
+    const evaluate = async (returning: boolean) => {
+      if (cancelled || applying.current) return;
+
+      const published = await fetchPublishedVersion();
+      if (cancelled) return;
+
+      const action = decideUpdateAction({
+        runningBuildId: BUILD_ID,
+        latestBuildId: published?.buildId ?? null,
+        swUpdateWaiting: needRefresh,
+        hasUnsavedWork: hasUnsavedWork(),
+        hiddenForMs: returning ? hiddenClock.current.takeHiddenDuration() : null,
+      });
+
+      if (action === "check") {
+        // Downloads the new worker; when it finishes, needRefresh flips and
+        // this runs again with something to apply.
+        await registration.current?.update();
+        return;
+      }
+      if (action === "reload") {
+        applying.current = true;
+        // `true` posts SKIP_WAITING and reloads. A bare location.reload() would
+        // NOT help: the old worker still controls the page and would serve the
+        // same cached shell straight back.
+        void apply.current(true);
+      }
+      // "prompt" needs nothing here — needRefresh already renders the banner.
+      // "none" likewise.
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenClock.current.markHidden();
+        return;
+      }
+      void evaluate(true);
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    const timer = setInterval(() => void evaluate(false), VERSION_POLL_INTERVAL_MS);
+    void evaluate(false);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+      clearInterval(timer);
+    };
+  }, [needRefresh]);
 
   if (!needRefresh) return null;
 

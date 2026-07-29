@@ -26,13 +26,27 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
+      # First, before checkout or Node, so a missing credential is always the
+      # reported cause instead of being hidden behind an earlier step failing.
+      - name: Check the Supabase credential is present
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::error::SUPABASE_SERVICE_ROLE_KEY secret is not set — add it in repo Settings > Secrets and variables > Actions. Use a secret key (sb_secret_...) from the czprjcskmzzagdztqonm project; a legacy service_role JWT also works."
+            exit 1
+          fi
+          echo "Credential present."
+
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version-file: app/.nvmrc
+          # The only .nvmrc in this repo is at the root — app/.nvmrc does not
+          # exist, and pointing at it failed this job on every run.
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: app/package-lock.json
 
@@ -48,12 +62,7 @@ jobs:
         env:
           SUPABASE_URL: https://czprjcskmzzagdztqonm.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-            echo "::error::SUPABASE_SERVICE_ROLE_KEY secret is not set — add it in repo Settings > Secrets > Actions."
-            exit 1
-          fi
-          node scripts/vault-sync.mjs
+        run: node scripts/vault-sync.mjs
 
       - name: Remove the temporary symlink
         if: always()
@@ -66,7 +75,32 @@ jobs:
           if git status --porcelain vault | grep -q .; then
             git add vault
             git commit -m "chore(vault): sync install brain from Supabase [skip ci]"
-            git push
+            # master moves during the day, so a plain push can lose the race.
+            for attempt in 1 2 3; do
+              if git push; then
+                exit 0
+              fi
+              echo "Push rejected (attempt $attempt) — rebasing onto the latest master."
+              git pull --rebase origin master
+            done
+            echo "::error::Could not push the vault update after 3 attempts."
+            exit 1
           else
             echo "No vault changes."
           fi
+
+  # This is the job the whole failure-notification idea came from: it runs at
+  # 08:00 UTC with nobody watching, and it had been failing for about a week
+  # before anyone noticed. A nightly job with no alerting is a nightly job you
+  # will find out about late.
+  notify-failure:
+    name: Tell Slack if this broke
+    needs: sync
+    if: failure()
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      detail: >-
+        The Obsidian vault did not update overnight, so it is now behind the
+        database. Nothing users see is affected.
+    secrets: inherit

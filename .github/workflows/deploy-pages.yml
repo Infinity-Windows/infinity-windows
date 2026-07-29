@@ -1,5 +1,7 @@
 # Deploy the Vite app to GitHub Pages (permanent live URL).
-# Env: VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY + VITE_VAPID_PUBLIC_KEY (repo secrets).
+# Env: VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY + VITE_VAPID_PUBLIC_KEY (repo
+# secrets), plus VITE_BUILD_ID (the commit sha, so the running app can tell it is
+# out of date).
 # Site: https://infinity-windows.github.io/infinity-windows/
 
 name: Deploy GitHub Pages
@@ -38,7 +40,16 @@ jobs:
           VITE_BASE: /infinity-windows/
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          # Vite inlines these at build time. A variable that is missing here is
+          # simply absent from the bundle, with no error anywhere — which for the
+          # VAPID key means an app that quietly never subscribes a device to push.
           VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
+          # Stamps the running app with the commit it was built from, and writes
+          # the same value to dist/version.json. That pair is how a phone that
+          # already has the app open works out that a newer build exists instead
+          # of sitting on a cached bundle until someone force-quits it. See
+          # app/src/lib/pwa/updateCore.ts.
+          VITE_BUILD_ID: ${{ github.sha }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: app/dist
@@ -52,3 +63,18 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # This workflow is how the app reaches users at all. If it fails, master and
+  # what installers are running have silently diverged, which is the exact gap
+  # the always-live work exists to close.
+  notify-failure:
+    name: Tell Slack if this broke
+    needs: [build, deploy]
+    if: failure()
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      detail: >-
+        The app did NOT ship. Everyone is still on the previous version until
+        this is fixed and re-run.
+    secrets: inherit
