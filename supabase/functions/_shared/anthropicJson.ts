@@ -73,14 +73,29 @@ export function parseJsonLoose(text: string): unknown {
 export function readJsonFromContent(content: unknown): unknown {
   const blocks: AnthropicContentBlock[] = Array.isArray(content) ? content : [];
 
-  let fallbackToolInput: unknown = null;
+  // Merged, not first-past-the-post. A reply can carry the answer across more
+  // than one call to the tool, and taking the first block threw the rest away —
+  // which live meant a toolbox talk arriving with its title, intro and hazards
+  // and losing its steps, do's and don'ts. Earlier blocks win on a clash, since
+  // the model is adding to its answer rather than correcting it.
+  const merged: Record<string, unknown> = {};
+  let sawJsonTool = false;
+  let fallbackToolInput: Record<string, unknown> | null = null;
   for (const block of blocks) {
     if (!block || block.type !== "tool_use") continue;
     const input = block.input;
     if (!input || typeof input !== "object" || Array.isArray(input)) continue;
-    if (block.name === JSON_TOOL_NAME) return input;
-    if (fallbackToolInput === null) fallbackToolInput = input;
+    const obj = input as Record<string, unknown>;
+    if (block.name === JSON_TOOL_NAME) {
+      sawJsonTool = true;
+      for (const [k, v] of Object.entries(obj)) {
+        if (!(k in merged)) merged[k] = v;
+      }
+    } else if (fallbackToolInput === null) {
+      fallbackToolInput = obj;
+    }
   }
+  if (sawJsonTool) return merged;
   if (fallbackToolInput !== null) return fallbackToolInput;
 
   // No tool call. Join only the blocks that actually carry text, so a `thinking`
