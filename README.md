@@ -98,14 +98,30 @@ does the same for Edge Functions and migrations, so the two halves cannot drift
 apart the way they did through July 2026 — ten PRs merged whose backend never
 left the repo, and no build went red.
 
-It needs two repo secrets: `SUPABASE_ACCESS_TOKEN` (an `sbp_…` personal access
-token) for functions, and `SUPABASE_DB_PASSWORD` for `db push`. Until those are
-set, each job is a no-op that annotates the run with what it would have done, so
-nothing turns red on its own.
+It needs two repo secrets. Until those are set, each job is a no-op that
+annotates the run with what it would have done, so nothing turns red on its own.
+
+| Secret | What it does | Where an owner gets it |
+| --- | --- | --- |
+| `SUPABASE_ACCESS_TOKEN` | Deploys the Edge Functions. A personal access token, starts with `sbp_`. | Supabase dashboard → avatar (top right) → Account preferences → [Access Tokens](https://supabase.com/dashboard/account/tokens) → **Generate new token**. Copy it immediately, it is shown once. |
+| `SUPABASE_DB_PASSWORD` | Lets `supabase db push` apply migrations. | Dashboard → the project → **Project Settings → Database → Database password**. If nobody still has it, **Reset database password** there — that breaks anything using the old one. |
+
+Install both once, from a checkout of this repo. Each command prompts for the
+value and does not echo it, so nothing lands in your shell history or in git:
+
+```bash
+gh secret set SUPABASE_ACCESS_TOKEN --repo Infinity-Windows/infinity-windows
+gh secret set SUPABASE_DB_PASSWORD  --repo Infinity-Windows/infinity-windows
+```
+
+Then re-run it: **Actions → Deploy backend → Run workflow**. Never put either
+value in a file in this repo.
 
 The `Verify functions are live` job probes every function in
-`supabase/functions/` and reports which ones 404. Run the same check yourself
-any time — it needs no credentials:
+`supabase/functions/` and reports which ones 404. Before the secrets exist that
+is a warning; once they exist it is strict, so a deploy that reported success
+while a function is still 404 fails the run. Run the same check yourself any
+time — it needs no credentials:
 
 ```bash
 scripts/verify-functions.sh          # warn on missing
