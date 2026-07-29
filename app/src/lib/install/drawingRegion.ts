@@ -14,20 +14,29 @@
 // about three inches of paper. So the job here is NARROW. Find the crops that
 // are actually broken, and repair only those:
 //
-//   1. score the stored box's own crop for line-work ({@link inkDensity}). If
-//      there is a drawing in it, use it and stop — no cleverness required;
-//   2. otherwise the box has missed. Find the printed rules that run right
-//      across the sheet and cut the page into cells along them, so a repair can
-//      never reach across a printed boundary;
-//   3. inside that cell, grow out from the nearest ink until the paper goes
-//      blank, then trim to the ink and add a small margin.
+//   1. find the printed rules that run right across the sheet and cut the page
+//      into cells along them, so nothing here can ever reach across a printed
+//      boundary;
+//   2. inside the mark's own cell, grow out from the nearest ink until the paper
+//      goes blank, then trim to the ink and add a small margin. That is where
+//      the sheet itself says this mark's drawing is;
+//   3. if the stored box is centred on that drawing, keep the stored box and
+//      stop — no cleverness required. Only when it is centred somewhere else,
+//      or has nothing in it at all, show what step 2 found instead.
 //
-// The restraint in step 1 is the important part, and it was learned by getting
+// The restraint in step 3 is the important part, and it was learned by getting
 // it wrong: an earlier version of this file derived EVERY crop from the geometry
 // below. It fixed mark #2 and broke eleven other marks on the same job, four of
 // them by showing the crew the neighbouring window. Growing a region out to
 // blank paper is a good way to find a drawing when you have nothing better; it
 // is a bad way to second-guess a box that already works.
+//
+// Step 3 asked a different question at first — "does the stored box have any
+// line-work in it?" — and that is the one thing in this file that has failed in
+// front of a crew. Counting ink cannot tell a window apart from the dimension
+// line printed beside it, and the cutoff it needed turned out to depend on which
+// PDF rasterizer drew the page, so it never fired in the browser at all. See
+// MIN_INK_DENSITY.
 //
 // KNOWN LIMIT, on the repair path only. Step 3 can still grow across the gutter
 // between two panels when the supplier has printed something in it — a hinge
@@ -119,26 +128,78 @@ const GUTTER = 0.022;
 const REGION_PAD = 0.01;
 
 /**
- * Line-work per unit area under which a crop is not worth showing.
+ * Line-work per unit area under which a crop has nothing on it at all.
  *
- * NOT a share of the crop's pixels, which is what this used to be, because that
- * number moves with {@link inkMaskFromPixels}'s `step`. Each sample takes the
- * darkest pixel of its block, so a hairline fills a whole sample however coarse
- * the mask is: the same crop of the same page reads 0.005 ink at a tenth-scale
- * mask and 0.018 at a fiftieth. A fixed share therefore means one thing at one
- * resolution and something else at another — and at the resolution the app
- * actually renders, mark #2's black rectangle measured 0.018 against a 0.008
- * cutoff, so the check that was supposed to catch it passed it.
+ * This is a BLANK-PAPER floor and nothing more. It is deliberately not used to
+ * decide whether a crop shows the RIGHT thing — see {@link boxMissedDrawing} —
+ * and the reason is worth recording, because this constant has already caused
+ * one silent production failure.
  *
- * Multiplying by the mask width takes the resolution back out: a stroke of
- * length L across a mask W samples wide covers about L·W samples, so
- * coverage·W is L per unit area — a property of the drawing, not of the
- * sampling. Measured on the Black Desert sheet, at every step from 2 to 10:
- * mark #2's broken crop scores 4.6–6.8, and the WEAKEST correct crop on the job
- * scores 12.2–18.9. Nine sits in that gap with a third of headroom either side
- * whatever the step.
+ * The measure itself is sound as far as it goes. It is not a share of the
+ * crop's pixels, which is what it used to be, because that number moves with
+ * {@link inkMaskFromPixels}'s `step`. Multiplying by the mask width takes the
+ * resolution back out: a stroke of length L across a mask W samples wide covers
+ * about L·W samples, so coverage·W is L per unit area. That much holds — the
+ * same crop reads within 15% of itself at every step from 2 to 10.
+ *
+ * What it is NOT is independent of the RENDERER, and this threshold was
+ * originally calibrated offline against pages rasterized by PyMuPDF while the
+ * app rasterizes with pdf.js. Measured on the same sheets, the same boxes and
+ * the same code, pdf.js lays down 2.2× the ink at full resolution — its
+ * anti-aliased edges land around luma 235 where PyMuPDF's land around 245 — and
+ * after min-pooling the crops score 1.4–3.3× higher. Nine sat in a comfortable
+ * gap under PyMuPDF and miles below EVERY crop under pdf.js, so the repair
+ * below never once ran in the browser and Black Desert's mark #2 showed the
+ * crew an empty rectangle for as long as the check existed.
+ *
+ * Normalizing by the page's own ink was tried and does not rescue it: under
+ * pdf.js the broken crop scores 0.530 of its page and a known-good one 0.529.
+ * Stroke length simply cannot tell a window apart from a dimension line and a
+ * line of type, because a narrow unit in a roomy box has no more line-work in
+ * it than a dimension line does. So the gate that decides whether a crop is
+ * pointing at the right thing is geometric, and this number only answers "is
+ * there anything here at all" — a question every renderer agrees on, since a
+ * blank panel scores zero in all of them.
  */
 export const MIN_INK_DENSITY = 9;
+
+/**
+ * How far the stored box's centre may sit outside the drawing before we stop
+ * believing the box, as a share of the drawing's own size.
+ *
+ * Measured across both jobs' 60 stored boxes, rendered the way the app renders
+ * them: the 58 boxes that are pointing at their window put their centre between
+ * 0.057 and 0.494 of the drawing's size INSIDE it, and the two that have missed
+ * put it 0.186 and 0.313 outside. Nothing at all lands in between, so this sits
+ * in the middle of an empty quarter-width band with about 0.12 of clearance on
+ * each side. Erring low would risk rebuilding a crop that was already right,
+ * which is the expensive mistake — see {@link drawingCropBox}.
+ */
+const CENTRE_MISS_TOLERANCE = 0.06;
+
+/**
+ * True when the stored box is pointing somewhere other than the drawing the
+ * sheet's own geometry finds.
+ *
+ * The box's CENTRE is the test, because that is the part of these boxes that
+ * survives being wrong about everything else: a box can be a sliver of its
+ * panel or overhang into the spec table below and still be centred on its
+ * window. Mark #2's is not — its window occupies x 0.698–0.798 of the sheet and
+ * its box starts at 0.790, so the box sits on the height dimension printed
+ * BESIDE the window and the crew got the dimension without the window.
+ *
+ * Measured against the drawing's own size rather than the page's, so it means
+ * the same thing for a 107" slider and a 15" fixed light. PURE.
+ */
+export function boxMissedDrawing(bbox: Bbox, region: Bbox): boolean {
+  const cx = (bbox[0] + bbox[2]) / 2;
+  const cy = (bbox[1] + bbox[3]) / 2;
+  const w = Math.max(1e-6, region[2] - region[0]);
+  const h = Math.max(1e-6, region[3] - region[1]);
+  const outX = Math.max(region[0] - cx, cx - region[2]) / w;
+  const outY = Math.max(region[1] - cy, cy - region[3]) / h;
+  return Math.max(outX, outY) > CENTRE_MISS_TOLERANCE;
+}
 
 /** {@link inkCoverage} with the mask's resolution divided out. PURE. */
 export function inkDensity(mask: InkMask, box: Bbox): number {
@@ -599,9 +660,20 @@ export function resolveDrawingRegion(
  * A crop that already has the window in it does not need our help, and the ways
  * of getting it wrong are more numerous than the ways of getting it right.
  *
- * So: keep the stored box when it holds line-work, and only when it doesn't —
- * when the crew would be looking at a near-black rectangle — go and find the
- * drawing on the sheet.
+ * So: keep the stored box when it holds line-work AND is pointing at the
+ * drawing, and only otherwise go and find the drawing on the sheet.
+ *
+ * Both halves of that are load-bearing, and the second half was missing for a
+ * while. "Holds line-work" was the whole test at first, on the reasoning that a
+ * box which has missed its window is looking at blank paper. Mark #2's is not:
+ * it is looking at the height dimension printed beside the window, which is a
+ * line, two arrowheads and `1511(59½")` in type — plenty of line-work, no
+ * window. Under the rasterizer the threshold was tuned against, that scored low
+ * enough to be caught anyway; under the app's own it scores higher than several
+ * crops that are perfectly fine, so the check passed a box it existed to catch
+ * and the crew kept getting an empty rectangle. {@link MIN_INK_DENSITY} has the
+ * measurements. Asking WHERE the drawing is settles it in a way that no amount
+ * of counting ink can.
  *
  * Returning null is a real answer, not a failure. Some panels on these sheets
  * are genuinely blank — the supplier left mark #25's drawing out — and this
@@ -610,9 +682,12 @@ export function resolveDrawingRegion(
  */
 export function drawingCropBox(mask: InkMask, bbox: Bbox): Bbox | null {
   const stored = padBbox(bbox);
-  if (inkDensity(mask, stored) >= MIN_INK_DENSITY) return stored;
-
   const region = resolveDrawingRegion(mask, bbox);
+  const worthShowing = inkDensity(mask, stored) >= MIN_INK_DENSITY;
+  if (worthShowing && (region == null || !boxMissedDrawing(bbox, region))) {
+    return stored;
+  }
+
   if (!region) return null;
   if (inkDensity(mask, region) < MIN_INK_DENSITY) return null;
   return region;

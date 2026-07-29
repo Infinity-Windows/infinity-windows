@@ -182,11 +182,16 @@ export interface CropRequest {
  * IndexedDB for weeks, and a crew who already has mark #2's black rectangle
  * saved would otherwise keep seeing it after the fix shipped.
  *
- * "repair2" is the wider `padBbox` margin: every crop that keeps its stored box
- * — which is nearly all of them — now covers slightly more of the sheet, so
- * every saved picture is stale.
+ * "repair3" is the first build in which the repair actually runs in a browser:
+ * the check guarding it had been calibrated against a different PDF rasterizer
+ * and never once fired, so every phone that has looked at Black Desert is
+ * holding mark #2's empty rectangle in IndexedDB. Only two crops across both
+ * live jobs actually change, but the marker is per-planset rather than
+ * per-crop, so the whole set is re-cut. That costs one page render per sheet on
+ * the next visit and is the only way a crew is guaranteed to stop seeing the
+ * old picture without being told to clear anything.
  */
-const SPEC_VARIANT = "repair2";
+const SPEC_VARIANT = "repair3";
 
 /**
  * The crop for one mark, as a PNG data URL, or null when the page has no

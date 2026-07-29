@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  boxMissedDrawing,
   cellFor,
   drawingCropBox,
   inkCoverage,
@@ -56,8 +57,15 @@ function box(px: Uint8ClampedArray, x0: number, y0: number, x1: number, y1: numb
 }
 
 /** Scribble, so a "drawing" has ink in the middle and not just an outline. */
-function fillHatch(px: Uint8ClampedArray, x0: number, y0: number, x1: number, y1: number) {
-  for (let y = y0 + 2; y < y1 - 1; y += 2) hLine(px, y, x0 + 2, x1 - 2, BLACK);
+function fillHatch(
+  px: Uint8ClampedArray,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  step = 2,
+) {
+  for (let y = y0 + 2; y < y1 - 1; y += step) hLine(px, y, x0 + 2, x1 - 2, BLACK);
 }
 
 interface Sheet {
@@ -67,7 +75,15 @@ interface Sheet {
   right: Bbox;
 }
 
-function sheetPixels(options: { rightPanelBlank?: boolean } = {}): Uint8ClampedArray {
+interface SheetOptions {
+  rightPanelBlank?: boolean;
+  /** Draw the right-hand unit as bare line-work, the way a narrow light is. */
+  rightPanelSparse?: boolean;
+  /** Fill the left panel's spec table with type, as the real sheets do. */
+  leftTableText?: boolean;
+}
+
+function sheetPixels(options: SheetOptions = {}): Uint8ClampedArray {
   const px = blankPage();
   // Sheet border, drawn black like the real one.
   box(px, 8, 8, 191, 191);
@@ -83,15 +99,21 @@ function sheetPixels(options: { rightPanelBlank?: boolean } = {}): Uint8ClampedA
   box(px, 30, 30, 55, 110);
   fillHatch(px, 30, 30, 55, 110);
   vLine(px, 59, 30, 110, BLACK);
+  // The style/glass wording the supplier prints in the spec table. It sits
+  // below the table's top rule, so it is outside the drawing's cell and can
+  // never be grown into — but a crop that overhangs the table picks it up.
+  if (options.leftTableText) {
+    for (let y = 132; y <= 150; y++) hLine(px, y, 60, 95, BLACK);
+  }
   // Right panel: a wide unit, unless we're testing an empty panel.
   if (!options.rightPanelBlank) {
     box(px, 120, 40, 165, 100);
-    fillHatch(px, 120, 40, 165, 100);
+    fillHatch(px, 120, 40, 165, 100, options.rightPanelSparse ? 8 : 2);
   }
   return px;
 }
 
-function sheet(options: { rightPanelBlank?: boolean } = {}): Sheet {
+function sheet(options: SheetOptions = {}): Sheet {
   return {
     mask: inkMaskFromPixels(sheetPixels(options), W, H, 1),
     left: [30 / W, 30 / H, 59 / W, 110 / H],
@@ -243,6 +265,62 @@ describe("drawingCropBox", () => {
     expect(contains(crop, left)).toBe(true);
     // The divider is at x = 0.5 and the neighbour's window starts at 0.6.
     expect(crop[2]).toBeLessThan(0.5);
+  });
+
+  it("repairs a box that missed its window even when it is full of line-work", () => {
+    // The production failure. Mark #2's box lands beside its window, on the
+    // height dimension and the spec table's wording, so the crop is FULL of
+    // ink and still has no window in it. Judging the box by how much line-work
+    // it holds passed it, and the crew went on seeing an empty rectangle.
+    const { mask, left } = sheet({ leftTableText: true });
+    const missed: Bbox = [0.31, 0.2, 0.48, 0.725];
+    expect(inkDensity(mask, padBbox(missed))).toBeGreaterThan(MIN_INK_DENSITY);
+
+    const crop = drawingCropBox(mask, missed);
+    expect(crop).not.toEqual(padBbox(missed));
+    expect(contains(crop!, left)).toBe(true);
+  });
+
+  it("keeps a box that has LESS line-work in it but is aimed at its window", () => {
+    // Why the check above cannot be a threshold on ink, however it is tuned.
+    // A bare narrow unit in a roomy box holds less line-work than a box that
+    // has missed altogether, so any cutoff low enough to spare this one passes
+    // the broken one too. On the real sheets the two sit at 27.9 and 24.5 —
+    // the WRONG way round — and they swap again under a different rasterizer.
+    const { mask, right } = sheet({ rightPanelSparse: true, leftTableText: true });
+    const missed: Bbox = [0.31, 0.2, 0.48, 0.725];
+
+    expect(inkDensity(mask, padBbox(right))).toBeLessThan(
+      inkDensity(mask, padBbox(missed)),
+    );
+    expect(drawingCropBox(mask, right)).toEqual(padBbox(right));
+    expect(drawingCropBox(mask, missed)).not.toEqual(padBbox(missed));
+  });
+});
+
+describe("boxMissedDrawing", () => {
+  it("accepts a box centred anywhere on its drawing, however badly sized", () => {
+    const region: Bbox = [0.4, 0.4, 0.6, 0.6];
+    // A sliver of the drawing, and a box swallowing it whole and then some.
+    expect(boxMissedDrawing([0.44, 0.44, 0.46, 0.56], region)).toBe(false);
+    expect(boxMissedDrawing([0.1, 0.1, 0.9, 0.9], region)).toBe(false);
+  });
+
+  it("rejects a box centred off the drawing, on either axis", () => {
+    const region: Bbox = [0.4, 0.4, 0.6, 0.6];
+    expect(boxMissedDrawing([0.62, 0.4, 0.78, 0.6], region)).toBe(true);
+    expect(boxMissedDrawing([0.4, 0.62, 0.6, 0.78], region)).toBe(true);
+  });
+
+  it("measures the miss against the drawing's size, not the page's", () => {
+    // The same absolute overshoot: a rounding error beside a big unit, and a
+    // clear miss beside a small one.
+    const overshoot = 0.02;
+    const big: Bbox = [0.1, 0.1, 0.9, 0.5];
+    const small: Bbox = [0.1, 0.1, 0.16, 0.5];
+    const centreAt = (x: number): Bbox => [x - 0.01, 0.29, x + 0.01, 0.31];
+    expect(boxMissedDrawing(centreAt(big[2] + overshoot), big)).toBe(false);
+    expect(boxMissedDrawing(centreAt(small[2] + overshoot), small)).toBe(true);
   });
 });
 
