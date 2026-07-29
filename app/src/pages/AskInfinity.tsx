@@ -1,19 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Sparkles } from "lucide-react";
-import { CATS, TERMS } from "../lib/glossary";
-import { searchBrainTypes } from "../lib/api";
-import type { Project, WindowType } from "../lib/types";
 import { supabaseConfigured } from "../lib/supabase";
 import { queryClient } from "../lib/queryClient";
-import {
-  askInfinity,
-  liveAnswer,
-  shouldUseLLM,
-  type AskLiveData,
-  type KnowledgeSource,
-} from "../lib/knowledge";
+import { askInfinity, liveAnswer, shouldUseLLM, type AskLiveData, type KnowledgeSource } from "../lib/knowledge";
+import { askBrain, getBrainIndex, type BrainOutcome } from "../lib/brain/answer";
+import { currentCatalog, refreshCatalogCache } from "../lib/brain/catalogCache";
+import { logAskedQuestion } from "../lib/brain/askLog";
+import type { BrainHit, CatalogType } from "../lib/brain/types";
 import type { Profile, ProjectOpening } from "../lib/install/types";
+import { isForemanPlus } from "../lib/install/types";
+import type { Project } from "../lib/types";
 import type { Issue } from "../lib/issues";
 import type { ScheduleAssignment } from "../lib/schedule/types";
 import type { ScheduleVehicleLink, VehicleWithMeta } from "../lib/vehicles/types";
@@ -22,101 +19,26 @@ import type { Trip } from "../lib/travel/types";
 interface ChatMsg {
   who: "me" | "infinity";
   text: string;
+  /** Citations from the cloud path. */
   sources?: KnowledgeSource[];
+  /** Answers from the local brain, each with where it came from. */
+  hits?: BrainHit[];
 }
 
 /**
- * Ask Infinity — real, business-specific AI. It calls the cloud `ask` function
- * (RAG over the company's Obsidian vault + live app data, grounded with
- * citations) and, whenever that's unavailable (offline, not configured, or an
- * error), transparently falls back to the bundled offline brain: the closed
- * install catalog (per-type tips, watch-outs, difficulty, median time), then
- * the window glossary + app guide. The chat therefore never goes dark.
+ * Ask Infinity — the company's own written knowledge, looked up on the phone.
+ *
+ * Answers come from a keyword index over content the company already owns: the
+ * glossary, the install procedure, and the tips and watch-outs seeded on the
+ * real window catalog. It runs entirely on the device, costs nothing per
+ * question, needs no API key, and works in a basement with no signal. Because it
+ * only ever shows sentences a human wrote, it physically cannot invent a
+ * flashing sequence.
+ *
+ * Live job questions ("my next window", "our schedule") still come from the
+ * app's own cached data, and the cloud AI is used only when it is configured —
+ * never as a prerequisite for a correct answer.
  */
-const APP_GUIDE =
-  "Home is your day: clock-in, term of the day, active install, points and your projects. " +
-  "Work is your assigned queue — the next ready window is up top. " +
-  "Warehouse is find/scan/receive/slots and per-job pick lists. " +
-  "Open a project to see its plan; tap a unit dot (blue = window, green = door) to open its sheet, then Assign to me & start. " +
-  "After an install: record a voice memo, attach a video, take proof photos — points release after QC sign-off. " +
-  "Learn has the glossary and daily practice; Points shows your score and tier.";
-
-function brainAnswer(t: WindowType): string {
-  const lines: string[] = [];
-  const size =
-    t.width_in && t.height_in ? ` (${t.width_in}×${t.height_in})` : "";
-  lines.push(`${t.name}${size} — ${t.type_code}`);
-
-  const diff = t.difficulty_rating ?? t.learned_difficulty;
-  const bits: string[] = [];
-  if (diff != null) bits.push(`difficulty ${Math.round(Number(diff))}/5`);
-  if (t.median_minutes != null)
-    bits.push(`~${Math.round(Number(t.median_minutes))} min typical`);
-  if (t.n_installs) bits.push(`${t.n_installs} installs logged`);
-  if (bits.length) lines.push(bits.join(" · "));
-
-  const tips = t.tips_json ?? [];
-  if (tips.length) {
-    lines.push("");
-    lines.push("Tips:");
-    tips.slice(0, 5).forEach((tip) => lines.push(`• ${tip}`));
-  }
-  const watch = t.watch_outs_json ?? [];
-  if (watch.length) {
-    lines.push("");
-    lines.push("Watch out:");
-    watch.slice(0, 5).forEach((w) => lines.push(`⚠ ${w}`));
-  }
-  if (!tips.length && !watch.length) {
-    lines.push("");
-    lines.push(
-      "No install tips saved for this type yet — they build up as crews log installs and voice memos.",
-    );
-  }
-  return lines.join("\n");
-}
-
-/** Offline fallback: real-brain first, then glossary, then app guide. */
-async function localAnswer(q: string): Promise<string> {
-  const query = q.toLowerCase().trim();
-  if (!query) return "Ask me about a window type, a term, or how to use any part of the app.";
-
-  // 1) The real install brain: does the query name a catalog window type?
-  try {
-    const hits = await searchBrainTypes(q);
-    if (hits.length > 0) {
-      if (hits.length === 1) return brainAnswer(hits[0]);
-      const top = brainAnswer(hits[0]);
-      const others = hits
-        .slice(1)
-        .map((h) => `${h.type_code} (${h.name})`)
-        .join(", ");
-      return `${top}\n\nAlso matched: ${others} — ask for one by its code for details.`;
-    }
-  } catch {
-    // Brain unreachable (offline) — fall through to the local knowledge base.
-  }
-
-  // 2) Window glossary term.
-  const term = TERMS.find(
-    (t) => query.includes(t.term.toLowerCase()) || t.term.toLowerCase().includes(query),
-  );
-  if (term) {
-    const cat = CATS.find((c) => c.id === term.cat)?.label ?? term.cat;
-    return `${term.term} (${cat}): ${term.desc}`;
-  }
-
-  // 3) How-to / app guide.
-  if (/\b(how|where|what|use|do i|help|start|clock|install|point|scan|warehouse)\b/.test(query)) {
-    return APP_GUIDE;
-  }
-
-  return (
-    "I don't have a saved answer for that yet. Try a window type (e.g. \"single hung\", " +
-    "\"SL7248\", \"bay\"), a term (e.g. \"flashing\", \"nail fin\"), or ask how to do " +
-    "something in the app."
-  );
-}
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -174,28 +96,60 @@ function gatherLiveData(): AskLiveData {
   };
 }
 
+/** Render one brain answer as the chat bubble's text. */
+function hitText(hit: BrainHit): string {
+  return `${hit.entry.title}\n${hit.entry.body}`;
+}
+
+function brainMessage(outcome: BrainOutcome): ChatMsg {
+  if (outcome.kind === "answers") {
+    return { who: "infinity", text: hitText(outcome.hits[0]), hits: outcome.hits };
+  }
+  return { who: "infinity", text: outcome.message };
+}
+
 export function AskInfinity() {
   const navigate = useNavigate();
   const [input, setInput] = useState("");
+  const [catalog, setCatalog] = useState<CatalogType[]>(() => currentCatalog().types);
   const [messages, setMessages] = useState<ChatMsg[]>([
     {
       who: "infinity",
-      text: "Hey — I'm Infinity AI. Ask me anything about our jobs, our notes, a window type, or how to use the app.",
+      text:
+        "Hey — ask me anything about a window type, a term, or how we install. " +
+        "Answers come from our own notes, on this phone, so they work with no signal.",
     },
   ]);
-
   const [thinking, setThinking] = useState(false);
+  const profile = queryClient.getQueryData<Profile>(["myProfile"]);
+  const threadEnd = useRef<HTMLDivElement>(null);
 
-  // The offline fallback now grounds itself in the live query cache, so the
-  // schedule/next-window chips answer even when the cloud path is unavailable.
+  // Freshen the bundled catalog whenever there is signal. The brain answers
+  // fine without this ever succeeding.
+  useEffect(() => {
+    let cancelled = false;
+    void refreshCatalogCache().then((types) => {
+      if (!cancelled) setCatalog(types);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const index = useMemo(() => getBrainIndex(catalog), [catalog]);
+
+  useEffect(() => {
+    threadEnd.current?.scrollIntoView({ block: "end" });
+  }, [messages]);
+
   const suggestions = useMemo(
     () => [
-      "What's on our schedule?",
-      "My next window",
-      "My truck today",
-      "Travel this week",
       "Single hung tips",
       "What is flashing?",
+      "Do I caulk the bottom?",
+      "Which side does the drain face?",
+      "What's on our schedule?",
+      "My next window",
     ],
     [],
   );
@@ -204,7 +158,6 @@ export function AskInfinity() {
     const q = text.trim();
     if (!q || thinking) return;
 
-    // History for the LLM: the running conversation so far (skip the greeting).
     const history = messages
       .slice(1)
       .map((m) => ({
@@ -218,27 +171,35 @@ export function AskInfinity() {
     setThinking(true);
 
     const online = typeof navigator === "undefined" ? true : navigator.onLine;
-    const useCloud = shouldUseLLM({ online, supabaseConfigured });
 
     const run = async (): Promise<ChatMsg> => {
-      // Only true when the cloud AI was expected to answer but actually errored
-      // (network / outage / 500) — used to be honest that we've dropped to the
-      // offline brain, rather than silently passing a canned tour off as the AI.
-      let cloudErrored = false;
-      if (useCloud) {
+      // 1) Live job data the app already has cached — schedule, next window,
+      //    my truck. No network needed and no model involved.
+      const live = liveAnswer(q, gatherLiveData());
+      if (live) {
+        void logAskedQuestion(q, { kind: "answers", hits: [] }, { online });
+        return { who: "infinity", text: live };
+      }
+
+      // 2) The company brain. This is the answer path — always available,
+      //    always free, and incapable of making something up.
+      const outcome = askBrain(index, q);
+      void logAskedQuestion(q, outcome, { online });
+      if (outcome.kind === "answers") return brainMessage(outcome);
+
+      // 3) Only when the brain has nothing written down, and only when the
+      //    cloud AI is actually configured, offer what it can add. It is never
+      //    a prerequisite for a correct answer and is skipped entirely with no
+      //    key, offline, or for installers.
+      if (shouldUseLLM({ online, supabaseConfigured }) && isForemanPlus(profile?.role)) {
         try {
           const { answer, sources } = await askInfinity(q, history);
           if (answer) return { who: "infinity", text: answer, sources };
         } catch {
-          // Cloud unavailable — fall back to the offline brain below, and note it.
-          cloudErrored = true;
+          // Cloud unavailable — the honest local message below stands.
         }
       }
-      // Ground the offline path in live cached data first, then the static brain.
-      const prefix = cloudErrored ? "(Offline mode — cloud AI unavailable.)\n\n" : "";
-      const live = liveAnswer(q, gatherLiveData());
-      if (live) return { who: "infinity", text: prefix + live };
-      return { who: "infinity", text: prefix + (await localAnswer(q)) };
+      return brainMessage(outcome);
     };
 
     void run()
@@ -257,7 +218,7 @@ export function AskInfinity() {
       <header className="page-header">
         <div>
           <p className="home-greeting ai-eyebrow">
-            <Sparkles size={13} /> Infinity AI
+            <Sparkles size={13} /> Infinity
           </p>
           <h1>Company brain</h1>
         </div>
@@ -275,6 +236,25 @@ export function AskInfinity() {
             >
               {m.text}
             </div>
+            {m.hits && m.hits.length > 0 && (
+              <p className="ask-sources muted">From: {m.hits[0].entry.source}</p>
+            )}
+            {m.hits && m.hits.length > 1 && (
+              <div className="ask-alternates">
+                <p className="muted" style={{ margin: "4px 0 2px", fontSize: 12 }}>
+                  Also written down:
+                </p>
+                {m.hits.slice(1).map((hit) => (
+                  <details key={hit.entry.id} className="ask-alternate">
+                    <summary>
+                      {hit.entry.title}
+                      <span className="muted"> · {hit.entry.source}</span>
+                    </summary>
+                    <div style={{ whiteSpace: "pre-line" }}>{hit.entry.body}</div>
+                  </details>
+                ))}
+              </div>
+            )}
             {m.sources && m.sources.length > 0 && (
               <p className="ask-sources muted">
                 Sources: {m.sources.map((s) => s.title).join(", ")}
@@ -287,6 +267,7 @@ export function AskInfinity() {
             …
           </div>
         )}
+        <div ref={threadEnd} />
       </div>
 
       <div className="ask-suggestions">
@@ -299,7 +280,7 @@ export function AskInfinity() {
 
       <div className="ask-input">
         <input
-          placeholder="Ask about jobs, notes, or how-to…"
+          placeholder="Ask about a window, a term, or how-to…"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send(input)}
