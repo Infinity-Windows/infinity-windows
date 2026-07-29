@@ -481,6 +481,9 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- told apart from two genuinely different rows, so these are appended,
     # -- never matched. Note `tools`: two crates both labelled "Hilti TE 6" are
     # -- two physical tools, so even the name is not a key.
+    # -- The same installer can ask the same question twice, minutes apart, and
+    # -- both asks are real: the count is the signal a foreman reads.
+    "ask_question_log": None,
     "attachments": None,
     "change_orders": None,
     "cycle_counts": None,

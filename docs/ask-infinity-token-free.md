@@ -516,6 +516,49 @@ I would be wrong if:
 
 ---
 
+## Update — what shipped, and what it actually scored
+
+*29 July 2026. Items 1, 2, 3, 4 and 7 of the plan above are built.*
+
+**The brain now answers 22 of these 28 questions correctly, against 6 before.**
+Something useful appears in the three results shown for 25 of 28. The prediction
+in Part 3 was 17 and 21, so both are beaten. Nothing was added to the company's
+written knowledge to get there — it is the same 105 glossary terms, 18 procedure
+steps and 88 seeded tip lines, finally findable.
+
+| | Before | Predicted | Shipped |
+|---|---|---|---|
+| Top answer correct | 6 of 28 | 17 of 28 | **22 of 28** |
+| Useful in the three shown | — | 21 of 28 | **25 of 28** |
+
+The four that still don't land on the right answer, honestly:
+
+- **Q8 "the opening is out of level"** returns the out-of-level warning for an
+  awning first and the general one second. Right topic, wrong unit, in the top
+  three either way.
+- **Q22 "how long should a casement take"** — no install has ever been logged,
+  so no window type has a typical time. There is nothing to find.
+- **Q24 "can I re-use the old sill pan"** offers the sill-pan entry, which does
+  not say whether re-use is allowed. Nobody has written the company line on it.
+- **Q27 "what torque on anchors into concrete"** offers the anchor schedule,
+  which specifies spacing and embedment, not torque. Also unwritten.
+
+Three of those four are missing content, not missing search, exactly as Part 3
+predicted. They are the first three things to write, and the question log (item
+7, also shipped) will say whether crew actually ask them.
+
+Two questions now get an honest refusal instead of a guess, which is a change
+worth noting: "what did Ammon say about this job last week?" is answered with
+"that's about a job, not install technique", and "it's raining and the opening is
+open" is answered with "we haven't written that down yet — logged for a foreman".
+Both used to get the app tour. Nothing gets the app tour any more unless it is
+actually a question about using the app.
+
+**What it costs to run:** nothing. There is no model call in the answer path and
+no API key involved. **What it costs to ship:** 30 KB in the app bundle
+(10 KB over the wire), which the service worker already precaches, so the whole
+thing works with the phone in airplane mode.
+
 ### Reproducing the measurements
 
 Every number in Parts 2 and 5 came from read-only queries against production

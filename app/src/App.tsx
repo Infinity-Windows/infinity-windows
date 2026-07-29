@@ -20,6 +20,7 @@ import { ViewAsRoleProvider } from "./lib/viewAsRole";
 import { effectiveRole, useViewAsRole } from "./lib/viewAsRoleContext";
 import { supabase } from "./lib/supabase";
 import { AskInfinity } from "./pages/AskInfinity";
+import { AskMisses } from "./pages/AskMisses";
 import { Knowledge } from "./pages/Knowledge";
 import { CycleCount } from "./pages/CycleCount";
 import { Home } from "./pages/Home";
@@ -215,6 +216,14 @@ export default function App() {
             <Route path="/" element={<RoleLanding />} />
             <Route path="/warehouse" element={<Warehouse />} />
             <Route path="/ask" element={<AskInfinity />} />
+            <Route
+              path="/ask-misses"
+              element={
+                <RequireRole minRole="foreman">
+                  <AskMisses />
+                </RequireRole>
+              }
+            />
             <Route
               path="/knowledge"
               element={<RequireRole path="/knowledge"><Knowledge /></RequireRole>}

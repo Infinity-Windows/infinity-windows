@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { listWindowTypes } from "../lib/api";
+import { realCatalogTypes } from "../lib/catalogTypes";
 import {
   getInstallerLeaderboard,
   getJobVariance,
@@ -135,7 +136,7 @@ export function Analytics() {
             </tr>
           </thead>
           <tbody>
-            {(types.data ?? [])
+            {realCatalogTypes(types.data ?? [])
               .filter((t) => (t.n_installs ?? 0) > 0)
               .sort((a, b) => (b.learned_difficulty ?? 0) - (a.learned_difficulty ?? 0))
               .map((t) => (

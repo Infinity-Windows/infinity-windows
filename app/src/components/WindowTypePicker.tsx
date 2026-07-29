@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { listWindowTypes } from "../lib/api";
+import { realCatalogTypes } from "../lib/catalogTypes";
 import type { WindowType } from "../lib/types";
 
 /**
@@ -41,7 +42,9 @@ export function WindowTypePicker({
 }: WindowTypePickerProps) {
   const types = useWindowTypes();
   const [query, setQuery] = useState("");
-  const all = useMemo(() => types.data ?? [], [types.data]);
+  // Provisional rows are planset-extraction leftovers named "Mark #1"; nobody
+  // should pick one from the catalog, but a type already assigned stays visible.
+  const all = useMemo(() => realCatalogTypes(types.data ?? [], value), [types.data, value]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
