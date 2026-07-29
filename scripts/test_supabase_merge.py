@@ -193,39 +193,18 @@ class TestMigrationVersions(unittest.TestCase):
     in this repo, so it is worth a test rather than a habit.
     """
 
-    #: The one collision that predates this test, being repaired separately.
-    #: Nothing may be added to this list — fix the filename instead.
-    KNOWN_COLLISIONS = {"20260729200000"}
-
-    def test_no_new_duplicate_versions(self):
+    def test_no_duplicate_versions(self):
         versions: dict[str, list[str]] = {}
         for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
             versions.setdefault(path.name.split("_", 1)[0], []).append(path.name)
 
         duplicates = {v: names for v, names in versions.items() if len(names) > 1}
-        unexpected = {
-            v: names for v, names in duplicates.items() if v not in self.KNOWN_COLLISIONS
-        }
         self.assertEqual(
-            unexpected,
+            duplicates,
             {},
             "these migrations share a version, so db push will silently skip one: "
-            f"{unexpected}",
+            f"{duplicates}",
         )
-
-    def test_the_known_collision_list_has_no_stale_entries(self):
-        # When the pre-existing collision is repaired, this fails and the entry
-        # comes out, so the allowance cannot outlive the problem.
-        versions: dict[str, int] = {}
-        for path in MIGRATIONS_DIR.glob("*.sql"):
-            version = path.name.split("_", 1)[0]
-            versions[version] = versions.get(version, 0) + 1
-        for version in self.KNOWN_COLLISIONS:
-            self.assertGreater(
-                versions.get(version, 0),
-                1,
-                f"{version} is no longer a collision; remove it from KNOWN_COLLISIONS",
-            )
 
     def test_every_version_is_a_plausible_timestamp(self):
         for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
