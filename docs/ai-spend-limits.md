@@ -261,6 +261,26 @@ Two rules, both chosen so this feature can never become the outage:
 - The guard never throws. `enforced = false` in the settings row turns
   enforcement off while still recording usage, if the owner ever needs that.
 
+## The migration version
+
+`supabase/migrations/20260729230000_ai_spend_limits.sql`. It started life at
+`…210000`, which turned out to be taken by `revoke_truncate_from_clients`, and
+that is worth recording because of how the failure would have looked.
+
+`supabase_migrations.schema_migrations` is keyed by **version**, not filename. Two
+files sharing a version means `supabase db push` sees the version already applied
+and skips the second one — no error, no warning, and in this case no tables, no
+reserve function and no grants. The spend cap would have read as shipped and
+simply not existed. Worse, nothing would have complained: the guard is written to
+fail open when the RPC is missing, precisely so a migration lag cannot take the
+assistant offline, so the cap would have been silently absent while the assistant
+kept answering.
+
+`scripts/test_supabase_merge.py` now fails the build if two migrations share a
+version, with a single allowance for the one pre-existing collision at
+`…200000` that is being repaired separately. That allowance is itself tested, so
+it cannot outlive the problem.
+
 ## Tables
 
 | Table | Holds |
