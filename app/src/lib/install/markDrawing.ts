@@ -50,11 +50,16 @@ export function validateBbox(raw: unknown): Bbox | null {
  * Grow a bbox by `pad` (a fraction of the page) on every side, clamped to the
  * page. The model's boxes hug the glass and clip the dimension lines, leader
  * text, and the "Outside View" caption underneath — the very things an
- * installer checks — so a small uniform margin is always added. 3.2% was the
- * value that recovered the annotations on the real sheet without pulling in the
- * neighbouring mark. PURE.
+ * installer checks — so a small uniform margin is always added.
+ *
+ * PLACEHOLDER VALUE WHILE THE MEASUREMENT RUNS — do not merge on this commit.
+ * 3.2% was tuned by eye on the Smith Residence sheet and left Black Desert's
+ * mark #16 stopping just short of its own printed overall width. 4.5% recovers
+ * #16, but the number has to be shown safe on Smith before it can ship; this
+ * commit exists so the work is visible, and it will either gain that evidence
+ * or be reverted. PURE.
  */
-export function padBbox(bbox: Bbox, pad = 0.032): Bbox {
+export function padBbox(bbox: Bbox, pad = 0.045): Bbox {
   const clamp = (n: number) => Math.min(1, Math.max(0, n));
   return [
     clamp(bbox[0] - pad),

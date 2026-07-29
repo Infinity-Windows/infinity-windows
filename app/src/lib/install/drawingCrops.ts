@@ -182,7 +182,7 @@ export interface CropRequest {
  * IndexedDB for weeks, and a crew who already has mark #2's black rectangle
  * saved would otherwise keep seeing it after the fix shipped.
  */
-const SPEC_VARIANT = "repair1";
+const SPEC_VARIANT = "repair2";
 
 /**
  * The crop for one mark, as a PNG data URL, or null when the page has no
