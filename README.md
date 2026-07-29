@@ -148,8 +148,27 @@ SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/vault-sync.mjs
 SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/weekly-report.mjs
 ```
 
+### Merging the two Supabase projects
+
+This app was built against two different Supabase projects by two people, and
+the data now has to end up in one. [`docs/supabase-merge-plan.md`](docs/supabase-merge-plan.md)
+is the plan: which project wins, what order rows have to be inserted in, and
+what will go wrong if it is done naively.
+
+The tooling needs an `sbp_…` management token and nothing else:
+
+```bash
+SUPABASE_ACCESS_TOKEN=sbp_... scripts/supabase-inventory.sh   # every project on the account
+python3 scripts/supabase-compare.py docs/inventory/*.json     # what differs
+scripts/supabase-merge.sh --source <a>.json --target <b>.json # dry run, never executes
+```
+
+`supabase-merge.sh` has no `--execute`, on purpose — the reasoning is in the
+plan.
+
 ## Tests
 
 ```bash
-cd app && npm test
+cd app && npm test                        # 1,260 frontend tests
+python3 scripts/test_supabase_merge.py    # merge tooling, stdlib only
 ```

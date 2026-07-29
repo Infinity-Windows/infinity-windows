@@ -48,3 +48,30 @@ jobs:
       - name: Test scripts/verify-functions.sh
         shell: bash
         run: scripts/verify-functions.test.sh
+
+  supabase-tooling:
+    name: Supabase merge tooling
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Stdlib only — these have to run on a laptop with a Supabase token and
+      # nothing else installed, so there is nothing to install here either.
+      - name: Test
+        run: python3 scripts/test_supabase_merge.py
+
+      # The dry run must stay runnable with no credentials. If it ever needs a
+      # database to plan a merge, that is a bug.
+      - name: Dry run against the committed backup
+        run: |
+          scripts/supabase-merge.sh \
+            --source docs/backups/2026-07-29T1200Z-czprjcskmzzagdztqonm-full.json \
+            --target docs/backups/2026-07-29T1200Z-czprjcskmzzagdztqonm-full.json \
+            >/dev/null 2>&1 && { echo "merging a project into itself should have been refused"; exit 1; } || true
+          ! scripts/supabase-merge.sh --source a --target b --execute
