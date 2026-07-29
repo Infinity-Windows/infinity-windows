@@ -352,7 +352,7 @@ print_list() {
   done
 }
 
-if [ "${#broken[@]-0}" -gt 0 ]; then
+if [ "${#broken[@]}" -gt 0 ]; then
   # A refused key and an unreadable answer both show up as "no usable output",
   # and they need completely different things done about them — replace a key, or
   # fix the code. Saying which is the difference between a report the owner can
@@ -381,10 +381,10 @@ if [ "${#broken[@]-0}" -gt 0 ]; then
     ;;
   esac
 
-  if [ "${#broken[@]-0}" -eq 1 ]; then
+  if [ "${#broken[@]}" -eq 1 ]; then
     headline="${broken[0]%%|*} is not working: $cause"
   else
-    headline="${#broken[@]-0} writing features are not working: $cause"
+    headline="${#broken[@]} writing features are not working: $cause"
   fi
 
   {
@@ -398,7 +398,7 @@ if [ "${#broken[@]-0}" -gt 0 ]; then
     echo
     echo "  NOT WORKING:"
     print_list "${broken[@]+"${broken[@]}"}"
-    if [ "${#proved[@]-0}" -gt 0 ]; then
+    if [ "${#proved[@]}" -gt 0 ]; then
       echo
       echo "  Working, for contrast:"
       print_list "${proved[@]+"${proved[@]}"}"
@@ -412,11 +412,11 @@ if [ "${#broken[@]-0}" -gt 0 ]; then
   exit 1
 fi
 
-if [ "${#proved[@]-0}" -eq 0 ]; then
+if [ "${#proved[@]}" -eq 0 ]; then
   {
     echo "Could not tell whether the writing features work: none could be exercised"
     echo
-    if [ "${#untested[@]-0}" -gt 0 ]; then
+    if [ "${#untested[@]}" -gt 0 ]; then
       print_list "${untested[@]+"${untested[@]}"}"
       echo
     fi
@@ -426,13 +426,13 @@ if [ "${#proved[@]-0}" -eq 0 ]; then
   exit 2
 fi
 
-echo "The writing features work: ${#proved[@]-0} of them produced real output"
+echo "The writing features work: ${#proved[@]} of them produced real output"
 echo
 echo "  project: ${REF:-<from TEXT_SMOKE_BASE>}"
 echo
 echo "  PROVED — real output came back from Claude:"
 print_list "${proved[@]+"${proved[@]}"}"
-if [ "${#untested[@]-0}" -gt 0 ]; then
+if [ "${#untested[@]}" -gt 0 ]; then
   echo
   echo "  NOT TESTED — read nothing into these either way:"
   print_list "${untested[@]+"${untested[@]}"}"

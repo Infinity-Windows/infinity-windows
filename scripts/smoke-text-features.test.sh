@@ -14,6 +14,12 @@
 #
 # Every case drives a fake `curl` first on PATH. No network, no project, no key.
 #
+# Run these under bash 5 as well as whatever `bash` is on your machine. A stock
+# macOS shell is 3.2 and accepts syntax bash 5 rejects outright, so a green run
+# here can still fail on the CI runner:
+#
+#   docker run --rm -v "$PWD":/w -w /w bash:5 bash scripts/smoke-text-features.test.sh
+#
 #   scripts/smoke-text-features.test.sh
 #   scripts/smoke-text-features.test.sh -v
 set -uo pipefail
