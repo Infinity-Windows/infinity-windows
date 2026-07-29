@@ -459,6 +459,16 @@ for a full working week.
 
 ## 8. Known gap, and the follow-up it implies
 
+> **Closed on 2026-07-29.** The two bays now exist. See
+> [`black-desert-staging-bays-2026-07-29.md`](./black-desert-staging-bays-2026-07-29.md),
+> which also corrects two details below: the addresses are `J-BLACK22-A` and
+> `J-BLACK22-B` (the generated column joins with `-`, not `|`), and the serials
+> are `SLOT-000051`/`SLOT-000052`, not `SLOT-000043`/`SLOT-000044`, because
+> rehearsing the write drew from the sequence and sequences do not roll back.
+> That write-up also names the wider product gap: nothing in the system
+> guarantees a job has its bays, and when one does not, the app silently suggests
+> a general stock shelf instead of saying so.
+
 **Black Desert has no warehouse staging bays in production.**
 
 `createProject` in `app/src/lib/api.ts` lines 128–131 creates two `locations`
@@ -500,4 +510,6 @@ somebody else's call:
 1. Use the app against production for a working week.
 2. Then **pause** `jvsyhtarnvmdilsgksdi`. Do not delete it.
 3. `nbjmylctlklvazzlybts` has never held anything and can be deleted whenever.
-4. Add the two `J|BLACK22|*` staging bays ([§8](#8-known-gap-and-the-follow-up-it-implies)).
+4. ~~Add the two `J|BLACK22|*` staging bays~~ — **done**, see
+   [`black-desert-staging-bays-2026-07-29.md`](./black-desert-staging-bays-2026-07-29.md).
+   Two physical shelf labels still need printing.
