@@ -16,6 +16,7 @@ databases holding the same real-world things under different ids.
 from __future__ import annotations
 
 import copy
+import importlib.util
 import json
 import random
 import sys
@@ -47,6 +48,13 @@ from supabase_merge_lib import (
     total_rows,
 )
 from supabase_merge_plan import Plan, insert_statement, sql_literal
+
+# supabase-compare.py is not an importable module name, so load it by path.
+_compare_spec = importlib.util.spec_from_file_location(
+    "supabase_compare", Path(__file__).resolve().parent / "supabase-compare.py"
+)
+supabase_compare = importlib.util.module_from_spec(_compare_spec)
+_compare_spec.loader.exec_module(supabase_compare)
 
 REPO = Path(__file__).resolve().parent.parent
 BACKUP = REPO / "docs" / "backups" / "2026-07-29T1200Z-czprjcskmzzagdztqonm-full.json"
@@ -333,6 +341,58 @@ class TestComparison(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = self._tmp.name
         self.addCleanup(self._tmp.cleanup)
+
+
+class TestUninitialisedProject(unittest.TestCase):
+    """A project with no public schema at all must not be compared table by table.
+
+    Found on 2026-07-29: the account held a third project, nbjmylctlklvazzlybts,
+    created and never touched. Including it turned all 67 tables into
+    "MISSING WHERE DATA EXISTS ELSEWHERE" and made the tool exit non-zero, which
+    is the opposite of the truth — an empty project has nothing to merge.
+    """
+
+    def _inv(self, ref, tables):
+        return {
+            "project_ref": ref,
+            "tables": tables,
+            "migrations": {"count": None},
+            "auth": {"users": 0},
+            "storage": {"buckets": [], "total_objects": 0},
+            "functions": [],
+        }
+
+    def test_no_tables_is_uninitialised(self):
+        self.assertTrue(supabase_compare.is_uninitialised(self._inv("ccc", {})))
+
+    def test_tables_that_are_all_empty_are_still_compared(self):
+        # Empty is not missing. A project whose tables exist but hold no rows has
+        # a schema, and excluding it would recreate the bug this repo already had.
+        inv = self._inv("bbb", {"issues": {"rows": 0, "columns": {}}})
+        self.assertFalse(supabase_compare.is_uninitialised(inv))
+
+    def test_empty_project_does_not_mask_a_real_comparison(self):
+        a = self._inv("aaa", {"windows": {"rows": 11, "columns": {}}})
+        b = self._inv("bbb", {"windows": {"rows": 0, "columns": {}}})
+        empty = self._inv("ccc", {})
+
+        comparable = [i for i in (a, b, empty) if not supabase_compare.is_uninitialised(i)]
+        self.assertEqual([i["project_ref"] for i in comparable], ["aaa", "bbb"])
+
+        comparisons = compare_inventories(comparable)
+        self.assertEqual(
+            [c.verdict for c in comparisons],
+            ["empty in some projects, populated in others"],
+        )
+        self.assertNotIn(MISSING, comparisons[0].states.values())
+
+    def test_render_names_the_excluded_project(self):
+        a = self._inv("aaa", {"windows": {"rows": 11, "columns": {}}})
+        b = self._inv("bbb", {"windows": {"rows": 0, "columns": {}}})
+        empty = self._inv("ccc", {})
+        out = supabase_compare.render([a, b], compare_inventories([a, b]), [empty])
+        self.assertIn("NOT COMPARED", out)
+        self.assertIn("ccc", out)
 
 
 class TestIdRemapper(unittest.TestCase):

@@ -1,0 +1,1570 @@
+{
+  "auth": {
+    "signed_in": 1,
+    "users": 1
+  },
+  "captured_at": "2026-07-29T19:03:24.393727+00:00",
+  "created_at": "2026-07-18T18:58:39.854565Z",
+  "errors": {},
+  "functions": [
+    {
+      "name": "ask",
+      "slug": "ask",
+      "status": "ACTIVE",
+      "updated_at": 1784910248890,
+      "version": 7
+    },
+    {
+      "name": "extract-specs",
+      "slug": "extract-specs",
+      "status": "ACTIVE",
+      "updated_at": 1785210618854,
+      "version": 5
+    },
+    {
+      "name": "ingest-knowledge",
+      "slug": "ingest-knowledge",
+      "status": "ACTIVE",
+      "updated_at": 1784667865135,
+      "version": 3
+    },
+    {
+      "name": "send-push",
+      "slug": "send-push",
+      "status": "ACTIVE",
+      "updated_at": 1784569342430,
+      "version": 2
+    },
+    {
+      "name": "vault-config",
+      "slug": "vault-config",
+      "status": "ACTIVE",
+      "updated_at": 1784667861447,
+      "version": 2
+    }
+  ],
+  "migrations": {
+    "count": 70,
+    "latest": "20260728170000"
+  },
+  "name": "isaacammonbarlow-max's Project 2",
+  "organization_id": "gdkmcyypdsmxmsdtdcgh",
+  "project_ref": "jvsyhtarnvmdilsgksdi",
+  "region": "us-east-1",
+  "source": "management-api",
+  "status": "ACTIVE_HEALTHY",
+  "storage": {
+    "buckets": [
+      {
+        "name": "install-media",
+        "objects": 0,
+        "public": false
+      },
+      {
+        "name": "plansets",
+        "objects": 5,
+        "public": false
+      },
+      {
+        "name": "toolbox-records",
+        "objects": 0,
+        "public": false
+      },
+      {
+        "name": "trip-attachments",
+        "objects": 0,
+        "public": false
+      }
+    ],
+    "total_objects": 5
+  },
+  "table_count": 66,
+  "tables": {
+    "access_requests": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "decided_at": "timestamp with time zone",
+        "decided_by": "uuid",
+        "email": "text",
+        "id": "uuid",
+        "name": "text",
+        "note": "text",
+        "phone": "text",
+        "requested_role": "text",
+        "status": "text"
+      },
+      "nullable": [
+        "decided_at",
+        "decided_by",
+        "email",
+        "note",
+        "phone"
+      ],
+      "rows": 0
+    },
+    "attachments": {
+      "columns": {
+        "accuracy_m": "numeric",
+        "caption": "text",
+        "client_id": "uuid",
+        "created_at": "timestamp with time zone",
+        "created_by": "text",
+        "id": "uuid",
+        "install_event_id": "uuid",
+        "kind": "text",
+        "lat": "numeric",
+        "lng": "numeric",
+        "project_id": "uuid",
+        "service_case_id": "uuid",
+        "storage_path": "text",
+        "taken_at": "timestamp with time zone",
+        "transcribed_at": "timestamp with time zone",
+        "transcript": "text",
+        "window_id": "uuid"
+      },
+      "nullable": [
+        "accuracy_m",
+        "caption",
+        "client_id",
+        "created_by",
+        "install_event_id",
+        "lat",
+        "lng",
+        "project_id",
+        "service_case_id",
+        "taken_at",
+        "transcribed_at",
+        "transcript",
+        "window_id"
+      ],
+      "rows": 0
+    },
+    "change_orders": {
+      "columns": {
+        "amount": "numeric",
+        "created_at": "timestamp with time zone",
+        "id": "uuid",
+        "label": "text",
+        "project_id": "uuid"
+      },
+      "nullable": [],
+      "rows": 0
+    },
+    "cost_codes": {
+      "columns": {
+        "active": "boolean",
+        "code": "text",
+        "created_at": "timestamp with time zone",
+        "description": "text",
+        "id": "uuid",
+        "label": "text",
+        "sort_order": "integer",
+        "updated_at": "timestamp with time zone"
+      },
+      "nullable": [
+        "description"
+      ],
+      "rows": 6
+    },
+    "cycle_counts": {
+      "columns": {
+        "completed_at": "timestamp with time zone",
+        "discrepancies": "jsonb",
+        "expected": "integer",
+        "found": "integer",
+        "id": "uuid",
+        "location_id": "uuid",
+        "started_at": "timestamp with time zone",
+        "started_by": "text"
+      },
+      "nullable": [
+        "completed_at",
+        "expected",
+        "found",
+        "started_by"
+      ],
+      "rows": 0
+    },
+    "flights": {
+      "columns": {
+        "airline": "text",
+        "arrive_airport": "text",
+        "arrive_at": "timestamp with time zone",
+        "arrive_timezone": "text",
+        "confirmation_code": "text",
+        "created_at": "timestamp with time zone",
+        "depart_airport": "text",
+        "depart_at": "timestamp with time zone",
+        "depart_timezone": "text",
+        "drive_minutes_to_airport": "integer",
+        "flight_number": "text",
+        "id": "uuid",
+        "minutes_before_departure": "integer",
+        "notes": "text",
+        "profile_id": "uuid",
+        "seat": "text",
+        "sort_order": "integer",
+        "trip_id": "uuid",
+        "updated_at": "timestamp with time zone"
+      },
+      "nullable": [
+        "airline",
+        "arrive_airport",
+        "arrive_at",
+        "arrive_timezone",
+        "confirmation_code",
+        "depart_airport",
+        "depart_at",
+        "depart_timezone",
+        "drive_minutes_to_airport",
+        "flight_number",
+        "notes",
+        "profile_id",
+        "seat"
+      ],
+      "rows": 0
+    },
+    "ground_transport": {
+      "columns": {
+        "confirmation_code": "text",
+        "created_at": "timestamp with time zone",
+        "dropoff_at": "timestamp with time zone",
+        "dropoff_location": "text",
+        "dropoff_timezone": "text",
+        "id": "uuid",
+        "notes": "text",
+        "pickup_at": "timestamp with time zone",
+        "pickup_location": "text",
+        "pickup_timezone": "text",
+        "provider": "text",
+        "sort_order": "integer",
+        "trip_id": "uuid",
+        "type": "text",
+        "updated_at": "timestamp with time zone"
+      },
+      "nullable": [
+        "confirmation_code",
+        "dropoff_at",
+        "dropoff_location",
+        "dropoff_timezone",
+        "notes",
+        "pickup_at",
+        "pickup_location",
+        "pickup_timezone",
+        "provider",
+        "type"
+      ],
+      "rows": 0
+    },
+    "incidents": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "description": "text",
+        "id": "uuid",
+        "profile_id": "uuid",
+        "project_id": "uuid",
+        "severity": "text"
+      },
+      "nullable": [
+        "profile_id",
+        "project_id"
+      ],
+      "rows": 0
+    },
+    "install_events": {
+      "columns": {
+        "ai_confirmed": "boolean",
+        "created_at": "timestamp with time zone",
+        "difficulty": "text",
+        "do_again": "text",
+        "estimate_minutes": "integer",
+        "id": "uuid",
+        "installer": "text",
+        "installer_id": "uuid",
+        "minutes": "integer",
+        "obstacles": "text",
+        "photo_findings": "jsonb",
+        "project_opening_id": "uuid",
+        "quality_grade": "integer",
+        "safety_notes": "text",
+        "started_at": "timestamp with time zone",
+        "time_vs_estimate": "text",
+        "tools_helped": "text",
+        "transcript_raw": "text",
+        "void_reason": "text",
+        "voided_at": "timestamp with time zone",
+        "voided_by": "uuid",
+        "went_poorly": "text",
+        "went_well": "text",
+        "window_id": "uuid",
+        "window_type_id": "uuid"
+      },
+      "nullable": [
+        "difficulty",
+        "do_again",
+        "estimate_minutes",
+        "installer",
+        "installer_id",
+        "minutes",
+        "obstacles",
+        "photo_findings",
+        "quality_grade",
+        "safety_notes",
+        "started_at",
+        "time_vs_estimate",
+        "tools_helped",
+        "transcript_raw",
+        "void_reason",
+        "voided_at",
+        "voided_by",
+        "went_poorly",
+        "went_well",
+        "window_id",
+        "window_type_id"
+      ],
+      "rows": 0
+    },
+    "installer_clearance": {
+      "columns": {
+        "cleared_at": "timestamp with time zone",
+        "cleared_by": "uuid",
+        "installer_id": "uuid",
+        "window_type_id": "uuid"
+      },
+      "nullable": [
+        "cleared_by"
+      ],
+      "rows": 0
+    },
+    "issues": {
+      "columns": {
+        "assigned_to": "uuid",
+        "created_at": "timestamp with time zone",
+        "created_by": "uuid",
+        "fault_by": "uuid",
+        "id": "uuid",
+        "kind": "text",
+        "note": "text",
+        "opening_id": "uuid",
+        "project_id": "uuid",
+        "resolved_at": "timestamp with time zone",
+        "resolved_by": "uuid",
+        "status": "text",
+        "urgency": "text",
+        "window_id": "uuid"
+      },
+      "nullable": [
+        "assigned_to",
+        "created_by",
+        "fault_by",
+        "note",
+        "opening_id",
+        "resolved_at",
+        "resolved_by",
+        "window_id"
+      ],
+      "rows": 0
+    },
+    "job_costs": {
+      "columns": {
+        "amount": "numeric",
+        "category": "text",
+        "cost_date": "date",
+        "created_at": "timestamp with time zone",
+        "created_by": "uuid",
+        "id": "uuid",
+        "label": "text",
+        "project_id": "uuid"
+      },
+      "nullable": [
+        "created_by",
+        "label"
+      ],
+      "rows": 0
+    },
+    "job_notes": {
+      "columns": {
+        "author_id": "uuid",
+        "author_name": "text",
+        "created_at": "timestamp with time zone",
+        "id": "uuid",
+        "note": "text",
+        "project_id": "uuid"
+      },
+      "nullable": [
+        "author_id",
+        "author_name"
+      ],
+      "rows": 0
+    },
+    "knowledge_chunks": {
+      "columns": {
+        "chunk_index": "integer",
+        "content": "text",
+        "created_at": "timestamp with time zone",
+        "doc_id": "uuid",
+        "embedding": "USER-DEFINED",
+        "id": "uuid",
+        "token_count": "integer"
+      },
+      "nullable": [
+        "embedding"
+      ],
+      "rows": 0
+    },
+    "knowledge_docs": {
+      "columns": {
+        "active": "boolean",
+        "content_hash": "text",
+        "created_at": "timestamp with time zone",
+        "created_by": "uuid",
+        "id": "uuid",
+        "path": "text",
+        "source": "text",
+        "title": "text",
+        "updated_at": "timestamp with time zone"
+      },
+      "nullable": [
+        "created_by"
+      ],
+      "rows": 0
+    },
+    "learn_priority_terms": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "reason": "text",
+        "term_id": "text"
+      },
+      "nullable": [
+        "reason"
+      ],
+      "rows": 0
+    },
+    "learn_progress": {
+      "columns": {
+        "again_count": "integer",
+        "box": "integer",
+        "due": "date",
+        "got_count": "integer",
+        "profile_id": "uuid",
+        "term_id": "text",
+        "updated_at": "timestamp with time zone"
+      },
+      "nullable": [],
+      "rows": 0
+    },
+    "locations": {
+      "columns": {
+        "active": "boolean",
+        "address": "text",
+        "capacity": "integer",
+        "created_at": "timestamp with time zone",
+        "display_name": "text",
+        "id": "uuid",
+        "rack": "text",
+        "serial": "text",
+        "slot": "text",
+        "zone": "text"
+      },
+      "nullable": [
+        "address",
+        "display_name",
+        "serial"
+      ],
+      "rows": 44
+    },
+    "lodging": {
+      "columns": {
+        "address": "text",
+        "backup_entry": "text",
+        "baths": "numeric",
+        "bedrooms": "integer",
+        "beds": "integer",
+        "check_in_at": "timestamp with time zone",
+        "check_out_at": "timestamp with time zone",
+        "checkout_tasks": "text",
+        "created_at": "timestamp with time zone",
+        "door_code": "text",
+        "entry_steps": "text",
+        "host_name": "text",
+        "host_phone": "text",
+        "id": "uuid",
+        "kitchen": "boolean",
+        "name": "text",
+        "nights": "integer",
+        "notes": "text",
+        "parking": "text",
+        "quiet_hours": "text",
+        "sort_order": "integer",
+        "timezone": "text",
+        "trip_id": "uuid",
+        "updated_at": "timestamp with time zone",
+        "washer_dryer": "boolean",
+        "wifi_password": "text",
+        "wifi_ssid": "text"
+      },
+      "nullable": [
+        "address",
+        "backup_entry",
+        "baths",
+        "bedrooms",
+        "beds",
+        "check_in_at",
+        "check_out_at",
+        "checkout_tasks",
+        "door_code",
+        "entry_steps",
+        "host_name",
+        "host_phone",
+        "kitchen",
+        "name",
+        "nights",
+        "notes",
+        "parking",
+        "quiet_hours",
+        "timezone",
+        "washer_dryer",
+        "wifi_password",
+        "wifi_ssid"
+      ],
+      "rows": 0
+    },
+    "movements": {
+      "columns": {
+        "actor": "text",
+        "created_at": "timestamp with time zone",
+        "event": "text",
+        "from_location_id": "uuid",
+        "id": "uuid",
+        "project_id": "uuid",
+        "reason": "text",
+        "to_location_id": "uuid",
+        "window_id": "uuid"
+      },
+      "nullable": [
+        "actor",
+        "from_location_id",
+        "project_id",
+        "reason",
+        "to_location_id"
+      ],
+      "rows": 0
+    },
+    "points_ledger": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "id": "uuid",
+        "kind": "text",
+        "points": "integer",
+        "profile_id": "uuid",
+        "ref": "text",
+        "status": "text"
+      },
+      "nullable": [
+        "ref"
+      ],
+      "rows": 0
+    },
+    "procedures": {
+      "columns": {
+        "body": "text",
+        "created_at": "timestamp with time zone",
+        "id": "uuid",
+        "sort_order": "integer",
+        "title": "text",
+        "trip_id": "uuid",
+        "updated_at": "timestamp with time zone"
+      },
+      "nullable": [
+        "body",
+        "trip_id"
+      ],
+      "rows": 1
+    },
+    "profiles": {
+      "columns": {
+        "active": "boolean",
+        "created_at": "timestamp with time zone",
+        "display_name": "text",
+        "id": "uuid",
+        "pin": "text",
+        "role": "text",
+        "skill_level": "integer",
+        "updated_at": "timestamp with time zone"
+      },
+      "nullable": [
+        "pin"
+      ],
+      "rows": 1
+    },
+    "project_mark_elevation_views": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "crop_bbox": "jsonb",
+        "id": "uuid",
+        "label_h": "double precision",
+        "label_w": "double precision",
+        "mark_code": "text",
+        "page_number": "integer",
+        "pin_x": "double precision",
+        "pin_y": "double precision",
+        "planset_id": "uuid",
+        "project_id": "uuid",
+        "region_index": "integer",
+        "view_name": "text"
+      },
+      "nullable": [
+        "crop_bbox",
+        "label_h",
+        "label_w",
+        "view_name"
+      ],
+      "rows": 54
+    },
+    "project_mark_specs": {
+      "columns": {
+        "color": "text",
+        "confirmed": "boolean",
+        "created_at": "timestamp with time zone",
+        "egress": "boolean",
+        "extra": "jsonb",
+        "glass": "text",
+        "grids": "text",
+        "height_in": "numeric",
+        "id": "uuid",
+        "image_bbox": "jsonb",
+        "image_page": "integer",
+        "mark_code": "text",
+        "operation": "text",
+        "planset_id": "uuid",
+        "product_line": "text",
+        "project_id": "uuid",
+        "screen": "text",
+        "shgc": "numeric",
+        "size_code": "text",
+        "source": "text",
+        "style": "text",
+        "tempered": "boolean",
+        "u_factor": "numeric",
+        "updated_at": "timestamp with time zone",
+        "width_in": "numeric"
+      },
+      "nullable": [
+        "color",
+        "egress",
+        "glass",
+        "grids",
+        "height_in",
+        "image_bbox",
+        "image_page",
+        "operation",
+        "planset_id",
+        "product_line",
+        "screen",
+        "shgc",
+        "size_code",
+        "style",
+        "tempered",
+        "u_factor",
+        "width_in"
+      ],
+      "rows": 61
+    },
+    "project_message_reads": {
+      "columns": {
+        "last_read_at": "timestamp with time zone",
+        "profile_id": "uuid",
+        "project_id": "uuid"
+      },
+      "nullable": [],
+      "rows": 0
+    },
+    "project_messages": {
+      "columns": {
+        "author_id": "uuid",
+        "body": "text",
+        "created_at": "timestamp with time zone",
+        "id": "uuid",
+        "mentions": "ARRAY",
+        "project_id": "uuid"
+      },
+      "nullable": [],
+      "rows": 0
+    },
+    "project_openings": {
+      "columns": {
+        "assigned_at": "timestamp with time zone",
+        "assigned_by": "uuid",
+        "assigned_to": "uuid",
+        "assigned_window_id": "uuid",
+        "condition": "text",
+        "condition_checked_at": "timestamp with time zone",
+        "condition_checked_by": "text",
+        "condition_note": "text",
+        "confirmed": "boolean",
+        "created_at": "timestamp with time zone",
+        "flag_note": "text",
+        "flagged_at": "timestamp with time zone",
+        "flagged_by": "uuid",
+        "id": "uuid",
+        "label": "text",
+        "opening_code": "text",
+        "page_number": "integer",
+        "pin_x": "numeric",
+        "pin_y": "numeric",
+        "planset_id": "uuid",
+        "project_id": "uuid",
+        "ro_height_in": "numeric",
+        "ro_measured_at": "timestamp with time zone",
+        "ro_measured_by": "text",
+        "ro_width_in": "numeric",
+        "sequence": "integer",
+        "status": "text",
+        "window_type_id": "uuid",
+        "work_ended_at": "timestamp with time zone",
+        "work_started_at": "timestamp with time zone"
+      },
+      "nullable": [
+        "assigned_at",
+        "assigned_by",
+        "assigned_to",
+        "assigned_window_id",
+        "condition_checked_at",
+        "condition_checked_by",
+        "condition_note",
+        "flag_note",
+        "flagged_at",
+        "flagged_by",
+        "label",
+        "pin_x",
+        "pin_y",
+        "planset_id",
+        "ro_height_in",
+        "ro_measured_at",
+        "ro_measured_by",
+        "ro_width_in",
+        "sequence",
+        "window_type_id",
+        "work_ended_at",
+        "work_started_at"
+      ],
+      "rows": 147
+    },
+    "project_plan_outlines": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "features": "jsonb",
+        "id": "uuid",
+        "page_aspect": "numeric",
+        "page_number": "integer",
+        "planset_id": "uuid",
+        "points": "jsonb",
+        "project_id": "uuid",
+        "updated_at": "timestamp with time zone"
+      },
+      "nullable": [],
+      "rows": 0
+    },
+    "project_planset_pages": {
+      "columns": {
+        "attempts": "integer",
+        "error": "text",
+        "mark_count": "integer",
+        "ok": "boolean",
+        "page_number": "integer",
+        "planset_id": "uuid",
+        "updated_at": "timestamp with time zone"
+      },
+      "nullable": [
+        "error"
+      ],
+      "rows": 14
+    },
+    "project_plansets": {
+      "columns": {
+        "converted_pdf_path": "text",
+        "created_at": "timestamp with time zone",
+        "id": "uuid",
+        "kind": "text",
+        "page_count": "integer",
+        "project_id": "uuid",
+        "source_format": "text",
+        "status": "text",
+        "storage_path": "text"
+      },
+      "nullable": [
+        "converted_pdf_path",
+        "page_count"
+      ],
+      "rows": 5
+    },
+    "project_spec_discrepancies": {
+      "columns": {
+        "acknowledged_at": "timestamp with time zone",
+        "acknowledged_by": "uuid",
+        "created_at": "timestamp with time zone",
+        "id": "uuid",
+        "issue_id": "uuid",
+        "kind": "text",
+        "mark_code": "text",
+        "note": "text",
+        "project_id": "uuid",
+        "status": "text",
+        "updated_at": "timestamp with time zone"
+      },
+      "nullable": [
+        "acknowledged_by",
+        "issue_id",
+        "note"
+      ],
+      "rows": 0
+    },
+    "project_windows": {
+      "columns": {
+        "id": "uuid",
+        "project_id": "uuid",
+        "quantity": "integer",
+        "window_type_id": "uuid"
+      },
+      "nullable": [],
+      "rows": 2
+    },
+    "projects": {
+      "columns": {
+        "address": "text",
+        "bid_amount": "numeric",
+        "contact_email": "text",
+        "contact_phone": "text",
+        "created_at": "timestamp with time zone",
+        "customer_name": "text",
+        "end_date": "date",
+        "estimated_at": "timestamp with time zone",
+        "estimated_crew": "integer",
+        "estimated_minutes": "integer",
+        "green_light": "boolean",
+        "green_light_at": "timestamp with time zone",
+        "green_light_by": "uuid",
+        "green_light_note": "text",
+        "id": "uuid",
+        "job_code": "text",
+        "name": "text",
+        "notes": "text",
+        "site_state": "text",
+        "start_date": "date",
+        "status": "text",
+        "target_margin_pct": "numeric",
+        "unit_number": "text"
+      },
+      "nullable": [
+        "address",
+        "bid_amount",
+        "contact_email",
+        "contact_phone",
+        "customer_name",
+        "end_date",
+        "estimated_at",
+        "estimated_crew",
+        "estimated_minutes",
+        "green_light_at",
+        "green_light_by",
+        "green_light_note",
+        "notes",
+        "site_state",
+        "start_date",
+        "target_margin_pct",
+        "unit_number"
+      ],
+      "rows": 3
+    },
+    "push_subscriptions": {
+      "columns": {
+        "auth": "text",
+        "created_at": "timestamp with time zone",
+        "endpoint": "text",
+        "id": "uuid",
+        "p256dh": "text",
+        "profile_id": "uuid",
+        "user_agent": "text"
+      },
+      "nullable": [
+        "auth",
+        "p256dh",
+        "profile_id",
+        "user_agent"
+      ],
+      "rows": 0
+    },
+    "qc_checks": {
+      "columns": {
+        "checked_at": "timestamp with time zone",
+        "checked_by": "uuid",
+        "created_at": "timestamp with time zone",
+        "id": "uuid",
+        "note": "text",
+        "project_opening_id": "uuid",
+        "status": "text"
+      },
+      "nullable": [
+        "checked_at",
+        "checked_by",
+        "note"
+      ],
+      "rows": 0
+    },
+    "safety_acks": {
+      "columns": {
+        "ack_at": "timestamp with time zone",
+        "profile_id": "uuid",
+        "talk_id": "uuid"
+      },
+      "nullable": [],
+      "rows": 0
+    },
+    "safety_talks": {
+      "columns": {
+        "body": "text",
+        "created_at": "timestamp with time zone",
+        "id": "uuid",
+        "sections_json": "jsonb",
+        "talk_date": "date",
+        "title": "text",
+        "visual_aids_json": "jsonb"
+      },
+      "nullable": [
+        "sections_json",
+        "visual_aids_json"
+      ],
+      "rows": 7
+    },
+    "schedule_assignment_members": {
+      "columns": {
+        "assignment_id": "uuid",
+        "created_at": "timestamp with time zone",
+        "profile_id": "uuid",
+        "role": "text"
+      },
+      "nullable": [],
+      "rows": 1
+    },
+    "schedule_assignments": {
+      "columns": {
+        "color": "text",
+        "created_at": "timestamp with time zone",
+        "created_by": "uuid",
+        "end_date": "date",
+        "id": "uuid",
+        "note": "text",
+        "project_id": "uuid",
+        "published_at": "timestamp with time zone",
+        "start_date": "date",
+        "start_time": "time without time zone",
+        "status": "text",
+        "updated_at": "timestamp with time zone"
+      },
+      "nullable": [
+        "color",
+        "created_by",
+        "note",
+        "published_at",
+        "start_time"
+      ],
+      "rows": 1
+    },
+    "schedule_events": {
+      "columns": {
+        "actor": "uuid",
+        "assignment_id": "uuid",
+        "created_at": "timestamp with time zone",
+        "id": "uuid",
+        "kind": "text",
+        "payload": "jsonb"
+      },
+      "nullable": [
+        "actor",
+        "assignment_id",
+        "kind",
+        "payload"
+      ],
+      "rows": 12
+    },
+    "service_cases": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "description": "text",
+        "fail_point": "text",
+        "id": "uuid",
+        "install_event_id": "uuid",
+        "installer_id": "uuid",
+        "opening_id": "uuid",
+        "project_id": "uuid",
+        "reason": "text",
+        "reported_by": "uuid",
+        "resolution_note": "text",
+        "resolved_at": "timestamp with time zone",
+        "resolved_by": "uuid",
+        "scheduled_at": "timestamp with time zone",
+        "status": "text",
+        "window_id": "uuid",
+        "window_type_id": "uuid"
+      },
+      "nullable": [
+        "description",
+        "fail_point",
+        "install_event_id",
+        "installer_id",
+        "opening_id",
+        "project_id",
+        "reason",
+        "reported_by",
+        "resolution_note",
+        "resolved_at",
+        "resolved_by",
+        "scheduled_at",
+        "window_type_id"
+      ],
+      "rows": 0
+    },
+    "supplies": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "id": "uuid",
+        "name": "text",
+        "unit": "text"
+      },
+      "nullable": [
+        "unit"
+      ],
+      "rows": 6
+    },
+    "supply_orders": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "id": "uuid",
+        "name": "text",
+        "project_id": "uuid",
+        "qty": "numeric",
+        "status": "text",
+        "supply_id": "uuid"
+      },
+      "nullable": [
+        "name",
+        "project_id",
+        "supply_id"
+      ],
+      "rows": 0
+    },
+    "task_sessions": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "ended_at": "timestamp with time zone",
+        "id": "uuid",
+        "opening_id": "uuid",
+        "profile_id": "uuid",
+        "project_id": "uuid",
+        "started_at": "timestamp with time zone",
+        "state": "text"
+      },
+      "nullable": [
+        "ended_at",
+        "opening_id",
+        "project_id"
+      ],
+      "rows": 0
+    },
+    "time_shifts": {
+      "columns": {
+        "approved_at": "timestamp with time zone",
+        "approved_by": "uuid",
+        "break_seconds": "integer",
+        "break_started_at": "timestamp with time zone",
+        "break_type": "text",
+        "client_id": "uuid",
+        "clock_in_at": "timestamp with time zone",
+        "clock_in_lat": "double precision",
+        "clock_in_lng": "double precision",
+        "clock_in_photo": "text",
+        "clock_out_at": "timestamp with time zone",
+        "clock_out_lat": "double precision",
+        "clock_out_lng": "double precision",
+        "clock_out_photo": "text",
+        "cost_code_id": "uuid",
+        "created_at": "timestamp with time zone",
+        "edited_at": "timestamp with time zone",
+        "edited_by": "uuid",
+        "edited_note": "text",
+        "id": "uuid",
+        "injured": "boolean",
+        "note": "text",
+        "profile_id": "uuid",
+        "project_id": "uuid",
+        "reject_reason": "text",
+        "rejected_at": "timestamp with time zone",
+        "rejected_by": "uuid",
+        "signed_at": "timestamp with time zone",
+        "status": "text",
+        "time_confirmed": "boolean"
+      },
+      "nullable": [
+        "approved_at",
+        "approved_by",
+        "break_started_at",
+        "break_type",
+        "client_id",
+        "clock_in_lat",
+        "clock_in_lng",
+        "clock_in_photo",
+        "clock_out_at",
+        "clock_out_lat",
+        "clock_out_lng",
+        "clock_out_photo",
+        "cost_code_id",
+        "edited_at",
+        "edited_by",
+        "edited_note",
+        "injured",
+        "note",
+        "project_id",
+        "reject_reason",
+        "rejected_at",
+        "rejected_by",
+        "signed_at",
+        "time_confirmed"
+      ],
+      "rows": 0
+    },
+    "toolbox_completions": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "id": "uuid",
+        "pdf_path": "text",
+        "profile_id": "uuid",
+        "signature_path": "text",
+        "signed_at": "timestamp with time zone",
+        "talk_id": "uuid",
+        "talk_snapshot": "text",
+        "typed_name": "text"
+      },
+      "nullable": [
+        "pdf_path",
+        "profile_id",
+        "signature_path",
+        "talk_id",
+        "talk_snapshot",
+        "typed_name"
+      ],
+      "rows": 0
+    },
+    "tools": {
+      "columns": {
+        "calibration_due": "date",
+        "created_at": "timestamp with time zone",
+        "holder_id": "uuid",
+        "id": "uuid",
+        "name": "text",
+        "note": "text"
+      },
+      "nullable": [
+        "calibration_due",
+        "holder_id",
+        "note"
+      ],
+      "rows": 8
+    },
+    "trip_attachments": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "created_by": "uuid",
+        "flight_id": "uuid",
+        "id": "uuid",
+        "label": "text",
+        "lodging_id": "uuid",
+        "storage_path": "text",
+        "trip_id": "uuid"
+      },
+      "nullable": [
+        "created_by",
+        "flight_id",
+        "label",
+        "lodging_id"
+      ],
+      "rows": 0
+    },
+    "trip_contacts": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "id": "uuid",
+        "label": "text",
+        "name": "text",
+        "notes": "text",
+        "phone": "text",
+        "sort_order": "integer",
+        "trip_id": "uuid"
+      },
+      "nullable": [
+        "label",
+        "notes",
+        "phone"
+      ],
+      "rows": 0
+    },
+    "trip_crew": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "profile_id": "uuid",
+        "role": "text",
+        "trip_id": "uuid"
+      },
+      "nullable": [],
+      "rows": 1
+    },
+    "trips": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "created_by": "uuid",
+        "destination": "text",
+        "end_date": "date",
+        "id": "uuid",
+        "name": "text",
+        "notes": "text",
+        "project_id": "uuid",
+        "published_at": "timestamp with time zone",
+        "start_date": "date",
+        "status": "text",
+        "timezone": "text",
+        "updated_at": "timestamp with time zone"
+      },
+      "nullable": [
+        "created_by",
+        "destination",
+        "notes",
+        "project_id",
+        "published_at",
+        "timezone"
+      ],
+      "rows": 1
+    },
+    "vault_config": {
+      "columns": {
+        "id": "integer",
+        "pin_hash": "text",
+        "pin_iterations": "integer",
+        "pin_salt": "text",
+        "updated_at": "timestamp with time zone",
+        "updated_by": "uuid"
+      },
+      "nullable": [
+        "pin_hash",
+        "pin_iterations",
+        "pin_salt",
+        "updated_by"
+      ],
+      "rows": 1
+    },
+    "vehicle_devices": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "id": "uuid",
+        "provider": "text",
+        "provider_device_id": "text",
+        "vehicle_id": "uuid"
+      },
+      "nullable": [
+        "provider_device_id"
+      ],
+      "rows": 0
+    },
+    "vehicle_drive_sessions": {
+      "columns": {
+        "business": "boolean",
+        "created_at": "timestamp with time zone",
+        "distance_miles": "numeric",
+        "driver_id": "uuid",
+        "duration_seconds": "integer",
+        "end_lat": "numeric",
+        "end_lng": "numeric",
+        "ended_at": "timestamp with time zone",
+        "id": "uuid",
+        "source": "text",
+        "start_lat": "numeric",
+        "start_lng": "numeric",
+        "started_at": "timestamp with time zone",
+        "vehicle_id": "uuid"
+      },
+      "nullable": [
+        "driver_id",
+        "end_lat",
+        "end_lng",
+        "start_lat",
+        "start_lng"
+      ],
+      "rows": 0
+    },
+    "vehicle_drivers": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "id": "uuid",
+        "name": "text",
+        "profile_id": "uuid",
+        "relation": "text",
+        "vehicle_id": "uuid"
+      },
+      "nullable": [
+        "name",
+        "profile_id"
+      ],
+      "rows": 0
+    },
+    "vehicle_financials": {
+      "columns": {
+        "interest_rate": "numeric",
+        "lender_bank": "text",
+        "loan_balance": "numeric",
+        "monthly_payment": "numeric",
+        "notes": "text",
+        "paid_cash": "boolean",
+        "purchase_date": "date",
+        "purchase_price": "numeric",
+        "updated_at": "timestamp with time zone",
+        "vehicle_id": "uuid"
+      },
+      "nullable": [
+        "interest_rate",
+        "lender_bank",
+        "loan_balance",
+        "monthly_payment",
+        "notes",
+        "purchase_date",
+        "purchase_price"
+      ],
+      "rows": 0
+    },
+    "vehicle_locations_history": {
+      "columns": {
+        "battery_pct": "integer",
+        "heading_deg": "numeric",
+        "id": "uuid",
+        "ignition_on": "boolean",
+        "lat": "double precision",
+        "lng": "double precision",
+        "recorded_at": "timestamp with time zone",
+        "source": "text",
+        "speed_mph": "numeric",
+        "vehicle_id": "uuid"
+      },
+      "nullable": [
+        "battery_pct",
+        "heading_deg",
+        "ignition_on",
+        "speed_mph"
+      ],
+      "rows": 0
+    },
+    "vehicle_locations_latest": {
+      "columns": {
+        "battery_pct": "integer",
+        "heading_deg": "numeric",
+        "ignition_on": "boolean",
+        "lat": "double precision",
+        "lng": "double precision",
+        "recorded_at": "timestamp with time zone",
+        "source": "text",
+        "speed_mph": "numeric",
+        "vehicle_id": "uuid"
+      },
+      "nullable": [
+        "battery_pct",
+        "heading_deg",
+        "ignition_on",
+        "speed_mph"
+      ],
+      "rows": 0
+    },
+    "vehicle_project_assignments": {
+      "columns": {
+        "assigned_at": "timestamp with time zone",
+        "assignment_id": "uuid",
+        "end_date": "date",
+        "id": "uuid",
+        "note": "text",
+        "project_id": "uuid",
+        "start_date": "date",
+        "vehicle_id": "uuid"
+      },
+      "nullable": [
+        "assignment_id",
+        "end_date",
+        "note",
+        "start_date"
+      ],
+      "rows": 0
+    },
+    "vehicle_service_records": {
+      "columns": {
+        "category": "text",
+        "cost": "numeric",
+        "created_at": "timestamp with time zone",
+        "description": "text",
+        "engine_hours": "numeric",
+        "id": "uuid",
+        "odometer": "integer",
+        "performed_at": "date",
+        "vehicle_id": "uuid",
+        "vendor": "text"
+      },
+      "nullable": [
+        "category",
+        "cost",
+        "description",
+        "engine_hours",
+        "odometer",
+        "vendor"
+      ],
+      "rows": 0
+    },
+    "vehicle_service_schedules": {
+      "columns": {
+        "created_at": "timestamp with time zone",
+        "id": "uuid",
+        "interval_days": "integer",
+        "interval_miles": "integer",
+        "last_done_at": "date",
+        "last_done_odometer": "integer",
+        "task": "text",
+        "vehicle_id": "uuid"
+      },
+      "nullable": [
+        "interval_days",
+        "interval_miles",
+        "last_done_at",
+        "last_done_odometer"
+      ],
+      "rows": 0
+    },
+    "vehicles": {
+      "columns": {
+        "color": "text",
+        "created_at": "timestamp with time zone",
+        "created_by": "uuid",
+        "engine_hours": "numeric",
+        "id": "uuid",
+        "kind": "text",
+        "last_service_date": "date",
+        "make": "text",
+        "model": "text",
+        "next_service_date": "date",
+        "notes": "text",
+        "odometer": "integer",
+        "plate": "text",
+        "primary_driver_id": "uuid",
+        "status": "text",
+        "trailer_subtype": "text",
+        "updated_at": "timestamp with time zone",
+        "vin": "text",
+        "year": "integer"
+      },
+      "nullable": [
+        "color",
+        "created_by",
+        "engine_hours",
+        "last_service_date",
+        "make",
+        "model",
+        "next_service_date",
+        "notes",
+        "odometer",
+        "plate",
+        "primary_driver_id",
+        "trailer_subtype",
+        "vin",
+        "year"
+      ],
+      "rows": 0
+    },
+    "window_id_counters": {
+      "columns": {
+        "last_seq": "integer",
+        "window_type_id": "uuid"
+      },
+      "nullable": [],
+      "rows": 0
+    },
+    "window_types": {
+      "columns": {
+        "avg_grade": "numeric",
+        "category": "text",
+        "created_at": "timestamp with time zone",
+        "difficulty_rating": "integer",
+        "fail_rate": "numeric",
+        "golden_install_event_id": "uuid",
+        "golden_locked": "boolean",
+        "height_in": "numeric",
+        "howto_generated_at": "timestamp with time zone",
+        "howto_json": "jsonb",
+        "id": "uuid",
+        "last_install_at": "timestamp with time zone",
+        "learned_difficulty": "numeric",
+        "median_minutes": "numeric",
+        "n_installs": "integer",
+        "name": "text",
+        "notes": "text",
+        "outcome_difficulty": "integer",
+        "p90_minutes": "numeric",
+        "provisional": "boolean",
+        "tips_install_count": "integer",
+        "tips_json": "jsonb",
+        "tips_synthesized_at": "timestamp with time zone",
+        "tutorial_url": "text",
+        "type_code": "text",
+        "watch_outs_json": "jsonb",
+        "width_in": "numeric"
+      },
+      "nullable": [
+        "avg_grade",
+        "category",
+        "difficulty_rating",
+        "fail_rate",
+        "golden_install_event_id",
+        "height_in",
+        "howto_generated_at",
+        "howto_json",
+        "last_install_at",
+        "learned_difficulty",
+        "median_minutes",
+        "notes",
+        "outcome_difficulty",
+        "p90_minutes",
+        "tips_synthesized_at",
+        "tutorial_url",
+        "width_in"
+      ],
+      "rows": 54
+    },
+    "windows": {
+      "columns": {
+        "display_name": "text",
+        "id": "uuid",
+        "installed_at": "timestamp with time zone",
+        "location_id": "uuid",
+        "notes": "text",
+        "project_id": "uuid",
+        "received_at": "timestamp with time zone",
+        "serial": "text",
+        "short_code": "text",
+        "status": "text",
+        "window_id": "text",
+        "window_type_id": "uuid"
+      },
+      "nullable": [
+        "display_name",
+        "installed_at",
+        "location_id",
+        "notes",
+        "project_id",
+        "serial",
+        "short_code"
+      ],
+      "rows": 0
+    }
+  },
+  "total_rows": 430
+}
