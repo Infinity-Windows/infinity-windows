@@ -78,7 +78,8 @@ export function readJsonFromContent(content: unknown): unknown {
   // which live meant a toolbox talk arriving with its title, intro and hazards
   // and losing its steps, do's and don'ts. Earlier blocks win on a clash, since
   // the model is adding to its answer rather than correcting it.
-  let merged: Record<string, unknown> | null = null;
+  const merged: Record<string, unknown> = {};
+  let sawJsonTool = false;
   let fallbackToolInput: Record<string, unknown> | null = null;
   for (const block of blocks) {
     if (!block || block.type !== "tool_use") continue;
@@ -86,12 +87,15 @@ export function readJsonFromContent(content: unknown): unknown {
     if (!input || typeof input !== "object" || Array.isArray(input)) continue;
     const obj = input as Record<string, unknown>;
     if (block.name === JSON_TOOL_NAME) {
-      merged = merged === null ? obj : { ...obj, ...merged };
+      sawJsonTool = true;
+      for (const [k, v] of Object.entries(obj)) {
+        if (!(k in merged)) merged[k] = v;
+      }
     } else if (fallbackToolInput === null) {
       fallbackToolInput = obj;
     }
   }
-  if (merged !== null) return merged;
+  if (sawJsonTool) return merged;
   if (fallbackToolInput !== null) return fallbackToolInput;
 
   // No tool call. Join only the blocks that actually carry text, so a `thinking`
