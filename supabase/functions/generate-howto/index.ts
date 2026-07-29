@@ -1,11 +1,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
-  chatJson,
   corsHeaders,
   jsonResponse,
   SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL,
 } from "../_shared/openai.ts";
+import {
+  ANTHROPIC_MODEL,
+  anthropicChatJson,
+  requireAnthropic,
+} from "../_shared/anthropic.ts";
 import { verifyCaller } from "../_shared/auth.ts";
 import {
   notifyOwnersOfSpend,
@@ -17,6 +21,24 @@ import {
 interface HowtoResult {
   steps: { title: string; detail: string }[];
 }
+
+const HOWTO_SCHEMA = {
+  type: "object",
+  properties: {
+    steps: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          detail: { type: "string" },
+        },
+        required: ["title", "detail"],
+      },
+    },
+  },
+  required: ["steps"],
+};
 
 Deno.serve(async (req) => {
   const cors = corsHeaders(req);
@@ -30,6 +52,9 @@ Deno.serve(async (req) => {
     auth.status === "ok" && auth.user.id !== "service_role" ? auth.user.id : null;
 
   try {
+    // The one hard dependency is now the Anthropic key: Claude writes the
+    // how-to. No OpenAI key is needed to run this function at all.
+    requireAnthropic();
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Supabase env not configured");
     }
@@ -95,18 +120,21 @@ Deno.serve(async (req) => {
     }
 
     let usage: { inputTokens: number | null; outputTokens: number | null } | null = null;
-    const result = await chatJson<HowtoResult>(
-      `You write a concise, field-ready how-to for installing window type ${type.type_code} (${type.name}), aimed at a newer installer. Ground every step in the reference install and tips below. 5-9 steps, each a short imperative title + 1-2 sentence detail. Include the known watch-outs where relevant. No fluff.`,
-      `Tips: ${JSON.stringify(type.tips_json ?? [])}\nWatch-outs: ${JSON.stringify(type.watch_outs_json ?? [])}\nReference install: ${JSON.stringify(golden)}`,
-      `Schema: { "steps": [ { "title": string, "detail": string } ] }`,
-      (u) => {
+    const result = await anthropicChatJson<HowtoResult>({
+      system:
+        `You write a concise, field-ready how-to for installing window type ${type.type_code} (${type.name}), aimed at a newer installer. Ground every step in the reference install and tips below. 5-9 steps, each a short imperative title + 1-2 sentence detail. Include the known watch-outs where relevant. No fluff.`,
+      user:
+        `Tips: ${JSON.stringify(type.tips_json ?? [])}\nWatch-outs: ${JSON.stringify(type.watch_outs_json ?? [])}\nReference install: ${JSON.stringify(golden)}`,
+      schemaHint: `Schema: { "steps": [ { "title": string, "detail": string } ] }`,
+      schema: HOWTO_SCHEMA,
+      onUsage: (u) => {
         usage = u;
       },
-    ).catch(async (err) => {
+    }).catch(async (err) => {
       await releaseAiSpend(supabase, gate.reservationId, "provider_failed", false);
       throw err;
     });
-    await settleAiSpend(supabase, gate.reservationId, usage, "gpt-4o-mini");
+    await settleAiSpend(supabase, gate.reservationId, usage, ANTHROPIC_MODEL);
 
     const steps = (result.steps ?? [])
       .map((s) => ({

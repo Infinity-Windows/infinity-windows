@@ -1,12 +1,18 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
-  chatJsonVision,
   corsHeaders,
   jsonResponse,
   SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL,
   whisperTranscribe,
 } from "../_shared/openai.ts";
+import {
+  ANTHROPIC_MODEL,
+  type AnthropicImage,
+  anthropicChatJson,
+  requireAnthropic,
+} from "../_shared/anthropic.ts";
+import { bytesToBase64 } from "../_shared/bytes.ts";
 import { verifyCaller } from "../_shared/auth.ts";
 import {
   notifyOwnersOfSpend,
@@ -39,6 +45,24 @@ interface AttachmentRecord {
   transcribed_at: string | null;
 }
 
+const nullableString = { type: ["string", "null"] };
+
+const TOPICS_SCHEMA = {
+  type: "object",
+  properties: {
+    difficulty: nullableString,
+    went_well: nullableString,
+    went_poorly: nullableString,
+    obstacles: nullableString,
+    tools_helped: nullableString,
+    time_vs_estimate: nullableString,
+    safety_notes: nullableString,
+    do_again: nullableString,
+    suggested_grade: { type: ["number", "null"] },
+    photo_findings: { type: ["array", "null"], items: { type: "string" } },
+  },
+};
+
 Deno.serve(async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") {
@@ -53,6 +77,12 @@ Deno.serve(async (req) => {
     auth.status === "ok" && auth.user.id !== "service_role" ? auth.user.id : null;
 
   try {
+    // This is the one function that genuinely needs BOTH providers: Whisper
+    // (OpenAI) turns the audio into words, Claude sorts those words into topic
+    // fields and reads the photos. Checked up front so a missing Anthropic key
+    // costs nothing — the old order paid for the transcription first and then
+    // threw it away when the second call failed.
+    requireAnthropic();
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Supabase env not configured");
     }
@@ -134,7 +164,13 @@ Deno.serve(async (req) => {
     });
 
     // Pull the install-event's photos for vision context (before/after).
-    const imageUrls: string[] = [];
+    //
+    // Downloaded as bytes rather than handed over as signed URLs: Claude takes
+    // images inline as base64, which is also one less way for this to break —
+    // a signed URL that expires or that the provider cannot reach silently cost
+    // us the photo context. A photo that fails to download is skipped, because
+    // the transcript alone is still worth saving.
+    const images: AnthropicImage[] = [];
     const { data: photoRows } = await supabase
       .from("attachments")
       .select("storage_path")
@@ -146,22 +182,32 @@ Deno.serve(async (req) => {
       const s = p.indexOf("/");
       const b = s >= 0 ? p.slice(0, s) : "install-media";
       const key = s >= 0 ? p.slice(s + 1) : p;
-      const { data: signed } = await supabase.storage
-        .from(b)
-        .createSignedUrl(key, 600);
-      if (signed?.signedUrl) imageUrls.push(signed.signedUrl);
+      try {
+        const { data: blob } = await supabase.storage.from(b).download(key);
+        if (!blob) continue;
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        images.push({
+          mediaType: blob.type || "image/jpeg",
+          data: bytesToBase64(bytes),
+        });
+      } catch (e) {
+        console.warn("photo download failed, continuing without it", key, e);
+      }
     }
 
     let usage: { inputTokens: number | null; outputTokens: number | null } | null = null;
-    const topics = await chatJsonVision<TopicMap>(
-      "You process window-install field memos. Split the installer's voice transcript into fixed topic fields, using the before/after photos as extra context. Use null for topics not mentioned. Keep each field concise (1-3 sentences). Also suggest a quality grade 1-5 (5 = flawless install) from the transcript and photos (null if unclear), and list any concrete visual observations from the photos (e.g. 'shim gap uneven on latch side', 'clean flashing tape') as photo_findings.",
-      `Transcript:\n${transcript}`,
-      `Schema: { "difficulty": string|null, "went_well": string|null, "went_poorly": string|null, "obstacles": string|null, "tools_helped": string|null, "time_vs_estimate": string|null, "safety_notes": string|null, "do_again": string|null, "suggested_grade": number|null, "photo_findings": string[]|null }`,
-      imageUrls,
-      (u) => {
+    const topics = await anthropicChatJson<TopicMap>({
+      system:
+        "You process window-install field memos. Split the installer's voice transcript into fixed topic fields, using the before/after photos as extra context. Use null for topics not mentioned. Keep each field concise (1-3 sentences). Also suggest a quality grade 1-5 (5 = flawless install) from the transcript and photos (null if unclear), and list any concrete visual observations from the photos (e.g. 'shim gap uneven on latch side', 'clean flashing tape') as photo_findings.",
+      user: `Transcript:\n${transcript}`,
+      schemaHint:
+        `Schema: { "difficulty": string|null, "went_well": string|null, "went_poorly": string|null, "obstacles": string|null, "tools_helped": string|null, "time_vs_estimate": string|null, "safety_notes": string|null, "do_again": string|null, "suggested_grade": number|null, "photo_findings": string[]|null }`,
+      schema: TOPICS_SCHEMA,
+      images,
+      onUsage: (u) => {
         usage = u;
       },
-    );
+    });
 
     // Whisper bills by audio minute, not tokens, so the transcript length is the
     // only signal we have: ~150 spoken words a minute, ~5 characters a word,
@@ -171,7 +217,13 @@ Deno.serve(async (req) => {
       1_000,
       Math.round((transcript.length / (150 * 5)) * 6_000),
     );
-    await settleAiSpend(supabase, gate.reservationId, usage, "gpt-4o", whisperMicros);
+    await settleAiSpend(
+      supabase,
+      gate.reservationId,
+      usage,
+      ANTHROPIC_MODEL,
+      whisperMicros,
+    );
 
     const patch: Record<string, string | null> = {};
     for (const key of TOPIC_KEYS) {

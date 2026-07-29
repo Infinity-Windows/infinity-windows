@@ -77,7 +77,7 @@ Infinity came to answer nothing.
 sources**, so it cannot rot the way the README's list of "four functions to
 deploy" did once there were ten. It follows calls inside each shared module, so
 importing `jsonResponse` from the OpenAI helper does *not* count as needing an
-OpenAI key, while importing `chatJson` does. An `if (Deno.env.get("X"))` guard
+OpenAI key, while importing `embed` does. An `if (Deno.env.get("X"))` guard
 demotes X to optional, because the author is feature-detecting — which is why
 `ask` is listed as not requiring an OpenAI key: without one it skips retrieval
 and answers from live data.
@@ -316,8 +316,8 @@ These are what make deployed functions *work*. Full table, and the
 
 | Secret | Needed by | What breaks without it |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | `ask`, `extract-specs` | Ask Infinity answers nothing; reading specs off a planset fails. |
-| `OPENAI_API_KEY` | 6 functions | Voice memos are never transcribed; how-tos and toolbox talks cannot be generated; nothing new reaches the brain. |
+| `ANTHROPIC_API_KEY` | 7 functions | Everything the app writes stops: no answers, no planset or schedule reading, no how-tos, no toolbox talks, no window-type tips. |
+| `OPENAI_API_KEY` | `ingest-knowledge`, `transcribe-install-memo` | Nothing new reaches the brain, and voice memos are never transcribed. Document search and safety-talk diagrams degrade rather than break. |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | `send-push` | Push notifications silently stop. |
 
 Optional, with working defaults: `ANTHROPIC_MODEL`, `VAPID_SUBJECT`.

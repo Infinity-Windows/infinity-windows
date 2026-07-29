@@ -1,12 +1,16 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
-  chatJson,
   corsHeaders,
   jsonResponse,
   OPENAI_API_KEY,
   SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL,
 } from "../_shared/openai.ts";
+import {
+  ANTHROPIC_MODEL,
+  anthropicChatJson,
+  requireAnthropic,
+} from "../_shared/anthropic.ts";
 import { verifyCaller } from "../_shared/auth.ts";
 import {
   IMAGE_MICROS,
@@ -31,6 +35,30 @@ interface VisualAid {
   url?: string;
 }
 
+const stringList = { type: "array", items: { type: "string" } };
+
+const TALK_SCHEMA = {
+  type: "object",
+  properties: {
+    title: { type: "string" },
+    intro: { type: "string" },
+    key_hazards: stringList,
+    steps: stringList,
+    dos: stringList,
+    donts: stringList,
+    visual_aid_prompts: stringList,
+  },
+  required: [
+    "title",
+    "intro",
+    "key_hazards",
+    "steps",
+    "dos",
+    "donts",
+    "visual_aid_prompts",
+  ],
+};
+
 const clean = (xs: unknown, max: number): string[] =>
   (Array.isArray(xs) ? xs : [])
     .map((s) => String(s ?? "").trim())
@@ -38,41 +66,52 @@ const clean = (xs: unknown, max: number): string[] =>
     .slice(0, max);
 
 /**
- * Best-effort image generation. Returns a data URL on success, null on any
+ * Best-effort safety diagram. Returns a data URL on success, null on any
  * failure — the caller must never crash when images are unavailable.
+ *
+ * The one part of this function still on OpenAI, and deliberately so: Anthropic
+ * generates no images. Claude writes the words; only the picture comes from
+ * here, so with no OpenAI key the talk still ships, with described placeholders
+ * in place of diagrams.
+ *
+ * The `Deno.env.get(...)` truthiness test is doing two jobs. It feature-detects
+ * at runtime, and it is the exact shape scripts/function_secrets.py reads as
+ * "optional — absence degrades instead of breaking", which is what stops the
+ * deploy from demanding an OpenAI key for a function whose text no longer needs
+ * one.
  */
 async function tryGenerateImage(prompt: string): Promise<string | null> {
-  if (!OPENAI_API_KEY) return null;
-  try {
-    const res = await fetch("https://api.openai.com/v1/images/generations", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-image-1",
-        prompt:
-          "Clean, simple safety training diagram, flat vector illustration, " +
-          "high contrast, minimal text labels: " + prompt,
-        size: "1024x1024",
-        n: 1,
-      }),
-    });
-    if (!res.ok) {
-      console.warn("image gen failed", res.status, await res.text());
-      return null;
+  if (Deno.env.get("OPENAI_API_KEY")) {
+    try {
+      const res = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-image-1",
+          prompt:
+            "Clean, simple safety training diagram, flat vector illustration, " +
+            "high contrast, minimal text labels: " + prompt,
+          size: "1024x1024",
+          n: 1,
+        }),
+      });
+      if (!res.ok) {
+        console.warn("image gen failed", res.status, await res.text());
+        return null;
+      }
+      const data = await res.json();
+      const b64 = data?.data?.[0]?.b64_json;
+      const url = data?.data?.[0]?.url;
+      if (b64) return `data:image/png;base64,${b64}`;
+      if (url) return String(url);
+    } catch (e) {
+      console.warn("image gen error", e);
     }
-    const data = await res.json();
-    const b64 = data?.data?.[0]?.b64_json;
-    const url = data?.data?.[0]?.url;
-    if (b64) return `data:image/png;base64,${b64}`;
-    if (url) return String(url);
-    return null;
-  } catch (e) {
-    console.warn("image gen error", e);
-    return null;
   }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -87,6 +126,9 @@ Deno.serve(async (req) => {
     auth.status === "ok" && auth.user.id !== "service_role" ? auth.user.id : null;
 
   try {
+    // Claude writes the talk. The OpenAI key is optional here — it only buys the
+    // diagrams, and `tryGenerateImage` already copes with its absence.
+    requireAnthropic();
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Supabase env not configured");
     }
@@ -144,10 +186,11 @@ Deno.serve(async (req) => {
     }
 
     let usage: { inputTokens: number | null; outputTokens: number | null } | null = null;
-    const result = await chatJson<TalkResult>(
-      `You are a construction safety trainer writing a daily toolbox talk for a residential/commercial window & door install crew. Make it genuinely educational, not boilerplate: explain WHY each hazard matters and HOW to work safely in plain, direct language a busy installer will actually read. Be specific to the topic. Keep every line concrete and actionable.`,
-      `Topic: ${topic}`,
-      `Schema: {
+    const result = await anthropicChatJson<TalkResult>({
+      system:
+        `You are a construction safety trainer writing a daily toolbox talk for a residential/commercial window & door install crew. Make it genuinely educational, not boilerplate: explain WHY each hazard matters and HOW to work safely in plain, direct language a busy installer will actually read. Be specific to the topic. Keep every line concrete and actionable.`,
+      user: `Topic: ${topic}`,
+      schemaHint: `Schema: {
         "title": string (short, punchy),
         "intro": string (2-3 sentences: what this talk covers and why it matters today),
         "key_hazards": string[3-5] (the real dangers, each one specific),
@@ -156,10 +199,11 @@ Deno.serve(async (req) => {
         "donts": string[3-5] (short don'ts),
         "visual_aid_prompts": string[1-2] (image descriptions for a simple safety diagram)
       }`,
-      (u) => {
+      schema: TALK_SCHEMA,
+      onUsage: (u) => {
         usage = u;
       },
-    );
+    });
 
     const sections = {
       intro: String(result.intro ?? "").trim(),
@@ -226,7 +270,7 @@ Deno.serve(async (req) => {
       supabase,
       gate.reservationId,
       usage,
-      "gpt-4o-mini",
+      ANTHROPIC_MODEL,
       visualAids.filter((v) => v.url).length * IMAGE_MICROS,
     );
 
