@@ -33,6 +33,12 @@ concurrency:
 env:
   # The one shared project. See app/.env.example and README.
   SUPABASE_PROJECT_REF: czprjcskmzzagdztqonm
+  # Pinned, not "latest". What `db push` does with a given migration history is
+  # decided entirely by CLI internals, and docs/db-push-readiness.md reasons
+  # about the behaviour of this exact version. Floating on latest means a
+  # release could change that reasoning under us with no commit here. Bump it
+  # deliberately, and re-read that doc when you do.
+  SUPABASE_CLI_VERSION: 2.110.0
 
 jobs:
   functions:
@@ -65,7 +71,7 @@ jobs:
         if: steps.guard.outputs.ok == 'true'
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: ${{ env.SUPABASE_CLI_VERSION }}
 
       - name: Deploy every function in supabase/functions
         if: steps.guard.outputs.ok == 'true'
@@ -122,25 +128,52 @@ jobs:
         if: steps.guard.outputs.ok == 'true'
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: ${{ env.SUPABASE_CLI_VERSION }}
 
       # Shows what would run before anything runs, so the log records the
-      # intended change even when the apply then fails.
+      # intended change even when the apply then fails. This is the last line
+      # of defence in front of an unattended write to production, so it is
+      # given an id and the Push step below tests its outcome explicitly.
       - name: Dry run
+        id: dryrun
         if: steps.guard.outputs.ok == 'true'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
+          set -euo pipefail
           supabase link --project-ref "$SUPABASE_PROJECT_REF"
           supabase db push --dry-run
 
+      # A failing step already skips the rest of the job, because GitHub
+      # applies success() to every `if:` that names no status function. The
+      # outcome test is belt and braces: `outcome` is the result *before*
+      # continue-on-error is applied, so this stays shut even if someone later
+      # adds continue-on-error to the dry run to get past a red build.
       - name: Push
-        if: steps.guard.outputs.ok == 'true'
+        if: steps.guard.outputs.ok == 'true' && steps.dryrun.outcome == 'success'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: supabase db push
+
+      # A red run here is cryptic unless you already know what the CLI is
+      # complaining about, so say it in the summary rather than in a log tail.
+      - name: Explain a failed push
+        if: failure()
+        run: |
+          {
+            echo "### Migrations: not pushed"
+            echo
+            echo "The push was stopped before anything was written to the database."
+            echo
+            echo "The likeliest cause is phantom rows in the migration history"
+            echo "table — versions recorded on the server that match no file in"
+            echo "\`supabase/migrations/\`. The CLI refuses to push at all while"
+            echo "those exist, and \`--include-all\` does not override it."
+            echo
+            echo "Fix: **docs/db-push-readiness.md**, then re-run this workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   verify:
     name: Verify functions are live
