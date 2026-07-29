@@ -97,6 +97,40 @@ echo "Latest is:    $(git log --oneline -1 origin/master)"
 
 ---
 
+## Are We Both Looking At The Same App?
+
+Git tells you about the code. It does **not** tell you which database your app is
+reading, and it does not tell you what your *browser* is actually running, which
+can be an old cached bundle. Both of those have caused days of confusion here.
+
+So the app answers it directly. Open **Settings → "Which app am I on?"** and read
+the one line at the top. It looks like this:
+
+```
+6837ede · czprjcskmzzagdztqonm
+```
+
+That is the commit your bundle was built from, and the database it is talking to.
+**If your line and the other person's line match, you are looking at the same app
+with the same data** — so any disagreement about how it behaves is real, not an
+artefact of being out of sync. There is a Copy button for pasting it to each other.
+
+What the variations mean:
+
+| You see | It means |
+| --- | --- |
+| `6837ede · czprj…` | Same commit, shared database. This is the normal, good case. |
+| `6837ede+edits · czprj…` | You have uncommitted changes, so your app has code nobody else has. Expect differences until you push. |
+| a different commit | One of you is behind. Run the daily sync routine. |
+| a different database name | The serious one — your work is landing where the other person will never see it. Copy `app/.env.example` to `app/.env` and restart. |
+| `Not the published build` | Your browser is running an older bundle than the live site. Refresh. |
+
+A local `npm run dev` build and the published site produce the **same** line when
+they are built from the same commit, which is the point: it compares the app, not
+how it was built.
+
+---
+
 ## How Work Ships (the PR workflow)
 
 We do **not** push straight to `master` anymore — GitHub now refuses it. Every
