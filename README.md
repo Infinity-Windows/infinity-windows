@@ -49,16 +49,38 @@ supplies, QC sign-off, crew + roles, admin access requests, and a device PIN gat
 
 ```bash
 cd app
-cp .env.example .env   # VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
+cp .env.example .env   # already points at the shared project — no editing needed
 npm install
 npm run dev
 ```
 
-## Supabase setup (prototype)
+## Supabase setup
+
+**There is ONE shared Supabase project: `czprjcskmzzagdztqonm`.** It is what the
+deployed app at <https://infinity-windows.github.io/infinity-windows/> talks to,
+and `app/.env.example` has its URL and anon key filled in, so `cp .env.example .env`
+is all you need — do not edit it and do not create your own project. If the app
+is ever pointed at a different project it shows a red **"Wrong database"** banner
+naming both projects, because work done against the wrong database is invisible
+to everyone else.
+
+(The anon key is in git on purpose: it is already compiled into the JavaScript we
+serve publicly. Row-level security, not secrecy of that key, is what protects the
+data. Service-role keys, the database password, and the private VAPID key are
+never committed.)
 
 1. Paste [`docs/prototype-migrations.sql`](docs/prototype-migrations.sql) into the SQL editor (after the base schema is applied). It bundles all prototype migrations in order and is safe to re-run.
-2. Deploy Edge Functions: `transcribe-install-memo`, `synthesize-type-tips`, `extract-schedule`, `generate-howto`.
-3. Set Edge Function secret `OPENAI_API_KEY` (never in client / git).
+2. Deploy **every** Edge Function in `supabase/functions/`:
+   `ask`, `extract-schedule`, `extract-specs`, `generate-howto`,
+   `generate-toolbox-talk`, `ingest-knowledge`, `send-push`,
+   `synthesize-type-tips`, `transcribe-install-memo`, `vault-config`.
+
+   This list used to name only four functions, so the six added later were never
+   deployed. A function that exists in this repo but was never deployed just
+   404s at runtime — that is why Ask Infinity fails until `ask` is deployed.
+3. Set the Edge Function secrets (never in client / git): `OPENAI_API_KEY`,
+   `ANTHROPIC_API_KEY`, and the web-push pair `VAPID_PUBLIC_KEY` /
+   `VAPID_PRIVATE_KEY` (the public one also goes in `VITE_VAPID_PUBLIC_KEY`).
 4. Create crew users under Authentication → Users, then set roles on the Crew screen.
 
 The bundle seeds the thin modules (tools, a week-long safety-talk rotation) and
