@@ -1,11 +1,15 @@
 # Mirror the install brain (Supabase) into the Obsidian vault as markdown.
 # One-way: DB = truth, vault = wiki. Regenerates per-type profiles + synthesized
-# tips/pitfalls every run, appends new per-memo files, and commits the result so
-# a git-synced Obsidian vault always reflects the brain.
+# tips/pitfalls every run and appends new per-memo files, then publishes the
+# result to the `vault-mirror` branch for a git-synced Obsidian to follow.
 #
-# Required repo secret: SUPABASE_SERVICE_ROLE_KEY (service role — bypasses RLS so
-# it can read every install event and window type). Add it in
-# Settings -> Secrets and variables -> Actions.
+# This does NOT feed the Ask / Infinity AI feature. Ask is grounded on the
+# knowledge_docs rows uploaded through the app, not on these files.
+#
+# Required repo secret: SUPABASE_SERVICE_ROLE_KEY — either a new-format secret
+# key (sb_secret_...) or a legacy service_role JWT, for project
+# czprjcskmzzagdztqonm. Both bypass RLS so the sync can read every install event
+# and window type. Add it in Settings -> Secrets and variables -> Actions.
 
 name: Vault brain sync
 
@@ -68,26 +72,11 @@ jobs:
         if: always()
         run: rm -f node_modules
 
-      - name: Commit vault changes
-        run: |
-          git config user.name "vault-sync[bot]"
-          git config user.email "vault-sync@users.noreply.github.com"
-          if git status --porcelain vault | grep -q .; then
-            git add vault
-            git commit -m "chore(vault): sync install brain from Supabase [skip ci]"
-            # master moves during the day, so a plain push can lose the race.
-            for attempt in 1 2 3; do
-              if git push; then
-                exit 0
-              fi
-              echo "Push rejected (attempt $attempt) — rebasing onto the latest master."
-              git pull --rebase origin master
-            done
-            echo "::error::Could not push the vault update after 3 attempts."
-            exit 1
-          else
-            echo "No vault changes."
-          fi
+      # Publishes to the vault-mirror branch, not master: this repo's rules
+      # require changes to master to arrive as a reviewed pull request, which a
+      # nightly bot cannot satisfy on its own. See scripts/publish-vault.sh.
+      - name: Publish the vault to its own branch
+        run: scripts/publish-vault.sh
 
   # This is the job the whole failure-notification idea came from: it runs at
   # 08:00 UTC with nobody watching, and it had been failing for about a week
@@ -101,6 +90,7 @@ jobs:
     with:
       workflow: ${{ github.workflow }}
       detail: >-
-        The Obsidian vault did not update overnight, so it is now behind the
-        database. Nothing users see is affected.
+        The Obsidian notes did not update overnight, so they are now behind the
+        database. Nothing users see is affected, and the Ask feature is
+        unaffected — it does not read these notes.
     secrets: inherit

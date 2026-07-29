@@ -73,6 +73,12 @@ jobs:
       - name: Test scripts/lib/supabase-key.mjs
         run: node scripts/supabase-key.test.mjs
 
+      # Where the nightly vault sync puts its output. Uses a local bare repo as
+      # the remote, so it pushes nothing anywhere real.
+      - name: Test scripts/publish-vault.sh
+        shell: bash
+        run: scripts/publish-vault.test.sh
+
   supabase-tooling:
     name: Supabase merge tooling
     runs-on: ubuntu-latest
