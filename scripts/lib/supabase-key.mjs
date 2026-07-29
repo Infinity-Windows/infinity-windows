@@ -12,6 +12,19 @@
 const SECRET_PREFIX = "sb_secret_";
 const PUBLISHABLE_PREFIX = "sb_publishable_";
 
+/**
+ * Read a credential from the environment, dropping surrounding whitespace. A
+ * newline picked up when pasting into the GitHub secrets box travels with the
+ * value and makes an otherwise-correct key invalid, so trimming is not
+ * cosmetic. Returns whether anything was trimmed so the caller can say so —
+ * silently repairing it would hide a real mistake in the stored secret.
+ */
+export function readCredential(raw) {
+  if (raw == null) return { value: "", trimmed: false };
+  const value = raw.trim();
+  return { value, trimmed: value !== raw };
+}
+
 export function isNewFormatKey(key) {
   return key.startsWith(SECRET_PREFIX) || key.startsWith(PUBLISHABLE_PREFIX);
 }

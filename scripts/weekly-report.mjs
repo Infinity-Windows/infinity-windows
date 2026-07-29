@@ -8,11 +8,15 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAdminClient } from "./lib/supabase-admin.mjs";
-import { explainError, publishableKeyRefusal } from "./lib/supabase-key.mjs";
+import {
+  explainError,
+  publishableKeyRefusal,
+  readCredential,
+} from "./lib/supabase-key.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const url = process.env.SUPABASE_URL;
-const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const { value: url } = readCredential(process.env.SUPABASE_URL);
+const { value: key } = readCredential(process.env.SUPABASE_SERVICE_ROLE_KEY);
 if (!url || !key) {
   console.error("Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY");
   process.exit(1);

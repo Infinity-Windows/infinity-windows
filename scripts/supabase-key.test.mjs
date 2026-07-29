@@ -11,6 +11,7 @@ import {
   keyFormatLabel,
   projectRef,
   publishableKeyRefusal,
+  readCredential,
 } from "./lib/supabase-key.mjs";
 
 const SECRET = "sb_secret_example";
@@ -32,6 +33,16 @@ assert.match(keyFormatLabel("garbage"), /unrecognised/);
 for (const key of [SECRET, PUBLISHABLE, LEGACY]) {
   assert.equal(keyFormatLabel(key).includes("example"), false);
 }
+
+// --- credentials are read without stray whitespace ---------------------------
+
+assert.deepEqual(readCredential(SECRET), { value: SECRET, trimmed: false });
+// A trailing newline is what a paste into the GitHub secrets box leaves behind.
+assert.deepEqual(readCredential(`${SECRET}\n`), { value: SECRET, trimmed: true });
+assert.deepEqual(readCredential(`  ${SECRET}  `), { value: SECRET, trimmed: true });
+assert.deepEqual(readCredential(undefined), { value: "", trimmed: false });
+// A trimmed key must still classify correctly.
+assert.equal(isNewFormatKey(readCredential(`${SECRET}\n`).value), true);
 
 // --- project ref parsing -----------------------------------------------------
 
