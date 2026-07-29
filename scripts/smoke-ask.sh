@@ -340,14 +340,36 @@ if [ "$verdict" = "limited" ]; then
 fi
 
 if [ "$verdict" = "gateway_401" ]; then
+  # Two different 401s, and they need different things done about them. The
+  # platform gateway says "Invalid API key" when the credential is not valid for
+  # the project at all; the function itself says "unauthorized" when the gateway
+  # let the request through but the caller is not a signed-in user.
+  lower="$(printf '%s' "$detail" | tr '[:upper:]' '[:lower:]')"
   {
-    echo "Could not test Ask Infinity: this checker could not sign in"
+    echo "Could not test Ask Infinity: this checker has no way to sign in"
     echo
-    echo "The project rejected the credentials this test used, so the request"
-    echo "never reached the function. That says nothing about whether Ask"
-    echo "Infinity works. Check SUPABASE_SERVICE_ROLE_KEY belongs to $REF."
+    if printf '%s' "$lower" | grep -qF 'invalid api key'; then
+      echo "  $REF rejected the credential outright, so the request never reached"
+      echo "  the function."
+      echo
+      echo "  The usual cause: a new-format Supabase key (sb_secret_…) is being"
+      echo "  used. Those are not JWTs, and Supabase refuses them in an"
+      echo "  Authorization header — but a JWT is exactly what this needs, because"
+      echo "  the function identifies its caller from one."
+    else
+      echo "  The gateway accepted the credential and the function did not: it"
+      echo "  needs a caller it can identify, and this one signs in as nobody."
+    fi
     echo
-    echo "HTTP $code: $detail"
+    echo "  To let this test run, add a repo secret ASK_SMOKE_JWT holding either a"
+    echo "  legacy service-role key (the long eyJ… one, Project Settings -> API"
+    echo "  Keys -> legacy) or an access token for a real low-privilege user."
+    echo
+    echo "  NOTHING HERE IS EVIDENCE ABOUT ASK INFINITY. It was never asked"
+    echo "  anything. Whether its API key is any good is answered separately by"
+    echo "  scripts/verify-anthropic-key.sh, which needs no Supabase credential."
+    echo
+    echo "  HTTP $code: $detail"
   } >&2
   exit 2
 fi
