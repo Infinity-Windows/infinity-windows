@@ -211,8 +211,11 @@ class FunctionSecretsTest(unittest.TestCase):
 
     def test_every_real_function_is_covered(self):
         names = fs.function_names()
-        self.assertEqual(len(names), 10)
+        self.assertEqual(len(names), 11)
         self.assertIn("ask", names)
+        # Creates accounts on the service-role key, and needs no secret of its
+        # own: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are platform-provided.
+        self.assertIn("approve-access-request", names)
         self.assertNotIn("_shared", names)
 
     def test_ask_needs_anthropic_and_treats_openai_as_optional(self):
