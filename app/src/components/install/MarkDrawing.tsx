@@ -96,7 +96,12 @@ export function MarkDrawing({ spec, projectId, compact = false }: MarkDrawingPro
           bbox,
           markCode: spec.mark_code,
         });
-        if (!cancelled) setSrc(url);
+        if (cancelled) return;
+        // Null means the sheet has no drawing to show for this mark — a blank
+        // panel, or a box we couldn't rescue. Same outcome as a failure: the
+        // spec text stands on its own rather than carrying a black rectangle.
+        if (url) setSrc(url);
+        else setFailed(true);
       } catch {
         // A page that won't render, a planset we can't download offline, a
         // browser that won't give us pixels — show text only.
