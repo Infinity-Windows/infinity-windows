@@ -141,11 +141,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
   const all = openings.data ?? [];
   const activeCrew = (crew.data ?? []).filter((c) => c.active);
   // Same installer → same colour as the map pins and the map's detail panel.
-  const crewColors = useMemo(
-    () => installerColorMap(activeCrew.map((c) => c.id)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeCrew.map((c) => c.id).join(",")],
-  );
+  const crewColors = installerColorMap(activeCrew.map((c) => c.id));
 
   const { byInstaller, unassigned, readinessBlocked, installedCount } = useMemo(() => {
     const byInstaller = new Map<string, ProjectOpening[]>();
