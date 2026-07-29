@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { PwaBanners } from "./components/pwa/PwaBanners";
+import { WrongProjectBanner } from "./components/WrongProjectBanner";
 import "./lib/mapPolyfill";
 import { installServiceWorkerGuard } from "./lib/serviceWorkerGuard";
 import { installPushChangeListener } from "./lib/permissions/pushSubscribe";
@@ -20,6 +21,7 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
       <App />
+      <WrongProjectBanner />
       <PwaBanners />
     </ErrorBoundary>
   </StrictMode>,

@@ -6462,6 +6462,29 @@ body {
   border-color: var(--accent-line);
   background: linear-gradient(135deg, var(--accent-bg), var(--card-raised));
 }
+/* Wrong Supabase project: same banner shell, danger tint, no dismiss. */
+.pwa-banner-wrong-project {
+  top: calc(12px + env(safe-area-inset-top));
+  bottom: auto;
+  z-index: 90;
+  align-items: flex-start;
+  border-color: var(--danger);
+  background: color-mix(in oklab, var(--danger) 14%, var(--card-raised));
+}
+.pwa-banner-wrong-project .pwa-banner-icon {
+  background: color-mix(in oklab, var(--danger) 22%, transparent);
+  color: var(--danger);
+}
+.pwa-banner-wrong-project .pwa-banner-text strong {
+  color: var(--danger);
+}
+.pwa-banner-wrong-project .pwa-banner-text span {
+  color: var(--text);
+}
+.pwa-banner-wrong-project code {
+  font-size: 11.5px;
+  word-break: break-all;
+}
 .pwa-banner,
 .pwa-banner-row {
   display: flex;
