@@ -20,9 +20,7 @@
 //      across the sheet and cut the page into cells along them, so a repair can
 //      never reach across a printed boundary;
 //   3. inside that cell, grow out from the nearest ink until the paper goes
-//      blank, then trim to the ink and add a small margin;
-//   4. refuse the result if it reached over another mark's box — two windows in
-//      one picture is worse than no picture.
+//      blank, then trim to the ink and add a small margin.
 //
 // The restraint in step 1 is the important part, and it was learned by getting
 // it wrong: an earlier version of this file derived EVERY crop from the geometry
@@ -30,6 +28,17 @@
 // them by showing the crew the neighbouring window. Growing a region out to
 // blank paper is a good way to find a drawing when you have nothing better; it
 // is a bad way to second-guess a box that already works.
+//
+// KNOWN LIMIT, on the repair path only. Step 3 can still grow across the gutter
+// between two panels when the supplier has printed something in it — a hinge
+// note, an "inside/outside" detail — and then the picture holds two windows and
+// a crew cannot tell which is theirs. Nothing here detects that: a check for a
+// blank column down the middle of the result was tried and dropped, because it
+// caught one of the four crops on Black Desert that had the fault and falsely
+// condemned four that did not. The reliable test is whether the region reaches
+// over ANOTHER mark's stored box, which the app knows but does not currently
+// have to hand at this call site. Worth doing when a job turns up where the
+// repair path fires often; on Black Desert it fires for one mark in thirty-six.
 //
 // Nothing here assumes a 2x2 grid, or how many panels a page has, or that a page
 // has panels at all. The assumptions are only that separate drawings on a sheet
@@ -606,46 +615,5 @@ export function drawingCropBox(mask: InkMask, bbox: Bbox): Bbox | null {
   const region = resolveDrawingRegion(mask, bbox);
   if (!region) return null;
   if (inkDensity(mask, region) < MIN_INK_DENSITY) return null;
-  if (splitByGutter(stripLongRuns(mask), region)) return null;
   return region;
-}
-
-/**
- * True when `region` has a band of blank paper down the middle wide enough to
- * be the gutter between two panels — so it holds two marks' drawings, not one.
- *
- * The last line of defence on a repair. One window's elevation, its dimension
- * lines and its callouts are all within a few millimetres of each other; the
- * next mark along is across a gutter. If a repair has grown across one anyway,
- * a crew looking at the picture cannot tell which of the two windows is theirs,
- * and a card with no picture on it is the lesser harm. PURE.
- */
-export function splitByGutter(structure: InkMask, region: Bbox): boolean {
-  const { width: w, height: h, data } = structure;
-  const x0 = clampIndex(Math.round(region[0] * w), w);
-  const x1 = Math.max(x0 + 1, Math.min(w, Math.round(region[2] * w)));
-  const y0 = clampIndex(Math.round(region[1] * h), h);
-  const y1 = Math.max(y0 + 1, Math.min(h, Math.round(region[3] * h)));
-  const need = Math.max(3, Math.round(GUTTER * w));
-  // Ignore the region's own blank margin at each end; only a gap with drawing
-  // on BOTH sides of it separates two drawings.
-  let seen = false;
-  let blank = 0;
-  for (let x = x0; x < x1; x++) {
-    let ink = false;
-    for (let y = y0; y < y1; y++) {
-      if (data[y * w + x]) {
-        ink = true;
-        break;
-      }
-    }
-    if (ink) {
-      if (seen && blank >= need) return true;
-      seen = true;
-      blank = 0;
-    } else if (seen) {
-      blank += 1;
-    }
-  }
-  return false;
 }

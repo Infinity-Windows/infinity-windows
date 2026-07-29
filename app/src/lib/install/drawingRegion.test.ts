@@ -8,8 +8,6 @@ import {
   MIN_INK_DENSITY,
   pageRules,
   resolveDrawingRegion,
-  splitByGutter,
-  stripLongRuns,
   type InkMask,
 } from "./drawingRegion";
 import { padBbox, type Bbox } from "./markDrawing";
@@ -238,22 +236,13 @@ describe("drawingCropBox", () => {
     expect(contains(crop!, left)).toBe(true);
   });
 
-  it("shows nothing rather than a repair holding two marks' windows", () => {
-    // A page whose two panels have no divider printed between them, so a repair
-    // can grow across the gutter. Two windows in one picture is worse for a crew
-    // than no picture: they cannot tell which one is theirs.
-    const px = blankPage();
-    box(px, 8, 8, 191, 191);
-    box(px, 20, 40, 60, 120);
-    fillHatch(px, 20, 40, 60, 120);
-    box(px, 140, 40, 180, 120);
-    fillHatch(px, 140, 40, 180, 120);
-    const mask = inkMaskFromPixels(px, W, H, 1);
-    const structure = stripLongRuns(mask);
-    const both: Bbox = [0.08, 0.18, 0.92, 0.62];
-    expect(splitByGutter(structure, both)).toBe(true);
-    // ...and a box aimed at one window alone is not rejected.
-    expect(splitByGutter(structure, [0.09, 0.19, 0.31, 0.61])).toBe(false);
+  it("does not reach into the neighbouring panel when it repairs one", () => {
+    const { mask, left } = sheet();
+    const offset: Bbox = [0.35, 0.2, 0.38, 0.45];
+    const crop = drawingCropBox(mask, offset)!;
+    expect(contains(crop, left)).toBe(true);
+    // The divider is at x = 0.5 and the neighbour's window starts at 0.6.
+    expect(crop[2]).toBeLessThan(0.5);
   });
 });
 
