@@ -140,13 +140,41 @@ payload="$("$jq_bin" -n --arg t "$text" '{text: $t}')" || {
   exit 0
 }
 
+# Whether the POST was DELIVERED and whether Slack ACCEPTED it are different
+# questions, and this used to ask only the first. `curl -sS` exits 0 for any
+# completed transfer, including a 404 `no_service` or a 403 `invalid_token`
+# from a webhook that has been revoked — so a dead webhook printed "Posted the
+# failure notification to Slack" and the run went green.
+#
+# That is not hypothetical. Between 2026-07-18 and 2026-07-29 every failure
+# notification and every changelog post reported success, and not one of them
+# arrived in #infinity-app-changelog. Seven days of a silently failing nightly
+# job, and a whole afternoon of failing deploys, went unseen behind a notifier
+# that could not tell delivery from acceptance. A notifier nobody can trust is
+# indistinguishable from no notifier, and it is worse, because it is believed.
+#
+# Slack's incoming webhooks answer a literal `ok` body with HTTP 200 on success
+# and a short error body otherwise, so both are checked.
+#
 # --max-time so a hung webhook cannot hold a runner for six hours.
-if curl -sS -X POST -H 'Content-type: application/json' \
-     --max-time 20 --data "$payload" "$webhook" >/dev/null; then
-  echo "Posted the $kind notification for $workflow to Slack."
-else
+response="$(curl -sS -X POST -H 'Content-type: application/json' \
+  --max-time 20 --data "$payload" -w '\n%{http_code}' "$webhook" 2>&1)"
+curl_rc=$?
+http_code="$(printf '%s' "$response" | tail -n 1)"
+body="$(printf '%s' "$response" | sed '$d')"
+
+if [ "$curl_rc" -ne 0 ]; then
   echo "Could not reach the Slack webhook; the notification was not posted." >&2
   echo "The workflow result is unchanged." >&2
+  # An annotation puts this on the run page. Without one the only trace is a
+  # line buried in a log nobody opens, which is how this went unnoticed.
+  echo "::warning title=Slack notification not delivered::Could not reach the Slack webhook. The $kind notification for $workflow was NOT posted."
+elif [ "$http_code" = "200" ] && [ "$body" = "ok" ]; then
+  echo "Posted the $kind notification for $workflow to Slack."
+else
+  echo "Slack rejected the notification (HTTP $http_code: $body)." >&2
+  echo "The notification was NOT posted. The workflow result is unchanged." >&2
+  echo "::warning title=Slack notification rejected::Slack answered HTTP $http_code ($body), so the $kind notification for $workflow was NOT posted. The SLACK_CHANGELOG_WEBHOOK secret is probably revoked or points at a deleted channel — create a new incoming webhook and re-set it."
 fi
 
 exit 0
