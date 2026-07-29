@@ -173,7 +173,7 @@ python3 scripts/function_secrets.py --names  # just the required names
 ```
 
 `Deploy backend` pushes, checks and then *uses* these on every merge once
-`SUPABASE_ACCESS_TOKEN` is set. Three separate assertions, because each one sees
+`SUPABASE_ACCESS_TOKEN` is set. Five separate assertions, because each one sees
 something the others cannot:
 
 | Step | What it proves | What it cannot see |
@@ -181,7 +181,8 @@ something the others cannot:
 | Push the function secrets GitHub holds | The value GitHub has is now the value the project has | Anything GitHub does not hold |
 | Verify every required function secret exists | Every needed name is present on the project | Whether the value is any good |
 | Check the AI provider accepts our key | Anthropic genuinely accepts the key and generates text | Whether the function around it works |
-| Ask Infinity a real question | The whole feature answers, end to end | — |
+| Ask Infinity a real question | The whole feature answers, end to end | Anything about the other five writing features |
+| Make the other writing features write something | A how-to, a talk, tips and a plan-set read produce real content | — |
 
 The third one exists because a key that is **refused** — cancelled, rotated at
 Anthropic, or pasted from the wrong account — is identical to a working key as
@@ -194,6 +195,15 @@ JWT, so a new-format `sb_secret_…` key will not do — set `ASK_SMOKE_JWT` to 
 legacy service-role key or a real user's access token. Without one it reports
 "could not tell" and warns rather than failing, since it has measured nothing.
 
+The fifth exists because `ask` answering proves nothing about the five *other*
+features that generate text. All of them moved from OpenAI to Claude, and the
+failure that move risks is not an error but a silence: a toolbox talk saved with
+no hazards, a plan set read as zero openings. Both are indistinguishable from
+"there was nothing to find" unless something checks the content, so this asks for
+output and checks what came back. A feature it cannot exercise for want of data —
+no reference install recorded, no install memos yet — is reported **NOT TESTED**,
+never as a pass.
+
 To check by hand:
 
 ```bash
@@ -204,6 +214,9 @@ ANTHROPIC_API_KEY=sk-ant-... scripts/verify-anthropic-key.sh
 
 SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm \
   ASK_SMOKE_JWT=eyJ... scripts/smoke-ask.sh
+
+SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm \
+  SUPABASE_SERVICE_ROLE_KEY=eyJ... scripts/smoke-text-features.sh
 ```
 
 ### Shipping the backend

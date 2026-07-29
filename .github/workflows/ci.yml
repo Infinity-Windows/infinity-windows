@@ -104,6 +104,14 @@ jobs:
         shell: bash
         run: scripts/smoke-ask.test.sh
 
+      # The same end-to-end idea for the other five writing features, which moved
+      # from OpenAI to Claude. What matters is that it separates a feature that
+      # really wrote something from one that returned 200 and saved nothing —
+      # those look identical from outside. Stubs curl; no network, no key.
+      - name: Test scripts/smoke-text-features.sh
+        shell: bash
+        run: scripts/smoke-text-features.test.sh
+
   supabase-tooling:
     name: Supabase merge tooling
     runs-on: ubuntu-latest
