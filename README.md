@@ -118,14 +118,23 @@ Then re-run it: **Actions → Deploy backend → Run workflow**. Never put eithe
 value in a file in this repo.
 
 The `Verify functions are live` job probes every function in
-`supabase/functions/` and reports which ones 404. Before the secrets exist that
-is a warning; once they exist it is strict, so a deploy that reported success
-while a function is still 404 fails the run. Run the same check yourself any
-time — it needs no credentials:
+`supabase/functions/` and sorts each one into exactly three buckets: **deployed**
+(the platform answered, normally 401 without a token), **missing** (404), and
+**undetermined** (no answer at all — DNS failure, refused connection, timeout).
+Before the secrets exist all of that is a warning; once they exist it is strict,
+and both a missing function *and* an undetermined one fail the run. Undetermined
+counts as a failure on purpose: a probe that never got an answer has not proved
+anything, and a check that treats "could not tell" as "fine" is how a deploy
+that shipped nothing went green in the first place. The failure text says which
+of the two it is, so nobody goes hunting for a broken deploy when the real
+problem was the network.
+
+Run the same check yourself any time — it needs no credentials:
 
 ```bash
-scripts/verify-functions.sh          # warn on missing
-STRICT=1 scripts/verify-functions.sh # exit 1 on missing
+scripts/verify-functions.sh          # warn only
+STRICT=1 scripts/verify-functions.sh # exit 1 if any are missing or undetermined
+scripts/verify-functions.test.sh     # test the checker itself, no network
 ```
 
 The bundle seeds the thin modules (tools, a week-long safety-talk rotation) and
