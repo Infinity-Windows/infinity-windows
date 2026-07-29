@@ -85,6 +85,14 @@ const FULL_RUN = 0.6;
  * spans when the panel beside it is empty.
  */
 const PANEL_RUN = 0.3;
+/**
+ * …and this much of one row of panels is that row's divider. Nearly all of it,
+ * because a divider is drawn rule to rule while a window's mullion stops short
+ * of the caption above it and the dimensions below.
+ */
+const BAND_RUN = 0.92;
+/** Anything nearer than this to the paper's edge is the sheet's own border. */
+const EDGE_MARGIN = 0.15;
 /** How far apart the rungs of a spec table can be and still count as one table. */
 const LADDER_SPAN = 0.12;
 /** How many rungs make a ladder. */
@@ -261,6 +269,29 @@ export function pageRules(mask: InkMask): { rows: number[]; cols: number[] } {
   };
 }
 
+/**
+ * Vertical lines running the full height of the rows `y0`..`y1` — the sheet's
+ * edges, and the divider between two panels sitting side by side there. PURE.
+ *
+ * A window's mullion can be nearly as long, but never quite: the panel has a
+ * caption above the drawing and dimensions below it, so a line that reaches
+ * from the top of the row to the bottom is the sheet's, not the window's.
+ */
+export function columnRules(mask: InkMask, y0: number, y1: number): number[] {
+  const { width: w, data } = mask;
+  const span = Math.max(1, y1 - y0);
+  const need = Math.round(BAND_RUN * span);
+  const isRule = (x: number) => {
+    let run = 0;
+    for (let y = y0; y < y1; y++) {
+      run = data[y * w + x] === PAPER ? 0 : run + 1;
+      if (run >= need) return true;
+    }
+    return false;
+  };
+  return centres(new Float64Array(0), w, isRule);
+}
+
 function centres(
   _run: Float64Array,
   n: number,
@@ -400,7 +431,7 @@ function nearestInk(
 
 /**
  * Grow `seed` outwards, one side at a time, for as long as there is ink within
- * `gap` of that side — and stop at a clean band of blank paper.
+ * a gutter of that side — and stop at a clean band of blank paper.
  *
  * This is the whole idea. A window elevation, its dimension lines and its
  * callouts are all within a few millimetres of each other, while the next mark
@@ -410,7 +441,13 @@ function nearestInk(
  * already around all of it (marks #5, #16) — and because growth can only ever
  * cross ink, it can never step over the gutter into the neighbour's window.
  */
-function growToBlank(m: InkMask, seed: Rect, cell: Rect, gx: number, gy: number): Rect {
+function growToBlank(
+  m: InkMask,
+  seed: Rect,
+  cell: Rect,
+  gx: number,
+  gy: number,
+): Rect {
   const r = { ...seed };
   let moved = true;
   while (moved) {
@@ -479,13 +516,24 @@ export function resolveDrawingRegion(
   structure: InkMask = stripLongRuns(mask),
 ): Bbox | null {
   const { width: w, height: h } = mask;
-  const bounds = cellFor(bbox, pageRules(mask));
+  const rules = pageRules(mask);
+  const bounds = cellFor(bbox, rules);
   // Step inside the bounding rules themselves.
   const inset = Math.max(2, Math.round(0.004 * w));
-  const cx0 = clampIndex(Math.round(bounds[0] * w) + inset, w);
   const cy0 = clampIndex(Math.round(bounds[1] * h) + inset, h);
-  const cx1 = Math.max(cx0 + 1, Math.min(w, Math.round(bounds[2] * w) - inset));
   const cy1 = Math.max(cy0 + 1, Math.min(h, Math.round(bounds[3] * h) - inset));
+  // If no divider runs the length of the page, look again within this row of
+  // panels alone. Where a page holds one wide unit above two narrow ones, the
+  // divider is only drawn across the row that needs it, and a page-length
+  // search walks straight past it — which is how mark #34's crop came to have
+  // both "Casita Suite" and "Hallway" in it.
+  const interior = rules.cols.filter((c) => c > EDGE_MARGIN && c < 1 - EDGE_MARGIN);
+  const cols = interior.length > 0 ? rules.cols : columnRules(mask, cy0, cy1);
+  const cx = (bbox[0] + bbox[2]) / 2;
+  const left = cols.reduce((acc, r) => (r <= cx && r > acc ? r : acc), 0);
+  const right = cols.reduce((acc, r) => (r > cx && r < acc ? r : acc), 1);
+  const cx0 = clampIndex(Math.round(left * w) + inset, w);
+  const cx1 = Math.max(cx0 + 1, Math.min(w, Math.round(right * w) - inset));
   if (cx1 - cx0 < 8 || cy1 - cy0 < 8) return null;
 
   const gx = Math.max(3, Math.round(GUTTER * w));
