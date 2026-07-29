@@ -2987,6 +2987,68 @@ button:disabled {
   border-color: rgba(255, 106, 26, 0.5);
 }
 
+/* A window/door row opens the same details a map pin opens. Only this
+   informational part is the tap target — the row's Claim link or assignee
+   picker sits outside it and is unaffected. Finger-sized, and it reads as a
+   control: it lifts on press and stays lit while its details are open. */
+.opening-row-open {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.opening-row-open:hover {
+  background: var(--card-hot);
+  border-color: var(--border);
+}
+
+.opening-row-open:active {
+  background: var(--card-hot);
+}
+
+.opening-row-open[aria-expanded="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+
+.opening-row-open__info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.opening-row-open__chev {
+  flex: none;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* The details sit on their own line, directly under the row that opened them. */
+.opening-row-panel {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.opening-list-hint {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+}
+
 .work-list .find-row {
   background: var(--card-raised);
   border: 1px solid rgba(255, 255, 255, 0.08);

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { listProjects, listWindowTypes } from "../../lib/api";
 import {
   aiExtractSchedule,
@@ -23,7 +23,16 @@ import {
   undoInstall,
   updateOpening,
 } from "../../lib/install/api";
-import { MarkElevationViews } from "../../components/install/MarkElevationViews";
+import {
+  OpeningDetailCard,
+  VOIDED_RING_COLOR,
+} from "../../components/install/OpeningDetailCard";
+import { OpeningRowButton } from "../../components/install/OpeningRowButton";
+import {
+  showsVoidedInstall,
+  toggleExpandedOpening,
+} from "../../lib/install/openingRowAction";
+import { openingUnitKind } from "../../lib/install/unitKind";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { useRealtimeOpenings } from "../../lib/useRealtimeOpenings";
 import { invalidateOpeningQueries } from "../../lib/install/openingQueryKeys";
@@ -85,9 +94,6 @@ function isUsablePdf(ps: Planset): boolean {
   return ps.source_format === "pdf" || !!ps.converted_pdf_path;
 }
 
-/** Distinct ring for an opening whose install was undone (history preserved). */
-const VOIDED_RING_COLOR = "#ef4444";
-
 interface PageImage {
   dataUrl: string;
   width: number;
@@ -106,23 +112,12 @@ const FILTERS: { id: PlanFilter; label: string }[] = [
   { id: "done", label: "Done" },
 ];
 
-function unitKind(o: ProjectOpening): "door" | "window" {
-  const category = (o.window_types?.category ?? "").toLowerCase();
-  if (category.includes("door")) return "door";
-  if (category.includes("window")) return "window";
-  const code = `${o.window_types?.type_code ?? ""} ${o.window_types?.name ?? ""}`.toUpperCase();
-  if (/\b\d{2}(70|80)\b/.test(code) && /\b(XO|OX|SC)\b/.test(code)) return "door";
-  if (/\bDOOR\b/.test(code)) return "door";
-  return "window";
-}
-
 function clamp(value: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, value));
 }
 
 export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const { projectId = "" } = useParams();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   // Standalone /map is its own route, so it needs its own subscription; when
   // embedded, ProjectDetail already has one and a second would be a duplicate.
@@ -145,6 +140,10 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   // Cartoon plan state: per-page traced outlines, selection, drag.
   const [outlines, setOutlines] = useState<Record<number, BuildingOutline | null>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The list below the drawing expands its own details. Kept separate from the
+  // pin selection so opening a row doesn't move anything on the map, and so the
+  // same card can never render twice at once.
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const dragRef = useRef<{
     id: string;
@@ -177,9 +176,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       case "done":
         return o.status === "installed";
       case "windows":
-        return unitKind(o) === "window";
+        return openingUnitKind(o) === "window";
       case "doors":
-        return unitKind(o) === "door";
+        return openingUnitKind(o) === "door";
       default:
         return true;
     }
@@ -858,9 +857,6 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         : ""
     }`;
 
-  const openOpening = (openingId: string) =>
-    navigate(`/projects/${projectId}/opening/${openingId}`);
-
   const selectedOpening = all.find((o) => o.id === selectedId) ?? null;
 
   const installerExistingCount = dispatchInstaller
@@ -908,11 +904,11 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     }
     return rows;
   })();
-  const selectedDetail = selectedOpening
-    ? details.find((d) =>
-        d.marks.includes(openingMarkCode(selectedOpening.opening_code)),
-      )
-    : null;
+  /** What the supplier's specs PDF says about this opening's mark, if anything. */
+  const specDetailFor = (o: ProjectOpening) =>
+    details.find((d) =>
+      d.marks.includes(openingMarkCode(o.opening_code)),
+    ) ?? null;
 
   const outlinePath = useMemo(
     () => (outline ? outlinePathD(outline.points, aspect) : null),
@@ -936,130 +932,31 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     [manualOutlineRows, aspect],
   );
 
-  const renderDetailCard = (o: ProjectOpening) => {
-    const kind = unitKind(o);
-    const wt = o.window_types;
-    const isVoided = isLead && o.status !== "installed" && voidedIds.has(o.id);
-    return (
-      <div className="map-detail-card">
-        <div className="map-detail-card__head">
-          <span
-            className="map-detail-card__dot"
-            style={{ background: OPENING_KIND_COLORS[kind] }}
-            aria-hidden
-          />
-          <strong>
-            #{openingMarkCode(o.opening_code)}
-            {wt ? ` · ${wt.name || wt.type_code}` : ""}
-          </strong>
-          <span className="map-detail-card__cat">{wt?.category ?? kind}</span>
-          <button
-            type="button"
-            className="map-detail-card__close"
-            aria-label="Close details"
-            onClick={() => setSelectedId(null)}
-          >
-            ✕
-          </button>
-        </div>
-        <dl className="map-detail-card__rows">
-          {wt?.width_in != null && wt?.height_in != null && (
-            <div>
-              <dt>Size</dt>
-              <dd>
-                {wt.width_in}″ × {wt.height_in}″
-              </dd>
-            </div>
-          )}
-          <div>
-            <dt>Status</dt>
-            <dd
-              style={{
-                color: isVoided ? VOIDED_RING_COLOR : OPENING_STATUS_COLORS[o.status],
-              }}
-            >
-              {isVoided ? "install undone — redo needed" : o.status}
-            </dd>
-          </div>
-          {o.label && (
-            <div>
-              <dt>Location</dt>
-              <dd>{o.label}</dd>
-            </div>
-          )}
-          {o.assignee && (
-            <div>
-              <dt>Assigned</dt>
-              <dd>
-                <span
-                  className="map-detail-card__installer"
-                  style={{
-                    background: crewColors.get(o.assignee.id) ?? "#a39c92",
-                  }}
-                  aria-hidden
-                >
-                  {installerInitials(o.assignee.display_name)}
-                </span>
-                {o.assignee.display_name}
-                {o.sequence != null && ` · #${o.sequence}`}
-                {` · ${o.status}`}
-              </dd>
-            </div>
-          )}
-          {o.ro_width_in != null && o.ro_height_in != null && (
-            <div>
-              <dt>Rough opening</dt>
-              <dd>
-                {o.ro_width_in}″ × {o.ro_height_in}″
-              </dd>
-            </div>
-          )}
-          {selectedDetail && selectedDetail.productCodes.length > 0 && (
-            <div>
-              <dt>Product</dt>
-              <dd>{selectedDetail.productCodes.join(" · ")}</dd>
-            </div>
-          )}
-        </dl>
-        {wt?.notes && <p className="map-detail-card__notes">{wt.notes}</p>}
-        {selectedDetail && selectedDetail.notes.length > 0 && (
-          <p className="map-detail-card__notes">
-            {selectedDetail.notes.join(" · ")}
-          </p>
-        )}
-        {/* The plan says which room; the elevation says which hole in the wall.
-            Renders nothing when this mark isn't drawn on a named elevation. */}
-        <MarkElevationViews
-          projectId={projectId}
-          markCode={o.opening_code}
-          variant="bare"
-        />
-        <div className="map-detail-card__actions">
-          <button
-            type="button"
-            className="button-like"
-            onClick={() => openOpening(o.id)}
-          >
-            Open full sheet
-          </button>
-          {selectedDetail && (
-            <button
-              type="button"
-              className="link"
-              onClick={() => showView("details", selectedDetail.pageNumber)}
-            >
-              Detail sheet — PDF page {selectedDetail.pageNumber}
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  };
+  /**
+   * The pin details, and the same card the list rows open below themselves.
+   * `onClose` differs because the two are opened independently — closing the
+   * card under a list row must not clear the pin selected on the drawing.
+   */
+  const renderDetailCard = (
+    o: ProjectOpening,
+    { onClose, id }: { onClose: () => void; id?: string },
+  ) => (
+    <OpeningDetailCard
+      projectId={projectId}
+      opening={o}
+      voided={showsVoidedInstall(effectiveRole, o, voidedIds)}
+      installerColor={o.assignee ? crewColors.get(o.assignee.id) : undefined}
+      detail={specDetailFor(o)}
+      onClose={onClose}
+      onOpenDetailSheet={(pageNumber) => showView("details", pageNumber)}
+      id={id}
+    />
+  );
 
   const renderOpeningDots = (mode: "all" | "pinned" = "all") =>
     (mode === "pinned" ? placed : [...placed, ...autos]).map((o) => {
-      const kind = unitKind(o);
-      const isVoided = isLead && o.status !== "installed" && voidedIds.has(o.id);
+      const kind = openingUnitKind(o);
+      const isVoided = showsVoidedInstall(effectiveRole, o, voidedIds);
       const pos = dotPos(o);
       const selIndex = selection.indexOf(o.id);
       const installerColor = o.assigned_to
@@ -1692,7 +1589,10 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                   {buildingPdf.storage_path.split("/").pop()}
                 </div>
               </div>
-              {selectedOpening && renderDetailCard(selectedOpening)}
+              {selectedOpening &&
+                renderDetailCard(selectedOpening, {
+                  onClose: () => setSelectedId(null),
+                })}
             </>
           )}
         </div>
@@ -1752,7 +1652,10 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             Movable marks sit on the plan callouts. Zoom keeps them locked to
             those numbers — drag one to nudge it.
           </p>
-          {selectedOpening && renderDetailCard(selectedOpening)}
+          {selectedOpening &&
+            renderDetailCard(selectedOpening, {
+              onClose: () => setSelectedId(null),
+            })}
         </div>
       )}
 
@@ -1931,28 +1834,43 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         {filter === "all" ? "All openings" : FILTERS.find((f) => f.id === filter)?.label}{" "}
         ({filtered.length})
       </h2>
+      <p className="muted opening-list-hint">
+        Tap a window or door to see its details.
+      </p>
       <ul className="unit-list work-list">
         {filtered.map((o) => {
-          const isVoided = isLead && o.status !== "installed" && voidedIds.has(o.id);
+          const isVoided = showsVoidedInstall(effectiveRole, o, voidedIds);
+          const panelId = `opening-row-panel-${o.id}`;
+          const expanded = expandedRowId === o.id;
           return (
           <li key={o.id} className="find-row">
-            <span
-              className="unit-dot"
-              aria-hidden
-              style={{ background: unitKind(o) === "door" ? "var(--ok)" : "var(--info)" }}
-            />
-            <Link to={`/projects/${projectId}/opening/${o.id}`}>
-              <strong>{o.opening_code}</strong>
-            </Link>
-            <span className="muted">
-              {o.window_types?.type_code ?? "type?"} {o.label ?? ""}
-            </span>
-            <span
-              className="big-address"
-              style={{ color: isVoided ? VOIDED_RING_COLOR : OPENING_STATUS_COLORS[o.status] }}
+            <OpeningRowButton
+              openingCode={o.opening_code}
+              expanded={expanded}
+              panelId={panelId}
+              onToggle={() =>
+                setExpandedRowId((prev) => toggleExpandedOpening(prev, o.id))
+              }
             >
-              {isVoided ? "redo needed" : o.status}
-            </span>
+              <span
+                className="unit-dot"
+                aria-hidden
+                style={{
+                  background:
+                    openingUnitKind(o) === "door" ? "var(--ok)" : "var(--info)",
+                }}
+              />
+              <strong>{o.opening_code}</strong>
+              <span className="muted">
+                {o.window_types?.type_code ?? "type?"} {o.label ?? ""}
+              </span>
+              <span
+                className="big-address"
+                style={{ color: isVoided ? VOIDED_RING_COLOR : OPENING_STATUS_COLORS[o.status] }}
+              >
+                {isVoided ? "redo needed" : o.status}
+              </span>
+            </OpeningRowButton>
             {o.status === "installed" ? (
               isLead && (
                 <button
@@ -1972,6 +1890,14 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               >
                 {o.status === "planned" ? "Claim" : "Open"}
               </Link>
+            )}
+            {expanded && (
+              <div className="opening-row-panel">
+                {renderDetailCard(o, {
+                  onClose: () => setExpandedRowId(null),
+                  id: panelId,
+                })}
+              </div>
             )}
           </li>
           );
