@@ -1026,6 +1026,11 @@ button:disabled {
   border-color: rgba(255, 106, 26, 0.45);
 }
 
+/*
+ * Graph paper under the walls. Coarser and slightly more present than before so
+ * it reads as a drawing sheet, but still quiet enough that pins win the contrast
+ * fight — they are the thing being looked for.
+ */
 .cartoon-sheet {
   position: relative;
   border-radius: 10px;
@@ -1035,18 +1040,40 @@ button:disabled {
     repeating-linear-gradient(
       0deg,
       transparent,
-      transparent 23px,
-      rgba(255, 255, 255, 0.03) 23px,
-      rgba(255, 255, 255, 0.03) 24px
+      transparent 31px,
+      rgba(255, 255, 255, 0.045) 31px,
+      rgba(255, 255, 255, 0.045) 32px
     ),
     repeating-linear-gradient(
       90deg,
       transparent,
-      transparent 23px,
-      rgba(255, 255, 255, 0.03) 23px,
-      rgba(255, 255, 255, 0.03) 24px
+      transparent 31px,
+      rgba(255, 255, 255, 0.045) 31px,
+      rgba(255, 255, 255, 0.045) 32px
     ),
     #181614;
+}
+
+/* Which floor you are looking at, on the drawing itself. */
+.cartoon-sheet__floor {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: rgba(224, 218, 209, 0.7);
+  pointer-events: none;
+}
+
+.cartoon-sheet__floor span {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: rgba(163, 156, 146, 0.65);
 }
 
 .cartoon-sheet svg {
@@ -1079,13 +1106,16 @@ button:disabled {
  * without the number forcing it wide.
  */
 .plan-dot {
+  --pin-fill: #94a3b8;
+  --pin-ring: rgba(20, 18, 16, 0.75);
   position: absolute;
   width: 30px;
   height: 30px;
   margin: -15px 0 0 -15px;
   padding: 0;
   border-radius: 50%;
-  border: 2px solid rgba(20, 18, 16, 0.75);
+  background: var(--pin-fill);
+  border: 2px solid var(--pin-ring);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1106,16 +1136,27 @@ button:disabled {
 }
 
 /*
- * Crowded pages drop the number and shrink to a countable dot. Scaling rather
- * than resizing keeps the pin centred on its opening.
+ * Crowded pages drop the number and shrink to a countable dot — but only the
+ * dot. The button keeps its 30px footprint so it is still hittable on a ladder.
  */
 .plan-dot--quiet {
-  transform: scale(0.6);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
-.plan-dot--quiet.plan-dot--selected,
-.plan-dot--quiet.plan-dot--dispatch-selected {
-  transform: scale(0.85);
+.plan-dot--quiet::before {
+  content: "";
+  position: absolute;
+  inset: 20%;
+  border-radius: 50%;
+  background: var(--pin-fill);
+  border: 2px solid var(--pin-ring);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.plan-dot--door.plan-dot--quiet::before {
+  border-radius: 3px;
 }
 
 .plan-dot__mark {

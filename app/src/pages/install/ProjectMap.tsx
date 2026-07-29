@@ -128,6 +128,12 @@ const PIN_MIN_GAP = 0.05;
 const PIN_LABEL_AUTO_MAX = 14;
 
 /**
+ * Wall thickness in viewBox units (page width = 1000), so it scales with the
+ * sheet. Roughly 4px on a 390px phone: a wall you can see, not a hairline.
+ */
+const WALL_STROKE = 11;
+
+/**
  * What the sheet header says about where the shape came from. "from the marks"
  * is honest about being approximate without implying something is broken — it
  * is a normal, permanent state for a job nobody has traced.
@@ -1641,17 +1647,37 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                     ))
                   ) : (
                     outlinePath && (
-                      <path
-                        d={outlinePath}
-                        fill="rgba(163, 156, 146, 0.06)"
-                        stroke="rgba(163, 156, 146, 0.6)"
-                        strokeWidth={3}
-                        strokeLinejoin="round"
-                      />
+                      /*
+                       * Walls, not an outline: a lit interior under a heavy
+                       * stroke. Corners are mitred, because the whole point of
+                       * squaring the polygon up was to get sharp ones — rounding
+                       * them here would throw that away.
+                       */
+                      <>
+                        <path
+                          d={outlinePath}
+                          fill="rgba(214, 208, 199, 0.10)"
+                          stroke="none"
+                        />
+                        <path
+                          d={outlinePath}
+                          fill="none"
+                          stroke="rgba(224, 218, 209, 0.9)"
+                          strokeWidth={WALL_STROKE}
+                          strokeLinejoin="miter"
+                        />
+                      </>
                     )
                   )}
                 </svg>
                 {renderOpeningDots()}
+                <div className="cartoon-sheet__floor" aria-hidden>
+                  Floor {page}
+                  <span>
+                    {placed.length + autos.length} mark
+                    {placed.length + autos.length === 1 ? "" : "s"}
+                  </span>
+                </div>
               </div>
               {selectedOpening &&
                 renderDetailCard(selectedOpening, {

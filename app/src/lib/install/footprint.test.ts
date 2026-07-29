@@ -98,9 +98,24 @@ describe("footprintFromPins", () => {
     const pins = ringPins(0.25, 0.3, 0.75, 0.7, 5);
     const result = footprintFromPins(pins, 0.8);
     const enclosed = pins.filter((p) => contains(result!.points, p)).length;
-    // Marks sit on the wall, so a few may land exactly on the boundary; the
-    // shape is wrong if it excludes most of them.
-    expect(enclosed).toBeGreaterThan(pins.length * 0.7);
+    // A window outside its own building is the single most obviously wrong
+    // thing this can draw, so the bar is nearly all of them, not most.
+    expect(enclosed).toBeGreaterThanOrEqual(pins.length - 1);
+  });
+
+  it("keeps the marks of a real 42-pin floor inside the building", () => {
+    // Shaped like Black Desert: an L, with marks on the walls and interior
+    // partitions rather than a tidy rectangle.
+    const pins: FootprintPin[] = [
+      ...ringPins(0.15, 0.2, 0.65, 0.6, 5),
+      ...ringPins(0.4, 0.55, 0.62, 0.82, 3),
+      { x: 0.3, y: 0.4 },
+      { x: 0.45, y: 0.35 },
+      { x: 0.5, y: 0.5 },
+    ];
+    const result = footprintFromPins(pins, 0.7);
+    const outside = pins.filter((p) => !contains(result!.points, p));
+    expect(outside.length).toBeLessThanOrEqual(1);
   });
 
   it("falls back to a padded box when there are too few pins to enclose", () => {

@@ -12,7 +12,7 @@
 // there is room for them (few marks, zoomed in, or a deliberate toggle) and on
 // the selected pin, because 42 always-on labels is 42 overlapping words.
 
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import {
   OPENING_STATUS_COLORS,
   openingMarkCode,
@@ -117,14 +117,22 @@ export function MapPinLayer({
             }${dimmed ? " plan-dot--dispatch-dim" : ""}${
               showLabel ? "" : " plan-dot--quiet"
             }`}
-            style={{
-              left: `${pos.x * 100}%`,
-              top: `${pos.y * 100}%`,
-              ...box,
-              fontSize,
-              background: OPENING_STATUS_COLORS[o.status],
-              borderColor: isVoided ? VOIDED_RING_COLOR : undefined,
-            }}
+            /*
+             * Colours go through custom properties, not `background`, so a
+             * crowded page can shrink the visible dot with a pseudo-element
+             * while the button itself stays a full-size tap target. Shrinking
+             * the button would make pins unhittable with gloves on.
+             */
+            style={
+              {
+                left: `${pos.x * 100}%`,
+                top: `${pos.y * 100}%`,
+                ...box,
+                fontSize,
+                "--pin-fill": OPENING_STATUS_COLORS[o.status],
+                ...(isVoided ? { "--pin-ring": VOIDED_RING_COLOR } : {}),
+              } as CSSProperties
+            }
             title={
               isVoided
                 ? `${pinTitle(o)} — install undone, needs re-do`

@@ -157,12 +157,14 @@ export function footprintFromPins(
     grid[r * cols + c] = 1;
   }
 
-  // Grow to close the ring, fill the interior it now encloses, then shrink by
-  // the same amount. Without the shrink the wall lands a dilation-radius
-  // outside the marks and every pin floats inside the building.
+  // Grow to close the ring, fill the interior it now encloses, then shrink most
+  // of the way back. Not shrinking at all puts the wall a full dilation radius
+  // outside the marks; shrinking all the way puts it ON them, which leaves marks
+  // stranded outside the building once the polygon is coarsened. One cell of
+  // slack keeps every mark inside its own building, where a window belongs.
   const grown = dilate(grid, rows, cols, PIN_DILATE);
   const filled = fillHoles(grown, rows, cols);
-  const shrunk = erode(filled, rows, cols, PIN_DILATE);
+  const shrunk = erode(filled, rows, cols, Math.max(1, PIN_DILATE - 1));
   const mass = largestComponent(shrunk, rows, cols)
     ? largestComponent(fillHoles(shrunk, rows, cols), rows, cols)
     : largestComponent(filled, rows, cols);
