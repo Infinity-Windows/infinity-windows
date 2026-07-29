@@ -21,6 +21,11 @@ import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import { downloadPlanset } from "./api";
 import { cropCacheKey, readCrop, writeCrop } from "./cropCache";
 import { calloutRingCircle } from "./elevationViews";
+import {
+  drawingCropBox,
+  inkMaskFromPixels,
+  type InkMask,
+} from "./drawingRegion";
 import { bboxToPixelRect, invertLineArt, padBbox, type Bbox } from "./markDrawing";
 import type { Planset } from "./types";
 
@@ -85,9 +90,61 @@ async function getPageCanvas(
   return pending;
 }
 
-/** Slice the padded box out of the page and flip it to white-on-black. */
-function cropDrawing(page: HTMLCanvasElement, bbox: Bbox): string {
-  const rect = bboxToPixelRect(padBbox(bbox), page.width, page.height);
+/**
+ * How much the page is shrunk before its layout is read.
+ *
+ * The mask is only used to find blank paper and printed rules, and a tenth of
+ * 2600px still resolves a hairline because {@link inkMaskFromPixels} keeps the
+ * darkest pixel of every block rather than sampling one. Full resolution would
+ * mean six million bytes and a visible pause on a phone.
+ */
+const MASK_STEP = 10;
+
+const maskCache = new Map<string, InkMask>();
+
+/**
+ * The page reduced to paper/rule/ink, computed once per sheet.
+ *
+ * Worth caching hard: a specs page carries four marks, and every card on it
+ * asks the same question of the same pixels.
+ */
+function getInkMask(key: string, page: HTMLCanvasElement): InkMask | null {
+  const cached = maskCache.get(key);
+  if (cached) return cached;
+  const ctx = page.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+  const { data } = ctx.getImageData(0, 0, page.width, page.height);
+  const mask = inkMaskFromPixels(data, page.width, page.height, MASK_STEP);
+  maskCache.set(key, mask);
+  evict(maskCache, MAX_CACHED_PAGES);
+  return mask;
+}
+
+/**
+ * Where to actually crop, given what the vision pass stored.
+ *
+ * Usually the stored box, padded, exactly as before — most of them do have the
+ * window in them. The sheet's own ink is consulted only to check that, and to
+ * rescue the ones that miss: mark #2's box lands on the dimension line BESIDE
+ * its window, so the crew saw a black rectangle. See `drawingRegion`. Returns
+ * null when there's nothing there worth showing.
+ *
+ * Falls back to the stored box if the mask can't be built at all (a browser
+ * that won't hand back pixels), which is what this did before.
+ */
+function resolveCropBox(
+  page: HTMLCanvasElement,
+  pageKey: string,
+  bbox: Bbox,
+): Bbox | null {
+  const mask = getInkMask(pageKey, page);
+  if (!mask) return padBbox(bbox);
+  return drawingCropBox(mask, bbox);
+}
+
+/** Slice the box out of the page and flip it to white-on-black. */
+function cropDrawing(page: HTMLCanvasElement, box: Bbox): string {
+  const rect = bboxToPixelRect(box, page.width, page.height);
   const out = document.createElement("canvas");
   out.width = rect.width;
   out.height = rect.height;
@@ -120,22 +177,35 @@ export interface CropRequest {
 }
 
 /**
- * The crop for one mark, as a PNG data URL. Checks memory, then IndexedDB, then
- * does the work. Throws only when the drawing genuinely can't be produced (no
- * planset offline, an unrenderable page, a browser that won't hand back pixels)
- * — a cache failure never surfaces.
+ * Bumped whenever the crop's geometry or colouring changes, so crops cached
+ * under the old behaviour are never served again. Phones hold these in
+ * IndexedDB for weeks, and a crew who already has mark #2's black rectangle
+ * saved would otherwise keep seeing it after the fix shipped.
+ */
+const SPEC_VARIANT = "repair1";
+
+/**
+ * The crop for one mark, as a PNG data URL, or null when the page has no
+ * drawing there to show.
+ *
+ * Null is a real answer, not an error: some panels on these sheets are blank
+ * because the supplier left the drawing out, and this app would rather show
+ * nothing than a black rectangle that looks like it's broken. Throws only when
+ * the drawing can't be produced at all (no planset offline, an unrenderable
+ * page) — a cache failure never surfaces.
  */
 export async function markDrawingDataUrl({
   planset,
   pageNumber,
   bbox,
   markCode,
-}: CropRequest): Promise<string> {
+}: CropRequest): Promise<string | null> {
   const key = cropCacheKey({
     plansetId: planset.id,
     markCode,
     bbox,
     scale: PAGE_RENDER_WIDTH,
+    variant: SPEC_VARIANT,
   });
 
   const inMemory = cropCache.get(key);
@@ -148,7 +218,11 @@ export async function markDrawingDataUrl({
     return persisted;
   }
 
-  const url = cropDrawing(await getPageCanvas(planset, pageNumber), bbox);
+  const page = await getPageCanvas(planset, pageNumber);
+  const box = resolveCropBox(page, `${planset.id}:${pageNumber}`, bbox);
+  if (!box) return null;
+
+  const url = cropDrawing(page, box);
   cropCache.set(key, url);
   evict(cropCache, MAX_CACHED_CROPS);
   // Deliberately not awaited: the picture is ready, and persisting it is a
@@ -167,6 +241,7 @@ export async function hasCachedCrop(req: CropRequest): Promise<boolean> {
     markCode: req.markCode,
     bbox: req.bbox,
     scale: PAGE_RENDER_WIDTH,
+    variant: SPEC_VARIANT,
   });
   if (cropCache.has(key)) return true;
   return (await readCrop(key)) != null;
