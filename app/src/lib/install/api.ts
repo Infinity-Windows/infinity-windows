@@ -211,6 +211,48 @@ export async function decideAccessRequest(
   if (error) throw error;
 }
 
+export interface ApprovedAccount {
+  user_id: string;
+  email: string;
+  display_name: string;
+  role: string;
+  temporary_password: string;
+  requested_role: string;
+}
+
+/**
+ * Approve a request AND create the login, which are the same action as far as
+ * anyone using this app is concerned.
+ *
+ * Marking the row approved was all this used to do, and it left the person with
+ * no way in — an owner then had to create the account by hand in the Supabase
+ * dashboard. Only the service role may create a user, so the work happens in
+ * the `approve-access-request` edge function; it lands them as an installer and
+ * hands back a one-time password to pass on.
+ */
+export async function approveAccessRequest(
+  id: string,
+): Promise<ApprovedAccount> {
+  const { data, error } = await supabase.functions.invoke(
+    "approve-access-request",
+    { body: { request_id: id } },
+  );
+  if (error) {
+    // A non-2xx from an edge function arrives as a FunctionsHttpError whose
+    // message is just "Edge Function returned a non-2xx status code". The
+    // reason the crew needs to read — "that email already has an account" —
+    // is in the response body, so dig it out rather than showing the wrapper.
+    const context = (error as { context?: Response }).context;
+    if (context && typeof context.json === "function") {
+      const body = await context.json().catch(() => null);
+      if (body?.error) throw new Error(String(body.error));
+    }
+    throw error;
+  }
+  if (data?.error) throw new Error(String(data.error));
+  return data as ApprovedAccount;
+}
+
 export async function setMyPin(pin: string): Promise<void> {
   const { error } = await supabase.rpc("set_my_pin", { p_pin: pin });
   if (error) throw error;

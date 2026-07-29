@@ -66,8 +66,26 @@ cd "$(dirname "$0")/.."
 # drifts under ordinary team activity fails for reasons unrelated to what it
 # guards, and the only way past it is to bump the literal — which trains
 # everyone to bump it, which is how this repo lost three checks to being
-# permanently red. The numbers are now measured, printed and explained on every
-# run instead of asserted.
+# permanently red.
+#
+# On 2026-07-29 alone those literals were rewritten twice in an afternoon:
+# 70/107/37 -> 73/113/40 -> 76/113/38, by two different changes, neither of
+# which had anything to do with migration history. The second rewrite even
+# wrote down what the *next* bump would have to be ("77/113/37 — set them
+# explicitly then"), which is the treadmill made visible. That reasoning was
+# entirely correct and is preserved below as fact rather than as an assertion:
+#
+#   * The profiles lockdown added 2 migrations and the security follow-ups
+#     (docs/security-followups-2026-07-29.md) added 3. All five were applied
+#     directly and recorded under their own filename versions, so all five are
+#     files on disk AND history rows, and none of them is a phantom.
+#   * `20260729200000_ask_question_log.sql` merged the same afternoon.
+#   * `20260729220000 staging_bays_guaranteed` was a phantom only for as long
+#     as its migration sat on an unmerged branch; it stopped being one the
+#     moment the file reached master.
+#
+# All of that is worth knowing and none of it is worth failing over. The
+# numbers are now measured, printed and explained on every run.
 #
 # The one place a number is still enforced is the guard inside the DELETE
 # transaction, and it is DERIVED at runtime from the files actually on disk

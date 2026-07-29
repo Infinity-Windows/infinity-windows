@@ -1,10 +1,14 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
+  approveAccessRequest,
   decideAccessRequest,
   getMyProfile,
   listAccessRequests,
+  type ApprovedAccount,
 } from "../lib/install/api";
+import { formatApiError } from "../lib/errors";
 import { isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 
@@ -16,6 +20,25 @@ export function Admin() {
     queryKey: ["accessRequests"],
     queryFn: listAccessRequests,
     enabled: isSupervisorPlus(effectiveRole),
+  });
+
+  // Shown once, right after approval, and never fetched again — the password
+  // exists nowhere else. Kept in page state deliberately rather than persisted.
+  const [newAccount, setNewAccount] = useState<ApprovedAccount | null>(null);
+  const [approveError, setApproveError] = useState<string | null>(null);
+
+  const approve = useMutation({
+    mutationFn: (id: string) => approveAccessRequest(id),
+    onSuccess: (account) => {
+      setApproveError(null);
+      setNewAccount(account);
+      queryClient.invalidateQueries({ queryKey: ["accessRequests"] });
+      queryClient.invalidateQueries({ queryKey: ["profiles"] });
+    },
+    onError: (err) => {
+      setNewAccount(null);
+      setApproveError(formatApiError(err));
+    },
   });
 
   const decide = useMutation({
@@ -53,6 +76,41 @@ export function Admin() {
 
       <h2>Access requests ({pending.length})</h2>
       {pending.length === 0 && <p className="muted">No pending requests.</p>}
+      {approveError && <p className="error">{approveError}</p>}
+      {newAccount && (
+        <div className="detail-card">
+          <p style={{ margin: 0, fontWeight: 600 }}>
+            {newAccount.display_name} can sign in now
+          </p>
+          <p className="muted" style={{ margin: "6px 0 10px", lineHeight: 1.55 }}>
+            Give them these two things. The password is shown once and is not
+            saved anywhere — they should change it after their first sign-in.
+            They start as an Installer; change that on the Crew screen if they
+            need more.
+          </p>
+          <p style={{ margin: 0 }}>
+            Email: <code>{newAccount.email}</code>
+          </p>
+          <p style={{ margin: "4px 0 10px" }}>
+            Password: <code>{newAccount.temporary_password}</code>
+          </p>
+          <div className="row-gap">
+            <button
+              className="secondary"
+              onClick={() =>
+                navigator.clipboard?.writeText(
+                  `${newAccount.email} / ${newAccount.temporary_password}`,
+                )
+              }
+            >
+              Copy
+            </button>
+            <button className="link" onClick={() => setNewAccount(null)}>
+              Done
+            </button>
+          </div>
+        </div>
+      )}
       <ul className="unit-list work-list">
         {pending.map((r) => (
           <li key={r.id} className="find-row" style={{ flexWrap: "wrap" }}>
@@ -63,16 +121,17 @@ export function Admin() {
                 {[r.email, r.phone].filter(Boolean).join(" · ") || "no contact"}
               </div>
               <div className="muted" style={{ fontSize: 12 }}>
-                Once approved, create their login in Supabase Auth, then set their
-                role on the Crew screen.
+                Approving creates their login and gives you a one-time password
+                to pass on. They start as an Installer.
               </div>
             </div>
             <div className="row-gap" style={{ marginLeft: "auto" }}>
               <button
                 className="button-like qc-pass"
-                onClick={() => decide.mutate({ id: r.id, status: "approved" })}
+                disabled={approve.isPending}
+                onClick={() => approve.mutate(r.id)}
               >
-                Approve ✓
+                {approve.isPending ? "Creating login..." : "Approve ✓"}
               </button>
               <button
                 className="button-like qc-callback"

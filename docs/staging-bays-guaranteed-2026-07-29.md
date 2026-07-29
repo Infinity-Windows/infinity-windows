@@ -387,26 +387,33 @@ of thing.
 
 ### Migration ordering, checked against what is landing alongside
 
-`20260729220000_staging_bays_guaranteed.sql` sorts last, after both
-`20260729200000_ask_question_log.sql` (#157, on master) and
-`20260729210000_ai_spend_limits.sql` (#161, pending), and neither of those
-touches `projects`, `locations` or `suggest_location`, so there is nothing to
-interleave and no conflict either way round.
+`20260729220000_staging_bays_guaranteed.sql` sorts last, after every migration
+now on master — `20260729200000_ask_question_log.sql` (#157),
+`20260729200000_profiles_rls_lockdown.sql`, `...200100_profiles_pin_hash.sql`,
+and the three security follow-ups `...210000_revoke_truncate_from_clients.sql`,
+`...210100_pin_search_path_remaining_secdef.sql` and
+`...210200_drop_naive_probe_experiment.sql` (#168). None of them touches
+`projects`, `locations` or `suggest_location`, so there is nothing to interleave
+and no conflict either way round. Its history row also stops being a phantom on
+this merge: the file now exists for the version that was already applied.
 
-Two hazards spotted in passing, neither introduced here and neither this
-change's to fix — but both exactly what the rewritten check now catches:
+Two collisions spotted in passing, neither introduced here and neither this
+change's to fix — but both exactly what the rewritten check now catches and the
+old one could not see at all:
 
-* **`master` already has two files at version `20260729200000`** —
+* **`master` has two files at version `20260729200000`** —
   `ask_question_log.sql` and `profiles_rls_lockdown.sql`. The history table is
-  keyed by version, so only one of them can ever be recorded. The rewritten
-  script stops on this; the old one could not see it at all.
-* **#161's migration is `20260729210000`, and a phantom row already holds that
-  version** (`revoke_truncate_from_clients`). Once #161 merges, that file will
-  look *applied* to `supabase db push` when in fact something unrelated stamped
-  the row — so the spend-limit tables would silently never be pushed. This is
-  the same collision that forced this change's own file to be renamed away from
-  `...210000`. Renaming #161's file to a fresh timestamp before it lands avoids
-  it.
+  keyed by version and `db push` walks versions, so only one of the pair can
+  ever be recorded. Running the script against the repo today stops on exactly
+  this, which is the right answer; the fix is to rename one file to a fresh
+  timestamp.
+* **#161 (AI spend caps) carries `20260729210000_ai_spend_limits.sql`, and
+  `20260729210000_revoke_truncate_from_clients.sql` is now that same version on
+  master.** When #161 lands that becomes a second duplicate pair, and worse, a
+  row for `20260729210000` is already recorded — so `db push` would consider
+  the spend-limit migration applied and never run it. This is the same
+  collision that forced this change's own file to be renamed away from
+  `...210000`. Renaming #161's file before it lands avoids it.
 
 ---
 
