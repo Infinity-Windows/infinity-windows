@@ -409,6 +409,10 @@ except Exception:
     else
       broken+=("window-type tips|reported success for $tips_code and saved no tips — empty content. What came back: $saved")
     fi
+  elif [ "$CODE" = "200" ] && [ -n "$(field results empty)" ]; then
+    # Refused rather than saved: the good tips are still there. That is the
+    # feature protecting itself, and it is still a failure worth going red for.
+    broken+=("window-type tips|$(field results reason). Nothing was overwritten. What came back: $(printf '%s' "$BODY" | head -c 300)")
   elif [ "$CODE" = "200" ]; then
     untested+=("window-type tips|that window type has too few install memos to synthesise from. NOT tested.")
   elif reason="$(soft_reason)"; then
@@ -444,6 +448,22 @@ if [ "${#broken[@]}" -gt 0 ]; then
   it belongs to an account without access. Put a valid key in the GitHub secret
   ANTHROPIC_API_KEY and re-run Deploy backend. A name-and-digest check cannot
   see this — only a real request can."
+    ;;
+  *nothing\ was\ saved* | *existing\ ones\ were\ kept*)
+    cause="an answer with none of the content in it"
+    guidance="  The AI answered and the answer had none of the content the feature needs, so
+  the app refused to save it. Nothing was lost or overwritten — that refusal is
+  deliberate, and it is why an empty how-to or a blank talk cannot reach the
+  crew. A re-run usually works; if it keeps happening the answer shape is wrong,
+  which is code, not a key: supabase/functions/_shared/anthropicJson.ts."
+    ;;
+  *answer\ is\ incomplete* | *cut\ off*)
+    cause="an answer that arrived half-written"
+    guidance="  The AI began answering and stopped part-way through, so the app refused the
+  half-answer instead of saving it — which is the right thing to do, and is why
+  nothing bad is in the database. Usually the reply needed more room than it was
+  allowed: that ceiling is in supabase/functions/_shared/anthropic.ts. Worth one
+  re-run before treating it as a fault."
     ;;
   *parseable\ json* | *no\ parseable* | *empty\ content*)
     cause="an answer the app could not read"

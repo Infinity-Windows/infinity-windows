@@ -96,6 +96,111 @@ export function readJsonFromContent(content: unknown): unknown {
 /** A JSON Schema for the answer. Must describe an object at the top level. */
 export type JsonSchema = Record<string, unknown>;
 
+/**
+ * Read a list-of-strings field however the model chose to phrase it.
+ *
+ * A schema names the fields; it does not force their TYPE hard enough to rely
+ * on. The observed failure was a talk whose title and intro arrived as strings
+ * and whose four lists arrived as nothing the reader recognised, so every list
+ * section rendered empty and the talk saved looking fine. `Array.isArray` said
+ * no, and no was the end of it.
+ *
+ * A single string is a list of one, or a bulleted list the model wrote as prose.
+ * Both are answers, so both are read rather than thrown away. Bullet markers are
+ * stripped only from lines that came out of a string — an item that arrived
+ * inside a real list is the model's own text and is left exactly as written, so
+ * a hazard like "3/4 inch shims can walk out" keeps its measurement.
+ */
+export function toStringList(value: unknown): string[] {
+  if (typeof value === "string") {
+    return value
+      .split("\n")
+      .map((line) => line.replace(/^\s*(?:[-•*]|\d+[.)])\s+/, "").trim())
+      .filter(Boolean);
+  }
+  if (!Array.isArray(value)) return [];
+  return value.map((v) => String(v ?? "").trim()).filter(Boolean);
+}
+
+const normalizeKey = (k: string) => k.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * Fill a required field that arrived under a near-miss name.
+ *
+ * The schema asks for `key_hazards`; a model that answers `hazards` has answered
+ * the question and failed the spelling test, and throwing away a full set of
+ * hazards over an underscore is not a trade worth making. So a required key that
+ * is missing is matched against what did arrive, ignoring case and punctuation,
+ * and accepted when one name is the tail of the other — `hazards` for
+ * `key_hazards`, `next_steps` for `steps`.
+ *
+ * Deliberately narrow. It only ever fills a key that is absent, never overwrites
+ * one the model got right, and the tail has to be at least four characters, so
+ * `dos` cannot be read as `donts` and no two short fields can collide. Anything
+ * looser would silently answer one question with another, which is the failure
+ * this file exists to prevent.
+ */
+export function alignToSchema(
+  schema: JsonSchema,
+  value: Record<string, unknown>,
+): Record<string, unknown> {
+  const required = Array.isArray(schema?.required) ? schema.required : [];
+  const out = { ...value };
+  for (const key of required) {
+    if (typeof key !== "string") continue;
+    if (out[key] !== undefined && out[key] !== null) continue;
+    const want = normalizeKey(key);
+    const match = Object.keys(out).find((k) => {
+      if (required.includes(k)) return false;
+      const got = normalizeKey(k);
+      if (got === want) return true;
+      const short = got.length < want.length ? got : want;
+      const long = got.length < want.length ? want : got;
+      return short.length >= 4 && long.endsWith(short);
+    });
+    if (match !== undefined) {
+      out[key] = out[match];
+      delete out[match];
+    }
+  }
+  return out;
+}
+
+/**
+ * Which of the schema's top-level `required` keys are absent from the answer.
+ *
+ * This is the guard against a HALF answer, which is a nastier failure than no
+ * answer and the one that actually happened: a toolbox talk came back with its
+ * title and opening paragraph and no hazards, no steps, no do's and no don'ts.
+ * It saved, it looked like a talk in the list, and its whole body was missing.
+ * Nothing threw, because every field the code read was simply `undefined` and
+ * `undefined` cleans up into an empty list.
+ *
+ * A reply cut short by the token ceiling looks exactly like that: the API hands
+ * back the keys the model finished, and the rest never arrived. So the caller
+ * checks this and refuses the answer, rather than writing a hollow row and
+ * leaving somebody to notice weeks later.
+ *
+ * Top-level only, and presence only. An empty list can be a true answer — a
+ * planset really can have no openings — so emptiness is the caller's business,
+ * not this function's.
+ */
+export function missingRequiredKeys(
+  schema: JsonSchema,
+  value: unknown,
+): string[] {
+  const required = schema?.required;
+  if (!Array.isArray(required)) return [];
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return required.filter((k): k is string => typeof k === "string");
+  }
+  const obj = value as Record<string, unknown>;
+  return required.filter(
+    (k): k is string =>
+      typeof k === "string" && (!(k in obj) || obj[k] === null || obj[k] === undefined),
+  );
+}
+
 export interface AnthropicJsonMessage {
   role: "user" | "assistant";
   content: unknown;

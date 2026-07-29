@@ -10,8 +10,10 @@
  * `anthropicJson.ts`, which is pure and therefore unit-tested. */
 
 import {
+  alignToSchema,
   buildJsonToolRequest,
   type JsonSchema,
+  missingRequiredKeys,
   readJsonFromContent,
 } from "./anthropicJson.ts";
 
@@ -194,7 +196,11 @@ export async function anthropicChatJson<T>(
     body: JSON.stringify(
       buildJsonToolRequest({
         model: opts.model ?? ANTHROPIC_MODEL,
-        maxTokens: opts.maxTokens ?? 4096,
+        // 8192, not 4096. A toolbox talk came back live with a title, an intro
+        // and nothing else: the reply ran out of room part-way through, and the
+        // API hands back the keys the model had finished. Only tokens actually
+        // generated are billed, so a ceiling with headroom costs nothing extra.
+        maxTokens: opts.maxTokens ?? 8192,
         system: opts.system,
         schemaHint: opts.schemaHint,
         schema: opts.schema,
@@ -212,7 +218,27 @@ export async function anthropicChatJson<T>(
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("Anthropic returned no parseable JSON object");
   }
-  return parsed as T;
+
+  // Accept a field that came back under a near-miss name before deciding the
+  // answer is short of anything.
+  const answer = alignToSchema(opts.schema, parsed as Record<string, unknown>);
+
+  // A HALF answer must fail as loudly as no answer. Live, a talk arrived with
+  // its title and intro and none of its content, saved, and looked fine in the
+  // list. Refusing it here keeps the hollow row out of the database and puts the
+  // reason — including a reply cut short by the token ceiling — in the log.
+  const missing = missingRequiredKeys(opts.schema, answer);
+  if (missing.length > 0) {
+    const why =
+      data.stop_reason === "max_tokens"
+        ? " because the reply hit the token ceiling and was cut off"
+        : ` (stop_reason: ${String(data.stop_reason ?? "unknown")})`;
+    throw new Error(
+      `Anthropic answer is incomplete${why}: missing ${missing.join(", ")}` +
+        `; it sent ${Object.keys(answer).join(", ") || "nothing"}`,
+    );
+  }
+  return answer as T;
 }
 
 /**

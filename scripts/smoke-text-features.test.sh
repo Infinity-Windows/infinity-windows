@@ -201,6 +201,32 @@ assert_has "an answer the app could not read"
 # The row it actually saw is printed, so nobody has to guess from a count alone.
 assert_has "key_hazards"
 
+new_case "tips refused rather than saved: red, and says the good ones are still there"
+# What the feature now does when the answer has no tips in it: keep what previous
+# installs taught the crew, and say so. Still a failure — but not a data loss.
+respond tips 200 '{"ok":true,"results":[{"type_code":"SH-3060","updated":false,"installs":6,"empty":true,"reason":"the AI returned no usable tips, so the existing ones were kept"}]}'
+run
+assert_rc 1
+assert_has "the existing ones were kept"
+assert_has "Nothing was overwritten"
+assert_lacks "too few install memos"
+
+new_case "a how-to refused for having no steps reads as a refusal, not a wipe"
+respond howto 500 '{"error":"Error: the AI returned a how-to with no steps in it, so nothing was saved"}'
+run
+assert_rc 1
+assert_has "none of the content in it"
+assert_has "Nothing was lost or overwritten"
+
+new_case "a half-written answer is reported as that, and as nothing having been saved"
+# What the app now does when the AI stops part-way: refuse the half-answer. The
+# report has to say that plainly, because the fix is a token ceiling, not a key.
+respond talk 500 '{"error":"Error: Anthropic answer is incomplete because the reply hit the token ceiling and was cut off: missing key_hazards, steps, dos, donts"}'
+run
+assert_rc 1
+assert_has "half-written"
+assert_has "nothing bad is in the database"
+
 new_case "a talk saved with no content at all is a failure"
 respond talkrow 200 '[{"title":"Ladder safety","sections_json":null}]'
 run
