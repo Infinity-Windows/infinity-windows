@@ -18,6 +18,23 @@ CONSTRAINT_KW = {
     'primary', 'foreign', 'unique', 'check', 'constraint', 'exclude', 'like',
 }
 
+# Postgres type spellings mapped to the information_schema.data_type wording the
+# live snapshot reports, so `alter column ... type numeric` can be compared. Any
+# type not listed is simply not emitted — an unrecognised shape must never
+# produce a MISSING verdict.
+TYPE_ALIASES = {
+    'int': 'integer', 'int2': 'smallint', 'int4': 'integer', 'int8': 'bigint',
+    'integer': 'integer', 'smallint': 'smallint', 'bigint': 'bigint',
+    'bool': 'boolean', 'boolean': 'boolean',
+    'float4': 'real', 'real': 'real',
+    'float8': 'double precision',
+    'numeric': 'numeric', 'decimal': 'numeric',
+    'text': 'text', 'uuid': 'uuid', 'date': 'date',
+    'json': 'json', 'jsonb': 'jsonb',
+    'timestamptz': 'timestamp with time zone',
+    'timestamp': 'timestamp without time zone',
+}
+
 
 def strip_noise(sql: str) -> str:
     """Remove line comments and string/dollar-quoted literals that confuse scanning."""
@@ -130,6 +147,18 @@ def extract(sql: str):
         action = ' '.join(m.group(3).split()).lower().replace(' ', '_')
         objs.append(('colattr', f'{qual(m.group(1))}.{qual(m.group(2))}|{action}'))
 
+    # alter table x alter column y type z — invisible to an existence check,
+    # because the column is already there under the old type. Missing this shape
+    # is how 20260728140000 (project_mark_specs.width_in int -> numeric) went
+    # unnoticed while every other object in the file read as applied.
+    for m in re.finditer(
+        r'alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?([\w".]+)\s+alter\s+column\s+([\w"]+)\s+(?:set\s+data\s+)?type\s+([\w ]+?)\s*(?:;|using\b|collate\b)',
+        sql, re.I,
+    ):
+        want = TYPE_ALIASES.get(' '.join(m.group(3).split()).lower())
+        if want:
+            objs.append(('coltype', f'{qual(m.group(1))}.{qual(m.group(2))}|{want}'))
+
     # alter table name add constraint cname
     for m in re.finditer(
         r'alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?([\w".]+)\s+add\s+constraint\s+([\w"]+)',
@@ -195,11 +224,20 @@ def extract(sql: str):
 
 
 def main():
+    # With no arguments, scan the whole migrations directory. With arguments,
+    # scan only those files, so a single migration can be inspected on its own.
+    if len(sys.argv) > 1:
+        targets = [(os.path.basename(p), p) for p in sys.argv[1:]]
+    else:
+        targets = [
+            (fn, os.path.join(MIG_DIR, fn))
+            for fn in sorted(os.listdir(MIG_DIR))
+            if fn.endswith('.sql')
+        ]
+
     rows = []
-    for fn in sorted(os.listdir(MIG_DIR)):
-        if not fn.endswith('.sql'):
-            continue
-        sql = open(os.path.join(MIG_DIR, fn)).read()
+    for fn, path in targets:
+        sql = open(path).read()
         objs, _ = extract(sql)
         seen = set()
         for kind, key in objs:

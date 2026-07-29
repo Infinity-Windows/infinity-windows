@@ -8,8 +8,14 @@
 # be trusted, and the live catalog is the only source of truth.
 #
 # Usage:
-#   export SUPABASE_ACCESS_TOKEN=sbp_...      # management API token
+#   export SUPABASE_ACCESS_TOKEN=sbp_...            # management API token
+#   export SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm  # production
 #   scripts/audit-migrations.sh
+#
+# SUPABASE_PROJECT_REF is REQUIRED and has no default. The 2026-07-28 audit
+# reported production as clean while it was 31 tables short, purely because the
+# variable was unset and the helper fell back to a different project. Name the
+# database you mean.
 #
 # Read-only: every query is a SELECT and scripts/pgq.sh refuses anything else.
 set -euo pipefail

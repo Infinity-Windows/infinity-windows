@@ -1,5 +1,31 @@
 # Migration drift audit — 2026-07-28
 
+> ## ⚠️ CORRECTION (2026-07-29): this audit measured the WRONG DATABASE.
+>
+> Everything below — including the "Status: closed" all-clear and the
+> "64 APPLIED / zero MISSING" result — was measured against Supabase project
+> **`jvsyhtarnvmdilsgksdi`**, which is *not* the Infinity Windows production
+> database. It got there because `scripts/pgq.sh` defaulted to that ref when
+> `SUPABASE_PROJECT_REF` was unset, so every audit run silently pointed at it.
+>
+> Production is **`czprjcskmzzagdztqonm`** (see `app/.env`,
+> `.github/workflows/deploy-pages.yml`, and the live bundle). Measured against
+> production on 2026-07-29, the database was **31 relations short of what the
+> migrations declare** — 21 files entirely MISSING and 4 PARTIAL, including all
+> of vehicles, travel, crew scheduling, project chat and the whole mark-spec
+> chain.
+>
+> **Do not treat this document's all-clear as describing production.** Its
+> *diagnosis* and *repair SQL* remain useful and are still accurate as
+> descriptions of the problems themselves.
+>
+> Current, production-accurate state:
+> [`docs/migration-drift-2026-07-29-production.md`](./migration-drift-2026-07-29-production.md)
+> and [`docs/migration-repair-2026-07-29-production.md`](./migration-repair-2026-07-29-production.md).
+>
+> `scripts/pgq.sh` no longer has a default ref; it now fails with a clear message
+> when `SUPABASE_PROJECT_REF` is unset, so this cannot happen again.
+
 Triggered by a live failure: "Load marks from plans" died with
 `Could not find the 'provisional' column of 'window_types' in the schema cache
 [PGRST204]` because `20260721000000_window_type_provisional_flag.sql` was in the
