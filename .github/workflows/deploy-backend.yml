@@ -9,11 +9,35 @@
 # while deploying the backend by hand guarantees that gap reappears.
 #
 # Required repo secrets (Settings -> Secrets and variables -> Actions):
-#   SUPABASE_ACCESS_TOKEN   a personal access token, sbp_... (edge functions)
-#   SUPABASE_DB_PASSWORD    the database password (migrations)
+#
+#   SUPABASE_ACCESS_TOKEN   A personal access token, starts with sbp_. Deploys
+#                           the edge functions and links the project.
+#                           Get it from the Supabase dashboard: click your
+#                           avatar (top right) -> Account preferences -> Access
+#                           Tokens -> "Generate new token". Give it any name.
+#                           Copy the value straight away, it is shown once.
+#                           https://supabase.com/dashboard/account/tokens
+#
+#   SUPABASE_DB_PASSWORD    The Postgres password for the project, used by
+#                           `supabase db push`.
+#                           Dashboard -> pick the project -> Project Settings
+#                           -> Database -> "Database password". If nobody has
+#                           it any more, "Reset database password" there —
+#                           which breaks anything still using the old one.
+#
+# A repo owner installs both once, from a checkout of this repo. Each command
+# prompts for the value and does not echo it, so nothing lands in the shell
+# history or in git:
+#
+#   gh secret set SUPABASE_ACCESS_TOKEN --repo Infinity-Windows/infinity-windows
+#   gh secret set SUPABASE_DB_PASSWORD  --repo Infinity-Windows/infinity-windows
+#
+# Then re-run: Actions -> Deploy backend -> "Run workflow".
 #
 # Until those exist, every job here is a no-op that annotates the run with what
 # it would have done, so merging this cannot turn the build red on its own.
+# Once they exist the verify job below becomes strict, and a function that is
+# still 404 after a deploy fails the run.
 
 name: Deploy backend
 
@@ -154,7 +178,18 @@ jobs:
       # Strict only once deploying is actually wired up. Before that a missing
       # function is a known state, not a regression, and failing every push
       # would train everyone to ignore this job.
+      #
+      # `shell: bash` is load-bearing. Without it GitHub runs the step under
+      # `bash -e` with no pipefail, so a pipeline reports the exit code of the
+      # last command in it — `tee`, which always succeeds. The strict run would
+      # print "FAIL: 6 function(s) ... are not deployed" and the job would still
+      # go green, which is the one outcome this job exists to prevent. Naming
+      # bash explicitly gets `-eo pipefail`, so the script's exit code is the
+      # step's exit code.
       - name: Probe every function
+        shell: bash
         env:
           STRICT: ${{ needs.functions.outputs.deployed == 'true' && '1' || '0' }}
-        run: scripts/verify-functions.sh | tee "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -o pipefail
+          scripts/verify-functions.sh | tee "$GITHUB_STEP_SUMMARY"
