@@ -30,6 +30,7 @@ import { Landing } from "./pages/Landing";
 import { Notifications } from "./pages/Notifications";
 import { Team } from "./pages/Team";
 import { Warehouse } from "./pages/Warehouse";
+import { InventoryList } from "./pages/InventoryList";
 import { LocationDetail } from "./pages/LocationDetail";
 import { ProjectDetail } from "./pages/ProjectDetail";
 import { Projects } from "./pages/Projects";
@@ -214,6 +215,9 @@ export default function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<RoleLanding />} />
             <Route path="/warehouse" element={<Warehouse />} />
+            {/* One list per hub number: /warehouse/on-hand, /putaway, /staged,
+                /damaged. Anything else redirects back to the hub. */}
+            <Route path="/warehouse/:view" element={<InventoryList />} />
             <Route path="/ask" element={<AskInfinity />} />
             <Route
               path="/ask-misses"

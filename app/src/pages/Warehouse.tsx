@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { getDashboardCounts, listProjects } from "../lib/api";
+import { listInventory, listProjects } from "../lib/api";
+import { formatApiError } from "../lib/errors";
+import { INVENTORY_VIEWS, inventoryCounts } from "../lib/inventoryViews";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { UnitSearch } from "../components/UnitSearch";
@@ -24,8 +26,9 @@ const LINKS: WarehouseLink[] = [
 export function Warehouse() {
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
-  const counts = useQuery({ queryKey: ["dashboard"], queryFn: getDashboardCounts });
+  const inventory = useQuery({ queryKey: ["inventory"], queryFn: listInventory });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  const counts = inventoryCounts(inventory.data?.units ?? []);
 
   const links = LINKS.filter((l) => !l.lead || lead);
 
@@ -42,23 +45,22 @@ export function Warehouse() {
       <UnitSearch limit={8} />
 
       <div className="stat-grid">
-        <div className="stat-card">
-          <span className="stat-num">{counts.data?.total ?? "-"}</span>
-          <span>on hand</span>
-        </div>
-        <Link to="/scan" className="stat-card warn">
-          <span className="stat-num">{counts.data?.inbound ?? "-"}</span>
-          <span>need putaway</span>
-        </Link>
-        <div className="stat-card">
-          <span className="stat-num">{counts.data?.staged ?? "-"}</span>
-          <span>staged</span>
-        </div>
-        <div className="stat-card danger">
-          <span className="stat-num">{counts.data?.damaged ?? "-"}</span>
-          <span>damaged</span>
-        </div>
+        {INVENTORY_VIEWS.map((v) => (
+          <Link
+            key={v.id}
+            to={`/warehouse/${v.id}`}
+            className={v.tone ? `stat-card ${v.tone}` : "stat-card"}
+          >
+            <span className="stat-num">
+              {inventory.isSuccess ? counts[v.id] : "-"}
+            </span>
+            <span>{v.label}</span>
+          </Link>
+        ))}
       </div>
+      {inventory.isError && (
+        <p className="error">{formatApiError(inventory.error)}</p>
+      )}
 
       <h2>Operations</h2>
       <div className="warehouse-grid">

@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import type { Issue } from "./issues";
+import { NOT_IN_INVENTORY } from "./inventoryViews";
 import {
   isMissingStagingBayError,
   missingBayMessage,
@@ -590,33 +591,40 @@ export async function suggestLocation(
   };
 }
 
-export interface DashboardCounts {
-  total: number;
-  inbound: number;
-  staged: number;
-  damaged: number;
+export interface InventorySnapshot {
+  /** Every unit still in the warehouse's care, newest slot order applied later. */
+  units: WindowUnit[];
+  /** Server-side row count for the same filter, used only to detect a cut-off. */
+  serverTotal: number;
+  /** True when there are more units than we fetched (see INVENTORY_LIMIT). */
+  truncated: boolean;
 }
 
-export async function getDashboardCounts(): Promise<DashboardCounts> {
-  const countWhere = (apply: (q: ReturnType<typeof base>) => ReturnType<typeof base>) =>
-    apply(base());
-  const base = () =>
-    supabase.from("windows").select("id", { count: "exact", head: true });
+/**
+ * PostgREST caps a response anyway; asking explicitly lets us notice when the
+ * warehouse has outgrown a single page and say so instead of quietly showing a
+ * count that no longer matches its list.
+ */
+const INVENTORY_LIMIT = 1000;
 
-  const [total, inbound, staged, damaged] = await Promise.all([
-    countWhere((q) => q.not("status", "in", "(installed,loaded)")),
-    countWhere((q) => q.eq("status", "inbound")),
-    countWhere((q) => q.eq("status", "staged")),
-    countWhere((q) => q.eq("status", "damaged")),
-  ]);
-  for (const r of [total, inbound, staged, damaged]) {
-    if (r.error) throw r.error;
-  }
+/**
+ * One read of the whole inventory scope. The hub's four numbers and the four
+ * lists behind them are all derived from this single result (see
+ * lib/inventoryViews), so a number can never disagree with the list it opens.
+ */
+export async function listInventory(): Promise<InventorySnapshot> {
+  const { data, error, count } = await supabase
+    .from("windows")
+    .select(WINDOW_SELECT, { count: "exact" })
+    .not("status", "in", `(${NOT_IN_INVENTORY.join(",")})`)
+    .order("window_id")
+    .limit(INVENTORY_LIMIT);
+  if (error) throw error;
+  const units = (data ?? []) as WindowUnit[];
   return {
-    total: total.count ?? 0,
-    inbound: inbound.count ?? 0,
-    staged: staged.count ?? 0,
-    damaged: damaged.count ?? 0,
+    units,
+    serverTotal: count ?? units.length,
+    truncated: (count ?? units.length) > units.length,
   };
 }
 

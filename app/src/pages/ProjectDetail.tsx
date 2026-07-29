@@ -1008,7 +1008,7 @@ function PreissuePanel({
     mutationFn: () => preissueProjectUnits(projectId),
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
       pushToast(
         created.length > 0
           ? `Pre-issued ${created.length} unit ID${created.length === 1 ? "" : "s"}.`
@@ -1243,7 +1243,7 @@ function ReceivingPanel({
       setDamaged(false);
       queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
       queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
     },
     onError: (e) => setMessage(formatApiError(e)),
   });
@@ -1418,7 +1418,7 @@ function UnloadPanel({
       queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
       queryClient.invalidateQueries({ queryKey: ["issues"] });
       queryClient.invalidateQueries({ queryKey: ["reorderNeeds", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
     },
     onError: (e) => toastError(e),
   });
@@ -1566,7 +1566,7 @@ function WarehouseTab({
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
-    queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    queryClient.invalidateQueries({ queryKey: ["inventory"] });
   };
 
   // Scan one unit onto the truck. The unit comes pre-resolved from the shared
