@@ -298,9 +298,68 @@ jobs:
           } >>"$GITHUB_STEP_SUMMARY"
           exit "$rc"
 
+      # How many devices are actually signed up for notifications. Nothing here
+      # can break, and a count of zero is not a fault — it is reported because it
+      # is the number that decides whether changing the push key costs anyone
+      # anything. Rotating the VAPID pair invalidates every existing
+      # subscription, so each signed-up device has to turn notifications off and
+      # on again. At zero that is free; at ten it is ten people who silently stop
+      # being notified. That question was asked on 2026-07-29, before rotating the
+      # pair, and no check could answer it: row-level security scopes
+      # push_subscriptions to its owner, so an ordinary read comes back empty
+      # whether the table is empty or full. The answer was eventually recovered
+      # by chance, from row counts in a database backup that happened to be
+      # committed that afternoon — which is not a check, and would not have
+      # existed on any other day. It was one device, and rotating went ahead
+      # knowingly rather than blindly.
+      #
+      # Read-only, and it goes through scripts/pgq.sh, which refuses anything
+      # that is not a SELECT. Only a count is printed, never an endpoint or a
+      # key — a push endpoint is a capability to notify someone's device.
+      - name: Report how many devices are signed up for notifications
+        id: pushsubs
+        if: ${{ !cancelled() && steps.guard.outputs.ok == 'true' }}
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -uo pipefail
+          if ! out="$(echo 'select count(*) as devices from push_subscriptions;' \
+              | scripts/pgq.sh 2>&1)"; then
+            echo "::warning title=Subscriber count unavailable::Could not ask the database how many devices are signed up for notifications. Nothing is broken by this; the number is simply unknown."
+            printf '%s\n' "$out"
+            exit 0
+          fi
+          # pgq.sh returns the Management API's JSON rows, e.g. [{"devices":0}].
+          # An empty array means no rows, which is a count of zero. Anything that
+          # is not JSON, or not an array, leaves this empty and is reported as
+          # unknown below rather than guessed at.
+          devices="$(printf '%s' "$out" | python3 -c \
+            "import json,sys; r = json.loads(sys.stdin.read()); print(r[0]['devices'] if r else 0)" \
+            2>/dev/null)"
+          if ! printf '%s' "$devices" | grep -qE '^[0-9]+$'; then
+            echo "::warning title=Subscriber count unreadable::The database answered in a shape this step did not expect, so the number of signed-up devices is unknown. Nothing is broken by this."
+            exit 0
+          fi
+          echo "devices=$devices" >>"$GITHUB_OUTPUT"
+          echo "$devices device(s) are signed up for notifications."
+          {
+            echo "### Notifications: $devices device(s) signed up"
+            echo
+            if [ "$devices" -eq 0 ]; then
+              echo "Nobody has switched notifications on yet, so changing the push"
+              echo "key costs nothing today."
+            else
+              echo "Changing the push key would stop notifications reaching these"
+              echo "$devices device(s) until each one turns notifications off and on"
+              echo "again in the app."
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+
       # A VAPID secret that EXISTS and a VAPID secret that MATCHES THE APP are
-      # different things, and the step above can only see the first. Web push
-      # needs a pair: the browser subscribes with the public half compiled into
+      # different things, and "Verify every required function secret exists"
+      # above can only see the first. Web push needs a pair: the browser
+      # subscribes with the public half compiled into
       # the bundle from the repo secret VITE_VAPID_PUBLIC_KEY, and send-push
       # signs with VAPID_PRIVATE_KEY from Supabase. Cross those two pairs and
       # every check in this repo stays green while no notification ever arrives
