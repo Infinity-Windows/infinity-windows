@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -5,12 +6,43 @@ import { VitePWA } from 'vite-plugin-pwa'
 // VITE_BASE is set for GitHub Pages (`/infinity-windows/`). Local/root hosts keep `/`.
 const base = process.env.VITE_BASE || '/'
 
+/**
+ * Identify a local build by the commit it was built from, as `dev-g<sha>` and
+ * `-dirty` when the tree has uncommitted edits.
+ *
+ * A timestamp would be unique but says nothing: two people comparing local dev
+ * servers need to know whether they are on the SAME CODE, and `dev-1753822…`
+ * cannot answer that. The commit can. See lib/buildIdentity for why the `g`
+ * prefix matters (a timestamp is also valid hex) and how this is displayed.
+ *
+ * Read once when the dev server starts, so edits made afterwards do not update
+ * the dirty flag until it restarts. The card shows the build time next to it so
+ * the reading is anchored rather than looking live.
+ *
+ * Falls back to a timestamp whenever git cannot answer — a build must never
+ * fail because someone is building from a tarball or without git installed.
+ */
+function localBuildId(): string {
+  const git = (args: string) =>
+    execSync(`git ${args}`, { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim()
+  try {
+    const sha = git('rev-parse --short=7 HEAD')
+    if (!/^[0-9a-f]{7,40}$/i.test(sha)) return `dev-${Date.now()}`
+    const dirty = git('status --porcelain') !== ''
+    return `dev-g${sha}${dirty ? '-dirty' : ''}`
+  } catch {
+    return `dev-${Date.now()}`
+  }
+}
+
 // Which build this is. CI passes the commit sha (VITE_BUILD_ID); a local build
-// gets a timestamp so `npm run dev` and `npm run build` still produce distinct
-// ids. Computed ONCE here and used for BOTH the value compiled into the bundle
-// and the value written to version.json — if those two could disagree the app
-// would believe a newer build existed forever and nag on every check.
-const buildId = process.env.VITE_BUILD_ID || `dev-${Date.now()}`
+// is identified by its commit (see above). Computed ONCE here and used for BOTH
+// the value compiled into the bundle and the value written to version.json — if
+// those two could disagree the app would believe a newer build existed forever
+// and nag on every check.
+const buildId = process.env.VITE_BUILD_ID || localBuildId()
 const builtAt = new Date().toISOString()
 
 /**

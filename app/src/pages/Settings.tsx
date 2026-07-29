@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { BuildIdentityCard } from "../components/BuildIdentityCard";
 import { PermissionsSettings } from "../components/permissions/PermissionsSettings";
 
 /** Settings hub. For now it hosts the Notifications & location controls (p1-10). */
@@ -22,6 +23,7 @@ export function Settings() {
       </header>
 
       <PermissionsSettings />
+      <BuildIdentityCard />
     </div>
   );
 }

@@ -6476,6 +6476,73 @@ body {
   color: var(--muted);
 }
 
+/* --- "Which app am I on?" build + database identity (Settings) --- */
+.build-id {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 22px;
+}
+.build-id-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.build-id-fingerprint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+/* The line people actually compare: big enough to read aloud across a room,
+   and selectable so it still works where the clipboard is blocked. */
+.build-id-fingerprint code {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.build-id-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  white-space: nowrap;
+}
+.build-id-hint {
+  margin: 0;
+  font-size: 13px;
+}
+.build-id-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+.build-id-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+.build-id-row dt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+.build-id-row dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
 /* --- PWA install + update banners (p1-18) --- */
 .pwa-banner {
   position: fixed;
