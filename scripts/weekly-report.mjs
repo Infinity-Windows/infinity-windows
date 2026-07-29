@@ -4,10 +4,11 @@
 //
 // Usage: SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/weekly-report.mjs
 
-import { createClient } from "@supabase/supabase-js";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createAdminClient } from "./lib/supabase-admin.mjs";
+import { explainError, publishableKeyRefusal } from "./lib/supabase-key.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const url = process.env.SUPABASE_URL;
@@ -16,7 +17,12 @@ if (!url || !key) {
   console.error("Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY");
   process.exit(1);
 }
-const supabase = createClient(url, key);
+const refusal = publishableKeyRefusal(key);
+if (refusal) {
+  console.error(refusal);
+  process.exit(1);
+}
+const supabase = createAdminClient(url, key);
 
 const [windows, counts, projects] = await Promise.all([
   supabase
@@ -34,7 +40,7 @@ const [windows, counts, projects] = await Promise.all([
 
 for (const r of [windows, counts, projects]) {
   if (r.error) {
-    console.error(r.error.message);
+    console.error(explainError(r.error.message, { url, key }));
     process.exit(1);
   }
 }
