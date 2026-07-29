@@ -3,9 +3,11 @@
 #
 # WHAT A PHANTOM IS
 # A row in the migration history table whose `version` matches no file in
-# supabase/migrations/. As of 2026-07-29 production holds 107 rows for 70
-# files: 26 stamped by the Supabase MCP `apply_migration` tool (which writes
-# its own wall-clock timestamp as the version) and 11 older ad-hoc rows.
+# supabase/migrations/. They come from the Supabase MCP `apply_migration` tool,
+# which writes its own wall-clock timestamp as the version instead of the
+# file's, and from older ad-hoc applies. They are known and pre-existing; the
+# count grows whenever somebody applies SQL outside the migration files, so
+# this script measures it on every run rather than asserting a number.
 # See docs/migration-repair-2026-07-29-production.md.
 #
 # WHY THEY MUST GO
@@ -23,6 +25,11 @@
 #
 # Preview is the default. Nothing is written without --execute.
 #
+# WHAT STOPS IT
+# Only two things, and neither has an override: a migration file with no
+# applied row, and two files claiming one version. Phantoms are reported, not
+# refused — see the block below the argument parsing for why.
+#
 # SUPABASE_PROJECT_REF is REQUIRED and has no default, for the same reason
 # scripts/pgq.sh refuses to guess: an audit run against an unnamed project once
 # reported production clean while it was 31 tables short.
@@ -30,31 +37,63 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# --- expectations -----------------------------------------------------------
-# The script refuses to touch anything unless the database looks exactly like
-# the state these numbers describe. Override only if you know why the state
-# has legitimately moved on since 2026-07-29.
+# --- what stops this script, and what it merely reports ----------------------
+# DIRECTION MATTERS HERE, exactly as it does in scripts/schema_verify.py.
 #
-# Moved from 70/107/37 on 2026-07-29. Three things happened that day:
+#   a migration FILE with no applied row  ->  STOPS. Something is genuinely
+#                                             wrong: a migration in the repo
+#                                             never reached the database, so
+#                                             production is behind the code.
+#                                             There is no override.
+#
+#   two files sharing one version         ->  STOPS. The history table is keyed
+#                                             by version and `db push` walks
+#                                             versions, so one of the two can
+#                                             never be represented. No override.
+#
+#   an applied ROW with no file (phantom) ->  REPORTED, never stops anything.
+#                                             These are known, pre-existing and
+#                                             documented in
+#                                             docs/db-push-readiness.md. They
+#                                             are what this script exists to
+#                                             delete, so refusing to run because
+#                                             there are some is circular.
+#
+# This used to be three equality assertions — EXPECT_LOCAL / EXPECT_REMOTE /
+# EXPECT_PHANTOMS, committed as literals. They were wrong within hours of every
+# time they were written, because every merged migration moves two of them and
+# every MCP `apply_migration` moves the third. A check whose expected value
+# drifts under ordinary team activity fails for reasons unrelated to what it
+# guards, and the only way past it is to bump the literal — which trains
+# everyone to bump it, which is how this repo lost three checks to being
+# permanently red.
+#
+# On 2026-07-29 alone those literals were rewritten twice in an afternoon:
+# 70/107/37 -> 73/113/40 -> 76/113/38, by two different changes, neither of
+# which had anything to do with migration history. The second rewrite even
+# wrote down what the *next* bump would have to be ("77/113/37 — set them
+# explicitly then"), which is the treadmill made visible. That reasoning was
+# entirely correct and is preserved below as fact rather than as an assertion:
 #
 #   * The profiles lockdown added 2 migrations and the security follow-ups
 #     (docs/security-followups-2026-07-29.md) added 3. All five were applied
-#     directly and then recorded under their own filename versions, so all five
-#     are files on disk AND history rows, and NONE of them is a phantom.
-#
+#     directly and recorded under their own filename versions, so all five are
+#     files on disk AND history rows, and none of them is a phantom.
 #   * `20260729200000_ask_question_log.sql` merged the same afternoon.
+#   * `20260729220000 staging_bays_guaranteed` was a phantom only for as long
+#     as its migration sat on an unmerged branch; it stopped being one the
+#     moment the file reached master.
 #
-#   * A 38th phantom appeared that belongs to nobody's file yet:
-#     `20260729220000 staging_bays_guaranteed`, applied to production while its
-#     migration was still on an unmerged branch. It stops being a phantom the
-#     moment that file reaches master, at which point the right numbers are
-#     77 / 113 / 37 — set them explicitly then.
+# All of that is worth knowing and none of it is worth failing over. The
+# numbers are now measured, printed and explained on every run.
 #
-# These are a measurement, not a target. If the script refuses, read the counts
-# it prints rather than widening the numbers to make it run.
-EXPECT_LOCAL="${EXPECT_LOCAL:-76}"      # migration files on disk
-EXPECT_REMOTE="${EXPECT_REMOTE:-113}"   # rows in schema_migrations before cleanup
-EXPECT_PHANTOMS="${EXPECT_PHANTOMS:-38}" # rows to delete
+# The one place a number is still enforced is the guard inside the DELETE
+# transaction, and it is DERIVED at runtime from the files actually on disk
+# during that run. See section 4.
+#
+# EXPECT_PHANTOMS is still honoured if you deliberately export it, for an
+# operator who wants to pin one careful run to a count they have just read with
+# their own eyes. It is unset by default and nothing in the repo sets it.
 
 execute=0
 while [ $# -gt 0 ]; do
@@ -127,6 +166,7 @@ ls supabase/migrations/*.sql >"$work/files.txt" 2>/dev/null || {
 
 python3 - "$work/remote.json" "$work/files.txt" "$work/phantoms.txt" <<'PY'
 import json, os, re, sys
+from collections import defaultdict
 
 remote_path, files_path, out_path = sys.argv[1:4]
 
@@ -136,26 +176,52 @@ if not isinstance(payload, list):
 remote = [(r["version"], r.get("name") or "") for r in payload]
 
 pattern = re.compile(r"^([0-9]{14})_.*\.sql$")
-local = []
+files_by_version = defaultdict(list)
 for path in open(files_path).read().split():
     m = pattern.match(os.path.basename(path))
     if m:
-        local.append(m.group(1))
-local_set = set(local)
+        files_by_version[m.group(1)].append(os.path.basename(path))
+local_set = set(files_by_version)
+n_files = sum(len(v) for v in files_by_version.values())
 
 phantoms = [(v, n) for v, n in remote if v not in local_set]
 missing = sorted(local_set - {v for v, _ in remote})
+duplicates = sorted(v for v, names in files_by_version.items() if len(names) > 1)
 
-print(f"    {len(local)} migration files on disk")
+# A phantom that sorts after every migration file is the live leak, not
+# history: it can only have been stamped by something applying SQL outside the
+# migration files, which is the habit docs/db-push-readiness.md asks people to
+# stop. Splitting them this way needs no baseline and no committed number, and
+# it answers the question that actually matters — "is this still happening?" —
+# rather than "is the total still 37".
+newest_file = max(local_set) if local_set else ""
+ahead = [(v, n) for v, n in phantoms if v > newest_file]
+historical = [(v, n) for v, n in phantoms if v <= newest_file]
+
+print(f"    {n_files} migration files on disk ({len(local_set)} distinct versions)")
 print(f"    {len(remote)} rows in schema_migrations")
-print(f"    {len(phantoms)} phantom rows (version matches no file)")
-print(f"    {len(missing)} filename versions absent from the history table")
+print(f"    {len(phantoms)} phantom rows — an applied row matching no file")
+print(f"      of which {len(ahead)} sort after every migration file")
+print(f"    {len(missing)} migration files with no applied row")
+print(f"    {len(duplicates)} version(s) claimed by more than one file")
 print()
+
 print("--- rows this script would delete ---")
 for v, n in phantoms:
     print(f"    {v}  {n}")
 print("-------------------------------------")
 print()
+
+if ahead:
+    print("These phantoms are newer than every migration file, so they were")
+    print("stamped by something applying SQL outside supabase/migrations/ —")
+    print("usually the Supabase MCP apply_migration tool, which records its own")
+    print("wall-clock time as the version. They are safe to delete and are not")
+    print("a reason to stop; they are the sign that the habit in")
+    print("docs/db-push-readiness.md \u201cKeeping it clean\u201d has slipped again:")
+    for v, n in ahead:
+        print(f"    {v}  {n}")
+    print()
 
 with open(out_path, "w") as fh:
     for v, _ in phantoms:
@@ -165,59 +231,68 @@ with open(out_path + ".local", "w") as fh:
     for v in sorted(local_set):
         fh.write(v + "\n")
 
+with open(out_path + ".dupes", "w") as fh:
+    for v in duplicates:
+        fh.write(f"{v} {' '.join(sorted(files_by_version[v]))}\n")
+
 with open(out_path + ".counts", "w") as fh:
-    fh.write(f"{len(local)} {len(remote)} {len(phantoms)} {len(missing)}\n")
+    fh.write(f"{len(local_set)} {len(remote)} {len(phantoms)} {len(missing)} {len(duplicates)}\n")
 PY
 
-read -r n_local n_remote n_phantom n_missing <"$work/phantoms.txt.counts"
+read -r n_versions n_remote n_phantom n_missing n_dupes <"$work/phantoms.txt.counts"
 
-# --- 3. refuse unless the pre-state is exactly what we expect ----------------
+# --- 3. stop only on the things that are genuinely wrong ---------------------
+# Phantoms are not in this list. They are what the script deletes, and they are
+# documented; refusing to run because there are some would be circular.
 fail=0
-check() {
-  local label="$1" got="$2" want="$3"
-  if [[ "$got" != "$want" ]]; then
-    echo "REFUSING: $label is $got, expected $want" >&2
-    fail=1
-  fi
-}
-check "migration files on disk"          "$n_local"   "$EXPECT_LOCAL"
-check "rows in schema_migrations"        "$n_remote"  "$EXPECT_REMOTE"
-check "phantom rows"                     "$n_phantom" "$EXPECT_PHANTOMS"
-check "filename versions missing remote" "$n_missing" "0"
+
+if [[ "$n_missing" -ne 0 ]]; then
+  cat >&2 <<EOF
+STOPPING: the history table has no row at all for $n_missing of the migration
+files. That is the opposite problem from a phantom and it is the serious one —
+a migration that is in the repo never reached the database, so production is
+behind the code. Find out why before deleting anything. There is no override.
+EOF
+  fail=1
+fi
+
+if [[ "$n_dupes" -ne 0 ]]; then
+  echo "STOPPING: $n_dupes migration version(s) are claimed by more than one file:" >&2
+  sed 's/^/    /' "$work/phantoms.txt.dupes" >&2
+  cat >&2 <<'EOF'
+The history table is keyed by version and `supabase db push` walks versions, so
+only one of each pair can ever be recorded. Rename the later file to a fresh
+timestamp. There is no override for this check either.
+EOF
+  fail=1
+fi
+
+# Optional, opt-in, and unset by default: pin one run to a phantom count you
+# have just read with your own eyes. Nothing in the repo sets this.
+if [[ -n "${EXPECT_PHANTOMS:-}" && "$n_phantom" != "$EXPECT_PHANTOMS" ]]; then
+  echo "STOPPING: EXPECT_PHANTOMS=$EXPECT_PHANTOMS was exported, but there are $n_phantom." >&2
+  fail=1
+fi
 
 if [[ "$fail" -ne 0 ]]; then
-  echo >&2
-  echo "The database is not in the state this cleanup was written for" >&2
-  echo "(docs/migration-repair-2026-07-29-production.md), so it will not run." >&2
-  if [[ "$n_missing" -ne 0 ]]; then
-    cat >&2 <<EOF
-
-The history table has no row at all for $n_missing of the migration files. That
-is a different problem from phantoms and this script will not paper over it:
-find out why before deleting anything. There is no override for this check.
-EOF
-  else
-    cat >&2 <<EOF
-
-Re-read the numbers above. If the difference is legitimate — someone added a
-migration, or part of the cleanup already ran — set the expectations
-explicitly and re-run, e.g.
-
-  EXPECT_LOCAL=$n_local EXPECT_REMOTE=$n_remote EXPECT_PHANTOMS=$n_phantom \\
-    SUPABASE_PROJECT_REF=$REF scripts/cleanup-migration-phantoms.sh
-
-Never widen the expectations just to make the command go through.
-EOF
-  fi
   exit 1
+fi
+
+if [[ "$n_phantom" -eq 0 ]]; then
+  echo "Nothing to do: every row in the history table matches a migration file."
+  exit 0
 fi
 
 if [[ "$execute" -ne 1 ]]; then
   cat <<EOF
 Preview only. Nothing was written.
 
-Re-run with --execute to delete the $n_phantom rows listed above, leaving
-$EXPECT_LOCAL rows — one per migration file.
+Read the list above — it is exactly what --execute would delete, and the only
+thing that makes deleting it safe is that a human recognised every line.
+
+Re-run with --execute to delete those $n_phantom rows, leaving $n_versions rows
+— one per migration file. That figure is measured from the files on disk during
+this run, not from a number committed in this script.
 EOF
   exit 0
 fi
@@ -225,10 +300,15 @@ fi
 # --- 4. delete, scoped to exactly the versions listed above ------------------
 # An explicit IN list of the versions we just read, not a NOT IN over the
 # filenames, so the statement can only ever touch rows this run has printed.
-# The guard runs before COMMIT: if the result is not exactly EXPECT_LOCAL rows
-# with every filename version intact, it raises and the whole thing rolls back.
+#
+# The guard runs before COMMIT: if the result is not exactly one row per
+# migration file, with every filename version intact, it raises and the whole
+# thing rolls back. This is the one numeric assertion left in the script, and
+# it is DERIVED — $n_versions was counted from the files on disk a moment ago
+# in this same run, not committed as a literal. That is what makes it a real
+# guard: it cannot go stale, and there is no reason for anyone to bump it.
 echo "==> deleting $n_phantom phantom rows"
-python3 - "$work/phantoms.txt" "$work/phantoms.txt.local" "$EXPECT_LOCAL" >"$work/delete.sql" <<'PY'
+python3 - "$work/phantoms.txt" "$work/phantoms.txt.local" "$n_versions" >"$work/delete.sql" <<'PY'
 import sys
 
 phantoms = open(sys.argv[1]).read().split()
@@ -275,7 +355,7 @@ echo "    delete committed"
 # --- 5. verify the post-state independently ----------------------------------
 echo "==> verifying"
 api_query "$work/read.sql" >"$work/after.json"
-python3 - "$work/after.json" "$work/phantoms.txt.local" "$EXPECT_LOCAL" <<'PY'
+python3 - "$work/after.json" "$work/phantoms.txt.local" "$n_versions" <<'PY'
 import json, sys
 
 rows = json.load(open(sys.argv[1]))

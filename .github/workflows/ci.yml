@@ -99,6 +99,14 @@ jobs:
       - name: Test the function-secret enumerator
         run: python3 scripts/test_function_secrets.py
 
+      # The migration-history tool decides what gets deleted from
+      # supabase_migrations.schema_migrations, and it used to refuse to run at
+      # all whenever a committed count went stale — which was after roughly
+      # every merge. These tests pin which direction it fails in. Stubs curl;
+      # no token, no project, no network.
+      - name: Test the migration-history phantom cleanup
+        run: scripts/cleanup-migration-phantoms.test.sh
+
       # The dry run must stay runnable with no credentials. If it ever needs a
       # database to plan a merge, that is a bug.
       - name: Dry run against the committed backup

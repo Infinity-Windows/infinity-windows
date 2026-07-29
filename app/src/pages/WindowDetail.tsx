@@ -82,7 +82,7 @@ export function WindowDetail() {
 
   const suggestion = useQuery({
     queryKey: ["suggest", unit.data?.id],
-    queryFn: () => suggestLocation(unit.data!.id),
+    queryFn: () => suggestLocation(unit.data!.id, unit.data!.project_id ?? null),
     enabled: Boolean(unit.data?.id) && moving,
   });
 
@@ -364,12 +364,29 @@ export function WindowDetail() {
         </div>
       ) : (
         <div>
-          {suggestion.data && (
+          {suggestion.data?.warning && (
+            <div className="sched-conflict-inline is-emphasized" role="alert">
+              <div>
+                <p style={{ margin: 0 }}>{suggestion.data.warning}</p>
+                {suggestion.data.missingBay && w.project_id && (
+                  <Link
+                    to={`/projects/${w.project_id}?tab=warehouse`}
+                    className="action-btn"
+                    style={{ marginTop: 8 }}
+                  >
+                    Fix it: open this job&apos;s Warehouse tab →
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
+          {suggestion.data?.location && (
             <button
               className="action-btn primary"
-              onClick={() => moveTo.mutate(suggestion.data!.address)}
+              onClick={() => moveTo.mutate(suggestion.data!.location!.address)}
             >
-              Put in suggested slot: {suggestion.data.address}
+              {suggestion.data.warning ? "Put in shared shelf anyway: " : "Put in suggested slot: "}
+              {suggestion.data.location.address}
             </button>
           )}
           <p className="scanner-hint">Or scan the destination slot label:</p>

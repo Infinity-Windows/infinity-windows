@@ -1,5 +1,12 @@
 import { supabase } from "./supabase";
 import type { Issue } from "./issues";
+import {
+  isMissingStagingBayError,
+  missingBayMessage,
+  missingStagingBayJobCode,
+  sharedShelfWarning,
+  type PutawaySuggestion,
+} from "./staging";
 import type {
   Location,
   Movement,
@@ -89,8 +96,17 @@ function detailColumns(input: ProjectDetailsInput): Record<string, string | null
 }
 
 /**
- * Create a job and its two default staging slots. The compensating delete
- * keeps a partial job out of the list if staging setup fails.
+ * Create a job. Its two staging bays (J-<JOBCODE>-A and -B) are created by the
+ * database, by an AFTER INSERT trigger on `projects`.
+ *
+ * This function used to insert those two rows itself, and undo the job if that
+ * insert failed. Both are gone. Keeping them would have been worse than
+ * redundant: the trigger has already made the bays by the time this returns, so
+ * the insert could only ever collide, and the compensating delete would then
+ * have deleted the job the user just created. More to the point, a rule that
+ * lives in the client is a rule that only holds for jobs the client makes —
+ * which is exactly how a job reached production with no bays at all. See
+ * supabase/migrations/20260729220000_staging_bays_guaranteed.sql.
  */
 export async function createProject(input: CreateProjectInput): Promise<Project> {
   const jobCode = input.jobCode.trim().toUpperCase().replace(/[^A-Z0-9-]+/g, "-");
@@ -109,16 +125,21 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
     .single();
   if (projectError) throw projectError;
 
-  const { error: stagingError } = await supabase.from("locations").insert([
-    { zone: "J", rack: jobCode, slot: "A", capacity: 10 },
-    { zone: "J", rack: jobCode, slot: "B", capacity: 10 },
-  ]);
-  if (stagingError) {
-    await supabase.from("projects").delete().eq("id", project.id);
-    throw stagingError;
-  }
-
   return project as Project;
+}
+
+/**
+ * Foreman+ repair: give a job its two staging bays if either is missing or has
+ * been retired. Idempotent — safe to press twice. Exists so that a job that
+ * arrived by a merge, a restore or a hand-written INSERT can be fixed from
+ * inside the app instead of by an engineer writing SQL against production.
+ */
+export async function ensureStagingBays(projectId: string): Promise<Location[]> {
+  const { data, error } = await supabase.rpc("ensure_project_staging_bays", {
+    p_project_id: projectId,
+  });
+  if (error) throw error;
+  return (data ?? []) as Location[];
 }
 
 export interface UpdateProjectInput extends ProjectDetailsInput {
@@ -530,14 +551,43 @@ export async function installWindow(windowUuid: string): Promise<WindowUnit> {
   return data as WindowUnit;
 }
 
+/**
+ * Where to put a unit away — and, just as importantly, whether that answer is
+ * the job's own staging bay or a shared shelf.
+ *
+ * `projectId` is the unit's job (null for unassigned stock). It is what decides
+ * whether a stock-zone answer is normal or is something the foreman has to be
+ * told about; see app/src/lib/staging.ts. The database refuses outright when
+ * the job has no bay at all, and that refusal is turned into a `missingBay`
+ * suggestion here rather than thrown, so callers show the reason instead of
+ * silently rendering nothing.
+ */
 export async function suggestLocation(
   windowUuid: string,
-): Promise<Location | null> {
+  projectId: string | null = null,
+): Promise<PutawaySuggestion> {
   const { data, error } = await supabase.rpc("suggest_location", {
     p_window_id: windowUuid,
   });
-  if (error) throw error;
-  return (data as Location | null)?.id ? (data as Location) : null;
+  if (error) {
+    if (isMissingStagingBayError(error)) {
+      const jobCode = missingStagingBayJobCode(error);
+      return {
+        location: null,
+        warning: missingBayMessage(jobCode),
+        missingBay: true,
+        jobCode,
+      };
+    }
+    throw error;
+  }
+  const location = (data as Location | null)?.id ? (data as Location) : null;
+  return {
+    location,
+    warning: sharedShelfWarning(Boolean(projectId), location),
+    missingBay: false,
+    jobCode: null,
+  };
 }
 
 export interface DashboardCounts {
