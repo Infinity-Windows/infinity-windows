@@ -86,8 +86,10 @@ never committed.)
    deployed. A function that exists in this repo but was never deployed just
    404s at runtime — that is why Ask Infinity fails until `ask` is deployed.
 3. Set the Edge Function secrets (never in client / git): `OPENAI_API_KEY`,
-   `ANTHROPIC_API_KEY`, and the web-push pair `VAPID_PUBLIC_KEY` /
-   `VAPID_PRIVATE_KEY` (the public one also goes in `VITE_VAPID_PUBLIC_KEY`).
+   `ANTHROPIC_API_KEY`, and the web-push keys `VAPID_PUBLIC_KEY`,
+   `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` — see
+   [Web push notifications](#web-push-notifications) for how those relate to the
+   `VITE_VAPID_PUBLIC_KEY` the frontend needs.
 4. Create crew users under Authentication → Users, then set roles on the Crew screen.
 
 ### Shipping the backend
@@ -147,6 +149,49 @@ Optional vault mirror (manual):
 SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/vault-sync.mjs
 SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/weekly-report.mjs
 ```
+
+### Web push notifications
+
+Push is how an alert reaches a crew member when the app is closed. It needs one
+keypair, split across the two halves of the system. The **private** half stays on
+Supabase and is what signs each push; the **public** half is compiled into the
+JavaScript we serve so the phone knows which server is allowed to push to it.
+They only work as a matched pair — replacing one half without the other silently
+breaks every device already subscribed.
+
+| Variable | Where it lives | What it is |
+| --- | --- | --- |
+| `VAPID_PRIVATE_KEY` | Supabase Edge Function secret | The private half. Never in git, never in the client. |
+| `VAPID_PUBLIC_KEY` | Supabase Edge Function secret | The public half, so `send-push` can sign as the matching sender. |
+| `VAPID_SUBJECT` | Supabase Edge Function secret | Contact address push services can reach us at. Defaults to `mailto:ops@infinitywindows.app` if unset. |
+| `VITE_VAPID_PUBLIC_KEY` | GitHub Actions repo secret | The same public half, handed to the browser. Passed into the build by [`deploy-pages.yml`](.github/workflows/deploy-pages.yml). |
+
+All four are installed already. If they ever have to be replaced, generate a
+fresh pair and set both sides in one go, then check that nobody is subscribed
+first (`select count(*) from push_subscriptions`) — anyone who is will stop
+receiving notifications until their device re-subscribes.
+
+```bash
+npx web-push generate-vapid-keys
+gh secret set VITE_VAPID_PUBLIC_KEY --repo Infinity-Windows/infinity-windows
+```
+
+Set the three Supabase secrets in the dashboard under **Edge Functions →
+Secrets**. `VITE_VAPID_PUBLIC_KEY` only takes effect on the next Pages deploy,
+because Vite bakes it into the bundle at build time rather than reading it at
+runtime.
+
+Without the public key the app does not error — it just quietly never subscribes,
+and only in-app notifications work. `send-push` is more direct about it and
+returns `{"error":"VAPID keys not configured"}`.
+
+**On iPhone and iPad, push only works once the app is installed to the home
+screen.** Safari refuses web push to an ordinary browser tab, so an installer who
+opens the site in Safari and taps Allow still gets nothing. The app detects this
+and shows "Add Infinity to your home screen to get alerts" instead of failing
+silently. Android and desktop Chrome need no install. Since the crew are on
+phones, the home-screen install is part of setting someone up, not an optional
+extra.
 
 ### Merging the two Supabase projects
 

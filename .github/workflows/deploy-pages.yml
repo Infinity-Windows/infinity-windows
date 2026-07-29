@@ -1,5 +1,5 @@
 # Deploy the Vite app to GitHub Pages (permanent live URL).
-# Env: VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY (repo secrets).
+# Env: VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY + VITE_VAPID_PUBLIC_KEY (repo secrets).
 # Site: https://infinity-windows.github.io/infinity-windows/
 
 name: Deploy GitHub Pages
@@ -38,6 +38,7 @@ jobs:
           VITE_BASE: /infinity-windows/
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: app/dist
