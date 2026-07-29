@@ -4,6 +4,14 @@
 -- NOT RUN. Left here for a human to approve, because the repair brief
 -- forbade DELETE and these rows, while wrong, are harmless to the app.
 --
+-- PREFER THE SCRIPT. `scripts/cleanup-migration-phantoms.sh` runs this same
+-- cleanup with the guards a hand-run SELECT-then-DELETE cannot give you: it
+-- names the project explicitly, previews before it writes, needs --execute,
+-- refuses unless the table is exactly 107 rows / 70 files / 37 phantoms, and
+-- rolls back if the result is not 70 rows with every filename version intact.
+-- The ordering — and whether this must happen before the deploy secrets are
+-- added — is in docs/db-push-readiness.md.
+--
 -- WHAT IS WRONG
 -- After the 2026-07-29 production repair the history table holds 107 rows for
 -- 70 migration files. All 70 filename versions are present and correct. The
