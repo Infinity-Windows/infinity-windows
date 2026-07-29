@@ -259,7 +259,13 @@ export async function hasCachedCrop(req: CropRequest): Promise<boolean> {
 // the same document, the same rendered page canvas, the same IndexedDB store —
 // so a job that has both kinds of drawing still downloads each planset once.
 
-/** Ring color: reads on white paper and on the sheet's own blue/green numbers. */
+/**
+ * Ring color. Kept exactly as it was when these crops were shown on white
+ * paper: checked against the inverted drawing on all five Black Desert walls
+ * and it still reads at a glance, because it is now surrounded by pure black
+ * rather than by white paper and is the only colour left in the picture.
+ * Brightening it was available and turned out not to be needed.
+ */
 const RING_COLOR = "#e11d48";
 /** Tells the elevation crops apart from the spec crop of the same box. */
 const ELEVATION_VARIANT = "elev-inv1";
@@ -286,26 +292,32 @@ function elevationKey(req: ElevationCropRequest): string {
 }
 
 /**
- * How the building plans are re-coloured, using the same grayscale → invert →
- * floor/gain pipeline as the spec drawings ({@link invertLineArt}) so there is
- * only one colour transform in the app.
+ * How the building plans are re-coloured: the same grayscale → invert →
+ * floor/gain pipeline as the spec drawings ({@link invertLineArt}), so there is
+ * one colour transform in the app, but with constants measured for THIS source.
  *
- * The CONSTANTS differ from the spec sheets' 28/3 because the source document
- * is different. A supplier spec sheet is sparse black line-work over a faint
- * colour watermark, so it wants an aggressive floor to kill the watermark and a
- * big gain to rescue the few faint lines left. An architectural elevation is
- * the opposite: dense hatching, shingle and stone texture, and broad tone
- * blocks. Measured on Black Desert's A.201/A.202 crops, floor 28 + gain 3
- * pushes that texture to near-white and the house arrives as a pale smear with
- * the openings lost inside it.
+ * The GAIN is the decision that matters. A supplier spec sheet is sparse
+ * line-work with little else on it, so 3 is free there. An architectural
+ * elevation is mostly broad tone: stone hatching, shingle, glazing fills. At
+ * gain 3 those mid-greys are lifted with everything else, and measured over
+ * marks #1, #9 and #11 the crop ends up ~50% brighter overall (mean luma 25–27
+ * against 17–18) with 2.5× as many blown-out pixels (4.0–4.1% at 250+ against
+ * 1.6–1.7%). It is still readable — not a smear — but the tone blocks come up
+ * to compete with the line-work, so the drawn openings stop being the brightest
+ * thing on the card. 1.6 keeps the hatching as background texture and leaves
+ * the openings and callout numbers plainly brightest.
  *
- * So: the floor drops to 18, because these sheets carry no watermark to crush
- * and their thin sash and muntin lines invert into the low 20s — 28 deleted
- * them. The gain drops to 1.6, which lifts real line-work to a clearly readable
- * level while leaving the hatching as mid-grey texture instead of blowing it
- * out, so the drawn openings stay the brightest thing in the picture. Tuned
- * here rather than in `markDrawing`, whose 28/3 was carefully validated against
- * the supplier sheets and is not ours to move.
+ * The FLOOR barely matters for legibility, contrary to what you might expect:
+ * checked at 1:1 on the finest thing on these sheets — the leader text and
+ * dimension ticks — the line-work survives identically at 12, 18 and 28. What
+ * the floor removes is the faint background tone below it (raising it from 0 to
+ * 18 takes the pure-black share of the crop from 76.1% to 81.1%). 18 is chosen
+ * as the point where the paper's own scan mottle is gone without discarding the
+ * genuine faint tone in the 18–28 band, which is 2.4% of the crop and which
+ * these sheets have no watermark reason to throw away.
+ *
+ * Tuned here rather than in `markDrawing`: its 28/3 was validated against the
+ * supplier sheets and their watermark, and is not ours to move.
  */
 const ELEVATION_FLOOR = 18;
 const ELEVATION_GAIN = 1.6;
@@ -313,12 +325,20 @@ const ELEVATION_GAIN = 1.6;
 /**
  * Crop the drawing region, flip it to white-on-black, and ring the mark.
  *
- * Order matters and is the whole reason the ring is stroked here rather than
- * merged into the crop step: `invertLineArt` runs over the RAW plan pixels
- * FIRST, and the ring is drawn on top of the finished black image afterwards.
- * Invert a ring that is already on the canvas and red becomes CYAN — the exact
- * complement — which on a dark drawing looks like a rendering fault rather than
- * a marker. Nothing red must exist on this canvas before the transform.
+ * ORDER MATTERS, and is the whole reason the ring is stroked here rather than
+ * folded into the crop step: `invertLineArt` runs over the RAW plan pixels
+ * first, and the ring goes on top of the finished black image afterwards.
+ *
+ * Ring an already-inverted image and the ring survives as drawn. Invert an
+ * image that is already ringed and the ring is destroyed — and note HOW, because
+ * it is not the obvious way: `invertLineArt` reduces every pixel to luma before
+ * it inverts, so it has no notion of hue and cannot produce a complement. The
+ * ring's #e11d48 has a luma of 92, which inverts to 163, which the gain drives
+ * past 255 — so it comes out PURE WHITE, not cyan, and is indistinguishable
+ * from the surrounding line-work. Verified by rendering it: 0% of the ring's
+ * pixels stay red and the stroke's mean colour is (255,255,255). A silent,
+ * invisible marker is worse than a wrong-coloured one, which is why nothing
+ * coloured may be drawn on this canvas before the transform runs.
  */
 function cropElevation(
   page: HTMLCanvasElement,
