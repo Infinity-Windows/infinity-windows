@@ -123,6 +123,35 @@ jobs:
             exit 1
           fi
 
+      # A deployed function and a WORKING function are different things. The
+      # runtime secrets live in Supabase, not GitHub, so `ask` can deploy
+      # cleanly, route correctly, satisfy the 404 probe in the verify job below,
+      # and still 500 on every real request because ANTHROPIC_API_KEY was never
+      # set. Every check in this repo would be green. scripts/function_secrets.py
+      # derives what each function needs by reading its source, so this cannot
+      # rot the way the README's list of four deployable functions did.
+      #
+      # `supabase secrets list` prints names and digests, never values.
+      - name: Verify every required function secret exists
+        if: steps.guard.outputs.ok == 'true'
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          # `set +e` and PIPESTATUS, not pipefail: the script's exit code has to
+          # survive the tee AND the closing code fence still has to be written,
+          # which an -e abort in the middle of the pipeline would skip.
+          set +e
+          {
+            echo "### Edge function secrets"
+            echo
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          scripts/verify-function-secrets.sh 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          rc=${PIPESTATUS[0]}
+          echo '```' >>"$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
   migrations:
     name: Push migrations
     runs-on: ubuntu-latest

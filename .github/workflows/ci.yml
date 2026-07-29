@@ -55,6 +55,11 @@ jobs:
         shell: bash
         run: scripts/slack-notify.test.sh
 
+      # Stubs the Supabase CLI, so it needs no token and no project.
+      - name: Test scripts/verify-function-secrets.sh
+        shell: bash
+        run: scripts/verify-function-secrets.test.sh
+
   supabase-tooling:
     name: Supabase merge tooling
     runs-on: ubuntu-latest
@@ -72,10 +77,14 @@ jobs:
       - name: Test
         run: python3 scripts/test_supabase_merge.py
 
-      # Stdlib-only and no database: the drift check is compared against
-      # snapshot fixtures, so it can be tested like anything else.
+      # The two checks added for the always-live pipeline. Both are stdlib-only
+      # and neither touches a database: schema_verify compares declared objects
+      # against a snapshot fixture, function_secrets reads the function sources.
       - name: Test the schema drift check
         run: python3 scripts/test_schema_verify.py
+
+      - name: Test the function-secret enumerator
+        run: python3 scripts/test_function_secrets.py
 
       # The dry run must stay runnable with no credentials. If it ever needs a
       # database to plan a merge, that is a bug.
