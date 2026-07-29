@@ -25,6 +25,36 @@
 #                           it any more, "Reset database password" there —
 #                           which breaks anything still using the old one.
 #
+# GITHUB IS NOW THE SOURCE OF TRUTH FOR THE FUNCTIONS' RUNTIME SECRETS.
+#
+# This used to say runtime secrets live in Supabase and not here, and treated
+# that as a fact of life the pipeline could only report on. It was not: it was
+# the last remaining way for this workflow to go green over a broken product.
+# ANTHROPIC_API_KEY had never been set on the project, so Ask Infinity and
+# plan-set reading were deployed-and-500ing for as long as they had existed, and
+# the only fix the pipeline could offer was a paragraph asking a non-technical
+# owner to paste a key into a dashboard by hand. That paragraph went unread for
+# days, which is exactly what a manual step in an automated pipeline does.
+#
+# So the functions' secrets are pushed from here now, and the run asserts the
+# result three ways: pushed, then present, then actually ANSWERING. Any repo
+# secret whose name matches a secret the functions need is pushed on every merge:
+#
+#   ANTHROPIC_API_KEY       Ask Infinity, and reading specs off a planset.
+#   OPENAI_API_KEY          Voice memos, how-tos, toolbox talks, the brain.
+#   VAPID_PRIVATE_KEY  }    Push notifications. Both halves or neither — see
+#   VAPID_PUBLIC_KEY   }    scripts/sync-function-secrets.sh on why the frontend's
+#                           VITE_VAPID_PUBLIC_KEY is NOT renamed onto the server's.
+#
+# Names that are not repo secrets are skipped with a warning, never cleared: a
+# secret set only in Supabase keeps working, it simply has no owner, no history
+# and no way back if the project is ever rebuilt. Adding it to GitHub under the
+# same name is all it takes to bring it under this workflow. Nothing here ever
+# unsets a secret, and no value is ever printed.
+#
+# Rotating a key is now one action: change the GitHub secret and re-run this
+# workflow. No dashboard, no redeploy.
+#
 # A repo owner installs both once, from a checkout of this repo. Each command
 # prompts for the value and does not echo it, so nothing lands in the shell
 # history or in git:
@@ -78,6 +108,9 @@ jobs:
       secret_cause: ${{ steps.secrets.outputs.missing_headline }}
       # Set only when the app's push key and the project's push key disagree.
       push_key_cause: ${{ steps.pushkey.outputs.push_key_headline }}
+      # Set only when Ask Infinity was asked a real question and did not answer.
+      # The case the two above cannot see: a key that exists and is refused.
+      ask_smoke_cause: ${{ steps.asksmoke.outputs.ask_smoke_headline }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -131,13 +164,71 @@ jobs:
             exit 1
           fi
 
-      # A deployed function and a WORKING function are different things. The
-      # runtime secrets live in Supabase, not GitHub, so `ask` can deploy
-      # cleanly, route correctly, satisfy the 404 probe in the verify job below,
-      # and still 500 on every real request because ANTHROPIC_API_KEY was never
-      # set. Every check in this repo would be green. scripts/function_secrets.py
-      # derives what each function needs by reading its source, so this cannot
-      # rot the way the README's list of four deployable functions did.
+      # Put the secrets there BEFORE anything checks for them. This step is the
+      # difference between a pipeline that reports Ask Infinity is broken and one
+      # that fixes it: the step below could only ever tell a human to go and
+      # paste a key into a dashboard, and for ANTHROPIC_API_KEY nobody ever did.
+      #
+      # Safe to run on every merge. `supabase secrets set` adds or updates only
+      # the names it is given — removing one is a different subcommand, which is
+      # never used here — so anything set only in Supabase is left alone.
+      # Re-setting a secret to the value it already holds changes nothing.
+      #
+      # Every name below is one the functions actually need, listed under the
+      # SAME name in GitHub. A name that is not a repo secret arrives here as an
+      # empty string and is skipped with a warning rather than clearing anything,
+      # exactly like the credentials guard above. No value is printed, and none
+      # is passed on a command line.
+      - name: Push the function secrets GitHub holds
+        id: syncsecrets
+        if: steps.guard.outputs.ok == 'true'
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+        run: |
+          set +e
+          scripts/sync-function-secrets.sh >/tmp/secret-sync.log 2>&1
+          rc=$?
+          cat /tmp/secret-sync.log
+
+          if [ "$rc" -eq 0 ]; then
+            {
+              echo "### Edge function secrets: pushed from GitHub"
+              echo
+              echo '```'
+              cat /tmp/secret-sync.log
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          cause="$(head -n 1 /tmp/secret-sync.log)"
+          echo "::error title=Could not push the function secrets::$cause"
+          {
+            echo "### Could not push the function secrets"
+            echo
+            echo '```'
+            cat /tmp/secret-sync.log
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+      # A deployed function and a WORKING function are different things. A
+      # function can deploy cleanly, route correctly, satisfy the 404 probe in
+      # the verify job below, and still 500 on every real request because its key
+      # was never set — with every check in this repo green. That is not
+      # hypothetical: it was true of `ask` and `extract-specs` until the step
+      # above existed. scripts/function_secrets.py derives what each function
+      # needs by reading its source, so this cannot rot the way the README's list
+      # of four deployable functions did.
+      #
+      # Still worth running now that the step above pushes them, and not
+      # redundant: it is the only thing that sees the secrets GitHub does NOT
+      # hold, which are still set in Supabase alone.
       #
       # `supabase secrets list` prints names and digests, never values.
       - name: Verify every required function secret exists
@@ -230,6 +321,81 @@ jobs:
             echo
             echo '```'
             cat /tmp/push-key-check.log
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+      # The last gap. Everything above proves the key EXISTS, by name and digest.
+      # None of it can tell a working key from one that is revoked, rotated at
+      # Anthropic, or pasted from the wrong account — those are indistinguishable
+      # to `secrets list`, and every one of them leaves Ask Infinity answering
+      # nothing while this whole workflow stays green. The only way to know is to
+      # ask it something and read the reply.
+      #
+      # THREE outcomes, because "the AI service was busy" is not "we are
+      # misconfigured", and a check that goes red for Anthropic having a bad
+      # afternoon is one the team would learn to ignore:
+      #   exit 0  answered — green
+      #   exit 1  broken and ours to fix — red
+      #   exit 2  could not tell — a warning, same as the guards above
+      #
+      # The script retries a key that looks missing, because this runs seconds
+      # after the push step and a just-written secret takes a moment to reach the
+      # already-running workers. Without that, the run that FIXED Ask Infinity
+      # would be the run that reported it broken.
+      #
+      # `!cancelled()` for the same reason as the push-key check: a rejected key
+      # must not be hidden behind an earlier failure, since nothing else in the
+      # pipeline can see it at all.
+      #
+      # The question is about window installation and nothing else. `ask` grounds
+      # its answers in live app data, so the answer is printed here only because
+      # the question cannot pull in anybody's job, address or crew.
+      - name: Ask Infinity a real question
+        id: asksmoke
+        if: ${{ !cancelled() && steps.guard.outputs.ok == 'true' }}
+        shell: bash
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set +e
+          scripts/smoke-ask.sh >/tmp/ask-smoke.log 2>&1
+          rc=$?
+          cat /tmp/ask-smoke.log
+
+          if [ "$rc" -eq 0 ]; then
+            {
+              echo "### Ask Infinity works"
+              echo
+              echo '```'
+              cat /tmp/ask-smoke.log
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          cause="$(head -n 1 /tmp/ask-smoke.log)"
+
+          # Could not tell. Say so and pass: nothing here is evidence that
+          # anything is misconfigured.
+          if [ "$rc" -eq 2 ]; then
+            echo "::warning title=Ask Infinity was not verified::$cause"
+            {
+              echo "### Ask Infinity: not verified this run"
+              echo
+              echo '```'
+              cat /tmp/ask-smoke.log
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "::error title=Action needed::$cause"
+          {
+            echo "### $cause"
+            echo
+            echo '```'
+            cat /tmp/ask-smoke.log
             echo '```'
           } >>"$GITHUB_STEP_SUMMARY"
           exit "$rc"
@@ -381,24 +547,34 @@ jobs:
       # added yet" in Slack rather than a red X he can only read as "something is
       # broken".
       #
-      # A push-key mismatch leads when both are true. It is the more severe of
-      # the two — nobody's phone gets any notification at all — and the more
-      # surprising, because nothing else in the pipeline can see it. The run page
-      # always lists every cause.
+      # A push-key mismatch leads when several are true. It is the most severe —
+      # nobody's phone gets any notification at all — and the most surprising,
+      # because nothing else in the pipeline can see it. A missing secret comes
+      # next, since it names every key that is absent rather than just the one
+      # feature that noticed. The Ask Infinity smoke test leads only when it is
+      # the sole signal, which is precisely the case nothing else can detect: a
+      # key that is present and refused. The run page always lists every cause.
       cause: >-
         ${{ needs.functions.outputs.push_key_cause != ''
         && needs.functions.outputs.push_key_cause
-        || needs.functions.outputs.secret_cause }}
+        || (needs.functions.outputs.secret_cause != ''
+        && needs.functions.outputs.secret_cause
+        || needs.functions.outputs.ask_smoke_cause) }}
       detail: >-
         ${{ needs.functions.outputs.push_key_cause != ''
         && 'Both halves of one push key pair have to be set together, in
         Supabase and in GitHub, and the app then has to be rebuilt. The run page
         has the exact steps.'
         || (needs.functions.outputs.secret_cause != ''
-        && 'Everything else shipped. The key is added in the Supabase dashboard
-        under Project Settings -> Edge Functions -> Secrets.'
+        && 'Everything else shipped. Add the key as a GitHub Actions secret of
+        the same name and re-run this workflow, which pushes it to Supabase for
+        you.'
+        || (needs.functions.outputs.ask_smoke_cause != ''
+        && 'The key is there and the AI provider would not accept it, so it is
+        the wrong key or it has been revoked. Put a working one in the GitHub
+        secret ANTHROPIC_API_KEY and re-run this workflow.'
         || 'Some of the backend did not ship, so the app may be running against a
-        database or functions that do not match the code.') }}
+        database or functions that do not match the code.')) }}
     secrets: inherit
 
   # Not a failure, and deliberately not one: the database holds objects no
