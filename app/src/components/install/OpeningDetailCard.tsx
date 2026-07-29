@@ -6,10 +6,12 @@
 // that drifted apart would be two answers to it. The card is presentational: it
 // knows nothing about maps, dispatch, or how it was opened.
 
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { MarkElevationViews } from "./MarkElevationViews";
 import { openingFullSheetPath } from "../../lib/install/openingRowAction";
 import { openingUnitKind } from "../../lib/install/unitKind";
+import { rememberOpening } from "../../lib/install/staleOpening";
 import { installerInitials } from "../../lib/install/mapDispatch";
 import {
   OPENING_KIND_COLORS,
@@ -55,6 +57,15 @@ export function OpeningDetailCard({
 }: OpeningDetailCardProps) {
   const kind = openingUnitKind(o);
   const wt = o.window_types;
+
+  // "Open full sheet" below is a link by id, and reloading the plans replaces
+  // every opening with a new id. Note the code this id stood for while we have
+  // it in hand, so a link followed after a re-extract still finds the same
+  // window instead of a dead end (see staleOpening / OpeningMoved).
+  useEffect(() => {
+    rememberOpening(o.id, projectId, o.opening_code);
+  }, [o.id, projectId, o.opening_code]);
+
   return (
     <div className="map-detail-card" id={id}>
       <div className="map-detail-card__head">
