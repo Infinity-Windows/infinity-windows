@@ -1,11 +1,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
-  chatJson,
   corsHeaders,
   jsonResponse,
   SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL,
 } from "../_shared/openai.ts";
+import {
+  ANTHROPIC_MODEL,
+  anthropicChatJson,
+  requireAnthropic,
+} from "../_shared/anthropic.ts";
 import { verifyCaller } from "../_shared/auth.ts";
 import {
   notifyOwnersOfSpend,
@@ -19,6 +23,16 @@ interface SynthesisResult {
   watch_outs: string[];
   outcome_difficulty: number;
 }
+
+const TIPS_SCHEMA = {
+  type: "object",
+  properties: {
+    tips: { type: "array", items: { type: "string" } },
+    watch_outs: { type: "array", items: { type: "string" } },
+    outcome_difficulty: { type: "number" },
+  },
+  required: ["tips", "watch_outs", "outcome_difficulty"],
+};
 
 Deno.serve(async (req) => {
   const cors = corsHeaders(req);
@@ -34,6 +48,8 @@ Deno.serve(async (req) => {
     auth.status === "ok" && auth.user.id !== "service_role" ? auth.user.id : null;
 
   try {
+    // Claude writes the tips, so the Anthropic key is the only hard dependency.
+    requireAnthropic();
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Supabase env not configured");
     }
@@ -146,18 +162,22 @@ Deno.serve(async (req) => {
       }
 
       let usage: { inputTokens: number | null; outputTokens: number | null } | null = null;
-      const synthesis = await chatJson<SynthesisResult>(
-        `You write field-ready coaching for window type ${t.type_code} (${t.name}) for the NEXT installer. Rules: every tip must be specific and actionable — name the step, the part, the tool, or the failure it prevents (e.g. "Pre-drill the hinge side; last installs cammed out screws there"). No generic advice ("work carefully", "measure twice"). Base every line on the memos below. Watch-outs are the concrete failure modes that cost time or grade. Keep the best prior lines when still true; drop anything vague. Order tips by impact on time/quality.`,
-        `Stats: median ${median ?? "?"}m, P90 ${p90 ?? "?"}m, fail rate ${failRate ?? "?"}%.\nPrior tips: ${JSON.stringify(existingTips)}\nPrior watch-outs: ${JSON.stringify(existingWatch)}\n\nInstall memos:\n${memoBlob}`,
-        `Schema: { "tips": string[3-5, specific+actionable], "watch_outs": string[2-5, concrete failure modes], "outcome_difficulty": number 1-5 }`,
-        (u) => {
+      const synthesis = await anthropicChatJson<SynthesisResult>({
+        system:
+          `You write field-ready coaching for window type ${t.type_code} (${t.name}) for the NEXT installer. Rules: every tip must be specific and actionable — name the step, the part, the tool, or the failure it prevents (e.g. "Pre-drill the hinge side; last installs cammed out screws there"). No generic advice ("work carefully", "measure twice"). Base every line on the memos below. Watch-outs are the concrete failure modes that cost time or grade. Keep the best prior lines when still true; drop anything vague. Order tips by impact on time/quality.`,
+        user:
+          `Stats: median ${median ?? "?"}m, P90 ${p90 ?? "?"}m, fail rate ${failRate ?? "?"}%.\nPrior tips: ${JSON.stringify(existingTips)}\nPrior watch-outs: ${JSON.stringify(existingWatch)}\n\nInstall memos:\n${memoBlob}`,
+        schemaHint:
+          `Schema: { "tips": string[3-5, specific+actionable], "watch_outs": string[2-5, concrete failure modes], "outcome_difficulty": number 1-5 }`,
+        schema: TIPS_SCHEMA,
+        onUsage: (u) => {
           usage = u;
         },
-      ).catch(async (err) => {
+      }).catch(async (err) => {
         await releaseAiSpend(supabase, gate.reservationId, "provider_failed", false);
         throw err;
       });
-      await settleAiSpend(supabase, gate.reservationId, usage, "gpt-4o-mini");
+      await settleAiSpend(supabase, gate.reservationId, usage, ANTHROPIC_MODEL);
 
       const tips = (synthesis.tips ?? [])
         .map((s) => String(s).trim())

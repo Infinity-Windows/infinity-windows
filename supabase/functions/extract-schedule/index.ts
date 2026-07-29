@@ -1,11 +1,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
-  chatJson,
   corsHeaders,
   jsonResponse,
   SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL,
 } from "../_shared/openai.ts";
+import {
+  ANTHROPIC_MODEL,
+  anthropicChatJson,
+  requireAnthropic,
+} from "../_shared/anthropic.ts";
 import { verifyCaller } from "../_shared/auth.ts";
 import {
   notifyOwnersOfSpend,
@@ -26,6 +30,31 @@ interface ScheduleRow {
   kind?: string | null;
 }
 
+const SCHEDULE_SCHEMA = {
+  type: "object",
+  properties: {
+    rows: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          openingCode: { type: "string" },
+          typeText: { type: "string" },
+          qty: { type: "number" },
+          label: { type: ["string", "null"] },
+          pageNumber: { type: "number" },
+          widthIn: { type: ["number", "null"] },
+          heightIn: { type: ["number", "null"] },
+          color: { type: ["string", "null"] },
+          kind: { type: "string", enum: ["window", "door"] },
+        },
+        required: ["openingCode", "typeText", "qty", "pageNumber"],
+      },
+    },
+  },
+  required: ["rows"],
+};
+
 Deno.serve(async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") {
@@ -40,6 +69,9 @@ Deno.serve(async (req) => {
     auth.status === "ok" && auth.user.id !== "service_role" ? auth.user.id : null;
 
   try {
+    // Claude reads the planset text now, so the Anthropic key is the only hard
+    // dependency. Fail before any work when it is missing.
+    requireAnthropic();
     const body = await req.json();
     const pages = body.pages as { pageNumber: number; text: string }[] | undefined;
     if (!Array.isArray(pages) || pages.length === 0) {
@@ -121,15 +153,16 @@ Deno.serve(async (req) => {
     let outTokens = 0;
     const batchResults = await Promise.all(
       limitedBatches.map((text) =>
-        chatJson<{ rows: ScheduleRow[] }>(
+        anthropicChatJson<{ rows: ScheduleRow[] }>({
           system,
-          `${catalogHint}\n\nPlanset text:\n${text}`,
-          schema,
-          (u) => {
+          user: `${catalogHint}\n\nPlanset text:\n${text}`,
+          schemaHint: schema,
+          schema: SCHEDULE_SCHEMA,
+          onUsage: (u) => {
             inTokens += u.inputTokens ?? 0;
             outTokens += u.outputTokens ?? 0;
           },
-        ).catch((err) => {
+        }).catch((err) => {
           console.error("batch failed", err);
           return { rows: [] as ScheduleRow[] };
         }),
@@ -144,7 +177,7 @@ Deno.serve(async (req) => {
         meter,
         gate.reservationId,
         { inputTokens: inTokens, outputTokens: outTokens },
-        "gpt-4o-mini",
+        ANTHROPIC_MODEL,
       );
     }
 

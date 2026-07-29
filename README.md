@@ -128,8 +128,8 @@ rebuilt. Prefer GitHub.
 
 | Secret | Needed by | What breaks without it |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | `ask`, `extract-specs` | Ask Infinity answers nothing, and reading specs off a planset fails. |
-| `OPENAI_API_KEY` | `extract-schedule`, `generate-howto`, `generate-toolbox-talk`, `ingest-knowledge`, `synthesize-type-tips`, `transcribe-install-memo` | Voice memos are never transcribed, how-tos and toolbox talks cannot be generated, and nothing new can be added to the brain. |
+| `ANTHROPIC_API_KEY` | `ask`, `extract-schedule`, `extract-specs`, `generate-howto`, `generate-toolbox-talk`, `synthesize-type-tips`, `transcribe-install-memo` | Everything the app writes stops: Ask Infinity answers nothing, plansets and delivery schedules cannot be read, no how-tos, no toolbox talks, no window-type tips, and voice memos are transcribed but never sorted into fields. |
+| `OPENAI_API_KEY` | `ingest-knowledge`, `transcribe-install-memo` | Nothing new can be added to the brain, and voice memos are never transcribed. Also degrades two things rather than breaking them: Ask Infinity stops searching documents and answers from live data only, and toolbox talks ship with described placeholders instead of diagrams. |
 | `VAPID_PRIVATE_KEY` | `send-push` | Push notifications silently stop. The public half also goes in the app as `VITE_VAPID_PUBLIC_KEY`. |
 | `VAPID_PUBLIC_KEY` | `send-push` | Same. |
 
