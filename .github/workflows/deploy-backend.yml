@@ -298,6 +298,76 @@ jobs:
           } >>"$GITHUB_STEP_SUMMARY"
           exit "$rc"
 
+      # A key GitHub does not hold is not a failure, and must never block a
+      # deploy: the value may well be set in Supabase already, so the app can be
+      # working perfectly. But it is a real risk — nothing in this repo can
+      # restore it, and nothing notices if it is deleted — and the step above
+      # reports it only as a line of log output inside a step that is showing
+      # green.
+      #
+      # That is too quiet, and it was proved too quiet. On 2026-07-29 the sync
+      # step printed "not in GitHub  OPENAI_API_KEY" on every merge for several
+      # hours and nobody read it, twice: once before the key was added at all,
+      # and again while it sat in GitHub under a misspelled name. Both times the
+      # run was green and the sentence was there to be found.
+      #
+      # So the same fact is raised to a warning annotation, which GitHub pins to
+      # the top of the run page and shows against the commit, and to its own
+      # heading in the run summary. Nothing here can fail: every path exits 0.
+      - name: Say out loud which keys GitHub does not hold
+        id: unmanaged
+        if: ${{ !cancelled() && steps.guard.outputs.ok == 'true' }}
+        shell: bash
+        env:
+          UNMANAGED: ${{ steps.syncsecrets.outputs.unmanaged_names }}
+        run: |
+          set -uo pipefail
+          # Space-separated names from scripts/sync-function-secrets.sh, which
+          # derives them from the function source. Deliberately unquoted so it
+          # splits into words; the values are secret NAMES, never secret values.
+          # shellcheck disable=SC2206
+          names=(${UNMANAGED:-})
+
+          if [ "${#names[@]}" -eq 0 ]; then
+            echo "Every key the app needs is stored in GitHub."
+            {
+              echo "### Every key the app needs is stored in GitHub"
+              echo
+              echo "So each one can be restored if it is ever lost, and every"
+              echo "deploy puts it back where the app reads it."
+            } >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # One annotation per name, titled with the name, so the run page names
+          # the missing key rather than the job.
+          for n in "${names[@]}"; do
+            echo "::warning title=Not stored in GitHub: $n::The app needs $n, and GitHub does not have a copy of it. Nothing is broken by this and nothing was changed - if the app works today, this key is set in Supabase only. But nothing here can put it back if it is ever lost, and nothing will notice if it is deleted. Fix: add a GitHub Actions secret named exactly $n, then re-run this workflow."
+          done
+
+          {
+            echo "### Action needed: ${#names[@]} key(s) the app needs are not stored in GitHub"
+            echo
+            for n in "${names[@]}"; do
+              echo "- \`$n\`"
+            done
+            echo
+            echo "**Nothing is broken by this, and nothing was changed.** If the"
+            echo "app works today, these are set inside Supabase only."
+            echo
+            echo "Why it still matters: a key that lives in only one place has no"
+            echo "backup and no owner. Nothing in this repo can put it back if it"
+            echo "is lost, and nothing notices if it is deleted."
+            echo
+            echo "To fix, add a GitHub Actions secret named **exactly** as above"
+            echo "(Settings -> Secrets and variables -> Actions), then re-run this"
+            echo "workflow. The name has to match character for character - a"
+            echo "secret spelled differently is invisible to this pipeline."
+          } >>"$GITHUB_STEP_SUMMARY"
+
+          echo "${#names[@]} key(s) the app needs are not stored in GitHub:"
+          printf '    %s\n' "${names[@]}"
+
       # How many devices are actually signed up for notifications. Nothing here
       # can break, and a count of zero is not a fault — it is reported because it
       # is the number that decides whether changing the push key costs anyone
