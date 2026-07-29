@@ -188,6 +188,36 @@ export function footprintFromPins(
   return { points: shaped, pageAspect: safeAspect };
 }
 
+/**
+ * A traced polygon spanning more than this fraction of the page in BOTH axes is
+ * the sheet border, not a building. Black Desert's PDF traces to 0.91 × 0.90 —
+ * the drawing frame and title block. Pecan's real footprint is 0.68 × 0.83.
+ */
+const SHEET_BORDER_SPAN = 0.86;
+/** Nor should a building cover most of its own sheet. */
+const MAX_TRACE_PAGE_AREA = 0.65;
+
+/**
+ * Whether a traced polygon is plausibly a building rather than the page it was
+ * drawn on. Without this the ladder happily saves a job's drawing frame as its
+ * building shape, which is worse than the pins it would otherwise use — and,
+ * being saved, permanent.
+ */
+export function isPlausibleBuildingTrace(
+  points: OutlinePoint[],
+  aspect: number,
+): boolean {
+  if (!isValidOutlinePolygon(points)) return false;
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const spanX = Math.max(...xs) - Math.min(...xs);
+  const spanY = Math.max(...ys) - Math.min(...ys);
+  if (spanX >= SHEET_BORDER_SPAN && spanY >= SHEET_BORDER_SPAN) return false;
+  // The page is 1 wide by `aspect` tall in these units, so its area IS aspect.
+  const safeAspect = aspect > 0 ? aspect : 0.7;
+  return polygonArea(points, safeAspect) / safeAspect <= MAX_TRACE_PAGE_AREA;
+}
+
 /** Where the drawn shape came from. Surfaced in the sheet header. */
 export type FootprintSource = "saved" | "traced" | "pins";
 
@@ -219,7 +249,9 @@ export function resolveFootprint(args: {
   if (traced && isValidOutlinePolygon(traced.points)) {
     const tracedAspect = traced.pageAspect > 0 ? traced.pageAspect : aspect;
     const points = coarsen(traced.points, MAX_FOOTPRINT_VERTICES, tracedAspect);
-    if (isValidOutlinePolygon(points)) {
+    // Checked after coarsening, because that is the shape which would be drawn
+    // and saved.
+    if (isPlausibleBuildingTrace(points, tracedAspect)) {
       return {
         outline: { points, pageAspect: tracedAspect },
         source: "traced",

@@ -3,6 +3,7 @@ import {
   boundingFootprint,
   coarsen,
   footprintFromPins,
+  isPlausibleBuildingTrace,
   MAX_FOOTPRINT_VERTICES,
   polygonArea,
   resolveFootprint,
@@ -336,6 +337,84 @@ describe("resolveFootprint", () => {
       aspect: 0.7,
     });
     expect(result!.source).toBe("pins");
+  });
+
+  it("rejects a trace of the sheet border and uses the pins instead", () => {
+    // What BLACK22's PDF actually traces to: the drawing frame and title
+    // block, 0.91 × 0.90 of the page, with a notch cut out of one corner.
+    const sheetBorder = {
+      points: [
+        { x: 0.04, y: 0.05 },
+        { x: 0.95, y: 0.05 },
+        { x: 0.95, y: 0.9 },
+        { x: 0.9, y: 0.9 },
+        { x: 0.9, y: 0.95 },
+        { x: 0.04, y: 0.95 },
+      ],
+      pageAspect: 0.7,
+    };
+    expect(isPlausibleBuildingTrace(sheetBorder.points, 0.7)).toBe(false);
+    const result = resolveFootprint({
+      traced: sheetBorder,
+      pins,
+      aspect: 0.7,
+    });
+    // Saving the page frame as the building would be permanent and wrong.
+    expect(result!.source).toBe("pins");
+  });
+
+  it("accepts a real footprint that only covers part of the sheet", () => {
+    // Shaped like PECAN14 page 3's genuine 16-point trace: 0.68 × 0.83.
+    const realFootprint = {
+      points: [
+        { x: 0.14, y: 0.09 },
+        { x: 0.82, y: 0.09 },
+        { x: 0.82, y: 0.6 },
+        { x: 0.45, y: 0.6 },
+        { x: 0.45, y: 0.92 },
+        { x: 0.14, y: 0.92 },
+      ],
+      pageAspect: 0.7,
+    };
+    expect(isPlausibleBuildingTrace(realFootprint.points, 0.7)).toBe(true);
+    const result = resolveFootprint({
+      traced: realFootprint,
+      pins,
+      aspect: 0.7,
+    });
+    expect(result!.source).toBe("traced");
+  });
+
+  it("rejects a trace that swallows most of its own page", () => {
+    // Not border-shaped, but far too big to be a building on a plan sheet.
+    const bloated = {
+      points: [
+        { x: 0.02, y: 0.02 },
+        { x: 0.84, y: 0.02 },
+        { x: 0.84, y: 0.98 },
+        { x: 0.02, y: 0.98 },
+      ],
+      pageAspect: 0.7,
+    };
+    expect(isPlausibleBuildingTrace(bloated.points, 0.7)).toBe(false);
+    expect(resolveFootprint({ traced: bloated, pins, aspect: 0.7 })!.source).toBe(
+      "pins",
+    );
+  });
+
+  it("never rejects a shape a person drew by hand", () => {
+    // A lead who traces the whole sheet meant to. Only the machine is doubted.
+    const hugeButHuman = {
+      points: [
+        { x: 0.02, y: 0.02 },
+        { x: 0.98, y: 0.02 },
+        { x: 0.98, y: 0.98 },
+        { x: 0.02, y: 0.98 },
+      ],
+      pageAspect: 0.7,
+    };
+    const result = resolveFootprint({ saved: hugeButHuman, pins, aspect: 0.7 });
+    expect(result!.source).toBe("saved");
   });
 
   it("returns null only when there is genuinely nothing to draw", () => {
