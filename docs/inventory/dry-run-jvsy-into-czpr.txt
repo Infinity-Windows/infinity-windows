@@ -1,0 +1,722 @@
+==============================================================================
+SUPABASE MERGE — DRY RUN. Nothing below was executed.
+==============================================================================
+  generated   2026-07-29T19:05:34.795224+00:00
+  source      jvsyhtarnvmdilsgksdi  (docs/inventory/jvsyhtarnvmdilsgksdi.json)
+  target      czprjcskmzzagdztqonm  (docs/inventory/czprjcskmzzagdztqonm.json)
+  schema      66 tables recovered from supabase/migrations/
+
+  Read docs/supabase-merge-plan.md before acting on any of this.
+
+------------------------------------------------------------------------------
+PHASE 0 — foreign-key cycles in the schema
+------------------------------------------------------------------------------
+  cycle: install_events -> project_openings -> window_types -> windows
+  Broken by inserting these columns as NULL and filling them in phase 3:
+    window_types.golden_install_event_id
+
+------------------------------------------------------------------------------
+PHASE 1 — preflight, run these on BOTH projects and read the answers
+------------------------------------------------------------------------------
+-- 1. Both projects must be at the same migration version, or the
+--    target is missing columns the source rows carry.
+select count(*) as applied, max(version) as latest
+  from supabase_migrations.schema_migrations;
+
+-- 2. Advisory dedup keys are not enforced by a UNIQUE index, so a
+--    project may already hold duplicates of them. Merging on a key
+--    that is already ambiguous makes it worse. Expect zero rows.
+
+select email, count(*) from public.access_requests
+  group by email having count(*) > 1;
+
+select code, count(*) from public.cost_codes
+  group by code having count(*) > 1;
+
+select doc_id, chunk_index, count(*) from public.knowledge_chunks
+  group by doc_id, chunk_index having count(*) > 1;
+
+select project_id, storage_path, count(*) from public.project_plansets
+  group by project_id, storage_path having count(*) > 1;
+
+select talk_date, title, count(*) from public.safety_talks
+  group by talk_date, title having count(*) > 1;
+
+select name, count(*) from public.supplies
+  group by name having count(*) > 1;
+
+select profile_id, talk_id, count(*) from public.toolbox_completions
+  group by profile_id, talk_id having count(*) > 1;
+
+select trip_id, storage_path, count(*) from public.trip_attachments
+  group by trip_id, storage_path having count(*) > 1;
+
+select name, start_date, count(*) from public.trips
+  group by name, start_date having count(*) > 1;
+
+select provider, provider_device_id, count(*) from public.vehicle_devices
+  group by provider, provider_device_id having count(*) > 1;
+
+select vehicle_id, task, count(*) from public.vehicle_service_schedules
+  group by vehicle_id, task having count(*) > 1;
+
+select vin, count(*) from public.vehicles
+  group by vin having count(*) > 1;
+
+-- 3. Serial collisions. Both projects backfilled SLOT-/WIN- series
+--    from 1, so the same string means different physical things.
+select 'locations' as t, serial from public.locations
+union all
+select 'windows', serial from public.windows
+  order by 1, 2;
+
+-- 4. Auth users. profiles.id IS auth.users.id, and auth.users rows
+--    cannot be inserted by SQL. Any source profile whose id is not
+--    already an auth user in the target is a blocker.
+select id, email, created_at, last_sign_in_at from auth.users order by created_at;
+
+------------------------------------------------------------------------------
+PHASE 2 — insert rows, 20 table(s) in dependency order
+------------------------------------------------------------------------------
+[ 1/20] cost_codes
+        source 6 row(s) -> target holds 6
+        dedup on ('code',) (advisory)
+        -- 6 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[ 2/20] locations
+        source 44 row(s) -> target holds 42
+        dedup on ('zone', 'rack', 'slot') (enforced)
+        -- 44 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[ 3/20] profiles
+        source 1 row(s) -> target holds 6
+        dedup on ('id',) (enforced)
+        -- 1 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[ 4/20] safety_talks
+        source 7 row(s) -> target holds 7
+        dedup on ('talk_date', 'title') (advisory)
+        -- 7 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[ 5/20] supplies
+        source 6 row(s) -> target holds 6
+        dedup on ('name',) (advisory)
+        -- 6 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[ 6/20] window_types
+        source 54 row(s) -> target holds 130
+        dedup on ('type_code',) (enforced)
+        -- 54 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[ 7/20] projects
+        source 3 row(s) -> target holds 2
+        dedup on ('job_code',) (enforced)
+        -- 3 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[ 8/20] schedule_events
+        source 12 row(s) -> target holds 0
+        dedup on nothing — surrogate uuid only (surrogate-only)
+        -- 12 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[ 9/20] tools
+        source 8 row(s) -> target holds 8
+        dedup on nothing — surrogate uuid only (surrogate-only)
+        -- 8 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[10/20] project_plansets
+        source 5 row(s) -> target holds 4
+        dedup on ('project_id', 'storage_path') (advisory)
+        -- 5 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[11/20] project_windows
+        source 2 row(s) -> target holds 26
+        dedup on ('project_id', 'window_type_id') (enforced)
+        -- 2 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[12/20] schedule_assignments
+        source 1 row(s) -> target holds 0
+        dedup on nothing — surrogate uuid only (surrogate-only)
+        -- 1 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[13/20] trips
+        source 1 row(s) -> target holds 0
+        dedup on ('name', 'start_date') (advisory)
+        -- 1 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[14/20] procedures
+        source 1 row(s) -> target holds 0
+        dedup on nothing — surrogate uuid only (surrogate-only)
+        -- 1 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[15/20] project_mark_elevation_views
+        source 54 row(s) -> target holds 0
+        dedup on ('planset_id', 'mark_code', 'page_number', 'region_index') (enforced)
+        -- 54 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[16/20] project_mark_specs
+        source 61 row(s) -> target holds 0
+        dedup on ('project_id', 'mark_code') (enforced)
+        -- 61 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[17/20] project_openings
+        source 147 row(s) -> target holds 109
+        dedup on ('project_id', 'opening_code') (enforced)
+        -- 147 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[18/20] project_planset_pages
+        source 14 row(s) -> target holds 0
+        dedup on ('planset_id', 'page_number') (enforced)
+        -- 14 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[19/20] schedule_assignment_members
+        source 1 row(s) -> target holds 0
+        dedup on ('assignment_id', 'profile_id') (enforced)
+        -- 1 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+[20/20] trip_crew
+        source 1 row(s) -> target holds 0
+        dedup on ('trip_id', 'profile_id') (enforced)
+        -- 1 row(s) to move. No row-level export was
+        -- supplied for this table, so the statements cannot be written out.
+        -- Re-run with a full backup JSON for the source to see them.
+
+------------------------------------------------------------------------------
+PHASE 3 — deferred foreign keys
+------------------------------------------------------------------------------
+  -- window_types.golden_install_event_id: nothing to backfill (no source row sets it).
+
+------------------------------------------------------------------------------
+PHASE 4 — pick one winner (never merged)
+------------------------------------------------------------------------------
+  window_id_counters: source=0 target=5
+      A per-type sequence high-water mark. Summing or unioning two projects' counters issues duplicate window ids. Recompute as max(last_seq) per type across both, after windows are merged.
+  supabase_migrations.schema_migrations: source=- target=-
+      Bookkeeping, not data. Take the target's history; never union it, or `supabase db push` sees remote-only versions with no local file.
+  vault_config: source=1 target=0
+      Holds a single PIN hash. Two projects mean two PINs; a human picks one.
+  window_id_counters recompute, to run after windows are merged:
+    select wt.id as window_type_id,
+           max(coalesce(substring(w.window_id from '[0-9]+$')::int, 0)) as last_seq
+      from public.window_types wt
+      left join public.windows w on w.window_type_id = wt.id
+     group by wt.id;
+    -- compare against window_id_counters.last_seq; the counter must be >= this.
+
+------------------------------------------------------------------------------
+PHASE 5 — verification
+------------------------------------------------------------------------------
+  -- Expected upper bound after the merge: 430 + 374 = 804 rows, minus one row for every source row that deduped onto an existing target row.
+  
+  -- Nothing lost: every table's count must be >= the pre-merge target count.
+  select relname, n_live_tup from pg_stat_user_tables where schemaname='public' order by relname;
+  
+  -- Exact counts, because n_live_tup is an estimate:
+  select t.table_name,
+         (xpath('/row/c/text()', query_to_xml(
+           format('select count(*) as c from %I.%I', t.table_schema, t.table_name),
+           false, true, '')))[1]::text::bigint as rows
+    from information_schema.tables t
+   where t.table_schema='public' and t.table_type='BASE TABLE'
+   order by 1;
+  
+  -- No duplicates created on any natural key. Every one of these must
+  -- return zero rows.
+  select 'access_requests' as t, email, count(*) from public.access_requests
+    group by email having count(*) > 1;
+  select 'cost_codes' as t, code, count(*) from public.cost_codes
+    group by code having count(*) > 1;
+  select 'installer_clearance' as t, installer_id, window_type_id, count(*) from public.installer_clearance
+    group by installer_id, window_type_id having count(*) > 1;
+  select 'knowledge_chunks' as t, doc_id, chunk_index, count(*) from public.knowledge_chunks
+    group by doc_id, chunk_index having count(*) > 1;
+  select 'knowledge_docs' as t, source, path, count(*) from public.knowledge_docs
+    group by source, path having count(*) > 1;
+  select 'learn_priority_terms' as t, term_id, count(*) from public.learn_priority_terms
+    group by term_id having count(*) > 1;
+  select 'learn_progress' as t, profile_id, term_id, count(*) from public.learn_progress
+    group by profile_id, term_id having count(*) > 1;
+  select 'locations' as t, zone, rack, slot, count(*) from public.locations
+    group by zone, rack, slot having count(*) > 1;
+  select 'profiles' as t, id, count(*) from public.profiles
+    group by id having count(*) > 1;
+  select 'project_mark_elevation_views' as t, planset_id, mark_code, page_number, region_index, count(*) from public.project_mark_elevation_views
+    group by planset_id, mark_code, page_number, region_index having count(*) > 1;
+  select 'project_mark_specs' as t, project_id, mark_code, count(*) from public.project_mark_specs
+    group by project_id, mark_code having count(*) > 1;
+  select 'project_message_reads' as t, project_id, profile_id, count(*) from public.project_message_reads
+    group by project_id, profile_id having count(*) > 1;
+  select 'project_openings' as t, project_id, opening_code, count(*) from public.project_openings
+    group by project_id, opening_code having count(*) > 1;
+  select 'project_planset_pages' as t, planset_id, page_number, count(*) from public.project_planset_pages
+    group by planset_id, page_number having count(*) > 1;
+  select 'project_plansets' as t, project_id, storage_path, count(*) from public.project_plansets
+    group by project_id, storage_path having count(*) > 1;
+  select 'project_spec_discrepancies' as t, project_id, mark_code, kind, count(*) from public.project_spec_discrepancies
+    group by project_id, mark_code, kind having count(*) > 1;
+  select 'project_windows' as t, project_id, window_type_id, count(*) from public.project_windows
+    group by project_id, window_type_id having count(*) > 1;
+  select 'projects' as t, job_code, count(*) from public.projects
+    group by job_code having count(*) > 1;
+  select 'push_subscriptions' as t, endpoint, count(*) from public.push_subscriptions
+    group by endpoint having count(*) > 1;
+  select 'qc_checks' as t, project_opening_id, count(*) from public.qc_checks
+    group by project_opening_id having count(*) > 1;
+  select 'safety_acks' as t, talk_id, profile_id, count(*) from public.safety_acks
+    group by talk_id, profile_id having count(*) > 1;
+  select 'safety_talks' as t, talk_date, title, count(*) from public.safety_talks
+    group by talk_date, title having count(*) > 1;
+  select 'schedule_assignment_members' as t, assignment_id, profile_id, count(*) from public.schedule_assignment_members
+    group by assignment_id, profile_id having count(*) > 1;
+  select 'supplies' as t, name, count(*) from public.supplies
+    group by name having count(*) > 1;
+  select 'toolbox_completions' as t, profile_id, talk_id, count(*) from public.toolbox_completions
+    group by profile_id, talk_id having count(*) > 1;
+  select 'trip_attachments' as t, trip_id, storage_path, count(*) from public.trip_attachments
+    group by trip_id, storage_path having count(*) > 1;
+  select 'trip_crew' as t, trip_id, profile_id, count(*) from public.trip_crew
+    group by trip_id, profile_id having count(*) > 1;
+  select 'trips' as t, name, start_date, count(*) from public.trips
+    group by name, start_date having count(*) > 1;
+  select 'vehicle_devices' as t, provider, provider_device_id, count(*) from public.vehicle_devices
+    group by provider, provider_device_id having count(*) > 1;
+  select 'vehicle_financials' as t, vehicle_id, count(*) from public.vehicle_financials
+    group by vehicle_id having count(*) > 1;
+  select 'vehicle_locations_latest' as t, vehicle_id, count(*) from public.vehicle_locations_latest
+    group by vehicle_id having count(*) > 1;
+  select 'vehicle_service_schedules' as t, vehicle_id, task, count(*) from public.vehicle_service_schedules
+    group by vehicle_id, task having count(*) > 1;
+  select 'vehicles' as t, vin, count(*) from public.vehicles
+    group by vin having count(*) > 1;
+  select 'window_id_counters' as t, window_type_id, count(*) from public.window_id_counters
+    group by window_type_id having count(*) > 1;
+  select 'window_types' as t, type_code, count(*) from public.window_types
+    group by type_code having count(*) > 1;
+  select 'windows' as t, window_id, count(*) from public.windows
+    group by window_id having count(*) > 1;
+  
+  -- No orphaned foreign keys. Every one of these must return zero rows.
+  select 'access_requests.decided_by' as fk, count(*) from public.access_requests c
+    left join public.profiles p on p.id = c.decided_by
+   where c.decided_by is not null and p.id is null;
+  select 'attachments.window_id' as fk, count(*) from public.attachments c
+    left join public.windows p on p.id = c.window_id
+   where c.window_id is not null and p.id is null;
+  select 'attachments.install_event_id' as fk, count(*) from public.attachments c
+    left join public.install_events p on p.id = c.install_event_id
+   where c.install_event_id is not null and p.id is null;
+  select 'attachments.service_case_id' as fk, count(*) from public.attachments c
+    left join public.service_cases p on p.id = c.service_case_id
+   where c.service_case_id is not null and p.id is null;
+  select 'attachments.project_id' as fk, count(*) from public.attachments c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'change_orders.project_id' as fk, count(*) from public.change_orders c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'cycle_counts.location_id' as fk, count(*) from public.cycle_counts c
+    left join public.locations p on p.id = c.location_id
+   where c.location_id is not null and p.id is null;
+  select 'flights.trip_id' as fk, count(*) from public.flights c
+    left join public.trips p on p.id = c.trip_id
+   where c.trip_id is not null and p.id is null;
+  select 'flights.profile_id' as fk, count(*) from public.flights c
+    left join public.profiles p on p.id = c.profile_id
+   where c.profile_id is not null and p.id is null;
+  select 'ground_transport.trip_id' as fk, count(*) from public.ground_transport c
+    left join public.trips p on p.id = c.trip_id
+   where c.trip_id is not null and p.id is null;
+  select 'incidents.profile_id' as fk, count(*) from public.incidents c
+    left join public.profiles p on p.id = c.profile_id
+   where c.profile_id is not null and p.id is null;
+  select 'incidents.project_id' as fk, count(*) from public.incidents c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'install_events.project_opening_id' as fk, count(*) from public.install_events c
+    left join public.project_openings p on p.id = c.project_opening_id
+   where c.project_opening_id is not null and p.id is null;
+  select 'install_events.window_id' as fk, count(*) from public.install_events c
+    left join public.windows p on p.id = c.window_id
+   where c.window_id is not null and p.id is null;
+  select 'install_events.window_type_id' as fk, count(*) from public.install_events c
+    left join public.window_types p on p.id = c.window_type_id
+   where c.window_type_id is not null and p.id is null;
+  select 'install_events.installer_id' as fk, count(*) from public.install_events c
+    left join public.profiles p on p.id = c.installer_id
+   where c.installer_id is not null and p.id is null;
+  select 'installer_clearance.installer_id' as fk, count(*) from public.installer_clearance c
+    left join public.profiles p on p.id = c.installer_id
+   where c.installer_id is not null and p.id is null;
+  select 'installer_clearance.window_type_id' as fk, count(*) from public.installer_clearance c
+    left join public.window_types p on p.id = c.window_type_id
+   where c.window_type_id is not null and p.id is null;
+  select 'installer_clearance.cleared_by' as fk, count(*) from public.installer_clearance c
+    left join public.profiles p on p.id = c.cleared_by
+   where c.cleared_by is not null and p.id is null;
+  select 'issues.project_id' as fk, count(*) from public.issues c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'issues.opening_id' as fk, count(*) from public.issues c
+    left join public.project_openings p on p.id = c.opening_id
+   where c.opening_id is not null and p.id is null;
+  select 'issues.created_by' as fk, count(*) from public.issues c
+    left join public.profiles p on p.id = c.created_by
+   where c.created_by is not null and p.id is null;
+  select 'issues.resolved_by' as fk, count(*) from public.issues c
+    left join public.profiles p on p.id = c.resolved_by
+   where c.resolved_by is not null and p.id is null;
+  select 'issues.window_id' as fk, count(*) from public.issues c
+    left join public.windows p on p.id = c.window_id
+   where c.window_id is not null and p.id is null;
+  select 'issues.assigned_to' as fk, count(*) from public.issues c
+    left join public.profiles p on p.id = c.assigned_to
+   where c.assigned_to is not null and p.id is null;
+  select 'issues.fault_by' as fk, count(*) from public.issues c
+    left join public.profiles p on p.id = c.fault_by
+   where c.fault_by is not null and p.id is null;
+  select 'job_costs.project_id' as fk, count(*) from public.job_costs c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'job_costs.created_by' as fk, count(*) from public.job_costs c
+    left join public.profiles p on p.id = c.created_by
+   where c.created_by is not null and p.id is null;
+  select 'job_notes.project_id' as fk, count(*) from public.job_notes c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'job_notes.author_id' as fk, count(*) from public.job_notes c
+    left join public.profiles p on p.id = c.author_id
+   where c.author_id is not null and p.id is null;
+  select 'knowledge_chunks.doc_id' as fk, count(*) from public.knowledge_chunks c
+    left join public.knowledge_docs p on p.id = c.doc_id
+   where c.doc_id is not null and p.id is null;
+  select 'knowledge_docs.created_by' as fk, count(*) from public.knowledge_docs c
+    left join public.profiles p on p.id = c.created_by
+   where c.created_by is not null and p.id is null;
+  select 'learn_progress.profile_id' as fk, count(*) from public.learn_progress c
+    left join public.profiles p on p.id = c.profile_id
+   where c.profile_id is not null and p.id is null;
+  select 'lodging.trip_id' as fk, count(*) from public.lodging c
+    left join public.trips p on p.id = c.trip_id
+   where c.trip_id is not null and p.id is null;
+  select 'movements.window_id' as fk, count(*) from public.movements c
+    left join public.windows p on p.id = c.window_id
+   where c.window_id is not null and p.id is null;
+  select 'movements.from_location_id' as fk, count(*) from public.movements c
+    left join public.locations p on p.id = c.from_location_id
+   where c.from_location_id is not null and p.id is null;
+  select 'movements.to_location_id' as fk, count(*) from public.movements c
+    left join public.locations p on p.id = c.to_location_id
+   where c.to_location_id is not null and p.id is null;
+  select 'movements.project_id' as fk, count(*) from public.movements c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'points_ledger.profile_id' as fk, count(*) from public.points_ledger c
+    left join public.profiles p on p.id = c.profile_id
+   where c.profile_id is not null and p.id is null;
+  select 'procedures.trip_id' as fk, count(*) from public.procedures c
+    left join public.trips p on p.id = c.trip_id
+   where c.trip_id is not null and p.id is null;
+  select 'project_mark_elevation_views.project_id' as fk, count(*) from public.project_mark_elevation_views c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'project_mark_elevation_views.planset_id' as fk, count(*) from public.project_mark_elevation_views c
+    left join public.project_plansets p on p.id = c.planset_id
+   where c.planset_id is not null and p.id is null;
+  select 'project_mark_specs.project_id' as fk, count(*) from public.project_mark_specs c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'project_mark_specs.planset_id' as fk, count(*) from public.project_mark_specs c
+    left join public.project_plansets p on p.id = c.planset_id
+   where c.planset_id is not null and p.id is null;
+  select 'project_message_reads.project_id' as fk, count(*) from public.project_message_reads c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'project_message_reads.profile_id' as fk, count(*) from public.project_message_reads c
+    left join public.profiles p on p.id = c.profile_id
+   where c.profile_id is not null and p.id is null;
+  select 'project_messages.project_id' as fk, count(*) from public.project_messages c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'project_messages.author_id' as fk, count(*) from public.project_messages c
+    left join public.profiles p on p.id = c.author_id
+   where c.author_id is not null and p.id is null;
+  select 'project_openings.project_id' as fk, count(*) from public.project_openings c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'project_openings.planset_id' as fk, count(*) from public.project_openings c
+    left join public.project_plansets p on p.id = c.planset_id
+   where c.planset_id is not null and p.id is null;
+  select 'project_openings.window_type_id' as fk, count(*) from public.project_openings c
+    left join public.window_types p on p.id = c.window_type_id
+   where c.window_type_id is not null and p.id is null;
+  select 'project_openings.assigned_window_id' as fk, count(*) from public.project_openings c
+    left join public.windows p on p.id = c.assigned_window_id
+   where c.assigned_window_id is not null and p.id is null;
+  select 'project_openings.assigned_to' as fk, count(*) from public.project_openings c
+    left join public.profiles p on p.id = c.assigned_to
+   where c.assigned_to is not null and p.id is null;
+  select 'project_plan_outlines.project_id' as fk, count(*) from public.project_plan_outlines c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'project_plan_outlines.planset_id' as fk, count(*) from public.project_plan_outlines c
+    left join public.project_plansets p on p.id = c.planset_id
+   where c.planset_id is not null and p.id is null;
+  select 'project_planset_pages.planset_id' as fk, count(*) from public.project_planset_pages c
+    left join public.project_plansets p on p.id = c.planset_id
+   where c.planset_id is not null and p.id is null;
+  select 'project_plansets.project_id' as fk, count(*) from public.project_plansets c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'project_spec_discrepancies.project_id' as fk, count(*) from public.project_spec_discrepancies c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'project_spec_discrepancies.acknowledged_by' as fk, count(*) from public.project_spec_discrepancies c
+    left join public.profiles p on p.id = c.acknowledged_by
+   where c.acknowledged_by is not null and p.id is null;
+  select 'project_spec_discrepancies.issue_id' as fk, count(*) from public.project_spec_discrepancies c
+    left join public.issues p on p.id = c.issue_id
+   where c.issue_id is not null and p.id is null;
+  select 'project_windows.project_id' as fk, count(*) from public.project_windows c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'project_windows.window_type_id' as fk, count(*) from public.project_windows c
+    left join public.window_types p on p.id = c.window_type_id
+   where c.window_type_id is not null and p.id is null;
+  select 'projects.green_light_by' as fk, count(*) from public.projects c
+    left join public.profiles p on p.id = c.green_light_by
+   where c.green_light_by is not null and p.id is null;
+  select 'push_subscriptions.profile_id' as fk, count(*) from public.push_subscriptions c
+    left join public.profiles p on p.id = c.profile_id
+   where c.profile_id is not null and p.id is null;
+  select 'qc_checks.project_opening_id' as fk, count(*) from public.qc_checks c
+    left join public.project_openings p on p.id = c.project_opening_id
+   where c.project_opening_id is not null and p.id is null;
+  select 'safety_acks.talk_id' as fk, count(*) from public.safety_acks c
+    left join public.safety_talks p on p.id = c.talk_id
+   where c.talk_id is not null and p.id is null;
+  select 'safety_acks.profile_id' as fk, count(*) from public.safety_acks c
+    left join public.profiles p on p.id = c.profile_id
+   where c.profile_id is not null and p.id is null;
+  select 'schedule_assignment_members.assignment_id' as fk, count(*) from public.schedule_assignment_members c
+    left join public.schedule_assignments p on p.id = c.assignment_id
+   where c.assignment_id is not null and p.id is null;
+  select 'schedule_assignment_members.profile_id' as fk, count(*) from public.schedule_assignment_members c
+    left join public.profiles p on p.id = c.profile_id
+   where c.profile_id is not null and p.id is null;
+  select 'schedule_assignments.project_id' as fk, count(*) from public.schedule_assignments c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'schedule_assignments.created_by' as fk, count(*) from public.schedule_assignments c
+    left join public.profiles p on p.id = c.created_by
+   where c.created_by is not null and p.id is null;
+  select 'schedule_events.actor' as fk, count(*) from public.schedule_events c
+    left join public.profiles p on p.id = c.actor
+   where c.actor is not null and p.id is null;
+  select 'service_cases.window_id' as fk, count(*) from public.service_cases c
+    left join public.windows p on p.id = c.window_id
+   where c.window_id is not null and p.id is null;
+  select 'service_cases.install_event_id' as fk, count(*) from public.service_cases c
+    left join public.install_events p on p.id = c.install_event_id
+   where c.install_event_id is not null and p.id is null;
+  select 'service_cases.project_id' as fk, count(*) from public.service_cases c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'service_cases.opening_id' as fk, count(*) from public.service_cases c
+    left join public.project_openings p on p.id = c.opening_id
+   where c.opening_id is not null and p.id is null;
+  select 'service_cases.window_type_id' as fk, count(*) from public.service_cases c
+    left join public.window_types p on p.id = c.window_type_id
+   where c.window_type_id is not null and p.id is null;
+  select 'service_cases.installer_id' as fk, count(*) from public.service_cases c
+    left join public.profiles p on p.id = c.installer_id
+   where c.installer_id is not null and p.id is null;
+  select 'service_cases.reported_by' as fk, count(*) from public.service_cases c
+    left join public.profiles p on p.id = c.reported_by
+   where c.reported_by is not null and p.id is null;
+  select 'service_cases.resolved_by' as fk, count(*) from public.service_cases c
+    left join public.profiles p on p.id = c.resolved_by
+   where c.resolved_by is not null and p.id is null;
+  select 'supply_orders.project_id' as fk, count(*) from public.supply_orders c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'supply_orders.supply_id' as fk, count(*) from public.supply_orders c
+    left join public.supplies p on p.id = c.supply_id
+   where c.supply_id is not null and p.id is null;
+  select 'task_sessions.profile_id' as fk, count(*) from public.task_sessions c
+    left join public.profiles p on p.id = c.profile_id
+   where c.profile_id is not null and p.id is null;
+  select 'task_sessions.opening_id' as fk, count(*) from public.task_sessions c
+    left join public.project_openings p on p.id = c.opening_id
+   where c.opening_id is not null and p.id is null;
+  select 'task_sessions.project_id' as fk, count(*) from public.task_sessions c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'time_shifts.profile_id' as fk, count(*) from public.time_shifts c
+    left join public.profiles p on p.id = c.profile_id
+   where c.profile_id is not null and p.id is null;
+  select 'time_shifts.project_id' as fk, count(*) from public.time_shifts c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'time_shifts.cost_code_id' as fk, count(*) from public.time_shifts c
+    left join public.cost_codes p on p.id = c.cost_code_id
+   where c.cost_code_id is not null and p.id is null;
+  select 'time_shifts.approved_by' as fk, count(*) from public.time_shifts c
+    left join public.profiles p on p.id = c.approved_by
+   where c.approved_by is not null and p.id is null;
+  select 'time_shifts.edited_by' as fk, count(*) from public.time_shifts c
+    left join public.profiles p on p.id = c.edited_by
+   where c.edited_by is not null and p.id is null;
+  select 'toolbox_completions.talk_id' as fk, count(*) from public.toolbox_completions c
+    left join public.safety_talks p on p.id = c.talk_id
+   where c.talk_id is not null and p.id is null;
+  select 'toolbox_completions.profile_id' as fk, count(*) from public.toolbox_completions c
+    left join public.profiles p on p.id = c.profile_id
+   where c.profile_id is not null and p.id is null;
+  select 'tools.holder_id' as fk, count(*) from public.tools c
+    left join public.profiles p on p.id = c.holder_id
+   where c.holder_id is not null and p.id is null;
+  select 'trip_attachments.trip_id' as fk, count(*) from public.trip_attachments c
+    left join public.trips p on p.id = c.trip_id
+   where c.trip_id is not null and p.id is null;
+  select 'trip_attachments.flight_id' as fk, count(*) from public.trip_attachments c
+    left join public.flights p on p.id = c.flight_id
+   where c.flight_id is not null and p.id is null;
+  select 'trip_attachments.lodging_id' as fk, count(*) from public.trip_attachments c
+    left join public.lodging p on p.id = c.lodging_id
+   where c.lodging_id is not null and p.id is null;
+  select 'trip_attachments.created_by' as fk, count(*) from public.trip_attachments c
+    left join public.profiles p on p.id = c.created_by
+   where c.created_by is not null and p.id is null;
+  select 'trip_contacts.trip_id' as fk, count(*) from public.trip_contacts c
+    left join public.trips p on p.id = c.trip_id
+   where c.trip_id is not null and p.id is null;
+  select 'trip_crew.trip_id' as fk, count(*) from public.trip_crew c
+    left join public.trips p on p.id = c.trip_id
+   where c.trip_id is not null and p.id is null;
+  select 'trip_crew.profile_id' as fk, count(*) from public.trip_crew c
+    left join public.profiles p on p.id = c.profile_id
+   where c.profile_id is not null and p.id is null;
+  select 'trips.project_id' as fk, count(*) from public.trips c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'trips.created_by' as fk, count(*) from public.trips c
+    left join public.profiles p on p.id = c.created_by
+   where c.created_by is not null and p.id is null;
+  select 'vault_config.updated_by' as fk, count(*) from public.vault_config c
+    left join public.profiles p on p.id = c.updated_by
+   where c.updated_by is not null and p.id is null;
+  select 'vehicle_devices.vehicle_id' as fk, count(*) from public.vehicle_devices c
+    left join public.vehicles p on p.id = c.vehicle_id
+   where c.vehicle_id is not null and p.id is null;
+  select 'vehicle_drive_sessions.vehicle_id' as fk, count(*) from public.vehicle_drive_sessions c
+    left join public.vehicles p on p.id = c.vehicle_id
+   where c.vehicle_id is not null and p.id is null;
+  select 'vehicle_drive_sessions.driver_id' as fk, count(*) from public.vehicle_drive_sessions c
+    left join public.profiles p on p.id = c.driver_id
+   where c.driver_id is not null and p.id is null;
+  select 'vehicle_drivers.vehicle_id' as fk, count(*) from public.vehicle_drivers c
+    left join public.vehicles p on p.id = c.vehicle_id
+   where c.vehicle_id is not null and p.id is null;
+  select 'vehicle_drivers.profile_id' as fk, count(*) from public.vehicle_drivers c
+    left join public.profiles p on p.id = c.profile_id
+   where c.profile_id is not null and p.id is null;
+  select 'vehicle_financials.vehicle_id' as fk, count(*) from public.vehicle_financials c
+    left join public.vehicles p on p.id = c.vehicle_id
+   where c.vehicle_id is not null and p.id is null;
+  select 'vehicle_locations_history.vehicle_id' as fk, count(*) from public.vehicle_locations_history c
+    left join public.vehicles p on p.id = c.vehicle_id
+   where c.vehicle_id is not null and p.id is null;
+  select 'vehicle_locations_latest.vehicle_id' as fk, count(*) from public.vehicle_locations_latest c
+    left join public.vehicles p on p.id = c.vehicle_id
+   where c.vehicle_id is not null and p.id is null;
+  select 'vehicle_project_assignments.vehicle_id' as fk, count(*) from public.vehicle_project_assignments c
+    left join public.vehicles p on p.id = c.vehicle_id
+   where c.vehicle_id is not null and p.id is null;
+  select 'vehicle_project_assignments.project_id' as fk, count(*) from public.vehicle_project_assignments c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'vehicle_project_assignments.assignment_id' as fk, count(*) from public.vehicle_project_assignments c
+    left join public.schedule_assignments p on p.id = c.assignment_id
+   where c.assignment_id is not null and p.id is null;
+  select 'vehicle_service_records.vehicle_id' as fk, count(*) from public.vehicle_service_records c
+    left join public.vehicles p on p.id = c.vehicle_id
+   where c.vehicle_id is not null and p.id is null;
+  select 'vehicle_service_schedules.vehicle_id' as fk, count(*) from public.vehicle_service_schedules c
+    left join public.vehicles p on p.id = c.vehicle_id
+   where c.vehicle_id is not null and p.id is null;
+  select 'vehicles.primary_driver_id' as fk, count(*) from public.vehicles c
+    left join public.profiles p on p.id = c.primary_driver_id
+   where c.primary_driver_id is not null and p.id is null;
+  select 'vehicles.created_by' as fk, count(*) from public.vehicles c
+    left join public.profiles p on p.id = c.created_by
+   where c.created_by is not null and p.id is null;
+  select 'window_id_counters.window_type_id' as fk, count(*) from public.window_id_counters c
+    left join public.window_types p on p.id = c.window_type_id
+   where c.window_type_id is not null and p.id is null;
+  select 'window_types.golden_install_event_id' as fk, count(*) from public.window_types c
+    left join public.install_events p on p.id = c.golden_install_event_id
+   where c.golden_install_event_id is not null and p.id is null;
+  select 'windows.window_type_id' as fk, count(*) from public.windows c
+    left join public.window_types p on p.id = c.window_type_id
+   where c.window_type_id is not null and p.id is null;
+  select 'windows.project_id' as fk, count(*) from public.windows c
+    left join public.projects p on p.id = c.project_id
+   where c.project_id is not null and p.id is null;
+  select 'windows.location_id' as fk, count(*) from public.windows c
+    left join public.locations p on p.id = c.location_id
+   where c.location_id is not null and p.id is null;
+
+------------------------------------------------------------------------------
+SERIAL COLLISION HAZARD
+------------------------------------------------------------------------------
+  locations.serial was backfilled as a generated series starting at SLOT-000001 and carries a UNIQUE index.
+  Both projects will hold the same strings meaning different physical things. Every merged
+  row must be re-serialised, above the target's current maximum. This dry run does NOT do that.
+  windows.serial was backfilled as a generated series starting at WIN-000001 and carries a UNIQUE index.
+  Both projects will hold the same strings meaning different physical things. Every merged
+  row must be re-serialised, above the target's current maximum. This dry run does NOT do that.
+
+------------------------------------------------------------------------------
+BLOCKERS — none found
+------------------------------------------------------------------------------
+
+==============================================================================
+END OF DRY RUN. Nothing was executed. --execute is not implemented.
+==============================================================================

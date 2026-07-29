@@ -109,12 +109,23 @@ order by table_name, ordinal_position
 SQL
 )
 
+# A `case when to_regclass(...) is null` guard does NOT protect a subquery that
+# names the relation directly: the planner resolves every relation reference
+# before any branch is evaluated, so the whole statement fails to parse on a
+# project that has never had a migration applied. Naming the relation inside a
+# string literal defers resolution to run time, where the CASE really does
+# short-circuit (query_to_xml is STABLE, so it is not constant-folded).
+# A brand-new project must inventory as "no history table", not as an error.
 Q_MIGRATIONS=$(cat <<'SQL'
 select
   case when to_regclass('supabase_migrations.schema_migrations') is null then null
-       else (select count(*) from supabase_migrations.schema_migrations) end as migration_count,
+       else (xpath('/row/c/text()', query_to_xml(
+              'select count(*) as c from supabase_migrations.schema_migrations',
+              false, true, '')))[1]::text::bigint end as migration_count,
   case when to_regclass('supabase_migrations.schema_migrations') is null then null
-       else (select max(version) from supabase_migrations.schema_migrations) end as latest_version
+       else (xpath('/row/v/text()', query_to_xml(
+              'select max(version) as v from supabase_migrations.schema_migrations',
+              false, true, '')))[1]::text end as latest_version
 SQL
 )
 
@@ -143,7 +154,16 @@ SQL
 
 if [[ ${#ONLY_REFS[@]} -gt 0 ]]; then
   printf '%s\n' "${ONLY_REFS[@]}" >"$work/refs.txt"
-  echo "[]" >"$work/projects.json"
+  # Still fetch the account's project list, for name/region/org/created_at only.
+  # Without it a --project run writes an inventory whose metadata is all null,
+  # which then silently overwrites a good full-run file with a worse one.
+  if ! api_get "projects" >"$work/projects.json" || ! python3 -c '
+import json,sys
+sys.exit(0 if isinstance(json.load(open(sys.argv[1])), list) else 1)
+' "$work/projects.json" 2>/dev/null; then
+    echo "[]" >"$work/projects.json"
+    echo "Could not list projects for metadata; continuing without it." >&2
+  fi
   echo "Inventorying ${#ONLY_REFS[@]} explicitly named project(s)." >&2
 else
   api_get "projects" >"$work/projects.json"

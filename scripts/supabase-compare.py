@@ -39,9 +39,24 @@ def _cell(state: str, count: int | None, width: int) -> str:
     return str(count).rjust(width)
 
 
+def is_uninitialised(inventory: dict[str, Any]) -> bool:
+    """True for a project whose public schema has never been created.
+
+    Such a project has no schema to disagree about, but comparing it table by
+    table makes every table in every other project read as MISSING — which
+    buries the real gaps under a wall of false ones and inverts the exit code.
+    It is reported on its own instead. Note this is specifically "zero tables",
+    not "zero rows": a project with empty tables has a schema and is compared
+    normally, because empty and missing are exactly the distinction this tool
+    exists to keep apart.
+    """
+    return not inventory.get("tables")
+
+
 def render(
     inventories: Sequence[dict[str, Any]],
     comparisons: Sequence[TableComparison],
+    uninitialised: Sequence[dict[str, Any]] = (),
 ) -> str:
     refs = [inv["project_ref"] for inv in inventories]
     width = max(11, max(len(r) for r in refs))
@@ -69,6 +84,21 @@ def render(
             f" · {len(inv.get('functions') or [])} functions"
         )
     add("")
+
+    if uninitialised:
+        add("NOT COMPARED — no public schema at all")
+        for inv in uninitialised:
+            auth = inv.get("auth") or {}
+            storage = inv.get("storage") or {}
+            add(
+                f"  {inv['project_ref']}  {inv.get('name') or '(unnamed)'}"
+                f"   0 tables · {auth.get('users') or 0} auth users"
+                f" · {storage.get('total_objects') or 0} storage objects"
+                f" · {len(inv.get('functions') or [])} functions"
+            )
+        add("  An empty project has nothing to merge and nothing to lose. Excluded from")
+        add("  the table comparison below so it does not report every table as MISSING.")
+        add("")
 
     # --- headline: the distinction that matters -----------------------------
     missing_with_data = [
@@ -220,15 +250,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             # on a file the user obviously meant to compare.
             inventories.append(inventory_from_backup(path))
 
-    if len(inventories) < 2:
-        p.error("need at least two inventories to compare")
+    uninitialised = [inv for inv in inventories if is_uninitialised(inv)]
+    comparable = [inv for inv in inventories if not is_uninitialised(inv)]
 
-    comparisons = compare_inventories(inventories)
+    if len(comparable) < 2:
+        if uninitialised and comparable:
+            print(render(comparable, [], uninitialised))
+            print("Only one project has a schema; there is nothing to compare it against.")
+            return 0
+        p.error("need at least two inventories with a public schema to compare")
+
+    comparisons = compare_inventories(comparable)
 
     if args.json:
-        print(json.dumps(to_json(inventories, comparisons), indent=2, sort_keys=True))
+        payload = to_json(comparable, comparisons)
+        payload["uninitialised"] = [
+            {"ref": inv["project_ref"], "name": inv.get("name")} for inv in uninitialised
+        ]
+        print(json.dumps(payload, indent=2, sort_keys=True))
     else:
-        print(render(inventories, comparisons))
+        print(render(comparable, comparisons, uninitialised))
 
     # Non-zero when a table holds data in one project and does not exist in
     # another: that is the case a human must resolve before any merge runs.
