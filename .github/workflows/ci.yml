@@ -49,6 +49,17 @@ jobs:
         shell: bash
         run: scripts/verify-functions.test.sh
 
+      # The failure notifier is the thing that tells a human when anything else
+      # here breaks, so it gets the same treatment. Stubs curl; posts nothing.
+      - name: Test scripts/slack-notify.sh
+        shell: bash
+        run: scripts/slack-notify.test.sh
+
+      # Stubs the Supabase CLI, so it needs no token and no project.
+      - name: Test scripts/verify-function-secrets.sh
+        shell: bash
+        run: scripts/verify-function-secrets.test.sh
+
   supabase-tooling:
     name: Supabase merge tooling
     runs-on: ubuntu-latest
@@ -66,6 +77,15 @@ jobs:
       - name: Test
         run: python3 scripts/test_supabase_merge.py
 
+      # The two checks added for the always-live pipeline. Both are stdlib-only
+      # and neither touches a database: schema_verify compares declared objects
+      # against a snapshot fixture, function_secrets reads the function sources.
+      - name: Test the schema drift check
+        run: python3 scripts/test_schema_verify.py
+
+      - name: Test the function-secret enumerator
+        run: python3 scripts/test_function_secrets.py
+
       # The dry run must stay runnable with no credentials. If it ever needs a
       # database to plan a merge, that is a bug.
       - name: Dry run against the committed backup
@@ -75,3 +95,19 @@ jobs:
             --target docs/backups/2026-07-29T1200Z-czprjcskmzzagdztqonm-full.json \
             >/dev/null 2>&1 && { echo "merging a project into itself should have been refused"; exit 1; } || true
           ! scripts/supabase-merge.sh --source a --target b --execute
+
+  # Deliberately push-only. A red PR build is already visible to whoever opened
+  # the PR, and posting every one of those into a channel read by non-technical
+  # people would train them to ignore it. A red build on master is different:
+  # that is master itself broken, and nobody is necessarily watching.
+  notify-failure:
+    name: Tell Slack if master broke
+    needs: [build-lint-test, verify-script, supabase-tooling]
+    if: failure() && github.event_name == 'push'
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      detail: >-
+        The build, the tests or the lint on master is failing, so the next
+        deploy may not be safe.
+    secrets: inherit

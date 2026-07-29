@@ -70,3 +70,19 @@ jobs:
           else
             echo "No vault changes."
           fi
+
+  # This is the job the whole failure-notification idea came from: it runs at
+  # 08:00 UTC with nobody watching, and it had been failing for about a week
+  # before anyone noticed. A nightly job with no alerting is a nightly job you
+  # will find out about late.
+  notify-failure:
+    name: Tell Slack if this broke
+    needs: sync
+    if: failure()
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      detail: >-
+        The Obsidian vault did not update overnight, so it is now behind the
+        database. Nothing users see is affected.
+    secrets: inherit

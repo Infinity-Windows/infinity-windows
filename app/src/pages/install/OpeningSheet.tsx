@@ -43,6 +43,7 @@ import {
   retryTranscriptions,
 } from "../../lib/install/queue";
 import { MEMO_TOPICS, isForemanPlus, type MemoTopics } from "../../lib/install/types";
+import { claimUnsavedWork } from "../../lib/pwa/unsavedWork";
 import { indexSpecsByMark, specForOpeningCode } from "../../lib/install/specs";
 import { SpecCard } from "../../components/install/SpecCard";
 import { MissingSpecNotice } from "../../components/install/MissingSpecNotice";
@@ -116,6 +117,32 @@ export function OpeningSheet() {
   const [flagText, setFlagText] = useState("");
   const [jobNoteText, setJobNoteText] = useState("");
   const [complicationText, setComplicationText] = useState("");
+
+  // Everything captured on this screen lives in the state above and NOWHERE
+  // else until submit hands it to the outbox, which is the point it becomes
+  // durable in IndexedDB. Photos and the voice memo are the worst case: they
+  // exist only as in-memory blobs, so a reload before submit loses them for
+  // good. Claiming here stops the PWA update flow from auto-reloading over an
+  // installer mid-opening; they get the "new version" banner instead and choose
+  // their own moment. See lib/pwa/updateCore.ts.
+  const hasCapture =
+    audioBlob !== null ||
+    photos.before !== null ||
+    photos.after !== null ||
+    video !== null ||
+    grade !== null ||
+    minutesTouched ||
+    conditionNote.trim() !== "" ||
+    flagText.trim() !== "" ||
+    jobNoteText.trim() !== "" ||
+    complicationText.trim() !== "" ||
+    roW.some((v) => v.trim() !== "") ||
+    roH.some((v) => v.trim() !== "");
+
+  useEffect(() => {
+    if (!hasCapture) return;
+    return claimUnsavedWork();
+  }, [hasCapture]);
 
   const refreshStatus = () => {
     pendingUploadCount().then(setPending).catch(() => {});
