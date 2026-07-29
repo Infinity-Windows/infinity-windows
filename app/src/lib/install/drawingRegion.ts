@@ -71,23 +71,20 @@ const RULE_LEVEL = 215;
 /** A straight ink run at least this long (fraction of the page) is structure. */
 const RUN_FRAC = 0.3;
 /**
- * How much of a row/column must be PALE printed line for it to be a boundary.
+ * An unbroken printed line this long (fraction of the page) crosses the whole
+ * sheet: it is the border, or the divider between two panels.
  *
- * The sheet's own furniture — the line above and below each spec table, the
- * divider between two panels — is printed in a light grey, and the drawings are
- * black. That difference does the work here. A third of the page is enough
- * because a table rule only spans the panel it belongs to: on pages where one
- * of the two panels in a row is empty, its rule covers 44% of the sheet and is
- * still a real boundary.
+ * Measured as one CONTINUOUS run rather than as a share of the row, which is
+ * what makes it safe. A wide slider's head rail and a table rule can put the
+ * same amount of ink in a line of the page, but only the sheet's own furniture
+ * runs from one side to the other without a break.
  */
-const PALE_RULE_FRAC = 0.35;
+const FULL_RUN = 0.6;
 /**
- * …and how much must be printed line of ANY shade, for the sheet border, which
- * is drawn black like the artwork. Four fifths of the page: nothing inside a
- * panel comes close, so the widest slider on the job can't be mistaken for the
- * edge of the sheet.
+ * …and this long crosses a single panel, which is as much as a spec table
+ * spans when the panel beside it is empty.
  */
-const SOLID_RULE_FRAC = 0.8;
+const PANEL_RUN = 0.3;
 /** How far apart the rungs of a spec table can be and still count as one table. */
 const LADDER_SPAN = 0.12;
 /** How many rungs make a ladder. */
@@ -219,32 +216,67 @@ export function stripLongRuns(mask: InkMask): InkMask {
  */
 export function pageRules(mask: InkMask): { rows: number[]; cols: number[] } {
   const { width: w, height: h, data } = mask;
+  const at = (x: number, y: number) => data[y * w + x];
+
+  const rowRun = new Float64Array(h);
   const rowPale = new Float64Array(h);
-  const rowAny = new Float64Array(h);
-  const colPale = new Float64Array(w);
-  const colAny = new Float64Array(w);
+  const rowInk = new Float64Array(h);
   for (let y = 0; y < h; y++) {
-    const row = y * w;
+    let run = 0;
     for (let x = 0; x < w; x++) {
-      const v = data[row + x];
-      if (v === PAPER) continue;
-      rowAny[y] += 1;
-      colAny[x] += 1;
-      if (v === RULE) {
-        rowPale[y] += 1;
-        colPale[x] += 1;
-      }
+      const v = at(x, y);
+      run = v === PAPER ? 0 : run + 1;
+      if (run > rowRun[y]) rowRun[y] = run;
+      if (v === RULE) rowPale[y] += 1;
+      else if (v === INK) rowInk[y] += 1;
     }
+    rowRun[y] /= w;
   }
-  const solidRows = ruleCenters(rowPale, rowAny, w, h, false);
-  const tableRows = ladders(ruleCenters(rowPale, rowAny, w, h, true), solidRows);
+
+  const colRun = new Float64Array(w);
+  for (let x = 0; x < w; x++) {
+    let run = 0;
+    for (let y = 0; y < h; y++) {
+      run = at(x, y) === PAPER ? 0 : run + 1;
+      if (run > colRun[x]) colRun[x] = run;
+    }
+    colRun[x] /= h;
+  }
+
+  const full = (run: Float64Array, n: number) =>
+    centres(run, n, (i) => run[i] >= FULL_RUN);
+  const solidRows = full(rowRun, h);
+  const tableRows = ladders(
+    centres(rowRun, h, (i) => rowRun[i] >= PANEL_RUN && rowPale[i] > rowInk[i]),
+    solidRows,
+  );
   return {
     rows: [...solidRows, ...tableRows].sort((a, b) => a - b),
-    // Columns take the solid test only. The pale test finds a window's mullions
-    // — it cannot tell a glazing bar from a panel divider — and cutting a cell
-    // down a mullion hands the crew a third of their window.
-    cols: ruleCenters(colPale, colAny, h, w, false),
+    // Columns take the full-length test alone, and want no help from the pale
+    // test: the divider between two panels runs the height of the sheet, while
+    // the longest line inside a panel is a window's own mullion at about a
+    // quarter of that. Nothing else on these pages sits in between, so this one
+    // test finds every divider and no glazing bars.
+    cols: full(colRun, w),
   };
+}
+
+function centres(
+  _run: Float64Array,
+  n: number,
+  isRule: (i: number) => boolean,
+): number[] {
+  const out: number[] = [];
+  let start = -1;
+  for (let i = 0; i <= n; i++) {
+    const rule = i < n && isRule(i);
+    if (rule && start < 0) start = i;
+    if (!rule && start >= 0) {
+      out.push((start + i) / 2 / n);
+      start = -1;
+    }
+  }
+  return out;
 }
 
 /**
