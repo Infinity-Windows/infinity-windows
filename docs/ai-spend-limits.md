@@ -95,7 +95,7 @@ ten, and all proceed. Measured on production, with an artificially widened
 window to make the race visible:
 
 ```
-NAIVE  limiter: fired=40 limit=10 allowed=29 denied=11    <- 2.9x overspend
+NAIVE  limiter: fired=40 limit=10 allowed=27 denied=13    <- 2.7x overspend
 ATOMIC limiter: fired=40 limit=10 allowed=10 denied=30    <- exact
 ```
 
@@ -106,6 +106,9 @@ And the real function, 30 genuinely concurrent connections against a limit of
 fired=30 allowed=10 denied=20 reasons={'user_daily': 20}
 ai_usage_days -> calls = 10        (30 attempts recorded in ai_usage_events)
 ```
+
+The naive number moves between runs — it is a race, which is the point. It has
+never landed on the limit. The atomic one has never landed anywhere else.
 
 Money is handled the same way but in two steps, because a call's real cost is
 not known until it returns:
@@ -122,6 +125,34 @@ not known until it returns:
 Costs are stored in **micro-dollars** (millionths), because synthesising tips
 for one window type costs $0.0009 and would round to zero in cents.
 
+## Free answers are free
+
+The most important property, and the one that is easiest to get wrong: **a
+question the company brain answers costs nobody a question from their daily 40,
+and never touches the budget.**
+
+That holds because of where the meter sits, not because of a check. `AskInfinity`
+asks in this order:
+
+1. Cached live job data — schedule, next window, my truck. No network, no model.
+2. The bundled company brain. Free, offline, and the answer path for most
+   questions.
+3. Only if both came up empty, and only for foreman and above, the paid
+   `ask` function.
+
+So a free answer never reaches the metered function at all. Inside that function
+the reservation is taken immediately before the first thing that can cost money
+and after everything that cannot — including the missing-key check, which now
+returns an empty answer rather than a 500, because a call that cannot spend must
+not be metered either. `app/src/lib/askDegrade.test.ts` pins the ordering with
+real installer questions.
+
+The question log (`ask_question_log`) is written once, by the client, at step 2 —
+before any decision about paying. A question refused by the cap is therefore
+logged exactly like any other, which is what makes the "questions our notes
+couldn't answer" screen honest. The edge function writes no telemetry of its own,
+so there is nothing to double-count.
+
 ## Degrading instead of failing
 
 An installer standing at an opening must never see an error because a budget
@@ -135,26 +166,24 @@ and a note:
            It resets in the morning." }
 ```
 
-An empty `answer` is already the client's signal to fall back to local
-retrieval, so this needs no coordination with the local-brain rebuild in
-`AskInfinity.tsx`. The note rides along and is shown quietly above the answer.
-None of the three notes say "error", none mention money to a crew member, and
-all of them tell the reader the answer they are about to get is real.
+An empty `answer` is already the client's signal to fall back to the company
+brain, so the refusal needs no special handling. The note rides along and is
+shown as one quiet line above the answer. None of the three notes say "error",
+none mention money to a crew member, and all of them tell the reader the answer
+they are about to get is real.
 
 Live, against production:
 
 ```
-Chris (installer) asks: "Do I caulk the bottom of the window? weep hole"
+Chris (installer) asks: "Do I caulk the bottom of the window?"
   verdict : {"reason":"role","allowed":false,"min_role":"foreman"}
   ask()   : HTTP 200 {"answer":"","limited":true,"limit_reason":"role"}
 
   Answered from the company brain. The AI assistant is for foremen and above
   — everything below comes from your company's own written notes.
 
-  Weep Hole (Frame & Materials): A small slotted opening in the sill or glazing
-  pocket that lets water drain out of the frame system. Weeps are part of the
-  engineered drainage path — blocking them with sealant is one of the most
-  common and most damaging field mistakes on commercial frames.
+  Install tip — Double-Hung 32x52 (32×52)
+  Caulk flanges left/right/top, never the bottom - the bottom has to drain.
 ```
 
 The batch functions do not degrade, they **skip** — returning `skipped: true`.

@@ -101,11 +101,16 @@ function hitText(hit: BrainHit): string {
   return `${hit.entry.title}\n${hit.entry.body}`;
 }
 
-function brainMessage(outcome: BrainOutcome): ChatMsg {
+function brainMessage(outcome: BrainOutcome, note?: string): ChatMsg {
+  // `note` is the one quiet line the server sends when it declined to pay for an
+  // AI answer — out of questions for today, or the company's monthly budget is
+  // used up. The answer below it is real either way, so the note goes above it
+  // rather than replacing it. See docs/ai-spend-limits.md.
+  const prefix = note ? `${note}\n\n` : "";
   if (outcome.kind === "answers") {
-    return { who: "infinity", text: hitText(outcome.hits[0]), hits: outcome.hits };
+    return { who: "infinity", text: prefix + hitText(outcome.hits[0]), hits: outcome.hits };
   }
-  return { who: "infinity", text: outcome.message };
+  return { who: "infinity", text: prefix + outcome.message };
 }
 
 export function AskInfinity() {
@@ -191,15 +196,17 @@ export function AskInfinity() {
       //    cloud AI is actually configured, offer what it can add. It is never
       //    a prerequisite for a correct answer and is skipped entirely with no
       //    key, offline, or for installers.
+      let limitNote: string | undefined;
       if (shouldUseLLM({ online, supabaseConfigured }) && isForemanPlus(profile?.role)) {
         try {
-          const { answer, sources } = await askInfinity(q, history);
+          const { answer, sources, note } = await askInfinity(q, history);
           if (answer) return { who: "infinity", text: answer, sources };
+          limitNote = note;
         } catch {
           // Cloud unavailable — the honest local message below stands.
         }
       }
-      return brainMessage(outcome);
+      return brainMessage(outcome, limitNote);
     };
 
     void run()
