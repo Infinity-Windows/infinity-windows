@@ -10,7 +10,25 @@
 set -euo pipefail
 
 : "${SUPABASE_ACCESS_TOKEN:?set SUPABASE_ACCESS_TOKEN to an sbp_ management token}"
-REF="${SUPABASE_PROJECT_REF:-jvsyhtarnvmdilsgksdi}"
+
+# No default project ref, deliberately. This used to fall back to a ref that was
+# NOT production, so an audit run without the variable set silently measured the
+# wrong database and reported production as clean while it was 31 tables short.
+# See docs/migration-drift-2026-07-29-production.md. Production is
+# czprjcskmzzagdztqonm (app/.env, .github/workflows/deploy-pages.yml).
+if [[ -z "${SUPABASE_PROJECT_REF:-}" ]]; then
+  cat >&2 <<'EOF'
+SUPABASE_PROJECT_REF is not set, and there is no default.
+
+Set it explicitly to the project you mean to query, e.g. for production:
+
+  SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm scripts/pgq.sh scripts/live_schema.sql
+
+Guessing here once produced an audit of the wrong database.
+EOF
+  exit 2
+fi
+REF="$SUPABASE_PROJECT_REF"
 
 sql_file="${1:-/dev/stdin}"
 sql="$(cat "$sql_file")"

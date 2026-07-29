@@ -59,6 +59,9 @@ def normalise_live(keys):
             out.add(f'table|{unqualify(p[1])}')
         elif kind == 'column':
             out.add(f'column|{p[1]}')
+            # Also record the declared type, so a migration that only WIDENS an
+            # existing column can be verified rather than silently skipped.
+            out.add(f'coltype|{p[1]}|{p[2]}')
         elif kind in ('index', 'trigger', 'enum'):
             out.add(f'{kind}|{p[1]}|{p[2]}')
         elif kind == 'constraint':
