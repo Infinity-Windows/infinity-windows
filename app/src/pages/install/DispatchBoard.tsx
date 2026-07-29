@@ -19,6 +19,10 @@ import {
   type DispatchCrew,
   type DispatchOpening,
 } from "../../lib/dispatch";
+import { OpeningDetailCard } from "../../components/install/OpeningDetailCard";
+import { OpeningRowButton } from "../../components/install/OpeningRowButton";
+import { installerColorMap } from "../../lib/install/mapDispatch";
+import { toggleExpandedOpening } from "../../lib/install/openingRowAction";
 import type { ProjectOpening } from "../../lib/install/types";
 import {
   compareIssues,
@@ -54,6 +58,9 @@ function toDispatchOpening(o: ProjectOpening): DispatchOpening {
 export function DispatchBoard({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
   const [message, setMessage] = useState<string | null>(null);
+  // Which row has its details open. One at a time: this is a working screen and
+  // a foreman assigning 42 openings should not have to close a trail of panels.
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
   const openings = useQuery({
     queryKey: ["openings", projectId],
@@ -133,6 +140,8 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
 
   const all = openings.data ?? [];
   const activeCrew = (crew.data ?? []).filter((c) => c.active);
+  // Same installer → same colour as the map pins and the map's detail panel.
+  const crewColors = installerColorMap(activeCrew.map((c) => c.id));
 
   const { byInstaller, unassigned, readinessBlocked, installedCount } = useMemo(() => {
     const byInstaller = new Map<string, ProjectOpening[]>();
@@ -201,28 +210,52 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
 
   const openingRow = (o: ProjectOpening) => {
     const r = openingReadiness(o);
+    const panelId = `dispatch-row-panel-${o.id}`;
+    const expanded = expandedRowId === o.id;
     return (
       <li key={o.id} className="dispatch-row find-row">
-        <div>
-          <strong>{o.opening_code}</strong>{" "}
-          <span className="muted">
-            {o.window_types?.type_code ?? "type?"}
-            {o.window_types?.difficulty_rating
-              ? ` · ${"★".repeat(o.window_types.outcome_difficulty ?? o.window_types.difficulty_rating)}`
-              : ""}
-          </span>
-          <div className="muted" style={{ fontSize: 12 }}>
-            {areaKey(o)} ·{" "}
-            <span
-              className={
-                r.status === "ready" ? "ok" : r.status === "blocked" ? "error" : "warn-text"
-              }
-            >
-              {o.work_started_at && o.status !== "installed" ? "in progress" : r.status}
+        <OpeningRowButton
+          openingCode={o.opening_code}
+          expanded={expanded}
+          panelId={panelId}
+          onToggle={() =>
+            setExpandedRowId((prev) => toggleExpandedOpening(prev, o.id))
+          }
+        >
+          <div>
+            <strong>{o.opening_code}</strong>{" "}
+            <span className="muted">
+              {o.window_types?.type_code ?? "type?"}
+              {o.window_types?.difficulty_rating
+                ? ` · ${"★".repeat(o.window_types.outcome_difficulty ?? o.window_types.difficulty_rating)}`
+                : ""}
             </span>
+            <div className="muted" style={{ fontSize: 12 }}>
+              {areaKey(o)} ·{" "}
+              <span
+                className={
+                  r.status === "ready" ? "ok" : r.status === "blocked" ? "error" : "warn-text"
+                }
+              >
+                {o.work_started_at && o.status !== "installed" ? "in progress" : r.status}
+              </span>
+            </div>
           </div>
-        </div>
+        </OpeningRowButton>
         <div style={{ marginLeft: "auto" }}>{assignPicker(o)}</div>
+        {expanded && (
+          <div className="opening-row-panel">
+            <OpeningDetailCard
+              projectId={projectId}
+              opening={o}
+              installerColor={
+                o.assignee ? crewColors.get(o.assignee.id) : undefined
+              }
+              onClose={() => setExpandedRowId(null)}
+              id={panelId}
+            />
+          </div>
+        )}
       </li>
     );
   };
@@ -318,6 +351,9 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
       )}
 
       <h2>Unassigned ({unassigned.length})</h2>
+      <p className="muted opening-list-hint">
+        Tap a window or door to see its details. The dropdown assigns it.
+      </p>
       <ul className="unit-list work-list">
         {unassigned.map(openingRow)}
         {unassigned.length === 0 && (
