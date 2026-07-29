@@ -189,19 +189,64 @@ else
   ok
 fi
 
-# A 200 whose answer is empty or absent is not an answer. Treating it as one
-# would make this check as blind as the ones it exists to backstop.
+# --- an empty answer is the modern missing-key signal ----------------------
+#
+# Since the AI spend limits landed, `ask` without a key returns 200 with an empty
+# answer rather than 500, so the client can fall back to the bundled brain. That
+# makes a completely unconfigured AI look almost identical to a working one from
+# outside, which is exactly why an empty answer must FAIL here.
+
 new_case "a 200 with an empty answer is not a pass"
 respond 200 '{"answer":"   "}'
 run
 assert_rc 1
-assert_has "returned an error instead of an answer"
+assert_first_line_has "has no AI key"
 
 new_case "a 200 with no answer field at all is not a pass"
 respond 200 '{"sources":[]}'
 run
 assert_rc 1
-assert_has "instead of an answer"
+assert_first_line_has "has no AI key"
+
+new_case "an empty answer explains why the app still looks like it works"
+respond 200 '{"answer":"","sources":[]}'
+run
+assert_rc 1
+assert_has "company brain"
+assert_has "looks like it is working"
+
+# --- a spend limit is not a failure ---------------------------------------
+#
+# The cap returns the SAME empty answer a missing key does. Confusing the two
+# would turn this red every time the company hit its AI budget, and green would
+# stop meaning anything.
+
+new_case "a spend limit is a warning, not a failure"
+respond 200 '{"answer":"","sources":[],"limited":true,"limit_reason":"daily_user_cap","note":"You have used your 40 questions for today."}'
+run
+assert_rc 2
+assert_has "spend limit stopped it"
+assert_has "nothing is broken"
+
+new_case "a spend limit repeats the note the function gave"
+respond 200 '{"answer":"","sources":[],"limited":true,"note":"You have used your 40 questions for today."}'
+run
+assert_rc 2
+assert_has "You have used your 40 questions for today."
+
+new_case "a spend limit is never read as a missing key"
+respond 200 '{"answer":"","limited":true,"note":"Monthly company cap reached."}'
+run
+assert_rc 2
+assert_lacks "has no AI key"
+assert_has "never used"
+
+# A limit is a settled answer for this run; retrying just burns time.
+new_case "a spend limit is not retried"
+respond 200 '{"answer":"","limited":true,"note":"cap"}'
+ATTEMPTS_OVERRIDE=3 run
+assert_rc 2
+assert_probes 1
 
 # Prose containing JSON-ish punctuation must not confuse the parse.
 new_case "an answer containing braces and quotes is still read correctly"
@@ -212,12 +257,14 @@ assert_has 'Use a {shim} and say "square"'
 
 # --- broken, and ours to fix: the key is not set ---------------------------
 
+# Older deployments (and extract-specs, which still throws) surface the missing
+# key as a 500 instead of an empty answer, so both shapes are handled.
 new_case "a missing key is red and says so in plain English"
 respond 500 '{"error":"Error: ANTHROPIC_API_KEY secret is not set"}'
 run
 assert_rc 1
-assert_first_line_has "Ask Infinity is not working"
-assert_first_line_has "API key has not been added"
+assert_first_line_has "Ask Infinity has no AI key"
+assert_first_line_has "never actually answered anything"
 assert_has "Deploy backend"
 
 new_case "a missing key does not lead with a variable name"
@@ -234,7 +281,7 @@ new_case "a missing key hands the cause to the workflow for Slack"
 respond 500 '{"error":"Error: ANTHROPIC_API_KEY secret is not set"}'
 run
 assert_rc 1
-assert_output_var "ask_smoke_headline=Ask Infinity is not working"
+assert_output_var "ask_smoke_headline=Ask Infinity has no AI key"
 
 # --- broken, and ours to fix: the key is REJECTED --------------------------
 #
@@ -249,7 +296,7 @@ run
 assert_rc 1
 assert_first_line_has "the AI provider rejected our API key"
 assert_has "wrong key, it was"
-assert_lacks "has not been added"
+assert_lacks "has no AI key"
 
 new_case "a rejected key explains that a digest check cannot see this"
 respond 500 '{"error":"Error: Anthropic chat failed: 401 invalid x-api-key"}'

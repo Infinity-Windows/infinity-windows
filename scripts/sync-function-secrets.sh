@@ -38,6 +38,10 @@
 # It is idempotent. Setting a secret to the value it already holds is a no-op as
 # far as the running functions are concerned, so this is safe on every merge.
 #
+# Surrounding whitespace is trimmed off every value before it is pushed, and the
+# trimming is reported. A newline picked up when pasting into the GitHub secrets
+# box travels with the value and makes an otherwise-correct key invalid.
+#
 # NO VALUE IS EVER PRINTED. Values are handed to the CLI through a private
 # temporary env file rather than on the command line, so they do not appear in
 # the process list either. The file is created with a 077 umask and removed on
@@ -96,6 +100,8 @@ fi
 present=()
 absent=()
 
+trimmed_names=()
+
 for var in $names; do
   # Indirect expansion: the value of the variable NAMED by $var.
   value="${!var:-}"
@@ -103,6 +109,29 @@ for var in $names; do
     absent+=("$var")
     continue
   fi
+
+  # Drop surrounding whitespace. A newline picked up when pasting into the GitHub
+  # secrets box travels with the value, and an API key with a trailing newline is
+  # rejected as invalid by the provider — so this is not cosmetic. Same reasoning,
+  # and the same say-it-out-loud rule, as readCredential() in
+  # scripts/lib/supabase-key.mjs: silently repairing it would hide a real mistake
+  # in the stored secret, and the next person to rotate it would repeat it.
+  trimmed="${value#"${value%%[![:space:]]*}"}"
+  trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+  if [ "$trimmed" != "$value" ]; then
+    trimmed_names+=("$var")
+    value="$trimmed"
+  fi
+
+  # Nothing but whitespace is not a value. Treated as absent rather than pushed,
+  # because writing it would replace a working secret with an empty one.
+  if [ -z "$value" ]; then
+    absent+=("$var")
+    continue
+  fi
+
+  # Write the trimmed value back, so the env file below uses it.
+  printf -v "$var" '%s' "$value"
 
   # A value containing a single quote or a newline cannot be written into the
   # env file below without reasoning about how the CLI's dotenv parser unescapes
@@ -172,6 +201,19 @@ printf '  pushed         %s\n' "${present[@]}"
 [ "${#absent[@]}" -gt 0 ] && printf '  not in GitHub  %s\n' "${absent[@]}"
 echo
 echo "${#present[@]} secret(s) pushed to $REF from the environment."
+
+# Said out loud rather than fixed quietly: the stored secret really does have
+# stray whitespace in it, and whoever rotates it next will paste it the same way.
+if [ "${#trimmed_names[@]}" -gt 0 ]; then
+  echo
+  echo "NOTE: ${#trimmed_names[@]} value(s) had spaces or a newline around them and"
+  echo "were trimmed before being pushed:"
+  printf '    %s\n' "${trimmed_names[@]}"
+  echo
+  echo "The pushed value is correct. The one stored in GitHub still has the stray"
+  echo "whitespace, almost certainly from pasting into the secrets box. Worth"
+  echo "re-saving it there so this stops being a thing that needs fixing."
+fi
 
 if [ "${#absent[@]}" -gt 0 ]; then
   echo

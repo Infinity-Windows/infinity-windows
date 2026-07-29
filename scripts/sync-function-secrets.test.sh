@@ -259,6 +259,45 @@ assert_has "Nothing was pushed"
 assert_not_called
 assert_lacks "it's-quoted"
 
+# --- stray whitespace from the GitHub secrets box --------------------------
+#
+# A newline picked up when pasting travels with the value and makes an
+# otherwise-correct key invalid. Same reasoning as readCredential() in
+# scripts/lib/supabase-key.mjs, and the same rule: trim it, but say so, because
+# the stored secret really is wrong and the next person will paste it the same way.
+
+new_case "a trailing newline is trimmed off before the value is pushed"
+run ANTHROPIC_API_KEY="sk-ant-fake
+"
+assert_rc 0
+assert_envfile_has "ANTHROPIC_API_KEY='sk-ant-fake'"
+
+new_case "surrounding spaces are trimmed too"
+run ANTHROPIC_API_KEY="   sk-ant-fake  "
+assert_rc 0
+assert_envfile_has "ANTHROPIC_API_KEY='sk-ant-fake'"
+
+new_case "trimming is reported rather than done silently"
+run ANTHROPIC_API_KEY="sk-ant-fake
+"
+assert_rc 0
+assert_has "had spaces or a newline around them"
+assert_has "ANTHROPIC_API_KEY"
+assert_has "re-saving it"
+
+new_case "a value that needed no trimming says nothing about trimming"
+run ANTHROPIC_API_KEY=sk-ant-fake
+assert_rc 0
+assert_lacks "were trimmed"
+
+# All whitespace is not a value. Pushing it would replace a working secret with
+# an empty one, which is the one way this script could break a live feature.
+new_case "a whitespace-only value is treated as absent, not pushed"
+run ANTHROPIC_API_KEY="   "
+assert_rc 0
+assert_has "not in GitHub  ANTHROPIC_API_KEY"
+assert_not_called
+
 # --- refusing to guess the project -----------------------------------------
 
 new_case "no project ref: refuses rather than guessing"
