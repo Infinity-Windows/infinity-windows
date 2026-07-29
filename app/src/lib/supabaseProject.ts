@@ -6,11 +6,28 @@
 // with nothing in the app to say so. This module is the pure core behind the
 // banner that makes that mismatch visible (see components/WrongProjectBanner).
 //
+// Which project counts as "the right one" is configurable via
+// `VITE_EXPECTED_SUPABASE_PROJECT_REF`, for the case where someone is knowingly
+// working against another project; unset, it stays the shared project.
+//
 // Browser-free on purpose: the URL comes in as a string so every branch
 // (matching, mismatched, unset, self-hosted, malformed) is unit-testable.
 
-/** The one shared project. `app/.env.example` pins the matching URL + anon key. */
-export const EXPECTED_PROJECT_REF = "czprjcskmzzagdztqonm";
+/** The project we expect unless someone deliberately overrides it. */
+export const DEFAULT_EXPECTED_PROJECT_REF = "czprjcskmzzagdztqonm";
+
+/**
+ * The project this app expects to be talking to. Defaults to the shared project
+ * that `app/.env.example` pins; `VITE_EXPECTED_SUPABASE_PROJECT_REF` overrides it
+ * for anyone deliberately working against a different project, so they can
+ * silence the banner from their own `.env` instead of editing code.
+ *
+ * This only moves the goalposts for the warning. Which project the app actually
+ * connects to is still `VITE_SUPABASE_URL`, and nothing here touches it.
+ */
+export const EXPECTED_PROJECT_REF = resolveExpectedRef(
+  import.meta.env.VITE_EXPECTED_SUPABASE_PROJECT_REF as string | undefined,
+);
 
 /** What the configured `VITE_SUPABASE_URL` turned out to be. */
 export type ProjectCheck =
@@ -38,6 +55,25 @@ export function parseProjectRef(url: string | undefined | null): string | null {
   }
   const match = /^([a-z0-9-]+)\.supabase\.(co|in)$/i.exec(host);
   return match ? match[1].toLowerCase() : null;
+}
+
+/**
+ * Normalise whatever `VITE_EXPECTED_SUPABASE_PROJECT_REF` was set to into a
+ * project ref. Blank, missing or unrecognisable values fall back to the default
+ * rather than disabling the guard — a fat-fingered env var must never quietly
+ * turn the "wrong database" warning off. A whole Supabase URL is accepted too,
+ * because that is what people paste.
+ */
+export function resolveExpectedRef(
+  raw: string | undefined | null,
+  fallback: string = DEFAULT_EXPECTED_PROJECT_REF,
+): string {
+  const value = raw?.trim();
+  if (!value) return fallback;
+  const fromUrl = parseProjectRef(value) ?? parseProjectRef(`https://${value}`);
+  if (fromUrl) return fromUrl;
+  const bare = value.toLowerCase();
+  return /^[a-z0-9-]+$/.test(bare) ? bare : fallback;
 }
 
 /**
