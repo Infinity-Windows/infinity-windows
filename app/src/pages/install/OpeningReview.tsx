@@ -8,11 +8,13 @@ import {
   addOpening,
   confirmOpenings,
   deleteOpening,
+  listMarkSpecs,
   listOpenings,
   updateOpening,
 } from "../../lib/install/api";
 import type { ProjectOpening } from "../../lib/install/types";
 import { openingMarkCode } from "../../lib/install/types";
+import { openingUnitKindResolver } from "../../lib/install/unitKind";
 import { describeMarkCount } from "../../lib/install/extract";
 import { formatApiError } from "../../lib/install/errors";
 
@@ -28,6 +30,11 @@ export function OpeningReview() {
   const openings = useQuery({
     queryKey: ["openings", projectId],
     queryFn: () => listOpenings(projectId),
+  });
+  const markSpecs = useQuery({
+    queryKey: ["markSpecs", projectId],
+    queryFn: () => listMarkSpecs(projectId),
+    enabled: !!projectId,
   });
 
   const refresh = () => {
@@ -72,10 +79,11 @@ export function OpeningReview() {
   const confirmed = (openings.data ?? []).filter((o) => o.confirmed);
 
   const markSummary = (() => {
+    const unitKind = openingUnitKindResolver(markSpecs.data ?? []);
     const map = new Map<string, { mark: string; count: number; door: boolean }>();
     for (const o of drafts) {
       const mark = openingMarkCode(o.opening_code);
-      const door = (o.window_types?.category ?? "").toLowerCase().includes("door");
+      const door = unitKind(o) === "door";
       const key = `${door ? "d" : "w"}:${mark}`;
       const cur = map.get(key);
       if (cur) cur.count += 1;

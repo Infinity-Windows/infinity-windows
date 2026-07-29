@@ -76,6 +76,46 @@ describe("planMarksFromOpenings", () => {
   });
 });
 
+describe("which marks are called doors", () => {
+  it("believes the spec description over the plans", () => {
+    // Black Desert #26: the plans file it as a window, the sheet calls it a
+    // French door. The map now says door, so this must too.
+    const r = reconcileSpecsWithPlans({
+      planMarks: [planMark("26", 1, false)],
+      specs: [
+        spec("26", {
+          style: "Thermal break Aluminum French Door (Low track)",
+          width_in: null,
+          height_in: null,
+        }),
+      ],
+    });
+    expect(markLabel(r.discrepancies[0])).toBe("#26 (door)");
+  });
+
+  it("believes the description the other way too", () => {
+    const r = reconcileSpecsWithPlans({
+      planMarks: [planMark("2", 1, true)],
+      specs: [
+        spec("2", {
+          style: "Thermal Break Aluminum Fixed Window",
+          width_in: null,
+          height_in: null,
+        }),
+      ],
+    });
+    expect(markLabel(r.discrepancies[0])).toBe("#2");
+  });
+
+  it("falls back to the plans for a mark with no spec to read", () => {
+    const r = reconcileSpecsWithPlans({
+      planMarks: [planMark("7", 1, true)],
+      specs: [],
+    });
+    expect(markLabel(r.discrepancies[0])).toBe("#7 (door)");
+  });
+});
+
 describe("a job where the two documents agree", () => {
   // Smith / PV Townhomes Bldg 14 as it stands in the database today: 24 marks
   // on the plans, 24 specs, every one of them complete. This must stay silent.
@@ -272,9 +312,12 @@ describe("both directions at once — the real Black Desert report", () => {
 
   it("reads as plain English a foreman could act on", () => {
     const r = reconcileSpecsWithPlans({ planMarks, specs });
+    // #25 reads "(door)" although no opening on the plans claims it: the
+    // supplier's own line calls it a French door, and that is the thing the
+    // foreman has to go and ask about.
     expect(describeReconciliation(r)).toBe(
       "2 marks on the plans have no spec sheet: #7 and #8. " +
-        "1 spec has no window on the plans: #25 — no size given either.",
+        "1 spec has no window on the plans: #25 (door) — no size given either.",
     );
   });
 

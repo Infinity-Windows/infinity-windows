@@ -34,6 +34,7 @@ import {
   type CoverageSpec,
 } from "./specCoverage";
 import { markBase } from "./extract";
+import { unitKindFromDescription } from "./unitKind";
 
 /**
  * The four ways the two documents can fail to agree.
@@ -237,11 +238,15 @@ export function reconcileSpecsWithPlans(input: {
     const plan = planByMark.get(mark);
     const spec = specByMark.get(mark);
     const ack = ackIndex.get(`${mark}::${kind}`);
+    // The supplier's own description first, exactly as the map reads it, so
+    // "#26 (door)" here and a door-coloured pin there are the same mark. The
+    // plans only answer for a mark with no spec to read.
+    const described = unitKindFromDescription(spec?.style);
     return {
       mark,
       kind,
       units: plan?.units ?? 0,
-      isDoor: Boolean(plan?.isDoor),
+      isDoor: described ? described === "door" : Boolean(plan?.isDoor),
       style: spec?.style?.trim() ? spec.style.trim() : null,
       hasSize: spec ? specHasSize(spec) : false,
       acknowledged: Boolean(ack),
