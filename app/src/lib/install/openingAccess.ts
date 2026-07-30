@@ -20,28 +20,42 @@ export const OPENING_CREATE_DENIED =
   "Only a foreman or above can add windows or doors to a job.";
 export const OPENING_DELETE_DENIED =
   "Only a foreman or above can remove a window or door from a job.";
+export const OPENING_RESTORE_DENIED =
+  "Only a foreman or above can put a window or door back on a job.";
+export const REMOVED_LIST_DENIED =
+  "Only a foreman or above can see what was removed from a job.";
 
 /**
- * Every foreman-only guard on this table opens the same way, so one detector
- * covers moving a mark, adding one and removing one — and whatever is guarded
- * next, without another round of plumbing.
- */
-const FOREMAN_ONLY = /^Only a foreman or above can /;
-
-/**
- * The plain sentence behind a foreman-only refusal, or null if this failure is
- * something else entirely.
+ * Every sentence the database raises at somebody holding a phone, as a shape.
  *
- * Matched on the message rather than the `42501` code alone, because Postgres
- * uses that code for every ordinary permission error — an RLS denial included —
- * and those say nothing a person can act on.
+ * Matched on the wording rather than the SQLSTATE, because Postgres reuses
+ * `42501` for every ordinary permission error — an RLS denial included — and
+ * those say nothing a person can act on. Anything matching here is rethrown as
+ * a bare Error so it reaches the crew on its own, without PostgREST's trailing
+ * `[42501]`; anything else is left alone for `formatApiError`.
+ *
+ * openingAccess.test.ts holds these against the migrations, both ways: every
+ * sentence here must exist in the SQL, and every sentence the SQL raises must
+ * match one of these. Adding a refusal to the database without teaching the app
+ * to read it fails the test rather than reaching a foreman as raw Postgres text.
+ */
+const CREW_SENTENCES = [
+  /^Only a foreman or above can /,
+  /^That window or door /,
+  /^There is already a #.+ on this job, /,
+  /^Use Remove or Put back /,
+];
+
+/**
+ * The plain sentence behind a deliberate database refusal, or null if this
+ * failure is something else entirely.
  */
 export function foremanOnlyRefusal(err: unknown): string | null {
   if (err == null || typeof err !== "object") return null;
   const message = (err as { message?: unknown }).message;
   if (typeof message !== "string") return null;
   const trimmed = message.trim();
-  return FOREMAN_ONLY.test(trimmed) ? trimmed : null;
+  return CREW_SENTENCES.some((re) => re.test(trimmed)) ? trimmed : null;
 }
 
 /** What a removal would take with it, as far as the review screen can see. */
@@ -57,9 +71,9 @@ export interface DeletableOpening {
 }
 
 /**
- * Everything recorded against an opening that a removal would destroy, worst
- * first. An installed opening leads, because deleting it cascades its install
- * history away and that is the one thing nobody can type back in.
+ * Everything recorded against an opening that goes into hiding with it, worst
+ * first. Install history leads: it is the one thing nobody could type back in,
+ * which is precisely why removal stopped destroying it.
  */
 function losses(opening: DeletableOpening, referencedElsewhere: boolean): string[] {
   const out: string[] = [];
@@ -91,10 +105,15 @@ function joinList(parts: string[]): string {
 /**
  * What the foreman is asked before an opening is removed.
  *
- * Deleting a duplicate the extract invented and deleting a window someone has
- * already installed are the same two taps, so the question has to say which one
- * this is. Naming the losses is the whole point — a bare "Are you sure?" is
- * what let this be dangerous.
+ * Removing a duplicate the extract invented and removing a window someone has
+ * already worked on are the same two taps, so the question has to say which one
+ * this is. Naming what goes with it is the whole point — a bare "Are you sure?"
+ * is what let this be dangerous.
+ *
+ * The last line used to read "It cannot be undone", which was true when this
+ * really did delete the row and cascade its install history away. It hides the
+ * mark now, so saying that would be a lie in the one place a foreman most needs
+ * to be told the truth: the moment before they tap yes.
  */
 export function describeOpeningDeletion(params: {
   opening: DeletableOpening;
@@ -105,9 +124,10 @@ export function describeOpeningDeletion(params: {
   const mark = `#${opening.opening_code}`;
   const job = params.jobLabel?.trim();
   const head = `Remove ${mark}${job ? ` from ${job}` : ""}?`;
+  const back = "You can put it back from Removed at the bottom of this screen.";
   const lost = losses(opening, referencedElsewhere);
   if (lost.length === 0) {
-    return `${head}\n\nNothing has been recorded against it yet, so this only removes the mark. It cannot be undone.`;
+    return `${head}\n\nNothing has been recorded against it yet, so this just takes the mark off the job. ${back}`;
   }
-  return `${head}\n\nThis also deletes ${joinList(lost)}. It cannot be undone.`;
+  return `${head}\n\nIt goes off the job along with ${joinList(lost)} — nothing is deleted. ${back}`;
 }

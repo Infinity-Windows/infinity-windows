@@ -2004,6 +2004,23 @@ button:disabled {
 
 .opening-code-input { font-weight: 700; }
 
+/* A removed mark reads as a note about something that is no longer on the job,
+   not as another row to work on. Its Put back sits at a thumb's height like
+   every other tap target. */
+.opening-review-row--removed {
+  opacity: 0.75;
+}
+
+.opening-review-row--removed .removed-mark {
+  font-weight: 700;
+  text-decoration: line-through;
+}
+
+.opening-review-row--removed .link {
+  align-self: flex-start;
+  min-height: 44px;
+}
+
 /* --- Unified project hub --- */
 
 /* A project has up to eight sections, which is more than fits across a phone.

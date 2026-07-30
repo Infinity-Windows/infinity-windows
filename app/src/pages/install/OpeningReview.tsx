@@ -7,10 +7,12 @@ import { SpecReviewSection } from "../../components/install/SpecReviewSection";
 import {
   addOpening,
   confirmOpenings,
-  deleteOpening,
   listMarkSpecs,
   listOpenings,
+  listRemovedOpenings,
   openingsReferencedElsewhere,
+  removeOpening,
+  restoreOpening,
   updateOpening,
 } from "../../lib/install/api";
 import { describeOpeningDeletion } from "../../lib/install/openingAccess";
@@ -39,9 +41,16 @@ export function OpeningReview() {
     enabled: !!projectId,
   });
 
+  const removed = useQuery({
+    queryKey: ["removedOpenings", projectId],
+    queryFn: () => listRemovedOpenings(projectId),
+    enabled: !!projectId,
+  });
+
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
     queryClient.invalidateQueries({ queryKey: ["projectWindows", projectId] });
+    queryClient.invalidateQueries({ queryKey: ["removedOpenings", projectId] });
   };
 
   const patch = useMutation({
@@ -52,16 +61,22 @@ export function OpeningReview() {
   });
 
   const remove = useMutation({
-    mutationFn: deleteOpening,
+    mutationFn: (id: string) => removeOpening(id),
     onSuccess: refresh,
     onError: (e) => setMessage(formatApiError(e)),
   });
 
-  // Removing an opening takes its install history with it (install_events
-  // cascades), along with any assignment, measurement, condition check or flag.
-  // Deleting a duplicate the extract invented and deleting a window someone has
-  // already worked on are the same two taps, so the question names which one
-  // this is before anything goes.
+  const putBack = useMutation({
+    mutationFn: restoreOpening,
+    onSuccess: refresh,
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+
+  // Removing an opening now HIDES it — its install history, assignment,
+  // measurements and flags go with it and all of it comes back from Removed
+  // below. The question still names what is going, because removing a
+  // duplicate the extract invented and removing a window someone has already
+  // worked on are the same two taps.
   const askThenRemove = async (o: ProjectOpening) => {
     setMessage(null);
     let referenced = false;
@@ -223,6 +238,40 @@ export function OpeningReview() {
       )}
 
       <SpecReviewSection projectId={projectId} />
+
+      {(removed.data ?? []).length > 0 && (
+        <>
+          <h2>Removed ({(removed.data ?? []).length})</h2>
+          <p className="muted">
+            Taken off the job, not deleted. Everything recorded against these —
+            install history, who was on them, measurements, checks and photos —
+            is still here and comes back with them.
+          </p>
+          <ul className="unit-list">
+            {(removed.data ?? []).map((r) => (
+              <li key={r.id} className="opening-review-row opening-review-row--removed">
+                <span className="removed-mark">#{r.opening_code}</span>
+                <span className="muted">
+                  {r.label ? `${r.label} — ` : ""}
+                  removed{r.removed_by_name ? ` by ${r.removed_by_name}` : ""}
+                  {r.removed_reason ? ` — “${r.removed_reason}”` : ""}
+                </span>
+                {r.code_taken ? (
+                  <span className="muted">#{r.opening_code} is in use again</span>
+                ) : (
+                  <button
+                    className="link"
+                    disabled={putBack.isPending}
+                    onClick={() => putBack.mutate(r.id)}
+                  >
+                    Put back
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
       <h2>Add opening</h2>
       <div className="manual-entry">
