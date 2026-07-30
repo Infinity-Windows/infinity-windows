@@ -188,11 +188,24 @@ export default defineConfig({
         // App shell + built assets. Do NOT cache Supabase API — TanStack owns
         // that offline read cache.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest,woff2}'],
-        // 404.html is a byte-copy of index.html for GitHub Pages (see
-        // spaFallbackPlugin). Precaching it would store the app shell twice for
-        // no gain — once a worker is running, its NavigationRoute already
-        // answers deep links from the precached index.html.
-        globIgnores: ['**/node_modules/**/*', '404.html'],
+        globIgnores: [
+          '**/node_modules/**/*',
+          // 404.html is a byte-copy of index.html for GitHub Pages (see
+          // spaFallbackPlugin). Precaching it would store the app shell twice
+          // for no gain — once a worker is running, its NavigationRoute already
+          // answers deep links from the precached index.html.
+          '404.html',
+          // The manifest must come from the network, for the same reason
+          // version.json does. It is read at "Add to Home Screen" time, and a
+          // precached copy would be answered by whichever worker is currently
+          // ACTIVE — which, because registerType is 'prompt', is the OLD one
+          // until the user accepts an update. A phone that installed the app
+          // back when start_url said "/" would be handed that same broken
+          // manifest again while re-installing to escape it, and the fix would
+          // look like it had not worked. Nothing is lost offline: you cannot
+          // install an app you cannot reach.
+          'manifest.webmanifest',
+        ],
         // The app-shell JS bundle is >2 MB, above workbox's default precache
         // ceiling. Raise it so the whole shell is precached — offline-first
         // (the outbox feature) depends on the shell loading with no signal.
