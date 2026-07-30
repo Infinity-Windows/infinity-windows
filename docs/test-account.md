@@ -137,7 +137,7 @@ and never move one inside a checkout.
 > Desert and Smith Residence, is **read-only** to it.
 
 This is not advice. Since migration
-`20260730190000_test_accounts_sandbox_only.sql` the database refuses it:
+`20260730220000_test_accounts_sandbox_only.sql` the database refuses it:
 
 - `public.sandbox_projects` lists the projects a test login may write. It holds
   exactly one row, the `ZZTEST` job. No client role can read or write that table

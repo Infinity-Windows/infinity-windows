@@ -6,7 +6,7 @@
 # real person on a real job. Three fixes in a row shipped that way.
 #
 # WHY IT IS SAFE TO HAVE ONE. Foreman is a powerful role: re-extraction is the
-# highest-consequence action in the app. Migration 20260730190000 confines any
+# highest-consequence action in the app. Migration 20260730220000 confines any
 # login flagged `is_test` to the jobs listed in `public.sandbox_projects`, which
 # is the ZZTEST sandbox and nothing else, at the database level — triggers on
 # every project-scoped table plus three restrictive storage policies. The script

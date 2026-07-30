@@ -5,7 +5,7 @@
  * person (see docs/test-account.md). Those accounts exist so a screen can be
  * opened and checked, and they are constrained everywhere else:
  * 20260730120000 keeps their work out of the company's numbers, and
- * 20260730190000 confines their writes to the sandbox job.
+ * 20260730220000 confines their writes to the sandbox job.
  *
  * The one thing that is not a database write, and so cannot be confined by a
  * trigger or a policy, is creating a login: that happens through an edge
