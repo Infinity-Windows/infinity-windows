@@ -47,7 +47,7 @@ type it created for the purpose, so a filter that failed could not reach a type
 the crew install. It deletes the event afterwards.
 
 WHY IT CANNOT TOUCH A REAL JOB. It used to be a rule in a document. Since
-20260730190000 it is the database: any profile flagged `is_test` may only write
+20260730220000 it is the database: any profile flagged `is_test` may only write
 rows belonging to a project listed in `public.sandbox_projects`, which is the
 `ZZTEST` job below and nothing else. Reading the real jobs is untouched — opening
 a real plan set is the reason this login exists.
@@ -99,7 +99,7 @@ steps = Steps()
 # jobs with real assignments and real field work on them. A test account that
 # clocks into one, or marks one of its openings installed, is editing the
 # company's record of a job it is being paid for. So anything this account is
-# asked to DO happens here instead, and since 20260730190000 the database
+# asked to DO happens here instead, and since 20260730220000 the database
 # refuses anything else. It can still READ the real jobs — every installer can,
 # and the plan screens are the whole reason this login exists.
 
@@ -125,7 +125,7 @@ def ensure_sandbox() -> tuple[str, str, str]:
         return "", "", ""
 
     # The one project a test login is allowed to write. Without this row the
-    # guard added by 20260730190000 refuses everything, including here.
+    # guard added by 20260730220000 refuses everything, including here.
     if not one(sb.svc("GET", f"/rest/v1/sandbox_projects?project_id=eq.{proj['id']}"
                              "&select=project_id")):
         sb.svc("POST", "/rest/v1/sandbox_projects",
