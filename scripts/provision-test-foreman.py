@@ -235,9 +235,25 @@ def ensure_sandbox() -> tuple[str, str, list[dict]]:
 
     # Four marks, on the callouts the sheet prints. Enough that the Undo bar has
     # a stack to walk back and "put every mark back" has something to count.
+    #
+    # Coded `1-1` … `4-1` rather than `TEST-1` … `TEST-4`, because the app prints
+    # the code with any trailing `-n` stripped (openingMarkCode). Under the old
+    # names all four dots read "TEST" and the Undo button said "Undo moving mark
+    # TEST", which is the wrong shape for the one sentence this whole account
+    # exists to check. Now they read 1–4, matching the numbers printed on the
+    # sheet, and the button says "Undo moving mark 3 — you, just now".
     openings: list[dict] = []
     for code, nx, ny in MARK_PINS:
-        opening_code = f"TEST-{code}"
+        opening_code = f"{code}-1"
+        # Rename in place rather than leaving the old row behind and adding a
+        # new one, which would double the marks on the sandbox every run.
+        stale = one(sb.svc(
+            "GET",
+            f"/rest/v1/project_openings?project_id=eq.{project_id}"
+            f"&opening_code=eq.TEST-{code}&select=id"))
+        if stale.get("id"):
+            sb.svc("PATCH", f"/rest/v1/project_openings?id=eq.{stale['id']}",
+                   {"opening_code": opening_code})
         row = one(sb.svc(
             "GET",
             f"/rest/v1/project_openings?project_id=eq.{project_id}"

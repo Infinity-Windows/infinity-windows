@@ -8,6 +8,7 @@ supabase/.temp/
 # Playwright run artefacts. The screenshots we keep live in
 # app/e2e/__screenshots__ and are committed on purpose.
 app/e2e/test-results/
+app/e2e/test-results-foreman/
 app/playwright-report/
 app/blob-report/
 app/.playwright/
