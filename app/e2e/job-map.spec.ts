@@ -73,6 +73,26 @@ interface Overlap {
 }
 
 /**
+ * What happens when every mark number is switched on at once.
+ *
+ * The number is the only thing telling two pins apart while every opening in
+ * the company is `planned`, so how many of them a page can carry before they
+ * pile into each other decides where the auto-hide threshold belongs. Labels
+ * are text boxes, so unlike the round pins they are measured as rectangles.
+ */
+interface LabelFit {
+  labels: number;
+  collidingPairs: number;
+  labelsColliding: number;
+  labelsCollidingFraction: number;
+  /** Marks per 100_000 px² of drawing, so two differently sized jobs compare. */
+  density: number;
+  drawingArea: number;
+  labelW: number;
+  labelH: number;
+}
+
+/**
  * Two circles of diameter d1, d2 whose centres are `s` apart overlap by
  * (d1 + d2) / 2 − s. "More than half a pin diameter" is judged against the
  * SMALLER pin, which is the one with less room to give.
@@ -110,6 +130,56 @@ function measureOverlap(boxes: PinBox[]): Overlap {
       : 0,
     labelled: boxes.filter((b) => !b.quiet).length,
   };
+}
+
+/**
+ * Two labels collide when their boxes touch. A 1 px cushion counts as touching:
+ * two numbers with no daylight between them read as one longer number.
+ */
+function measureLabelFit(
+  boxes: { x: number; y: number; w: number; h: number }[],
+  drawingArea: number,
+): LabelFit {
+  const PAD = 1;
+  const involved = new Set<number>();
+  let collidingPairs = 0;
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i];
+      const b = boxes[j];
+      const hit =
+        a.x < b.x + b.w + PAD &&
+        b.x < a.x + a.w + PAD &&
+        a.y < b.y + b.h + PAD &&
+        b.y < a.y + a.h + PAD;
+      if (hit) {
+        collidingPairs++;
+        involved.add(i);
+        involved.add(j);
+      }
+    }
+  }
+  const median = (values: number[]) =>
+    values.length ? [...values].sort((x, y) => x - y)[values.length >> 1] : 0;
+  return {
+    labels: boxes.length,
+    collidingPairs,
+    labelsColliding: involved.size,
+    labelsCollidingFraction: boxes.length === 0 ? 0 : involved.size / boxes.length,
+    density: drawingArea === 0 ? 0 : (boxes.length * 100_000) / drawingArea,
+    drawingArea,
+    labelW: median(boxes.map((b) => b.w)),
+    labelH: median(boxes.map((b) => b.h)),
+  };
+}
+
+async function labelBoxes(marks: Locator) {
+  return marks.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const rect = node.getBoundingClientRect();
+      return { x: rect.left, y: rect.top, w: rect.width, h: rect.height };
+    }),
+  );
 }
 
 async function pinBoxes(pins: Locator): Promise<PinBox[]> {
@@ -177,6 +247,7 @@ const measured: Record<
   string,
   Overlap & WallOpenings & { page: number; view: string; note?: string }
 > = {};
+const labelFits: Record<string, LabelFit & { page: number }> = {};
 
 for (const job of jobFixtures()) {
   test(`${job.jobCode} job map is readable at 390px`, async ({ page }) => {
@@ -306,6 +377,59 @@ for (const job of jobFixtures()) {
       path: join(SHOTS, `${job.jobCode}-sheet-390.png`),
     });
 
+    // Now force every number on. This is the state the auto-hide threshold is
+    // deciding about, so it is measured rather than assumed: how much of this
+    // page's numbering is actually readable when all of it is drawn at once.
+    const numbers = page.getByRole("button", { name: "Numbers", exact: true });
+    if ((await numbers.getAttribute("aria-pressed")) !== "true") {
+      await numbers.click();
+    }
+    const marks = pins.locator(".plan-dot__mark");
+    await expect.poll(async () => marks.count()).toBe(overlap.pins);
+    const box = await sheet.boundingBox();
+    const fit = measureLabelFit(
+      await labelBoxes(marks),
+      box ? box.width * box.height : 0,
+    );
+    const loud = measureOverlap(await pinBoxes(pins));
+    await sheet.screenshot({
+      path: join(SHOTS, `${job.jobCode}-numbers-390.png`),
+    });
+    labelFits[job.jobCode] = { ...fit, page: matched!.pageNumber };
+
+    /*
+     * Full screen, which used to be a black screen. Everything inside the
+     * drawing is absolutely positioned, so the box had nothing to shrink-wrap
+     * and collapsed to 0x0 — with every pin stacked in one corner, invisible.
+     * A zero-sized drawing is the one failure a screenshot comparison would
+     * happily accept forever, so it is asserted rather than eyeballed.
+     */
+    if (view === "Building outline") {
+      await page.getByRole("button", { name: "Full screen" }).first().click();
+      const fullBox = await page.locator(".cartoon-sheet").boundingBox();
+      expect(
+        Math.min(fullBox?.width ?? 0, fullBox?.height ?? 0),
+        `${job.jobCode}: the drawing collapsed in full screen`,
+      ).toBeGreaterThan(100);
+      await page.screenshot({
+        path: join(SHOTS, `${job.jobCode}-fullscreen-390.png`),
+      });
+    }
+
+    console.log(
+      [
+        `  — with every number forced on —`,
+        `  labels touching      ${fit.labelsColliding} / ${fit.labels}` +
+          `  = ${fit.labelsCollidingFraction.toFixed(3)}` +
+          `  (${fit.collidingPairs} pairs)`,
+        `  label size           ${fit.labelW.toFixed(1)} x ${fit.labelH.toFixed(1)} px`,
+        `  mark density         ${fit.density.toFixed(1)} per 100k px²` +
+          ` of ${Math.round(fit.drawingArea)} px² drawing`,
+        `  pins in any overlap  ${loud.pinsInvolved} / ${loud.pins}` +
+          `  = ${loud.pinsInvolvedFraction.toFixed(3)}`,
+      ].join("\n"),
+    );
+
     expect(
       overlap.badPairFraction,
       `${job.jobCode}: ${overlap.badPairs} of ${overlap.pairs} pin pairs cover ` +
@@ -343,13 +467,27 @@ test.afterAll(() => {
         `${m.note ?? ""} |`,
     )
     .join("\n");
+  const labelTable = Object.entries(labelFits)
+    .map(
+      ([jobCode, f]) =>
+        `| ${jobCode} | ${f.page} | ${f.labels} | ${f.labelsColliding} / ${f.labels} | ` +
+        `${f.labelsCollidingFraction.toFixed(3)} | ${f.collidingPairs} | ` +
+        `${f.labelW.toFixed(1)} x ${f.labelH.toFixed(1)} px | ` +
+        `${f.density.toFixed(1)} |`,
+    )
+    .join("\n");
   mkdirSync(SHOTS, { recursive: true });
   writeFileSync(
     join(SHOTS, "overlap.md"),
     "| job | view | page | pins | in walls | doors | bad pairs | fraction | " +
       "pins involved | median gap | note |\n" +
       "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n" +
-      `${table}\n`,
+      `${table}\n` +
+      "\nEvery mark number forced on:\n\n" +
+      "| job | page | labels | touching | fraction | pairs | label size | " +
+      "marks per 100k px² |\n" +
+      "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n" +
+      `${labelTable}\n`,
   );
-  console.log(`\n${table}\n`);
+  console.log(`\n${table}\n\n${labelTable}\n`);
 });

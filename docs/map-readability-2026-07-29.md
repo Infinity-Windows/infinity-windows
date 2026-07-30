@@ -137,3 +137,50 @@ today would buy a flaky check, not a safety net. Making it CI-ready means
 committing a small, fixed planset fixture whose floor-plan detection is pinned —
 worth doing, but it is a change to what is being tested, not a change to the
 pipeline.
+
+## Where the mark-number threshold comes from (30 July)
+
+Numbers on the pins switch off automatically above a certain number of marks per
+page. That number was a guess of 14. It is now measured.
+
+The harness draws every number at once and counts labels that touch a
+neighbour — touching being enough to matter, because two numbers with no
+daylight between them read as one longer number. A page's crowding is expressed
+as marks per 100,000 px² of drawing, so two jobs with differently sized
+buildings can be compared:
+
+| job | marks | labels touching | share | drawing | marks per 100k px² |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| OAKRIDGE | 3 | 0 | 0.00 | 117,479 px² | 2.6 |
+| BLACK22 | 42 | 14 | 0.33 | 136,824 px² | 30.7 |
+| PECAN14 | 58 | 36 | 0.62 | 112,186 px² | 51.7 |
+
+Between the two crowded jobs the share of touching labels rises by 0.0137 for
+every extra mark per 100k px². Read back to zero, labels first start touching at
+about **6.4 marks per 100k px²** — comfortably above Oakridge's 2.6, which is
+where nothing touches, so the two ends agree.
+
+The bar chosen is **one label in ten may touch a neighbour**, which is 13.7
+marks per 100k px². On the smallest drawing measured (Pecan, 112k px²) that is
+**15 marks**; on the largest (Black Desert) it would be 19. Fifteen is therefore
+the conservative reading, and `PIN_LABEL_AUTO_MAX` is now 15.
+
+Two things this does not claim. The slope comes from two crowded jobs, so it is
+a straight line through two points and not a law; and it assumes marks are
+spread over the drawing rather than bunched, which is why Pecan — where they
+bunch along one wall — is the one that sets the number. The honest summary is
+that the original guess of 14 was within one mark of the measurement.
+
+Worth repeating if pins ever stop being separated by `separatePins`, if the
+label font changes, or if a job appears whose marks crowd harder than Pecan's.
+
+## Full screen was drawing nothing (30 July)
+
+Found while taking the measurements above. On the building-outline view, the
+full-screen button produced a black screen: everything inside the drawing is
+absolutely positioned, so the box had no content to shrink-wrap and
+`width: auto` collapsed it to 0×0, with all 42 of Black Desert's pins stacked
+invisibly in one corner. It now works out its own width from the height
+available and the page's aspect. The harness asserts the drawing is not
+collapsed, because a zero-sized picture is exactly the failure a screenshot
+comparison would accept forever.

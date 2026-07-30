@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link, useParams } from "react-router-dom";
 import { listProjects, listWindowTypes } from "../../lib/api";
 import {
@@ -130,8 +130,17 @@ function clamp(value: number, lo: number, hi: number): number {
  */
 const PIN_MIN_GAP = 0.05;
 
-/** Above this many marks on a page, numbers are off unless asked for. */
-const PIN_LABEL_AUTO_MAX = 14;
+/**
+ * Above this many marks on a page, numbers are off unless asked for.
+ *
+ * Measured rather than guessed, by drawing every number on three real jobs and
+ * counting the labels that touch a neighbour (see the e2e harness, and
+ * docs/map-readability-2026-07-29.md): 0 of 3 on Oakridge, 14 of 42 on Black
+ * Desert, 36 of 58 on Pecan. Read against the drawing's own area, labels start
+ * touching at about 6.4 marks per 100k px², and the bar chosen is one label in
+ * ten — which on the smallest drawing measured is 15 marks.
+ */
+const PIN_LABEL_AUTO_MAX = 15;
 
 /**
  * Wall thickness in viewBox units (page width = 1000), so it scales with the
@@ -1789,8 +1798,17 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                  * percentages of THIS element while walls are drawn inside the
                  * SVG, so the two only agree while the box keeps the viewBox's
                  * aspect — letting it stretch is what distorted the building.
+                 *
+                 * Fullscreen also needs the ratio as a bare number: there it has
+                 * to work out its own width from the height available, since
+                 * nothing else in that layout gives it one.
                  */
-                style={{ aspectRatio: `1 / ${aspect}` }}
+                style={
+                  {
+                    aspectRatio: `1 / ${aspect}`,
+                    "--sheet-aspect": aspect,
+                  } as CSSProperties
+                }
               >
                 <svg
                   viewBox={`0 0 1000 ${Math.round(1000 * aspect)}`}

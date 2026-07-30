@@ -919,10 +919,15 @@ button:disabled {
 .plan-sheet--fullscreen .cartoon-sheet {
   flex: 0 1 auto;
   align-self: center;
-  width: auto;
+  /*
+   * Everything inside this box is absolutely positioned, so it has no size of
+   * its own to shrink-wrap: `width: auto` collapsed it to nothing and fullscreen
+   * showed a black screen with all 42 pins stacked in one corner. The width has
+   * to be stated, and it is whichever limit bites first — the width of the
+   * screen, or the width the height available allows at this page's aspect.
+   */
+  width: min(100%, calc((100vh - 130px) / var(--sheet-aspect, 1.294)));
   height: auto;
-  max-width: 100%;
-  max-height: calc(100vh - 130px);
 }
 
 .plan-sheet--fullscreen .plan-map img {
