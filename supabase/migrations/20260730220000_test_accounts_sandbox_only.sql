@@ -1,5 +1,12 @@
 -- A test login may only change the sandbox job. Enforced by the database.
 --
+-- RENAMED FROM 20260730190000. Two pull requests merged six minutes apart and
+-- this one lost the race: 20260730210000 (the opening soft delete) reached the
+-- database first, so `supabase db push` refused this file as "a local migration
+-- to be inserted before the last migration on remote" and it never applied.
+-- Nothing had run it anywhere, so moving it to a later timestamp is safe and is
+-- the whole fix. Unchanged otherwise.
+--
 -- WHY THIS EXISTS NOW. There is one test login today and it is an installer, so
 -- the foreman half of the app has never been checked on a screen: dragging a
 -- mark on the plan, the Undo bar, the reset-to-original buttons. Three fixes in

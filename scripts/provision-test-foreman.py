@@ -24,7 +24,7 @@ unattended automation account holding that on production is not acceptable, so
 Taylor's instruction was that this account be kept pointed at the test sandbox
 job. That is a CONTROL, not a convention:
 
-  migration 20260730190000 refuses any INSERT, UPDATE or DELETE by a profile
+  migration 20260730220000 refuses any INSERT, UPDATE or DELETE by a profile
   flagged `is_test` unless the row belongs to a project listed in
   `public.sandbox_projects`.
 
@@ -96,7 +96,7 @@ steps = Steps()
 
 # The migration that builds the cage. Named here rather than discovered so a
 # renamed file is a loud failure instead of a silent skip.
-GUARD_MIGRATION = "supabase/migrations/20260730190000_test_accounts_sandbox_only.sql"
+GUARD_MIGRATION = "supabase/migrations/20260730220000_test_accounts_sandbox_only.sql"
 
 
 def guard_is_installed() -> tuple[bool, str]:
