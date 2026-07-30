@@ -409,6 +409,26 @@ export async function finishShiftAt(
 }
 
 /**
+ * Write a runaway shift off to zero hours, because no work was done on it.
+ *
+ * The other true answer to "when did you finish", and the one `finishShiftAt`
+ * cannot express: sometimes the punch was a mistake and there is nothing to
+ * pay. The row is kept — closed at its own clock-in moment so it measures zero
+ * — with a reason and the name of whoever decided it. Lead-level only.
+ */
+export async function closeShiftAsNoWork(
+  shiftId: string,
+  reason?: string | null,
+): Promise<TimeShift> {
+  const { data, error } = await supabase.rpc("close_shift_as_no_work", {
+    p_shift_id: shiftId,
+    p_reason: reason?.trim() ? reason.trim() : null,
+  });
+  if (error) throw error;
+  return data as TimeShift;
+}
+
+/**
  * Distinct jobs the user clocked into recently, newest first, for quick-pick
  * chips and the one-tap "resume" button. Carries the last cost code used so
  * resuming restores the full context in one tap.

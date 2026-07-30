@@ -28,7 +28,7 @@ import {
   buildTimecardTsv,
   type TimecardExportShift,
 } from "../lib/timecardExport";
-import { listUnfinishedShifts } from "../lib/timeclock";
+import { closeShiftAsNoWork, listUnfinishedShifts } from "../lib/timeclock";
 import {
   describeDuration,
   flaggedShifts,
@@ -248,6 +248,9 @@ export function Timecard() {
   const [rejectReason, setRejectReason] = useState("");
   /** Which runaway shift the office is entering a real finish time for. */
   const [finishingId, setFinishingId] = useState<string | null>(null);
+  /** Which runaway shift is being written off to zero, and why. */
+  const [zeroingId, setZeroingId] = useState<string | null>(null);
+  const [zeroReason, setZeroReason] = useState("");
 
   const crew = useQuery({
     queryKey: ["profiles"],
@@ -291,6 +294,15 @@ export function Timecard() {
   );
 
   const approve = useMutation({ mutationFn: approveShift, onSuccess: refresh });
+  const zeroOut = useMutation({
+    mutationFn: (args: { id: string; reason: string }) =>
+      closeShiftAsNoWork(args.id, args.reason),
+    onSuccess: () => {
+      setZeroingId(null);
+      setZeroReason("");
+      refresh();
+    },
+  });
   const reject = useMutation({
     mutationFn: (args: { id: string; reason: string }) =>
       rejectShift(args.id, args.reason),
@@ -474,14 +486,27 @@ export function Timecard() {
                           </div>
                         )}
                       </div>
-                      <button
-                        className="button-like active-pill"
-                        onClick={() =>
-                          setFinishingId(finishingId === s.id ? null : s.id)
-                        }
-                      >
-                        {finishingId === s.id ? "Close" : "Set finish time"}
-                      </button>
+                      <div className="row-gap" style={{ flexWrap: "wrap" }}>
+                        <button
+                          className="button-like active-pill"
+                          onClick={() => {
+                            setFinishingId(finishingId === s.id ? null : s.id);
+                            setZeroingId(null);
+                          }}
+                        >
+                          {finishingId === s.id ? "Close" : "Set finish time"}
+                        </button>
+                        <button
+                          className="button-like"
+                          onClick={() => {
+                            setZeroingId(zeroingId === s.id ? null : s.id);
+                            setZeroReason("");
+                            setFinishingId(null);
+                          }}
+                        >
+                          {zeroingId === s.id ? "Cancel" : "No work was done"}
+                        </button>
+                      </div>
                       {finishingId === s.id && (
                         <div style={{ flexBasis: "100%" }}>
                           <ShiftEditor
@@ -492,6 +517,36 @@ export function Timecard() {
                             costCodes={costCodes.data ?? []}
                             onDone={() => setFinishingId(null)}
                           />
+                        </div>
+                      )}
+                      {zeroingId === s.id && (
+                        <div style={{ flexBasis: "100%", marginTop: 6 }}>
+                          <p className="muted" style={{ margin: "0 0 6px", fontSize: 11.5 }}>
+                            This records the punch as <strong>zero hours</strong> and
+                            keeps it for the record. Nothing is paid and nothing is
+                            deleted.
+                          </p>
+                          <div className="row-gap">
+                            <input
+                              type="text"
+                              style={{ flex: 1 }}
+                              placeholder="Why? e.g. clocked in by mistake"
+                              value={zeroReason}
+                              onChange={(e) => setZeroReason(e.target.value)}
+                            />
+                            <button
+                              className="button-like active-pill"
+                              disabled={zeroOut.isPending}
+                              onClick={() =>
+                                zeroOut.mutate({ id: s.id, reason: zeroReason })
+                              }
+                            >
+                              {zeroOut.isPending ? "Saving…" : "Record as zero"}
+                            </button>
+                          </div>
+                          {zeroOut.isError && (
+                            <p className="error">{formatApiError(zeroOut.error)}</p>
+                          )}
                         </div>
                       )}
                     </li>
