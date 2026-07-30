@@ -50,6 +50,40 @@
   --nav-width: 256px;
   --accent-soft: oklch(0.68 0.24 30 / 0.12);
   --accent-line: oklch(0.68 0.24 30 / 0.5);
+
+  /* ---- Safe areas -------------------------------------------------------
+     Installed to a home screen, this app draws edge to edge: index.html asks
+     for `viewport-fit=cover` and a translucent status bar, so the page runs
+     *under* the clock, the battery and the home indicator rather than starting
+     below them. Anything pinned to an edge therefore has to move itself out of
+     the way, and a close button that doesn't is a close button the phone eats.
+
+     The four insets are named once, here, for two reasons. Every overlay reads
+     the name instead of calling env() again, so there is one place to be right
+     and nothing to keep in step. And a test can override these four custom
+     properties with real iPhone numbers — no headless browser reports a
+     non-zero env(safe-area-inset-*), so a test that trusts env() passes on a
+     layout that is broken on the phone. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+
+  /* Breathing room between an overlay and the edge it is clear of. */
+  --overlay-gap: 12px;
+
+  /* The phone bottom bar, and the line above it that sheets rest on. */
+  --tabbar-h: 3rem;
+  --above-tabbar: calc(var(--tabbar-h) + var(--safe-bottom));
+
+  /* How tall an overlay may grow before its own header slides under the status
+     bar. A sheet is anchored to an edge, so it only has to clear the top; a
+     dialog is centred, so half of any height it gains goes upward and it has to
+     clear twice as much. */
+  --sheet-max-h: calc(100dvh - var(--safe-top) - var(--overlay-gap));
+  --sheet-max-h-above-tabbar: calc(var(--sheet-max-h) - var(--above-tabbar));
+  --dialog-max-h: calc(100dvh - (2 * var(--safe-top)) - (2 * var(--overlay-gap)));
+
   color-scheme: dark;
 }
 
@@ -116,16 +150,16 @@ a:hover {
      side of the phone, and — worse — defeated every `overflow-x: auto` inside
      it, because a scroll container that is allowed to grow never scrolls. */
   min-width: 0;
-  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  padding-bottom: calc(72px + var(--safe-bottom));
 }
 
 .page {
   padding: 16px;
-  padding-top: calc(12px + env(safe-area-inset-top));
+  padding-top: calc(12px + var(--safe-top));
   /* Landscape on a notched iPhone puts the notch and the rounded corner over
      the sides of the page, so the side padding is at least the inset. */
-  padding-left: max(16px, env(safe-area-inset-left));
-  padding-right: max(16px, env(safe-area-inset-right));
+  padding-left: max(16px, var(--safe-left));
+  padding-right: max(16px, var(--safe-right));
   max-width: 640px;
   /* Same reason as .app-main: pin the page to the width it was given so the
      scroll containers inside it have a width to scroll against. */
@@ -290,7 +324,7 @@ button:disabled {
   display: flex;
   background: var(--surface);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: var(--safe-bottom);
   z-index: 50;
 }
 
@@ -2570,7 +2604,8 @@ button:disabled {
 .toast-host {
   position: fixed;
   left: 50%;
-  bottom: 84px;
+  /* Clears the bottom bar, and then the home indicator underneath it. */
+  bottom: calc(84px + var(--safe-bottom));
   transform: translateX(-50%);
   z-index: 1000;
   display: flex;
@@ -4045,7 +4080,7 @@ button.clock-out {
 .ask-fab {
   position: fixed;
   right: 16px;
-  bottom: calc(3rem + 14px + env(safe-area-inset-bottom));
+  bottom: calc(3rem + 14px + var(--safe-bottom));
   z-index: 45;
   display: inline-flex;
   align-items: center;
@@ -4105,7 +4140,7 @@ button.clock-out {
   background: var(--surface);
   border-top-left-radius: 20px;
   border-top-right-radius: 20px;
-  padding: 10px 16px calc(20px + env(safe-area-inset-bottom));
+  padding: 10px 16px calc(20px + var(--safe-bottom));
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -4806,7 +4841,7 @@ button.clock-out {
   background: var(--surface);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 18px;
-  padding: 24px 20px calc(20px + env(safe-area-inset-bottom));
+  padding: 24px 20px calc(20px + var(--safe-bottom));
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.6);
 }
 
@@ -4864,8 +4899,7 @@ button.clock-out {
   border-top-right-radius: 22px;
   border: 1px solid var(--border);
   border-bottom: none;
-  padding: 8px 18px calc(22px + env(safe-area-inset-bottom));
-  max-height: 92vh;
+  padding: 8px 18px calc(22px + var(--safe-bottom));
   overflow-y: auto;
   animation: clockSheetUp 0.22s ease;
 }
@@ -5449,11 +5483,11 @@ body {
   z-index: 50;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  height: calc(3rem + env(safe-area-inset-bottom));
-  padding-bottom: env(safe-area-inset-bottom);
+  height: var(--above-tabbar);
+  padding-bottom: var(--safe-bottom);
   /* Keep Menu and Ask clear of the notch and the rounded corner in landscape. */
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
   background: var(--surface);
   border-top: 1px solid var(--border);
 }
@@ -5580,7 +5614,7 @@ body {
   left: 0;
   right: 0;
   top: 0;
-  bottom: calc(3rem + env(safe-area-inset-bottom));
+  bottom: var(--above-tabbar);
   z-index: 60;
   background: oklch(0.08 0.012 35 / 0.62);
 }
@@ -5588,9 +5622,8 @@ body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(3rem + env(safe-area-inset-bottom));
+  bottom: var(--above-tabbar);
   z-index: 61;
-  max-height: min(84dvh, 40rem);
   display: flex;
   flex-direction: column;
   background: var(--card-raised);
@@ -5664,7 +5697,7 @@ body {
   left: 0;
   right: 0;
   top: 0;
-  bottom: calc(3rem + env(safe-area-inset-bottom));
+  bottom: var(--above-tabbar);
   z-index: 60;
   background: oklch(0.08 0.012 35 / 0.62);
 }
@@ -5672,7 +5705,7 @@ body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(3rem + env(safe-area-inset-bottom));
+  bottom: var(--above-tabbar);
   z-index: 61;
   background: var(--card-raised);
   border: 1px solid var(--border);
@@ -5922,7 +5955,7 @@ body {
   border-top-left-radius: 18px;
   border-top-right-radius: 18px;
   box-shadow: var(--shadow-soft);
-  padding: 0 16px calc(20px + env(safe-area-inset-bottom));
+  padding: 0 16px calc(20px + var(--safe-bottom));
 }
 .maps-head {
   display: flex;
@@ -6014,7 +6047,7 @@ body {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(3.5rem + 12px + env(safe-area-inset-bottom));
+  bottom: calc(3.5rem + 12px + var(--safe-bottom));
   z-index: 55;
   width: min(28rem, calc(100vw - 1.5rem));
   padding: 14px 16px;
@@ -6234,8 +6267,8 @@ body {
 /* Mobile: a compact fixed pill top-right, out of the way of content. */
 .sync-pill-mobile {
   position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 8px);
-  right: calc(10px + env(safe-area-inset-right, 0px));
+  top: calc(var(--safe-top) + 8px);
+  right: calc(10px + var(--safe-right));
   z-index: 40;
   pointer-events: none;
 }
@@ -6273,7 +6306,6 @@ body {
   top: 50%;
   transform: translate(-50%, -50%);
   width: min(440px, calc(100vw - 32px));
-  max-height: calc(100vh - 48px);
   overflow-y: auto;
   background: var(--card-raised);
   border: 1px solid var(--border);
@@ -6662,7 +6694,7 @@ body {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(80px + env(safe-area-inset-bottom));
+  bottom: calc(80px + var(--safe-bottom));
   z-index: 80;
   width: min(480px, calc(100vw - 24px));
   padding: 12px 14px;
@@ -6678,7 +6710,7 @@ body {
 }
 /* Wrong Supabase project: same banner shell, danger tint, no dismiss. */
 .pwa-banner-wrong-project {
-  top: calc(12px + env(safe-area-inset-top));
+  top: calc(12px + var(--safe-top));
   bottom: auto;
   z-index: 90;
   align-items: flex-start;
@@ -6911,7 +6943,7 @@ body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(3rem + env(safe-area-inset-bottom));
+  bottom: var(--above-tabbar);
   z-index: 61;
   background: var(--card-raised);
   border: 1px solid var(--border);
@@ -7334,7 +7366,7 @@ body {
 /* ---- Publish bar ---- */
 .sched-publishbar {
   position: sticky;
-  bottom: calc(12px + env(safe-area-inset-bottom));
+  bottom: calc(12px + var(--safe-bottom));
   margin-top: 14px;
   display: flex;
   align-items: center;
@@ -7366,13 +7398,12 @@ body {
 .sched-sheet {
   width: 100%;
   max-width: 520px;
-  max-height: 92vh;
   overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   padding: 16px;
-  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  padding-bottom: calc(20px + var(--safe-bottom));
 }
 @media (min-width: 640px) { .sched-sheet { border-radius: var(--radius-lg); } }
 .sched-sheet-head {
@@ -7807,9 +7838,12 @@ body {
 }
 .travel-sheet {
   position: fixed; left: 50%; bottom: 0; transform: translateX(-50%);
-  width: min(560px, 100%); max-height: 92vh; z-index: 61;
+  width: min(560px, 100%); z-index: 61;
   background: var(--card); border: 1px solid var(--border);
   border-radius: 20px 20px 0 0; display: flex; flex-direction: column;
+  /* Sits on the bottom of the screen, so its last row is where the home
+     indicator would otherwise land. */
+  padding-bottom: var(--safe-bottom);
 }
 .travel-sheet-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -8485,4 +8519,98 @@ body {
   /* Long-press to select on a phone, so it can be copied even if the clipboard
      button is blocked by an in-app browser. */
   user-select: all;
+}
+
+/* ===========================================================================
+   Overlays and the edges of the phone
+
+   On a home-screen install the page runs under the status bar and the home
+   indicator (see the safe-area note in :root). An overlay is the one thing that
+   is allowed to reach those edges, so this is where every overlay is made to
+   stop short of them — deliberately in one block, at the end of the sheet,
+   rather than a `+ 47px` sprinkled through eight components that would then
+   have to be found again the next time Apple changes a phone.
+
+   Three lists, by how an overlay is anchored. Adding an overlay means adding it
+   to the list it belongs to; `safeArea.test.ts` reads this file and fails when a
+   top-reaching overlay is missing from all three, which is the only reason this
+   stays true.
+   ------------------------------------------------------------------------ */
+
+/* 1. Fills the screen and puts its own content at the top edge. The plan and
+      model editors are the ones Taylor hits: their close and zoom buttons are
+      the first row of a `position: fixed; inset: 0` box. */
+.plan-sheet--fullscreen,
+.plan-model-editor--fullscreen,
+.photo-viewer-backdrop {
+  padding-top: calc(var(--overlay-gap) + var(--safe-top));
+  padding-bottom: calc(var(--overlay-gap) + var(--safe-bottom));
+  padding-left: max(var(--overlay-gap), var(--safe-left));
+  padding-right: max(var(--overlay-gap), var(--safe-right));
+}
+
+/* The full-screen plan sheet scrolls, and a sticky child sticks to the top of
+   the scrollport — the padding above does not hold it back once you scroll. So
+   the toolbar is told where its own ceiling is. */
+.plan-fullscreen-bar {
+  top: var(--safe-top);
+}
+
+/* 2. Anchored to an edge and free to grow towards the other one. Capping the
+      height is what keeps the header — and the X in it — below the clock. */
+.clock-sheet,
+.sched-sheet,
+.travel-sheet,
+.maps-sheet {
+  max-height: var(--sheet-max-h);
+}
+
+/* The sheets that rest on top of the bottom bar rather than on the bottom of
+   the screen start that much higher, so they may grow that much less. */
+.capture-sheet,
+.jobphoto-sheet {
+  max-height: var(--sheet-max-h-above-tabbar);
+}
+
+/* The drawer keeps a smaller cap of its own on top of that: it is meant to read
+   as a drawer, not as a full screen, on a tall phone. */
+.menu-drawer {
+  max-height: min(40rem, var(--sheet-max-h-above-tabbar));
+}
+
+/* A capped sheet that is one plain block has to be allowed to scroll, or the
+   cap simply hides the bottom of it. The sheets built as a flex column
+   (.clock-sheet, .menu-drawer, .travel-sheet…) already scroll in their body. */
+.maps-sheet,
+.capture-sheet,
+.jobphoto-sheet {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* 3. Centred, so half of every pixel it grows goes upward — which is why these
+      have to clear twice the status bar, not once. */
+.wizard-card,
+.modal-card,
+.pin-modal-card {
+  max-height: var(--dialog-max-h);
+  overflow-y: auto;
+}
+
+/* A close button is the control someone reaches for with a glove on and the
+   phone in the other hand. 44px is Apple's floor and this app's; nothing above
+   is allowed to shrink one to make room. */
+.menu-drawer-close,
+.capture-close,
+.clock-sheet-x,
+.sched-sheet-close,
+.wizard-close {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* The plan editor's close is a labelled button rather than an icon, so it is
+   already wide enough; only its height was short of the floor. */
+.plan-fullscreen-close {
+  min-height: 44px;
 }
