@@ -58,6 +58,24 @@ describe("planLoadMessage", () => {
     expect(planLoadMessage(new PlanLoadTimeout(45_000))).toContain("taking too long");
   });
 
+  /**
+   * Safari says exactly "Load failed" when a download does not arrive, which
+   * names no cause and suggests no action. Observed on the real screen with the
+   * planset download blocked.
+   */
+  it("turns a browser's bare download failure into something actionable", () => {
+    for (const raw of [
+      new Error("Load failed"),
+      new TypeError("Failed to fetch"),
+      new Error("The Internet connection appears to be offline."),
+    ]) {
+      const text = planLoadMessage(raw);
+      expect(text).toContain("check your signal");
+      expect(text).toContain("Retry");
+      expect(text).not.toMatch(/^Load failed$/);
+    }
+  });
+
   it("keeps a real, readable API failure", () => {
     expect(
       planLoadMessage({ message: "permission denied for table project_plansets" }),

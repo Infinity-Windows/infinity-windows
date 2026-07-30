@@ -42,10 +42,34 @@ export function withPlanTimeout<T>(
   }) as Promise<T>;
 }
 
+/**
+ * Wording browsers use when a download does not arrive. Safari's is the bare
+ * "Load failed", which reads like a shrug on a phone screen — it names no cause
+ * and suggests no action, so it gets translated like any other engine text.
+ */
+const NETWORK_FAILURE_PATTERNS = [
+  /^load failed$/i,
+  /failed to fetch/i,
+  /network\s*error/i,
+  /networkerror/i,
+  /connection (was )?(lost|closed|refused)/i,
+  /the internet connection appears to be offline/i,
+  /err_(internet_disconnected|network|connection)/i,
+];
+
+function looksLikeNetworkFailure(err: unknown): boolean {
+  const text =
+    err instanceof Error ? err.message : typeof err === "string" ? err : null;
+  return text ? NETWORK_FAILURE_PATTERNS.some((re) => re.test(text.trim())) : false;
+}
+
 /** Plain-English wording for a plan that would not open. Never engine text. */
 export function planLoadMessage(err: unknown): string {
   if (err instanceof PlanLoadTimeout || (err as Error)?.name === "PlanLoadTimeout") {
     return "The plan is taking too long to open — your signal may be weak. Tap Retry to try again.";
+  }
+  if (looksLikeNetworkFailure(err)) {
+    return "Could not download the plan — check your signal, then tap Retry.";
   }
   return formatFieldError(
     err,
