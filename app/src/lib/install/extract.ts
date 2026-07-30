@@ -56,6 +56,14 @@ export interface DraftOpening {
   /** Normalized pin on the building plan when taken from a plan callout. */
   pin_x?: number | null;
   pin_y?: number | null;
+  /**
+   * Where the callout actually is on the plan, kept separate from `pin_x`
+   * because a re-extract deliberately carries a manually placed pin across.
+   * Without this the preserved pin would be saved as the mark's origin, and
+   * "put it back where the plan put it" would put it back to the nudge.
+   */
+  origin_pin_x?: number | null;
+  origin_pin_y?: number | null;
 }
 
 /** AI fallback implements this; deterministic parser is the default. */
@@ -806,6 +814,8 @@ export function planDraftPersistence(
       page_number: kept?.page_number ?? d.page_number,
       pin_x: kept?.pin_x ?? d.pin_x ?? null,
       pin_y: kept?.pin_y ?? d.pin_y ?? null,
+      origin_pin_x: d.pin_x ?? kept?.pin_x ?? null,
+      origin_pin_y: d.pin_y ?? kept?.pin_y ?? null,
     });
   }
 

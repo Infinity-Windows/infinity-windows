@@ -139,6 +139,14 @@ export interface ProjectOpening {
   page_number: number;
   pin_x: number | null;
   pin_y: number | null;
+  /**
+   * Where the planset extraction put this mark. Seeded once and then immutable
+   * in the database, so dragging the dot can always be walked back.
+   * Null on rows created before 20260730130000 on a job with no pin.
+   */
+  origin_pin_x?: number | null;
+  origin_pin_y?: number | null;
+  origin_page_number?: number | null;
   assigned_window_id: string | null;
   status: OpeningStatus;
   confirmed: boolean;

@@ -83,6 +83,8 @@ import {
   preferOutline,
   type BuildingOutline,
 } from "../../lib/install/outline";
+import { movedMarkIds } from "../../lib/install/pinHistory";
+import { PlanMarkUndoBar } from "../../components/install/PlanMarkUndoBar";
 import { OutlineFeatureLayer } from "./OutlineFeatureLayer";
 import { PlanModelEditor } from "./PlanModelEditor";
 
@@ -865,6 +867,20 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     }`;
 
   const selectedOpening = all.find((o) => o.id === selectedId) ?? null;
+  // Dots sitting somewhere other than where the plan put them, so the one that
+  // was nudged by accident can be spotted instead of guessed at.
+  const movedIds = movedMarkIds(all);
+  // Undo for those moves. Foreman+ — the marks are the whole crew's view of
+  // the job, so putting them back is a lead's call, and the database says so
+  // too (the reset/undo functions check is_foreman_plus).
+  const undoBar = isLead && project && (
+    <PlanMarkUndoBar
+      projectId={projectId}
+      jobName={project.name}
+      openings={all}
+      selectedOpening={selectedOpening}
+    />
+  );
 
   const installerExistingCount = dispatchInstaller
     ? all.filter(
@@ -986,7 +1002,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           aria-pressed={dispatchMode ? selIndex >= 0 || isNewOnRoute : undefined}
           className={`plan-dot${pos.auto ? " plan-dot--auto" : ""}${
             selectedId === o.id ? " plan-dot--selected" : ""
-          }${drag?.id === o.id ? " plan-dot--dragging" : ""}${
+          }${movedIds.has(o.id) ? " plan-dot--moved" : ""}${
+            drag?.id === o.id ? " plan-dot--dragging" : ""
+          }${
             selIndex >= 0 || isNewOnRoute ? " plan-dot--dispatch-selected" : ""
           }${onRoute && !isNewOnRoute ? " plan-dot--dispatch-route" : ""}${
             dimmed ? " plan-dot--dispatch-dim" : ""
@@ -1596,6 +1614,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                   {buildingPdf.storage_path.split("/").pop()}
                 </div>
               </div>
+              {undoBar}
               {selectedOpening &&
                 renderDetailCard(selectedOpening, {
                   onClose: () => setSelectedId(null),
@@ -1659,6 +1678,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             Movable marks sit on the plan callouts. Zoom keeps them locked to
             those numbers — drag one to nudge it.
           </p>
+          {undoBar}
           {selectedOpening &&
             renderDetailCard(selectedOpening, {
               onClose: () => setSelectedId(null),
