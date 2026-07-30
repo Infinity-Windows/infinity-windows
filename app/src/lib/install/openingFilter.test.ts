@@ -53,6 +53,14 @@ describe("matchesPlanFilter", () => {
     expect(matchesPlanFilter(opening(), "windows", ME)).toBe(true);
     expect(matchesPlanFilter(installed, "all", ME)).toBe(true);
   });
+
+  it("defers to the job's own kind resolver when given one", () => {
+    // The schedule can say a mark is a door even where the window type does
+    // not. The chips have to agree with the pins, which read the same resolver.
+    const o = opening();
+    expect(matchesPlanFilter(o, "doors", ME, () => "door")).toBe(true);
+    expect(matchesPlanFilter(o, "windows", ME, () => "door")).toBe(false);
+  });
 });
 
 describe("visibleFilters", () => {

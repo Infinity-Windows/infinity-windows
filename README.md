@@ -54,6 +54,21 @@ npm install
 npm run dev
 ```
 
+### Signing in to look at a screen
+
+Nearly every screen needs a login, and public signup is off. There is one test
+account for exactly this — an installer, with its password in a local file
+outside the repository so every worktree can read it:
+
+```bash
+cat ~/.config/infinity-windows/test-installer.env    # email + password
+```
+
+If that file is not there, **do not ask anyone for a password** — regenerate it
+yourself in about a minute. That, what the account may and may not touch, and how
+its activity is kept out of the crew's real figures:
+[`docs/test-account.md`](docs/test-account.md).
+
 ## Supabase setup
 
 **There is ONE shared Supabase project: `czprjcskmzzagdztqonm`.** It is what the
@@ -128,8 +143,8 @@ rebuilt. Prefer GitHub.
 
 | Secret | Needed by | What breaks without it |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | `ask`, `extract-specs` | Ask Infinity answers nothing, and reading specs off a planset fails. |
-| `OPENAI_API_KEY` | `extract-schedule`, `generate-howto`, `generate-toolbox-talk`, `ingest-knowledge`, `synthesize-type-tips`, `transcribe-install-memo` | Voice memos are never transcribed, how-tos and toolbox talks cannot be generated, and nothing new can be added to the brain. |
+| `ANTHROPIC_API_KEY` | `ask`, `extract-schedule`, `extract-specs`, `generate-howto`, `generate-toolbox-talk`, `synthesize-type-tips`, `transcribe-install-memo` | Everything the app writes stops: Ask Infinity answers nothing, plansets and delivery schedules cannot be read, no how-tos, no toolbox talks, no window-type tips, and voice memos are transcribed but never sorted into fields. |
+| `OPENAI_API_KEY` | `ingest-knowledge`, `transcribe-install-memo` | Nothing new can be added to the brain, and voice memos are never transcribed. Also degrades two things rather than breaking them: Ask Infinity stops searching documents and answers from live data only, and toolbox talks ship with described placeholders instead of diagrams. |
 | `VAPID_PRIVATE_KEY` | `send-push` | Push notifications silently stop. The public half also goes in the app as `VITE_VAPID_PUBLIC_KEY`. |
 | `VAPID_PUBLIC_KEY` | `send-push` | Same. |
 
@@ -173,7 +188,7 @@ python3 scripts/function_secrets.py --names  # just the required names
 ```
 
 `Deploy backend` pushes, checks and then *uses* these on every merge once
-`SUPABASE_ACCESS_TOKEN` is set. Three separate assertions, because each one sees
+`SUPABASE_ACCESS_TOKEN` is set. Five separate assertions, because each one sees
 something the others cannot:
 
 | Step | What it proves | What it cannot see |
@@ -181,7 +196,8 @@ something the others cannot:
 | Push the function secrets GitHub holds | The value GitHub has is now the value the project has | Anything GitHub does not hold |
 | Verify every required function secret exists | Every needed name is present on the project | Whether the value is any good |
 | Check the AI provider accepts our key | Anthropic genuinely accepts the key and generates text | Whether the function around it works |
-| Ask Infinity a real question | The whole feature answers, end to end | — |
+| Ask Infinity a real question | The whole feature answers, end to end | Anything about the other five writing features |
+| Make the other writing features write something | A how-to, a talk, tips and a plan-set read produce real content | — |
 
 The third one exists because a key that is **refused** — cancelled, rotated at
 Anthropic, or pasted from the wrong account — is identical to a working key as
@@ -194,6 +210,17 @@ JWT, so a new-format `sb_secret_…` key will not do — set `ASK_SMOKE_JWT` to 
 legacy service-role key or a real user's access token. Without one it reports
 "could not tell" and warns rather than failing, since it has measured nothing.
 
+The fifth exists because `ask` answering proves nothing about the five *other*
+features that generate text. All of them moved from OpenAI to Claude, and the
+failure that move risks is not an error but a silence: a toolbox talk saved with
+no hazards, a plan set read as zero openings. Both are indistinguishable from
+"there was nothing to find" unless something checks the content, so this asks for
+output and checks what came back. A feature it cannot exercise for want of data —
+no reference install recorded, no install memos yet — is reported **NOT TESTED**,
+never as a pass. Same when the credentials on the run can call a function but not
+read the database back: three of the four probes need a row read, and "we could
+not look" must never be reported as "the feature wrote nothing".
+
 To check by hand:
 
 ```bash
@@ -204,6 +231,9 @@ ANTHROPIC_API_KEY=sk-ant-... scripts/verify-anthropic-key.sh
 
 SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm \
   ASK_SMOKE_JWT=eyJ... scripts/smoke-ask.sh
+
+SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm \
+  SUPABASE_SERVICE_ROLE_KEY=eyJ... scripts/smoke-text-features.sh
 ```
 
 ### Shipping the backend

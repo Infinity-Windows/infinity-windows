@@ -1,0 +1,552 @@
+#!/usr/bin/env bash
+# Make the DEPLOYED writing features actually write something, and read what
+# came back.
+#
+# Why this exists: scripts/smoke-ask.sh proves Ask Infinity reaches Claude. It
+# says nothing about the other five features that generate text, and those moved
+# provider — from OpenAI to Claude — which is exactly the kind of change that
+# deploys clean and fails on first real use. This repo has been bitten by that
+# precise shape more than once: `ask` looked healthy for weeks while never
+# contacting an AI at all, because it silently fell back to canned notes.
+#
+# The specific risk being checked. OpenAI had a setting that guaranteed a
+# machine-readable answer; Claude has none, so the guarantee was rebuilt out of
+# forced tool use (see supabase/functions/_shared/anthropicJson.ts). If that
+# rebuild is subtly wrong, every one of these features returns an empty or
+# half-filled result — a toolbox talk with no hazards, a planset that reads as
+# zero openings — and nothing goes red, because "no rows" and "no rows found"
+# look identical from outside. So this asks for output whose CONTENT can be
+# checked, not merely a 200.
+#
+# FOUR FEATURES, each reported on its own:
+#
+#   reading delivery schedules  synthetic planset text in, rows out. No database
+#                               write at all, and the expected rows are known, so
+#                               this is the strongest single proof.
+#   toolbox talks               a real topic in, a real talk out. This one SAVES,
+#                               so the row it creates is deleted again below.
+#   how-to guides               needs a window type with a reference install
+#                               recorded. Reported as not-exercised when no such
+#                               type exists, never as a pass.
+#   window-type tips            needs a window type with install memos. Same.
+#
+# THREE OUTCOMES, the same contract as scripts/smoke-ask.sh, because a check that
+# goes red when Anthropic has a bad afternoon is a check the team learns to
+# ignore:
+#
+#   exit 0  Every feature that COULD be exercised produced real output.
+#   exit 1  A feature was reached and did not produce output. Ours to fix. Red.
+#   exit 2  Could not tell: no credentials, the AI service was busy, or a spend
+#           limit refused the call. Warn, never red.
+#
+# A feature that could not be exercised for want of data is NOT a pass and NOT a
+# failure. It is said out loud, in those words, so nobody reads this log as proof
+# of something it never tested.
+#
+# Nothing customer-identifying is printed. The planset text is invented here, the
+# talk topic is about ladders, and the how-to/tips probes print only the window
+# type code and how many lines came back — never a job, an address or a name.
+#
+# Usage:
+#   export SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm   # REQUIRED, no default
+#   export SUPABASE_SERVICE_ROLE_KEY=eyJ...            # or TEXT_SMOKE_JWT
+#   scripts/smoke-text-features.sh
+#
+# Tuning (used by scripts/smoke-text-features.test.sh, rarely otherwise):
+#   TEXT_SMOKE_BASE      Override the functions base URL.
+#   TEXT_SMOKE_REST      Override the PostgREST base URL.
+#   TEXT_SMOKE_TIMEOUT   Seconds to wait for one call (default 120).
+set -uo pipefail
+
+cd "$(dirname "$0")/.." || {
+  echo "FAIL: could not enter the repository root from $0." >&2
+  exit 1
+}
+
+if [ -z "${SUPABASE_PROJECT_REF:-}" ] && [ -z "${TEXT_SMOKE_BASE:-}" ]; then
+  cat >&2 <<'EOF'
+FAIL: SUPABASE_PROJECT_REF is not set, and there is no default.
+
+Name the project whose writing features you mean to test, e.g. for production:
+
+  SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm scripts/smoke-text-features.sh
+EOF
+  exit 1
+fi
+
+REF="${SUPABASE_PROJECT_REF:-}"
+BASE="${TEXT_SMOKE_BASE:-https://$REF.supabase.co/functions/v1}"
+REST="${TEXT_SMOKE_REST:-https://$REF.supabase.co/rest/v1}"
+JWT="${TEXT_SMOKE_JWT:-${SUPABASE_SERVICE_ROLE_KEY:-}}"
+TIMEOUT="${TEXT_SMOKE_TIMEOUT:-120}"
+
+if [ -z "$JWT" ]; then
+  echo "The writing features were not tested: no caller credentials here."
+  echo
+  echo "Set SUPABASE_SERVICE_ROLE_KEY (or TEXT_SMOKE_JWT). Without one the"
+  echo "platform gateway rejects every request before the function runs, so a"
+  echo "failure would say nothing about whether these features work."
+  echo
+  echo "This is a VERIFICATION gap, not a broken feature. Nothing was measured."
+  exit 2
+fi
+
+body="$(mktemp)" || exit 1
+err="$(mktemp)" || exit 1
+trap 'rm -f "$body" "$err"' EXIT
+
+# Verdicts collected per feature, printed together at the end so the report reads
+# as one page rather than as four interleaved stories.
+declare -a proved=()      # feature -> what came back
+declare -a untested=()    # feature -> why it could not be exercised
+declare -a broken=()      # feature -> what went wrong
+soft_fail=0               # a busy provider or a spend cap: warn, never red
+
+CODE=""
+BODY=""
+
+# POST json to a deployed function. Sets CODE and BODY.
+call() {
+  local name="$1" payload="$2"
+  : >"$body"
+  : >"$err"
+  # Assignment and exit status on separate lines: `CODE=$(curl ...)` reports the
+  # assignment's status, and curl's is the only thing that tells "no answer at
+  # all" from "answered, with an error".
+  CODE="$(printf '%s' "$payload" | curl -sS -o "$body" -w '%{http_code}' \
+    -X POST "$BASE/$name" \
+    -H "Authorization: Bearer $JWT" \
+    -H "apikey: $JWT" \
+    -H 'Content-Type: application/json' \
+    --data-binary @- --max-time "$TIMEOUT" 2>"$err")"
+  local rc=$?
+  BODY="$(tr -d '\r' <"$body")"
+  if [ "$rc" -ne 0 ] || ! [[ "$CODE" =~ ^[0-9]{3}$ ]]; then
+    CODE="000"
+    BODY="curl exit $rc: $(tr '\n' ' ' <"$err" | head -c 300)"
+  fi
+}
+
+# GET from PostgREST. Sets CODE and BODY.
+query() {
+  local path="$1"
+  : >"$body"
+  CODE="$(curl -sS -o "$body" -w '%{http_code}' \
+    "$REST/$path" \
+    -H "Authorization: Bearer $JWT" \
+    -H "apikey: $JWT" \
+    --max-time 30 2>/dev/null)"
+  [[ "$CODE" =~ ^[0-9]{3}$ ]] || CODE="000"
+  BODY="$(tr -d '\r' <"$body")"
+}
+
+# Read one field out of BODY with python3 rather than grep, so a brace or a quote
+# in generated prose cannot fool it. Prints nothing when absent.
+field() {
+  BODY="$BODY" python3 -c '
+import json, os, sys
+try:
+    data = json.loads(os.environ["BODY"])
+except Exception:
+    sys.exit(0)
+for key in sys.argv[1:]:
+    if isinstance(data, list):
+        data = data[0] if data else None
+    if not isinstance(data, dict):
+        sys.exit(0)
+    data = data.get(key)
+if data is None:
+    sys.exit(0)
+if isinstance(data, (dict, list)):
+    print(json.dumps(data)[:400])
+else:
+    print(" ".join(str(data).split())[:400])
+' "$@"
+}
+
+# Count two list fields on the row BODY holds, and say why when it cannot.
+#
+# The distinction this exists for: "the feature saved an empty result" and "this
+# check could not read the row back" look identical if you only count. Conflating
+# them is worse than not checking at all, because it sends somebody to fix
+# working code. So a row that cannot be read is reported as not-verified, and
+# only a row that really came back empty is a failure.
+#
+# $1 is the jsonb column the lists live inside, or "-" when they are columns in
+# their own right. Prints: <state> <count-of-$2> <count-of-$3>, where state is
+#   ok         the row was read; the counts are real
+#   norow      no row came back, or the reply was not a row at all
+#   unreadable the reply was not JSON — nothing was measured
+#   nocolumn   the row is there and the column holding the content is not
+count_two() {
+  NEST="$1" FIRST="$2" SECOND="$3" BODY="$BODY" python3 -c '
+import json, os
+
+nest, first, second = os.environ["NEST"], os.environ["FIRST"], os.environ["SECOND"]
+try:
+    rows = json.loads(os.environ["BODY"])
+except Exception:
+    print("unreadable 0 0"); raise SystemExit
+if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
+    print("norow 0 0"); raise SystemExit
+row = rows[0]
+if nest != "-":
+    row = row.get(nest)
+    if not isinstance(row, dict):
+        print("nocolumn 0 0"); raise SystemExit
+n = lambda v: len(v) if isinstance(v, list) else 0
+print("ok", n(row.get(first)), n(row.get(second)))'
+}
+
+# Is this response a spend refusal or a busy provider rather than a fault? Those
+# say nothing about whether the feature works, so they must not go red.
+soft_reason() {
+  local lower
+  lower="$(printf '%s' "$BODY" | tr '[:upper:]' '[:lower:]')"
+  if [ -n "$(field limited)" ]; then
+    echo "an AI spend limit refused the call, so nothing was measured"
+    return 0
+  fi
+  case "$lower" in
+  *overloaded* | *rate_limit* | *rate\ limit* | *529* | *timed\ out* | *timeout*)
+    echo "the AI service was busy (rate-limited or overloaded)"
+    return 0
+    ;;
+  esac
+  if [ "$CODE" = "000" ]; then
+    echo "the request never completed: $BODY"
+    return 0
+  fi
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# Can we read the database at all?
+# ---------------------------------------------------------------------------
+# Three of the four probes have to read a row back — to find a window type to
+# write about, and to see whether what a feature saved has anything in it. If
+# those reads are failing, an empty answer means "we could not look", and
+# reporting that as "the feature wrote nothing" would send somebody to fix code
+# that works. Credentials that run a function do not necessarily read a table:
+# the platform accepts several key formats, and they do not all work everywhere.
+#
+# So ask a harmless question first. If the answer is not a list of rows, the
+# checks that need the database say NOT TESTED and give this as the reason, and
+# the one that needs nothing still runs.
+query "window_types?select=id&limit=1"
+rest_ok=0
+if [ "$CODE" = "200" ] && [ "$(BODY="$BODY" python3 -c '
+import json, os
+try:
+    print("1" if isinstance(json.loads(os.environ["BODY"]), list) else "0")
+except Exception:
+    print("0")')" = "1" ]; then
+  rest_ok=1
+else
+  rest_why="the credentials on this run can call the functions but cannot read the database back (HTTP $CODE: $(printf '%s' "$BODY" | head -c 200)), so there is no way to see what these features saved. NOT tested."
+  soft_fail=1
+fi
+
+# ---------------------------------------------------------------------------
+# 1. Reading delivery schedules. No database write; the answer is checkable.
+# ---------------------------------------------------------------------------
+# Invented planset text in the shape a real schedule table has. Three marks, one
+# of them with a quantity of 4 — the quantity column is the field that used to be
+# collapsed to 1, so it is the one worth proving.
+SCHEDULE_TEXT='WINDOW SCHEDULE
+MARK   TYPE          QTY   WIDTH   HEIGHT   COLOR
+W1     SINGLE HUNG    4     36"     60"     WHITE
+W2     FIXED PICTURE  1     72"     48"     WHITE
+D1     SLIDING DOOR   2     96"     80"     BRONZE'
+
+payload="$(TEXT="$SCHEDULE_TEXT" python3 -c '
+import json, os
+print(json.dumps({"pages": [{"pageNumber": 1, "text": os.environ["TEXT"]}],
+                  "catalog": []}))')"
+call extract-schedule "$payload"
+rows="$(field rows)"
+rowcount="$(BODY="$BODY" python3 -c '
+import json, os
+try:
+    d = json.loads(os.environ["BODY"])
+    print(len(d.get("rows") or []))
+except Exception:
+    print(0)')"
+
+if [ "$CODE" = "200" ] && [ "${rowcount:-0}" -ge 2 ]; then
+  proved+=("reading delivery schedules|$rowcount schedule row(s) read from a test planset: $rows")
+elif reason="$(soft_reason)"; then
+  untested+=("reading delivery schedules|$reason")
+  soft_fail=1
+else
+  broken+=("reading delivery schedules|HTTP $CODE, $rowcount row(s): $(printf '%s' "$BODY" | head -c 400)")
+fi
+
+# ---------------------------------------------------------------------------
+# 2. Toolbox talks. This one SAVES a row, so it is deleted again afterwards.
+# ---------------------------------------------------------------------------
+# with_images false on purpose: the diagrams are an OpenAI call and by far the
+# most expensive part of the feature, and they prove nothing about the writing
+# that just changed provider.
+#
+# Skipped entirely when the database cannot be read: generating a talk saves a
+# row, and without a read we could neither check it nor delete it again, so it
+# would spend money and leave litter on the Safety screen to prove nothing.
+if [ "$rest_ok" -eq 0 ]; then
+  untested+=("toolbox talks|$rest_why")
+else
+  call generate-toolbox-talk \
+    '{"topic":"Ladder safety when setting a second-storey window","with_images":false}'
+  talk_id="$(field talk_id)"
+  talk_title="$(field title)"
+
+  if [ "$CODE" = "200" ] && [ -n "$talk_id" ] && [ -n "$talk_title" ]; then
+    # A 200 with a title is not enough. A talk whose sections came back empty is
+    # exactly what a broken strict-JSON path produces, and it would still save.
+    query "safety_talks?id=eq.$talk_id&select=title,sections_json"
+    read_code="$CODE"
+    saved="$(printf '%s' "$BODY" | head -c 300)"
+    read -r state nhaz nsteps <<<"$(count_two sections_json key_hazards steps)"
+
+    if [ "$state" = "ok" ] && [ "${nhaz:-0}" -ge 1 ] && [ "${nsteps:-0}" -ge 1 ]; then
+      proved+=("toolbox talks|\"$talk_title\" — $nhaz hazard(s), $nsteps step(s)")
+    elif [ "$state" = "norow" ] || [ "$state" = "unreadable" ]; then
+      # The talk saved; reading it back to inspect it did not work. That is a
+      # hole in this check, and calling the feature broken here would be a lie.
+      untested+=("toolbox talks|the talk saved as \"$talk_title\", and reading it back to check what is in it failed (HTTP $read_code: $saved). NOT tested.")
+      soft_fail=1
+    else
+      broken+=("toolbox talks|saved \"$talk_title\" with empty content: $nhaz hazard(s), $nsteps step(s) ($state). What came back: $saved")
+    fi
+
+    # Clean up after ourselves. A stray test talk on the Safety screen is a
+    # small thing, but it is crew-visible, and a verification step must not
+    # leave litter in the app it is verifying.
+    del="$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
+      "$REST/safety_talks?id=eq.$talk_id" \
+      -H "Authorization: Bearer $JWT" -H "apikey: $JWT" \
+      --max-time 30 2>/dev/null)"
+    case "$del" in
+    2*) : ;;
+    *) echo "NOTE: could not delete the test toolbox talk $talk_id (HTTP $del). Delete it on the Safety screen." >&2 ;;
+    esac
+  elif reason="$(soft_reason)"; then
+    untested+=("toolbox talks|$reason")
+    soft_fail=1
+  else
+    broken+=("toolbox talks|HTTP $CODE: $(printf '%s' "$BODY" | head -c 400)")
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 3. How-to guides. Needs a window type with a reference ("golden") install.
+# ---------------------------------------------------------------------------
+if [ "$rest_ok" -eq 1 ]; then
+  query "window_types?golden_install_event_id=not.is.null&select=id,type_code&limit=1"
+  howto_id="$(field id)"
+  howto_code="$(field type_code)"
+else
+  howto_id=""
+  howto_code=""
+fi
+
+if [ "$rest_ok" -eq 0 ]; then
+  untested+=("how-to guides|$rest_why")
+elif [ -z "$howto_id" ]; then
+  untested+=("how-to guides|no window type has a reference install recorded yet, so there is nothing for it to write about. NOT tested.")
+else
+  call generate-howto "{\"type_id\":\"$howto_id\"}"
+  steps="$(field steps)"
+  if [ "$CODE" = "200" ] && [ -n "$steps" ] && [ "$steps" != "0" ]; then
+    proved+=("how-to guides|$steps step(s) written for window type $howto_code")
+  elif [ -n "$(field skipped)" ]; then
+    untested+=("how-to guides|the function skipped: $(field reason). NOT tested.")
+  elif reason="$(soft_reason)"; then
+    untested+=("how-to guides|$reason")
+    soft_fail=1
+  else
+    broken+=("how-to guides|HTTP $CODE: $(printf '%s' "$BODY" | head -c 400)")
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 4. Window-type tips. Needs a type with install memos behind it.
+# ---------------------------------------------------------------------------
+# Scoped to ONE type by id. Left unscoped it would rewrite the tips of every
+# window type in the catalog, which is not a thing a verification step should do.
+if [ "$rest_ok" -eq 1 ]; then
+  query "install_events?window_type_id=not.is.null&select=window_type_id&limit=1"
+  tips_id="$(field window_type_id)"
+else
+  tips_id=""
+fi
+
+if [ "$rest_ok" -eq 0 ]; then
+  untested+=("window-type tips|$rest_why")
+elif [ -z "$tips_id" ]; then
+  untested+=("window-type tips|no install has been recorded against a window type yet, so there are no memos to learn from. NOT tested.")
+else
+  call synthesize-type-tips "{\"type_id\":\"$tips_id\",\"min_installs\":1}"
+  updated="$(BODY="$BODY" python3 -c '
+import json, os
+try:
+    d = json.loads(os.environ["BODY"])
+    r = (d.get("results") or [{}])[0]
+    print("1" if r.get("updated") else "0", r.get("type_code") or "?")
+except Exception:
+    print("0 ?")')"
+  read -r didupdate tips_code <<<"$updated"
+  if [ "$CODE" = "200" ] && [ "$didupdate" = "1" ]; then
+    query "window_types?id=eq.$tips_id&select=tips_json,watch_outs_json"
+    read_code="$CODE"
+    saved="$(printf '%s' "$BODY" | head -c 300)"
+    read -r state ntips nwatch <<<"$(count_two - tips_json watch_outs_json)"
+    if [ "$state" = "ok" ] && [ "${ntips:-0}" -ge 1 ]; then
+      proved+=("window-type tips|$ntips tip(s) and $nwatch watch-out(s) written for $tips_code")
+    elif [ "$state" != "ok" ]; then
+      untested+=("window-type tips|tips were written for $tips_code, and reading them back to check them failed (HTTP $read_code: $saved). NOT tested.")
+      soft_fail=1
+    else
+      broken+=("window-type tips|reported success for $tips_code and saved no tips — empty content. What came back: $saved")
+    fi
+  elif [ "$CODE" = "200" ] && [ -n "$(field results empty)" ]; then
+    # Refused rather than saved: the good tips are still there. That is the
+    # feature protecting itself, and it is still a failure worth going red for.
+    broken+=("window-type tips|$(field results reason). Nothing was overwritten. What came back: $(printf '%s' "$BODY" | head -c 300)")
+  elif [ "$CODE" = "200" ]; then
+    untested+=("window-type tips|that window type has too few install memos to synthesise from. NOT tested.")
+  elif reason="$(soft_reason)"; then
+    untested+=("window-type tips|$reason")
+    soft_fail=1
+  else
+    broken+=("window-type tips|HTTP $CODE: $(printf '%s' "$BODY" | head -c 400)")
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# The report
+# ---------------------------------------------------------------------------
+# Takes the entries as arguments rather than by name: `local -n` needs bash 4.3,
+# and this has to stay runnable on a stock macOS shell as well as in CI.
+print_list() {
+  local item
+  for item in "$@"; do
+    printf '    %s\n      %s\n' "${item%%|*}" "${item#*|}"
+  done
+}
+
+if [ "${#broken[@]}" -gt 0 ]; then
+  # A refused key and an unreadable answer both show up as "no usable output",
+  # and they need completely different things done about them — replace a key, or
+  # fix the code. Saying which is the difference between a report the owner can
+  # act on and one he has to forward to somebody.
+  all_broken="$(printf '%s\n' "${broken[@]+"${broken[@]}"}" | tr '[:upper:]' '[:lower:]')"
+  case "$all_broken" in
+  *invalid\ x-api-key* | *authentication_error* | *invalid_api_key* | *permission_error* | *401* | *403*)
+    cause="an API key the provider refused"
+    guidance="  The AI provider rejected our key: it is the wrong one, it was revoked, or
+  it belongs to an account without access. Put a valid key in the GitHub secret
+  ANTHROPIC_API_KEY and re-run Deploy backend. A name-and-digest check cannot
+  see this — only a real request can."
+    ;;
+  *nothing\ was\ saved* | *existing\ ones\ were\ kept*)
+    cause="an answer with none of the content in it"
+    guidance="  The AI answered and the answer had none of the content the feature needs, so
+  the app refused to save it. Nothing was lost or overwritten — that refusal is
+  deliberate, and it is why an empty how-to or a blank talk cannot reach the
+  crew. A re-run usually works; if it keeps happening the answer shape is wrong,
+  which is code, not a key: supabase/functions/_shared/anthropicJson.ts."
+    ;;
+  *answer\ is\ incomplete* | *cut\ off*)
+    cause="an answer that arrived half-written"
+    guidance="  The AI began answering and stopped part-way through, so the app refused the
+  half-answer instead of saving it — which is the right thing to do, and is why
+  nothing bad is in the database. Usually the reply needed more room than it was
+  allowed: that ceiling is in supabase/functions/_shared/anthropic.ts. Worth one
+  re-run before treating it as a fault."
+    ;;
+  *parseable\ json* | *no\ parseable* | *empty\ content*)
+    cause="an answer the app could not read"
+    guidance="  The provider answered and the answer did not arrive in a shape the app can
+  read. That is a code problem, not a key problem: see
+  supabase/functions/_shared/anthropicJson.ts, which is what forces a
+  machine-readable answer now that the old provider's setting is gone."
+    ;;
+  *)
+    cause="no usable output"
+    guidance="  These features were reached and wrote nothing usable. They all generate text
+  with Claude, so suspect the API key or the shape of the answer first. The
+  response from each is below."
+    ;;
+  esac
+
+  if [ "${#broken[@]}" -eq 1 ]; then
+    headline="${broken[0]%%|*} is not working: $cause"
+  else
+    headline="${#broken[@]} writing features are not working: $cause"
+  fi
+
+  {
+    echo "$headline"
+    echo
+    echo "WHAT THIS MEANS"
+    echo
+    echo "$guidance"
+    echo
+    echo "  Nothing in this run broke them — this is the first check that can see it."
+    echo
+    echo "  NOT WORKING:"
+    print_list "${broken[@]+"${broken[@]}"}"
+    if [ "${#proved[@]}" -gt 0 ]; then
+      echo
+      echo "  Working, for contrast:"
+      print_list "${proved[@]+"${proved[@]}"}"
+    fi
+    # Printed even when something else has failed. A feature that was skipped is
+    # easy to mistake for one that passed if the report only lists winners and
+    # losers, and then the log claims more than it checked.
+    if [ "${#untested[@]}" -gt 0 ]; then
+      echo
+      echo "  NOT TESTED — read nothing into these either way:"
+      print_list "${untested[@]+"${untested[@]}"}"
+    fi
+    echo
+    echo "  project: ${REF:-<from TEXT_SMOKE_BASE>}"
+  } >&2
+  if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    echo "text_smoke_headline=$headline" >>"$GITHUB_OUTPUT"
+  fi
+  exit 1
+fi
+
+if [ "${#proved[@]}" -eq 0 ]; then
+  {
+    echo "Could not tell whether the writing features work: none could be exercised"
+    echo
+    if [ "${#untested[@]}" -gt 0 ]; then
+      print_list "${untested[@]+"${untested[@]}"}"
+      echo
+    fi
+    echo "This is a VERIFICATION failure, not a broken feature. Nothing here says"
+    echo "anything is misconfigured. Re-run it."
+  } >&2
+  exit 2
+fi
+
+echo "The writing features work: ${#proved[@]} of them produced real output"
+echo
+echo "  project: ${REF:-<from TEXT_SMOKE_BASE>}"
+echo
+echo "  PROVED — real output came back from Claude:"
+print_list "${proved[@]+"${proved[@]}"}"
+if [ "${#untested[@]}" -gt 0 ]; then
+  echo
+  echo "  NOT TESTED — read nothing into these either way:"
+  print_list "${untested[@]+"${untested[@]}"}"
+fi
+echo
+echo "Each line above is generated content, not a status code. These features"
+echo "are not deployed-but-broken."
+
+[ "$soft_fail" -eq 1 ] && exit 2
+exit 0

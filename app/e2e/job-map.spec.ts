@@ -83,8 +83,15 @@ interface Overlap {
 interface LabelFit {
   labels: number;
   collidingPairs: number;
-  labelsColliding: number;
-  labelsCollidingFraction: number;
+  labelsTouching: number;
+  labelsTouchingFraction: number;
+  /**
+   * Labels with a quarter or more of their ink covered by another label. This
+   * is the number that decides the threshold: two numbers brushing corners are
+   * still both readable, one buried under a quarter of another number is not.
+   */
+  labelsBuried: number;
+  labelsBuriedFraction: number;
   /** Marks per 100_000 px² of drawing, so two differently sized jobs compare. */
   density: number;
   drawingArea: number;
@@ -141,31 +148,35 @@ function measureLabelFit(
   drawingArea: number,
 ): LabelFit {
   const PAD = 1;
-  const involved = new Set<number>();
+  const BURIED = 0.25;
+  const touching = new Set<number>();
+  const buried = new Set<number>();
   let collidingPairs = 0;
   for (let i = 0; i < boxes.length; i++) {
     for (let j = i + 1; j < boxes.length; j++) {
       const a = boxes[i];
       const b = boxes[j];
-      const hit =
-        a.x < b.x + b.w + PAD &&
-        b.x < a.x + a.w + PAD &&
-        a.y < b.y + b.h + PAD &&
-        b.y < a.y + a.h + PAD;
-      if (hit) {
-        collidingPairs++;
-        involved.add(i);
-        involved.add(j);
-      }
+      const overlapW = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+      const overlapH = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+      if (overlapW + PAD <= 0 || overlapH + PAD <= 0) continue;
+      collidingPairs++;
+      touching.add(i);
+      touching.add(j);
+      const covered = Math.max(0, overlapW) * Math.max(0, overlapH);
+      if (covered >= BURIED * a.w * a.h) buried.add(i);
+      if (covered >= BURIED * b.w * b.h) buried.add(j);
     }
   }
   const median = (values: number[]) =>
     values.length ? [...values].sort((x, y) => x - y)[values.length >> 1] : 0;
+  const share = (n: number) => (boxes.length === 0 ? 0 : n / boxes.length);
   return {
     labels: boxes.length,
     collidingPairs,
-    labelsColliding: involved.size,
-    labelsCollidingFraction: boxes.length === 0 ? 0 : involved.size / boxes.length,
+    labelsTouching: touching.size,
+    labelsTouchingFraction: share(touching.size),
+    labelsBuried: buried.size,
+    labelsBuriedFraction: share(buried.size),
     density: drawingArea === 0 ? 0 : (boxes.length * 100_000) / drawingArea,
     drawingArea,
     labelW: median(boxes.map((b) => b.w)),
@@ -419,9 +430,11 @@ for (const job of jobFixtures()) {
     console.log(
       [
         `  — with every number forced on —`,
-        `  labels touching      ${fit.labelsColliding} / ${fit.labels}` +
-          `  = ${fit.labelsCollidingFraction.toFixed(3)}` +
+        `  labels touching      ${fit.labelsTouching} / ${fit.labels}` +
+          `  = ${fit.labelsTouchingFraction.toFixed(3)}` +
           `  (${fit.collidingPairs} pairs)`,
+        `  labels 1/4 buried    ${fit.labelsBuried} / ${fit.labels}` +
+          `  = ${fit.labelsBuriedFraction.toFixed(3)}`,
         `  label size           ${fit.labelW.toFixed(1)} x ${fit.labelH.toFixed(1)} px`,
         `  mark density         ${fit.density.toFixed(1)} per 100k px²` +
           ` of ${Math.round(fit.drawingArea)} px² drawing`,
@@ -470,8 +483,8 @@ test.afterAll(() => {
   const labelTable = Object.entries(labelFits)
     .map(
       ([jobCode, f]) =>
-        `| ${jobCode} | ${f.page} | ${f.labels} | ${f.labelsColliding} / ${f.labels} | ` +
-        `${f.labelsCollidingFraction.toFixed(3)} | ${f.collidingPairs} | ` +
+        `| ${jobCode} | ${f.page} | ${f.labels} | ${f.labelsTouching} / ${f.labels} | ` +
+        `${f.labelsBuried} / ${f.labels} | ${f.labelsBuriedFraction.toFixed(3)} | ` +
         `${f.labelW.toFixed(1)} x ${f.labelH.toFixed(1)} px | ` +
         `${f.density.toFixed(1)} |`,
     )
@@ -484,8 +497,8 @@ test.afterAll(() => {
       "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n" +
       `${table}\n` +
       "\nEvery mark number forced on:\n\n" +
-      "| job | page | labels | touching | fraction | pairs | label size | " +
-      "marks per 100k px² |\n" +
+      "| job | page | labels | touching | 1/4 buried | buried share | " +
+      "label size | marks per 100k px² |\n" +
       "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n" +
       `${labelTable}\n`,
   );

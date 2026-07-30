@@ -202,9 +202,6 @@ export function Layout() {
   return (
     <div className="app-shell">
       <ToastHost />
-      <div className="sync-pill-mobile">
-        <SyncStatusPill compact />
-      </div>
       <div className="app-frame">
         <aside className="app-rail" aria-label="Primary">
           <Link to="/" className="rail-brand" aria-label="Infinity Windows home">
@@ -225,6 +222,12 @@ export function Layout() {
         </aside>
 
         <main className="app-main">
+          {/* Phones only (hidden from 860px up, where the rail carries it).
+              In the page flow rather than floating over it, so it can never
+              land on top of a job title. */}
+          <div className="sync-strip">
+            <SyncStatusPill />
+          </div>
           {previewing && (
             <div className="view-as-banner" role="status">
               <span>

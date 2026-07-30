@@ -143,36 +143,55 @@ pipeline.
 Numbers on the pins switch off automatically above a certain number of marks per
 page. That number was a guess of 14. It is now measured.
 
-The harness draws every number at once and counts labels that touch a
-neighbour — touching being enough to matter, because two numbers with no
-daylight between them read as one longer number. A page's crowding is expressed
-as marks per 100,000 px² of drawing, so two jobs with differently sized
-buildings can be compared:
+The harness draws every number at once and measures two things: labels that
+merely touch a neighbour, and labels with **a quarter or more of their ink
+covered** by another. The second is the one that decides the threshold. Two
+numbers brushing corners are both still readable; a number under a quarter of
+another number is not, and counting mere contact condemns pages that are
+perfectly usable.
 
-| job | marks | labels touching | share | drawing | marks per 100k px² |
+| job | marks | touching | ¼ buried | share buried | marks per 100k px² |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| OAKRIDGE | 3 | 0 | 0.00 | 117,479 px² | 2.6 |
-| BLACK22 | 42 | 14 | 0.33 | 136,824 px² | 30.7 |
-| PECAN14 | 58 | 36 | 0.62 | 112,186 px² | 51.7 |
+| OAKRIDGE | 3 | 0 | 0 | 0.00 | 2.8 |
+| BLACK22 | 42 | 21 | 2 | 0.05 | 38.6 |
+| PECAN14 | 58 | 38 | 22 | 0.38 | 53.3 |
 
-Between the two crowded jobs the share of touching labels rises by 0.0137 for
-every extra mark per 100k px². Read back to zero, labels first start touching at
-about **6.4 marks per 100k px²** — comfortably above Oakridge's 2.6, which is
-where nothing touches, so the two ends agree.
+On the labels alone, the threshold looks far too low: Black Desert draws 42
+numbers and buries only two of them. Raising it to 45 was tried, and the harness
+failed the job it was meant to help.
 
-The bar chosen is **one label in ten may touch a neighbour**, which is 13.7
-marks per 100k px². On the smallest drawing measured (Pecan, 112k px²) that is
-**15 marks**; on the largest (Black Desert) it would be 19. Fifteen is therefore
-the conservative reading, and `PIN_LABEL_AUTO_MAX` is now 15.
+**The labels were never the constraint — the pins are.** A pin showing a number
+has to be drawn at full size; a pin without one shrinks to a smaller dot inside
+the same tap target. So switching numbers on does not just add text, it inflates
+every pin on the page:
 
-Two things this does not claim. The slope comes from two crowded jobs, so it is
-a straight line through two points and not a law; and it assumes marks are
-spread over the drawing rather than bunched, which is why Pecan — where they
-bunch along one wall — is the one that sets the number. The honest summary is
-that the original guess of 14 was within one mark of the measurement.
+| BLACK22, 42 marks | pins more than half buried |
+| --- | ---: |
+| numbers off (shrunken dots) | 2 of 42 |
+| numbers on (full-size pins) | 22 of 42 |
 
-Worth repeating if pins ever stop being separated by `separatePins`, if the
-label font changes, or if a job appears whose marks crowd harder than Pecan's.
+Twenty-two of forty-two is past the limit this screen is held to — no more than
+half the pins may be more than half buried — so a page that gains readable
+numbers loses countable pins. That is the worse trade: the numbers are only
+useful if you can tell which dot each one belongs to.
+
+`PIN_LABEL_AUTO_MAX` therefore **stays at 14**. The measurement did not move the
+number; it moved the reason, and it ruled out raising it. "Which one is mark 23"
+is now answered by tapping the row instead, which labels that single pin without
+inflating the other forty-one.
+
+Two things still unknown. Where the crossover actually is: 42 marks is over the
+limit and 3 is nowhere near it, and none of the three real jobs sits in between,
+so 14 remains a conservative guess within a range the data brackets rather than
+a measured value. And the count is a blunt proxy anyway — Pecan carries 38% more
+marks than Black Desert but buries eleven times as many labels, because its
+marks bunch along one wall. Density per unit area does not explain that gap
+either; fitting a scatter model to the two jobs gives areas that disagree
+sevenfold.
+
+Worth repeating if pins ever stop being separated by `separatePins`, if the pin
+or label size changes, or if a job appears whose marks bunch harder than
+Pecan's.
 
 ## Full screen was drawing nothing (30 July)
 

@@ -111,6 +111,10 @@ jobs:
       # Set only when Ask Infinity was asked a real question and did not answer.
       # The case the two above cannot see: a key that exists and is refused.
       ask_smoke_cause: ${{ steps.asksmoke.outputs.ask_smoke_headline }}
+      # Set only when one of the OTHER writing features was made to write
+      # something and did not. `ask` working proves nothing about the five
+      # features that generate how-tos, talks, tips and planset reads.
+      text_smoke_cause: ${{ steps.textsmoke.outputs.text_smoke_headline }}
       # Set only when Anthropic itself refused the key. Needs no Supabase
       # credential, so this is the one that still speaks when the test above
       # cannot sign in.
@@ -298,9 +302,263 @@ jobs:
           } >>"$GITHUB_STEP_SUMMARY"
           exit "$rc"
 
+      # A key GitHub does not hold is not a failure, and must never block a
+      # deploy: the value may well be set in Supabase already, so the app can be
+      # working perfectly. But it is a real risk — nothing in this repo can
+      # restore it, and nothing notices if it is deleted — and the step above
+      # reports it only as a line of log output inside a step that is showing
+      # green.
+      #
+      # That is too quiet, and it was proved too quiet. On 2026-07-29 the sync
+      # step printed "not in GitHub  OPENAI_API_KEY" on every merge for several
+      # hours and nobody read it, twice: once before the key was added at all,
+      # and again while it sat in GitHub under a misspelled name. Both times the
+      # run was green and the sentence was there to be found.
+      #
+      # So the same fact is raised to a warning annotation, which GitHub pins to
+      # the top of the run page and shows against the commit, and to its own
+      # heading in the run summary. Nothing here can fail: every path exits 0.
+      - name: Say out loud which keys GitHub does not hold
+        id: unmanaged
+        if: ${{ !cancelled() && steps.guard.outputs.ok == 'true' }}
+        shell: bash
+        env:
+          UNMANAGED: ${{ steps.syncsecrets.outputs.unmanaged_names }}
+        run: |
+          set -uo pipefail
+          # Space-separated names from scripts/sync-function-secrets.sh, which
+          # derives them from the function source. Deliberately unquoted so it
+          # splits into words; the values are secret NAMES, never secret values.
+          # shellcheck disable=SC2206
+          names=(${UNMANAGED:-})
+
+          if [ "${#names[@]}" -eq 0 ]; then
+            echo "Every key the app needs is stored in GitHub."
+            {
+              echo "### Every key the app needs is stored in GitHub"
+              echo
+              echo "So each one can be restored if it is ever lost, and every"
+              echo "deploy puts it back where the app reads it."
+            } >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # One annotation per name, titled with the name, so the run page names
+          # the missing key rather than the job.
+          for n in "${names[@]}"; do
+            echo "::warning title=Not stored in GitHub: $n::The app needs $n, and GitHub does not have a copy of it. Nothing is broken by this and nothing was changed - if the app works today, this key is set in Supabase only. But nothing here can put it back if it is ever lost, and nothing will notice if it is deleted. Fix: add a GitHub Actions secret named exactly $n, then re-run this workflow."
+          done
+
+          {
+            echo "### Action needed: ${#names[@]} key(s) the app needs are not stored in GitHub"
+            echo
+            for n in "${names[@]}"; do
+              echo "- \`$n\`"
+            done
+            echo
+            echo "**Nothing is broken by this, and nothing was changed.** If the"
+            echo "app works today, these are set inside Supabase only."
+            echo
+            echo "Why it still matters: a key that lives in only one place has no"
+            echo "backup and no owner. Nothing in this repo can put it back if it"
+            echo "is lost, and nothing notices if it is deleted."
+            echo
+            echo "To fix, add a GitHub Actions secret named **exactly** as above"
+            echo "(Settings -> Secrets and variables -> Actions), then re-run this"
+            echo "workflow. The name has to match character for character - a"
+            echo "secret spelled differently is invisible to this pipeline."
+          } >>"$GITHUB_STEP_SUMMARY"
+
+          echo "${#names[@]} key(s) the app needs are not stored in GitHub:"
+          printf '    %s\n' "${names[@]}"
+
+      # Catch a key that WAS added, under the wrong name.
+      #
+      # This is the one failure the rest of the pipeline is blind to by
+      # construction. Everything else works from exact names: the sync step is
+      # handed the values of the names the functions need and nothing else, so a
+      # secret stored as OPEN_AI_WINDOWS_API when the app looks for
+      # OPENAI_API_KEY is not a broken key, it is an invisible one. Nothing
+      # references that name, no check can see it, nothing goes red, and the
+      # owner has every reason to think the job is done. That happened on
+      # 2026-07-29 and cost an afternoon; a human found it by comparing two
+      # names by eye.
+      #
+      # Seeing it requires the one thing no other step looks at: the LIST OF
+      # NAMES GitHub holds. Names only — GitHub's API cannot return a secret's
+      # value to anyone, by design, so there is no value here to leak.
+      #
+      # Never a gate. It is advice, it exits 0 on every path, and when it cannot
+      # look it says so instead of guessing.
+      - name: Check no key was added under the wrong name
+        id: nearmiss
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          # A token that may list this repo's secret NAMES. The built-in
+          # GITHUB_TOKEN has no such permission — there is no `permissions:` key
+          # that grants it — so this needs its own. Least privilege is a
+          # fine-grained token limited to this one repository with a single
+          # permission, Secrets: Read-only, which allows names and timestamps and
+          # cannot read a value. See the step output for how to add it.
+          AUDIT_TOKEN: ${{ secrets.SECRET_NAME_AUDIT_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+
+          explain_unavailable() {
+            echo "::warning title=Could not check for a misnamed key::This deploy could not read the LIST OF SECRET NAMES this repository holds, so it could not tell whether a key the app needs has been added under a slightly wrong name - the mistake that cost an afternoon on 2026-07-29. Nothing is broken by this. To switch the check on, add a repository secret named SECRET_NAME_AUDIT_TOKEN containing a fine-grained personal access token limited to this repository with one permission, Secrets: Read-only. That permission can read secret NAMES and never values."
+            {
+              echo "### Could not check whether a key was added under the wrong name"
+              echo
+              echo "**Nothing is broken by this**, and nothing was changed. This"
+              echo "check simply could not look."
+              echo
+              echo "It is the one check that can catch a key added under a"
+              echo "*slightly wrong* name - the mistake that cost an afternoon on"
+              echo "2026-07-29, when the OpenAI key sat in GitHub as"
+              echo "\`OPEN_AI_WINDOWS_API\` and every other check stayed green"
+              echo "because nothing looks for that name."
+              echo
+              echo "**To switch it on**, someone with admin on this repository:"
+              echo
+              echo "1. Create a fine-grained personal access token at"
+              echo "   <https://github.com/settings/personal-access-tokens/new>."
+              echo "2. Under *Repository access*, choose **Only select"
+              echo "   repositories** and pick this one."
+              echo "3. Under *Repository permissions*, set **Secrets** to"
+              echo "   **Read-only**. Nothing else is needed."
+              echo "4. Save the token, then add it here as a repository secret"
+              echo "   named exactly \`SECRET_NAME_AUDIT_TOKEN\`"
+              echo "   (Settings -> Secrets and variables -> Actions)."
+              echo
+              echo "That permission lets this check read the **names** of secrets."
+              echo "It cannot read their values - GitHub does not let anything"
+              echo "read a secret's value back, including this."
+            } >>"$GITHUB_STEP_SUMMARY"
+          }
+
+          TOKEN="${AUDIT_TOKEN:-}"
+          [ -n "$TOKEN" ] || TOKEN="${FALLBACK_TOKEN:-}"
+          if [ -z "$TOKEN" ]; then
+            explain_unavailable
+            exit 0
+          fi
+
+          # umask before the file exists. It holds NAMES, never values, but it is
+          # still an inventory and there is no reason for it to be readable.
+          umask 077
+          names="$(mktemp)" || exit 0
+          trap 'rm -f "$names"' EXIT
+
+          if ! GH_TOKEN="$TOKEN" gh api "repos/$REPO/actions/secrets" \
+               --paginate --jq '.secrets[].name' >"$names" 2>/tmp/nearmiss-api.log; then
+            echo "The list of secret names could not be read."
+            # The API error can mention the repo and the permission, never a
+            # value, so it is safe to show and it is what tells you which.
+            sed 's/^/    /' /tmp/nearmiss-api.log || true
+            explain_unavailable
+            exit 0
+          fi
+
+          echo "Read $(wc -l <"$names" | tr -d ' ') secret name(s). No value was read;"
+          echo "GitHub does not expose secret values to anything, including this."
+          echo
+
+          report="$(python3 scripts/secret_name_audit.py \
+            --have-file "$names" --github-output 2>&1)" || {
+            echo "::warning title=Could not check for a misnamed key::The misnamed-key check could not run to completion. Nothing is broken by this."
+            printf '%s\n' "$report"
+            exit 0
+          }
+          printf '%s\n' "$report"
+
+          if printf '%s' "$report" | grep -q "may have been stored under the wrong name"; then
+            # One annotation per pair, so the run page names both the secret you
+            # have and the name the app wants.
+            printf '%s\n' "$report" | awk '
+              /^  You have a secret called / { stored=$0; sub(/^  You have a secret called /,"",stored); sub(/\.$/,"",stored) }
+              /^  Did you mean / { want=$0; sub(/^  Did you mean /,"",want); sub(/\?$/,"",want)
+                printf "::warning title=Possible misnamed key: %s::You have a secret called %s. Did you mean %s? The app only ever looks for the exact name %s, so a secret spelled any other way is invisible to it and nothing goes red. Fix: add a secret named exactly %s with the same value, then delete %s.\n", stored, stored, want, want, want, stored }
+            '
+            {
+              echo "### Action needed: a key may have been added under the wrong name"
+              echo
+              echo '```'
+              printf '%s\n' "$report"
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### No key appears to be stored under the wrong name"
+              echo
+              printf '%s\n' "$report"
+            } >>"$GITHUB_STEP_SUMMARY"
+          fi
+
+      # How many devices are actually signed up for notifications. Nothing here
+      # can break, and a count of zero is not a fault — it is reported because it
+      # is the number that decides whether changing the push key costs anyone
+      # anything. Rotating the VAPID pair invalidates every existing
+      # subscription, so each signed-up device has to turn notifications off and
+      # on again. At zero that is free; at ten it is ten people who silently stop
+      # being notified. That question was asked on 2026-07-29, before rotating the
+      # pair, and no check could answer it: row-level security scopes
+      # push_subscriptions to its owner, so an ordinary read comes back empty
+      # whether the table is empty or full. The answer was eventually recovered
+      # by chance, from row counts in a database backup that happened to be
+      # committed that afternoon — which is not a check, and would not have
+      # existed on any other day. It was one device, and rotating went ahead
+      # knowingly rather than blindly.
+      #
+      # Read-only, and it goes through scripts/pgq.sh, which refuses anything
+      # that is not a SELECT. Only a count is printed, never an endpoint or a
+      # key — a push endpoint is a capability to notify someone's device.
+      - name: Report how many devices are signed up for notifications
+        id: pushsubs
+        if: ${{ !cancelled() && steps.guard.outputs.ok == 'true' }}
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -uo pipefail
+          if ! out="$(echo 'select count(*) as devices from push_subscriptions;' \
+              | scripts/pgq.sh 2>&1)"; then
+            echo "::warning title=Subscriber count unavailable::Could not ask the database how many devices are signed up for notifications. Nothing is broken by this; the number is simply unknown."
+            printf '%s\n' "$out"
+            exit 0
+          fi
+          # pgq.sh returns the Management API's JSON rows, e.g. [{"devices":0}].
+          # An empty array means no rows, which is a count of zero. Anything that
+          # is not JSON, or not an array, leaves this empty and is reported as
+          # unknown below rather than guessed at.
+          devices="$(printf '%s' "$out" | python3 -c \
+            "import json,sys; r = json.loads(sys.stdin.read()); print(r[0]['devices'] if r else 0)" \
+            2>/dev/null)"
+          if ! printf '%s' "$devices" | grep -qE '^[0-9]+$'; then
+            echo "::warning title=Subscriber count unreadable::The database answered in a shape this step did not expect, so the number of signed-up devices is unknown. Nothing is broken by this."
+            exit 0
+          fi
+          echo "devices=$devices" >>"$GITHUB_OUTPUT"
+          echo "$devices device(s) are signed up for notifications."
+          {
+            echo "### Notifications: $devices device(s) signed up"
+            echo
+            if [ "$devices" -eq 0 ]; then
+              echo "Nobody has switched notifications on yet, so changing the push"
+              echo "key costs nothing today."
+            else
+              echo "Changing the push key would stop notifications reaching these"
+              echo "$devices device(s) until each one turns notifications off and on"
+              echo "again in the app."
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+
       # A VAPID secret that EXISTS and a VAPID secret that MATCHES THE APP are
-      # different things, and the step above can only see the first. Web push
-      # needs a pair: the browser subscribes with the public half compiled into
+      # different things, and "Verify every required function secret exists"
+      # above can only see the first. Web push needs a pair: the browser
+      # subscribes with the public half compiled into
       # the bundle from the repo secret VITE_VAPID_PUBLIC_KEY, and send-push
       # signs with VAPID_PRIVATE_KEY from Supabase. Cross those two pairs and
       # every check in this repo stays green while no notification ever arrives
@@ -491,6 +749,70 @@ jobs:
           } >>"$GITHUB_STEP_SUMMARY"
           exit "$rc"
 
+      # Ask Infinity answering proves ONE feature reaches Claude. It says nothing
+      # about the five others that generate text — how-to guides, toolbox talks,
+      # window-type tips, reading delivery schedules, sorting voice memos — and
+      # those all moved from OpenAI to Claude, which is precisely the change that
+      # deploys clean and fails on first real use.
+      #
+      # The specific thing being caught: OpenAI guaranteed a machine-readable
+      # answer with a request flag, Claude has no such flag, so the guarantee is
+      # rebuilt in _shared/anthropicJson.ts. If that is subtly wrong, every one of
+      # these features returns 200 and writes nothing usable — a talk with no
+      # hazards, a planset read as zero openings — and no existing check can tell
+      # that from "there was nothing to find". So this asks for output whose
+      # CONTENT is checked, and it prints what came back.
+      #
+      # Same three outcomes as the step above, for the same reason: a spend cap or
+      # a busy provider warns rather than going red. It also reports a feature it
+      # could not exercise for want of data as NOT TESTED, never as a pass.
+      - name: Make the other writing features actually write something
+        id: textsmoke
+        if: ${{ !cancelled() && steps.guard.outputs.ok == 'true' }}
+        shell: bash
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set +e
+          scripts/smoke-text-features.sh >/tmp/text-smoke.log 2>&1
+          rc=$?
+          cat /tmp/text-smoke.log
+
+          if [ "$rc" -eq 0 ]; then
+            {
+              echo "### The writing features work"
+              echo
+              echo '```'
+              cat /tmp/text-smoke.log
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          cause="$(head -n 1 /tmp/text-smoke.log)"
+
+          if [ "$rc" -eq 2 ]; then
+            echo "::warning title=Writing features were not fully verified::$cause"
+            {
+              echo "### Writing features: not fully verified this run"
+              echo
+              echo '```'
+              cat /tmp/text-smoke.log
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "::error title=Action needed::$cause"
+          {
+            echo "### $cause"
+            echo
+            echo '```'
+            cat /tmp/text-smoke.log
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
   migrations:
     name: Push migrations
     runs-on: ubuntu-latest
@@ -654,9 +976,11 @@ jobs:
       # nobody's phone gets any notification at all — and the most surprising,
       # because nothing else in the pipeline can see it. A missing secret comes
       # next, since it names every key that is absent rather than just the one
-      # feature that noticed. The Ask Infinity smoke test leads only when it is
+      # feature that noticed. The two smoke tests lead only when one of them is
       # the sole signal, which is precisely the case nothing else can detect: a
-      # key that is present and refused. The run page always lists every cause.
+      # key that is present and refused, or an answer the app cannot read. Ask
+      # Infinity comes before the other writing features because it is the one
+      # crew touch all day. The run page always lists every cause.
       cause: >-
         ${{ needs.functions.outputs.push_key_cause != ''
         && needs.functions.outputs.push_key_cause
@@ -664,7 +988,9 @@ jobs:
         && needs.functions.outputs.secret_cause
         || (needs.functions.outputs.anthropic_key_cause != ''
         && needs.functions.outputs.anthropic_key_cause
-        || needs.functions.outputs.ask_smoke_cause)) }}
+        || (needs.functions.outputs.ask_smoke_cause != ''
+        && needs.functions.outputs.ask_smoke_cause
+        || needs.functions.outputs.text_smoke_cause))) }}
       detail: >-
         ${{ needs.functions.outputs.push_key_cause != ''
         && 'Both halves of one push key pair have to be set together, in
@@ -682,8 +1008,12 @@ jobs:
         || (needs.functions.outputs.ask_smoke_cause != ''
         && 'Ask Infinity was asked a real question and did not answer. The run
         page has the reply it gave instead.'
+        || (needs.functions.outputs.text_smoke_cause != ''
+        && 'One of the features that writes for you — a how-to, a toolbox talk,
+        window-type tips or reading a plan set — was made to write something and
+        produced nothing usable. The run page says which one and what came back.'
         || 'Some of the backend did not ship, so the app may be running against a
-        database or functions that do not match the code.'))) }}
+        database or functions that do not match the code.')))) }}
     secrets: inherit
 
   # Not a failure, and deliberately not one: the database holds objects no

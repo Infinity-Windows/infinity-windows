@@ -70,6 +70,7 @@ import { CalendarClock, Plane, Truck, Users } from "lucide-react";
 import { resolveWindowFromScan } from "../lib/scanResolve";
 import { ProjectMap } from "./install/ProjectMap";
 import { DispatchBoard } from "./install/DispatchBoard";
+import { ScrollTabs } from "../components/nav/ScrollTabs";
 import { PhotoFeed } from "../components/photos/PhotoFeed";
 import { JobChat } from "../components/chat/JobChat";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
@@ -232,12 +233,14 @@ export function ProjectDetail() {
         <DirectionsButton address={project?.address} />
       </header>
 
-      <nav className="hub-tabs" aria-label="Project sections">
+      <ScrollTabs className="hub-tabs" label="Project sections" activeId={tab}>
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             className={tab === t.id ? "hub-tab active" : "hub-tab"}
+            data-tab-active={tab === t.id}
+            aria-current={tab === t.id ? "page" : undefined}
             onClick={() => setTab(t.id)}
           >
             {t.label}
@@ -246,7 +249,7 @@ export function ProjectDetail() {
             )}
           </button>
         ))}
-      </nav>
+      </ScrollTabs>
 
       {tab === "overview" && (
         <OverviewTab
@@ -427,8 +430,8 @@ function OverviewTab({
             <span>
               <strong>~{estimate.crew.recommendedCrew}</strong> installer(s) to finish today
             </span>
-            <span>
-              <strong>{formatHours(estimate.est.p90Minutes)}</strong> slow-case (P90)
+            <span title="9 out of 10 jobs like this finish faster than this">
+              <strong>{formatHours(estimate.est.p90Minutes)}</strong> slow-case
             </span>
           </div>
           {estimate.est.unknownTypes > 0 && (
@@ -810,7 +813,7 @@ function JobDetailsPanel({
             <dl
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(min(160px, 100%), 1fr))",
                 gap: "10px 16px",
                 margin: "10px 0 0",
               }}
@@ -1008,7 +1011,7 @@ function PreissuePanel({
     mutationFn: () => preissueProjectUnits(projectId),
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
       pushToast(
         created.length > 0
           ? `Pre-issued ${created.length} unit ID${created.length === 1 ? "" : "s"}.`
@@ -1243,7 +1246,7 @@ function ReceivingPanel({
       setDamaged(false);
       queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
       queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
     },
     onError: (e) => setMessage(formatApiError(e)),
   });
@@ -1418,7 +1421,7 @@ function UnloadPanel({
       queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
       queryClient.invalidateQueries({ queryKey: ["issues"] });
       queryClient.invalidateQueries({ queryKey: ["reorderNeeds", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
     },
     onError: (e) => toastError(e),
   });
@@ -1566,7 +1569,7 @@ function WarehouseTab({
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
-    queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    queryClient.invalidateQueries({ queryKey: ["inventory"] });
   };
 
   // Scan one unit onto the truck. The unit comes pre-resolved from the shared

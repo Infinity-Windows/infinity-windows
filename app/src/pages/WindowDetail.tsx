@@ -101,7 +101,7 @@ export function WindowDetail() {
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["window", windowId] });
     queryClient.invalidateQueries({ queryKey: ["movements"] });
-    queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    queryClient.invalidateQueries({ queryKey: ["inventory"] });
   };
 
   const openCase = useMutation({

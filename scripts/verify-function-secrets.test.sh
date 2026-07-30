@@ -217,13 +217,15 @@ run
 assert_rc 1
 assert_count 1 "MISSING"
 
-new_case "only ANTHROPIC_API_KEY missing: names both affected features in English"
+new_case "only ANTHROPIC_API_KEY missing: names the affected features in English"
 live_state
 run
 assert_has "- Ask Infinity"
 assert_has "- plan-set reading"
-# The exemplar wording: a feature and an action, no variable name, no jargon.
-assert_first_line_has "Ask Infinity and plan-set reading need an API key"
+# Every writing feature runs on this one key now, so the headline names two of
+# them and counts the rest. A bare count ("7 app features") would leave the
+# owner unable to tell a small problem from a dead app.
+assert_first_line_has "Ask Infinity, reading delivery schedules and 5 other features need an API key"
 
 new_case "only ANTHROPIC_API_KEY missing: says where to click, not just a command"
 live_state

@@ -10,6 +10,9 @@
        extensionless relative imports are correct here. */
     "module": "esnext",
     "moduleResolution": "bundler",
+    /* vitest.config.ts pulls in vite.config.ts, which imports with an explicit
+       .ts extension because it is separately checked under `nodenext`. */
+    "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,

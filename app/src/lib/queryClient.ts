@@ -42,6 +42,9 @@ const OFFLINE_KEYS = new Set([
   "openingCounts",
   "projectWindows",
   "projectUnits",
+  // The warehouse hub's four numbers and the lists behind them — a phone in a
+  // dead spot still answers "where is it?" from the last good read.
+  "inventory",
   "windowTypes",
   "typeBrain",
   "plansets",

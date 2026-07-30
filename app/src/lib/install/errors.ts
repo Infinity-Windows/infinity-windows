@@ -72,3 +72,60 @@ export function formatApiError(err: unknown, fallback = GENERIC): string {
   if (!text || text.includes("[object Object]")) return fallback || GENERIC;
   return text;
 }
+
+/**
+ * Error types the JavaScript engine itself raises. These mean "this code has a
+ * bug", never "here is what went wrong with your request", so their text is
+ * meaningless — and alarming — to an installer holding a phone.
+ */
+const INTERNAL_ERROR_NAMES = new Set([
+  "TypeError",
+  "ReferenceError",
+  "RangeError",
+  "SyntaxError",
+  "EvalError",
+  "URIError",
+  "InternalError",
+]);
+
+/**
+ * Wording only an engine produces. Checked as well as the error NAME because a
+ * library often catches an internal fault and rethrows it as a plain `Error`,
+ * which would otherwise sail through with its text intact.
+ */
+const INTERNAL_ERROR_PATTERNS = [
+  /\bis not a function\b/i,
+  /\bis not iterable\b/i,
+  /\bis not a constructor\b/i,
+  /\bcannot read propert/i,
+  /\bundefined is not an object\b/i,
+  /\bnull is not an object\b/i,
+  /\bis not defined\b/i,
+  /\bunexpected token\b/i,
+  /\bmaximum call stack\b/i,
+];
+
+/** True when a thrown value is a programming fault rather than a message. */
+export function isInternalJsError(err: unknown): boolean {
+  if (err instanceof Error && INTERNAL_ERROR_NAMES.has(err.name)) return true;
+  const text = err instanceof Error ? err.message : typeof err === "string" ? err : null;
+  return text ? INTERNAL_ERROR_PATTERNS.some((re) => re.test(text)) : false;
+}
+
+/**
+ * A message safe to show a crew member on a job site.
+ *
+ * `formatApiError` deliberately surfaces whatever text an error carries, which
+ * is right for a Supabase failure ("permission denied for table …" tells a lead
+ * something) and wrong for an internal fault. An iPhone once showed installers
+ * `undefined is not a function (near '...e of t...')` where the plan should
+ * have been; that tells them nothing they can act on and looks like the app is
+ * broken beyond use. Internal faults collapse to the caller's plain sentence
+ * instead, while real API messages still come through.
+ */
+export function formatFieldError(err: unknown, fallback: string): string {
+  const safeFallback = fallback.trim() || GENERIC;
+  if (isInternalJsError(err)) return safeFallback;
+  const text = formatApiError(err, safeFallback);
+  return isInternalJsError(text) ? safeFallback : text;
+}

@@ -54,7 +54,7 @@ export function Receive() {
       if (successes.length > 0) {
         // Newest first, matching the single-receive ordering.
         setReceived((prev) => [...[...successes].reverse(), ...prev]);
-        queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+        queryClient.invalidateQueries({ queryKey: ["inventory"] });
         pushToast(
           `Received ${successes.length} window${successes.length === 1 ? "" : "s"}.`,
           "success",

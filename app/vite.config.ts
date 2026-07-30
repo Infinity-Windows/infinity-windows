@@ -1,7 +1,12 @@
 import { execSync } from 'node:child_process'
-import { defineConfig, type Plugin } from 'vite'
+import { copyFileSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { defineConfig, type Plugin, type ResolvedConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+// Explicit .ts extension: this config is checked under `module: nodenext`
+// (tsconfig.node.json), which requires one.
+import { renderWebManifest, withBase } from './src/lib/pwa/basePaths.ts'
 
 // VITE_BASE is set for GitHub Pages (`/infinity-windows/`). Local/root hosts keep `/`.
 const base = process.env.VITE_BASE || '/'
@@ -69,6 +74,89 @@ function buildVersionPlugin(): Plugin {
   }
 }
 
+/**
+ * Emit `manifest.webmanifest` instead of shipping a static one.
+ *
+ * It used to live in `public/`, which cannot work: a file copied verbatim has
+ * to hardcode `start_url` and its icon paths, and the app is served from `/`
+ * locally but `/infinity-windows/` on Pages. The static copy said `/`, so the
+ * installed app on a phone opened the domain root — GitHub's 404 page — and its
+ * icons 404'd with it. Generating it here is the only way one file can be right
+ * in both places. See src/lib/pwa/basePaths.ts for the values, and its tests.
+ */
+function webManifestPlugin(): Plugin {
+  const body = renderWebManifest(base)
+  const manifestPath = withBase(base, 'manifest.webmanifest')
+  return {
+    name: 'infinity-web-manifest',
+    // Dev serves from `/` and has no build step to emit into, so answer the
+    // request directly — otherwise local dev has no manifest at all.
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (!req.url?.startsWith('/manifest.webmanifest')) return next()
+        res.setHeader('Content-Type', 'application/manifest+json')
+        res.end(body)
+      })
+    },
+    // Inject the <link rel="manifest"> too. Vite only rewrites a root-absolute
+    // href in index.html when the file really sits in public/, and this one no
+    // longer does — left as static markup it would point at the domain root and
+    // 404, costing us the manifest entirely. Emitting the tag from the same
+    // `base` keeps the link and the file it points at in lockstep, and being
+    // absolute it stays correct on a deep link like /infinity-windows/a/b/c,
+    // where a document-relative href would resolve into the wrong folder.
+    transformIndexHtml() {
+      return [
+        {
+          tag: 'link',
+          attrs: { rel: 'manifest', href: manifestPath },
+          injectTo: 'head',
+        },
+      ]
+    },
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'manifest.webmanifest', source: body })
+    },
+  }
+}
+
+/**
+ * Serve the app for deep links and refreshes.
+ *
+ * GitHub Pages is a static file host with no rewrite rules, so a request for
+ * `/infinity-windows/crew` — an invite link, a shared job link, or just someone
+ * hitting refresh — found no such file and got Pages' 404. Only the front page
+ * worked.
+ *
+ * Pages serves `404.html` for any unmatched path, so a byte-copy of the built
+ * `index.html` boots the SPA there. The requested URL is left untouched in the
+ * address bar (no redirect, no `?/path` round-trip), and BrowserRouter's
+ * basename already strips the subpath, so the router lands on the route that
+ * was actually asked for rather than dumping everyone on Home.
+ */
+function spaFallbackPlugin(): Plugin {
+  let resolved: ResolvedConfig
+  return {
+    name: 'infinity-spa-fallback',
+    apply: 'build',
+    configResolved(config) {
+      resolved = config
+    },
+    // closeBundle, not generateBundle: index.html is emitted by Vite's own html
+    // plugin, and copying it off disk afterwards keeps this independent of
+    // plugin ordering.
+    closeBundle() {
+      const outDir = join(resolved.root, resolved.build.outDir)
+      const index = join(outDir, 'index.html')
+      if (!existsSync(index)) {
+        this.warn('no index.html to copy — deep links will 404')
+        return
+      }
+      copyFileSync(index, join(outDir, '404.html'))
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   base,
@@ -79,6 +167,8 @@ export default defineConfig({
   plugins: [
     react(),
     buildVersionPlugin(),
+    webManifestPlugin(),
+    spaFallbackPlugin(),
     VitePWA({
       // 'prompt' (not autoUpdate) so a new deploy shows an "update available —
       // Refresh" banner instead of silently reloading mid-task. The register
@@ -98,6 +188,24 @@ export default defineConfig({
         // App shell + built assets. Do NOT cache Supabase API — TanStack owns
         // that offline read cache.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest,woff2}'],
+        globIgnores: [
+          '**/node_modules/**/*',
+          // 404.html is a byte-copy of index.html for GitHub Pages (see
+          // spaFallbackPlugin). Precaching it would store the app shell twice
+          // for no gain — once a worker is running, its NavigationRoute already
+          // answers deep links from the precached index.html.
+          '404.html',
+          // The manifest must come from the network, for the same reason
+          // version.json does. It is read at "Add to Home Screen" time, and a
+          // precached copy would be answered by whichever worker is currently
+          // ACTIVE — which, because registerType is 'prompt', is the OLD one
+          // until the user accepts an update. A phone that installed the app
+          // back when start_url said "/" would be handed that same broken
+          // manifest again while re-installing to escape it, and the fix would
+          // look like it had not worked. Nothing is lost offline: you cannot
+          // install an app you cannot reach.
+          'manifest.webmanifest',
+        ],
         // The app-shell JS bundle is >2 MB, above workbox's default precache
         // ceiling. Raise it so the whole shell is precached — offline-first
         // (the outbox feature) depends on the shell loading with no signal.

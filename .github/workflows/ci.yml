@@ -104,6 +104,14 @@ jobs:
         shell: bash
         run: scripts/smoke-ask.test.sh
 
+      # The same end-to-end idea for the other five writing features, which moved
+      # from OpenAI to Claude. What matters is that it separates a feature that
+      # really wrote something from one that returned 200 and saved nothing —
+      # those look identical from outside. Stubs curl; no network, no key.
+      - name: Test scripts/smoke-text-features.sh
+        shell: bash
+        run: scripts/smoke-text-features.test.sh
+
   supabase-tooling:
     name: Supabase merge tooling
     runs-on: ubuntu-latest
@@ -129,6 +137,13 @@ jobs:
 
       - name: Test the function-secret enumerator
         run: python3 scripts/test_function_secrets.py
+
+      # The misnamed-key check gives ADVICE to a human, so crying wolf is its
+      # real failure mode: one wrong suggestion and nobody reads it again. The
+      # tests check every secret this repo actually holds against every name the
+      # app requires and insist none of them is reported.
+      - name: Test the misnamed-secret check
+        run: python3 scripts/test_secret_name_audit.py
 
       # The migration-history tool decides what gets deleted from
       # supabase_migrations.schema_migrations, and it used to refuse to run at

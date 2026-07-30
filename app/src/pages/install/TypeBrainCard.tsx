@@ -94,11 +94,14 @@ export function TypeBrainCard() {
           </span>
           <span>median time</span>
         </div>
-        <div className="stat-card">
+        <div
+          className="stat-card"
+          title="9 out of 10 installs of this type finish faster than this"
+        >
           <span className="stat-num">
             {s.p90Minutes !== null ? `${Math.round(s.p90Minutes)}m` : "—"}
           </span>
-          <span>P90 time</span>
+          <span>slow-case time</span>
         </div>
         <div className="stat-card">
           <span className="stat-num">

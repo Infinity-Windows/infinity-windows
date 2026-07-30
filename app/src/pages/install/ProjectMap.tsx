@@ -34,7 +34,7 @@ import {
   showsVoidedInstall,
   toggleExpandedOpening,
 } from "../../lib/install/openingRowAction";
-import { openingUnitKind } from "../../lib/install/unitKind";
+import { openingUnitKindResolver } from "../../lib/install/unitKind";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { useRealtimeOpenings } from "../../lib/useRealtimeOpenings";
 import { invalidateOpeningQueries } from "../../lib/install/openingQueryKeys";
@@ -77,6 +77,7 @@ import {
   parseOutlineFeatures,
 } from "../../lib/install/cad";
 import { formatApiError } from "../../lib/install/errors";
+import { planLoadMessage, withPlanTimeout } from "../../lib/install/planLoad";
 import {
   extractBuildingOutline,
   outlinePathD,
@@ -102,6 +103,8 @@ import {
 } from "../../lib/install/wallSnap";
 import { MapPinLayer } from "./MapPinLayer";
 import { MapWallLayer } from "./MapWallLayer";
+import { movedMarkIds } from "../../lib/install/pinHistory";
+import { PlanMarkUndoBar } from "../../components/install/PlanMarkUndoBar";
 import { OutlineFeatureLayer } from "./OutlineFeatureLayer";
 import { PlanModelEditor } from "./PlanModelEditor";
 import { PlansPanel } from "./PlansPanel";
@@ -133,14 +136,18 @@ const PIN_MIN_GAP = 0.05;
 /**
  * Above this many marks on a page, numbers are off unless asked for.
  *
- * Measured rather than guessed, by drawing every number on three real jobs and
- * counting the labels that touch a neighbour (see the e2e harness, and
- * docs/map-readability-2026-07-29.md): 0 of 3 on Oakridge, 14 of 42 on Black
- * Desert, 36 of 58 on Pecan. Read against the drawing's own area, labels start
- * touching at about 6.4 marks per 100k px², and the bar chosen is one label in
- * ten — which on the smallest drawing measured is 15 marks.
+ * Measured, and it stays where it was — but not for the reason it was set. The
+ * labels themselves are not the problem: Black Desert draws 42 numbers and only
+ * 2 end up buried under a neighbour. The problem is what a label does to its
+ * pin. A numbered pin has to be drawn full size, and at 42 marks full-size pins
+ * bury 22 of themselves — past the half-the-pins limit the readability harness
+ * holds this screen to, where the same page with shrunken dots buries 2.
+ *
+ * So a crowded page pays for its numbers in countable pins, which is the worse
+ * trade. "Which one is mark 23" is answered by tapping its row instead, which
+ * labels that one pin. See docs/map-readability-2026-07-29.md.
  */
-const PIN_LABEL_AUTO_MAX = 15;
+const PIN_LABEL_AUTO_MAX = 14;
 
 /**
  * Wall thickness in viewBox units (page width = 1000), so it scales with the
@@ -190,6 +197,14 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const [specsText, setSpecsText] = useState<PdfTextPage[]>([]);
   const [image, setImage] = useState<PageImage | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+  // A plan that would not open, in words a crew member can act on. Separate
+  // from `mapError` (which reports failed actions like saving a pin) because
+  // this one owns the drawing area itself: while it is set the panel shows a
+  // Retry button instead of a spinner that would otherwise never stop.
+  const [planError, setPlanError] = useState<string | null>(null);
+  // Bumped by Retry. Both the document load and the page render depend on it,
+  // so one tap re-runs whichever stage failed.
+  const [planAttempt, setPlanAttempt] = useState(0);
   const [filter, setFilter] = useState<PlanFilter>("all");
   const [fullScreen, setFullScreen] = useState(false);
   const [pdfZoom, setPdfZoom] = useState(1);
@@ -266,6 +281,14 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     queryFn: () => listMarkSpecs(projectId),
     enabled: !!projectId,
   });
+  // Window or door, from the description on the supplier's sheet. Built once
+  // here so the pin, the filter chips, the list row and the detail card all
+  // read the same answer.
+  const unitKind = useMemo(
+    () => openingUnitKindResolver(markSpecs.data ?? []),
+    [markSpecs.data],
+  );
+
   // Where each mark is drawn on the elevation sheets — reference pictures for
   // the pin details, and the check that tells us whether this job has them yet.
   const elevationViews = useQuery({
@@ -294,6 +317,11 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   // voided ring, legend, or "redo needed" state; the query is also gated so the
   // data is never fetched for a non-foreman (faithful under view-as preview too).
   const isLead = isForemanPlus(effectiveRole);
+  // Where a mark sits is the whole crew's picture of the job, so nudging one is
+  // a lead's call — the same bar as undoing it. The database enforces this on
+  // its own (guard_opening_pin_move); this only decides whether the app offers
+  // a gesture that would be refused.
+  const canMoveMarks = isLead;
   // Crew list drives the dispatch installer picker + at-a-glance pin coloring.
   // The color layer is visible to everyone, so this query is not lead-gated.
   const crew = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
@@ -518,6 +546,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   useEffect(() => {
     if (!buildingPdf && !specsPdf) return;
     let cancelled = false;
+    setPlanError(null);
     (async () => {
       try {
         const { extractAllText, extractPlanMarkCallouts, loadPdf } =
@@ -525,7 +554,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         let initialPage = 1;
 
         if (buildingPdf) {
-          const buildingDoc = await loadPdf(await downloadPlanset(buildingPdf));
+          const buildingDoc = await withPlanTimeout(
+            downloadPlanset(buildingPdf).then(loadPdf),
+          );
           const buildingText = await extractAllText(buildingDoc);
           if (cancelled) return;
           buildingDocRef.current = buildingDoc;
@@ -543,7 +574,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         }
 
         if (specsPdf) {
-          const specsDoc = await loadPdf(await downloadPlanset(specsPdf));
+          const specsDoc = await withPlanTimeout(
+            downloadPlanset(specsPdf).then(loadPdf),
+          );
           const specsPageText = await extractAllText(specsDoc);
           if (cancelled) return;
           specsDocRef.current = specsDoc;
@@ -560,13 +593,15 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         setFullScreen(false);
         setDocsReady((ready) => ready + 1);
       } catch (e) {
-        if (!cancelled) setMapError(formatApiError(e));
+        // Owns the drawing area, so it reports through planError: the panel can
+        // then offer Retry rather than sitting on "Loading original plan…".
+        if (!cancelled) setPlanError(planLoadMessage(e));
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [buildingPdf?.id, specsPdf?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [buildingPdf?.id, specsPdf?.id, planAttempt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Jobs whose plans were read before the elevation reference existed have
@@ -649,14 +684,18 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     if (!doc || page < 1 || page > doc.numPages) return;
     let cancelled = false;
     setImage(null);
-    import("../../lib/install/pdf")
-      .then(({ renderPageImage }) => renderPageImage(doc, page))
+    setPlanError(null);
+    withPlanTimeout(
+      import("../../lib/install/pdf").then(({ renderPageImage }) =>
+        renderPageImage(doc, page),
+      ),
+    )
       .then((img) => !cancelled && setImage(img))
-      .catch((e) => !cancelled && setMapError(formatApiError(e)));
+      .catch((e) => !cancelled && setPlanError(planLoadMessage(e)));
     return () => {
       cancelled = true;
     };
-  }, [page, view, docsReady]);
+  }, [page, view, docsReady, planAttempt]);
 
   // Escape exits fullscreen; lock body scroll while open.
   useEffect(() => {
@@ -683,7 +722,17 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
     },
-    onError: (e) => setMapError(formatApiError(e)),
+    onError: (e, args) => {
+      // Put the dot back where it was. Without this the optimistic position
+      // outlives a refused write, so a mark the database never accepted still
+      // looks moved until the next refresh — a silent no-op that reads as
+      // success, which is exactly what a locked-down move must not do.
+      setPending((prev) => {
+        const { [args.id]: _refused, ...rest } = prev;
+        return rest;
+      });
+      setMapError(formatApiError(e));
+    },
   });
 
   // Commit the ordered selection: assign each opening to the installer in tap
@@ -756,7 +805,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const filters = visibleFilters(all, myProfileId);
   const activeFilter = resolveFilter(filter, filters);
   const filtered = all.filter((o) =>
-    matchesPlanFilter(o, activeFilter, myProfileId),
+    matchesPlanFilter(o, activeFilter, myProfileId, unitKind),
   );
   const nudge = dispatchNudge(all, { isLead, dispatchMode });
   const placed = filtered.filter(
@@ -857,7 +906,10 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     view === "outline" &&
     !manualOutline &&
     outlines[page] === undefined &&
-    !planOutlines.isLoading;
+    !planOutlines.isLoading &&
+    // Tracing needs the plan PDF. If that failed we fall back to the schematic
+    // rather than sitting on "tracing plan…" for the rest of the shift.
+    !planError;
   const aspect = outline?.pageAspect ?? pageAspectHint;
 
   /**
@@ -966,6 +1018,12 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       // Document-level listeners so drag keeps working even if the pointer
       // leaves the button (and so synthetic events from tests land correctly).
       const onMove = (ev: PointerEvent) => {
+        // Below foreman the dot never leaves its spot, so the gesture stays a
+        // tap however far the finger travels. Bailing here rather than skipping
+        // the handler entirely is deliberate: tapping a mark to open its
+        // details is the installer's main way around the plan, and that lives
+        // in the same pointer session as the drag.
+        if (!canMoveMarks) return;
         const d = dragRef.current;
         const sheet = sheetRef.current;
         if (!d || !sheet) return;
@@ -1066,6 +1124,20 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     }`;
 
   const selectedOpening = all.find((o) => o.id === selectedId) ?? null;
+  // Dots sitting somewhere other than where the plan put them, so the one that
+  // was nudged by accident can be spotted instead of guessed at.
+  const movedIds = movedMarkIds(all);
+  // Undo for those moves. Foreman+ — the marks are the whole crew's view of
+  // the job, so putting them back is a lead's call, and the database says so
+  // too (the reset/undo functions check is_foreman_plus).
+  const undoBar = isLead && project && (
+    <PlanMarkUndoBar
+      projectId={projectId}
+      jobName={project.name}
+      openings={all}
+      selectedOpening={selectedOpening}
+    />
+  );
 
   const installerExistingCount = dispatchInstaller
     ? all.filter(
@@ -1188,7 +1260,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             id: o.id,
             x: pos.x,
             y: pos.y,
-            kind: openingUnitKind(o),
+            kind: unitKind(o),
           };
         }),
       points: outline.points,
@@ -1268,6 +1340,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       voidedIds={voidedIds}
       effectiveRole={effectiveRole}
       showMarkNumbers={showMarkNumbers}
+      unitKind={unitKind}
+      canMoveMarks={canMoveMarks}
+      movedIds={movedIds}
       pinTitle={pinTitle}
       onPinPointerDown={beginDrag}
     />
@@ -1311,6 +1386,26 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     });
   }, [linkScroll]);
 
+  /**
+   * Shown in the drawing area instead of a spinner when a plan will not open.
+   * The wording is deliberately about what to DO, not about what broke: the
+   * crew cannot fix a PDF, they can only tap Retry or ring the office.
+   */
+  const planTrouble = planError && (
+    <div className="plan-trouble" role="alert">
+      <p className="error">{planError}</p>
+      <button
+        type="button"
+        className="button-like"
+        onClick={() => {
+          setPlanError(null);
+          setPlanAttempt((attempt) => attempt + 1);
+        }}
+      >
+        Retry
+      </button>
+    </div>
+  );
 
   const zoomControls = (view === "building" || view === "details") && (
     <div className="plan-zoom-controls" role="group" aria-label="Zoom">
@@ -1635,6 +1730,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             details={details}
             extractNote={extractNote}
             extractSummary={extractSummary}
+            isLead={isLead}
             reextractPending={reextractSpecs.isPending}
             onReextract={() => reextractSpecs.mutate()}
             onPickBuildingPlanset={(id: string) => {
@@ -1750,7 +1846,12 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                       ? savedFootprintLabel(manualOutlineRow?.features)
                       : FOOTPRINT_SOURCE_LABEL[footprint?.source ?? "none"]}
               </span>
-              {!editingModel && (
+              {/* Everything behind this button is plan authoring — drawing the
+                  building outline and placing, renaming or removing marks. The
+                  mark half is now foreman+ in the database, so leaving the
+                  button up for installers would offer tools that refuse to
+                  save. Nothing here is part of installing a window. */}
+              {canMoveMarks && !editingModel && (
                 <button
                   type="button"
                   className="button-like"
@@ -1790,6 +1891,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             />
           ) : (
             <>
+              {/* Outline is the view the map opens on, so the retry has to be
+                  reachable from here and not only from the plan tab. */}
+              {planTrouble}
               <div
                 ref={sheetRef}
                 className="cartoon-sheet"
@@ -1865,6 +1969,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                   </span>
                 </div>
               </div>
+              {undoBar}
               {selectedOpening &&
                 renderDetailCard(selectedOpening, {
                   onClose: () => setSelectedId(null),
@@ -1919,15 +2024,19 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 {renderOpeningDots("pinned")}
               </div>
             </div>
+          ) : planTrouble ? (
+            planTrouble
           ) : (
             <p className="muted" style={{ padding: "12px 6px" }}>
               Loading original plan…
             </p>
           )}
           <p className="muted" style={{ marginTop: 8 }}>
-            Movable marks sit on the plan callouts. Zoom keeps them locked to
-            those numbers — drag one to nudge it.
+            {canMoveMarks
+              ? "Movable marks sit on the plan callouts. Zoom keeps them locked to those numbers — drag one to nudge it."
+              : "Marks sit on the plan callouts. Zoom keeps them locked to those numbers. Tap one for its details — only a foreman can move them."}
           </p>
+          {undoBar}
           {selectedOpening &&
             renderDetailCard(selectedOpening, {
               onClose: () => setSelectedId(null),
@@ -1981,6 +2090,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 />
               </div>
             </div>
+          ) : planTrouble ? (
+            planTrouble
           ) : (
             <p className="muted" style={{ padding: "12px 6px" }}>
               Loading detail sheet…
@@ -2114,7 +2225,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 aria-hidden
                 style={{
                   background:
-                    openingUnitKind(o) === "door" ? "var(--ok)" : "var(--info)",
+                    unitKind(o) === "door" ? "var(--ok)" : "var(--info)",
                 }}
               />
               <strong>{o.opening_code}</strong>

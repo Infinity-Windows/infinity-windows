@@ -17,6 +17,10 @@ import {
 import { listServiceCases } from "../lib/service";
 import { listInstalledForQc } from "../lib/ops";
 import { formatApiError } from "../lib/errors";
+import {
+  openingUnitKind,
+  openingUnitKindResolver,
+} from "../lib/install/unitKind";
 
 interface ProjectLite {
   id: string;
@@ -27,36 +31,46 @@ interface ProjectLite {
 interface OpeningLite {
   id: string;
   opening_code: string;
-  window_types: { category: string | null } | null;
+  window_types: {
+    category: string | null;
+    type_code: string | null;
+    name: string | null;
+  } | null;
+}
+interface MarkSpecLite {
+  project_id: string;
+  mark_code: string;
+  style: string | null;
 }
 interface ProfileLite {
   id: string;
   display_name: string;
 }
 
-/** Blue = window, green = door — same category convention as ProjectMap. */
-function openingIsDoor(o: OpeningLite | null | undefined): boolean {
-  return (o?.window_types?.category ?? "").toLowerCase().includes("door");
-}
-
 async function fetchIssueRefs(): Promise<{
   projects: ProjectLite[];
   openings: OpeningLite[];
+  markSpecs: MarkSpecLite[];
   profiles: ProfileLite[];
 }> {
-  const [projRes, openRes, profRes] = await Promise.all([
+  const [projRes, openRes, specRes, profRes] = await Promise.all([
     supabase.from("projects").select("id, job_code, name, status"),
     supabase
       .from("project_openings")
-      .select("id, opening_code, window_types(category)"),
+      .select("id, opening_code, window_types(category, type_code, name)"),
+    // The descriptions decide window vs door. A mark code only means anything
+    // inside its own job, so the project id comes with it.
+    supabase.from("project_mark_specs").select("project_id, mark_code, style"),
     supabase.from("profiles").select("id, display_name"),
   ]);
   if (projRes.error) throw projRes.error;
   if (openRes.error) throw openRes.error;
+  if (specRes.error) throw specRes.error;
   if (profRes.error) throw profRes.error;
   return {
     projects: (projRes.data ?? []) as ProjectLite[],
     openings: (openRes.data ?? []) as unknown as OpeningLite[],
+    markSpecs: (specRes.data ?? []) as MarkSpecLite[],
     profiles: (profRes.data ?? []) as ProfileLite[],
   };
 }
@@ -117,6 +131,20 @@ export function Issues() {
   const nameById = useMemo(() => {
     const m = new Map<string, string>();
     for (const p of refsQ.data?.profiles ?? []) m.set(p.id, p.display_name);
+    return m;
+  }, [refsQ.data]);
+  // One window/door resolver per job, so this list agrees with that job's map.
+  const unitKindByProject = useMemo(() => {
+    const specsByProject = new Map<string, MarkSpecLite[]>();
+    for (const s of refsQ.data?.markSpecs ?? []) {
+      const list = specsByProject.get(s.project_id);
+      if (list) list.push(s);
+      else specsByProject.set(s.project_id, [s]);
+    }
+    const m = new Map<string, ReturnType<typeof openingUnitKindResolver>>();
+    for (const [pid, specs] of specsByProject) {
+      m.set(pid, openingUnitKindResolver(specs));
+    }
     return m;
   }, [refsQ.data]);
   // People available to assign / attribute fault to, alphabetical.
@@ -186,7 +214,11 @@ export function Issues() {
     const hasOpenCase = Boolean(i.window_id && openCaseWindows.has(i.window_id));
     const qcStatus = i.opening_id ? qcByOpening.get(i.opening_id) : undefined;
     // Which opening the problem is about, coloured blue (window) / green (door).
-    const isDoor = openingIsDoor(opening);
+    const isDoor = Boolean(
+      opening &&
+        (unitKindByProject.get(i.project_id) ?? openingUnitKind)(opening) ===
+          "door",
+    );
     const unitColor = isDoor ? "var(--ok)" : "var(--info)";
     const assignedTo = i.assigned_to ?? null;
     const faultBy = i.fault_by ?? null;

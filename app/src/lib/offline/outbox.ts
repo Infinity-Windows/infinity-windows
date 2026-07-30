@@ -332,6 +332,24 @@ export function enqueueDailyLog(input: DailyLogInput): Promise<string> {
   });
 }
 
+/**
+ * Queue an undo of ONE recorded mark move. Carries the move's id, so a press
+ * made with no signal walks back that exact move whenever the phone reconnects.
+ */
+export function enqueuePinUndo(moveId: string): Promise<string> {
+  return enqueue({ op: "pin_undo", payload: { moveId } });
+}
+
+/** Queue "put every mark on this job back where the plan put it". */
+export function enqueuePinResetProject(projectId: string): Promise<string> {
+  return enqueue({ op: "pin_reset_project", payload: { projectId } });
+}
+
+/** Queue "put this one mark back where the plan put it". */
+export function enqueuePinResetOpening(openingId: string): Promise<string> {
+  return enqueue({ op: "pin_reset_opening", payload: { openingId } });
+}
+
 /** Build a shift ref that points at a not-yet-synced offline clock-in entry. */
 export function pendingRefForShift(clockInEntryId: string): string {
   return pendingShiftRef(clockInEntryId);

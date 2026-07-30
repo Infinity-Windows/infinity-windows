@@ -23,6 +23,12 @@ export function matchesPlanFilter(
   opening: ProjectOpening,
   filter: PlanFilter,
   viewerId: string | null | undefined,
+  /**
+   * Pass the job's resolver so the chips agree with the pins. It reads the
+   * mark's own style off the schedule where there is one, which plain window
+   * types cannot: a 6080 XO is a patio door however its type is categorised.
+   */
+  kindOf: (o: ProjectOpening) => "door" | "window" = openingUnitKind,
 ): boolean {
   switch (filter) {
     case "mine":
@@ -33,9 +39,9 @@ export function matchesPlanFilter(
     case "done":
       return opening.status === "installed";
     case "windows":
-      return openingUnitKind(opening) === "window";
+      return kindOf(opening) === "window";
     case "doors":
-      return openingUnitKind(opening) === "door";
+      return kindOf(opening) === "door";
     default:
       return true;
   }

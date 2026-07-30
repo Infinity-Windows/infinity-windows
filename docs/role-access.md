@@ -70,6 +70,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Vehicles (`/vehicles`)
 - Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
+- Crew access (`/access`)
 - Cost codes (`/cost-codes`)
 - Cost (`/costing`)
 - AI spend (`/ai-spend`)
@@ -166,6 +167,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Vehicles (`/vehicles`)
 - Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
+- Crew access (`/access`)
 - Cost codes (`/cost-codes`)
 - Cost (`/costing`)
 - AI spend (`/ai-spend`)
@@ -207,6 +209,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Travel (`/travel`)
 - Team (`/team`)
 - Roster (`/crew`)
+- Crew access (`/access`)
 - Learn (`/learn`)
 - Training (`/training`)
 - Points (`/points`)
@@ -218,7 +221,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Admin (`/admin`)
 
-**Can reach (all 43 allowed destinations):**
+**Can reach (all 44 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -252,6 +255,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Vehicles (`/vehicles`)
 - Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
+- Crew access (`/access`)
 - Cost codes (`/cost-codes`)
 - Photos & receipts (`/photos`)
 - Daily logs (`/daily-logs`)
@@ -307,6 +311,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Travel (`/travel`)
 - Team (`/team`)
 - Roster (`/crew`)
+- Crew access (`/access`)
 - Learn (`/learn`)
 - Training (`/training`)
 - Points (`/points`)
@@ -319,7 +324,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Admin (`/admin`)
 
-**Can reach (all 45 allowed destinations):**
+**Can reach (all 46 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -353,6 +358,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Vehicles (`/vehicles`)
 - Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
+- Crew access (`/access`)
 - Cost codes (`/cost-codes`)
 - Cost (`/costing`)
 - AI spend (`/ai-spend`)

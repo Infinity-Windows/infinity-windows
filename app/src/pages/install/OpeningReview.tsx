@@ -8,11 +8,15 @@ import {
   addOpening,
   confirmOpenings,
   deleteOpening,
+  listMarkSpecs,
   listOpenings,
+  openingsReferencedElsewhere,
   updateOpening,
 } from "../../lib/install/api";
+import { describeOpeningDeletion } from "../../lib/install/openingAccess";
 import type { ProjectOpening } from "../../lib/install/types";
 import { openingMarkCode } from "../../lib/install/types";
+import { openingUnitKindResolver } from "../../lib/install/unitKind";
 import { describeMarkCount } from "../../lib/install/extract";
 import { formatApiError } from "../../lib/install/errors";
 
@@ -28,6 +32,11 @@ export function OpeningReview() {
   const openings = useQuery({
     queryKey: ["openings", projectId],
     queryFn: () => listOpenings(projectId),
+  });
+  const markSpecs = useQuery({
+    queryKey: ["markSpecs", projectId],
+    queryFn: () => listMarkSpecs(projectId),
+    enabled: !!projectId,
   });
 
   const refresh = () => {
@@ -47,6 +56,31 @@ export function OpeningReview() {
     onSuccess: refresh,
     onError: (e) => setMessage(formatApiError(e)),
   });
+
+  // Removing an opening takes its install history with it (install_events
+  // cascades), along with any assignment, measurement, condition check or flag.
+  // Deleting a duplicate the extract invented and deleting a window someone has
+  // already worked on are the same two taps, so the question names which one
+  // this is before anything goes.
+  const askThenRemove = async (o: ProjectOpening) => {
+    setMessage(null);
+    let referenced = false;
+    try {
+      referenced = (await openingsReferencedElsewhere([o.id])).has(o.id);
+    } catch {
+      // Can't see what it's linked to — say so in the question rather than
+      // quietly promising the mark is safe to drop.
+      referenced = o.status !== "planned";
+    }
+    const ok = window.confirm(
+      describeOpeningDeletion({
+        opening: o,
+        referencedElsewhere: referenced,
+        jobLabel: project?.job_code ?? null,
+      }),
+    );
+    if (ok) remove.mutate(o.id);
+  };
 
   const add = useMutation({
     mutationFn: (code: string) =>
@@ -72,10 +106,11 @@ export function OpeningReview() {
   const confirmed = (openings.data ?? []).filter((o) => o.confirmed);
 
   const markSummary = (() => {
+    const unitKind = openingUnitKindResolver(markSpecs.data ?? []);
     const map = new Map<string, { mark: string; count: number; door: boolean }>();
     for (const o of drafts) {
       const mark = openingMarkCode(o.opening_code);
-      const door = (o.window_types?.category ?? "").toLowerCase().includes("door");
+      const door = unitKind(o) === "door";
       const key = `${door ? "d" : "w"}:${mark}`;
       const cur = map.get(key);
       if (cur) cur.count += 1;
@@ -117,7 +152,11 @@ export function OpeningReview() {
         }}
       />
       {o.status === "planned" && (
-        <button className="link" onClick={() => remove.mutate(o.id)}>
+        <button
+          className="link"
+          disabled={remove.isPending}
+          onClick={() => void askThenRemove(o)}
+        >
           Remove
         </button>
       )}

@@ -147,10 +147,15 @@ fi
 # to stay short enough to read at a glance.
 if [ "${#missing[@]}" -eq 1 ]; then
   IFS='|' read -r -a feats <<<"${missing_features[0]}"
+  # Three or more still NAMES two of them. Now that every writing feature runs
+  # on one key, the honest count is seven, and "7 app features need an API key"
+  # tells the owner nothing he can act on — he cannot tell whether the app is
+  # slightly degraded or completely dead. Two names and a count of the rest
+  # reads at a glance and still fits one Slack line.
   case "${#feats[@]}" in
     1) subject="${feats[0]} needs" ;;
     2) subject="${feats[0]} and ${feats[1]} need" ;;
-    *) subject="${#feats[@]} app features need" ;;
+    *) subject="${feats[0]}, ${feats[1]} and $(( ${#feats[@]} - 2 )) other features need" ;;
   esac
   headline="$subject an API key that has not been added yet"
 else

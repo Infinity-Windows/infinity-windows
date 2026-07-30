@@ -31,7 +31,22 @@ import {
 import { pickNextOpening } from "../../lib/install/nextOpening";
 import { computeInstallPoints } from "../../lib/points";
 import { checkFit, isInstallReadyStatus, readyToInstall, smallest } from "../../lib/install/fit";
+import {
+  canStartInstall,
+  clockEligibility,
+  installTimer,
+  isClockGateError,
+  recordedMinutes,
+  resolveStartedAt,
+} from "../../lib/install/installTimer";
+import {
+  forgetLocalStart,
+  recallLocalStart,
+  rememberLocalStart,
+} from "../../lib/install/installStart";
 import { getOpenShift, startBreak } from "../../lib/timeclock";
+import { myTodayCompletion } from "../../lib/toolbox";
+import { useClock } from "../../lib/clockContext";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import {
   submitInstallViaOutbox,
@@ -98,7 +113,14 @@ export function OpeningSheet() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const startedAtRef = useRef<string>(new Date().toISOString());
+
+  // When work began, as this device knows it. The server's stamp is the
+  // authority; this only carries a start made with no signal. Seeded from
+  // device memory so a reload mid-install does not lose the elapsed time.
+  const [localStartedAt, setLocalStartedAt] = useState<string | null>(() =>
+    recallLocalStart(openingId),
+  );
+  const [now, setNow] = useState(() => Date.now());
 
   const [photos, setPhotos] = useState<BeforeAfterValue>({ before: null, after: null });
   const [video, setVideo] = useState<File | null>(null);
@@ -181,11 +203,25 @@ export function OpeningSheet() {
     enabled: Boolean(myProfile.data?.id),
   });
 
-  // Open shift so Lunch/Break can start a break without a round-trip.
-  const openShift = useQuery({
-    queryKey: ["openShift", myProfile.data?.id],
-    queryFn: () => getOpenShift(myProfile.data!.id),
+  // The app-wide clock, the very same shift the nav bar's timer counts — so
+  // "on the clock" means one thing everywhere, and Lunch/Break can start a
+  // break without a round-trip.
+  const clock = useClock();
+
+  const toolboxToday = useQuery({
+    queryKey: ["toolboxToday", myProfile.data?.id],
+    queryFn: () => myTodayCompletion(myProfile.data!.id),
     enabled: Boolean(myProfile.data?.id),
+  });
+
+  // The gate the banner shows AND the gate the timer obeys, read from the same
+  // place so the screen can never say "you can't start this" over a running
+  // clock. These are the same two conditions start_opening_work enforces
+  // server-side, asked up front instead of discovered by a failed call.
+  const eligibility = clockEligibility({
+    clockedIn: Boolean(clock.shift),
+    toolboxSigned: Boolean(toolboxToday.data),
+    resolved: Boolean(clock.profileId) && !clock.loading && toolboxToday.isSuccess,
   });
 
   const isInstaller = !isForemanPlus(effectiveRole);
@@ -204,25 +240,29 @@ export function OpeningSheet() {
     }
   };
 
-  // Mark in-progress once (soft lock so the lead board + other crew see it).
-  // start_opening_work now hard-requires an open shift + signed toolbox; if the
-  // guard fires we surface a friendly gate instead of silently failing.
-  const startedLockRef = useRef(false);
+  // When work genuinely began. Server first: `work_started_at` is only ever
+  // stamped for someone with an open shift and a signed toolbox talk, so its
+  // presence is itself proof this time was earned on the clock — and it
+  // outlives a refresh, a new phone, and this component.
+  const startedAt = resolveStartedAt(opening.data?.work_started_at, localStartedAt);
+  const timer = installTimer({ eligibility: eligibility.status, startedAt, now });
+
+  // The figure that is actually recorded, scored against par time and paid on.
+  // Null when we timed nothing and nobody typed anything — an install with no
+  // duration must not be filed as an install that took zero minutes.
+  const submittedMinutes = recordedMinutes({
+    touched: minutesTouched,
+    manual: minutes,
+    timer,
+  });
+
+  // Re-read the clock only while something is actually being timed.
   useEffect(() => {
-    const o = opening.data;
-    if (!o || startedLockRef.current) return;
-    if (o.status !== "installed" && !o.work_started_at) {
-      startedLockRef.current = true;
-      void startOpeningWork(openingId).catch((e) => {
-        const msg = String((e as { message?: string })?.message ?? e);
-        if (/clock in|toolbox/i.test(msg)) {
-          setStartGateError(
-            "Clock in and sign today's toolbox talk to start this task.",
-          );
-        }
-      });
-    }
-  }, [opening.data, openingId]);
+    if (!startedAt) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 15000);
+    return () => clearInterval(id);
+  }, [startedAt]);
 
   const brain = useQuery({
     queryKey: ["typeBrain", opening.data?.window_type_id],
@@ -259,26 +299,46 @@ export function OpeningSheet() {
     }).slice(0, 8);
   }, [searchResults.data, opening.data, projectId]);
 
-  // Auto-timer: minutes computed from when the sheet opened, unless overridden.
-  useEffect(() => {
-    if (minutesTouched) return;
-    const tick = () => {
-      const elapsed = Math.round(
-        (Date.now() - new Date(startedAtRef.current).getTime()) / 60000,
-      );
-      setMinutes(String(Math.max(0, elapsed)));
-    };
-    tick();
-    const id = setInterval(tick, 15000);
-    return () => clearInterval(id);
-  }, [minutesTouched]);
-
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["opening", openingId] });
     queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
     queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
     queryClient.invalidateQueries({ queryKey: ["projectWindows", projectId] });
   };
+
+  // Starting is a deliberate act — a tap that says "I am installing this now" —
+  // and never a side effect of the sheet opening. Reading a door's specs cost
+  // installers recorded minutes until this was a button.
+  const beginInstall = useMutation({
+    mutationFn: async () => {
+      const startedNow = new Date().toISOString();
+      try {
+        await startOpeningWork(openingId);
+      } catch (e) {
+        // A refusal from the gate is a real answer and stops us. No signal is
+        // not: they are clocked in as far as this device knows, so let them
+        // work and time it here until the outbox catches up.
+        if (isClockGateError(e) || !canStartInstall(eligibility.status)) throw e;
+      }
+      rememberLocalStart(openingId, startedNow);
+      return startedNow;
+    },
+    onSuccess: (startedNow) => {
+      setLocalStartedAt(startedNow);
+      setStartGateError(null);
+      setStage("install");
+      refresh();
+    },
+    onError: (e) => {
+      // Only a real refusal from the gate earns the "not on the clock" banner.
+      // A dead zone is a different problem and must not be dressed up as one.
+      if (isClockGateError(e)) {
+        setStartGateError("Clock in and sign today's toolbox talk to start this task.");
+      } else {
+        setMessage(formatApiError(e));
+      }
+    },
+  });
 
   const assign = useMutation({
     mutationFn: async (windowUuid: string) =>
@@ -505,7 +565,7 @@ export function OpeningSheet() {
 
       const entries = uid
         ? computeInstallPoints({
-            minutes: minutes ? Number(minutes) : null,
+            minutes: submittedMinutes,
             parMinutes: brain.data?.medianMinutes != null
               ? Math.round(brain.data.medianMinutes)
               : null,
@@ -523,12 +583,12 @@ export function OpeningSheet() {
         createdBy,
         submitParams: {
           openingId,
-          minutes: minutes ? Number(minutes) : null,
+          minutes: submittedMinutes,
           estimateMinutes: brain.data?.medianMinutes
             ? Math.round(brain.data.medianMinutes)
             : null,
           qualityGrade: grade,
-          startedAt: startedAtRef.current,
+          startedAt,
           ...topics,
         },
         points: uid
@@ -543,6 +603,9 @@ export function OpeningSheet() {
       });
     },
     onSuccess: (result) => {
+      // This opening is finished; its start must not be waiting on the device
+      // to be picked up again if they ever revisit it.
+      forgetLocalStart(openingId);
       refresh();
       queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
       queryClient.invalidateQueries({ queryKey: ["myOpenings"] });
@@ -584,7 +647,7 @@ export function OpeningSheet() {
   // then head to the clock. If not clocked in, just route to the clock.
   const takeBreak = useMutation({
     mutationFn: async () => {
-      const shift = openShift.data ?? (myProfile.data?.id
+      const shift = clock.shift ?? (myProfile.data?.id
         ? await getOpenShift(myProfile.data.id)
         : null);
       if (shift) await startBreak(shift.id);
@@ -703,13 +766,25 @@ export function OpeningSheet() {
       )}
 
       {/* Start-of-task gate: you can't be "on a task" unless you're clocked in
-          and have signed today's toolbox talk. Friendly, non-crashing. */}
-      {startGateError && !installed && (
+          and have signed today's toolbox talk. Shown up front rather than after
+          a failed call, and read from the same `eligibility` the timer obeys —
+          this banner used to sit above a running clock. */}
+      {!installed && (eligibility.status === "blocked" || startGateError) && (
         <div className="ready-banner ready-blocked">
           <strong>Not on the clock yet</strong>
-          <p style={{ margin: "6px 0 10px" }}>{startGateError}</p>
+          <ul>
+            {eligibility.blockers.map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
+          <p style={{ margin: "6px 0 10px" }}>
+            {startGateError ??
+              "Clock in and sign today's toolbox talk, then start this window."}
+          </p>
           <div style={{ display: "flex", gap: 10 }}>
-            <button className="primary" onClick={() => navigate("/clock")}>
+            {/* The clock is a sheet over this screen, so they punch in and
+                start the window without losing their place. */}
+            <button className="primary" onClick={clock.openClock}>
               Clock in
             </button>
             <button className="action-btn" onClick={() => navigate("/safety")}>
@@ -762,13 +837,13 @@ export function OpeningSheet() {
                   </strong>
                   target
                 </span>
-                <span>
+                <span title="9 out of 10 installs of this type finish faster than this">
                   <strong>
                     {brain.data?.p90Minutes != null
                       ? `${Math.round(brain.data.p90Minutes)}m`
                       : "—"}
                   </strong>
-                  P90
+                  slow case
                 </span>
                 <span>
                   <strong>
@@ -1011,12 +1086,26 @@ export function OpeningSheet() {
         </>
       )}
 
+          {/* The deliberate act. This is the moment the clock starts — and the
+              moment the lead board sees this window as in progress. */}
           <button
             className="primary big"
-            disabled={ready.status === "blocked"}
-            onClick={() => setStage("install")}
+            disabled={
+              ready.status === "blocked" ||
+              beginInstall.isPending ||
+              (!startedAt && !canStartInstall(eligibility.status))
+            }
+            onClick={() => (startedAt ? setStage("install") : beginInstall.mutate())}
           >
-            {ready.status === "blocked" ? "Resolve blockers to start" : "Start install →"}
+            {ready.status === "blocked"
+              ? "Resolve blockers to start"
+              : eligibility.status === "blocked"
+                ? "Clock in first to start"
+                : startedAt
+                  ? "Back to the install →"
+                  : beginInstall.isPending
+                    ? "Starting…"
+                    : "Start install →"}
           </button>
         </>
       )}
@@ -1087,27 +1176,75 @@ export function OpeningSheet() {
         </details>
       )}
 
-      {/* ===================== STAGE 2: INSTALL ===================== */}
+      {/* ===================== STAGE 2: INSTALL =====================
+          Four distinct states, and only one of them counts. Landing on this
+          step is not starting: the clock runs when they say it does. */}
       {!installed && stage === "install" && (
         <div className="install-timer">
-          <div className="install-pulse" aria-hidden>
-            ●
-          </div>
-          <p className="next-label" style={{ margin: 0 }}>Installing</p>
-          <p className="next-code">{minutes || 0}<span style={{ fontSize: 28 }}> min</span></p>
-          <p className="muted" style={{ margin: 0 }}>
-            Timer running. Plumb, level, square — then capture it.
-          </p>
-          {tips.length > 0 && (
-            <ol className="tip-list" style={{ textAlign: "left", width: "100%" }}>
-              {tips.slice(0, 3).map((t) => (
-                <li key={t}>{t}</li>
-              ))}
-            </ol>
+          {timer.status === "running" || timer.status === "stale" ? (
+            <>
+              <div className="install-pulse" aria-hidden>
+                ●
+              </div>
+              <p className="next-label" style={{ margin: 0 }}>Installing</p>
+              {timer.status === "running" ? (
+                <>
+                  <p className="next-code">
+                    {timer.minutes}
+                    <span style={{ fontSize: 28 }}> min</span>
+                  </p>
+                  <p className="muted" style={{ margin: 0 }}>
+                    Timer running. Plumb, level, square — then capture it.
+                  </p>
+                </>
+              ) : (
+                <p className="muted" style={{ margin: 0 }}>
+                  This has been open since{" "}
+                  {startedAt ? new Date(startedAt).toLocaleString() : "a while ago"},
+                  so the timer stopped guessing. Type the real minutes when you
+                  capture it.
+                </p>
+              )}
+              {tips.length > 0 && (
+                <ol className="tip-list" style={{ textAlign: "left", width: "100%" }}>
+                  {tips.slice(0, 3).map((t) => (
+                    <li key={t}>{t}</li>
+                  ))}
+                </ol>
+              )}
+              <button className="primary big" onClick={() => setStage("capture")}>
+                Done — capture it →
+              </button>
+            </>
+          ) : timer.status === "blocked" ? (
+            <>
+              <p className="next-label" style={{ margin: 0 }}>Not started</p>
+              <p className="muted" style={{ margin: 0 }}>
+                Nothing is being timed. Clock in and sign today's toolbox talk,
+                then start this window.
+              </p>
+              <button className="primary big" onClick={clock.openClock}>
+                Clock in
+              </button>
+            </>
+          ) : timer.status === "unknown" ? (
+            <p className="muted" style={{ margin: 0 }}>Checking your clock…</p>
+          ) : (
+            <>
+              <p className="next-label" style={{ margin: 0 }}>Ready when you are</p>
+              <p className="muted" style={{ margin: 0 }}>
+                Nothing is being timed yet. Tap start when you actually begin
+                fitting this one.
+              </p>
+              <button
+                className="primary big"
+                disabled={beginInstall.isPending}
+                onClick={() => beginInstall.mutate()}
+              >
+                {beginInstall.isPending ? "Starting…" : "Start the timer"}
+              </button>
+            </>
           )}
-          <button className="primary big" onClick={() => setStage("capture")}>
-            Done — capture it →
-          </button>
         </div>
       )}
 
@@ -1177,13 +1314,20 @@ export function OpeningSheet() {
           </details>
 
           <label className="field-label">
-            Minutes {!minutesTouched && <span className="muted">(auto-timed — tap to override)</span>}
+            Minutes{" "}
+            {minutesTouched ? null : timer.minutes != null ? (
+              <span className="muted">(timed from when you started — tap to override)</span>
+            ) : (
+              <span className="muted">(not timed — type how long it took)</span>
+            )}
           </label>
           <input
             type="number"
             inputMode="numeric"
             min={0}
-            value={minutes}
+            // Untouched, this mirrors what was actually timed; blank when
+            // nothing was, so an untimed install is never filed as zero.
+            value={minutesTouched ? minutes : (timer.minutes ?? "")}
             onChange={(e) => {
               setMinutes(e.target.value);
               setMinutesTouched(true);
@@ -1286,8 +1430,15 @@ export function OpeningSheet() {
 
 /**
  * Route wrapper: key the sheet on the opening id so tapping "Next one" (which
- * navigates within the same route) fully remounts the component — the timer,
- * stage, and all per-opening state reset for a clean sub-5s transition.
+ * navigates within the same route) fully remounts the component — the stage and
+ * all per-opening state reset for a clean sub-5s transition.
+ *
+ * The timer is no longer among the things a remount resets, and must not be.
+ * It reads `work_started_at` for THIS opening (server-stamped, falling back to
+ * this device's own note of the start), so the next window opens un-started
+ * while a refresh part-way through an install keeps every minute already
+ * earned. Mount time is not a start time — treating it as one is what made
+ * reading a door's specs bill an installer for an install.
  */
 export function OpeningSheetRoute() {
   const { openingId = "" } = useParams();

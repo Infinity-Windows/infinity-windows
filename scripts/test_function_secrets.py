@@ -211,11 +211,15 @@ class FunctionSecretsTest(unittest.TestCase):
 
     def test_every_real_function_is_covered(self):
         names = fs.function_names()
-        self.assertEqual(len(names), 11)
+        self.assertEqual(len(names), 13)
         self.assertIn("ask", names)
         # Creates accounts on the service-role key, and needs no secret of its
         # own: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are platform-provided.
         self.assertIn("approve-access-request", names)
+        # Same deal for crew invites: both run on the platform-provided service
+        # role and introduce no new secret to sync.
+        self.assertIn("manage-crew-access", names)
+        self.assertIn("redeem-crew-invite", names)
         self.assertNotIn("_shared", names)
 
     def test_ask_needs_anthropic_and_treats_openai_as_optional(self):
@@ -241,10 +245,43 @@ class FunctionSecretsTest(unittest.TestCase):
     def test_vault_config_needs_no_secret_of_its_own(self):
         self.assertEqual(fs.requirements_for("vault-config")["required"], [])
 
-    def test_transcribe_needs_openai_for_whisper(self):
+    def test_transcribe_needs_both_providers(self):
+        """The one function that genuinely needs two AI accounts.
+
+        Whisper (OpenAI) turns the audio into words; Claude sorts those words
+        into topic fields and reads the job photos alongside them.
+        """
         self.assertEqual(
             fs.requirements_for("transcribe-install-memo")["required"],
-            ["OPENAI_API_KEY"],
+            ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
+        )
+
+    def test_text_generation_needs_no_openai_key(self):
+        """The point of consolidating text generation onto Claude.
+
+        These three write words and nothing else, so an OpenAI outage or a
+        cancelled OpenAI account must not be able to stop them.
+        """
+        for name in ("extract-schedule", "generate-howto", "synthesize-type-tips"):
+            r = fs.requirements_for(name)
+            self.assertEqual(r["required"], ["ANTHROPIC_API_KEY"], name)
+            self.assertNotIn("OPENAI_API_KEY", r["required"], name)
+
+    def test_toolbox_talks_treat_the_image_key_as_optional(self):
+        """Claude writes the talk; OpenAI only draws the diagram.
+
+        Without an OpenAI key the talk still ships, with described placeholders
+        where the pictures would be, so the key must not be judged required.
+        """
+        r = fs.requirements_for("generate-toolbox-talk")
+        self.assertEqual(r["required"], ["ANTHROPIC_API_KEY"])
+        self.assertIn("OPENAI_API_KEY", r["optional"])
+
+    def test_only_embeddings_and_whisper_still_require_openai(self):
+        reqs = fs.all_requirements()
+        self.assertEqual(
+            fs.needing(reqs, "OPENAI_API_KEY"),
+            ["ingest-knowledge", "transcribe-install-memo"],
         )
 
     def test_the_repo_wide_required_set_is_exactly_these_four(self):
@@ -307,10 +344,23 @@ class PlainEnglishNames(unittest.TestCase):
         for name, label in fs.FEATURE_NAMES.items():
             self.assertNotEqual(name, label, "%s needs a real English name" % name)
 
-    def test_the_anthropic_headline_names_both_features(self):
-        """The exact case that will be red on the first real run."""
+    def test_the_anthropic_headline_names_every_writing_feature(self):
+        """What the owner reads if the Anthropic key is ever missing.
+
+        Now that all of the app's writing is on Claude, this one key is the
+        difference between the app working and the app doing nothing useful, so
+        the headline has to name every feature that would go dark.
+        """
         got = fs.features_needing(fs.all_requirements(), "ANTHROPIC_API_KEY")
-        self.assertEqual(got, "Ask Infinity|plan-set reading")
+        self.assertEqual(
+            got,
+            "Ask Infinity|reading delivery schedules|plan-set reading|"
+            "how-to guides|toolbox talks|window-type tips|install voice memos",
+        )
+
+    def test_the_openai_headline_names_only_what_claude_cannot_do(self):
+        got = fs.features_needing(fs.all_requirements(), "OPENAI_API_KEY")
+        self.assertEqual(got, "adding documents to the brain|install voice memos")
 
     def test_an_unknown_function_falls_back_to_its_directory_name(self):
         self.assertEqual(fs.feature_name("not-a-function"), "not-a-function")

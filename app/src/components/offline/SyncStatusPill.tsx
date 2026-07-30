@@ -6,7 +6,7 @@
 import { CheckCircle2, CloudOff, RefreshCw, TriangleAlert } from "lucide-react";
 import { useOutbox } from "../../lib/offline/useOutbox";
 
-export function SyncStatusPill({ compact = false }: { compact?: boolean }) {
+export function SyncStatusPill() {
   const { pill } = useOutbox();
 
   const Icon =
@@ -18,7 +18,7 @@ export function SyncStatusPill({ compact = false }: { compact?: boolean }) {
 
   return (
     <div
-      className={`sync-pill sync-pill-${pill.tone}${compact ? " sync-pill-compact" : ""}`}
+      className={`sync-pill sync-pill-${pill.tone}`}
       role="status"
       aria-live="polite"
       aria-label={pill.detail}

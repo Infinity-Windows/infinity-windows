@@ -20,4 +20,6 @@ export function invalidateOpeningQueries(
   queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
   queryClient.invalidateQueries({ queryKey: ["dispatch", projectId] });
   queryClient.invalidateQueries({ queryKey: ["voidedOpenings", projectId] });
+  // A mark moved on someone else's phone adds a step to this job's undo stack.
+  queryClient.invalidateQueries({ queryKey: ["pinMoves", projectId] });
 }

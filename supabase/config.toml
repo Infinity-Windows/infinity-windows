@@ -30,3 +30,14 @@ verify_jwt = true
 
 [functions.approve-access-request]
 verify_jwt = true
+
+[functions.manage-crew-access]
+verify_jwt = true
+
+# Reached by someone who has no account yet, which is the whole point, so it must
+# not require an end-user session. It stays verify_jwt = true because the gateway
+# accepts the project's anon key as a valid JWT (confirmed against production:
+# with no Authorization header at all the gateway refuses before the function
+# runs). The real credential is the invite code, checked inside the function.
+[functions.redeem-crew-invite]
+verify_jwt = true

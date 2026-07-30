@@ -11,3 +11,6 @@ app/e2e/test-results/
 app/playwright-report/
 app/blob-report/
 app/.playwright/
+
+# The test login's password (docs/test-account.md). Local only, never committed.
+.secrets/

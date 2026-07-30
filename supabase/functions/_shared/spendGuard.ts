@@ -107,13 +107,13 @@ export const FUNCTION_SPEND: Record<string, FunctionSpend> = {
     model: "claude-sonnet-5",
     estimateMicros: 27_000,
   },
-  // One short completion plus up to two generated diagrams; the images are the
-  // cost, not the words.
+  // One short completion on Claude plus up to two OpenAI diagrams. The images
+  // are still the cost, not the words: 8 cents of picture, 1.3 of writing.
   "generate-toolbox-talk": {
     kind: "question",
-    provider: "openai",
-    model: "gpt-4o-mini",
-    estimateMicros: 600 + 2 * IMAGE_MICROS,
+    provider: "anthropic",
+    model: "claude-sonnet-5",
+    estimateMicros: 13_000 + 2 * IMAGE_MICROS,
   },
   // Claude vision + text over a whole specs planset, several calls deep.
   "extract-specs": {
@@ -122,31 +122,36 @@ export const FUNCTION_SPEND: Record<string, FunctionSpend> = {
     model: "claude-sonnet-5",
     estimateMicros: 50_000,
   },
-  // Up to 12 batches of ~22k tokens of planset text on the cheap model.
+  // Per BATCH — `units` is the batch count — of ~22k tokens of planset text,
+  // now on Claude: 22k in at $2/M plus ~3k out at $10/M.
   "extract-schedule": {
     kind: "content",
-    provider: "openai",
-    model: "gpt-4o-mini",
-    estimateMicros: 51_000,
+    provider: "anthropic",
+    model: "claude-sonnet-5",
+    estimateMicros: 74_000,
   },
-  // $0.0009 per window type, per the investigation's write-time table.
+  // Was $0.0009 a window type on gpt-4o-mini; the same 2k-in/1k-out call on
+  // Claude is $0.014. Text generation moved provider, so these figures had to
+  // move with it — otherwise the owner's spend screen reports a number the
+  // company is not actually being charged.
   "synthesize-type-tips": {
     kind: "content",
-    provider: "openai",
-    model: "gpt-4o-mini",
-    estimateMicros: 900,
+    provider: "anthropic",
+    model: "claude-sonnet-5",
+    estimateMicros: 14_000,
   },
   "generate-howto": {
     kind: "content",
-    provider: "openai",
-    model: "gpt-4o-mini",
-    estimateMicros: 900,
+    provider: "anthropic",
+    model: "claude-sonnet-5",
+    estimateMicros: 14_000,
   },
-  // Whisper on a ~2 minute memo (1.2 cents) plus a vision pass over its photos.
+  // Whisper on a ~2 minute memo (1.2 cents, still OpenAI and charged on top as
+  // extra micros) plus a Claude vision pass over up to four job photos.
   "transcribe-install-memo": {
     kind: "content",
-    provider: "openai",
-    model: "gpt-4o",
+    provider: "anthropic",
+    model: "claude-sonnet-5",
     estimateMicros: 20_000,
   },
   // Embeddings only: $0.02 per million tokens. Effectively free, metered anyway

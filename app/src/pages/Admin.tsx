@@ -74,6 +74,18 @@ export function Admin() {
         <Link to="/" className="back-chip" aria-label="Home">‹</Link>
       </header>
 
+      <h2>Add someone yourself</h2>
+      <div className="detail-card">
+        <p style={{ marginTop: 0 }}>
+          You don't have to wait for someone to ask. Add a crew member by name,
+          choose what they can do, and text them a code that sets up their login
+          — no email needed.
+        </p>
+        <Link to="/access" className="button-like">
+          Crew access →
+        </Link>
+      </div>
+
       <h2>Access requests ({pending.length})</h2>
       {pending.length === 0 && <p className="muted">No pending requests.</p>}
       {approveError && <p className="error">{approveError}</p>}
@@ -160,10 +172,13 @@ export function Admin() {
       <div className="detail-card">
         <p style={{ margin: 0 }}>
           Crew answers come from the company brain on the phone — no key, no cost per
-          question, and it works with no signal. OpenAI powers transcription, tips,
-          how-to and extraction only. Set the <code>OPENAI_API_KEY</code> Edge Function
-          secret in Supabase. If those features show errors, the key is missing or out of
-          quota.
+          question, and it works with no signal. Everything the app writes — answers,
+          how-tos, toolbox talks, window-type tips, reading plansets and delivery
+          schedules — runs on Claude (<code>ANTHROPIC_API_KEY</code>). OpenAI is only
+          used for three things it does better or that Claude cannot do at all: voice-memo
+          transcription, document search, and the safety-talk diagrams
+          (<code>OPENAI_API_KEY</code>). Both are Edge Function secrets. If those features
+          show errors, a key is missing or that account is out of quota.
         </p>
       </div>
 

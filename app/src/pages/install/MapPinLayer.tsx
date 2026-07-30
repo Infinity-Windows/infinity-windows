@@ -19,7 +19,6 @@ import {
   type ProjectOpening,
 } from "../../lib/install/types";
 import { openingMarkerStyle } from "../../lib/install/openingMarkerScale";
-import { openingUnitKind } from "../../lib/install/unitKind";
 import { showsVoidedInstall } from "../../lib/install/openingRowAction";
 import { installerInitials } from "../../lib/install/mapDispatch";
 import { VOIDED_RING_COLOR } from "../../components/install/OpeningDetailCard";
@@ -44,6 +43,16 @@ export interface MapPinLayerProps {
   effectiveRole: string | null | undefined;
   /** Whether mark numbers are drawn on every pin. */
   showMarkNumbers: boolean;
+  /**
+   * Door or window for this job, reading the schedule's own style where there
+   * is one — the shape of a pin is half of what it encodes, so it has to come
+   * from the same answer the filters and the list use.
+   */
+  unitKind: (opening: ProjectOpening) => "door" | "window";
+  /** Below foreman a mark cannot be moved, so it must not look draggable. */
+  canMoveMarks: boolean;
+  /** Marks moved recently enough to still be undoable. */
+  movedIds: ReadonlySet<string>;
   pinTitle: (opening: ProjectOpening) => string;
   onPinPointerDown: (
     opening: ProjectOpening,
@@ -65,6 +74,9 @@ export function MapPinLayer({
   voidedIds,
   effectiveRole,
   showMarkNumbers,
+  unitKind,
+  canMoveMarks,
+  movedIds,
   pinTitle,
   onPinPointerDown,
 }: MapPinLayerProps) {
@@ -73,7 +85,7 @@ export function MapPinLayer({
       {openings.map((o) => {
         const pos = positions.get(o.id);
         if (!pos) return null;
-        const isDoor = openingUnitKind(o) === "door";
+        const isDoor = unitKind(o) === "door";
         const isVoided = showsVoidedInstall(effectiveRole, o, voidedIds);
         const isSelected = selectedId === o.id;
         const selIndex = selection.indexOf(o.id);
@@ -109,7 +121,9 @@ export function MapPinLayer({
               dispatchMode ? selIndex >= 0 || isNewOnRoute : undefined
             }
             className={`plan-dot${isDoor ? " plan-dot--door" : ""}${
-              autoIds.has(o.id) ? " plan-dot--auto" : ""
+              canMoveMarks ? "" : " plan-dot--fixed"
+            }${autoIds.has(o.id) ? " plan-dot--auto" : ""}${
+              movedIds.has(o.id) ? " plan-dot--moved" : ""
             }${isSelected ? " plan-dot--selected" : ""}${
               draggingId === o.id ? " plan-dot--dragging" : ""
             }${selIndex >= 0 || isNewOnRoute ? " plan-dot--dispatch-selected" : ""}${

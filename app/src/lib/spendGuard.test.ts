@@ -4,6 +4,7 @@ import {
   denialNote,
   FUNCTION_SPEND,
   IMAGE_MICROS,
+  MODEL_PRICES,
   readVerdict,
   releaseAiSpend,
   reserveAiSpend,
@@ -79,6 +80,41 @@ describe("FUNCTION_SPEND", () => {
     for (const [name, spend] of Object.entries(FUNCTION_SPEND)) {
       expect(spend.estimateMicros, name).toBeGreaterThan(0);
     }
+  });
+
+  // Text generation moved from OpenAI to Claude, and Claude costs about
+  // thirteen times more per word than gpt-4o-mini did. If a function's provider
+  // and its price tag ever disagree, the owner's spend screen reports money the
+  // company is not being charged — or misses money it is.
+  it("prices everything except embeddings as Claude", () => {
+    const openai = Object.entries(FUNCTION_SPEND)
+      .filter(([, v]) => v.provider === "openai")
+      .map(([k]) => k)
+      .sort();
+    expect(openai).toEqual(["ingest-knowledge"]);
+  });
+
+  it("uses a model whose price we actually know for every function", () => {
+    for (const [name, spend] of Object.entries(FUNCTION_SPEND)) {
+      expect(Object.keys(MODEL_PRICES), name).toContain(spend.model);
+    }
+  });
+
+  it("estimates a window type's tips and one how-to at Claude's price, not the old one", () => {
+    // 2k tokens in, 1k out — the same call the write-time table costed at
+    // $0.0009 on gpt-4o-mini, which is $0.014 on Claude.
+    const claudePerType = costMicros("claude-sonnet-5", 2_000, 1_000);
+    expect(claudePerType).toBe(14_000);
+    expect(FUNCTION_SPEND["synthesize-type-tips"].estimateMicros).toBe(claudePerType);
+    expect(FUNCTION_SPEND["generate-howto"].estimateMicros).toBe(claudePerType);
+  });
+
+  it("keeps a big planset's whole read under a dollar", () => {
+    // 12 batches is the cap in extract-schedule, and `units` multiplies the
+    // per-batch estimate. Worth pinning: this is the priciest thing in the app
+    // and the one most changed by the move to Claude.
+    const worstCase = FUNCTION_SPEND["extract-schedule"].estimateMicros * 12;
+    expect(worstCase).toBeLessThan(1_000_000);
   });
 });
 

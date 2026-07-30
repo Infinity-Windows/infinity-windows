@@ -1,11 +1,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
-  chatJson,
   corsHeaders,
   jsonResponse,
   SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL,
 } from "../_shared/openai.ts";
+import {
+  ANTHROPIC_MODEL,
+  anthropicChatJson,
+  requireAnthropic,
+} from "../_shared/anthropic.ts";
 import { verifyCaller } from "../_shared/auth.ts";
 import {
   notifyOwnersOfSpend,
@@ -14,9 +18,31 @@ import {
   settleAiSpend,
 } from "../_shared/spendGuard.ts";
 
+/** What the model sends back. Typed loosely on purpose: the schema asks for a
+ * title and a detail per step, and a model that answers with a bare sentence has
+ * still answered. Pretending otherwise in the types just moves the shrug from
+ * the code into the compiler. */
 interface HowtoResult {
-  steps: { title: string; detail: string }[];
+  steps: (string | { title?: string; detail?: string })[];
 }
+
+const HOWTO_SCHEMA = {
+  type: "object",
+  properties: {
+    steps: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          detail: { type: "string" },
+        },
+        required: ["title", "detail"],
+      },
+    },
+  },
+  required: ["steps"],
+};
 
 Deno.serve(async (req) => {
   const cors = corsHeaders(req);
@@ -30,6 +56,9 @@ Deno.serve(async (req) => {
     auth.status === "ok" && auth.user.id !== "service_role" ? auth.user.id : null;
 
   try {
+    // The one hard dependency is now the Anthropic key: Claude writes the
+    // how-to. No OpenAI key is needed to run this function at all.
+    requireAnthropic();
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Supabase env not configured");
     }
@@ -95,26 +124,46 @@ Deno.serve(async (req) => {
     }
 
     let usage: { inputTokens: number | null; outputTokens: number | null } | null = null;
-    const result = await chatJson<HowtoResult>(
-      `You write a concise, field-ready how-to for installing window type ${type.type_code} (${type.name}), aimed at a newer installer. Ground every step in the reference install and tips below. 5-9 steps, each a short imperative title + 1-2 sentence detail. Include the known watch-outs where relevant. No fluff.`,
-      `Tips: ${JSON.stringify(type.tips_json ?? [])}\nWatch-outs: ${JSON.stringify(type.watch_outs_json ?? [])}\nReference install: ${JSON.stringify(golden)}`,
-      `Schema: { "steps": [ { "title": string, "detail": string } ] }`,
-      (u) => {
+    const result = await anthropicChatJson<HowtoResult>({
+      system:
+        `You write a concise, field-ready how-to for installing window type ${type.type_code} (${type.name}), aimed at a newer installer. Ground every step in the reference install and tips below. 5-9 steps, each a short imperative title + 1-2 sentence detail. Include the known watch-outs where relevant. No fluff.`,
+      user:
+        `Tips: ${JSON.stringify(type.tips_json ?? [])}\nWatch-outs: ${JSON.stringify(type.watch_outs_json ?? [])}\nReference install: ${JSON.stringify(golden)}`,
+      schemaHint: `Schema: { "steps": [ { "title": string, "detail": string } ] }`,
+      schema: HOWTO_SCHEMA,
+      onUsage: (u) => {
         usage = u;
       },
-    ).catch(async (err) => {
+    }).catch(async (err) => {
       await releaseAiSpend(supabase, gate.reservationId, "provider_failed", false);
       throw err;
     });
-    await settleAiSpend(supabase, gate.reservationId, usage, "gpt-4o-mini");
+    await settleAiSpend(supabase, gate.reservationId, usage, ANTHROPIC_MODEL);
 
-    const steps = (result.steps ?? [])
-      .map((s) => ({
-        title: String(s.title ?? "").trim(),
-        detail: String(s.detail ?? "").trim(),
-      }))
+    // A step that arrives as a plain sentence instead of a title-and-detail pair
+    // is still a step. Dropping it because it is the wrong shape is how a guide
+    // ends up empty, which is the failure this migration has to stop.
+    const steps = (Array.isArray(result.steps) ? result.steps : [])
+      .map((s) =>
+        typeof s === "string"
+          ? { title: s.trim(), detail: "" }
+          : {
+            title: String(s?.title ?? "").trim(),
+            detail: String(s?.detail ?? "").trim(),
+          },
+      )
       .filter((s) => s.title)
       .slice(0, 9);
+
+    // Never write a guide with nothing in it. `howto_json` is replaced outright,
+    // so an answer that arrives with no steps would blank an existing guide and
+    // report success — the failure nobody sees until an installer opens it on a
+    // roof. Refusing costs one regenerate; saving costs the guide.
+    if (steps.length === 0) {
+      throw new Error(
+        "the AI returned a how-to with no steps in it, so nothing was saved",
+      );
+    }
 
     const { error: upErr } = await supabase
       .from("window_types")

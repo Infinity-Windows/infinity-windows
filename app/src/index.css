@@ -50,6 +50,40 @@
   --nav-width: 256px;
   --accent-soft: oklch(0.68 0.24 30 / 0.12);
   --accent-line: oklch(0.68 0.24 30 / 0.5);
+
+  /* ---- Safe areas -------------------------------------------------------
+     Installed to a home screen, this app draws edge to edge: index.html asks
+     for `viewport-fit=cover` and a translucent status bar, so the page runs
+     *under* the clock, the battery and the home indicator rather than starting
+     below them. Anything pinned to an edge therefore has to move itself out of
+     the way, and a close button that doesn't is a close button the phone eats.
+
+     The four insets are named once, here, for two reasons. Every overlay reads
+     the name instead of calling env() again, so there is one place to be right
+     and nothing to keep in step. And a test can override these four custom
+     properties with real iPhone numbers — no headless browser reports a
+     non-zero env(safe-area-inset-*), so a test that trusts env() passes on a
+     layout that is broken on the phone. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+
+  /* Breathing room between an overlay and the edge it is clear of. */
+  --overlay-gap: 12px;
+
+  /* The phone bottom bar, and the line above it that sheets rest on. */
+  --tabbar-h: 3rem;
+  --above-tabbar: calc(var(--tabbar-h) + var(--safe-bottom));
+
+  /* How tall an overlay may grow before its own header slides under the status
+     bar. A sheet is anchored to an edge, so it only has to clear the top; a
+     dialog is centred, so half of any height it gains goes upward and it has to
+     clear twice as much. */
+  --sheet-max-h: calc(100dvh - var(--safe-top) - var(--overlay-gap));
+  --sheet-max-h-above-tabbar: calc(var(--sheet-max-h) - var(--above-tabbar));
+  --dialog-max-h: calc(100dvh - (2 * var(--safe-top)) - (2 * var(--overlay-gap)));
+
   color-scheme: dark;
 }
 
@@ -84,6 +118,11 @@ body {
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+  /* This app is full of long unbroken strings — window IDs, job codes, shelf
+     addresses, site emails. On a phone one of them is wider than the screen,
+     and an unbreakable word drags the whole page sideways. Break only when it
+     would not otherwise fit; anything set `white-space: nowrap` is untouched. */
+  overflow-wrap: break-word;
 }
 
 a {
@@ -106,13 +145,26 @@ a:hover {
 
 .app-main {
   flex: 1;
-  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  /* A flex item defaults to min-width:auto, i.e. "never narrower than my widest
+     child". That let one wide table or tab row stretch the whole app past the
+     side of the phone, and — worse — defeated every `overflow-x: auto` inside
+     it, because a scroll container that is allowed to grow never scrolls. */
+  min-width: 0;
+  padding-bottom: calc(72px + var(--safe-bottom));
 }
 
 .page {
   padding: 16px;
-  padding-top: calc(12px + env(safe-area-inset-top));
+  padding-top: calc(12px + var(--safe-top));
+  /* Landscape on a notched iPhone puts the notch and the rounded corner over
+     the sides of the page, so the side padding is at least the inset. */
+  padding-left: max(16px, var(--safe-left));
+  padding-right: max(16px, var(--safe-right));
   max-width: 640px;
+  /* Same reason as .app-main: pin the page to the width it was given so the
+     scroll containers inside it have a width to scroll against. */
+  width: 100%;
+  min-width: 0;
   margin: 0 auto;
 }
 
@@ -120,7 +172,22 @@ a:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* A title and its action have to be allowed to stack, or a long job name
+     shoves the button off the side of the phone. */
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-width: 0;
   margin-bottom: 12px;
+}
+
+/* The title side gives way first, so the row only stacks when the action alone
+   is too wide. A zero flex-basis is what does it: flexbox breaks a line before
+   it shrinks anything, so a title measured at its natural width would push the
+   button onto its own row rather than simply wrapping. */
+.page-header > div:first-child,
+.page-header > h1:first-child {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 h1 {
@@ -257,7 +324,7 @@ button:disabled {
   display: flex;
   background: var(--surface);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: var(--safe-bottom);
   z-index: 50;
 }
 
@@ -654,7 +721,8 @@ button:disabled {
   display: inline-block;
 }
 
-.row-gap { display: flex; gap: 8px; }
+/* Wraps rather than pushing the last button off the side of a phone. */
+.row-gap { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .plan-map {
   position: relative;
@@ -1011,6 +1079,16 @@ button:disabled {
   gap: 4px;
 }
 
+/* Stands in for the drawing when a plan will not open, so the panel always
+   settles on something actionable rather than an endless "Loading…". */
+.plan-trouble {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 6px;
+}
+
 .plan-zoom-btn {
   width: 36px;
   height: 36px;
@@ -1182,6 +1260,12 @@ button:disabled {
 .plan-dot__mark {
   pointer-events: none;
   line-height: 1;
+}
+
+/* Below foreman a mark cannot be moved, so it must not look draggable. It stays
+   fully tappable — the details sheet is how an installer reads the plan. */
+.plan-dot--fixed {
+  cursor: pointer;
 }
 
 .plan-map--with-dots .plan-dot {
@@ -1922,6 +2006,12 @@ button:disabled {
 
 /* --- Unified project hub --- */
 
+/* A project has up to eight sections, which is more than fits across a phone.
+   The row scrolls sideways rather than wrapping onto three lines (that would
+   eat the top of every job screen) or hiding the tail behind a "More" menu
+   (an extra tap onto a small target, wearing gloves). ScrollTabs keeps the
+   selected tab scrolled into view and sets data-edges so the side with more
+   behind it fades — see components/nav/ScrollTabs.tsx. */
 .hub-tabs {
   display: flex;
   gap: 4px;
@@ -1930,11 +2020,60 @@ button:disabled {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
+  /* Makes the strip the offsetParent of its tabs, so "scroll the selected tab
+     into view" measures against the strip and not against the page. */
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  /* Swiping the tabs must not turn into a page swipe or the browser's back
+     gesture halfway along the row. */
+  overscroll-behavior-x: contain;
+}
+
+.hub-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* The only cue that the row continues past the edge of the phone. Prefixed as
+   well as plain, because plenty of the crew are on older iPhones. */
+.hub-tabs[data-edges="end"] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent);
+}
+.hub-tabs[data-edges="start"] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 34px);
+  mask-image: linear-gradient(to right, transparent, #000 34px);
+}
+.hub-tabs[data-edges="both"] {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 34px,
+    #000 calc(100% - 34px),
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 34px,
+    #000 calc(100% - 34px),
+    transparent
+  );
 }
 
 .hub-tab {
-  flex: 1;
-  padding: 10px 8px;
+  /* Never shrink a label to the point it wraps or truncates: the row scrolls
+     instead. On a wide screen the desktop rule below shares the width evenly,
+     exactly as it did before. */
+  flex: 0 0 auto;
+  min-width: 0;
+  white-space: nowrap;
+  /* A gloved thumb needs a target, not a text link. */
+  min-height: 44px;
+  padding: 10px 14px;
   border: none;
   border-radius: 11px;
   background: transparent;
@@ -2194,9 +2333,19 @@ button:disabled {
 
 .briefing-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* `1fr` alone refuses to go below the widest label; minmax(0,…) lets the
+     column be as narrow as the phone actually is. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   text-align: center;
+}
+
+/* Four uppercase, letter-spaced labels do not fit across a small phone. Two
+   rows of two keeps the counts big rather than shrinking them to fit. */
+@media (max-width: 360px) {
+  .briefing-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .briefing-stats span {
@@ -2627,7 +2776,8 @@ button:disabled {
 .toast-host {
   position: fixed;
   left: 50%;
-  bottom: 84px;
+  /* Clears the bottom bar, and then the home indicator underneath it. */
+  bottom: calc(84px + var(--safe-bottom));
   transform: translateX(-50%);
   z-index: 1000;
   display: flex;
@@ -4145,7 +4295,7 @@ button.clock-out {
 .ask-fab {
   position: fixed;
   right: 16px;
-  bottom: calc(3rem + 14px + env(safe-area-inset-bottom));
+  bottom: calc(3rem + 14px + var(--safe-bottom));
   z-index: 45;
   display: inline-flex;
   align-items: center;
@@ -4205,7 +4355,7 @@ button.clock-out {
   background: var(--surface);
   border-top-left-radius: 20px;
   border-top-right-radius: 20px;
-  padding: 10px 16px calc(20px + env(safe-area-inset-bottom));
+  padding: 10px 16px calc(20px + var(--safe-bottom));
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -4769,6 +4919,17 @@ button.clock-out {
     padding: 28px 32px 48px;
   }
 
+  /* There is room for every section here, so keep the office layout: one row
+     of equal tabs, no scrolling and no fade. */
+  .hub-tab {
+    flex: 1;
+  }
+
+  .hub-tabs[data-edges] {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
   /* Desktop drops the bottom bar, so anchor the FAB to the viewport corner. */
   .ask-fab {
     right: 28px;
@@ -4895,7 +5056,7 @@ button.clock-out {
   background: var(--surface);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 18px;
-  padding: 24px 20px calc(20px + env(safe-area-inset-bottom));
+  padding: 24px 20px calc(20px + var(--safe-bottom));
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.6);
 }
 
@@ -4953,8 +5114,7 @@ button.clock-out {
   border-top-right-radius: 22px;
   border: 1px solid var(--border);
   border-bottom: none;
-  padding: 8px 18px calc(22px + env(safe-area-inset-bottom));
-  max-height: 92vh;
+  padding: 8px 18px calc(22px + var(--safe-bottom));
   overflow-y: auto;
   animation: clockSheetUp 0.22s ease;
 }
@@ -5538,8 +5698,11 @@ body {
   z-index: 50;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  height: calc(3rem + env(safe-area-inset-bottom));
-  padding-bottom: env(safe-area-inset-bottom);
+  height: var(--above-tabbar);
+  padding-bottom: var(--safe-bottom);
+  /* Keep Menu and Ask clear of the notch and the rounded corner in landscape. */
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
   background: var(--surface);
   border-top: 1px solid var(--border);
 }
@@ -5666,7 +5829,7 @@ body {
   left: 0;
   right: 0;
   top: 0;
-  bottom: calc(3rem + env(safe-area-inset-bottom));
+  bottom: var(--above-tabbar);
   z-index: 60;
   background: oklch(0.08 0.012 35 / 0.62);
 }
@@ -5674,9 +5837,8 @@ body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(3rem + env(safe-area-inset-bottom));
+  bottom: var(--above-tabbar);
   z-index: 61;
-  max-height: min(84dvh, 40rem);
   display: flex;
   flex-direction: column;
   background: var(--card-raised);
@@ -5750,7 +5912,7 @@ body {
   left: 0;
   right: 0;
   top: 0;
-  bottom: calc(3rem + env(safe-area-inset-bottom));
+  bottom: var(--above-tabbar);
   z-index: 60;
   background: oklch(0.08 0.012 35 / 0.62);
 }
@@ -5758,7 +5920,7 @@ body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(3rem + env(safe-area-inset-bottom));
+  bottom: var(--above-tabbar);
   z-index: 61;
   background: var(--card-raised);
   border: 1px solid var(--border);
@@ -6008,7 +6170,7 @@ body {
   border-top-left-radius: 18px;
   border-top-right-radius: 18px;
   box-shadow: var(--shadow-soft);
-  padding: 0 16px calc(20px + env(safe-area-inset-bottom));
+  padding: 0 16px calc(20px + var(--safe-bottom));
 }
 .maps-head {
   display: flex;
@@ -6100,7 +6262,7 @@ body {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(3.5rem + 12px + env(safe-area-inset-bottom));
+  bottom: calc(3.5rem + 12px + var(--safe-bottom));
   z-index: 55;
   width: min(28rem, calc(100vw - 1.5rem));
   padding: 14px 16px;
@@ -6317,30 +6479,81 @@ body {
   padding: 10px 16px 4px;
 }
 
-/* Mobile: a compact fixed pill top-right, out of the way of content. */
-.sync-pill-mobile {
-  position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 8px);
-  right: 10px;
-  z-index: 40;
-  pointer-events: none;
+/* "All synced" is the shortest thing this pill ever says. The message that has
+   to survive is the long one — "Clock 2 · Photos 3 · Receipts 4 · 5 logs queued
+   · needs attention" — because that is what tells someone in a dead zone their
+   work is queued and not lost. Anywhere it can be given room, let it wrap
+   instead of running past the edge or ellipsing itself into "Clock 2 · Ph…". */
+.rail-sync .sync-pill-syncing,
+.rail-sync .sync-pill-attention,
+.sync-strip .sync-pill-syncing,
+.sync-strip .sync-pill-attention {
+  align-items: flex-start;
+  white-space: normal;
+  line-height: 1.35;
+  border-radius: 12px;
+  padding: 8px 11px;
 }
 
-.sync-pill-mobile .sync-pill {
-  pointer-events: auto;
+.rail-sync .sync-pill-syncing .sync-pill-icon,
+.rail-sync .sync-pill-attention .sync-pill-icon,
+.sync-strip .sync-pill-syncing .sync-pill-icon,
+.sync-strip .sync-pill-attention .sync-pill-icon {
+  /* Optically centre the icon on the first line of wrapped text. */
+  margin-top: 1px;
+}
+
+/* Phones: sync status is a row of its own at the top of the app, not a pill
+   floating over the page.
+   
+   It used to be `position: fixed` in the top-right corner, which dropped it
+   into the same band as every page header. Being out of flow it could not push
+   anything aside, so it sat on top of the job title; and because a
+   right-anchored shrink-to-fit box grows leftwards without limit, the longest
+   states reached 421px on a 320px screen and ran clean off the left edge,
+   losing the first words of exactly the message that matters most. In flow it
+   cannot cover anything, and it has the full width of the phone to speak. */
+.sync-strip {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  justify-content: flex-end;
+  /* This row is now the topmost content in the frame, so clearing the phone's
+     status bar is its job; `.page` below stops doing it a second time. */
+  padding: calc(var(--safe-top) + 8px) max(12px, var(--safe-right)) 6px
+    max(12px, var(--safe-left));
+  background: var(--bg);
+}
+
+.sync-strip .sync-pill {
+  max-width: 100%;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
   background: var(--card-hot);
 }
 
-.sync-pill-mobile .sync-pill-synced {
-  /* Keep the resting state whisper-quiet on small screens. */
+.sync-strip .sync-pill-synced {
+  /* Nothing queued: a quiet line, not an announcement. */
   opacity: 0.75;
   box-shadow: none;
   background: var(--card-raised);
 }
 
+/* Something queued: take the whole row, so the message still reads at 320px. */
+.sync-strip .sync-pill-syncing,
+.sync-strip .sync-pill-attention {
+  flex: 1 1 auto;
+}
+
+/* The strip has already cleared the status bar for everything under it. */
+@media (max-width: 859px) {
+  .app-main .page {
+    padding-top: 12px;
+  }
+}
+
 @media (min-width: 860px) {
-  .sync-pill-mobile {
+  .sync-strip {
     display: none;
   }
 }
@@ -6359,7 +6572,6 @@ body {
   top: 50%;
   transform: translate(-50%, -50%);
   width: min(440px, calc(100vw - 32px));
-  max-height: calc(100vh - 48px);
   overflow-y: auto;
   background: var(--card-raised);
   border: 1px solid var(--border);
@@ -6748,7 +6960,7 @@ body {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(80px + env(safe-area-inset-bottom));
+  bottom: calc(80px + var(--safe-bottom));
   z-index: 80;
   width: min(480px, calc(100vw - 24px));
   padding: 12px 14px;
@@ -6764,7 +6976,7 @@ body {
 }
 /* Wrong Supabase project: same banner shell, danger tint, no dismiss. */
 .pwa-banner-wrong-project {
-  top: calc(12px + env(safe-area-inset-top));
+  top: calc(12px + var(--safe-top));
   bottom: auto;
   z-index: 90;
   align-items: flex-start;
@@ -6997,7 +7209,7 @@ body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(3rem + env(safe-area-inset-bottom));
+  bottom: var(--above-tabbar);
   z-index: 61;
   background: var(--card-raised);
   border: 1px solid var(--border);
@@ -7119,6 +7331,7 @@ body {
 .sched-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 10px;
 }
@@ -7419,7 +7632,7 @@ body {
 /* ---- Publish bar ---- */
 .sched-publishbar {
   position: sticky;
-  bottom: calc(12px + env(safe-area-inset-bottom));
+  bottom: calc(12px + var(--safe-bottom));
   margin-top: 14px;
   display: flex;
   align-items: center;
@@ -7451,13 +7664,12 @@ body {
 .sched-sheet {
   width: 100%;
   max-width: 520px;
-  max-height: 92vh;
   overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   padding: 16px;
-  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  padding-bottom: calc(20px + var(--safe-bottom));
 }
 @media (min-width: 640px) { .sched-sheet { border-radius: var(--radius-lg); } }
 .sched-sheet-head {
@@ -7892,9 +8104,12 @@ body {
 }
 .travel-sheet {
   position: fixed; left: 50%; bottom: 0; transform: translateX(-50%);
-  width: min(560px, 100%); max-height: 92vh; z-index: 61;
+  width: min(560px, 100%); z-index: 61;
   background: var(--card); border: 1px solid var(--border);
   border-radius: 20px 20px 0 0; display: flex; flex-direction: column;
+  /* Sits on the bottom of the screen, so its last row is where the home
+     indicator would otherwise land. */
+  padding-bottom: var(--safe-bottom);
 }
 .travel-sheet-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -8540,4 +8755,219 @@ body {
 }
 .extraction-progress .action-btn {
   margin-top: 10px;
+}
+
+/* ---------------------------------------------------------------------------
+   Crew access: the one-time invite code.
+
+   Only two rules, both earning their keep. The card is accent-edged because it
+   is the one thing on the screen that cannot be recovered once dismissed — the
+   server stores a hash, not the code. The code itself is monospaced, spaced out
+   and large because it gets read aloud down a phone line and off a cracked
+   screen; everything else reuses .detail-card / .button-like as-is.
+   --------------------------------------------------------------------------- */
+.invite-issued {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.invite-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: clamp(22px, 7vw, 30px);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-align: center;
+  padding: 14px 8px;
+  border: 1px dashed var(--accent-line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  /* Long-press to select on a phone, so it can be copied even if the clipboard
+     button is blocked by an in-app browser. */
+  user-select: all;
+}
+
+/* ===========================================================================
+   Overlays and the edges of the phone
+
+   On a home-screen install the page runs under the status bar and the home
+   indicator (see the safe-area note in :root). An overlay is the one thing that
+   is allowed to reach those edges, so this is where every overlay is made to
+   stop short of them — deliberately in one block, at the end of the sheet,
+   rather than a `+ 47px` sprinkled through eight components that would then
+   have to be found again the next time Apple changes a phone.
+
+   Three lists, by how an overlay is anchored. Adding an overlay means adding it
+   to the list it belongs to; `safeArea.test.ts` reads this file and fails when a
+   top-reaching overlay is missing from all three, which is the only reason this
+   stays true.
+   ------------------------------------------------------------------------ */
+
+/* 1. Fills the screen and puts its own content at the top edge. The plan and
+      model editors are the ones Taylor hits: their close and zoom buttons are
+      the first row of a `position: fixed; inset: 0` box. */
+.plan-sheet--fullscreen,
+.plan-model-editor--fullscreen,
+.photo-viewer-backdrop {
+  padding-top: calc(var(--overlay-gap) + var(--safe-top));
+  padding-bottom: calc(var(--overlay-gap) + var(--safe-bottom));
+  padding-left: max(var(--overlay-gap), var(--safe-left));
+  padding-right: max(var(--overlay-gap), var(--safe-right));
+}
+
+/* The full-screen plan sheet scrolls, and a sticky child sticks to the top of
+   the scrollport — the padding above does not hold it back once you scroll. So
+   the toolbar is told where its own ceiling is. */
+.plan-fullscreen-bar {
+  top: var(--safe-top);
+}
+
+/* 2. Anchored to an edge and free to grow towards the other one. Capping the
+      height is what keeps the header — and the X in it — below the clock. */
+.clock-sheet,
+.sched-sheet,
+.travel-sheet,
+.maps-sheet {
+  max-height: var(--sheet-max-h);
+}
+
+/* The sheets that rest on top of the bottom bar rather than on the bottom of
+   the screen start that much higher, so they may grow that much less. */
+.capture-sheet,
+.jobphoto-sheet {
+  max-height: var(--sheet-max-h-above-tabbar);
+}
+
+/* The drawer keeps a smaller cap of its own on top of that: it is meant to read
+   as a drawer, not as a full screen, on a tall phone. */
+.menu-drawer {
+  max-height: min(40rem, var(--sheet-max-h-above-tabbar));
+}
+
+/* A capped sheet that is one plain block has to be allowed to scroll, or the
+   cap simply hides the bottom of it. The sheets built as a flex column
+   (.clock-sheet, .menu-drawer, .travel-sheet…) already scroll in their body. */
+.maps-sheet,
+.capture-sheet,
+.jobphoto-sheet {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* 3. Centred, so half of every pixel it grows goes upward — which is why these
+      have to clear twice the status bar, not once. */
+.wizard-card,
+.modal-card,
+.pin-modal-card {
+  max-height: var(--dialog-max-h);
+  overflow-y: auto;
+}
+
+/* A close button is the control someone reaches for with a glove on and the
+   phone in the other hand. 44px is Apple's floor and this app's; nothing above
+   is allowed to shrink one to make room. */
+.menu-drawer-close,
+.capture-close,
+.clock-sheet-x,
+.feature-tip-x,
+.plan-fullscreen-toggle,
+.sched-sheet-close,
+.wizard-close {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* The plan editor's close is a labelled button rather than an icon, so it is
+   already wide enough; only its height was short of the floor. */
+.plan-fullscreen-close {
+  min-height: 44px;
+}
+
+/* --- Undo for marks dragged around the plan ---------------------------- */
+
+/* A mark that is not where the plan put it. The bright ring reads on every dot
+   colour, so the accidentally nudged one can be found by eye rather than by
+   memory — which is more use day to day than the undo button itself. */
+.plan-dot--moved {
+  box-shadow:
+    0 0 0 2px #141210,
+    0 0 0 4px rgba(255, 255, 255, 0.9);
+}
+
+.mark-undo {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #1e1b18;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mark-undo__clear {
+  margin-top: 10px;
+}
+
+.mark-undo__status {
+  margin: 0;
+  font-size: 14px;
+}
+
+.mark-undo__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Taylor asked for Ctrl+Z, but the crew are on phones with no keyboard, so the
+   visible control has to be a real thumb target. 44px is the floor the rest of
+   the app is held to (lib/ui/safeArea.test.ts). */
+.mark-undo__btn {
+  flex: 1 1 auto;
+  min-height: 44px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: #262220;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+
+.mark-undo__btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.mark-undo__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Reverting the whole job is the same journey as pressing undo enough times,
+   so it is deliberately quiet: a link, not a button competing with Undo. */
+.mark-undo__all {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 10px 4px;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 14px;
+  text-decoration: underline;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mark-undo__all:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

@@ -18,8 +18,15 @@ type Mode = "signin" | "request";
 
 export function SignIn({
   initialMode = "signin",
+  onHaveInviteCode,
 }: {
   initialMode?: Mode;
+  /**
+   * For someone a supervisor added on the Crew access screen. They were texted a
+   * link, but chat apps mangle links, so they can type the code instead. This is
+   * not self-signup: without a valid code it goes nowhere.
+   */
+  onHaveInviteCode?: () => void;
 }) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [email, setEmail] = useState("");
@@ -202,6 +209,11 @@ export function SignIn({
           <button className="primary big" onClick={signIn} disabled={busy}>
             {busy ? "Signing in..." : "Sign in"}
           </button>
+          {onHaveInviteCode && (
+            <button className="link" onClick={onHaveInviteCode}>
+              I was given a code
+            </button>
+          )}
           <button className="link" onClick={resetPassword} disabled={busy}>
             Reset password
           </button>

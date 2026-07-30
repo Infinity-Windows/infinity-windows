@@ -6,11 +6,16 @@
 // that drifted apart would be two answers to it. The card is presentational: it
 // knows nothing about maps, dispatch, or how it was opened.
 
+import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { MarkElevationViews } from "./MarkElevationViews";
+import { listMarkSpecs } from "../../lib/install/api";
 import { openingFullSheetPath } from "../../lib/install/openingRowAction";
-import { openingUnitKind } from "../../lib/install/unitKind";
+import {
+  openingUnitKind,
+  openingUnitKindResolver,
+} from "../../lib/install/unitKind";
 import { rememberOpening } from "../../lib/install/staleOpening";
 import { installerInitials } from "../../lib/install/mapDispatch";
 import {
@@ -55,8 +60,22 @@ export function OpeningDetailCard({
   onOpenDetailSheet,
   id,
 }: OpeningDetailCardProps) {
-  const kind = openingUnitKind(o);
+  // The card is opened from the map and from dispatch, and both already hold
+  // this query, so asking for it here costs nothing and means the card can
+  // never be handed a description belonging to another opening.
+  const markSpecs = useQuery({
+    queryKey: ["markSpecs", projectId],
+    queryFn: () => listMarkSpecs(projectId),
+    enabled: !!projectId,
+  });
+  const kind = openingUnitKindResolver(markSpecs.data ?? [])(o);
   const wt = o.window_types;
+  // The supplier's category is worth showing — "double-hung" says more than
+  // "window" — but not when it contradicts the sheet. Black Desert's mark #2 is
+  // filed as a door and described as a fixed window; printing "door" beside a
+  // window-blue dot is the same confusion in words.
+  const categoryLabel =
+    openingUnitKind(o) === kind ? wt?.category ?? kind : kind;
 
   // "Open full sheet" below is a link by id, and reloading the plans replaces
   // every opening with a new id. Note the code this id stood for while we have
@@ -78,7 +97,7 @@ export function OpeningDetailCard({
           #{openingMarkCode(o.opening_code)}
           {wt ? ` · ${wt.name || wt.type_code}` : ""}
         </strong>
-        <span className="map-detail-card__cat">{wt?.category ?? kind}</span>
+        <span className="map-detail-card__cat">{categoryLabel}</span>
         <button
           type="button"
           className="map-detail-card__close"

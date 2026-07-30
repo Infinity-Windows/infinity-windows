@@ -15,7 +15,10 @@ export type OutboxOp =
   | "break_stop"
   | "daily_log"
   | "photo_upload"
-  | "receipt_upload";
+  | "receipt_upload"
+  | "pin_undo"
+  | "pin_reset_project"
+  | "pin_reset_opening";
 
 /**
  * queued   — waiting to be sent (respecting nextAttemptAt backoff)
@@ -328,6 +331,9 @@ const OPS: ReadonlySet<string> = new Set<OutboxOp>([
   "daily_log",
   "photo_upload",
   "receipt_upload",
+  "pin_undo",
+  "pin_reset_project",
+  "pin_reset_opening",
 ]);
 
 export function deserializeEntry(json: string): OutboxEntry | null {
