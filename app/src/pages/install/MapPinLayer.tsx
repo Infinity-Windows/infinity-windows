@@ -56,7 +56,7 @@ export interface MapPinLayerProps {
   pinTitle: (opening: ProjectOpening) => string;
   onPinPointerDown: (
     opening: ProjectOpening,
-  ) => (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  ) => (event: ReactPointerEvent) => void;
 }
 
 export function MapPinLayer({

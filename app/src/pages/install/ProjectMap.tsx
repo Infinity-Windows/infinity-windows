@@ -1022,7 +1022,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   };
 
   const beginDrag =
-    (o: ProjectOpening) => (e: React.PointerEvent<HTMLButtonElement>) => {
+    (o: ProjectOpening) => (e: React.PointerEvent) => {
       e.preventDefault();
       e.stopPropagation();
       const cur = dotPos(o);
