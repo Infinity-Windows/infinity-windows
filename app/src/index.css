@@ -146,6 +146,16 @@ a:hover {
   margin-bottom: 12px;
 }
 
+/* The title side gives way first, so the row only stacks when the action alone
+   is too wide. A zero flex-basis is what does it: flexbox breaks a line before
+   it shrinks anything, so a title measured at its natural width would push the
+   button onto its own row rather than simply wrapping. */
+.page-header > div:first-child,
+.page-header > h1:first-child {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 h1 {
   font-family: var(--font-display);
   font-size: 28px;
