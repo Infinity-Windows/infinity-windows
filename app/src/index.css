@@ -3208,6 +3208,25 @@ button:disabled {
   padding: 12px 13px;
 }
 
+/* A hint, not an alarm: it sits above the filters and stays quiet. */
+.dispatch-nudge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 13px;
+  background: var(--card-raised);
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.dispatch-nudge button {
+  margin-left: auto;
+}
+
 .row-assignee {
   display: inline-flex;
   align-items: center;

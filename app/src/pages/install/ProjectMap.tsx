@@ -749,6 +749,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const filtered = all.filter((o) =>
     matchesPlanFilter(o, activeFilter, myProfileId),
   );
+  const nudge = dispatchNudge(all, { isLead, dispatchMode });
   const placed = filtered.filter(
     (o) => o.pin_x !== null && o.pin_y !== null && o.page_number === page,
   );
@@ -1641,6 +1642,29 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             onShowView={showView}
           />
         </>
+      )}
+
+      {/*
+        Nobody has ever assigned work from this screen — not one opening in the
+        company is sequenced — which reads as undiscovered rather than unwanted,
+        since dispatch lives behind a toggle a lead has no reason to press. So
+        say it out loud on a job where it would help, and stop the moment they
+        assign anything.
+      */}
+      {nudge && (
+        <div className="dispatch-nudge">
+          <span>{dispatchNudgeText(nudge)}</span>
+          <button
+            type="button"
+            className="chip"
+            onClick={() => {
+              setDispatchMode(true);
+              setDispatchNote(null);
+            }}
+          >
+            Hand them out
+          </button>
+        </div>
       )}
 
       <nav className="plan-filters" aria-label="Filter openings">
