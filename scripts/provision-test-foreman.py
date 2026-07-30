@@ -54,7 +54,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lib.supabase_rest import Client, Steps, one  # noqa: E402
-from lib.tiny_pdf import MARK_PINS, sandbox_plan_pdf  # noqa: E402
+from lib.tiny_pdf import HEIGHT, MARK_PINS, WIDTH, sandbox_plan_pdf  # noqa: E402
 
 REMOVE = "--remove" in sys.argv[1:]
 CHECK_MIGRATION = "--check-migration" in sys.argv[1:]
@@ -286,6 +286,8 @@ def ensure_sandbox() -> tuple[str, str, list[dict]]:
                              fix, prefer="return=representation"))
         openings.append(row)
 
+    ensure_hand_drawn_outline(project_id, planset_id)
+
     # Nothing outstanding on the undo stack either, for the same reason.
     sb.svc("PATCH", f"/rest/v1/project_opening_pin_moves?project_id=eq.{project_id}"
                     "&undone_at=is.null",
@@ -293,6 +295,49 @@ def ensure_sandbox() -> tuple[str, str, list[dict]]:
             "note": "Cleared by a provisioning run."})
 
     return project_id, type_id, [o for o in openings if o.get("id")]
+
+
+def ensure_hand_drawn_outline(project_id: str, planset_id: str) -> None:
+    """Give the sandbox a traced building, so every mark is a draggable dot.
+
+    WHY. When a job has no traced shape the app invents one and then draws any
+    mark near a wall of it AS that wall's opening — a gap in a line, not a dot.
+    On a job with six marks every one of them ends up on a wall of a shape
+    derived from those same six marks, so the sandbox had no dot to drag at all:
+    the plan view showed the drawing with nothing on it, and the moved-mark ring
+    (a class on the dot) could never appear.
+
+    A hand-traced shape turns wall snapping off — the app treats a shape a person
+    drew as a statement about the building, not a guess to decorate. So this
+    stores the rectangle of the shell the sheet prints, marked as hand-drawn by
+    carrying no `derived_from`, and the sandbox then behaves like any job whose
+    foreman has traced the building: every mark is a free dot, on both views.
+    """
+    if not (project_id and planset_id):
+        return
+
+    rows = sb.svc("GET", f"/rest/v1/project_plan_outlines?project_id=eq.{project_id}"
+                         f"&planset_id=eq.{planset_id}&page_number=eq.1"
+                         "&select=id,features")
+    if isinstance(rows, list):
+        for row in rows:
+            features = row.get("features") or {}
+            derived = features.get("derived_from") if isinstance(features, dict) else None
+            if derived in ("pins", "traced"):
+                # An auto-saved guess. It is what puts the marks in the walls, and
+                # the app re-derives one whenever it is missing, so it is replaced
+                # rather than left beside the traced shape.
+                sb.svc("DELETE", f"/rest/v1/project_plan_outlines?id=eq.{row['id']}")
+            else:
+                return  # A traced shape is already there.
+
+    # The shell tiny_pdf.py draws, in the same 0..1 space pins use.
+    sb.svc("POST", "/rest/v1/project_plan_outlines",
+           {"project_id": project_id, "planset_id": planset_id, "page_number": 1,
+            "points": [{"x": 0.114, "y": 0.192}, {"x": 0.886, "y": 0.192},
+                       {"x": 0.886, "y": 0.823}, {"x": 0.114, "y": 0.823}],
+            "page_aspect": round(HEIGHT / WIDTH, 4),
+            "features": {"dividers": [], "wallOpenings": []}})
 
 
 def ensure_decoy() -> dict:

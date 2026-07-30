@@ -23,7 +23,7 @@ const PORT = Number(process.env.IW_FOREMAN_PORT ?? 5199);
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: /foreman-marks\.spec\.ts/,
+  testMatch: /foreman-[a-z]+\.spec\.ts/,
   outputDir: "./e2e/test-results-foreman",
   fullyParallel: false,
   workers: 1,
