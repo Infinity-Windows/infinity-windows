@@ -3208,6 +3208,16 @@ button:disabled {
   padding: 12px 13px;
 }
 
+/*
+ * The row whose pin is labelled on the drawing above. It is the other half of a
+ * two-way link, so it has to be obvious which row the one labelled pin belongs
+ * to after the drawing scrolls back into view.
+ */
+.work-list .find-row--linked {
+  border-color: rgba(255, 106, 26, 0.55);
+  box-shadow: 0 0 0 1px rgba(255, 106, 26, 0.25);
+}
+
 .points-hero {
   background: linear-gradient(135deg, var(--accent-bg), var(--card-raised));
   border: 1px solid rgba(255, 106, 26, 0.45);

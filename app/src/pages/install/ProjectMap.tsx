@@ -194,10 +194,27 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   // Cartoon plan state: per-page traced outlines, selection, drag.
   const [outlines, setOutlines] = useState<Record<number, BuildingOutline | null>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // The list below the drawing expands its own details. Kept separate from the
-  // pin selection so opening a row doesn't move anything on the map, and so the
-  // same card can never render twice at once.
+  // The list below the drawing expands its own details. Still its own state so
+  // the same card can never render twice at once, but the two now move
+  // together: see linkScroll.
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  /*
+   * The list and the drawing answer each other's question. Every opening in the
+   * company is `planned`, so every pin is the same colour and a mark number is
+   * the only thing telling two of them apart — and numbers switch off on a
+   * crowded page. "Where is mark 23" is therefore answered by tapping row 23 and
+   * having its pin label itself, rather than by drawing forty labels nobody
+   * asked for.
+   *
+   * The counter matters: tapping the same row twice has to scroll twice, so an
+   * identical target still re-fires the effect.
+   */
+  const [linkScroll, setLinkScroll] = useState<{
+    to: "sheet" | "row";
+    id: string;
+    n: number;
+  } | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLLIElement | null>());
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const dragRef = useRef<{
     id: string;
@@ -975,7 +992,12 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           // A no-move tap toggles the pin into/out of the ordered selection.
           setSelection((prev) => toggleSelection(prev, d.id));
         } else {
-          setSelectedId((prev) => (prev === d.id ? null : d.id));
+          // A tap on a pin opens that opening's row below and scrolls to it, so
+          // "what is this one" is answered without hunting the list for a code.
+          // Only on the way in — deselecting leaves the list where it is.
+          const next = selectedId === d.id ? null : d.id;
+          setSelectedId(next);
+          if (next) selectFromMap(next);
         }
         setDrag(null);
       };
@@ -983,6 +1005,27 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       document.addEventListener("pointerup", onUp);
       document.addEventListener("pointercancel", onUp);
     };
+
+  /** Pin tapped: open its row below and bring the row into view. */
+  const selectFromMap = (id: string) => {
+    setExpandedRowId(id);
+    setLinkScroll((prev) => ({ to: "row", id, n: (prev?.n ?? 0) + 1 }));
+  };
+
+  /**
+   * Row tapped: label its pin on the drawing and scroll the drawing back up.
+   * The pin layer already labels whatever is selected, so one number appears on
+   * demand instead of forty at all times.
+   */
+  const selectFromList = (o: ProjectOpening) => {
+    setSelectedId(o.id);
+    // Nothing to point at for an opening with no pin, or on the specs PDF,
+    // which draws no pins — so don't yank the screen up to a drawing that
+    // cannot answer the question.
+    if (view === "details" || o.pin_x === null || o.pin_y === null) return;
+    if (o.page_number != null && o.page_number !== page) setPage(o.page_number);
+    setLinkScroll((prev) => ({ to: "sheet", id: o.id, n: (prev?.n ?? 0) + 1 }));
+  };
 
   const showView = (next: DrawingView, nextPage?: number) => {
     setView(next);
@@ -1241,6 +1284,24 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     openedMarkedPage.current = true;
     if (!pinnedPlanPages.includes(page)) setPage(pinnedPlanPages[0]);
   }, [docsReady, page, pinnedPlanPages]);
+
+  // Runs after the commit, so a row that just expanded is scrolled to at its
+  // full height rather than to where it used to end.
+  useEffect(() => {
+    if (!linkScroll) return;
+    const node =
+      linkScroll.to === "sheet"
+        ? sheetRef.current
+        : rowRefs.current.get(linkScroll.id);
+    if (!node) return;
+    const still = window.matchMedia?.(
+      "(prefers-reduced-motion: reduce)",
+    )?.matches;
+    node.scrollIntoView({
+      behavior: still ? "auto" : "smooth",
+      block: "nearest",
+    });
+  }, [linkScroll]);
 
 
   const zoomControls = (view === "building" || view === "details") && (
@@ -1974,7 +2035,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         ({filtered.length})
       </h2>
       <p className="muted opening-list-hint">
-        Tap a window or door to see its details.
+        Tap a window or door for its details, and to point it out on the
+        drawing.
       </p>
       <ul className="unit-list work-list">
         {filtered.map((o) => {
@@ -1982,14 +2044,26 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           const panelId = `opening-row-panel-${o.id}`;
           const expanded = expandedRowId === o.id;
           return (
-          <li key={o.id} className="find-row">
+          <li
+            key={o.id}
+            ref={(el) => {
+              rowRefs.current.set(o.id, el);
+            }}
+            className={
+              selectedId === o.id ? "find-row find-row--linked" : "find-row"
+            }
+          >
             <OpeningRowButton
               openingCode={o.opening_code}
               expanded={expanded}
               panelId={panelId}
-              onToggle={() =>
-                setExpandedRowId((prev) => toggleExpandedOpening(prev, o.id))
-              }
+              onToggle={() => {
+                const next = toggleExpandedOpening(expandedRowId, o.id);
+                setExpandedRowId(next);
+                // Closing the row puts the drawing back to no label.
+                if (next === o.id) selectFromList(o);
+                else setSelectedId((prev) => (prev === o.id ? null : prev));
+              }}
             >
               <span
                 className="unit-dot"
