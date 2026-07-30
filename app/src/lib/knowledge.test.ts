@@ -328,16 +328,34 @@ describe("liveAnswer (offline grounding from the query cache)", () => {
   });
 
   it("surfaces an in-progress install as mid-install", () => {
+    const startedRecently = new Date(Date.now() - 20 * 60_000).toISOString();
     const data: AskLiveData = {
       ...base,
       openings: [
-        opening({ id: "a", opening_code: "W9", sequence: 2, work_started_at: "2026-07-23T15:00:00Z" }),
+        opening({ id: "a", opening_code: "W9", sequence: 2, work_started_at: startedRecently }),
         opening({ id: "b", opening_code: "W3", sequence: 1 }),
       ],
     };
     const answer = liveAnswer("what's next?", data);
     expect(answer).toContain("You're mid-install:");
     expect(answer).toContain("W9");
+  });
+
+  it("does not claim you're mid-install on a start nobody ever finished", () => {
+    // Production carried three of these for 300+ hours. Answering "you're
+    // mid-install" would send someone back to a window they finished with days
+    // ago instead of the one they are due at.
+    const startedLastWeek = new Date(Date.now() - 8 * 24 * 3600_000).toISOString();
+    const data: AskLiveData = {
+      ...base,
+      openings: [
+        opening({ id: "a", opening_code: "W9", sequence: 2, work_started_at: startedLastWeek }),
+        opening({ id: "b", opening_code: "W3", sequence: 1 }),
+      ],
+    };
+    const answer = liveAnswer("what's next?", data);
+    expect(answer).toContain("Your next window:");
+    expect(answer).toContain("W3");
   });
 
   it("says caught up when everything is installed, null when the cache is cold", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ANOMALY_THRESHOLD, isAnomaly } from "./heartbeat";
+import { ANOMALY_THRESHOLD, heartbeatTask, isAnomaly, type OpeningRow } from "./heartbeat";
 
 /**
  * The Heartbeat flags a running task as "long" when elapsed time exceeds the
@@ -34,5 +34,77 @@ describe("isAnomaly", () => {
   it("uses a 2.0 default threshold", () => {
     expect(ANOMALY_THRESHOLD).toBe(2.0);
     expect(isAnomaly(600 * ANOMALY_THRESHOLD + 1, 600)).toBe(true);
+  });
+});
+
+/**
+ * Live crew read `work_started_at` straight into a counter, so three forgotten
+ * taps showed as installs running for 300+ hours against windows nobody had
+ * touched since July. The number was arithmetically right and told the office
+ * nothing true.
+ */
+describe("heartbeatTask", () => {
+  const NOW = Date.parse("2026-07-30T21:00:00Z");
+  const row = (over: Partial<OpeningRow> = {}): OpeningRow => ({
+    id: "o1",
+    project_id: "p1",
+    opening_code: "C101",
+    label: "Unit C101 living",
+    status: "planned",
+    work_started_at: new Date(NOW - 25 * 60000).toISOString(),
+    assignee: { display_name: "Ammon" },
+    window_types: { median_minutes: 30 },
+    ...over,
+  });
+
+  it("reports a genuine install as running, with its elapsed time", () => {
+    const t = heartbeatTask(row(), NOW);
+    expect(t?.stale).toBe(false);
+    expect(t?.elapsedSec).toBe(25 * 60);
+    expect(t?.installerName).toBe("Ammon");
+  });
+
+  it("flags the OAKRIDGE C101 stamp instead of counting it", () => {
+    const t = heartbeatTask(
+      row({ work_started_at: "2026-07-17T06:05:21.809172Z" }),
+      NOW,
+    );
+    expect(t?.stale).toBe(true);
+    // Still reported, because the office is who should settle it — hiding it
+    // would just make the stamp somebody else's surprise later.
+    expect(t?.openingId).toBe("o1");
+  });
+
+  it("does not also call an abandoned stamp 'running long'", () => {
+    // 327 hours against a 30-minute median is not a slow install, and saying
+    // "long vs median" would send a foreman looking for a struggling installer.
+    const t = heartbeatTask(
+      row({ work_started_at: "2026-07-17T06:05:21.809172Z" }),
+      NOW,
+    );
+    expect(t?.anomaly).toBe(false);
+  });
+
+  it("still calls a genuinely slow install long", () => {
+    const t = heartbeatTask(
+      row({ work_started_at: new Date(NOW - 70 * 60000).toISOString() }),
+      NOW,
+    );
+    expect(t?.stale).toBe(false);
+    expect(t?.anomaly).toBe(true);
+  });
+
+  it("says Unassigned when nobody is on the window", () => {
+    // Which is what two of the three stale ones showed — nobody was assigned.
+    expect(heartbeatTask(row({ assignee: null }), NOW)?.installerName).toBe("Unassigned");
+  });
+
+  it("ignores windows nobody started and windows already installed", () => {
+    expect(heartbeatTask(row({ work_started_at: null }), NOW)).toBeNull();
+    expect(heartbeatTask(row({ status: "installed" }), NOW)).toBeNull();
+  });
+
+  it("ignores an unreadable stamp rather than showing NaN", () => {
+    expect(heartbeatTask(row({ work_started_at: "nonsense" }), NOW)).toBeNull();
   });
 });

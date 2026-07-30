@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { listIssues } from "./issues";
+import { isStaleStart } from "./install/installTimer";
 
 /**
  * Supervisor "Heartbeat": one glance (~10s) at the live pulse of every active
@@ -38,6 +39,12 @@ export interface HeartbeatTask {
   /** Expected duration in seconds (median_minutes * 60), or null if unknown. */
   medianSec: number | null;
   anomaly: boolean;
+  /**
+   * The stamp is too old to be a live install — nobody submitted it and nobody
+   * is standing at that window. `elapsedSec` is still how long ago it was
+   * started, which is a fact, but it must not be shown as a running stopwatch.
+   */
+  stale: boolean;
 }
 
 export interface HeartbeatProject {
@@ -68,7 +75,7 @@ interface ProjectRow {
   green_light_note: string | null;
 }
 
-interface OpeningRow {
+export interface OpeningRow {
   id: string;
   project_id: string;
   opening_code: string;
@@ -77,6 +84,36 @@ interface OpeningRow {
   work_started_at: string | null;
   assignee: { display_name: string | null } | null;
   window_types: { median_minutes: number | null } | null;
+}
+
+/**
+ * One opening turned into a Live crew entry, or null when nobody is on it.
+ *
+ * Pure and exported so the awkward part — what this list says about a stamp
+ * nobody ever finished — can be proven without a database.
+ */
+export function heartbeatTask(o: OpeningRow, now: number): HeartbeatTask | null {
+  if (!o.work_started_at || o.status === "installed") return null;
+  const startedMs = new Date(o.work_started_at).getTime();
+  if (Number.isNaN(startedMs)) return null;
+
+  const elapsedSec = Math.max(0, Math.round((now - startedMs) / 1000));
+  const medianMin = o.window_types?.median_minutes ?? null;
+  const medianSec = medianMin != null ? medianMin * 60 : null;
+  // Past the cap this is not a slow install, it is an abandoned stamp, so
+  // "running long vs median" would be the wrong thing to say about it.
+  const stale = isStaleStart(o.work_started_at, now);
+
+  return {
+    openingId: o.id,
+    projectId: o.project_id,
+    installerName: o.assignee?.display_name ?? "Unassigned",
+    openingLabel: o.label || o.opening_code,
+    elapsedSec,
+    medianSec,
+    anomaly: !stale && isAnomaly(elapsedSec, medianSec),
+    stale,
+  };
 }
 
 /**
@@ -136,21 +173,8 @@ export async function getHeartbeat(): Promise<HeartbeatSnapshot> {
   // "Who is on what right now": in-progress openings across all active jobs.
   const tasksByProject = new Map<string, HeartbeatTask[]>();
   for (const o of openings) {
-    if (!o.work_started_at || o.status === "installed") continue;
-    const startedMs = new Date(o.work_started_at).getTime();
-    if (Number.isNaN(startedMs)) continue;
-    const elapsedSec = Math.max(0, Math.round((now - startedMs) / 1000));
-    const medianMin = o.window_types?.median_minutes ?? null;
-    const medianSec = medianMin != null ? medianMin * 60 : null;
-    const task: HeartbeatTask = {
-      openingId: o.id,
-      projectId: o.project_id,
-      installerName: o.assignee?.display_name ?? "Unassigned",
-      openingLabel: o.label || o.opening_code,
-      elapsedSec,
-      medianSec,
-      anomaly: isAnomaly(elapsedSec, medianSec),
-    };
+    const task = heartbeatTask(o, now);
+    if (!task) continue;
     const arr = tasksByProject.get(o.project_id) ?? [];
     arr.push(task);
     tasksByProject.set(o.project_id, arr);
@@ -160,7 +184,8 @@ export async function getHeartbeat(): Promise<HeartbeatSnapshot> {
     const t = tally.get(p.id) ?? { installed: 0, total: 0 };
     const pct = t.total > 0 ? Math.round((t.installed / t.total) * 100) : 0;
     const activeTasks = (tasksByProject.get(p.id) ?? []).sort((a, b) => {
-      // Anomalies first, then longest-running.
+      // Stamps needing a person first, then anomalies, then longest-running.
+      if (a.stale !== b.stale) return a.stale ? -1 : 1;
       if (a.anomaly !== b.anomaly) return a.anomaly ? -1 : 1;
       return b.elapsedSec - a.elapsedSec;
     });

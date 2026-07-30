@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   AUTO_TIMER_CAP_MINUTES,
@@ -8,9 +9,14 @@ import {
   elapsedMinutes,
   installTimer,
   isClockGateError,
+  isInstallInProgress,
+  isStaleStart,
   recordedMinutes,
   resolveStartedAt,
 } from "./installTimer";
+
+const CLEANUP_MIGRATION =
+  "../../../../supabase/migrations/20260731000000_stale_install_start_cleanup.sql";
 
 const NOON = Date.parse("2026-07-29T12:00:00Z");
 const at = (minutesAgo: number) => new Date(NOON - minutesAgo * 60000).toISOString();
@@ -143,6 +149,96 @@ describe("installTimer — a started install keeps its time", () => {
     });
     expect(t.status).toBe("running");
     expect(t.minutes).toBe(AUTO_TIMER_CAP_MINUTES);
+  });
+});
+
+describe("isStaleStart — the three timers that ran for 300+ hours", () => {
+  // Production carried these: OAKRIDGE C101 and C103 started 95 seconds apart
+  // at ~06:05Z on 17 July 2026, and PECAN14 1-1 the following night. All three
+  // were still `planned` with nothing recorded against them.
+  const THIRTEEN_DAYS_AGO = at(13 * 24 * 60);
+
+  it("calls a 13-day-old stamp what it is", () => {
+    expect(isStaleStart(THIRTEEN_DAYS_AGO, NOON)).toBe(true);
+  });
+
+  it("leaves a real install alone", () => {
+    expect(isStaleStart(at(40), NOON)).toBe(false);
+  });
+
+  it("agrees with the installer's own screen about where the line is", () => {
+    // One cap, so the office and the phone can never disagree about whether a
+    // number is believable.
+    expect(isStaleStart(at(AUTO_TIMER_CAP_MINUTES), NOON)).toBe(false);
+    expect(isStaleStart(at(AUTO_TIMER_CAP_MINUTES + 1), NOON)).toBe(true);
+  });
+
+  it("says nothing about a window nobody started", () => {
+    expect(isStaleStart(null, NOON)).toBe(false);
+    expect(isStaleStart("not a date", NOON)).toBe(false);
+  });
+});
+
+describe("isInstallInProgress", () => {
+  it("is true for a window somebody is genuinely on", () => {
+    expect(
+      isInstallInProgress({ work_started_at: at(20), status: "planned" }, NOON),
+    ).toBe(true);
+  });
+
+  it("is false for a stamp nobody ever finished", () => {
+    // This is what pinned a 13-day-old tap to the top of My Work as "Continue"
+    // and hid the window the installer was actually meant to be at.
+    expect(
+      isInstallInProgress(
+        { work_started_at: at(13 * 24 * 60), status: "planned" },
+        NOON,
+      ),
+    ).toBe(false);
+  });
+
+  it("is false for a window nobody has started", () => {
+    expect(isInstallInProgress({ work_started_at: null, status: "planned" }, NOON)).toBe(
+      false,
+    );
+  });
+
+  it("is false once the window is installed, however recent the stamp", () => {
+    expect(
+      isInstallInProgress({ work_started_at: at(5), status: "installed" }, NOON),
+    ).toBe(false);
+  });
+});
+
+describe("the cleanup migration and this file share one cap", () => {
+  const sql = readFileSync(new URL(CLEANUP_MIGRATION, import.meta.url), "utf8");
+
+  it("states the same number of minutes the client uses", () => {
+    // Two copies of a threshold is how a screen and a database come to disagree
+    // about whether something is still running. If the constant here moves, this
+    // fails until the SQL moves with it.
+    const match = sql.match(/create or replace function install_timer_cap_minutes[\s\S]*?select\s+(\d+)/);
+    expect(match?.[1]).toBe(String(AUTO_TIMER_CAP_MINUTES));
+  });
+
+  it("never clears a stamp with install work behind it", () => {
+    // The whole safety of a data fix on production is in these guards.
+    expect(sql).toMatch(/not exists \(select 1 from install_events/);
+    expect(sql).toMatch(/not exists \(select 1 from task_sessions/);
+    expect(sql).toMatch(/not exists \(select 1 from qc_checks/);
+    expect(sql).toMatch(/o\.status <> 'installed'/);
+    expect(sql).toMatch(/o\.work_ended_at is null/);
+  });
+
+  it("leaves openings hidden by the soft delete alone", () => {
+    expect(sql).toMatch(/o\.removed_at is null/);
+  });
+
+  it("only ever nulls work_started_at", () => {
+    // No status, no assignment, no pin, no measurement.
+    const sets = sql.match(/^\s*set .*/gm) ?? [];
+    expect(sets).toHaveLength(1);
+    expect(sets[0]).toMatch(/set work_started_at = null/);
   });
 });
 

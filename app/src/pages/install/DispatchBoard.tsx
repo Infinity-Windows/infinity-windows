@@ -13,6 +13,7 @@ import {
 } from "../../lib/install/api";
 import { formatApiError } from "../../lib/install/errors";
 import { openingReadiness } from "../../lib/install/fit";
+import { isInstallInProgress } from "../../lib/install/installTimer";
 import {
   autoDistribute,
   type DispatchContext,
@@ -237,7 +238,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
                   r.status === "ready" ? "ok" : r.status === "blocked" ? "error" : "warn-text"
                 }
               >
-                {o.work_started_at && o.status !== "installed" ? "in progress" : r.status}
+                {isInstallInProgress(o) ? "in progress" : r.status}
               </span>
             </div>
           </div>

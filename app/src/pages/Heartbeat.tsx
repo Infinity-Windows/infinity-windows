@@ -11,6 +11,7 @@ import {
   setProjectGreenLight,
   type HeartbeatTask,
 } from "../lib/heartbeat";
+import { describeDuration } from "../lib/shiftGuard";
 import { useRealtimeAllOpenings } from "../lib/useRealtimeOpenings";
 
 /** "32 min" / "45s" for a duration in seconds. */
@@ -26,6 +27,15 @@ function fmtDur(sec: number): string {
 /** Minutes-only label for expected duration ("expected 10"). */
 function fmtMin(sec: number): string {
   return `${Math.round(sec / 60)}`;
+}
+
+/**
+ * How many people are genuinely on a window. A stamp nobody ever finished is
+ * not somebody on task, so counting it here would put crew on a job card who
+ * went home days ago.
+ */
+function onTaskCount(project: { activeTasks: HeartbeatTask[] }): number {
+  return project.activeTasks.filter((t) => !t.stale).length;
 }
 
 interface LiveTask extends HeartbeatTask {
@@ -70,19 +80,22 @@ export function Heartbeat() {
         out.push({
           ...t,
           liveElapsedSec,
-          liveAnomaly: isAnomaly(liveElapsedSec, t.medianSec),
+          liveAnomaly: !t.stale && isAnomaly(liveElapsedSec, t.medianSec),
           projectName: p.name,
           jobCode: p.jobCode,
         });
       }
     }
     return out.sort((a, b) => {
+      if (a.stale !== b.stale) return a.stale ? -1 : 1;
       if (a.liveAnomaly !== b.liveAnomaly) return a.liveAnomaly ? -1 : 1;
       return b.liveElapsedSec - a.liveElapsedSec;
     });
   }, [hb.data, drift]);
 
   const anomalyCount = liveTasks.filter((t) => t.liveAnomaly).length;
+  const staleCount = liveTasks.filter((t) => t.stale).length;
+  const runningCount = liveTasks.length - staleCount;
 
   return (
     <div className="page">
@@ -99,8 +112,9 @@ export function Heartbeat() {
       <p className="muted">
         Every active job at a glance — who's on what right now, how long, jobs
         running long vs their median, % complete, open issues, and the green
-        light. {liveTasks.length} in progress
-        {anomalyCount > 0 ? ` · ${anomalyCount} running long` : ""}.
+        light. {runningCount} in progress
+        {anomalyCount > 0 ? ` · ${anomalyCount} running long` : ""}
+        {staleCount > 0 ? ` · ${staleCount} never finished` : ""}.
       </p>
 
       {greenLight.isError && <p className="error">{String(greenLight.error)}</p>}
@@ -138,9 +152,7 @@ export function Heartbeat() {
                     </div>
                     <div className="muted" style={{ fontSize: 12 }}>
                       {p.jobCode}
-                      {p.activeTasks.length > 0
-                        ? ` · ${p.activeTasks.length} on task`
-                        : ""}
+                      {onTaskCount(p) > 0 ? ` · ${onTaskCount(p)} on task` : ""}
                     </div>
                   </Link>
                   <span
@@ -221,6 +233,15 @@ export function Heartbeat() {
               <li key={t.openingId} className="find-row dispatch-row">
                 <div style={{ minWidth: 0 }}>
                   <div>
+                    {t.stale && (
+                      <strong
+                        className="error"
+                        style={{ marginRight: 6 }}
+                        title="Started but never finished — needs a person"
+                      >
+                        ⚠ NEVER FINISHED
+                      </strong>
+                    )}
                     {t.liveAnomaly && (
                       <strong
                         className="error"
@@ -236,13 +257,24 @@ export function Heartbeat() {
                     </span>
                   </div>
                   <div
-                    className={t.liveAnomaly ? "error" : "muted"}
+                    className={t.liveAnomaly || t.stale ? "error" : "muted"}
                     style={{ fontSize: 13 }}
                   >
-                    {fmtDur(t.liveElapsedSec)}
-                    {t.medianSec != null
-                      ? ` · expected ${fmtMin(t.medianSec)} min`
-                      : ""}
+                    {t.stale ? (
+                      // Never a stopwatch on one of these. How long ago it was
+                      // started is a fact; how long it took is not ours to say.
+                      <>
+                        Started {describeDuration(t.liveElapsedSec)} ago and never
+                        finished — ask whoever was on it
+                      </>
+                    ) : (
+                      <>
+                        {fmtDur(t.liveElapsedSec)}
+                        {t.medianSec != null
+                          ? ` · expected ${fmtMin(t.medianSec)} min`
+                          : ""}
+                      </>
+                    )}
                   </div>
                 </div>
               </li>

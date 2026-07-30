@@ -137,6 +137,50 @@ export function installTimer(input: InstallTimerInput): InstallTimerView {
   return { status: "running", minutes };
 }
 
+/**
+ * Has a start stamp outlasted the point where the time since it is evidence of
+ * anyone installing anything?
+ *
+ * `installTimer` already answers this for the installer's own screen, but it
+ * needs to know about the clock-in gate, which the office screens have no
+ * business asking about. This is the same verdict without that: given a start
+ * stamp, is the elapsed time still worth putting in front of a person as a
+ * duration?
+ *
+ * The office needs it because nothing on the server ever retires a stamp. An
+ * install begun and never submitted stays "in progress" for ever, and Heartbeat
+ * was reading those stamps straight into a live counter — which is how the
+ * Live crew list came to show 325 hours against a window nobody had touched
+ * since July. The stamp is still worth showing; the stopwatch is not.
+ */
+export function isStaleStart(startedAt: string | null, now: number): boolean {
+  const minutes = elapsedMinutes(startedAt, now);
+  return minutes != null && minutes > AUTO_TIMER_CAP_MINUTES;
+}
+
+/**
+ * Is this window genuinely being installed right now?
+ *
+ * Every screen that wanted to know used to read `work_started_at` on its own,
+ * so a single forgotten tap made a window "in progress" for ever — and being
+ * "in progress" is not just a label. My Work pins that window to the top as
+ * Continue and drops it out of the queue, Home shows it instead of your next
+ * window, and Ask tells you you're mid-install. One stale stamp therefore stood
+ * between somebody and the work they were actually meant to be doing.
+ *
+ * Heartbeat deliberately does NOT use this: the office is the one place a stamp
+ * nobody finished should still appear, flagged, so a person can settle it.
+ */
+export function isInstallInProgress(
+  opening: { work_started_at: string | null; status?: string | null },
+  now: number = Date.now(),
+): boolean {
+  if (opening.status === "installed") return false;
+  return (
+    opening.work_started_at != null && !isStaleStart(opening.work_started_at, now)
+  );
+}
+
 /** May they tap "Start install" right now? */
 export function canStartInstall(eligibility: EligibilityStatus): boolean {
   return eligibility === "eligible";
