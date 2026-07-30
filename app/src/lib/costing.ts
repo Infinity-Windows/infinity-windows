@@ -133,7 +133,11 @@ export async function getCompanyCosting(): Promise<JobCosting[]> {
     supabase.from("change_orders").select("project_id, amount"),
     supabase
       .from("time_shifts")
-      .select("project_id, clock_in_at, clock_out_at, break_seconds, profiles(role)"),
+      // Named via `profile_id`: a shift also links to its approver, editor and
+      // rejecter, so a bare `profiles(...)` is ambiguous and fails the query.
+      .select(
+        "project_id, clock_in_at, clock_out_at, break_seconds, profiles!profile_id(role)",
+      ),
   ]);
   if (projRes.error) throw projRes.error;
   if (costRes.error) throw costRes.error;

@@ -67,3 +67,47 @@ describe("rawErrorMessage", () => {
     expect(rawErrorMessage(undefined)).toBe("");
   });
 });
+
+describe("faults in our own queries", () => {
+  // The real payload the timecard showed a user: PostgREST refusing an
+  // ambiguous embed. Short and brace-free, so it slipped through the
+  // "keep a server message if it is short" rule and reached the screen.
+  const ambiguousEmbed = {
+    code: "PGRST201",
+    message:
+      "Could not embed because more than one relationship was found for 'time_shifts' and 'profiles'",
+    hint: "Try changing 'profiles' to one of the following: 'profiles!time_shifts_profile_id_fkey'",
+  };
+
+  it("never shows the database's embed wording to a user", () => {
+    const text = formatApiError(ambiguousEmbed);
+    expect(text).not.toMatch(/embed/i);
+    expect(text).not.toMatch(/relationship/i);
+    expect(text).not.toMatch(/time_shifts/);
+    expect(text).toMatch(/our side/i);
+  });
+
+  it("recognises the fault by wording even with no code", () => {
+    expect(formatApiError({ message: ambiguousEmbed.message })).toMatch(/our side/i);
+  });
+
+  it("covers the rest of the schema-shape faults", () => {
+    for (const code of ["PGRST100", "PGRST200", "PGRST202", "PGRST203", "PGRST204"]) {
+      expect(formatApiError({ code, message: "whatever the server said" })).toMatch(
+        /our side/i,
+      );
+    }
+    expect(
+      formatApiError({ message: `column "widget" does not exist` }),
+    ).toMatch(/our side/i);
+  });
+
+  it("still lets a real, actionable server message through", () => {
+    expect(formatApiError({ message: "Clock in before starting a task" })).toBe(
+      "Clock in before starting a task",
+    );
+    expect(
+      formatApiError({ message: "Only a foreman or above can move a mark on the plan." }),
+    ).toBe("Only a foreman or above can move a mark on the plan.");
+  });
+});
