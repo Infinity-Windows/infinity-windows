@@ -38,7 +38,12 @@ export interface TimeShift {
   break_type?: BreakType | null;
   injured: boolean | null;
   time_confirmed: boolean | null;
-  status: "open" | "submitted" | "approved" | "rejected";
+  /**
+   * `needs_finish` is a shift the server refused to guess an end for: it ran
+   * past the believable maximum, so it carries no `clock_out_at` and no hours
+   * until a person supplies the real finish time. See lib/shiftGuard.ts.
+   */
+  status: "open" | "submitted" | "approved" | "rejected" | "needs_finish";
   created_at: string;
   /** Optional free-text note the worker adds at clock-in, for the office. */
   note?: string | null;
@@ -99,17 +104,36 @@ export async function listCostCodes(): Promise<CostCode[]> {
   return (data ?? []) as CostCode[];
 }
 
+/**
+ * The shift the clock sheet is about: the one running now, or one the app
+ * stopped counting and still needs a finish time for.
+ *
+ * `needs_finish` is included deliberately. It is not "on the clock" — see
+ * `isOnTheClock` — but it is unresolved, and the person it belongs to is the
+ * one who knows when they actually stopped. Leaving it out of this query would
+ * hide the question from the only person who can answer it.
+ */
 export async function getOpenShift(profileId: string): Promise<TimeShift | null> {
   const { data, error } = await supabase
     .from("time_shifts")
     .select(SHIFT_SELECT)
     .eq("profile_id", profileId)
-    .eq("status", "open")
+    .in("status", ["open", "needs_finish"])
     .is("clock_out_at", null)
     .order("clock_in_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (error) throw error;
   return data as TimeShift | null;
+}
+
+/**
+ * Genuinely on the clock right now — which gates starting install work and the
+ * toolbox nag. A shift awaiting a finish time is the opposite of this: it means
+ * the person went home, so it must not let anyone start a window.
+ */
+export function isOnTheClock(shift: TimeShift | null | undefined): boolean {
+  return shift != null && shift.status === "open";
 }
 
 export async function listMyShifts(
@@ -153,6 +177,41 @@ export async function listTeamShifts(
     .lt("clock_in_at", untilIso)
     .order("clock_in_at", { ascending: false })
     .limit(1000);
+  if (error) throw error;
+  return (data ?? []) as TimeShift[];
+}
+
+/**
+ * Every shift still without a finish time, for anybody, ignoring the week
+ * window on purpose.
+ *
+ * The week filter is why the 286-hour shift went unseen for twelve days: the
+ * timecard screen asks for `clock_in_at` inside the selected week, so a shift
+ * punched on 18 July is absent from every week after it — running, unbilled
+ * and invisible. A runaway shift has to be visible from whichever week the
+ * office happens to be looking at.
+ */
+export async function listUnfinishedShifts(): Promise<TimeShift[]> {
+  const { data, error } = await supabase
+    .from("time_shifts")
+    .select(SHIFT_SELECT)
+    .is("clock_out_at", null)
+    .in("status", ["open", "needs_finish"])
+    .order("clock_in_at", { ascending: true })
+    .limit(200);
+  if (error) throw error;
+  return (data ?? []) as TimeShift[];
+}
+
+/** My own shifts still without a finish time — usually none, sometimes one. */
+export async function listMyUnfinishedShifts(profileId: string): Promise<TimeShift[]> {
+  const { data, error } = await supabase
+    .from("time_shifts")
+    .select(SHIFT_SELECT)
+    .eq("profile_id", profileId)
+    .is("clock_out_at", null)
+    .in("status", ["open", "needs_finish"])
+    .order("clock_in_at", { ascending: true });
   if (error) throw error;
   return (data ?? []) as TimeShift[];
 }
@@ -320,6 +379,30 @@ export async function clockOut(
     p_break_seconds: opts.breakSeconds,
     p_lat: opts.geo?.lat ?? null,
     p_lng: opts.geo?.lng ?? null,
+  });
+  if (error) throw error;
+  return data as TimeShift;
+}
+
+/**
+ * Close a shift at a finish time a person actually typed.
+ *
+ * Deliberately separate from `clockOut`, and deliberately without a fallback
+ * to the note-less style used elsewhere: if the server does not understand
+ * `p_clock_out_at` this must fail loudly, because the only "graceful" thing it
+ * could fall back to is stamping `now()` — which is precisely the invented
+ * number this whole path exists to prevent.
+ */
+export async function finishShiftAt(
+  shiftId: string,
+  finishAtIso: string,
+  opts: { injured: boolean; breakSeconds: number },
+): Promise<TimeShift> {
+  const { data, error } = await supabase.rpc("finish_shift_at", {
+    p_shift_id: shiftId,
+    p_clock_out_at: finishAtIso,
+    p_injured: opts.injured,
+    p_break_seconds: opts.breakSeconds,
   });
   if (error) throw error;
   return data as TimeShift;

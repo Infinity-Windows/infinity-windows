@@ -5203,6 +5203,38 @@ button.clock-out {
 .clock-hero-sub { margin: 0; color: var(--muted); font-size: 12.5px; }
 .clock-hero-sub strong { color: var(--text); font-variant-numeric: tabular-nums; }
 
+/* A shift that ran past the believable maximum. Deliberately not the green
+   "working" card and deliberately without a big number on it — there is no
+   number we are entitled to show. */
+.clock-hero-card.needs-finish {
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.45);
+}
+.clock-status-pill.needs-finish {
+  color: var(--danger, #f87171);
+  background: rgba(248, 113, 113, 0.16);
+}
+.clock-hero-stopped {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.clock-hero-warn {
+  margin: 0;
+  color: var(--warn);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.clock-finish-input {
+  width: 100%;
+  font-size: 16px;
+}
+.runaway-shifts {
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  background: rgba(248, 113, 113, 0.06);
+}
+
 /* Job chip (tap to switch) */
 .clock-job-chip {
   width: 100%;

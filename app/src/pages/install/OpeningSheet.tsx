@@ -44,7 +44,7 @@ import {
   recallLocalStart,
   rememberLocalStart,
 } from "../../lib/install/installStart";
-import { getOpenShift, startBreak } from "../../lib/timeclock";
+import { getOpenShift, isOnTheClock, startBreak } from "../../lib/timeclock";
 import { myTodayCompletion } from "../../lib/toolbox";
 import { useClock } from "../../lib/clockContext";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
@@ -219,7 +219,7 @@ export function OpeningSheet() {
   // clock. These are the same two conditions start_opening_work enforces
   // server-side, asked up front instead of discovered by a failed call.
   const eligibility = clockEligibility({
-    clockedIn: Boolean(clock.shift),
+    clockedIn: isOnTheClock(clock.shift),
     toolboxSigned: Boolean(toolboxToday.data),
     resolved: Boolean(clock.profileId) && !clock.loading && toolboxToday.isSuccess,
   });
