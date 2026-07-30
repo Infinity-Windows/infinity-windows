@@ -121,7 +121,12 @@ export function MapWallLayer(props: {
             data-opening-center={String(center)}
             data-opening-width={String(g.width)}
             onPointerDown={onOpeningPointerDown?.(g.id)}
-            style={{ cursor: onOpeningPointerDown ? "pointer" : undefined }}
+            style={{
+              cursor: onOpeningPointerDown ? "pointer" : undefined,
+              // Steal the gesture from the pan/scroll viewport so a drag on a
+              // window moves the mark instead of the sheet.
+              touchAction: "none",
+            }}
           >
             {titleFor && <title>{titleFor(g.id)}</title>}
             <WallOpeningSymbol
