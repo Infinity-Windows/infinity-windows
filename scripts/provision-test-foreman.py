@@ -233,15 +233,15 @@ def ensure_sandbox() -> tuple[str, str, list[dict]]:
                              prefer="return=representation"))
     planset_id = planset.get("id", "")
 
-    # Four marks, on the callouts the sheet prints. Enough that the Undo bar has
-    # a stack to walk back and "put every mark back" has something to count.
+    # One mark per callout the sheet prints. Enough that the Undo bar has a stack
+    # to walk back and "put every mark back" has something to count.
     #
-    # Coded `1-1` … `4-1` rather than `TEST-1` … `TEST-4`, because the app prints
+    # Coded `1-1` … `6-1` rather than `TEST-1` … `TEST-4`, because the app prints
     # the code with any trailing `-n` stripped (openingMarkCode). Under the old
-    # names all four dots read "TEST" and the Undo button said "Undo moving mark
+    # names every dot read "TEST" and the Undo button said "Undo moving mark
     # TEST", which is the wrong shape for the one sentence this whole account
-    # exists to check. Now they read 1–4, matching the numbers printed on the
-    # sheet, and the button says "Undo moving mark 3 — you, just now".
+    # exists to check. Now they read 1–6, matching the numbers printed on the
+    # sheet, and the button says "Undo moving mark 5 — you, just now".
     openings: list[dict] = []
     for code, nx, ny in MARK_PINS:
         opening_code = f"{code}-1"
@@ -266,15 +266,24 @@ def ensure_sandbox() -> tuple[str, str, list[dict]]:
                               "label": f"TEST — sandbox mark {code}",
                               "page_number": 1, "pin_x": nx, "pin_y": ny},
                              prefer="return=representation"))
-        elif row.get("pin_x") is None or not same(row.get("pin_x"), row.get("origin_pin_x")):
-            # Either an opening the installer script left with no pin at all, or
-            # a mark a previous run (or a browser check) left dragged. Both are
-            # put back, so every run starts from the same picture.
+        else:
+            # An opening the installer script left with no pin at all, a mark a
+            # previous run or a browser check left dragged, or a row older than
+            # the migration that started remembering where the plan put a mark.
+            # All three are repaired, so every run starts from the same picture
+            # and every mark has an origin to be put back to — without one the
+            # app cannot ring it as moved, whatever it does.
+            fix: dict[str, object] = {"page_number": 1, "planset_id": planset_id}
+            if row.get("origin_pin_x") is None or row.get("origin_pin_y") is None:
+                fix["origin_pin_x"] = nx
+                fix["origin_pin_y"] = ny
+                fix["pin_x"] = nx
+                fix["pin_y"] = ny
+            elif row.get("pin_x") is None or not same(row.get("pin_x"), row.get("origin_pin_x")):
+                fix["pin_x"] = row.get("origin_pin_x")
+                fix["pin_y"] = row.get("origin_pin_y")
             row = one(sb.svc("PATCH", f"/rest/v1/project_openings?id=eq.{row['id']}",
-                             {"pin_x": row.get("origin_pin_x") or nx,
-                              "pin_y": row.get("origin_pin_y") or ny,
-                              "page_number": 1, "planset_id": planset_id},
-                             prefer="return=representation"))
+                             fix, prefer="return=representation"))
         openings.append(row)
 
     # Nothing outstanding on the undo stack either, for the same reason.

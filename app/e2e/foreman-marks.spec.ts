@@ -185,7 +185,11 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
     await page.screenshot({ path: join(SHOTS, "01-before-any-move.png") });
 
     // ---- 1. Drag a mark -----------------------------------------------------
-    const mark = marks.first();
+    // Held by its own label rather than by position in the list. Moving a mark
+    // can reorder the dots, and "the first one" would then quietly become a
+    // different mark halfway through.
+    const firstLabel = await marks.first().getAttribute("aria-label");
+    const mark = plan.locator(`.plan-dot[aria-label="${firstLabel}"]`);
     const label = ((await mark.locator(".plan-dot__mark").textContent()) ?? "").trim();
     const before = await centre(mark);
 
@@ -223,7 +227,7 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
     await undoButton.click();
     await expect(plan.locator(".plan-dot--moved")).toHaveCount(0, { timeout: 60_000 });
     await expect(undoBar).toContainText("Every mark is where the plan put it");
-    const restored = await centre(marks.first());
+    const restored = await centre(mark);
     expect(
       Math.abs(restored.x - before.x) + Math.abs(restored.y - before.y),
       "Undo should put the mark back where it started",
@@ -234,9 +238,9 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
     // Move it again, select it, and use the single-mark reset rather than Undo.
     // They are different buttons doing different things: Undo walks back one
     // step, this one goes straight to where the plan put it.
-    await dragBy(page, marks.first(), -30, 34);
+    await dragBy(page, mark, -30, 34);
     await expect(plan.locator(".plan-dot--moved")).toHaveCount(1);
-    await marks.first().click();
+    await mark.click();
 
     const putOneBack = page.getByRole("button", { name: /^Put mark .+ back on the plan$/ });
     await expect(putOneBack).toBeVisible();
@@ -245,8 +249,19 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
     await expect(plan.locator(".plan-dot--moved")).toHaveCount(0, { timeout: 60_000 });
 
     // ---- 6. Put every mark back -------------------------------------------
-    await dragBy(page, marks.first(), 40, -22);
-    if (markCount > 1) await dragBy(page, marks.nth(1), -26, 30);
+    // Two marks this time, so the button has to count and the confirmation has
+    // to say "2 marks" rather than "1 mark".
+    await dragBy(page, mark, 40, -22);
+    if (markCount > 1) {
+      const otherLabel = await marks
+        .filter({ hasNotText: label })
+        .first()
+        .getAttribute("aria-label")
+        .catch(() => null);
+      if (otherLabel && otherLabel !== firstLabel) {
+        await dragBy(page, plan.locator(`.plan-dot[aria-label="${otherLabel}"]`), -26, 30);
+      }
+    }
     const movedNow = await plan.locator(".plan-dot--moved").count();
     expect(movedNow).toBeGreaterThan(0);
     await page.screenshot({ path: join(SHOTS, "07-several-marks-moved.png") });
