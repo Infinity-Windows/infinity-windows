@@ -84,6 +84,11 @@ body {
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+  /* This app is full of long unbroken strings — window IDs, job codes, shelf
+     addresses, site emails. On a phone one of them is wider than the screen,
+     and an unbreakable word drags the whole page sideways. Break only when it
+     would not otherwise fit; anything set `white-space: nowrap` is untouched. */
+  overflow-wrap: break-word;
 }
 
 a {
@@ -106,13 +111,26 @@ a:hover {
 
 .app-main {
   flex: 1;
+  /* A flex item defaults to min-width:auto, i.e. "never narrower than my widest
+     child". That let one wide table or tab row stretch the whole app past the
+     side of the phone, and — worse — defeated every `overflow-x: auto` inside
+     it, because a scroll container that is allowed to grow never scrolls. */
+  min-width: 0;
   padding-bottom: calc(72px + env(safe-area-inset-bottom));
 }
 
 .page {
   padding: 16px;
   padding-top: calc(12px + env(safe-area-inset-top));
+  /* Landscape on a notched iPhone puts the notch and the rounded corner over
+     the sides of the page, so the side padding is at least the inset. */
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
   max-width: 640px;
+  /* Same reason as .app-main: pin the page to the width it was given so the
+     scroll containers inside it have a width to scroll against. */
+  width: 100%;
+  min-width: 0;
   margin: 0 auto;
 }
 
@@ -120,6 +138,11 @@ a:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* A title and its action have to be allowed to stack, or a long job name
+     shoves the button off the side of the phone. */
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-width: 0;
   margin-bottom: 12px;
 }
 
@@ -654,7 +677,8 @@ button:disabled {
   display: inline-block;
 }
 
-.row-gap { display: flex; gap: 8px; }
+/* Wraps rather than pushing the last button off the side of a phone. */
+.row-gap { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .plan-map {
   position: relative;
@@ -1390,7 +1414,8 @@ button:disabled {
 
 .map-legend {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 6px 16px;
   font-size: 13px;
   margin: 8px 0;
 }
@@ -1765,6 +1790,12 @@ button:disabled {
 
 /* --- Unified project hub --- */
 
+/* A project has up to eight sections, which is more than fits across a phone.
+   The row scrolls sideways rather than wrapping onto three lines (that would
+   eat the top of every job screen) or hiding the tail behind a "More" menu
+   (an extra tap onto a small target, wearing gloves). ScrollTabs keeps the
+   selected tab scrolled into view and sets data-edges so the side with more
+   behind it fades — see components/nav/ScrollTabs.tsx. */
 .hub-tabs {
   display: flex;
   gap: 4px;
@@ -1773,11 +1804,60 @@ button:disabled {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
+  /* Makes the strip the offsetParent of its tabs, so "scroll the selected tab
+     into view" measures against the strip and not against the page. */
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  /* Swiping the tabs must not turn into a page swipe or the browser's back
+     gesture halfway along the row. */
+  overscroll-behavior-x: contain;
+}
+
+.hub-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* The only cue that the row continues past the edge of the phone. Prefixed as
+   well as plain, because plenty of the crew are on older iPhones. */
+.hub-tabs[data-edges="end"] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent);
+}
+.hub-tabs[data-edges="start"] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 34px);
+  mask-image: linear-gradient(to right, transparent, #000 34px);
+}
+.hub-tabs[data-edges="both"] {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 34px,
+    #000 calc(100% - 34px),
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 34px,
+    #000 calc(100% - 34px),
+    transparent
+  );
 }
 
 .hub-tab {
-  flex: 1;
-  padding: 10px 8px;
+  /* Never shrink a label to the point it wraps or truncates: the row scrolls
+     instead. On a wide screen the desktop rule below shares the width evenly,
+     exactly as it did before. */
+  flex: 0 0 auto;
+  min-width: 0;
+  white-space: nowrap;
+  /* A gloved thumb needs a target, not a text link. */
+  min-height: 44px;
+  padding: 10px 14px;
   border: none;
   border-radius: 11px;
   background: transparent;
@@ -2037,9 +2117,19 @@ button:disabled {
 
 .briefing-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* `1fr` alone refuses to go below the widest label; minmax(0,…) lets the
+     column be as narrow as the phone actually is. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   text-align: center;
+}
+
+/* Four uppercase, letter-spaced labels do not fit across a small phone. Two
+   rows of two keeps the counts big rather than shrinking them to fit. */
+@media (max-width: 360px) {
+  .briefing-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .briefing-stats span {
@@ -4569,6 +4659,17 @@ button.clock-out {
     padding: 28px 32px 48px;
   }
 
+  /* There is room for every section here, so keep the office layout: one row
+     of equal tabs, no scrolling and no fade. */
+  .hub-tab {
+    flex: 1;
+  }
+
+  .hub-tabs[data-edges] {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
   /* Desktop drops the bottom bar, so anchor the FAB to the viewport corner. */
   .ask-fab {
     right: 28px;
@@ -5340,6 +5441,9 @@ body {
   grid-template-columns: repeat(5, 1fr);
   height: calc(3rem + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
+  /* Keep Menu and Ask clear of the notch and the rounded corner in landscape. */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
   background: var(--surface);
   border-top: 1px solid var(--border);
 }
@@ -6121,7 +6225,7 @@ body {
 .sync-pill-mobile {
   position: fixed;
   top: calc(env(safe-area-inset-top, 0px) + 8px);
-  right: 10px;
+  right: calc(10px + env(safe-area-inset-right, 0px));
   z-index: 40;
   pointer-events: none;
 }
@@ -6919,6 +7023,7 @@ body {
 .sched-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 10px;
 }

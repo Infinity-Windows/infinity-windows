@@ -70,6 +70,7 @@ import { CalendarClock, Plane, Truck, Users } from "lucide-react";
 import { resolveWindowFromScan } from "../lib/scanResolve";
 import { ProjectMap } from "./install/ProjectMap";
 import { DispatchBoard } from "./install/DispatchBoard";
+import { ScrollTabs } from "../components/nav/ScrollTabs";
 import { PhotoFeed } from "../components/photos/PhotoFeed";
 import { JobChat } from "../components/chat/JobChat";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
@@ -232,12 +233,14 @@ export function ProjectDetail() {
         <DirectionsButton address={project?.address} />
       </header>
 
-      <nav className="hub-tabs" aria-label="Project sections">
+      <ScrollTabs className="hub-tabs" label="Project sections" activeId={tab}>
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             className={tab === t.id ? "hub-tab active" : "hub-tab"}
+            data-tab-active={tab === t.id}
+            aria-current={tab === t.id ? "page" : undefined}
             onClick={() => setTab(t.id)}
           >
             {t.label}
@@ -246,7 +249,7 @@ export function ProjectDetail() {
             )}
           </button>
         ))}
-      </nav>
+      </ScrollTabs>
 
       {tab === "overview" && (
         <OverviewTab
@@ -810,7 +813,7 @@ function JobDetailsPanel({
             <dl
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(min(160px, 100%), 1fr))",
                 gap: "10px 16px",
                 margin: "10px 0 0",
               }}
