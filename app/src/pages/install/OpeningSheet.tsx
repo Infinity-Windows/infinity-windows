@@ -762,13 +762,13 @@ export function OpeningSheet() {
                   </strong>
                   target
                 </span>
-                <span>
+                <span title="9 out of 10 installs of this type finish faster than this">
                   <strong>
                     {brain.data?.p90Minutes != null
                       ? `${Math.round(brain.data.p90Minutes)}m`
                       : "—"}
                   </strong>
-                  P90
+                  slow case
                 </span>
                 <span>
                   <strong>
