@@ -41,6 +41,7 @@ import {
   SUPABASE_URL,
 } from "../_shared/openai.ts";
 import { verifyCaller } from "../_shared/auth.ts";
+import { isTestAccount, TEST_ACCOUNT_REFUSED } from "../_shared/testAccounts.ts";
 import {
   canInviteRole,
   canManageMember,
@@ -176,6 +177,14 @@ Deno.serve(async (req) => {
     let callerRole: string | null = "owner";
     if (!callerIsService) {
       if (!callerId) return jsonResponse({ error: "unauthorized" }, 401, cors);
+      // An automation login must never become a way to create accounts, whatever
+      // the role ladder says today. Checked before the rank so it stays true if
+      // "let a foreman add his own crew" is ever shipped. The database refuses
+      // the same thing underneath (guard_test_account_cannot_invite); this is
+      // here so the answer is a clean 403 rather than a 500 from a trigger.
+      if (await isTestAccount(supabase, callerId)) {
+        return jsonResponse({ error: TEST_ACCOUNT_REFUSED }, 403, cors);
+      }
       callerRole = await profileRole(supabase, callerId);
       if (roleRank(callerRole) < 2) {
         return jsonResponse(

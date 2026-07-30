@@ -472,6 +472,11 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     ),
     "project_message_reads": ("project_id", "profile_id"),
     "project_planset_pages": ("planset_id", "page_number"),
+    # The list of jobs a test/automation login may write. One row per project and
+    # the project id IS the primary key, so a merge cannot create a duplicate;
+    # naming it here is what keeps a merged database's sandbox list correct rather
+    # than empty.
+    "sandbox_projects": ("project_id",),
     "project_spec_discrepancies": ("project_id", "mark_code", "kind"),
     "qc_checks": ("project_opening_id",),
     "safety_acks": ("talk_id", "profile_id"),

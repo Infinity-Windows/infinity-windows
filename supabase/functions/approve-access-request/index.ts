@@ -41,6 +41,7 @@ import {
   SUPABASE_URL,
 } from "../_shared/openai.ts";
 import { verifyCaller } from "../_shared/auth.ts";
+import { isTestAccount, TEST_ACCOUNT_REFUSED } from "../_shared/testAccounts.ts";
 
 type ServiceClient = ReturnType<typeof createClient>;
 
@@ -147,6 +148,12 @@ Deno.serve(async (req) => {
     if (!callerIsService) {
       if (!callerId) {
         return jsonResponse({ error: "unauthorized" }, 401, cors);
+      }
+      // This endpoint creates an auth user directly, so it is the other way an
+      // account can come into existence. A test login is refused here for the
+      // same reason it is refused by manage-crew-access.
+      if (await isTestAccount(supabase, callerId)) {
+        return jsonResponse({ error: TEST_ACCOUNT_REFUSED }, 403, cors);
       }
       const role = await profileRole(supabase, callerId);
       if (roleRank(role) < 2) {

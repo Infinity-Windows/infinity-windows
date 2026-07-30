@@ -103,12 +103,13 @@ class TestSchemaParsing(unittest.TestCase):
         self.assertEqual(SCHEMA.unparsed, [])
 
     def test_recovers_the_expected_tables(self):
-        # 74 tables declared by the migrations: 67, plus the five AI spend
+        # 75 tables declared by the migrations: 67, plus the five AI spend
         # meters, plus `crew_invites`, plus `project_opening_pin_moves` (the
-        # undo history for marks moved on the plan). Production reported one
+        # undo history for marks moved on the plan), plus `sandbox_projects`
+        # (the jobs a test login is allowed to write). Production reported one
         # more base table than the migrations declare; the extra is
         # `project_marks`, which no migration declares.
-        self.assertEqual(len(SCHEMA.tables), 74)
+        self.assertEqual(len(SCHEMA.tables), 75)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

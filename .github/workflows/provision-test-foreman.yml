@@ -1,0 +1,117 @@
+# Make (or repair) the test FOREMAN login, and prove it cannot reach a real job.
+#
+# WHY A SECOND TEST LOGIN. The first one is an installer, so the foreman half of
+# the app — dragging a mark on the plan, the Undo bar, the reset-to-original
+# buttons, and re-reading a plan set — has never been opened by anything but a
+# real person on a real job. Three fixes in a row shipped that way.
+#
+# WHY IT IS SAFE TO HAVE ONE. Foreman is a powerful role: re-extraction is the
+# highest-consequence action in the app. Migration 20260730190000 confines any
+# login flagged `is_test` to the jobs listed in `public.sandbox_projects`, which
+# is the ZZTEST sandbox and nothing else, at the database level — triggers on
+# every project-scoped table plus three restrictive storage policies. The script
+# this workflow runs does not assert that; it PROVES it, by attacking a throwaway
+# job it creates and deletes in the same run and then checking that nothing moved.
+#
+# WHY A WORKFLOW AND NOT A LOCAL SCRIPT. Creating a login needs the Supabase
+# management token, and no developer machine here holds one — GitHub does, as the
+# repo secret SUPABASE_ACCESS_TOKEN, which is how deploy-backend.yml ships the
+# backend. So this is the only place the privileged half can run. The
+# unprivileged half — signing in as the account afterwards — needs nothing but
+# the password, which is why the password is chosen OUTSIDE this workflow.
+#
+# HOW THE PASSWORD GETS HERE, AND HOW A LOCAL AGENT KNOWS IT. Not generated in
+# CI, deliberately: anything invented inside a run can only leave it through a
+# log or an artifact, and both are readable by everyone with access to the repo.
+# A person or agent generates it locally, stores it as the repo secret
+# TEST_FOREMAN_PASSWORD, and keeps a copy in ~/.config/infinity-windows/. This
+# run sets the account's password to that value, so the local copy and the
+# account agree without the value ever crossing a log. That also makes a lost
+# password self-service: generate a new one, `gh secret set`, re-run this.
+# Full instructions: docs/test-account.md.
+#
+# On demand only. It creates and repairs a real auth user on the production
+# project, and the account is durable — there is nothing to re-run on a merge.
+#
+# Nothing here prints a secret.
+
+name: Provision the test foreman login
+
+on:
+  workflow_dispatch:
+    inputs:
+      remove:
+        description: "Delete the test foreman login instead of creating it"
+        type: boolean
+        default: false
+      check_migration_only:
+        description: "Dry-run the sandbox-guard migration and roll it back. Creates nothing."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  # Shares the group with the installer run: both touch the same sandbox job and
+  # the same crew-invite machinery, and two at once would race over it.
+  group: provision-test-accounts
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    name: Create or repair the test foreman account
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create or repair the account
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          TEST_FOREMAN_PASSWORD: ${{ secrets.TEST_FOREMAN_PASSWORD }}
+          # Production. Named explicitly for the same reason scripts/pgq.sh
+          # refuses to guess one: a run against the wrong project would report
+          # success while creating a login for a database nobody uses.
+          SUPABASE_PROJECT_REF: czprjcskmzzagdztqonm
+          REMOVE: ${{ inputs.remove }}
+          CHECK_ONLY: ${{ inputs.check_migration_only }}
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::error title=No test foreman was created::SUPABASE_ACCESS_TOKEN is not set, so nothing could be created. It is the same secret deploy-backend.yml uses, so if that workflow works, this one has lost its copy."
+            exit 1
+          fi
+          # Proves the guard migration parses and runs against the real database
+          # before the merge that deploys it. Rolls back; creates nothing.
+          if [ "$CHECK_ONLY" = "true" ]; then
+            scripts/provision-test-foreman.py --check-migration
+            exit $?
+          fi
+          if [ "$REMOVE" = "true" ]; then
+            scripts/provision-test-foreman.py --remove
+            exit $?
+          fi
+          if [ -z "$TEST_FOREMAN_PASSWORD" ]; then
+            echo "::error title=No test foreman was created::TEST_FOREMAN_PASSWORD is not set, so this run had no password to give the account. Generate one locally and add it with: gh secret set TEST_FOREMAN_PASSWORD. See docs/test-account.md."
+            exit 1
+          fi
+          scripts/provision-test-foreman.py
+
+      - name: Say what to do with it
+        if: success() && inputs.remove != true
+        run: |
+          {
+            echo "### The test foreman login is ready"
+            echo
+            echo "Sign in at the app as \`qa.foreman@crew.infinitywindows.app\`."
+            echo "The password is whatever \`TEST_FOREMAN_PASSWORD\` holds — this"
+            echo "run did not print it, and GitHub cannot show it to anyone."
+            echo
+            echo "It is a **foreman**, it is flagged as a test account, and the"
+            echo "database refuses any write of its outside the \`ZZTEST\` sandbox"
+            echo "job. Use it for the mark drag, the Undo bar, the reset buttons"
+            echo "and re-extraction — **on \`ZZTEST\` only**."
+            echo
+            echo "Full notes, including how a local agent gets the password:"
+            echo "**docs/test-account.md**."
+          } >> "$GITHUB_STEP_SUMMARY"
