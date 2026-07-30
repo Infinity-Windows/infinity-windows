@@ -3,7 +3,13 @@ import { Link } from "react-router-dom";
 import { listProfiles } from "../lib/install/api";
 import { listInstalledForQc } from "../lib/ops";
 import { listShiftsToApprove } from "../lib/timeclock";
-import { isOwner, isForemanPlus, ROLE_LABELS, type CrewRole } from "../lib/install/types";
+import {
+  isForemanPlus,
+  isOwner,
+  isSupervisorPlus,
+  ROLE_LABELS,
+  type CrewRole,
+} from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 
 interface TeamLink {
@@ -11,12 +17,20 @@ interface TeamLink {
   label: string;
   desc: string;
   boss?: boolean;
+  /** Supervisor-or-above only (adding and removing logins). */
+  admin?: boolean;
 }
 
 // People hub tiles, mirroring the Warehouse "Inventory hub" layout: a stat
 // strip up top, then a grid of tiles into each People area.
 const LINKS: TeamLink[] = [
   { to: "/crew", label: "Roster", desc: "Crew, skill levels, roles & PINs" },
+  {
+    to: "/access",
+    label: "Crew access",
+    desc: "Add someone & text them a login",
+    admin: true,
+  },
   { to: "/qc", label: "Quality sign-off", desc: "Pass installs or log callbacks" },
   { to: "/clock", label: "Timecards", desc: "Approve submitted shifts" },
   { to: "/analytics", label: "Bids & analytics", desc: "Leaderboard + job estimate variance" },
@@ -44,7 +58,9 @@ export function Team() {
   const activeCrew = (crew.data ?? []).filter((p) => p.active).length;
   const shiftsToApprove = shifts.data?.length ?? 0;
 
-  const links = LINKS.filter((l) => !l.boss || boss);
+  const links = LINKS.filter(
+    (l) => (!l.boss || boss) && (!l.admin || isSupervisorPlus(effectiveRole)),
+  );
 
   return (
     <div className="page">

@@ -8341,3 +8341,33 @@ body {
 .extraction-progress .action-btn {
   margin-top: 10px;
 }
+
+/* ---------------------------------------------------------------------------
+   Crew access: the one-time invite code.
+
+   Only two rules, both earning their keep. The card is accent-edged because it
+   is the one thing on the screen that cannot be recovered once dismissed — the
+   server stores a hash, not the code. The code itself is monospaced, spaced out
+   and large because it gets read aloud down a phone line and off a cracked
+   screen; everything else reuses .detail-card / .button-like as-is.
+   --------------------------------------------------------------------------- */
+.invite-issued {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.invite-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: clamp(22px, 7vw, 30px);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-align: center;
+  padding: 14px 8px;
+  border: 1px dashed var(--accent-line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  /* Long-press to select on a phone, so it can be copied even if the clipboard
+     button is blocked by an in-app browser. */
+  user-select: all;
+}
