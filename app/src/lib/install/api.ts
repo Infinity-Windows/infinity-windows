@@ -19,6 +19,7 @@ import {
   PIN_MOVE_DENIED,
   type PinMove,
 } from "./pinHistory";
+import { foremanOnlyRefusal } from "./openingAccess";
 import type {
   InstallEvent,
   MarkElevationView,
@@ -1130,7 +1131,7 @@ export async function saveDraftOpenings(
       .from("project_openings")
       .delete()
       .in("id", plan.deleteIds);
-    if (delErr) throw delErr;
+    if (delErr) throw refusalOrError(delErr);
   }
 
   if (plan.inserts.length === 0) return { inserted: 0, skipped: plan.skipped };
@@ -1151,8 +1152,18 @@ export async function saveDraftOpenings(
       confirmed: false,
     })),
   );
-  if (error) throw error;
+  if (error) throw refusalOrError(error);
   return { inserted: plan.inserts.length, skipped: plan.skipped };
+}
+
+/**
+ * A foreman-only refusal as a bare Error so its sentence reaches the crew on
+ * its own, without PostgREST's trailing `[42501]`. Anything else is rethrown
+ * untouched for `formatApiError` to deal with as it always has.
+ */
+function refusalOrError(error: unknown): unknown {
+  const refusal = foremanOnlyRefusal(error);
+  return refusal ? new Error(refusal) : error;
 }
 
 /**
@@ -1313,12 +1324,21 @@ export async function updateOpening(
 }
 
 export async function deleteOpening(id: string): Promise<void> {
-  const { error } = await supabase
+  // `select()` so a removal that matched nothing can be told apart from one
+  // that worked. Without it the `installed` filter made this succeed while
+  // deleting nothing, and the screen refreshed as if the mark had gone.
+  const { data, error } = await supabase
     .from("project_openings")
     .delete()
     .eq("id", id)
-    .neq("status", "installed");
-  if (error) throw error;
+    .neq("status", "installed")
+    .select("id");
+  if (error) throw refusalOrError(error);
+  if ((data ?? []).length === 0) {
+    throw new Error(
+      "That window or door is already installed, so it can't be removed. Undo the install first.",
+    );
+  }
 }
 
 // --- Moving marks on the map, and walking those moves back ---
@@ -2322,7 +2342,7 @@ export async function addOpening(
     .insert({ project_id: projectId, confirmed, ...rest })
     .select(OPENING_SELECT)
     .single();
-  if (error) throw error;
+  if (error) throw refusalOrError(error);
   return data;
 }
 

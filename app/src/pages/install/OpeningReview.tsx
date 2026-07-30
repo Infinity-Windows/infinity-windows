@@ -10,8 +10,10 @@ import {
   deleteOpening,
   listMarkSpecs,
   listOpenings,
+  openingsReferencedElsewhere,
   updateOpening,
 } from "../../lib/install/api";
+import { describeOpeningDeletion } from "../../lib/install/openingAccess";
 import type { ProjectOpening } from "../../lib/install/types";
 import { openingMarkCode } from "../../lib/install/types";
 import { openingUnitKindResolver } from "../../lib/install/unitKind";
@@ -54,6 +56,31 @@ export function OpeningReview() {
     onSuccess: refresh,
     onError: (e) => setMessage(formatApiError(e)),
   });
+
+  // Removing an opening takes its install history with it (install_events
+  // cascades), along with any assignment, measurement, condition check or flag.
+  // Deleting a duplicate the extract invented and deleting a window someone has
+  // already worked on are the same two taps, so the question names which one
+  // this is before anything goes.
+  const askThenRemove = async (o: ProjectOpening) => {
+    setMessage(null);
+    let referenced = false;
+    try {
+      referenced = (await openingsReferencedElsewhere([o.id])).has(o.id);
+    } catch {
+      // Can't see what it's linked to — say so in the question rather than
+      // quietly promising the mark is safe to drop.
+      referenced = o.status !== "planned";
+    }
+    const ok = window.confirm(
+      describeOpeningDeletion({
+        opening: o,
+        referencedElsewhere: referenced,
+        jobLabel: project?.job_code ?? null,
+      }),
+    );
+    if (ok) remove.mutate(o.id);
+  };
 
   const add = useMutation({
     mutationFn: (code: string) =>
@@ -125,7 +152,11 @@ export function OpeningReview() {
         }}
       />
       {o.status === "planned" && (
-        <button className="link" onClick={() => remove.mutate(o.id)}>
+        <button
+          className="link"
+          disabled={remove.isPending}
+          onClick={() => void askThenRemove(o)}
+        >
           Remove
         </button>
       )}

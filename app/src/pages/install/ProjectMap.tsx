@@ -1467,7 +1467,12 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 </select>
               </label>
             )}
-            {specsPdf && (
+            {/* Re-reading a planset rebuilds the job's whole list of windows
+                and doors — it deletes the superseded marks and inserts fresh
+                ones — so it is foreman+, and the database says so too. Hidden
+                rather than disabled: an installer has no reason to know this
+                button exists. */}
+            {isLead && specsPdf && (
               <button
                 type="button"
                 className="button-like"
