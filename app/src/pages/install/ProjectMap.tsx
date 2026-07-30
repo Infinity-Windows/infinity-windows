@@ -86,7 +86,13 @@ import {
   type FootprintSource,
 } from "../../lib/install/footprint";
 import { separatePins } from "../../lib/install/pinLayout";
+import {
+  snapOpeningsToWalls,
+  wallPinPosition,
+  type SnappedOpening,
+} from "../../lib/install/wallSnap";
 import { MapPinLayer } from "./MapPinLayer";
+import { MapWallLayer } from "./MapWallLayer";
 import { OutlineFeatureLayer } from "./OutlineFeatureLayer";
 import { PlanModelEditor } from "./PlanModelEditor";
 import { PlansPanel } from "./PlansPanel";
@@ -1098,26 +1104,86 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   );
 
   /**
-   * Where each pin is drawn. Overlapping marks are fanned apart for legibility
-   * only — the stored pin_x/pin_y are untouched, and dragging still writes the
-   * position the finger lands on.
+   * A window is a hole in a wall, so a mark already sitting on a wall is drawn
+   * as an opening in it rather than a dot floating nearby.
+   *
+   * Only marks close to a wall qualify. The rest — most of Pecan's floor 3,
+   * where the extractor dumped marks in rows across the middle of the page —
+   * stay exactly where they are. Cutting a hole in a wall for one of those would
+   * state a position the data does not have.
+   *
+   * The pin being dragged is excluded, so it follows the finger and re-snaps on
+   * release instead of jumping to a wall mid-drag.
+   */
+  const wallOpenings = (() => {
+    const empty = {
+      snapped: new Map<string, SnappedOpening>(),
+      freeIds: [] as string[],
+    };
+    if (!outline || editingModel || manualOutlinePaths.length > 0) return empty;
+    return snapOpeningsToWalls({
+      openings: [...placed, ...autos]
+        .filter((o) => o.id !== drag?.id)
+        .map((o) => {
+          const pos = dotPos(o);
+          return {
+            id: o.id,
+            x: pos.x,
+            y: pos.y,
+            kind: openingUnitKind(o),
+          };
+        }),
+      points: outline.points,
+      aspect,
+    });
+  })();
+
+  /**
+   * Where each pin is drawn. A wall opening's pin becomes the handle for that
+   * opening and sits just inside the room, clear of the gap; everything else is
+   * fanned apart for legibility only. Either way the stored pin_x/pin_y are
+   * untouched, and dragging writes the position the finger lands on.
    */
   const pinPositions = (() => {
-    const drawn = [...placed, ...autos].map((o) => {
+    const free: { id: string; x: number; y: number }[] = [];
+    const handles = new Map<string, { x: number; y: number }>();
+    for (const o of [...placed, ...autos]) {
+      const opening = wallOpenings.snapped.get(o.id);
+      const handle =
+        opening && outline
+          ? wallPinPosition(outline.points, aspect, opening)
+          : null;
+      if (handle) {
+        handles.set(o.id, handle);
+        continue;
+      }
       const pos = dotPos(o);
-      return { id: o.id, x: pos.x, y: pos.y };
-    });
-    const layout = separatePins(drawn, { minDist: PIN_MIN_GAP, aspect });
-    // The pin under the finger sits exactly where the finger is. Nudging it
-    // would make dragging feel broken.
-    if (drag) {
-      const held = drawn.find((p) => p.id === drag.id);
-      if (held) layout.set(held.id, { x: held.x, y: held.y });
+      free.push({ id: o.id, x: pos.x, y: pos.y });
     }
+    const layout = separatePins(free, { minDist: PIN_MIN_GAP, aspect });
+    for (const [id, point] of handles) layout.set(id, point);
+    // The pin under the finger sits exactly where the finger is. Nudging it, or
+    // pulling it onto a wall mid-drag, would make dragging feel broken.
+    if (drag) layout.set(drag.id, { x: drag.x, y: drag.y });
     return layout;
   })();
 
   const autoPinIds = new Set(autos.map((o) => o.id));
+
+  /**
+   * Wall openings are drawn in their install status colour, the same encoding the
+   * pins use. Off-route openings fall back to the wall colour while a foreman is
+   * building a run, so the route is what stands out.
+   */
+  const wallOpeningColor = (id: string): string | undefined => {
+    const opening = [...placed, ...autos].find((o) => o.id === id);
+    if (!opening) return undefined;
+    if (hasRoute && routeOrder.get(id) == null) return undefined;
+    if (showsVoidedInstall(effectiveRole, opening, voidedIds)) {
+      return VOIDED_RING_COLOR;
+    }
+    return OPENING_STATUS_COLORS[opening.status];
+  };
 
   /**
    * Mark numbers are legible until the page gets busy — Black Desert has 42 on
@@ -1568,6 +1634,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 <button
                   type="button"
                   className="button-like"
+                  aria-label="Edit model"
                   onClick={() => {
                     setEditingModel(true);
                     setFullScreen(false);
