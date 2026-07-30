@@ -4,3 +4,10 @@ dist/
 .DS_Store
 supabase/.temp/
 .vapid-keys.local.json
+
+# Playwright run artefacts. The screenshots we keep live in
+# app/e2e/__screenshots__ and are committed on purpose.
+app/e2e/test-results/
+app/playwright-report/
+app/blob-report/
+app/.playwright/

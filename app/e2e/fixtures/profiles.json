@@ -1,0 +1,56 @@
+[
+  {
+    "id": "4d8f7c12-21bc-4b69-9993-2928dc097ac2",
+    "display_name": "Ammon",
+    "skill_level": 4,
+    "role": "owner",
+    "active": true,
+    "created_at": "2026-07-15T21:24:10.107112+00:00",
+    "updated_at": "2026-07-17T06:00:32.381802+00:00"
+  },
+  {
+    "id": "958d3bfc-946e-46b3-a84c-a84d5f586a2e",
+    "display_name": "Taylor",
+    "skill_level": 5,
+    "role": "owner",
+    "active": true,
+    "created_at": "2026-07-15T21:24:10.107112+00:00",
+    "updated_at": "2026-07-15T21:24:10.107112+00:00"
+  },
+  {
+    "id": "88e9158c-c299-4abf-86e2-4d6c1134d0be",
+    "display_name": "Chris",
+    "skill_level": 1,
+    "role": "installer",
+    "active": true,
+    "created_at": "2026-07-15T21:24:10.107112+00:00",
+    "updated_at": "2026-07-15T21:24:10.107112+00:00"
+  },
+  {
+    "id": "0830d61d-3ed5-4a03-9efc-846dbfc3dce9",
+    "display_name": "Dave",
+    "skill_level": 3,
+    "role": "installer",
+    "active": true,
+    "created_at": "2026-07-15T21:24:10.107112+00:00",
+    "updated_at": "2026-07-15T21:24:10.107112+00:00"
+  },
+  {
+    "id": "69a880bc-8489-48d5-8673-28dcfd5b0210",
+    "display_name": "Maria",
+    "skill_level": 3,
+    "role": "installer",
+    "active": true,
+    "created_at": "2026-07-15T21:24:10.107112+00:00",
+    "updated_at": "2026-07-15T21:24:10.107112+00:00"
+  },
+  {
+    "id": "a59c174b-1d65-4f86-96cc-535c53e2213e",
+    "display_name": "Sam",
+    "skill_level": 2,
+    "role": "installer",
+    "active": true,
+    "created_at": "2026-07-15T21:24:10.107112+00:00",
+    "updated_at": "2026-07-15T21:24:10.107112+00:00"
+  }
+]
