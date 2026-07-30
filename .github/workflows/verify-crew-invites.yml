@@ -1,0 +1,65 @@
+# Prove an owner can still add a crew member, and that nobody can climb doing it.
+#
+# WHY A SEPARATE WORKFLOW, RUN ON DEMAND
+# Self-signup is off, so "the owner adds someone" is the ONLY way anyone new ever
+# gets into this app. If that path breaks, nobody new can ever get in again —
+# which is worse than the permissive signup it replaced. It is also, by
+# construction, an endpoint that creates an account at a chosen ROLE, i.e. the
+# same shape as the privilege-escalation hole closed on profiles.role on
+# 2026-07-29. Unit tests cover the rules as functions; only a live run covers
+# them as an HTTP endpoint, which is where a hostile caller would knock.
+#
+# Not on every push, deliberately: it creates and deletes real auth users on the
+# production project. Running it on every merge would be churn against live data
+# for a path that only changes when someone edits it. Run it after touching the
+# invite functions, the migration, or the role rules.
+#
+# It cleans up after itself and asserts the roster is byte-identical to what it
+# found, so a half-finished run is loud rather than silent. See
+# scripts/prove-crew-invites.py.
+
+name: Verify crew invites
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  invite-flow:
+    name: An owner can add someone, and an installer cannot
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prove the invite flow end to end
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          # Production. Named explicitly for the same reason scripts/pgq.sh
+          # refuses to guess one: a run against the wrong project would report
+          # success while proving nothing about the app the crew use.
+          SUPABASE_PROJECT_REF: czprjcskmzzagdztqonm
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::error::SUPABASE_ACCESS_TOKEN is not set, so the invite flow was NOT verified."
+            exit 1
+          fi
+          scripts/prove-crew-invites.py
+
+  notify-failure:
+    name: Tell Slack if nobody can be added any more
+    needs: [invite-flow]
+    if: failure()
+    uses: ./.github/workflows/notify-failure.yml
+    with:
+      workflow: ${{ github.workflow }}
+      cause: >-
+        Adding a new crew member is broken, or the check that stops someone
+        giving themselves more power than they have did not hold.
+      detail: >-
+        Nobody new can be given a login until this is fixed, and it may mean an
+        invite could hand out the wrong level of access. The run log names the
+        exact step that failed.
+    secrets: inherit
