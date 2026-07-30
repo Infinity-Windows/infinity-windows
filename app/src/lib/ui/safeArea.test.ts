@@ -183,6 +183,86 @@ describe("every overlay that can reach an edge of the screen is accounted for", 
   });
 });
 
+/**
+ * Sticky bars that stick inside a card, a sheet or a scroller of their own, and
+ * so can never come to rest against the top of the screen. The status bar is
+ * not their problem; it is the problem of whatever contains them.
+ */
+const STICKY_INSIDE = new Set([
+  ".app-rail", // desktop sidebar, and the insets are zero there
+  ".sched-cal-monthhead",
+  ".sched-week-head",
+  ".travel-sheet-head",
+]);
+
+describe("a bar that sticks to the top of the screen clears the status bar", () => {
+  const stickyTop = all.filter(
+    (r) => /position:\s*sticky/.test(r.body) && declares(r.body, "top"),
+  );
+
+  it("finds the sticky bars at all (guards the parser, not the CSS)", () => {
+    expect(stickyTop.length).toBeGreaterThan(3);
+  });
+
+  it("each one either pads past the inset or is known to stick inside something", () => {
+    const unhandled: string[] = [];
+    for (const rule of stickyTop) {
+      for (const selector of rule.selectors) {
+        if (STICKY_INSIDE.has(selector)) continue;
+        if (!/var\(--safe-top\)/.test(bodiesFor(selector))) {
+          unhandled.push(`${selector} (line ${rule.line})`);
+        }
+      }
+    }
+    expect(unhandled).toEqual([]);
+  });
+});
+
+/**
+ * The sync status pill used to be `position: fixed` in the top-right corner, in
+ * the same band as every page header. Out of flow it could not push a title
+ * aside, so it sat on top of one; and being anchored by `right` with no width
+ * limit, its longest states grew leftwards off the side of the screen — 111px
+ * of "Clock 2 · Photos 3 · Receipts 4 · 5 logs queued · needs attention" was
+ * past the left edge of a 320px phone. That message is the one an installer in
+ * a dead zone has to read, so it is the one that has to survive.
+ */
+describe("the phone's sync status sits in the page, not on top of it", () => {
+  it("is not a floating overlay any more", () => {
+    expect(bodiesFor(".sync-strip")).not.toMatch(/position:\s*(fixed|absolute)/);
+    expect(css).not.toContain("sync-pill-mobile");
+  });
+
+  it("clears the status bar itself, being the topmost thing in the frame", () => {
+    expect(bodiesFor(".sync-strip")).toMatch(/var\(--safe-top\)/);
+  });
+
+  it("so the page below it does not clear the same inset a second time", () => {
+    expect(bodiesFor(".app-main .page")).toMatch(/padding-top:\s*12px/);
+  });
+
+  it("lets a queued message wrap rather than clipping or ellipsing it", () => {
+    // `.sync-pill` is nowrap, which keeps the resting chip on one line. The
+    // states that carry an actual message have to be allowed more than one.
+    for (const selector of [
+      ".sync-strip .sync-pill-syncing",
+      ".sync-strip .sync-pill-attention",
+      ".rail-sync .sync-pill-syncing",
+      ".rail-sync .sync-pill-attention",
+    ]) {
+      expect(bodiesFor(selector)).toMatch(/white-space:\s*normal/);
+    }
+  });
+
+  it("is rendered inside the app frame, not floated over it", () => {
+    const layout = read("src/components/Layout.tsx");
+    expect(layout).not.toContain("sync-pill-mobile");
+    expect(layout.indexOf('className="sync-strip"')).toBeGreaterThan(
+      layout.indexOf('className="app-main"'),
+    );
+  });
+});
+
 describe("sheets get their ceiling from the shared token, not a magic number", () => {
   for (const [selector, token] of Object.entries(SHEET_CAPS)) {
     it(`${selector} is capped by ${token}`, () => {

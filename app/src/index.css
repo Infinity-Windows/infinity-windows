@@ -6274,30 +6274,81 @@ body {
   padding: 10px 16px 4px;
 }
 
-/* Mobile: a compact fixed pill top-right, out of the way of content. */
-.sync-pill-mobile {
-  position: fixed;
-  top: calc(var(--safe-top) + 8px);
-  right: calc(10px + var(--safe-right));
-  z-index: 40;
-  pointer-events: none;
+/* "All synced" is the shortest thing this pill ever says. The message that has
+   to survive is the long one — "Clock 2 · Photos 3 · Receipts 4 · 5 logs queued
+   · needs attention" — because that is what tells someone in a dead zone their
+   work is queued and not lost. Anywhere it can be given room, let it wrap
+   instead of running past the edge or ellipsing itself into "Clock 2 · Ph…". */
+.rail-sync .sync-pill-syncing,
+.rail-sync .sync-pill-attention,
+.sync-strip .sync-pill-syncing,
+.sync-strip .sync-pill-attention {
+  align-items: flex-start;
+  white-space: normal;
+  line-height: 1.35;
+  border-radius: 12px;
+  padding: 8px 11px;
 }
 
-.sync-pill-mobile .sync-pill {
-  pointer-events: auto;
+.rail-sync .sync-pill-syncing .sync-pill-icon,
+.rail-sync .sync-pill-attention .sync-pill-icon,
+.sync-strip .sync-pill-syncing .sync-pill-icon,
+.sync-strip .sync-pill-attention .sync-pill-icon {
+  /* Optically centre the icon on the first line of wrapped text. */
+  margin-top: 1px;
+}
+
+/* Phones: sync status is a row of its own at the top of the app, not a pill
+   floating over the page.
+   
+   It used to be `position: fixed` in the top-right corner, which dropped it
+   into the same band as every page header. Being out of flow it could not push
+   anything aside, so it sat on top of the job title; and because a
+   right-anchored shrink-to-fit box grows leftwards without limit, the longest
+   states reached 421px on a 320px screen and ran clean off the left edge,
+   losing the first words of exactly the message that matters most. In flow it
+   cannot cover anything, and it has the full width of the phone to speak. */
+.sync-strip {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  justify-content: flex-end;
+  /* This row is now the topmost content in the frame, so clearing the phone's
+     status bar is its job; `.page` below stops doing it a second time. */
+  padding: calc(var(--safe-top) + 8px) max(12px, var(--safe-right)) 6px
+    max(12px, var(--safe-left));
+  background: var(--bg);
+}
+
+.sync-strip .sync-pill {
+  max-width: 100%;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
   background: var(--card-hot);
 }
 
-.sync-pill-mobile .sync-pill-synced {
-  /* Keep the resting state whisper-quiet on small screens. */
+.sync-strip .sync-pill-synced {
+  /* Nothing queued: a quiet line, not an announcement. */
   opacity: 0.75;
   box-shadow: none;
   background: var(--card-raised);
 }
 
+/* Something queued: take the whole row, so the message still reads at 320px. */
+.sync-strip .sync-pill-syncing,
+.sync-strip .sync-pill-attention {
+  flex: 1 1 auto;
+}
+
+/* The strip has already cleared the status bar for everything under it. */
+@media (max-width: 859px) {
+  .app-main .page {
+    padding-top: 12px;
+  }
+}
+
 @media (min-width: 860px) {
-  .sync-pill-mobile {
+  .sync-strip {
     display: none;
   }
 }
