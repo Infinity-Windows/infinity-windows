@@ -130,7 +130,12 @@ export function Analytics() {
               <th>Type</th>
               <th className="num">Installs</th>
               <th className="num">Median</th>
-              <th className="num">P90</th>
+              <th
+                className="num"
+                title="Slow case — 9 out of 10 installs of this type finish faster than this"
+              >
+                Slow
+              </th>
               <th className="num">Difficulty</th>
               <th className="num">Fail %</th>
             </tr>

@@ -427,8 +427,8 @@ function OverviewTab({
             <span>
               <strong>~{estimate.crew.recommendedCrew}</strong> installer(s) to finish today
             </span>
-            <span>
-              <strong>{formatHours(estimate.est.p90Minutes)}</strong> slow-case (P90)
+            <span title="9 out of 10 jobs like this finish faster than this">
+              <strong>{formatHours(estimate.est.p90Minutes)}</strong> slow-case
             </span>
           </div>
           {estimate.est.unknownTypes > 0 && (
