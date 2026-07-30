@@ -767,7 +767,10 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     view === "outline" &&
     !manualOutline &&
     outlines[page] === undefined &&
-    !planOutlines.isLoading;
+    !planOutlines.isLoading &&
+    // Tracing needs the plan PDF. If that failed we fall back to the schematic
+    // rather than sitting on "tracing plan…" for the rest of the shift.
+    !planError;
   const aspect =
     outline?.pageAspect ??
     manualOutline?.pageAspect ??
@@ -1572,6 +1575,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             />
           ) : (
             <>
+              {/* Outline is the view the map opens on, so the retry has to be
+                  reachable from here and not only from the plan tab. */}
+              {planTrouble}
               <div
                 ref={sheetRef}
                 className="cartoon-sheet"
