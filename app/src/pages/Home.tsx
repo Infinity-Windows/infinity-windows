@@ -6,6 +6,7 @@ import { QueryError, SkeletonList } from "../components/ui/States";
 import { listProjects } from "../lib/api";
 import { orderMyWork, type DispatchOpening } from "../lib/dispatch";
 import { openingReadiness } from "../lib/install/fit";
+import { isInstallInProgress } from "../lib/install/installTimer";
 import { getMyProfile, listMyOpeningsAllJobs, listMemosToConfirm } from "../lib/install/api";
 import { isOwner, ROLE_LABELS, type CrewRole, type ProjectOpening } from "../lib/install/types";
 import { roleRank } from "../lib/nav";
@@ -176,7 +177,7 @@ export function Home() {
   ).length;
 
   const active = (openings.data ?? []).filter((o) => o.status !== "installed");
-  const activeOpening = active.find((o) => o.work_started_at);
+  const activeOpening = active.find((o) => isInstallInProgress(o, now));
   const activeElapsed = activeOpening?.work_started_at
     ? Math.max(
         0,

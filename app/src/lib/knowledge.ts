@@ -9,6 +9,7 @@ import {
 } from "../../../supabase/functions/_shared/knowledge.ts";
 import { orderMyWork } from "./dispatch";
 import { areaKey, toDispatchOpening } from "./install/nextOpening";
+import { isInstallInProgress } from "./install/installTimer";
 import {
   isForemanPlus,
   isSupervisorPlus,
@@ -413,7 +414,7 @@ function answerNextWindow(data: AskLiveData): string | null {
   const ordered = orderMyWork(active.map(toDispatchOpening))
     .map((d) => byId.get(d.id))
     .filter((o): o is ProjectOpening => Boolean(o));
-  const inProgress = ordered.find((o) => o.work_started_at && o.status !== "installed");
+  const inProgress = ordered.find((o) => isInstallInProgress(o));
   const next = inProgress ?? ordered[0];
   if (!next) return null;
   const lines = [

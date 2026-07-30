@@ -31,6 +31,7 @@ import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
 import { orderMyWork } from "../lib/dispatch";
 import { orderNumberMap } from "../lib/install/mapDispatch";
 import { openingReadiness } from "../lib/install/fit";
+import { isInstallInProgress } from "../lib/install/installTimer";
 import { areaKey, toDispatchOpening } from "../lib/install/nextOpening";
 import {
   isForemanPlus,
@@ -247,9 +248,7 @@ export function MyWork() {
   // The core loop resumes what you started: an in-progress window jumps to the
   // top as "Continue", and "Next" becomes the following window so Done -> Next
   // stays one tap.
-  const activeInstall = ordered.find(
-    (o) => o.work_started_at && o.status !== "installed",
-  );
+  const activeInstall = ordered.find((o) => isInstallInProgress(o));
   // Today's published assignment anchors the day: that job's openings sort first
   // (stable within orderMyWork) so My Work opens on where you're expected today.
   const todayAssignment = (todayPublished.data ?? [])[0] ?? null;
@@ -297,7 +296,7 @@ export function MyWork() {
 
   const readinessTag = (o: ProjectOpening) => {
     const r = openingReadiness(o);
-    const inProgress = o.work_started_at && o.status !== "installed";
+    const inProgress = isInstallInProgress(o);
     const cls = inProgress
       ? "warn-text"
       : r.status === "ready"
