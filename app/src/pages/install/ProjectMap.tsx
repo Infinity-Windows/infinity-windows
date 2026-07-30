@@ -155,6 +155,15 @@ const PIN_LABEL_AUTO_MAX = 14;
 const WALL_STROKE = 11;
 
 /**
+ * The outline opens enlarged so 42 openings are not crushed into a phone-width
+ * panel. 200% doubles the screen-space between neighbours; the floor can still
+ * be zoomed out to fit, or further in up to 400%.
+ */
+const OUTLINE_ZOOM_DEFAULT = 2;
+const OUTLINE_ZOOM_MIN = 1;
+const OUTLINE_ZOOM_MAX = 4;
+
+/**
  * What the sheet header says about where the shape came from. "from the marks"
  * is honest about being approximate without implying something is broken — it
  * is a normal, permanent state for a job nobody has traced.
@@ -219,6 +228,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const [filter, setFilter] = useState<PlanFilter>("all");
   const [fullScreen, setFullScreen] = useState(false);
   const [pdfZoom, setPdfZoom] = useState(1);
+  /** Outline view zoom — independent of the PDF views, starts enlarged. */
+  const [outlineZoom, setOutlineZoom] = useState(OUTLINE_ZOOM_DEFAULT);
   /** null = decide from how busy the page is; true/false = the user decided. */
   const [markNumbers, setMarkNumbers] = useState<boolean | null>(null);
   const buildingDocRef = useRef<PDFDocumentProxy | null>(null);
@@ -1130,11 +1141,24 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             : Array.from({ length: buildingPageCount }, (_, index) => index + 1);
     setPage(nextPage ?? pages[0] ?? 1);
     setPdfZoom(1);
+    setOutlineZoom(OUTLINE_ZOOM_DEFAULT);
   };
 
   const bumpZoom = (dir: 1 | -1) => {
     setPdfZoom((z) =>
       Math.min(4, Math.max(0.5, Math.round((z + dir * 0.25) * 100) / 100)),
+    );
+  };
+
+  const bumpOutlineZoom = (dir: 1 | -1) => {
+    setOutlineZoom((z) =>
+      Math.min(
+        OUTLINE_ZOOM_MAX,
+        Math.max(
+          OUTLINE_ZOOM_MIN,
+          Math.round((z + dir * 0.25) * 100) / 100,
+        ),
+      ),
     );
   };
 
@@ -1375,7 +1399,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
    */
   const markCount = placed.length + autos.length;
   const labelsFitOnPage = markCount <= PIN_LABEL_AUTO_MAX;
-  const showMarkNumbers = markNumbers ?? (labelsFitOnPage || pdfZoom >= 1.5);
+  const mapZoom = view === "outline" ? outlineZoom : pdfZoom;
+  const showMarkNumbers = markNumbers ?? (labelsFitOnPage || mapZoom >= 1.5);
 
   /**
    * `wallDrawn` says the drawing underneath already shows these openings cut
@@ -1412,9 +1437,11 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     );
   };
 
-  // Reset zoom when flipping PDF pages.
+  // Reset zoom when flipping floors or switching views — start the outline
+  // enlarged again rather than leaving a zoom from another page stuck on.
   useEffect(() => {
     setPdfZoom(1);
+    setOutlineZoom(OUTLINE_ZOOM_DEFAULT);
   }, [page, view]);
 
   /*
@@ -1471,7 +1498,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     </div>
   );
 
-  const zoomControls = (view === "building" || view === "details") && (
+  const pdfZoomControls = (view === "building" || view === "details") && (
     <div className="plan-zoom-controls" role="group" aria-label="Zoom">
       <button
         type="button"
@@ -1502,6 +1529,40 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       </button>
     </div>
   );
+
+  const outlineZoomControls = view === "outline" && (
+    <div className="plan-zoom-controls" role="group" aria-label="Zoom">
+      <button
+        type="button"
+        className="plan-zoom-btn"
+        aria-label="Zoom out"
+        disabled={outlineZoom <= OUTLINE_ZOOM_MIN}
+        onClick={() => bumpOutlineZoom(-1)}
+      >
+        −
+      </button>
+      <button
+        type="button"
+        className="plan-zoom-btn plan-zoom-btn--label"
+        aria-label="Reset zoom"
+        title="Reset zoom"
+        onClick={() => setOutlineZoom(OUTLINE_ZOOM_DEFAULT)}
+      >
+        {Math.round(outlineZoom * 100)}%
+      </button>
+      <button
+        type="button"
+        className="plan-zoom-btn"
+        aria-label="Zoom in"
+        disabled={outlineZoom >= OUTLINE_ZOOM_MAX}
+        onClick={() => bumpOutlineZoom(1)}
+      >
+        +
+      </button>
+    </div>
+  );
+
+  const zoomControls = pdfZoomControls || outlineZoomControls;
 
   const fullscreenBar = (
     <div className="plan-fullscreen-bar">
@@ -1910,6 +1971,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                       ? savedFootprintLabel(manualOutlineRow?.features)
                       : FOOTPRINT_SOURCE_LABEL[footprint?.source ?? "none"]}
               </span>
+              {!fullScreen && !editingModel && outlineZoomControls}
               {/* Everything behind this button is plan authoring — drawing the
                   building outline and placing, renaming or removing marks. The
                   mark half is now foreman+ in the database, so leaving the
@@ -1958,82 +2020,93 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               {/* Outline is the view the map opens on, so the retry has to be
                   reachable from here and not only from the plan tab. */}
               {planTrouble}
+              {/*
+                Same scroll/pan pattern as the PDF views: the drawing is wider
+                than the viewport at 200%, so neighbours get real space and the
+                finger pans the sheet rather than squeezing everything to fit.
+              */}
               <div
-                ref={sheetRef}
-                className="cartoon-sheet"
-                /**
-                 * The aspect is set in fullscreen too. Pins are positioned as
-                 * percentages of THIS element while walls are drawn inside the
-                 * SVG, so the two only agree while the box keeps the viewBox's
-                 * aspect — letting it stretch is what distorted the building.
-                 *
-                 * Fullscreen also needs the ratio as a bare number: there it has
-                 * to work out its own width from the height available, since
-                 * nothing else in that layout gives it one.
-                 */
-                style={
-                  {
-                    aspectRatio: `1 / ${aspect}`,
-                    "--sheet-aspect": aspect,
-                  } as CSSProperties
-                }
+                className="plan-zoom-viewport plan-zoom-viewport--outline"
+                onWheel={(e) => {
+                  if (!e.ctrlKey && !e.metaKey) return;
+                  e.preventDefault();
+                  bumpOutlineZoom(e.deltaY < 0 ? 1 : -1);
+                }}
               >
-                <svg
-                  viewBox={`0 0 1000 ${Math.round(1000 * aspect)}`}
-                  preserveAspectRatio="xMidYMid meet"
-                  aria-hidden
+                <div
+                  ref={sheetRef}
+                  className="cartoon-sheet"
+                  data-outline-zoom={outlineZoom}
+                  /**
+                   * Width is the zoom. Aspect stays locked so pin percentages
+                   * and the SVG viewBox agree — stretching the box is what
+                   * distorted the building before.
+                   */
+                  style={
+                    {
+                      width: `${outlineZoom * 100}%`,
+                      aspectRatio: `1 / ${aspect}`,
+                      "--sheet-aspect": aspect,
+                    } as CSSProperties
+                  }
                 >
-                  {manualOutlinePaths.length > 0 ? (
-                    manualOutlinePaths.map((path) => (
-                      <g key={path.id}>
-                        <path
-                          d={path.fill}
-                          fill="rgba(163, 156, 146, 0.06)"
-                          stroke="none"
-                        />
-                        {path.stroke && (
+                  <svg
+                    viewBox={`0 0 1000 ${Math.round(1000 * aspect)}`}
+                    preserveAspectRatio="xMidYMid meet"
+                    aria-hidden
+                  >
+                    {manualOutlinePaths.length > 0 ? (
+                      manualOutlinePaths.map((path) => (
+                        <g key={path.id}>
                           <path
-                            d={path.stroke}
-                            fill="none"
-                            stroke="rgba(255, 106, 26, 0.85)"
-                            strokeWidth={3}
-                            strokeLinejoin="round"
-                            strokeLinecap="round"
+                            d={path.fill}
+                            fill="rgba(163, 156, 146, 0.06)"
+                            stroke="none"
                           />
-                        )}
-                        <OutlineFeatureLayer
-                          points={path.points}
+                          {path.stroke && (
+                            <path
+                              d={path.stroke}
+                              fill="none"
+                              stroke="rgba(255, 106, 26, 0.85)"
+                              strokeWidth={3}
+                              strokeLinejoin="round"
+                              strokeLinecap="round"
+                            />
+                          )}
+                          <OutlineFeatureLayer
+                            points={path.points}
+                            aspect={aspect}
+                            features={path.features}
+                            color="rgba(255, 106, 26, 0.85)"
+                          />
+                        </g>
+                      ))
+                    ) : (
+                      outlinePath &&
+                      outline && (
+                        <MapWallLayer
+                          points={outline.points}
                           aspect={aspect}
-                          features={path.features}
-                          color="rgba(255, 106, 26, 0.85)"
+                          outlinePath={outlinePath}
+                          openings={[...wallOpenings.snapped.values()]}
+                          colorFor={wallOpeningColor}
+                          selectedId={selectedId}
+                          wallStroke={WALL_STROKE}
+                          labelFor={wallOpeningLabel}
+                          titleFor={wallOpeningTitle}
+                          onOpeningPointerDown={beginDragById}
                         />
-                      </g>
-                    ))
-                  ) : (
-                    outlinePath &&
-                    outline && (
-                      <MapWallLayer
-                        points={outline.points}
-                        aspect={aspect}
-                        outlinePath={outlinePath}
-                        openings={[...wallOpenings.snapped.values()]}
-                        colorFor={wallOpeningColor}
-                        selectedId={selectedId}
-                        wallStroke={WALL_STROKE}
-                        labelFor={wallOpeningLabel}
-                        titleFor={wallOpeningTitle}
-                        onOpeningPointerDown={beginDragById}
-                      />
-                    )
-                  )}
-                </svg>
-                {renderOpeningDots("all", manualOutlinePaths.length === 0)}
-                <div className="cartoon-sheet__floor" aria-hidden>
-                  Floor {page}
-                  <span>
-                    {placed.length + autos.length} mark
-                    {placed.length + autos.length === 1 ? "" : "s"}
-                  </span>
+                      )
+                    )}
+                  </svg>
+                  {renderOpeningDots("all", manualOutlinePaths.length === 0)}
+                  <div className="cartoon-sheet__floor" aria-hidden>
+                    Floor {page}
+                    <span>
+                      {placed.length + autos.length} mark
+                      {placed.length + autos.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
                 </div>
               </div>
               {undoBar}

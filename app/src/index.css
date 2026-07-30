@@ -978,22 +978,14 @@ button:disabled {
 }
 
 /*
- * The cartoon sheet keeps its page aspect in fullscreen rather than stretching
- * to the screen. Pins are placed as percentages of this box while walls are
- * drawn in the SVG viewBox, so the building is only geometrically correct while
- * the box matches that aspect. `align-self` prevents the flex parent from
- * stretching the width, which is what lets the aspect drive it.
+ * Outline sheets now live inside `.plan-zoom-viewport--outline`, which owns
+ * sizing via the zoom percentage. This rule only covers a cartoon sheet that
+ * is still a direct child of the fullscreen panel (e.g. while the model editor
+ * is closed and something else renders one).
  */
-.plan-sheet--fullscreen .cartoon-sheet {
+.plan-sheet--fullscreen > .cartoon-sheet {
   flex: 0 1 auto;
   align-self: center;
-  /*
-   * Everything inside this box is absolutely positioned, so it has no size of
-   * its own to shrink-wrap: `width: auto` collapsed it to nothing and fullscreen
-   * showed a black screen with all 42 pins stacked in one corner. The width has
-   * to be stated, and it is whichever limit bites first — the width of the
-   * screen, or the width the height available allows at this page's aspect.
-   */
   width: min(100%, calc((100vh - 130px) / var(--sheet-aspect, 1.294)));
   height: auto;
 }
@@ -1041,6 +1033,18 @@ button:disabled {
   -webkit-overflow-scrolling: touch;
 }
 
+/*
+ * The outline drawing starts at 200% of the viewport, so neighbours get real
+ * space and the sheet pans instead of being crushed to fit. Taller than the
+ * PDF viewport on purpose: this is the thing you are looking at, not a
+ * thumbnail of a plan page.
+ */
+.plan-zoom-viewport--outline {
+  max-height: min(78vh, 820px);
+  /* Let empty sheet space scroll; openings call preventDefault on their own. */
+  touch-action: pan-x pan-y;
+}
+
 .plan-sheet--fullscreen .plan-zoom-viewport {
   flex: 1;
   min-height: 0;
@@ -1056,6 +1060,24 @@ button:disabled {
   height: auto !important;
   line-height: 0;
   overflow: visible;
+}
+
+/*
+ * Width comes from the zoom percentage on the element. Height follows the
+ * page aspect. Overflow is visible so wall symbols near the edge are not
+ * clipped; the viewport is what scrolls.
+ */
+.plan-zoom-viewport--outline .cartoon-sheet {
+  flex: none;
+  min-width: 100%;
+  height: auto;
+  overflow: visible;
+  /* Pan the viewport; do not steal the gesture from the scroll container. */
+  touch-action: pan-x pan-y;
+}
+
+.plan-sheet--fullscreen .plan-zoom-viewport--outline {
+  display: block;
 }
 
 .plan-zoom-viewport .plan-map img {
@@ -1133,7 +1155,11 @@ button:disabled {
   position: relative;
   border-radius: 10px;
   overflow: hidden;
-  touch-action: none;
+  /*
+   * Pan/scroll when the sheet sits in a zoom viewport. Opening handlers call
+   * preventDefault so a drag on a window still moves the mark, not the page.
+   */
+  touch-action: pan-x pan-y;
   background:
     repeating-linear-gradient(
       0deg,

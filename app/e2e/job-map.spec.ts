@@ -344,6 +344,66 @@ for (const job of jobFixtures()) {
         await outlinePaths.first().getAttribute("d"),
         `${job.jobCode}: the outline path has no geometry`,
       ).toMatch(/^M\s*[\d.-]/i);
+
+      /*
+       * The outline opens enlarged so openings are not crushed into the phone
+       * width. The drawing must be wider than its scroll viewport, zoom must
+       * change that size, and the viewport must be able to pan.
+       */
+      const zoomViewport = page.locator(".plan-zoom-viewport--outline");
+      const outlineSheet = page.locator(
+        ".plan-zoom-viewport--outline .cartoon-sheet",
+      );
+      await expect(zoomViewport).toBeVisible();
+      const startZoom = await outlineSheet.getAttribute("data-outline-zoom");
+      expect(
+        Number(startZoom),
+        `${job.jobCode}: outline should open enlarged (200%)`,
+      ).toBeGreaterThan(1);
+      const viewportBox = await zoomViewport.boundingBox();
+      const sheetBox = await outlineSheet.boundingBox();
+      expect(viewportBox, `${job.jobCode}: missing outline viewport`).toBeTruthy();
+      expect(sheetBox, `${job.jobCode}: missing outline sheet`).toBeTruthy();
+      expect(
+        (sheetBox?.width ?? 0) / (viewportBox?.width ?? 1),
+        `${job.jobCode}: drawing should overflow its viewport at the default zoom`,
+      ).toBeGreaterThan(1.4);
+
+      const zoomLabel = page.getByRole("button", { name: "Reset zoom" });
+      await expect(zoomLabel).toHaveText("200%");
+      await page.getByRole("button", { name: "Zoom in" }).click();
+      await expect(zoomLabel).toHaveText("225%");
+      await expect
+        .poll(async () => {
+          const next = await outlineSheet.boundingBox();
+          return next?.width ?? 0;
+        })
+        .toBeGreaterThan((sheetBox?.width ?? 0) * 1.05);
+
+      // Pan: scroll the viewport so the sheet moves under it.
+      const beforeScroll = await zoomViewport.evaluate((el) => el.scrollLeft);
+      await zoomViewport.evaluate((el) => {
+        el.scrollLeft = Math.min(el.scrollWidth - el.clientWidth, 80);
+      });
+      const afterScroll = await zoomViewport.evaluate((el) => el.scrollLeft);
+      expect(
+        afterScroll,
+        `${job.jobCode}: outline viewport should pan horizontally`,
+      ).toBeGreaterThan(beforeScroll);
+
+      // Openings stay interactive after zoom/pan — tap one and its row links.
+      const firstOpening = page.locator("[data-wall-opening]").first();
+      if ((await firstOpening.count()) > 0) {
+        await firstOpening.click({ force: true });
+        await expect(
+          page.locator(".find-row--linked").first(),
+          `${job.jobCode}: tapping an opening after zoom/pan did not select it`,
+        ).toBeVisible({ timeout: 5_000 });
+      }
+
+      // Put zoom back so the later screenshots match the default enlarged view.
+      await zoomLabel.click();
+      await expect(zoomLabel).toHaveText("200%");
     }
 
     const rendered = await marks.count();
