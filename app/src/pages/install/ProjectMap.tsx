@@ -155,11 +155,13 @@ const PIN_LABEL_AUTO_MAX = 14;
 const WALL_STROKE = 11;
 
 /**
- * The outline opens enlarged so 42 openings are not crushed into a phone-width
- * panel. 200% doubles the screen-space between neighbours; the floor can still
- * be zoomed out to fit, or further in up to 400%.
+ * The outline opens showing the whole floor. Zoom is for inspecting a corner,
+ * not for fixing crowding: magnifying grows the wall and the openings in it by
+ * the same amount, so a floor that looks packed at 100% looks just as packed at
+ * 200%. What stops it looking packed is `MAX_OPENING_SLOT_SHARE` in wallSnap,
+ * which keeps most of the wall as wall.
  */
-const OUTLINE_ZOOM_DEFAULT = 2;
+const OUTLINE_ZOOM_DEFAULT = 1;
 const OUTLINE_ZOOM_MIN = 1;
 const OUTLINE_ZOOM_MAX = 4;
 
@@ -1307,6 +1309,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             x: pos.x,
             y: pos.y,
             kind: unitKind(o),
+            placed: movedIds.has(o.id),
           };
         }),
       points: outline.points,

@@ -46,6 +46,21 @@ export const WALL_SNAP_DISTANCE = 55;
 /** Gap widths in viewBox units. Doors are wider, as they are in life. */
 export const WINDOW_GAP_WIDTH = 46;
 export const DOOR_GAP_WIDTH = 62;
+/**
+ * The share of its own stretch of wall an opening may take.
+ *
+ * This is the number that decides whether the drawing reads as a building or as
+ * a ring of holes. Each mark gets one slot of the perimeter — perimeter divided
+ * by however many marks are on the floor — and may fill at most this much of
+ * it, so the rest stays wall. Without it a 58-mark floor asks for 3074 units of
+ * opening on a 2869-unit perimeter, every gap shrinks to fit, and the building
+ * comes out with no wall left between its windows.
+ *
+ * Magnifying that does not help: zoom scales the wall and the holes together,
+ * so the proportion a crowded floor looks wrong at is the proportion it looks
+ * wrong at from any distance. The fix has to be here.
+ */
+const MAX_OPENING_SLOT_SHARE = 0.45;
 /** Never shrink a gap below this, or it stops reading as an opening. */
 export const MIN_GAP_WIDTH = 20;
 /**
@@ -78,6 +93,16 @@ export interface SnapCandidate {
   x: number;
   y: number;
   kind: "window" | "door";
+  /**
+   * True when a foreman dragged this mark to where the opening really is.
+   *
+   * Everything else came off the planset extractor, which reads a drawing row
+   * by row: those coordinates say where a number was printed on a sheet, not
+   * where a window is in a wall. Openings on a wall nobody has touched are
+   * spaced out evenly, because an even row of windows is no less true than the
+   * clump the extractor produced and is far easier to read.
+   */
+  placed?: boolean;
 }
 
 export interface SnappedOpening extends WallOpening {
@@ -331,8 +356,23 @@ export function snapOpeningsToWalls(args: {
    * dropped in the middle of the page asks for the nearest wall, which is a
    * guess — but a guess on a wall beats a certainty floating in a room.
    */
+  /*
+   * How wide an opening may be drawn on THIS floor. Both kinds shrink by the
+   * same factor, so a door stays wider than a window on a crowded floor rather
+   * than every opening collapsing to one size.
+   */
+  const slot = perimeter / openings.length;
+  const widthScale = Math.min(
+    1,
+    Math.max(HARD_MIN_GAP_WIDTH, slot * MAX_OPENING_SLOT_SHARE) /
+      DOOR_GAP_WIDTH,
+  );
+
   const kinds = new Map<string, "window" | "door">();
   const distances = new Map<string, number>();
+  const placedIds = new Set(
+    openings.filter((o) => o.placed).map((o) => o.id),
+  );
   const items: EdgeGapItem[] = [];
   openings.forEach((o, index) => {
     kinds.set(o.id, o.kind);
@@ -347,7 +387,8 @@ export function snapOpeningsToWalls(args: {
       center: hit
         ? starts[hit.edge] + hit.t * lengths[hit.edge]
         : (index / openings.length) * perimeter,
-      width: o.kind === "door" ? DOOR_GAP_WIDTH : WINDOW_GAP_WIDTH,
+      width:
+        (o.kind === "door" ? DOOR_GAP_WIDTH : WINDOW_GAP_WIDTH) * widthScale,
     });
   });
 
@@ -379,9 +420,33 @@ export function snapOpeningsToWalls(args: {
       Math.max(0, (length - HARD_MIN_GAP_WIDTH) / 2),
     );
     const usable = length - inset * 2;
+
+    /*
+     * Black Desert's marks come off the extractor in rows, so a wall arrives
+     * with fourteen of them piled into a third of its length and the rest of it
+     * empty. That pile does not mean the windows are really side by side; it
+     * means the extractor read a row of a drawing. Since the positions are
+     * fiction either way, an evenly spaced row is the more honest drawing and
+     * by far the easier one to tap.
+     *
+     * A wall where a foreman has dragged a mark is different — there the
+     * positions were put in by someone who stood in front of the building, so
+     * every opening on that wall keeps the spot it asks for.
+     */
+    const ordered = [...rows].sort(
+      (a, b) => a.center - b.center || a.id.localeCompare(b.id),
+    );
+    const spreadEvenly =
+      ordered.length > 1 && !ordered.some((r) => placedIds.has(r.id));
+
     const laid = layoutEdgeGaps(
       usable,
-      rows.map((r) => ({ ...r, center: r.center - inset })),
+      ordered.map((r, i) => ({
+        ...r,
+        center: spreadEvenly
+          ? (usable * (i + 0.5)) / ordered.length
+          : r.center - inset,
+      })),
       // Already positioned by the pass above, so this one is free to move a gap
       // as far as it needs to keep it inside its own wall.
       { maxSlide: length },

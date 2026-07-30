@@ -86,8 +86,10 @@ export function MapWallLayer(props: {
     [points, aspect, openings],
   );
 
+  const perimeter = edgeLengths.reduce((sum, length) => sum + length, 0);
+
   return (
-    <g>
+    <g data-outline-perimeter={String(perimeter)}>
       <path d={outlinePath} fill={INTERIOR_FILL} stroke="none" />
       {/*
        * Corners are mitred: the whole point of squaring the polygon up was to
