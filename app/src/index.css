@@ -1119,6 +1119,12 @@ button:disabled {
   touch-action: none;
 }
 
+/* Below foreman a mark cannot be moved, so it must not look draggable. It stays
+   fully tappable — the details sheet is how an installer reads the plan. */
+.plan-dot--fixed {
+  cursor: pointer;
+}
+
 .plan-map--with-dots .plan-dot {
   /* Keep mark labels readable when the sheet is zoomed in. */
   transform-origin: center center;

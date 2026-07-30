@@ -14,7 +14,11 @@ import { visionMarksToDrafts, type RawVisionMark } from "./specsVision";
 import type { DiscrepancyKind } from "./specReconciliation";
 import { elevationAppearances, type ElevationAppearance } from "./elevationViews";
 import { splitCalloutsByFloorPlan } from "./planDetails";
-import type { PinMove } from "./pinHistory";
+import {
+  isPinMoveDenied,
+  PIN_MOVE_DENIED,
+  type PinMove,
+} from "./pinHistory";
 import type {
   InstallEvent,
   MarkElevationView,
@@ -1301,7 +1305,11 @@ export async function updateOpening(
     .from("project_openings")
     .update(patch)
     .eq("id", id);
-  if (error) throw error;
+  if (!error) return;
+  // Moving a mark is foreman+ in the database. Rethrown as a plain Error so the
+  // sentence reaches the crew on its own, without PostgREST's trailing code.
+  if (isPinMoveDenied(error)) throw new Error(PIN_MOVE_DENIED);
+  throw error;
 }
 
 export async function deleteOpening(id: string): Promise<void> {

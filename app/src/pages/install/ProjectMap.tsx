@@ -240,6 +240,11 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   // voided ring, legend, or "redo needed" state; the query is also gated so the
   // data is never fetched for a non-foreman (faithful under view-as preview too).
   const isLead = isForemanPlus(effectiveRole);
+  // Where a mark sits is the whole crew's picture of the job, so nudging one is
+  // a lead's call — the same bar as undoing it. The database enforces this on
+  // its own (guard_opening_pin_move); this only decides whether the app offers
+  // a gesture that would be refused.
+  const canMoveMarks = isLead;
   // Crew list drives the dispatch installer picker + at-a-glance pin coloring.
   // The color layer is visible to everyone, so this query is not lead-gated.
   const crew = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
@@ -640,7 +645,17 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
     },
-    onError: (e) => setMapError(formatApiError(e)),
+    onError: (e, args) => {
+      // Put the dot back where it was. Without this the optimistic position
+      // outlives a refused write, so a mark the database never accepted still
+      // looks moved until the next refresh — a silent no-op that reads as
+      // success, which is exactly what a locked-down move must not do.
+      setPending((prev) => {
+        const { [args.id]: _refused, ...rest } = prev;
+        return rest;
+      });
+      setMapError(formatApiError(e));
+    },
   });
 
   // Commit the ordered selection: assign each opening to the installer in tap
@@ -816,6 +831,12 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       // Document-level listeners so drag keeps working even if the pointer
       // leaves the button (and so synthetic events from tests land correctly).
       const onMove = (ev: PointerEvent) => {
+        // Below foreman the dot never leaves its spot, so the gesture stays a
+        // tap however far the finger travels. Bailing here rather than skipping
+        // the handler entirely is deliberate: tapping a mark to open its
+        // details is the installer's main way around the plan, and that lives
+        // in the same pointer session as the drag.
+        if (!canMoveMarks) return;
         const d = dragRef.current;
         const sheet = sheetRef.current;
         if (!d || !sheet) return;
@@ -1023,7 +1044,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           key={o.id}
           type="button"
           aria-pressed={dispatchMode ? selIndex >= 0 || isNewOnRoute : undefined}
-          className={`plan-dot${pos.auto ? " plan-dot--auto" : ""}${
+          className={`plan-dot${canMoveMarks ? "" : " plan-dot--fixed"}${
+            pos.auto ? " plan-dot--auto" : ""
+          }${
             selectedId === o.id ? " plan-dot--selected" : ""
           }${movedIds.has(o.id) ? " plan-dot--moved" : ""}${
             drag?.id === o.id ? " plan-dot--dragging" : ""
@@ -1554,7 +1577,12 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                         ? "outline from CAD"
                         : "outline unavailable — schematic"}
               </span>
-              {!editingModel && (
+              {/* Everything behind this button is plan authoring — drawing the
+                  building outline and placing, renaming or removing marks. The
+                  mark half is now foreman+ in the database, so leaving the
+                  button up for installers would offer tools that refuse to
+                  save. Nothing here is part of installing a window. */}
+              {canMoveMarks && !editingModel && (
                 <button
                   type="button"
                   className="button-like"
@@ -1724,8 +1752,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             </p>
           )}
           <p className="muted" style={{ marginTop: 8 }}>
-            Movable marks sit on the plan callouts. Zoom keeps them locked to
-            those numbers — drag one to nudge it.
+            {canMoveMarks
+              ? "Movable marks sit on the plan callouts. Zoom keeps them locked to those numbers — drag one to nudge it."
+              : "Marks sit on the plan callouts. Zoom keeps them locked to those numbers. Tap one for its details — only a foreman can move them."}
           </p>
           {undoBar}
           {selectedOpening &&

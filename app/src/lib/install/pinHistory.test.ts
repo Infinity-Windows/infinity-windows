@@ -4,12 +4,15 @@ import {
   describePinMove,
   describeResetAll,
   isMarkMoved,
+  isPinMoveDenied,
   movedAgoLabel,
   movedMarkIds,
   nextUndoableMove,
+  PIN_MOVE_DENIED,
   undoableCount,
   type PinMove,
 } from "./pinHistory";
+import { formatApiError } from "./errors";
 
 const NOW = Date.parse("2026-07-30T18:00:00Z");
 
@@ -203,5 +206,33 @@ describe("plain-English copy for the destructive button", () => {
     expect(describeMovedSummary(0)).toBe("Every mark is where the plan put it.");
     expect(describeMovedSummary(1)).toBe("1 mark has been moved off the plan.");
     expect(describeMovedSummary(4)).toBe("4 marks have been moved off the plan.");
+  });
+});
+
+describe("isPinMoveDenied", () => {
+  // Shape PostgREST returns when the foreman-only guard raises.
+  const refusal = {
+    message: PIN_MOVE_DENIED,
+    code: "42501",
+    details: null,
+    hint: null,
+  };
+
+  it("recognises the guard's refusal", () => {
+    expect(isPinMoveDenied(refusal)).toBe(true);
+  });
+
+  it("leaves other failures alone", () => {
+    expect(isPinMoveDenied({ message: "Failed to fetch" })).toBe(false);
+    expect(isPinMoveDenied(new Error("network down"))).toBe(false);
+    expect(isPinMoveDenied(null)).toBe(false);
+    expect(isPinMoveDenied("nope")).toBe(false);
+  });
+
+  it("turns the refusal into a bare sentence, not a Postgres code", () => {
+    // What the crew would have seen without the rethrow in updateOpening…
+    expect(formatApiError(refusal)).toContain("[42501]");
+    // …and what they see with it.
+    expect(formatApiError(new Error(PIN_MOVE_DENIED))).toBe(PIN_MOVE_DENIED);
   });
 });
