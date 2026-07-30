@@ -204,7 +204,6 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
     await signIn(page);
     await openSandboxPlan(page);
 
-    const sheet = page.locator(".cartoon-sheet");
     // Two classes, one thing. With nothing moved the bar collapses to a single
     // sentence with its own class rather than rendering an empty bar, so a
     // locator that only knew the busy one would report the foreman-only bar
@@ -224,7 +223,7 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
     await expect(undoBar).toContainText("Every mark is where the plan put it");
     const markCount = await marksOn(page).count();
     expect(markCount, "the sandbox plan should have marks on it").toBeGreaterThan(1);
-    await sheet.screenshot({ path: join(SHOTS, "01-plan-before-any-move.png") });
+    await shootPlan(page, "01-plan-before-any-move.png");
 
     // ---- 1. Drag a mark ---------------------------------------------------
     // Toward the middle of the drawing, and far. A mark sitting in a wall is
@@ -238,7 +237,7 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
       rings,
       "the mark it moved should be ringed as moved off the plan",
     ).toHaveCount(1, { timeout: 60_000 });
-    await sheet.screenshot({ path: join(SHOTS, "02-mark-dragged-and-ringed.png") });
+    await shootPlan(page, "02-mark-dragged-and-ringed.png");
     // Close up, because a 4px ring is invisible in a phone-sized shot. Framed a
     // little wider than the dot on purpose: the ring is drawn OUTSIDE the dot, so
     // a picture cropped to the dot itself cuts off the whole point of it.
@@ -282,8 +281,7 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
     await expect(rings).toHaveCount(0, { timeout: 60_000 });
     await expect(undoBar).toContainText("Every mark is where the plan put it");
     await expect(page.getByRole("button", { name: /^Undo moving mark / })).toHaveCount(0);
-    await toastsGone(page);
-    await sheet.screenshot({ path: join(SHOTS, "06-plan-after-undo.png") });
+    await shootPlan(page, "06-plan-after-undo.png");
 
     // ---- 5. Put one mark back ---------------------------------------------
     // A different button doing a different thing: Undo walks back one step,
@@ -326,8 +324,7 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
     await dragTowardMiddle(page, b.locator, 0.3);
     await expect(rings).toHaveCount(2, { timeout: 60_000 });
     await expect(undoBar).toContainText("2 steps to go back through");
-    await toastsGone(page);
-    await sheet.screenshot({ path: join(SHOTS, "09-two-marks-moved.png") });
+    await shootPlan(page, "09-two-marks-moved.png");
     await undoBar.screenshot({ path: join(SHOTS, "10-undo-bar-two-moved.png") });
 
     const confirmText = await putEveryMarkBack(page);
@@ -345,8 +342,7 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
 
     await expect(rings).toHaveCount(0, { timeout: 60_000 });
     await expect(undoBar).toContainText("Every mark is where the plan put it");
-    await toastsGone(page);
-    await sheet.screenshot({ path: join(SHOTS, "12-plan-after-every-mark-back.png") });
+    await shootPlan(page, "12-plan-after-every-mark-back.png");
     await undoBar.screenshot({ path: join(SHOTS, "13-undo-bar-nothing-moved.png") });
   });
 });
@@ -359,6 +355,21 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
  */
 async function toastsGone(page: Page) {
   await expect(page.locator(".toast")).toHaveCount(0, { timeout: 30_000 });
+}
+
+/**
+ * Photograph the whole drawing.
+ *
+ * Scrolled to first, because a picture of an element is clipped to the part of
+ * it that is on screen and the drawing is taller than a phone. The "before"
+ * shot came out as a crop of the top third, which cannot be compared with the
+ * "after" one — and a before/after pair you cannot compare proves nothing.
+ */
+async function shootPlan(page: Page, name: string) {
+  const sheet = page.locator(".cartoon-sheet");
+  await sheet.scrollIntoViewIfNeeded();
+  await toastsGone(page);
+  await sheet.screenshot({ path: join(SHOTS, name) });
 }
 
 /**
