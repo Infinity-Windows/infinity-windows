@@ -6,11 +6,15 @@ import {
   foremanOnlyRefusal,
   OPENING_CREATE_DENIED,
   OPENING_DELETE_DENIED,
+  OPENING_RESTORE_DENIED,
+  REMOVED_LIST_DENIED,
   type DeletableOpening,
 } from "./openingAccess";
 
 const MIGRATION =
   "../../../../supabase/migrations/20260730180000_foreman_only_opening_create_delete.sql";
+const SOFT_DELETE =
+  "../../../../supabase/migrations/20260730210000_soft_delete_openings.sql";
 
 /** A shape PostgREST returns when a guard raises. */
 const refusal = (message: string) => ({
@@ -46,6 +50,34 @@ describe("the app and the database say the same thing", () => {
   it("uses the exact sentence the migration raises for a delete", () => {
     expect(sql).toContain(`raise exception '${OPENING_DELETE_DENIED}'`);
   });
+
+  const softDelete = readFileSync(new URL(SOFT_DELETE, import.meta.url), "utf8");
+
+  it("reuses that same sentence when a removal is refused", () => {
+    // Hiding a window and deleting one are refused with identical words, so a
+    // foreman is never told two different things about the same rule.
+    expect(softDelete).toContain(`raise exception '${OPENING_DELETE_DENIED}'`);
+  });
+
+  it("uses the exact sentences the soft delete raises", () => {
+    expect(softDelete).toContain(`raise exception '${OPENING_RESTORE_DENIED}'`);
+    expect(softDelete).toContain(`raise exception '${REMOVED_LIST_DENIED}'`);
+  });
+
+  // The other direction, which is the one that actually decays: a sentence
+  // added to the SQL that the app does not recognise reaches a foreman as raw
+  // Postgres text with a `[42501]` on the end.
+  it("recognises every sentence the soft delete can raise", () => {
+    const raised = [...softDelete.matchAll(/raise exception '((?:[^']|'')+)'/g)].map((m) =>
+      m[1].replace(/''/g, "'"),
+    );
+    expect(raised.length).toBeGreaterThan(4);
+    for (const sentence of raised) {
+      // `%` is a plpgsql placeholder; the app matches the shape around it.
+      const rendered = sentence.replace("%", "12");
+      expect(foremanOnlyRefusal({ message: rendered, code: "42501" })).toBe(rendered);
+    }
+  });
 });
 
 describe("foremanOnlyRefusal", () => {
@@ -56,6 +88,19 @@ describe("foremanOnlyRefusal", () => {
     // detector covers it too.
     const move = "Only a foreman or above can move a mark on the plan.";
     expect(foremanOnlyRefusal(refusal(move))).toBe(move);
+    expect(foremanOnlyRefusal(refusal(OPENING_RESTORE_DENIED))).toBe(OPENING_RESTORE_DENIED);
+  });
+
+  it("recognises the sentences that are not about a role at all", () => {
+    const cases = [
+      "That window or door is already installed, so it can't be removed. Undo the install first.",
+      "That window or door has a unit from the warehouse against it. Take the unit off it first.",
+      "There is already a #12 on this job, so this one cannot come back under that name. Remove or rename the one that is there first.",
+      "Use Remove or Put back to hide a window or door, so the job keeps a record of who did it.",
+    ];
+    for (const message of cases) {
+      expect(foremanOnlyRefusal(refusal(message))).toBe(message);
+    }
   });
 
   it("leaves every other failure alone", () => {
@@ -79,8 +124,27 @@ describe("describeOpeningDeletion", () => {
   it("says plainly when there is nothing to lose", () => {
     expect(describeOpeningDeletion({ opening: opening(), referencedElsewhere: false }))
       .toBe(
-        "Remove #12?\n\nNothing has been recorded against it yet, so this only removes the mark. It cannot be undone.",
+        "Remove #12?\n\nNothing has been recorded against it yet, so this just takes the mark off the job. You can put it back from Removed at the bottom of this screen.",
       );
+  });
+
+  it("never claims a removal cannot be undone, because it can", () => {
+    // The old wording said exactly that, and it was true while this really did
+    // delete the row. Saying it now would be a lie at the worst moment.
+    const everyShape = [
+      describeOpeningDeletion({ opening: opening(), referencedElsewhere: false }),
+      describeOpeningDeletion({ opening: opening(), referencedElsewhere: true }),
+      describeOpeningDeletion({
+        opening: opening({ status: "installed", flag_note: "x" }),
+        referencedElsewhere: true,
+        jobLabel: "ZZTEST",
+      }),
+    ];
+    for (const text of everyShape) {
+      expect(text).not.toContain("cannot be undone");
+      expect(text).not.toContain("deletes");
+      expect(text).toContain("put it back");
+    }
   });
 
   it("names the job when it knows it", () => {
@@ -104,7 +168,7 @@ describe("describeOpeningDeletion", () => {
       referencedElsewhere: true,
     });
     expect(text).toBe(
-      "Remove #12?\n\nThis also deletes its install history, the work assigned to Mike and the rough opening someone measured. It cannot be undone.",
+      "Remove #12?\n\nIt goes off the job along with its install history, the work assigned to Mike and the rough opening someone measured — nothing is deleted. You can put it back from Removed at the bottom of this screen.",
     );
   });
 
@@ -129,7 +193,9 @@ describe("describeOpeningDeletion", () => {
         opening: opening({ flag_note: "sill is rotten" }),
         referencedElsewhere: false,
       }),
-    ).toBe("Remove #12?\n\nThis also deletes the flag raised on it. It cannot be undone.");
+    ).toBe(
+      "Remove #12?\n\nIt goes off the job along with the flag raised on it — nothing is deleted. You can put it back from Removed at the bottom of this screen.",
+    );
   });
 
   it("ignores an unknown condition and an empty flag", () => {

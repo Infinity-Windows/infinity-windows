@@ -19,7 +19,7 @@ import {
   PIN_MOVE_DENIED,
   type PinMove,
 } from "./pinHistory";
-import { foremanOnlyRefusal } from "./openingAccess";
+import { foremanOnlyRefusal, REMOVED_LIST_DENIED } from "./openingAccess";
 import type {
   InstallEvent,
   MarkElevationView,
@@ -31,6 +31,7 @@ import type {
   PlansetStatus,
   Profile,
   ProjectOpening,
+  RemovedOpening,
 } from "./types";
 
 // The assignee embed lists profile columns explicitly rather than `*`: profiles
@@ -1323,22 +1324,55 @@ export async function updateOpening(
   throw error;
 }
 
-export async function deleteOpening(id: string): Promise<void> {
-  // `select()` so a removal that matched nothing can be told apart from one
-  // that worked. Without it the `installed` filter made this succeed while
-  // deleting nothing, and the screen refreshed as if the mark had gone.
-  const { data, error } = await supabase
-    .from("project_openings")
-    .delete()
-    .eq("id", id)
-    .neq("status", "installed")
-    .select("id");
+/**
+ * Take a window or door off a job. It is HIDDEN, not destroyed: its install
+ * history, assignment, measurements, QC checks and photos all stay where they
+ * are, and `restoreOpening` puts the lot back.
+ *
+ * The RPC does the work rather than a PATCH, because hiding a mark is a thing
+ * that needs a name and a reason against it, and because the database refuses
+ * anyone below foreman either way.
+ */
+export async function removeOpening(id: string, reason?: string): Promise<void> {
+  const { error } = await supabase.rpc("remove_opening", {
+    p_opening_id: id,
+    p_reason: reason?.trim() || null,
+  });
   if (error) throw refusalOrError(error);
-  if ((data ?? []).length === 0) {
-    throw new Error(
-      "That window or door is already installed, so it can't be removed. Undo the install first.",
-    );
+}
+
+/** Put a hidden window or door back on the job, exactly as it was. */
+export async function restoreOpening(id: string): Promise<void> {
+  const { error } = await supabase.rpc("restore_opening", {
+    p_opening_id: id,
+  });
+  if (error) throw refusalOrError(error);
+}
+
+/**
+ * What has been taken off this job, newest first — the only way to see a hidden
+ * row, and foreman+ in the database.
+ *
+ * Best-effort in the same way as the pin history: a database without the
+ * migration answers [] so the review screen still renders, just without the
+ * removed list.
+ */
+export async function listRemovedOpenings(
+  projectId: string,
+): Promise<RemovedOpening[]> {
+  if (!projectId) return [];
+  const { data, error } = await supabase.rpc("list_removed_openings", {
+    p_project_id: projectId,
+  });
+  if (error) {
+    // An installer never reaches this screen, but if one did, an empty list is
+    // the honest answer rather than a red banner about a list they may not see.
+    if (isMissingFunction(error) || error.message?.trim() === REMOVED_LIST_DENIED) {
+      return [];
+    }
+    throw error;
   }
+  return (data ?? []) as RemovedOpening[];
 }
 
 // --- Moving marks on the map, and walking those moves back ---

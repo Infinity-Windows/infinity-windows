@@ -62,10 +62,15 @@ async function loadMyProjectIds(
     // no-op: schedule membership unavailable
   }
   try {
+    // `.is("removed_at", null)` by hand here and below: this function holds the
+    // service-role key, which bypasses the row level security that hides
+    // removed openings from everything else. These two are the only reads of
+    // this table in any edge function.
     const { data: openingRows } = await supabase
       .from("project_openings")
       .select("project_id")
-      .eq("assigned_to", userId);
+      .eq("assigned_to", userId)
+      .is("removed_at", null);
     for (const o of openingRows ?? []) {
       if (o.project_id) projectIds.add(o.project_id as string);
     }
@@ -186,6 +191,7 @@ async function loadLiveContext(
           "opening_code, label, status, window_types(category), windows(window_id, status, locations(address)), projects(name, job_code)",
         )
         .eq("assigned_to", userId)
+        .is("removed_at", null)
         .order("sequence", { nullsFirst: false })
         .order("opening_code", { nullsFirst: false })
         .limit(50);

@@ -168,10 +168,36 @@ export interface ProjectOpening {
   flag_note: string | null;
   flagged_by: string | null;
   flagged_at: string | null;
+  /**
+   * Set when a foreman removes this window or door. Rows carrying it are hidden
+   * by row level security, so anything reached from a browser only ever sees
+   * null here — the field exists for the removed list, which reads them through
+   * a `security definer` function on purpose.
+   */
+  removed_at?: string | null;
   window_types?: WindowType | null;
   windows?: WindowUnit | null;
   projects?: Project | null;
   assignee?: Profile | null;
+}
+
+/**
+ * One window or door a foreman has taken off a job. Nothing about it was
+ * deleted — this is what `list_removed_openings` hands back so it can be put
+ * back again.
+ */
+export interface RemovedOpening {
+  id: string;
+  opening_code: string;
+  label: string | null;
+  window_type_id: string | null;
+  status: OpeningStatus;
+  removed_at: string;
+  removed_by: string | null;
+  removed_by_name: string | null;
+  removed_reason: string | null;
+  /** Its code has since been taken by a live mark, so it cannot come back yet. */
+  code_taken: boolean;
 }
 
 /** Topic fields match vault/_schemas/install-memo-topics.md, in order. */
