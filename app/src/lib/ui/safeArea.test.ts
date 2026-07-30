@@ -219,6 +219,10 @@ describe("close buttons stay big enough for a gloved thumb", () => {
     ".menu-drawer-close",
     ".capture-close",
     ".clock-sheet-x",
+    ".feature-tip-x",
+    // "Exit full screen" is how you get out of the plan editor, so it is a close
+    // button in everything but name.
+    ".plan-fullscreen-toggle",
     ".sched-sheet-close",
     ".wizard-close",
   ]) {

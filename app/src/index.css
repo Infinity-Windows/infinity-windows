@@ -8603,6 +8603,8 @@ body {
 .menu-drawer-close,
 .capture-close,
 .clock-sheet-x,
+.feature-tip-x,
+.plan-fullscreen-toggle,
 .sched-sheet-close,
 .wizard-close {
   min-width: 44px;
