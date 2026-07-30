@@ -4,14 +4,20 @@
 //
 // Use the *legacy* build + worker so older Safari/Chrome (missing
 // Map.prototype.getOrInsertComputed) can still open plansets.
+//
+// The polyfill imports come FIRST on purpose: pdf.js reads text by iterating a
+// ReadableStream, which WebKit cannot do unpatched, so the shim has to be in
+// place before any pdf.js code runs. The worker gets the same treatment through
+// its own entry module (see pdfWorkerEntry.ts) because it is a separate context.
 
+import "../streamAsyncIterator";
 import "../mapPolyfill";
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import type {
   PDFDocumentProxy,
   TextItem,
 } from "pdfjs-dist/types/src/display/api";
-import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
+import workerUrl from "./pdfWorkerEntry?worker&url";
 import {
   parsePlanMarkAnnotation,
   markCentersAlongAnnotation,
