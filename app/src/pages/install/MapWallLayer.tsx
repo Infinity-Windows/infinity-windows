@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type PointerEvent as ReactPointerEvent } from "react";
 import {
   outlinePathWithOpenings,
   wallOpeningGeometry,
@@ -18,12 +18,23 @@ const INTERIOR_FILL = "rgba(214, 208, 199, 0.10)";
 const SYMBOL_WEIGHT = 2.6;
 
 /**
+ * Radius of the invisible disc you actually tap, in viewBox units. About 24px
+ * on a phone: the same target a pin had, so nothing got harder to hit by losing
+ * its dot.
+ */
+const HIT_RADIUS = 32;
+/** Mark number size and how far inside the wall it sits, in viewBox units. */
+const LABEL_SIZE = 34;
+const LABEL_INSET = 30;
+
+/**
  * The building, drawn as walls with its windows and doors cut into them.
  *
  * The gaps come out of the wall stroke, so an opening is literally a hole in
- * the wall rather than a dot sitting near one, and each symbol is drawn in its
- * own install status colour. Only marks that were already on a wall get this
- * treatment; the rest stay as pins in `MapPinLayer`.
+ * the wall rather than a dot sitting near one — and the opening is also the
+ * thing you tap. It used to be drawn twice: once as a symbol in the wall and
+ * again as a pin floating just inside it, which on a 42-mark job turned the
+ * walls into a solid ring of blobs. A window is one thing, so it is drawn once.
  */
 export function MapWallLayer(props: {
   points: OutlinePoint[];
@@ -35,6 +46,10 @@ export function MapWallLayer(props: {
   selectedId?: string | null;
   strokeScale?: number;
   wallStroke: number;
+  /** Mark number to draw beside an opening, or null to leave it unlabelled. */
+  labelFor?: (id: string) => string | null;
+  titleFor?: (id: string) => string;
+  onOpeningPointerDown?: (id: string) => (event: ReactPointerEvent) => void;
 }) {
   const {
     points,
@@ -45,6 +60,9 @@ export function MapWallLayer(props: {
     selectedId,
     strokeScale = 1,
     wallStroke,
+    labelFor,
+    titleFor,
+    onOpeningPointerDown,
   } = props;
 
   const geos = useMemo(
@@ -54,6 +72,14 @@ export function MapWallLayer(props: {
         .filter((g): g is NonNullable<typeof g> => !!g),
     [openings, points, aspect],
   );
+
+  const edgeLengths = useMemo(() => {
+    const h = 1000 * (aspect > 0 ? aspect : 0.7);
+    return points.map((p, i) => {
+      const q = points[(i + 1) % points.length];
+      return Math.hypot((q.x - p.x) * 1000, (q.y - p.y) * h);
+    });
+  }, [points, aspect]);
 
   const gappedPath = useMemo(
     () => outlinePathWithOpenings(points, aspect, openings),
@@ -74,18 +100,77 @@ export function MapWallLayer(props: {
         strokeWidth={wallStroke * strokeScale}
         strokeLinejoin="miter"
       />
-      {geos.map((g) => (
-        // Tagged so the screenshot harness can count how many marks on a page
-        // became openings without inferring it from the picture.
-        <g key={g.id} data-wall-opening={g.id} data-opening-kind={g.kind}>
-          <WallOpeningSymbol
-            geo={g}
-            color={colorFor(g.id) ?? WALL_COLOR}
-            strokeScale={strokeScale * SYMBOL_WEIGHT}
-            emphasis={selectedId === g.id}
-          />
-        </g>
-      ))}
+      {geos.map((g) => {
+        const selected = selectedId === g.id;
+        const cx = (g.ax + g.bx) / 2;
+        const cy = (g.ay + g.by) / 2;
+        const label = labelFor?.(g.id) ?? null;
+        const opening = openings.find((o) => o.id === g.id);
+        const center =
+          opening != null
+            ? opening.t * (edgeLengths[opening.edge] ?? 0)
+            : 0;
+        return (
+          // Tagged so the screenshot harness can count how many marks on a page
+          // became openings without inferring it from the picture.
+          <g
+            key={g.id}
+            data-wall-opening={g.id}
+            data-opening-kind={g.kind}
+            data-opening-edge={opening != null ? String(opening.edge) : undefined}
+            data-opening-center={String(center)}
+            data-opening-width={String(g.width)}
+            onPointerDown={onOpeningPointerDown?.(g.id)}
+            style={{ cursor: onOpeningPointerDown ? "pointer" : undefined }}
+          >
+            {titleFor && <title>{titleFor(g.id)}</title>}
+            <WallOpeningSymbol
+              geo={g}
+              color={colorFor(g.id) ?? WALL_COLOR}
+              strokeScale={strokeScale * SYMBOL_WEIGHT}
+              emphasis={selected}
+            />
+            {selected && (
+              <circle
+                cx={cx}
+                cy={cy}
+                r={HIT_RADIUS * 0.62}
+                fill="none"
+                stroke={colorFor(g.id) ?? WALL_COLOR}
+                strokeWidth={3 * strokeScale}
+              />
+            )}
+            {label && (
+              // Just inside the wall, so it never sits on top of its own symbol.
+              <text
+                data-opening-label={g.id}
+                x={cx + g.nx * LABEL_INSET}
+                y={cy + g.ny * LABEL_INSET}
+                fill={colorFor(g.id) ?? WALL_COLOR}
+                fontSize={LABEL_SIZE * strokeScale}
+                fontWeight={700}
+                textAnchor="middle"
+                dominantBaseline="central"
+                style={{ pointerEvents: "none" }}
+              >
+                {label}
+              </text>
+            )}
+            {/*
+              The tap target, last so it is on top of everything it belongs to.
+              A window symbol is a few thin lines; nobody hits that with a glove
+              on, so the thing you aim at is a disc over the whole opening.
+            */}
+            <circle
+              cx={cx}
+              cy={cy}
+              r={HIT_RADIUS}
+              fill="transparent"
+              stroke="none"
+            />
+          </g>
+        );
+      })}
     </g>
   );
 }

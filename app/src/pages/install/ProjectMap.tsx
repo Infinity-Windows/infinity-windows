@@ -98,7 +98,6 @@ import {
 import { dispatchNudge, dispatchNudgeText } from "../../lib/install/dispatchNudge";
 import {
   snapOpeningsToWalls,
-  wallPinPosition,
   type SnappedOpening,
 } from "../../lib/install/wallSnap";
 import { MapPinLayer } from "./MapPinLayer";
@@ -163,7 +162,7 @@ const WALL_STROKE = 11;
 const FOOTPRINT_SOURCE_LABEL: Record<FootprintSource | "none", string> = {
   saved: "traced by hand",
   traced: "outline from CAD",
-  pins: "shape from marks",
+  pins: "basic outline",
   none: "no marks placed yet",
 };
 
@@ -172,15 +171,27 @@ const FOOTPRINT_SOURCE_LABEL: Record<FootprintSource | "none", string> = {
  * is stamped into `features.derived_from`, so a saved shape reports where it
  * actually came from instead of crediting a person who never drew it.
  */
-function savedFootprintLabel(features: unknown): string {
+function outlineDerivedFrom(features: unknown): FootprintSource | null {
   const origin =
     features && typeof features === "object"
       ? (features as { derived_from?: unknown }).derived_from
       : undefined;
-  if (origin === "pins" || origin === "traced") {
-    return FOOTPRINT_SOURCE_LABEL[origin];
-  }
+  return origin === "pins" || origin === "traced" ? origin : null;
+}
+
+function savedFootprintLabel(features: unknown): string {
+  const origin = outlineDerivedFrom(features);
+  if (origin) return FOOTPRINT_SOURCE_LABEL[origin];
   return FOOTPRINT_SOURCE_LABEL.saved;
+}
+
+/**
+ * An outline a person drew by hand. Auto-saved pin/trace shapes used to lock
+ * in forever under this name, which is why Black Desert kept drawing a lumpy
+ * "building" after the app had already moved on to a plain rectangle.
+ */
+function isHandDrawnOutline(features: unknown): boolean {
+  return outlineDerivedFrom(features) === null;
 }
 
 export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
@@ -855,12 +866,18 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const activeDetail = details.find((detail) => detail.pageNumber === page);
 
   const extractedOutline = outlines[page] ?? null;
-  const manualOutlineRows = useMemo(
+  const pageOutlineRows = useMemo(
     () =>
       (planOutlines.data ?? []).filter(
         (outline) => outline.page_number === page,
       ),
     [planOutlines.data, page],
+  );
+  // Only a hand-drawn shape overrides the rectangle. Auto-saved pin blobs and
+  // CAD traces are hints the resolver already knows how to rebuild.
+  const manualOutlineRows = useMemo(
+    () => pageOutlineRows.filter((row) => isHandDrawnOutline(row.features)),
+    [pageOutlineRows],
   );
   const manualOutlineRow = manualOutlineRows[0];
   const manualOutline: BuildingOutline | null = useMemo(
@@ -915,14 +932,15 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   /**
    * Save the shape once, the first time a lead opens a page that has none.
    *
-   * The pin-derived footprint is cheap but not free — a grid trace per page, on
-   * a phone, thrown away on every visit. Storing it makes the shape stable, and
-   * gives a lead something to correct by hand later.
+   * A plain rectangle is cheap to rebuild, but storing it keeps the shape
+   * stable across visits and gives a lead something to correct by hand later.
+   * An older auto-saved pin blob is overwritten with the rectangle so a job
+   * that once locked in a lumpy shape does not keep drawing it forever.
    *
    * Same narrow contract as the elevation backfill: leads only, only when
-   * nothing is stored, once per page per visit, silent on failure. It also
-   * waits until every mark on the job has a pin, so a half-pinned job does not
-   * freeze a half-sized building.
+   * nothing hand-drawn is stored, once per page per visit, silent on failure.
+   * It also waits until every mark on the job has a pin, so a half-pinned job
+   * does not freeze a half-sized building.
    *
    * The lead gate is this client only — `project_plan_outlines` currently
    * grants every authenticated user full access — so it keeps one crew member's
@@ -931,6 +949,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const backfilledFootprint = useRef<string | null>(null);
   const footprintPoints = footprint?.outline.points;
   const footprintSource = footprint?.source ?? null;
+  const autoOutlineId = pageOutlineRows.find(
+    (row) => outlineDerivedFrom(row.features) !== null,
+  )?.id;
   const fullyPinned =
     (openings.data ?? []).length > 0 &&
     (openings.data ?? []).every((o) => o.pin_x !== null && o.pin_y !== null);
@@ -947,6 +968,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     void (async () => {
       try {
         await savePlanOutline({
+          outlineId: autoOutlineId,
           projectId,
           plansetId: buildingPlansetId,
           pageNumber: page,
@@ -1000,7 +1022,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   };
 
   const beginDrag =
-    (o: ProjectOpening) => (e: React.PointerEvent<HTMLButtonElement>) => {
+    (o: ProjectOpening) => (e: React.PointerEvent) => {
       e.preventDefault();
       e.stopPropagation();
       const cur = dotPos(o);
@@ -1276,27 +1298,25 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
    */
   const pinPositions = (() => {
     const free: { id: string; x: number; y: number }[] = [];
-    const handles = new Map<string, { x: number; y: number }>();
     for (const o of [...placed, ...autos]) {
-      const opening = wallOpenings.snapped.get(o.id);
-      const handle =
-        opening && outline
-          ? wallPinPosition(outline.points, aspect, opening)
-          : null;
-      if (handle) {
-        handles.set(o.id, handle);
-        continue;
-      }
+      if (wallOpenings.snapped.has(o.id)) continue;
       const pos = dotPos(o);
       free.push({ id: o.id, x: pos.x, y: pos.y });
     }
     const layout = separatePins(free, { minDist: PIN_MIN_GAP, aspect });
-    for (const [id, point] of handles) layout.set(id, point);
     // The pin under the finger sits exactly where the finger is. Nudging it, or
     // pulling it onto a wall mid-drag, would make dragging feel broken.
     if (drag) layout.set(drag.id, { x: drag.x, y: drag.y });
     return layout;
   })();
+
+  /**
+   * Only the marks that are NOT drawn in a wall still get a pin. An opening in a
+   * wall is already a thing on the screen you can tap, and drawing a dot beside
+   * it as well was what made a 42-mark job look like a chain of blobs.
+   */
+  const freePinOpenings = (list: ProjectOpening[]) =>
+    list.filter((o) => !wallOpenings.snapped.has(o.id) || drag?.id === o.id);
 
   const autoPinIds = new Set(autos.map((o) => o.id));
 
@@ -1315,6 +1335,39 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     return OPENING_STATUS_COLORS[opening.status];
   };
 
+  const openingById = (id: string) =>
+    [...placed, ...autos].find((o) => o.id === id) ?? null;
+
+  /** Dispatch numbers the route; otherwise it is the mark's own number. */
+  const wallOpeningLabel = (id: string): string | null => {
+    const opening = openingById(id);
+    if (!opening) return null;
+    const seq = hasRoute ? routeOrder.get(id) : undefined;
+    if (seq != null) return String(seq);
+    if (dispatchMode) {
+      const index = selection.indexOf(id);
+      if (index >= 0) return String(index + 1);
+    }
+    return showMarkNumbers || selectedId === id
+      ? openingMarkCode(opening.opening_code)
+      : null;
+  };
+
+  const wallOpeningTitle = (id: string): string => {
+    const opening = openingById(id);
+    return opening ? pinTitle(opening) : "";
+  };
+
+  /** Same gesture a pin has: tap to select, drag to move it along the wall. */
+  const beginDragById = (id: string) => {
+    const opening = openingById(id);
+    return opening
+      ? beginDrag(opening)
+      : () => {
+          /* gone from the list mid-render */
+        };
+  };
+
   /**
    * Mark numbers are legible until the page gets busy — Black Desert has 42 on
    * one sheet, which is 42 overlapping words. Past that they are off until
@@ -1324,9 +1377,19 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const labelsFitOnPage = markCount <= PIN_LABEL_AUTO_MAX;
   const showMarkNumbers = markNumbers ?? (labelsFitOnPage || pdfZoom >= 1.5);
 
-  const renderOpeningDots = (mode: "all" | "pinned" = "all") => (
+  /**
+   * `wallDrawn` says the drawing underneath already shows these openings cut
+   * into its walls, so only the ones that did not make it into a wall need a
+   * pin. The PDF views have no walls to cut, so they pin everything.
+   */
+  const renderOpeningDots = (
+    mode: "all" | "pinned" = "all",
+    wallDrawn = false,
+  ) => {
+    const shown = mode === "pinned" ? placed : [...placed, ...autos];
+    return (
     <MapPinLayer
-      openings={mode === "pinned" ? placed : [...placed, ...autos]}
+      openings={wallDrawn ? freePinOpenings(shown) : shown}
       positions={pinPositions}
       autoIds={autoPinIds}
       selectedId={selectedId}
@@ -1346,7 +1409,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       pinTitle={pinTitle}
       onPinPointerDown={beginDrag}
     />
-  );
+    );
+  };
 
   // Reset zoom when flipping PDF pages.
   useEffect(() => {
@@ -1956,11 +2020,14 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                         colorFor={wallOpeningColor}
                         selectedId={selectedId}
                         wallStroke={WALL_STROKE}
+                        labelFor={wallOpeningLabel}
+                        titleFor={wallOpeningTitle}
+                        onOpeningPointerDown={beginDragById}
                       />
                     )
                   )}
                 </svg>
-                {renderOpeningDots()}
+                {renderOpeningDots("all", manualOutlinePaths.length === 0)}
                 <div className="cartoon-sheet__floor" aria-hidden>
                   Floor {page}
                   <span>
