@@ -19,6 +19,7 @@ import {
 import { registerRoute, NavigationRoute } from "workbox-routing";
 import { CacheFirst } from "workbox-strategies";
 import { ExpirationPlugin } from "workbox-expiration";
+import { resolveNotificationUrl } from "./lib/pwa/basePaths";
 
 declare const self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: Array<{ url: string; revision: string | null }>;
@@ -99,7 +100,11 @@ self.addEventListener("push", (event: PushEvent) => {
 self.addEventListener("notificationclick", (event: NotificationEvent) => {
   event.notification.close();
   const data = (event.notification.data ?? {}) as { url?: string };
-  const targetUrl = data.url || "/";
+  // Call sites write router paths (`/clock`, `/projects/x?tab=chat`). Opening
+  // one verbatim on Pages would land on the domain root, outside the app, so
+  // resolve it against this worker's scope — `/infinity-windows/` live, `/`
+  // locally. See lib/pwa/basePaths.
+  const targetUrl = resolveNotificationUrl(data.url, self.registration.scope);
   event.waitUntil(
     (async () => {
       const clientList = await self.clients.matchAll({

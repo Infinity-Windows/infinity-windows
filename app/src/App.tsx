@@ -16,6 +16,7 @@ import { getMyProfile } from "./lib/install/api";
 import { canAccess, roleRank, ROLE_NAV_V2, type RoutePath } from "./lib/nav";
 import type { CrewRole } from "./lib/install/types";
 import { ClockProvider } from "./lib/clockContext";
+import { routerBasename } from "./lib/pwa/basePaths";
 import { ViewAsRoleProvider } from "./lib/viewAsRole";
 import { effectiveRole, useViewAsRole } from "./lib/viewAsRoleContext";
 import { supabase } from "./lib/supabase";
@@ -207,9 +208,7 @@ export default function App() {
     >
       <PinGate>
       <ViewAsRoleProvider>
-      <BrowserRouter
-        basename={(import.meta.env.BASE_URL || "/").replace(/\/$/, "") || undefined}
-      >
+      <BrowserRouter basename={routerBasename(import.meta.env.BASE_URL)}>
         <ClockProvider>
         <Routes>
           <Route element={<Layout />}>
