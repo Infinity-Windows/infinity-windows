@@ -13,7 +13,13 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <!--
+      The manifest link is missing here on purpose. The manifest is generated
+      per base path (`/` locally, `/infinity-windows/` on GitHub Pages) and its
+      link tag is injected by webManifestPlugin in vite.config.ts, so the link
+      and the file it points at can never disagree. The icon hrefs above are
+      real files in public/, which Vite rewrites for the base by itself.
+    -->
     <title>Infinity</title>
   </head>
   <body>
