@@ -37,5 +37,5 @@ Buy 2 rolls to start (1,000 labels): covers the full conversion day plus months 
 ## Software costs
 
 - Supabase (database, auth, photo/memo storage): $0/month free tier at 100–500 windows; ~$25/month if storage outgrows it later.
-- App hosting (Vercel or Cloudflare Pages): $0/month.
+- App hosting (GitHub Pages): $0/month.
 - GitHub private repo: $0/month.

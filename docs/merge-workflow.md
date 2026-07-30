@@ -93,8 +93,6 @@ Deliberately **not** required:
   nothing in this repository would ever have been mergeable again. It is not
   required, and this was tested: every change merged while master was red on
   `Deploy backend`.
-- `Vercel`. It fails whenever the person who wrote the commit isn't on the Vercel
-  team, which is true of several agents. It would have blocked them.
 - The Slack notifier jobs and `proposed`/`shipped`. They are skipped on most
   runs, so they never report a pass.
 
