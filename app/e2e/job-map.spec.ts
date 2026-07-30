@@ -346,41 +346,63 @@ for (const job of jobFixtures()) {
       ).toMatch(/^M\s*[\d.-]/i);
 
       /*
-       * The outline opens enlarged so openings are not crushed into the phone
-       * width. The drawing must be wider than its scroll viewport, zoom must
-       * change that size, and the viewport must be able to pan.
+       * The measurement that decides whether this reads as a building: how much
+       * of the perimeter is hole rather than wall. A floor whose openings eat
+       * the whole wall looks packed at every zoom level, because magnifying
+       * grows the wall and the holes together — so this is checked in the
+       * drawing's own units, not in pixels.
+       */
+      const wallShare = await page
+        .locator("[data-outline-perimeter]")
+        .evaluate((root) => {
+          const perimeter = Number(
+            root.getAttribute("data-outline-perimeter") ?? 0,
+          );
+          const holes = [...root.querySelectorAll("[data-opening-width]")]
+            .map((n) => Number(n.getAttribute("data-opening-width")))
+            .filter(Number.isFinite)
+            .reduce((sum, w) => sum + w, 0);
+          return { perimeter, holes, openRatio: perimeter ? holes / perimeter : 1 };
+        });
+      expect(
+        wallShare.openRatio,
+        `${job.jobCode}: openings take ${(wallShare.openRatio * 100).toFixed(0)}% ` +
+          `of the perimeter, so there is barely any wall left between them`,
+      ).toBeLessThan(0.55);
+
+      /*
+       * The whole floor is visible on opening — zoom is for inspecting a
+       * corner, not for un-cramming the drawing.
        */
       const zoomViewport = page.locator(".plan-zoom-viewport--outline");
       const outlineSheet = page.locator(
         ".plan-zoom-viewport--outline .cartoon-sheet",
       );
       await expect(zoomViewport).toBeVisible();
-      const startZoom = await outlineSheet.getAttribute("data-outline-zoom");
-      expect(
-        Number(startZoom),
-        `${job.jobCode}: outline should open enlarged (200%)`,
-      ).toBeGreaterThan(1);
       const viewportBox = await zoomViewport.boundingBox();
       const sheetBox = await outlineSheet.boundingBox();
       expect(viewportBox, `${job.jobCode}: missing outline viewport`).toBeTruthy();
       expect(sheetBox, `${job.jobCode}: missing outline sheet`).toBeTruthy();
       expect(
         (sheetBox?.width ?? 0) / (viewportBox?.width ?? 1),
-        `${job.jobCode}: drawing should overflow its viewport at the default zoom`,
-      ).toBeGreaterThan(1.4);
+        `${job.jobCode}: the whole floor should fit without panning`,
+      ).toBeLessThanOrEqual(1.02);
 
       const zoomLabel = page.getByRole("button", { name: "Reset zoom" });
+      await expect(zoomLabel).toHaveText("100%");
+      // Zoom is still there for a closer look, and panning works once the
+      // drawing is bigger than its viewport.
+      for (let i = 0; i < 4; i++) {
+        await page.getByRole("button", { name: "Zoom in" }).click();
+      }
       await expect(zoomLabel).toHaveText("200%");
-      await page.getByRole("button", { name: "Zoom in" }).click();
-      await expect(zoomLabel).toHaveText("225%");
       await expect
         .poll(async () => {
           const next = await outlineSheet.boundingBox();
           return next?.width ?? 0;
         })
-        .toBeGreaterThan((sheetBox?.width ?? 0) * 1.05);
+        .toBeGreaterThan((sheetBox?.width ?? 0) * 1.5);
 
-      // Pan: scroll the viewport so the sheet moves under it.
       const beforeScroll = await zoomViewport.evaluate((el) => el.scrollLeft);
       await zoomViewport.evaluate((el) => {
         el.scrollLeft = Math.min(el.scrollWidth - el.clientWidth, 80);
@@ -388,7 +410,7 @@ for (const job of jobFixtures()) {
       const afterScroll = await zoomViewport.evaluate((el) => el.scrollLeft);
       expect(
         afterScroll,
-        `${job.jobCode}: outline viewport should pan horizontally`,
+        `${job.jobCode}: outline viewport should pan once zoomed in`,
       ).toBeGreaterThan(beforeScroll);
 
       // Openings stay interactive after zoom/pan — tap one and its row links.
@@ -401,9 +423,9 @@ for (const job of jobFixtures()) {
         ).toBeVisible({ timeout: 5_000 });
       }
 
-      // Put zoom back so the later screenshots match the default enlarged view.
+      // Back to the whole floor, which is what the screenshots record.
       await zoomLabel.click();
-      await expect(zoomLabel).toHaveText("200%");
+      await expect(zoomLabel).toHaveText("100%");
     }
 
     const rendered = await marks.count();

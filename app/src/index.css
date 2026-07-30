@@ -1192,6 +1192,12 @@ button:disabled {
   text-transform: uppercase;
   color: rgba(224, 218, 209, 0.7);
   pointer-events: none;
+  /* The building now fills the sheet, so the caption can land on the bottom
+     wall. Its own backing keeps it readable there instead of tangling with the
+     openings. */
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(16, 14, 12, 0.78);
 }
 
 .cartoon-sheet__floor span {

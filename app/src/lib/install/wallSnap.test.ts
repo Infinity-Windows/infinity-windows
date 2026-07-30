@@ -129,6 +129,93 @@ describe("snapOpeningsToWalls", () => {
     expect(result.freeIds).toEqual([]);
   });
 
+  it("keeps most of a crowded building's wall as wall", () => {
+    // The second complaint: a floor drawn as a ring of holes with no wall left
+    // between them. Zooming in cannot fix that — it grows the wall and the
+    // holes by the same factor — so the openings have to give up the room here.
+    const perimeter = 2 * (0.6 * 1000 + 0.6 * 1000 * ASPECT);
+    const crowded = Array.from({ length: 58 }, (_, i) =>
+      candidate(`m${i}`, 0.25 + (i % 10) * 0.06, 0.25 + Math.floor(i / 10) * 0.09),
+    );
+    const result = snapOpeningsToWalls({
+      openings: crowded,
+      points: BOX,
+      aspect: ASPECT,
+    });
+    const holes = [...result.snapped.values()].reduce(
+      (sum, o) => sum + o.width,
+      0,
+    );
+    expect(holes / perimeter).toBeLessThan(0.55);
+  });
+
+  it("spreads extracted marks along a wall instead of leaving the clump", () => {
+    // Six marks the extractor read off one row of a drawing, all landing within
+    // a tenth of the top wall. Drawn where they claim to be, they are a blob at
+    // one end of an otherwise empty wall.
+    const clumped = Array.from({ length: 6 }, (_, i) =>
+      candidate(`m${i}`, 0.3 + i * 0.008, 0.2),
+    );
+    const result = snapOpeningsToWalls({
+      openings: clumped,
+      points: BOX,
+      aspect: ASPECT,
+    });
+    const xs = [...result.snapped.values()].map((o) => o.point.x).sort((a, b) => a - b);
+    // Spread across most of the wall (x 0.2..0.8), not bunched around 0.3.
+    expect(xs[xs.length - 1] - xs[0]).toBeGreaterThan(0.4);
+    // And still in their original order, so mark 1 stays next to mark 2.
+    const order = [...result.snapped.entries()]
+      .sort((a, b) => a[1].point.x - b[1].point.x)
+      .map(([id]) => id);
+    expect(order).toEqual(["m0", "m1", "m2", "m3", "m4", "m5"]);
+  });
+
+  it("leaves a wall alone once a foreman has placed a mark on it", () => {
+    // Someone stood in front of the building and dragged these. Their spacing
+    // is real, so it is not ours to even out.
+    const result = snapOpeningsToWalls({
+      openings: [
+        { ...candidate("a", 0.3, 0.2), placed: true },
+        { ...candidate("b", 0.35, 0.2), placed: true },
+        { ...candidate("c", 0.4, 0.2), placed: true },
+      ],
+      points: BOX,
+      aspect: ASPECT,
+    });
+    const xs = [...result.snapped.values()].map((o) => o.point.x);
+    expect(Math.max(...xs)).toBeLessThan(0.5);
+  });
+
+  it("does not shrink openings on a floor with room to spare", () => {
+    // The squeeze is per-floor, so a three-mark job keeps full-size openings.
+    const result = snapOpeningsToWalls({
+      openings: [
+        candidate("a", 0.4, 0.2),
+        candidate("b", 0.8, 0.5, "door"),
+        candidate("c", 0.5, 0.8),
+      ],
+      points: BOX,
+      aspect: ASPECT,
+    });
+    expect(result.snapped.get("a")!.width).toBe(WINDOW_GAP_WIDTH);
+    expect(result.snapped.get("b")!.width).toBe(DOOR_GAP_WIDTH);
+  });
+
+  it("keeps doors wider than windows even when the floor is packed", () => {
+    const packed = Array.from({ length: 40 }, (_, i) =>
+      candidate(`w${i}`, 0.25 + (i % 10) * 0.055, 0.25 + Math.floor(i / 10) * 0.1),
+    );
+    const result = snapOpeningsToWalls({
+      openings: [...packed, candidate("door", 0.5, 0.8, "door")],
+      points: BOX,
+      aspect: ASPECT,
+    });
+    expect(result.snapped.get("door")!.width).toBeGreaterThan(
+      result.snapped.get("w0")!.width,
+    );
+  });
+
   it("still draws openings that only need a modest squeeze", () => {
     const openings = Array.from({ length: 5 }, (_, i) =>
       candidate(`m${i}`, 0.3 + i * 0.075, 0.2),

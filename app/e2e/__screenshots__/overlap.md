@@ -8,6 +8,6 @@ Every mark number forced on:
 
 | job | page | labels | touching | 1/4 buried | buried share | label size | marks per 100k px² |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| BLACK22 | 1 | 42 | 12 / 42 | 0 / 42 | 0.000 | 24.7 x 28.0 px | 13.7 |
-| PECAN14 | 3 | 58 | 25 / 58 | 2 / 58 | 0.034 | 24.7 x 28.0 px | 24.4 |
-| OAKRIDGE | 1 | 3 | 0 / 3 | 0 / 3 | 0.000 | 56.5 x 28.0 px | 1.2 |
+| BLACK22 | 1 | 42 | 20 / 42 | 0 / 42 | 0.000 | 12.4 x 14.0 px | 17.7 |
+| PECAN14 | 3 | 58 | 42 / 58 | 5 / 58 | 0.086 | 12.4 x 14.0 px | 36.7 |
+| OAKRIDGE | 1 | 3 | 0 / 3 | 0 / 3 | 0.000 | 28.3 x 14.0 px | 1.7 |
