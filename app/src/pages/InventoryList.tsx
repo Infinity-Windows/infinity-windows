@@ -151,15 +151,29 @@ export function InventoryList() {
 
 /**
  * Where the window actually is. A slot address is the answer a warehouse person
- * came for; with no slot the row has to say so loudly, because "no location" is
- * the whole reason a unit is in the putaway list.
+ * came for, so anything else has to say plainly that there isn't one — a unit
+ * with no slot is a unit somebody has to go and hunt for.
  */
 function Whereabouts({ unit }: { unit: WindowUnit }) {
-  if (unit.locations?.address) {
-    return <span className="big-address">{unit.locations.address}</span>;
-  }
+  const address = unit.locations?.address;
+
+  // Inbound means nobody has put it away yet, even when it is sitting
+  // somewhere known like the receiving dock — the dock is not storage.
   if (unit.status === "inbound") {
-    return <span className="warn-text">No slot yet</span>;
+    return (
+      <span className="warn-text">
+        {address ? `Needs a slot — on ${address}` : "Needs a slot — nowhere yet"}
+      </span>
+    );
   }
-  return <span className="muted">{STATUS_LABELS[unit.status]}</span>;
+
+  if (address) return <span className="big-address">{address}</span>;
+
+  // Worse than inbound: the app believes this one is put away, and still
+  // cannot say where it is.
+  return (
+    <span className="warn-text">
+      {STATUS_LABELS[unit.status]} — no slot recorded
+    </span>
+  );
 }
