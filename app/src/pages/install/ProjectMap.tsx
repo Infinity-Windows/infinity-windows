@@ -75,6 +75,7 @@ import {
   parseOutlineFeatures,
 } from "../../lib/install/cad";
 import { formatApiError } from "../../lib/install/errors";
+import { planLoadMessage, withPlanTimeout } from "../../lib/install/planLoad";
 import { openingMarkerStyle } from "../../lib/install/openingMarkerScale";
 import {
   extractBuildingOutline,
@@ -130,6 +131,14 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const [specsText, setSpecsText] = useState<PdfTextPage[]>([]);
   const [image, setImage] = useState<PageImage | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+  // A plan that would not open, in words a crew member can act on. Separate
+  // from `mapError` (which reports failed actions like saving a pin) because
+  // this one owns the drawing area itself: while it is set the panel shows a
+  // Retry button instead of a spinner that would otherwise never stop.
+  const [planError, setPlanError] = useState<string | null>(null);
+  // Bumped by Retry. Both the document load and the page render depend on it,
+  // so one tap re-runs whichever stage failed.
+  const [planAttempt, setPlanAttempt] = useState(0);
   const [filter, setFilter] = useState<PlanFilter>("all");
   const [fullScreen, setFullScreen] = useState(false);
   const [pdfZoom, setPdfZoom] = useState(1);
@@ -453,6 +462,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   useEffect(() => {
     if (!buildingPdf && !specsPdf) return;
     let cancelled = false;
+    setPlanError(null);
     (async () => {
       try {
         const { extractAllText, extractPlanMarkCallouts, loadPdf } =
@@ -460,7 +470,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         let initialPage = 1;
 
         if (buildingPdf) {
-          const buildingDoc = await loadPdf(await downloadPlanset(buildingPdf));
+          const buildingDoc = await withPlanTimeout(
+            downloadPlanset(buildingPdf).then(loadPdf),
+          );
           const buildingText = await extractAllText(buildingDoc);
           if (cancelled) return;
           buildingDocRef.current = buildingDoc;
@@ -478,7 +490,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         }
 
         if (specsPdf) {
-          const specsDoc = await loadPdf(await downloadPlanset(specsPdf));
+          const specsDoc = await withPlanTimeout(
+            downloadPlanset(specsPdf).then(loadPdf),
+          );
           const specsPageText = await extractAllText(specsDoc);
           if (cancelled) return;
           specsDocRef.current = specsDoc;
@@ -495,13 +509,15 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         setFullScreen(false);
         setDocsReady((ready) => ready + 1);
       } catch (e) {
-        if (!cancelled) setMapError(formatApiError(e));
+        // Owns the drawing area, so it reports through planError: the panel can
+        // then offer Retry rather than sitting on "Loading original plan…".
+        if (!cancelled) setPlanError(planLoadMessage(e));
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [buildingPdf?.id, specsPdf?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [buildingPdf?.id, specsPdf?.id, planAttempt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Jobs whose plans were read before the elevation reference existed have
@@ -584,14 +600,18 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     if (!doc || page < 1 || page > doc.numPages) return;
     let cancelled = false;
     setImage(null);
-    import("../../lib/install/pdf")
-      .then(({ renderPageImage }) => renderPageImage(doc, page))
+    setPlanError(null);
+    withPlanTimeout(
+      import("../../lib/install/pdf").then(({ renderPageImage }) =>
+        renderPageImage(doc, page),
+      ),
+    )
       .then((img) => !cancelled && setImage(img))
-      .catch((e) => !cancelled && setMapError(formatApiError(e)));
+      .catch((e) => !cancelled && setPlanError(planLoadMessage(e)));
     return () => {
       cancelled = true;
     };
-  }, [page, view, docsReady]);
+  }, [page, view, docsReady, planAttempt]);
 
   // Escape exits fullscreen; lock body scroll while open.
   useEffect(() => {
@@ -747,7 +767,10 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     view === "outline" &&
     !manualOutline &&
     outlines[page] === undefined &&
-    !planOutlines.isLoading;
+    !planOutlines.isLoading &&
+    // Tracing needs the plan PDF. If that failed we fall back to the schematic
+    // rather than sitting on "tracing plan…" for the rest of the shift.
+    !planError;
   const aspect =
     outline?.pageAspect ??
     manualOutline?.pageAspect ??
@@ -1030,6 +1053,27 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   useEffect(() => {
     setPdfZoom(1);
   }, [page, view]);
+
+  /**
+   * Shown in the drawing area instead of a spinner when a plan will not open.
+   * The wording is deliberately about what to DO, not about what broke: the
+   * crew cannot fix a PDF, they can only tap Retry or ring the office.
+   */
+  const planTrouble = planError && (
+    <div className="plan-trouble" role="alert">
+      <p className="error">{planError}</p>
+      <button
+        type="button"
+        className="button-like"
+        onClick={() => {
+          setPlanError(null);
+          setPlanAttempt((attempt) => attempt + 1);
+        }}
+      >
+        Retry
+      </button>
+    </div>
+  );
 
   const zoomControls = (view === "building" || view === "details") && (
     <div className="plan-zoom-controls" role="group" aria-label="Zoom">
@@ -1531,6 +1575,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             />
           ) : (
             <>
+              {/* Outline is the view the map opens on, so the retry has to be
+                  reachable from here and not only from the plan tab. */}
+              {planTrouble}
               <div
                 ref={sheetRef}
                 className="cartoon-sheet"
@@ -1650,6 +1697,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 {renderOpeningDots("pinned")}
               </div>
             </div>
+          ) : planTrouble ? (
+            planTrouble
           ) : (
             <p className="muted" style={{ padding: "12px 6px" }}>
               Loading original plan…
@@ -1712,6 +1761,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 />
               </div>
             </div>
+          ) : planTrouble ? (
+            planTrouble
           ) : (
             <p className="muted" style={{ padding: "12px 6px" }}>
               Loading detail sheet…
