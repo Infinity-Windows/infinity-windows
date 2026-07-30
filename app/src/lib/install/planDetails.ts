@@ -247,6 +247,25 @@ export function findFloorPlanPages(
   return unique(byMarks.map((page) => page.pageNumber));
 }
 
+/**
+ * Which sheets a drawing view should let you page through: the ones detected as
+ * floor plans, plus every sheet that actually carries a mark.
+ *
+ * Oakridge's marks live on page 1 while its detected floor sheets are 3 and 4,
+ * so the outline view drew an empty building and offered no way to reach the
+ * marks at all. Detection being wrong is a separate problem; a view that hides
+ * the job's own marks is a dead end either way.
+ */
+export function mergePageLists(
+  detected: number[],
+  pagesWithMarks: number[],
+  pageCount: number,
+): number[] {
+  const merged = unique([...detected, ...pagesWithMarks]).sort((a, b) => a - b);
+  if (merged.length > 0) return merged;
+  return Array.from({ length: Math.max(0, pageCount) }, (_, i) => i + 1);
+}
+
 function detailMarks(text: string): string[] {
   return unique(markCalloutMatches(text).map((match) => match[1].toUpperCase()));
 }

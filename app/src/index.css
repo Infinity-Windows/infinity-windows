@@ -745,6 +745,45 @@ button:disabled {
   margin: 12px 0 8px;
 }
 
+/*
+ * Job setup, folded away. Everything in here is used while a lead is wiring a
+ * job up and never again, so it must not push the drawing down the screen.
+ */
+.plans-panel {
+  border: 1px solid rgba(163, 156, 146, 0.22);
+  border-radius: 10px;
+  margin: 0 0 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.plans-panel__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.plans-panel__summary .muted {
+  font-family: var(--font-body, inherit);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.plans-panel__body {
+  padding: 0 12px 12px;
+}
+
 .planset-picker-row {
   display: flex;
   flex-wrap: wrap;
@@ -861,11 +900,19 @@ button:disabled {
   padding: 4px 6px 10px;
 }
 
+/*
+ * On a phone this row is job code, shape source, Edit, full screen — more than
+ * 390px holds. So the pressure is deliberately aimed at the shape source, which
+ * is a caption, rather than at the job code, which is what tells a lead which
+ * building they are looking at.
+ */
 .cartoon-sheet__head-actions {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
 }
 
 .cartoon-sheet__title {
@@ -875,6 +922,9 @@ button:disabled {
   letter-spacing: 2px;
   color: #a39c92;
   text-transform: uppercase;
+  /* One line, always in full. Never a word left on a line by itself. */
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .cartoon-sheet__status {
@@ -882,6 +932,10 @@ button:disabled {
   letter-spacing: 1px;
   color: #5c564e;
   text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .plan-fullscreen-toggle {
@@ -916,12 +970,32 @@ button:disabled {
   overflow: auto;
 }
 
-.plan-sheet--fullscreen .cartoon-sheet,
 .plan-sheet--fullscreen .plan-map {
   flex: 1;
   min-height: 0;
   height: auto;
   aspect-ratio: auto;
+}
+
+/*
+ * The cartoon sheet keeps its page aspect in fullscreen rather than stretching
+ * to the screen. Pins are placed as percentages of this box while walls are
+ * drawn in the SVG viewBox, so the building is only geometrically correct while
+ * the box matches that aspect. `align-self` prevents the flex parent from
+ * stretching the width, which is what lets the aspect drive it.
+ */
+.plan-sheet--fullscreen .cartoon-sheet {
+  flex: 0 1 auto;
+  align-self: center;
+  /*
+   * Everything inside this box is absolutely positioned, so it has no size of
+   * its own to shrink-wrap: `width: auto` collapsed it to nothing and fullscreen
+   * showed a black screen with all 42 pins stacked in one corner. The width has
+   * to be stated, and it is whichever limit bites first — the width of the
+   * screen, or the width the height available allows at this page's aspect.
+   */
+  width: min(100%, calc((100vh - 130px) / var(--sheet-aspect, 1.294)));
+  height: auto;
 }
 
 .plan-sheet--fullscreen .plan-map img {
@@ -1050,6 +1124,11 @@ button:disabled {
   border-color: rgba(255, 106, 26, 0.45);
 }
 
+/*
+ * Graph paper under the walls. Coarser and slightly more present than before so
+ * it reads as a drawing sheet, but still quiet enough that pins win the contrast
+ * fight — they are the thing being looked for.
+ */
 .cartoon-sheet {
   position: relative;
   border-radius: 10px;
@@ -1059,18 +1138,40 @@ button:disabled {
     repeating-linear-gradient(
       0deg,
       transparent,
-      transparent 23px,
-      rgba(255, 255, 255, 0.03) 23px,
-      rgba(255, 255, 255, 0.03) 24px
+      transparent 31px,
+      rgba(255, 255, 255, 0.045) 31px,
+      rgba(255, 255, 255, 0.045) 32px
     ),
     repeating-linear-gradient(
       90deg,
       transparent,
-      transparent 23px,
-      rgba(255, 255, 255, 0.03) 23px,
-      rgba(255, 255, 255, 0.03) 24px
+      transparent 31px,
+      rgba(255, 255, 255, 0.045) 31px,
+      rgba(255, 255, 255, 0.045) 32px
     ),
     #181614;
+}
+
+/* Which floor you are looking at, on the drawing itself. */
+.cartoon-sheet__floor {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: rgba(224, 218, 209, 0.7);
+  pointer-events: none;
+}
+
+.cartoon-sheet__floor span {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: rgba(163, 156, 146, 0.65);
 }
 
 .cartoon-sheet svg {
@@ -1097,26 +1198,68 @@ button:disabled {
   white-space: nowrap;
 }
 
+/*
+ * A pin says two things and no more: fill = status, shape = door vs window.
+ * Text lives inside a label span so an unlabelled pin can shrink to a dot
+ * without the number forcing it wide.
+ */
 .plan-dot {
+  --pin-fill: #94a3b8;
+  --pin-ring: rgba(20, 18, 16, 0.75);
   position: absolute;
   width: 30px;
   height: 30px;
   margin: -15px 0 0 -15px;
   padding: 0;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.85);
+  background: var(--pin-fill);
+  border: 2px solid var(--pin-ring);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-display);
   font-weight: 700;
   font-size: 12px;
-  color: #fff;
+  color: #14120f;
   cursor: grab;
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
   transition: transform 0.12s ease;
   z-index: 2;
   touch-action: none;
+}
+
+/* Doors are square. The one difference you need without reading anything. */
+.plan-dot--door {
+  border-radius: 4px;
+}
+
+/*
+ * Crowded pages drop the number and shrink to a countable dot — but only the
+ * dot. The button keeps its 30px footprint so it is still hittable on a ladder.
+ */
+.plan-dot--quiet {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.plan-dot--quiet::before {
+  content: "";
+  position: absolute;
+  inset: 20%;
+  border-radius: 50%;
+  background: var(--pin-fill);
+  border: 2px solid var(--pin-ring);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.plan-dot--door.plan-dot--quiet::before {
+  border-radius: 3px;
+}
+
+.plan-dot__mark {
+  pointer-events: none;
+  line-height: 1;
 }
 
 /* Below foreman a mark cannot be moved, so it must not look draggable. It stays
@@ -1472,12 +1615,25 @@ button:disabled {
   margin: 10px 0;
 }
 
+/* One row, wrapping on a phone, instead of two stacked legends. */
 .map-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 16px;
+  gap: 6px 14px;
+  align-items: center;
   font-size: 13px;
   margin: 8px 0;
+}
+
+/* Matches the square door pin. */
+.map-legend__door {
+  border-radius: 2px !important;
+  background: var(--muted);
+}
+
+.map-legend__voided {
+  background: transparent;
+  border: 2px solid currentColor;
 }
 
 .map-legend i {
@@ -3205,6 +3361,49 @@ button:disabled {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 13px;
   padding: 12px 13px;
+}
+
+/* A hint, not an alarm: it sits above the filters and stays quiet. */
+.dispatch-nudge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 13px;
+  background: var(--card-raised);
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.dispatch-nudge button {
+  margin-left: auto;
+}
+
+.row-assignee {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+  flex: none;
+}
+
+/*
+ * The row whose pin is labelled on the drawing above. It is the other half of a
+ * two-way link, so it has to be obvious which row the one labelled pin belongs
+ * to after the drawing scrolls back into view.
+ */
+.work-list .find-row--linked {
+  border-color: rgba(255, 106, 26, 0.55);
+  box-shadow: 0 0 0 1px rgba(255, 106, 26, 0.25);
 }
 
 .points-hero {

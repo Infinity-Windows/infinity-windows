@@ -1,0 +1,86 @@
+[
+  {
+    "id": "8b943452-7559-49ab-a323-de9bd5f2fb17",
+    "project_id": "ebf64f94-0413-4434-aeb3-1aff228fb5b3",
+    "storage_path": "ebf64f94-0413-4434-aeb3-1aff228fb5b3/1785256963527-Black_Desert_Windows_Plans.pdf",
+    "source_format": "pdf",
+    "converted_pdf_path": null,
+    "page_count": 4,
+    "status": "ready",
+    "created_at": "2026-07-28T16:42:46.115744+00:00",
+    "kind": "building",
+    "story_label": null
+  },
+  {
+    "id": "7234e06f-c6d3-4c9e-80a8-741d7823dd94",
+    "project_id": "ebf64f94-0413-4434-aeb3-1aff228fb5b3",
+    "storage_path": "ebf64f94-0413-4434-aeb3-1aff228fb5b3/1785253853208-Black_Desert_Windows_Plans.pdf",
+    "source_format": "pdf",
+    "converted_pdf_path": null,
+    "page_count": 4,
+    "status": "ready",
+    "created_at": "2026-07-28T15:51:01.731284+00:00",
+    "kind": "building",
+    "story_label": null
+  },
+  {
+    "id": "0b89943e-d88f-4dfb-97e4-d8dbd46f6b64",
+    "project_id": "ebf64f94-0413-4434-aeb3-1aff228fb5b3",
+    "storage_path": "ebf64f94-0413-4434-aeb3-1aff228fb5b3/1785247643865-Black_Desert_Windows_Pictures.pdf",
+    "source_format": "pdf",
+    "converted_pdf_path": null,
+    "page_count": 14,
+    "status": "ready",
+    "created_at": "2026-07-28T14:07:29.760931+00:00",
+    "kind": "specs",
+    "story_label": null
+  },
+  {
+    "id": "34d16c7e-5bf1-43ac-b622-2b9ec18fb050",
+    "project_id": "609b2033-ce58-45dd-bde8-2c17264c39d0",
+    "storage_path": "609b2033-ce58-45dd-bde8-2c17264c39d0/1784333439772-PV_Townhomes_Bldg_14_Cads_2024-12-22.pdf",
+    "source_format": "pdf",
+    "converted_pdf_path": null,
+    "page_count": 6,
+    "status": "ready",
+    "created_at": "2026-07-18T00:10:41.00378+00:00",
+    "kind": "specs",
+    "story_label": null
+  },
+  {
+    "id": "587ba9d4-8d03-478d-a7e3-4a0081976af6",
+    "project_id": "609b2033-ce58-45dd-bde8-2c17264c39d0",
+    "storage_path": "609b2033-ce58-45dd-bde8-2c17264c39d0/1784333358925-PVTH_Bldg_14_Marked.pdf",
+    "source_format": "pdf",
+    "converted_pdf_path": null,
+    "page_count": 4,
+    "status": "ready",
+    "created_at": "2026-07-18T00:09:20.275906+00:00",
+    "kind": "building",
+    "story_label": null
+  },
+  {
+    "id": "849f77bf-7a77-4913-be5b-a977970adff3",
+    "project_id": "3cc5b810-45e0-4445-a115-efa98f8efad3",
+    "storage_path": "3cc5b810-45e0-4445-a115-efa98f8efad3/1784268288575-PVTH_Bldg_14_Marked.pdf",
+    "source_format": "pdf",
+    "converted_pdf_path": null,
+    "page_count": 4,
+    "status": "extracting",
+    "created_at": "2026-07-17T06:04:50.025874+00:00",
+    "kind": "building",
+    "story_label": null
+  },
+  {
+    "id": "4d052c0e-b569-46aa-a8e4-ae751b7f1abd",
+    "project_id": "3cc5b810-45e0-4445-a115-efa98f8efad3",
+    "storage_path": "3cc5b810-45e0-4445-a115-efa98f8efad3/1784268274273-PVTH_Bldg_14_Marked.pdf",
+    "source_format": "pdf",
+    "converted_pdf_path": null,
+    "page_count": 4,
+    "status": "extracting",
+    "created_at": "2026-07-17T06:04:36.629534+00:00",
+    "kind": "building",
+    "story_label": null
+  }
+]

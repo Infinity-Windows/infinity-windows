@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link, useParams } from "react-router-dom";
 import { listProjects, listWindowTypes } from "../../lib/api";
 import {
@@ -8,6 +8,7 @@ import {
   downloadPlanset,
   elevationAppearancesFromDoc,
   ensureTypesFromSpecs,
+  getMyProfile,
   linkSpecsToOpenings,
   listElevationViews,
   listMarkSpecs,
@@ -18,6 +19,7 @@ import {
   listVoidedInstallOpeningIds,
   saveDraftOpenings,
   saveElevationViews,
+  savePlanOutline,
   setOpeningsSequence,
   unassignOpening,
   undoInstall,
@@ -39,7 +41,6 @@ import { invalidateOpeningQueries } from "../../lib/install/openingQueryKeys";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import {
   isForemanPlus,
-  OPENING_KIND_COLORS,
   OPENING_STATUS_COLORS,
   openingMarkCode,
   openingMarkLabel,
@@ -59,6 +60,7 @@ import {
 import {
   extractCadDetailPages,
   findFloorPlanPages,
+  mergePageLists,
   splitCalloutsByFloorPlan,
   type PdfTextPage,
 } from "../../lib/install/planDetails";
@@ -76,22 +78,36 @@ import {
 } from "../../lib/install/cad";
 import { formatApiError } from "../../lib/install/errors";
 import { planLoadMessage, withPlanTimeout } from "../../lib/install/planLoad";
-import { openingMarkerStyle } from "../../lib/install/openingMarkerScale";
 import {
   extractBuildingOutline,
   outlinePathD,
   perimeterPositions,
-  preferOutline,
   type BuildingOutline,
 } from "../../lib/install/outline";
+import {
+  resolveFootprint,
+  type FootprintSource,
+} from "../../lib/install/footprint";
+import { separatePins } from "../../lib/install/pinLayout";
+import {
+  matchesPlanFilter,
+  resolveFilter,
+  visibleFilters,
+  type PlanFilter,
+} from "../../lib/install/openingFilter";
+import { dispatchNudge, dispatchNudgeText } from "../../lib/install/dispatchNudge";
+import {
+  snapOpeningsToWalls,
+  wallPinPosition,
+  type SnappedOpening,
+} from "../../lib/install/wallSnap";
+import { MapPinLayer } from "./MapPinLayer";
+import { MapWallLayer } from "./MapWallLayer";
 import { movedMarkIds } from "../../lib/install/pinHistory";
 import { PlanMarkUndoBar } from "../../components/install/PlanMarkUndoBar";
 import { OutlineFeatureLayer } from "./OutlineFeatureLayer";
 import { PlanModelEditor } from "./PlanModelEditor";
-
-function plansetLabel(ps: Planset): string {
-  return ps.storage_path.split("/").pop() ?? ps.storage_path;
-}
+import { PlansPanel } from "./PlansPanel";
 
 function isUsablePdf(ps: Planset): boolean {
   return ps.source_format === "pdf" || !!ps.converted_pdf_path;
@@ -103,20 +119,68 @@ interface PageImage {
   height: number;
 }
 
-type PlanFilter = "all" | "open" | "windows" | "doors" | "done";
 /** Outline = cartoon extract; building = original floor PDF; details = specs PDF. */
 type DrawingView = "outline" | "building" | "details";
 
-const FILTERS: { id: PlanFilter; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "open", label: "Open" },
-  { id: "windows", label: "Windows" },
-  { id: "doors", label: "Doors" },
-  { id: "done", label: "Done" },
-];
-
 function clamp(value: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, value));
+}
+
+/**
+ * Target centre-to-centre pin spacing, as a fraction of page width. An 18px dot
+ * on a 390px phone is ~0.046 of the page, so this leaves a hair of daylight
+ * between neighbours.
+ */
+const PIN_MIN_GAP = 0.05;
+
+/**
+ * Above this many marks on a page, numbers are off unless asked for.
+ *
+ * Measured, and it stays where it was — but not for the reason it was set. The
+ * labels themselves are not the problem: Black Desert draws 42 numbers and only
+ * 2 end up buried under a neighbour. The problem is what a label does to its
+ * pin. A numbered pin has to be drawn full size, and at 42 marks full-size pins
+ * bury 22 of themselves — past the half-the-pins limit the readability harness
+ * holds this screen to, where the same page with shrunken dots buries 2.
+ *
+ * So a crowded page pays for its numbers in countable pins, which is the worse
+ * trade. "Which one is mark 23" is answered by tapping its row instead, which
+ * labels that one pin. See docs/map-readability-2026-07-29.md.
+ */
+const PIN_LABEL_AUTO_MAX = 14;
+
+/**
+ * Wall thickness in viewBox units (page width = 1000), so it scales with the
+ * sheet. Roughly 4px on a 390px phone: a wall you can see, not a hairline.
+ */
+const WALL_STROKE = 11;
+
+/**
+ * What the sheet header says about where the shape came from. "from the marks"
+ * is honest about being approximate without implying something is broken — it
+ * is a normal, permanent state for a job nobody has traced.
+ */
+const FOOTPRINT_SOURCE_LABEL: Record<FootprintSource | "none", string> = {
+  saved: "traced by hand",
+  traced: "outline from CAD",
+  pins: "shape from marks",
+  none: "no marks placed yet",
+};
+
+/**
+ * A stored outline may be one the app derived and saved for itself. The origin
+ * is stamped into `features.derived_from`, so a saved shape reports where it
+ * actually came from instead of crediting a person who never drew it.
+ */
+function savedFootprintLabel(features: unknown): string {
+  const origin =
+    features && typeof features === "object"
+      ? (features as { derived_from?: unknown }).derived_from
+      : undefined;
+  if (origin === "pins" || origin === "traced") {
+    return FOOTPRINT_SOURCE_LABEL[origin];
+  }
+  return FOOTPRINT_SOURCE_LABEL.saved;
 }
 
 export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
@@ -144,6 +208,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const [filter, setFilter] = useState<PlanFilter>("all");
   const [fullScreen, setFullScreen] = useState(false);
   const [pdfZoom, setPdfZoom] = useState(1);
+  /** null = decide from how busy the page is; true/false = the user decided. */
+  const [markNumbers, setMarkNumbers] = useState<boolean | null>(null);
   const buildingDocRef = useRef<PDFDocumentProxy | null>(null);
   const specsDocRef = useRef<PDFDocumentProxy | null>(null);
   const [docsReady, setDocsReady] = useState(0);
@@ -151,10 +217,27 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   // Cartoon plan state: per-page traced outlines, selection, drag.
   const [outlines, setOutlines] = useState<Record<number, BuildingOutline | null>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // The list below the drawing expands its own details. Kept separate from the
-  // pin selection so opening a row doesn't move anything on the map, and so the
-  // same card can never render twice at once.
+  // The list below the drawing expands its own details. Still its own state so
+  // the same card can never render twice at once, but the two now move
+  // together: see linkScroll.
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  /*
+   * The list and the drawing answer each other's question. Every opening in the
+   * company is `planned`, so every pin is the same colour and a mark number is
+   * the only thing telling two of them apart — and numbers switch off on a
+   * crowded page. "Where is mark 23" is therefore answered by tapping row 23 and
+   * having its pin label itself, rather than by drawing forty labels nobody
+   * asked for.
+   *
+   * The counter matters: tapping the same row twice has to scroll twice, so an
+   * identical target still re-fires the effect.
+   */
+  const [linkScroll, setLinkScroll] = useState<{
+    to: "sheet" | "row";
+    id: string;
+    n: number;
+  } | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLLIElement | null>());
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const dragRef = useRef<{
     id: string;
@@ -206,20 +289,6 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     [markSpecs.data],
   );
 
-  const matchesFilter = (o: ProjectOpening): boolean => {
-    switch (filter) {
-      case "open":
-        return o.status !== "installed";
-      case "done":
-        return o.status === "installed";
-      case "windows":
-        return unitKind(o) === "window";
-      case "doors":
-        return unitKind(o) === "door";
-      default:
-        return true;
-    }
-  };
   // Where each mark is drawn on the elevation sheets — reference pictures for
   // the pin details, and the check that tells us whether this job has them yet.
   const elevationViews = useQuery({
@@ -235,6 +304,14 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         : Promise.resolve([]),
     enabled: !!buildingPlansetId,
   });
+  // "Mine" is about identity, not about the role being previewed, so it keys on
+  // the real signed-in profile: an owner previewing "installer" still sees their
+  // own openings rather than nobody's.
+  const myProfile = useQuery({
+    queryKey: ["myProfile"],
+    queryFn: getMyProfile,
+  });
+  const myProfileId = myProfile.data?.id ?? null;
   const { effectiveRole } = useEffectiveRole();
   // Failed/undone-install markers are foreman+ only. Installers never see the
   // voided ring, legend, or "redo needed" state; the query is also gated so the
@@ -723,7 +800,14 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   }, [openings.dataUpdatedAt]);
 
   const all = openings.data ?? [];
-  const filtered = all.filter(matchesFilter);
+  // Mine is hidden on a job the viewer has nothing on, so a foreman is never
+  // offered a chip that can only ever show an empty list.
+  const filters = visibleFilters(all, myProfileId);
+  const activeFilter = resolveFilter(filter, filters);
+  const filtered = all.filter((o) =>
+    matchesPlanFilter(o, activeFilter, myProfileId, unitKind),
+  );
+  const nudge = dispatchNudge(all, { isLead, dispatchMode });
   const placed = filtered.filter(
     (o) => o.pin_x !== null && o.pin_y !== null && o.page_number === page,
   );
@@ -757,9 +841,15 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           : floorPages.length > 0
             ? floorPages
             : Array.from({ length: buildingPageCount }, (_, index) => index + 1)
-        : floorPages.length > 0
-          ? floorPages
-          : Array.from({ length: buildingPageCount }, (_, index) => index + 1);
+        : /*
+           * The outline view pages by the sheets the PDF reader thinks are floor
+           * plans, PLUS any sheet that actually carries marks. Oakridge's marks
+           * are on page 1 while its detected floor sheets are 3 and 4, so this
+           * view used to draw a building with nothing on it and offer no way to
+           * reach the marks at all. A page with marks on it is a page a crew
+           * needs, whatever the detector concluded.
+           */
+          mergePageLists(floorPages, pinnedPlanPages, buildingPageCount);
   const pageIndex = Math.max(0, visiblePages.indexOf(page));
   const activePlanset = view === "details" ? specsPdf : buildingPdf;
   const activeDetail = details.find((detail) => detail.pageNumber === page);
@@ -773,13 +863,45 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     [planOutlines.data, page],
   );
   const manualOutlineRow = manualOutlineRows[0];
-  const manualOutline: BuildingOutline | null = manualOutlineRow
-    ? {
-        points: manualOutlineRow.points,
-        pageAspect: manualOutlineRow.page_aspect,
-      }
-    : null;
-  const outline = preferOutline(manualOutline, extractedOutline);
+  const manualOutline: BuildingOutline | null = useMemo(
+    () =>
+      manualOutlineRow
+        ? {
+            points: manualOutlineRow.points,
+            pageAspect: manualOutlineRow.page_aspect,
+          }
+        : null,
+    [manualOutlineRow],
+  );
+  /**
+   * The marks already placed on this page, which is what the building shape is
+   * derived from when nothing better exists. Deliberately taken from `all`
+   * rather than `filtered`: the building must not change shape when someone
+   * taps "Doors" or "Done".
+   */
+  const pagePins = useMemo(
+    () =>
+      (openings.data ?? [])
+        .filter(
+          (o) => o.pin_x !== null && o.pin_y !== null && o.page_number === page,
+        )
+        .map((o) => ({ x: o.pin_x as number, y: o.pin_y as number })),
+    [openings.data, page],
+  );
+  const pageAspectHint =
+    manualOutline?.pageAspect ?? extractedOutline?.pageAspect ?? 0.7;
+  // saved outline -> coarsened PDF trace -> shape traced from this job's pins.
+  const footprint = useMemo(
+    () =>
+      resolveFootprint({
+        saved: manualOutline,
+        traced: extractedOutline,
+        pins: pagePins,
+        aspect: pageAspectHint,
+      }),
+    [manualOutline, extractedOutline, pagePins, pageAspectHint],
+  );
+  const outline = footprint?.outline ?? null;
   const outlineLoading =
     view === "outline" &&
     !manualOutline &&
@@ -788,11 +910,76 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     // Tracing needs the plan PDF. If that failed we fall back to the schematic
     // rather than sitting on "tracing plan…" for the rest of the shift.
     !planError;
-  const aspect =
-    outline?.pageAspect ??
-    manualOutline?.pageAspect ??
-    extractedOutline?.pageAspect ??
-    0.7;
+  const aspect = outline?.pageAspect ?? pageAspectHint;
+
+  /**
+   * Save the shape once, the first time a lead opens a page that has none.
+   *
+   * The pin-derived footprint is cheap but not free — a grid trace per page, on
+   * a phone, thrown away on every visit. Storing it makes the shape stable, and
+   * gives a lead something to correct by hand later.
+   *
+   * Same narrow contract as the elevation backfill: leads only, only when
+   * nothing is stored, once per page per visit, silent on failure. It also
+   * waits until every mark on the job has a pin, so a half-pinned job does not
+   * freeze a half-sized building.
+   *
+   * The lead gate is this client only — `project_plan_outlines` currently
+   * grants every authenticated user full access — so it keeps one crew member's
+   * phone from writing shapes for the whole company, not a security boundary.
+   */
+  const backfilledFootprint = useRef<string | null>(null);
+  const footprintPoints = footprint?.outline.points;
+  const footprintSource = footprint?.source ?? null;
+  const fullyPinned =
+    (openings.data ?? []).length > 0 &&
+    (openings.data ?? []).every((o) => o.pin_x !== null && o.pin_y !== null);
+  useEffect(() => {
+    if (!isLead || !buildingPlansetId || !planOutlines.isFetched) return;
+    if (!footprintPoints || !footprintSource || footprintSource === "saved") {
+      return;
+    }
+    if (!fullyPinned) return;
+    const key = `${buildingPlansetId}:${page}`;
+    if (backfilledFootprint.current === key) return;
+    backfilledFootprint.current = key;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await savePlanOutline({
+          projectId,
+          plansetId: buildingPlansetId,
+          pageNumber: page,
+          points: footprintPoints,
+          pageAspect: aspect,
+          // Remembering the origin keeps the header honest: a shape derived
+          // from marks must not later claim someone traced it by hand.
+          features: { derived_from: footprintSource },
+        });
+        if (!cancelled) {
+          queryClient.invalidateQueries({
+            queryKey: ["planOutlines", projectId],
+          });
+        }
+      } catch {
+        // Best-effort. The shape is recomputed from the pins next visit.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isLead,
+    buildingPlansetId,
+    planOutlines.isFetched,
+    footprintPoints,
+    footprintSource,
+    fullyPinned,
+    page,
+    aspect,
+    projectId,
+    queryClient,
+  ]);
 
   const autoIds = autos.map((o) => o.id).join(",");
   const autoPositions = useMemo(() => {
@@ -871,7 +1058,12 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           // A no-move tap toggles the pin into/out of the ordered selection.
           setSelection((prev) => toggleSelection(prev, d.id));
         } else {
-          setSelectedId((prev) => (prev === d.id ? null : d.id));
+          // A tap on a pin opens that opening's row below and scrolls to it, so
+          // "what is this one" is answered without hunting the list for a code.
+          // Only on the way in — deselecting leaves the list where it is.
+          const next = selectedId === d.id ? null : d.id;
+          setSelectedId(next);
+          if (next) selectFromMap(next);
         }
         setDrag(null);
       };
@@ -879,6 +1071,27 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       document.addEventListener("pointerup", onUp);
       document.addEventListener("pointercancel", onUp);
     };
+
+  /** Pin tapped: open its row below and bring the row into view. */
+  const selectFromMap = (id: string) => {
+    setExpandedRowId(id);
+    setLinkScroll((prev) => ({ to: "row", id, n: (prev?.n ?? 0) + 1 }));
+  };
+
+  /**
+   * Row tapped: label its pin on the drawing and scroll the drawing back up.
+   * The pin layer already labels whatever is selected, so one number appears on
+   * demand instead of forty at all times.
+   */
+  const selectFromList = (o: ProjectOpening) => {
+    setSelectedId(o.id);
+    // Nothing to point at for an opening with no pin, or on the specs PDF,
+    // which draws no pins — so don't yank the screen up to a drawing that
+    // cannot answer the question.
+    if (view === "details" || o.pin_x === null || o.pin_y === null) return;
+    if (o.page_number != null && o.page_number !== page) setPage(o.page_number);
+    setLinkScroll((prev) => ({ to: "sheet", id: o.id, n: (prev?.n ?? 0) + 1 }));
+  };
 
   const showView = (next: DrawingView, nextPage?: number) => {
     setView(next);
@@ -1020,80 +1233,158 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     />
   );
 
-  const renderOpeningDots = (mode: "all" | "pinned" = "all") =>
-    (mode === "pinned" ? placed : [...placed, ...autos]).map((o) => {
-      const kind = unitKind(o);
-      const isVoided = showsVoidedInstall(effectiveRole, o, voidedIds);
-      const pos = dotPos(o);
-      const selIndex = selection.indexOf(o.id);
-      const installerColor = o.assigned_to
-        ? crewColors.get(o.assigned_to)
-        : undefined;
-      // When an installer is chosen, number THEIR route (existing + pending)
-      // and dim everything else so the foreman can read the route at a glance.
-      const routeNum = hasRoute ? routeOrder.get(o.id) : undefined;
-      const onRoute = routeNum != null;
-      const isNewOnRoute = onRoute && routeNewIds.has(o.id);
-      const dimmed = hasRoute && !onRoute;
-      // Fall back to the plain tap-order number when no installer is chosen yet.
-      const seqNum = onRoute ? routeNum : selIndex >= 0 ? selIndex + 1 : null;
-      const showInstallerBadge =
-        installerColor && seqNum == null && !dimmed;
-      return (
-        <button
-          key={o.id}
-          type="button"
-          aria-pressed={dispatchMode ? selIndex >= 0 || isNewOnRoute : undefined}
-          className={`plan-dot${canMoveMarks ? "" : " plan-dot--fixed"}${
-            pos.auto ? " plan-dot--auto" : ""
-          }${
-            selectedId === o.id ? " plan-dot--selected" : ""
-          }${movedIds.has(o.id) ? " plan-dot--moved" : ""}${
-            drag?.id === o.id ? " plan-dot--dragging" : ""
-          }${
-            selIndex >= 0 || isNewOnRoute ? " plan-dot--dispatch-selected" : ""
-          }${onRoute && !isNewOnRoute ? " plan-dot--dispatch-route" : ""}${
-            dimmed ? " plan-dot--dispatch-dim" : ""
-          }`}
-          style={{
-            left: `${pos.x * 100}%`,
-            top: `${pos.y * 100}%`,
-            ...openingMarkerStyle(o.id),
-            background: OPENING_KIND_COLORS[kind],
-            borderColor: isVoided
-              ? VOIDED_RING_COLOR
-              : OPENING_STATUS_COLORS[o.status],
-          }}
-          title={
-            isVoided
-              ? `${pinTitle(o)} — install undone, needs re-do`
-              : pinTitle(o)
-          }
-          onPointerDown={beginDrag(o)}
-        >
-          {openingMarkCode(o.opening_code)}
-          {showInstallerBadge && (
-            <span
-              className="plan-dot__installer"
-              style={{ background: installerColor }}
-              aria-hidden
-            >
-              {installerInitials(o.assignee?.display_name ?? "?")}
-            </span>
-          )}
-          {seqNum != null && (
-            <span className="plan-dot__seq" aria-hidden>
-              {seqNum}
-            </span>
-          )}
-        </button>
-      );
+  /**
+   * A window is a hole in a wall, so a mark already sitting on a wall is drawn
+   * as an opening in it rather than a dot floating nearby.
+   *
+   * Only marks close to a wall qualify. The rest — most of Pecan's floor 3,
+   * where the extractor dumped marks in rows across the middle of the page —
+   * stay exactly where they are. Cutting a hole in a wall for one of those would
+   * state a position the data does not have.
+   *
+   * The pin being dragged is excluded, so it follows the finger and re-snaps on
+   * release instead of jumping to a wall mid-drag.
+   */
+  const wallOpenings = (() => {
+    const empty = {
+      snapped: new Map<string, SnappedOpening>(),
+      freeIds: [] as string[],
+    };
+    if (!outline || editingModel || manualOutlinePaths.length > 0) return empty;
+    return snapOpeningsToWalls({
+      openings: [...placed, ...autos]
+        .filter((o) => o.id !== drag?.id)
+        .map((o) => {
+          const pos = dotPos(o);
+          return {
+            id: o.id,
+            x: pos.x,
+            y: pos.y,
+            kind: unitKind(o),
+          };
+        }),
+      points: outline.points,
+      aspect,
     });
+  })();
+
+  /**
+   * Where each pin is drawn. A wall opening's pin becomes the handle for that
+   * opening and sits just inside the room, clear of the gap; everything else is
+   * fanned apart for legibility only. Either way the stored pin_x/pin_y are
+   * untouched, and dragging writes the position the finger lands on.
+   */
+  const pinPositions = (() => {
+    const free: { id: string; x: number; y: number }[] = [];
+    const handles = new Map<string, { x: number; y: number }>();
+    for (const o of [...placed, ...autos]) {
+      const opening = wallOpenings.snapped.get(o.id);
+      const handle =
+        opening && outline
+          ? wallPinPosition(outline.points, aspect, opening)
+          : null;
+      if (handle) {
+        handles.set(o.id, handle);
+        continue;
+      }
+      const pos = dotPos(o);
+      free.push({ id: o.id, x: pos.x, y: pos.y });
+    }
+    const layout = separatePins(free, { minDist: PIN_MIN_GAP, aspect });
+    for (const [id, point] of handles) layout.set(id, point);
+    // The pin under the finger sits exactly where the finger is. Nudging it, or
+    // pulling it onto a wall mid-drag, would make dragging feel broken.
+    if (drag) layout.set(drag.id, { x: drag.x, y: drag.y });
+    return layout;
+  })();
+
+  const autoPinIds = new Set(autos.map((o) => o.id));
+
+  /**
+   * Wall openings are drawn in their install status colour, the same encoding the
+   * pins use. Off-route openings fall back to the wall colour while a foreman is
+   * building a run, so the route is what stands out.
+   */
+  const wallOpeningColor = (id: string): string | undefined => {
+    const opening = [...placed, ...autos].find((o) => o.id === id);
+    if (!opening) return undefined;
+    if (hasRoute && routeOrder.get(id) == null) return undefined;
+    if (showsVoidedInstall(effectiveRole, opening, voidedIds)) {
+      return VOIDED_RING_COLOR;
+    }
+    return OPENING_STATUS_COLORS[opening.status];
+  };
+
+  /**
+   * Mark numbers are legible until the page gets busy — Black Desert has 42 on
+   * one sheet, which is 42 overlapping words. Past that they are off until
+   * someone asks for them or zooms in, and the selected pin is always labelled.
+   */
+  const markCount = placed.length + autos.length;
+  const labelsFitOnPage = markCount <= PIN_LABEL_AUTO_MAX;
+  const showMarkNumbers = markNumbers ?? (labelsFitOnPage || pdfZoom >= 1.5);
+
+  const renderOpeningDots = (mode: "all" | "pinned" = "all") => (
+    <MapPinLayer
+      openings={mode === "pinned" ? placed : [...placed, ...autos]}
+      positions={pinPositions}
+      autoIds={autoPinIds}
+      selectedId={selectedId}
+      draggingId={drag?.id ?? null}
+      dispatchMode={dispatchMode}
+      selection={selection}
+      routeOrder={routeOrder}
+      routeNewIds={routeNewIds}
+      hasRoute={hasRoute}
+      crewColors={crewColors}
+      voidedIds={voidedIds}
+      effectiveRole={effectiveRole}
+      showMarkNumbers={showMarkNumbers}
+      unitKind={unitKind}
+      canMoveMarks={canMoveMarks}
+      movedIds={movedIds}
+      pinTitle={pinTitle}
+      onPinPointerDown={beginDrag}
+    />
+  );
 
   // Reset zoom when flipping PDF pages.
   useEffect(() => {
     setPdfZoom(1);
   }, [page, view]);
+
+  /*
+   * And open on a sheet that has marks. The detector picked page 3 for Oakridge,
+   * whose three marks are on page 1, so the first thing that view showed was an
+   * empty building. Once only, so it never fights someone paging around.
+   */
+  const openedMarkedPage = useRef(false);
+  useEffect(() => {
+    // docsReady, not the page list: it is bumped in the same commit as the
+    // planset's own choice of opening page, so this cannot be overwritten by it.
+    if (openedMarkedPage.current || docsReady === 0) return;
+    if (pinnedPlanPages.length === 0) return;
+    openedMarkedPage.current = true;
+    if (!pinnedPlanPages.includes(page)) setPage(pinnedPlanPages[0]);
+  }, [docsReady, page, pinnedPlanPages]);
+
+  // Runs after the commit, so a row that just expanded is scrolled to at its
+  // full height rather than to where it used to end.
+  useEffect(() => {
+    if (!linkScroll) return;
+    const node =
+      linkScroll.to === "sheet"
+        ? sheetRef.current
+        : rowRefs.current.get(linkScroll.id);
+    if (!node) return;
+    const still = window.matchMedia?.(
+      "(prefers-reduced-motion: reduce)",
+    )?.matches;
+    node.scrollIntoView({
+      behavior: still ? "auto" : "smooth",
+      block: "nearest",
+    });
+  }, [linkScroll]);
 
   /**
    * Shown in the drawing area instead of a spinner when a plan will not open.
@@ -1427,115 +1718,85 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             )}
           </nav>
 
-          <div className="planset-picker-row">
-            {buildingPdfs.length > 0 && (
-              <label className="planset-picker">
-                <span>Building planset</span>
-                <select
-                  value={buildingPdf?.id ?? ""}
-                  onChange={(e) => {
-                    setBuildingPlansetId(e.target.value);
-                    setView("outline");
-                    setOutlines({});
-                    setFullScreen(false);
-                  }}
-                >
-                  {buildingPdfs.map((ps) => (
-                    <option key={ps.id} value={ps.id}>
-                      {plansetLabel(ps)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {specsPdfs.length > 0 && (
-              <label className="planset-picker">
-                <span>Specs planset</span>
-                <select
-                  value={specsPdf?.id ?? ""}
-                  onChange={(e) => {
-                    setSpecsPlansetId(e.target.value);
-                    setView("details");
-                    setFullScreen(false);
-                  }}
-                >
-                  {specsPdfs.map((ps) => (
-                    <option key={ps.id} value={ps.id}>
-                      {plansetLabel(ps)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {/* Re-reading a planset rebuilds the job's whole list of windows
-                and doors — it deletes the superseded marks and inserts fresh
-                ones — so it is foreman+, and the database says so too. Hidden
-                rather than disabled: an installer has no reason to know this
-                button exists. */}
-            {isLead && specsPdf && (
-              <button
-                type="button"
-                className="button-like"
-                disabled={reextractSpecs.isPending}
-                onClick={() => reextractSpecs.mutate()}
-              >
-                {reextractSpecs.isPending
-                  ? "Loading marks…"
-                  : "Load marks from plans"}
-              </button>
-            )}
-          </div>
-
-          <p className="pdf-source-line">
-            <strong>Viewing:</strong>{" "}
-            {activePlanset ? plansetLabel(activePlanset) : "loading…"}
-            {(view === "outline" || view === "building") && floorPages.length > 0
-              ? ` · ${floorPages.length} numbered floor drawing${floorPages.length === 1 ? "" : "s"}`
-              : ""}
-            {view === "details" && details.length > 0
-              ? ` · ${details.length} detail sheet${details.length === 1 ? "" : "s"}`
-              : ""}
-          </p>
-          {extractNote && <p className="muted">{extractNote}</p>}
-          {extractSummary && (
-            <div className="extract-summary">
-              <p className="extract-summary-headline">
-                {extractSummary.headline}
-              </p>
-              {extractSummary.notes.map((note) => (
-                <p className="muted" key={note}>
-                  {note}
-                </p>
-              ))}
-              {extractSummary.breakdown.length > 1 && (
-                <details className="extract-summary-breakdown">
-                  <summary>
-                    Show the mark-by-mark breakdown (
-                    {extractSummary.breakdown.length})
-                  </summary>
-                  <ul>
-                    {extractSummary.breakdown.map((line) => (
-                      <li key={line}>{line}</li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </div>
-          )}
+          <PlansPanel
+            buildingPdfs={buildingPdfs}
+            specsPdfs={specsPdfs}
+            buildingPdf={buildingPdf}
+            specsPdf={specsPdf}
+            activePlanset={activePlanset}
+            view={view}
+            page={page}
+            floorPages={floorPages}
+            details={details}
+            extractNote={extractNote}
+            extractSummary={extractSummary}
+            isLead={isLead}
+            reextractPending={reextractSpecs.isPending}
+            onReextract={() => reextractSpecs.mutate()}
+            onPickBuildingPlanset={(id: string) => {
+              setBuildingPlansetId(id);
+              setView("outline");
+              setOutlines({});
+              setFullScreen(false);
+            }}
+            onPickSpecsPlanset={(id: string) => {
+              setSpecsPlansetId(id);
+              setView("details");
+              setFullScreen(false);
+            }}
+            onShowView={showView}
+          />
         </>
       )}
 
+      {/*
+        Nobody has ever assigned work from this screen — not one opening in the
+        company is sequenced — which reads as undiscovered rather than unwanted,
+        since dispatch lives behind a toggle a lead has no reason to press. So
+        say it out loud on a job where it would help, and stop the moment they
+        assign anything.
+      */}
+      {nudge && (
+        <div className="dispatch-nudge">
+          <span>{dispatchNudgeText(nudge)}</span>
+          <button
+            type="button"
+            className="chip"
+            onClick={() => {
+              setDispatchMode(true);
+              setDispatchNote(null);
+            }}
+          >
+            Hand them out
+          </button>
+        </div>
+      )}
+
       <nav className="plan-filters" aria-label="Filter openings">
-        {FILTERS.map((f) => (
+        {filters.map((f) => (
           <button
             key={f.id}
             type="button"
-            className={filter === f.id ? "chip active" : "chip"}
+            className={activeFilter === f.id ? "chip active" : "chip"}
             onClick={() => setFilter(f.id)}
           >
             {f.label}
           </button>
         ))}
+        {/*
+          On a busy sheet the numbers are off by default. This is the escape
+          hatch for when you do want to read them, and it sits with the filters
+          because it filters what a pin shows.
+        */}
+        <button
+          type="button"
+          className={showMarkNumbers ? "chip active" : "chip"}
+          aria-pressed={showMarkNumbers}
+          onClick={() => setMarkNumbers(!showMarkNumbers)}
+          title="Show or hide mark numbers on the pins"
+        >
+          Numbers
+        </button>
       </nav>
 
       {dispatchControls}
@@ -1567,8 +1828,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         >
           {fullScreen && fullscreenBar}
           <div className="cartoon-sheet__head">
+            {/*
+             * Just the job. The view is already named by the view buttons above
+             * the sheet, and spelling it out here too wrapped this header onto
+             * three lines on a phone with the separator stranded on its own.
+             */}
             <span className="cartoon-sheet__title">
-              {project?.job_code ?? "PLAN"} · BUILDING OUTLINE
+              {project?.job_code ?? "PLAN"}
             </span>
             <div className="cartoon-sheet__head-actions">
               <span className="cartoon-sheet__status">
@@ -1576,11 +1842,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                   ? "editing model"
                   : outlineLoading
                     ? "tracing plan…"
-                    : manualOutline
-                      ? "manual outline"
-                      : outlinePath
-                        ? "outline from CAD"
-                        : "outline unavailable — schematic"}
+                    : footprint?.source === "saved"
+                      ? savedFootprintLabel(manualOutlineRow?.features)
+                      : FOOTPRINT_SOURCE_LABEL[footprint?.source ?? "none"]}
               </span>
               {/* Everything behind this button is plan authoring — drawing the
                   building outline and placing, renaming or removing marks. The
@@ -1591,12 +1855,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 <button
                   type="button"
                   className="button-like"
+                  aria-label="Edit model"
                   onClick={() => {
                     setEditingModel(true);
                     setFullScreen(false);
                   }}
                 >
-                  Edit model
+                  Edit
                 </button>
               )}
               <button
@@ -1632,11 +1897,26 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               <div
                 ref={sheetRef}
                 className="cartoon-sheet"
-                style={fullScreen ? undefined : { aspectRatio: `1 / ${aspect}` }}
+                /**
+                 * The aspect is set in fullscreen too. Pins are positioned as
+                 * percentages of THIS element while walls are drawn inside the
+                 * SVG, so the two only agree while the box keeps the viewBox's
+                 * aspect — letting it stretch is what distorted the building.
+                 *
+                 * Fullscreen also needs the ratio as a bare number: there it has
+                 * to work out its own width from the height available, since
+                 * nothing else in that layout gives it one.
+                 */
+                style={
+                  {
+                    aspectRatio: `1 / ${aspect}`,
+                    "--sheet-aspect": aspect,
+                  } as CSSProperties
+                }
               >
                 <svg
                   viewBox={`0 0 1000 ${Math.round(1000 * aspect)}`}
-                  preserveAspectRatio="none"
+                  preserveAspectRatio="xMidYMid meet"
                   aria-hidden
                 >
                   {manualOutlinePaths.length > 0 ? (
@@ -1665,33 +1945,28 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                         />
                       </g>
                     ))
-                  ) : outlinePath ? (
-                    <path
-                      d={outlinePath}
-                      fill="rgba(163, 156, 146, 0.06)"
-                      stroke="rgba(163, 156, 146, 0.6)"
-                      strokeWidth={3}
-                      strokeLinejoin="round"
-                    />
                   ) : (
-                    !outlineLoading && (
-                      <rect
-                        x={120}
-                        y={0.15 * 1000 * aspect}
-                        width={760}
-                        height={0.7 * 1000 * aspect}
-                        rx={10}
-                        fill="rgba(163, 156, 146, 0.06)"
-                        stroke="rgba(163, 156, 146, 0.6)"
-                        strokeWidth={3}
+                    outlinePath &&
+                    outline && (
+                      <MapWallLayer
+                        points={outline.points}
+                        aspect={aspect}
+                        outlinePath={outlinePath}
+                        openings={[...wallOpenings.snapped.values()]}
+                        colorFor={wallOpeningColor}
+                        selectedId={selectedId}
+                        wallStroke={WALL_STROKE}
                       />
                     )
                   )}
                 </svg>
                 {renderOpeningDots()}
-                <div className="cartoon-sheet__source">
-                  {manualOutline ? "MANUAL MODEL" : "FROM CAD"} ·{" "}
-                  {buildingPdf.storage_path.split("/").pop()}
+                <div className="cartoon-sheet__floor" aria-hidden>
+                  Floor {page}
+                  <span>
+                    {placed.length + autos.length} mark
+                    {placed.length + autos.length === 1 ? "" : "s"}
+                  </span>
                 </div>
               </div>
               {undoBar}
@@ -1711,7 +1986,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           {fullScreen && fullscreenBar}
           <div className="cartoon-sheet__head">
             <span className="cartoon-sheet__title">
-              {project?.job_code ?? "PLAN"} · ORIGINAL BUILDING PLAN
+              {project?.job_code ?? "PLAN"}
             </span>
             <div className="cartoon-sheet__head-actions">
               <span className="cartoon-sheet__status">source PDF</span>
@@ -1776,7 +2051,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           {fullScreen && fullscreenBar}
           <div className="cartoon-sheet__head">
             <span className="cartoon-sheet__title">
-              {project?.job_code ?? "PLAN"} · WINDOW &amp; DOOR DETAILS
+              {project?.job_code ?? "PLAN"}
             </span>
             <div className="cartoon-sheet__head-actions">
               <span className="cartoon-sheet__status">
@@ -1865,53 +2140,12 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         </nav>
       )}
 
-      {details.length > 0 && (
-        <section className="cad-detail-index">
-          <div className="row-between">
-            <h2>PDF window &amp; door details</h2>
-            {view !== "details" && (
-              <button type="button" className="link" onClick={() => showView("details")}>
-                Open detail sheets
-              </button>
-            )}
-          </div>
-          <p className="muted">
-            Marks, product codes, glazing, and hardware below are read from the
-            uploaded manufacturer PDF. No Smith demo types are mixed in.
-          </p>
-          <div className="cad-detail-grid">
-            {details.map((detail) => (
-              <button
-                key={detail.pageNumber}
-                type="button"
-                className={view === "details" && page === detail.pageNumber ? "cad-detail-card active" : "cad-detail-card"}
-                onClick={() => showView("details", detail.pageNumber)}
-              >
-                <span className="field-label">PDF page {detail.pageNumber}</span>
-                <strong>
-                  {detail.marks.length > 0
-                    ? detail.marks.map((mark) => `#${mark}`).join(" · ")
-                    : "Manufacturer detail"}
-                </strong>
-                {detail.productCodes.length > 0 && (
-                  <span>{detail.productCodes.join(" · ")}</span>
-                )}
-                {detail.notes.length > 0 && (
-                  <small>{detail.notes.join(" · ")}</small>
-                )}
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
+      {/*
+        One legend, and it explains exactly what a pin now encodes: colour for
+        status, square for a door. Installer colours only appear while dispatch
+        is open, which is the only time pins carry them.
+      */}
       <div className="map-legend muted">
-        <span>
-          <i style={{ background: OPENING_KIND_COLORS.window }} /> window (#)
-        </span>
-        <span>
-          <i style={{ background: OPENING_KIND_COLORS.door }} /> door (#)
-        </span>
         <span>
           <i style={{ background: OPENING_STATUS_COLORS.planned }} /> planned
         </span>
@@ -1921,33 +2155,43 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         <span>
           <i style={{ background: OPENING_STATUS_COLORS.installed }} /> installed
         </span>
+        <span>
+          <i className="map-legend__door" /> door
+        </span>
         {isLead && (
           <span>
-            <i style={{ background: VOIDED_RING_COLOR }} /> install undone
+            <i
+              className="map-legend__voided"
+              style={{ borderColor: VOIDED_RING_COLOR }}
+            />{" "}
+            install undone
           </span>
         )}
-      </div>
-
-      {legendInstallers.length > 0 && (
-        <div className="map-legend map-legend--installers muted">
-          <span className="map-legend__label">Assigned to:</span>
-          {legendInstallers.map((inst) => (
+        {dispatchMode &&
+          legendInstallers.map((inst) => (
             <span key={inst.id}>
-              <i className="map-legend__initials" style={{ background: inst.color }}>
+              <i
+                className="map-legend__initials"
+                style={{ background: inst.color }}
+              >
                 {installerInitials(inst.name)}
               </i>{" "}
               {inst.name}
             </span>
           ))}
-        </div>
-      )}
+      </div>
 
       <h2>
-        {filter === "all" ? "All openings" : FILTERS.find((f) => f.id === filter)?.label}{" "}
+        {activeFilter === "all"
+          ? "All openings"
+          : activeFilter === "mine"
+            ? "My openings"
+            : filters.find((f) => f.id === activeFilter)?.label}{" "}
         ({filtered.length})
       </h2>
       <p className="muted opening-list-hint">
-        Tap a window or door to see its details.
+        Tap a window or door for its details, and to point it out on the
+        drawing.
       </p>
       <ul className="unit-list work-list">
         {filtered.map((o) => {
@@ -1955,14 +2199,26 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           const panelId = `opening-row-panel-${o.id}`;
           const expanded = expandedRowId === o.id;
           return (
-          <li key={o.id} className="find-row">
+          <li
+            key={o.id}
+            ref={(el) => {
+              rowRefs.current.set(o.id, el);
+            }}
+            className={
+              selectedId === o.id ? "find-row find-row--linked" : "find-row"
+            }
+          >
             <OpeningRowButton
               openingCode={o.opening_code}
               expanded={expanded}
               panelId={panelId}
-              onToggle={() =>
-                setExpandedRowId((prev) => toggleExpandedOpening(prev, o.id))
-              }
+              onToggle={() => {
+                const next = toggleExpandedOpening(expandedRowId, o.id);
+                setExpandedRowId(next);
+                // Closing the row puts the drawing back to no label.
+                if (next === o.id) selectFromList(o);
+                else setSelectedId((prev) => (prev === o.id ? null : prev));
+              }}
             >
               <span
                 className="unit-dot"
@@ -1976,6 +2232,22 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               <span className="muted">
                 {o.window_types?.type_code ?? "type?"} {o.label ?? ""}
               </span>
+              {/*
+                Who owns this opening, without having to open the row first.
+                Same initials and colour the dispatch legend uses, so a name
+                reads the same wherever it appears.
+              */}
+              {o.assignee && (
+                <span
+                  className="row-assignee"
+                  title={o.assignee.display_name}
+                  style={{
+                    background: crewColors.get(o.assignee.id) ?? "var(--muted)",
+                  }}
+                >
+                  {installerInitials(o.assignee.display_name)}
+                </span>
+              )}
               <span
                 className="big-address"
                 style={{ color: isVoided ? VOIDED_RING_COLOR : OPENING_STATUS_COLORS[o.status] }}

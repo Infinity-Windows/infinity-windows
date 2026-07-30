@@ -7,6 +7,7 @@ import {
   extractCadDetailPages,
   findFloorPlanPages,
   isElevationSheet,
+  mergePageLists,
   mergeScheduleWithDetailRows,
   parseCadDetailScheduleRows,
   parseDetailQty,
@@ -312,6 +313,29 @@ describe("findFloorPlanPages", () => {
         },
       ]),
     ).toEqual([3, 2]);
+  });
+});
+
+describe("mergePageLists", () => {
+  it("adds the page a job's marks are actually on", () => {
+    // Oakridge: marks on page 1, detected floor sheets 3 and 4.
+    expect(mergePageLists([3, 4], [1], 6)).toEqual([1, 3, 4]);
+  });
+
+  it("keeps detected sheets that have no marks yet", () => {
+    expect(mergePageLists([2, 3], [], 6)).toEqual([2, 3]);
+  });
+
+  it("does not repeat a page that is in both lists", () => {
+    expect(mergePageLists([1, 2], [1, 2], 4)).toEqual([1, 2]);
+  });
+
+  it("offers every page when nothing is known", () => {
+    expect(mergePageLists([], [], 3)).toEqual([1, 2, 3]);
+  });
+
+  it("survives a planset whose page count is unknown", () => {
+    expect(mergePageLists([], [], 0)).toEqual([]);
   });
 });
 
