@@ -59,6 +59,7 @@ import {
 import {
   extractCadDetailPages,
   findFloorPlanPages,
+  mergePageLists,
   splitCalloutsByFloorPlan,
   type PdfTextPage,
 } from "../../lib/install/planDetails";
@@ -766,9 +767,15 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           : floorPages.length > 0
             ? floorPages
             : Array.from({ length: buildingPageCount }, (_, index) => index + 1)
-        : floorPages.length > 0
-          ? floorPages
-          : Array.from({ length: buildingPageCount }, (_, index) => index + 1);
+        : /*
+           * The outline view pages by the sheets the PDF reader thinks are floor
+           * plans, PLUS any sheet that actually carries marks. Oakridge's marks
+           * are on page 1 while its detected floor sheets are 3 and 4, so this
+           * view used to draw a building with nothing on it and offer no way to
+           * reach the marks at all. A page with marks on it is a page a crew
+           * needs, whatever the detector concluded.
+           */
+          mergePageLists(floorPages, pinnedPlanPages, buildingPageCount);
   const pageIndex = Math.max(0, visiblePages.indexOf(page));
   const activePlanset = view === "details" ? specsPdf : buildingPdf;
   const activeDetail = details.find((detail) => detail.pageNumber === page);
@@ -1219,6 +1226,22 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   useEffect(() => {
     setPdfZoom(1);
   }, [page, view]);
+
+  /*
+   * And open on a sheet that has marks. The detector picked page 3 for Oakridge,
+   * whose three marks are on page 1, so the first thing that view showed was an
+   * empty building. Once only, so it never fights someone paging around.
+   */
+  const openedMarkedPage = useRef(false);
+  useEffect(() => {
+    // docsReady, not the page list: it is bumped in the same commit as the
+    // planset's own choice of opening page, so this cannot be overwritten by it.
+    if (openedMarkedPage.current || docsReady === 0) return;
+    if (pinnedPlanPages.length === 0) return;
+    openedMarkedPage.current = true;
+    if (!pinnedPlanPages.includes(page)) setPage(pinnedPlanPages[0]);
+  }, [docsReady, page, pinnedPlanPages]);
+
 
   const zoomControls = (view === "building" || view === "details") && (
     <div className="plan-zoom-controls" role="group" aria-label="Zoom">
