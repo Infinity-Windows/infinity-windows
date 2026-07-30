@@ -29,6 +29,40 @@ export function rawErrorMessage(err: unknown): string {
 }
 
 /**
+ * PostgREST codes that mean the REQUEST WE WROTE is wrong — an ambiguous
+ * embed, an unknown column, a stale schema cache. They are our bugs, not
+ * anything the user did, and their wording is meaningless in the field.
+ */
+const OUR_FAULT_CODES = new Set([
+  "PGRST100", // failed to parse the query
+  "PGRST200", // no relationship found between two tables
+  "PGRST201", // more than one relationship found — the embed is ambiguous
+  "PGRST202", // function not found in the schema cache
+  "PGRST203", // overloaded function is ambiguous
+  "PGRST204", // column not found in the schema cache
+]);
+
+/** Same faults, matched on wording, since not every layer preserves the code. */
+const OUR_FAULT_PATTERNS = [
+  /could not embed/i,
+  /more than one relationship was found/i,
+  /could not find a relationship/i,
+  /schema cache/i,
+  /(column|relation|function) .* does not exist/i,
+];
+
+const OUR_FAULT_MESSAGE =
+  "We couldn't load this — that's a fault on our side, not something you did.";
+
+/** Report-once, so a failing screen doesn't flood the console as it re-renders. */
+const reported = new Set<string>();
+
+function isOurFault(code: string, raw: string): boolean {
+  if (code && OUR_FAULT_CODES.has(code)) return true;
+  return raw ? OUR_FAULT_PATTERNS.some((re) => re.test(raw)) : false;
+}
+
+/**
  * Translate an API/Supabase error into a short, plain-English sentence.
  * @param fallback used when we can't recognise the error at all.
  */
@@ -37,6 +71,16 @@ export function formatApiError(err: unknown, fallback = "Something went wrong. P
   const raw = rawErrorMessage(err);
   const lower = raw.toLowerCase();
   const code = rec && typeof rec.code === "string" ? rec.code : "";
+
+  // Our own broken query. Keep the real text for us, show a plain line to them.
+  if (isOurFault(code, raw)) {
+    const key = `${code}:${raw}`;
+    if (!reported.has(key)) {
+      reported.add(key);
+      console.error("[query fault]", code || "(no code)", raw, err);
+    }
+    return OUR_FAULT_MESSAGE;
+  }
 
   // Network / offline.
   if (

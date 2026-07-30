@@ -80,8 +80,13 @@ export interface RecentJob {
   lastClockInAt: string;
 }
 
+// `profiles` is named explicitly via the `profile_id` column because a shift
+// points at four different people — whose shift it is, plus who approved,
+// edited and rejected it. Asking for a bare `profiles(...)` is ambiguous, and
+// PostgREST answers a 300 rather than guessing, which took the clock and the
+// whole timecard down until the hint was added.
 const SHIFT_SELECT =
-  "*, projects(job_code, name), cost_codes(code, label), profiles(display_name)";
+  "*, projects(job_code, name), cost_codes(code, label), profiles!profile_id(display_name)";
 
 export async function listCostCodes(): Promise<CostCode[]> {
   const { data, error } = await supabase
