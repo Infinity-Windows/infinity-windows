@@ -42,7 +42,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: provision-test-installer
+  # Shared with the foreman run: both touch the same sandbox job and the same
+  # crew-invite machinery, and two at once would race over it.
+  group: provision-test-accounts
   cancel-in-progress: false
 
 jobs:
