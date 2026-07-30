@@ -32,13 +32,23 @@ import {
   currentBreakSeconds,
   elapsedWorkSeconds,
   endBreak,
+  finishShiftAt,
   formatClock,
+  isOnTheClock,
   listCostCodes,
   listRecentJobs,
   startBreak,
   type BreakType,
   type TimeShift,
 } from "../../lib/timeclock";
+import {
+  checkFinishTime,
+  describeDuration,
+  finishTimeBounds,
+  shiftGuard,
+  SHIFT_CAP_HOURS,
+  type FinishTimeCheck,
+} from "../../lib/shiftGuard";
 
 const BREAK_ICONS: Record<BreakType, LucideIcon> = {
   lunch: UtensilsCrossed,
@@ -50,6 +60,13 @@ function todayLocalISO(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** A `<input type="datetime-local">` value → ISO, or null if it is unusable. */
+function localInputToIso(v: string): string | null {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
 type Mode = "pick" | "main" | "break-type" | "switch";
@@ -74,6 +91,7 @@ export function ClockSheet({
   const [note, setNote] = useState("");
   const [injured, setInjured] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [finishAt, setFinishAt] = useState("");
   const primedRef = useRef(false);
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
@@ -355,6 +373,30 @@ export function ClockSheet({
     onError: (e) => toastError(e),
   });
 
+  /**
+   * The shift ran so long that the running total is no longer evidence of a
+   * working day. We hand the question back to the person instead of stamping
+   * `now()` on it — see lib/shiftGuard.ts for why that mattered.
+   */
+  const doFinish = useMutation({
+    mutationFn: async () => {
+      const check = checkFinishTime(shift!, localInputToIso(finishAt), Date.now());
+      if (!check.ok) throw new Error(check.error ?? "That finish time won't work.");
+      return finishShiftAt(shift!.id, localInputToIso(finishAt)!, {
+        injured,
+        breakSeconds: shift!.break_seconds ?? 0,
+      });
+    },
+    onSuccess: () => {
+      toastSuccess("Thanks — your hours are with the office to check");
+      setInjured(false);
+      setFinishAt("");
+      refresh();
+      onClose();
+    },
+    onError: (e) => toastError(e),
+  });
+
   const onBreak = Boolean(shift?.break_started_at);
   const breakSec = shift ? currentBreakSeconds(shift, now) : 0;
   const runningBreakSec =
@@ -373,7 +415,17 @@ export function ClockSheet({
     doPhaseSwitch.isPending ||
     doBreakStart.isPending ||
     doBreakEnd.isPending ||
-    doClockOut.isPending;
+    doClockOut.isPending ||
+    doFinish.isPending;
+
+  const guard = shift ? shiftGuard(shift, now) : null;
+  /** Past the believable maximum: stop counting and ask for the real finish. */
+  const needsRealFinish =
+    guard?.state === "over-cap" || guard?.state === "needs-finish";
+  const finishCheck: FinishTimeCheck = shift
+    ? checkFinishTime(shift, localInputToIso(finishAt), now)
+    : { ok: false };
+  const finishBounds = shift ? finishTimeBounds(shift, now) : null;
 
   const filteredProjects = useMemo(() => {
     const list = projects.data ?? [];
@@ -427,32 +479,57 @@ export function ClockSheet({
           <div className="clock-sheet-body">
             <ToolboxTalkNagBanner
               profileId={profileId}
-              clockedIn={Boolean(shift)}
+              clockedIn={isOnTheClock(shift)}
               onNavigate={onClose}
             />
-            <div className={onBreak ? "clock-hero-card break" : "clock-hero-card work"}>
-              <span className={onBreak ? "clock-status-pill break" : "clock-status-pill work"}>
-                <span className="clock-live-dot" aria-hidden />
-                {onBreak ? `On ${breakTypeLabel(shift.break_type).toLowerCase()} break` : "Working"}
-              </span>
-              <div className="clock-hero-time">
-                {formatClock(onBreak ? runningBreakSec : workSec)}
-              </div>
-              {onBreak ? (
-                <p className="clock-hero-sub">
-                  Worked so far <strong>{formatClock(workSec)}</strong>
+            {needsRealFinish ? (
+              /* We stopped counting on purpose. Ask, never guess. */
+              <div className="clock-hero-card needs-finish">
+                <span className="clock-status-pill needs-finish">
+                  Clock stopped counting
+                </span>
+                <p className="clock-hero-stopped">
+                  You've been clocked in for{" "}
+                  <strong>{describeDuration(guard!.sinceClockInSeconds)}</strong>.
                 </p>
-              ) : (
-                breakSec > 0 && (
-                  <p className="clock-hero-sub">Breaks today {formatClock(breakSec)}</p>
-                )
-              )}
-            </div>
+                <p className="clock-hero-sub">
+                  That's longer than a shift can really run, so we stopped adding
+                  hours rather than put a made-up number on your timecard. When
+                  did you actually finish?
+                </p>
+              </div>
+            ) : (
+              <div className={onBreak ? "clock-hero-card break" : "clock-hero-card work"}>
+                <span className={onBreak ? "clock-status-pill break" : "clock-status-pill work"}>
+                  <span className="clock-live-dot" aria-hidden />
+                  {onBreak ? `On ${breakTypeLabel(shift.break_type).toLowerCase()} break` : "Working"}
+                </span>
+                <div className="clock-hero-time">
+                  {formatClock(onBreak ? runningBreakSec : workSec)}
+                </div>
+                {onBreak ? (
+                  <p className="clock-hero-sub">
+                    Worked so far <strong>{formatClock(workSec)}</strong>
+                  </p>
+                ) : (
+                  breakSec > 0 && (
+                    <p className="clock-hero-sub">Breaks today {formatClock(breakSec)}</p>
+                  )
+                )}
+                {guard?.state === "long" && (
+                  <p className="clock-hero-warn">
+                    That's a long day — clock out when you're done, or the app
+                    will stop counting at {SHIFT_CAP_HOURS} hours and ask you for
+                    the real finish time.
+                  </p>
+                )}
+              </div>
+            )}
 
             <button
               type="button"
               className="clock-job-chip"
-              disabled={busy || onBreak}
+              disabled={busy || onBreak || needsRealFinish}
               onClick={() => {
                 setPickProjectId(shift.project_id ?? "");
                 setPickCostCodeId(shift.cost_code_id ?? "");
@@ -476,8 +553,10 @@ export function ClockSheet({
               </span>
             </button>
 
-            {/* Switch phase — one tap, same job */}
-            {!onBreak && (costCodes.data?.length ?? 0) > 1 && (
+            {/* Switch phase — one tap, same job. Hidden while a finish time is
+                outstanding: switching calls clock_in, and the question on the
+                screen is "when did you stop", not "what are you doing now". */}
+            {!onBreak && !needsRealFinish && (costCodes.data?.length ?? 0) > 1 && (
               <div className="clock-chip-row-wrap">
                 <p className="clock-row-label">Switch phase</p>
                 <div className="clock-chip-row">
@@ -501,7 +580,7 @@ export function ClockSheet({
               </div>
             )}
 
-            {onBreak ? (
+            {needsRealFinish ? null : onBreak ? (
               <button
                 type="button"
                 className="clock-btn resume"
@@ -530,20 +609,64 @@ export function ClockSheet({
               I was injured this shift
             </label>
 
-            <button
-              type="button"
-              className="clock-btn out"
-              disabled={busy}
-              onClick={() => doClockOut.mutate()}
-            >
-              {doClockOut.isPending ? (
-                "Clocking out…"
-              ) : (
-                <>
-                  <Square size={16} aria-hidden /> Clock out
-                </>
-              )}
-            </button>
+            {needsRealFinish ? (
+              <>
+                <label className="clock-row-label" htmlFor="clock-finish-at">
+                  When did you finish?
+                </label>
+                <input
+                  id="clock-finish-at"
+                  className="clock-finish-input"
+                  type="datetime-local"
+                  value={finishAt}
+                  min={finishBounds?.min}
+                  max={finishBounds?.max}
+                  onChange={(e) => setFinishAt(e.target.value)}
+                />
+                {finishAt && !finishCheck.ok && (
+                  <p className="error">{finishCheck.error}</p>
+                )}
+                {finishAt && finishCheck.ok && (
+                  <p className="clock-pick-summary">
+                    That's <strong>{finishCheck.hours!.toFixed(1)} hours</strong> on
+                    this shift.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  className="clock-btn out"
+                  disabled={busy || !finishCheck.ok}
+                  onClick={() => doFinish.mutate()}
+                >
+                  {doFinish.isPending ? (
+                    "Saving…"
+                  ) : (
+                    <>
+                      <Square size={16} aria-hidden /> Save my finish time
+                    </>
+                  )}
+                </button>
+                <p className="muted clock-switch-note">
+                  Not sure? Leave it and tell your foreman — they can set it for
+                  you. Nothing is counted until somebody puts a real time in.
+                </p>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="clock-btn out"
+                disabled={busy}
+                onClick={() => doClockOut.mutate()}
+              >
+                {doClockOut.isPending ? (
+                  "Clocking out…"
+                ) : (
+                  <>
+                    <Square size={16} aria-hidden /> Clock out
+                  </>
+                )}
+              </button>
+            )}
 
             <Link to="/clock" className="clock-timecard-link" onClick={onClose}>
               View my timecard

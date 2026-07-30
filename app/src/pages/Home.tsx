@@ -14,7 +14,7 @@ import { TERMS } from "../lib/glossary";
 import { listMyProgress } from "../lib/learn";
 import { listLedger } from "../lib/points";
 import { supabase } from "../lib/supabase";
-import { getOpenShift, listShiftsToApprove } from "../lib/timeclock";
+import { getOpenShift, isOnTheClock, listShiftsToApprove } from "../lib/timeclock";
 import { listInstalledForQc } from "../lib/ops";
 import { getHeartbeat } from "../lib/heartbeat";
 import { listAssignments } from "../lib/schedule/api";
@@ -250,7 +250,7 @@ export function Home() {
         </div>
       </header>
 
-      <ToolboxTalkNagBanner profileId={profileId} clockedIn={Boolean(openShift.data)} />
+      <ToolboxTalkNagBanner profileId={profileId} clockedIn={isOnTheClock(openShift.data)} />
 
       {foreman ? (
         <>

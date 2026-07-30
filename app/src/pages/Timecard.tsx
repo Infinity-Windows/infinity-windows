@@ -28,6 +28,13 @@ import {
   buildTimecardTsv,
   type TimecardExportShift,
 } from "../lib/timecardExport";
+import { listUnfinishedShifts } from "../lib/timeclock";
+import {
+  describeDuration,
+  flaggedShifts,
+  needsFinishTime,
+  shiftGuard,
+} from "../lib/shiftGuard";
 
 function fmtTime(iso: string | null): string {
   if (!iso) return "—";
@@ -131,6 +138,7 @@ function ShiftEditor({
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["teamShifts"] });
     qc.invalidateQueries({ queryKey: ["timecardMine"] });
+    qc.invalidateQueries({ queryKey: ["unfinishedShifts"] });
   };
 
   const save = useMutation({
@@ -238,6 +246,8 @@ export function Timecard() {
   const [adding, setAdding] = useState(false);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  /** Which runaway shift the office is entering a real finish time for. */
+  const [finishingId, setFinishingId] = useState<string | null>(null);
 
   const crew = useQuery({
     queryKey: ["profiles"],
@@ -252,6 +262,17 @@ export function Timecard() {
     queryFn: () => listTeamShifts(week.startIso, week.endIso),
     enabled: isLead,
   });
+  /**
+   * Deliberately not filtered to the selected week. A shift punched on 18 July
+   * and never closed is absent from every week after it, which is exactly how
+   * one ran for twelve days without anybody on this screen seeing it.
+   */
+  const unfinished = useQuery({
+    queryKey: ["unfinishedShifts"],
+    queryFn: listUnfinishedShifts,
+    enabled: isLead,
+    refetchInterval: 60_000,
+  });
   const mineShifts = useQuery({
     queryKey: ["timecardMine", me.data?.id, week.startIso],
     queryFn: () => listShiftsForProfile(me.data!.id, week.startIso, week.endIso),
@@ -261,7 +282,13 @@ export function Timecard() {
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["teamShifts"] });
     qc.invalidateQueries({ queryKey: ["timecardMine"] });
+    qc.invalidateQueries({ queryKey: ["unfinishedShifts"] });
   };
+
+  const runaways = useMemo(
+    () => flaggedShifts(unfinished.data ?? [], Date.now()),
+    [unfinished.data],
+  );
 
   const approve = useMutation({ mutationFn: approveShift, onSuccess: refresh });
   const reject = useMutation({
@@ -397,6 +424,83 @@ export function Timecard() {
             )}
           </div>
 
+          {runaways.length > 0 && (
+            <section className="detail-card runaway-shifts" style={{ marginTop: 12 }}>
+              <h2 style={{ margin: 0, fontSize: 15 }}>
+                Still on the clock ({runaways.length})
+              </h2>
+              <p className="muted" style={{ margin: "2px 0 8px", fontSize: 12 }}>
+                Longer than a normal day. These add <strong>no hours</strong> to
+                anybody's total until someone puts a real finish time in — so a
+                forgotten clock-out costs nothing, but it does need sorting.
+              </p>
+              <ul className="unit-list">
+                {runaways.map((s) => {
+                  const view = shiftGuard(s, Date.now());
+                  const stopped = view.workedSeconds == null;
+                  return (
+                    <li key={s.id} className="find-row" style={{ flexWrap: "wrap" }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <strong>{s.profiles?.display_name ?? "Crew"}</strong>
+                        <div className="muted" style={{ fontSize: 11.5 }}>
+                          {s.projects?.job_code ?? "—"} ·{" "}
+                          {new Date(s.clock_in_at).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11.5,
+                            color: stopped
+                              ? "var(--danger, #f87171)"
+                              : "var(--warn, #fbbf24)",
+                          }}
+                        >
+                          {describeDuration(view.sinceClockInSeconds)} with no
+                          clock-out
+                          {stopped
+                            ? " · stopped counting, needs a real finish time"
+                            : " · still counting"}
+                        </div>
+                        {needsFinishTime(s) && s.edited_note && (
+                          <div
+                            className="muted"
+                            style={{ fontSize: 11, marginTop: 2, fontStyle: "italic" }}
+                          >
+                            {s.edited_note}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        className="button-like active-pill"
+                        onClick={() =>
+                          setFinishingId(finishingId === s.id ? null : s.id)
+                        }
+                      >
+                        {finishingId === s.id ? "Close" : "Set finish time"}
+                      </button>
+                      {finishingId === s.id && (
+                        <div style={{ flexBasis: "100%" }}>
+                          <ShiftEditor
+                            mode="edit"
+                            shift={s}
+                            profileId={s.profile_id}
+                            projects={projects.data ?? []}
+                            costCodes={costCodes.data ?? []}
+                            onDone={() => setFinishingId(null)}
+                          />
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+
           <h2>Crew ({roster.length})</h2>
           <ul className="unit-list">
             {roster.map((r) => (
@@ -513,12 +617,18 @@ export function Timecard() {
                       ` · ${Math.round(s.break_seconds / 60)}m break`}
                   </div>
                   <div style={{ fontSize: 11.5, ...statusStyle(s.status) }}>
-                    {s.status}
+                    {needsFinishTime(s) ? "needs a finish time" : s.status}
                     {s.injured && (
                       <span style={statusStyle("rejected")}> · injury</span>
                     )}
                     {s.edited_by && <span className="muted"> · adjusted</span>}
                   </div>
+                  {shiftGuard(s, Date.now()).flagged && (
+                    <div style={{ fontSize: 11.5, ...statusStyle("submitted") }}>
+                      {describeDuration(shiftGuard(s, Date.now()).sinceClockInSeconds)}{" "}
+                      since clock-in — longer than a normal day
+                    </div>
+                  )}
                   {s.status === "rejected" && s.reject_reason && (
                     <div style={{ fontSize: 11.5, ...statusStyle("rejected") }}>
                       “{s.reject_reason}”

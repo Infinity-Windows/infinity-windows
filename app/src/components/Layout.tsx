@@ -16,7 +16,8 @@ import { countMyOpenOpenings, getMyProfile } from "../lib/install/api";
 import { ROLE_LABELS, type CrewRole } from "../lib/install/types";
 import { bottomBarForRole, menuForRole, roleRank, type MenuAction } from "../lib/nav";
 import { useClock } from "../lib/clockContext";
-import { elapsedWorkSeconds, formatClock } from "../lib/timeclock";
+import { formatClock } from "../lib/timeclock";
+import { shiftGuard } from "../lib/shiftGuard";
 import { effectiveRole, useViewAsRole } from "../lib/viewAsRoleContext";
 import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
 import { supabase } from "../lib/supabase";
@@ -80,7 +81,15 @@ export function Layout() {
     const t = setInterval(() => setClockNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, [shift?.id]);
-  const clockLabel = shift ? formatClock(elapsedWorkSeconds(shift, clockNow)) : "Clock";
+  // Past the believable maximum the nav tab stops showing a running total and
+  // says what it actually needs, so a runaway shift reads as a job to do rather
+  // than a number to trust.
+  const clockGuard = shift ? shiftGuard(shift, clockNow) : null;
+  const clockLabel = !shift
+    ? "Clock"
+    : clockGuard!.workedSeconds == null
+      ? "Finish time?"
+      : formatClock(clockGuard!.workedSeconds);
 
   useRealtimeMyOpenings(isInstaller ? me.data?.id : undefined);
   const openCount = useQuery({
