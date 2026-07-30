@@ -47,6 +47,9 @@ import { ProjectMap } from "./pages/install/ProjectMap";
 import { TypeBrainCard } from "./pages/install/TypeBrainCard";
 import { CatalogImport } from "./pages/CatalogImport";
 import { Crew } from "./pages/Crew";
+import { CrewAccess } from "./pages/CrewAccess";
+import { JoinCrew } from "./pages/JoinCrew";
+import { readCodeFromUrl } from "../../supabase/functions/_shared/crewInvites";
 import { MyWork } from "./pages/MyWork";
 import { Issues } from "./pages/Issues";
 import { Service } from "./pages/Service";
@@ -157,6 +160,30 @@ export default function App() {
   const [entered, setEntered] = useState(false);
   const [signInMode, setSignInMode] = useState<"signin" | "request">("signin");
 
+  /**
+   * An invite code arriving as `?join=…` on the app's root URL.
+   *
+   * Read once, from the URL the browser actually opened, and NOT via the router
+   * — the whole point of putting the code in a query on the root is that it
+   * works on a static host with no rewrite rules, where a deep path like `/join`
+   * would be GitHub's 404 page instead of the app. A new hire tapping the only
+   * code he will ever be sent must not land on a blank screen.
+   */
+  const [joinCode, setJoinCode] = useState<string | null>(() =>
+    readCodeFromUrl(window.location.search),
+  );
+  /** They have a code but no link — the text got mangled, so they type it. */
+  const [joining, setJoining] = useState(false);
+
+  // Take the code out of the address bar once it has been picked up, so a
+  // refresh (or a screenshot of the URL) does not re-offer it, and so the code
+  // stops sitting in browser history.
+  useEffect(() => {
+    if (!joinCode) return;
+    const clean = window.location.pathname + window.location.hash;
+    window.history.replaceState(null, "", clean);
+  }, [joinCode]);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
@@ -177,6 +204,21 @@ export default function App() {
       </div>
     );
   }
+  // Someone redeeming an invite has no session yet, by definition, so this sits
+  // ahead of the landing/sign-in screens rather than on a route inside the
+  // authenticated app.
+  if (joinCode || joining) {
+    return (
+      <JoinCrew
+        code={joinCode}
+        onGiveUp={() => {
+          setJoinCode(null);
+          setJoining(false);
+        }}
+      />
+    );
+  }
+
   if (!session) {
     if (!entered) {
       return (
@@ -192,7 +234,12 @@ export default function App() {
         />
       );
     }
-    return <SignIn initialMode={signInMode} />;
+    return (
+      <SignIn
+        initialMode={signInMode}
+        onHaveInviteCode={() => setJoining(true)}
+      />
+    );
   }
 
   return (
@@ -292,6 +339,10 @@ export default function App() {
             <Route
               path="/crew"
               element={<RequireRole path="/crew"><Crew /></RequireRole>}
+            />
+            <Route
+              path="/access"
+              element={<RequireRole path="/access"><CrewAccess /></RequireRole>}
             />
             <Route
               path="/admin"

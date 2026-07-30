@@ -83,6 +83,8 @@ FEATURE_NAMES = {
     'generate-howto': 'how-to guides',
     'generate-toolbox-talk': 'toolbox talks',
     'ingest-knowledge': 'adding documents to the brain',
+    'manage-crew-access': 'adding and removing crew logins',
+    'redeem-crew-invite': 'setting up a new crew login from a code',
     'send-push': 'push notifications',
     'synthesize-type-tips': 'window-type tips',
     'transcribe-install-memo': 'install voice memos',

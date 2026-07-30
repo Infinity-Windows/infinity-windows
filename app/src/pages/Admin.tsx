@@ -74,6 +74,18 @@ export function Admin() {
         <Link to="/" className="back-chip" aria-label="Home">‹</Link>
       </header>
 
+      <h2>Add someone yourself</h2>
+      <div className="detail-card">
+        <p style={{ marginTop: 0 }}>
+          You don't have to wait for someone to ask. Add a crew member by name,
+          choose what they can do, and text them a code that sets up their login
+          — no email needed.
+        </p>
+        <Link to="/access" className="button-like">
+          Crew access →
+        </Link>
+      </div>
+
       <h2>Access requests ({pending.length})</h2>
       {pending.length === 0 && <p className="muted">No pending requests.</p>}
       {approveError && <p className="error">{approveError}</p>}

@@ -367,6 +367,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "Account administration — approve users, set roles, and manage access. Use it to onboard crew and control permissions.",
   },
   {
+    path: "/access",
+    label: "Crew access",
+    minRole: "supervisor",
+    blurb:
+      "Add a new crew member yourself: pick their name and what they can do, then text them a one-time code that sets up their login. Also where you cancel a code, send someone a fresh one if they forget their password, and switch off access for anyone who leaves.",
+  },
+  {
     path: "/cost-codes",
     label: "Cost codes",
     minRole: "supervisor",

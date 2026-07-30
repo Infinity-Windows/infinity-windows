@@ -16,6 +16,7 @@ import {
   DollarSign,
   GraduationCap,
   Hash,
+  KeyRound,
   LayoutGrid,
   ListChecks,
   MoreHorizontal,
@@ -80,6 +81,7 @@ export type RoutePath =
   | "/catalog"
   | "/supplies"
   | "/admin"
+  | "/access"
   | "/cost-codes"
   | "/costing"
   // Horizon-menu stub destinations (no feature yet → "Coming soon" page).
@@ -155,6 +157,10 @@ export const NAV: NavDest[] = [
   { id: "vehicles", to: "/vehicles", label: "Vehicles", icon: "🚚", minRole: "supervisor" },
   { id: "heartbeat", to: "/heartbeat", label: "Heartbeat", icon: "❤", minRole: "supervisor" },
   { id: "admin", to: "/admin", label: "Admin", icon: "◈", minRole: "supervisor" },
+  // Handing out and taking away logins. Supervisor+, deliberately the same floor
+  // as set_profile_role() — inviting someone as a foreman and promoting someone
+  // to foreman are the same power, so they must not have different doors.
+  { id: "access", to: "/access", label: "Crew access", icon: "⚿", minRole: "supervisor" },
   { id: "cost-codes", to: "/cost-codes", label: "Cost codes", icon: "☷", minRole: "supervisor" },
 
   // Owner only.
@@ -359,6 +365,7 @@ const MENU_DEF: MenuSection[] = [
     items: [
       { to: "/team", label: "Team", Icon: Users },
       { to: "/crew", label: "Roster", Icon: Users },
+      { to: "/access", label: "Crew access", Icon: KeyRound },
     ],
   },
   {

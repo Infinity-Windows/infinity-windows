@@ -444,6 +444,11 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "safety_talks": ("talk_date", "title"),
     "profiles": ("id",),  # id IS auth.users.id — see the auth section of the plan
     "access_requests": ("email",),
+    # UNIQUE on the table, and the value is ~49.5 bits of randomness, so an
+    # identical code_hash in two projects means the same invite and never a
+    # coincidence. Merging on it also keeps single-use intact: a union that
+    # duplicated a redeemed invite would resurrect a spent code.
+    "crew_invites": ("code_hash",),
     "knowledge_docs": ("source", "path"),
     "vehicles": ("vin",),
     "trips": ("name", "start_date"),
