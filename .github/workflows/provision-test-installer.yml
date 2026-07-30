@@ -1,0 +1,94 @@
+# Make (or repair) the one test login an agent can use to actually open a screen.
+#
+# WHY A WORKFLOW AND NOT A LOCAL SCRIPT. Creating a login needs the Supabase
+# management token, and no developer machine here holds one — GitHub does, as the
+# repo secret SUPABASE_ACCESS_TOKEN, which is how deploy-backend.yml ships the
+# backend. So this is the only place the privileged half can run. The unprivileged
+# half — signing in as the account afterwards — needs nothing but the password,
+# which is why the password is chosen OUTSIDE this workflow and handed to it.
+#
+# HOW THE PASSWORD GETS HERE, AND HOW A LOCAL AGENT KNOWS IT. The value is not
+# generated in CI, deliberately: anything invented inside a run can only leave it
+# through a log or an artifact, and both are readable by everyone with access to
+# the repo. Instead a person or agent generates it locally, stores it as the repo
+# secret TEST_INSTALLER_PASSWORD, and keeps a copy in a gitignored local file.
+# This run then sets the account's password to that value, so the local copy and
+# the account agree without the value ever crossing a log.
+#
+# That also gives a lost password a self-service fix that needs nobody's
+# permission: generate a new one, `gh secret set TEST_INSTALLER_PASSWORD`, re-run
+# this workflow. Redeeming the fresh code resets the account to the new value.
+# Full instructions, including the exact commands: docs/test-account.md.
+#
+# On demand only. It creates and repairs a real auth user on the production
+# project, and the account is durable — there is nothing to re-run on a merge.
+#
+# Nothing here prints a secret. The script asserts its work by effect: it signs
+# in as the account, checks the database does not treat it as foreman or above,
+# and writes a real install event to prove the exclusion that keeps its work out
+# of the company's target times actually holds.
+
+name: Provision the test installer login
+
+on:
+  workflow_dispatch:
+    inputs:
+      remove:
+        description: "Delete the test login and its sandbox job instead of creating it"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provision-test-installer
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    name: Create or repair the test installer account
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create or repair the account
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          TEST_INSTALLER_PASSWORD: ${{ secrets.TEST_INSTALLER_PASSWORD }}
+          # Production. Named explicitly for the same reason scripts/pgq.sh
+          # refuses to guess one: a run against the wrong project would report
+          # success while creating a login for a database nobody uses.
+          SUPABASE_PROJECT_REF: czprjcskmzzagdztqonm
+          REMOVE: ${{ inputs.remove }}
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::error title=No test login was created::SUPABASE_ACCESS_TOKEN is not set, so nothing could be created. It is the same secret deploy-backend.yml uses, so if that workflow works, this one has lost its copy."
+            exit 1
+          fi
+          if [ "$REMOVE" = "true" ]; then
+            scripts/provision-test-installer.py --remove
+            exit $?
+          fi
+          if [ -z "$TEST_INSTALLER_PASSWORD" ]; then
+            echo "::error title=No test login was created::TEST_INSTALLER_PASSWORD is not set, so this run had no password to give the account. Generate one locally and add it with: gh secret set TEST_INSTALLER_PASSWORD. See docs/test-account.md."
+            exit 1
+          fi
+          scripts/provision-test-installer.py
+
+      - name: Say what to do with it
+        if: success() && inputs.remove != true
+        run: |
+          {
+            echo "### The test login is ready"
+            echo
+            echo "Sign in at the app as \`qa.installer@crew.infinitywindows.app\`."
+            echo "The password is whatever \`TEST_INSTALLER_PASSWORD\` holds — this"
+            echo "run did not print it, and GitHub cannot show it to anyone."
+            echo
+            echo "It is an **installer**, it is flagged as a test account, and its"
+            echo "work is excluded from every company-wide figure. Full notes,"
+            echo "including how a local agent gets the password:"
+            echo "**docs/test-account.md**."
+          } >> "$GITHUB_STEP_SUMMARY"

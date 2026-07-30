@@ -131,19 +131,61 @@ export interface LeaderRow {
   points: number;
 }
 
-export async function getPointsLeaderboard(): Promise<LeaderRow[]> {
-  const [ledger, profiles] = await Promise.all([
-    supabase.from("points_ledger").select("profile_id, points").eq("status", "confirmed"),
-    supabase.from("profiles").select("id, display_name"),
-  ]);
-  if (ledger.error) throw ledger.error;
-  if (profiles.error) throw profiles.error;
-  const name = new Map((profiles.data ?? []).map((p) => [p.id, p.display_name]));
+export interface LeaderboardProfile {
+  id: string;
+  display_name: string;
+  /** Absent on a database that predates migration 20260730120000. */
+  is_test?: boolean | null;
+}
+
+/**
+ * Rank confirmed points per person, highest first.
+ *
+ * Test logins are left out entirely. This is a crew-facing ranking, and an
+ * automation account that taps through an install to check a screen loads would
+ * otherwise sit in it next to people whose standing at work it reflects. The
+ * same account is excluded from target times and dispatch stats in the database
+ * (migration 20260730120000); this is the same rule for the one figure that is
+ * assembled in the browser instead.
+ */
+export function rankLeaderboard(
+  ledger: Array<{ profile_id: string; points: number | string }>,
+  profiles: LeaderboardProfile[],
+): LeaderRow[] {
+  const name = new Map(profiles.map((p) => [p.id, p.display_name]));
+  const isTest = new Set(profiles.filter((p) => p.is_test).map((p) => p.id));
   const totals = new Map<string, number>();
-  for (const r of ledger.data ?? []) {
+  for (const r of ledger) {
+    if (isTest.has(r.profile_id)) continue;
     totals.set(r.profile_id, (totals.get(r.profile_id) ?? 0) + Number(r.points));
   }
   return [...totals.entries()]
     .map(([id, points]) => ({ profile_id: id, display_name: name.get(id) ?? "crew", points }))
     .sort((a, b) => b.points - a.points);
+}
+
+/**
+ * The crew roster with the test flag, falling back to without it.
+ *
+ * The flag arrives with migration 20260730120000, and the frontend and the
+ * database ship from one merge through two independent workflows — so for a few
+ * minutes either can be ahead. Asking for a column that does not exist yet is a
+ * hard error from PostgREST, and the Points page going blank is a worse outcome
+ * than a test account briefly appearing in a ranking it is about to leave.
+ */
+async function leaderboardProfiles(): Promise<LeaderboardProfile[]> {
+  const withFlag = await supabase.from("profiles").select("id, display_name, is_test");
+  if (!withFlag.error) return (withFlag.data ?? []) as LeaderboardProfile[];
+  const plain = await supabase.from("profiles").select("id, display_name");
+  if (plain.error) throw plain.error;
+  return (plain.data ?? []) as LeaderboardProfile[];
+}
+
+export async function getPointsLeaderboard(): Promise<LeaderRow[]> {
+  const [ledger, profiles] = await Promise.all([
+    supabase.from("points_ledger").select("profile_id, points").eq("status", "confirmed"),
+    leaderboardProfiles(),
+  ]);
+  if (ledger.error) throw ledger.error;
+  return rankLeaderboard(ledger.data ?? [], profiles);
 }

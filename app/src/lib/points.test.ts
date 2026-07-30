@@ -4,6 +4,7 @@ import {
   POINT_KINDS,
   pointsByCategory,
   POINT_RULES,
+  rankLeaderboard,
   sumPoints,
 } from "./points";
 
@@ -104,5 +105,51 @@ describe("pointsByCategory", () => {
     ]);
     expect(result).toHaveLength(POINT_KINDS.length);
     expect(result.find((r) => r.kind === "install")?.points).toBe(20);
+  });
+});
+
+describe("rankLeaderboard", () => {
+  const crew = [
+    { id: "mike", display_name: "Mike Alvarez" },
+    { id: "sam", display_name: "Sam Reed" },
+  ];
+
+  it("totals points per person, highest first", () => {
+    const rows = rankLeaderboard(
+      [
+        { profile_id: "mike", points: 20 },
+        { profile_id: "sam", points: 15 },
+        { profile_id: "mike", points: 20 },
+      ],
+      crew,
+    );
+    expect(rows).toEqual([
+      { profile_id: "mike", display_name: "Mike Alvarez", points: 40 },
+      { profile_id: "sam", display_name: "Sam Reed", points: 15 },
+    ]);
+  });
+
+  it("leaves a test account out of the ranking entirely", () => {
+    const rows = rankLeaderboard(
+      [
+        { profile_id: "mike", points: 20 },
+        { profile_id: "bot", points: 9999 },
+      ],
+      [...crew, { id: "bot", display_name: "TEST — automation", is_test: true }],
+    );
+    expect(rows.map((r) => r.profile_id)).toEqual(["mike"]);
+  });
+
+  it("counts everyone when the test flag is absent, so an old database still ranks", () => {
+    const rows = rankLeaderboard(
+      [{ profile_id: "mike", points: 20 }, { profile_id: "sam", points: 5 }],
+      crew,
+    );
+    expect(rows.map((r) => r.profile_id)).toEqual(["mike", "sam"]);
+  });
+
+  it("names someone it has no profile for rather than dropping their points", () => {
+    const rows = rankLeaderboard([{ profile_id: "ghost", points: 7 }], crew);
+    expect(rows).toEqual([{ profile_id: "ghost", display_name: "crew", points: 7 }]);
   });
 });

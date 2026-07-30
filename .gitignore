@@ -4,3 +4,5 @@ dist/
 .DS_Store
 supabase/.temp/
 .vapid-keys.local.json
+# The test login's password (docs/test-account.md). Local only, never committed.
+.secrets/

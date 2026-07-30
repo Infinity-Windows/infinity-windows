@@ -54,6 +54,21 @@ npm install
 npm run dev
 ```
 
+### Signing in to look at a screen
+
+Nearly every screen needs a login, and public signup is off. There is one test
+account for exactly this — an installer, with its password in a local file
+outside the repository so every worktree can read it:
+
+```bash
+cat ~/.config/infinity-windows/test-installer.env    # email + password
+```
+
+If that file is not there, **do not ask anyone for a password** — regenerate it
+yourself in about a minute. That, what the account may and may not touch, and how
+its activity is kept out of the crew's real figures:
+[`docs/test-account.md`](docs/test-account.md).
+
 ## Supabase setup
 
 **There is ONE shared Supabase project: `czprjcskmzzagdztqonm`.** It is what the
