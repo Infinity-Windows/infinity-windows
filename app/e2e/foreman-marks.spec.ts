@@ -80,13 +80,19 @@ async function signIn(page: Page) {
   await page.locator('input[type="password"]').fill(PASSWORD);
   await page.getByRole("button", { name: /^Sign in/ }).click();
 
-  // Signed in when the form is gone. The landing route differs by role, so
-  // waiting on a particular screen would be brittle.
-  await expect(emailField).toBeHidden({ timeout: 60_000 });
-
   // The test account has no quick-unlock PIN. A PIN gate here is a real problem
   // to report, not something to work around.
+  await expect(emailField).toBeHidden({ timeout: 60_000 });
   await expect(page.locator(".pin-gate")).toBeHidden();
+
+  // Wait for the signed-in shell, not just for the form to go. The form clears
+  // before the session is stored, and navigating in that gap dumps you back on
+  // the landing page having apparently never signed in — which is exactly what
+  // happened here. The main nav only exists once there is a session.
+  await expect(
+    page.getByRole("link", { name: "Jobs", exact: true }),
+    "should be signed in, with the app's own navigation on screen",
+  ).toBeVisible({ timeout: 60_000 });
 }
 
 /** Open the sandbox job's plan, the way a person would. */
@@ -151,11 +157,39 @@ async function centre(target: Locator): Promise<{ x: number; y: number }> {
  * phone can move a mark.
  */
 async function dragBy(page: Page, mark: Locator, dx: number, dy: number) {
+  // The mouse works in viewport coordinates and does not scroll to find things,
+  // unlike click(). Tapping a mark scrolls its row into view, which pushes the
+  // drawing off the top of a phone screen — and a drag aimed at a mark that is
+  // no longer on screen lands on whatever is, silently doing nothing.
+  await mark.scrollIntoViewIfNeeded();
   const from = await centre(mark);
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(from.x + dx, from.y + dy, { steps: 14 });
   await page.mouse.up();
+}
+
+/**
+ * Drag a mark most of the way to the middle of the drawing.
+ *
+ * Measured at the moment of the drag rather than once at the start: opening a
+ * mark's details adds a card above the plan and moves everything, so a distance
+ * worked out earlier aims at where the drawing used to be.
+ *
+ * `fraction` keeps two marks from being dragged onto the same spot, where they
+ * would be fanned apart for legibility and stop reading as two moves.
+ */
+async function dragTowardMiddle(page: Page, mark: Locator, fraction = 0.55) {
+  await mark.scrollIntoViewIfNeeded();
+  const sheet = await page.locator(".cartoon-sheet").boundingBox();
+  const from = await centre(mark);
+  if (!sheet) throw new Error("no drawing on screen to drag across");
+  await dragBy(
+    page,
+    mark,
+    (sheet.x + sheet.width / 2 - from.x) * fraction,
+    (sheet.y + sheet.height / 2 - from.y) * fraction,
+  );
 }
 
 test.describe("foreman mark controls, on the sandbox job only", () => {
@@ -196,16 +230,8 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
     // Toward the middle of the drawing, and far. A mark sitting in a wall is
     // drawn as part of that wall, and a nudge would leave it there; a real move
     // takes it off the wall, which is the case worth proving anyway.
-    const first = marksOn(page).first();
-    const mark = await gripMark(page, first);
-    const sheetBox = await sheet.boundingBox();
-    const from = await centre(mark.locator);
-    const toward = {
-      dx: (sheetBox!.x + sheetBox!.width / 2 - from.x) * 0.55,
-      dy: (sheetBox!.y + sheetBox!.height / 2 - from.y) * 0.55,
-    };
-
-    await dragBy(page, mark.locator, toward.dx, toward.dy);
+    const mark = await gripMark(page, marksOn(page).first());
+    await dragTowardMiddle(page, mark.locator);
 
     // ---- 2. The moved-mark ring -------------------------------------------
     await expect(
@@ -213,8 +239,22 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
       "the mark it moved should be ringed as moved off the plan",
     ).toHaveCount(1, { timeout: 60_000 });
     await sheet.screenshot({ path: join(SHOTS, "02-mark-dragged-and-ringed.png") });
-    // Close up, because a 4px ring is invisible in a phone-sized shot.
-    await rings.first().screenshot({ path: join(SHOTS, "03-moved-ring-closeup.png") });
+    // Close up, because a 4px ring is invisible in a phone-sized shot. Framed a
+    // little wider than the dot on purpose: the ring is drawn OUTSIDE the dot, so
+    // a picture cropped to the dot itself cuts off the whole point of it.
+    const ringBox = await rings.first().boundingBox();
+    if (ringBox) {
+      const pad = 16;
+      await page.screenshot({
+        path: join(SHOTS, "03-moved-ring-closeup.png"),
+        clip: {
+          x: Math.max(0, ringBox.x - pad),
+          y: Math.max(0, ringBox.y - pad),
+          width: ringBox.width + pad * 2,
+          height: ringBox.height + pad * 2,
+        },
+      });
+    }
 
     // ---- 3. The undo bar, and who moved it --------------------------------
     const undoButton = page.getByRole("button", { name: /^Undo moving mark / });
@@ -226,21 +266,30 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
     // after.
     expect(attribution).toMatch(/^Undo moving mark \S+ — you, just now$/);
     expect(attribution).toContain(mark.label);
-    await expect(undoBar).toContainText("mark has been moved off the plan");
+    // The depth of the stack, not the count of moved marks. The count is read
+    // from the saved rows and lags the drag by a refetch, so asserting on it
+    // here would be asserting on network timing; the ring above is the same
+    // claim, made from what is on the screen.
+    await expect(undoBar).toContainText("1 step to go back through");
     await undoBar.screenshot({ path: join(SHOTS, "04-undo-bar-attribution.png") });
 
     // ---- 4. Undo it -------------------------------------------------------
     await undoButton.click();
+    // What it says it did, in the words the crew see.
+    const undoneToast = page.locator(".toast").filter({ hasText: /back where it was/ });
+    await expect(undoneToast).toBeVisible({ timeout: 60_000 });
+    await undoneToast.screenshot({ path: join(SHOTS, "05-undo-confirmation.png") });
     await expect(rings).toHaveCount(0, { timeout: 60_000 });
     await expect(undoBar).toContainText("Every mark is where the plan put it");
     await expect(page.getByRole("button", { name: /^Undo moving mark / })).toHaveCount(0);
-    await sheet.screenshot({ path: join(SHOTS, "05-plan-after-undo.png") });
+    await toastsGone(page);
+    await sheet.screenshot({ path: join(SHOTS, "06-plan-after-undo.png") });
 
     // ---- 5. Put one mark back ---------------------------------------------
     // A different button doing a different thing: Undo walks back one step,
     // this goes straight to where the plan put that one mark.
     const again = await gripMark(page, marksOn(page).first());
-    await dragBy(page, again.locator, toward.dx, toward.dy);
+    await dragTowardMiddle(page, again.locator);
     await expect(rings).toHaveCount(1, { timeout: 60_000 });
     await rings.first().click();
 
@@ -248,25 +297,38 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
       name: /^Put mark \S+ back on the plan$/,
     });
     await expect(putOneBack).toBeVisible();
-    await undoBar.screenshot({ path: join(SHOTS, "06-put-one-mark-back.png") });
+    await undoBar.screenshot({ path: join(SHOTS, "07-put-one-mark-back-button.png") });
     await putOneBack.click();
+    const resetOneToast = page
+      .locator(".toast")
+      .filter({ hasText: /back where the plan put it/ });
+    await expect(resetOneToast).toBeVisible({ timeout: 60_000 });
+    await resetOneToast.screenshot({ path: join(SHOTS, "08-put-one-mark-back-done.png") });
     await expect(rings).toHaveCount(0, { timeout: 60_000 });
 
+    // Tapping the mark opened its details, which sits above the plan and moves
+    // everything below it. Closed so the next drags measure the real drawing.
+    const closeDetails = page.getByRole("button", { name: /^Close details for / });
+    if (await closeDetails.first().isVisible().catch(() => false)) {
+      await closeDetails.first().click();
+    }
+
     // ---- 6. Put every mark back -------------------------------------------
-    // Two marks this time, so the button has to count and the confirmation has
-    // to say "2 marks" rather than "1 mark".
+    // Two marks this time, so the bar has to count both and the confirmation has
+    // to warn about more than one.
     const a = await gripMark(page, marksOn(page).first());
-    await dragBy(page, a.locator, toward.dx, toward.dy);
+    await dragTowardMiddle(page, a.locator);
     await expect(rings).toHaveCount(1, { timeout: 60_000 });
     // Explicitly one that has NOT been moved yet. The mark just dragged is no
     // longer where it was in the drawing's order, so "the second one" could pick
     // it up again and move the same mark twice.
     const b = await gripMark(page, unmovedMarksOn(page).first());
-    await dragBy(page, b.locator, toward.dx * 0.6, toward.dy * 0.6);
+    await dragTowardMiddle(page, b.locator, 0.3);
     await expect(rings).toHaveCount(2, { timeout: 60_000 });
-    await expect(undoBar).toContainText("2 marks have been moved off the plan");
-    await sheet.screenshot({ path: join(SHOTS, "07-two-marks-moved.png") });
-    await undoBar.screenshot({ path: join(SHOTS, "08-undo-bar-two-moved.png") });
+    await expect(undoBar).toContainText("2 steps to go back through");
+    await toastsGone(page);
+    await sheet.screenshot({ path: join(SHOTS, "09-two-marks-moved.png") });
+    await undoBar.screenshot({ path: join(SHOTS, "10-undo-bar-two-moved.png") });
 
     const confirmText = await putEveryMarkBack(page);
     expect(
@@ -275,12 +337,29 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
     ).toContain("back where the plan put them?");
     expect(confirmText).toContain("moved on purpose to match the building");
 
+    const resetAllToast = page
+      .locator(".toast")
+      .filter({ hasText: /back where the plan put them/ });
+    await expect(resetAllToast).toBeVisible({ timeout: 60_000 });
+    await resetAllToast.screenshot({ path: join(SHOTS, "11-every-mark-back-done.png") });
+
     await expect(rings).toHaveCount(0, { timeout: 60_000 });
     await expect(undoBar).toContainText("Every mark is where the plan put it");
-    await sheet.screenshot({ path: join(SHOTS, "09-plan-after-every-mark-back.png") });
-    await undoBar.screenshot({ path: join(SHOTS, "10-undo-bar-nothing-moved.png") });
+    await toastsGone(page);
+    await sheet.screenshot({ path: join(SHOTS, "12-plan-after-every-mark-back.png") });
+    await undoBar.screenshot({ path: join(SHOTS, "13-undo-bar-nothing-moved.png") });
   });
 });
+
+/**
+ * Let the confirmation messages clear before photographing the plan.
+ *
+ * They stack in the middle of a phone screen and sit on top of the very bar the
+ * picture is of, which made one shot unreadable.
+ */
+async function toastsGone(page: Page) {
+  await expect(page.locator(".toast")).toHaveCount(0, { timeout: 30_000 });
+}
 
 /**
  * Take hold of a mark: a locator that keeps pointing at it after it moves, plus
