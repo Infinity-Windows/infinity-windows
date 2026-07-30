@@ -513,6 +513,10 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "points_ledger": None,
     "procedures": None,
     "project_messages": None,
+    # One row per time someone dragged a mark on the plan. The same mark can be
+    # nudged back and forth all afternoon and every nudge is a real step in the
+    # undo history, so two rows that look alike are two moves, not a duplicate.
+    "project_opening_pin_moves": None,
     "project_plan_outlines": None,
     "schedule_assignments": None,
     "schedule_events": None,

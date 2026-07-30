@@ -8626,3 +8626,92 @@ body {
 .plan-fullscreen-close {
   min-height: 44px;
 }
+
+/* --- Undo for marks dragged around the plan ---------------------------- */
+
+/* A mark that is not where the plan put it. The bright ring reads on every dot
+   colour, so the accidentally nudged one can be found by eye rather than by
+   memory — which is more use day to day than the undo button itself. */
+.plan-dot--moved {
+  box-shadow:
+    0 0 0 2px #141210,
+    0 0 0 4px rgba(255, 255, 255, 0.9);
+}
+
+.mark-undo {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #1e1b18;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mark-undo__clear {
+  margin-top: 10px;
+}
+
+.mark-undo__status {
+  margin: 0;
+  font-size: 14px;
+}
+
+.mark-undo__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Taylor asked for Ctrl+Z, but the crew are on phones with no keyboard, so the
+   visible control has to be a real thumb target. 44px is the floor the rest of
+   the app is held to (lib/ui/safeArea.test.ts). */
+.mark-undo__btn {
+  flex: 1 1 auto;
+  min-height: 44px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: #262220;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+
+.mark-undo__btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.mark-undo__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Reverting the whole job is the same journey as pressing undo enough times,
+   so it is deliberately quiet: a link, not a button competing with Undo. */
+.mark-undo__all {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 10px 4px;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 14px;
+  text-decoration: underline;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mark-undo__all:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

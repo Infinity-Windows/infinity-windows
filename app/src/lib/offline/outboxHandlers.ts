@@ -212,6 +212,37 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     if (res.error) throw res.error;
   };
 
+  // Undoing a mark move names the exact move to walk back, so a press made in
+  // a dead zone undoes what the person was looking at rather than whatever is
+  // newest when the phone finds signal. The database function is a no-op on a
+  // move that is already undone, so a replay cannot eat someone else's work.
+  const pinUndo: OpHandler = async (entry) => {
+    const moveId = str(entry.payload.moveId);
+    if (!moveId) throw tagPermanent(new Error("Undo is missing which move to undo"));
+    const { error } = await supabase.rpc("undo_opening_pin_move", {
+      p_move_id: moveId,
+    });
+    if (error) throw error;
+  };
+
+  const pinResetProject: OpHandler = async (entry) => {
+    const projectId = str(entry.payload.projectId);
+    if (!projectId) throw tagPermanent(new Error("Reset is missing its job"));
+    const { error } = await supabase.rpc("reset_project_pins_to_extracted", {
+      p_project_id: projectId,
+    });
+    if (error) throw error;
+  };
+
+  const pinResetOpening: OpHandler = async (entry) => {
+    const openingId = str(entry.payload.openingId);
+    if (!openingId) throw tagPermanent(new Error("Reset is missing its mark"));
+    const { error } = await supabase.rpc("reset_opening_pin_to_extracted", {
+      p_opening_id: openingId,
+    });
+    if (error) throw error;
+  };
+
   return {
     clock_in: clockIn,
     clock_out: clockOut,
@@ -220,6 +251,9 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     photo_upload: upload,
     receipt_upload: upload,
     daily_log: dailyLog,
+    pin_undo: pinUndo,
+    pin_reset_project: pinResetProject,
+    pin_reset_opening: pinResetOpening,
   } satisfies OpHandlers;
 }
 

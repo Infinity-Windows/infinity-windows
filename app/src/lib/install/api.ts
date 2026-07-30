@@ -14,6 +14,7 @@ import { visionMarksToDrafts, type RawVisionMark } from "./specsVision";
 import type { DiscrepancyKind } from "./specReconciliation";
 import { elevationAppearances, type ElevationAppearance } from "./elevationViews";
 import { splitCalloutsByFloorPlan } from "./planDetails";
+import type { PinMove } from "./pinHistory";
 import type {
   InstallEvent,
   MarkElevationView,
@@ -1140,6 +1141,9 @@ export async function saveDraftOpenings(
       page_number: d.page_number,
       pin_x: d.pin_x ?? null,
       pin_y: d.pin_y ?? null,
+      origin_pin_x: d.origin_pin_x ?? d.pin_x ?? null,
+      origin_pin_y: d.origin_pin_y ?? d.pin_y ?? null,
+      origin_page_number: d.page_number,
       confirmed: false,
     })),
   );
@@ -1307,6 +1311,78 @@ export async function deleteOpening(id: string): Promise<void> {
     .eq("id", id)
     .neq("status", "installed");
   if (error) throw error;
+}
+
+// --- Moving marks on the map, and walking those moves back ---
+
+/**
+ * Every recorded move of every mark on a job, newest first.
+ *
+ * Written by a database trigger, not by the app, so it captures a drag from
+ * anywhere and cannot be forged from a browser. Best-effort: a database without
+ * the migration answers [] so the map still renders, just without Undo.
+ */
+export async function listPinMoves(projectId: string): Promise<PinMove[]> {
+  if (!projectId) return [];
+  const { data, error } = await supabase
+    .from("project_opening_pin_moves")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("moved_at", { ascending: false })
+    .limit(200);
+  if (error) {
+    if (isMissingPinHistory(error)) return [];
+    throw error;
+  }
+  return (data ?? []).map((row) => ({
+    ...row,
+    from_pin_x: Number(row.from_pin_x),
+    from_pin_y: Number(row.from_pin_y),
+    to_pin_x: Number(row.to_pin_x),
+    to_pin_y: Number(row.to_pin_y),
+  })) as PinMove[];
+}
+
+function isMissingPinHistory(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { code?: unknown; message?: unknown };
+  if (e.code === "PGRST205" || e.code === "42P01" || e.code === "PGRST202") {
+    return true;
+  }
+  const message = typeof e.message === "string" ? e.message.toLowerCase() : "";
+  return message.includes("project_opening_pin_moves");
+}
+
+/**
+ * Walk ONE move back. Takes the move's id rather than "the newest one" so an
+ * undo queued in a dead zone still undoes the move the person was looking at,
+ * and so replaying a queued undo twice is a no-op.
+ */
+export async function undoPinMove(moveId: string): Promise<void> {
+  const { error } = await supabase.rpc("undo_opening_pin_move", {
+    p_move_id: moveId,
+  });
+  if (error) throw error;
+}
+
+/** Put every mark on a job back where the plan put it. Returns how many moved. */
+export async function resetProjectPins(projectId: string): Promise<number> {
+  const { data, error } = await supabase.rpc(
+    "reset_project_pins_to_extracted",
+    { p_project_id: projectId },
+  );
+  if (error) throw error;
+  return Number(data ?? 0);
+}
+
+/** Put ONE mark back where the plan put it. */
+export async function resetOpeningPin(openingId: string): Promise<number> {
+  const { data, error } = await supabase.rpc(
+    "reset_opening_pin_to_extracted",
+    { p_opening_id: openingId },
+  );
+  if (error) throw error;
+  return Number(data ?? 0);
 }
 
 export async function confirmOpenings(projectId: string): Promise<void> {
