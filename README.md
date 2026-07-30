@@ -57,11 +57,11 @@ npm run dev
 ### Signing in to look at a screen
 
 Nearly every screen needs a login, and public signup is off. There is one test
-account for exactly this — an installer, with its password in a gitignored local
-file:
+account for exactly this — an installer, with its password in a local file
+outside the repository so every worktree can read it:
 
 ```bash
-cat .secrets/test-installer.env    # email + password
+cat ~/.config/infinity-windows/test-installer.env    # email + password
 ```
 
 If that file is not there, **do not ask anyone for a password** — regenerate it

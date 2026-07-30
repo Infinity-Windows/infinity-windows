@@ -21,38 +21,45 @@ is here so that never costs anyone a day again.
 
 ## Signing in, locally, right now
 
-The password lives in **`.secrets/test-installer.env`**, which is gitignored and
-never committed. From the repository root:
+The password lives in **`~/.config/infinity-windows/test-installer.env`**, mode
+`600`. From anywhere:
 
 ```bash
-cat .secrets/test-installer.env
+cat ~/.config/infinity-windows/test-installer.env
 ```
 
 That prints `TEST_INSTALLER_EMAIL` and `TEST_INSTALLER_PASSWORD`. Open the app
-(`http://localhost:5173`, or the deployed site), and type them into the normal
-sign-in form. There is no special flow and no magic link — it signs in exactly
-as a crew member does.
+(`http://localhost:5173`, or wherever your dev server is, or the deployed site)
+and type them into the normal sign-in form. There is no special flow and no
+magic link — it signs in exactly as a crew member does.
 
 Driving it from a script instead of a browser:
 
 ```bash
-set -a; . .secrets/test-installer.env; set +a
+set -a; . ~/.config/infinity-windows/test-installer.env; set +a
 # $TEST_INSTALLER_EMAIL and $TEST_INSTALLER_PASSWORD are now set.
 ```
 
-### If `.secrets/test-installer.env` is not there
+**Why the home directory and not the repository.** Most work here happens in
+`git worktree` checkouts — there were fourteen of them the day this was written —
+and each one has its own working directory, so a file at `<repo>/.secrets/…`
+exists for exactly one of them and is invisible to the other thirteen. One
+location outside every checkout is readable from all of them, survives a branch
+switch, and cannot be committed by accident. `.secrets/` is gitignored as well,
+for anyone who prefers to keep a copy in-tree.
 
-You are probably on a fresh clone, or in a worktree that never had it — the file
-is deliberately not in git. **You do not need to ask anyone for the password.**
-Choose a new one and make the account use it, which takes about a minute and
-needs only `gh`:
+### If that file is not there
+
+You are probably on a fresh machine — the file is deliberately not in git.
+**You do not need to ask anyone for the password.** Choose a new one and make the
+account use it, which takes about a minute and needs only `gh`:
 
 ```bash
-mkdir -p .secrets
+mkdir -p ~/.config/infinity-windows
 NEW="$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-24)"
 printf 'TEST_INSTALLER_EMAIL=qa.installer@crew.infinitywindows.app\nTEST_INSTALLER_PASSWORD=%s\n' \
-  "$NEW" > .secrets/test-installer.env
-chmod 600 .secrets/test-installer.env
+  "$NEW" > ~/.config/infinity-windows/test-installer.env
+chmod 600 ~/.config/infinity-windows/test-installer.env
 
 printf '%s' "$NEW" | gh secret set TEST_INSTALLER_PASSWORD \
   --repo Infinity-Windows/infinity-windows
@@ -72,7 +79,7 @@ password reset a real installer would be given.
 
 | Where | What for | Who can read it |
 | --- | --- | --- |
-| `.secrets/test-installer.env` (gitignored) | An agent or person working locally | Anyone on that machine |
+| `~/.config/infinity-windows/test-installer.env`, mode 600 | An agent or person working locally, in any checkout or worktree | Anyone on that machine |
 | Repo secret `TEST_INSTALLER_PASSWORD` | The workflow that sets the account’s password | Nothing and nobody — GitHub never gives a secret value back |
 
 The password is generated **locally**, never inside CI. Anything invented inside
@@ -81,8 +88,8 @@ readable by everyone with access to the repository. Generating it outside means
 the value never crosses a log, and the local copy is the authoritative one: the
 workflow’s job is only to make the account agree with it.
 
-Never commit `.secrets/`, and never paste the password into a PR, an issue, a
-commit message or a chat message.
+Never paste the password into a PR, an issue, a commit message or a chat message,
+and never move it inside a checkout.
 
 ## What it can reach
 
