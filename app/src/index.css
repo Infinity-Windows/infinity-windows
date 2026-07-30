@@ -832,11 +832,19 @@ button:disabled {
   padding: 4px 6px 10px;
 }
 
+/*
+ * On a phone this row is job code, shape source, Edit, full screen — more than
+ * 390px holds. So the pressure is deliberately aimed at the shape source, which
+ * is a caption, rather than at the job code, which is what tells a lead which
+ * building they are looking at.
+ */
 .cartoon-sheet__head-actions {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
 }
 
 .cartoon-sheet__title {
@@ -846,6 +854,9 @@ button:disabled {
   letter-spacing: 2px;
   color: #a39c92;
   text-transform: uppercase;
+  /* One line, always in full. Never a word left on a line by itself. */
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .cartoon-sheet__status {
@@ -853,6 +864,10 @@ button:disabled {
   letter-spacing: 1px;
   color: #5c564e;
   text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .plan-fullscreen-toggle {

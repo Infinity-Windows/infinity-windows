@@ -147,7 +147,7 @@ const WALL_STROKE = 11;
 const FOOTPRINT_SOURCE_LABEL: Record<FootprintSource | "none", string> = {
   saved: "traced by hand",
   traced: "outline from CAD",
-  pins: "shape from the marks",
+  pins: "shape from marks",
   none: "no marks placed yet",
 };
 
@@ -1617,8 +1617,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         >
           {fullScreen && fullscreenBar}
           <div className="cartoon-sheet__head">
+            {/*
+             * Just the job. The view is already named by the view buttons above
+             * the sheet, and spelling it out here too wrapped this header onto
+             * three lines on a phone with the separator stranded on its own.
+             */}
             <span className="cartoon-sheet__title">
-              {project?.job_code ?? "PLAN"} · BUILDING OUTLINE
+              {project?.job_code ?? "PLAN"}
             </span>
             <div className="cartoon-sheet__head-actions">
               <span className="cartoon-sheet__status">
@@ -1640,7 +1645,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                     setFullScreen(false);
                   }}
                 >
-                  Edit model
+                  Edit
                 </button>
               )}
               <button
@@ -1713,27 +1718,17 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                       </g>
                     ))
                   ) : (
-                    outlinePath && (
-                      /*
-                       * Walls, not an outline: a lit interior under a heavy
-                       * stroke. Corners are mitred, because the whole point of
-                       * squaring the polygon up was to get sharp ones — rounding
-                       * them here would throw that away.
-                       */
-                      <>
-                        <path
-                          d={outlinePath}
-                          fill="rgba(214, 208, 199, 0.10)"
-                          stroke="none"
-                        />
-                        <path
-                          d={outlinePath}
-                          fill="none"
-                          stroke="rgba(224, 218, 209, 0.9)"
-                          strokeWidth={WALL_STROKE}
-                          strokeLinejoin="miter"
-                        />
-                      </>
+                    outlinePath &&
+                    outline && (
+                      <MapWallLayer
+                        points={outline.points}
+                        aspect={aspect}
+                        outlinePath={outlinePath}
+                        openings={[...wallOpenings.snapped.values()]}
+                        colorFor={wallOpeningColor}
+                        selectedId={selectedId}
+                        wallStroke={WALL_STROKE}
+                      />
                     )
                   )}
                 </svg>
@@ -1762,7 +1757,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           {fullScreen && fullscreenBar}
           <div className="cartoon-sheet__head">
             <span className="cartoon-sheet__title">
-              {project?.job_code ?? "PLAN"} · ORIGINAL BUILDING PLAN
+              {project?.job_code ?? "PLAN"}
             </span>
             <div className="cartoon-sheet__head-actions">
               <span className="cartoon-sheet__status">source PDF</span>
@@ -1823,7 +1818,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           {fullScreen && fullscreenBar}
           <div className="cartoon-sheet__head">
             <span className="cartoon-sheet__title">
-              {project?.job_code ?? "PLAN"} · WINDOW &amp; DOOR DETAILS
+              {project?.job_code ?? "PLAN"}
             </span>
             <div className="cartoon-sheet__head-actions">
               <span className="cartoon-sheet__status">
