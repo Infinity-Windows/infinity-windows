@@ -486,7 +486,12 @@ export function Timecard() {
                           </div>
                         )}
                       </div>
-                      <div className="row-gap" style={{ flexWrap: "wrap" }}>
+                      {/* Own row: two buttons and the crew name do not fit
+                          side by side on a phone. */}
+                      <div
+                        className="row-gap"
+                        style={{ flexBasis: "100%", flexWrap: "wrap", marginTop: 6 }}
+                      >
                         <button
                           className="button-like active-pill"
                           onClick={() => {
