@@ -3208,6 +3208,20 @@ button:disabled {
   padding: 12px 13px;
 }
 
+.row-assignee {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+  flex: none;
+}
+
 /*
  * The row whose pin is labelled on the drawing above. It is the other half of a
  * two-way link, so it has to be obvious which row the one labelled pin belongs

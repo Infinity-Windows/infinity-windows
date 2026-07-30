@@ -8,6 +8,7 @@ import {
   downloadPlanset,
   elevationAppearancesFromDoc,
   ensureTypesFromSpecs,
+  getMyProfile,
   linkSpecsToOpenings,
   listElevationViews,
   listMarkSpecs,
@@ -88,6 +89,13 @@ import {
 } from "../../lib/install/footprint";
 import { separatePins } from "../../lib/install/pinLayout";
 import {
+  matchesPlanFilter,
+  resolveFilter,
+  visibleFilters,
+  type PlanFilter,
+} from "../../lib/install/openingFilter";
+import { dispatchNudge, dispatchNudgeText } from "../../lib/install/dispatchNudge";
+import {
   snapOpeningsToWalls,
   wallPinPosition,
   type SnappedOpening,
@@ -108,17 +116,8 @@ interface PageImage {
   height: number;
 }
 
-type PlanFilter = "all" | "open" | "windows" | "doors" | "done";
 /** Outline = cartoon extract; building = original floor PDF; details = specs PDF. */
 type DrawingView = "outline" | "building" | "details";
-
-const FILTERS: { id: PlanFilter; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "open", label: "Open" },
-  { id: "windows", label: "Windows" },
-  { id: "doors", label: "Doors" },
-  { id: "done", label: "Done" },
-];
 
 function clamp(value: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, value));
@@ -240,21 +239,6 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const [selection, setSelection] = useState<string[]>([]);
   const [dispatchNote, setDispatchNote] = useState<string | null>(null);
 
-  const matchesFilter = (o: ProjectOpening): boolean => {
-    switch (filter) {
-      case "open":
-        return o.status !== "installed";
-      case "done":
-        return o.status === "installed";
-      case "windows":
-        return openingUnitKind(o) === "window";
-      case "doors":
-        return openingUnitKind(o) === "door";
-      default:
-        return true;
-    }
-  };
-
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const project = projects.data?.find((p) => p.id === projectId);
   const openings = useQuery({
@@ -288,6 +272,14 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         : Promise.resolve([]),
     enabled: !!buildingPlansetId,
   });
+  // "Mine" is about identity, not about the role being previewed, so it keys on
+  // the real signed-in profile: an owner previewing "installer" still sees their
+  // own openings rather than nobody's.
+  const myProfile = useQuery({
+    queryKey: ["myProfile"],
+    queryFn: getMyProfile,
+  });
+  const myProfileId = myProfile.data?.id ?? null;
   const { effectiveRole } = useEffectiveRole();
   // Failed/undone-install markers are foreman+ only. Installers never see the
   // voided ring, legend, or "redo needed" state; the query is also gated so the
@@ -750,7 +742,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   }, [openings.dataUpdatedAt]);
 
   const all = openings.data ?? [];
-  const filtered = all.filter(matchesFilter);
+  // Mine is hidden on a job the viewer has nothing on, so a foreman is never
+  // offered a chip that can only ever show an empty list.
+  const filters = visibleFilters(all, myProfileId);
+  const activeFilter = resolveFilter(filter, filters);
+  const filtered = all.filter((o) =>
+    matchesPlanFilter(o, activeFilter, myProfileId),
+  );
   const placed = filtered.filter(
     (o) => o.pin_x !== null && o.pin_y !== null && o.page_number === page,
   );
@@ -1646,11 +1644,11 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       )}
 
       <nav className="plan-filters" aria-label="Filter openings">
-        {FILTERS.map((f) => (
+        {filters.map((f) => (
           <button
             key={f.id}
             type="button"
-            className={filter === f.id ? "chip active" : "chip"}
+            className={activeFilter === f.id ? "chip active" : "chip"}
             onClick={() => setFilter(f.id)}
           >
             {f.label}
@@ -2031,7 +2029,11 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       </div>
 
       <h2>
-        {filter === "all" ? "All openings" : FILTERS.find((f) => f.id === filter)?.label}{" "}
+        {activeFilter === "all"
+          ? "All openings"
+          : activeFilter === "mine"
+            ? "My openings"
+            : filters.find((f) => f.id === activeFilter)?.label}{" "}
         ({filtered.length})
       </h2>
       <p className="muted opening-list-hint">
@@ -2077,6 +2079,22 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               <span className="muted">
                 {o.window_types?.type_code ?? "type?"} {o.label ?? ""}
               </span>
+              {/*
+                Who owns this opening, without having to open the row first.
+                Same initials and colour the dispatch legend uses, so a name
+                reads the same wherever it appears.
+              */}
+              {o.assignee && (
+                <span
+                  className="row-assignee"
+                  title={o.assignee.display_name}
+                  style={{
+                    background: crewColors.get(o.assignee.id) ?? "var(--muted)",
+                  }}
+                >
+                  {installerInitials(o.assignee.display_name)}
+                </span>
+              )}
               <span
                 className="big-address"
                 style={{ color: isVoided ? VOIDED_RING_COLOR : OPENING_STATUS_COLORS[o.status] }}
