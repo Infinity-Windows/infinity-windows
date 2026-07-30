@@ -45,35 +45,36 @@ describe("snapOpeningsToWalls", () => {
     expect(opening.point.x).toBeCloseTo(0.5, 2);
   });
 
-  it("leaves a mark in the middle of the room exactly where it is", () => {
-    // This is Pecan's floor 3: marks the extractor put in rows across the page,
-    // nowhere near a real wall. Snapping them would invent a location.
+  it("puts a mark stranded in the middle of the room onto a wall", () => {
+    // Pecan's floor 3: marks the extractor put in rows across the page. There is
+    // no such thing as a window in the middle of a room, so leaving it there
+    // draws something that cannot be true.
     const result = snapOpeningsToWalls({
       openings: [candidate("a", 0.5, 0.5)],
       points: BOX,
       aspect: ASPECT,
     });
-    expect(result.snapped.size).toBe(0);
-    expect(result.freeIds).toEqual(["a"]);
+    expect(result.freeIds).toEqual([]);
+    const opening = result.snapped.get("a")!;
+    // BOX spans x 0.2..0.8, y 0.2..0.8, so any wall is 0.2 or 0.8 on one axis.
+    const onAWall =
+      [0.2, 0.8].some((v) => Math.abs(opening.point.x - v) < 0.02) ||
+      [0.2, 0.8].some((v) => Math.abs(opening.point.y - v) < 0.02);
+    expect(onAWall).toBe(true);
   });
 
-  it("snaps just inside the threshold and not just outside it", () => {
-    // The threshold is in viewBox units; the top wall is at y = 0.2.
-    const inside = WALL_SNAP_DISTANCE * 0.8;
-    const outside = WALL_SNAP_DISTANCE * 1.4;
+  it("keeps a mark that is already on a wall where it was put", () => {
+    // A foreman dragging a mark onto a wall is real information, and the spread
+    // must not shuffle it away.
     const h = 1000 * ASPECT;
-    const near = snapOpeningsToWalls({
-      openings: [candidate("a", 0.5, 0.2 + inside / h)],
+    const result = snapOpeningsToWalls({
+      openings: [candidate("a", 0.35, 0.2 + (WALL_SNAP_DISTANCE * 0.5) / h)],
       points: BOX,
       aspect: ASPECT,
     });
-    const far = snapOpeningsToWalls({
-      openings: [candidate("a", 0.5, 0.2 + outside / h)],
-      points: BOX,
-      aspect: ASPECT,
-    });
-    expect(near.snapped.size).toBe(1);
-    expect(far.snapped.size).toBe(0);
+    const opening = result.snapped.get("a")!;
+    expect(opening.point.x).toBeCloseTo(0.35, 2);
+    expect(opening.point.y).toBeCloseTo(0.2, 2);
   });
 
   it("gives doors a wider opening than windows", () => {
@@ -85,10 +86,10 @@ describe("snapOpeningsToWalls", () => {
     expect(result.snapped.get("d")!.width).toBe(DOOR_GAP_WIDTH);
   });
 
-  it("leaves marks packed tighter than openings can be as plain dots", () => {
-    // Pecan's schedule strip: entries about a pixel apart in page terms, close
-    // enough to a wall to snap. Ten windows in a wall's width of wall is not a
-    // building, so none of them is drawn as an opening.
+  it("spreads marks packed into one strip around the building", () => {
+    // Pecan's schedule strip: ten entries about a pixel apart in page terms. Ten
+    // windows in one window's width of wall is not a building, so they take the
+    // room the rest of the building has.
     const packed = Array.from({ length: 10 }, (_, i) =>
       candidate(`s${i}`, 0.3 + i * 0.004, 0.2),
     );
@@ -97,8 +98,35 @@ describe("snapOpeningsToWalls", () => {
       points: BOX,
       aspect: ASPECT,
     });
-    expect(result.snapped.size).toBe(0);
-    expect(result.freeIds.sort()).toEqual(packed.map((p) => p.id).sort());
+    expect(result.snapped.size).toBe(10);
+    expect(result.freeIds).toEqual([]);
+    // They cannot all still be crammed into the one wall they arrived on.
+    const edges = new Set(
+      [...result.snapped.values()].map((o) => o.edge),
+    );
+    expect(edges.size).toBeGreaterThan(1);
+    // And none of them overlaps another.
+    const spans = [...result.snapped.values()]
+      .map((o) => ({ edge: o.edge, t: o.t, w: o.width }))
+      .sort((a, b) => a.edge - b.edge || a.t - b.t);
+    for (let i = 1; i < spans.length; i++) {
+      if (spans[i].edge !== spans[i - 1].edge) continue;
+      expect(spans[i].t).toBeGreaterThan(spans[i - 1].t);
+    }
+  });
+
+  it("never leaves a mark floating when there is a building to put it on", () => {
+    // The whole complaint: 42 dots hanging inside Black Desert's outline.
+    const scattered = Array.from({ length: 42 }, (_, i) =>
+      candidate(`m${i}`, 0.3 + (i % 7) * 0.06, 0.3 + Math.floor(i / 7) * 0.06),
+    );
+    const result = snapOpeningsToWalls({
+      openings: scattered,
+      points: BOX,
+      aspect: ASPECT,
+    });
+    expect(result.snapped.size).toBe(42);
+    expect(result.freeIds).toEqual([]);
   });
 
   it("still draws openings that only need a modest squeeze", () => {

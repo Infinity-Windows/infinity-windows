@@ -44,7 +44,7 @@ const MAX_PINS_INVOLVED_FRACTION = 0.5;
 const GOOD_FOOTPRINT_LABELS = [
   "traced by hand",
   "outline from CAD",
-  "shape from marks",
+  "basic outline",
 ];
 
 interface PinBox {
@@ -292,9 +292,18 @@ for (const job of jobFixtures()) {
     let note: string | undefined;
     let sheet = page.locator(".plan-sheet--cad");
     let pins = page.locator(".cartoon-sheet .plan-dot");
-    await settledPinCount(pins, false);
+    /*
+     * A mark on this drawing is either an opening cut into a wall or, where
+     * there is no wall to cut, a pin. Counting only pins used to be enough;
+     * now that every mark that can be an opening is one, a page of 42 openings
+     * and no pins is the normal case, not an empty page.
+     */
+    let marks = page.locator(
+      ".cartoon-sheet .plan-dot, .cartoon-sheet [data-wall-opening]",
+    );
+    await settledPinCount(marks, false);
 
-    if ((await pins.count()) === 0) {
+    if ((await marks.count()) === 0) {
       // Loud on purpose. The outline view opens on the planset's first detected
       // floor sheet; this job's marks are recorded against a different page, so
       // the derived building is drawn with nothing on it and there is no page
@@ -314,8 +323,9 @@ for (const job of jobFixtures()) {
       view = "Original plan";
       sheet = page.locator(".plan-sheet").first();
       pins = page.locator(".plan-map--with-dots .plan-dot");
+      marks = pins;
       await expect(page.locator(".plan-map--with-dots img")).toBeVisible();
-      await settledPinCount(pins, true);
+      await settledPinCount(marks, true);
     } else {
       const headerText = (await status.textContent())?.trim() ?? "";
       expect(headerText).not.toContain("outline unavailable");
@@ -336,25 +346,68 @@ for (const job of jobFixtures()) {
       ).toMatch(/^M\s*[\d.-]/i);
     }
 
-    const rendered = await pins.count();
+    const rendered = await marks.count();
     const pages = plausiblePages(job);
     const matched = pages.find((p) => rendered === p.expected);
     expect(
       matched,
-      `${job.jobCode}: rendered ${rendered} pins, which matches no page of this ` +
+      `${job.jobCode}: rendered ${rendered} marks, which matches no page of this ` +
         `job (${pages
           .map((p) => `page ${p.pageNumber}: ${p.marks} marks + ${job.unpinned} unpinned`)
           .join("; ")}). A screenshot of the wrong page is worse than none.`,
     ).toBeDefined();
 
     const overlap = measureOverlap(await pinBoxes(pins));
-    // How many of this page's marks are drawn as openings in a wall. Marks away
-    // from every wall are meant NOT to snap, so this is a reading, not a target.
+    // Every mark that has a building to sit on should be an opening in it: a
+    // window in the middle of a room is not a thing. Free pins are what is left
+    // when there is no wall at all, so this is a target, not just a reading.
     const openings = page.locator("[data-wall-opening]");
     const snapped = await openings.count();
     const doors = await page
       .locator('[data-wall-opening][data-opening-kind="door"]')
       .count();
+    if (view === "Building outline") {
+      expect(
+        snapped,
+        `${job.jobCode}: ${rendered - snapped} of ${rendered} marks are drawn ` +
+          `as dots floating inside the building instead of openings in its walls`,
+      ).toBe(rendered);
+    }
+    /*
+     * Two openings that overlap have merged into one hole. Checked from the
+     * attributes the wall layer stamps on each opening — screen boxes of gap
+     * lines are useless here, because a gap's axis-aligned box is the wall
+     * segment it sits on and neighbours always "overlap" on paper.
+     */
+    const gapOverlap = await page.locator("[data-wall-opening]").evaluateAll(
+      (nodes) => {
+        type Gap = { center: number; width: number };
+        const byEdge = new Map<number, Gap[]>();
+        for (const node of nodes) {
+          const edge = Number(node.getAttribute("data-opening-edge"));
+          const center = Number(node.getAttribute("data-opening-center"));
+          const width = Number(node.getAttribute("data-opening-width"));
+          if (![edge, center, width].every(Number.isFinite)) continue;
+          const list = byEdge.get(edge) ?? [];
+          list.push({ center, width });
+          byEdge.set(edge, list);
+        }
+        let overlapping = 0;
+        let touchingPairs = 0;
+        for (const list of byEdge.values()) {
+          list.sort((a, b) => a.center - b.center || a.width - b.width);
+          for (let i = 1; i < list.length; i++) {
+            const prev = list[i - 1];
+            const cur = list[i];
+            const gap =
+              cur.center - cur.width / 2 - (prev.center + prev.width / 2);
+            if (gap < -0.5) overlapping += 2;
+            if (gap < 1) touchingPairs += 1;
+          }
+        }
+        return { overlapping, touchingPairs, edges: byEdge.size };
+      },
+    );
     measured[job.jobCode] = {
       ...overlap,
       snapped,
@@ -366,10 +419,12 @@ for (const job of jobFixtures()) {
 
     console.log(
       [
-        `\n${job.jobCode} — ${view}, page ${matched!.pageNumber}, ${overlap.pins} pins drawn`,
-        `  openings in walls    ${snapped} / ${overlap.pins}` +
+        `\n${job.jobCode} — ${view}, page ${matched!.pageNumber}, ${rendered} marks drawn`,
+        `  openings in walls    ${snapped} / ${rendered}` +
           `  (${doors} door${doors === 1 ? "" : "s"}),` +
-          ` ${overlap.pins - snapped} left as free dots`,
+          ` ${rendered - snapped} left as free dots`,
+        `  openings overlapping ${gapOverlap.overlapping} / ${snapped}` +
+          `  (${gapOverlap.touchingPairs} pairs touching)`,
         `  bad pin pairs        ${overlap.badPairs} / ${overlap.pairs}` +
           `  = ${overlap.badPairFraction.toFixed(5)} (limit ${MAX_BAD_PAIR_FRACTION})`,
         `  pins in any overlap  ${overlap.pinsInvolved} / ${overlap.pins}` +
@@ -395,11 +450,13 @@ for (const job of jobFixtures()) {
     if ((await numbers.getAttribute("aria-pressed")) !== "true") {
       await numbers.click();
     }
-    const marks = pins.locator(".plan-dot__mark");
-    await expect.poll(async () => marks.count()).toBe(overlap.pins);
+    const numberLabels = pins
+      .locator(".plan-dot__mark")
+      .or(page.locator("[data-opening-label]"));
+    await expect.poll(async () => numberLabels.count()).toBe(rendered);
     const box = await sheet.boundingBox();
     const fit = measureLabelFit(
-      await labelBoxes(marks),
+      await labelBoxes(numberLabels),
       box ? box.width * box.height : 0,
     );
     const loud = measureOverlap(await pinBoxes(pins));
@@ -444,15 +501,25 @@ for (const job of jobFixtures()) {
     );
 
     expect(
-      overlap.badPairFraction,
-      `${job.jobCode}: ${overlap.badPairs} of ${overlap.pairs} pin pairs cover ` +
-        `more than half of each other`,
-    ).toBeLessThan(MAX_BAD_PAIR_FRACTION);
-    expect(
-      overlap.pinsInvolvedFraction,
-      `${job.jobCode}: ${overlap.pinsInvolved} of ${overlap.pins} pins are more ` +
-        `than half buried under another pin`,
-    ).toBeLessThan(MAX_PINS_INVOLVED_FRACTION);
+      gapOverlap.overlapping,
+      `${job.jobCode}: ${gapOverlap.overlapping} openings are drawn over another ` +
+        `one, so the wall between them has been erased`,
+    ).toBe(0);
+    // Only where marks are still drawn as pins. A page whose marks all became
+    // openings has no pins to bury, and dividing by that would report a NaN as
+    // a pass.
+    if (overlap.pins > 0) {
+      expect(
+        overlap.badPairFraction,
+        `${job.jobCode}: ${overlap.badPairs} of ${overlap.pairs} pin pairs cover ` +
+          `more than half of each other`,
+      ).toBeLessThan(MAX_BAD_PAIR_FRACTION);
+      expect(
+        overlap.pinsInvolvedFraction,
+        `${job.jobCode}: ${overlap.pinsInvolved} of ${overlap.pins} pins are more ` +
+          `than half buried under another pin`,
+      ).toBeLessThan(MAX_PINS_INVOLVED_FRACTION);
+    }
 
     expect(
       missingStorage,

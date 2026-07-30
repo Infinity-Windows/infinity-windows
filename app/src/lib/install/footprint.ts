@@ -1,14 +1,12 @@
 // A building shape for jobs that have no traced outline.
 //
-// Every job is fully pinned long before anyone traces a footprint, and the pins
-// sit ON the walls — so the pin cloud is already a ring in the rough shape of
-// the building. Rasterizing that ring, filling its interior and tracing the
-// result gives a footprint that "basically matches" the building without a PDF
-// trace, an API call, or a foreman drawing anything.
-//
-// Deliberately coarse: this is a schematic a crew reads at a glance on a phone,
-// not a survey. A 12-vertex right-angled polygon reads as a building; a faithful
-// 200-vertex trace of the same pins reads as noise.
+// The shape is a plain rectangle around the marks. It used to try to trace a
+// ring through the pin cloud on the theory that pins sit on walls and so already
+// outline the building. They mostly do not — the positions come from wherever
+// the extractor dropped each callout on the sheet — so the ring traced the noise
+// and produced a lumpy shape that looked like a broken building rather than a
+// simple one. A rectangle claims nothing it cannot back up, and the openings cut
+// into it read far better along long straight walls than they did around a blob.
 //
 // Pure and deterministic — no DOM, no canvas, no network — so the same job
 // always produces the same shape and the whole thing is unit-testable.
@@ -17,30 +15,16 @@ import {
   clampOutlinePoint,
   collapseCollinear,
   dedupeClosePoints,
-  dilate,
-  erode,
-  fillHoles,
   isValidOutlinePolygon,
-  largestComponent,
   rdp,
   snapRectilinear,
-  traceOuterBoundary,
   type BuildingOutline,
   type OutlinePoint,
 } from "./outline";
 
-/** Grid cells across the page width. Cells stay square via the page aspect. */
-const GRID_COLS = 26;
-/**
- * Cells to grow each pin by. The ring has to close for `fillHoles` to find an
- * interior, and consecutive marks on one wall are rarely in touching cells.
- */
-const PIN_DILATE = 2;
-/** A ring needs enough marks to enclose anything; below this, use the box. */
-const MIN_PINS_FOR_RING = 8;
-/** Outward pad on the bounding-box fallback, as a fraction of page width. */
+/** Outward pad on the bounding box, as a fraction of page width. */
 const BOX_PAD = 0.045;
-/** Vertex budget for a shape that should read as a building, not a trace. */
+/** Vertex budget when simplifying a real PDF trace. */
 export const MAX_FOOTPRINT_VERTICES = 12;
 /**
  * Snap edges within this many degrees of an axis to exactly axis-aligned.
@@ -122,73 +106,6 @@ export function boundingFootprint(
 }
 
 /**
- * A rough building footprint traced from the job's own pins.
- *
- * Pins are rasterized onto a coarse grid, grown until neighbours on the same
- * wall touch, then the enclosed interior is filled and the outer boundary
- * traced. Falls back to a padded bounding box when there are too few pins to
- * enclose anything, or when the traced ring turns out not to enclose anything.
- */
-export function footprintFromPins(
-  pins: FootprintPin[],
-  aspect: number,
-): BuildingOutline | null {
-  const usable = pins.filter(
-    (p) =>
-      Number.isFinite(p.x) &&
-      Number.isFinite(p.y) &&
-      p.x >= 0 &&
-      p.x <= 1 &&
-      p.y >= 0 &&
-      p.y <= 1,
-  );
-  if (usable.length === 0) return null;
-  const safeAspect = aspect > 0 ? aspect : 0.7;
-  if (usable.length < MIN_PINS_FOR_RING) {
-    return boundingFootprint(usable, safeAspect);
-  }
-
-  const cols = GRID_COLS;
-  const rows = Math.max(4, Math.round(GRID_COLS * safeAspect));
-  const grid = new Uint8Array(rows * cols);
-  for (const p of usable) {
-    const c = Math.min(cols - 1, Math.max(0, Math.round(p.x * (cols - 1))));
-    const r = Math.min(rows - 1, Math.max(0, Math.round(p.y * (rows - 1))));
-    grid[r * cols + c] = 1;
-  }
-
-  // Grow to close the ring, fill the interior it now encloses, then shrink most
-  // of the way back. Not shrinking at all puts the wall a full dilation radius
-  // outside the marks; shrinking all the way puts it ON them, which leaves marks
-  // stranded outside the building once the polygon is coarsened. One cell of
-  // slack keeps every mark inside its own building, where a window belongs.
-  const grown = dilate(grid, rows, cols, PIN_DILATE);
-  const filled = fillHoles(grown, rows, cols);
-  const shrunk = erode(filled, rows, cols, Math.max(1, PIN_DILATE - 1));
-  const mass = largestComponent(shrunk, rows, cols)
-    ? largestComponent(fillHoles(shrunk, rows, cols), rows, cols)
-    : largestComponent(filled, rows, cols);
-  if (!mass) return boundingFootprint(usable, safeAspect);
-
-  const loop = traceOuterBoundary(mass, rows, cols);
-  if (loop.length < 4) return boundingFootprint(usable, safeAspect);
-
-  const points = loop.map(([c, r]) =>
-    clampOutlinePoint({ x: c / cols, y: r / rows }),
-  );
-  const shaped = coarsen(points, MAX_FOOTPRINT_VERTICES, safeAspect);
-  if (!isValidOutlinePolygon(shaped)) {
-    return boundingFootprint(usable, safeAspect);
-  }
-  // A dilated ring that never closed fills to little more than the ring
-  // itself; the box is a more honest shape than a blob in that case.
-  if (polygonArea(shaped, safeAspect) < pinSpread(usable, safeAspect) * 0.35) {
-    return boundingFootprint(usable, safeAspect);
-  }
-  return { points: shaped, pageAspect: safeAspect };
-}
-
-/**
  * A traced polygon spanning more than this fraction of the page in BOTH axes is
  * the sheet border, not a building. Black Desert's PDF traces to 0.91 × 0.90 —
  * the drawing frame and title block. Pecan's real footprint is 0.68 × 0.83.
@@ -227,10 +144,13 @@ export interface ResolvedFootprint {
 }
 
 /**
- * Pick the best available shape for a page: a saved outline, else the PDF
- * trace, else the job's own pins. There is no "no shape" branch by design —
- * the old fixed grey rectangle bore no relation to the building and told a
- * crew nothing.
+ * Pick the shape for a page: a hand-drawn outline if someone made one, otherwise
+ * a plain box around the marks.
+ *
+ * A PDF trace used to sit between those two. It looked clever and was wrong
+ * often enough — sheet borders, title blocks, noisy vectors — that the map spent
+ * more time apologising for the shape than helping anyone install a window. The
+ * openings are what matter; a rectangle is honest about what we know.
  */
 export function resolveFootprint(args: {
   saved?: BuildingOutline | null;
@@ -238,7 +158,7 @@ export function resolveFootprint(args: {
   pins: FootprintPin[];
   aspect: number;
 }): ResolvedFootprint | null {
-  const { saved, traced, pins } = args;
+  const { saved, pins } = args;
   const aspect = args.aspect > 0 ? args.aspect : 0.7;
 
   if (saved && isValidOutlinePolygon(saved.points)) {
@@ -246,21 +166,16 @@ export function resolveFootprint(args: {
     return { outline: saved, source: "saved" };
   }
 
-  if (traced && isValidOutlinePolygon(traced.points)) {
-    const tracedAspect = traced.pageAspect > 0 ? traced.pageAspect : aspect;
-    const points = coarsen(traced.points, MAX_FOOTPRINT_VERTICES, tracedAspect);
-    // Checked after coarsening, because that is the shape which would be drawn
-    // and saved.
-    if (isPlausibleBuildingTrace(points, tracedAspect)) {
-      return {
-        outline: { points, pageAspect: tracedAspect },
-        source: "traced",
-      };
-    }
-  }
+  // `traced` is accepted in the args so callers do not have to change, but it
+  // is no longer used. Keeping the parameter avoids a silent drift between the
+  // call site and this function the next time someone wires a CAD path back in.
+  void args.traced;
 
-  const fromPins = footprintFromPins(pins, aspect);
-  return fromPins ? { outline: fromPins, source: "pins" } : null;
+  const box = boundingFootprint(
+    pins.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y)),
+    aspect,
+  );
+  return box ? { outline: box, source: "pins" } : null;
 }
 
 /** Absolute polygon area in display units (page width = 1). */
@@ -273,15 +188,4 @@ export function polygonArea(points: OutlinePoint[], aspect: number): number {
     sum += a.x * (b.y * aspect) - b.x * (a.y * aspect);
   }
   return Math.abs(sum / 2);
-}
-
-/** Bounding-box area of the pins, in the same units as `polygonArea`. */
-function pinSpread(pins: FootprintPin[], aspect: number): number {
-  const xs = pins.map((p) => p.x);
-  const ys = pins.map((p) => p.y);
-  return (
-    (Math.max(...xs) - Math.min(...xs)) *
-    (Math.max(...ys) - Math.min(...ys)) *
-    aspect
-  );
 }
