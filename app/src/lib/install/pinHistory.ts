@@ -55,6 +55,30 @@ export function movedMarkIds(marks: PinnedMark[]): Set<string> {
 }
 
 /**
+ * What the crew is told when someone below foreman tries to move a mark.
+ *
+ * Kept identical to the sentence the database trigger raises
+ * (20260730160000_foreman_only_mark_moves.sql) so the app and the server never
+ * tell a person two different stories.
+ */
+export const PIN_MOVE_DENIED =
+  "Only a foreman or above can move a mark on the plan.";
+
+/**
+ * Did this failure come from the foreman-only guard on a mark's position?
+ *
+ * The app hides the drag from installers, so the only way to reach the guard is
+ * a page cached from before this shipped. That stale tab deserves the same
+ * plain sentence as everyone else rather than PostgREST's `… [42501]`, which is
+ * why the message is recognised here and rethrown clean.
+ */
+export function isPinMoveDenied(err: unknown): boolean {
+  if (err == null || typeof err !== "object") return false;
+  const message = (err as { message?: unknown }).message;
+  return typeof message === "string" && message.includes(PIN_MOVE_DENIED);
+}
+
+/**
  * The move an Undo press should walk back: the most recent one nobody has
  * undone yet. Ties on the timestamp fall back to the id so two moves recorded
  * in the same millisecond still have a fixed order.
