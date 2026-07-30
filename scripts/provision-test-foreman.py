@@ -54,7 +54,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lib.supabase_rest import Client, Steps, one  # noqa: E402
-from lib.tiny_pdf import MARK_PINS, sandbox_plan_pdf  # noqa: E402
+from lib.tiny_pdf import HEIGHT, MARK_PINS, WIDTH, sandbox_plan_pdf  # noqa: E402
 
 REMOVE = "--remove" in sys.argv[1:]
 CHECK_MIGRATION = "--check-migration" in sys.argv[1:]
@@ -233,11 +233,27 @@ def ensure_sandbox() -> tuple[str, str, list[dict]]:
                              prefer="return=representation"))
     planset_id = planset.get("id", "")
 
-    # Four marks, on the callouts the sheet prints. Enough that the Undo bar has
-    # a stack to walk back and "put every mark back" has something to count.
+    # One mark per callout the sheet prints. Enough that the Undo bar has a stack
+    # to walk back and "put every mark back" has something to count.
+    #
+    # Coded `1-1` … `6-1` rather than `TEST-1` … `TEST-4`, because the app prints
+    # the code with any trailing `-n` stripped (openingMarkCode). Under the old
+    # names every dot read "TEST" and the Undo button said "Undo moving mark
+    # TEST", which is the wrong shape for the one sentence this whole account
+    # exists to check. Now they read 1–6, matching the numbers printed on the
+    # sheet, and the button says "Undo moving mark 5 — you, just now".
     openings: list[dict] = []
     for code, nx, ny in MARK_PINS:
-        opening_code = f"TEST-{code}"
+        opening_code = f"{code}-1"
+        # Rename in place rather than leaving the old row behind and adding a
+        # new one, which would double the marks on the sandbox every run.
+        stale = one(sb.svc(
+            "GET",
+            f"/rest/v1/project_openings?project_id=eq.{project_id}"
+            f"&opening_code=eq.TEST-{code}&select=id"))
+        if stale.get("id"):
+            sb.svc("PATCH", f"/rest/v1/project_openings?id=eq.{stale['id']}",
+                   {"opening_code": opening_code})
         row = one(sb.svc(
             "GET",
             f"/rest/v1/project_openings?project_id=eq.{project_id}"
@@ -250,16 +266,27 @@ def ensure_sandbox() -> tuple[str, str, list[dict]]:
                               "label": f"TEST — sandbox mark {code}",
                               "page_number": 1, "pin_x": nx, "pin_y": ny},
                              prefer="return=representation"))
-        elif row.get("pin_x") is None or not same(row.get("pin_x"), row.get("origin_pin_x")):
-            # Either an opening the installer script left with no pin at all, or
-            # a mark a previous run (or a browser check) left dragged. Both are
-            # put back, so every run starts from the same picture.
+        else:
+            # An opening the installer script left with no pin at all, a mark a
+            # previous run or a browser check left dragged, or a row older than
+            # the migration that started remembering where the plan put a mark.
+            # All three are repaired, so every run starts from the same picture
+            # and every mark has an origin to be put back to — without one the
+            # app cannot ring it as moved, whatever it does.
+            fix: dict[str, object] = {"page_number": 1, "planset_id": planset_id}
+            if row.get("origin_pin_x") is None or row.get("origin_pin_y") is None:
+                fix["origin_pin_x"] = nx
+                fix["origin_pin_y"] = ny
+                fix["pin_x"] = nx
+                fix["pin_y"] = ny
+            elif row.get("pin_x") is None or not same(row.get("pin_x"), row.get("origin_pin_x")):
+                fix["pin_x"] = row.get("origin_pin_x")
+                fix["pin_y"] = row.get("origin_pin_y")
             row = one(sb.svc("PATCH", f"/rest/v1/project_openings?id=eq.{row['id']}",
-                             {"pin_x": row.get("origin_pin_x") or nx,
-                              "pin_y": row.get("origin_pin_y") or ny,
-                              "page_number": 1, "planset_id": planset_id},
-                             prefer="return=representation"))
+                             fix, prefer="return=representation"))
         openings.append(row)
+
+    ensure_hand_drawn_outline(project_id, planset_id)
 
     # Nothing outstanding on the undo stack either, for the same reason.
     sb.svc("PATCH", f"/rest/v1/project_opening_pin_moves?project_id=eq.{project_id}"
@@ -268,6 +295,49 @@ def ensure_sandbox() -> tuple[str, str, list[dict]]:
             "note": "Cleared by a provisioning run."})
 
     return project_id, type_id, [o for o in openings if o.get("id")]
+
+
+def ensure_hand_drawn_outline(project_id: str, planset_id: str) -> None:
+    """Give the sandbox a traced building, so every mark is a draggable dot.
+
+    WHY. When a job has no traced shape the app invents one and then draws any
+    mark near a wall of it AS that wall's opening — a gap in a line, not a dot.
+    On a job with six marks every one of them ends up on a wall of a shape
+    derived from those same six marks, so the sandbox had no dot to drag at all:
+    the plan view showed the drawing with nothing on it, and the moved-mark ring
+    (a class on the dot) could never appear.
+
+    A hand-traced shape turns wall snapping off — the app treats a shape a person
+    drew as a statement about the building, not a guess to decorate. So this
+    stores the rectangle of the shell the sheet prints, marked as hand-drawn by
+    carrying no `derived_from`, and the sandbox then behaves like any job whose
+    foreman has traced the building: every mark is a free dot, on both views.
+    """
+    if not (project_id and planset_id):
+        return
+
+    rows = sb.svc("GET", f"/rest/v1/project_plan_outlines?project_id=eq.{project_id}"
+                         f"&planset_id=eq.{planset_id}&page_number=eq.1"
+                         "&select=id,features")
+    if isinstance(rows, list):
+        for row in rows:
+            features = row.get("features") or {}
+            derived = features.get("derived_from") if isinstance(features, dict) else None
+            if derived in ("pins", "traced"):
+                # An auto-saved guess. It is what puts the marks in the walls, and
+                # the app re-derives one whenever it is missing, so it is replaced
+                # rather than left beside the traced shape.
+                sb.svc("DELETE", f"/rest/v1/project_plan_outlines?id=eq.{row['id']}")
+            else:
+                return  # A traced shape is already there.
+
+    # The shell tiny_pdf.py draws, in the same 0..1 space pins use.
+    sb.svc("POST", "/rest/v1/project_plan_outlines",
+           {"project_id": project_id, "planset_id": planset_id, "page_number": 1,
+            "points": [{"x": 0.114, "y": 0.192}, {"x": 0.886, "y": 0.192},
+                       {"x": 0.886, "y": 0.823}, {"x": 0.114, "y": 0.823}],
+            "page_aspect": round(HEIGHT / WIDTH, 4),
+            "features": {"dividers": [], "wallOpenings": []}})
 
 
 def ensure_decoy() -> dict:

@@ -21,11 +21,21 @@ HEIGHT = 792.0
 # Where the sandbox marks sit, normalised (x from the left, y from the TOP) —
 # the same convention project_openings.pin_x / pin_y use. Kept here so the
 # printed callouts and the app's dots land on top of each other.
+#
+# Four on the corners and two in the middle, and the middle two are the reason
+# this list is not just four. When a job has no traced shape the app builds one
+# from the marks themselves, which puts every mark on a wall of that shape — and
+# a mark drawn as an opening in a wall has no free dot to drag, and no ring when
+# it has been moved. With only corner marks there was nothing draggable on the
+# plan at all. Two marks well inside the shape stay free dots however the shape
+# is worked out, which is also the ordinary mix on a real job.
 MARK_PINS: list[tuple[str, float, float]] = [
-    ("1", 0.24, 0.32),
-    ("2", 0.56, 0.32),
-    ("3", 0.24, 0.63),
-    ("4", 0.72, 0.63),
+    ("1", 0.20, 0.26),
+    ("2", 0.80, 0.26),
+    ("3", 0.20, 0.74),
+    ("4", 0.80, 0.74),
+    ("5", 0.40, 0.56),
+    ("6", 0.62, 0.56),
 ]
 
 

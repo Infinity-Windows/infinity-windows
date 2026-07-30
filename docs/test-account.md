@@ -59,6 +59,31 @@ set -a; . ~/.config/infinity-windows/test-foreman.env; set +a
 # $TEST_FOREMAN_EMAIL and $TEST_FOREMAN_PASSWORD are now set.
 ```
 
+## Checking the foreman mark controls in a browser
+
+The reason this login exists. One command, from `app/`, with both the app's
+Supabase settings and the foreman's password in the environment:
+
+```bash
+set -a
+. app/.env                                    # or your own copy of it
+. ~/.config/infinity-windows/test-foreman.env
+set +a
+cd app && npm run e2e:foreman
+```
+
+It signs in for real, opens the sandbox job's plan, and drags a mark, reads the
+**Undo** bar's attribution line, undoes it, puts one mark back, puts every mark
+back — writing thirteen screenshots to `app/e2e/__screenshots__/foreman/`. The
+pictures are not committed; run it and look at them.
+
+It starts its own dev server on port **5199**, not 5173, so it cannot reload the
+one somebody is watching. Set `IW_FOREMAN_PORT` if 5199 is taken.
+
+The first thing it does after opening the plan is assert it is on `ZZTEST`. If
+that fails the run stops before touching anything, so a mistyped job id cannot
+turn into a drag on a customer's plan.
+
 **Why the home directory and not the repository.** Most work here happens in
 `git worktree` checkouts — there were fourteen of them the day this was written —
 and each one has its own working directory, so a file at `<repo>/.secrets/…`
