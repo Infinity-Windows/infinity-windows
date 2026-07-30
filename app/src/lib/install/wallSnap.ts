@@ -240,6 +240,17 @@ export function snapOpeningsToWalls(args: {
     for (const gap of laid) {
       const row = byId.get(gap.id);
       if (!row) continue;
+      /*
+       * A gap that had to shrink below a real opening's width to fit is the sign
+       * that these marks are packed tighter than openings physically can be —
+       * Pecan's floor 3 has a schedule strip whose entries sit four pixels apart,
+       * and snapping those put a stack of ten windows in one wall. We do not know
+       * enough about them to draw them as openings, so they stay dots.
+       */
+      if (gap.width < MIN_GAP_WIDTH - 1e-6) {
+        freeIds.push(gap.id);
+        continue;
+      }
       const t = length > 0 ? Math.min(1, Math.max(0, gap.center / length)) : 0;
       const opening: WallOpening = {
         id: gap.id,

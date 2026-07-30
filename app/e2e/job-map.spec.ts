@@ -44,7 +44,7 @@ const MAX_PINS_INVOLVED_FRACTION = 0.5;
 const GOOD_FOOTPRINT_LABELS = [
   "traced by hand",
   "outline from CAD",
-  "shape from the marks",
+  "shape from marks",
 ];
 
 interface PinBox {
@@ -53,6 +53,12 @@ interface PinBox {
   /** Diameter of the DRAWN dot, not the (larger) tap target. */
   d: number;
   quiet: boolean;
+}
+
+interface WallOpenings {
+  /** Marks drawn as a gap in a wall rather than a free-floating dot. */
+  snapped: number;
+  doors: number;
 }
 
 interface Overlap {
@@ -111,13 +117,29 @@ async function pinBoxes(pins: Locator): Promise<PinBox[]> {
     nodes.map((node) => {
       const rect = node.getBoundingClientRect();
       const quiet = node.classList.contains("plan-dot--quiet");
-      // A quiet pin keeps its 30 px tap target but draws a dot inset 20% on
-      // every side — 18 px of ink. Measuring the tap target would invent an
-      // overlap the eye cannot see.
+      // A quiet pin keeps its full tap target but draws a smaller dot inside it,
+      // so measure the ink that was actually drawn — the ::before box — rather
+      // than assume a ratio that some later change could quietly falsify.
+      // Measuring the tap target would invent overlap the eye cannot see.
+      //
+      // Its ring counts as ink, and getComputedStyle reports a content box, so
+      // the border has to be added back. Leaving it off shrank every dot by 4px
+      // on paper and made this whole page look 40% less crowded than it is.
+      const ink = quiet
+        ? (() => {
+            const style = getComputedStyle(node, "::before");
+            const px = (v: string) => Number.parseFloat(v) || 0;
+            return (
+              px(style.width) +
+              px(style.borderLeftWidth) +
+              px(style.borderRightWidth)
+            );
+          })()
+        : Number.NaN;
       return {
         cx: rect.left + rect.width / 2,
         cy: rect.top + rect.height / 2,
-        d: rect.width * (quiet ? 0.6 : 1),
+        d: Number.isFinite(ink) && ink > 0 ? ink : rect.width,
         quiet,
       };
     }),
@@ -153,7 +175,7 @@ function plausiblePages(job: JobFixture) {
 
 const measured: Record<
   string,
-  Overlap & { page: number; view: string; note?: string }
+  Overlap & WallOpenings & { page: number; view: string; note?: string }
 > = {};
 
 for (const job of jobFixtures()) {
@@ -244,11 +266,28 @@ for (const job of jobFixtures()) {
     ).toBeDefined();
 
     const overlap = measureOverlap(await pinBoxes(pins));
-    measured[job.jobCode] = { ...overlap, page: matched!.pageNumber, view, note };
+    // How many of this page's marks are drawn as openings in a wall. Marks away
+    // from every wall are meant NOT to snap, so this is a reading, not a target.
+    const openings = page.locator("[data-wall-opening]");
+    const snapped = await openings.count();
+    const doors = await page
+      .locator('[data-wall-opening][data-opening-kind="door"]')
+      .count();
+    measured[job.jobCode] = {
+      ...overlap,
+      snapped,
+      doors,
+      page: matched!.pageNumber,
+      view,
+      note,
+    };
 
     console.log(
       [
         `\n${job.jobCode} — ${view}, page ${matched!.pageNumber}, ${overlap.pins} pins drawn`,
+        `  openings in walls    ${snapped} / ${overlap.pins}` +
+          `  (${doors} door${doors === 1 ? "" : "s"}),` +
+          ` ${overlap.pins - snapped} left as free dots`,
         `  bad pin pairs        ${overlap.badPairs} / ${overlap.pairs}` +
           `  = ${overlap.badPairFraction.toFixed(5)} (limit ${MAX_BAD_PAIR_FRACTION})`,
         `  pins in any overlap  ${overlap.pinsInvolved} / ${overlap.pins}` +
@@ -298,6 +337,7 @@ test.afterAll(() => {
     .map(
       ([jobCode, m]) =>
         `| ${jobCode} | ${m.view} | ${m.page} | ${m.pins} | ` +
+        `${m.snapped} / ${m.pins} | ${m.doors} | ` +
         `${m.badPairs} / ${m.pairs} | ${m.badPairFraction.toFixed(5)} | ` +
         `${m.pinsInvolved} / ${m.pins} | ${m.medianNearestGap.toFixed(1)} px | ` +
         `${m.note ?? ""} |`,
@@ -306,8 +346,9 @@ test.afterAll(() => {
   mkdirSync(SHOTS, { recursive: true });
   writeFileSync(
     join(SHOTS, "overlap.md"),
-    "| job | view | page | pins | bad pairs | fraction | pins involved | median gap | note |\n" +
-      "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n" +
+    "| job | view | page | pins | in walls | doors | bad pairs | fraction | " +
+      "pins involved | median gap | note |\n" +
+      "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n" +
       `${table}\n`,
   );
   console.log(`\n${table}\n`);

@@ -75,13 +75,16 @@ export function MapWallLayer(props: {
         strokeLinejoin="miter"
       />
       {geos.map((g) => (
-        <WallOpeningSymbol
-          key={g.id}
-          geo={g}
-          color={colorFor(g.id) ?? WALL_COLOR}
-          strokeScale={strokeScale * SYMBOL_WEIGHT}
-          emphasis={selectedId === g.id}
-        />
+        // Tagged so the screenshot harness can count how many marks on a page
+        // became openings without inferring it from the picture.
+        <g key={g.id} data-wall-opening={g.id} data-opening-kind={g.kind}>
+          <WallOpeningSymbol
+            geo={g}
+            color={colorFor(g.id) ?? WALL_COLOR}
+            strokeScale={strokeScale * SYMBOL_WEIGHT}
+            emphasis={selectedId === g.id}
+          />
+        </g>
       ))}
     </g>
   );

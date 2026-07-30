@@ -85,6 +85,37 @@ describe("snapOpeningsToWalls", () => {
     expect(result.snapped.get("d")!.width).toBe(DOOR_GAP_WIDTH);
   });
 
+  it("leaves marks packed tighter than openings can be as plain dots", () => {
+    // Pecan's schedule strip: entries about a pixel apart in page terms, close
+    // enough to a wall to snap. Ten windows in a wall's width of wall is not a
+    // building, so none of them is drawn as an opening.
+    const packed = Array.from({ length: 10 }, (_, i) =>
+      candidate(`s${i}`, 0.3 + i * 0.004, 0.2),
+    );
+    const result = snapOpeningsToWalls({
+      openings: packed,
+      points: BOX,
+      aspect: ASPECT,
+    });
+    expect(result.snapped.size).toBe(0);
+    expect(result.freeIds.sort()).toEqual(packed.map((p) => p.id).sort());
+  });
+
+  it("still draws openings that only need a modest squeeze", () => {
+    const openings = Array.from({ length: 5 }, (_, i) =>
+      candidate(`m${i}`, 0.3 + i * 0.075, 0.2),
+    );
+    const result = snapOpeningsToWalls({
+      openings,
+      points: BOX,
+      aspect: ASPECT,
+    });
+    expect(result.snapped.size).toBe(5);
+    for (const opening of result.snapped.values()) {
+      expect(opening.width).toBeGreaterThanOrEqual(MIN_GAP_WIDTH);
+    }
+  });
+
   it("never lets two openings on one wall merge into a single hole", () => {
     // Three marks within a few pixels of each other on the same wall.
     const result = snapOpeningsToWalls({
