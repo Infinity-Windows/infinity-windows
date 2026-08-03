@@ -1,19 +1,25 @@
 // The pins drawn on top of the job drawing.
 //
-// Extracted from ProjectMap because it carries the one rule that decides
-// whether a 42-mark page is readable: a pin encodes TWO things, not five.
+// A pin answers the three questions a crew member asks of a mark, in the order
+// they ask them:
 //
-//   fill  = status      planned / assigned / installed — what a crew scans for
-//   shape = door/window square vs circle — the other thing you need at a glance
+//   number = which mark this is        — always drawn, never earned
+//   fill   = window (blue) or door (green)
+//   ring   = status: planned / assigned / installed, or red for an undone install
 //
-// Everything else a pin used to shout at once — installer initials, route
-// sequence, the window/door colour — now appears where it is actually being
-// used: dispatch mode, or the detail card after a tap. Mark numbers appear when
-// there is room for them (few marks, zoomed in, or a deliberate toggle) and on
-// the selected pin, because 42 always-on labels is 42 overlapping words.
+// The window/door colour was briefly moved off the pin and replaced by a status
+// fill, which on a job where every opening is `planned` painted all 42 marks the
+// same yellow. A crew cannot tell a door from a window in that picture, and the
+// number — the only thing separating two identical windows — was switched off on
+// any page with more than fourteen marks. Both are back on by default; the
+// Numbers chip on the map turns labels off for anyone who wants a bare page.
+//
+// Installer initials and route sequence still only appear in dispatch mode,
+// which is the only time a pin means anything by them.
 
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import {
+  OPENING_KIND_COLORS,
   OPENING_STATUS_COLORS,
   openingMarkCode,
   type ProjectOpening,
@@ -41,11 +47,11 @@ export interface MapPinLayerProps {
   crewColors: Map<string, string>;
   voidedIds: ReadonlySet<string>;
   effectiveRole: string | null | undefined;
-  /** Whether mark numbers are drawn on every pin. */
+  /** Whether mark numbers are drawn on every pin. On unless turned off. */
   showMarkNumbers: boolean;
   /**
    * Door or window for this job, reading the schedule's own style where there
-   * is one — the shape of a pin is half of what it encodes, so it has to come
+   * is one — it decides both the pin's colour and its shape, so it has to come
    * from the same answer the filters and the list use.
    */
   unitKind: (opening: ProjectOpening) => "door" | "window";
@@ -132,10 +138,10 @@ export function MapPinLayer({
               showLabel ? "" : " plan-dot--quiet"
             }`}
             /*
-             * Colours go through custom properties, not `background`, so a
-             * crowded page can shrink the visible dot with a pseudo-element
-             * while the button itself stays a full-size tap target. Shrinking
-             * the button would make pins unhittable with gloves on.
+             * Colours go through custom properties, not `background`, so a page
+             * with labels switched off can shrink the visible dot with a
+             * pseudo-element while the button itself stays a full-size tap
+             * target. Shrinking the button would make pins unhittable in gloves.
              */
             style={
               {
@@ -143,8 +149,10 @@ export function MapPinLayer({
                 top: `${pos.y * 100}%`,
                 ...box,
                 fontSize,
-                "--pin-fill": OPENING_STATUS_COLORS[o.status],
-                ...(isVoided ? { "--pin-ring": VOIDED_RING_COLOR } : {}),
+                "--pin-fill": OPENING_KIND_COLORS[isDoor ? "door" : "window"],
+                "--pin-ring": isVoided
+                  ? VOIDED_RING_COLOR
+                  : OPENING_STATUS_COLORS[o.status],
               } as CSSProperties
             }
             title={

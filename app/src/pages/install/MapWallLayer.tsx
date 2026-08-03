@@ -28,21 +28,25 @@ const LABEL_SIZE = 34;
 const LABEL_INSET = 30;
 
 /**
- * The building, drawn as walls with its windows and doors cut into them.
+ * The building, drawn as walls, optionally with windows and doors cut into them.
  *
- * The gaps come out of the wall stroke, so an opening is literally a hole in
- * the wall rather than a dot sitting near one — and the opening is also the
- * thing you tap. It used to be drawn twice: once as a symbol in the wall and
- * again as a pin floating just inside it, which on a 42-mark job turned the
- * walls into a solid ring of blobs. A window is one thing, so it is drawn once.
+ * A gap comes out of the wall stroke, so an opening drawn this way is literally
+ * a hole in the wall rather than a dot sitting near one, and the opening is also
+ * the thing you tap.
+ *
+ * The job map passes no openings: cutting them into a derived shape took the
+ * mark numbers and the window/door colours off the map, and on a job with no
+ * hand-traced outline it cut holes into a rectangle nobody drew. There the marks
+ * are pins on top of these walls. Openings are still drawn here for a plan
+ * somebody traced by hand, where the wall really is where they say it is.
  */
 export function MapWallLayer(props: {
   points: OutlinePoint[];
   aspect: number;
   outlinePath: string;
-  openings: SnappedOpening[];
+  openings?: SnappedOpening[];
   /** Install status colour for an opening, or undefined for the wall colour. */
-  colorFor: (id: string) => string | undefined;
+  colorFor?: (id: string) => string | undefined;
   selectedId?: string | null;
   strokeScale?: number;
   wallStroke: number;
@@ -55,7 +59,7 @@ export function MapWallLayer(props: {
     points,
     aspect,
     outlinePath,
-    openings,
+    openings = [],
     colorFor,
     selectedId,
     strokeScale = 1,
@@ -133,7 +137,7 @@ export function MapWallLayer(props: {
             {titleFor && <title>{titleFor(g.id)}</title>}
             <WallOpeningSymbol
               geo={g}
-              color={colorFor(g.id) ?? WALL_COLOR}
+              color={colorFor?.(g.id) ?? WALL_COLOR}
               strokeScale={strokeScale * SYMBOL_WEIGHT}
               emphasis={selected}
             />
@@ -143,7 +147,7 @@ export function MapWallLayer(props: {
                 cy={cy}
                 r={HIT_RADIUS * 0.62}
                 fill="none"
-                stroke={colorFor(g.id) ?? WALL_COLOR}
+                stroke={colorFor?.(g.id) ?? WALL_COLOR}
                 strokeWidth={3 * strokeScale}
               />
             )}
@@ -153,7 +157,7 @@ export function MapWallLayer(props: {
                 data-opening-label={g.id}
                 x={cx + g.nx * LABEL_INSET}
                 y={cy + g.ny * LABEL_INSET}
-                fill={colorFor(g.id) ?? WALL_COLOR}
+                fill={colorFor?.(g.id) ?? WALL_COLOR}
                 fontSize={LABEL_SIZE * strokeScale}
                 fontWeight={700}
                 textAnchor="middle"

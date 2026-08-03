@@ -1,15 +1,26 @@
-// Is the redesigned job map readable on a phone?
+// Is the job map readable on a phone?
 //
 // Three real jobs, at 390 px, with their real pin geometry:
 //   BLACK22   42 marks on one sheet — the crowded case
 //   PECAN14   two sheets, 57 and 48 marks — the crowded case, twice
 //   OAKRIDGE  3 marks — the sparse case, where nothing should look broken
 //
-// The test measures the thing a screenshot cannot argue about: how badly pins
-// sit on top of each other. Two pins "badly overlap" when the smaller of the two
-// is more than half buried, i.e. their centres are closer than half its
-// diameter. A page of perfectly stacked pins scores 1.0 on both numbers below,
-// so neither threshold is vacuous.
+// Two things are checked, and the first one outranks the second.
+//
+// WHAT A MARK SAYS. Every mark is a pin carrying its own number, filled blue for
+// a window or green for a door and ringed in its install status. This is not a
+// style preference. The map once encoded status as the pin's fill and hid numbers
+// above fourteen marks on a page, which on every real job — where every opening
+// is `planned` — drew 42 identical unlabelled marks; the owner rejected it on
+// sight. So it is asserted here, per view, rather than left to a screenshot.
+//
+// HOW BADLY PINS PILE UP. Two pins "badly overlap" when the smaller is more than
+// half buried, i.e. their centres are closer than half its diameter. A page of
+// perfectly stacked pins scores 1.0, so the thresholds are not vacuous. The
+// reading at 100% is printed for every job — 42 numbered pins on a 390 px phone
+// genuinely are crowded, and pretending otherwise is what cost the numbers last
+// time — but the limits are held at 200%, because zoom is the remedy a crew has
+// on a busy sheet and the point is that using it actually works.
 //
 // It also refuses to pass on an empty picture. The pin count has to match a real
 // page of the job, and when the drawing is the derived building outline the
@@ -59,6 +70,114 @@ interface WallOpenings {
   /** Marks drawn as a gap in a wall rather than a free-floating dot. */
   snapped: number;
   doors: number;
+}
+
+/** What one pin is saying, read off the rendered element. */
+interface PinVoice {
+  label: string | null;
+  fill: string;
+  ring: string;
+  door: boolean;
+}
+
+/** From lib/install/types — the two colours a pin may be filled with. */
+const KIND_FILL = { window: "rgb(74, 157, 255)", door: "rgb(62, 207, 110)" };
+/** …and the rings, per install status. */
+const STATUS_RINGS = [
+  "rgb(251, 191, 36)", // planned
+  "rgb(148, 163, 184)", // assigned
+  "rgb(52, 211, 153)", // installed
+  "rgb(248, 113, 113)", // install undone
+];
+
+async function pinVoices(pins: Locator): Promise<PinVoice[]> {
+  return pins.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const style = getComputedStyle(node);
+      return {
+        label:
+          node.querySelector(".plan-dot__mark")?.textContent?.trim() ?? null,
+        fill: style.backgroundColor,
+        ring: style.borderTopColor,
+        door: node.classList.contains("plan-dot--door"),
+      };
+    }),
+  );
+}
+
+/**
+ * Every mark on this view carries its number and is coloured window-or-door,
+ * ringed in a real status. `where` names the view so a failure says which one.
+ */
+async function expectPinsSpeak(pins: Locator, where: string, expected: number) {
+  const voices = await pinVoices(pins);
+  expect(voices, `${where}: expected ${expected} pins`).toHaveLength(expected);
+
+  const unlabelled = voices.filter((v) => !v.label);
+  expect(
+    unlabelled.length,
+    `${where}: ${unlabelled.length} of ${voices.length} pins are drawn with no ` +
+      `mark number. The number is the only thing telling two identical windows ` +
+      `apart, and nobody should have to find a chip to switch it on.`,
+  ).toBe(0);
+
+  const wrongFill = voices.filter(
+    (v) => v.fill !== KIND_FILL.window && v.fill !== KIND_FILL.door,
+  );
+  expect(
+    wrongFill.length,
+    `${where}: ${wrongFill.length} pins are neither window-blue nor door-green ` +
+      `(saw ${[...new Set(wrongFill.map((v) => v.fill))].join(", ")}). Window ` +
+      `vs door has to be readable without tapping anything.`,
+  ).toBe(0);
+
+  const wrongRing = voices.filter((v) => !STATUS_RINGS.includes(v.ring));
+  expect(
+    wrongRing.length,
+    `${where}: ${wrongRing.length} pins have no install-status ring ` +
+      `(saw ${[...new Set(wrongRing.map((v) => v.ring))].join(", ")})`,
+  ).toBe(0);
+
+  // A green pin is also a square one, so the distinction survives a colour-blind
+  // reader and a bleached phone screen in the sun.
+  const mismatched = voices.filter((v) => v.door !== (v.fill === KIND_FILL.door));
+  expect(
+    mismatched.length,
+    `${where}: ${mismatched.length} pins are square without being green, or the ` +
+      `other way round`,
+  ).toBe(0);
+
+  return {
+    doors: voices.filter((v) => v.fill === KIND_FILL.door).length,
+    windows: voices.filter((v) => v.fill === KIND_FILL.window).length,
+  };
+}
+
+/**
+ * A sheet at the zoom a crew would read it at has to be countable. Skipped when
+ * nothing is drawn as a pin, because dividing by no pins reports a NaN as a pass.
+ */
+function expectCountable(overlap: Overlap, where: string) {
+  if (overlap.pins === 0) return;
+  expect(
+    overlap.badPairFraction,
+    `${where}: ${overlap.badPairs} of ${overlap.pairs} pin pairs cover more than ` +
+      `half of each other`,
+  ).toBeLessThan(MAX_BAD_PAIR_FRACTION);
+  expect(
+    overlap.pinsInvolvedFraction,
+    `${where}: ${overlap.pinsInvolved} of ${overlap.pins} pins are more than half ` +
+      `buried under another pin`,
+  ).toBeLessThan(MAX_PINS_INVOLVED_FRACTION);
+}
+
+/** Zoom to 200%, where a crowded sheet is meant to become countable. */
+async function zoomTo200(page: import("@playwright/test").Page) {
+  const label = page.getByRole("button", { name: "Reset zoom" }).first();
+  for (let i = 0; i < 4; i++) {
+    await page.getByRole("button", { name: "Zoom in" }).first().click();
+  }
+  await expect(label).toHaveText("200%");
 }
 
 interface Overlap {
@@ -277,6 +396,37 @@ for (const job of jobFixtures()) {
 
     await page.goto(`/projects/${job.projectId}/map`);
 
+    /*
+     * The map opens on the real architectural sheet. That is the drawing the
+     * marks were read off, and the one the owner asked to land on; the derived
+     * cartoon is a rectangle on every job nobody has traced by hand.
+     */
+    const planSheet = page.locator(".plan-map--with-dots");
+    await expect(
+      planSheet.locator("img"),
+      `${job.jobCode}: the map did not open on the original plan`,
+    ).toBeVisible({ timeout: 150_000 });
+    const planPins = planSheet.locator(".plan-dot");
+    const planCount = await settledPinCount(planPins, true);
+    const planKinds = await expectPinsSpeak(
+      planPins,
+      `${job.jobCode} original plan`,
+      planCount,
+    );
+    const planAt100 = measureOverlap(await pinBoxes(planPins));
+    await zoomTo200(page);
+    const planAt200 = measureOverlap(await pinBoxes(planPins));
+    console.log(
+      `\n${job.jobCode} — Original plan, ${planCount} pins ` +
+        `(${planKinds.windows} window, ${planKinds.doors} door), all numbered\n` +
+        `  pins in any overlap  ${planAt100.pinsInvolved}/${planAt100.pins} at 100%` +
+        `  →  ${planAt200.pinsInvolved}/${planAt200.pins} at 200%`,
+    );
+    expectCountable(planAt200, `${job.jobCode} original plan at 200%`);
+    await page.getByRole("button", { name: "Reset zoom" }).first().click();
+
+    await page.getByRole("button", { name: "Building outline" }).click();
+
     // The drawing is done once the planset has been read and the footprint
     // resolved; "tracing plan…" is the in-between state.
     const status = page.locator(".cartoon-sheet__status");
@@ -292,15 +442,7 @@ for (const job of jobFixtures()) {
     let note: string | undefined;
     let sheet = page.locator(".plan-sheet--cad");
     let pins = page.locator(".cartoon-sheet .plan-dot");
-    /*
-     * A mark on this drawing is either an opening cut into a wall or, where
-     * there is no wall to cut, a pin. Counting only pins used to be enough;
-     * now that every mark that can be an opening is one, a page of 42 openings
-     * and no pins is the normal case, not an empty page.
-     */
-    let marks = page.locator(
-      ".cartoon-sheet .plan-dot, .cartoon-sheet [data-wall-opening]",
-    );
+    let marks = pins;
     await settledPinCount(marks, false);
 
     if ((await marks.count()) === 0) {
@@ -346,29 +488,18 @@ for (const job of jobFixtures()) {
       ).toMatch(/^M\s*[\d.-]/i);
 
       /*
-       * The measurement that decides whether this reads as a building: how much
-       * of the perimeter is hole rather than wall. A floor whose openings eat
-       * the whole wall looks packed at every zoom level, because magnifying
-       * grows the wall and the holes together — so this is checked in the
-       * drawing's own units, not in pixels.
+       * Nothing is cut into this shape. It is a derived rectangle on every job
+       * nobody has traced, so cutting 42 window and door symbols into it stated
+       * a wall position the data does not have — and cost every mark its number
+       * and its window/door colour, because a hole in a wall cannot carry
+       * either. Marks belong on top of it, as pins.
        */
-      const wallShare = await page
-        .locator("[data-outline-perimeter]")
-        .evaluate((root) => {
-          const perimeter = Number(
-            root.getAttribute("data-outline-perimeter") ?? 0,
-          );
-          const holes = [...root.querySelectorAll("[data-opening-width]")]
-            .map((n) => Number(n.getAttribute("data-opening-width")))
-            .filter(Number.isFinite)
-            .reduce((sum, w) => sum + w, 0);
-          return { perimeter, holes, openRatio: perimeter ? holes / perimeter : 1 };
-        });
+      const holes = await page.locator("[data-wall-opening]").count();
       expect(
-        wallShare.openRatio,
-        `${job.jobCode}: openings take ${(wallShare.openRatio * 100).toFixed(0)}% ` +
-          `of the perimeter, so there is barely any wall left between them`,
-      ).toBeLessThan(0.55);
+        holes,
+        `${job.jobCode}: ${holes} marks are drawn as gaps cut into a derived ` +
+          `building outline instead of as numbered pins on top of it`,
+      ).toBe(0);
 
       /*
        * The whole floor is visible on opening — zoom is for inspecting a
@@ -413,13 +544,18 @@ for (const job of jobFixtures()) {
         `${job.jobCode}: outline viewport should pan once zoomed in`,
       ).toBeGreaterThan(beforeScroll);
 
-      // Openings stay interactive after zoom/pan — tap one and its row links.
-      const firstOpening = page.locator("[data-wall-opening]").first();
-      if ((await firstOpening.count()) > 0) {
-        await firstOpening.click({ force: true });
+      // Marks stay interactive after zoom/pan — tap one and its row links.
+      // Also the zoom at which a crowded sheet has to become countable.
+      expectCountable(
+        measureOverlap(await pinBoxes(pins)),
+        `${job.jobCode} building outline at 200%`,
+      );
+      const firstPin = pins.first();
+      if ((await firstPin.count()) > 0) {
+        await firstPin.click({ force: true });
         await expect(
           page.locator(".find-row--linked").first(),
-          `${job.jobCode}: tapping an opening after zoom/pan did not select it`,
+          `${job.jobCode}: tapping a mark after zoom/pan did not select it`,
         ).toBeVisible({ timeout: 5_000 });
       }
 
@@ -440,60 +576,11 @@ for (const job of jobFixtures()) {
     ).toBeDefined();
 
     const overlap = measureOverlap(await pinBoxes(pins));
-    // Every mark that has a building to sit on should be an opening in it: a
-    // window in the middle of a room is not a thing. Free pins are what is left
-    // when there is no wall at all, so this is a target, not just a reading.
-    const openings = page.locator("[data-wall-opening]");
-    const snapped = await openings.count();
-    const doors = await page
-      .locator('[data-wall-opening][data-opening-kind="door"]')
-      .count();
-    if (view === "Building outline") {
-      expect(
-        snapped,
-        `${job.jobCode}: ${rendered - snapped} of ${rendered} marks are drawn ` +
-          `as dots floating inside the building instead of openings in its walls`,
-      ).toBe(rendered);
-    }
-    /*
-     * Two openings that overlap have merged into one hole. Checked from the
-     * attributes the wall layer stamps on each opening — screen boxes of gap
-     * lines are useless here, because a gap's axis-aligned box is the wall
-     * segment it sits on and neighbours always "overlap" on paper.
-     */
-    const gapOverlap = await page.locator("[data-wall-opening]").evaluateAll(
-      (nodes) => {
-        type Gap = { center: number; width: number };
-        const byEdge = new Map<number, Gap[]>();
-        for (const node of nodes) {
-          const edge = Number(node.getAttribute("data-opening-edge"));
-          const center = Number(node.getAttribute("data-opening-center"));
-          const width = Number(node.getAttribute("data-opening-width"));
-          if (![edge, center, width].every(Number.isFinite)) continue;
-          const list = byEdge.get(edge) ?? [];
-          list.push({ center, width });
-          byEdge.set(edge, list);
-        }
-        let overlapping = 0;
-        let touchingPairs = 0;
-        for (const list of byEdge.values()) {
-          list.sort((a, b) => a.center - b.center || a.width - b.width);
-          for (let i = 1; i < list.length; i++) {
-            const prev = list[i - 1];
-            const cur = list[i];
-            const gap =
-              cur.center - cur.width / 2 - (prev.center + prev.width / 2);
-            if (gap < -0.5) overlapping += 2;
-            if (gap < 1) touchingPairs += 1;
-          }
-        }
-        return { overlapping, touchingPairs, edges: byEdge.size };
-      },
-    );
+    const kinds = await expectPinsSpeak(pins, `${job.jobCode} ${view}`, rendered);
     measured[job.jobCode] = {
       ...overlap,
-      snapped,
-      doors,
+      snapped: 0,
+      doors: kinds.doors,
       page: matched!.pageNumber,
       view,
       note,
@@ -502,15 +589,12 @@ for (const job of jobFixtures()) {
     console.log(
       [
         `\n${job.jobCode} — ${view}, page ${matched!.pageNumber}, ${rendered} marks drawn`,
-        `  openings in walls    ${snapped} / ${rendered}` +
-          `  (${doors} door${doors === 1 ? "" : "s"}),` +
-          ` ${rendered - snapped} left as free dots`,
-        `  openings overlapping ${gapOverlap.overlapping} / ${snapped}` +
-          `  (${gapOverlap.touchingPairs} pairs touching)`,
+        `  window / door        ${kinds.windows} blue, ${kinds.doors} green`,
         `  bad pin pairs        ${overlap.badPairs} / ${overlap.pairs}` +
-          `  = ${overlap.badPairFraction.toFixed(5)} (limit ${MAX_BAD_PAIR_FRACTION})`,
+          `  = ${overlap.badPairFraction.toFixed(5)} at 100%`,
         `  pins in any overlap  ${overlap.pinsInvolved} / ${overlap.pins}` +
-          `  = ${overlap.pinsInvolvedFraction.toFixed(3)} (limit ${MAX_PINS_INVOLVED_FRACTION})`,
+          `  = ${overlap.pinsInvolvedFraction.toFixed(3)} at 100%` +
+          ` (the limit is held at 200%, where zoom has done its job)`,
         `  median nearest gap   ${overlap.medianNearestGap.toFixed(1)} px edge-to-edge`,
         `  numbers shown on     ${overlap.labelled} / ${overlap.pins} pins`,
       ].join("\n"),
@@ -525,27 +609,41 @@ for (const job of jobFixtures()) {
       path: join(SHOTS, `${job.jobCode}-sheet-390.png`),
     });
 
-    // Now force every number on. This is the state the auto-hide threshold is
-    // deciding about, so it is measured rather than assumed: how much of this
-    // page's numbering is actually readable when all of it is drawn at once.
+    // How readable this page's numbering is with all of it drawn at once, which
+    // is now the normal state rather than something a chip has to be found for.
+    // The Numbers chip is asserted to already be on, and to still turn them off.
     const numbers = page.getByRole("button", { name: "Numbers", exact: true });
-    if ((await numbers.getAttribute("aria-pressed")) !== "true") {
-      await numbers.click();
-    }
-    const numberLabels = pins
-      .locator(".plan-dot__mark")
-      .or(page.locator("[data-opening-label]"));
+    await expect(
+      numbers,
+      `${job.jobCode}: mark numbers should be on without anyone asking`,
+    ).toHaveAttribute("aria-pressed", "true");
+    const numberLabels = pins.locator(".plan-dot__mark");
     await expect.poll(async () => numberLabels.count()).toBe(rendered);
     const box = await sheet.boundingBox();
     const fit = measureLabelFit(
       await labelBoxes(numberLabels),
       box ? box.width * box.height : 0,
     );
-    const loud = measureOverlap(await pinBoxes(pins));
     await sheet.screenshot({
       path: join(SHOTS, `${job.jobCode}-numbers-390.png`),
     });
     labelFits[job.jobCode] = { ...fit, page: matched!.pageNumber };
+
+    /*
+     * The escape hatch still works: tapping Numbers takes the labels off. The
+     * pin the crew last tapped keeps its number either way — that is the whole
+     * point of selecting one — so a bare page is "only the selected pin".
+     */
+    await numbers.click();
+    await expect
+      .poll(async () => numberLabels.count(), {
+        message:
+          `${job.jobCode}: turning Numbers off should leave at most the one pin ` +
+          `the crew last tapped labelled`,
+      })
+      .toBeLessThanOrEqual(1);
+    await numbers.click();
+    await expect.poll(async () => numberLabels.count()).toBe(rendered);
 
     /*
      * Full screen, which used to be a black screen. Everything inside the
@@ -577,31 +675,8 @@ for (const job of jobFixtures()) {
         `  label size           ${fit.labelW.toFixed(1)} x ${fit.labelH.toFixed(1)} px`,
         `  mark density         ${fit.density.toFixed(1)} per 100k px²` +
           ` of ${Math.round(fit.drawingArea)} px² drawing`,
-        `  pins in any overlap  ${loud.pinsInvolved} / ${loud.pins}` +
-          `  = ${loud.pinsInvolvedFraction.toFixed(3)}`,
       ].join("\n"),
     );
-
-    expect(
-      gapOverlap.overlapping,
-      `${job.jobCode}: ${gapOverlap.overlapping} openings are drawn over another ` +
-        `one, so the wall between them has been erased`,
-    ).toBe(0);
-    // Only where marks are still drawn as pins. A page whose marks all became
-    // openings has no pins to bury, and dividing by that would report a NaN as
-    // a pass.
-    if (overlap.pins > 0) {
-      expect(
-        overlap.badPairFraction,
-        `${job.jobCode}: ${overlap.badPairs} of ${overlap.pairs} pin pairs cover ` +
-          `more than half of each other`,
-      ).toBeLessThan(MAX_BAD_PAIR_FRACTION);
-      expect(
-        overlap.pinsInvolvedFraction,
-        `${job.jobCode}: ${overlap.pinsInvolved} of ${overlap.pins} pins are more ` +
-          `than half buried under another pin`,
-      ).toBeLessThan(MAX_PINS_INVOLVED_FRACTION);
-    }
 
     expect(
       missingStorage,
@@ -623,7 +698,7 @@ test.afterAll(() => {
     .map(
       ([jobCode, m]) =>
         `| ${jobCode} | ${m.view} | ${m.page} | ${m.pins} | ` +
-        `${m.snapped} / ${m.pins} | ${m.doors} | ` +
+        `${m.labelled} / ${m.pins} | ${m.doors} | ` +
         `${m.badPairs} / ${m.pairs} | ${m.badPairFraction.toFixed(5)} | ` +
         `${m.pinsInvolved} / ${m.pins} | ${m.medianNearestGap.toFixed(1)} px | ` +
         `${m.note ?? ""} |`,
@@ -641,7 +716,8 @@ test.afterAll(() => {
   mkdirSync(SHOTS, { recursive: true });
   writeFileSync(
     join(SHOTS, "overlap.md"),
-    "| job | view | page | pins | in walls | doors | bad pairs | fraction | " +
+    "Overlap is read at 100%; the limits are held at 200%.\n\n" +
+      "| job | view | page | pins | numbered | doors | bad pairs | fraction | " +
       "pins involved | median gap | note |\n" +
       "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n" +
       `${table}\n` +

@@ -1231,12 +1231,16 @@ button:disabled {
 }
 
 /*
- * A pin says two things and no more: fill = status, shape = door vs window.
- * Text lives inside a label span so an unlabelled pin can shrink to a dot
- * without the number forcing it wide.
+ * A pin: the number is the mark, the fill is window (blue) or door (green), the
+ * ring is how far along it is. Text lives inside a label span so a pin with its
+ * numbers switched off can shrink to a dot without the number forcing it wide.
+ *
+ * The outer shadow is a dark halo rather than a soft drop shadow, because half
+ * the time this dot sits on a white architectural sheet covered in black
+ * linework, where a coloured circle with no edge disappears into the drawing.
  */
 .plan-dot {
-  --pin-fill: #94a3b8;
+  --pin-fill: #4a9dff;
   --pin-ring: rgba(20, 18, 16, 0.75);
   position: absolute;
   width: 30px;
@@ -1254,7 +1258,9 @@ button:disabled {
   font-size: 12px;
   color: #14120f;
   cursor: grab;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  box-shadow:
+    0 0 0 1px rgba(20, 18, 16, 0.9),
+    0 1px 4px rgba(0, 0, 0, 0.5);
   transition: transform 0.12s ease;
   z-index: 2;
   touch-action: none;
@@ -1660,10 +1666,10 @@ button:disabled {
 /* Matches the square door pin. */
 .map-legend__door {
   border-radius: 2px !important;
-  background: var(--muted);
 }
 
-.map-legend__voided {
+/* Status is a pin's ring, so its swatch is a ring too. */
+.map-legend__ring {
   background: transparent;
   border: 2px solid currentColor;
 }

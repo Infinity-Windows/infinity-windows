@@ -41,6 +41,7 @@ import { invalidateOpeningQueries } from "../../lib/install/openingQueryKeys";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import {
   isForemanPlus,
+  OPENING_KIND_COLORS,
   OPENING_STATUS_COLORS,
   openingMarkCode,
   openingMarkLabel,
@@ -96,10 +97,6 @@ import {
   type PlanFilter,
 } from "../../lib/install/openingFilter";
 import { dispatchNudge, dispatchNudgeText } from "../../lib/install/dispatchNudge";
-import {
-  snapOpeningsToWalls,
-  type SnappedOpening,
-} from "../../lib/install/wallSnap";
 import { MapPinLayer } from "./MapPinLayer";
 import { MapWallLayer } from "./MapWallLayer";
 import { movedMarkIds } from "../../lib/install/pinHistory";
@@ -126,27 +123,13 @@ function clamp(value: number, lo: number, hi: number): number {
 }
 
 /**
- * Target centre-to-centre pin spacing, as a fraction of page width. An 18px dot
- * on a 390px phone is ~0.046 of the page, so this leaves a hair of daylight
- * between neighbours.
+ * Target centre-to-centre pin spacing, as a fraction of page width. A numbered
+ * 30px dot on a 390px phone is ~0.077 of the page, so this is the spacing at
+ * which two neighbours stop covering each other. It was set to 0.05 while pins
+ * shrank to unlabelled dots on a busy page, which under-spread the full-size
+ * ones by a third.
  */
-const PIN_MIN_GAP = 0.05;
-
-/**
- * Above this many marks on a page, numbers are off unless asked for.
- *
- * Measured, and it stays where it was — but not for the reason it was set. The
- * labels themselves are not the problem: Black Desert draws 42 numbers and only
- * 2 end up buried under a neighbour. The problem is what a label does to its
- * pin. A numbered pin has to be drawn full size, and at 42 marks full-size pins
- * bury 22 of themselves — past the half-the-pins limit the readability harness
- * holds this screen to, where the same page with shrunken dots buries 2.
- *
- * So a crowded page pays for its numbers in countable pins, which is the worse
- * trade. "Which one is mark 23" is answered by tapping its row instead, which
- * labels that one pin. See docs/map-readability-2026-07-29.md.
- */
-const PIN_LABEL_AUTO_MAX = 14;
+const PIN_MIN_GAP = 0.078;
 
 /**
  * Wall thickness in viewBox units (page width = 1000), so it scales with the
@@ -212,7 +195,14 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   // embedded, ProjectDetail already has one and a second would be a duplicate.
   useRealtimeOpenings(embedded ? undefined : projectId);
   const [page, setPage] = useState(1);
-  const [view, setView] = useState<DrawingView>("outline");
+  /*
+   * The real architectural sheet, not the derived cartoon. The cartoon opened
+   * first for a while and it is the wrong thing to lead with: it is a plain
+   * rectangle on every job nobody has traced by hand, so a crew looking for
+   * "which window is this" got a box with marks around the edge instead of the
+   * drawing the marks came off. The outline is still one tap away.
+   */
+  const [view, setView] = useState<DrawingView>("building");
   const [floorPages, setFloorPages] = useState<number[]>([]);
   const [buildingPageCount, setBuildingPageCount] = useState(0);
   const [specsPageCount, setSpecsPageCount] = useState(0);
@@ -232,7 +222,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const [pdfZoom, setPdfZoom] = useState(1);
   /** Outline view zoom — independent of the PDF views, starts enlarged. */
   const [outlineZoom, setOutlineZoom] = useState(OUTLINE_ZOOM_DEFAULT);
-  /** null = decide from how busy the page is; true/false = the user decided. */
+  /** null = numbers on, the default; true/false = the user decided. */
   const [markNumbers, setMarkNumbers] = useState<boolean | null>(null);
   const buildingDocRef = useRef<PDFDocumentProxy | null>(null);
   const specsDocRef = useRef<PDFDocumentProxy | null>(null);
@@ -246,12 +236,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   // together: see linkScroll.
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   /*
-   * The list and the drawing answer each other's question. Every opening in the
-   * company is `planned`, so every pin is the same colour and a mark number is
-   * the only thing telling two of them apart — and numbers switch off on a
-   * crowded page. "Where is mark 23" is therefore answered by tapping row 23 and
-   * having its pin label itself, rather than by drawing forty labels nobody
-   * asked for.
+   * The list and the drawing answer each other's question: tapping row 23
+   * highlights pin 23 on the sheet, and tapping a pin opens its row below.
    *
    * The counter matters: tapping the same row twice has to scroll twice, so an
    * identical target still re-fires the effect.
@@ -1282,142 +1268,37 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   );
 
   /**
-   * A window is a hole in a wall, so a mark already sitting on a wall is drawn
-   * as an opening in it rather than a dot floating nearby.
-   *
-   * Only marks close to a wall qualify. The rest — most of Pecan's floor 3,
-   * where the extractor dumped marks in rows across the middle of the page —
-   * stay exactly where they are. Cutting a hole in a wall for one of those would
-   * state a position the data does not have.
-   *
-   * The pin being dragged is excluded, so it follows the finger and re-snaps on
-   * release instead of jumping to a wall mid-drag.
-   */
-  const wallOpenings = (() => {
-    const empty = {
-      snapped: new Map<string, SnappedOpening>(),
-      freeIds: [] as string[],
-    };
-    if (!outline || editingModel || manualOutlinePaths.length > 0) return empty;
-    return snapOpeningsToWalls({
-      openings: [...placed, ...autos]
-        .filter((o) => o.id !== drag?.id)
-        .map((o) => {
-          const pos = dotPos(o);
-          return {
-            id: o.id,
-            x: pos.x,
-            y: pos.y,
-            kind: unitKind(o),
-            placed: movedIds.has(o.id),
-          };
-        }),
-      points: outline.points,
-      aspect,
-    });
-  })();
-
-  /**
-   * Where each pin is drawn. A wall opening's pin becomes the handle for that
-   * opening and sits just inside the room, clear of the gap; everything else is
-   * fanned apart for legibility only. Either way the stored pin_x/pin_y are
-   * untouched, and dragging writes the position the finger lands on.
+   * Where each pin is drawn: its own position, fanned apart from its neighbours
+   * for legibility only. The stored pin_x/pin_y are untouched, and dragging
+   * writes the position the finger lands on.
    */
   const pinPositions = (() => {
-    const free: { id: string; x: number; y: number }[] = [];
-    for (const o of [...placed, ...autos]) {
-      if (wallOpenings.snapped.has(o.id)) continue;
+    const free = [...placed, ...autos].map((o) => {
       const pos = dotPos(o);
-      free.push({ id: o.id, x: pos.x, y: pos.y });
-    }
+      return { id: o.id, x: pos.x, y: pos.y };
+    });
     const layout = separatePins(free, { minDist: PIN_MIN_GAP, aspect });
-    // The pin under the finger sits exactly where the finger is. Nudging it, or
-    // pulling it onto a wall mid-drag, would make dragging feel broken.
+    // The pin under the finger sits exactly where the finger is. Nudging it
+    // mid-drag would make dragging feel broken.
     if (drag) layout.set(drag.id, { x: drag.x, y: drag.y });
     return layout;
   })();
 
-  /**
-   * Only the marks that are NOT drawn in a wall still get a pin. An opening in a
-   * wall is already a thing on the screen you can tap, and drawing a dot beside
-   * it as well was what made a 42-mark job look like a chain of blobs.
-   */
-  const freePinOpenings = (list: ProjectOpening[]) =>
-    list.filter((o) => !wallOpenings.snapped.has(o.id) || drag?.id === o.id);
-
   const autoPinIds = new Set(autos.map((o) => o.id));
 
   /**
-   * Wall openings are drawn in their install status colour, the same encoding the
-   * pins use. Off-route openings fall back to the wall colour while a foreman is
-   * building a run, so the route is what stands out.
+   * Numbers are on. They were briefly auto-hidden above fourteen marks on a
+   * page, which took the labels off every real job the company has — and the
+   * number is the only thing that tells two identical windows apart. The
+   * Numbers chip beside the filters turns them off for anyone who wants to.
    */
-  const wallOpeningColor = (id: string): string | undefined => {
-    const opening = [...placed, ...autos].find((o) => o.id === id);
-    if (!opening) return undefined;
-    if (hasRoute && routeOrder.get(id) == null) return undefined;
-    if (showsVoidedInstall(effectiveRole, opening, voidedIds)) {
-      return VOIDED_RING_COLOR;
-    }
-    return OPENING_STATUS_COLORS[opening.status];
-  };
+  const showMarkNumbers = markNumbers ?? true;
 
-  const openingById = (id: string) =>
-    [...placed, ...autos].find((o) => o.id === id) ?? null;
-
-  /** Dispatch numbers the route; otherwise it is the mark's own number. */
-  const wallOpeningLabel = (id: string): string | null => {
-    const opening = openingById(id);
-    if (!opening) return null;
-    const seq = hasRoute ? routeOrder.get(id) : undefined;
-    if (seq != null) return String(seq);
-    if (dispatchMode) {
-      const index = selection.indexOf(id);
-      if (index >= 0) return String(index + 1);
-    }
-    return showMarkNumbers || selectedId === id
-      ? openingMarkCode(opening.opening_code)
-      : null;
-  };
-
-  const wallOpeningTitle = (id: string): string => {
-    const opening = openingById(id);
-    return opening ? pinTitle(opening) : "";
-  };
-
-  /** Same gesture a pin has: tap to select, drag to move it along the wall. */
-  const beginDragById = (id: string) => {
-    const opening = openingById(id);
-    return opening
-      ? beginDrag(opening)
-      : () => {
-          /* gone from the list mid-render */
-        };
-  };
-
-  /**
-   * Mark numbers are legible until the page gets busy — Black Desert has 42 on
-   * one sheet, which is 42 overlapping words. Past that they are off until
-   * someone asks for them or zooms in, and the selected pin is always labelled.
-   */
-  const markCount = placed.length + autos.length;
-  const labelsFitOnPage = markCount <= PIN_LABEL_AUTO_MAX;
-  const mapZoom = view === "outline" ? outlineZoom : pdfZoom;
-  const showMarkNumbers = markNumbers ?? (labelsFitOnPage || mapZoom >= 1.5);
-
-  /**
-   * `wallDrawn` says the drawing underneath already shows these openings cut
-   * into its walls, so only the ones that did not make it into a wall need a
-   * pin. The PDF views have no walls to cut, so they pin everything.
-   */
-  const renderOpeningDots = (
-    mode: "all" | "pinned" = "all",
-    wallDrawn = false,
-  ) => {
+  const renderOpeningDots = (mode: "all" | "pinned" = "all") => {
     const shown = mode === "pinned" ? placed : [...placed, ...autos];
     return (
     <MapPinLayer
-      openings={wallDrawn ? freePinOpenings(shown) : shown}
+      openings={shown}
       positions={pinPositions}
       autoIds={autoPinIds}
       selectedId={selectedId}
@@ -2087,22 +1968,25 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                     ) : (
                       outlinePath &&
                       outline && (
+                        /*
+                         * Walls, and nothing in them. Marks used to be cut into
+                         * this shape as window and door symbols instead of being
+                         * drawn as pins, which took the numbers and the
+                         * window/door colours off the map — and on a job with no
+                         * hand-traced outline it cut 42 holes in a rectangle
+                         * nobody drew. The marks are pins again, on top.
+                         */
                         <MapWallLayer
                           points={outline.points}
                           aspect={aspect}
                           outlinePath={outlinePath}
-                          openings={[...wallOpenings.snapped.values()]}
-                          colorFor={wallOpeningColor}
                           selectedId={selectedId}
                           wallStroke={WALL_STROKE}
-                          labelFor={wallOpeningLabel}
-                          titleFor={wallOpeningTitle}
-                          onOpeningPointerDown={beginDragById}
                         />
                       )
                     )}
                   </svg>
-                  {renderOpeningDots("all", manualOutlinePaths.length === 0)}
+                  {renderOpeningDots("all")}
                   <div className="cartoon-sheet__floor" aria-hidden>
                     Floor {page}
                     <span>
@@ -2284,27 +2168,48 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       )}
 
       {/*
-        One legend, and it explains exactly what a pin now encodes: colour for
-        status, square for a door. Installer colours only appear while dispatch
-        is open, which is the only time pins carry them.
+        One legend, and it explains exactly what a pin encodes: the number is
+        the mark, the fill is window or door, the ring is how far along it is.
+        Installer colours only appear while dispatch is open, which is the only
+        time pins carry them.
       */}
       <div className="map-legend muted">
         <span>
-          <i style={{ background: OPENING_STATUS_COLORS.planned }} /> planned
+          <i style={{ background: OPENING_KIND_COLORS.window }} /> window (#)
         </span>
         <span>
-          <i style={{ background: OPENING_STATUS_COLORS.assigned }} /> assigned
+          <i
+            className="map-legend__door"
+            style={{ background: OPENING_KIND_COLORS.door }}
+          />{" "}
+          door (#)
+        </span>
+        {/* Status is the pin's ring, so the legend shows a ring, not a blob. */}
+        <span>
+          <i
+            className="map-legend__ring"
+            style={{ borderColor: OPENING_STATUS_COLORS.planned }}
+          />{" "}
+          planned
         </span>
         <span>
-          <i style={{ background: OPENING_STATUS_COLORS.installed }} /> installed
+          <i
+            className="map-legend__ring"
+            style={{ borderColor: OPENING_STATUS_COLORS.assigned }}
+          />{" "}
+          assigned
         </span>
         <span>
-          <i className="map-legend__door" /> door
+          <i
+            className="map-legend__ring"
+            style={{ borderColor: OPENING_STATUS_COLORS.installed }}
+          />{" "}
+          installed
         </span>
         {isLead && (
           <span>
             <i
-              className="map-legend__voided"
+              className="map-legend__ring"
               style={{ borderColor: VOIDED_RING_COLOR }}
             />{" "}
             install undone
