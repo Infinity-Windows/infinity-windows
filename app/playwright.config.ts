@@ -10,8 +10,12 @@ import { defineConfig } from "@playwright/test";
  * network.
  *
  * The dev server is reused when one is already running, so this does not fight
- * the `iwdev` session on 5173.
+ * the `iwdev` session on 5173. Set `IW_MAP_PORT` to run on a port of your own
+ * instead — an agent checking a change in a worktree must not reload the server
+ * somebody is watching.
  */
+const PORT = Number(process.env.IW_MAP_PORT ?? 5173);
+
 export default defineConfig({
   testDir: "./e2e",
   // Traces/videos for a failed run. Screenshots we keep are written explicitly
@@ -25,15 +29,15 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     // `localhost`, not `127.0.0.1`: Vite binds to ::1 only by default.
-    baseURL: "http://localhost:5173",
+    baseURL: `http://localhost:${PORT}`,
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
     trace: "retain-on-failure",
     video: "off",
   },
   webServer: {
-    command: "npm run dev -- --port 5173 --strictPort",
-    url: "http://localhost:5173/",
+    command: `npm run dev -- --port ${PORT} --strictPort`,
+    url: `http://localhost:${PORT}/`,
     reuseExistingServer: true,
     timeout: 120_000,
     stdout: "ignore",
