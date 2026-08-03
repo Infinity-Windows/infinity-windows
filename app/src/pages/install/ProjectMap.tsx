@@ -89,7 +89,6 @@ import {
   resolveFootprint,
   type FootprintSource,
 } from "../../lib/install/footprint";
-import { separatePins } from "../../lib/install/pinLayout";
 import {
   matchesPlanFilter,
   resolveFilter,
@@ -121,15 +120,6 @@ type DrawingView = "outline" | "building" | "details";
 function clamp(value: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, value));
 }
-
-/**
- * Target centre-to-centre pin spacing, as a fraction of page width. A numbered
- * 30px dot on a 390px phone is ~0.077 of the page, so this is the spacing at
- * which two neighbours stop covering each other. It was set to 0.05 while pins
- * shrank to unlabelled dots on a busy page, which under-spread the full-size
- * ones by a third.
- */
-const PIN_MIN_GAP = 0.078;
 
 /**
  * Wall thickness in viewBox units (page width = 1000), so it scales with the
@@ -1268,21 +1258,25 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   );
 
   /**
-   * Where each pin is drawn: its own position, fanned apart from its neighbours
-   * for legibility only. The stored pin_x/pin_y are untouched, and dragging
-   * writes the position the finger lands on.
+   * Where each pin is drawn: exactly where it is, and nowhere else.
+   *
+   * Overlapping pins used to be fanned apart along their cluster's axis to keep
+   * a busy page countable. Every mark on Black Desert has a neighbour inside the
+   * spacing threshold, so all 42 were pushed the full cap — about a tenth of the
+   * sheet's width, 120px on a laptop — and none of them landed on the callout
+   * number they belong to. Marks 1, 2 and 11 ended up off the building
+   * altogether, out over the driveway.
+   *
+   * A pin that sits on the wrong window is worse than a pin that is hard to pick
+   * out, because a crew reads position and only then reads the number. Crowding
+   * is what zoom and tapping a row are for.
    */
-  const pinPositions = (() => {
-    const free = [...placed, ...autos].map((o) => {
+  const pinPositions = new Map(
+    [...placed, ...autos].map((o) => {
       const pos = dotPos(o);
-      return { id: o.id, x: pos.x, y: pos.y };
-    });
-    const layout = separatePins(free, { minDist: PIN_MIN_GAP, aspect });
-    // The pin under the finger sits exactly where the finger is. Nudging it
-    // mid-drag would make dragging feel broken.
-    if (drag) layout.set(drag.id, { x: drag.x, y: drag.y });
-    return layout;
-  })();
+      return [o.id, { x: pos.x, y: pos.y }] as const;
+    }),
+  );
 
   const autoPinIds = new Set(autos.map((o) => o.id));
 

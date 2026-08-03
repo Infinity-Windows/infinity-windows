@@ -16,11 +16,16 @@
 //
 // HOW BADLY PINS PILE UP. Two pins "badly overlap" when the smaller is more than
 // half buried, i.e. their centres are closer than half its diameter. A page of
-// perfectly stacked pins scores 1.0, so the thresholds are not vacuous. The
-// reading at 100% is printed for every job — 42 numbered pins on a 390 px phone
-// genuinely are crowded, and pretending otherwise is what cost the numbers last
-// time — but the limits are held at 200%, because zoom is the remedy a crew has
-// on a busy sheet and the point is that using it actually works.
+// perfectly stacked pins scores 1.0, so the thresholds are not vacuous.
+//
+// The reading at 100% is printed rather than asserted, and the limits are held at
+// whatever zoom the page becomes countable at. That is deliberate. Marks are
+// drawn where the plan puts them, full stop — the map used to fan crowded pins
+// apart and it moved every one of Black Desert's 42 marks about a tenth of the
+// sheet away from the callout number it belongs to, some of them off the building
+// entirely. So crowding is not fixed by moving marks; it is fixed by zooming, and
+// what this asserts is that zooming works. See e2e/pin-accuracy.spec.ts, which
+// holds the line the map may never cross.
 //
 // It also refuses to pass on an empty picture. The pin count has to match a real
 // page of the job, and when the drawing is the derived building outline the
@@ -154,30 +159,51 @@ async function expectPinsSpeak(pins: Locator, where: string, expected: number) {
 }
 
 /**
- * A sheet at the zoom a crew would read it at has to be countable. Skipped when
- * nothing is drawn as a pin, because dividing by no pins reports a NaN as a pass.
+ * Zoom in until the page is countable, and report the zoom it took.
+ *
+ * This is the honest form of the overlap bar. Marks are drawn where the plan
+ * puts them, so on a sheet like Pecan's — 57 marks whose real coordinates are
+ * millimetres apart — no amount of layout cleverness separates them at 100%, and
+ * the map used to buy that separation by moving pins off their own windows.
+ * What has to be true instead is that zoom is a real remedy: magnifying the
+ * sheet spreads the marks, and the page becomes countable somewhere inside the
+ * zoom range the app actually offers.
+ *
+ * Not vacuous. Pins stacked at one coordinate stay stacked at every zoom, a zoom
+ * that scaled the sheet without moving its pins would never separate them, and a
+ * page whose marks are all on top of each other scores 1.0 at every step.
  */
-function expectCountable(overlap: Overlap, where: string) {
-  if (overlap.pins === 0) return;
-  expect(
-    overlap.badPairFraction,
-    `${where}: ${overlap.badPairs} of ${overlap.pairs} pin pairs cover more than ` +
-      `half of each other`,
-  ).toBeLessThan(MAX_BAD_PAIR_FRACTION);
-  expect(
-    overlap.pinsInvolvedFraction,
-    `${where}: ${overlap.pinsInvolved} of ${overlap.pins} pins are more than half ` +
-      `buried under another pin`,
-  ).toBeLessThan(MAX_PINS_INVOLVED_FRACTION);
-}
-
-/** Zoom to 200%, where a crowded sheet is meant to become countable. */
-async function zoomTo200(page: import("@playwright/test").Page) {
+async function zoomUntilCountable(
+  page: import("@playwright/test").Page,
+  pins: Locator,
+  where: string,
+): Promise<{ zoom: string; overlap: Overlap; steps: number }> {
   const label = page.getByRole("button", { name: "Reset zoom" }).first();
-  for (let i = 0; i < 4; i++) {
-    await page.getByRole("button", { name: "Zoom in" }).first().click();
+  const zoomIn = page.getByRole("button", { name: "Zoom in" }).first();
+  let overlap = measureOverlap(await pinBoxes(pins));
+  let steps = 0;
+  const countable = (o: Overlap) =>
+    o.pins === 0 ||
+    (o.badPairFraction < MAX_BAD_PAIR_FRACTION &&
+      o.pinsInvolvedFraction < MAX_PINS_INVOLVED_FRACTION);
+
+  while (!countable(overlap) && !(await zoomIn.isDisabled())) {
+    await zoomIn.click();
+    steps++;
+    overlap = measureOverlap(await pinBoxes(pins));
   }
-  await expect(label).toHaveText("200%");
+
+  const zoom = (await label.textContent())?.trim() ?? "?";
+  expect(
+    countable(overlap),
+    `${where}: even at ${zoom}, the most this map will magnify, ` +
+      `${overlap.pinsInvolved} of ${overlap.pins} marks are still more than half ` +
+      `buried under a neighbour (${overlap.badPairs} of ${overlap.pairs} pairs). ` +
+      `Zooming has to be able to separate marks that sit close together on the ` +
+      `plan — if it cannot, either the zoom is not moving the pins with the sheet ` +
+      `or several marks are stored at the same coordinate.`,
+  ).toBe(true);
+  return { zoom, overlap, steps };
 }
 
 interface Overlap {
@@ -414,15 +440,18 @@ for (const job of jobFixtures()) {
       planCount,
     );
     const planAt100 = measureOverlap(await pinBoxes(planPins));
-    await zoomTo200(page);
-    const planAt200 = measureOverlap(await pinBoxes(planPins));
+    const zoomed = await zoomUntilCountable(
+      page,
+      planPins,
+      `${job.jobCode} original plan`,
+    );
     console.log(
       `\n${job.jobCode} — Original plan, ${planCount} pins ` +
         `(${planKinds.windows} window, ${planKinds.doors} door), all numbered\n` +
         `  pins in any overlap  ${planAt100.pinsInvolved}/${planAt100.pins} at 100%` +
-        `  →  ${planAt200.pinsInvolved}/${planAt200.pins} at 200%`,
+        `  →  ${zoomed.overlap.pinsInvolved}/${zoomed.overlap.pins} at ${zoomed.zoom},` +
+        ` where the page becomes countable`,
     );
-    expectCountable(planAt200, `${job.jobCode} original plan at 200%`);
     await page.getByRole("button", { name: "Reset zoom" }).first().click();
 
     await page.getByRole("button", { name: "Building outline" }).click();
@@ -544,12 +573,19 @@ for (const job of jobFixtures()) {
         `${job.jobCode}: outline viewport should pan once zoomed in`,
       ).toBeGreaterThan(beforeScroll);
 
-      // Marks stay interactive after zoom/pan — tap one and its row links.
-      // Also the zoom at which a crowded sheet has to become countable.
-      expectCountable(
-        measureOverlap(await pinBoxes(pins)),
-        `${job.jobCode} building outline at 200%`,
+      // Zoom keeps going until this page is countable, which it has to be by the
+      // top of the range.
+      const outlineZoomed = await zoomUntilCountable(
+        page,
+        pins,
+        `${job.jobCode} building outline`,
       );
+      console.log(
+        `  building outline countable at ${outlineZoomed.zoom}` +
+          ` (${outlineZoomed.overlap.pinsInvolved}/${outlineZoomed.overlap.pins} still overlapping)`,
+      );
+
+      // Marks stay interactive after zoom/pan — tap one and its row links.
       const firstPin = pins.first();
       if ((await firstPin.count()) > 0) {
         await firstPin.click({ force: true });
@@ -594,7 +630,7 @@ for (const job of jobFixtures()) {
           `  = ${overlap.badPairFraction.toFixed(5)} at 100%`,
         `  pins in any overlap  ${overlap.pinsInvolved} / ${overlap.pins}` +
           `  = ${overlap.pinsInvolvedFraction.toFixed(3)} at 100%` +
-          ` (the limit is held at 200%, where zoom has done its job)`,
+          ` (read, not asserted — the limit is held at the zoom above)`,
         `  median nearest gap   ${overlap.medianNearestGap.toFixed(1)} px edge-to-edge`,
         `  numbers shown on     ${overlap.labelled} / ${overlap.pins} pins`,
       ].join("\n"),

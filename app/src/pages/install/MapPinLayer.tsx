@@ -28,12 +28,20 @@ import { openingMarkerStyle } from "../../lib/install/openingMarkerScale";
 import { showsVoidedInstall } from "../../lib/install/openingRowAction";
 import { installerInitials } from "../../lib/install/mapDispatch";
 import { VOIDED_RING_COLOR } from "../../components/install/OpeningDetailCard";
-import type { LayoutPoint } from "../../lib/install/pinLayout";
+
+/** A point on the sheet, both axes 0–1 across the page. */
+export interface PinPoint {
+  x: number;
+  y: number;
+}
 
 export interface MapPinLayerProps {
   openings: ProjectOpening[];
-  /** Display position per opening id, already separated for overlap. */
-  positions: Map<string, LayoutPoint>;
+  /**
+   * Where to draw each opening, keyed by id — its own pin_x/pin_y, so the dot
+   * lands on the callout number the extractor read it off.
+   */
+  positions: Map<string, PinPoint>;
   /** Openings whose position was inferred rather than placed by a person. */
   autoIds: Set<string>;
   selectedId: string | null;
@@ -122,6 +130,12 @@ export function MapPinLayer({
           <button
             key={o.id}
             type="button"
+            /*
+             * Which opening this dot is, so a test can check that it landed on
+             * the callout it belongs to. Two openings can share a mark number,
+             * so the visible label is not an identity.
+             */
+            data-opening-id={o.id}
             aria-label={pinTitle(o)}
             aria-pressed={
               dispatchMode ? selIndex >= 0 || isNewOnRoute : undefined

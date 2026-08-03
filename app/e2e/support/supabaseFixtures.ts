@@ -51,9 +51,10 @@ interface ProjectRow {
   job_code: string;
 }
 
-interface OpeningRow {
+export interface OpeningRow {
   id: string;
   project_id: string;
+  opening_code: string;
   page_number: number | null;
   pin_x: number | null;
   pin_y: number | null;
@@ -151,6 +152,16 @@ export function jobFixtures(): JobFixture[] {
     }
     return { jobCode, projectId: project.id, marksByPage, unpinned };
   });
+}
+
+/**
+ * The job's real openings, with the coordinates the extraction gave them.
+ *
+ * Exported so a test can check that the dot for a given opening is drawn at the
+ * fraction of the sheet the database says, rather than somewhere near it.
+ */
+export function openingsFor(projectId: string): OpeningRow[] {
+  return openingsByProject.get(projectId) ?? [];
 }
 
 /** The building planset the map picks: newest `kind = building` PDF. */
