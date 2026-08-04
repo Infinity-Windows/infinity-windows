@@ -956,7 +956,7 @@ function JobDetailsPanel({
             />
           </label>
         </div>
-        {save.isError && <p className="error">{String(save.error)}</p>}
+        {save.isError && <p className="error">{formatApiError(save.error)}</p>}
         <button
           type="submit"
           className="action-btn primary"
@@ -1794,7 +1794,7 @@ function ExceptionsTab({ projectId }: { projectId: string }) {
     return <p className="muted">Loading exceptions…</p>;
   }
   if (issues.isError) {
-    return <p className="error">{String(issues.error)}</p>;
+    return <p className="error">{formatApiError(issues.error)}</p>;
   }
 
   const open = (issues.data ?? []).filter((i) => i.status === "open");

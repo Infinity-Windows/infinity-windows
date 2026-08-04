@@ -6,6 +6,7 @@
 // pre-migration and nothing crashes.
 
 import { supabase } from "../supabase";
+import { isMissingTable } from "../schemaErrors";
 import { getMyProfile, listProfiles } from "../install/api";
 import { roleRank } from "../install/types";
 import { listProjectAssignments } from "../schedule/api";
@@ -43,26 +44,12 @@ const LOCAL_READS_KEY = "infinity.chat.reads.v1";
 
 /** Missing-table / missing-column errors mean the migration isn't applied. */
 function isMissingChatTable(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const e = error as { code?: unknown; message?: unknown };
-  if (e.code === "PGRST205" || e.code === "42P01") return true;
-  const msg = typeof e.message === "string" ? e.message.toLowerCase() : "";
-  return (
-    msg.includes("project_messages") ||
-    (msg.includes("does not exist") && msg.includes("relation"))
-  );
+  return isMissingTable(error, "project_messages");
 }
 
 /** Missing read-cursor table means the 20260723050000 migration isn't applied. */
 function isMissingReadsTable(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const e = error as { code?: unknown; message?: unknown };
-  if (e.code === "PGRST205" || e.code === "42P01") return true;
-  const msg = typeof e.message === "string" ? e.message.toLowerCase() : "";
-  return (
-    msg.includes("project_message_reads") ||
-    (msg.includes("does not exist") && msg.includes("relation"))
-  );
+  return isMissingTable(error, "project_message_reads");
 }
 
 // --- Local fallback store ---------------------------------------------------

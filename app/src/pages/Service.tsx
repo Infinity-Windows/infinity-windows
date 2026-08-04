@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { formatApiError } from "../lib/errors";
 import {
   activeCaseCount,
   attributeServiceCases,
@@ -287,7 +288,7 @@ export function Service() {
       </p>
 
       {(schedule.isError || resolve.isError) && (
-        <p className="error">{String(schedule.error ?? resolve.error)}</p>
+        <p className="error">{formatApiError(schedule.error ?? resolve.error)}</p>
       )}
 
       <h2>Fail-point attribution</h2>
@@ -341,7 +342,7 @@ export function Service() {
       </div>
 
       {casesQ.isLoading && <p className="muted">Loading service cases…</p>}
-      {casesQ.isError && <p className="error">{String(casesQ.error)}</p>}
+      {casesQ.isError && <p className="error">{formatApiError(casesQ.error)}</p>}
 
       {!casesQ.isLoading && !casesQ.isError && (
         <ul className="unit-list work-list">

@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { Lightbulb, X } from "lucide-react";
 import {
@@ -8,8 +7,7 @@ import {
   isTipDismissed,
   tipKeyForRoute,
 } from "../../lib/featureTips";
-import { getMyProfile } from "../../lib/install/api";
-import { effectiveRole, useViewAsRole } from "../../lib/viewAsRoleContext";
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
 
 /**
  * First-run micro-tip anchored just above the bottom nav. Shows at most one tip
@@ -18,9 +16,7 @@ import { effectiveRole, useViewAsRole } from "../../lib/viewAsRoleContext";
  */
 export function FeatureTip() {
   const location = useLocation();
-  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const view = useViewAsRole();
-  const role = effectiveRole(me.data?.role, view);
+  const { effectiveRole: role } = useEffectiveRole();
   const key = tipKeyForRoute(location.pathname, role);
   const [visibleKey, setVisibleKey] = useState<string | null>(null);
 
