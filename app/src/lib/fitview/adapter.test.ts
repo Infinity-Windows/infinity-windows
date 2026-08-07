@@ -142,6 +142,66 @@ describe("buildFitViewJob geometry", () => {
   });
 });
 
+describe("mark code dialects", () => {
+  it("normalizes survey letters onto extraction dashes", async () => {
+    const { normalizeMarkCode } = await import("./adapter");
+    expect(normalizeMarkCode("13A")).toBe("13-1");
+    expect(normalizeMarkCode("13b")).toBe("13-2");
+    expect(normalizeMarkCode("13-1")).toBe("13-1");
+    expect(normalizeMarkCode("29")).toBe("29");
+    // A trailing letter is only a twin suffix after a digit — real marks like
+    // "W3" or "A-101" pass through untouched.
+    expect(normalizeMarkCode("W3")).toBe("W3");
+  });
+});
+
+describe("authored model", () => {
+  const model = {
+    building: {
+      width: 48.1, depth: 43.6, height: 4.7, rise: 0,
+      footprints: [[
+        { x: 0, z: 0, name: "West" },
+        { x: 10, z: 0 },
+        { x: 10, z: 8 },
+        { x: 0, z: 8 },
+      ]],
+    },
+    windows: [
+      { id: "13A", status: "tofit", elev: "s0", x: 2, y: 0.9, w: 900, h: 1200 },
+      { id: "29", status: "tofit", elev: "s1", x: 1, y: 0, w: 7233, h: 3035 },
+    ],
+  };
+
+  it("is read from features.fitview.model and validated", async () => {
+    const { fitviewModel } = await import("./adapter");
+    expect(fitviewModel({ fitview: { model } })).toEqual(model);
+    expect(fitviewModel({ fitview: { longSideM: 48 } })).toBeNull();
+    expect(fitviewModel({ fitview: { model: { building: {} } } })).toBeNull();
+    expect(fitviewModel(null)).toBeNull();
+  });
+
+  it("keeps survey geometry and merges live status across dialects", async () => {
+    const { buildAuthoredJob } = await import("./adapter");
+    const live = [
+      opening({ opening_code: "13-1", status: "installed" }),
+      opening({ opening_code: "29", status: "assigned" }),
+    ];
+    const job = buildAuthoredJob(
+      model,
+      { projectId: "p1", projectName: "BD", projectAddress: null },
+      live,
+    );
+    expect(job.building.footprints[0][0].name).toBe("West");
+    const w13 = job.windows.find((w) => String(w.id) === "13A")!;
+    const w29 = job.windows.find((w) => String(w.id) === "29")!;
+    expect(w13.status).toBe("installed");
+    // assigned is still waiting to be fitted.
+    expect(w29.status).toBe("tofit");
+    // Survey placement untouched by the merge.
+    expect(w29.x).toBe(1);
+  });
+});
+
 describe("calibration via outline features", () => {
   it("reads a fitview key and ignores everything else", async () => {
     const { fitviewCalibration } = await import("./adapter");

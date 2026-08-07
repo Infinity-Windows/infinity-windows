@@ -1737,6 +1737,36 @@ a.tb-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
 .fitview-app {
   min-height: 0;
 }
+.fitview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+/* Full screen as a fixed overlay (works in iOS PWAs where the Fullscreen API
+   does not). The panel drops its clamp and takes the whole viewport. */
+.fitview-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: var(--background);
+  padding: calc(10px + var(--inset-top, 0px)) 12px calc(10px + var(--inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+}
+.fitview-fullscreen .fitview-app {
+  flex: 1;
+  min-height: 0;
+}
+.fitview-fullscreen .fitview-app .app {
+  height: 100%;
+}
+/* The prototype sized its zoom/pan rail for a 560px phone column; keep the
+   buttons on one line in the wider embed. */
+.fitview-app .zoomctl button {
+  white-space: nowrap;
+  min-width: 46px;
+}
 .fitview-app .app {
   max-width: none;
   /* Fit under the hub header + tab row so the detail sheet — anchored to this

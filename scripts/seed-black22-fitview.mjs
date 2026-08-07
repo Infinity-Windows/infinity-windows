@@ -55,6 +55,13 @@ const points = foot.map((p) => ({
   y: +(0.1 + (p.z - minZ) * s).toFixed(5),
 }));
 
+// The COMPLETE survey model rides along: both footprint masses with their
+// named walls, and every window exactly where the surveyor placed it (elev,
+// metres along the wall, sill height, panels, corner wraps). The app's
+// Maps Interactive prefers this wholesale over pin-derived placement and
+// only merges live install status in. `trace` (the plan-tracing overlay
+// data) is dropped — it serves the trace editor, not the renderer.
+const { trace: _trace, ...buildingSansTrace } = fixture.building;
 const features = {
   dividers: [],
   wallOpenings: [],
@@ -62,14 +69,19 @@ const features = {
     longSideM: +longSideM.toFixed(2),
     wallHeightM: fixture.building.height,
     source: "window-viewer win-2423 hand trace",
+    model: {
+      building: buildingSansTrace,
+      windows: fixture.windows,
+    },
   },
 };
 
 console.log(`Seed plan for ${JOB_CODE} (${fixture.addr || fixture.ref})`);
-console.log(`  footprint vertices : ${points.length} (main mass of ${fixture.building.footprints.length} polys)`);
+console.log(`  outline points     : ${points.length} (main mass; for the flat plan editor)`);
+console.log(`  full model         : ${fixture.building.footprints.length} masses, ` +
+  `${fixture.windows.length} surveyor-placed windows, named walls — carried in features.fitview.model`);
 console.log(`  true long side     : ${longSideM.toFixed(1)} m (adapter default would be 30 m)`);
 console.log(`  wall height        : ${fixture.building.height} m (default 3.6 m)`);
-console.log(`  windows in fixture : ${fixture.windows.length} (NOT written — pins come from the planset)`);
 
 if (mode === "plan") {
   console.log("\nLocal plan only. Re-run with --dry-run to diff against the live");

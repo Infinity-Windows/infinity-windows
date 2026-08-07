@@ -59,7 +59,8 @@ export interface FitViewJob {
     depth: number;
     height: number;
     rise: number;
-    footprints: { x: number; z: number }[][];
+    /** A vertex `name` labels the wall STARTING at it (survey convention). */
+    footprints: { x: number; z: number; name?: string }[][];
   };
   windows: FitViewWindow[];
 }
@@ -130,6 +131,84 @@ export interface AdapterInput {
   longSideM?: number;
   /** Override the single-storey wall height, metres. */
   wallHeightM?: number;
+}
+
+/**
+ * A complete hand-traced model (the window-viewer survey format) that an
+ * outline row can carry in `features.fitview.model`: multi-mass footprints
+ * with NAMED walls, and windows placed by a surveyor's hand rather than
+ * derived from plan pins. When present it beats the pin-derived model in
+ * every way that matters on site, so the tab prefers it wholesale.
+ */
+export interface AuthoredModel {
+  building: {
+    width: number;
+    depth: number;
+    height: number;
+    rise: number;
+    footprints: { x: number; z: number; name?: string }[][];
+  };
+  /** Renderer-native windows; extra fields (legs, wrap, panes…) pass through. */
+  windows: Array<Record<string, unknown> & { id: string; status?: string }>;
+}
+
+export function fitviewModel(features: unknown): AuthoredModel | null {
+  if (!features || typeof features !== "object") return null;
+  const f = (features as { fitview?: unknown }).fitview;
+  if (!f || typeof f !== "object") return null;
+  const m = (f as { model?: unknown }).model;
+  if (!m || typeof m !== "object") return null;
+  const model = m as AuthoredModel;
+  if (!Array.isArray(model.building?.footprints)) return null;
+  if (!Array.isArray(model.windows)) return null;
+  return model;
+}
+
+/**
+ * One physical opening, two label dialects: Infinity's extraction writes the
+ * QTY-2 twins as "13-1"/"13-2", the survey format as "13A"/"13B". Normalize
+ * both to the dashed form so live status can find its window and vice versa.
+ */
+export function normalizeMarkCode(code: string): string {
+  const t = code.trim().toUpperCase();
+  const m = /^(.+?)([A-Z])$/.exec(t);
+  if (m && /\d$/.test(m[1])) {
+    return `${m[1]}-${m[2].charCodeAt(0) - 64}`;
+  }
+  return t;
+}
+
+/**
+ * The authored model dressed with LIVE state: geometry and specs come from the
+ * survey, install status comes from today's database rows so QC and the crew's
+ * progress stay true. Unmatched windows keep their authored status.
+ */
+export function buildAuthoredJob(
+  model: AuthoredModel,
+  meta: { projectId: string; projectName: string; projectAddress: string | null },
+  openings: ProjectOpening[],
+): FitViewJob {
+  const liveByCode = new Map<string, ProjectOpening>();
+  for (const o of openings) liveByCode.set(normalizeMarkCode(o.opening_code), o);
+
+  const windows = model.windows.map((w) => {
+    const live = liveByCode.get(normalizeMarkCode(String(w.id)));
+    if (!live) return w;
+    return {
+      ...w,
+      status: live.status === "installed" ? "installed" : "tofit",
+      assigned: live.assignee?.display_name ? [live.assignee.display_name] : undefined,
+    };
+  });
+
+  return {
+    id: meta.projectId,
+    ref: meta.projectName,
+    addr: meta.projectAddress ?? "",
+    rev: 1,
+    building: model.building,
+    windows: windows as unknown as FitViewWindow[],
+  };
 }
 
 /**

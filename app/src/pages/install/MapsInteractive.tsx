@@ -1,10 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { listMarkSpecs, listOpenings, listPlanOutlines } from "../../lib/install/api";
 import type { Project } from "../../lib/types";
 import { pushToast } from "../../lib/toast";
-import { buildFitViewJob, fitviewCalibration } from "../../lib/fitview/adapter";
+import {
+  buildAuthoredJob,
+  buildFitViewJob,
+  fitviewCalibration,
+  fitviewModel,
+  normalizeMarkCode,
+} from "../../lib/fitview/adapter";
 import { mountFitView } from "../../lib/fitview/fitviewRenderer";
 import "../../lib/fitview/fitview.css";
 
@@ -38,10 +44,18 @@ export function MapsInteractive({ project }: { project: Project }) {
 
   const job = useMemo(() => {
     if (!outline || !openings.data) return null;
-    return buildFitViewJob({
+    const meta = {
       projectId,
       projectName: project.name,
       projectAddress: project.address,
+    };
+    // A full hand-traced survey model (multi-mass footprint, named walls,
+    // surveyor-placed windows) beats anything derivable from plan pins —
+    // when the outline carries one, use it and only merge live status in.
+    const authored = fitviewModel(outline.features);
+    if (authored) return buildAuthoredJob(authored, meta, openings.data);
+    return buildFitViewJob({
+      ...meta,
       outline: {
         points: outline.points,
         pageAspect: outline.page_aspect,
@@ -57,6 +71,23 @@ export function MapsInteractive({ project }: { project: Project }) {
 
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<ReturnType<typeof mountFitView> | null>(null);
+
+  // Full-screen is a CSS overlay, not the Fullscreen API: iOS home-screen
+  // PWAs don't grant the API, and an inset-0 overlay behaves identically
+  // everywhere. The renderer refits itself off the resize event.
+  const [fullscreen, setFullscreen] = useState(false);
+  const toggleFullscreen = (next: boolean) => {
+    setFullscreen(next);
+    requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+  };
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") toggleFullscreen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [fullscreen]);
 
   // Latest openings for the tap-through lookup without remounting on refetch.
   const openingsRef = useRef(openings.data);
@@ -74,7 +105,12 @@ export function MapsInteractive({ project }: { project: Project }) {
     viewRef.current = mountFitView(host, job, {
       toast: pushToast,
       openOpening: (code: string) => {
-        const match = openingsRef.current?.find((o) => o.opening_code === code);
+        // Codes come in two dialects (survey "13A" vs extraction "13-1");
+        // normalize both sides so the deep link finds its opening.
+        const want = normalizeMarkCode(code);
+        const match = openingsRef.current?.find(
+          (o) => normalizeMarkCode(o.opening_code) === want,
+        );
         if (!match) return;
         // Navigate only after the click dispatch has fully finished. React 19
         // re-renders discrete events synchronously, so navigating mid-click
@@ -120,13 +156,24 @@ export function MapsInteractive({ project }: { project: Project }) {
   // One stable tree so the renderer's host node survives data transitions —
   // a branch swap here would strand the mounted view on a detached div.
   return (
-    <div>
-      {job && job.windows.length === 0 && (
-        <p className="muted" style={{ marginBottom: 8 }}>
-          The outline is traced, but no openings are pinned on sheet{" "}
-          {outline.page_number} yet — the model will populate as pins land.
-        </p>
-      )}
+    <div className={fullscreen ? "fitview-shell fitview-fullscreen" : "fitview-shell"}>
+      <div className="fitview-toolbar">
+        {job && job.windows.length === 0 && (
+          <p className="muted" style={{ margin: 0, flex: 1 }}>
+            The outline is traced, but no openings are pinned on sheet{" "}
+            {outline.page_number} yet — the model will populate as pins land.
+          </p>
+        )}
+        <button
+          type="button"
+          className="button-like"
+          style={{ marginLeft: "auto" }}
+          aria-pressed={fullscreen}
+          onClick={() => toggleFullscreen(!fullscreen)}
+        >
+          {fullscreen ? "Exit full screen" : "Full screen"}
+        </button>
+      </div>
       <div className="fitview-app" ref={hostRef} />
     </div>
   );
