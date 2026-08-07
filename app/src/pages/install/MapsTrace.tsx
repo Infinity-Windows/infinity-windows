@@ -29,6 +29,7 @@ import {
   fitviewCalibration,
   fitviewModel,
   normalizeMarkCode,
+  preferModelOutline,
   type AuthoredModel,
 } from "../../lib/fitview/adapter";
 import { mountTracePlan } from "../../lib/fitview/traceRenderer";
@@ -73,7 +74,8 @@ export function MapsTrace() {
     queryFn: () => listPlansets(projectId),
   });
 
-  const outline = outlines.data?.[0] ?? null;
+  // The model-bearing outline wins; the auto-extracted one is a fallback.
+  const outline = preferModelOutline(outlines.data);
   const plansPlanset = useMemo(() => {
     const all = plansets.data ?? [];
     return all.find((p) => p.kind === "building") ?? all[0] ?? null;
@@ -273,16 +275,31 @@ export function MapsTrace() {
       }
       if (!plansPlanset) throw new Error("This job has no planset to attach the model to.");
       if (outline) {
-        // Graduate the draft: same points and page geometry, real planset,
-        // real row. The local copy goes the moment the save lands.
-        const saved = await savePlanOutline({
-          projectId,
-          plansetId: plansPlanset.id,
-          pageNumber: Math.max(1, outline.page_number),
-          points: outline.points,
-          pageAspect: outline.page_aspect,
-          features,
-        });
+        // Graduate the draft. If the job already has a REAL outline row
+        // (the auto-extracted one), the model lands on THAT row - keeping
+        // its plan-aligned points for the flat map, and leaving no sibling
+        // rows to fight over which one the tab reads. Otherwise insert.
+        const isUuid = (id: string) =>
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        const real = outlines.data?.find((r) => isUuid(r.id));
+        const saved = real
+          ? await savePlanOutline({
+              outlineId: real.id,
+              projectId,
+              plansetId: real.planset_id,
+              pageNumber: real.page_number,
+              points: real.points,
+              pageAspect: real.page_aspect,
+              features,
+            })
+          : await savePlanOutline({
+              projectId,
+              plansetId: plansPlanset.id,
+              pageNumber: Math.max(1, outline.page_number),
+              points: outline.points,
+              pageAspect: outline.page_aspect,
+              features,
+            });
         discardLocalOutline(outline.planset_id, outline.page_number, outline.id);
         return saved;
       }

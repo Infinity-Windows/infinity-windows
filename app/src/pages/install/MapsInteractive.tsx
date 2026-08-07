@@ -12,6 +12,7 @@ import {
   fitviewCalibration,
   fitviewModel,
   normalizeMarkCode,
+  preferModelOutline,
 } from "../../lib/fitview/adapter";
 import { mountFitView } from "../../lib/fitview/fitviewRenderer";
 import "../../lib/fitview/fitview.css";
@@ -45,8 +46,8 @@ export function MapsInteractive({ project }: { project: Project }) {
     queryFn: () => listMarkSpecs(projectId),
   });
 
-  // First outline wins for v1: one traced sheet = one building model.
-  const outline = outlines.data?.[0] ?? null;
+  // The model-bearing outline wins; the auto-extracted one is a fallback.
+  const outline = preferModelOutline(outlines.data);
 
   const job = useMemo(() => {
     if (!outline || !openings.data) return null;

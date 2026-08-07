@@ -157,6 +157,19 @@ export interface AuthoredModel {
   windows: Array<Record<string, unknown> & { id: string; status?: string }>;
 }
 
+/**
+ * Which outline row should the 3D tab trust? A job can legitimately hold
+ * more than one: the auto-extracted outline from planset processing AND a
+ * saved survey model (they share a page, and the older one sorts first).
+ * The row CARRYING a model always wins; the first row is only a fallback.
+ */
+export function preferModelOutline<T extends { features: unknown }>(
+  rows: T[] | undefined,
+): T | null {
+  if (!rows || rows.length === 0) return null;
+  return rows.find((r) => fitviewModel(r.features) !== null) ?? rows[0];
+}
+
 export function fitviewModel(features: unknown): AuthoredModel | null {
   if (!features || typeof features !== "object") return null;
   const f = (features as { fitview?: unknown }).fitview;

@@ -202,6 +202,24 @@ describe("authored model", () => {
   });
 });
 
+describe("preferModelOutline", () => {
+  it("the model-bearing row beats an older auto-extracted sibling", async () => {
+    const { preferModelOutline } = await import("./adapter");
+    const model = {
+      building: { width: 1, depth: 1, height: 3, rise: 0, footprints: [[{ x: 0, z: 0 }, { x: 1, z: 0 }, { x: 1, z: 1 }]] },
+      windows: [],
+    };
+    const autoBox = { id: "old", features: { dividers: [] } };
+    const survey = { id: "new", features: { fitview: { model } } };
+    // The auto-extracted row sorts first (older created_at) - the exact
+    // shape of the bug where a fresh submit rendered as the old box.
+    expect(preferModelOutline([autoBox, survey])).toBe(survey);
+    expect(preferModelOutline([autoBox])).toBe(autoBox);
+    expect(preferModelOutline([])).toBeNull();
+    expect(preferModelOutline(undefined)).toBeNull();
+  });
+});
+
 describe("calibration via outline features", () => {
   it("reads a fitview key and ignores everything else", async () => {
     const { fitviewCalibration } = await import("./adapter");
