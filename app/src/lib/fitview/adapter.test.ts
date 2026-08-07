@@ -202,6 +202,56 @@ describe("authored model", () => {
   });
 });
 
+describe("story stretch defense", () => {
+  const storied = {
+    building: {
+      width: 20, depth: 10, height: 6, rise: 0,
+      footprints: [[{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 10, z: 8 }, { x: 0, z: 8 }]],
+      stories: [
+        { n: 1, name: "Ground", elevM: 0, heightM: 3, footprints: [[{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 10, z: 8 }, { x: 0, z: 8 }]] },
+        { n: 2, name: "Level 2", elevM: 3, heightM: 3, footprints: [[{ x: 2, z: 2 }, { x: 6, z: 2 }, { x: 6, z: 6 }, { x: 2, z: 6 }]] },
+      ],
+    },
+    windows: [
+      // 3645mm of glass at a 0.45m sill cannot live in a 3m story.
+      { id: "29", status: "tofit", elev: "s1", x: 1, story: 1, y: 0.45, w: 7233, h: 3645 },
+      { id: "4", status: "tofit", elev: "s8", x: 1, story: 2, y: 0.4, w: 900, h: 749 },
+    ],
+  };
+  const meta = { projectId: "p1", projectName: "BD", projectAddress: null };
+
+  it("a story shorter than its own glass is stretched, and floors above ride up", async () => {
+    const { buildAuthoredJob } = await import("./adapter");
+    const job = buildAuthoredJob(structuredClone(storied), meta, []);
+    const out = job.building.stories as { heightM: number; elevM: number }[];
+    expect(out[0].heightM).toBeCloseTo(4.25, 2); // 0.45 + 3.645 + 0.15
+    expect(out[1].elevM).toBeCloseTo(4.25, 2);
+    expect(job.building.height).toBeCloseTo(7.25, 2); // new envelope
+    // The Level-2 clerestory's absolute sill rides the lifted datum.
+    const w4 = job.windows.find((w) => String(w.id) === "4")!;
+    expect(w4.y).toBeCloseTo(4.25 + 0.4, 2);
+  });
+
+  it("a model whose glass already fits is passed through untouched", async () => {
+    const { buildAuthoredJob } = await import("./adapter");
+    const fits = structuredClone(storied);
+    fits.windows = [{ id: "1", status: "tofit", elev: "s0", x: 1, story: 1, y: 0.9, w: 900, h: 1200 }];
+    const job = buildAuthoredJob(fits, meta, []);
+    expect(job.building).toBe(fits.building); // same object: zero rewriting
+  });
+
+  it("legacy single-story models grow height without gaining a stories array", async () => {
+    const { buildAuthoredJob } = await import("./adapter");
+    const legacy = {
+      building: { width: 20, depth: 10, height: 3, rise: 0, footprints: [[{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 10, z: 8 }, { x: 0, z: 8 }]] },
+      windows: [{ id: "T", status: "tofit", elev: "s0", x: 1, y: 3.6, w: 900, h: 749 }],
+    };
+    const job = buildAuthoredJob(legacy, meta, []);
+    expect(job.building.height).toBeCloseTo(3.6 + 0.749 + 0.15, 2);
+    expect(job.building.stories).toBeUndefined();
+  });
+});
+
 describe("preferModelOutline", () => {
   it("the model-bearing row beats an older auto-extracted sibling", async () => {
     const { preferModelOutline } = await import("./adapter");

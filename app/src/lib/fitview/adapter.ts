@@ -20,7 +20,7 @@
 //    wrong-but-quiet beats wrong-and-loud on a reference model.
 
 import { nearestPointOnOutline } from "../install/cad";
-import { absoluteSill, storiesOf } from "./stories";
+import { absoluteSill, envelopeHeight, storiesOf, stretchStoriesToFit } from "./stories";
 import type { OutlinePoint } from "../install/outline";
 import { markBase } from "../install/extract";
 import type { ProjectMarkSpec } from "../install/specs";
@@ -214,7 +214,21 @@ export function buildAuthoredJob(
   // Storied models keep sills relative to their own floor (edits stay local);
   // the renderer positions in absolute height, so the conversion happens
   // here, at the boundary, and nowhere else.
-  const stories = storiesOf(model.building);
+  //
+  // The same boundary defends against impossible heights: a story shorter
+  // than its own tallest glass (saved before heights auto-fit, or hand-set
+  // too low) is stretched to fit, and the stories above ride up with it.
+  const canonical = storiesOf(model.building);
+  const stories = stretchStoriesToFit(canonical, model.windows);
+  const grew = stories.some(
+    (s, i) => s.heightM !== canonical[i].heightM || s.elevM !== canonical[i].elevM,
+  );
+  const building = !grew
+    ? model.building
+    : Array.isArray(model.building.stories)
+      ? { ...model.building, stories, height: envelopeHeight(stories) }
+      : { ...model.building, height: stories[0].heightM };
+
   const windows = model.windows.map((raw) => {
     const w = { ...raw, y: absoluteSill(raw as { y?: unknown; story?: unknown }, stories) };
     const live = liveByCode.get(normalizeMarkCode(String(w.id)));
@@ -231,7 +245,7 @@ export function buildAuthoredJob(
     ref: meta.projectName,
     addr: meta.projectAddress ?? "",
     rev: 1,
-    building: model.building,
+    building,
     windows: windows as unknown as FitViewWindow[],
   };
 }

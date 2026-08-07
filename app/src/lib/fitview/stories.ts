@@ -130,3 +130,41 @@ export function storyLevels(stories: Story[]): number[] {
 export function envelopeHeight(stories: Story[]): number {
   return Math.max(...stories.map((s) => s.elevM + s.heightM));
 }
+
+/**
+ * A story must be at least as tall as its own tallest glass: sill + window
+ * height + a plate margin. Anything shorter is impossible geometry — the
+ * window would poke through the floor above. Returns a NEW story list with
+ * heights raised where needed and every higher story's datum pushed up by
+ * the same amount, so stacked stories keep sitting plate-on-plate.
+ * User-set heights are floors, never ceilings: a story already tall enough
+ * is left exactly alone.
+ */
+export const GLASS_PLATE_MARGIN_M = 0.15;
+
+export function stretchStoriesToFit(
+  stories: Story[],
+  windows: { story?: unknown; y?: unknown; h?: unknown; door?: unknown }[],
+  marginM = GLASS_PLATE_MARGIN_M,
+): Story[] {
+  const out = stories.map((s) => ({ ...s }));
+  let lift = 0;
+  for (const st of out) {
+    st.elevM = Math.round((st.elevM + lift) * 100) / 100;
+    let needed = 0;
+    for (const w of windows) {
+      const winStory =
+        typeof w.story === "number" ? w.story : out.length === 1 ? st.n : null;
+      if (winStory !== st.n) continue;
+      const sill = typeof w.y === "number" ? w.y : 0;
+      const hM = typeof w.h === "number" ? w.h / 1000 : 0;
+      needed = Math.max(needed, sill + hM + marginM);
+    }
+    if (needed > st.heightM) {
+      const grown = Math.round(needed * 100) / 100;
+      lift += grown - st.heightM;
+      st.heightM = grown;
+    }
+  }
+  return out;
+}

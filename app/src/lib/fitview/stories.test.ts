@@ -81,3 +81,43 @@ describe("window ↔ story resolution", () => {
     expect(envelopeHeight(stories)).toBeCloseTo(4.7, 5);
   });
 });
+
+describe("stretchStoriesToFit", () => {
+  const base = () =>
+    storiesOf({
+      height: 3,
+      stories: [
+        { n: 1, name: "Ground", elevM: 0, heightM: 3, footprints: [RECT] },
+        { n: 2, name: "Level 2", elevM: 3, heightM: 3, footprints: [SMALL] },
+      ],
+    });
+
+  it("raises a story to fit its tallest glass and lifts the stories above", async () => {
+    const { stretchStoriesToFit } = await import("./stories");
+    // 3645mm window at a 0.45m sill needs 0.45+3.645+0.15 = 4.25m of wall.
+    const out = stretchStoriesToFit(base(), [
+      { story: 1, y: 0.45, h: 3645 },
+      { story: 2, y: 0.4, h: 800 },
+    ]);
+    expect(out[0].heightM).toBeCloseTo(4.25, 2);
+    expect(out[1].elevM).toBeCloseTo(4.25, 2);   // still plate-on-plate
+    expect(out[1].heightM).toBe(3);              // tall enough already: untouched
+  });
+
+  it("never shrinks a story the user made tall on purpose", async () => {
+    const { stretchStoriesToFit } = await import("./stories");
+    const tall = base();
+    tall[0].heightM = 6;
+    const out = stretchStoriesToFit(tall, [{ story: 1, y: 0.9, h: 1200 }]);
+    expect(out[0].heightM).toBe(6);
+    expect(out).not.toBe(tall);                  // pure: input untouched
+    expect(tall[0].elevM).toBe(0);
+  });
+
+  it("single-story models absorb story-less windows", async () => {
+    const { stretchStoriesToFit } = await import("./stories");
+    const single = storiesOf({ height: 3, footprints: [RECT] });
+    const out = stretchStoriesToFit(single, [{ y: 3.6, h: 749 }]);
+    expect(out[0].heightM).toBeCloseTo(3.6 + 0.749 + 0.15, 2);
+  });
+});

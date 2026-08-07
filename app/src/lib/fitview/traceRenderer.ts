@@ -1071,6 +1071,26 @@ export function mountTracePlan(host, job, shim) {
       offModel++;
     });
 
+    // Floors are as tall as their glass needs: each story's plate must clear
+    // its tallest placed window (sill + glass + a plate margin), or the unit
+    // would poke through the floor above. Typed heights are floors, never
+    // ceilings - a story already tall enough keeps its number. Raising a
+    // floor lifts every story above it, so the datums rebuild afterward.
+    var PLATE_M = 0.15;
+    moves.forEach(function (m) {
+      if (!m.elev || typeof m.story !== "number") return;
+      var stG = stories[m.story - 1];
+      if (!stG) return;
+      var need = (typeof m.y === "number" ? m.y : 0) + (m.h || 0) / 1000 + PLATE_M;
+      if (need > stG.heightM) stG.heightM = Math.round(need * 100) / 100;
+    });
+    elevAcc = 0;
+    storyDefs.forEach(function (d, di) {
+      d.heightM = stories[di].heightM;
+      d.elevM = Math.round(elevAcc * 100) / 100;
+      elevAcc += d.heightM;
+    });
+
     var wAll = allPts.map(function (p) { return (p.x - cx) * scale; });
     var zAll = allPts.map(function (p) { return (p.y - cy) * scale; });
     function roundPolys(closedPolys) {
