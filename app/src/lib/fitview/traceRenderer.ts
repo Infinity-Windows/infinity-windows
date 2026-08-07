@@ -1121,7 +1121,12 @@ export function mountTracePlan(host, job, shim) {
     moves.forEach(function (w) { SHIM.pushOp({ op: "upsert", window: w }); });
 
     var placedN = moves.length - offModel;
-    SHIM.toast(closed.length + (closed.length === 1 ? " building" : " buildings") +
+    // (The old count read `closed`, which after the storied rewrite resolved
+    // to window.closed - hence "undefined buildings". Count what we built.)
+    var bldCount = 0;
+    storyDefs.forEach(function (d) { bldCount += d.footprints.length; });
+    SHIM.toast(bldCount + (bldCount === 1 ? " building" : " buildings") +
+      (storyDefs.length > 1 ? " across " + storyDefs.length + " stories" : "") +
       " traced, " + placedN + " openings placed" +
       (offModel ? " - " + offModel + " left off the model" : ""));
     setTimeout(function () {

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
+  discardLocalOutline,
   downloadPlanset,
   listMarkSpecs,
   listOpenings,
@@ -250,7 +251,15 @@ export function MapsTrace() {
         },
       };
 
-      if (outline) {
+      // A browser-local draft (its id is not a UUID) cannot be UPDATED in
+      // the database - Postgres rejects the fake id outright, which is
+      // exactly the failure a submit used to die on. A real row updates in
+      // place; a draft GRADUATES: submit inserts a fresh database row and
+      // discards the local copy so it stops shadowing the saved one.
+      const isRealRow =
+        !!outline &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(outline.id);
+      if (outline && isRealRow) {
         // Keep the row's plan-aligned points; only the survey model changes.
         return savePlanOutline({
           outlineId: outline.id,
@@ -263,6 +272,20 @@ export function MapsTrace() {
         });
       }
       if (!plansPlanset) throw new Error("This job has no planset to attach the model to.");
+      if (outline) {
+        // Graduate the draft: same points and page geometry, real planset,
+        // real row. The local copy goes the moment the save lands.
+        const saved = await savePlanOutline({
+          projectId,
+          plansetId: plansPlanset.id,
+          pageNumber: Math.max(1, outline.page_number),
+          points: outline.points,
+          pageAspect: outline.page_aspect,
+          features,
+        });
+        discardLocalOutline(outline.planset_id, outline.page_number, outline.id);
+        return saved;
+      }
       // First outline on the job: a normalized main-mass footprint gives the
       // flat editor something sane to show.
       const foot = building.footprints[0] ?? [];
