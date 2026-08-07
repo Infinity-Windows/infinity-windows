@@ -143,6 +143,102 @@ describe("trace renderer", () => {
     view.destroy();
   });
 
+  it("story rail: add a story, place a window on it, submit a storied model", () => {
+    const job = {
+      id: "p1", ref: "Job", addr: "",
+      building: {
+        width: 0, depth: 0, height: 3, rise: 0, footprints: [],
+        trace: {
+          cal: { ax: 0, ay: 0, bx: 100, by: 0, value: 10, unit: "m" },
+          polys: [[{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 400 }, { x: 0, y: 400 }]],
+          dots: {},
+        },
+      },
+      windows: [
+        { id: "U1", type: "Fixed", w: 1200, h: 1000, elev: "", x: 0, y: 0, lights: 1, open: "fixed", status: "tofit" },
+        { id: "G1", type: "Fixed", w: 1000, h: 1000, elev: "", x: 0, y: 0, lights: 1, open: "fixed", status: "tofit" },
+      ],
+    };
+    const ops: { op: string; building?: Record<string, unknown>; window?: { id: string } & Record<string, unknown> }[] = [];
+    const { host, view } = mount(job, {
+      pushOp: (op: never) => ops.push(op),
+      dotSeed: { U1: { x: 390, y: 200 } },
+    });
+
+    const rail = () => [...host.querySelectorAll<HTMLButtonElement>("#storyRail button")];
+    expect(rail().map((b) => b.textContent)).toEqual(["Ground 3m", "+ Story"]);
+
+    // Add a story: footprint copies from below, focus moves up, ghost shows.
+    (host.querySelector("#addStory") as HTMLButtonElement).click();
+    expect(rail().some((b) => b.textContent?.includes("Level 2"))).toBe(true);
+    expect(host.querySelector('#ol path[stroke-dasharray]')).toBeTruthy();
+
+    // Auto-place lands the dot on the ACTIVE story — story 2.
+    (host.querySelector("#autoBtn") as HTMLButtonElement).click();
+    expect(host.querySelectorAll("#tray .chip-dot.placed").length).toBe(1);
+    // From the ground story, that same chip reads as placed elsewhere.
+    rail()[0].click();
+    expect(host.querySelectorAll("#tray .chip-dot.elsewhere").length).toBe(1);
+
+    (host.querySelector("#submitBtn") as HTMLButtonElement).click();
+    const bld = ops.find((o) => o.op === "building")!.building as {
+      height: number;
+      stories: { n: number; elevM: number; heightM: number; footprints: unknown[] }[];
+      trace: { stories: unknown[] };
+    };
+    expect(bld.stories).toHaveLength(2);
+    expect(bld.stories[0]).toMatchObject({ n: 1, elevM: 0, heightM: 3 });
+    expect(bld.stories[1]).toMatchObject({ n: 2, elevM: 3, heightM: 3 });
+    expect(bld.height).toBe(6);
+    expect(bld.trace.stories).toHaveLength(2);
+
+    const u1 = ops.find((o) => o.op === "upsert" && o.window?.id === "U1")!.window!;
+    expect(u1.story).toBe(2);
+    expect(u1.y).toBe(0.9);           // fresh story: sane sill above ITS floor
+    expect(u1.elev).toMatch(/^s[4-7]$/); // one of story 2's four walls
+    const g1 = ops.find((o) => o.op === "upsert" && o.window?.id === "G1")!.window!;
+    expect(g1.elev).toBe("");          // never placed: off the model, no story
+    expect(g1.story).toBeUndefined();
+    view.destroy();
+  });
+
+  it("removing the top story frees its windows back to the tray", () => {
+    const job = {
+      id: "p1", ref: "Job", addr: "",
+      building: {
+        width: 0, depth: 0, height: 3, rise: 0, footprints: [],
+        trace: {
+          cal: { ax: 0, ay: 0, bx: 100, by: 0, value: 10, unit: "m" },
+          stories: [
+            { name: "Ground", heightM: 3,
+              polys: [[{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 400 }, { x: 0, y: 400 }]],
+              dots: {} },
+            { name: "Level 2", heightM: 3,
+              polys: [[{ x: 100, y: 100 }, { x: 300, y: 100 }, { x: 300, y: 300 }, { x: 100, y: 300 }]],
+              dots: { U1: { x: 200, y: 100 } } },
+          ],
+        },
+      },
+      windows: [
+        { id: "U1", type: "Fixed", w: 1200, h: 1000, elev: "s4", x: 1, y: 0.9, lights: 1, open: "fixed", status: "tofit", story: 2 },
+      ],
+    };
+    const { host, view } = mount(job);
+    expect(host.querySelectorAll("#storyRail button").length).toBe(4); // 2 stories + add + remove
+    expect(host.querySelectorAll("#tray .chip-dot.placed").length).toBe(1);
+
+    const rm = host.querySelector("#removeStory") as HTMLButtonElement;
+    rm.click();               // arm
+    rm.click();               // confirm
+    expect([...host.querySelectorAll("#storyRail button")].some((b) => b.textContent?.includes("Level 2"))).toBe(false);
+    expect(host.querySelectorAll("#tray .chip-dot.placed").length).toBe(0);
+
+    // And the whole removal is one undo step.
+    (host.querySelector("#undoAct") as HTMLButtonElement).click();
+    expect(host.querySelectorAll("#tray .chip-dot.placed").length).toBe(1);
+    view.destroy();
+  });
+
   it("submit stages a building and window upserts through the shim", () => {
     const ops: { op: string }[] = [];
     let done = 0;

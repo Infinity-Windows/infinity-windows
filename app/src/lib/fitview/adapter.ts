@@ -148,6 +148,10 @@ export interface AuthoredModel {
     height: number;
     rise: number;
     footprints: { x: number; z: number; name?: string }[][];
+    /** Storied models (stories.ts shape); absent = one story of the above. */
+    stories?: unknown;
+    /** Raw tracer state for re-editing; opaque to the adapter. */
+    trace?: unknown;
   };
   /** Renderer-native windows; extra fields (legs, wrap, panes…) pass through. */
   windows: Array<Record<string, unknown> & { id: string; status?: string }>;

@@ -21,7 +21,7 @@
 
 import { elevationsOf } from "./fitviewRenderer";
 
-const TEMPLATE = "\n<div class=\"app loading\">\n\n  <header class=\"titleblock\">\n    <div class=\"tb-row\">\n      <div>\n        <div class=\"tb-ref\" id=\"jobRef\"></div>\n        <div class=\"tb-addr\" id=\"jobAddr\"></div>\n      </div>\n      \n    </div>\n\n    \n    <div class=\"tabs\">\n      <button class=\"tab\" aria-selected=\"true\">Trace plan</button>\n    </div>\n  </header>\n\n  <div class=\"boot\" id=\"boot\">\n    <b>Loading job</b>\n    <span id=\"bootMsg\">Fetching schedule</span>\n  </div>\n\n  <section class=\"view\">\n    <div class=\"toolrow\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Tool\">\n        <button data-mode=\"select\" aria-pressed=\"true\">Select</button>\n        <button data-mode=\"draw\" aria-pressed=\"false\">Draw</button>\n        <button data-mode=\"cal\" aria-pressed=\"false\">Calibrate</button>\n      </div>\n      <button class=\"mini\" id=\"closeShape\">Close shape</button>\n      <button class=\"mini\" id=\"undoPt\">Undo point</button>\n      <button class=\"mini\" id=\"undoAct\" disabled>Undo action</button>\n      <button class=\"mini\" id=\"delPt\" hidden>Delete point</button>\n      <button class=\"mini\" id=\"delBld\" hidden>Delete building</button>\n      <button class=\"mini\" id=\"removeDot\" hidden>Remove dot</button>\n      <button class=\"mini\" id=\"autoBtn\" hidden>Auto-place dots</button>\n      <button class=\"mini\" id=\"autoTrace\" hidden>Auto-trace building</button>\n      <span class=\"cal-lab\">Line =</span>\n      <input class=\"cal-in\" id=\"calM\" type=\"number\" step=\"0.1\" placeholder=\"ft\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Units\">\n        <button type=\"button\" data-unit=\"ft\" aria-pressed=\"true\">ft</button>\n        <button type=\"button\" data-unit=\"m\" aria-pressed=\"false\">m</button>\n      </div>\n      <button class=\"mini\" id=\"rescaleBtn\" hidden>Rescale</button>\n      <button class=\"mini hot\" id=\"submitBtn\" style=\"margin-left:auto\">Submit</button>\n    </div>\n\n    <div class=\"tray\" id=\"tray\"><span class=\"tray-lab\">Drag onto a wall:</span></div>\n\n    <div class=\"tstage\" id=\"tstage\">\n      <div class=\"world\" id=\"world\">\n        <img id=\"plan\" alt=\"\">\n        <svg id=\"ol\" xmlns=\"http://www.w3.org/2000/svg\"></svg>\n      </div>\n      <div class=\"noplan\" id=\"noplan\" hidden>\n        <span>No plan image on this job yet</span>\n        <label class=\"pbtn\">Load plan image\n          <input id=\"planFile\" type=\"file\" accept=\"image/*\" hidden>\n        </label>\n      </div>\n    </div>\n\n    <div class=\"hint\" style=\"padding:8px 16px;font-family:var(--f-mono);font-size:9px;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-3)\" id=\"hint\">\n      Draw: tap to add points, tap the first point to close &middot; Select: drag points and dots &middot; pinch or scroll to zoom\n    </div>\n  </section>\n\n  <div class=\"foot\">\n    Trace the outside walls &middot; each closed shape is one building &middot; dots snap to the nearest wall\n  </div>\n\n  <div class=\"toast\" id=\"toast\" role=\"status\" aria-live=\"polite\"></div>\n</div>\n";
+const TEMPLATE = "\n<div class=\"app loading\">\n\n  <header class=\"titleblock\">\n    <div class=\"tb-row\">\n      <div>\n        <div class=\"tb-ref\" id=\"jobRef\"></div>\n        <div class=\"tb-addr\" id=\"jobAddr\"></div>\n      </div>\n      \n    </div>\n\n    \n    <div class=\"tabs\">\n      <button class=\"tab\" aria-selected=\"true\">Trace plan</button>\n    </div>\n  </header>\n\n  <div class=\"boot\" id=\"boot\">\n    <b>Loading job</b>\n    <span id=\"bootMsg\">Fetching schedule</span>\n  </div>\n\n  <section class=\"view\">\n    <div class=\"toolrow\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Tool\">\n        <button data-mode=\"select\" aria-pressed=\"true\">Select</button>\n        <button data-mode=\"draw\" aria-pressed=\"false\">Draw</button>\n        <button data-mode=\"cal\" aria-pressed=\"false\">Calibrate</button>\n      </div>\n      <button class=\"mini\" id=\"closeShape\">Close shape</button>\n      <button class=\"mini\" id=\"undoPt\">Undo point</button>\n      <button class=\"mini\" id=\"undoAct\" disabled>Undo action</button>\n      <button class=\"mini\" id=\"delPt\" hidden>Delete point</button>\n      <button class=\"mini\" id=\"delBld\" hidden>Delete building</button>\n      <button class=\"mini\" id=\"removeDot\" hidden>Remove dot</button>\n      <button class=\"mini\" id=\"autoBtn\" hidden>Auto-place dots</button>\n      <button class=\"mini\" id=\"autoTrace\" hidden>Auto-trace building</button>\n      <span class=\"cal-lab\">Line =</span>\n      <input class=\"cal-in\" id=\"calM\" type=\"number\" step=\"0.1\" placeholder=\"ft\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Units\">\n        <button type=\"button\" data-unit=\"ft\" aria-pressed=\"true\">ft</button>\n        <button type=\"button\" data-unit=\"m\" aria-pressed=\"false\">m</button>\n      </div>\n      <button class=\"mini\" id=\"rescaleBtn\" hidden>Rescale</button>\n      <button class=\"mini hot\" id=\"submitBtn\" style=\"margin-left:auto\">Submit</button>\n    </div>\n\n    <div class=\"strip\" id=\"storyRail\"></div>\n\n    <div class=\"tray\" id=\"tray\"><span class=\"tray-lab\">Drag onto a wall:</span></div>\n\n    <div class=\"tstage\" id=\"tstage\">\n      <div class=\"world\" id=\"world\">\n        <img id=\"plan\" alt=\"\">\n        <svg id=\"ol\" xmlns=\"http://www.w3.org/2000/svg\"></svg>\n      </div>\n      <div class=\"noplan\" id=\"noplan\" hidden>\n        <span>No plan image on this job yet</span>\n        <label class=\"pbtn\">Load plan image\n          <input id=\"planFile\" type=\"file\" accept=\"image/*\" hidden>\n        </label>\n      </div>\n    </div>\n\n    <div class=\"hint\" style=\"padding:8px 16px;font-family:var(--f-mono);font-size:9px;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-3)\" id=\"hint\">\n      Draw: tap to add points, tap the first point to close &middot; Select: drag points and dots &middot; pinch or scroll to zoom\n    </div>\n  </section>\n\n  <div class=\"foot\">\n    Trace the outside walls &middot; each closed shape is one building &middot; dots snap to the nearest wall\n  </div>\n\n  <div class=\"toast\" id=\"toast\" role=\"status\" aria-live=\"polite\"></div>\n</div>\n";
 
 export function mountTracePlan(host, job, shim) {
   var SHIM = shim || {};
@@ -61,9 +61,30 @@ export function mountTracePlan(host, job, shim) {
   });
 
   function calMetres(v) { return calUnit === "ft" ? v * 0.3048 : v; }
-  var polys = [];              // [{pts:[{x,y}], closed:bool}] in plan-image px
+  /* stories: each story owns its own trace - footprint polys AND dots (a
+     dot on story 2 IS the statement "this window is on story 2"). The
+     calibration is global: one plan image, one scale. The legacy `polys` /
+     `dots` variables stay, permanently BOUND to the active story, so every
+     drawing/snapping/gesture path below keeps working untouched. */
+  var stories = [{ name: "Ground", heightM: 3, partial: false, polys: [], dots: {} }];
+  var cur = 0;
+  var MAXSTORIES = 8;
+  var polys = stories[0].polys;
   var cal = { a: null, b: null };
-  var dots = {};               // opening id -> {x, y} in plan px (snapped), once placed
+  var dots = stories[0].dots;
+  function bindStory() {
+    polys = stories[cur].polys;
+    dots = stories[cur].dots;
+  }
+  function dotStoryOf(id) {
+    for (var i = 0; i < stories.length; i++) if (stories[i].dots[id]) return i;
+    return -1;
+  }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
   var selV = null;             // {p, i} selected vertex
   var selDot = null;           // selected placed dot id
 
@@ -75,7 +96,7 @@ export function mountTracePlan(host, job, shim) {
      (and is itself undoable). Snapshots are taken BEFORE the mutation. */
   var history = [];
   function snapshot() {
-    history.push(JSON.stringify({ polys: polys, dots: dots, cal: cal }));
+    history.push(JSON.stringify({ stories: stories, cur: cur, cal: cal }));
     if (history.length > 60) history.shift();
     $("undoAct").disabled = false;
   }
@@ -89,9 +110,11 @@ export function mountTracePlan(host, job, shim) {
     var last = history.pop();
     if (!last) return;
     var s = JSON.parse(last);
-    polys = s.polys;
-    dots = s.dots;
+    stories = s.stories;
+    cur = Math.min(s.cur || 0, stories.length - 1);
     cal = s.cal;
+    bindStory();
+    buildStoryRail();
     selV = null;
     selDot = null;
     $("delPt").hidden = true;
@@ -141,6 +164,18 @@ export function mountTracePlan(host, job, shim) {
   function redraw() {
     var s = [];
     var px = 1 / view.k;                       // keep handles finger-sized at any zoom
+
+    // stories: the story below ghosts under the one you are drawing, so an
+    // upper footprint lines up with the walls that will carry it.
+    if (cur > 0) {
+      stories[cur - 1].polys.forEach(function (poly) {
+        if (!poly.closed || poly.pts.length < 3) return;
+        var gd = "M" + poly.pts.map(function (q) { return q.x + " " + q.y; }).join(" L") + " Z";
+        s.push('<path d="' + gd + '" fill="none" stroke="var(--ink-3)" stroke-width="' +
+          (2 * px) + '" stroke-dasharray="' + (6 * px) + " " + (5 * px) +
+          '" opacity="0.55" pointer-events="none"/>');
+      });
+    }
 
     polys.forEach(function (poly, pi) {
       if (!poly.pts.length) return;
@@ -202,12 +237,105 @@ export function mountTracePlan(host, job, shim) {
     if (!selV) delBldArm(false);
   }
 
+  /* stories: the rail. Tap a story to work on it; tap the active story to
+     retype its height; "+ Story" copies the footprint below (the 90% case -
+     reshape or delete it, both undoable) so there is no dialog to answer. */
+  function switchStory(i) {
+    if (i === cur) {
+      var h = parseFloat((typeof prompt === "function" &&
+        prompt("Story height (m)", String(stories[cur].heightM))) || "");
+      if (h > 0.5 && h < 12) { snapshot(); stories[cur].heightM = h; buildStoryRail(); }
+      return;
+    }
+    cur = i;
+    bindStory();
+    selV = null; selDot = null;
+    $("delPt").hidden = true; $("delBld").hidden = true; $("removeDot").hidden = true;
+    buildStoryRail();
+    renderTray();
+    redraw();
+  }
+
+  function addStory() {
+    if (stories.length >= MAXSTORIES) return;
+    snapshot();
+    var below = stories[cur];
+    stories.push({
+      name: "Level " + (stories.length + 1),
+      heightM: 3,
+      partial: false,
+      polys: below.polys.filter(function (p) { return p.closed; }).map(function (p) {
+        return { pts: p.pts.map(function (q) { return { x: q.x, y: q.y }; }), closed: true };
+      }),
+      dots: {}
+    });
+    switchStory(stories.length - 1);
+    SHIM.toast("Story " + stories.length + " added - footprint copied from below; " +
+      "reshape it, or delete it and draw the smaller upper box");
+  }
+
+  function buildStoryRail() {
+    var rail = $("storyRail");
+    rail.innerHTML = "";
+    stories.forEach(function (st, i) {
+      var b = document.createElement("button");
+      b.className = "elev";
+      b.setAttribute("aria-pressed", String(i === cur));
+      b.innerHTML = esc(st.name) + " <b>" + st.heightM + "m</b>";
+      b.addEventListener("click", function () { switchStory(i); });
+      rail.appendChild(b);
+    });
+    if (stories.length < MAXSTORIES) {
+      var add = document.createElement("button");
+      add.className = "elev";
+      add.id = "addStory";
+      add.textContent = "+ Story";
+      add.addEventListener("click", addStory);
+      rail.appendChild(add);
+    }
+    if (stories.length > 1) {
+      // Removing a story is armed-then-confirmed, same as deleting a
+      // building - and undoable even after that.
+      var rm = document.createElement("button");
+      rm.className = "elev";
+      rm.id = "removeStory";
+      rm.textContent = "− Top story";
+      rm.addEventListener("click", function () {
+        if (rm.dataset.armed !== "1") {
+          rm.dataset.armed = "1";
+          rm.textContent = "Tap again to remove " + stories[stories.length - 1].name;
+          setTimeout(function () {
+            rm.dataset.armed = "0";
+            rm.textContent = "− Top story";
+          }, 3500);
+          return;
+        }
+        snapshot();
+        var gone = Object.keys(stories[stories.length - 1].dots).length;
+        stories.pop();
+        if (cur >= stories.length) cur = stories.length - 1;
+        bindStory();
+        buildStoryRail();
+        renderTray();
+        redraw();
+        SHIM.toast("Story removed" +
+          (gone ? " - " + gone + " window(s) back in the tray" : ""));
+      });
+      rail.appendChild(rm);
+    }
+  }
+
   function renderTray() {
     var tray = $("tray");
     Array.prototype.slice.call(tray.querySelectorAll(".chip-dot")).forEach(function (c) { c.remove(); });
     JOB.windows.forEach(function (w) {
       var c = document.createElement("span");
-      c.className = "chip-dot " + (w.door ? "d" : "w") + (dots[w.id] ? " placed" : "");
+      var at = dotStoryOf(w.id);
+      c.className = "chip-dot " + (w.door ? "d" : "w") +
+        (at >= 0 ? " placed" : "") +
+        (at >= 0 && at !== cur ? " elsewhere" : "");
+      if (at >= 0 && at !== cur) c.title = "Placed on " + stories[at].name +
+        " - drag to move it to " + stories[cur].name;
       c.textContent = w.id;
       c.dataset.tray = w.id;
       tray.appendChild(c);
@@ -393,6 +521,9 @@ export function mountTracePlan(host, job, shim) {
         var w = toWorld(ev2.clientX, ev2.clientY);
         var sn = snapToWalls(w);
         snapshot();
+        // stories: one window, one story - placing here claims it from
+        // wherever it was.
+        stories.forEach(function (st) { delete st.dots[id]; });
         dots[id] = sn ? { x: sn.x, y: sn.y } : { x: w.x, y: w.y };
         renderTray(); redraw();
       }
@@ -536,7 +667,7 @@ export function mountTracePlan(host, job, shim) {
     snapshot();
     var placed = 0, skipped = 0;
     JOB.windows.forEach(function (w) {
-      if (dots[w.id]) { skipped++; return; }           // never move a dot you placed
+      if (dotStoryOf(w.id) >= 0) { skipped++; return; }  // never move a dot you placed - any story
       var p = dotSeed[w.id];
       if (!p) return;
       var sn = snapToWalls({ x: p.x, y: p.y });
@@ -583,51 +714,78 @@ export function mountTracePlan(host, job, shim) {
   }
 
   $("submitBtn").addEventListener("click", function () {
-    var closed = polys.filter(function (p) { return p.closed && p.pts.length >= 3; });
-    if (!closed.length) { SHIM.toast("Trace and close at least one building first"); return; }
+    // stories: every story must have a closed footprint before anything
+    // submits - a floating upper box with no walls under it helps nobody.
+    function closedOf(st) {
+      return st.polys.filter(function (p2) { return p2.closed && p2.pts.length >= 3; });
+    }
+    for (var sChk = 0; sChk < stories.length; sChk++) {
+      if (!closedOf(stories[sChk]).length) {
+        SHIM.toast(stories[sChk].name + " has no closed footprint yet - draw one, or remove the story");
+        return;
+      }
+    }
     var mv = parseFloat($("calM").value);
     if (!cal.a || !cal.b || !(mv > 0)) { SHIM.toast("Calibrate first: two points + the real distance"); return; }
     var scale = calMetres(mv) / Math.hypot(cal.b.x - cal.a.x, cal.b.y - cal.a.y);   // metres per plan px
 
-    // Global bbox centre so the model sits centred like every other job.
+    // Global bbox centre across EVERY story, so upper boxes stack exactly
+    // where they were traced instead of re-centring themselves.
     var allPts = [];
-    closed.forEach(function (p) { allPts = allPts.concat(p.pts); });
+    stories.forEach(function (st) {
+      closedOf(st).forEach(function (p2) { allPts = allPts.concat(p2.pts); });
+    });
     var gx = allPts.map(function (p) { return p.x; });
     var gy = allPts.map(function (p) { return p.y; });
     var cx = (Math.min.apply(null, gx) + Math.max.apply(null, gx)) / 2;
     var cy = (Math.min.apply(null, gy) + Math.max.apply(null, gy)) / 2;
 
-    var footprints = closed.map(function (poly) {
-      var pts = poly.pts.map(function (p) {
-        return { x: (p.x - cx) * scale, z: (p.y - cy) * scale };
+    function toFootprints(closedPolys) {
+      return closedPolys.map(function (poly) {
+        var pts = poly.pts.map(function (p) {
+          return { x: (p.x - cx) * scale, z: (p.y - cy) * scale };
+        });
+        // Our wall convention needs counter-clockwise in x-east / z-south.
+        var area = 0;
+        for (var i = 0; i < pts.length; i++) {
+          var a = pts[i], b = pts[(i + 1) % pts.length];
+          area += a.x * b.z - b.x * a.z;
+        }
+        if (area > 0) pts.reverse();
+        var used = {};
+        return pts.map(function (p, i) {
+          var b2 = pts[(i + 1) % pts.length];
+          var A = Math.atan2(-(b2.z - p.z), b2.x - p.x) * 180 / Math.PI;
+          return { x: Math.round(p.x * 100) / 100, z: Math.round(p.z * 100) / 100,
+                   name: compassName(A, used) };
+        });
       });
-      // Our wall convention needs counter-clockwise in x-east / z-south.
-      var area = 0;
-      for (var i = 0; i < pts.length; i++) {
-        var a = pts[i], b = pts[(i + 1) % pts.length];
-        area += a.x * b.z - b.x * a.z;
-      }
-      if (area > 0) pts.reverse();
-      var used = {};
-      return pts.map(function (p, i) {
-        var b2 = pts[(i + 1) % pts.length];
-        var A = Math.atan2(-(b2.z - p.z), b2.x - p.x) * 180 / Math.PI;
-        return { x: Math.round(p.x * 100) / 100, z: Math.round(p.z * 100) / 100,
-                 name: compassName(A, used) };
-      });
-    });
+    }
 
-    var probe = { building: { footprints: footprints } };
+    // Story datums stack: each floor sits on the plate of the one below.
+    var elevAcc = 0;
+    var storyDefs = stories.map(function (st, si) {
+      var def = { n: si + 1, name: st.name, elevM: Math.round(elevAcc * 100) / 100,
+                  heightM: st.heightM, footprints: toFootprints(closedOf(st)) };
+      if (st.partial) def.partial = true;
+      elevAcc += st.heightM;
+      return def;
+    });
+    var footprints = storyDefs[0].footprints;   // legacy readers see the ground story
+
+    var probe = { building: { stories: storyDefs, height: elevAcc } };
     var segs = elevationsOf(probe);
 
-    var placed = Object.keys(dots);
     var moves = [];
-    placed.forEach(function (id) {
+    stories.forEach(function (stg, si) {
+      // stories: a dot only ever lands on its own story's walls.
+      var storySegs = segs.filter(function (sg) { return (sg.story || 1) === si + 1; });
+      Object.keys(stg.dots).forEach(function (id) {
       var win = JOB.windows.filter(function (w) { return w.id === id; })[0];
       if (!win) return;
-      var pm = { x: (dots[id].x - cx) * scale, z: (dots[id].y - cy) * scale };
+      var pm = { x: (stg.dots[id].x - cx) * scale, z: (stg.dots[id].y - cy) * scale };
       var best = null;
-      segs.forEach(function (s2) {
+      storySegs.forEach(function (s2) {
         var pr = projectToSeg({ x: pm.x, y: pm.z },
           { x: s2.x1, y: s2.z1 }, { x: s2.x2, y: s2.z2 });
         if (!best || pr.d < best.d) best = { seg: s2, t: pr.t, d: pr.d };
@@ -686,7 +844,7 @@ export function mountTracePlan(host, job, shim) {
           var vx = wrapEnd ? best.seg.x2 : best.seg.x1;
           var vz = wrapEnd ? best.seg.z2 : best.seg.z1;
           var adj2 = null;
-          segs.forEach(function (s3) {
+          storySegs.forEach(function (s3) {
             if (s3 === best.seg || s3.poly !== best.seg.poly) return;
             var sx = wrapEnd ? s3.x1 : s3.x2, sz = wrapEnd ? s3.z1 : s3.z2;
             if (Math.abs(sx - vx) < 0.001 && Math.abs(sz - vz) < 0.001) adj2 = s3;
@@ -702,47 +860,70 @@ export function mountTracePlan(host, job, shim) {
         var x = Math.max(0, Math.min(best.seg.len - win.w / 1000, t - win.w / 2000));
         copy.x = Math.round(x * 100) / 100;
       }
+      // stories: the placement IS the story assignment. A window that just
+      // changed story gets a sane default sill relative to its new floor.
+      copy.story = si + 1;
+      if ((win.story || 1) !== si + 1 || typeof win.y !== "number") {
+        copy.y = win.door || copy.door ? 0 : 0.9;
+      }
       moves.push(copy);
+      });
     });
 
     // Anything without a dot is deliberately off the model: unplace it
     // explicitly so a stale wall key can never drag it back onto a wall.
     var offModel = 0;
     JOB.windows.forEach(function (w) {
-      if (dots[w.id]) return;
+      if (dotStoryOf(w.id) >= 0) return;
       var copy = JSON.parse(JSON.stringify(w));
       copy.elev = "";
       copy.x = 0;
       delete copy.wrap;
+      delete copy.story;
       moves.push(copy);
       offModel++;
     });
 
     var wAll = allPts.map(function (p) { return (p.x - cx) * scale; });
     var zAll = allPts.map(function (p) { return (p.y - cy) * scale; });
-    var dotStore = {};
-    Object.keys(dots).forEach(function (id) {
-      dotStore[id] = { x: Math.round(dots[id].x * 10) / 10, y: Math.round(dots[id].y * 10) / 10 };
-    });
+    function roundPolys(closedPolys) {
+      return closedPolys.map(function (p2) {
+        return p2.pts.map(function (q) {
+          return { x: Math.round(q.x * 10) / 10, y: Math.round(q.y * 10) / 10 };
+        });
+      });
+    }
+    function roundDots(dd) {
+      var out = {};
+      Object.keys(dd).forEach(function (id) {
+        out[id] = { x: Math.round(dd[id].x * 10) / 10, y: Math.round(dd[id].y * 10) / 10 };
+      });
+      return out;
+    }
 
     var bld = {
       width: Math.round((Math.max.apply(null, wAll) - Math.min.apply(null, wAll)) * 10) / 10,
       depth: Math.round((Math.max.apply(null, zAll) - Math.min.apply(null, zAll)) * 10) / 10,
-      height: JOB.building.height || 4.7,
+      height: Math.round(elevAcc * 100) / 100,   // the envelope: highest plate
       rise: JOB.building.rise || 0,
+      stories: storyDefs,
       footprints: footprints,
       // The raw trace, in plan-image pixels, so this screen can restore your
-      // outline and dots later - fix the calibration and resubmit, no redrawing.
+      // outline and dots later - fix the calibration and resubmit, no
+      // redrawing. Storied per level; the legacy polys/dots mirror the ground
+      // story for anything older still reading them.
       trace: {
         cal: { ax: Math.round(cal.a.x), ay: Math.round(cal.a.y),
                bx: Math.round(cal.b.x), by: Math.round(cal.b.y),
                value: mv, unit: calUnit },
-        polys: closed.map(function (p) {
-          return p.pts.map(function (q) {
-            return { x: Math.round(q.x * 10) / 10, y: Math.round(q.y * 10) / 10 };
-          });
+        stories: stories.map(function (st) {
+          var ts = { name: st.name, heightM: st.heightM,
+                     polys: roundPolys(closedOf(st)), dots: roundDots(st.dots) };
+          if (st.partial) ts.partial = true;
+          return ts;
         }),
-        dots: dotStore
+        polys: roundPolys(closedOf(stories[0])),
+        dots: roundDots(stories[0].dots)
       }
     };
 
@@ -807,13 +988,35 @@ export function mountTracePlan(host, job, shim) {
     // Restore a stored trace so the outline and dots come back editable:
     // change the calibration number and resubmit, nothing to redraw.
     var tr = JOB.building && JOB.building.trace;
-    if (tr && tr.polys) {
-      polys = tr.polys.map(function (pp) {
-        return { pts: pp.map(function (q) { return { x: q.x, y: q.y }; }), closed: true };
+    function polyIn(pp) {
+      return { pts: pp.map(function (q) { return { x: q.x, y: q.y }; }), closed: true };
+    }
+    if (tr && tr.stories && tr.stories.length) {
+      // stories: a storied trace brings every story back editable.
+      stories = tr.stories.map(function (ts, i) {
+        var st = { name: ts.name || ("Level " + (i + 1)), heightM: ts.heightM || 3,
+                   partial: !!ts.partial, polys: (ts.polys || []).map(polyIn), dots: {} };
+        Object.keys(ts.dots || {}).forEach(function (id) {
+          st.dots[id] = { x: ts.dots[id].x, y: ts.dots[id].y };
+        });
+        return st;
       });
+      cur = 0;
+      bindStory();
+    } else if (tr && tr.polys) {
+      // Pre-stories trace: it all lands on the ground story.
+      polys.length = 0;
+      tr.polys.forEach(function (pp) { polys.push(polyIn(pp)); });
       Object.keys(tr.dots || {}).forEach(function (id) {
         dots[id] = { x: tr.dots[id].x, y: tr.dots[id].y };
       });
+      var bs0 = JOB.building.stories && JOB.building.stories[0];
+      if (bs0) {
+        stories[0].name = bs0.name || stories[0].name;
+        stories[0].heightM = bs0.heightM || stories[0].heightM;
+      }
+    }
+    if (tr && (tr.polys || (tr.stories && tr.stories.length))) {
       if (tr.cal) {
         cal.a = { x: tr.cal.ax, y: tr.cal.ay };
         cal.b = { x: tr.cal.bx, y: tr.cal.by };
@@ -826,6 +1029,7 @@ export function mountTracePlan(host, job, shim) {
       $("rescaleBtn").hidden = false;
     }
 
+    buildStoryRail();
     renderTray();
     redraw();
     loadPlan();
