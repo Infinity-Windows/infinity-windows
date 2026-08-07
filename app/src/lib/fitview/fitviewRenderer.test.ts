@@ -15,6 +15,56 @@ function mount(job = fixture as never) {
   return { host, view };
 }
 
+describe("stories: stacked rendering", () => {
+  const S = 56; // px per metre, the renderer's scale
+  const RECT = [
+    { x: 0, z: 0 }, { x: 10, z: 0 }, { x: 10, z: 8 }, { x: 0, z: 8 },
+  ];
+  const SMALL = [
+    { x: 2, z: 2 }, { x: 6, z: 2 }, { x: 6, z: 6 }, { x: 2, z: 6 },
+  ];
+  const job = {
+    id: "p1", ref: "Two story", addr: "",
+    building: {
+      width: 0, depth: 0, height: 3, rise: 0, footprints: [],
+      stories: [
+        { n: 1, name: "Ground", elevM: 0, heightM: 3, footprints: [RECT] },
+        { n: 2, name: "Great room", elevM: 3, heightM: 1.5, footprints: [SMALL], partial: true },
+      ],
+    },
+    // Renderer contract: absolute sill heights (the adapter converts).
+    windows: [
+      { id: "G1", elev: "s0", floor: "Ground", room: "", type: "Fixed",
+        w: 900, h: 1200, x: 2, y: 0.9, lights: 1, open: "fixed", status: "tofit", story: 1 },
+      { id: "C1", elev: "s4", floor: "Upper", room: "", type: "Clerestory fixed",
+        w: 900, h: 800, x: 1, y: 3.4, lights: 1, open: "fixed", status: "tofit", story: 2 },
+    ],
+  };
+
+  it("builds one wall per story edge, each spanning its own band", () => {
+    const { host, view } = mount(job as never);
+    const faces = host.querySelectorAll(".face");
+    expect(faces.length).toBe(8); // 4 ground + 4 partial upper
+    const ground = host.querySelector<HTMLElement>('.face[data-elev="s0"]')!;
+    const upper = host.querySelector<HTMLElement>('.face[data-elev="s4"]')!;
+    expect(ground.dataset.story).toBe("1");
+    expect(upper.dataset.story).toBe("2");
+    expect(parseFloat(ground.style.height)).toBeCloseTo(3 * S, 1);
+    expect(parseFloat(upper.style.height)).toBeCloseTo(1.5 * S, 1);
+    view.destroy();
+  });
+
+  it("a story-2 window sits at its absolute height within its story's face", () => {
+    const { host, view } = mount(job as never);
+    const win = host.querySelector<HTMLElement>('.win[data-id="C1"]')!;
+    // top within face = (plate 4.5 - sill 3.4 - 0.8m tall) * S
+    expect(parseFloat(win.style.top)).toBeCloseTo((4.5 - 3.4 - 0.8) * S, 1);
+    const g1 = host.querySelector<HTMLElement>('.win[data-id="G1"]')!;
+    expect(parseFloat(g1.style.top)).toBeCloseTo((3 - 0.9 - 1.2) * S, 1);
+    view.destroy();
+  });
+});
+
 describe("fitview renderer (Black Desert fixture)", () => {
   it("mounts: builds walls and one element per placed window", () => {
     const { host, view } = mount();

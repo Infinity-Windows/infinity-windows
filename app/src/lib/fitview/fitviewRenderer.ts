@@ -18,6 +18,10 @@
  *   photos?          { photoURL(id) }    - absent = no photo section
  */
 
+// Stories (docs/maps-interactive-stories-design.md): the canonicalizers live
+// in stories.ts; the geometry extensions in this file are marked "stories:".
+import { envelopeHeight, storiesOf, storyLevels } from "./stories";
+
 const TEMPLATE = "\n<div class=\"app loading\">\n\n  <header class=\"titleblock\">\n    <div class=\"tb-row\">\n      <div>\n        <div class=\"tb-ref\" id=\"jobRef\"></div>\n        <div class=\"tb-addr\" id=\"jobAddr\"></div>\n      </div>\n      \n    </div>\n\n    <div class=\"tb-progress\">\n      <div class=\"bar\"><i id=\"bar\"></i></div>\n      <div class=\"tb-count\" id=\"count\"></div>\n    </div>\n\n    \n    <div class=\"tabs\" role=\"tablist\">\n      <button class=\"tab\" role=\"tab\" aria-selected=\"true\" data-view=\"plan\">Elevations</button>\n      <button class=\"tab\" role=\"tab\" aria-selected=\"false\" data-view=\"sched\">Schedule</button>\n    </div>\n  </header>\n\n  <div class=\"boot\" id=\"boot\">\n    <b>Loading job</b>\n    <span id=\"bootMsg\">Fetching schedule</span>\n  </div>\n\n  <!-- ============ PLAN VIEW ============ -->\n  <section class=\"view on\" id=\"v-plan\">\n    <div class=\"psearch\">\n      <input id=\"pq\" type=\"search\" placeholder=\"Find an opening - ID, room or type\"\n        autocomplete=\"off\" aria-label=\"Find an opening\">\n      <div class=\"pq-results\" id=\"pqr\" hidden></div>\n    </div>\n    <div class=\"stage\" id=\"stage\">\n      <div class=\"persp\" id=\"persp\">\n        <div class=\"house\" id=\"house\"></div>\n      </div>\n      <div class=\"zoomctl\">\n        <button id=\"zin\" type=\"button\" aria-label=\"Zoom in\">+</button>\n        <button id=\"zout\" type=\"button\" aria-label=\"Zoom out\">&#8722;</button>\n        <button id=\"zpan\" type=\"button\" aria-label=\"Pan mode\" aria-pressed=\"false\">Pan</button>\n        <button id=\"zpanp\" type=\"button\" aria-label=\"Pan plus: tilt with a straight horizon\" aria-pressed=\"false\">Pan +</button>\n        <button id=\"zfit\" type=\"button\" aria-label=\"Fit to view\">Fit</button>\n      </div>\n    </div>\n\n    <div class=\"controls\">\n      <div class=\"strip\" id=\"elevStrip\"></div>\n\n      <div class=\"toolrow\">\n        <div class=\"seg\" role=\"group\" aria-label=\"Label detail\">\n          <button data-labels=\"full\" aria-pressed=\"true\">Size</button>\n          <button data-labels=\"id\" aria-pressed=\"false\">ID</button>\n          <button data-labels=\"off\" aria-pressed=\"false\">Off</button>\n        </div>\n        <button class=\"mini\" id=\"mineBtn\" aria-pressed=\"false\">Mine</button>\n        <button class=\"mini\" id=\"assignBtn\" hidden>Assign</button>\n        <div class=\"legend\" id=\"legend\"></div>\n      </div>\n\n      <div class=\"assignbar\" id=\"assignBar\" hidden>\n        <b id=\"assignCount\">0 picked</b>\n        <button class=\"mini\" id=\"pickElev\">+ This elevation</button>\n        <button class=\"mini hot\" id=\"assignGo\">Assign</button>\n        <button class=\"mini\" id=\"assignCancel\">Cancel</button>\n      </div>\n\n      <div class=\"hint\" id=\"hint\">Drag to orbit &middot; pinch or scroll to zoom &middot; tap a window for its spec</div>\n    </div>\n  </section>\n\n  <!-- ============ SCHEDULE VIEW ============ -->\n  <section class=\"view\" id=\"v-sched\">\n    <div class=\"sched\">\n      <div class=\"search\">\n        <input id=\"q\" type=\"search\" placeholder=\"Filter by ID, type or room\" aria-label=\"Filter schedule\">\n      </div>\n      <div id=\"rows\"></div>\n    </div>\n  </section>\n\n  <div class=\"foot\">\n    Prototype &middot; dimensions shown are survey-measured and govern the order &middot; scan estimates are indicative only\n  </div>\n\n  <div class=\"scrim\" id=\"scrim\"></div>\n  <aside class=\"sheet\" id=\"sheet\" role=\"dialog\" aria-modal=\"false\" aria-label=\"Window specification\"></aside>\n  <div class=\"toast\" id=\"toast\" role=\"status\" aria-live=\"polite\"></div>\n  <div class=\"lightbox\" id=\"lightbox\" role=\"dialog\" aria-label=\"Photo\">\n    <img id=\"lb-img\" alt=\"Site photo\">\n    <div class=\"lb-cap\" id=\"lb-cap\"></div>\n  </div>\n</div>\n";
 
 /* Millimetres to inches the way a tape reads them: 1511mm -> 59 1/2". */
@@ -35,8 +39,14 @@ export function inches(mm) {
 /* One elevation per footprint edge; the classic 4 faces when no footprint. */
 export function elevationsOf(job) {
   var b = job && job.building;
-  var polys = b && (b.footprints || (b.footprint ? [b.footprint] : null));
-  if (!polys || !polys.length || !polys[0] || polys[0].length < 3) {
+  // stories: a storied building may carry footprints only inside its stories,
+  // so the "no usable polygon" fallback must look through storiesOf, not just
+  // at the top-level footprints.
+  var anyPoly =
+    b && storiesOf(b).some(function (st) {
+      return st.footprints.length > 0 && st.footprints[0].length >= 3;
+    });
+  if (!anyPoly) {
     return [
       { key: "front", name: "Front", ay: 0 },
       { key: "right", name: "Right", ay: -90 },
@@ -44,18 +54,25 @@ export function elevationsOf(job) {
       { key: "left", name: "Left", ay: 90 }
     ];
   }
+  // stories: walls enumerate story by story, bottom-up, with one CONTINUOUS
+  // key counter — a single-story building therefore produces the exact same
+  // "s0…sN" keys it always did, so no stored window loses its wall.
+  var stories = storiesOf(b);
   var out = [], k = 0;
-  polys.forEach(function (fp, pi) {
-    for (var i = 0; i < fp.length; i++) {
-      var a = fp[i], c = fp[(i + 1) % fp.length];
-      var dx = c.x - a.x, dz = c.z - a.z;
-      var len = Math.sqrt(dx * dx + dz * dz);
-      var A = Math.atan2(-dz, dx) * 180 / Math.PI;   // outward normal vs +z
-      out.push({ key: "s" + k, name: a.name || ("Wall " + (k + 1)),
-                 poly: pi, len: len, A: A, ay: -A,
-                 x1: a.x, z1: a.z, x2: c.x, z2: c.z });
-      k++;
-    }
+  stories.forEach(function (st) {
+    st.footprints.forEach(function (fp, pi) {
+      for (var i = 0; i < fp.length; i++) {
+        var a = fp[i], c = fp[(i + 1) % fp.length];
+        var dx = c.x - a.x, dz = c.z - a.z;
+        var len = Math.sqrt(dx * dx + dz * dz);
+        var A = Math.atan2(-dz, dx) * 180 / Math.PI;   // outward normal vs +z
+        out.push({ key: "s" + k, name: a.name || ("Wall " + (k + 1)),
+                   poly: pi, len: len, A: A, ay: -A,
+                   x1: a.x, z1: a.z, x2: c.x, z2: c.z,
+                   story: st.n, base: st.elevM, hM: st.heightM });
+        k++;
+      }
+    });
   });
   return out;
 }
@@ -95,6 +112,7 @@ export function mountFitView(host, job, shim) {
 
   var S = 56;                       // pixels per metre
   var B, W, D, H, R, SLOPE, PITCH, TILT, YOFF;
+  var STORIES = [], ENVELOPE = 0, LEVELS = [];   // stories: set by computeGeometry
   var FRAMING = false;              // job.framing: render the timber frame, not finished walls
   var FOOT = null;                  // building.footprint: polygon plan, one wall per edge
   var FCX = 0, FCZ = 0;             // footprint bbox centre, metres
@@ -104,8 +122,15 @@ export function mountFitView(host, job, shim) {
   function computeGeometry() {
     B = JOB.building;
     FRAMING = !!JOB.framing;
-    var polysrc = B.footprints || (B.footprint ? [B.footprint] : null);
-    FOOT = (polysrc && polysrc[0] && polysrc[0].length >= 3) ? polysrc : null;
+    // stories: the canonical list drives everything vertical. One story =
+    // exactly the legacy model; the envelope, the bounding footprint and the
+    // framing level bands all derive from the stories from here on.
+    STORIES = storiesOf(B);
+    ENVELOPE = envelopeHeight(STORIES);
+    LEVELS = STORIES.length > 1 ? storyLevels(STORIES) : (B.levels || []);
+    var polysrc = [];
+    STORIES.forEach(function (st) { polysrc = polysrc.concat(st.footprints); });
+    FOOT = (polysrc[0] && polysrc[0].length >= 3) ? polysrc : null;
     ELEVS = elevationsOf(JOB);
     if (FOOT) {
       var all = [];
@@ -126,7 +151,8 @@ export function mountFitView(host, job, shim) {
       W = B.width * S;
       D = B.depth * S;
     }
-    H = B.height * S;
+    // stories: the house is as tall as its highest plate, not one number.
+    H = ENVELOPE * S;
     R = B.rise * S;
     SLOPE = Math.sqrt(Math.pow(D / 2, 2) + Math.pow(R, 2));
     PITCH = Math.atan2(R, D / 2) * 180 / Math.PI;
@@ -270,8 +296,8 @@ export function mountFitView(host, job, shim) {
       "linear-gradient(180deg, var(--plate) 0 7px, transparent 7px)",
       "linear-gradient(0deg, var(--plate) 0 7px, transparent 7px)"
     ];
-    (B.levels || []).forEach(function (lv) {
-      var yTop = (B.height - lv) * S - 7;
+    (LEVELS || []).forEach(function (lv) {
+      var yTop = (ENVELOPE - lv) * S - 7;
       layers.push("linear-gradient(transparent " + yTop + "px, var(--band) " +
         yTop + "px " + (yTop + 14) + "px, transparent " + (yTop + 14) + "px)");
     });
@@ -284,7 +310,7 @@ export function mountFitView(host, job, shim) {
   // built as elements rather than gradients because each one follows the
   // openings or the floor levels rather than sitting on a fixed repeat.
   function addCarpentry(el, elevKey, faceW) {
-    var storeys = [0].concat(B.levels || []).concat([B.height]);
+    var storeys = [0].concat(LEVELS || []).concat([ENVELOPE]);
 
     // Cripples carry the sill down to the deck the opening sits on. Doors
     // reach the floor, so they have none.
@@ -297,7 +323,7 @@ export function mountFitView(host, job, shim) {
       if (runPx < 8) return;                     // sill already sits on the deck
 
       var x0 = w.x * S, wp = w.w / 1000 * S;
-      var top = (B.height - w.y) * S + 6;        // just under the sill plate
+      var top = (ENVELOPE - w.y) * S + 6;        // just under the sill plate
       var n = Math.max(2, Math.round(wp / (0.6 * S)) + 1);
       for (var i = 0; i < n; i++) {
         var c = document.createElement("i");
@@ -311,8 +337,8 @@ export function mountFitView(host, job, shim) {
 
     // A let-in diagonal at each end of every storey.
     for (var s = 0; s < storeys.length - 1; s++) {
-      var yb = (B.height - storeys[s]) * S;       // storey bottom, local px
-      var rise = yb - (B.height - storeys[s + 1]) * S;
+      var yb = (ENVELOPE - storeys[s]) * S;       // storey bottom, local px
+      var rise = yb - (ENVELOPE - storeys[s + 1]) * S;
       if (rise < 20) continue;
       var run = Math.min(1.2 * S, faceW * 0.25);
       var len = Math.sqrt(run * run + rise * rise);
@@ -341,7 +367,7 @@ export function mountFitView(host, job, shim) {
       var mid = (storeys[t] + storeys[t + 1]) / 2;
       var ng = document.createElement("i");
       ng.className = "noggins";
-      ng.style.top = ((B.height - mid) * S) + "px";
+      ng.style.top = ((ENVELOPE - mid) * S) + "px";
       ng.style.backgroundImage = "repeating-linear-gradient(90deg, transparent 0 3px, var(--plate) 3px " +
         (0.6 * S) + "px)";
       el.appendChild(ng);
@@ -351,14 +377,14 @@ export function mountFitView(host, job, shim) {
     JOB.windows.filter(function (w) {
       return w.elev === elevKey && w.door;
     }).forEach(function (w) {
-      var below = 0, above = B.height;
+      var below = 0, above = ENVELOPE;
       storeys.forEach(function (lv) {
         if (lv <= w.y + 0.001) below = lv;
       });
       for (var i = 0; i < storeys.length; i++) {
         if (storeys[i] > w.y + 0.001) { above = storeys[i]; break; }
       }
-      var yTop = (B.height - above) * S;
+      var yTop = (ENVELOPE - above) * S;
       var hPx = (above - below) * S;
       var x0 = w.x * S, wp = w.w / 1000 * S;
 
@@ -373,10 +399,10 @@ export function mountFitView(host, job, shim) {
     });
 
     // Joist end grain along every rim band, and under the top plate.
-    (B.levels || []).concat([B.height]).forEach(function (lv) {
+    (LEVELS || []).concat([ENVELOPE]).forEach(function (lv) {
       var j = document.createElement("i");
       j.className = "joist-ends";
-      j.style.top = (lv >= B.height ? 1 : (B.height - lv) * S - 5) + "px";
+      j.style.top = (lv >= ENVELOPE ? 1 : (ENVELOPE - lv) * S - 5) + "px";
       j.style.height = "10px";
       el.appendChild(j);
     });
@@ -386,8 +412,11 @@ export function mountFitView(host, job, shim) {
     house.innerHTML = "";
     var FRAGS = windowFragments();
     function addWindows(el, key) {
+      // stories: the face's own plate height rides along to every window.
+      var seg = elevByKey(key);
+      var plate = seg && seg.hM != null ? seg.base + seg.hM : ENVELOPE;
       FRAGS.filter(function (f2) { return f2.elev === key; })
-        .forEach(function (f2) { el.appendChild(buildWindow(f2.win, f2.x, f2.w, f2.idx)); });
+        .forEach(function (f2) { el.appendChild(buildWindow(f2.win, f2.x, f2.w, f2.idx, plate)); });
     }
 
     // Lawn first, shadow on top of it (it sits 1px lower to avoid z-fighting).
@@ -409,10 +438,17 @@ export function mountFitView(host, job, shim) {
         var el = document.createElement("div");
         el.className = "face f-front";
         el.dataset.elev = e.key;
+        // stories: a wall spans ITS story's band, not the whole envelope —
+        // face height is the story height, and the face rises so its centre
+        // sits at the story's own mid-height above the ground plane.
+        var fh = (e.hM != null ? e.hM : ENVELOPE) * S;
+        var base = (e.base || 0) * S;
+        var ty = H / 2 - base - fh / 2;
+        el.dataset.story = e.story || 1;
         var mx = ((e.x1 + e.x2) / 2 - FCX) * S;
         var mz = ((e.z1 + e.z2) / 2 - FCZ) * S;
-        place(el, e.len * S, H,
-          "translate3d(" + mx + "px,0," + mz + "px) rotateY(" + e.A + "deg)");
+        place(el, e.len * S, fh,
+          "translate3d(" + mx + "px," + ty + "px," + mz + "px) rotateY(" + e.A + "deg)");
         if (FRAMING) {
           el.classList.add("framing");
           el.style.backgroundImage = frameLayers();
@@ -486,7 +522,7 @@ export function mountFitView(host, job, shim) {
 
     if (FRAMING) {
       // Joisted deck at each floor level and across the top.
-      (B.levels || []).concat([B.height]).forEach(function (lv) {
+      (LEVELS || []).concat([ENVELOPE]).forEach(function (lv) {
         var d = document.createElement("div");
         d.className = "deck";
         place(d, W, D, "translateY(" + (H / 2 - lv * S) + "px) rotateX(90deg)");
@@ -541,7 +577,10 @@ export function mountFitView(host, job, shim) {
     el.appendChild(s);
   }
 
-  function buildWindow(win, fx, fw, fragIdx) {
+  // stories: `plate` is the absolute height of the top of the face this
+  // window sits on (story datum + story height); the envelope for legacy.
+  function buildWindow(win, fx, fw, fragIdx, plate) {
+    if (plate == null) plate = ENVELOPE;
     var el = document.createElement("button");
     if (fx === undefined) { fx = win.x; fw = win.w; fragIdx = 0; }
     fragIdx = fragIdx || 0;
@@ -556,7 +595,7 @@ export function mountFitView(host, job, shim) {
     el.style.width = wp + "px";
     el.style.height = hp + "px";
     el.style.left = (fx * S) + "px";
-    el.style.top = ((B.height - win.y - win.h / 1000) * S) + "px";
+    el.style.top = ((plate - win.y - win.h / 1000) * S) + "px";
     el.setAttribute("aria-label",
       win.id + ", " + win.type + ", width " + inches(win.w) + " by length " +
       inches(win.h) + ", " + STATUS[win.status].label +

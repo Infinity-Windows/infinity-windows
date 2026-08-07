@@ -20,6 +20,7 @@
 //    wrong-but-quiet beats wrong-and-loud on a reference model.
 
 import { nearestPointOnOutline } from "../install/cad";
+import { absoluteSill, storiesOf } from "./stories";
 import type { OutlinePoint } from "../install/outline";
 import { markBase } from "../install/extract";
 import type { ProjectMarkSpec } from "../install/specs";
@@ -191,7 +192,12 @@ export function buildAuthoredJob(
   const liveByCode = new Map<string, ProjectOpening>();
   for (const o of openings) liveByCode.set(normalizeMarkCode(o.opening_code), o);
 
-  const windows = model.windows.map((w) => {
+  // Storied models keep sills relative to their own floor (edits stay local);
+  // the renderer positions in absolute height, so the conversion happens
+  // here, at the boundary, and nowhere else.
+  const stories = storiesOf(model.building);
+  const windows = model.windows.map((raw) => {
+    const w = { ...raw, y: absoluteSill(raw as { y?: unknown; story?: unknown }, stories) };
     const live = liveByCode.get(normalizeMarkCode(String(w.id)));
     if (!live) return w;
     return {
