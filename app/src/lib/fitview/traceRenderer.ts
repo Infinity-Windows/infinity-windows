@@ -21,7 +21,7 @@
 
 import { elevationsOf } from "./fitviewRenderer";
 
-const TEMPLATE = "\n<div class=\"app loading\">\n\n  <header class=\"titleblock\">\n    <div class=\"tb-row\">\n      <div>\n        <div class=\"tb-ref\" id=\"jobRef\"></div>\n        <div class=\"tb-addr\" id=\"jobAddr\"></div>\n      </div>\n      \n    </div>\n\n    \n    <div class=\"tabs\">\n      <button class=\"tab\" aria-selected=\"true\">Trace plan</button>\n    </div>\n  </header>\n\n  <div class=\"boot\" id=\"boot\">\n    <b>Loading job</b>\n    <span id=\"bootMsg\">Fetching schedule</span>\n  </div>\n\n  <section class=\"view\">\n    <div class=\"toolrow\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Tool\">\n        <button data-mode=\"select\" aria-pressed=\"true\">Select</button>\n        <button data-mode=\"draw\" aria-pressed=\"false\">Draw</button>\n        <button data-mode=\"cal\" aria-pressed=\"false\">Calibrate</button>\n      </div>\n      <button class=\"mini\" id=\"closeShape\">Close shape</button>\n      <button class=\"mini\" id=\"undoPt\">Undo point</button>\n      <button class=\"mini\" id=\"delPt\" hidden>Delete point</button>\n      <button class=\"mini\" id=\"delBld\" hidden>Delete building</button>\n      <button class=\"mini\" id=\"removeDot\" hidden>Remove dot</button>\n      <button class=\"mini\" id=\"autoBtn\" hidden>Auto-place dots</button>\n      <span class=\"cal-lab\">Line =</span>\n      <input class=\"cal-in\" id=\"calM\" type=\"number\" step=\"0.1\" placeholder=\"ft\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Units\">\n        <button type=\"button\" data-unit=\"ft\" aria-pressed=\"true\">ft</button>\n        <button type=\"button\" data-unit=\"m\" aria-pressed=\"false\">m</button>\n      </div>\n      <button class=\"mini\" id=\"rescaleBtn\" hidden>Rescale</button>\n      <button class=\"mini hot\" id=\"submitBtn\" style=\"margin-left:auto\">Submit</button>\n    </div>\n\n    <div class=\"tray\" id=\"tray\"><span class=\"tray-lab\">Drag onto a wall:</span></div>\n\n    <div class=\"tstage\" id=\"tstage\">\n      <div class=\"world\" id=\"world\">\n        <img id=\"plan\" alt=\"\">\n        <svg id=\"ol\" xmlns=\"http://www.w3.org/2000/svg\"></svg>\n      </div>\n      <div class=\"noplan\" id=\"noplan\" hidden>\n        <span>No plan image on this job yet</span>\n        <label class=\"pbtn\">Load plan image\n          <input id=\"planFile\" type=\"file\" accept=\"image/*\" hidden>\n        </label>\n      </div>\n    </div>\n\n    <div class=\"hint\" style=\"padding:8px 16px;font-family:var(--f-mono);font-size:9px;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-3)\" id=\"hint\">\n      Draw: tap to add points, tap the first point to close &middot; Select: drag points and dots &middot; pinch or scroll to zoom\n    </div>\n  </section>\n\n  <div class=\"foot\">\n    Trace the outside walls &middot; each closed shape is one building &middot; dots snap to the nearest wall\n  </div>\n\n  <div class=\"toast\" id=\"toast\" role=\"status\" aria-live=\"polite\"></div>\n</div>\n";
+const TEMPLATE = "\n<div class=\"app loading\">\n\n  <header class=\"titleblock\">\n    <div class=\"tb-row\">\n      <div>\n        <div class=\"tb-ref\" id=\"jobRef\"></div>\n        <div class=\"tb-addr\" id=\"jobAddr\"></div>\n      </div>\n      \n    </div>\n\n    \n    <div class=\"tabs\">\n      <button class=\"tab\" aria-selected=\"true\">Trace plan</button>\n    </div>\n  </header>\n\n  <div class=\"boot\" id=\"boot\">\n    <b>Loading job</b>\n    <span id=\"bootMsg\">Fetching schedule</span>\n  </div>\n\n  <section class=\"view\">\n    <div class=\"toolrow\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Tool\">\n        <button data-mode=\"select\" aria-pressed=\"true\">Select</button>\n        <button data-mode=\"draw\" aria-pressed=\"false\">Draw</button>\n        <button data-mode=\"cal\" aria-pressed=\"false\">Calibrate</button>\n      </div>\n      <button class=\"mini\" id=\"closeShape\">Close shape</button>\n      <button class=\"mini\" id=\"undoPt\">Undo point</button>\n      <button class=\"mini\" id=\"undoAct\" disabled>Undo action</button>\n      <button class=\"mini\" id=\"delPt\" hidden>Delete point</button>\n      <button class=\"mini\" id=\"delBld\" hidden>Delete building</button>\n      <button class=\"mini\" id=\"removeDot\" hidden>Remove dot</button>\n      <button class=\"mini\" id=\"autoBtn\" hidden>Auto-place dots</button>\n      <span class=\"cal-lab\">Line =</span>\n      <input class=\"cal-in\" id=\"calM\" type=\"number\" step=\"0.1\" placeholder=\"ft\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Units\">\n        <button type=\"button\" data-unit=\"ft\" aria-pressed=\"true\">ft</button>\n        <button type=\"button\" data-unit=\"m\" aria-pressed=\"false\">m</button>\n      </div>\n      <button class=\"mini\" id=\"rescaleBtn\" hidden>Rescale</button>\n      <button class=\"mini hot\" id=\"submitBtn\" style=\"margin-left:auto\">Submit</button>\n    </div>\n\n    <div class=\"tray\" id=\"tray\"><span class=\"tray-lab\">Drag onto a wall:</span></div>\n\n    <div class=\"tstage\" id=\"tstage\">\n      <div class=\"world\" id=\"world\">\n        <img id=\"plan\" alt=\"\">\n        <svg id=\"ol\" xmlns=\"http://www.w3.org/2000/svg\"></svg>\n      </div>\n      <div class=\"noplan\" id=\"noplan\" hidden>\n        <span>No plan image on this job yet</span>\n        <label class=\"pbtn\">Load plan image\n          <input id=\"planFile\" type=\"file\" accept=\"image/*\" hidden>\n        </label>\n      </div>\n    </div>\n\n    <div class=\"hint\" style=\"padding:8px 16px;font-family:var(--f-mono);font-size:9px;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-3)\" id=\"hint\">\n      Draw: tap to add points, tap the first point to close &middot; Select: drag points and dots &middot; pinch or scroll to zoom\n    </div>\n  </section>\n\n  <div class=\"foot\">\n    Trace the outside walls &middot; each closed shape is one building &middot; dots snap to the nearest wall\n  </div>\n\n  <div class=\"toast\" id=\"toast\" role=\"status\" aria-live=\"polite\"></div>\n</div>\n";
 
 export function mountTracePlan(host, job, shim) {
   var SHIM = shim || {};
@@ -66,6 +66,42 @@ export function mountTracePlan(host, job, shim) {
   var dots = {};               // opening id -> {x, y} in plan px (snapped), once placed
   var selV = null;             // {p, i} selected vertex
   var selDot = null;           // selected placed dot id
+
+  /* ---------- action-level undo ----------
+     One snapshot per user-sized action: a whole auto-place, a whole drag,
+     one deletion, one drawn point. "Undo action" walks back changes the
+     size a person thinks in - so a regretted auto-place of forty dots is
+     one tap, not forty. The in-draw "Undo point" stays for fine control
+     (and is itself undoable). Snapshots are taken BEFORE the mutation. */
+  var history = [];
+  function snapshot() {
+    history.push(JSON.stringify({ polys: polys, dots: dots, cal: cal }));
+    if (history.length > 60) history.shift();
+    $("undoAct").disabled = false;
+  }
+  /* An action that turned out to change nothing should not cost an undo
+     step; callers that can tell (auto-place with 0 placed) drop it. */
+  function dropSnapshot() {
+    history.pop();
+    if (!history.length) $("undoAct").disabled = true;
+  }
+  function undoAction() {
+    var last = history.pop();
+    if (!last) return;
+    var s = JSON.parse(last);
+    polys = s.polys;
+    dots = s.dots;
+    cal = s.cal;
+    selV = null;
+    selDot = null;
+    $("delPt").hidden = true;
+    $("delBld").hidden = true;
+    $("removeDot").hidden = true;
+    renderTray();
+    redraw();
+    if (!history.length) $("undoAct").disabled = true;
+    SHIM.toast("Undone");
+  }
 
   function applyView() {
     world.style.transform = "translate(" + view.x + "px," + view.y + "px) scale(" + view.k + ")";
@@ -235,10 +271,13 @@ export function mountTracePlan(host, job, shim) {
     gesture.moved = Math.max(gesture.moved, Math.abs(dx) + Math.abs(dy));
 
     if (gesture.type === "vertex") {
+      // First real movement of a drag = one undo step for the whole drag.
+      if (!gesture.snap) { snapshot(); gesture.snap = true; }
       var w = toWorld(e.clientX, e.clientY);
       polys[gesture.p].pts[gesture.i] = { x: w.x, y: w.y };
       redraw();
     } else if (gesture.type === "dot") {
+      if (!gesture.snap) { snapshot(); gesture.snap = true; }
       var w2 = toWorld(e.clientX, e.clientY);
       var sn = snapToWalls(w2);
       dots[gesture.id] = sn ? { x: sn.x, y: sn.y } : { x: w2.x, y: w2.y };
@@ -279,16 +318,19 @@ export function mountTracePlan(host, job, shim) {
         if (open && open.pts.length >= 3) {
           var first = open.pts[0];
           if (Math.hypot(w.x - first.x, w.y - first.y) < 16 / view.k) {
+            snapshot();
             open.closed = true;
             SHIM.toast("Building " + polys.filter(function (p) { return p.closed; }).length + " closed");
             redraw();
             return;
           }
         }
+        snapshot();
         if (!open) { open = { pts: [], closed: false }; polys.push(open); }
         open.pts.push({ x: w.x, y: w.y });
         redraw();
       } else if (mode === "cal") {
+        snapshot();
         if (!cal.a || (cal.a && cal.b)) { cal.a = { x: w.x, y: w.y }; cal.b = null; }
         else cal.b = { x: w.x, y: w.y };
         redraw();
@@ -350,6 +392,7 @@ export function mountTracePlan(host, job, shim) {
           ev2.clientY >= r.top && ev2.clientY <= r.bottom) {
         var w = toWorld(ev2.clientX, ev2.clientY);
         var sn = snapToWalls(w);
+        snapshot();
         dots[id] = sn ? { x: sn.x, y: sn.y } : { x: w.x, y: w.y };
         renderTray(); redraw();
       }
@@ -384,6 +427,8 @@ export function mountTracePlan(host, job, shim) {
 
   $("undoPt").addEventListener("click", function () {
     var open = polys.filter(function (p) { return !p.closed; })[0];
+    if (!open && !polys.length) return;
+    snapshot();
     if (open && open.pts.length) {
       open.pts.pop();
       if (!open.pts.length) polys.splice(polys.indexOf(open), 1);
@@ -397,6 +442,7 @@ export function mountTracePlan(host, job, shim) {
     if (!selV) return;
     var poly = polys[selV.p];
     if (poly.closed && poly.pts.length <= 3) { SHIM.toast("A building needs at least 3 points"); return; }
+    snapshot();
     poly.pts.splice(selV.i, 1);
     if (!poly.pts.length) polys.splice(selV.p, 1);
     selV = null;
@@ -416,6 +462,7 @@ export function mountTracePlan(host, job, shim) {
   $("delBld").addEventListener("click", function () {
     if (!selV) return;
     if ($("delBld").dataset.armed !== "1") { delBldArm(true); return; }
+    snapshot();
     polys.splice(selV.p, 1);
     selV = null;
     delBldArm(false);
@@ -425,6 +472,7 @@ export function mountTracePlan(host, job, shim) {
 
   $("removeDot").addEventListener("click", function () {
     if (!selDot) return;
+    snapshot();
     delete dots[selDot];
     SHIM.toast(selDot + " back in the tray");
     selDot = null;
@@ -443,6 +491,7 @@ export function mountTracePlan(host, job, shim) {
 
   $("autoBtn").addEventListener("click", function () {
     if (!dotSeed) return;
+    snapshot();
     var placed = 0, skipped = 0;
     JOB.windows.forEach(function (w) {
       if (dots[w.id]) { skipped++; return; }           // never move a dot you placed
@@ -452,6 +501,8 @@ export function mountTracePlan(host, job, shim) {
       dots[w.id] = sn ? { x: sn.x, y: sn.y } : { x: p.x, y: p.y };
       placed++;
     });
+    // Placed nothing = changed nothing; don't charge an undo step for it.
+    if (!placed) dropSnapshot();
     renderTray();
     redraw();
     SHIM.toast(placed + " dots placed from the plan numbers" +
@@ -466,6 +517,18 @@ export function mountTracePlan(host, job, shim) {
     if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA")) return;
     if (selDot) { e.preventDefault(); $("removeDot").click(); }
     else if (selV) { e.preventDefault(); $("delPt").click(); }
+  });
+
+  $("undoAct").addEventListener("click", undoAction);
+
+  // Desktop: the undo everyone's hands already know.
+  onDoc("keydown", function (e) {
+    if (e.key !== "z" && e.key !== "Z") return;
+    if (!e.metaKey && !e.ctrlKey) return;
+    var a = document.activeElement;
+    if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA")) return;
+    e.preventDefault();
+    undoAction();
   });
 
   /* ---------- submit ---------- */

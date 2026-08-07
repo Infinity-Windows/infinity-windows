@@ -37,6 +37,40 @@ describe("trace renderer", () => {
     view.destroy();
   });
 
+  it("undoes a whole auto-place in one action", () => {
+    // The fixture with its placed dots forgotten: everything sits in the
+    // tray, and the seed knows where the dots belong.
+    const f = JSON.parse(JSON.stringify(fixture));
+    const seed = f.building.trace.dots;
+    f.building.trace.dots = {};
+    const { host, view } = mount(f, { dotSeed: seed });
+
+    const placed = () => host.querySelectorAll("#tray .chip-dot.placed").length;
+    const undoBtn = host.querySelector("#undoAct") as HTMLButtonElement;
+    expect(placed()).toBe(0);
+    expect(undoBtn.disabled).toBe(true);
+
+    (host.querySelector("#autoBtn") as HTMLButtonElement).click();
+    const afterAuto = placed();
+    expect(afterAuto).toBeGreaterThan(30);
+    expect(undoBtn.disabled).toBe(false);
+
+    undoBtn.click();
+    expect(placed()).toBe(0);
+    expect(undoBtn.disabled).toBe(true);
+    view.destroy();
+  });
+
+  it("an auto-place that changes nothing costs no undo step", () => {
+    // Every dot already placed (full fixture): auto-place skips them all.
+    const f = fixture as { building: { trace: { dots: Record<string, unknown> } } };
+    const { host, view } = mount(fixture, { dotSeed: f.building.trace.dots });
+    const undoBtn = host.querySelector("#undoAct") as HTMLButtonElement;
+    (host.querySelector("#autoBtn") as HTMLButtonElement).click();
+    expect(undoBtn.disabled).toBe(true);
+    view.destroy();
+  });
+
   it("submit stages a building and window upserts through the shim", () => {
     const ops: { op: string }[] = [];
     let done = 0;

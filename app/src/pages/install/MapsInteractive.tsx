@@ -75,6 +75,7 @@ export function MapsInteractive({ project }: { project: Project }) {
 
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<ReturnType<typeof mountFitView> | null>(null);
+  const navTimerRef = useRef<number | null>(null);
 
   // Full-screen is a CSS overlay, not the Fullscreen API: iOS home-screen
   // PWAs don't grant the API, and an inset-0 overlay behaves identically
@@ -120,8 +121,11 @@ export function MapsInteractive({ project }: { project: Project }) {
         // re-renders discrete events synchronously, so navigating mid-click
         // swaps this DOM for the opening sheet and the tail of the SAME click
         // lands on its back-to-map link — bouncing the user straight past the
-        // page they asked for. Deferring one tick makes the tap stick.
-        setTimeout(() => {
+        // page they asked for. Deferring one tick makes the tap stick. The
+        // timer is tracked so unmounting can cancel it — a navigation firing
+        // after this tab is gone yanks the user off whatever page they're on.
+        navTimerRef.current = window.setTimeout(() => {
+          navTimerRef.current = null;
           navigate(`/projects/${projectId}/opening/${match.id}`);
         }, 0);
       },
@@ -129,9 +133,12 @@ export function MapsInteractive({ project }: { project: Project }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job]);
 
-  // Unmount-only teardown: the renderer owns global listeners until then.
+  // Unmount-only teardown: the renderer owns global listeners until then,
+  // and a still-pending deferred navigation must die with the tab.
   useEffect(
     () => () => {
+      if (navTimerRef.current != null) clearTimeout(navTimerRef.current);
+      navTimerRef.current = null;
       viewRef.current?.destroy();
       viewRef.current = null;
     },
