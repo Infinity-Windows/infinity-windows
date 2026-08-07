@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { listMarkSpecs, listOpenings, listPlanOutlines } from "../../lib/install/api";
 import type { Project } from "../../lib/types";
 import { pushToast } from "../../lib/toast";
-import { isForemanPlus } from "../../lib/install/types";
+import { isSupervisorPlus } from "../../lib/install/types";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import {
   buildAuthoredJob,
@@ -28,7 +28,9 @@ export function MapsInteractive({ project }: { project: Project }) {
   const projectId = project.id;
   const navigate = useNavigate();
   const { effectiveRole } = useEffectiveRole();
-  const isLead = isForemanPlus(effectiveRole);
+  // Editing the model is supervisor+ (stories design doc); the tab itself
+  // is everyone's reference.
+  const canEditModel = isSupervisorPlus(effectiveRole);
 
   const outlines = useQuery({
     queryKey: ["planOutlines", projectId],
@@ -175,7 +177,7 @@ export function MapsInteractive({ project }: { project: Project }) {
             {outline.page_number} yet — the model will populate as pins land.
           </p>
         )}
-        {isLead && !fullscreen && (
+        {canEditModel && !fullscreen && (
           <Link
             className="button-like"
             style={{ marginLeft: "auto" }}
@@ -187,7 +189,7 @@ export function MapsInteractive({ project }: { project: Project }) {
         <button
           type="button"
           className="button-like"
-          style={isLead && !fullscreen ? undefined : { marginLeft: "auto" }}
+          style={canEditModel && !fullscreen ? undefined : { marginLeft: "auto" }}
           aria-pressed={fullscreen}
           onClick={() => toggleFullscreen(!fullscreen)}
         >

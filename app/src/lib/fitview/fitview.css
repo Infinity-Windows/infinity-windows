@@ -1848,3 +1848,11 @@ a.tb-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
   /* Glass stays cool on purpose — real glazing reads blue-green, and the
      contrast against warm walls is what makes openings pop. */
 }
+
+/* stories: with a story focused, the rest of the building drops to a dim
+   x-ray — still there for orientation, never competing for the eye, and
+   never swallowing taps meant for the focused story. */
+.fitview-app .face.story-dim {
+  opacity: 0.14;
+  pointer-events: none;
+}

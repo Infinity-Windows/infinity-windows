@@ -330,7 +330,10 @@ export default function App() {
             <Route
               path="/projects/:projectId/trace-model"
               element={
-                <RequireRole minRole="foreman">
+                // The 3D model is the whole crew's reference; EDITING it is an
+                // owner/supervisor call (stories design doc) — foremen and
+                // installers view, never reshape.
+                <RequireRole minRole="supervisor">
                   <MapsTrace />
                 </RequireRole>
               }

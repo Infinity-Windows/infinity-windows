@@ -54,6 +54,35 @@ describe("stories: stacked rendering", () => {
     view.destroy();
   });
 
+  it("story chips focus one story and drop the rest to an x-ray", () => {
+    const { host, view } = mount(job as never);
+    const strip = host.querySelector<HTMLElement>("#storyStrip")!;
+    expect(strip.hidden).toBe(false);
+    const chips = strip.querySelectorAll("button");
+    expect(chips.length).toBe(3); // All floors + Ground + Great room
+    expect(chips[2].textContent).toContain("Great room");
+
+    chips[2].click();
+    const dimmed = host.querySelectorAll(".face.story-dim");
+    expect(dimmed.length).toBe(4); // the four ground-story walls
+    expect(
+      host.querySelector('.face[data-elev="s4"]')!.classList.contains("story-dim"),
+    ).toBe(false);
+    // Wall chips shrink to the focused story's walls (+ the 3D chip).
+    const wallChips = host.querySelectorAll("#elevStrip .elev");
+    expect(wallChips.length).toBeLessThanOrEqual(5);
+
+    chips[0].click(); // All floors
+    expect(host.querySelectorAll(".face.story-dim").length).toBe(0);
+    view.destroy();
+  });
+
+  it("single-story models hide the strip entirely", () => {
+    const { host, view } = mount();
+    expect(host.querySelector<HTMLElement>("#storyStrip")!.hidden).toBe(true);
+    view.destroy();
+  });
+
   it("a story-2 window sits at its absolute height within its story's face", () => {
     const { host, view } = mount(job as never);
     const win = host.querySelector<HTMLElement>('.win[data-id="C1"]')!;
