@@ -89,7 +89,9 @@ export interface PageStory {
   pageNumber: number;
   /** 1-based story this page shows; absent = detected but unresolved. */
   story?: number;
-  /** Typical-floor range (Phase 3 expands it; Phase 2 reports it honestly). */
+  /** Set when this page stands for a whole run of stories ("LEVELS 2-6"):
+   *  the page maps to EVERY story in the range, and windows tagged on it
+   *  expand into per-story clones. */
   range?: [number, number];
   name: string;
   /** Always "probable": a title is ONE signal. */
@@ -135,11 +137,28 @@ export function detectPageStories(
 
   for (const { pageNumber, r } of readings) {
     if (r.range) {
-      out.unresolved.push({
-        pageNumber,
-        reason: `typical-floor range ${r.range[0]}–${r.range[1]} (expanded in a later phase)`,
-        evidence: r.evidence,
+      // Phase 3: a typical-floor sheet stands for every story in its range.
+      // The drawings assert near-identity, not identity, so everything born
+      // from a range stays "probable" and says which sheet it came from.
+      const [a, b] = r.range;
+      if (b > 8) {
+        out.unresolved.push({
+          pageNumber,
+          reason: `range ${a}–${b} passes the 8-story ceiling`,
+          evidence: r.evidence,
+        });
+        continue;
+      }
+      out.pages.push({
+        pageNumber, story: a, range: [a, b],
+        name: STORY_NAMES[a - 1] ?? `Level ${a}`,
+        confidence: "probable", evidence: r.evidence,
       });
+      for (let n = a; n <= b; n++) {
+        if (!seen.has(n)) {
+          seen.set(n, { name: STORY_NAMES[n - 1] ?? `Level ${n}`, evidence: r.evidence });
+        }
+      }
       continue;
     }
     let story = r.story;
@@ -172,4 +191,67 @@ export function detectPageStories(
     .sort((a, b) => a[0] - b[0])
     .map(([n, v]) => ({ n, name: v.name, evidence: v.evidence }));
   return out;
+}
+
+
+/**
+ * H3 — marks that encode their floor ("201", "W-301", "3W12"): the leading
+ * digit(s) name the story. The research's hard rule: many sets number by
+ * TYPE, not floor, so the pattern is only believed after it is VALIDATED
+ * against marks whose story is already known from sheet titles, with zero
+ * contradictions and at least three agreements. A validated prefix is a
+ * genuinely independent second signal — and two agreeing signals is what
+ * "confirmed" means.
+ */
+export function markPrefixStory(code: string): number | null {
+  const t = code.trim().toUpperCase();
+  const m = /^(?:[A-Z]{1,2}-?)?([1-8])\d{2}$/.exec(t);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+export function validateMarkPrefixes(
+  marks: { code: string; titleStory?: number }[],
+): { trusted: boolean; agreements: number; contradictions: number } {
+  let agreements = 0;
+  let contradictions = 0;
+  for (const m of marks) {
+    const pre = markPrefixStory(m.code);
+    if (pre == null || m.titleStory == null) continue;
+    if (pre === m.titleStory) agreements++;
+    else contradictions++;
+  }
+  return { trusted: contradictions === 0 && agreements >= 3, agreements, contradictions };
+}
+
+/**
+ * The sheet's declared scale ("1/4" = 1'-0"", "SCALE: 1/8"=1'-0"", "1:50").
+ * With the page's paper size known from the PDF, this makes manual
+ * calibration OPTIONAL: the drawing already says how big it is. Returns real
+ * metres per paper inch, plus the matched text as evidence.
+ */
+export function parseScaleNote(
+  lines: string[],
+): { metresPerPaperInch: number; evidence: string } | null {
+  for (const line of lines) {
+    const t = line.toUpperCase().replace(/\s+/g, " ").trim();
+    // 1/4" = 1'-0"  (paper fraction of an inch = one real foot)
+    const imp = /(\d+)\s*\/\s*(\d+)\s*(?:"|IN(?:CH)?)?\s*=\s*1\s*'/.exec(t);
+    if (imp) {
+      const num = parseInt(imp[1], 10);
+      const den = parseInt(imp[2], 10);
+      if (num > 0 && den > 0 && num / den <= 3) {
+        // (den/num) real feet per paper inch.
+        return { metresPerPaperInch: (den / num) * 0.3048, evidence: line.trim() };
+      }
+    }
+    // Metric 1:50, 1:100 — one paper unit = N real units.
+    const met = /\b1\s*:\s*(\d{2,3})\b/.exec(t);
+    if (met && /SCALE/.test(t)) {
+      const ratio = parseInt(met[1], 10);
+      if (ratio >= 20 && ratio <= 500) {
+        return { metresPerPaperInch: ratio * 0.0254, evidence: line.trim() };
+      }
+    }
+  }
+  return null;
 }

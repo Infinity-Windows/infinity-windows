@@ -636,6 +636,11 @@ export function mountTracePlan(host, job, shim) {
 
   var storyPlan = null;
   function loadDotSeed() {
+    if (SHIM.scaleSuggestion) {
+      $("calM").placeholder = "optional";
+      SHIM.toast("This sheet declares its scale (" + SHIM.scaleSuggestion.evidence +
+        ") - calibration is optional");
+    }
     dotSeed = (typeof SHIM.dotSeed === "function" ? SHIM.dotSeed(plan) : SHIM.dotSeed) || null;
     storyPlan = (typeof SHIM.storyPlan === "function" ? SHIM.storyPlan() : SHIM.storyPlan) || null;
     if (storyPlan) {
@@ -724,7 +729,9 @@ export function mountTracePlan(host, job, shim) {
       var target = plan2 ? stories[Math.min(plan2.story, stories.length) - 1] : stories[cur];
       var sn = snapToWallsOf(target, { x: p.x, y: p.y });
       target.dots[w.id] = sn ? { x: sn.x, y: sn.y } : { x: p.x, y: p.y };
-      dotMeta[w.id] = plan2 ? { evidence: plan2.evidence } : { byHand: true };
+      dotMeta[w.id] = plan2
+        ? { evidence: plan2.evidence, confidence: plan2.confidence, range: plan2.range }
+        : { byHand: true };
       placed++;
     });
     // Placed nothing = changed nothing; don't charge an undo step for it.
@@ -780,8 +787,17 @@ export function mountTracePlan(host, job, shim) {
       }
     }
     var mv = parseFloat($("calM").value);
-    if (!cal.a || !cal.b || !(mv > 0)) { SHIM.toast("Calibrate first: two points + the real distance"); return; }
-    var scale = calMetres(mv) / Math.hypot(cal.b.x - cal.a.x, cal.b.y - cal.a.y);   // metres per plan px
+    var scale;
+    if (cal.a && cal.b && mv > 0) {
+      scale = calMetres(mv) / Math.hypot(cal.b.x - cal.a.x, cal.b.y - cal.a.y);   // metres per plan px
+    } else if (SHIM.scaleSuggestion && SHIM.scaleSuggestion.metresPerPx > 0) {
+      // Phase 3: the sheet declared its own scale - use it, and say so.
+      scale = SHIM.scaleSuggestion.metresPerPx;
+      SHIM.toast('Using the sheet\'s declared scale (' + SHIM.scaleSuggestion.evidence + ')');
+    } else {
+      SHIM.toast("Calibrate first: two points + the real distance");
+      return;
+    }
 
     // Global bbox centre across EVERY story, so upper boxes stack exactly
     // where they were traced instead of re-centring themselves.
@@ -920,17 +936,39 @@ export function mountTracePlan(host, job, shim) {
       if ((win.story || 1) !== si + 1 || typeof win.y !== "number") {
         copy.y = win.door || copy.door ? 0 : 0.9;
       }
-      // Phase 2: say where the assignment came from. A title is one signal,
-      // so auto stays "probable"; a human's drag is the human's word.
+      // Phase 2/3: say where the assignment came from. A title alone is one
+      // signal ("probable"); a validated mark prefix agreeing with it is a
+      // second, independent one ("confirmed"); a human's drag is the
+      // human's word.
       var meta2 = dotMeta[id] || {};
       if (meta2.evidence && !meta2.byHand) {
-        copy.storyConfidence = "probable";
+        copy.storyConfidence = meta2.confidence || "probable";
         copy.storyEvidence = meta2.evidence;
       } else {
         copy.storyConfidence = "confirmed";
         copy.storyEvidence = "placed by hand";
       }
       moves.push(copy);
+
+      // Phase 3: a window tagged on a typical-floor sheet ("LEVELS 2-6")
+      // exists once in the schedule but on EVERY story in the range. Clone
+      // it upward: same wall (the footprints were copied, so the walls line
+      // up edge for edge), same position, per-story id, and always
+      // "probable" - the drawings assert near-identity, not identity.
+      if (meta2.range && meta2.range.length === 2) {
+        var segIdx = storySegs.indexOf(best.seg);
+        for (var rn = meta2.range[0] + 1; rn <= meta2.range[1] && rn <= stories.length; rn++) {
+          var upSegs = segs.filter(function (sg) { return (sg.story || 1) === rn; });
+          if (segIdx < 0 || segIdx >= upSegs.length) break;   // walls diverged: stop honestly
+          var clone = JSON.parse(JSON.stringify(copy));
+          clone.id = String(win.id) + "@L" + rn;
+          clone.story = rn;
+          clone.elev = upSegs[segIdx].key;
+          clone.storyConfidence = "probable";
+          clone.storyEvidence = "cloned from typical sheet: " + meta2.evidence;
+          moves.push(clone);
+        }
+      }
       });
     });
 
@@ -982,9 +1020,12 @@ export function mountTracePlan(host, job, shim) {
       // redrawing. Storied per level; the legacy polys/dots mirror the ground
       // story for anything older still reading them.
       trace: {
-        cal: { ax: Math.round(cal.a.x), ay: Math.round(cal.a.y),
-               bx: Math.round(cal.b.x), by: Math.round(cal.b.y),
-               value: mv, unit: calUnit },
+        cal: cal.a && cal.b && mv > 0
+          ? { ax: Math.round(cal.a.x), ay: Math.round(cal.a.y),
+              bx: Math.round(cal.b.x), by: Math.round(cal.b.y),
+              value: mv, unit: calUnit }
+          : { declaredScale: scale,
+              evidence: SHIM.scaleSuggestion ? SHIM.scaleSuggestion.evidence : "" },
         stories: stories.map(function (st) {
           var ts = { name: st.name, heightM: st.heightM,
                      polys: roundPolys(closedOf(st)), dots: roundDots(st.dots) };
@@ -1086,12 +1127,14 @@ export function mountTracePlan(host, job, shim) {
       }
     }
     if (tr && (tr.polys || (tr.stories && tr.stories.length))) {
-      if (tr.cal) {
+      if (tr.cal && typeof tr.cal.ax === "number") {
         cal.a = { x: tr.cal.ax, y: tr.cal.ay };
         cal.b = { x: tr.cal.bx, y: tr.cal.by };
         $("calM").value = tr.cal.value;
         setUnit(tr.cal.unit || "ft");
       }
+      // A trace saved on the sheet's declared scale has no cal points to
+      // restore - the suggestion (or a hand calibration) covers resubmit.
       SHIM.toast("Previous trace restored - adjust and resubmit");
     } else if (JOB.building && JOB.building.footprints) {
       // Traced before trace-saving existed: offer a straight rescale instead.

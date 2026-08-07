@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { detectPageStories, parseSheetTitle } from "./storyDetect";
+import {
+  detectPageStories,
+  markPrefixStory,
+  parseScaleNote,
+  parseSheetTitle,
+  validateMarkPrefixes,
+} from "./storyDetect";
 
 describe("parseSheetTitle — the research's catalogue of real phrasings", () => {
   it("reads explicit ordinals and levels", () => {
@@ -71,15 +77,24 @@ describe("detectPageStories — resolution against the whole set", () => {
     expect(d.unresolved[0].reason).toContain("split-level");
   });
 
-  it("explicit levels don't need resolution, and ranges land in unresolved", () => {
+  it("typical-floor ranges expand into the full story skeleton", () => {
     const d = detectPageStories([
       page(1, "LEVEL 1 FLOOR PLAN"),
       page(2, "FLOOR PLAN — LEVELS 2-6"),
       page(3, "LEVEL 7 FLOOR PLAN"),
     ]);
-    expect(d.pages.map((p) => p.story)).toEqual([1, 7]);
-    expect(d.unresolved).toHaveLength(1);
-    expect(d.unresolved[0].reason).toContain("typical-floor range");
+    // The range page carries its span; the skeleton covers 1..7.
+    const rangePage = d.pages.find((p) => p.pageNumber === 2)!;
+    expect(rangePage.range).toEqual([2, 6]);
+    expect(rangePage.story).toBe(2);
+    expect(d.stories.map((s) => s.n)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(d.unresolved).toHaveLength(0);
+  });
+
+  it("a range past eight stories stays unresolved", () => {
+    const d = detectPageStories([page(1, "FLOOR PLAN — LEVELS 2-12")]);
+    expect(d.pages).toHaveLength(0);
+    expect(d.unresolved[0].reason).toContain("8-story ceiling");
   });
 
   it("first story-bearing title wins per page; rejects never mask real titles", () => {
@@ -87,5 +102,53 @@ describe("detectPageStories — resolution against the whole set", () => {
       page(1, "SECOND FLOOR FRAMING PLAN", "SECOND FLOOR PLAN"),
     ]);
     expect(d.pages[0]?.story).toBe(2);
+  });
+});
+
+describe("mark-prefix second signal (H3) — validated before trusted", () => {
+  it("reads floor-encoded marks and ignores type-based ones", () => {
+    expect(markPrefixStory("201")).toBe(2);
+    expect(markPrefixStory("W-301")).toBe(3);
+    expect(markPrefixStory("D412")).toBe(4);
+    expect(markPrefixStory("W1")).toBeNull();     // type-based
+    expect(markPrefixStory("12")).toBeNull();     // plain mark
+    expect(markPrefixStory("901")).toBeNull();    // past the ceiling
+  });
+
+  it("trusts only zero contradictions with three-plus agreements", () => {
+    const agree = [
+      { code: "201", titleStory: 2 },
+      { code: "202", titleStory: 2 },
+      { code: "301", titleStory: 3 },
+      { code: "W1", titleStory: 1 },              // no prefix: neutral
+    ];
+    expect(validateMarkPrefixes(agree).trusted).toBe(true);
+
+    const contradicted = [...agree, { code: "205", titleStory: 3 }];
+    expect(validateMarkPrefixes(contradicted).trusted).toBe(false);
+
+    const thin = agree.slice(0, 2);
+    expect(validateMarkPrefixes(thin).trusted).toBe(false);
+  });
+});
+
+describe("scale notes make calibration optional", () => {
+  it("reads imperial architect's scales", () => {
+    const r = parseScaleNote(['1/4" = 1\'-0"'])!;
+    // 1/4 inch = 1 real foot -> 4 ft per paper inch.
+    expect(r.metresPerPaperInch).toBeCloseTo(4 * 0.3048, 5);
+    expect(parseScaleNote(['SCALE: 1/8" = 1\'-0"'])!.metresPerPaperInch)
+      .toBeCloseTo(8 * 0.3048, 5);
+  });
+
+  it("reads metric ratios only when labelled as a scale", () => {
+    expect(parseScaleNote(["SCALE 1:50"])!.metresPerPaperInch)
+      .toBeCloseTo(50 * 0.0254, 5);
+    // A bare "1:100" could be anything (a ratio in a note, a time).
+    expect(parseScaleNote(["1:100"])).toBeNull();
+  });
+
+  it("returns null rather than guessing", () => {
+    expect(parseScaleNote(["MAIN FLR FLOOR PLAN", "A.102"])).toBeNull();
   });
 });

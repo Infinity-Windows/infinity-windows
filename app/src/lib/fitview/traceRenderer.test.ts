@@ -282,6 +282,74 @@ describe("trace renderer", () => {
     view.destroy();
   });
 
+  it("phase 3: a typical-floor sheet clones its windows up the range, and the declared scale stands in for calibration", () => {
+    const job = {
+      id: "p1", ref: "Apartments", addr: "",
+      building: {
+        width: 0, depth: 0, height: 3, rise: 0, footprints: [],
+        trace: {
+          // No cal on purpose: the sheet's declared scale must carry submit.
+          polys: [[{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 400 }, { x: 0, y: 400 }]],
+          dots: {},
+        },
+      },
+      windows: [
+        { id: "101", type: "Fixed", w: 1000, h: 1000, elev: "", x: 0, y: 0, lights: 1, open: "fixed", status: "tofit" },
+        { id: "201", type: "Fixed", w: 1200, h: 1000, elev: "", x: 0, y: 0, lights: 1, open: "fixed", status: "tofit" },
+      ],
+    };
+    const ops: { op: string; building?: Record<string, unknown>; window?: { id: string } & Record<string, unknown> }[] = [];
+    const { host, view } = mount(job, {
+      pushOp: (op: never) => ops.push(op),
+      dotSeed: { "101": { x: 200, y: 6 }, "201": { x: 100, y: 6 } },
+      // 0.025 m/px makes the 400px square a 10m building.
+      scaleSuggestion: { metresPerPx: 0.025, evidence: '1/4" = 1\'-0"' },
+      storyPlan: {
+        stories: [
+          { n: 1, name: "Ground", evidence: "LEVEL 1 FLOOR PLAN" },
+          { n: 2, name: "Level 2", evidence: "FLOOR PLAN — LEVELS 2-4" },
+          { n: 3, name: "Level 3", evidence: "FLOOR PLAN — LEVELS 2-4" },
+          { n: 4, name: "Level 4", evidence: "FLOOR PLAN — LEVELS 2-4" },
+        ],
+        byId: {
+          "101": { story: 1, evidence: "sheet 2: LEVEL 1 FLOOR PLAN", confidence: "probable" },
+          "201": { story: 2, evidence: "sheet 3: FLOOR PLAN — LEVELS 2-4", confidence: "probable", range: [2, 4] },
+        },
+        unclear: {},
+      },
+    });
+
+    (host.querySelector("#autoBtn") as HTMLButtonElement).click();
+    // Four stories now exist from the detection.
+    expect([...host.querySelectorAll("#storyRail button")]
+      .filter((b) => !b.id).length).toBe(4);
+
+    (host.querySelector("#submitBtn") as HTMLButtonElement).click();
+    const bld = ops.find((o) => o.op === "building")!.building as {
+      stories: { n: number }[];
+      trace: { cal: { declaredScale?: number; evidence?: string } };
+    };
+    // Submit went through WITHOUT manual calibration, on the declared scale.
+    expect(bld.stories).toHaveLength(4);
+    expect(bld.trace.cal.declaredScale).toBeCloseTo(0.025, 6);
+    expect(bld.trace.cal.evidence).toContain('1/4"');
+
+    // The typical-floor window exists once in the schedule, three times in
+    // the model: the original on story 2, clones on 3 and 4 — probable, with
+    // the cloning spelled out.
+    const ups = ops.filter((o) => o.op === "upsert").map((o) => o.window!);
+    const w201 = ups.filter((w) => String(w.id).startsWith("201"));
+    expect(w201.map((w) => [w.id, w.story])).toEqual([
+      ["201", 2], ["201@L3", 3], ["201@L4", 4],
+    ]);
+    expect(w201[1].storyConfidence).toBe("probable");
+    expect(String(w201[1].storyEvidence)).toContain("cloned from typical sheet");
+    // Clones sit on the SAME wall of their own story.
+    expect(w201[1].elev).not.toBe(w201[0].elev);
+    expect(w201[0].x).toBe(w201[1].x);
+    view.destroy();
+  });
+
   it("removing the top story frees its windows back to the tray", () => {
     const job = {
       id: "p1", ref: "Job", addr: "",

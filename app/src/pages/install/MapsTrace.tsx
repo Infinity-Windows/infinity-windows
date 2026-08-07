@@ -13,7 +13,13 @@ import { listProjects } from "../../lib/api";
 import { loadPdf } from "../../lib/install/pdf";
 import { renderPageJpeg } from "../../lib/install/renderSpecImages";
 import { extractSheetTextLines } from "../../lib/install/pdf";
-import { detectPageStories, type StoryDetection } from "../../lib/fitview/storyDetect";
+import {
+  detectPageStories,
+  markPrefixStory,
+  parseScaleNote,
+  validateMarkPrefixes,
+  type StoryDetection,
+} from "../../lib/fitview/storyDetect";
 import { formatApiError } from "../../lib/install/errors";
 import { pushToast, toastSuccess } from "../../lib/toast";
 import {
@@ -83,6 +89,8 @@ export function MapsTrace() {
       const bytes = await downloadPlanset(plansPlanset!);
       const doc = await loadPdf(bytes);
       const page = Math.min(outline?.page_number ?? 1, doc.numPages);
+      const pg = await doc.getPage(Math.max(1, page));
+      const paperInchesWide = pg.getViewport({ scale: 1 }).width / 72;
       const url = await renderPageJpeg(doc, Math.max(1, page));
       const img = new Image();
       await new Promise<void>((res, rej) => {
@@ -107,7 +115,27 @@ export function MapsTrace() {
         /* a raster set with no text layer detects nothing — that is the
            honest outcome, not an error */
       }
-      return { url, w: img.naturalWidth, h: img.naturalHeight, detection };
+      // Phase 3: the sheet often declares its own scale ("1/4\" = 1'-0\"").
+      // With the paper size known, that makes manual calibration OPTIONAL.
+      let scaleSuggestion: { metresPerPx: number; evidence: string } | null = null;
+      try {
+        const lines = await extractSheetTextLines(doc);
+        const pageLines = lines
+          .filter((l) => l.pageNumber === Math.max(1, page))
+          .map((l) => l.text);
+        const note =
+          parseScaleNote(pageLines) ?? parseScaleNote(lines.map((l) => l.text));
+        if (note && paperInchesWide > 0 && img.naturalWidth > 0) {
+          const pxPerPaperInch = img.naturalWidth / paperInchesWide;
+          scaleSuggestion = {
+            metresPerPx: note.metresPerPaperInch / pxPerPaperInch,
+            evidence: note.evidence,
+          };
+        }
+      } catch {
+        /* no text layer: no suggestion — calibrate by hand as before */
+      }
+      return { url, w: img.naturalWidth, h: img.naturalHeight, detection, scaleSuggestion };
     },
   });
 
@@ -317,19 +345,42 @@ export function MapsTrace() {
         const det = planImage.data?.detection;
         if (!det || det.stories.length < 2) return null;
         const pageToStory = new Map(det.pages.map((pg) => [pg.pageNumber, pg]));
-        const byId: Record<string, { story: number; evidence: string }> = {};
+        const byId: Record<
+          string,
+          { story: number; evidence: string; confidence?: "probable" | "confirmed"; range?: [number, number] }
+        > = {};
         const unclear: Record<string, string> = {};
         const list = openingsRef.current ?? [];
         const byCode = new Map(list.map((o) => [normalizeMarkCode(o.opening_code), o]));
+        // Phase 3: floor-encoded marks ("W-201") are a second, independent
+        // signal — but only after they validate against the titles with zero
+        // contradictions (many sets number by type, not floor).
+        const prefixCheck = validateMarkPrefixes(
+          list.map((o) => ({
+            code: o.opening_code,
+            titleStory: pageToStory.get(o.page_number)?.range
+              ? undefined
+              : pageToStory.get(o.page_number)?.story,
+          })),
+        );
         for (const win of job.windows) {
           const o = byCode.get(normalizeMarkCode(String(win.id)));
           if (!o) continue;
           const pg = pageToStory.get(o.page_number);
           if (pg?.story) {
-            byId[String(win.id)] = {
+            const entry: (typeof byId)[string] = {
               story: pg.story,
               evidence: `sheet ${o.page_number}: ${pg.evidence}`,
+              confidence: "probable",
             };
+            if (pg.range) entry.range = pg.range;
+            const pre = markPrefixStory(o.opening_code);
+            if (prefixCheck.trusted && pre != null && pre === pg.story && !pg.range) {
+              // Two independent signals agree: that is what confirmed means.
+              entry.confidence = "confirmed";
+              entry.evidence += ` + mark prefix ${o.opening_code}`;
+            }
+            byId[String(win.id)] = entry;
           } else {
             const un = det.unresolved.find((u) => u.pageNumber === o.page_number);
             unclear[String(win.id)] = un
@@ -346,6 +397,7 @@ export function MapsTrace() {
         }
       },
       done: () => saveRef.current.mutate(),
+      scaleSuggestion: planImage.data?.scaleSuggestion ?? null,
     });
     return () => {
       viewRef.current?.destroy();

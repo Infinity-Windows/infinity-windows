@@ -175,7 +175,9 @@ export function fitviewModel(features: unknown): AuthoredModel | null {
  * both to the dashed form so live status can find its window and vice versa.
  */
 export function normalizeMarkCode(code: string): string {
-  const t = code.trim().toUpperCase();
+  // Typical-floor clones ("12@L3") resolve to their source mark: live
+  // status, deep links and dedup all flow through the one real opening.
+  const t = code.trim().toUpperCase().replace(/@L\d+$/, "");
   const m = /^(.+?)([A-Z])$/.exec(t);
   if (m && /\d$/.test(m[1])) {
     return `${m[1]}-${m[2].charCodeAt(0) - 64}`;
