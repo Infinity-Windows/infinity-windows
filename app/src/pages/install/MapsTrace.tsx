@@ -12,6 +12,8 @@ import {
 import { listProjects } from "../../lib/api";
 import { loadPdf } from "../../lib/install/pdf";
 import { renderPageJpeg } from "../../lib/install/renderSpecImages";
+import { extractSheetTextLines } from "../../lib/install/pdf";
+import { detectPageStories, type StoryDetection } from "../../lib/fitview/storyDetect";
 import { formatApiError } from "../../lib/install/errors";
 import { pushToast, toastSuccess } from "../../lib/toast";
 import {
@@ -88,7 +90,24 @@ export function MapsTrace() {
         img.onerror = () => rej(new Error("plan image failed to decode"));
         img.src = url;
       });
-      return { url, w: img.naturalWidth, h: img.naturalHeight };
+      // Phase 2: read every sheet's text and let the titles say which story
+      // each page shows ("MAIN FLR FLOOR PLAN", "UPPER FLOOR PLAN"...).
+      let detection: StoryDetection = { pages: [], stories: [], unresolved: [] };
+      try {
+        const lines = await extractSheetTextLines(doc);
+        const byPage = new Map<number, string[]>();
+        for (const l of lines) {
+          if (!byPage.has(l.pageNumber)) byPage.set(l.pageNumber, []);
+          byPage.get(l.pageNumber)!.push(l.text);
+        }
+        detection = detectPageStories(
+          [...byPage.entries()].map(([pageNumber, ls]) => ({ pageNumber, lines: ls })),
+        );
+      } catch {
+        /* a raster set with no text layer detects nothing — that is the
+           honest outcome, not an error */
+      }
+      return { url, w: img.naturalWidth, h: img.naturalHeight, detection };
     },
   });
 
@@ -289,6 +308,36 @@ export function MapsTrace() {
           if (o) seed[String(win.id)] = { x: o.pin_x! * w, y: o.pin_y! * h };
         }
         return Object.keys(seed).length ? seed : null;
+      },
+      // Phase 2: what the sheet titles said. Auto-place uses it to create
+      // the detected stories and land each dot on its own story; windows on
+      // pages the titles couldn't resolve stay in the tray — the Unclear
+      // queue, resolved by a human drag.
+      storyPlan: () => {
+        const det = planImage.data?.detection;
+        if (!det || det.stories.length < 2) return null;
+        const pageToStory = new Map(det.pages.map((pg) => [pg.pageNumber, pg]));
+        const byId: Record<string, { story: number; evidence: string }> = {};
+        const unclear: Record<string, string> = {};
+        const list = openingsRef.current ?? [];
+        const byCode = new Map(list.map((o) => [normalizeMarkCode(o.opening_code), o]));
+        for (const win of job.windows) {
+          const o = byCode.get(normalizeMarkCode(String(win.id)));
+          if (!o) continue;
+          const pg = pageToStory.get(o.page_number);
+          if (pg?.story) {
+            byId[String(win.id)] = {
+              story: pg.story,
+              evidence: `sheet ${o.page_number}: ${pg.evidence}`,
+            };
+          } else {
+            const un = det.unresolved.find((u) => u.pageNumber === o.page_number);
+            unclear[String(win.id)] = un
+              ? `${un.reason} (${un.evidence})`
+              : `sheet ${o.page_number} gives no story`;
+          }
+        }
+        return { stories: det.stories, byId, unclear };
       },
       pushOp: (op: { op: string; building?: AuthoredModel["building"]; window?: { id: string } }) => {
         if (op.op === "building" && op.building) staged.current.building = op.building;

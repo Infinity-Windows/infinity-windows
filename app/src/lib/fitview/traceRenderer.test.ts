@@ -202,6 +202,86 @@ describe("trace renderer", () => {
     view.destroy();
   });
 
+  it("phase 2: sheet titles drive auto-place across stories, honestly", () => {
+    const job = {
+      id: "p1", ref: "Job", addr: "",
+      building: {
+        width: 0, depth: 0, height: 3, rise: 0, footprints: [],
+        trace: {
+          cal: { ax: 0, ay: 0, bx: 100, by: 0, value: 10, unit: "m" },
+          polys: [[{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 400 }, { x: 0, y: 400 }]],
+          dots: {},
+        },
+      },
+      windows: [
+        { id: "G1", type: "Fixed", w: 1000, h: 1000, elev: "", x: 0, y: 0, lights: 1, open: "fixed", status: "tofit" },
+        { id: "U1", type: "Fixed", w: 1200, h: 1000, elev: "", x: 0, y: 0, lights: 1, open: "fixed", status: "tofit" },
+        { id: "X1", type: "Fixed", w: 900, h: 900, elev: "", x: 0, y: 0, lights: 1, open: "fixed", status: "tofit" },
+      ],
+    };
+    const ops: { op: string; window?: { id: string } & Record<string, unknown> }[] = [];
+    const { host, view } = mount(job, {
+      pushOp: (op: never) => ops.push(op),
+      dotSeed: { G1: { x: 200, y: 6 }, U1: { x: 200, y: 394 }, X1: { x: 6, y: 200 } },
+      storyPlan: {
+        stories: [
+          { n: 1, name: "Ground", evidence: "MAIN FLR FLOOR PLAN" },
+          { n: 2, name: "Level 2", evidence: "UPPER FLOOR PLAN" },
+        ],
+        byId: {
+          G1: { story: 1, evidence: "sheet 2: MAIN FLR FLOOR PLAN" },
+          U1: { story: 2, evidence: "sheet 3: UPPER FLOOR PLAN" },
+        },
+        unclear: { X1: "typical-floor range 2–6 (expanded in a later phase)" },
+      },
+    });
+
+    (host.querySelector("#autoBtn") as HTMLButtonElement).click();
+    // The detected story exists now (footprint copied below) and each dot
+    // landed on its own story; the unclear one stayed in the tray, flagged.
+    expect([...host.querySelectorAll("#storyRail button")].some(
+      (b) => b.textContent?.includes("Level 2"))).toBe(true);
+    const unclearChip = host.querySelector<HTMLElement>("#tray .chip-dot.unclear")!;
+    expect(unclearChip).toBeTruthy();
+    expect(unclearChip.title).toContain("typical-floor range");
+
+    (host.querySelector("#submitBtn") as HTMLButtonElement).click();
+    const up = (id: string) =>
+      ops.find((o) => o.op === "upsert" && o.window?.id === id)!.window!;
+    expect(up("G1")).toMatchObject({ story: 1, storyConfidence: "probable" });
+    expect(up("G1").storyEvidence).toContain("MAIN FLR");
+    expect(up("U1")).toMatchObject({ story: 2, storyConfidence: "probable" });
+    expect(up("X1")).toMatchObject({ elev: "", storyConfidence: "unclear" });
+    expect(up("X1").storyEvidence).toContain("typical-floor range");
+    view.destroy();
+  });
+
+  it("phase 2: a hand-dragged dot submits as the human's word", () => {
+    // Reuse the corner-test rig: real pointer drop is exercised elsewhere;
+    // here the drop handler path is what stamps byHand.
+    const job = {
+      id: "p1", ref: "Job", addr: "",
+      building: {
+        width: 0, depth: 0, height: 3, rise: 0, footprints: [],
+        trace: {
+          cal: { ax: 0, ay: 0, bx: 100, by: 0, value: 10, unit: "m" },
+          polys: [[{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 400 }, { x: 0, y: 400 }]],
+          dots: { H1: { x: 200, y: 6 } },
+        },
+      },
+      windows: [
+        { id: "H1", type: "Fixed", w: 1000, h: 1000, elev: "s0", x: 1, y: 0.9, lights: 1, open: "fixed", status: "tofit", story: 1 },
+      ],
+    };
+    const ops: { op: string; window?: { id: string } & Record<string, unknown> }[] = [];
+    const { host, view } = mount(job, { pushOp: (op: never) => ops.push(op) });
+    (host.querySelector("#submitBtn") as HTMLButtonElement).click();
+    const h1 = ops.find((o) => o.op === "upsert" && o.window?.id === "H1")!.window!;
+    expect(h1.storyConfidence).toBe("confirmed");
+    expect(h1.storyEvidence).toBe("placed by hand");
+    view.destroy();
+  });
+
   it("removing the top story frees its windows back to the tray", () => {
     const job = {
       id: "p1", ref: "Job", addr: "",

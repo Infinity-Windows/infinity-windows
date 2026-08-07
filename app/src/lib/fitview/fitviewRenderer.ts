@@ -1400,6 +1400,19 @@ export function mountFitView(host, job, shim) {
       '</div>' +
 
       '<dl class="specs">' +
+        // Phase 2: the story and WHY it's believed - the evidence line is
+        // what turns an auto-assignment into something a supervisor can
+        // check in one glance.
+        (typeof win.story === "number" && STORIES.length > 1 ?
+          '<div class="spec"><dt>Story</dt><dd>' +
+            esc((STORIES[win.story - 1] || {}).name || ("Level " + win.story)) +
+            (win.storyConfidence && win.storyConfidence !== "confirmed"
+              ? ' &middot; <span style="color:var(--ink-3)">' + esc(win.storyConfidence) + '</span>'
+              : '') +
+            (win.storyEvidence
+              ? '<br><span style="font-size:11px;color:var(--ink-3)">' + esc(win.storyEvidence) + '</span>'
+              : '') +
+          '</dd></div>' : '') +
         '<div class="spec"><dt>Elevation</dt><dd>' + esc(elevName) + ' &middot; ' + esc(win.floor) + '</dd></div>' +
         '<div class="spec"><dt>Room</dt><dd>' + esc(win.room) + '</dd></div>' +
         '<div class="spec"><dt>Opening</dt><dd>' + esc(win.hand) + '</dd></div>' +

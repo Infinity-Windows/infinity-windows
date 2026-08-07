@@ -181,3 +181,12 @@
   height: calc(100dvh - 130px);
   min-height: 480px;
 }
+
+/* Phase 2: the Unclear queue lives in the tray - a chip the sheet titles
+   could not place gets a warning ring and carries its reason in the tooltip. */
+.fittrace-app .chip-dot.unclear {
+  box-shadow: 0 0 0 2px var(--st-issue, #C93A32);
+}
+.fittrace-app .chip-dot.elsewhere {
+  opacity: 0.45;
+}

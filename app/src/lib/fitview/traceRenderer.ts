@@ -80,6 +80,11 @@ export function mountTracePlan(host, job, shim) {
     for (var i = 0; i < stories.length; i++) if (stories[i].dots[id]) return i;
     return -1;
   }
+  /* Phase 2: where each dot's story assignment CAME from. Auto-placed dots
+     carry the sheet-title evidence and submit as "probable"; a human drag
+     clears the meta and submits as "confirmed"; a window left in the tray
+     with a recorded reason submits as "unclear". */
+  var dotMeta = {};
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
@@ -96,7 +101,7 @@ export function mountTracePlan(host, job, shim) {
      (and is itself undoable). Snapshots are taken BEFORE the mutation. */
   var history = [];
   function snapshot() {
-    history.push(JSON.stringify({ stories: stories, cur: cur, cal: cal }));
+    history.push(JSON.stringify({ stories: stories, cur: cur, cal: cal, dotMeta: dotMeta }));
     if (history.length > 60) history.shift();
     $("undoAct").disabled = false;
   }
@@ -113,6 +118,7 @@ export function mountTracePlan(host, job, shim) {
     stories = s.stories;
     cur = Math.min(s.cur || 0, stories.length - 1);
     cal = s.cal;
+    dotMeta = s.dotMeta || {};
     bindStory();
     buildStoryRail();
     selV = null;
@@ -144,6 +150,14 @@ export function mountTracePlan(host, job, shim) {
     var t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2));
     var q = { x: a.x + t * dx, y: a.y + t * dy };
     return { x: q.x, y: q.y, t: t, d: Math.hypot(p.x - q.x, p.y - q.y) };
+  }
+
+  function snapToWallsOf(st, p) {
+    var keep = polys;
+    polys = st.polys;
+    var r = snapToWalls(p);
+    polys = keep;
+    return r;
   }
 
   function snapToWalls(p) {
@@ -331,11 +345,15 @@ export function mountTracePlan(host, job, shim) {
     JOB.windows.forEach(function (w) {
       var c = document.createElement("span");
       var at = dotStoryOf(w.id);
+      var meta = dotMeta[w.id] || {};
       c.className = "chip-dot " + (w.door ? "d" : "w") +
         (at >= 0 ? " placed" : "") +
-        (at >= 0 && at !== cur ? " elsewhere" : "");
+        (at >= 0 && at !== cur ? " elsewhere" : "") +
+        (at < 0 && meta.unclear ? " unclear" : "");
       if (at >= 0 && at !== cur) c.title = "Placed on " + stories[at].name +
         " - drag to move it to " + stories[cur].name;
+      else if (at < 0 && meta.unclear) c.title = "Story unclear: " + meta.unclear;
+      else if (at >= 0 && meta.evidence) c.title = meta.evidence;
       c.textContent = w.id;
       c.dataset.tray = w.id;
       tray.appendChild(c);
@@ -525,6 +543,7 @@ export function mountTracePlan(host, job, shim) {
         // wherever it was.
         stories.forEach(function (st) { delete st.dots[id]; });
         dots[id] = sn ? { x: sn.x, y: sn.y } : { x: w.x, y: w.y };
+        dotMeta[id] = { byHand: true };
         renderTray(); redraw();
       }
       ghost.remove(); ghost = null;
@@ -615,8 +634,14 @@ export function mountTracePlan(host, job, shim) {
      to their numbers and only need a fine drag, not 40 hand placements. */
   var dotSeed = null;
 
+  var storyPlan = null;
   function loadDotSeed() {
     dotSeed = (typeof SHIM.dotSeed === "function" ? SHIM.dotSeed(plan) : SHIM.dotSeed) || null;
+    storyPlan = (typeof SHIM.storyPlan === "function" ? SHIM.storyPlan() : SHIM.storyPlan) || null;
+    if (storyPlan) {
+      SHIM.toast("Sheet titles name " + storyPlan.stories.length +
+        " stories - Auto-place will use them");
+    }
     $("autoBtn").hidden = !dotSeed;
     $("autoTrace").hidden = !(SHIM.outlineSeed && SHIM.outlineSeed.length);
   }
@@ -665,13 +690,41 @@ export function mountTracePlan(host, job, shim) {
   $("autoBtn").addEventListener("click", function () {
     if (!dotSeed) return;
     snapshot();
-    var placed = 0, skipped = 0;
+    // Phase 2: the sheet titles named the stories - make sure they exist
+    // (never touching ones already traced) so each dot can land on its own.
+    if (storyPlan) {
+      storyPlan.stories.forEach(function (ds) {
+        while (stories.length < ds.n && stories.length < MAXSTORIES) {
+          var below = stories[stories.length - 1];
+          stories.push({
+            name: "Level " + (stories.length + 1), heightM: 3, partial: false,
+            polys: below.polys.filter(function (p2) { return p2.closed; }).map(function (p2) {
+              return { pts: p2.pts.map(function (q) { return { x: q.x, y: q.y }; }), closed: true };
+            }),
+            dots: {}
+          });
+        }
+        if (stories[ds.n - 1] && stories[ds.n - 1].name.indexOf("Level ") === 0) {
+          stories[ds.n - 1].name = ds.name;
+        }
+      });
+      buildStoryRail();
+    }
+    var placed = 0, skipped = 0, unclearN = 0;
     JOB.windows.forEach(function (w) {
       if (dotStoryOf(w.id) >= 0) { skipped++; return; }  // never move a dot you placed - any story
       var p = dotSeed[w.id];
       if (!p) return;
-      var sn = snapToWalls({ x: p.x, y: p.y });
-      dots[w.id] = sn ? { x: sn.x, y: sn.y } : { x: p.x, y: p.y };
+      var plan2 = storyPlan && storyPlan.byId[w.id];
+      if (storyPlan && !plan2) {
+        // The titles couldn't say - the tray is the Unclear queue.
+        if (storyPlan.unclear[w.id]) { dotMeta[w.id] = { unclear: storyPlan.unclear[w.id] }; unclearN++; }
+        return;
+      }
+      var target = plan2 ? stories[Math.min(plan2.story, stories.length) - 1] : stories[cur];
+      var sn = snapToWallsOf(target, { x: p.x, y: p.y });
+      target.dots[w.id] = sn ? { x: sn.x, y: sn.y } : { x: p.x, y: p.y };
+      dotMeta[w.id] = plan2 ? { evidence: plan2.evidence } : { byHand: true };
       placed++;
     });
     // Placed nothing = changed nothing; don't charge an undo step for it.
@@ -680,6 +733,7 @@ export function mountTracePlan(host, job, shim) {
     redraw();
     SHIM.toast(placed + " dots placed from the plan numbers" +
       (skipped ? " (" + skipped + " already yours, untouched)" : "") +
+      (unclearN ? " - " + unclearN + " unclear, left in the tray" : "") +
       " - drag any that need a nudge");
   });
 
@@ -866,6 +920,16 @@ export function mountTracePlan(host, job, shim) {
       if ((win.story || 1) !== si + 1 || typeof win.y !== "number") {
         copy.y = win.door || copy.door ? 0 : 0.9;
       }
+      // Phase 2: say where the assignment came from. A title is one signal,
+      // so auto stays "probable"; a human's drag is the human's word.
+      var meta2 = dotMeta[id] || {};
+      if (meta2.evidence && !meta2.byHand) {
+        copy.storyConfidence = "probable";
+        copy.storyEvidence = meta2.evidence;
+      } else {
+        copy.storyConfidence = "confirmed";
+        copy.storyEvidence = "placed by hand";
+      }
       moves.push(copy);
       });
     });
@@ -880,6 +944,11 @@ export function mountTracePlan(host, job, shim) {
       copy.x = 0;
       delete copy.wrap;
       delete copy.story;
+      var metaU = dotMeta[w.id] || {};
+      if (metaU.unclear) {
+        copy.storyConfidence = "unclear";
+        copy.storyEvidence = metaU.unclear;
+      }
       moves.push(copy);
       offModel++;
     });
