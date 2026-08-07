@@ -75,7 +75,15 @@ export function MapsInteractive({ project }: { project: Project }) {
       toast: pushToast,
       openOpening: (code: string) => {
         const match = openingsRef.current?.find((o) => o.opening_code === code);
-        if (match) navigate(`/projects/${projectId}/opening/${match.id}`);
+        if (!match) return;
+        // Navigate only after the click dispatch has fully finished. React 19
+        // re-renders discrete events synchronously, so navigating mid-click
+        // swaps this DOM for the opening sheet and the tail of the SAME click
+        // lands on its back-to-map link — bouncing the user straight past the
+        // page they asked for. Deferring one tick makes the tap stick.
+        setTimeout(() => {
+          navigate(`/projects/${projectId}/opening/${match.id}`);
+        }, 0);
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps

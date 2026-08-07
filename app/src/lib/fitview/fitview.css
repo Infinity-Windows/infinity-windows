@@ -1739,8 +1739,72 @@ a.tb-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
 }
 .fitview-app .app {
   max-width: none;
-  min-height: 480px;
-  height: calc(100dvh - 230px);
+  /* Fit under the hub header + tab row so the detail sheet — anchored to this
+     panel's bottom — stays on screen without scrolling the page. Scrolling
+     over the stage zooms the model, so a sheet below the fold is unreachable
+     on desktop; clamp instead of trusting one viewport arithmetic. */
+  height: clamp(440px, calc(100dvh - 360px), 760px);
+  /* The prototype's .app carries min-height: 100vh, which would beat the
+     height above — min-height wins that fight. Zero it out. */
+  min-height: 0;
   border-inline: none;
-  border-radius: 12px;
+  border-radius: var(--radius-lg, 12px);
+}
+
+/* ---- Infinity reskin: map the prototype's tokens onto the Horizon
+   sunset-coral system so the fit view reads as part of this app.
+   Two rules here:
+   1. Reference the HOST's token names (--primary, --foreground, --border…),
+      never a name the prototype also defines locally (--accent, --ink) —
+      that would be a var() self-reference cycle inside this scope.
+   2. No media query: Infinity is always dark, so these values pin the fit
+      view to the dark look in both browser color schemes, overriding the
+      prototype's light theme and its prefers-color-scheme block alike. ---- */
+.fitview-app {
+  /* Chrome: paper, ink, rules, accent. */
+  --paper: var(--background);
+  --paper-2: var(--surface);
+  --paper-3: var(--card-raised);
+  --ink: var(--foreground);
+  --ink-2: var(--text-secondary);
+  --ink-3: var(--faint);
+  --rule: var(--border);
+  --rule-soft: var(--secondary);
+  --accent: var(--primary);
+  --accent-ink: var(--primary-foreground);
+  --accent-wash: var(--accent-bg);
+  --r: var(--radius-sm);
+  --f-ui: var(--font-body);
+  /* The prototype set most of its chrome in mono for a drafting-table feel;
+     Infinity reserves mono for codes alone (travel/invite codes) and speaks
+     Inter everywhere else. Match the app: one voice, Inter. */
+  --f-mono: var(--font-body);
+
+  /* Status speaks the app's semantic colors: the same green that means
+     "done" everywhere else, the same red that means "problem". To-fit uses
+     the info blue that already fills pins on the flat plan map. */
+  --st-tofit: var(--info);
+  --st-installed: var(--ok);
+  --st-issue: var(--danger);
+
+  /* Scene: the prototype's cool slate re-tinted to the warm hue-35 world.
+     Walls step darker front → side → rear exactly as before so the 3D read
+     (light direction) is preserved; sky fades toward the app background so
+     the model sits IN the page instead of floating on a foreign color. */
+  --wall-front: oklch(0.31 0.018 35);
+  --wall-side: oklch(0.26 0.017 35);
+  --wall-rear: oklch(0.215 0.016 35);
+  --gable: oklch(0.26 0.017 35);
+  --roof-a: oklch(0.19 0.015 35);
+  --roof-b: oklch(0.16 0.014 35);
+  --ridge: oklch(0.13 0.012 35);
+  --fascia: oklch(0.38 0.02 35);
+  --cill: oklch(0.4 0.022 45);
+  --sky-a: oklch(0.09 0.012 35);
+  --sky-b: oklch(0.13 0.015 35);
+  --sky-c: oklch(0.12 0.02 120);
+  --shadow-gnd: rgba(0, 0, 0, 0.5);
+  --grass: oklch(0.3 0.06 140 / 0.4);
+  /* Glass stays cool on purpose — real glazing reads blue-green, and the
+     contrast against warm walls is what makes openings pop. */
 }
