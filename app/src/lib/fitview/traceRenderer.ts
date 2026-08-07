@@ -21,7 +21,7 @@
 
 import { elevationsOf } from "./fitviewRenderer";
 
-const TEMPLATE = "\n<div class=\"app loading\">\n\n  <header class=\"titleblock\">\n    <div class=\"tb-row\">\n      <div>\n        <div class=\"tb-ref\" id=\"jobRef\"></div>\n        <div class=\"tb-addr\" id=\"jobAddr\"></div>\n      </div>\n      \n    </div>\n\n    \n    <div class=\"tabs\">\n      <button class=\"tab\" aria-selected=\"true\">Trace plan</button>\n    </div>\n  </header>\n\n  <div class=\"boot\" id=\"boot\">\n    <b>Loading job</b>\n    <span id=\"bootMsg\">Fetching schedule</span>\n  </div>\n\n  <section class=\"view\">\n    <div class=\"toolrow\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Tool\">\n        <button data-mode=\"select\" aria-pressed=\"true\">Select</button>\n        <button data-mode=\"draw\" aria-pressed=\"false\">Draw</button>\n        <button data-mode=\"cal\" aria-pressed=\"false\">Calibrate</button>\n      </div>\n      <button class=\"mini\" id=\"closeShape\">Close shape</button>\n      <button class=\"mini\" id=\"undoPt\">Undo point</button>\n      <button class=\"mini\" id=\"undoAct\" disabled>Undo action</button>\n      <button class=\"mini\" id=\"delPt\" hidden>Delete point</button>\n      <button class=\"mini\" id=\"delBld\" hidden>Delete building</button>\n      <button class=\"mini\" id=\"removeDot\" hidden>Remove dot</button>\n      <button class=\"mini\" id=\"autoBtn\" hidden>Auto-place dots</button>\n      <span class=\"cal-lab\">Line =</span>\n      <input class=\"cal-in\" id=\"calM\" type=\"number\" step=\"0.1\" placeholder=\"ft\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Units\">\n        <button type=\"button\" data-unit=\"ft\" aria-pressed=\"true\">ft</button>\n        <button type=\"button\" data-unit=\"m\" aria-pressed=\"false\">m</button>\n      </div>\n      <button class=\"mini\" id=\"rescaleBtn\" hidden>Rescale</button>\n      <button class=\"mini hot\" id=\"submitBtn\" style=\"margin-left:auto\">Submit</button>\n    </div>\n\n    <div class=\"tray\" id=\"tray\"><span class=\"tray-lab\">Drag onto a wall:</span></div>\n\n    <div class=\"tstage\" id=\"tstage\">\n      <div class=\"world\" id=\"world\">\n        <img id=\"plan\" alt=\"\">\n        <svg id=\"ol\" xmlns=\"http://www.w3.org/2000/svg\"></svg>\n      </div>\n      <div class=\"noplan\" id=\"noplan\" hidden>\n        <span>No plan image on this job yet</span>\n        <label class=\"pbtn\">Load plan image\n          <input id=\"planFile\" type=\"file\" accept=\"image/*\" hidden>\n        </label>\n      </div>\n    </div>\n\n    <div class=\"hint\" style=\"padding:8px 16px;font-family:var(--f-mono);font-size:9px;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-3)\" id=\"hint\">\n      Draw: tap to add points, tap the first point to close &middot; Select: drag points and dots &middot; pinch or scroll to zoom\n    </div>\n  </section>\n\n  <div class=\"foot\">\n    Trace the outside walls &middot; each closed shape is one building &middot; dots snap to the nearest wall\n  </div>\n\n  <div class=\"toast\" id=\"toast\" role=\"status\" aria-live=\"polite\"></div>\n</div>\n";
+const TEMPLATE = "\n<div class=\"app loading\">\n\n  <header class=\"titleblock\">\n    <div class=\"tb-row\">\n      <div>\n        <div class=\"tb-ref\" id=\"jobRef\"></div>\n        <div class=\"tb-addr\" id=\"jobAddr\"></div>\n      </div>\n      \n    </div>\n\n    \n    <div class=\"tabs\">\n      <button class=\"tab\" aria-selected=\"true\">Trace plan</button>\n    </div>\n  </header>\n\n  <div class=\"boot\" id=\"boot\">\n    <b>Loading job</b>\n    <span id=\"bootMsg\">Fetching schedule</span>\n  </div>\n\n  <section class=\"view\">\n    <div class=\"toolrow\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Tool\">\n        <button data-mode=\"select\" aria-pressed=\"true\">Select</button>\n        <button data-mode=\"draw\" aria-pressed=\"false\">Draw</button>\n        <button data-mode=\"cal\" aria-pressed=\"false\">Calibrate</button>\n      </div>\n      <button class=\"mini\" id=\"closeShape\">Close shape</button>\n      <button class=\"mini\" id=\"undoPt\">Undo point</button>\n      <button class=\"mini\" id=\"undoAct\" disabled>Undo action</button>\n      <button class=\"mini\" id=\"delPt\" hidden>Delete point</button>\n      <button class=\"mini\" id=\"delBld\" hidden>Delete building</button>\n      <button class=\"mini\" id=\"removeDot\" hidden>Remove dot</button>\n      <button class=\"mini\" id=\"autoBtn\" hidden>Auto-place dots</button>\n      <button class=\"mini\" id=\"autoTrace\" hidden>Auto-trace building</button>\n      <span class=\"cal-lab\">Line =</span>\n      <input class=\"cal-in\" id=\"calM\" type=\"number\" step=\"0.1\" placeholder=\"ft\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Units\">\n        <button type=\"button\" data-unit=\"ft\" aria-pressed=\"true\">ft</button>\n        <button type=\"button\" data-unit=\"m\" aria-pressed=\"false\">m</button>\n      </div>\n      <button class=\"mini\" id=\"rescaleBtn\" hidden>Rescale</button>\n      <button class=\"mini hot\" id=\"submitBtn\" style=\"margin-left:auto\">Submit</button>\n    </div>\n\n    <div class=\"tray\" id=\"tray\"><span class=\"tray-lab\">Drag onto a wall:</span></div>\n\n    <div class=\"tstage\" id=\"tstage\">\n      <div class=\"world\" id=\"world\">\n        <img id=\"plan\" alt=\"\">\n        <svg id=\"ol\" xmlns=\"http://www.w3.org/2000/svg\"></svg>\n      </div>\n      <div class=\"noplan\" id=\"noplan\" hidden>\n        <span>No plan image on this job yet</span>\n        <label class=\"pbtn\">Load plan image\n          <input id=\"planFile\" type=\"file\" accept=\"image/*\" hidden>\n        </label>\n      </div>\n    </div>\n\n    <div class=\"hint\" style=\"padding:8px 16px;font-family:var(--f-mono);font-size:9px;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-3)\" id=\"hint\">\n      Draw: tap to add points, tap the first point to close &middot; Select: drag points and dots &middot; pinch or scroll to zoom\n    </div>\n  </section>\n\n  <div class=\"foot\">\n    Trace the outside walls &middot; each closed shape is one building &middot; dots snap to the nearest wall\n  </div>\n\n  <div class=\"toast\" id=\"toast\" role=\"status\" aria-live=\"polite\"></div>\n</div>\n";
 
 export function mountTracePlan(host, job, shim) {
   var SHIM = shim || {};
@@ -487,7 +487,49 @@ export function mountTracePlan(host, job, shim) {
   function loadDotSeed() {
     dotSeed = (typeof SHIM.dotSeed === "function" ? SHIM.dotSeed(plan) : SHIM.dotSeed) || null;
     $("autoBtn").hidden = !dotSeed;
+    $("autoTrace").hidden = !(SHIM.outlineSeed && SHIM.outlineSeed.length);
   }
+
+  // Auto-trace: the app already extracts a building outline from the plan
+  // PDF; that polygon lands here as a starting trace — closed, editable,
+  // undoable. It replaces nothing you drew: only ADDS when no shape overlaps
+  // it, so tapping it twice doesn't stack copies.
+  $("autoTrace").addEventListener("click", function () {
+    var seed = SHIM.outlineSeed;
+    if (!seed || !seed.length) return;
+    snapshot();
+    var added = 0;
+    seed.forEach(function (pts) {
+      if (!pts || pts.length < 3) return;
+      var cx2 = 0, cy2 = 0;
+      pts.forEach(function (p) { cx2 += p.x; cy2 += p.y; });
+      cx2 /= pts.length; cy2 /= pts.length;
+      // "Same building" is judged against the seed's own size, which works
+      // whether or not a plan image ever loaded.
+      var sxs = pts.map(function (p) { return p.x; });
+      var sys = pts.map(function (p) { return p.y; });
+      var span2 = Math.hypot(
+        Math.max.apply(null, sxs) - Math.min.apply(null, sxs),
+        Math.max.apply(null, sys) - Math.min.apply(null, sys));
+      var dup = polys.some(function (poly) {
+        if (!poly.pts.length) return false;
+        var px2 = 0, py2 = 0;
+        poly.pts.forEach(function (p) { px2 += p.x; py2 += p.y; });
+        return Math.hypot(px2 / poly.pts.length - cx2, py2 / poly.pts.length - cy2) <
+          span2 * 0.1;
+      });
+      if (dup) return;
+      polys.push({
+        pts: pts.map(function (p) { return { x: p.x, y: p.y }; }),
+        closed: true
+      });
+      added++;
+    });
+    if (!added) { dropSnapshot(); SHIM.toast("The traced shape is already here"); return; }
+    redraw();
+    SHIM.toast(added + (added === 1 ? " building" : " buildings") +
+      " traced from the plan - drag any point that needs a nudge, then calibrate");
+  });
 
   $("autoBtn").addEventListener("click", function () {
     if (!dotSeed) return;
@@ -594,23 +636,65 @@ export function mountTracePlan(host, job, shim) {
       var t = best.t * best.seg.len;
       var copy = JSON.parse(JSON.stringify(win));
       copy.elev = best.seg.key;
-      if (win.legs && win.legs.length === 2) {
-        // Corner unit: it wraps whichever end of this wall the dot is nearer,
-        // and the longer leg goes on the longer of the two walls at that
-        // corner - the plan drawings are all outside views, as is the model.
+
+      // Corner units: authored legs are the surveyor's word and win outright.
+      // Without them, the SPEC still knows ("90-degree corner", "Corner
+      // meet", "Butt-Jointed Corner" in the style line), so a corner unit
+      // dropped on the wall it mostly lives on gets its legs DERIVED: the
+      // stretch from the unit's span to the nearest wall end is the main leg,
+      // the rest turns the corner - snapped to a real pane boundary when the
+      // panel widths are known. No more parking the dot exactly on the
+      // vertex to make a corner a corner.
+      var legs2 = (win.legs && win.legs.length === 2) ? win.legs.slice() : null;
+      var derived = false;
+      if (!legs2 && /\bcorner\b/i.test(String(win.type || ""))) {
+        var wM = win.w / 1000;
+        var distEnd = best.seg.len - t, distStart = t;
+        var toV = Math.max(0, Math.min(distEnd, distStart));
+        if (toV < wM) {                       // it can actually reach a corner
+          var mainMm = Math.min(
+            Math.max(wM / 2 + toV, 0.15) * 1000, win.w - 150);
+          if (win.panes && win.panes.length > 1) {
+            var acc = 0, bestSplit = null;
+            for (var pi3 = 0; pi3 < win.panes.length - 1; pi3++) {
+              acc += win.panes[pi3];
+              if (!bestSplit || Math.abs(acc - mainMm) < Math.abs(bestSplit.mm - mainMm)) {
+                bestSplit = { mm: acc, i: pi3 + 1 };
+              }
+            }
+            if (bestSplit) {
+              mainMm = bestSplit.mm;
+              copy.lightsSplit = [bestSplit.i, win.panes.length - bestSplit.i];
+            }
+          }
+          legs2 = [Math.round(mainMm), Math.round(win.w - mainMm)];
+          derived = true;
+        }
+      }
+
+      if (legs2) {
+        // It wraps whichever end of this wall the dot is nearer.
         var wrapEnd = t >= best.seg.len / 2;
         copy.wrap = wrapEnd ? "end" : "start";
-        var vx = wrapEnd ? best.seg.x2 : best.seg.x1;
-        var vz = wrapEnd ? best.seg.z2 : best.seg.z1;
-        var adj2 = null;
-        segs.forEach(function (s3) {
-          if (s3 === best.seg || s3.poly !== best.seg.poly) return;
-          var sx = wrapEnd ? s3.x1 : s3.x2, sz = wrapEnd ? s3.z1 : s3.z2;
-          if (Math.abs(sx - vx) < 0.001 && Math.abs(sz - vz) < 0.001) adj2 = s3;
-        });
-        var lg = Math.max(win.legs[0], win.legs[1]);
-        var sm = Math.min(win.legs[0], win.legs[1]);
-        copy.legs = (!adj2 || best.seg.len >= adj2.len) ? [lg, sm] : [sm, lg];
+        if (derived) {
+          // Derived legs came from THIS wall's geometry; keep them as built.
+          copy.legs = legs2;
+        } else {
+          // Authored legs follow the surveyor's rule: the longer leg goes on
+          // the longer of the two walls at that corner - the plan drawings
+          // are all outside views, as is the model.
+          var vx = wrapEnd ? best.seg.x2 : best.seg.x1;
+          var vz = wrapEnd ? best.seg.z2 : best.seg.z1;
+          var adj2 = null;
+          segs.forEach(function (s3) {
+            if (s3 === best.seg || s3.poly !== best.seg.poly) return;
+            var sx = wrapEnd ? s3.x1 : s3.x2, sz = wrapEnd ? s3.z1 : s3.z2;
+            if (Math.abs(sx - vx) < 0.001 && Math.abs(sz - vz) < 0.001) adj2 = s3;
+          });
+          var lg = Math.max(legs2[0], legs2[1]);
+          var sm = Math.min(legs2[0], legs2[1]);
+          copy.legs = (!adj2 || best.seg.len >= adj2.len) ? [lg, sm] : [sm, lg];
+        }
         copy.x = wrapEnd
           ? Math.round(Math.max(0, best.seg.len - copy.legs[0] / 1000) * 100) / 100
           : 0;

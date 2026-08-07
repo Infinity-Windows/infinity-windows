@@ -23,6 +23,7 @@ import {
   type AuthoredModel,
 } from "../../lib/fitview/adapter";
 import { mountTracePlan } from "../../lib/fitview/traceRenderer";
+import { registerTrace, type TraceLike } from "../../lib/fitview/traceRegistration";
 import "../../lib/fitview/fitview.css";
 import "../../lib/fitview/trace.css";
 
@@ -70,7 +71,8 @@ export function MapsTrace() {
   }, [plansets.data]);
 
   // The plan sheet as an image, rendered from the same planset the pins
-  // live on. Big and async, so it gets its own query with a stable key.
+  // live on. Dimensions ride along: pin coords are normalized, and both the
+  // dot seed and trace re-registration need them in image pixels.
   const planImage = useQuery({
     queryKey: ["tracePlanImage", plansPlanset?.id, outline?.page_number ?? 1],
     enabled: !!plansPlanset,
@@ -79,7 +81,14 @@ export function MapsTrace() {
       const bytes = await downloadPlanset(plansPlanset!);
       const doc = await loadPdf(bytes);
       const page = Math.min(outline?.page_number ?? 1, doc.numPages);
-      return renderPageJpeg(doc, Math.max(1, page));
+      const url = await renderPageJpeg(doc, Math.max(1, page));
+      const img = new Image();
+      await new Promise<void>((res, rej) => {
+        img.onload = () => res();
+        img.onerror = () => rej(new Error("plan image failed to decode"));
+        img.src = url;
+      });
+      return { url, w: img.naturalWidth, h: img.naturalHeight };
     },
   });
 
@@ -93,7 +102,39 @@ export function MapsTrace() {
       projectAddress: project.address,
     };
     const authored = outline ? fitviewModel(outline.features) : null;
-    if (authored) return buildAuthoredJob(authored, meta, openings.data);
+    if (authored) {
+      const built = buildAuthoredJob(authored, meta, openings.data);
+      // A stored trace was drawn over SOME image of this sheet — not
+      // necessarily the one we just rendered. Its dots and our extracted
+      // pins name the same marks, so when both exist, a best-fit similarity
+      // moves the whole trace (polys, dots, calibration) onto our render.
+      // A failed fit keeps the trace as stored; hands beat a wrong guess.
+      const img = planImage.data;
+      const trace = (built.building as { trace?: TraceLike }).trace;
+      if (img && trace?.dots) {
+        const targets: Record<string, { x: number; y: number }> = {};
+        for (const o of openings.data) {
+          if (o.pin_x == null || o.pin_y == null) continue;
+          targets[normalizeMarkCode(o.opening_code)] = {
+            x: o.pin_x * img.w,
+            y: o.pin_y * img.h,
+          };
+        }
+        const keyed: Record<string, { x: number; y: number }> = {};
+        for (const id of Object.keys(trace.dots)) {
+          const t = targets[normalizeMarkCode(id)];
+          if (t) keyed[id] = t;
+        }
+        const registered = registerTrace(trace, keyed, img.w);
+        if (registered) {
+          (built.building as { trace?: TraceLike }).trace = {
+            ...trace,
+            ...registered,
+          };
+        }
+      }
+      return built;
+    }
     if (!outline) {
       // No outline yet: an empty building plus the unit list — tracing from
       // scratch is exactly what this screen is for.
@@ -117,7 +158,7 @@ export function MapsTrace() {
       specs: specs.data ?? [],
       ...fitviewCalibration(outline.features),
     });
-  }, [project, outline, openings.data, specs.data, projectId]);
+  }, [project, outline, openings.data, specs.data, projectId, planImage.data]);
 
   // Staged writes from the tracer, applied only on Submit.
   const staged = useRef<{ building: AuthoredModel["building"] | null; upserts: Map<string, unknown> }>({
@@ -221,7 +262,16 @@ export function MapsTrace() {
     if (!host || !job || viewRef.current || planImage.isLoading) return;
     viewRef.current = mountTracePlan(host, job, {
       toast: pushToast,
-      planUrl: planImage.data ?? null,
+      planUrl: planImage.data?.url ?? null,
+      // Auto-trace: the saved outline (auto-extracted from this same page)
+      // as a starting polygon, converted to image pixels. Editable, undoable.
+      outlineSeed:
+        planImage.data && outline && outline.points.length >= 3
+          ? [outline.points.map((pt) => ({
+              x: pt.x * planImage.data!.w,
+              y: pt.y * planImage.data!.h,
+            }))]
+          : null,
       // Seed dots from the extracted pins, scaled to the rendered image.
       dotSeed: (planImg: HTMLImageElement) => {
         const list = openingsRef.current ?? [];
