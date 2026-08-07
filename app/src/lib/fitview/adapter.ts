@@ -128,6 +128,28 @@ export interface AdapterInput {
   specs: ProjectMarkSpec[];
   /** Override the assumed footprint long side, metres. */
   longSideM?: number;
+  /** Override the single-storey wall height, metres. */
+  wallHeightM?: number;
+}
+
+/**
+ * Real-world calibration a seeded/traced outline can carry in its `features`
+ * jsonb under a `fitview` key. parseOutlineFeatures ignores unknown keys, so
+ * this rides alongside the CAD-lite dividers without disturbing them.
+ */
+export function fitviewCalibration(
+  features: unknown,
+): { longSideM?: number; wallHeightM?: number } {
+  if (!features || typeof features !== "object") return {};
+  const f = (features as { fitview?: unknown }).fitview;
+  if (!f || typeof f !== "object") return {};
+  const o = f as { longSideM?: unknown; wallHeightM?: unknown };
+  const out: { longSideM?: number; wallHeightM?: number } = {};
+  if (typeof o.longSideM === "number" && o.longSideM > 0) out.longSideM = o.longSideM;
+  if (typeof o.wallHeightM === "number" && o.wallHeightM > 0) {
+    out.wallHeightM = o.wallHeightM;
+  }
+  return out;
 }
 
 /**
@@ -150,6 +172,7 @@ export function buildFitViewJob(input: AdapterInput): FitViewJob | null {
   if (span <= 0) return null;
 
   const scale = (input.longSideM ?? DEFAULT_LONG_SIDE_M) / span;
+  const wallH = input.wallHeightM ?? DEFAULT_WALL_HEIGHT_M;
   const footprint = phys.map((p) => ({ x: p.x * scale, z: p.z * scale }));
 
   // Wall lengths in metres, matching elevationsOf()'s edge enumeration.
@@ -190,7 +213,7 @@ export function buildFitViewJob(input: AdapterInput): FitViewJob | null {
       ? 0
       : Math.max(
           0.15,
-          Math.min(DEFAULT_SILL_M, DEFAULT_WALL_HEIGHT_M - hM - 0.2),
+          Math.min(DEFAULT_SILL_M, wallH - hM - 0.2),
         );
 
     windows.push({
@@ -222,7 +245,7 @@ export function buildFitViewJob(input: AdapterInput): FitViewJob | null {
     building: {
       width: spanX * scale,
       depth: spanZ * scale,
-      height: DEFAULT_WALL_HEIGHT_M,
+      height: wallH,
       rise: 0,
       footprints: [footprint],
     },

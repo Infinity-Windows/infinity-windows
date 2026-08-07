@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { listMarkSpecs, listOpenings, listPlanOutlines } from "../../lib/install/api";
 import type { Project } from "../../lib/types";
 import { pushToast } from "../../lib/toast";
-import { buildFitViewJob } from "../../lib/fitview/adapter";
+import { buildFitViewJob, fitviewCalibration } from "../../lib/fitview/adapter";
 import { mountFitView } from "../../lib/fitview/fitviewRenderer";
 import "../../lib/fitview/fitview.css";
 
@@ -49,6 +49,9 @@ export function MapsInteractive({ project }: { project: Project }) {
       },
       openings: openings.data,
       specs: specs.data ?? [],
+      // A seeded/surveyed outline can carry real-world calibration; without
+      // it the adapter's documented defaults apply.
+      ...fitviewCalibration(outline.features),
     });
   }, [outline, openings.data, specs.data, projectId, project.name, project.address]);
 

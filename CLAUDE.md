@@ -91,6 +91,33 @@ guards — a null role during load is "not known yet", not "no permissions".
 **`tsconfig` has `noUnusedLocals`.** Removing the last use of an import breaks the
 build. Let `tsc` tell you which ones to drop.
 
+## Maps Interactive (the 3D fit view)
+
+The "Maps Interactive" project tab renders a tappable CSS-3D building — no
+WebGL, no three.js — ported from a standalone prototype called window-viewer.
+
+- `app/src/lib/fitview/fitviewRenderer.ts` is **vendored vanilla JS**
+  (@ts-nocheck, excluded from oxlint). It is a mechanical port of the
+  prototype's `index.html`; keep it diffable — fix bugs, don't React-ify.
+  The host injects everything through a shim (toast, openOpening,
+  onStatusChange, photos); callbacks it doesn't get render as absent UI,
+  so with no shim the detail sheet is read-only.
+- `adapter.ts` is the real integration: plan outline + opening pins
+  (via `nearestPointOnOutline`) + mark-spec inches → the renderer's job JSON
+  in metres. Scale and wall height default (30 m long side / 3.6 m) unless the
+  outline's `features.fitview` carries `{ longSideM, wallHeightM }` —
+  `scripts/seed-black22-fitview.mjs` writes that calibration for BLACK22 from
+  the prototype's hand-traced model (safe by default: plan → --dry-run → --apply).
+  NOTE: re-saving an outline from the Plan Model editor replaces `features`
+  wholesale and drops the calibration; rerun the seed script.
+- Hardware vocabulary (OXXO panels, hinge sides, corner units) and how to read
+  Strata paperwork: [`docs/window-vendor-conventions.md`](docs/window-vendor-conventions.md).
+  The adapter's `inferHardware` must agree with it; change them together.
+- `fitview.css` is the prototype's CSS scoped under `.fitview-app` by native
+  nesting; embed sizing overrides live in a marked block at the end. The
+  original prototype lives outside this repo (a zip from Ben) — the fixture
+  `fixtures/win-2423.json` is the piece worth keeping and is under test.
+
 ## Layout
 
 - `app/src/pages/` — one file per screen; `install/` holds the job-site flows

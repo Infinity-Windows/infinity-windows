@@ -142,6 +142,23 @@ describe("buildFitViewJob geometry", () => {
   });
 });
 
+describe("calibration via outline features", () => {
+  it("reads a fitview key and ignores everything else", async () => {
+    const { fitviewCalibration } = await import("./adapter");
+    expect(fitviewCalibration(null)).toEqual({});
+    expect(fitviewCalibration({ dividers: [] })).toEqual({});
+    expect(
+      fitviewCalibration({ dividers: [], fitview: { longSideM: 48.1, wallHeightM: 4.7 } }),
+    ).toEqual({ longSideM: 48.1, wallHeightM: 4.7 });
+    expect(fitviewCalibration({ fitview: { longSideM: -3 } })).toEqual({});
+  });
+
+  it("wall height override flows into the building and sill clamp", () => {
+    const job = buildFitViewJob(input({ wallHeightM: 4.7 }))!;
+    expect(job.building.height).toBeCloseTo(4.7, 5);
+  });
+});
+
 describe("hardware inference", () => {
   it("reads exact panel counts from operation letters", () => {
     expect(inferHardware("XO", "sliding door")).toEqual({ lights: 2, open: "bipart" });
