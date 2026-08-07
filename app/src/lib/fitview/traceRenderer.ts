@@ -21,7 +21,7 @@
 
 import { elevationsOf } from "./fitviewRenderer";
 
-const TEMPLATE = "\n<div class=\"app loading\">\n\n  <header class=\"titleblock\">\n    <div class=\"tb-row\">\n      <div>\n        <div class=\"tb-ref\" id=\"jobRef\"></div>\n        <div class=\"tb-addr\" id=\"jobAddr\"></div>\n      </div>\n      \n    </div>\n\n    \n    <div class=\"tabs\">\n      <button class=\"tab\" aria-selected=\"true\">Trace plan</button>\n    </div>\n  </header>\n\n  <div class=\"boot\" id=\"boot\">\n    <b>Loading job</b>\n    <span id=\"bootMsg\">Fetching schedule</span>\n  </div>\n\n  <section class=\"view\">\n    <div class=\"toolrow\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Tool\">\n        <button data-mode=\"select\" aria-pressed=\"true\">Select</button>\n        <button data-mode=\"draw\" aria-pressed=\"false\">Draw</button>\n        <button data-mode=\"cal\" aria-pressed=\"false\">Calibrate</button>\n        <button data-mode=\"erase\" aria-pressed=\"false\">Box erase</button>\n      </div>\n      <button class=\"mini\" id=\"closeShape\">Close shape</button>\n      <button class=\"mini\" id=\"undoPt\">Undo point</button>\n      <button class=\"mini\" id=\"undoAct\" disabled>Undo action</button>\n      <button class=\"mini\" id=\"delPt\" hidden>Delete point</button>\n      <button class=\"mini\" id=\"delBld\" hidden>Delete building</button>\n      <button class=\"mini\" id=\"removeDot\" hidden>Remove dot</button>\n      <button class=\"mini\" id=\"autoBtn\" hidden>Auto-place dots</button>\n      <button class=\"mini\" id=\"autoTrace\" hidden>Auto-trace building</button>\n      <span class=\"cal-lab\">Line =</span>\n      <input class=\"cal-in\" id=\"calM\" type=\"number\" step=\"0.1\" placeholder=\"ft\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Units\">\n        <button type=\"button\" data-unit=\"ft\" aria-pressed=\"true\">ft</button>\n        <button type=\"button\" data-unit=\"m\" aria-pressed=\"false\">m</button>\n      </div>\n      <button class=\"mini\" id=\"rescaleBtn\" hidden>Rescale</button>\n      <button class=\"mini hot\" id=\"submitBtn\" style=\"margin-left:auto\">Submit</button>\n    </div>\n\n    <div class=\"strip\" id=\"storyRail\"></div>\n\n    <div class=\"tray\" id=\"tray\"><span class=\"tray-lab\">Drag onto a wall:</span></div>\n\n    <div class=\"tstage\" id=\"tstage\">\n      <div class=\"world\" id=\"world\">\n        <img id=\"plan\" alt=\"\">\n        <svg id=\"ol\" xmlns=\"http://www.w3.org/2000/svg\"></svg>\n      </div>\n      <div class=\"noplan\" id=\"noplan\" hidden>\n        <span>No plan image on this job yet</span>\n        <label class=\"pbtn\">Load plan image\n          <input id=\"planFile\" type=\"file\" accept=\"image/*\" hidden>\n        </label>\n      </div>\n    </div>\n\n    <div class=\"hint\" style=\"padding:8px 16px;font-family:var(--f-mono);font-size:9px;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-3)\" id=\"hint\">\n      Draw: tap to add points, tap the first point to close &middot; Select: drag points and dots &middot; pinch or scroll to zoom\n    </div>\n  </section>\n\n  <div class=\"foot\">\n    Trace the outside walls &middot; each closed shape is one building &middot; dots snap to the nearest wall\n  </div>\n\n  <div class=\"toast\" id=\"toast\" role=\"status\" aria-live=\"polite\"></div>\n</div>\n";
+const TEMPLATE = "\n<div class=\"app loading\">\n\n  <header class=\"titleblock\">\n    <div class=\"tb-row\">\n      <div>\n        <div class=\"tb-ref\" id=\"jobRef\"></div>\n        <div class=\"tb-addr\" id=\"jobAddr\"></div>\n      </div>\n      \n    </div>\n\n    \n    <div class=\"tabs\">\n      <button class=\"tab\" aria-selected=\"true\">Trace plan</button>\n    </div>\n  </header>\n\n  <div class=\"boot\" id=\"boot\">\n    <b>Loading job</b>\n    <span id=\"bootMsg\">Fetching schedule</span>\n  </div>\n\n  <section class=\"view\">\n    <div class=\"toolrow\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Tool\">\n        <button data-mode=\"select\" aria-pressed=\"true\">Select</button>\n        <button data-mode=\"draw\" aria-pressed=\"false\">Draw</button>\n        <button data-mode=\"cal\" aria-pressed=\"false\">Calibrate</button>\n      </div>\n      <button class=\"mini\" id=\"closeShape\">Close shape</button>\n      <button class=\"mini\" id=\"undoPt\">Undo point</button>\n      <button class=\"mini\" id=\"undoAct\" disabled>Undo action</button>\n      <button class=\"mini\" id=\"boxErase\" aria-pressed=\"false\">Delete box</button>\n      <button class=\"mini\" id=\"delPt\" hidden>Delete point</button>\n      <button class=\"mini\" id=\"delBld\" hidden>Delete building</button>\n      <button class=\"mini\" id=\"removeDot\" hidden>Remove dot</button>\n      <button class=\"mini\" id=\"autoBtn\" hidden>Auto-place dots</button>\n      <button class=\"mini\" id=\"autoTrace\" hidden>Auto-trace building</button>\n      <span class=\"cal-lab\">Line =</span>\n      <input class=\"cal-in\" id=\"calM\" type=\"number\" step=\"0.1\" placeholder=\"ft\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Units\">\n        <button type=\"button\" data-unit=\"ft\" aria-pressed=\"true\">ft</button>\n        <button type=\"button\" data-unit=\"m\" aria-pressed=\"false\">m</button>\n      </div>\n      <button class=\"mini\" id=\"rescaleBtn\" hidden>Rescale</button>\n      <button class=\"mini hot\" id=\"submitBtn\" style=\"margin-left:auto\">Submit</button>\n    </div>\n\n    <div class=\"strip\" id=\"storyRail\"></div>\n\n    <div class=\"tray\" id=\"tray\"><span class=\"tray-lab\">Drag onto a wall:</span></div>\n\n    <div class=\"tstage\" id=\"tstage\">\n      <div class=\"world\" id=\"world\">\n        <img id=\"plan\" alt=\"\">\n        <svg id=\"ol\" xmlns=\"http://www.w3.org/2000/svg\"></svg>\n      </div>\n      <div class=\"noplan\" id=\"noplan\" hidden>\n        <span>No plan image on this job yet</span>\n        <label class=\"pbtn\">Load plan image\n          <input id=\"planFile\" type=\"file\" accept=\"image/*\" hidden>\n        </label>\n      </div>\n    </div>\n\n    <div class=\"hint\" style=\"padding:8px 16px;font-family:var(--f-mono);font-size:9px;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-3)\" id=\"hint\">\n      Draw: tap to add points, tap the first point to close &middot; Select: drag points and dots &middot; pinch or scroll to zoom\n    </div>\n  </section>\n\n  <div class=\"foot\">\n    Trace the outside walls &middot; each closed shape is one building &middot; dots snap to the nearest wall\n  </div>\n\n  <div class=\"toast\" id=\"toast\" role=\"status\" aria-live=\"polite\"></div>\n</div>\n";
 
 export function mountTracePlan(host, job, shim) {
   var SHIM = shim || {};
@@ -391,8 +391,8 @@ export function mountTracePlan(host, job, shim) {
     var t = e.target;
     var g = { x: e.clientX, y: e.clientY, moved: 0, multi: false,
               vx: view.x, vy: view.y };
-    if (mode === "erase") {
-      // Box erase: the drag IS the box - no panning, no handle-grabbing.
+    if (eraseArm) {
+      // Armed: this one drag IS the box - no panning, no handle-grabbing.
       g.type = "erase";
       g.start = toWorld(e.clientX, e.clientY);
       gesture = g;
@@ -481,7 +481,7 @@ export function mountTracePlan(host, job, shim) {
       if (g.type === "erase") {
         var box = marquee;
         marquee = null;
-        if (!box || g.moved < 5) { redraw(); return; }   // a tap: nothing boxed
+        if (!box || g.moved < 5) { redraw(); return; }   // a stray tap keeps it armed
         var x1 = Math.min(box.a.x, box.b.x), x2 = Math.max(box.a.x, box.b.x);
         var y1 = Math.min(box.a.y, box.b.y), y2 = Math.max(box.a.y, box.b.y);
         snapshot();
@@ -504,6 +504,7 @@ export function mountTracePlan(host, job, shim) {
         });
         if (!removedPts) {
           dropSnapshot();
+          setEraseArm(false);
           SHIM.toast("No points inside the box");
           redraw();
           return;
@@ -512,6 +513,7 @@ export function mountTracePlan(host, job, shim) {
         kept.forEach(function (k2) { polys.push(k2); });
         selV = null;
         $("delPt").hidden = true; $("delBld").hidden = true;
+        setEraseArm(false);
         SHIM.toast(removedPts + (removedPts === 1 ? " point" : " points") + " erased" +
           (removedPolys ? " - " + removedPolys + " building(s) gone with them" : "") +
           " - Undo action brings it all back");
@@ -622,13 +624,28 @@ export function mountTracePlan(host, job, shim) {
       Array.prototype.forEach.call(document.querySelectorAll("[data-mode]"), function (x) {
         x.setAttribute("aria-pressed", String(x === b));
       });
-      $("hint").textContent =
-        mode === "draw" ? "Tap to add wall points - tap the first point (or Close shape) to finish a building, then keep tapping to start the next" :
-        mode === "cal" ? "Tap two points a known distance apart on the plan, then type the real distance in metres" :
-        mode === "erase" ? "Drag a box around outline points to erase them all at once - Undo action brings them back" :
-        "Drag points and dots to adjust - tap one to select it, then Delete or Remove in the toolbar";
+      updateHint();
     });
   });
+
+  function updateHint() {
+    $("hint").textContent =
+      eraseArm ? "Drag ONE box over outline points to erase them - tap Delete box again to cancel" :
+      mode === "draw" ? "Tap to add wall points - tap the first point (or Close shape) to finish a building, then keep tapping to start the next" :
+      mode === "cal" ? "Tap two points a known distance apart on the plan, then type the real distance in metres" :
+      "Drag points and dots to adjust - tap one to select it, then Delete or Remove in the toolbar";
+  }
+
+  /* Delete box is armed, not modal: press it, draw ONE box, the points go,
+     and the very next drag pans the plan again. Sometimes-on by design -
+     a sticky erase mode made panning impossible. */
+  var eraseArm = false;
+  function setEraseArm(on) {
+    eraseArm = on;
+    $("boxErase").setAttribute("aria-pressed", String(on));
+    updateHint();
+  }
+  $("boxErase").addEventListener("click", function () { setEraseArm(!eraseArm); });
 
   $("closeShape").addEventListener("click", function () {
     var open = polys.filter(function (p) { return !p.closed; })[0];

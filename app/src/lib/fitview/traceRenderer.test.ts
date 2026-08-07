@@ -408,8 +408,10 @@ describe("trace renderer", () => {
     const pts = () => host.querySelectorAll("#ol [data-v]").length;
     expect(pts()).toBe(6);
 
-    // Switch to Box erase, drag a box over the two stray points.
-    (host.querySelector('[data-mode="erase"]') as HTMLButtonElement).click();
+    // Arm Delete box, drag ONE box over the two stray points.
+    const arm = host.querySelector("#boxErase") as HTMLButtonElement;
+    arm.click();
+    expect(arm.getAttribute("aria-pressed")).toBe("true");
     const st = host.querySelector("#tstage")!;
     const mk = (type: string, x: number, y: number) =>
       st.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: x, clientY: y, pointerId: 5, isPrimary: true }));
@@ -418,6 +420,12 @@ describe("trace renderer", () => {
     mk("pointermove", 260, 40);
     mk("pointerup", 260, 40);
     expect(pts()).toBe(4);   // the two strays gone, the shape still closed
+    // One shot: the button disarmed itself, the next drag pans again.
+    expect(arm.getAttribute("aria-pressed")).toBe("false");
+    mk("pointerdown", 10, 10);
+    mk("pointermove", 120, 120);
+    mk("pointerup", 120, 120);
+    expect(pts()).toBe(4);   // that drag was a pan, not another box
 
     (host.querySelector("#undoAct") as HTMLButtonElement).click();
     expect(pts()).toBe(6);
@@ -438,7 +446,7 @@ describe("trace renderer", () => {
       windows: [],
     };
     const { host, view } = mount(job);
-    (host.querySelector('[data-mode="erase"]') as HTMLButtonElement).click();
+    (host.querySelector("#boxErase") as HTMLButtonElement).click();
     const st = host.querySelector("#tstage")!;
     const mk = (type: string, x: number, y: number) =>
       st.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: x, clientY: y, pointerId: 6, isPrimary: true }));
