@@ -387,6 +387,69 @@ describe("trace renderer", () => {
     view.destroy();
   });
 
+  it("box erase removes every outline point in the drag, one undo brings them back", () => {
+    const job = {
+      id: "p1", ref: "Job", addr: "",
+      building: {
+        width: 0, depth: 0, height: 3, rise: 0, footprints: [],
+        trace: {
+          cal: { ax: 0, ay: 0, bx: 100, by: 0, value: 10, unit: "m" },
+          // A messy 6-point outline: two stray points up in one corner.
+          polys: [[
+            { x: 0, y: 0 }, { x: 180, y: 20 }, { x: 220, y: 15 },
+            { x: 400, y: 0 }, { x: 400, y: 400 }, { x: 0, y: 400 },
+          ]],
+          dots: {},
+        },
+      },
+      windows: [],
+    };
+    const { host, view } = mount(job);
+    const pts = () => host.querySelectorAll("#ol [data-v]").length;
+    expect(pts()).toBe(6);
+
+    // Switch to Box erase, drag a box over the two stray points.
+    (host.querySelector('[data-mode="erase"]') as HTMLButtonElement).click();
+    const st = host.querySelector("#tstage")!;
+    const mk = (type: string, x: number, y: number) =>
+      st.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: x, clientY: y, pointerId: 5, isPrimary: true }));
+    // toWorld is identity-ish at k=1 with the stage at 0,0 in happy-dom.
+    mk("pointerdown", 150, 5);
+    mk("pointermove", 260, 40);
+    mk("pointerup", 260, 40);
+    expect(pts()).toBe(4);   // the two strays gone, the shape still closed
+
+    (host.querySelector("#undoAct") as HTMLButtonElement).click();
+    expect(pts()).toBe(6);
+    view.destroy();
+  });
+
+  it("a box with nothing inside costs no undo step", () => {
+    const job = {
+      id: "p1", ref: "Job", addr: "",
+      building: {
+        width: 0, depth: 0, height: 3, rise: 0, footprints: [],
+        trace: {
+          cal: { ax: 0, ay: 0, bx: 100, by: 0, value: 10, unit: "m" },
+          polys: [[{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 400 }, { x: 0, y: 400 }]],
+          dots: {},
+        },
+      },
+      windows: [],
+    };
+    const { host, view } = mount(job);
+    (host.querySelector('[data-mode="erase"]') as HTMLButtonElement).click();
+    const st = host.querySelector("#tstage")!;
+    const mk = (type: string, x: number, y: number) =>
+      st.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: x, clientY: y, pointerId: 6, isPrimary: true }));
+    mk("pointerdown", 150, 100);
+    mk("pointermove", 250, 200);
+    mk("pointerup", 250, 200);
+    expect(host.querySelectorAll("#ol [data-v]").length).toBe(4);
+    expect((host.querySelector("#undoAct") as HTMLButtonElement).disabled).toBe(true);
+    view.destroy();
+  });
+
   it("submit stages a building and window upserts through the shim", () => {
     const ops: { op: string }[] = [];
     let done = 0;
