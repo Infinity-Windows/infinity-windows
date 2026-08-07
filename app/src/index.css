@@ -2121,8 +2121,8 @@ button:disabled {
 
 .hub-tab {
   /* Never shrink a label to the point it wraps or truncates: the row scrolls
-     instead. On a wide screen the desktop rule below shares the width evenly,
-     exactly as it did before. */
+     instead. The desktop rule below lets tabs grow into spare width, but they
+     keep this same floor — a label is the one thing that never compresses. */
   flex: 0 0 auto;
   min-width: 0;
   white-space: nowrap;
@@ -4974,15 +4974,16 @@ button.clock-out {
     padding: 28px 32px 48px;
   }
 
-  /* There is room for every section here, so keep the office layout: one row
-     of equal tabs, no scrolling and no fade. */
+  /* Share any spare width evenly, but NEVER shrink a tab below its label —
+     `flex: 1` did, and the day a ninth section (Maps Interactive) joined the
+     row, labels started painting over their neighbours. When the full set
+     genuinely doesn't fit, the row falls back to its phone behaviour:
+     ScrollTabs scrolls it and fades the edge with more behind it. That is
+     also why there is no mask-disabling override here any more — stripEdges
+     already reports "none" when everything fits, so wide screens keep the
+     clean unfaded row without a rule forcing it. */
   .hub-tab {
-    flex: 1;
-  }
-
-  .hub-tabs[data-edges] {
-    -webkit-mask-image: none;
-    mask-image: none;
+    flex: 1 0 auto;
   }
 
   /* Desktop drops the bottom bar, so anchor the FAB to the viewport corner. */
