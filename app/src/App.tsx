@@ -40,6 +40,7 @@ import { SignIn } from "./pages/SignIn";
 import { WindowDetail } from "./pages/WindowDetail";
 import { OpeningReview } from "./pages/install/OpeningReview";
 import { OpeningSheetRoute } from "./pages/install/OpeningSheet";
+import { MapsTrace } from "./pages/install/MapsTrace";
 import { PlansetUpload } from "./pages/install/PlansetUpload";
 import { ProjectMap } from "./pages/install/ProjectMap";
 import { TypeBrainCard } from "./pages/install/TypeBrainCard";
@@ -325,6 +326,14 @@ export default function App() {
             <Route
               path="/projects/:projectId/opening/:openingId"
               element={<OpeningSheetRoute />}
+            />
+            <Route
+              path="/projects/:projectId/trace-model"
+              element={
+                <RequireRole minRole="foreman">
+                  <MapsTrace />
+                </RequireRole>
+              }
             />
             <Route path="/brain/:typeId" element={<TypeBrainCard />} />
             <Route

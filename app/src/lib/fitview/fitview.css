@@ -1767,6 +1767,16 @@ a.tb-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
   white-space: nowrap;
   min-width: 46px;
 }
+
+/* Companion to the renderer's narrow-pane fix: when a pane is too slim for
+   horizontal text, its width label runs vertically like a drawing dimension
+   instead of being omitted. */
+.fitview-app .win .pdim-v {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  padding-top: 5px;
+  text-align: left;
+}
 .fitview-app .app {
   max-width: none;
   /* Fit under the hub header + tab row so the detail sheet — anchored to this

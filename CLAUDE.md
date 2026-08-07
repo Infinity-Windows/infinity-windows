@@ -113,6 +113,12 @@ WebGL, no three.js — ported from a standalone prototype called window-viewer.
 - Hardware vocabulary (OXXO panels, hinge sides, corner units) and how to read
   Strata paperwork: [`docs/window-vendor-conventions.md`](docs/window-vendor-conventions.md).
   The adapter's `inferHardware` must agree with it; change them together.
+- The plan tracer (prototype `trace.html`) is also ported: `traceRenderer.ts`
+  behind the foreman+ route `/projects/:id/trace-model` ("Trace 3D model" on
+  the tab). It draws footprints over the real planset page (rendered via
+  pdfjs), auto-seeds dots from extracted opening pins, and Submit merges the
+  survey model into `features.fitview.model` — an existing outline row's
+  `points` are never overwritten (they align the flat map's CAD view).
 - `fitview.css` is the prototype's CSS scoped under `.fitview-app` by native
   nesting; embed sizing overrides live in a marked block at the end. The
   original prototype lives outside this repo (a zip from Ben) — the fixture

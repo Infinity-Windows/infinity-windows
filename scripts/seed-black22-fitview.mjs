@@ -56,12 +56,10 @@ const points = foot.map((p) => ({
 }));
 
 // The COMPLETE survey model rides along: both footprint masses with their
-// named walls, and every window exactly where the surveyor placed it (elev,
-// metres along the wall, sill height, panels, corner wraps). The app's
-// Maps Interactive prefers this wholesale over pin-derived placement and
-// only merges live install status in. `trace` (the plan-tracing overlay
-// data) is dropped — it serves the trace editor, not the renderer.
-const { trace: _trace, ...buildingSansTrace } = fixture.building;
+// named walls, every window exactly where the surveyor placed it (elev,
+// metres along the wall, sill height, panels, corner wraps) — AND the raw
+// `trace` (plan-pixel polygons, dots, calibration), which is what lets the
+// in-app tracer restore Ben's outline editable instead of starting over.
 const features = {
   dividers: [],
   wallOpenings: [],
@@ -70,7 +68,7 @@ const features = {
     wallHeightM: fixture.building.height,
     source: "window-viewer win-2423 hand trace",
     model: {
-      building: buildingSansTrace,
+      building: fixture.building,
       windows: fixture.windows,
     },
   },

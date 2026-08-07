@@ -623,13 +623,17 @@ export function mountFitView(host, job, shim) {
     // the W x L tag below.
     if (hasMM && nP > 1) {
       for (i = 0; i < nP; i++) {
-        if (edges[i + 1] - edges[i] < 26) continue;
+        var paneW = edges[i + 1] - edges[i];
         var pd = document.createElement("i");
-        pd.className = "pdim";
+        // Horizontal text won't fit a narrow pane, but skipping the label
+        // (as the prototype did) left slim side lights and corner returns
+        // undimensioned - the one pane a crew is least sure about. Run the
+        // label vertically instead, like a dimension on a drawing.
+        pd.className = paneW < 26 ? "pdim pdim-v" : "pdim";
         pd.textContent = inches(fragPanes[i]);
         pd.style.left = edges[i] + "px";
         // 3x width to match the 3x-oversampled text, scaled back in CSS
-        pd.style.width = ((edges[i + 1] - edges[i]) * 3) + "px";
+        pd.style.width = (paneW * 3) + "px";
         el.appendChild(pd);
       }
     }

@@ -4,6 +4,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { listMarkSpecs, listOpenings, listPlanOutlines } from "../../lib/install/api";
 import type { Project } from "../../lib/types";
 import { pushToast } from "../../lib/toast";
+import { isForemanPlus } from "../../lib/install/types";
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import {
   buildAuthoredJob,
   buildFitViewJob,
@@ -25,6 +27,8 @@ import "../../lib/fitview/fitview.css";
 export function MapsInteractive({ project }: { project: Project }) {
   const projectId = project.id;
   const navigate = useNavigate();
+  const { effectiveRole } = useEffectiveRole();
+  const isLead = isForemanPlus(effectiveRole);
 
   const outlines = useQuery({
     queryKey: ["planOutlines", projectId],
@@ -164,10 +168,19 @@ export function MapsInteractive({ project }: { project: Project }) {
             {outline.page_number} yet — the model will populate as pins land.
           </p>
         )}
+        {isLead && !fullscreen && (
+          <Link
+            className="button-like"
+            style={{ marginLeft: "auto" }}
+            to={`/projects/${projectId}/trace-model`}
+          >
+            Trace 3D model
+          </Link>
+        )}
         <button
           type="button"
           className="button-like"
-          style={{ marginLeft: "auto" }}
+          style={isLead && !fullscreen ? undefined : { marginLeft: "auto" }}
           aria-pressed={fullscreen}
           onClick={() => toggleFullscreen(!fullscreen)}
         >

@@ -1,0 +1,183 @@
+/* Ported from window-viewer's trace.html <style> block. Only the tracer's
+ * own styles live here - the shared chrome (tokens, .app, buttons, toast)
+ * comes from fitview.css, so the tracer host element carries BOTH classes:
+ * class="fitview-app fittrace-app". */
+.fittrace-app {
+  /* Plan tracer only. Shared tokens and chrome live in app.css. */
+
+  .view { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+  .app.loading .view { display: none; }
+
+  .toolrow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--rule);
+    background: var(--paper-3);
+  }
+
+  .seg { display: flex; border: 1px solid var(--rule); border-radius: var(--r); overflow: hidden; }
+  .seg button {
+    appearance: none;
+    background: var(--paper-2);
+    border: 0;
+    border-right: 1px solid var(--rule);
+    font-family: var(--f-mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 8px 10px;
+    cursor: pointer;
+    min-height: 34px;
+  }
+  .seg button:last-child { border-right: 0; }
+  .seg button[aria-pressed="true"] { background: var(--accent-wash); color: var(--ink); }
+
+  .cal-in {
+    width: 64px;
+    appearance: none;
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    border-radius: var(--r);
+    color: var(--ink);
+    font-family: var(--f-mono);
+    font-size: 12px;
+    text-align: center;
+    padding: 7px 4px;
+    min-height: 34px;
+  }
+  .cal-in:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+  .cal-lab {
+    font-family: var(--f-mono);
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  /* Tray of unplaced openings. */
+  .tray {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 8px 16px;
+    background: var(--paper);
+    border-bottom: 1px solid var(--rule-soft);
+    scrollbar-width: none;
+    flex: none;
+    min-height: 46px;
+    align-items: center;
+  }
+  .tray::-webkit-scrollbar { display: none; }
+
+  .tray-lab {
+    font-family: var(--f-mono);
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    flex: none;
+  }
+
+  .chip-dot {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    color: #fff;
+    font-family: var(--f-mono);
+    font-size: 10px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .chip-dot.w { background: var(--st-tofit); }
+  .chip-dot.d { background: var(--st-installed); }
+  .chip-dot.placed { opacity: 0.25; cursor: default; }
+
+  .ghost {
+    position: fixed;
+    z-index: 99;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    color: #fff;
+    font-family: var(--f-mono);
+    font-size: 10px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+  }
+
+  .tstage {
+    flex: 1;
+    min-height: 300px;
+    position: relative;
+    overflow: hidden;
+    touch-action: none;
+    background: var(--paper);
+    cursor: crosshair;
+  }
+
+  .world {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: 0 0;
+  }
+  .world img { display: block; user-select: none; -webkit-user-drag: none; pointer-events: none; }
+  .world svg { position: absolute; left: 0; top: 0; overflow: visible; }
+
+  .noplan {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .noplan[hidden] { display: none; }
+
+  .pbtn {
+    display: inline-block;
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    border-radius: var(--r);
+    color: var(--ink-2);
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 11px 13px;
+    cursor: pointer;
+  }
+}
+
+
+
+/* ---- Infinity embed adjustments (not from the prototype) ---- */
+.fittrace-app .app {
+  height: calc(100dvh - 130px);
+  min-height: 480px;
+}
