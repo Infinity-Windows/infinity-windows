@@ -1,0 +1,2184 @@
+{
+  "id": "win-2423",
+  "ref": "WIN-2423",
+  "addr": "The Black Dahlia - 2387 S Village Dr (Lot 2), Santa Clara UT. Strata Black Desert 2 schedule",
+  "rev": 12,
+  "building": {
+    "width": 48.1,
+    "depth": 43.6,
+    "height": 4.7,
+    "rise": 0,
+    "footprints": [
+      [
+        {
+          "x": -20.96,
+          "z": -21.82,
+          "name": "West"
+        },
+        {
+          "x": -20.9,
+          "z": -16.9,
+          "name": "West 2"
+        },
+        {
+          "x": -21.67,
+          "z": -14.28,
+          "name": "South"
+        },
+        {
+          "x": -21.41,
+          "z": -14.09,
+          "name": "West 3"
+        },
+        {
+          "x": -22.24,
+          "z": -12.48,
+          "name": "South 2"
+        },
+        {
+          "x": -20.97,
+          "z": -11.83,
+          "name": "West 4"
+        },
+        {
+          "x": -21.63,
+          "z": -10.39,
+          "name": "North"
+        },
+        {
+          "x": -22.39,
+          "z": -10.77,
+          "name": "West 5"
+        },
+        {
+          "x": -23.68,
+          "z": -8.14,
+          "name": "South 3"
+        },
+        {
+          "x": -22.87,
+          "z": -7.68,
+          "name": "West 6"
+        },
+        {
+          "x": -24.06,
+          "z": -5.16,
+          "name": "South 4"
+        },
+        {
+          "x": -18.79,
+          "z": -2.57,
+          "name": "West 7"
+        },
+        {
+          "x": -18.68,
+          "z": 0.33,
+          "name": "North 2"
+        },
+        {
+          "x": -19.3,
+          "z": 0.4,
+          "name": "West 8"
+        },
+        {
+          "x": -19.31,
+          "z": 5.05,
+          "name": "South 5"
+        },
+        {
+          "x": -13.13,
+          "z": 5.05,
+          "name": "East"
+        },
+        {
+          "x": -13.09,
+          "z": 3.45,
+          "name": "South 6"
+        },
+        {
+          "x": -8.38,
+          "z": 3.47,
+          "name": "East 2"
+        },
+        {
+          "x": -6.69,
+          "z": 0.65,
+          "name": "South 7"
+        },
+        {
+          "x": -2.87,
+          "z": 0.58,
+          "name": "West 9"
+        },
+        {
+          "x": -2.9,
+          "z": 2.75,
+          "name": "South 8"
+        },
+        {
+          "x": 2.57,
+          "z": 2.75,
+          "name": "West 10"
+        },
+        {
+          "x": 2.62,
+          "z": 4.09,
+          "name": "South 9"
+        },
+        {
+          "x": 3.17,
+          "z": 4.32,
+          "name": "East 3"
+        },
+        {
+          "x": 3.14,
+          "z": 3.42,
+          "name": "South 10"
+        },
+        {
+          "x": 4.87,
+          "z": 3.46,
+          "name": "West 11"
+        },
+        {
+          "x": 4.87,
+          "z": 5.74,
+          "name": "South 11"
+        },
+        {
+          "x": 6.33,
+          "z": 6.21,
+          "name": "West 12"
+        },
+        {
+          "x": 6.18,
+          "z": 6.74,
+          "name": "South 12"
+        },
+        {
+          "x": 14.1,
+          "z": 8.89,
+          "name": "East 4"
+        },
+        {
+          "x": 14.27,
+          "z": 8.31,
+          "name": "North 3"
+        },
+        {
+          "x": 13.68,
+          "z": 8.12,
+          "name": "East 5"
+        },
+        {
+          "x": 15.41,
+          "z": 1.92,
+          "name": "South 13"
+        },
+        {
+          "x": 15.99,
+          "z": 2.08,
+          "name": "East 6"
+        },
+        {
+          "x": 16.15,
+          "z": 1.57,
+          "name": "North 4"
+        },
+        {
+          "x": 13.53,
+          "z": 0.82,
+          "name": "East 7"
+        },
+        {
+          "x": 13.55,
+          "z": -1.98,
+          "name": "North 5"
+        },
+        {
+          "x": 12.59,
+          "z": -2.75,
+          "name": "East 8"
+        },
+        {
+          "x": 12.61,
+          "z": -5.97,
+          "name": "South 14"
+        },
+        {
+          "x": 18.5,
+          "z": -5.98,
+          "name": "West 13"
+        },
+        {
+          "x": 18.52,
+          "z": -2.7,
+          "name": "North 6"
+        },
+        {
+          "x": 18.19,
+          "z": -2.7,
+          "name": "West 14"
+        },
+        {
+          "x": 18.2,
+          "z": -0.15,
+          "name": "South 15"
+        },
+        {
+          "x": 19.23,
+          "z": 0.18,
+          "name": "West 15"
+        },
+        {
+          "x": 19.17,
+          "z": 1.78,
+          "name": "South 16"
+        },
+        {
+          "x": 23.76,
+          "z": 1.91,
+          "name": "East 9"
+        },
+        {
+          "x": 23.77,
+          "z": 0.82,
+          "name": "South 17"
+        },
+        {
+          "x": 24.04,
+          "z": 0.85,
+          "name": "East 10"
+        },
+        {
+          "x": 24.06,
+          "z": -1.44,
+          "name": "North 7"
+        },
+        {
+          "x": 23.8,
+          "z": -1.44,
+          "name": "East 11"
+        },
+        {
+          "x": 23.77,
+          "z": -2.5,
+          "name": "North 8"
+        },
+        {
+          "x": 22.87,
+          "z": -2.49,
+          "name": "East 12"
+        },
+        {
+          "x": 22.78,
+          "z": -6.59,
+          "name": "South 18"
+        },
+        {
+          "x": 23.92,
+          "z": -6.65,
+          "name": "East 13"
+        },
+        {
+          "x": 23.86,
+          "z": -9.73,
+          "name": "North 9"
+        },
+        {
+          "x": 21.52,
+          "z": -9.86,
+          "name": "East 14"
+        },
+        {
+          "x": 21.44,
+          "z": -13.09,
+          "name": "North 10"
+        },
+        {
+          "x": 16.81,
+          "z": -13.08,
+          "name": "East 15"
+        },
+        {
+          "x": 16.88,
+          "z": -16.85,
+          "name": "North 11"
+        },
+        {
+          "x": 10.89,
+          "z": -16.86,
+          "name": "West 16"
+        },
+        {
+          "x": 10.94,
+          "z": -15.62,
+          "name": "North 12"
+        },
+        {
+          "x": 7.7,
+          "z": -15.6,
+          "name": "West 17"
+        },
+        {
+          "x": 7.73,
+          "z": -11.48,
+          "name": "North 13"
+        },
+        {
+          "x": 7.09,
+          "z": -11.44,
+          "name": "West 18"
+        },
+        {
+          "x": 7.06,
+          "z": -9.3,
+          "name": "South 19"
+        },
+        {
+          "x": 8.23,
+          "z": -9.21,
+          "name": "West 19"
+        },
+        {
+          "x": 8.12,
+          "z": -6.99,
+          "name": "North 14"
+        },
+        {
+          "x": 2.93,
+          "z": -6.51,
+          "name": "East 16"
+        },
+        {
+          "x": 2.81,
+          "z": -7.76,
+          "name": "North 15"
+        },
+        {
+          "x": 2.43,
+          "z": -7.75,
+          "name": "East 17"
+        },
+        {
+          "x": 2.37,
+          "z": -8.64,
+          "name": "North 16"
+        },
+        {
+          "x": -6.28,
+          "z": -7.89,
+          "name": "East 18"
+        },
+        {
+          "x": -6.57,
+          "z": -11.04,
+          "name": "North 17"
+        },
+        {
+          "x": -11.6,
+          "z": -10.63,
+          "name": "East 19"
+        },
+        {
+          "x": -11.65,
+          "z": -11.76,
+          "name": "North 18"
+        },
+        {
+          "x": -12.12,
+          "z": -11.92,
+          "name": "West 20"
+        },
+        {
+          "x": -12.08,
+          "z": -11.61,
+          "name": "North 19"
+        },
+        {
+          "x": -13.62,
+          "z": -11.67,
+          "name": "East 20"
+        },
+        {
+          "x": -13.67,
+          "z": -14.62,
+          "name": "North 20"
+        },
+        {
+          "x": -15.79,
+          "z": -15.53,
+          "name": "East 21"
+        },
+        {
+          "x": -15.82,
+          "z": -21.82,
+          "name": "North 21"
+        }
+      ],
+      [
+        {
+          "x": 4.66,
+          "z": 17.12,
+          "name": "North"
+        },
+        {
+          "x": 4.25,
+          "z": 17.13,
+          "name": "West"
+        },
+        {
+          "x": 4.31,
+          "z": 21.82,
+          "name": "South"
+        },
+        {
+          "x": 10.34,
+          "z": 21.33,
+          "name": "East"
+        },
+        {
+          "x": 10.31,
+          "z": 20.91,
+          "name": "South 2"
+        },
+        {
+          "x": 15.7,
+          "z": 21.01,
+          "name": "East 2"
+        },
+        {
+          "x": 15.68,
+          "z": 19.95,
+          "name": "North 2"
+        },
+        {
+          "x": 15.05,
+          "z": 19.94,
+          "name": "East 3"
+        },
+        {
+          "x": 15.17,
+          "z": 12.47,
+          "name": "South 3"
+        },
+        {
+          "x": 15.68,
+          "z": 12.43,
+          "name": "East 4"
+        },
+        {
+          "x": 15.64,
+          "z": 11.5,
+          "name": "North 3"
+        },
+        {
+          "x": 4.73,
+          "z": 11.51,
+          "name": "West 2"
+        }
+      ]
+    ],
+    "trace": {
+      "cal": {
+        "ax": 1086,
+        "ay": 952,
+        "bx": 1131,
+        "by": 954,
+        "value": 5.5,
+        "unit": "ft"
+      },
+      "polys": [
+        [
+          {
+            "x": 438.1,
+            "y": 285.5
+          },
+          {
+            "x": 439.6,
+            "y": 417.7
+          },
+          {
+            "x": 418.8,
+            "y": 488
+          },
+          {
+            "x": 425.8,
+            "y": 493.1
+          },
+          {
+            "x": 403.6,
+            "y": 536.4
+          },
+          {
+            "x": 437.7,
+            "y": 553.8
+          },
+          {
+            "x": 420,
+            "y": 592.6
+          },
+          {
+            "x": 399.7,
+            "y": 582.5
+          },
+          {
+            "x": 364.9,
+            "y": 653.2
+          },
+          {
+            "x": 386.8,
+            "y": 665.4
+          },
+          {
+            "x": 354.6,
+            "y": 733.1
+          },
+          {
+            "x": 496.3,
+            "y": 802.7
+          },
+          {
+            "x": 499.2,
+            "y": 880.8
+          },
+          {
+            "x": 482.6,
+            "y": 882.5
+          },
+          {
+            "x": 482.4,
+            "y": 1007.6
+          },
+          {
+            "x": 648.3,
+            "y": 1007.4
+          },
+          {
+            "x": 649.4,
+            "y": 964.4
+          },
+          {
+            "x": 776,
+            "y": 965.1
+          },
+          {
+            "x": 821.5,
+            "y": 889.2
+          },
+          {
+            "x": 924,
+            "y": 887.4
+          },
+          {
+            "x": 923.2,
+            "y": 945.8
+          },
+          {
+            "x": 1070.3,
+            "y": 945.6
+          },
+          {
+            "x": 1071.7,
+            "y": 981.6
+          },
+          {
+            "x": 1086.5,
+            "y": 987.9
+          },
+          {
+            "x": 1085.5,
+            "y": 963.6
+          },
+          {
+            "x": 1132.1,
+            "y": 964.7
+          },
+          {
+            "x": 1132,
+            "y": 1026.1
+          },
+          {
+            "x": 1171.2,
+            "y": 1038.6
+          },
+          {
+            "x": 1167.3,
+            "y": 1052.8
+          },
+          {
+            "x": 1380,
+            "y": 1110.8
+          },
+          {
+            "x": 1384.7,
+            "y": 1095.2
+          },
+          {
+            "x": 1368.8,
+            "y": 1090.1
+          },
+          {
+            "x": 1415.3,
+            "y": 923.5
+          },
+          {
+            "x": 1430.9,
+            "y": 927.7
+          },
+          {
+            "x": 1435.2,
+            "y": 914
+          },
+          {
+            "x": 1364.7,
+            "y": 893.7
+          },
+          {
+            "x": 1365.2,
+            "y": 818.7
+          },
+          {
+            "x": 1339.4,
+            "y": 798
+          },
+          {
+            "x": 1340,
+            "y": 711.4
+          },
+          {
+            "x": 1498.3,
+            "y": 711.2
+          },
+          {
+            "x": 1498.7,
+            "y": 799.2
+          },
+          {
+            "x": 1489.9,
+            "y": 799.3
+          },
+          {
+            "x": 1490.2,
+            "y": 867.8
+          },
+          {
+            "x": 1517.9,
+            "y": 876.6
+          },
+          {
+            "x": 1516.2,
+            "y": 919.6
+          },
+          {
+            "x": 1639.7,
+            "y": 923
+          },
+          {
+            "x": 1639.8,
+            "y": 893.9
+          },
+          {
+            "x": 1647.1,
+            "y": 894.7
+          },
+          {
+            "x": 1647.8,
+            "y": 833.2
+          },
+          {
+            "x": 1640.7,
+            "y": 833.2
+          },
+          {
+            "x": 1639.9,
+            "y": 804.5
+          },
+          {
+            "x": 1615.7,
+            "y": 805
+          },
+          {
+            "x": 1613.2,
+            "y": 694.6
+          },
+          {
+            "x": 1643.8,
+            "y": 693.2
+          },
+          {
+            "x": 1642.3,
+            "y": 610.3
+          },
+          {
+            "x": 1579.4,
+            "y": 606.9
+          },
+          {
+            "x": 1577.4,
+            "y": 520
+          },
+          {
+            "x": 1452.9,
+            "y": 520.4
+          },
+          {
+            "x": 1454.8,
+            "y": 419
+          },
+          {
+            "x": 1293.7,
+            "y": 418.9
+          },
+          {
+            "x": 1295.2,
+            "y": 452.1
+          },
+          {
+            "x": 1208.2,
+            "y": 452.6
+          },
+          {
+            "x": 1208.8,
+            "y": 563.4
+          },
+          {
+            "x": 1191.6,
+            "y": 564.3
+          },
+          {
+            "x": 1190.9,
+            "y": 622
+          },
+          {
+            "x": 1222.4,
+            "y": 624.4
+          },
+          {
+            "x": 1219.5,
+            "y": 683.9
+          },
+          {
+            "x": 1079.8,
+            "y": 696.8
+          },
+          {
+            "x": 1076.8,
+            "y": 663.4
+          },
+          {
+            "x": 1066.6,
+            "y": 663.5
+          },
+          {
+            "x": 1065,
+            "y": 639.7
+          },
+          {
+            "x": 832.4,
+            "y": 659.9
+          },
+          {
+            "x": 824.7,
+            "y": 575.2
+          },
+          {
+            "x": 689.5,
+            "y": 586.1
+          },
+          {
+            "x": 688.1,
+            "y": 555.9
+          },
+          {
+            "x": 675.6,
+            "y": 551.5
+          },
+          {
+            "x": 676.5,
+            "y": 559.8
+          },
+          {
+            "x": 635.2,
+            "y": 558.3
+          },
+          {
+            "x": 633.9,
+            "y": 479
+          },
+          {
+            "x": 576.8,
+            "y": 454.6
+          },
+          {
+            "x": 576,
+            "y": 285.4
+          }
+        ],
+        [
+          {
+            "x": 1128.2,
+            "y": 1181.2
+          },
+          {
+            "x": 1421.5,
+            "y": 1180.7
+          },
+          {
+            "x": 1422.4,
+            "y": 1205.8
+          },
+          {
+            "x": 1408.9,
+            "y": 1206.9
+          },
+          {
+            "x": 1405.5,
+            "y": 1407.6
+          },
+          {
+            "x": 1422.5,
+            "y": 1407.9
+          },
+          {
+            "x": 1423,
+            "y": 1436.2
+          },
+          {
+            "x": 1278.1,
+            "y": 1433.7
+          },
+          {
+            "x": 1279,
+            "y": 1445
+          },
+          {
+            "x": 1116.9,
+            "y": 1458.2
+          },
+          {
+            "x": 1115.5,
+            "y": 1332.1
+          },
+          {
+            "x": 1126.4,
+            "y": 1331.9
+          }
+        ]
+      ],
+      "dots": {
+        "3": {
+          "x": 1110.1,
+          "y": 964.2
+        },
+        "5": {
+          "x": 923.2,
+          "y": 945.8
+        },
+        "9": {
+          "x": 868.1,
+          "y": 888.4
+        },
+        "10": {
+          "x": 720.7,
+          "y": 964.8
+        },
+        "11": {
+          "x": 482.4,
+          "y": 1005.8
+        },
+        "14": {
+          "x": 403.6,
+          "y": 536.4
+        },
+        "15": {
+          "x": 576,
+          "y": 285.4
+        },
+        "16": {
+          "x": 1065,
+          "y": 639.7
+        },
+        "17": {
+          "x": 1208.3,
+          "y": 476.2
+        },
+        "18": {
+          "x": 1620.7,
+          "y": 609.1
+        },
+        "19": {
+          "x": 1643.3,
+          "y": 666.2
+        },
+        "20": {
+          "x": 1639.9,
+          "y": 804.5
+        },
+        "21": {
+          "x": 1639.7,
+          "y": 922
+        },
+        "22": {
+          "x": 1388.4,
+          "y": 711.3
+        },
+        "23": {
+          "x": 1339.7,
+          "y": 758
+        },
+        "26": {
+          "x": 497.8,
+          "y": 842.9
+        },
+        "27": {
+          "x": 435.5,
+          "y": 772.8
+        },
+        "28": {
+          "x": 605.7,
+          "y": 466.9
+        },
+        "29": {
+          "x": 824.7,
+          "y": 575.2
+        },
+        "30": {
+          "x": 1135.6,
+          "y": 691.6
+        },
+        "31": {
+          "x": 1221,
+          "y": 652.7
+        },
+        "32": {
+          "x": 1454.8,
+          "y": 419
+        },
+        "33": {
+          "x": 1577.4,
+          "y": 520
+        },
+        "34": {
+          "x": 1614.3,
+          "y": 744.1
+        },
+        "35": {
+          "x": 1365,
+          "y": 848.9
+        },
+        "36": {
+          "x": 1263.2,
+          "y": 1078.9
+        },
+        "37": {
+          "x": 1250.9,
+          "y": 1181
+        },
+        "38": {
+          "x": 1191.3,
+          "y": 588.3
+        },
+        "39": {
+          "x": 1517,
+          "y": 900.1
+        },
+        "13A": {
+          "x": 394.6,
+          "y": 592.9
+        },
+        "13B": {
+          "x": 371,
+          "y": 640.9
+        },
+        "12A": {
+          "x": 412.7,
+          "y": 589
+        },
+        "12B": {
+          "x": 380.8,
+          "y": 662
+        },
+        "2A": {
+          "x": 1172.6,
+          "y": 1453.7
+        },
+        "2B": {
+          "x": 1223.3,
+          "y": 1449.5
+        },
+        "1A": {
+          "x": 1320.9,
+          "y": 1434.4
+        },
+        "1B": {
+          "x": 1370.2,
+          "y": 1435.3
+        }
+      }
+    }
+  },
+  "windows": [
+    {
+      "id": "14",
+      "elev": "s3",
+      "floor": "Ground",
+      "room": "Primary Bath",
+      "type": "Fixed aluminum window, 90-degree corner",
+      "w": 2775,
+      "h": 3645,
+      "x": 0.22,
+      "y": 0.45,
+      "scan": [
+        1594,
+        3645
+      ],
+      "lights": 2,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#14. Corner unit, legs 1594 + 1181 laminated butt glaze, shown flattened.",
+      "legs": [
+        1594,
+        1181
+      ],
+      "wrap": "end",
+      "panesSplit": [
+        [
+          432,
+          1162
+        ],
+        [
+          1181
+        ]
+      ]
+    },
+    {
+      "id": "13A",
+      "elev": "s7",
+      "floor": "Ground",
+      "room": "Primary Bath",
+      "type": "Fixed aluminum window, obscure slot",
+      "w": 292,
+      "h": 2730,
+      "x": 0.29,
+      "y": 0.6,
+      "scan": [
+        292,
+        2730
+      ],
+      "lights": 1,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#13 (1 of 2). Obscure #3 interior / #17 exterior.",
+      "obscure": true
+    },
+    {
+      "id": "13B",
+      "elev": "s7",
+      "floor": "Ground",
+      "room": "Primary Bath",
+      "type": "Fixed aluminum window, obscure slot",
+      "w": 292,
+      "h": 2730,
+      "x": 2.28,
+      "y": 0.6,
+      "scan": [
+        292,
+        2730
+      ],
+      "lights": 1,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#13 (2 of 2). Same build as 13A.",
+      "obscure": true
+    },
+    {
+      "id": "12A",
+      "elev": "s6",
+      "floor": "Ground",
+      "room": "Primary Bath",
+      "type": "Fixed aluminum window",
+      "w": 596,
+      "h": 2425,
+      "x": 0.01,
+      "y": 0.6,
+      "scan": [
+        596,
+        2425
+      ],
+      "lights": 1,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#12 (1 of 2)."
+    },
+    {
+      "id": "12B",
+      "elev": "s8",
+      "floor": "Ground",
+      "room": "Primary Bath",
+      "type": "Fixed aluminum window",
+      "w": 596,
+      "h": 2425,
+      "x": 0.34,
+      "y": 0.6,
+      "scan": [
+        596,
+        2425
+      ],
+      "lights": 1,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#12 (2 of 2)."
+    },
+    {
+      "id": "27",
+      "elev": "s10",
+      "floor": "Ground",
+      "room": "Primary Bath",
+      "type": "French door, double leaf",
+      "w": 1510,
+      "h": 2743,
+      "x": 2.59,
+      "y": 0,
+      "scan": [
+        1510,
+        2743
+      ],
+      "lights": 2,
+      "open": "hinge-r",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Inward, 3-point lock",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#27. Two 755 leaves, gold hardware.",
+      "door": true,
+      "panes": [
+        755,
+        755
+      ],
+      "doorPanes": [
+        0,
+        1
+      ]
+    },
+    {
+      "id": "26",
+      "elev": "s11",
+      "floor": "Ground",
+      "room": "Hallway",
+      "type": "French door, double leaf",
+      "w": 1510,
+      "h": 2743,
+      "x": 0.74,
+      "y": 0,
+      "scan": [
+        1510,
+        2743
+      ],
+      "lights": 2,
+      "open": "hinge-l",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Inward, 3-point lock",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#26. Two 755 leaves, gold hardware.",
+      "door": true,
+      "panes": [
+        755,
+        755
+      ],
+      "doorPanes": [
+        0,
+        1
+      ]
+    },
+    {
+      "id": "11",
+      "elev": "s13",
+      "floor": "Ground",
+      "room": "Primary Suite",
+      "type": "Fixed aluminum window, wrap-around corner",
+      "w": 8654,
+      "h": 3035,
+      "x": 2.1,
+      "y": 0.45,
+      "scan": [
+        5505,
+        3035
+      ],
+      "lights": 4,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#11. Double 90-degree corner, 8654mm overall - legs 2552 + 5505 + 597. Butt-jointed glazing. Wraps two corners: 432+2120, 3x1835, then 597.",
+      "legs": [
+        2552,
+        5505,
+        597
+      ],
+      "wrap": "end",
+      "panesSplit": [
+        [
+          432,
+          2120
+        ],
+        [
+          1835,
+          1835,
+          1835
+        ],
+        [
+          597
+        ]
+      ]
+    },
+    {
+      "id": "24",
+      "elev": "",
+      "floor": "Ground",
+      "room": "Kitchen",
+      "type": "Clerestory, 4 equal panes",
+      "w": 6084,
+      "h": 749,
+      "x": 0,
+      "y": 3.6,
+      "scan": [
+        6084,
+        749
+      ],
+      "lights": 4,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#24. Laminated butt-glazed clerestory band. Court-facing - position approximate.",
+      "panes": [
+        1521,
+        1521,
+        1521,
+        1521
+      ]
+    },
+    {
+      "id": "10",
+      "elev": "s16",
+      "floor": "Ground",
+      "room": "Butler",
+      "type": "Fixed aluminum window, 120-degree corner",
+      "w": 4776,
+      "h": 2120,
+      "x": 0.57,
+      "y": 0.95,
+      "scan": [
+        4776,
+        2120
+      ],
+      "lights": 5,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#10. 120-degree corner shown flattened - legs 4145 + 654. Butted structural joints.",
+      "legs": [
+        4145,
+        631
+      ],
+      "wrap": "end",
+      "panesSplit": [
+        [
+          432,
+          1238,
+          1226,
+          1226
+        ],
+        [
+          654
+        ]
+      ]
+    },
+    {
+      "id": "9",
+      "elev": "s18",
+      "floor": "Ground",
+      "room": "Kitchen",
+      "type": "Fixed aluminum window, 2 pane",
+      "w": 2120,
+      "h": 4559,
+      "x": 0.68,
+      "y": 0.1,
+      "scan": [
+        2120,
+        4559
+      ],
+      "lights": 2,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#9. Full-height laminated pair, 4559mm tall.",
+      "panes": [
+        1060,
+        1060
+      ]
+    },
+    {
+      "id": "5",
+      "elev": "s19",
+      "floor": "Ground",
+      "room": "Entry",
+      "type": "Fixed aluminum window, 90-degree corner",
+      "w": 3594,
+      "h": 3035,
+      "x": 0.48,
+      "y": 0.45,
+      "scan": [
+        3594,
+        3035
+      ],
+      "lights": 2,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#5. Corner unit shown flattened - legs 1905 + 1689, glass centre set.",
+      "legs": [
+        1689,
+        1905
+      ],
+      "wrap": "end"
+    },
+    {
+      "id": "6",
+      "elev": "",
+      "floor": "Ground",
+      "room": "Entry",
+      "type": "Clerestory, 3 equal panes",
+      "w": 4635,
+      "h": 749,
+      "x": 0,
+      "y": 3.6,
+      "scan": [
+        4635,
+        749
+      ],
+      "lights": 3,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#6. Butted structural joints, three 1545 panes, over the entry.",
+      "panes": [
+        1545,
+        1545,
+        1545
+      ]
+    },
+    {
+      "id": "4",
+      "elev": "",
+      "floor": "Ground",
+      "room": "Entry",
+      "type": "Fixed aluminum window",
+      "w": 1898,
+      "h": 3035,
+      "x": 0,
+      "y": 0.45,
+      "scan": [
+        1898,
+        3035
+      ],
+      "lights": 1,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#4. Glass centre set."
+    },
+    {
+      "id": "3",
+      "elev": "s24",
+      "floor": "Ground",
+      "room": "Hallway",
+      "type": "Fixed aluminum window",
+      "w": 1511,
+      "h": 3492,
+      "x": 0.16,
+      "y": 0.1,
+      "scan": [
+        1511,
+        3492
+      ],
+      "lights": 1,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#3. 3492mm tall hallway light."
+    },
+    {
+      "id": "36",
+      "elev": "s28",
+      "floor": "Ground",
+      "room": "Single Garage",
+      "type": "French door, single leaf",
+      "w": 901,
+      "h": 2743,
+      "x": 3.25,
+      "y": 0,
+      "scan": [
+        901,
+        2743
+      ],
+      "lights": 1,
+      "open": "hinge-r",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Inward, 3-point lock",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#36. Gold hardware.",
+      "door": true
+    },
+    {
+      "id": "37",
+      "elev": "s91",
+      "floor": "Ground",
+      "room": "Double Garage",
+      "type": "French door, single leaf",
+      "w": 901,
+      "h": 2730,
+      "x": 5.9,
+      "y": 0,
+      "scan": [
+        901,
+        2730
+      ],
+      "lights": 1,
+      "open": "hinge-l",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Inward, 3-point lock",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#37. Gold hardware.",
+      "door": true
+    },
+    {
+      "id": "2A",
+      "elev": "s83",
+      "floor": "Ground",
+      "room": "2 Car Garage",
+      "type": "Fixed aluminum window",
+      "w": 596,
+      "h": 1511,
+      "x": 1.78,
+      "y": 0.9,
+      "scan": [
+        596,
+        1511
+      ],
+      "lights": 1,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#2 (1 of 2)."
+    },
+    {
+      "id": "2B",
+      "elev": "s83",
+      "floor": "Ground",
+      "room": "2 Car Garage",
+      "type": "Fixed aluminum window",
+      "w": 596,
+      "h": 1511,
+      "x": 3.67,
+      "y": 0.9,
+      "scan": [
+        596,
+        1511
+      ],
+      "lights": 1,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#2 (2 of 2)."
+    },
+    {
+      "id": "1A",
+      "elev": "s85",
+      "floor": "Ground",
+      "room": "2 Car Garage",
+      "type": "Fixed aluminum window, stacked pair",
+      "w": 596,
+      "h": 2273,
+      "x": 1.29,
+      "y": 0.45,
+      "scan": [
+        596,
+        2273
+      ],
+      "lights": 1,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#1 (1 of 2). 1524 lower + 153 aluminum tube mull + 596 upper.",
+      "vpanes": [
+        596,
+        -153,
+        1524
+      ]
+    },
+    {
+      "id": "1B",
+      "elev": "s85",
+      "floor": "Ground",
+      "room": "2 Car Garage",
+      "type": "Fixed aluminum window, stacked pair",
+      "w": 596,
+      "h": 2273,
+      "x": 3.13,
+      "y": 0.45,
+      "scan": [
+        596,
+        2273
+      ],
+      "lights": 1,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#1 (2 of 2). Same build as 1A.",
+      "vpanes": [
+        596,
+        -153,
+        1524
+      ]
+    },
+    {
+      "id": "39",
+      "elev": "s43",
+      "floor": "Ground",
+      "room": "Casita",
+      "type": "French door, single leaf",
+      "w": 901,
+      "h": 2743,
+      "x": 0.42,
+      "y": 0,
+      "scan": [
+        901,
+        2743
+      ],
+      "lights": 1,
+      "open": "hinge-r",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Inward, 3-point lock",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#39. Courtyard door - position approximate.",
+      "door": true
+    },
+    {
+      "id": "22",
+      "elev": "s38",
+      "floor": "Ground",
+      "room": "Hallway",
+      "type": "Fixed aluminum window",
+      "w": 2730,
+      "h": 3035,
+      "x": 0,
+      "y": 0.45,
+      "scan": [
+        2730,
+        3035
+      ],
+      "lights": 2,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#22. 2298 + 432 butted structural joint. Court-facing - position approximate.",
+      "legs": [
+        2298,
+        432
+      ],
+      "wrap": "start"
+    },
+    {
+      "id": "23",
+      "elev": "s37",
+      "floor": "Ground",
+      "room": "Hallway",
+      "type": "Fixed aluminum window",
+      "w": 2400,
+      "h": 3035,
+      "x": 0,
+      "y": 0.45,
+      "scan": [
+        2400,
+        3035
+      ],
+      "lights": 2,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#23. 432 + 1968. Court-facing - position approximate.",
+      "legs": [
+        1968,
+        432
+      ],
+      "wrap": "start"
+    },
+    {
+      "id": "21",
+      "elev": "s45",
+      "floor": "Ground",
+      "room": "Casita",
+      "type": "Fixed aluminum window, 90-degree corner",
+      "w": 2947,
+      "h": 3035,
+      "x": 0,
+      "y": 0.45,
+      "scan": [
+        2115,
+        3035
+      ],
+      "lights": 2,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#21. Corner unit, main leg here, 832 return on the south face as 21R.",
+      "legs": [
+        832,
+        2115
+      ],
+      "wrap": "start",
+      "panesSplit": [
+        [
+          832
+        ],
+        [
+          432,
+          1683
+        ]
+      ]
+    },
+    {
+      "id": "20",
+      "elev": "s49",
+      "floor": "Ground",
+      "room": "Casita",
+      "type": "Fixed aluminum window, 90-degree corner",
+      "w": 1632,
+      "h": 3035,
+      "x": 0.24,
+      "y": 0.45,
+      "scan": [
+        1632,
+        3035
+      ],
+      "lights": 2,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#20. Corner unit shown flattened - legs 813 + 819, butt-jointed.",
+      "legs": [
+        819,
+        813
+      ],
+      "wrap": "end"
+    },
+    {
+      "id": "19",
+      "elev": "s53",
+      "floor": "Ground",
+      "room": "Casita Ensuite",
+      "type": "Fixed aluminum window",
+      "w": 444,
+      "h": 1816,
+      "x": 0.78,
+      "y": 1.2,
+      "scan": [
+        444,
+        1816
+      ],
+      "lights": 1,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#19."
+    },
+    {
+      "id": "18",
+      "elev": "s54",
+      "floor": "Ground",
+      "room": "Casita Ensuite",
+      "type": "Fixed aluminum window, obscure slot",
+      "w": 393,
+      "h": 2425,
+      "x": 0.61,
+      "y": 1.2,
+      "scan": [
+        393,
+        2425
+      ],
+      "lights": 1,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#18. Obscure #3 interior / #17 exterior.",
+      "obscure": true
+    },
+    {
+      "id": "34",
+      "elev": "s51",
+      "floor": "Ground",
+      "room": "Casita Suite",
+      "type": "French door + fixed",
+      "w": 2437,
+      "h": 3035,
+      "x": 1.04,
+      "y": 0,
+      "scan": [
+        2437,
+        3035
+      ],
+      "lights": 2,
+      "open": "hinge-r",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Inward, 3-point lock",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#34. 432 + 1092 fixed + 914 door.",
+      "door": true,
+      "panes": [
+        432,
+        1092,
+        914
+      ],
+      "doorPanes": [
+        2
+      ]
+    },
+    {
+      "id": "35",
+      "elev": "s35",
+      "floor": "Ground",
+      "room": "Hallway",
+      "type": "French door + fixed sidelite",
+      "w": 1485,
+      "h": 2743,
+      "x": 0.93,
+      "y": 0,
+      "scan": [
+        1485,
+        2743
+      ],
+      "lights": 2,
+      "open": "hinge-l",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Outward, 3-point lock",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#35. 914 door + 571 sidelite. Court-facing - position approximate.",
+      "door": true,
+      "panes": [
+        914,
+        571
+      ],
+      "doorPanes": [
+        0
+      ]
+    },
+    {
+      "id": "33",
+      "elev": "s55",
+      "floor": "Ground",
+      "room": "Bed Suite 2",
+      "type": "French door + fixed, corner unit",
+      "w": 6510,
+      "h": 3035,
+      "x": 0.772,
+      "y": 0,
+      "scan": [
+        3136,
+        3035
+      ],
+      "lights": 2,
+      "open": "hinge-r",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Outward, 3-point lock",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#33. Wraps one 90-degree corner: 432+2026 leg, then 1518+1619 laminated butt-glaze leg with the 915 French door (hinge right) at the far end. Total 6510 x 3035.",
+      "door": true,
+      "legs": [
+        2458,
+        4052
+      ],
+      "wrap": "end",
+      "panesSplit": [
+        [
+          432,
+          2026
+        ],
+        [
+          1518,
+          1619,
+          915
+        ]
+      ],
+      "doorPanes": [
+        4
+      ]
+    },
+    {
+      "id": "32",
+      "elev": "s57",
+      "floor": "Ground",
+      "room": "Bed Suite 1",
+      "type": "French door + fixed, corner unit",
+      "w": 8572,
+      "h": 3035,
+      "x": 1.617,
+      "y": 0,
+      "scan": [
+        5295,
+        3035
+      ],
+      "lights": 4,
+      "open": "hinge-r",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Outward, 3-point lock",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#32. Wraps two 90-degree corners: 432+1721 leg, 5295 laminated leg (3x1765), then 209 fixed + 915 French door (hinge right). Total 8572 x 3035.",
+      "door": true,
+      "legs": [
+        2153,
+        5295,
+        1124
+      ],
+      "wrap": "end",
+      "panesSplit": [
+        [
+          432,
+          1721
+        ],
+        [
+          1765,
+          1765,
+          1765
+        ],
+        [
+          209,
+          915
+        ]
+      ],
+      "doorPanes": [
+        6
+      ]
+    },
+    {
+      "id": "31",
+      "elev": "s65",
+      "floor": "Ground",
+      "room": "Hallway",
+      "type": "French door + fixed sidelite",
+      "w": 1257,
+      "h": 2730,
+      "x": 0.43,
+      "y": 0,
+      "scan": [
+        1257,
+        2730
+      ],
+      "lights": 2,
+      "open": "hinge-l",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Outward, 3-point lock",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#31. 901 door + 356 sidelite.",
+      "door": true,
+      "panes": [
+        901,
+        356
+      ],
+      "doorPanes": [
+        0
+      ]
+    },
+    {
+      "id": "38",
+      "elev": "s63",
+      "floor": "Ground",
+      "room": "Pool Bath",
+      "type": "French door, single leaf",
+      "w": 901,
+      "h": 2743,
+      "x": 0.44,
+      "y": 0,
+      "scan": [
+        901,
+        2743
+      ],
+      "lights": 1,
+      "open": "hinge-r",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Inward, 3-point lock",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#38. Obscure glass #3 interior / #17 exterior.",
+      "door": true,
+      "obscure": true
+    },
+    {
+      "id": "17",
+      "elev": "s61",
+      "floor": "Ground",
+      "room": "Ensuite 1",
+      "type": "Fixed aluminum window, obscure slot",
+      "w": 393,
+      "h": 2425,
+      "x": 0.68,
+      "y": 1.2,
+      "scan": [
+        393,
+        2425
+      ],
+      "lights": 1,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#17. Obscure #3 interior / #17 exterior.",
+      "obscure": true
+    },
+    {
+      "id": "30",
+      "elev": "s66",
+      "floor": "Ground",
+      "room": "Living Room",
+      "type": "Sliding door, 2-track, 4 panel",
+      "w": 3340,
+      "h": 3492,
+      "x": 1.46,
+      "y": 0.1,
+      "scan": [
+        3340,
+        3492
+      ],
+      "lights": 4,
+      "open": "bipart",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Both-side handle, lock interior, no key exterior",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#30. Four 835 panels, outer pair fixed. 3492mm tall slider.",
+      "door": true,
+      "panes": [
+        835,
+        835,
+        835,
+        835
+      ]
+    },
+    {
+      "id": "16",
+      "elev": "s69",
+      "floor": "Ground",
+      "room": "Great Room",
+      "type": "Fixed aluminum window, wrap-around corner",
+      "w": 7962,
+      "h": 4559,
+      "x": 0.12,
+      "y": 0.1,
+      "scan": [
+        7194,
+        4559
+      ],
+      "lights": 4,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#16. 90-degree corner, 7962mm overall - legs 7194 + 768. Laminated butt glaze, 4559mm tall, crane set.",
+      "legs": [
+        768,
+        7194
+      ],
+      "wrap": "end",
+      "panesSplit": [
+        [
+          768
+        ],
+        [
+          2248,
+          2286,
+          2229,
+          432
+        ]
+      ]
+    },
+    {
+      "id": "29",
+      "elev": "s71",
+      "floor": "Ground",
+      "room": "Dining",
+      "type": "Sliding door, 3-track + corner French door",
+      "w": 7232,
+      "h": 3035,
+      "x": 0.43,
+      "y": 0,
+      "scan": [
+        7232,
+        3035
+      ],
+      "lights": 7,
+      "open": "corner-meet",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Both-side handle, lock interior, no key exterior",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#29. 3-track slider meets a 90-degree corner - operating pair each side slides away from the corner onto the fixed F panel (910x3 leg + 1196x3 leg), French door at the far end of the long leg. Both-side handle at the corner.",
+      "door": true,
+      "legs": [
+        2731,
+        4501
+      ],
+      "wrap": "end",
+      "lightsSplit": [
+        3,
+        4
+      ],
+      "panesSplit": [
+        [
+          910,
+          910,
+          910
+        ],
+        [
+          1196,
+          1196,
+          1196,
+          914
+        ]
+      ],
+      "doorPanes": [
+        6
+      ]
+    },
+    {
+      "id": "15",
+      "elev": "s80",
+      "floor": "Ground",
+      "room": "Primary Bed",
+      "type": "Fixed aluminum window, wrap-around corner",
+      "w": 7702,
+      "h": 3645,
+      "x": 0,
+      "y": 0.45,
+      "scan": [
+        3975,
+        3645
+      ],
+      "lights": 3,
+      "open": "fixed",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Fixed",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#15. 90-degree corner, 7702mm overall - legs 3975 + 3727 (return on the wing west face as 15R). Laminated butt glaze.",
+      "legs": [
+        3727,
+        3975
+      ],
+      "wrap": "start",
+      "panesSplit": [
+        [
+          1644,
+          1651,
+          432
+        ],
+        [
+          432,
+          1778,
+          1765
+        ]
+      ]
+    },
+    {
+      "id": "28",
+      "elev": "s78",
+      "floor": "Ground",
+      "room": "Primary Suite",
+      "type": "French door, double leaf",
+      "w": 1510,
+      "h": 2743,
+      "x": 0.39,
+      "y": 0,
+      "scan": [
+        1510,
+        2743
+      ],
+      "lights": 2,
+      "open": "hinge-l",
+      "glass": "Insulating tempered Low-E 366, argon, black IG spacers",
+      "frame": "Thermal-break aluminum, Clay",
+      "hand": "Inward, 3-point lock",
+      "status": "tofit",
+      "notes": "Strata Black Desert 2-#28. Two 755 leaves, gold hardware.",
+      "door": true,
+      "panes": [
+        755,
+        755
+      ],
+      "doorPanes": [
+        0,
+        1
+      ]
+    }
+  ]
+}

@@ -69,6 +69,7 @@ import { mergeJobPeople } from "../lib/whoOnJob";
 import { CalendarClock, Plane, Truck, Users } from "lucide-react";
 import { resolveWindowFromScan } from "../lib/scanResolve";
 import { ProjectMap } from "./install/ProjectMap";
+import { MapsInteractive } from "./install/MapsInteractive";
 import { DispatchBoard } from "./install/DispatchBoard";
 import { ScrollTabs } from "../components/nav/ScrollTabs";
 import { PhotoFeed } from "../components/photos/PhotoFeed";
@@ -82,6 +83,7 @@ type HubTab =
   | "overview"
   | "warehouse"
   | "map"
+  | "maps-interactive"
   | "brain"
   | "dispatch"
   | "exceptions"
@@ -95,6 +97,7 @@ export function ProjectDetail() {
   const tab: HubTab =
     tabParam === "warehouse" ||
     tabParam === "map" ||
+    tabParam === "maps-interactive" ||
     tabParam === "brain" ||
     tabParam === "dispatch" ||
     tabParam === "exceptions" ||
@@ -116,6 +119,7 @@ export function ProjectDetail() {
     { id: "chat", label: "Chat" },
     { id: "photos", label: "Photos" },
     { id: "map", label: "Map" },
+    { id: "maps-interactive", label: "Maps Interactive" },
     ...(isLead ? [{ id: "exceptions" as HubTab, label: "Exceptions" }] : []),
     { id: "brain", label: "Brain" },
   ];
@@ -311,6 +315,8 @@ export function ProjectDetail() {
       )}
 
       {tab === "map" && <ProjectMap embedded />}
+
+      {tab === "maps-interactive" && project && <MapsInteractive project={project} />}
 
       {tab === "exceptions" && isLead && <ExceptionsTab projectId={projectId} />}
 
