@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeftRight,
   Coffee,
@@ -24,6 +24,10 @@ import {
   pendingRefForShift,
 } from "../../lib/offline/outbox";
 import { ToolboxTalkNagBanner } from "../time/ToolboxTalkNagBanner";
+import { ToolboxSignCard } from "./ToolboxSignCard";
+import { myTodayCompletion } from "../../lib/toolbox";
+import { getTodayTalk } from "../../lib/ops";
+import { listMyOpeningsAllJobs, startOpeningWork } from "../../lib/install/api";
 import {
   BREAK_TYPES,
   breakTypeLabel,
@@ -83,9 +87,12 @@ export function ClockSheet({
   onChanged: () => void;
 }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>(shift ? "main" : "pick");
   const [pickProjectId, setPickProjectId] = useState<string>("");
   const [pickCostCodeId, setPickCostCodeId] = useState<string>("");
+  /** Optional first window to start on, in the same tap as clocking in. */
+  const [pickOpeningId, setPickOpeningId] = useState<string>("");
   const [search, setSearch] = useState("");
   const [showFullList, setShowFullList] = useState(false);
   const [note, setNote] = useState("");
@@ -114,6 +121,35 @@ export function ClockSheet({
     enabled: Boolean(profileId) && !shift,
   });
   const scheduled = scheduledToday.data?.[0] ?? null;
+
+  // The whole morning ritual lives in this sheet: today's talk (sign it here,
+  // not on a separate page) and the assigned windows on the picked job (start
+  // the first one in the same tap as the clock-in).
+  const todayTalk = useQuery({
+    queryKey: ["todayTalk"],
+    queryFn: getTodayTalk,
+    enabled: !shift,
+  });
+  const toolboxDone = useQuery({
+    queryKey: ["toolboxToday", profileId],
+    queryFn: () => myTodayCompletion(profileId!),
+    enabled: Boolean(profileId) && !shift,
+  });
+  const myOpenings = useQuery({
+    queryKey: ["myOpenings", profileId],
+    queryFn: () => listMyOpeningsAllJobs(profileId!),
+    enabled: Boolean(profileId) && !shift,
+  });
+  // Signed, or no talk exists today: nothing to sign either way.
+  const toolboxOk = Boolean(toolboxDone.data) || todayTalk.data === null;
+  const projectOpenings = useMemo(
+    () =>
+      (myOpenings.data ?? []).filter(
+        (o) => o.project_id === pickProjectId && o.status !== "installed",
+      ),
+    [myOpenings.data, pickProjectId],
+  );
+  const pickedOpening = projectOpenings.find((o) => o.id === pickOpeningId) ?? null;
 
   // Follow the shift state: entering a shift -> main; leaving -> pick.
   useEffect(() => {
@@ -155,7 +191,12 @@ export function ClockSheet({
 
   // A punch either goes straight through (online + healthy) or gets saved to
   // the offline outbox and synced later. Callers show the right copy off this.
-  type PunchResult = { queued: boolean };
+  type PunchResult = {
+    queued: boolean;
+    /** Opening whose install clock started in the same tap, when one did. */
+    startedOpening?: string | null;
+    startFailed?: boolean;
+  };
 
   const shouldQueue = (err: unknown) =>
     typeof navigator !== "undefined" && navigator.onLine === false
@@ -207,7 +248,20 @@ export function ClockSheet({
       const noteText = note.trim() || null;
       try {
         await clockIn(projectId, costCodeId, geo, noteText);
-        return { queued: false };
+        // Same tap starts the first window when one was picked. The clock-in
+        // stands even if this part fails — a refused start must never un-ring
+        // that bell, so the failure becomes a toast, not an error.
+        let startedOpening: string | null = null;
+        let startFailed = false;
+        if (pickedOpening && toolboxOk) {
+          try {
+            await startOpeningWork(pickedOpening.id);
+            startedOpening = pickedOpening.id;
+          } catch {
+            startFailed = true;
+          }
+        }
+        return { queued: false, startedOpening, startFailed };
       } catch (e) {
         if (!shouldQueue(e)) throw e;
         const entryId = await enqueueClockIn({
@@ -218,12 +272,29 @@ export function ClockSheet({
           note: noteText,
         });
         setOptimisticShift(synthOpenShift(entryId, projectId, costCodeId, noteText));
+        // Offline: the punch is queued, but a unit start can't be confirmed
+        // against the server gate — they start it from My Work once in signal.
         return { queued: true };
       }
     },
     onSuccess: (r) => {
-      toastSuccess(r.queued ? "Clocked in — we'll sync it when you're back online" : "Clocked in");
+      if (r.startedOpening && pickedOpening) {
+        toastSuccess(`Clocked in — clock running on ${pickedOpening.opening_code}`);
+      } else {
+        toastSuccess(
+          r.queued ? "Clocked in — we'll sync it when you're back online" : "Clocked in",
+        );
+      }
+      if (r.startFailed && pickedOpening) {
+        pushToast(
+          `Couldn't start ${pickedOpening.opening_code} — open it from My Work to start the clock on it.`,
+          "error",
+        );
+      }
       if (!r.queued) refresh();
+      if (r.startedOpening && pickedOpening) {
+        navigate(`/projects/${pickedOpening.project_id}/opening/${r.startedOpening}`);
+      }
       onClose();
     },
     onError: (e) => toastError(e),
@@ -414,7 +485,11 @@ export function ClockSheet({
 
   // Clock-in is no longer gated on today's toolbox talk — installers can always
   // start their shift. A non-blocking nag banner (below) nudges them to sign it.
-  const canStart = Boolean(pickProjectId && pickCostCodeId);
+  // The one exception: starting a WINDOW in the same tap does require the talk
+  // (the server refuses without it), so a picked window + unsigned talk holds
+  // the button with a hint instead of failing after the fact.
+  const canStart =
+    Boolean(pickProjectId && pickCostCodeId) && !(pickedOpening && !toolboxOk);
 
   const busy =
     doStart.isPending ||
@@ -844,6 +919,44 @@ export function ClockSheet({
                   ))}
                 </div>
 
+                {/* Your assigned windows on this job — pick one and the same
+                    tap that clocks you in starts its install clock too. */}
+                {!shift && projectOpenings.length > 0 && (
+                  <div className="clock-chip-row-wrap">
+                    <p className="clock-row-label">
+                      Start on your assigned window (optional)
+                    </p>
+                    <div className="clock-chip-row" style={{ flexWrap: "wrap" }}>
+                      {projectOpenings.slice(0, 12).map((o) => (
+                        <button
+                          key={o.id}
+                          type="button"
+                          className={
+                            pickOpeningId === o.id ? "clock-chip current" : "clock-chip"
+                          }
+                          onClick={() =>
+                            setPickOpeningId((v) => (v === o.id ? "" : o.id))
+                          }
+                        >
+                          {o.opening_code}
+                          {o.label ? ` · ${o.label}` : ""}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Sign today's toolbox talk right here — the whole morning
+                    checklist in one sheet. Hidden once signed (or when no talk
+                    exists today). */}
+                {!shift && profileId && todayTalk.data && toolboxDone.isSuccess &&
+                  !toolboxDone.data && (
+                    <ToolboxSignCard profileId={profileId} talk={todayTalk.data} />
+                  )}
+                {!shift && Boolean(toolboxDone.data) && (
+                  <p className="clock-pick-summary">✓ Today's toolbox talk is signed.</p>
+                )}
+
                 {/* Optional note the worker can add for the office. */}
                 <label className="clock-row-label" htmlFor="clock-note">
                   Notes for the office (optional)
@@ -872,6 +985,12 @@ export function ClockSheet({
                   </p>
                 )}
 
+                {pickedOpening && !toolboxOk && (
+                  <p className="error" style={{ margin: "4px 0 0" }}>
+                    Sign today's toolbox talk above to start on{" "}
+                    {pickedOpening.opening_code} — or unselect it to just clock in.
+                  </p>
+                )}
                 <button
                   type="button"
                   className="clock-btn primary big"
@@ -891,9 +1010,11 @@ export function ClockSheet({
                   ) : (
                     <>
                       <Play size={18} aria-hidden />{" "}
-                      {canResume
-                        ? `Resume on ${resumeJob?.jobCode || resumeJob?.name}`
-                        : "Start clock"}
+                      {pickedOpening && toolboxOk
+                        ? `Start clock on ${pickedOpening.opening_code}`
+                        : canResume
+                          ? `Resume on ${resumeJob?.jobCode || resumeJob?.name}`
+                          : "Start clock"}
                     </>
                   )}
                 </button>
