@@ -237,9 +237,9 @@ export const APP_GUIDE: AppGuideEntry[] = [
   {
     path: "/timecard",
     label: "Timecard",
-    minRole: "foreman",
+    minRole: "installer",
     blurb:
-      "Review and approve crew hours by cost code. Check the week's time before it's exported for payroll.",
+      "Your hours, week by week. Installers see their own timecard read-only; foreman and up also review, adjust, and approve the whole crew's hours by cost code before payroll export.",
   },
   {
     path: "/issues",

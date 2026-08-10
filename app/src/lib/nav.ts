@@ -136,10 +136,14 @@ export const NAV: NavDest[] = [
   { id: "review", to: "/review", label: "Memo review", icon: "✍", minRole: "installer" },
   { id: "my-schedule", to: "/my-schedule", label: "My Schedule", icon: "◷", minRole: "installer" },
   { id: "travel", to: "/travel", label: "Travel", icon: "✈", minRole: "installer" },
+  // Everyone sees their own timecard (BusyBusy-style); the page itself scopes
+  // by role — installers get only their own week, read-only, while foreman+
+  // get the crew grid and editing. The floor here is about the ROUTE, not the
+  // data: RLS and the page's isLead branch decide what each role sees.
+  { id: "timecard", to: "/timecard", label: "Timecard", icon: "▥", minRole: "installer" },
 
   // Foreman+ (managers): coordination + warehouse ops + quality.
   { id: "team", to: "/team", label: "Team", icon: "⚑", minRole: "foreman" },
-  { id: "timecard", to: "/timecard", label: "Timecard", icon: "▥", minRole: "foreman" },
   { id: "issues", to: "/issues", label: "Issues", icon: "!", minRole: "foreman" },
   { id: "service", to: "/service", label: "Service", icon: "⚕", minRole: "foreman" },
   { id: "qc", to: "/qc", label: "Quality", icon: "✓", minRole: "foreman" },
