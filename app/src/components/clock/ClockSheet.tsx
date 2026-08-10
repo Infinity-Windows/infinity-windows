@@ -90,6 +90,12 @@ export function ClockSheet({
   const [showFullList, setShowFullList] = useState(false);
   const [note, setNote] = useState("");
   const [injured, setInjured] = useState(false);
+  // The BusyBusy-style sign-off, inverted to keep clock-out one tap: leaving
+  // this unchecked IS "yes, my time is correct" (time_confirmed = true), and
+  // checking it flags the day for office review without ever blocking the
+  // clock-out. The column has existed since the time clock shipped; this is
+  // the first UI that actually asks.
+  const [timeWrong, setTimeWrong] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [finishAt, setFinishAt] = useState("");
   const primedRef = useRef(false);
@@ -344,7 +350,7 @@ export function ClockSheet({
       try {
         await clockOut(shift!.id, {
           injured,
-          timeConfirmed: true,
+          timeConfirmed: !timeWrong,
           breakSeconds,
           geo,
         });
@@ -354,7 +360,7 @@ export function ClockSheet({
         await enqueueClockOut({
           shiftRef: shift!.id,
           injured,
-          timeConfirmed: true,
+          timeConfirmed: !timeWrong,
           breakSeconds,
           lat: geo?.lat ?? null,
           lng: geo?.lng ?? null,
@@ -367,6 +373,7 @@ export function ClockSheet({
     onSuccess: (r) => {
       toastSuccess(r.queued ? "Clocked out — we'll sync it when you're back online" : "Clocked out");
       setInjured(false);
+      setTimeWrong(false);
       if (!r.queued) refresh();
       onClose();
     },
@@ -607,6 +614,15 @@ export function ClockSheet({
                 onChange={(e) => setInjured(e.target.checked)}
               />
               I was injured this shift
+            </label>
+
+            <label className="clock-injury">
+              <input
+                type="checkbox"
+                checked={timeWrong}
+                onChange={(e) => setTimeWrong(e.target.checked)}
+              />
+              My recorded time looks wrong — flag it for office review
             </label>
 
             {needsRealFinish ? (

@@ -5,15 +5,22 @@ import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
 import { QueryError, SkeletonList } from "../components/ui/States";
-import { getMyProfile, listProfiles } from "../lib/install/api";
-import { isForemanPlus } from "../lib/install/types";
+import {
+  getMyProfile,
+  listInstallEventsForProfile,
+  listProfiles,
+} from "../lib/install/api";
+import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { sendPush } from "../lib/permissions/pushServer";
 import {
   addDays,
   approveShift,
   leadAddShift,
   leadEditShift,
   listCostCodes,
+  listOvertimeRules,
+  listShiftEdits,
   listShiftsForProfile,
   listTeamShifts,
   punchDay,
@@ -23,6 +30,11 @@ import {
   weekRange,
   type TimeShift,
 } from "../lib/timeclock";
+import {
+  overtimeRuleFromRow,
+  pickOvertimeRule,
+  splitOvertime,
+} from "../lib/overtime";
 import {
   buildTimecardCsv,
   buildTimecardTsv,
@@ -133,7 +145,10 @@ function ShiftEditor({
   const [breakMin, setBreakMin] = useState(
     String(Math.round((shift?.break_seconds ?? 0) / 60)),
   );
-  const [note, setNote] = useState(shift?.edited_note ?? "");
+  // Every edit needs its OWN reason (the server refuses without one), so this
+  // never prefills from the last edit's note - a stale reason on a new change
+  // would be a false audit entry.
+  const [note, setNote] = useState("");
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["teamShifts"] });
@@ -161,10 +176,22 @@ function ShiftEditor({
         clockInAt: fromLocalInput(inAt),
         clockOutAt: fromLocalInput(outAt),
         breakSeconds,
-        note: note.trim() || null,
+        note: note.trim(),
       });
     },
     onSuccess: () => {
+      // Editing an approved shift un-approves it server-side; tell the crew
+      // member their numbers changed rather than letting payroll surprise
+      // them. Fire-and-forget, same as the approval push.
+      if (mode === "edit" && shift?.status === "approved") {
+        void sendPush({
+          profileIds: [shift.profile_id],
+          title: "Timecard adjusted",
+          body: "Your approved hours were changed and need re-approval.",
+          tag: `timecard-edited-${shift.id}`,
+          url: "/clock",
+        });
+      }
       refresh();
       onDone();
     },
@@ -209,7 +236,9 @@ function ShiftEditor({
         value={breakMin}
         onChange={(e) => setBreakMin(e.target.value)}
       />
-      <label className="field-label">Note (why adjusted)</label>
+      <label className="field-label">
+        {mode === "edit" ? "Reason (required — goes in the audit log)" : "Note (why adjusted)"}
+      </label>
       <input
         type="text"
         value={note}
@@ -220,7 +249,7 @@ function ShiftEditor({
       <div className="row-gap" style={{ marginTop: 10 }}>
         <button
           className="button-like active-pill"
-          disabled={save.isPending || !inAt}
+          disabled={save.isPending || !inAt || (mode === "edit" && note.trim() === "")}
           onClick={() => save.mutate()}
         >
           {save.isPending ? "Saving…" : mode === "add" ? "Add punch" : "Save changes"}
@@ -233,13 +262,73 @@ function ShiftEditor({
   );
 }
 
+/** A timestamp field's raw value reads better as a local time. */
+function fmtEditValue(field: string, v: string | null): string {
+  if (v === null) return "—";
+  if (field.endsWith("_at")) {
+    const d = new Date(v);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    }
+  }
+  return v;
+}
+
+/**
+ * The append-only trail behind an "adjusted" badge — supervisor+ only (RLS
+ * enforces it; the UI just doesn't offer the button below that). Shifts
+ * adjusted before the audit log existed have a stamp but no rows; say so
+ * rather than showing an empty list that looks like a bug.
+ */
+function ShiftHistory({ shiftId }: { shiftId: string }) {
+  const edits = useQuery({
+    queryKey: ["shiftEdits", shiftId],
+    queryFn: () => listShiftEdits(shiftId),
+  });
+  if (edits.isLoading) return <p className="muted">Loading history…</p>;
+  if (edits.isError) return <p className="error">{formatApiError(edits.error)}</p>;
+  const list = edits.data ?? [];
+  if (list.length === 0) {
+    return (
+      <p className="muted" style={{ fontSize: 11.5 }}>
+        No logged edits — this punch was adjusted before the audit log existed.
+      </p>
+    );
+  }
+  return (
+    <ul className="unit-list" style={{ flexBasis: "100%", marginTop: 6 }}>
+      {list.map((e) => (
+        <li key={e.id} className="muted" style={{ fontSize: 11.5 }}>
+          {new Date(e.created_at).toLocaleString(undefined, {
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          })}{" "}
+          · {e.editor?.display_name ?? "someone"} · {e.field}:{" "}
+          {fmtEditValue(e.field, e.old_value)} → {fmtEditValue(e.field, e.new_value)} ·
+          “{e.reason}”
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function Timecard() {
   const qc = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const { effectiveRole } = useEffectiveRole();
   const isLead = isForemanPlus(effectiveRole);
+  const isSup = isSupervisorPlus(effectiveRole);
 
   const [anchor, setAnchor] = useState<Date>(() => new Date());
+  /** Which shift's edit history is expanded (supervisor+). */
+  const [historyId, setHistoryId] = useState<string | null>(null);
   const week = useMemo(() => weekRange(anchor), [anchor]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -280,6 +369,10 @@ export function Timecard() {
     queryKey: ["timecardMine", me.data?.id, week.startIso],
     queryFn: () => listShiftsForProfile(me.data!.id, week.startIso, week.endIso),
     enabled: !isLead && Boolean(me.data?.id),
+  });
+  const otRules = useQuery({
+    queryKey: ["overtimeRules"],
+    queryFn: listOvertimeRules,
   });
 
   const refresh = () => {
@@ -335,6 +428,38 @@ export function Timecard() {
 
   const dayGroups = useMemo(() => groupByDay(personShifts), [personShifts]);
 
+  // The person's filed installs this week, keyed by the same local day as the
+  // shift groups - so a day row can say what the hours actually built.
+  const personEvents = useQuery({
+    queryKey: ["timecardInstalls", activePersonId, week.startIso],
+    queryFn: () =>
+      listInstallEventsForProfile(activePersonId!, week.startIso, week.endIso),
+    enabled: Boolean(activePersonId),
+  });
+  const eventsByDay = useMemo(() => {
+    const m = new Map<string, typeof personEvents.data>();
+    for (const ev of personEvents.data ?? []) {
+      const d = punchDay(ev.created_at);
+      const arr = m.get(d);
+      if (arr) arr.push(ev);
+      else m.set(d, [ev]);
+    }
+    return m;
+  }, [personEvents.data]);
+
+  /** One person's weekly regular/OT/double split under the rule that applies. */
+  const splitFor = (profileId: string, shifts: TimeShift[]) => {
+    const row = pickOvertimeRule(otRules.data ?? [], profileId);
+    const rule = row ? overtimeRuleFromRow(row) : null;
+    const byDay = new Map<string, number>();
+    for (const s of shifts) {
+      const d = punchDay(s.clock_in_at);
+      byDay.set(d, (byDay.get(d) ?? 0) + shiftHours(s));
+    }
+    return splitOvertime([...byDay.values()], rule);
+  };
+  const personSplit = activePersonId ? splitFor(activePersonId, personShifts) : null;
+
   function exportShifts(source: TimeShift[]): TimecardExportShift[] {
     return source.map((s) => ({
       employee: s.profiles?.display_name ?? "Crew",
@@ -350,10 +475,28 @@ export function Timecard() {
     }));
   }
 
+  /** Weekly OT split per person, priced by whichever rule applies to them. */
+  function exportOvertime() {
+    const byPerson = new Map<string, { name: string; shifts: TimeShift[] }>();
+    for (const s of teamShifts.data ?? []) {
+      const e = byPerson.get(s.profile_id) ?? {
+        name: s.profiles?.display_name ?? "Crew",
+        shifts: [],
+      };
+      e.shifts.push(s);
+      byPerson.set(s.profile_id, e);
+    }
+    return [...byPerson.entries()].map(([pid, e]) => ({
+      employee: e.name,
+      ...splitFor(pid, e.shifts),
+    }));
+  }
+
   function handleExportCsv() {
     const payload = {
       periodLabel: week.label,
       shifts: exportShifts(teamShifts.data ?? []),
+      overtime: exportOvertime(),
     };
     downloadText(
       buildTimecardCsv(payload),
@@ -366,6 +509,7 @@ export function Timecard() {
     const payload = {
       periodLabel: week.label,
       shifts: exportShifts(teamShifts.data ?? []),
+      overtime: exportOvertime(),
     };
     await navigator.clipboard.writeText(buildTimecardTsv(payload));
   }
@@ -614,6 +758,14 @@ export function Timecard() {
           <h2 style={{ margin: 0 }}>{personName}</h2>
           <p className="muted" style={{ margin: 0 }}>
             {personTotal.toFixed(1)} h this week
+            {personSplit && personSplit.overtime + personSplit.doubleTime > 0 && (
+              <span style={statusStyle("submitted")}>
+                {" "}· {personSplit.regular.toFixed(1)} reg ·{" "}
+                {personSplit.overtime.toFixed(1)} OT
+                {personSplit.doubleTime > 0 &&
+                  ` · ${personSplit.doubleTime.toFixed(1)} DT`}
+              </span>
+            )}
           </p>
         </div>
         {canEdit && (
@@ -663,6 +815,20 @@ export function Timecard() {
               {g.total.toFixed(1)}h
             </span>
           </div>
+          {(eventsByDay.get(g.day) ?? []).length > 0 && (
+            <p className="muted" style={{ fontSize: 11.5, margin: "2px 0 4px" }}>
+              {(eventsByDay.get(g.day) ?? []).length} window
+              {(eventsByDay.get(g.day) ?? []).length === 1 ? "" : "s"} installed:{" "}
+              {(eventsByDay.get(g.day) ?? [])
+                .map(
+                  (ev) =>
+                    `${ev.opening?.opening_code ?? "?"}` +
+                    (ev.minutes != null ? ` ${ev.minutes}m` : "") +
+                    (ev.quality_grade != null ? ` · G${ev.quality_grade}` : ""),
+                )
+                .join(", ")}
+            </p>
+          )}
           <ul className="unit-list">
             {g.shifts.map((s) => (
               <li key={s.id} className="week-row" style={{ flexWrap: "wrap" }}>
@@ -681,8 +847,28 @@ export function Timecard() {
                     {s.injured && (
                       <span style={statusStyle("rejected")}> · injury</span>
                     )}
-                    {s.edited_by && <span className="muted"> · adjusted</span>}
+                    {/* The crew member answered "No" to "is your time correct?"
+                        at clock-out — the day is theirs to dispute, and this is
+                        where the office sees it. */}
+                    {s.time_confirmed === false && (
+                      <span style={statusStyle("rejected")}> · time flagged by crew</span>
+                    )}
+                    {s.edited_by &&
+                      (isSup ? (
+                        <button
+                          className="button-like"
+                          style={{ fontSize: 11, padding: "0 6px", marginLeft: 4 }}
+                          onClick={() =>
+                            setHistoryId((v) => (v === s.id ? null : s.id))
+                          }
+                        >
+                          adjusted · history
+                        </button>
+                      ) : (
+                        <span className="muted"> · adjusted</span>
+                      ))}
                   </div>
+                  {historyId === s.id && isSup && <ShiftHistory shiftId={s.id} />}
                   {shiftGuard(s, Date.now()).flagged && (
                     <div style={{ fontSize: 11.5, ...statusStyle("submitted") }}>
                       {describeDuration(shiftGuard(s, Date.now()).sinceClockInSeconds)}{" "}

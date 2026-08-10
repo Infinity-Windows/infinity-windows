@@ -62,6 +62,9 @@ export function TimeClock() {
   const [codeId, setCodeId] = useState("");
   const [now, setNow] = useState(Date.now());
   const [injured, setInjured] = useState(false);
+  // Sign-off at clock-out: "Yes" (default) writes time_confirmed = true; "No"
+  // still clocks out and flags the day for office review.
+  const [timeCorrect, setTimeCorrect] = useState(true);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -91,10 +94,10 @@ export function TimeClock() {
     mutationFn: (s: TimeShift) =>
       clockOut(s.id, {
         injured,
-        timeConfirmed: true,
+        timeConfirmed: timeCorrect,
         breakSeconds: currentBreakSeconds(s, Date.now()),
       }),
-    onSuccess: () => { setInjured(false); refresh(); },
+    onSuccess: () => { setInjured(false); setTimeCorrect(true); refresh(); },
   });
   const doApprove = useMutation({
     mutationFn: approveShift,
@@ -147,6 +150,18 @@ export function TimeClock() {
             <button className={!injured ? "grade-btn selected" : "grade-btn"} onClick={() => setInjured(false)}>No</button>
             <button className={injured ? "grade-btn selected danger" : "grade-btn"} onClick={() => setInjured(true)}>Yes</button>
           </div>
+          <label className="field-label" style={{ alignSelf: "stretch", textAlign: "left" }}>
+            Is your recorded time correct?
+          </label>
+          <div className="grade-row" style={{ width: "100%" }}>
+            <button className={timeCorrect ? "grade-btn selected" : "grade-btn"} onClick={() => setTimeCorrect(true)}>Yes</button>
+            <button className={!timeCorrect ? "grade-btn selected danger" : "grade-btn"} onClick={() => setTimeCorrect(false)}>No</button>
+          </div>
+          {!timeCorrect && (
+            <p className="muted" style={{ margin: 0 }}>
+              You'll still clock out — this day gets flagged for the office to review.
+            </p>
+          )}
           <button
             type="button"
             className="clock-out"
