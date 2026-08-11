@@ -73,6 +73,7 @@ import { Education } from "./pages/Education";
 import { Photos } from "./pages/Photos";
 import { Points } from "./pages/Points";
 import { Safety } from "./pages/Safety";
+import { ToolboxHistory } from "./pages/ToolboxHistory";
 import { Supplies } from "./pages/Supplies";
 import { Qc } from "./pages/Qc";
 import { PinGate } from "./components/PinGate";
@@ -451,10 +452,7 @@ export default function App() {
             />
             <Route path="/milestones" element={<ComingSoon title="Milestones" />} />
             <Route path="/first-pane" element={<ComingSoon title="First Pane" />} />
-            <Route
-              path="/toolbox-history"
-              element={<ComingSoon title="Toolbox talk history" />}
-            />
+            <Route path="/toolbox-history" element={<ToolboxHistory />} />
             <Route
               path="/conditions"
               element={

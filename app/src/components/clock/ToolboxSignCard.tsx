@@ -5,6 +5,7 @@ import type { SafetyTalk } from "../../lib/ops";
 import { submitToolboxCompletion } from "../../lib/toolbox";
 import { SignaturePad, type SignaturePadHandle } from "../SignaturePad";
 import { formatApiError } from "../../lib/install/errors";
+import { TalkContent } from "../safety/TalkContent";
 
 /**
  * Sign today's toolbox talk without leaving the clock-in sheet.
@@ -56,16 +57,10 @@ export function ToolboxSignCard({
         <summary className="muted" style={{ cursor: "pointer", fontSize: 13 }}>
           Read the talk
         </summary>
-        <div
-          style={{
-            whiteSpace: "pre-wrap",
-            fontSize: 13,
-            maxHeight: 220,
-            overflowY: "auto",
-            marginTop: 6,
-          }}
-        >
-          {talk.body}
+        {/* The same tiered render the Safety page uses — key points, watch
+            for, stop work — not just the plain-text fallback body. */}
+        <div style={{ fontSize: 13, maxHeight: 300, overflowY: "auto", marginTop: 6 }}>
+          <TalkContent talk={talk} />
         </div>
       </details>
       <label className="ack-row" style={{ marginTop: 8 }}>
@@ -74,7 +69,7 @@ export function ToolboxSignCard({
           checked={ack}
           onChange={(e) => setAck(e.target.checked)}
         />
-        I read and understood today's talk
+        {talk.pledge ?? "I read and understood today's talk"}
       </label>
       <label className="field-label">Type your name</label>
       <input
