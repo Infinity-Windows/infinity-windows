@@ -29,6 +29,13 @@ import { myTodayCompletion } from "../../lib/toolbox";
 import { getTodayTalk } from "../../lib/ops";
 import { listMyOpeningsAllJobs, startOpeningWork } from "../../lib/install/api";
 import {
+  formatPhaseClock,
+  listMyActivePhases,
+  pauseOpeningPhase,
+  phaseElapsedSeconds,
+  resumeOpeningPhase,
+} from "../../lib/install/phases";
+import {
   BREAK_TYPES,
   breakTypeLabel,
   clockIn,
@@ -135,6 +142,12 @@ export function ClockSheet({
     queryFn: () => myTodayCompletion(profileId!),
     enabled: Boolean(profileId) && !shift,
   });
+  const myPhases = useQuery({
+    queryKey: ["myActivePhases", profileId],
+    queryFn: () => listMyActivePhases(profileId!),
+    enabled: Boolean(profileId) && Boolean(shift),
+    refetchInterval: 30_000,
+  });
   const myOpenings = useQuery({
     queryKey: ["myOpenings", profileId],
     queryFn: () => listMyOpeningsAllJobs(profileId!),
@@ -239,6 +252,20 @@ export function ClockSheet({
       cost_codes: cc ? { code: cc.code, label: cc.label } : null,
     };
   };
+
+  const pausePhase = useMutation({
+    mutationFn: (ph: { opening_id: string; kind: "flashing" }) =>
+      pauseOpeningPhase(ph.opening_id, ph.kind),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["myActivePhases"] }),
+    onError: (e) => toastError(e),
+  });
+  const resumePhase = useMutation({
+    mutationFn: (ph: { opening_id: string; kind: "flashing" }) =>
+      resumeOpeningPhase(ph.opening_id, ph.kind),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["myActivePhases"] }),
+    onError: (e) => toastError(e),
+  });
+  const phaseBusy = pausePhase.isPending || resumePhase.isPending;
 
   const doStart = useMutation<PunchResult>({
     mutationFn: async () => {
@@ -351,7 +378,7 @@ export function ClockSheet({
       }
     },
     onSuccess: (r) => {
-      toastSuccess(r.queued ? "Phase saved — will sync when online" : "Switched phase");
+      toastSuccess(r.queued ? "Cost code saved — will sync when online" : "Switched cost code");
       if (!r.queued) refresh();
     },
     onError: (e) => toastError(e),
@@ -383,6 +410,9 @@ export function ClockSheet({
         "info",
       );
       setMode("main");
+      // The server paused this person's phase clocks with the break — re-read
+      // them so the "You're on" card shows paused immediately.
+      void queryClient.invalidateQueries({ queryKey: ["myActivePhases"] });
       if (!r.queued) refresh();
     },
     onError: (e) => toastError(e),
@@ -635,12 +665,65 @@ export function ClockSheet({
               </span>
             </button>
 
-            {/* Switch phase — one tap, same job. Hidden while a finish time is
+            {/* What your time is going to RIGHT NOW — the task under the
+                shift. A flashing clock shows live (net of pauses) with its
+                own Pause/Resume; tapping the row opens that window's sheet.
+                Between tasks says so, which quietly surfaces off-task time. */}
+            {!needsRealFinish && (myPhases.data ?? []).length > 0 && (
+              <div className="clock-chip-row-wrap">
+                <p className="clock-row-label">You're on</p>
+                {(myPhases.data ?? []).map((ph) => (
+                  <div
+                    key={ph.id}
+                    className="detail-card"
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}
+                  >
+                    <span aria-hidden style={{ width: 10, height: 10, borderRadius: "50%", background: "#3fd4c0", flex: "none" }} />
+                    <button
+                      className="link"
+                      style={{ textAlign: "left", minWidth: 0 }}
+                      onClick={() => {
+                        onClose();
+                        navigate(`/projects/${ph.opening?.project_id}/opening/${ph.opening_id}`);
+                      }}
+                    >
+                      <strong>Flashing · {ph.opening?.opening_code ?? "?"}</strong>
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        {" "}· {ph.opening?.projects?.job_code ?? ""}
+                      </span>
+                    </button>
+                    <span style={{ marginLeft: "auto", fontVariantNumeric: "tabular-nums" }}>
+                      {ph.paused_at ? "paused · " : ""}
+                      {formatPhaseClock(phaseElapsedSeconds(ph, now))}
+                    </span>
+                    {ph.paused_at ? (
+                      <button
+                        className="button-like active-pill"
+                        disabled={phaseBusy}
+                        onClick={() => resumePhase.mutate(ph)}
+                      >
+                        Resume
+                      </button>
+                    ) : (
+                      <button
+                        className="button-like"
+                        disabled={phaseBusy}
+                        onClick={() => pausePhase.mutate(ph)}
+                      >
+                        Pause
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Switch cost code — one tap, same job. Hidden while a finish time is
                 outstanding: switching calls clock_in, and the question on the
                 screen is "when did you stop", not "what are you doing now". */}
             {!onBreak && !needsRealFinish && (costCodes.data?.length ?? 0) > 1 && (
               <div className="clock-chip-row-wrap">
-                <p className="clock-row-label">Switch phase</p>
+                <p className="clock-row-label">Switch cost code</p>
                 <div className="clock-chip-row">
                   {(costCodes.data ?? []).map((c) => {
                     const current = shift.cost_code_id === c.id;

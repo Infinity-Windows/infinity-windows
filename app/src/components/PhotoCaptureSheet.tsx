@@ -43,6 +43,19 @@ type PhotoCaptureSheetProps =
        * keeps both so a bad first shot can be retaken.
        */
       slots?: ("before" | "after")[];
+    }
+  | {
+      /**
+       * One stamped shot handed back to the caller — the phase-proof camera
+       * (flashing photos). Same live rear camera, same GPS + timestamp
+       * watermark, same file-picker fallback as everything else.
+       */
+      mode: "single";
+      value: File | null;
+      onChange: (file: File) => void;
+      label?: string | null;
+      /** Button copy, e.g. "Photo of the finished flashing". */
+      prompt: string;
     };
 
 /**
@@ -56,6 +69,7 @@ type PhotoCaptureSheetProps =
  */
 export function PhotoCaptureSheet(props: PhotoCaptureSheetProps) {
   if (props.mode === "beforeAfter") return <BeforeAfterCapture {...props} />;
+  if (props.mode === "single") return <SinglePhotoCapture {...props} />;
   return <JobPhotoCapture {...props} />;
 }
 
@@ -401,4 +415,90 @@ function useObjectUrl(file: File | null): string | null {
     return () => URL.revokeObjectURL(u);
   }, [file]);
   return url;
+}
+
+function SinglePhotoCapture({
+  value,
+  onChange,
+  label,
+  prompt,
+}: Extract<PhotoCaptureSheetProps, { mode: "single" }>) {
+  const [live, setLive] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [stamping, setStamping] = useState(false);
+
+  const applyPhoto = async (raw: File) => {
+    setStamping(true);
+    try {
+      const meta = await capturePhotoMeta(label ?? null, 8000);
+      const stamped = await stampPhotoFile(raw, meta);
+      onChange(stamped);
+    } finally {
+      setStamping(false);
+    }
+  };
+
+  const videoRef = useCameraStream(live, (message) => {
+    setCameraError(message);
+    setLive(false);
+  });
+  const url = useObjectUrl(value);
+
+  const snap = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    void grabFrame(video).then((blob) => {
+      if (!blob) return;
+      const file = new File([blob], `phase-${Date.now()}.jpg`, { type: "image/jpeg" });
+      setLive(false);
+      void applyPhoto(file);
+    });
+  };
+
+  if (live) {
+    return (
+      <div className="ba-camera">
+        <div className="ba-camera-stage">
+          <video ref={videoRef} playsInline muted className="ba-video" />
+        </div>
+        <div className="row-gap">
+          <button className="primary big" onClick={snap}>Capture</button>
+          <button className="big" onClick={() => setLive(false)}>Cancel</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ba-grid" style={{ gridTemplateColumns: "1fr" }}>
+      <div className="ba-slot">
+        <span className="field-label">{prompt}</span>
+        {url ? (
+          <img src={url} alt={prompt} className="ba-thumb" />
+        ) : (
+          <div className="ba-empty muted">no photo yet</div>
+        )}
+        <div className="row-gap">
+          <button className="link" onClick={() => setLive(true)}>
+            {url ? "Retake" : "Camera"}
+          </button>
+          <label className="link" style={{ cursor: "pointer" }}>
+            File
+            <input
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void applyPhoto(f);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          {stamping && <span className="muted">stamping…</span>}
+        </div>
+        {cameraError && <p className="muted">{cameraError} — use File instead.</p>}
+      </div>
+    </div>
+  );
 }
