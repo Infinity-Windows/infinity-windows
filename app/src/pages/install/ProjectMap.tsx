@@ -405,8 +405,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   );
 
   const undo = useMutation({
-    mutationFn: (args: { openingId: string; reason: string | null }) =>
-      undoInstall(args.openingId, args.reason ?? undefined),
+    mutationFn: (args: { openingId: string; reason: string }) =>
+      undoInstall(args.openingId, args.reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
       queryClient.invalidateQueries({ queryKey: ["voidedOpenings", projectId] });
@@ -417,11 +417,18 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   });
 
   const handleUndo = (o: ProjectOpening) => {
+    // The reason is required — it becomes the void record AND the
+    // failed-install issue's note. The full form lives on the opening sheet;
+    // this stays as the map's quick path.
     const reason = window.prompt(
-      `Undo the install on ${o.opening_code}? The install record is kept for review.\n\nReason (optional):`,
+      `Undo the install on ${o.opening_code}? Every record is kept.\n\nWhy is it coming back off the wall? (required):`,
     );
     if (reason === null) return; // cancelled
-    undo.mutate({ openingId: o.id, reason: reason.trim() || null });
+    if (reason.trim() === "") {
+      setMapError("A reason is required to undo an install.");
+      return;
+    }
+    undo.mutate({ openingId: o.id, reason: reason.trim() });
   };
 
   const reextractSpecs = useMutation({
