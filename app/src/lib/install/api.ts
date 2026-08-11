@@ -2474,19 +2474,46 @@ export async function submitInstallEvent(
 }
 
 /**
- * Undo/reclaim an install (foreman+). Voids the install event (keeps history),
- * reverts the opening to assigned/planned, returns the unit to the truck, and
- * voids any points. Server-side guard blocks plain installers.
+ * Undo/reclaim an install (foreman+). Voids the install event (keeps history —
+ * memos, photos, grade and minutes all survive on the voided row), reverts the
+ * opening to assigned/planned, returns the unit to the truck, voids points and
+ * opens a failed-install issue. The REASON is required — it is the record's
+ * whole value, and the server refuses without it.
  */
 export async function undoInstall(
   openingId: string,
-  reason?: string,
+  reason: string,
 ): Promise<void> {
   const { error } = await supabase.rpc("undo_install", {
     p_opening_id: openingId,
-    p_reason: reason ?? null,
+    p_reason: reason,
   });
   if (error) throw error;
+}
+
+/** The voided installs on one opening — why it came back off the wall. */
+export interface UndoneInstall {
+  id: string;
+  created_at: string;
+  voided_at: string | null;
+  void_reason: string | null;
+  minutes: number | null;
+  quality_grade: number | null;
+  installer: string | null;
+  voider?: { display_name: string } | null;
+}
+
+export async function listUndoneInstalls(openingId: string): Promise<UndoneInstall[]> {
+  const { data, error } = await supabase
+    .from("install_events")
+    .select(
+      "id, created_at, voided_at, void_reason, minutes, quality_grade, installer, voider:voided_by(display_name)",
+    )
+    .eq("project_opening_id", openingId)
+    .not("voided_at", "is", null)
+    .order("voided_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as unknown as UndoneInstall[];
 }
 
 export interface FailedInstall {

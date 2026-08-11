@@ -18,9 +18,11 @@ import {
   getTypeBrainStats,
   listMarkSpecs,
   listMyOpeningsAllJobs,
+  listUndoneInstalls,
   setOpeningCondition,
   setRoughOpening,
   startOpeningWork,
+  undoInstall,
   synthesizeTypeTips,
   generateHowto,
 } from "../../lib/install/api";
@@ -348,6 +350,28 @@ export function OpeningSheet() {
     },
     onError: (e) => setMessage(formatApiError(e)),
   });
+  // Undo an install from the window itself (foreman+): required reason,
+  // nothing lost - the event is voided, never deleted.
+  const [undoReason, setUndoReason] = useState("");
+  const [undoOpen, setUndoOpen] = useState(false);
+  // Always loaded: the history matters MOST after an undo, when the status
+  // is no longer "installed". Cheap filtered query; empty for most windows.
+  const undoHistory = useQuery({
+    queryKey: ["undoneInstalls", openingId],
+    queryFn: () => listUndoneInstalls(openingId),
+  });
+  const undo = useMutation({
+    mutationFn: () => undoInstall(openingId, undoReason.trim()),
+    onSuccess: () => {
+      setUndoOpen(false);
+      setUndoReason("");
+      setMessage("Install undone - every record kept. The window is back on the list.");
+      refresh();
+      void queryClient.invalidateQueries({ queryKey: ["undoneInstalls", openingId] });
+    },
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+
   const toggleNeedsFlashing = useMutation({
     mutationFn: (needs: boolean) => setOpeningNeedsFlashing(openingId, needs),
     onSuccess: () => refresh(),
@@ -924,6 +948,86 @@ export function OpeningSheet() {
             </button>
           ))}
         </nav>
+      )}
+
+      {/* --- INSTALLED: the done card, and the honest way back --- */}
+      {installed && (
+        <div className="detail-card">
+          <p className="ok" style={{ margin: 0, fontWeight: 700 }}>Installed ✓</p>
+          <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
+            Forgot something, or need a fix? Undoing keeps every record — the
+            memo, photos, grade and minutes stay on file — and puts this window
+            back on the install list with a required note saying why.
+          </p>
+          {isForemanPlus(effectiveRole) ? (
+            !undoOpen ? (
+              <button
+                className="button-like"
+                style={{ marginTop: 8 }}
+                onClick={() => setUndoOpen(true)}
+              >
+                Send it back — undo this install
+              </button>
+            ) : (
+              <>
+                <label className="field-label" style={{ marginTop: 8 }}>
+                  Why is it coming back off the wall? (required — goes on the
+                  record and opens a fix-it issue)
+                </label>
+                <textarea
+                  rows={2}
+                  maxLength={500}
+                  value={undoReason}
+                  placeholder="e.g. forgot the sill shims / scratched pane, needs a swap"
+                  onChange={(e) => setUndoReason(e.target.value)}
+                />
+                <div className="row-gap" style={{ marginTop: 8 }}>
+                  <button
+                    className="button-like active-pill"
+                    disabled={undo.isPending || undoReason.trim() === ""}
+                    onClick={() => undo.mutate()}
+                  >
+                    {undo.isPending ? "Undoing…" : "Undo install — keep all records"}
+                  </button>
+                  <button
+                    className="button-like"
+                    disabled={undo.isPending}
+                    onClick={() => {
+                      setUndoOpen(false);
+                      setUndoReason("");
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )
+          ) : (
+            <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
+              Ask your foreman to send it back — undoing an install is their call.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Past undos stay visible on ANY status — the why is the point. */}
+      {(undoHistory.data?.length ?? 0) > 0 && (
+        <div className="detail-card">
+          <span className="field-label">Previously sent back</span>
+          <ul className="unit-list" style={{ marginTop: 4 }}>
+            {(undoHistory.data ?? []).map((u) => (
+              <li key={u.id} className="muted" style={{ fontSize: 12.5 }}>
+                {u.voided_at &&
+                  new Date(u.voided_at).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                  })}{" "}
+                · {u.voider?.display_name ?? "lead"} — “{u.void_reason ?? "no reason recorded"}”
+                {u.minutes != null && ` · ${u.minutes}m install kept on file`}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {/* --- READY-TO-INSTALL GATE (always visible while working) --- */}
