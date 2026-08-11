@@ -8724,24 +8724,6 @@ body {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
-.mark-drawing-full {
-  background: #000;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  max-height: 70vh;
-  overflow: auto;
-}
-.mark-drawing-full img {
-  display: block;
-  width: 100%;
-  height: auto;
-  cursor: zoom-in;
-}
-.mark-drawing-full.magnified img {
-  width: 250%;
-  max-width: none;
-  cursor: zoom-out;
-}
 
 /* ===========================================================================
    Overlays and the edges of the phone
@@ -8973,4 +8955,30 @@ body {
   font-size: 14.5px;
   color: var(--foreground, #fff);
   line-height: 1.45;
+}
+
+/* Spec-sheet pan/zoom viewer: the sheet follows the finger (pinch, drag,
+   wheel, double-tap). touch-action: none is what hands the gestures to us
+   instead of the browser's scroll. */
+.sheet-zoom {
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  height: min(72vh, 640px);
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  position: relative;
+}
+.sheet-zoom:active {
+  cursor: grabbing;
+}
+.sheet-zoom img {
+  display: block;
+  width: 100%;
+  height: auto;
+  transform-origin: 0 0;
+  will-change: transform;
+  user-select: none;
+  -webkit-user-drag: none;
 }

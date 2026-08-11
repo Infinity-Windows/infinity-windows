@@ -20,6 +20,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { findSpecsPlanset, listPlansets } from "../../lib/install/api";
 import { specsPageDataUrl } from "../../lib/install/drawingCrops";
+import { SheetZoomViewer } from "./SheetZoomViewer";
 import type { MarkSpec } from "../../lib/install/specs";
 import { isDrawingStale } from "../../lib/install/markDrawing";
 
@@ -39,7 +40,6 @@ export function MarkDrawing({ spec, projectId, compact = false }: MarkDrawingPro
   const [src, setSrc] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [zoomed, setZoomed] = useState(false);
-  const [magnified, setMagnified] = useState(false);
   const holderRef = useRef<HTMLDivElement | null>(null);
 
   // Don't touch the planset (a multi-megabyte download + render) until the card
@@ -125,10 +125,7 @@ export function MarkDrawing({ spec, projectId, compact = false }: MarkDrawingPro
             type="button"
             className="mark-drawing-thumb"
             style={{ height }}
-            onClick={() => {
-              setMagnified(false);
-              setZoomed(true);
-            }}
+            onClick={() => setZoomed(true)}
             aria-label={`${label} — tap to open the full sheet`}
           >
             <img src={src} alt={label} />
@@ -144,20 +141,13 @@ export function MarkDrawing({ spec, projectId, compact = false }: MarkDrawingPro
           onClick={() => setZoomed(false)}
         >
           <div className="photo-viewer" onClick={(e) => e.stopPropagation()}>
-            <div className={`mark-drawing-full${magnified ? " magnified" : ""}`}>
-              <img
-                src={src}
-                alt={label}
-                onClick={() => setMagnified((m) => !m)}
-              />
-            </div>
+            <SheetZoomViewer src={src} alt={label} />
             <div className="photo-viewer-info">
               <p className="photo-viewer-caption">
                 Spec sheet · page {page} — find mark #{spec.mark_code}
               </p>
               <p className="muted">
-                Tap the sheet to {magnified ? "zoom out" : "zoom in"}
-                {magnified ? " — drag to move around the page." : "."}
+                Pinch or scroll to zoom · drag to move · double-tap a detail
               </p>
             </div>
             <button

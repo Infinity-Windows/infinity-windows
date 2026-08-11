@@ -71,18 +71,28 @@ async function getDoc(planset: Planset): Promise<PDFDocumentProxy> {
   return pending;
 }
 
+/**
+ * The FULL-page image is what the crew zooms into for dimension text, so it
+ * rasterizes sharper than the crop pipeline's shared canvas. 4200px keeps a
+ * hairline dimension legible at a deep pinch-zoom while the transient canvas
+ * (~50MB of pixels during the one render) stays survivable on a phone; the
+ * result persists as a PNG so the cost is paid once per sheet.
+ */
+export const SHEET_RENDER_WIDTH = 4200;
+
 /** Render (once) the specs page every mark on that page will be sliced from. */
 async function getPageCanvas(
   planset: Planset,
   pageNumber: number,
+  width: number = PAGE_RENDER_WIDTH,
 ): Promise<HTMLCanvasElement> {
-  const key = `${planset.id}:${pageNumber}:${PAGE_RENDER_WIDTH}`;
+  const key = `${planset.id}:${pageNumber}:${width}`;
   const cached = pageCache.get(key);
   if (cached) return cached;
 
   const pending = (async () => {
     const { renderPageCanvas } = await import("./pdf");
-    return renderPageCanvas(await getDoc(planset), pageNumber, PAGE_RENDER_WIDTH);
+    return renderPageCanvas(await getDoc(planset), pageNumber, width);
   })();
   pageCache.set(key, pending);
   pending.catch(() => pageCache.delete(key));
@@ -259,7 +269,7 @@ export async function specsPageDataUrl({
     plansetId: planset.id,
     markCode: `__page-${pageNumber}__`,
     bbox: [0, 0, 1, 1],
-    scale: PAGE_RENDER_WIDTH,
+    scale: SHEET_RENDER_WIDTH,
     variant: SPEC_VARIANT,
   });
 
@@ -273,7 +283,7 @@ export async function specsPageDataUrl({
     return persisted;
   }
 
-  const page = await getPageCanvas(planset, pageNumber);
+  const page = await getPageCanvas(planset, pageNumber, SHEET_RENDER_WIDTH);
   const url = cropDrawing(page, [0, 0, 1, 1]);
   cropCache.set(key, url);
   evict(cropCache, MAX_CACHED_CROPS);
