@@ -41,6 +41,7 @@ import { WindowDetail } from "./pages/WindowDetail";
 import { OpeningReview } from "./pages/install/OpeningReview";
 import { OpeningSheetRoute } from "./pages/install/OpeningSheet";
 import { MapsTrace } from "./pages/install/MapsTrace";
+import { FlashRun } from "./pages/install/FlashRun";
 import { PlansetUpload } from "./pages/install/PlansetUpload";
 import { ProjectMap } from "./pages/install/ProjectMap";
 import { TypeBrainCard } from "./pages/install/TypeBrainCard";
@@ -338,6 +339,9 @@ export default function App() {
                 </RequireRole>
               }
             />
+            {/* Flashing ahead of the crew is any installer's job — no gate
+                beyond being signed in; the server enforces the clock rules. */}
+            <Route path="/projects/:projectId/flash-run" element={<FlashRun />} />
             <Route path="/brain/:typeId" element={<TypeBrainCard />} />
             <Route
               path="/catalog"

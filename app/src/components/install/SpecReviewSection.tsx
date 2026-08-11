@@ -20,6 +20,8 @@ import {
 import { decodeSizeCode, formatSize, type ProjectMarkSpec } from "../../lib/install/specs";
 import { MarkDrawing } from "./MarkDrawing";
 import { formatApiError } from "../../lib/install/errors";
+import { setProjectNeedsFlashing } from "../../lib/install/phases";
+import type { ProjectOpening } from "../../lib/install/types";
 import { SpecReconciliationReport } from "./SpecReconciliationReport";
 import { SpecSizeWarnings } from "./SpecSizeWarnings";
 
@@ -160,6 +162,11 @@ export function SpecReviewSection({ projectId }: Props) {
         spec sheet the fields were read from is shown above them — check the
         page matches the mark before confirming.
       </p>
+      {/* Flashing default for the whole job. Every opening arrives needing
+          flashing ("yes is the default, no is the change"); a job that
+          doesn't flash gets cleared here in one tap. Per-window exceptions
+          live on each opening sheet. */}
+      <FlashingDefaultRow projectId={projectId} openings={openings.data ?? []} />
       <SpecReconciliationReport
         projectId={projectId}
         openings={openings.data ?? []}
@@ -350,6 +357,66 @@ function SpecRow({
           Confirm mark #{spec.mark_code}
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * The job-level flashing switch. Shows the live split (how many openings
+ * still need flashing vs are exempt) and flips the whole job in one tap —
+ * the escape hatch that makes "default yes everywhere" safe on jobs that
+ * turn out not to flash.
+ */
+function FlashingDefaultRow({
+  projectId,
+  openings,
+}: {
+  projectId: string;
+  openings: ProjectOpening[];
+}) {
+  const queryClient = useQueryClient();
+  const [note, setNote] = useState<string | null>(null);
+  const needing = openings.filter((o) => o.needs_flashing === true).length;
+  const exempt = openings.filter((o) => o.needs_flashing === false).length;
+  const known = needing + exempt > 0;
+
+  const setAll = useMutation({
+    mutationFn: (needs: boolean) => setProjectNeedsFlashing(projectId, needs),
+    onSuccess: (count, needs) => {
+      setNote(
+        `${count} opening${count === 1 ? "" : "s"} set to ${needs ? "needs flashing" : "no flashing"}.`,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+    },
+    onError: (e) => setNote(formatApiError(e)),
+  });
+
+  if (!known) return null;
+  return (
+    <div className="detail-card" style={{ marginTop: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span className="field-label" style={{ margin: 0 }}>Flashing</span>
+        <span className="muted" style={{ fontSize: 12.5 }}>
+          {needing} need it{exempt > 0 ? ` · ${exempt} exempt` : ""}
+        </span>
+        <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button
+            className="button-like"
+            disabled={setAll.isPending || needing === 0}
+            onClick={() => setAll.mutate(false)}
+          >
+            This job doesn't flash
+          </button>
+          <button
+            className="button-like"
+            disabled={setAll.isPending || exempt === 0}
+            onClick={() => setAll.mutate(true)}
+          >
+            All need flashing
+          </button>
+        </span>
+      </div>
+      {note && <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>{note}</p>}
     </div>
   );
 }

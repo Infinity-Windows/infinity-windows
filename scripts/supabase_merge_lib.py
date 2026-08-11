@@ -459,6 +459,9 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "installer_clearance": ("installer_id", "window_type_id"),
     "window_id_counters": ("window_type_id",),
     "project_openings": ("project_id", "opening_code"),
+    # One phase of one kind per opening (UNIQUE in the migration), so the
+    # parent opening plus the kind IS the row's identity.
+    "opening_phases": ("opening_id", "kind"),
     "project_plansets": ("project_id", "storage_path"),
     "toolbox_completions": ("profile_id", "talk_id"),
     "knowledge_chunks": ("doc_id", "chunk_index"),

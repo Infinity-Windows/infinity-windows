@@ -37,6 +37,12 @@ type PhotoCaptureSheetProps =
       onChange: (next: BeforeAfterValue) => void;
       /** Optional job/opening label burned into the watermark. */
       label?: string | null;
+      /**
+       * Which slots to offer. The Check stage shows only ["before"] — the
+       * before photo is captured while "before" still exists — and Capture
+       * keeps both so a bad first shot can be retaken.
+       */
+      slots?: ("before" | "after")[];
     };
 
 /**
@@ -263,6 +269,7 @@ function BeforeAfterCapture({
   value,
   onChange,
   label,
+  slots,
 }: Extract<PhotoCaptureSheetProps, { mode: "beforeAfter" }>) {
   const [mode, setMode] = useState<"idle" | "before" | "after">("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -338,7 +345,7 @@ function BeforeAfterCapture({
 
   return (
     <div className="ba-grid">
-      {(["before", "after"] as const).map((slot) => {
+      {(slots ?? (["before", "after"] as const)).map((slot) => {
         const url = slot === "before" ? beforeUrl : afterUrl;
         return (
           <div key={slot} className="ba-slot">
