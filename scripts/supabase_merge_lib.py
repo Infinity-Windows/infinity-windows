@@ -528,7 +528,13 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "service_cases": None,
     "supply_orders": None,
     "task_sessions": None,
+    # Append-only audit rows: two edits that look alike are two edits. Rides
+    # its parent shift's fate, like time_shifts itself.
+    "time_shift_edits": None,
     "time_shifts": None,
+    # scope='company' has profile_id NULL, so there is no non-null natural key
+    # across both rows kinds; a merge picks or carries like other config.
+    "overtime_rules": None,
     "tools": None,
     "trip_contacts": None,
     "vault_config": None,
