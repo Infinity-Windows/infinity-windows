@@ -18,6 +18,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Hub (`/warehouse`)
 - My Schedule (`/my-schedule`)
 - Clock in / out (action)
+- My timecard (`/timecard`)
 - Travel (`/travel`)
 - Learn (`/learn`)
 - Points (`/points`)
@@ -26,7 +27,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Settings (`/settings`)
 
-**Can reach (all 22 allowed destinations):**
+**Can reach (all 23 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -43,6 +44,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Memo review (`/review`)
 - My Schedule (`/my-schedule`)
 - Travel (`/travel`)
+- Timecard (`/timecard`)
 - Photos & receipts (`/photos`)
 - Completed installs (`/completed-installs`)
 - Milestones (`/milestones`)
@@ -54,7 +56,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 **Blocked:**
 
 - Team (`/team`)
-- Timecard (`/timecard`)
 - Issues (`/issues`)
 - Service (`/service`)
 - Quality (`/qc`)
@@ -137,8 +138,8 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Memo review (`/review`)
 - My Schedule (`/my-schedule`)
 - Travel (`/travel`)
-- Team (`/team`)
 - Timecard (`/timecard`)
+- Team (`/team`)
 - Issues (`/issues`)
 - Service (`/service`)
 - Quality (`/qc`)
@@ -238,8 +239,8 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Memo review (`/review`)
 - My Schedule (`/my-schedule`)
 - Travel (`/travel`)
-- Team (`/team`)
 - Timecard (`/timecard`)
+- Team (`/team`)
 - Issues (`/issues`)
 - Service (`/service`)
 - Quality (`/qc`)
@@ -341,8 +342,8 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Memo review (`/review`)
 - My Schedule (`/my-schedule`)
 - Travel (`/travel`)
-- Team (`/team`)
 - Timecard (`/timecard`)
+- Team (`/team`)
 - Issues (`/issues`)
 - Service (`/service`)
 - Quality (`/qc`)

@@ -395,6 +395,35 @@ export interface InstallerLeaderRow {
   fail_rate: number | null;
 }
 
+/** One person's filed installs in a window — the timecard's per-day units. */
+export interface ProfileInstallEvent {
+  id: string;
+  installer_id: string;
+  minutes: number | null;
+  quality_grade: number | null;
+  created_at: string;
+  opening?: { opening_code: string; project_id: string } | null;
+}
+
+export async function listInstallEventsForProfile(
+  profileId: string,
+  startIso: string,
+  endIso: string,
+): Promise<ProfileInstallEvent[]> {
+  const { data, error } = await supabase
+    .from("install_events")
+    .select(
+      "id, installer_id, minutes, quality_grade, created_at, opening:project_opening_id(opening_code, project_id)",
+    )
+    .eq("installer_id", profileId)
+    .is("voided_at", null)
+    .gte("created_at", startIso)
+    .lt("created_at", endIso)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as unknown as ProfileInstallEvent[];
+}
+
 /** Company analytics: per-installer install counts, speed, quality. */
 export async function getInstallerLeaderboard(): Promise<InstallerLeaderRow[]> {
   const [profilesRes, eventsRes] = await Promise.all([

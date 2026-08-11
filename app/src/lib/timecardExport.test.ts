@@ -77,3 +77,25 @@ describe("serializers", () => {
     expect(tsv.split("\n")[0]).toContain("\t");
   });
 });
+
+describe("overtime section", () => {
+  it("appears only when a split is provided, with per-person rows", () => {
+    const withOt = buildTimecardRows({
+      periodLabel: "wk",
+      shifts: [s({})],
+      overtime: [
+        { employee: "Ben", regular: 40, overtime: 5, doubleTime: 0 },
+        { employee: "Ammon", regular: 32, overtime: 0, doubleTime: 0 },
+      ],
+    });
+    const header = withOt.findIndex((r) => r[0] === "Overtime split");
+    expect(header).toBeGreaterThan(-1);
+    expect(withOt[header][4]).toBe("Regular");
+    // Sorted by name: Ammon before Ben.
+    expect(withOt[header + 1][0]).toBe("Ammon");
+    expect(withOt[header + 2].slice(4, 7)).toEqual(["40.00", "5.00", "0.00"]);
+
+    const without = buildTimecardRows({ periodLabel: "wk", shifts: [s({})] });
+    expect(without.some((r) => r[0] === "Overtime split")).toBe(false);
+  });
+});

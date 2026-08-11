@@ -18,9 +18,19 @@ export interface TimecardExportShift {
   status: string;
 }
 
+/** One person's week priced against the overtime rule that applies to them. */
+export interface TimecardOvertimeLine {
+  employee: string;
+  regular: number;
+  overtime: number;
+  doubleTime: number;
+}
+
 export interface TimecardExportPayload {
   periodLabel: string;
   shifts: TimecardExportShift[];
+  /** Optional weekly regular/OT/double split per person (lib/overtime.ts). */
+  overtime?: TimecardOvertimeLine[];
 }
 
 function hrs(n: number): string {
@@ -93,6 +103,18 @@ export function buildTimecardRows(payload: TimecardExportPayload): string[][] {
     a[0].localeCompare(b[0], undefined, { sensitivity: "base" }),
   )) {
     rows.push(pad([name, "", "", "", hrs(total)]));
+  }
+
+  if (payload.overtime && payload.overtime.length > 0) {
+    rows.push(pad([]));
+    rows.push(pad(["Overtime split", "", "", "", "Regular", "OT", "Double time"]));
+    for (const o of [...payload.overtime].sort((a, b) =>
+      a.employee.localeCompare(b.employee, undefined, { sensitivity: "base" }),
+    )) {
+      rows.push(
+        pad([o.employee, "", "", "", hrs(o.regular), hrs(o.overtime), hrs(o.doubleTime)]),
+      );
+    }
   }
 
   rows.push(pad([]));

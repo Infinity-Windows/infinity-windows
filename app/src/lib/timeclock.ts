@@ -339,6 +339,78 @@ export async function leadEditShift(
   return data as TimeShift;
 }
 
+/**
+ * One changed field of one edit — the append-only trail behind the quick
+ * "adjusted" badge. Written only by the lead_edit_shift RPC (which requires
+ * the reason); readable by supervisor+ via RLS, so a foreman's own edits are
+ * still reviewed by someone above them.
+ */
+export interface ShiftEdit {
+  id: string;
+  shift_id: string;
+  edited_by: string;
+  field: string;
+  old_value: string | null;
+  new_value: string | null;
+  reason: string;
+  created_at: string;
+  editor?: { display_name: string } | null;
+}
+
+/**
+ * "This table isn't migrated in yet" wears two uniforms: Postgres says 42P01,
+ * but PostgREST answers from its schema cache with PGRST205 ("Could not find
+ * the table"). Both mean the same honest thing here: no data yet, not a fault.
+ * (The general version of this lives in schemaErrors.ts on the tier1 branch;
+ * fold this into it when that merges.)
+ */
+function isMissingTableError(e: { code?: string; message?: string } | null): boolean {
+  if (!e) return false;
+  if (e.code === "42P01" || e.code === "PGRST205") return true;
+  return /could not find the table|relation .+ does not exist/i.test(e.message ?? "");
+}
+
+export async function listShiftEdits(shiftId: string): Promise<ShiftEdit[]> {
+  const { data, error } = await supabase
+    .from("time_shift_edits")
+    .select(
+      "id, shift_id, edited_by, field, old_value, new_value, reason, created_at, editor:edited_by(display_name)",
+    )
+    .eq("shift_id", shiftId)
+    .order("created_at", { ascending: true });
+  // The audit table hasn't been migrated in yet: an empty history is the
+  // truthful answer, not an error screen.
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return (data ?? []) as unknown as ShiftEdit[];
+}
+
+/** overtime_rules row: one company default plus per-person overrides. */
+export interface OvertimeRuleRow {
+  id: string;
+  scope: "company" | "person";
+  profile_id: string | null;
+  weekly_threshold_hours: number | null;
+  weekly_ot_multiplier: number;
+  daily_threshold_hours: number | null;
+  daily_ot_multiplier: number;
+  double_time_threshold_hours: number | null;
+  double_time_multiplier: number;
+}
+
+export async function listOvertimeRules(): Promise<OvertimeRuleRow[]> {
+  const { data, error } = await supabase
+    .from("overtime_rules")
+    .select(
+      "id, scope, profile_id, weekly_threshold_hours, weekly_ot_multiplier, daily_threshold_hours, daily_ot_multiplier, double_time_threshold_hours, double_time_multiplier",
+    );
+  // Rules table not migrated yet — no rules means no OT math, which is
+  // exactly what the timecard showed before this feature.
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return (data ?? []) as OvertimeRuleRow[];
+}
+
 export async function clockIn(
   projectId: string | null,
   costCodeId: string | null,
