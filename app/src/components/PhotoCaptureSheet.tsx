@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Camera, ImagePlus, X } from "lucide-react";
+import { Camera, ImagePlus, RefreshCw, X } from "lucide-react";
 import { enqueueUpload } from "../lib/offline/outbox";
 import {
   capturePhotoMeta,
@@ -357,38 +357,23 @@ function BeforeAfterCapture({
     );
   }
 
+  const only = slots ?? (["before", "after"] as const);
   return (
-    <div className="ba-grid">
-      {(slots ?? (["before", "after"] as const)).map((slot) => {
-        const url = slot === "before" ? beforeUrl : afterUrl;
-        return (
-          <div key={slot} className="ba-slot">
-            <span className="field-label" style={{ textTransform: "capitalize" }}>
-              {slot}
-            </span>
-            {url ? (
-              <img src={url} alt={slot} className="ba-thumb" />
-            ) : (
-              <div className="ba-empty muted">no {slot} photo</div>
-            )}
-            <div className="row-gap">
-              <button className="link" onClick={() => setMode(slot)}>
-                {url ? "Retake" : "Camera"}
-              </button>
-              <label className="link" style={{ cursor: "pointer" }}>
-                File
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  style={{ display: "none" }}
-                  onChange={pickFile(slot)}
-                />
-              </label>
-            </div>
-          </div>
-        );
-      })}
+    <div className={only.length === 1 ? "ba-grid one" : "ba-grid"}>
+      {only.map((slot) => (
+        <CaptureSlot
+          key={slot}
+          title={slot === "before" ? "Take the before photo" : "Take the after photo"}
+          hint={
+            slot === "after"
+              ? "Lines up over the ghosted before shot"
+              : "GPS + time stamped automatically"
+          }
+          url={slot === "before" ? beforeUrl : afterUrl}
+          onCamera={() => setMode(slot)}
+          onFile={pickFile(slot)}
+        />
+      ))}
       {stamping && (
         <p className="muted" style={{ gridColumn: "1 / -1" }}>
           Stamping GPS &amp; time…
@@ -396,9 +381,63 @@ function BeforeAfterCapture({
       )}
       {cameraError && (
         <p className="muted" style={{ gridColumn: "1 / -1" }}>
-          Camera unavailable — use File instead.
+          Camera unavailable — use the file option instead.
         </p>
       )}
+    </div>
+  );
+}
+
+
+/**
+ * One photo slot, dressed properly: the whole tile is the camera button
+ * (dashed ember frame, camera badge, one clear instruction), the file picker
+ * is the quiet second path underneath, and a filled slot shows the shot with
+ * a Retake/File bar over its footer. Shared by the before/after pair and the
+ * single-shot phase camera so every capture in the app feels the same.
+ */
+function CaptureSlot({
+  title,
+  hint,
+  url,
+  onCamera,
+  onFile,
+}: {
+  title: string;
+  hint?: string;
+  url: string | null;
+  onCamera: () => void;
+  onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}) {
+  if (url) {
+    return (
+      <div className="cap-slot filled">
+        <img src={url} alt={title} className="cap-photo" />
+        <div className="cap-photo-bar">
+          <button type="button" className="cap-bar-btn" onClick={onCamera}>
+            <RefreshCw size={14} aria-hidden /> Retake
+          </button>
+          <label className="cap-bar-btn">
+            <ImagePlus size={14} aria-hidden /> File
+            <input type="file" accept="image/*" hidden onChange={onFile} />
+          </label>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="cap-slot">
+      <button type="button" className="cap-empty" onClick={onCamera}>
+        <span className="cap-cam-badge" aria-hidden>
+          <Camera size={26} />
+        </span>
+        <span className="cap-cta">{title}</span>
+        <span className="cap-sub">{hint ?? "Tap to open the camera"}</span>
+      </button>
+      <label className="cap-file-alt">
+        <ImagePlus size={13} aria-hidden /> or choose from files
+        <input type="file" accept="image/*" hidden onChange={onFile} />
+      </label>
     </div>
   );
 }
@@ -469,36 +508,24 @@ function SinglePhotoCapture({
     );
   }
 
+  const pick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) void applyPhoto(f);
+    e.target.value = "";
+  };
   return (
-    <div className="ba-grid" style={{ gridTemplateColumns: "1fr" }}>
-      <div className="ba-slot">
-        <span className="field-label">{prompt}</span>
-        {url ? (
-          <img src={url} alt={prompt} className="ba-thumb" />
-        ) : (
-          <div className="ba-empty muted">no photo yet</div>
-        )}
-        <div className="row-gap">
-          <button className="link" onClick={() => setLive(true)}>
-            {url ? "Retake" : "Camera"}
-          </button>
-          <label className="link" style={{ cursor: "pointer" }}>
-            File
-            <input
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void applyPhoto(f);
-                e.target.value = "";
-              }}
-            />
-          </label>
-          {stamping && <span className="muted">stamping…</span>}
-        </div>
-        {cameraError && <p className="muted">{cameraError} — use File instead.</p>}
-      </div>
+    <div className="ba-grid one">
+      <CaptureSlot
+        title={prompt}
+        hint="GPS + time stamped automatically"
+        url={url}
+        onCamera={() => setLive(true)}
+        onFile={pick}
+      />
+      {stamping && <p className="muted">Stamping GPS &amp; time…</p>}
+      {cameraError && (
+        <p className="muted">{cameraError} — use the file option instead.</p>
+      )}
     </div>
   );
 }
