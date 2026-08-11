@@ -9016,3 +9016,86 @@ body {
   text-overflow: ellipsis;
 }
 .clock-chip.cost.current .clock-chip-desc { color: inherit; }
+
+/* ==========================================================================
+   Capture slots: the camera is the hero. The whole tile is the button — a
+   dashed ember frame with a camera badge and one instruction — and the file
+   picker is the quiet second path. A filled slot shows the shot with a
+   Retake/File bar riding its footer. Shared by before/after and the phase
+   (flashing) camera so every capture in the app feels the same.
+   ========================================================================== */
+.cap-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.cap-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 170px;
+  padding: 18px 12px;
+  border-radius: 14px;
+  border: 1.5px dashed rgba(255, 106, 61, 0.45);
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255, 106, 61, 0.07), transparent 65%),
+    rgba(255, 255, 255, 0.02);
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease;
+}
+.cap-empty:hover { border-color: rgba(255, 138, 92, 0.8); }
+.cap-empty:active { transform: scale(0.985); }
+.cap-cam-badge {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  color: #ff9a6a;
+  background: rgba(255, 106, 61, 0.12);
+  box-shadow: 0 0 0 1px rgba(255, 106, 61, 0.35), 0 0 18px rgba(255, 106, 61, 0.15);
+}
+.cap-cta { font-weight: 700; font-size: 14.5px; text-align: center; text-wrap: balance; }
+.cap-sub { font-size: 12px; color: var(--muted, #b3a498); text-align: center; }
+.cap-file-alt {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted, #b3a498);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+.cap-file-alt:hover { color: inherit; }
+.cap-slot.filled { position: relative; border-radius: 14px; overflow: hidden; }
+.cap-photo { display: block; width: 100%; border-radius: 14px; }
+.cap-photo-bar {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 8px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
+}
+.cap-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.cap-bar-btn:hover { border-color: rgba(255, 154, 106, 0.8); }
+.ba-grid.one { grid-template-columns: 1fr; }
