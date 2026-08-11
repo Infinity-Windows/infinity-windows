@@ -10,6 +10,12 @@ export interface EffectiveRole {
   effectiveRole: CrewRole | string | null | undefined;
   /** True when a supervisor+ is previewing another role (banner + faithful gating). */
   isPreviewing: boolean;
+  /**
+   * True while the profile is still loading, when the role reads as null but
+   * nothing is known yet. Route guards must wait on this rather than treat the
+   * null as "no permissions", which would flash a denial at every allowed user.
+   */
+  isLoading: boolean;
 }
 
 /**
@@ -27,5 +33,6 @@ export function useEffectiveRole(): EffectiveRole {
     realRole,
     effectiveRole: effectiveRole(realRole, view),
     isPreviewing,
+    isLoading: me.isLoading,
   };
 }

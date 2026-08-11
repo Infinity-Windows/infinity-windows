@@ -364,7 +364,7 @@ export function Issues() {
         <strong>!</strong> urgent, then oldest first. {openCount} open.
       </p>
 
-      {resolve.isError && <p className="error">{String(resolve.error)}</p>}
+      {resolve.isError && <p className="error">{formatApiError(resolve.error)}</p>}
       {(assign.isError || fault.isError) && (
         <p className="error">
           {formatApiError(
@@ -398,7 +398,7 @@ export function Issues() {
       </div>
 
       {issuesQ.isLoading && <p className="muted">Loading issues…</p>}
-      {issuesQ.isError && <p className="error">{String(issuesQ.error)}</p>}
+      {issuesQ.isError && <p className="error">{formatApiError(issuesQ.error)}</p>}
 
       {!issuesQ.isLoading && !issuesQ.isError && (
         <ul className="unit-list work-list">

@@ -6,6 +6,7 @@
 // nothing crashes.
 
 import { supabase } from "../supabase";
+import { isMissingColumn as isMissingSchemaColumn, isMissingTable } from "../schemaErrors";
 import { listProjects } from "../api";
 import type { Project } from "../types";
 import { normalizeDrivers } from "./drivers";
@@ -31,24 +32,13 @@ const LOCAL_KEY = "infinity.vehicles.v1";
 
 /** Missing-table / missing-column errors mean the migration isn't applied. */
 function isMissingVehicleTable(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const e = error as { code?: unknown; message?: unknown };
-  if (e.code === "PGRST205" || e.code === "42P01") return true;
-  const msg = typeof e.message === "string" ? e.message.toLowerCase() : "";
-  return (
-    msg.includes("vehicle") ||
-    (msg.includes("does not exist") && msg.includes("relation"))
-  );
+  return isMissingTable(error, "vehicle");
 }
 
 /** A "column not found" error means the date-aware link migration isn't
  * applied yet (the table exists, but start_date/end_date/assignment_id don't). */
 function isMissingColumn(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const e = error as { code?: unknown; message?: unknown };
-  if (e.code === "42703" || e.code === "PGRST204") return true;
-  const msg = typeof e.message === "string" ? e.message.toLowerCase() : "";
-  return msg.includes("column") && msg.includes("does not exist");
+  return isMissingSchemaColumn(error);
 }
 
 function nowISO(): string {

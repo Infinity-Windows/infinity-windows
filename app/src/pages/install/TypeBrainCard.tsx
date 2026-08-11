@@ -7,6 +7,7 @@ import {
   synthesizeTypeTips,
   updateTypeKnowledge,
 } from "../../lib/install/api";
+import { formatApiError } from "../../lib/install/errors";
 import { MEMO_TOPICS, isForemanPlus } from "../../lib/install/types";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import type { HowtoStep } from "../../lib/types";
@@ -231,7 +232,7 @@ export function TypeBrainCard() {
         </button>
       </div>
       {(synthesize.isError || howto.isError) && (
-        <p className="error">{String(synthesize.error ?? howto.error)}</p>
+        <p className="error">{formatApiError(synthesize.error ?? howto.error)}</p>
       )}
 
       {(s.videos.length > 0 || s.type.tutorial_url) && (

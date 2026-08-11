@@ -22,6 +22,7 @@ import {
   updateTalkSections,
 } from "../lib/toolbox";
 import { SignaturePad, type SignaturePadHandle } from "../components/SignaturePad";
+import { formatApiError } from "../lib/errors";
 
 const SEVERITY = [
   { v: "near_miss", l: "Near miss", mild: true },
@@ -313,7 +314,7 @@ export function Safety() {
               </button>
             </div>
             {sign.isError && (
-              <p className="error">Couldn't save: {String((sign.error as Error).message)}</p>
+              <p className="error">Couldn't save: {formatApiError(sign.error)}</p>
             )}
             <button
               className="primary big"

@@ -1,5 +1,6 @@
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import { supabase } from "../supabase";
+import { isMissingColumn, isMissingFunction as isMissingSchemaFunction, isMissingTable } from "../schemaErrors";
 import type { WindowType } from "../types";
 import type { DraftOpening, ExistingOpeningLite, PlansetKindLike } from "./extract";
 import { markBase, planDraftPersistence } from "./extract";
@@ -66,11 +67,7 @@ function isOwnerBootstrapEmail(email: string | undefined): boolean {
 
 /** A database that predates the RPC, rather than the RPC refusing the caller. */
 export function isMissingFunction(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const e = error as { code?: unknown; message?: unknown };
-  if (e.code === "PGRST202" || e.code === "42883") return true;
-  const msg = typeof e.message === "string" ? e.message.toLowerCase() : "";
-  return msg.includes("does not exist") && msg.includes("function");
+  return isMissingSchemaFunction(error);
 }
 
 /** Ensure the signed-in user has a profile row; return it. */
@@ -684,18 +681,11 @@ export async function downloadPlanset(planset: Planset): Promise<ArrayBuffer> {
 const LOCAL_OUTLINES_KEY = "infinity.planOutlines.v1";
 
 function isMissingOutlineTable(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const e = error as { code?: unknown; message?: unknown };
-  if (e.code === "PGRST205") return true;
-  const message = typeof e.message === "string" ? e.message.toLowerCase() : "";
-  return message.includes("project_plan_outlines");
+  return isMissingTable(error, "project_plan_outlines");
 }
 
 function isMissingFeaturesColumn(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const e = error as { code?: unknown; message?: unknown };
-  const message = typeof e.message === "string" ? e.message.toLowerCase() : "";
-  return e.code === "PGRST204" && message.includes("features");
+  return isMissingColumn(error, "features");
 }
 
 function readLocalOutlines(): PlanOutline[] {
@@ -1406,13 +1396,9 @@ export async function listPinMoves(projectId: string): Promise<PinMove[]> {
 }
 
 function isMissingPinHistory(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const e = error as { code?: unknown; message?: unknown };
-  if (e.code === "PGRST205" || e.code === "42P01" || e.code === "PGRST202") {
-    return true;
-  }
-  const message = typeof e.message === "string" ? e.message.toLowerCase() : "";
-  return message.includes("project_opening_pin_moves");
+  // Also treats a missing RPC as "no history yet": the move log is read through
+  // a function that ships in the same migration as the table.
+  return isMissingTable(error, "project_opening_pin_moves") || isMissingFunction(error);
 }
 
 /**
@@ -1460,11 +1446,7 @@ export async function confirmOpenings(projectId: string): Promise<void> {
 
 /** True when the elevation-view table hasn't been migrated yet. */
 function isMissingElevationTable(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const e = error as { code?: unknown; message?: unknown };
-  if (e.code === "PGRST205" || e.code === "42P01") return true;
-  const message = typeof e.message === "string" ? e.message.toLowerCase() : "";
-  return message.includes("project_mark_elevation_views");
+  return isMissingTable(error, "project_mark_elevation_views");
 }
 
 /**
@@ -1570,11 +1552,7 @@ export async function elevationAppearancesFromDoc(
 
 /** True when the specs table hasn't been migrated yet — degrade to hidden. */
 function isMissingSpecsTable(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const e = error as { code?: unknown; message?: unknown };
-  if (e.code === "PGRST205" || e.code === "42P01") return true;
-  const message = typeof e.message === "string" ? e.message.toLowerCase() : "";
-  return message.includes("project_mark_specs");
+  return isMissingTable(error, "project_mark_specs");
 }
 
 /**
@@ -1924,11 +1902,7 @@ export async function reextractSpecPages(
 
 /** True when the progress table hasn't been migrated yet — degrade to no-op. */
 function isMissingProgressTable(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const e = error as { code?: unknown; message?: unknown };
-  if (e.code === "PGRST205" || e.code === "42P01") return true;
-  const message = typeof e.message === "string" ? e.message.toLowerCase() : "";
-  return message.includes("project_planset_pages");
+  return isMissingTable(error, "project_planset_pages");
 }
 
 /**
@@ -2252,11 +2226,7 @@ export async function confirmMarkSpec(id: string): Promise<void> {
 
 /** True when the discrepancies table hasn't been migrated yet. */
 function isMissingDiscrepanciesTable(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const e = error as { code?: unknown; message?: unknown };
-  if (e.code === "PGRST205" || e.code === "42P01") return true;
-  const message = typeof e.message === "string" ? e.message.toLowerCase() : "";
-  return message.includes("project_spec_discrepancies");
+  return isMissingTable(error, "project_spec_discrepancies");
 }
 
 /** A persisted "we know about this one" label. */

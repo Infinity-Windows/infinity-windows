@@ -4,13 +4,14 @@ import { Link } from "react-router-dom";
 import { Bell, MessagesSquare } from "lucide-react";
 import { QueryError, SkeletonList } from "../components/ui/States";
 import { listProjects } from "../lib/api";
-import { orderMyWork, type DispatchOpening } from "../lib/dispatch";
+import { orderMyWork } from "../lib/dispatch";
+import { toDispatchOpening } from "../lib/install/nextOpening";
 import { openingReadiness } from "../lib/install/fit";
 import { isInstallInProgress } from "../lib/install/installTimer";
 import { getMyProfile, listMyOpeningsAllJobs, listMemosToConfirm } from "../lib/install/api";
-import { isOwner, ROLE_LABELS, type CrewRole, type ProjectOpening } from "../lib/install/types";
+import { isOwner, ROLE_LABELS, type CrewRole } from "../lib/install/types";
 import { roleRank } from "../lib/nav";
-import { effectiveRole, useViewAsRole } from "../lib/viewAsRoleContext";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { TERMS } from "../lib/glossary";
 import { listMyProgress } from "../lib/learn";
 import { listLedger } from "../lib/points";
@@ -51,29 +52,9 @@ function termOfDay(): (typeof TERMS)[number] {
   return TERMS[day % TERMS.length];
 }
 
-function toDispatch(o: ProjectOpening): DispatchOpening {
-  const r = openingReadiness(o);
-  return {
-    id: o.id,
-    opening_code: o.opening_code,
-    window_type_id: o.window_type_id,
-    difficulty:
-      o.window_types?.learned_difficulty ??
-      o.window_types?.outcome_difficulty ??
-      o.window_types?.difficulty_rating ??
-      null,
-    area: o.label?.trim() || `page ${o.page_number}`,
-    ready: r.status === "ready",
-    blocked: r.status === "blocked",
-    assigned_to: o.assigned_to,
-    sequence: o.sequence,
-  };
-}
-
 export function Home() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const view = useViewAsRole();
-  const role = effectiveRole(me.data?.role, view);
+  const { effectiveRole: role } = useEffectiveRole();
   const boss = isOwner(role);
   const manager = roleRank(role) >= 1;
   // Exactly foreman (not supervisor/owner): lead their Home with what's awaiting
@@ -187,7 +168,7 @@ export function Home() {
 
   // Next ready window (excludes the one already in progress).
   const byId = new Map(active.map((o) => [o.id, o]));
-  const ordered = orderMyWork(active.map(toDispatch))
+  const ordered = orderMyWork(active.map(toDispatchOpening))
     .map((d) => byId.get(d.id)!)
     .filter(Boolean);
   const nextWindow = ordered.find(

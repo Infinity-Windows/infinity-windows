@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { CalendarDays, MapPin, Pencil, Send, Users } from "lucide-react";
 import { getMyProfile } from "../lib/install/api";
 import { isSupervisorPlus } from "../lib/install/types";
-import { effectiveRole, useViewAsRole } from "../lib/viewAsRoleContext";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
@@ -84,8 +84,7 @@ export function TripDetail() {
   const today = todayLocalISO();
 
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const view = useViewAsRole();
-  const role = effectiveRole(me.data?.role, view);
+  const { effectiveRole: role } = useEffectiveRole();
   const canEdit = isSupervisorPlus(role);
   const myId = me.data?.id ?? null;
 

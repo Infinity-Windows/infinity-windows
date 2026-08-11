@@ -4,6 +4,7 @@
 // columns (20260721002000) are not yet applied.
 
 import { supabase } from "./supabase";
+import { isMissingColumn as isMissingSchemaColumn } from "./schemaErrors";
 
 export interface FeedPhoto {
   id: string;
@@ -24,10 +25,7 @@ const GEO_SELECT =
 const BASE_SELECT = "id, kind, storage_path, created_by, created_at";
 
 function isMissingColumn(err: unknown): boolean {
-  const code = (err as { code?: string })?.code;
-  if (code === "PGRST204" || code === "42703") return true;
-  const msg = String((err as { message?: string })?.message ?? err).toLowerCase();
-  return msg.includes("column") && msg.includes("does not exist");
+  return isMissingSchemaColumn(err);
 }
 
 interface AttachmentRow {
