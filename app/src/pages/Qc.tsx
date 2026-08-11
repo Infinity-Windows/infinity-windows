@@ -1,3 +1,4 @@
+import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -96,7 +97,7 @@ export function Qc() {
             Pass installs or log a callback — callbacks push terms into learning decks.
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">‹</Link>
+        <BackChip fallback="/" label="Home" />
       </header>
 
       {caseOffer && (

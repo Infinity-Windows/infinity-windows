@@ -1,6 +1,6 @@
+import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { deleteLocations, listLocations, updateLocation } from "../lib/api";
 import {
   allIdsSelected,
@@ -88,9 +88,7 @@ export function Labels() {
           <p className="home-greeting">Warehouse</p>
           <h1>Slot labels</h1>
         </div>
-        <Link to="/warehouse" className="back-chip" aria-label="Warehouse">
-          ‹
-        </Link>
+        <BackChip fallback="/warehouse" label="Warehouse" />
       </header>
       <p className="muted">
         Window labels print from the Receive screen. This prints the rack/slot

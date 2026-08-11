@@ -1,3 +1,4 @@
+import { BackChip } from "../components/BackChip";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { listInventory } from "../lib/api";
@@ -48,9 +49,7 @@ export function InventoryList() {
     <div className="page">
       <header className="page-header">
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-          <Link to="/warehouse" className="back-chip" aria-label="Back to the inventory hub">
-            ‹
-          </Link>
+          <BackChip fallback="/warehouse" label="Back to the inventory hub" />
           <div style={{ minWidth: 0 }}>
             <p className="home-greeting">Inventory</p>
             <h1>

@@ -1,6 +1,7 @@
+import { BackChip } from "../../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import {
   generateHowto,
   getTypeBrainStats,
@@ -79,9 +80,7 @@ export function TypeBrainCard() {
           <p className="home-greeting">Type brain</p>
           <h1>{s.type.type_code}</h1>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">
-          ‹
-        </Link>
+        <BackChip fallback="/" label="Home" />
       </header>
       <p className="muted">{s.type.name}</p>
       <p className="brain-tagline">

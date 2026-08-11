@@ -1,6 +1,7 @@
+import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { listProjects } from "../lib/api";
 import {
   addOrder,
@@ -52,7 +53,7 @@ export function Supplies() {
             Job pull lists + the company supply catalog.
           </p>
         </div>
-        <Link to="/warehouse" className="back-chip" aria-label="Warehouse">‹</Link>
+        <BackChip fallback="/warehouse" label="Warehouse" />
       </header>
 
       <h2>Assign to job</h2>

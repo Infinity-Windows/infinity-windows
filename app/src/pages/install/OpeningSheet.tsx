@@ -1,3 +1,4 @@
+import { BackChip } from "../../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -968,9 +969,7 @@ export function OpeningSheet() {
     <div className="page">
       <header className="page-header">
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-          <Link to={`/projects/${projectId}?tab=map`} className="back-chip" aria-label="Back to map">
-            ‹
-          </Link>
+          <BackChip fallback={`/projects/${projectId}?tab=map`} label="Back to map" />
           <h1 className="opening-code-title">{o.opening_code}</h1>
         </div>
         <Link to={`/projects/${projectId}?tab=map`} className="button-like">

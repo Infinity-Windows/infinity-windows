@@ -1,3 +1,4 @@
+import { BackChip } from "../../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -554,9 +555,7 @@ export function PlansetUpload() {
           <p className="home-greeting">Plansets</p>
           <h1>{project?.job_code ?? "Upload"}</h1>
         </div>
-        <Link to={`/projects/${projectId}?tab=map`} className="back-chip" aria-label="Map">
-          ‹
-        </Link>
+        <BackChip fallback={`/projects/${projectId}?tab=map`} label="Map" />
       </header>
 
       <p className="muted">

@@ -1,3 +1,4 @@
+import { BackChip } from "../components/BackChip";
 import { Fragment, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -73,7 +74,7 @@ export function MySchedule() {
             Your published jobs, day by day.
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home" />
+        <BackChip fallback="/" label="Home" />
       </header>
 
       {schedule.isError && (

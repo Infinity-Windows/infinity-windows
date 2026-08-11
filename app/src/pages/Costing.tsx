@@ -1,6 +1,6 @@
+import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { getMyProfile } from "../lib/install/api";
 import { isOwner } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
@@ -57,7 +57,7 @@ export function Costing() {
       <div className="page">
         <header className="page-header">
           <h1>Job costing</h1>
-          <Link to="/" className="back-chip" aria-label="Home">‹</Link>
+          <BackChip fallback="/" label="Home" />
         </header>
         <p className="muted">Revenue, costs and margin — Owner only.</p>
       </div>
@@ -89,7 +89,7 @@ export function Costing() {
             Revenue, costs and margin — Owner only.
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">‹</Link>
+        <BackChip fallback="/" label="Home" />
       </header>
 
       <div className="stat-grid">

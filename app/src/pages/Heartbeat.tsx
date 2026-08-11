@@ -1,3 +1,4 @@
+import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -103,9 +104,7 @@ export function Heartbeat() {
           <p className="home-greeting">Live pulse</p>
           <h1>Heartbeat</h1>
         </div>
-        <Link to="/projects" className="back-chip" aria-label="Projects">
-          ›
-        </Link>
+        <BackChip fallback="/projects" label="Back" />
       </header>
 
       <p className="muted">

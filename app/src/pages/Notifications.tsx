@@ -1,6 +1,7 @@
+import { BackChip } from "../components/BackChip";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Settings2 } from "lucide-react";
 import { notifyLocal } from "../lib/permissions/notifyLocal";
 import {
@@ -34,7 +35,6 @@ interface Note {
 }
 
 export function Notifications() {
-  const navigate = useNavigate();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
@@ -287,9 +287,7 @@ export function Notifications() {
           <p className="home-greeting">Notifications</p>
           <h1>What needs you</h1>
         </div>
-        <button type="button" className="back-chip" aria-label="Back" onClick={() => navigate(-1)}>
-          ‹
-        </button>
+        <BackChip label="Back" />
       </header>
 
       <Link to="/settings" className="notif-settings-link">

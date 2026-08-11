@@ -1,3 +1,4 @@
+import { BackChip } from "../components/BackChip";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { getLocationByAddress, getUnitsAtLocation } from "../lib/api";
@@ -35,9 +36,7 @@ export function LocationDetail() {
           <p className="home-greeting">{ZONE_NAMES[loc.zone]}</p>
           <h1>{loc.address}</h1>
         </div>
-        <Link to="/warehouse" className="back-chip" aria-label="Back">
-          ‹
-        </Link>
+        <BackChip fallback="/warehouse" label="Back" />
       </header>
       <p className="muted">Capacity {loc.capacity}</p>
 

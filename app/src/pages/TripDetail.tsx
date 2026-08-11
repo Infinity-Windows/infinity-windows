@@ -1,3 +1,4 @@
+import { BackChip } from "../components/BackChip";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -228,7 +229,7 @@ export function TripDetail() {
             <Users size={13} aria-hidden /> {trip.crew.map((m) => m.display_name).filter(Boolean).join(", ") || `${trip.crew.length} crew`}
           </p>
         </div>
-        <Link to="/travel" className="back-chip" aria-label="Back to Travel" />
+        <BackChip fallback="/travel" label="Back to Travel" />
       </header>
 
       {canEdit && (

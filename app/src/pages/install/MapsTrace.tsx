@@ -1,6 +1,7 @@
+import { BackChip } from "../../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   discardLocalOutline,
   downloadPlanset,
@@ -457,13 +458,7 @@ export function MapsTrace() {
     <div className="page">
       <header className="page-header">
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-          <Link
-            to={`/projects/${projectId}?tab=maps-interactive`}
-            className="back-chip"
-            aria-label="Back to Maps Interactive"
-          >
-            ‹
-          </Link>
+          <BackChip fallback={`/projects/${projectId}?tab=maps-interactive`} label="Back to Maps Interactive" />
           <h1>Trace 3D model</h1>
         </div>
         {save.isPending && <span className="muted">Saving…</span>}

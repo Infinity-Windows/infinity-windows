@@ -1,3 +1,4 @@
+import { BackChip } from "../../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -185,9 +186,7 @@ export function OpeningReview() {
           <p className="home-greeting">Openings</p>
           <h1>{project?.job_code ?? "Review"}</h1>
         </div>
-        <Link to={`/projects/${projectId}?tab=map`} className="back-chip" aria-label="Map">
-          ‹
-        </Link>
+        <BackChip fallback={`/projects/${projectId}?tab=map`} label="Map" />
       </header>
 
       {message && <p className="error">{message}</p>}

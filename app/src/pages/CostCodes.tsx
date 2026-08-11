@@ -1,6 +1,6 @@
+import { BackChip } from "../components/BackChip";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { getMyProfile } from "../lib/install/api";
 import { isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
@@ -116,7 +116,7 @@ export function CostCodes() {
       <div className="page">
         <header className="page-header">
           <h1>Cost codes</h1>
-          <Link to="/" className="back-chip" aria-label="Home">‹</Link>
+          <BackChip fallback="/" label="Home" />
         </header>
         <p className="muted">
           Cost codes are managed by supervisors and the owner. You can still pick
@@ -138,7 +138,7 @@ export function CostCodes() {
             their timecard.
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">‹</Link>
+        <BackChip fallback="/" label="Home" />
       </header>
 
       {/* Create */}

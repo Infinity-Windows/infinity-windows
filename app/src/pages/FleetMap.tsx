@@ -1,7 +1,7 @@
+import { BackChip } from "../components/BackChip";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { ArrowLeft, Radio } from "lucide-react";
+import { Radio } from "lucide-react";
 import { QueryError, SkeletonCard } from "../components/ui/States";
 import { ClientFleetMap, type MapPoint } from "../components/vehicles/ClientFleetMap";
 import { listVehicles } from "../lib/vehicles/api";
@@ -36,9 +36,7 @@ export function FleetMap() {
             Where each vehicle was last seen.
           </p>
         </div>
-        <Link to="/vehicles" className="button-like">
-          <ArrowLeft size={16} aria-hidden /> Fleet
-        </Link>
+        <BackChip fallback="/vehicles" label="Back" />
       </header>
 
       {vehicles.isError ? (

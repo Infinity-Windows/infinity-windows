@@ -1,6 +1,7 @@
+import { BackChip } from "../components/BackChip";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Plus, Send } from "lucide-react";
 import { listProjects } from "../lib/api";
 import { getMyProfile, listProfiles } from "../lib/install/api";
@@ -583,7 +584,7 @@ export function Scheduling() {
             Assign crews to jobs, then publish to the field.
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home" />
+        <BackChip fallback="/" label="Home" />
       </header>
 
       {bannerConflicts.length > 0 && (

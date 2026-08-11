@@ -1,3 +1,4 @@
+import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -188,7 +189,7 @@ export function WindowDetail() {
     <div className="page">
       <header className="page-header">
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-          <Link to="/warehouse" className="back-chip" aria-label="Back">‹</Link>
+          <BackChip fallback="/warehouse" label="Back" />
           <div>
             <h1 className="opening-code-title">{w.window_id}</h1>
             {w.short_code && (

@@ -1,6 +1,6 @@
+import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { getMyProfile, listProfiles } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
 import { addTool, listTools, setToolHolder } from "../lib/ops";
@@ -36,7 +36,7 @@ export function Tools() {
             Who has what — and what's due for calibration.
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">‹</Link>
+        <BackChip fallback="/" label="Home" />
       </header>
 
       <ul className="unit-list work-list">

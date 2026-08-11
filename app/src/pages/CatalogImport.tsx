@@ -1,6 +1,6 @@
+import { BackChip } from "../components/BackChip";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { importWindowTypes } from "../lib/api";
 import { useWindowTypes } from "../components/WindowTypePicker";
 import { parseCatalogCsv, type CatalogCsvRow } from "../lib/catalogCsv";
@@ -50,9 +50,7 @@ export function CatalogImport() {
           <p className="home-greeting">Admin</p>
           <h1>Catalog import</h1>
         </div>
-        <Link to="/warehouse" className="back-chip" aria-label="Warehouse">
-          ‹
-        </Link>
+        <BackChip fallback="/warehouse" label="Warehouse" />
       </header>
       <p className="muted">
         Load the real ~100 window types from CSV (include width_in/height_in —

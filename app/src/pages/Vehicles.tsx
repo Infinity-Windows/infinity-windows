@@ -1,3 +1,4 @@
+import { BackChip } from "../components/BackChip";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -62,7 +63,7 @@ export function Vehicles() {
             Your fleet — drivers, location, service and jobs.
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home" />
+        <BackChip fallback="/" label="Home" />
       </header>
 
       <div className="veh-toolbar">

@@ -1,6 +1,6 @@
+import { BackChip } from "../components/BackChip";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { formatApiError } from "../lib/errors";
 import { getMyProfile } from "../lib/install/api";
 import { isSupervisorPlus } from "../lib/install/types";
@@ -256,7 +256,7 @@ export function CrewAccess() {
       <div className="page">
         <header className="page-header">
           <h1>Crew access</h1>
-          <Link to="/team" className="back-chip" aria-label="Back">‹</Link>
+          <BackChip fallback="/team" label="Back" />
         </header>
         <p className="muted">
           Only a supervisor or the owner can add or remove crew.
@@ -279,7 +279,7 @@ export function CrewAccess() {
             Add someone, send them a login, take it away again.
           </p>
         </div>
-        <Link to="/team" className="back-chip" aria-label="Back">‹</Link>
+        <BackChip fallback="/team" label="Back" />
       </header>
 
       {error && <p className="error">{error}</p>}
