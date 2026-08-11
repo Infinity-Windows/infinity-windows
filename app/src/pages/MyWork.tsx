@@ -1,4 +1,4 @@
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { CheckCircle2, Plane, Truck } from "lucide-react";
@@ -11,7 +11,9 @@ import {
   listMemosToConfirm,
   listMyOpeningsAllJobs,
   listPlansets,
+  undoInstall,
 } from "../lib/install/api";
+import { formatApiError } from "../lib/install/errors";
 import {
   schedulePrefetchMarkDrawings,
 } from "../lib/install/prefetchDrawings";
@@ -84,6 +86,23 @@ export function MyWork() {
     enabled: Boolean(todayAssignmentId),
   });
   useRealtimeMyOpenings(me.data?.id);
+
+  // Un-submit: take back an install you just submitted, reason required.
+  // Same undo path as the foreman's "send it back" — the server only lets an
+  // installer void their OWN latest event, under 24 hours old.
+  const [unsubmit, setUnsubmit] = useState<ProjectOpening | null>(null);
+  const [unsubmitReason, setUnsubmitReason] = useState("");
+  const [unsubmitError, setUnsubmitError] = useState<string | null>(null);
+  const doUnsubmit = useMutation({
+    mutationFn: (o: ProjectOpening) => undoInstall(o.id, unsubmitReason.trim()),
+    onSuccess: () => {
+      setUnsubmit(null);
+      setUnsubmitReason("");
+      setUnsubmitError(null);
+      void openings.refetch();
+    },
+    onError: (e) => setUnsubmitError(formatApiError(e)),
+  });
 
   const rows = openings.data ?? [];
   const active = rows.filter((o) => o.status !== "installed");
@@ -492,10 +511,61 @@ export function MyWork() {
                 <strong>{o.opening_code}</strong>{" "}
                 <span className="muted">{o.window_types?.type_code}</span>{" "}
                 <span className="ok" style={{ marginLeft: "auto" }}>installed</span>
+                <button
+                  type="button"
+                  className="button-like"
+                  onClick={() => {
+                    setUnsubmitReason("");
+                    setUnsubmitError(null);
+                    setUnsubmit(o);
+                  }}
+                >
+                  Un-submit
+                </button>
               </li>
             ))}
           </ul>
         </>
+      )}
+
+      {unsubmit && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setUnsubmit(null)}
+        >
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <p style={{ margin: 0, fontWeight: 700 }}>
+              Un-submit {unsubmit.opening_code}?
+            </p>
+            <p className="muted" style={{ margin: "6px 0 0" }}>
+              The window goes back on your list and nothing is lost — photos,
+              memo and time all stay on the record. Say why so the next person
+              (maybe you) knows what still needs doing.
+            </p>
+            <label className="field-label">Why are you un-submitting?</label>
+            <textarea
+              rows={3}
+              value={unsubmitReason}
+              onChange={(e) => setUnsubmitReason(e.target.value)}
+              placeholder="Forgot the shims on the left side…"
+            />
+            {unsubmitError && <p className="warn-text">{unsubmitError}</p>}
+            <div className="row-gap" style={{ marginTop: 10 }}>
+              <button
+                className="button-like active-pill"
+                disabled={!unsubmitReason.trim() || doUnsubmit.isPending}
+                onClick={() => doUnsubmit.mutate(unsubmit)}
+              >
+                {doUnsubmit.isPending ? "Un-submitting…" : "Un-submit"}
+              </button>
+              <button className="button-like" onClick={() => setUnsubmit(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
