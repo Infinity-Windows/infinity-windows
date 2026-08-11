@@ -9099,3 +9099,47 @@ body {
 }
 .cap-bar-btn:hover { border-color: rgba(255, 154, 106, 0.8); }
 .ba-grid.one { grid-template-columns: 1fr; }
+
+/* ==========================================================================
+   Rough-opening checklist: Square? Width? Height? Each row teaches its own
+   measurement (the X, the top/bottom lines, the left/right lines), takes a
+   one-tap Good/Bad, then the tape's numbers - judged against the window -
+   get the last word.
+   ========================================================================== */
+.ro-check {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-top: 8px;
+  background: rgba(255, 255, 255, 0.015);
+}
+.ro-check-head { display: flex; align-items: center; gap: 12px; }
+.ro-diagram { flex: none; color: var(--muted, #b3a498); }
+.ro-check-title { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.ro-check-title .muted { font-size: 12px; }
+.ro-judge { display: flex; gap: 6px; flex: none; }
+.ro-pill {
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--muted, #b3a498);
+  font-weight: 700;
+  font-size: 13px;
+  padding: 7px 14px;
+  cursor: pointer;
+  min-height: 38px;
+  transition: border-color 100ms ease, color 100ms ease, background-color 100ms ease;
+}
+.ro-pill.good.on {
+  color: #35b98d;
+  border-color: rgba(53, 185, 141, 0.7);
+  background: rgba(53, 185, 141, 0.12);
+}
+.ro-pill.bad.on {
+  color: #e4655c;
+  border-color: rgba(228, 101, 92, 0.7);
+  background: rgba(228, 101, 92, 0.12);
+}
+.ro-check .ro-row { margin-top: 8px; }
+.ro-verdict { margin: 6px 0 0; font-size: 12.5px; color: #35b98d; }
+.ro-verdict.bad { color: #e4655c; }

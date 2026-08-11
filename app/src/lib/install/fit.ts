@@ -28,9 +28,14 @@ export interface FitClearance {
   maxPerSide: number;
 }
 
+/**
+ * Owner's rule (2026-08-11): the opening must be at least 1/8" looser than
+ * the unit OVERALL (tighter won't shim in) and at most 1/2" looser overall
+ * (sloppier is a framing problem). Stored per side: totals halved.
+ */
 export const DEFAULT_CLEARANCE: FitClearance = {
-  minPerSide: 0.25,
-  maxPerSide: 0.5,
+  minPerSide: 0.0625,
+  maxPerSide: 0.25,
 };
 
 export interface FitInput {

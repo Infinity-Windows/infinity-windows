@@ -15,6 +15,12 @@ export type IssueKind =
   | "complication"
   | "missing"
   /**
+   * The rough opening failed its checklist (out of square, or the gap to the
+   * unit is outside the 1/8"-1/2" range) — a framer's fix, filed from the
+   * opening sheet with the window named in the note.
+   */
+  | "framing"
+  /**
    * The supplier's paperwork disagrees with the plans — a mark with no spec
    * sheet, or a spec for a window nobody asked for. Kept separate from
    * `missing`, which means an undelivered physical unit and is wired into
@@ -65,6 +71,7 @@ export const URGENCY_MARK: Record<IssueUrgency, string> = {
 
 export const KIND_LABELS: Record<IssueKind, string> = {
   failed_install: "Failed install",
+  framing: "Framing fix needed",
   flag: "Flag",
   damage: "Damage",
   blocker: "Blocker",
