@@ -14,7 +14,12 @@
 import { useEffect, useRef } from "react";
 
 const MIN_SCALE = 1;
-const MAX_SCALE = 10;
+/**
+ * Fallback ceiling before the image reports its size. The real ceiling is
+ * where the 4200px source runs out of pixels on THIS screen (see zoomAt) —
+ * offering zoom beyond the source only manufactures blur.
+ */
+const MAX_SCALE_FALLBACK = 8;
 /** Double-tap dives to a working zoom; a second double-tap returns to fit. */
 const DOUBLE_TAP_SCALE = 3.5;
 const DOUBLE_TAP_MS = 300;
@@ -32,9 +37,26 @@ export function SheetZoomViewer({ src, alt }: { src: string; alt: string }) {
     const img = imgRef.current;
     if (!box || !img) return;
 
+    // Zoom is applied by RESIZING the image's layout width, and the transform
+    // only pans. This is the sharpness fix: a transform-scaled image gets
+    // rasterized once at its layout size and stretched by the compositor —
+    // on a retina phone that means zooming a ~1200px bitmap of a 4200px
+    // source, i.e. mud. A layout resize makes the browser re-decode the
+    // image at the real target size, so every zoom level draws from the full
+    // raster. One <img> reflowing is cheap even at gesture rate.
     const apply = () => {
       const v = view.current;
-      img.style.transform = `translate(${v.tx}px, ${v.ty}px) scale(${v.scale})`;
+      img.style.width = `${box.clientWidth * v.scale}px`;
+      img.style.transform = `translate(${v.tx}px, ${v.ty}px)`;
+    };
+
+    /** Layout size the sheet takes at the current zoom. */
+    const contentSize = () => {
+      const v = view.current;
+      const w = box.clientWidth * v.scale;
+      const aspect =
+        img.naturalWidth > 0 ? img.naturalHeight / img.naturalWidth : 0.7;
+      return { w, h: w * aspect };
     };
 
     // Keep the sheet on screen: it may not leave a gap on the left/right once
@@ -42,8 +64,7 @@ export function SheetZoomViewer({ src, alt }: { src: string; alt: string }) {
     // top" and "bottom at bottom" (centered while shorter than the box).
     const clampPan = () => {
       const v = view.current;
-      const w = img.clientWidth * v.scale;
-      const h = img.clientHeight * v.scale;
+      const { w, h } = contentSize();
       const bw = box.clientWidth;
       const bh = box.clientHeight;
       const minX = Math.min(0, bw - w);
@@ -54,9 +75,20 @@ export function SheetZoomViewer({ src, alt }: { src: string; alt: string }) {
       if (h < bh) v.ty = (bh - h) / 2;
     };
 
+    // Sharp until the source is at 1:1 with the screen's device pixels, plus
+    // a little headroom for reading at arm's length on site.
+    const maxScale = () => {
+      if (img.naturalWidth <= 0) return MAX_SCALE_FALLBACK;
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      return Math.max(
+        3,
+        (img.naturalWidth / (box.clientWidth * dpr)) * 1.5,
+      );
+    };
+
     const zoomAt = (px: number, py: number, factor: number) => {
       const v = view.current;
-      const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.scale * factor));
+      const next = Math.min(maxScale(), Math.max(MIN_SCALE, v.scale * factor));
       const k = next / v.scale;
       v.tx = px - k * (px - v.tx);
       v.ty = py - k * (py - v.ty);

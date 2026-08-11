@@ -8975,10 +8975,19 @@ body {
 }
 .sheet-zoom img {
   display: block;
+  /* Width is set by the viewer at (box width x zoom): zoom happens in LAYOUT
+     so the browser re-rasterizes from the full-resolution source. A CSS
+     scale transform here would stretch a fit-sized bitmap instead — blurry
+     on any retina screen. will-change: transform is omitted on purpose for
+     the same reason: it pins the compositor to a cached raster. */
   width: 100%;
   height: auto;
+  /* The photo viewer's generic img rules cap height at 70vh — that was
+     silently SQUASHING the zoomed sheet (2233px wide forced into 676px
+     tall), which reads as blur. This viewer manages its own geometry. */
+  max-width: none;
+  max-height: none;
   transform-origin: 0 0;
-  will-change: transform;
   user-select: none;
   -webkit-user-drag: none;
 }
