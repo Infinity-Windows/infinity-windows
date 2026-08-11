@@ -65,6 +65,7 @@ export type RoutePath =
   | "/review"
   | "/team"
   | "/timecard"
+  | "/team-timecards"
   | "/scheduling"
   | "/vehicles"
   | "/my-schedule"
@@ -140,10 +141,12 @@ export const NAV: NavDest[] = [
   // by role — installers get only their own week, read-only, while foreman+
   // get the crew grid and editing. The floor here is about the ROUTE, not the
   // data: RLS and the page's isLead branch decide what each role sees.
-  { id: "timecard", to: "/timecard", label: "Timecard", icon: "▥", minRole: "installer" },
+  { id: "timecard", to: "/timecard", label: "My timecard", icon: "▥", minRole: "installer" },
 
   // Foreman+ (managers): coordination + warehouse ops + quality.
   { id: "team", to: "/team", label: "Team", icon: "⚑", minRole: "foreman" },
+  // The crew-wide roster + edit surface; /timecard stays the personal view.
+  { id: "team-timecards", to: "/team-timecards", label: "Team timecards", icon: "▥", minRole: "foreman" },
   { id: "issues", to: "/issues", label: "Issues", icon: "!", minRole: "foreman" },
   { id: "service", to: "/service", label: "Service", icon: "⚕", minRole: "foreman" },
   { id: "qc", to: "/qc", label: "Quality", icon: "✓", minRole: "foreman" },
@@ -320,6 +323,7 @@ const MENU_DEF: MenuSection[] = [
     items: [
       { action: "open-clock", label: "Clock in / out", Icon: Clock },
       { to: "/timecard", label: "My timecard", Icon: CalendarClock },
+      { to: "/team-timecards", label: "Team timecards", Icon: Users },
       { to: "/cost-codes", label: "Cost codes", Icon: Hash },
     ],
   },

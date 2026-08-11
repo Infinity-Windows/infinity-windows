@@ -60,6 +60,7 @@ import { Training } from "./pages/Training";
 import { Admin } from "./pages/Admin";
 import { TimeClock } from "./pages/TimeClock";
 import { Timecard } from "./pages/Timecard";
+import { TeamTimecards } from "./pages/TeamTimecards";
 import { Scheduling } from "./pages/Scheduling";
 import { MySchedule } from "./pages/MySchedule";
 import { Travel } from "./pages/Travel";
@@ -374,6 +375,10 @@ export default function App() {
             <Route
               path="/timecard"
               element={<RequireRole path="/timecard"><Timecard /></RequireRole>}
+            />
+            <Route
+              path="/team-timecards"
+              element={<RequireRole path="/team-timecards"><TeamTimecards /></RequireRole>}
             />
             <Route
               path="/scheduling"
