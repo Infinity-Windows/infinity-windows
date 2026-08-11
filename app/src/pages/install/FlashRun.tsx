@@ -6,16 +6,21 @@
 // there first).
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { listOpenings } from "../../lib/install/api";
 import {
   flashingOutstanding,
+  formatPhaseClock,
   listOpeningPhases,
+  pauseOpeningPhase,
+  phaseElapsedSeconds,
+  resumeOpeningPhase,
   startOpeningPhase,
   submitOpeningPhase,
   type OpeningPhase,
 } from "../../lib/install/phases";
+import { PhotoCaptureSheet } from "../../components/PhotoCaptureSheet";
 import type { ProjectOpening } from "../../lib/install/types";
 import { isClockGateError } from "../../lib/install/installTimer";
 import { formatApiError } from "../../lib/install/errors";
@@ -30,6 +35,7 @@ export function FlashRun() {
   const queryClient = useQueryClient();
   const [photo, setPhoto] = useState<File | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   const openings = useQuery({
     queryKey: ["openings", projectId],
@@ -55,11 +61,23 @@ export function FlashRun() {
   }, [openings.data, phases.data]);
 
   const current: ProjectOpening | null = queue[0] ?? null;
-  const running =
-    current &&
-    (phases.data ?? []).some(
-      (p) => p.opening_id === current.id && p.kind === "flashing" && p.status === "active",
-    );
+  const runningPhase: OpeningPhase | null =
+    (current &&
+      (phases.data ?? []).find(
+        (p) =>
+          p.opening_id === current.id && p.kind === "flashing" && p.status === "active",
+      )) ||
+    null;
+  const running = runningPhase != null;
+
+  // The stopwatch is watched: tick every second while a clock runs.
+  const ticking = Boolean(runningPhase && !runningPhase.paused_at);
+  useEffect(() => {
+    if (!ticking) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [ticking]);
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["openingPhases", projectId] });
@@ -75,6 +93,17 @@ export function FlashRun() {
           ? "Clock in and sign today's toolbox talk to start a flash run."
           : formatApiError(e),
       ),
+  });
+
+  const pauseIt = useMutation({
+    mutationFn: () => pauseOpeningPhase(current!.id, "flashing"),
+    onSuccess: refresh,
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+  const resumeIt = useMutation({
+    mutationFn: () => resumeOpeningPhase(current!.id, "flashing"),
+    onSuccess: refresh,
+    onError: (e) => setMessage(formatApiError(e)),
   });
 
   const submit = useMutation({
@@ -162,20 +191,39 @@ export function FlashRun() {
             </button>
           ) : (
             <>
-              <label className="action-btn" style={{ cursor: "pointer", marginTop: 12 }}>
-                {photo ? "Finished photo ready — retake" : "Photo of the finished flashing"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  hidden
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) setPhoto(f);
-                    e.target.value = "";
-                  }}
+              <p style={{ margin: "10px 0 0", fontVariantNumeric: "tabular-nums" }}>
+                <span className="muted">Flashing clock: </span>
+                <strong>
+                  {runningPhase!.paused_at ? "paused · " : ""}
+                  {formatPhaseClock(phaseElapsedSeconds(runningPhase!, now))}
+                </strong>{" "}
+                {runningPhase!.paused_at ? (
+                  <button
+                    className="link"
+                    disabled={resumeIt.isPending}
+                    onClick={() => resumeIt.mutate()}
+                  >
+                    Resume
+                  </button>
+                ) : (
+                  <button
+                    className="link"
+                    disabled={pauseIt.isPending}
+                    onClick={() => pauseIt.mutate()}
+                  >
+                    Pause
+                  </button>
+                )}
+              </p>
+              <div style={{ marginTop: 8 }}>
+                <PhotoCaptureSheet
+                  mode="single"
+                  value={photo}
+                  onChange={setPhoto}
+                  label={`${current.opening_code} flashing`}
+                  prompt="Photo of the finished flashing"
                 />
-              </label>
+              </div>
               <button
                 className="primary big"
                 style={{ marginTop: 8 }}

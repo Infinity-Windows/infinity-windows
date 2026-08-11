@@ -39,3 +39,32 @@ describe("flashingOutstanding (the install gate)", () => {
     expect(flashingOutstanding({ needs_flashing: null }, [])).toBe(false);
   });
 });
+
+describe("phaseElapsedSeconds (the live clock, net of pauses)", () => {
+  const T0 = new Date("2026-08-11T12:00:00Z").getTime();
+  it("counts the span minus finished and running pauses", async () => {
+    const { phaseElapsedSeconds } = await import("./phases");
+    const base = { started_at: "2026-08-11T12:00:00Z", paused_at: null, paused_seconds: 0 };
+    expect(phaseElapsedSeconds(base, T0 + 600_000)).toBe(600);
+    expect(
+      phaseElapsedSeconds({ ...base, paused_seconds: 120 }, T0 + 600_000),
+    ).toBe(480);
+    // Paused 2 minutes ago and still paused: the clock stands still.
+    expect(
+      phaseElapsedSeconds(
+        { ...base, paused_at: new Date(T0 + 480_000).toISOString() },
+        T0 + 600_000,
+      ),
+    ).toBe(480);
+  });
+
+  it("never goes negative", async () => {
+    const { phaseElapsedSeconds } = await import("./phases");
+    expect(
+      phaseElapsedSeconds(
+        { started_at: "2026-08-11T12:00:00Z", paused_at: null, paused_seconds: 9999 },
+        T0 + 1000,
+      ),
+    ).toBe(0);
+  });
+});

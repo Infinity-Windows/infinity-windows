@@ -27,6 +27,10 @@ export interface OpeningPhase {
   submitted_by: string | null;
   minutes: number | null;
   photo_path: string | null;
+  /** Running pause stamp; null while the clock is ticking. */
+  paused_at?: string | null;
+  /** Accumulated paused time from finished pauses, seconds. */
+  paused_seconds?: number | null;
   starter?: { display_name: string } | null;
   submitter?: { display_name: string } | null;
 }
@@ -127,4 +131,76 @@ export async function setProjectNeedsFlashing(
   });
   if (error) throw error;
   return (data as number) ?? 0;
+}
+
+/** Live worked seconds for an active phase: span net of every pause. */
+export function phaseElapsedSeconds(
+  phase: Pick<OpeningPhase, "started_at" | "paused_at" | "paused_seconds">,
+  nowMs: number,
+): number {
+  const started = new Date(phase.started_at).getTime();
+  const pausedDone = (phase.paused_seconds ?? 0) * 1000;
+  const openPause = phase.paused_at
+    ? Math.max(0, nowMs - new Date(phase.paused_at).getTime())
+    : 0;
+  return Math.max(0, Math.floor((nowMs - started - pausedDone - openPause) / 1000));
+}
+
+export function formatPhaseClock(totalSec: number): string {
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+export async function pauseOpeningPhase(openingId: string, kind: PhaseKind): Promise<OpeningPhase> {
+  const { data, error } = await supabase.rpc("pause_opening_phase", {
+    p_opening_id: openingId,
+    p_kind: kind,
+  });
+  if (error) throw error;
+  return data as OpeningPhase;
+}
+
+export async function resumeOpeningPhase(openingId: string, kind: PhaseKind): Promise<OpeningPhase> {
+  const { data, error } = await supabase.rpc("resume_opening_phase", {
+    p_opening_id: openingId,
+    p_kind: kind,
+  });
+  if (error) throw error;
+  return data as OpeningPhase;
+}
+
+/** Started on the wrong window: erase the active clock, file nothing. */
+export async function cancelOpeningPhase(openingId: string, kind: PhaseKind): Promise<void> {
+  const { error } = await supabase.rpc("cancel_opening_phase", {
+    p_opening_id: openingId,
+    p_kind: kind,
+  });
+  if (error) throw error;
+}
+
+export interface MyActivePhase extends OpeningPhase {
+  opening?: {
+    opening_code: string;
+    project_id: string;
+    projects?: { job_code: string } | null;
+  } | null;
+}
+
+/**
+ * The phase clocks THIS person has running, for the clock sheet's
+ * "what you're on right now" card. started_by is the scope: a phase is a
+ * personal clock even though the flashed window itself is crew-wide truth.
+ */
+export async function listMyActivePhases(profileId: string): Promise<MyActivePhase[]> {
+  const { data, error } = await supabase
+    .from("opening_phases")
+    .select(
+      `${PHASE_SELECT}, opening:project_openings!inner(opening_code, project_id, projects(job_code))`,
+    )
+    .eq("started_by", profileId)
+    .eq("status", "active");
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return (data ?? []) as unknown as MyActivePhase[];
 }

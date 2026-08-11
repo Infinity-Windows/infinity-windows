@@ -31,8 +31,13 @@ import {
 import { pickNextOpening } from "../../lib/install/nextOpening";
 import { submitBlockersLine } from "../../lib/install/submitGate";
 import {
+  cancelOpeningPhase,
   flashingOutstanding,
+  formatPhaseClock,
   listOpeningPhases,
+  pauseOpeningPhase,
+  phaseElapsedSeconds,
+  resumeOpeningPhase,
   setOpeningNeedsFlashing,
   startOpeningPhase,
   submitOpeningPhase,
@@ -278,14 +283,6 @@ export function OpeningSheet() {
     hasAfterPhoto: photos.after !== null,
   });
 
-  // Re-read the clock only while something is actually being timed.
-  useEffect(() => {
-    if (!startedAt) return;
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 15000);
-    return () => clearInterval(id);
-  }, [startedAt]);
-
   // Phases: work on this opening that isn't the install (flashing today).
   // One project-level query so the map and every sheet share a cache entry.
   const phases = useQuery({
@@ -310,6 +307,24 @@ export function OpeningSheet() {
         setMessage(formatApiError(e));
       }
     },
+  });
+  const pauseFlash = useMutation({
+    mutationFn: () => pauseOpeningPhase(openingId, "flashing"),
+    onSuccess: refreshPhases,
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+  const resumeFlash = useMutation({
+    mutationFn: () => resumeOpeningPhase(openingId, "flashing"),
+    onSuccess: refreshPhases,
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+  const cancelFlash = useMutation({
+    mutationFn: () => cancelOpeningPhase(openingId, "flashing"),
+    onSuccess: () => {
+      setFlashPhoto(null);
+      refreshPhases();
+    },
+    onError: (e) => setMessage(formatApiError(e)),
   });
   const submitFlash = useMutation({
     mutationFn: () => {
@@ -338,6 +353,17 @@ export function OpeningSheet() {
     onSuccess: () => refresh(),
     onError: (e) => setMessage(formatApiError(e)),
   });
+
+  // Re-read the clock only while something is actually being timed. The
+  // flashing stopwatch is WATCHED (people check it mid-task), so it ticks
+  // every second; the install figure only needs minutes.
+  const flashingRunning = flashing?.status === "active" && !flashing.paused_at;
+  useEffect(() => {
+    if (!startedAt && !flashingRunning) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), flashingRunning ? 1000 : 15000);
+    return () => clearInterval(id);
+  }, [startedAt, flashingRunning]);
 
   const brain = useQuery({
     queryKey: ["typeBrain", opening.data?.window_type_id],
@@ -1208,8 +1234,9 @@ export function OpeningSheet() {
                     {flashing.minutes != null && ` · ${flashing.minutes}m`}
                   </span>
                 ) : flashing ? (
-                  <span style={{ fontSize: 12.5, color: "var(--warn, #e8c14a)" }}>
-                    clock running
+                  <span style={{ fontSize: 12.5, color: "var(--warn, #e8c14a)", fontVariantNumeric: "tabular-nums" }}>
+                    {flashing.paused_at ? "paused" : "flashing"} ·{" "}
+                    {formatPhaseClock(phaseElapsedSeconds(flashing, now))}
                     {flashing.starter?.display_name && ` · ${flashing.starter.display_name}`}
                   </span>
                 ) : (
@@ -1238,20 +1265,34 @@ export function OpeningSheet() {
               )}
               {flashing && flashing.status === "active" && (
                 <>
-                  <label className="action-btn" style={{ cursor: "pointer", marginTop: 8 }}>
-                    {flashPhoto ? "Finished photo ready — retake" : "Photo of the finished flashing"}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      hidden
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) setFlashPhoto(f);
-                        e.target.value = "";
-                      }}
+                  <div className="row-gap" style={{ marginTop: 8 }}>
+                    {flashing.paused_at ? (
+                      <button
+                        className="button-like active-pill"
+                        disabled={resumeFlash.isPending}
+                        onClick={() => resumeFlash.mutate()}
+                      >
+                        Resume flashing
+                      </button>
+                    ) : (
+                      <button
+                        className="button-like"
+                        disabled={pauseFlash.isPending}
+                        onClick={() => pauseFlash.mutate()}
+                      >
+                        Pause
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <PhotoCaptureSheet
+                      mode="single"
+                      value={flashPhoto}
+                      onChange={setFlashPhoto}
+                      label={`${o.opening_code} flashing`}
+                      prompt="Photo of the finished flashing"
                     />
-                  </label>
+                  </div>
                   <button
                     className="primary big"
                     style={{ marginTop: 8 }}
@@ -1263,6 +1304,15 @@ export function OpeningSheet() {
                       : flashPhoto
                         ? "Submit flashing"
                         : "Take the photo to submit"}
+                  </button>
+                  {/* Wrong window happens; the escape is quiet on purpose. */}
+                  <button
+                    className="link"
+                    style={{ fontSize: 12, marginTop: 6 }}
+                    disabled={cancelFlash.isPending}
+                    onClick={() => cancelFlash.mutate()}
+                  >
+                    Stop without submitting — erase this clock
                   </button>
                 </>
               )}
