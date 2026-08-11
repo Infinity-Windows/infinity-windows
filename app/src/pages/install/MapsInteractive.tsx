@@ -10,6 +10,7 @@ import {
 import type { Project } from "../../lib/types";
 import { pushToast } from "../../lib/toast";
 import { listQcPassedOpeningIds } from "../../lib/ops";
+import { listOpeningPhases } from "../../lib/install/phases";
 import { isForemanPlus, isSupervisorPlus } from "../../lib/install/types";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import {
@@ -56,6 +57,10 @@ export function MapsInteractive({ project }: { project: Project }) {
     queryKey: ["qcPassed", projectId],
     queryFn: () => listQcPassedOpeningIds(projectId),
   });
+  const phases = useQuery({
+    queryKey: ["openingPhases", projectId],
+    queryFn: () => listOpeningPhases(projectId),
+  });
 
   // The model-bearing outline wins; the auto-extracted one is a fallback.
   const outline = preferModelOutline(outlines.data);
@@ -75,6 +80,12 @@ export function MapsInteractive({ project }: { project: Project }) {
       viewerId: myProfile.data?.id ?? null,
       managerView: isForemanPlus(effectiveRole),
       qcPassedOpeningIds: new Set(qcPassed.data ?? []),
+      // Aqua frames: submitted flashing = solid, still-owed = dashed.
+      flashedOpeningIds: new Set(
+        (phases.data ?? [])
+          .filter((p) => p.kind === "flashing" && p.status === "submitted")
+          .map((p) => p.opening_id),
+      ),
     };
     // A full hand-traced survey model (multi-mass footprint, named walls,
     // surveyor-placed windows) beats anything derivable from plan pins —
@@ -107,6 +118,7 @@ export function MapsInteractive({ project }: { project: Project }) {
     myProfile.data?.id,
     effectiveRole,
     qcPassed.data,
+    phases.data,
   ]);
 
   const hostRef = useRef<HTMLDivElement | null>(null);

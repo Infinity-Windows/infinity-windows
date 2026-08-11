@@ -163,6 +163,13 @@ export interface ProjectOpening {
   assigned_by: string | null;
   assigned_at: string | null;
   sequence: number | null;
+  /**
+   * Envelope prep gate: true (the default — "yes is the default, no is the
+   * change") means a submitted flashing phase must exist before the install
+   * may start. Optional because the column arrives with 20260811000000;
+   * absent reads as "no gate" so an unmigrated database changes nothing.
+   */
+  needs_flashing?: boolean | null;
   work_started_at: string | null;
   work_ended_at: string | null;
   flag_note: string | null;

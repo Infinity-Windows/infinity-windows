@@ -300,6 +300,29 @@ describe("glowFor (role-aware window colors)", () => {
   });
 });
 
+describe("flashFor (the aqua frame channel)", () => {
+  const view = (flashed: string[]) => ({
+    viewerId: null,
+    managerView: true,
+    qcPassedOpeningIds: new Set<string>(),
+    flashedOpeningIds: new Set(flashed),
+  });
+
+  it("solid when submitted, dashed while owed, nothing when never needed", async () => {
+    const { flashFor } = await import("./adapter");
+    expect(flashFor({ id: "op1", needs_flashing: true }, view(["op1"]))).toBe("done");
+    expect(flashFor({ id: "op1", needs_flashing: true }, view([]))).toBe("needed");
+    expect(flashFor({ id: "op1", needs_flashing: false }, view([]))).toBeNull();
+    expect(flashFor({ id: "op1" }, view([]))).toBeNull();
+    expect(flashFor(undefined, view(["op1"]))).toBeNull();
+  });
+
+  it("done survives a later exemption - the work happened", async () => {
+    const { flashFor } = await import("./adapter");
+    expect(flashFor({ id: "op1", needs_flashing: false }, view(["op1"]))).toBe("done");
+  });
+});
+
 describe("view context on the authored job", () => {
   const model = {
     building: {

@@ -613,6 +613,11 @@ export function mountFitView(host, job, shim) {
     el.dataset.id = win.id;
     el.style.setProperty("--wc", "var(" + colorVar(win) + ")");
     if (win.glow && win.glow !== "none") el.classList.add("glow-" + win.glow);
+    // Flashing rides its own visual channel - a frame, never the glow color:
+    // solid aqua = flashing submitted, dashed = still owed.
+    if (win.flash === "done" || win.flash === "needed") {
+      el.classList.add("flash-" + win.flash);
+    }
     el.style.width = wp + "px";
     el.style.height = hp + "px";
     el.style.left = (fx * S) + "px";
@@ -1695,8 +1700,14 @@ export function mountFitView(host, job, shim) {
     // A glow-colored job explains the glow palette; anything else keeps the
     // prototype's status legend.
     var glowing = JOB.windows.some(function (w) { return !!w.glow; });
-    if (glowing) {
-      $("legend").innerHTML = GLOW_LEGEND.map(function (g) {
+    var flashing = JOB.windows.some(function (w) { return !!w.flash; });
+    if (glowing || flashing) {
+      var entries = glowing ? GLOW_LEGEND.slice() : [];
+      if (flashing) {
+        entries.push(["--fl-done", "Flashed"]);
+        entries.push(["--fl-needed", "Needs flashing"]);
+      }
+      $("legend").innerHTML = entries.map(function (g) {
         return '<span><i style="background:var(' + g[0] + ')"></i>' + g[1] + '</span>';
       }).join("");
       return;

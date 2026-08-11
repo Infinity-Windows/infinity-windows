@@ -1876,3 +1876,20 @@ a.tb-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
 .fitview-app .win.glow-green {
   filter: drop-shadow(0 0 6px var(--wc)) drop-shadow(0 0 2px var(--wc));
 }
+
+/* Flashing frames (adapter flashFor) - the SECOND visual channel, apart
+   from the glow: envelope prep, crew-wide truth for every role. Aqua is
+   foreign to the status palette on purpose, and it reads as "sealed
+   against water" against the warm walls. */
+.fitview-app {
+  --fl-done: #3fd4c0;
+  --fl-needed: #2a8d81;
+}
+.fitview-app .win.flash-done {
+  outline: 4px solid var(--fl-done);
+  outline-offset: 2px;
+}
+.fitview-app .win.flash-needed {
+  outline: 4px dashed var(--fl-needed);
+  outline-offset: 2px;
+}

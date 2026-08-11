@@ -55,6 +55,8 @@ export interface FitViewWindow {
    * the tracer and old fixtures keep the prototype's status colors.
    */
   glow?: FitViewGlow;
+  /** Flashing frame (flashFor): "done" solid aqua, "needed" dashed. */
+  flash?: "done" | "needed";
 }
 
 export type FitViewGlow = "red" | "yellow" | "green" | "none";
@@ -72,6 +74,24 @@ export interface FitViewViewContext {
   managerView: boolean;
   /** Opening ids whose qc_checks row says 'passed'. */
   qcPassedOpeningIds: Set<string>;
+  /** Opening ids with a SUBMITTED flashing phase (photo on record). */
+  flashedOpeningIds?: Set<string>;
+}
+
+/**
+ * The flashing frame, a channel apart from the glow: solid aqua = flashing
+ * submitted, dashed aqua = flashing still owed, nothing = never needed it.
+ * "Done" wins even on a later-exempted opening — the work happened and the
+ * photo exists. Universal for every role: envelope prep is crew-wide truth.
+ */
+export function flashFor(
+  live: { id: string; needs_flashing?: boolean | null } | undefined,
+  view: FitViewViewContext,
+): "done" | "needed" | null {
+  if (!live) return null;
+  if (view.flashedOpeningIds?.has(live.id)) return "done";
+  if (live.needs_flashing === true) return "needed";
+  return null;
 }
 
 /**
@@ -294,7 +314,11 @@ export function buildAuthoredJob(
     // (no view) keeps authored ids — its stored dots are keyed by them.
     if (view) w.id = displayMarkCode(String(raw.id));
     const live = liveByCode.get(normalizeMarkCode(String(w.id)));
-    if (view) (w as { glow?: FitViewGlow }).glow = glowFor(live, view);
+    if (view) {
+      (w as { glow?: FitViewGlow }).glow = glowFor(live, view);
+      const flash = flashFor(live, view);
+      if (flash) (w as { flash?: string }).flash = flash;
+    }
     if (!live) return w;
     return {
       ...w,
@@ -403,6 +427,7 @@ export function buildFitViewJob(
     windows.push({
       id: o.opening_code,
       glow: view ? glowFor(o, view) : undefined,
+      flash: view ? flashFor(o, view) ?? undefined : undefined,
       elev: "s" + hit.edge,
       floor: "Ground",
       room: o.label?.trim() || "Page " + o.page_number,
