@@ -29,6 +29,13 @@ import {
   rankAssignCandidates,
 } from "../../lib/install/assignRank";
 import { pickNextOpening } from "../../lib/install/nextOpening";
+import {
+  flashingOutstanding,
+  listOpeningPhases,
+  setOpeningNeedsFlashing,
+  startOpeningPhase,
+  submitOpeningPhase,
+} from "../../lib/install/phases";
 import { computeInstallPoints } from "../../lib/points";
 import { checkFit, isInstallReadyStatus, readyToInstall, smallest } from "../../lib/install/fit";
 import {
@@ -123,6 +130,8 @@ export function OpeningSheet() {
   const [now, setNow] = useState(() => Date.now());
 
   const [photos, setPhotos] = useState<BeforeAfterValue>({ before: null, after: null });
+  /** Finished-flashing proof, held until the phase submit sends it. */
+  const [flashPhoto, setFlashPhoto] = useState<File | null>(null);
   const [video, setVideo] = useState<File | null>(null);
   const [stage, setStage] = useState<"check" | "install" | "capture">("check");
   const [minutes, setMinutes] = useState("");
@@ -263,6 +272,59 @@ export function OpeningSheet() {
     const id = setInterval(() => setNow(Date.now()), 15000);
     return () => clearInterval(id);
   }, [startedAt]);
+
+  // Phases: work on this opening that isn't the install (flashing today).
+  // One project-level query so the map and every sheet share a cache entry.
+  const phases = useQuery({
+    queryKey: ["openingPhases", projectId],
+    queryFn: () => listOpeningPhases(projectId),
+  });
+  const myPhases = (phases.data ?? []).filter((p) => p.opening_id === openingId);
+  const flashing = myPhases.find((p) => p.kind === "flashing") ?? null;
+  const flashingBlocked = opening.data
+    ? flashingOutstanding(opening.data, myPhases)
+    : false;
+  const refreshPhases = () =>
+    queryClient.invalidateQueries({ queryKey: ["openingPhases", projectId] });
+
+  const startFlash = useMutation({
+    mutationFn: () => startOpeningPhase(openingId, "flashing"),
+    onSuccess: refreshPhases,
+    onError: (e) => {
+      if (isClockGateError(e)) {
+        setStartGateError("Clock in and sign today's toolbox talk to start this task.");
+      } else {
+        setMessage(formatApiError(e));
+      }
+    },
+  });
+  const submitFlash = useMutation({
+    mutationFn: () => {
+      const o2 = opening.data;
+      if (!o2) throw new Error("Opening not loaded.");
+      if (!flashPhoto) throw new Error("Take the finished-flashing photo first.");
+      return submitOpeningPhase({
+        openingId,
+        kind: "flashing",
+        projectId,
+        openingCode: o2.opening_code,
+        photo: flashPhoto,
+        contentType: flashPhoto.type || "image/jpeg",
+      });
+    },
+    onSuccess: () => {
+      setFlashPhoto(null);
+      setMessage("Flashing submitted.");
+      refreshPhases();
+      refresh();
+    },
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+  const toggleNeedsFlashing = useMutation({
+    mutationFn: (needs: boolean) => setOpeningNeedsFlashing(openingId, needs),
+    onSuccess: () => refresh(),
+    onError: (e) => setMessage(formatApiError(e)),
+  });
 
   const brain = useQuery({
     queryKey: ["typeBrain", opening.data?.window_type_id],
@@ -1086,6 +1148,107 @@ export function OpeningSheet() {
         </>
       )}
 
+          {/* Before photo — captured HERE, while "before" still exists. By the
+              old flow's step 3 the original window was already in the dumpster
+              and every "before" was really a "during". Starting the install
+              requires it; Capture keeps a retake slot for bad first shots. */}
+          {!startedAt && (
+            <>
+              <h2 style={{ marginBottom: 2 }}>Before photo</h2>
+              <p className="muted" style={{ marginTop: 0 }}>
+                The opening as you found it — required before the clock starts.
+              </p>
+              <PhotoCaptureSheet
+                mode="beforeAfter"
+                slots={["before"]}
+                value={photos}
+                onChange={setPhotos}
+                label={o.opening_code}
+              />
+            </>
+          )}
+
+          {/* Flashing phase: its own clock, its own photo, done by whoever
+              gets here first — assignment owns the install, not the window. */}
+          {o.needs_flashing === true && (
+            <div className="detail-card" style={{ marginTop: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span className="field-label" style={{ margin: 0 }}>Flashing</span>
+                {flashing?.status === "submitted" ? (
+                  <span className="ok" style={{ fontSize: 12.5 }}>
+                    ✓ done · {flashing.submitter?.display_name ?? "crew"}
+                    {flashing.minutes != null && ` · ${flashing.minutes}m`}
+                  </span>
+                ) : flashing ? (
+                  <span style={{ fontSize: 12.5, color: "var(--warn, #e8c14a)" }}>
+                    clock running
+                    {flashing.starter?.display_name && ` · ${flashing.starter.display_name}`}
+                  </span>
+                ) : (
+                  <span className="muted" style={{ fontSize: 12.5 }}>required before install</span>
+                )}
+                {isForemanPlus(effectiveRole) && flashing?.status !== "submitted" && (
+                  <button
+                    className="link"
+                    style={{ marginLeft: "auto", fontSize: 12 }}
+                    disabled={toggleNeedsFlashing.isPending}
+                    onClick={() => toggleNeedsFlashing.mutate(false)}
+                  >
+                    Doesn't need flashing
+                  </button>
+                )}
+              </div>
+              {!flashing && (
+                <button
+                  className="button-like active-pill"
+                  style={{ marginTop: 8 }}
+                  disabled={startFlash.isPending}
+                  onClick={() => startFlash.mutate()}
+                >
+                  {startFlash.isPending ? "Starting…" : "Start flashing clock"}
+                </button>
+              )}
+              {flashing && flashing.status === "active" && (
+                <>
+                  <label className="action-btn" style={{ cursor: "pointer", marginTop: 8 }}>
+                    {flashPhoto ? "Finished photo ready — retake" : "Photo of the finished flashing"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      hidden
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) setFlashPhoto(f);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                  <button
+                    className="primary big"
+                    style={{ marginTop: 8 }}
+                    disabled={!flashPhoto || submitFlash.isPending}
+                    onClick={() => submitFlash.mutate()}
+                  >
+                    {submitFlash.isPending
+                      ? "Submitting…"
+                      : flashPhoto
+                        ? "Submit flashing"
+                        : "Take the photo to submit"}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          {o.needs_flashing === false && isForemanPlus(effectiveRole) && (
+            <p className="muted" style={{ fontSize: 12 }}>
+              No flashing required here.{" "}
+              <button className="link" onClick={() => toggleNeedsFlashing.mutate(true)}>
+                Require it
+              </button>
+            </p>
+          )}
+
           {/* The deliberate act. This is the moment the clock starts — and the
               moment the lead board sees this window as in progress. */}
           <button
@@ -1093,19 +1256,25 @@ export function OpeningSheet() {
             disabled={
               ready.status === "blocked" ||
               beginInstall.isPending ||
+              flashingBlocked ||
+              (!startedAt && photos.before === null) ||
               (!startedAt && !canStartInstall(eligibility.status))
             }
             onClick={() => (startedAt ? setStage("install") : beginInstall.mutate())}
           >
             {ready.status === "blocked"
               ? "Resolve blockers to start"
-              : eligibility.status === "blocked"
-                ? "Clock in first to start"
-                : startedAt
-                  ? "Back to the install →"
-                  : beginInstall.isPending
-                    ? "Starting…"
-                    : "Start install →"}
+              : flashingBlocked
+                ? "Flash this opening first"
+                : !startedAt && photos.before === null
+                  ? "Take the before photo to start"
+                  : eligibility.status === "blocked"
+                    ? "Clock in first to start"
+                    : startedAt
+                      ? "Back to the install →"
+                      : beginInstall.isPending
+                        ? "Starting…"
+                        : "Start install →"}
           </button>
         </>
       )}
