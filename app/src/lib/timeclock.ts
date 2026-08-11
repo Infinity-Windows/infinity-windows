@@ -43,7 +43,7 @@ export interface TimeShift {
    * past the believable maximum, so it carries no `clock_out_at` and no hours
    * until a person supplies the real finish time. See lib/shiftGuard.ts.
    */
-  status: "open" | "submitted" | "approved" | "rejected" | "needs_finish";
+  status: "open" | "submitted" | "approved" | "rejected" | "needs_finish" | "voided";
   created_at: string;
   /** Optional free-text note the worker adds at clock-in, for the office. */
   note?: string | null;
@@ -145,6 +145,7 @@ export async function listMyShifts(
     .select(SHIFT_SELECT)
     .eq("profile_id", profileId)
     .gte("clock_in_at", sinceIso)
+    .neq("status", "voided")
     .order("clock_in_at", { ascending: false });
   if (error) throw error;
   return (data ?? []) as TimeShift[];
@@ -175,6 +176,7 @@ export async function listTeamShifts(
     .select(SHIFT_SELECT)
     .gte("clock_in_at", sinceIso)
     .lt("clock_in_at", untilIso)
+    .neq("status", "voided")
     .order("clock_in_at", { ascending: false })
     .limit(1000);
   if (error) throw error;
@@ -228,6 +230,7 @@ export async function listShiftsForProfile(
     .eq("profile_id", profileId)
     .gte("clock_in_at", sinceIso)
     .lt("clock_in_at", untilIso)
+    .neq("status", "voided")
     .order("clock_in_at", { ascending: false });
   if (error) throw error;
   return (data ?? []) as TimeShift[];
@@ -334,6 +337,23 @@ export async function leadEditShift(
     p_clock_out_at: patch.clockOutAt ?? null,
     p_break_seconds: patch.breakSeconds ?? null,
     p_note: patch.note ?? null,
+  });
+  if (error) throw error;
+  return data as TimeShift;
+}
+
+/**
+ * Lead deletes a punch. Server-side this VOIDS, never erases: the shift
+ * drops out of every list and total (status 'voided'), while the row and a
+ * permanent audit entry with the required reason stay behind.
+ */
+export async function leadVoidShift(
+  shiftId: string,
+  note: string,
+): Promise<TimeShift> {
+  const { data, error } = await supabase.rpc("lead_void_shift", {
+    p_shift_id: shiftId,
+    p_note: note,
   });
   if (error) throw error;
   return data as TimeShift;

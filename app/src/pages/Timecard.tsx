@@ -18,6 +18,7 @@ import {
   approveShift,
   leadAddShift,
   leadEditShift,
+  leadVoidShift,
   listCostCodes,
   listOvertimeRules,
   listShiftEdits,
@@ -149,6 +150,7 @@ function ShiftEditor({
   // never prefills from the last edit's note - a stale reason on a new change
   // would be a false audit entry.
   const [note, setNote] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["teamShifts"] });
@@ -192,6 +194,24 @@ function ShiftEditor({
           url: "/clock",
         });
       }
+      refresh();
+      onDone();
+    },
+  });
+
+  // Delete = void, never erase: the punch leaves timecards and payroll, the
+  // row and the reason stay in the audit log. Same required note as an edit.
+  const del = useMutation({
+    mutationFn: () => leadVoidShift(shift!.id, note.trim()),
+    onSuccess: () => {
+      // The crew member should hear it from the app, not from a short check.
+      void sendPush({
+        profileIds: [shift!.profile_id],
+        title: "Timecard punch deleted",
+        body: "A punch on your timecard was deleted. Ask your lead if that's a surprise.",
+        tag: `timecard-deleted-${shift!.id}`,
+        url: "/clock",
+      });
       refresh();
       onDone();
     },
@@ -246,6 +266,7 @@ function ShiftEditor({
         onChange={(e) => setNote(e.target.value)}
       />
       {save.isError && <p className="error">{formatApiError(save.error)}</p>}
+      {del.isError && <p className="error">{formatApiError(del.error)}</p>}
       <div className="row-gap" style={{ marginTop: 10 }}>
         <button
           className="button-like active-pill"
@@ -257,7 +278,47 @@ function ShiftEditor({
         <button className="button-like" onClick={onDone} disabled={save.isPending}>
           Cancel
         </button>
+        {mode === "edit" && !confirmDelete && (
+          <button
+            className="button-like"
+            style={{ marginLeft: "auto", color: "var(--bad, #e5484d)" }}
+            disabled={del.isPending}
+            onClick={() => setConfirmDelete(true)}
+          >
+            Delete punch
+          </button>
+        )}
       </div>
+      {mode === "edit" && confirmDelete && (
+        <div className="detail-card" style={{ marginTop: 10 }}>
+          <p style={{ margin: 0 }}>
+            Delete this punch? It comes off the timecard and payroll totals.
+            The record and your reason stay in the audit log, and{" "}
+            {shift?.profiles?.display_name ?? "the crew member"} gets notified.
+          </p>
+          {note.trim() === "" && (
+            <p className="warn-text" style={{ margin: "6px 0 0" }}>
+              Type the reason above first — a delete needs one, same as an edit.
+            </p>
+          )}
+          <div className="row-gap" style={{ marginTop: 8 }}>
+            <button
+              className="button-like active-pill"
+              disabled={del.isPending || note.trim() === ""}
+              onClick={() => del.mutate()}
+            >
+              {del.isPending ? "Deleting…" : "Delete punch"}
+            </button>
+            <button
+              className="button-like"
+              disabled={del.isPending}
+              onClick={() => setConfirmDelete(false)}
+            >
+              Keep it
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
