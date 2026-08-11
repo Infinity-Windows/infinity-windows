@@ -155,6 +155,17 @@ export interface ProjectOpening {
   ro_height_in: number | null;
   ro_measured_by: string | null;
   ro_measured_at: string | null;
+  /**
+   * The saved rough-opening checklist (taps + every measured point), so a
+   * revisit shows exactly what was judged and a fixer can flip Bad back to
+   * Good. Optional: arrives with 20260811040000.
+   */
+  ro_check?: {
+    judgments?: Record<string, "good" | "bad" | null>;
+    diagonals?: (string | number | null)[];
+    widths?: (string | number | null)[];
+    heights?: (string | number | null)[];
+  } | null;
   condition: OpeningCondition;
   condition_note: string | null;
   condition_checked_by: string | null;

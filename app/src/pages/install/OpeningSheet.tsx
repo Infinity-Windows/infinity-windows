@@ -87,7 +87,7 @@ import { MissingSpecNotice } from "../../components/install/MissingSpecNotice";
 import { OpeningMoved } from "../../components/install/OpeningMoved";
 import { rememberOpening } from "../../lib/install/staleOpening";
 import { useRealtimeOpenings } from "../../lib/useRealtimeOpenings";
-import { createIssue, listProjectIssues } from "../../lib/issues";
+import { createIssue, listProjectIssues, resolveIssue } from "../../lib/issues";
 import type { QrPayload } from "../../lib/qr";
 import { resolveWindowFromScan } from "../../lib/scanResolve";
 import { supabase } from "../../lib/supabase";
@@ -256,6 +256,31 @@ export function OpeningSheet() {
   // the office reloads the plans, instead of holding a dead id until someone
   // thinks to reload the page.
   useRealtimeOpenings(projectId);
+
+  // Restore the saved checklist so a revisit shows exactly what was judged -
+  // and a fixer can flip Bad back to Good. Seeded once per opening; typing in
+  // progress is never clobbered by a background refetch.
+  const roSeededRef = useRef<string | null>(null);
+  useEffect(() => {
+    const loaded = opening.data;
+    if (!loaded || roSeededRef.current === loaded.id) return;
+    roSeededRef.current = loaded.id;
+    const saved = loaded.ro_check;
+    if (!saved) return;
+    const strs = (a: (string | number | null)[] | undefined, n: number) =>
+      Array.from({ length: n }, (_, i) => {
+        const v = a?.[i];
+        return v == null || v === "" ? "" : String(v);
+      });
+    setRoDiag(strs(saved.diagonals, 2));
+    setRoW(strs(saved.widths, 3));
+    setRoH(strs(saved.heights, 2));
+    setRoJudge({
+      square: saved.judgments?.square ?? null,
+      width: saved.judgments?.width ?? null,
+      height: saved.judgments?.height ?? null,
+    });
+  }, [opening.data]);
 
   // The code is what survives a re-extract; the id does not. Remembering it
   // per-device is what lets a dead link find the same window on the new plans.
@@ -599,19 +624,29 @@ export function OpeningSheet() {
       if (w == null || h == null) {
         throw new Error("Enter at least one width and one height measurement.");
       }
-      await setRoughOpening(openingId, w, h);
+      await setRoughOpening(openingId, w, h, {
+        judgments: roJudge,
+        diagonals: roDiag,
+        widths: roW,
+        heights: roH,
+      });
 
       // The checklist's teeth: a Bad tap - or numbers that prove a problem
       // even under a Good tap - files ONE framing issue, labeled with the
       // window, deduped against an open one so re-saving never spams the
       // framer's list.
       const failures = roFailures(roChecklist, roJudge);
-      if (failures.length === 0) return { filed: false };
       const existing = await listProjectIssues(projectId);
-      const alreadyOpen = existing.some(
+      const openFraming = existing.filter(
         (i) => i.opening_id === openingId && i.kind === "framing" && i.status === "open",
       );
-      if (!alreadyOpen) {
+      if (failures.length === 0) {
+        // The full circle: framing fixed, checklist re-run all good - the
+        // issue closes itself instead of waiting for someone to remember.
+        for (const i of openFraming) await resolveIssue(i.id);
+        return { filed: false, resolved: openFraming.length > 0 };
+      }
+      if (openFraming.length === 0) {
         await createIssue({
           projectId,
           openingId,
@@ -620,13 +655,15 @@ export function OpeningSheet() {
           note: framingIssueNote(opening.data?.opening_code ?? "?", failures, roJudge),
         });
       }
-      return { filed: !alreadyOpen };
+      return { filed: openFraming.length === 0, resolved: false };
     },
     onSuccess: (r) => {
       setMessage(
         r.filed
           ? "Rough opening saved — framing issue filed for this window."
-          : "Rough opening saved.",
+          : r.resolved
+            ? "Rough opening saved — all good, framing issue resolved."
+            : "Rough opening saved.",
       );
       refresh();
       void queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });

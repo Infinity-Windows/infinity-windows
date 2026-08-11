@@ -2412,13 +2412,27 @@ export async function setRoughOpening(
   openingId: string,
   widthIn: number,
   heightIn: number,
+  check?: NonNullable<ProjectOpening["ro_check"]>,
 ): Promise<ProjectOpening> {
   const { data, error } = await supabase.rpc("set_opening_rough_opening", {
     p_opening_id: openingId,
     p_width_in: widthIn,
     p_height_in: heightIn,
     p_actor: await actor(),
+    p_check: check ?? null,
   });
+  // Older database (no p_check yet): save the dimensions the old way rather
+  // than losing the crew's measurement to a signature mismatch.
+  if (error && /p_check|function .* does not exist/i.test(error.message ?? "")) {
+    const fallback = await supabase.rpc("set_opening_rough_opening", {
+      p_opening_id: openingId,
+      p_width_in: widthIn,
+      p_height_in: heightIn,
+      p_actor: await actor(),
+    });
+    if (fallback.error) throw fallback.error;
+    return fallback.data as ProjectOpening;
+  }
   if (error) throw error;
   return data as ProjectOpening;
 }
