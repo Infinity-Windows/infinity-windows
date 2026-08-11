@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronLeft, ChevronRight, Coffee, Download } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Coffee, Download } from "lucide-react";
 import { QueryError, SkeletonList } from "../ui/States";
 import { listInstallEventsForProfile } from "../../lib/install/api";
 import {
@@ -112,7 +112,17 @@ export function TimecardPanel({
     qc.invalidateQueries({ queryKey: ["teamShifts"] });
     qc.invalidateQueries({ queryKey: ["unfinishedShifts"] });
   };
-  const approve = useMutation({ mutationFn: approveShift, onSuccess: refresh });
+  // Weekly approval (owner call, 2026-08-11): one action approves every
+  // submitted punch in the visible week. Storage stays per-shift status, so
+  // edit-honesty still works — editing an approved punch drops it back to
+  // submitted and the week reads "needs approval" again.
+  const approveWeek = useMutation({
+    mutationFn: async (ids: string[]) => {
+      for (const id of ids) await approveShift(id);
+      return ids.length;
+    },
+    onSuccess: refresh,
+  });
   const reject = useMutation({
     mutationFn: (args: { id: string; reason: string }) =>
       rejectShift(args.id, args.reason),
@@ -183,6 +193,15 @@ export function TimecardPanel({
     }
     return { regular, overtime, doubleTime };
   }, [paidRows, otRules.data, personId]);
+
+  const submittedIds = useMemo(
+    () => paidRows.filter((s) => s.status === "submitted").map((s) => s.id),
+    [paidRows],
+  );
+  // "Approved" only when every closed punch made it through — open shifts
+  // and rejected punches keep the week honest instead of green.
+  const weekApproved =
+    paidRows.length > 0 && paidRows.every((s) => s.status === "approved");
 
   const totalLabel =
     mode === "day" ? "Total today" : mode === "pay" ? "Total this pay period" : "Total this week";
@@ -289,6 +308,23 @@ export function TimecardPanel({
             </div>
           )}
         </div>
+        {isLead && canEdit && mode === "week" && (
+          submittedIds.length > 0 ? (
+            <button
+              className="button-like active-pill"
+              disabled={approveWeek.isPending}
+              onClick={() => approveWeek.mutate(submittedIds)}
+            >
+              {approveWeek.isPending
+                ? "Approving…"
+                : `Approve week (${submittedIds.length})`}
+            </button>
+          ) : weekApproved ? (
+            <span className="tcx-week-ok">
+              <CheckCircle2 size={15} aria-hidden /> Week approved
+            </span>
+          ) : null
+        )}
       </div>
 
       {/* Entries strip */}
@@ -447,7 +483,6 @@ export function TimecardPanel({
                       canEdit={canEdit}
                       projects={projects}
                       costCodes={costCodes}
-                      approve={approve}
                       reject={{ ...reject, error: reject.error }}
                     />
                   ))}

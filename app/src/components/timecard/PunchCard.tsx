@@ -5,7 +5,7 @@
 // the per-punch Approve / Reject / Edit actions live at the bottom edge.
 
 import { useState } from "react";
-import { Check, Coffee } from "lucide-react";
+import { Coffee } from "lucide-react";
 import { formatApiError } from "../../lib/errors";
 import {
   elapsedWorkSeconds,
@@ -23,11 +23,10 @@ interface PunchCardProps {
   canEdit: boolean;
   projects: ProjectOpt[];
   costCodes: CostOpt[];
-  approve: { isPending: boolean; mutate: (id: string) => void };
   reject: { isPending: boolean; mutate: (args: { id: string; reason: string }) => void; error?: unknown };
 }
 
-export function PunchCard({ shift: s, isLead, isSup, canEdit, projects, costCodes, approve, reject }: PunchCardProps) {
+export function PunchCard({ shift: s, isLead, isSup, canEdit, projects, costCodes, reject }: PunchCardProps) {
   const [editing, setEditing] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -118,17 +117,11 @@ export function PunchCard({ shift: s, isLead, isSup, canEdit, projects, costCode
           </div>
         )}
 
+        {/* Approval is WEEKLY (owner call, 2026-08-11) — the Approve-week
+            button lives on the panel's total card. Reject stays per punch:
+            a bad punch is a specific punch. */}
         {isLead && !voided && (
           <div className="row-gap tcx-punch-actions">
-            {s.status === "submitted" && (
-              <button
-                className="button-like active-pill"
-                disabled={approve.isPending}
-                onClick={() => approve.mutate(s.id)}
-              >
-                <Check size={14} aria-hidden /> Approve
-              </button>
-            )}
             {s.status !== "rejected" && (
               <button
                 className="button-like"

@@ -9498,3 +9498,8 @@ body {
 .tbx-callout.warn h4 { color: #fbbf24; }
 .tbx-callout.stop { border-color: rgba(248,113,113,.45); background: rgba(248,113,113,.08); }
 .tbx-callout.stop h4 { color: #f87171; }
+
+.tcx-week-ok {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: #34d399; font-size: 12.5px; font-weight: 600; flex: none;
+}
