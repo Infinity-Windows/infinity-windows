@@ -464,6 +464,9 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "opening_phases": ("opening_id", "kind"),
     "project_plansets": ("project_id", "storage_path"),
     "toolbox_completions": ("profile_id", "talk_id"),
+    # Library content is keyed by its slug; one assignment per date (UNIQUE).
+    "toolbox_talk_library": ("slug",),
+    "toolbox_talk_assignments": ("assigned_date",),
     "knowledge_chunks": ("doc_id", "chunk_index"),
     "learn_progress": ("profile_id", "term_id"),
     "project_mark_specs": ("project_id", "mark_code"),

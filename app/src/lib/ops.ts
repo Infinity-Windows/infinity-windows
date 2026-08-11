@@ -19,19 +19,133 @@ export interface SafetyTalk {
   talk_date: string;
   sections_json?: TalkSections | null;
   visual_aids_json?: TalkVisualAid[] | null;
+  // Structured library fields (toolbox_talk_library port, 2026-08-11).
+  library_slug?: string | null;
+  category?: string | null;
+  citation?: string | null;
+  key_points?: string[] | null;
+  watch_for?: string[] | null;
+  stop_work_line?: string | null;
+  pledge?: string | null;
 }
+
+/** A reusable talk from the library (browse/assign surface). */
+export interface LibraryTalk {
+  id: string;
+  slug: string;
+  category: string;
+  position: number;
+  title: string;
+  citation: string | null;
+  briefing: string;
+  key_points: string[];
+  watch_for: string[];
+  stop_work_line: string | null;
+  pledge: string | null;
+  is_active: boolean;
+}
+
+export const TALK_CATEGORY_LABELS: Record<string, string> = {
+  lifting: "Heavy units & lifting",
+  glass: "Glass & sash",
+  cutting: "Cuts, blades & tools",
+  heights: "Ladders, openings & falls",
+  site: "Jobsite & health",
+};
 export interface Incident {
   id: string; description: string; severity: string; created_at: string;
   profiles?: { display_name: string } | null;
   projects?: { job_code: string } | null;
 }
 
+/** Local calendar date — the phone's day is the crew's day. */
+function localTalkDate(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * Today's talk, properly date-matched. If no row exists for today yet, the
+ * rotation RPC creates one (assignment override -> weekday category ->
+ * weekly rotation; weekends walk the whole library). Falls back to the old
+ * newest-row behavior when the rotation isn't migrated yet, so an
+ * unmigrated build degrades to exactly what it did before.
+ */
 export async function getTodayTalk(): Promise<SafetyTalk | null> {
+  const today = localTalkDate();
   const { data, error } = await supabase
     .from("safety_talks").select("*")
+    .eq("talk_date", today)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (!error && data) return data as SafetyTalk;
+
+  const rpc = await supabase.rpc("get_or_create_toolbox_talk_for_date", {
+    p_date: today,
+  });
+  if (!rpc.error && rpc.data) return rpc.data as SafetyTalk;
+
+  // Missing RPC / empty library / legacy schema: newest talk, as before.
+  const legacy = await supabase
+    .from("safety_talks").select("*")
     .order("talk_date", { ascending: false }).limit(1).maybeSingle();
+  if (legacy.error) throw legacy.error;
+  return legacy.data as SafetyTalk | null;
+}
+
+export async function listLibraryTalks(): Promise<LibraryTalk[]> {
+  const { data, error } = await supabase
+    .from("toolbox_talk_library").select("*")
+    .eq("is_active", true)
+    .order("category").order("position");
   if (error) throw error;
-  return data as SafetyTalk | null;
+  return (data ?? []) as LibraryTalk[];
+}
+
+export interface TalkAssignment {
+  id: string;
+  library_id: string;
+  assigned_date: string;
+}
+
+export async function listTalkAssignments(fromDate: string): Promise<TalkAssignment[]> {
+  const { data, error } = await supabase
+    .from("toolbox_talk_assignments")
+    .select("id, library_id, assigned_date")
+    .gte("assigned_date", fromDate)
+    .order("assigned_date");
+  if (error) throw error;
+  return (data ?? []) as TalkAssignment[];
+}
+
+/**
+ * Pin a library talk to a date (leads). Replaces any prior assignment for
+ * that date; if the date's daily instance was already generated, it is
+ * re-pointed so the override actually shows.
+ */
+export async function assignTalk(libraryId: string, dateISO: string): Promise<void> {
+  await supabase.from("toolbox_talk_assignments").delete().eq("assigned_date", dateISO);
+  const { error } = await supabase
+    .from("toolbox_talk_assignments")
+    .insert({ library_id: libraryId, assigned_date: dateISO });
+  if (error) throw error;
+  // A pre-generated instance for the date would mask the override — clear
+  // it only if nobody has signed it yet (completions must keep their talk).
+  const { data: existing } = await supabase
+    .from("safety_talks").select("id").eq("talk_date", dateISO);
+  for (const t of existing ?? []) {
+    const { data: sigs } = await supabase
+      .from("toolbox_completions").select("id").eq("talk_id", t.id).limit(1);
+    if ((sigs ?? []).length === 0) {
+      await supabase.from("safety_talks").delete().eq("id", t.id);
+    }
+  }
+}
+
+export async function removeTalkAssignment(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("toolbox_talk_assignments").delete().eq("id", id);
+  if (error) throw error;
 }
 export async function ackTalk(talkId: string, profileId: string): Promise<void> {
   const { error } = await supabase.from("safety_acks")

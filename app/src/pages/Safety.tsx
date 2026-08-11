@@ -12,6 +12,8 @@ import {
   type SafetyTalk,
   type TalkSections,
 } from "../lib/ops";
+import { TalkLibrary } from "../components/safety/TalkLibrary";
+import { TalkContent } from "../components/safety/TalkContent";
 import {
   generateToolboxTalk,
   listMyCompletions,
@@ -43,72 +45,6 @@ function PdfLink({ path, label }: { path: string; label: string }) {
     <button type="button" className="button-like" onClick={open} disabled={loading}>
       {loading ? "Opening…" : label}
     </button>
-  );
-}
-
-function TalkContent({ talk }: { talk: SafetyTalk }) {
-  const s = talk.sections_json ?? null;
-  const aids = talk.visual_aids_json ?? [];
-  if (!s || (!s.intro && !s.key_hazards?.length && !s.steps?.length)) {
-    return <p className="muted" style={{ margin: 0, lineHeight: 1.65 }}>{talk.body}</p>;
-  }
-  return (
-    <div>
-      {s.intro && <p style={{ margin: "0 0 6px", lineHeight: 1.6 }}>{s.intro}</p>}
-      {!!s.key_hazards?.length && (
-        <div className="talk-section hazards">
-          <h4>Key hazards</h4>
-          <ul className="talk-list">
-            {s.key_hazards.map((h, i) => <li key={i}>{h}</li>)}
-          </ul>
-        </div>
-      )}
-      {!!s.steps?.length && (
-        <div className="talk-section">
-          <h4>Step by step</h4>
-          <ol className="talk-list talk-steps">
-            {s.steps.map((st, i) => <li key={i}>{st}</li>)}
-          </ol>
-        </div>
-      )}
-      {(!!s.dos?.length || !!s.donts?.length) && (
-        <div className="talk-section">
-          <div className="dodont-grid">
-            <div className="do">
-              <h4 style={{ color: "var(--ok)" }}>Do</h4>
-              <ul className="talk-list">
-                {(s.dos ?? []).map((d, i) => <li key={i}>{d}</li>)}
-              </ul>
-            </div>
-            <div className="dont">
-              <h4 style={{ color: "var(--danger)" }}>Don't</h4>
-              <ul className="talk-list">
-                {(s.donts ?? []).map((d, i) => <li key={i}>{d}</li>)}
-              </ul>
-            </div>
-          </div>
-        </div>
-      )}
-      {!!aids.length && (
-        <div className="talk-section">
-          <h4>Visual aids</h4>
-          <div className="talk-aids">
-            {aids.map((a, i) =>
-              a.url ? (
-                <figure key={i} className="talk-aid">
-                  <img src={a.url} alt={a.prompt} />
-                  <figcaption className="aid-caption">{a.prompt}</figcaption>
-                </figure>
-              ) : (
-                <div key={i} className="talk-aid placeholder">
-                  <strong>Diagram:</strong> {a.prompt}
-                </div>
-              ),
-            )}
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -294,7 +230,9 @@ export function Safety() {
           <div className="detail-card">
             <label className="ack-row">
               <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
-              <span>I have read and understand this toolbox talk.</span>
+              {/* A library talk's pledge is the acknowledgment — signing means
+                  committing to the specific behaviors, not "I read it". */}
+              <span>{talk.data.pledge ?? "I have read and understand this toolbox talk."}</span>
             </label>
             <label className="field-label">Your full name</label>
             <input
@@ -352,6 +290,8 @@ export function Safety() {
           </ul>
         </>
       )}
+
+      {lead && <TalkLibrary />}
 
       {lead && (
         <>
