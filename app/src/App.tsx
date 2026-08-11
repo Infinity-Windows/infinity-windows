@@ -1,5 +1,4 @@
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
 import { useEffect, useState, type ReactNode } from "react";
 import { persister, queryClient, shouldPersistQuery } from "./lib/queryClient";
@@ -12,13 +11,12 @@ import {
   useParams,
 } from "react-router-dom";
 import { Layout } from "./components/Layout";
-import { getMyProfile } from "./lib/install/api";
 import { canAccess, roleRank, ROLE_NAV_V2, type RoutePath } from "./lib/nav";
 import type { CrewRole } from "./lib/install/types";
 import { ClockProvider } from "./lib/clockContext";
 import { routerBasename } from "./lib/pwa/basePaths";
 import { ViewAsRoleProvider } from "./lib/viewAsRole";
-import { effectiveRole, useViewAsRole } from "./lib/viewAsRoleContext";
+import { useEffectiveRole } from "./lib/useEffectiveRole";
 import { supabase } from "./lib/supabase";
 import { AskInfinity } from "./pages/AskInfinity";
 import { AskMisses } from "./pages/AskMisses";
@@ -42,6 +40,7 @@ import { SignIn } from "./pages/SignIn";
 import { WindowDetail } from "./pages/WindowDetail";
 import { OpeningReview } from "./pages/install/OpeningReview";
 import { OpeningSheetRoute } from "./pages/install/OpeningSheet";
+import { MapsTrace } from "./pages/install/MapsTrace";
 import { FlashRun } from "./pages/install/FlashRun";
 import { PlansetUpload } from "./pages/install/PlansetUpload";
 import { ProjectMap } from "./pages/install/ProjectMap";
@@ -89,11 +88,10 @@ import "./index.css";
  * resolves.
  */
 function RoleLanding() {
-  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const view = useViewAsRole();
+  const { effectiveRole: role, isLoading } = useEffectiveRole();
   if (!ROLE_NAV_V2) return <Home />;
-  if (me.isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
-  const rank = roleRank(effectiveRole(me.data?.role, view));
+  if (isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
+  const rank = roleRank(role);
   if (rank >= 2) return <Heartbeat />;
   if (rank >= 1) return <Home />;
   return <MyWork />;
@@ -116,11 +114,9 @@ function RequireRole({
   minRole?: CrewRole;
   children: ReactNode;
 }) {
-  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const view = useViewAsRole();
+  const { effectiveRole: role, isLoading } = useEffectiveRole();
   if (!ROLE_NAV_V2) return <>{children}</>;
-  if (me.isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
-  const role = effectiveRole(me.data?.role, view);
+  if (isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
   const allowed = minRole
     ? roleRank(role) >= roleRank(minRole)
     : canAccess(role, path ?? "");
@@ -331,6 +327,17 @@ export default function App() {
             <Route
               path="/projects/:projectId/opening/:openingId"
               element={<OpeningSheetRoute />}
+            />
+            <Route
+              path="/projects/:projectId/trace-model"
+              element={
+                // The 3D model is the whole crew's reference; EDITING it is an
+                // owner/supervisor call (stories design doc) — foremen and
+                // installers view, never reshape.
+                <RequireRole minRole="supervisor">
+                  <MapsTrace />
+                </RequireRole>
+              }
             />
             {/* Flashing ahead of the crew is any installer's job — no gate
                 beyond being signed in; the server enforces the clock rules. */}

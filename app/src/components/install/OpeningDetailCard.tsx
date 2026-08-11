@@ -9,7 +9,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
-import { MarkElevationViews } from "./MarkElevationViews";
 import { listMarkSpecs } from "../../lib/install/api";
 import { openingFullSheetPath } from "../../lib/install/openingRowAction";
 import {
@@ -168,13 +167,6 @@ export function OpeningDetailCard({
       {detail && detail.notes.length > 0 && (
         <p className="map-detail-card__notes">{detail.notes.join(" · ")}</p>
       )}
-      {/* The plan says which room; the elevation says which hole in the wall.
-          Renders nothing when this mark isn't drawn on a named elevation. */}
-      <MarkElevationViews
-        projectId={projectId}
-        markCode={o.opening_code}
-        variant="bare"
-      />
       <div className="map-detail-card__actions">
         <Link
           to={openingFullSheetPath(projectId, o.id)}

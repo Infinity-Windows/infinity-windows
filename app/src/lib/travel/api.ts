@@ -6,6 +6,7 @@
 // crew-read-only + member-or-supervisor visibility server-side.
 
 import { supabase } from "../supabase";
+import { isMissingTable } from "../schemaErrors";
 import type {
   ContactInput,
   Flight,
@@ -30,14 +31,7 @@ const BUCKET = "trip-attachments";
 
 /** Missing-table / missing-column errors mean the migration isn't applied. */
 function isMissingTravelTable(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const e = error as { code?: unknown; message?: unknown };
-  if (e.code === "PGRST205" || e.code === "42P01") return true;
-  const msg = typeof e.message === "string" ? e.message.toLowerCase() : "";
-  return (
-    (msg.includes("does not exist") && msg.includes("relation")) ||
-    msg.includes("could not find the table")
-  );
+  return isMissingTable(error);
 }
 
 function nowISO(): string {

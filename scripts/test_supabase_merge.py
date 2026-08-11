@@ -109,7 +109,7 @@ class TestSchemaParsing(unittest.TestCase):
         # (the jobs a test login is allowed to write). Production reported one
         # more base table than the migrations declare; the extra is
         # `project_marks`, which no migration declares.
-        self.assertEqual(len(SCHEMA.tables), 75)
+        self.assertEqual(len(SCHEMA.tables), 78)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

@@ -18,8 +18,8 @@ import {
   autoDistribute,
   type DispatchContext,
   type DispatchCrew,
-  type DispatchOpening,
 } from "../../lib/dispatch";
+import { areaKey, toDispatchOpening } from "../../lib/install/nextOpening";
 import { OpeningDetailCard } from "../../components/install/OpeningDetailCard";
 import { OpeningRowButton } from "../../components/install/OpeningRowButton";
 import { installerColorMap } from "../../lib/install/mapDispatch";
@@ -32,29 +32,6 @@ import {
   resolveIssue,
   URGENCY_MARK,
 } from "../../lib/issues";
-
-function areaKey(o: ProjectOpening): string {
-  return o.label?.trim() || `page ${o.page_number}`;
-}
-
-function toDispatchOpening(o: ProjectOpening): DispatchOpening {
-  const r = openingReadiness(o);
-  return {
-    id: o.id,
-    opening_code: o.opening_code,
-    window_type_id: o.window_type_id,
-    difficulty:
-      o.window_types?.learned_difficulty ??
-      o.window_types?.outcome_difficulty ??
-      o.window_types?.difficulty_rating ??
-      null,
-    area: areaKey(o),
-    ready: r.status === "ready",
-    blocked: r.status === "blocked",
-    assigned_to: o.assigned_to,
-    sequence: o.sequence,
-  };
-}
 
 export function DispatchBoard({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();

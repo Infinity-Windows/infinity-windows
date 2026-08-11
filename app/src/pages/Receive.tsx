@@ -11,6 +11,7 @@ import {
   toggleId,
 } from "../lib/bulk";
 import { downloadPdf, windowLabelsPdf } from "../lib/labels";
+import { formatApiError } from "../lib/errors";
 import { plainSuggestion, type PutawaySuggestion } from "../lib/staging";
 import { pushToast, toastError } from "../lib/toast";
 import type { WindowType, WindowUnit } from "../lib/types";
@@ -180,7 +181,7 @@ export function Receive() {
           ? "Creating..."
           : `Receive ${clampedQty} window${clampedQty === 1 ? "" : "s"}`}
       </button>
-      {receive.error && <p className="error">{String(receive.error)}</p>}
+      {receive.error && <p className="error">{formatApiError(receive.error)}</p>}
 
       {stagingWarning && (
         <div className="sched-conflict-inline is-emphasized" role="alert">

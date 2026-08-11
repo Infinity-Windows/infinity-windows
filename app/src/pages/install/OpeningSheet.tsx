@@ -29,6 +29,7 @@ import {
   rankAssignCandidates,
 } from "../../lib/install/assignRank";
 import { pickNextOpening } from "../../lib/install/nextOpening";
+import { submitBlockersLine } from "../../lib/install/submitGate";
 import {
   flashingOutstanding,
   listOpeningPhases,
@@ -69,7 +70,6 @@ import { claimUnsavedWork } from "../../lib/pwa/unsavedWork";
 import { indexSpecsByMark, specForOpeningCode } from "../../lib/install/specs";
 import { SpecCard } from "../../components/install/SpecCard";
 import { MissingSpecNotice } from "../../components/install/MissingSpecNotice";
-import { MarkElevationViews } from "../../components/install/MarkElevationViews";
 import { OpeningMoved } from "../../components/install/OpeningMoved";
 import { rememberOpening } from "../../lib/install/staleOpening";
 import { useRealtimeOpenings } from "../../lib/useRealtimeOpenings";
@@ -101,8 +101,9 @@ export function OpeningSheet() {
   const { projectId = "", openingId = "" } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const location = useLocation();
   // Set when we recovered a dead opening link and sent them here instead.
-  const movedFrom = (useLocation().state as { movedFrom?: string } | null)
+  const movedFrom = (location.state as { movedFrom?: string } | null)
     ?.movedFrom;
 
   const { effectiveRole } = useEffectiveRole();
@@ -243,7 +244,12 @@ export function OpeningSheet() {
 
   const goToNext = () => {
     if (nextOpening) {
-      navigate(`/projects/${nextOpening.project_id}/opening/${nextOpening.id}`);
+      // Tapping "Next one" after a submit IS the deliberate "I am installing
+      // this now" - the start carries into the next sheet so the clock is
+      // already running when it opens (see the carried-start effect below).
+      navigate(`/projects/${nextOpening.project_id}/opening/${nextOpening.id}`, {
+        state: { carryStart: true },
+      });
     } else {
       navigate("/");
     }
@@ -263,6 +269,13 @@ export function OpeningSheet() {
     touched: minutesTouched,
     manual: minutes,
     timer,
+  });
+
+  // No partial submits: an install is filed with its proof (after photo +
+  // quality grade) or it is not filed. See lib/install/submitGate.ts.
+  const submitBlockedBy = submitBlockersLine({
+    grade,
+    hasAfterPhoto: photos.after !== null,
   });
 
   // Re-read the clock only while something is actually being timed.
@@ -401,6 +414,25 @@ export function OpeningSheet() {
       }
     },
   });
+
+  // A start carried in from the previous window's "Next one" tap - that tap
+  // was the deliberate act, so this sheet begins the clock itself instead of
+  // asking for a second tap that, skipped, files the install untimed. It runs
+  // through beginInstall: same clock-in gate, same offline manners, same
+  // error banner as the Start button. Consumed exactly once, and the history
+  // state is cleared as it is consumed, so a reload or a back-swipe never
+  // restarts a clock by accident.
+  const carriedStart = useRef(false);
+  const beginCarried = beginInstall.mutate;
+  useEffect(() => {
+    const carried = (location.state as { carryStart?: boolean } | null)?.carryStart;
+    if (!carried || carriedStart.current) return;
+    if (!opening.data || opening.data.status === "installed") return;
+    if (startedAt) return; // already running or resumed - nothing to start
+    carriedStart.current = true;
+    navigate(location.pathname, { replace: true, state: {} });
+    beginCarried();
+  }, [location.state, location.pathname, opening.data, startedAt, navigate, beginCarried]);
 
   const assign = useMutation({
     mutationFn: async (windowUuid: string) =>
@@ -816,10 +848,6 @@ export function OpeningSheet() {
           />
         )
       )}
-
-      {/* Unguarded: it renders nothing of its own accord when there is no
-          elevation to show, and a mark with no spec still has a wall. */}
-      <MarkElevationViews projectId={projectId} markCode={opening.data?.opening_code} />
 
       {message && (
         <p className={/^(Window|Install|Rough|Condition|Flag|Flagged|Site|Complication)/.test(message) ? "ok" : "error"}>
@@ -1524,9 +1552,18 @@ export function OpeningSheet() {
             </p>
           )}
 
+          {submitBlockedBy && (
+            <p className="muted" role="status">{submitBlockedBy}</p>
+          )}
+
           <button
             className="primary big"
-            disabled={submit.isPending || recording || ready.status === "blocked"}
+            disabled={
+              submit.isPending ||
+              recording ||
+              ready.status === "blocked" ||
+              submitBlockedBy !== null
+            }
             onClick={() => submit.mutate()}
           >
             {submit.isPending ? "Saving…" : "Submit install"}

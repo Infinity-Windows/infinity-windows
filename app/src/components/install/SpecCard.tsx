@@ -24,13 +24,18 @@ interface SpecCardProps {
   compact?: boolean;
 }
 
+/**
+ * One spec line. Consecutive fields draw their own divider (see .spec-field
+ * in index.css: an ember line, bright in the middle, fading to the sides), so
+ * dividers appear exactly between the fields that actually rendered.
+ */
 function Field({ label, value }: { label: string; value: string | null }) {
   if (!value) return null;
   return (
-    <p style={{ margin: "2px 0" }}>
-      <span className="muted">{label}: </span>
-      <strong style={{ fontWeight: 600 }}>{value}</strong>
-    </p>
+    <div className="spec-field">
+      <span className="spec-field-label">{label}</span>
+      <span className="spec-field-value">{value}</span>
+    </div>
   );
 }
 

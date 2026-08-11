@@ -19,7 +19,6 @@ import {
 } from "../../lib/install/printedSize";
 import { decodeSizeCode, formatSize, type ProjectMarkSpec } from "../../lib/install/specs";
 import { MarkDrawing } from "./MarkDrawing";
-import { MarkElevationViews } from "./MarkElevationViews";
 import { formatApiError } from "../../lib/install/errors";
 import { setProjectNeedsFlashing } from "../../lib/install/phases";
 import type { ProjectOpening } from "../../lib/install/types";
@@ -159,9 +158,9 @@ export function SpecReviewSection({ projectId }: Props) {
       <p className="muted">
         Full window/door line-item pulled from the specs sheet — shared across
         every opening of that mark. Correct anything the extractor missed, then
-        confirm. Editing a size code updates the decoded W×H live. Where the
-        extractor found the mark's elevation drawing, it's shown above the
-        fields — check the picture matches the mark before confirming.
+        confirm. Editing a size code updates the decoded W×H live. The full
+        spec sheet the fields were read from is shown above them — check the
+        page matches the mark before confirming.
       </p>
       {/* Flashing default for the whole job. Every opening arrives needing
           flashing ("yes is the default, no is the change"); a job that
@@ -251,14 +250,9 @@ function SpecRow({
         </span>
       </div>
 
-      {/* The cropped elevation, so the foreman can see the picture matches the
+      {/* The full spec sheet, so the foreman can see the page matches the
           mark before confirming. */}
       <MarkDrawing spec={spec} projectId={projectId} />
-      <MarkElevationViews
-        projectId={projectId}
-        markCode={spec.mark_code}
-        variant="bare"
-      />
 
       <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
         {TEXT_FIELDS.map((f) => (

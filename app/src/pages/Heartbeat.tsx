@@ -1,16 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { getMyProfile } from "../lib/install/api";
 import { SkeletonList } from "../components/ui/States";
 import { isSupervisorPlus } from "../lib/install/types";
-import { effectiveRole, useViewAsRole } from "../lib/viewAsRoleContext";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 import {
   getHeartbeat,
   isAnomaly,
   setProjectGreenLight,
   type HeartbeatTask,
 } from "../lib/heartbeat";
+import { formatApiError } from "../lib/errors";
 import { describeDuration } from "../lib/shiftGuard";
 import { useRealtimeAllOpenings } from "../lib/useRealtimeOpenings";
 
@@ -47,9 +47,8 @@ interface LiveTask extends HeartbeatTask {
 
 export function Heartbeat() {
   const queryClient = useQueryClient();
-  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const view = useViewAsRole();
-  const canWrite = isSupervisorPlus(effectiveRole(me.data?.role, view));
+  const { effectiveRole: role } = useEffectiveRole();
+  const canWrite = isSupervisorPlus(role);
 
   const hb = useQuery({ queryKey: ["heartbeat"], queryFn: getHeartbeat });
   useRealtimeAllOpenings(true);
@@ -117,9 +116,9 @@ export function Heartbeat() {
         {staleCount > 0 ? ` · ${staleCount} never finished` : ""}.
       </p>
 
-      {greenLight.isError && <p className="error">{String(greenLight.error)}</p>}
+      {greenLight.isError && <p className="error">{formatApiError(greenLight.error)}</p>}
       {hb.isLoading && <SkeletonList rows={4} />}
-      {hb.isError && <p className="error">{String(hb.error)}</p>}
+      {hb.isError && <p className="error">{formatApiError(hb.error)}</p>}
 
       {/* Quick project pulse cards */}
       {!hb.isLoading && !hb.isError && (

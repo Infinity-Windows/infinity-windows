@@ -1,15 +1,14 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { Lightbulb, X } from "lucide-react";
 import {
   FEATURE_TIPS,
   dismissTip,
   isTipDismissed,
+  skipTip,
   tipKeyForRoute,
 } from "../../lib/featureTips";
-import { getMyProfile } from "../../lib/install/api";
-import { effectiveRole, useViewAsRole } from "../../lib/viewAsRoleContext";
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
 
 /**
  * First-run micro-tip anchored just above the bottom nav. Shows at most one tip
@@ -18,9 +17,7 @@ import { effectiveRole, useViewAsRole } from "../../lib/viewAsRoleContext";
  */
 export function FeatureTip() {
   const location = useLocation();
-  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const view = useViewAsRole();
-  const role = effectiveRole(me.data?.role, view);
+  const { effectiveRole: role } = useEffectiveRole();
   const key = tipKeyForRoute(location.pathname, role);
   const [visibleKey, setVisibleKey] = useState<string | null>(null);
 
@@ -37,7 +34,12 @@ export function FeatureTip() {
   const tip = FEATURE_TIPS[visibleKey];
   if (!tip) return null;
 
-  const skip = () => setVisibleKey(null);
+  const skip = () => {
+    // Session-sticky: without this, leaving and returning to the route brought
+    // the tip straight back, which read as "Skip doesn't work".
+    skipTip(tip.key);
+    setVisibleKey(null);
+  };
   const never = () => {
     dismissTip(tip.key);
     setVisibleKey(null);

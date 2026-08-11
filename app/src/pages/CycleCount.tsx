@@ -11,6 +11,7 @@ import {
   getWindowByWindowId,
 } from "../lib/api";
 import { resolveLocationFromScan, resolveWindowFromScan } from "../lib/scanResolve";
+import { formatApiError } from "../lib/errors";
 import { supabase } from "../lib/supabase";
 import type { Location, WindowUnit } from "../lib/types";
 
@@ -166,7 +167,7 @@ export function CycleCount() {
           Finish count ({missing.length} missing)
         </button>
       )}
-      {save.error && <p className="error">{String(save.error)}</p>}
+      {save.error && <p className="error">{formatApiError(save.error)}</p>}
     </div>
   );
 }

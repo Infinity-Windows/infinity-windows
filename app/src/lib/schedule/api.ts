@@ -5,6 +5,7 @@
 // in install/api.ts — so the board is usable pre-migration and nothing crashes.
 
 import { supabase } from "../supabase";
+import { isMissingTable } from "../schemaErrors";
 import { addDaysISO } from "./dates";
 import { filterMyPublished } from "./myPublished";
 import type {
@@ -19,15 +20,7 @@ const LOCAL_KEY = "infinity.schedule.assignments.v1";
 
 /** Missing-table / missing-column errors mean the migration isn't applied. */
 function isMissingScheduleTable(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const e = error as { code?: unknown; message?: unknown };
-  if (e.code === "PGRST205" || e.code === "42P01") return true;
-  const msg = typeof e.message === "string" ? e.message.toLowerCase() : "";
-  return (
-    msg.includes("schedule_assignment") ||
-    msg.includes("schedule_events") ||
-    (msg.includes("does not exist") && msg.includes("relation"))
-  );
+  return isMissingTable(error, "schedule_assignment", "schedule_events");
 }
 
 // --- Local fallback store ---------------------------------------------------

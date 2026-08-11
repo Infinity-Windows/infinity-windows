@@ -459,6 +459,9 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "installer_clearance": ("installer_id", "window_type_id"),
     "window_id_counters": ("window_type_id",),
     "project_openings": ("project_id", "opening_code"),
+    # One phase of one kind per opening (UNIQUE in the migration), so the
+    # parent opening plus the kind IS the row's identity.
+    "opening_phases": ("opening_id", "kind"),
     "project_plansets": ("project_id", "storage_path"),
     "toolbox_completions": ("profile_id", "talk_id"),
     "knowledge_chunks": ("doc_id", "chunk_index"),
@@ -528,7 +531,13 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "service_cases": None,
     "supply_orders": None,
     "task_sessions": None,
+    # Append-only audit rows: two edits that look alike are two edits. Rides
+    # its parent shift's fate, like time_shifts itself.
+    "time_shift_edits": None,
     "time_shifts": None,
+    # scope='company' has profile_id NULL, so there is no non-null natural key
+    # across both rows kinds; a merge picks or carries like other config.
+    "overtime_rules": None,
     "tools": None,
     "trip_contacts": None,
     "vault_config": None,

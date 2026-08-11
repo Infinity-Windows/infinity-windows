@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { CalendarDays, MapPin, Plane, Plus, Users } from "lucide-react";
 import { getMyProfile } from "../lib/install/api";
 import { isSupervisorPlus } from "../lib/install/types";
-import { effectiveRole, useViewAsRole } from "../lib/viewAsRoleContext";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { listTrips } from "../lib/travel/api";
 import { sortTripsForList, visibleTrips } from "../lib/travel/visibility";
@@ -40,8 +40,7 @@ export function Travel() {
   const navigate = useNavigate();
   const today = todayLocalISO();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const view = useViewAsRole();
-  const role = effectiveRole(me.data?.role, view);
+  const { effectiveRole: role } = useEffectiveRole();
   const isSupervisor = isSupervisorPlus(role);
 
   const trips = useQuery({ queryKey: ["trips"], queryFn: listTrips });

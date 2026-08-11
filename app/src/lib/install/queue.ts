@@ -3,6 +3,7 @@
 // Supabase Storage (+ an attachments row) whenever a flush succeeds.
 
 import { supabase } from "../supabase";
+import { isMissingColumn as isMissingSchemaColumn } from "../schemaErrors";
 
 export interface QueuedUploadMeta {
   id: string;
@@ -68,10 +69,7 @@ export function deserializeUploadMeta(json: string): QueuedUploadMeta | null {
 /** Missing-column / PostgREST-schema errors mean the additive migration
  * (geo/feed columns) isn't applied yet; callers peel geo back and retry. */
 function isMissingColumn(err: unknown): boolean {
-  const code = (err as { code?: string })?.code;
-  if (code === "PGRST204" || code === "42703") return true;
-  const msg = String((err as { message?: string })?.message ?? err).toLowerCase();
-  return msg.includes("column") && msg.includes("does not exist");
+  return isMissingSchemaColumn(err);
 }
 
 // --- IndexedDB plumbing ---
