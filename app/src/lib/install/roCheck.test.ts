@@ -40,7 +40,7 @@ describe("roVerdicts (the numbers judge, against the window)", () => {
       roVerdicts({ ...base, widths: [23.5625], heights: [] })[1].measured,
     ).toBe("bad");
     expect(roVerdicts({ ...base, widths: [23.25], heights: [] })[1].detail).toMatch(
-      /SMALLER than the unit/,
+      /smaller than the window/,
     );
     // Too loose (3/4" over) fails the other way.
     expect(
@@ -87,7 +87,7 @@ describe("roFailures + the issue note", () => {
     expect(roFailures(verdicts, judged({ square: "good", height: "bad" }))).toHaveLength(2);
   });
 
-  it("the note leads with the window and reads like a punch list", () => {
+  it("the note reads like a punch list a framer can work from", () => {
     const verdicts = roVerdicts({
       diagonals: [96.5, 95.75],
       widths: [],
@@ -100,8 +100,11 @@ describe("roFailures + the issue note", () => {
       roFailures(verdicts, judged({ height: "bad" })),
       judged({ height: "bad" }),
     );
-    expect(note).toMatch(/^12-1 — rough opening needs framing fix/);
+    expect(note).toMatch(/^Square: diagonals/);
     expect(note).toMatch(/out of square/);
-    expect(note).toMatch(/height marked bad by installer/);
+    expect(note).toMatch(/Height marked Bad by the installer/);
+    // Trade fractions, not decimals.
+    expect(note).toMatch(/1\/2"/);
+    expect(note).not.toMatch(/0\.5/);
   });
 });
