@@ -1856,3 +1856,23 @@ a.tb-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
   opacity: 0.14;
   pointer-events: none;
 }
+
+/* Role-aware window glow (adapter glowFor): red = assigned & waiting,
+   yellow = installed & awaiting QC, green = QC passed. The variables drive
+   BOTH the frame tint (the renderer routes them into --wc) and the halo.
+   Yellow is the one hue the scene doesn't already use; red deliberately
+   matches the issue red (both mean "this needs hands"), green matches the
+   installed green the crew already knows from pins. */
+.fitview-app {
+  --gl-red: #e4655c;
+  --gl-yellow: #e8c14a;
+  --gl-green: #35b98d;
+}
+
+/* drop-shadow, not box-shadow: .win's box-shadow already draws the glass
+   inset, and a halo must ride on top of it, not replace it. */
+.fitview-app .win.glow-red,
+.fitview-app .win.glow-yellow,
+.fitview-app .win.glow-green {
+  filter: drop-shadow(0 0 6px var(--wc)) drop-shadow(0 0 2px var(--wc));
+}

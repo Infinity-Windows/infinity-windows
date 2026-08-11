@@ -102,6 +102,13 @@ WebGL, no three.js — ported from a standalone prototype called window-viewer.
   The host injects everything through a shim (toast, openOpening,
   onStatusChange, photos); callbacks it doesn't get render as absent UI,
   so with no shim the detail sheet is read-only.
+- The builders take an optional `FitViewViewContext` (viewer id, managerView,
+  QC-passed opening ids). With it, ids are DISPLAYED in the work-order dialect
+  (`displayMarkCode`: "1A" → "1-1") and each window carries a `glow`
+  (`glowFor`: red = assigned & waiting, yellow = installed & awaiting QC,
+  green = QC passed, none = blue; installers only glow their own, foreman+
+  see everyone's). MapsInteractive passes the context; **MapsTrace must
+  not** — the tracer's stored dots are keyed by authored ids.
 - `adapter.ts` is the real integration: plan outline + opening pins
   (via `nearestPointOnOutline`) + mark-spec inches → the renderer's job JSON
   in metres. Scale and wall height default (30 m long side / 3.6 m) unless the

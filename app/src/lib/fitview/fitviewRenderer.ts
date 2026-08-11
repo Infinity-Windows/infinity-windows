@@ -103,6 +103,26 @@ export function mountFitView(host, job, shim) {
     issue:     { label: "Issue",      css: "--st-issue" }
   };
 
+  // Role-aware glow colors the HOST adapter computes per viewer (glowFor):
+  // red = assigned & waiting, yellow = installed & awaiting QC, green = QC
+  // passed, none = plain blue. A job whose windows carry no `glow` renders
+  // with the prototype's STATUS colors exactly as before.
+  var GLOWC = {
+    red:    "--gl-red",
+    yellow: "--gl-yellow",
+    green:  "--gl-green",
+    none:   "--st-tofit"
+  };
+  var GLOW_LEGEND = [
+    ["--st-tofit",  "Unassigned / other"],
+    ["--gl-red",    "Assigned - to install"],
+    ["--gl-yellow", "Installed - awaiting QC"],
+    ["--gl-green",  "QC passed"]
+  ];
+  function colorVar(w) {
+    return (w.glow && GLOWC[w.glow]) ? GLOWC[w.glow] : STATUS[w.status].css;
+  }
+
   var ELEVS = [
     { key: "front", name: "Front", ax: 0, ay: 0 },
     { key: "right", name: "Right", ax: 0, ay: -90 },
@@ -591,7 +611,8 @@ export function mountFitView(host, job, shim) {
       (win.door ? " door" : "") + (FRAMING ? " rough" : "");
     el.type = "button";
     el.dataset.id = win.id;
-    el.style.setProperty("--wc", "var(" + STATUS[win.status].css + ")");
+    el.style.setProperty("--wc", "var(" + colorVar(win) + ")");
+    if (win.glow && win.glow !== "none") el.classList.add("glow-" + win.glow);
     el.style.width = wp + "px";
     el.style.height = hp + "px";
     el.style.left = (fx * S) + "px";
@@ -1671,6 +1692,15 @@ export function mountFitView(host, job, shim) {
   }
 
   function buildLegend() {
+    // A glow-colored job explains the glow palette; anything else keeps the
+    // prototype's status legend.
+    var glowing = JOB.windows.some(function (w) { return !!w.glow; });
+    if (glowing) {
+      $("legend").innerHTML = GLOW_LEGEND.map(function (g) {
+        return '<span><i style="background:var(' + g[0] + ')"></i>' + g[1] + '</span>';
+      }).join("");
+      return;
+    }
     $("legend").innerHTML = Object.keys(STATUS).map(function (k) {
       return '<span><i style="background:var(' + STATUS[k].css + ')"></i>' + STATUS[k].label + '</span>';
     }).join("");
@@ -1693,7 +1723,7 @@ export function mountFitView(host, job, shim) {
       r.className = "row" + (state.sel === w.id ? " sel" : "");
       r.dataset.id = w.id;
       r.innerHTML =
-        '<span class="row-id"><i style="background:var(' + STATUS[w.status].css + ')"></i>' + esc(w.id) + '</span>' +
+        '<span class="row-id"><i style="background:var(' + colorVar(w) + ')"></i>' + esc(w.id) + '</span>' +
         '<span><span class="row-type">' + esc(w.type) + '</span>' +
           '<span class="row-sub">' + esc(w.room) + ' &middot; ' + esc(w.floor) + ' &middot; ' + esc(STATUS[w.status].label) +
             (assignedNames(w) ? ' &middot; ' + esc(assignedNames(w)) : '') + '</span></span>' +

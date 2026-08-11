@@ -223,7 +223,8 @@ describe("story stretch defense", () => {
   it("a story shorter than its own glass is stretched, and floors above ride up", async () => {
     const { buildAuthoredJob } = await import("./adapter");
     const job = buildAuthoredJob(structuredClone(storied), meta, []);
-    const out = job.building.stories as { heightM: number; elevM: number }[];
+    const out = (job.building as { stories?: { heightM: number; elevM: number }[] })
+      .stories!;
     expect(out[0].heightM).toBeCloseTo(4.25, 2); // 0.45 + 3.645 + 0.15
     expect(out[1].elevM).toBeCloseTo(4.25, 2);
     expect(job.building.height).toBeCloseTo(7.25, 2); // new envelope
@@ -248,7 +249,90 @@ describe("story stretch defense", () => {
     };
     const job = buildAuthoredJob(legacy, meta, []);
     expect(job.building.height).toBeCloseTo(3.6 + 0.749 + 0.15, 2);
-    expect(job.building.stories).toBeUndefined();
+    expect((job.building as { stories?: unknown }).stories).toBeUndefined();
+  });
+});
+
+describe("displayMarkCode (work-order dialect for display)", () => {
+  it("re-spells letter twins as dashes and leaves everything else alone", async () => {
+    const { displayMarkCode } = await import("./adapter");
+    expect(displayMarkCode("1A")).toBe("1-1");
+    expect(displayMarkCode("13b")).toBe("13-2");
+    expect(displayMarkCode("29")).toBe("29");
+    expect(displayMarkCode("W3")).toBe("W3");
+    // Typical-floor clones keep their story suffix.
+    expect(displayMarkCode("201A@L3")).toBe("201-1@L3");
+  });
+});
+
+describe("glowFor (role-aware window colors)", () => {
+  const openingRow = (over: Partial<{ id: string; status: string; assigned_to: string | null }>) => ({
+    id: "op1",
+    status: "assigned",
+    assigned_to: "ben",
+    ...over,
+  });
+  const manager = { viewerId: "sup", managerView: true, qcPassedOpeningIds: new Set<string>() };
+  const me = { viewerId: "ben", managerView: false, qcPassedOpeningIds: new Set<string>() };
+
+  it("QC passed is green for every viewer", async () => {
+    const { glowFor } = await import("./adapter");
+    const qc = { ...me, qcPassedOpeningIds: new Set(["op1"]) };
+    expect(glowFor(openingRow({ status: "installed" }), qc)).toBe("green");
+    expect(glowFor(openingRow({}), { ...manager, qcPassedOpeningIds: new Set(["op1"]) })).toBe("green");
+  });
+
+  it("managers see everyone: red assigned, yellow installed, blue unassigned", async () => {
+    const { glowFor } = await import("./adapter");
+    expect(glowFor(openingRow({}), manager)).toBe("red");
+    expect(glowFor(openingRow({ status: "installed" }), manager)).toBe("yellow");
+    expect(glowFor(openingRow({ assigned_to: null, status: "planned" }), manager)).toBe("none");
+    expect(glowFor(undefined, manager)).toBe("none");
+  });
+
+  it("installers see only their own red/yellow - a crewmate's load stays blue", async () => {
+    const { glowFor } = await import("./adapter");
+    expect(glowFor(openingRow({}), me)).toBe("red");
+    expect(glowFor(openingRow({ status: "installed" }), me)).toBe("yellow");
+    const other = openingRow({ assigned_to: "chris" });
+    expect(glowFor(other, me)).toBe("none");
+    expect(glowFor(openingRow({ assigned_to: "chris", status: "installed" }), me)).toBe("none");
+  });
+});
+
+describe("view context on the authored job", () => {
+  const model = {
+    building: {
+      width: 48.1, depth: 43.6, height: 4.7, rise: 0,
+      footprints: [[{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 10, z: 8 }, { x: 0, z: 8 }]],
+    },
+    windows: [
+      { id: "13A", status: "tofit", elev: "s0", x: 2, y: 0.9, w: 900, h: 1200 },
+    ],
+  };
+  const meta = { projectId: "p1", projectName: "BD", projectAddress: null };
+
+  it("re-spells ids and attaches glow; the live merge still matches", async () => {
+    const { buildAuthoredJob } = await import("./adapter");
+    const live = opening({ opening_code: "13-1", status: "installed" });
+    live.assigned_to = "ben";
+    const job = buildAuthoredJob(structuredClone(model), meta, [live], {
+      viewerId: "ben",
+      managerView: false,
+      qcPassedOpeningIds: new Set(),
+    });
+    const w = job.windows[0] as { id: string; glow?: string; status: string };
+    expect(w.id).toBe("13-1");
+    expect(w.status).toBe("installed");
+    expect(w.glow).toBe("yellow");
+  });
+
+  it("without a view context nothing changes - tracer path stays authored", async () => {
+    const { buildAuthoredJob } = await import("./adapter");
+    const job = buildAuthoredJob(structuredClone(model), meta, []);
+    const w = job.windows[0] as { id: string; glow?: string };
+    expect(w.id).toBe("13A");
+    expect(w.glow).toBeUndefined();
   });
 });
 

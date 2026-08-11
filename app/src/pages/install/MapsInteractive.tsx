@@ -1,10 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { listMarkSpecs, listOpenings, listPlanOutlines } from "../../lib/install/api";
+import {
+  getMyProfile,
+  listMarkSpecs,
+  listOpenings,
+  listPlanOutlines,
+} from "../../lib/install/api";
 import type { Project } from "../../lib/types";
 import { pushToast } from "../../lib/toast";
-import { isSupervisorPlus } from "../../lib/install/types";
+import { listQcPassedOpeningIds } from "../../lib/ops";
+import { isForemanPlus, isSupervisorPlus } from "../../lib/install/types";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import {
   buildAuthoredJob,
@@ -45,6 +51,11 @@ export function MapsInteractive({ project }: { project: Project }) {
     queryKey: ["markSpecs", projectId],
     queryFn: () => listMarkSpecs(projectId),
   });
+  const myProfile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const qcPassed = useQuery({
+    queryKey: ["qcPassed", projectId],
+    queryFn: () => listQcPassedOpeningIds(projectId),
+  });
 
   // The model-bearing outline wins; the auto-extracted one is a fallback.
   const outline = preferModelOutline(outlines.data);
@@ -56,25 +67,47 @@ export function MapsInteractive({ project }: { project: Project }) {
       projectName: project.name,
       projectAddress: project.address,
     };
+    // Who's looking decides what glows (adapter glowFor): installers see
+    // their own red/yellow, foreman+ see everyone's, QC green is universal.
+    // The same context re-spells mark ids in the work-order dialect
+    // ("1A" -> "1-1") so the model matches what the crew is assigned.
+    const view = {
+      viewerId: myProfile.data?.id ?? null,
+      managerView: isForemanPlus(effectiveRole),
+      qcPassedOpeningIds: new Set(qcPassed.data ?? []),
+    };
     // A full hand-traced survey model (multi-mass footprint, named walls,
     // surveyor-placed windows) beats anything derivable from plan pins —
     // when the outline carries one, use it and only merge live status in.
     const authored = fitviewModel(outline.features);
-    if (authored) return buildAuthoredJob(authored, meta, openings.data);
-    return buildFitViewJob({
-      ...meta,
-      outline: {
-        points: outline.points,
-        pageAspect: outline.page_aspect,
-        pageNumber: outline.page_number,
+    if (authored) return buildAuthoredJob(authored, meta, openings.data, view);
+    return buildFitViewJob(
+      {
+        ...meta,
+        outline: {
+          points: outline.points,
+          pageAspect: outline.page_aspect,
+          pageNumber: outline.page_number,
+        },
+        openings: openings.data,
+        specs: specs.data ?? [],
+        // A seeded/surveyed outline can carry real-world calibration; without
+        // it the adapter's documented defaults apply.
+        ...fitviewCalibration(outline.features),
       },
-      openings: openings.data,
-      specs: specs.data ?? [],
-      // A seeded/surveyed outline can carry real-world calibration; without
-      // it the adapter's documented defaults apply.
-      ...fitviewCalibration(outline.features),
-    });
-  }, [outline, openings.data, specs.data, projectId, project.name, project.address]);
+      view,
+    );
+  }, [
+    outline,
+    openings.data,
+    specs.data,
+    projectId,
+    project.name,
+    project.address,
+    myProfile.data?.id,
+    effectiveRole,
+    qcPassed.data,
+  ]);
 
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<ReturnType<typeof mountFitView> | null>(null);

@@ -48,6 +48,61 @@ export interface FitViewWindow {
   frame?: string;
   notes?: string;
   assigned?: string[];
+  /**
+   * Role-aware status color for the crew-facing view (glowFor): red =
+   * assigned & waiting, yellow = installed & awaiting QC, green = QC passed,
+   * "none" = the plain blue. Absent on jobs built without a view context —
+   * the tracer and old fixtures keep the prototype's status colors.
+   */
+  glow?: FitViewGlow;
+}
+
+export type FitViewGlow = "red" | "yellow" | "green" | "none";
+
+/**
+ * Who is looking at the model. Drives two crew-facing conveniences the
+ * TRACER must never get: mark ids re-spelled in the extraction dialect
+ * ("1A" -> "1-1", the style on work orders), and the glow colors above.
+ * The tracer keeps authored ids because its stored dots are keyed by them.
+ */
+export interface FitViewViewContext {
+  /** The signed-in profile, for "my windows" scoping. */
+  viewerId: string | null;
+  /** Foreman+ sees every installer's state; installers see their own. */
+  managerView: boolean;
+  /** Opening ids whose qc_checks row says 'passed'. */
+  qcPassedOpeningIds: Set<string>;
+}
+
+/**
+ * The one color a window shows this viewer. Green (QC passed) is universal.
+ * Yellow (installed) and red (assigned, waiting) are the viewer's own
+ * windows unless they hold the manager view — another installer's workload
+ * is not this installer's signal.
+ */
+export function glowFor(
+  live: { id: string; status: string; assigned_to: string | null } | undefined,
+  view: FitViewViewContext,
+): FitViewGlow {
+  if (!live) return "none";
+  if (view.qcPassedOpeningIds.has(live.id)) return "green";
+  const mine = view.viewerId !== null && live.assigned_to === view.viewerId;
+  if (live.status === "installed") return view.managerView || mine ? "yellow" : "none";
+  if (live.assigned_to) return view.managerView || mine ? "red" : "none";
+  return "none";
+}
+
+/**
+ * Re-spell a survey mark in the extraction dialect the crew's work orders
+ * use: "1A" -> "1-1", "13B" -> "13-2". Typical-floor clone suffixes ride
+ * along ("201A@L3" -> "201-1@L3"); anything else passes through untouched.
+ * Display only — normalizeMarkCode equates both spellings for matching.
+ */
+export function displayMarkCode(id: string): string {
+  const m = /^(\d+)\s*([A-Za-z])(@L\d+)?$/.exec(id.trim());
+  if (!m) return id;
+  const twin = m[2].toUpperCase().charCodeAt(0) - 64;
+  return `${m[1]}-${twin}${m[3] ?? ""}`;
 }
 
 export interface FitViewJob {
@@ -207,6 +262,7 @@ export function buildAuthoredJob(
   model: AuthoredModel,
   meta: { projectId: string; projectName: string; projectAddress: string | null },
   openings: ProjectOpening[],
+  view?: FitViewViewContext,
 ): FitViewJob {
   const liveByCode = new Map<string, ProjectOpening>();
   for (const o of openings) liveByCode.set(normalizeMarkCode(o.opening_code), o);
@@ -219,7 +275,10 @@ export function buildAuthoredJob(
   // than its own tallest glass (saved before heights auto-fit, or hand-set
   // too low) is stretched to fit, and the stories above ride up with it.
   const canonical = storiesOf(model.building);
-  const stories = stretchStoriesToFit(canonical, model.windows);
+  const stories = stretchStoriesToFit(
+    canonical,
+    model.windows as { story?: unknown; y?: unknown; h?: unknown }[],
+  );
   const grew = stories.some(
     (s, i) => s.heightM !== canonical[i].heightM || s.elevM !== canonical[i].elevM,
   );
@@ -231,7 +290,11 @@ export function buildAuthoredJob(
 
   const windows = model.windows.map((raw) => {
     const w = { ...raw, y: absoluteSill(raw as { y?: unknown; story?: unknown }, stories) };
+    // Crew-facing view: work-order spelling for the id. The tracer path
+    // (no view) keeps authored ids — its stored dots are keyed by them.
+    if (view) w.id = displayMarkCode(String(raw.id));
     const live = liveByCode.get(normalizeMarkCode(String(w.id)));
+    if (view) (w as { glow?: FitViewGlow }).glow = glowFor(live, view);
     if (!live) return w;
     return {
       ...w,
@@ -274,7 +337,10 @@ export function fitviewCalibration(
  * Build the fit-view job, or null when the outline can't support one.
  * Only openings pinned on the outline's page are placed on the model.
  */
-export function buildFitViewJob(input: AdapterInput): FitViewJob | null {
+export function buildFitViewJob(
+  input: AdapterInput,
+  view?: FitViewViewContext,
+): FitViewJob | null {
   const { outline } = input;
   if (!outline || outline.points.length < 3) return null;
 
@@ -336,6 +402,7 @@ export function buildFitViewJob(input: AdapterInput): FitViewJob | null {
 
     windows.push({
       id: o.opening_code,
+      glow: view ? glowFor(o, view) : undefined,
       elev: "s" + hit.edge,
       floor: "Ground",
       room: o.label?.trim() || "Page " + o.page_number,

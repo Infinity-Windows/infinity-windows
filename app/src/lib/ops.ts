@@ -126,6 +126,19 @@ export async function listInstalledForQc(): Promise<QcRow[]> {
   if (error) throw error;
   return (data ?? []) as unknown as QcRow[];
 }
+/** Opening ids on this project whose QC check says 'passed' (green glow). */
+export async function listQcPassedOpeningIds(projectId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("qc_checks")
+    .select("project_opening_id, opening:project_openings!inner(project_id)")
+    .eq("status", "passed")
+    .eq("opening.project_id", projectId);
+  if (error) throw error;
+  return (data ?? []).map(
+    (r) => (r as { project_opening_id: string }).project_opening_id,
+  );
+}
+
 export async function setQc(openingId: string, status: "passed" | "callback", note?: string): Promise<void> {
   const { error } = await supabase.from("qc_checks").upsert(
     { project_opening_id: openingId, status, note: note ?? null, checked_at: new Date().toISOString() },
