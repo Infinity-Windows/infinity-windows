@@ -95,7 +95,8 @@ describe("appGuideForRole (role filtering)", () => {
     expect(p).toContain("/team");
     expect(p).toContain("/issues");
     expect(p).toContain("/qc");
-    expect(p).not.toContain("/scheduling");
+    // Foremen read the crew board (2026-08-11); editing stays supervisor+ in-page.
+    expect(p).toContain("/scheduling");
     expect(p).not.toContain("/admin");
     expect(p).not.toContain("/costing");
   });

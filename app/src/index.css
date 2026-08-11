@@ -9221,3 +9221,61 @@ body {
 }
 .issue-note-list li { margin: 3px 0; }
 .issue-note-list li::marker { color: #ff9a6a; }
+
+/* ==========================================================================
+   Crew board: the week at a glance. Lanes are people (foremen banded first)
+   or jobs; chips are jobs in the block's own color, dashed while draft. Drag
+   on desktop, tap-to-move on phone, a + in every empty cell.
+   ========================================================================== */
+.cb-wrap { margin-top: 8px; }
+.cb-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.cb-toolbar .seg { display: flex; gap: 6px; }
+.cb-seedrow { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+.cb-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+.cb-board { border-collapse: collapse; width: 100%; min-width: 700px; font-size: 12.5px; }
+.cb-board th {
+  text-align: left; padding: 8px 8px; font-size: 11.5px; color: var(--muted, #b3a498);
+  border-bottom: 1px solid var(--border); position: sticky; top: 0;
+}
+.cb-board td { border-top: 1px solid var(--border); vertical-align: top; }
+.cb-lane { padding: 8px 10px; font-weight: 700; white-space: nowrap; }
+.cb-disc {
+  font-size: 9px; letter-spacing: 0.08em; font-weight: 800; margin-left: 6px;
+  padding: 1px 6px; border-radius: 999px;
+  color: #ff9a6a; background: rgba(255, 106, 61, 0.13);
+}
+.cb-cell { padding: 4px 5px; min-width: 86px; position: relative; }
+.cb-chip {
+  display: block; width: 100%; text-align: left;
+  border-radius: 8px; border: 1.5px solid transparent;
+  padding: 3px 8px; margin: 2px 0;
+  font-weight: 700; font-size: 11.5px; color: #16100c;
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cb-chip.draft { border-style: dashed; border-color: rgba(0, 0, 0, 0.45); opacity: 0.92; }
+.cb-chip.conflict { outline: 2px dashed #e4655c; outline-offset: 1px; }
+.cb-chip.movable { cursor: grab; }
+.cb-chip.movable:active { cursor: grabbing; }
+.cb-plus {
+  display: block; width: 100%; text-align: center;
+  color: var(--muted, #b3a498); opacity: 0; border: 0; background: transparent;
+  font-size: 14px; padding: 2px 0; cursor: pointer;
+}
+.cb-cell:hover .cb-plus, .cb-plus:focus-visible { opacity: 0.7; }
+
+/* Coverage strip */
+.cov-strip {
+  border-radius: 10px; padding: 10px 12px; margin-top: 10px; font-size: 13px;
+  border: 1px solid var(--border);
+}
+.cov-strip.ok { border-color: rgba(53, 185, 141, 0.5); color: #35b98d; }
+.cov-strip.warn { border-color: rgba(232, 193, 74, 0.55); background: rgba(232, 193, 74, 0.06); }
+.cov-strip.warn strong { color: #e8c14a; }
+.cov-list { margin: 6px 0 0; padding-left: 18px; }
+.cov-list li { margin: 4px 0; }
+.cov-list li.imminent { color: #e8c14a; font-weight: 700; }
+.cov-fix { margin-left: 8px; font-size: 12px; padding: 3px 10px; }
+
+.seed-list { margin: 4px 0 0; padding: 0; list-style: none; max-height: 40vh; overflow-y: auto; }
+.seed-list li { margin: 4px 0; font-size: 13.5px; }
+.seed-list label { display: flex; gap: 8px; align-items: center; cursor: pointer; }

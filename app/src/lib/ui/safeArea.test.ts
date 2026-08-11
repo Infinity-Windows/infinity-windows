@@ -192,6 +192,8 @@ const STICKY_INSIDE = new Set([
   ".app-rail", // desktop sidebar, and the insets are zero there
   ".sched-cal-monthhead",
   ".sched-week-head",
+  ".cb-board th", // crew-board day header, sticks inside .cb-scroll
+
   ".travel-sheet-head",
 ]);
 

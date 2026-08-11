@@ -108,6 +108,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Issues (`/issues`)
 - Service (`/service`)
 - Quality (`/qc`)
+- Scheduling (`/scheduling`)
 - My Schedule (`/my-schedule`)
 - Travel (`/travel`)
 - Team (`/team`)
@@ -121,7 +122,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Settings (`/settings`)
 
-**Can reach (all 37 allowed destinations):**
+**Can reach (all 38 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -150,6 +151,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Slot labels (`/labels`)
 - Catalog (`/catalog`)
 - Supplies (`/supplies`)
+- Scheduling (`/scheduling`)
 - Photos & receipts (`/photos`)
 - Daily logs (`/daily-logs`)
 - Completed installs (`/completed-installs`)
@@ -164,7 +166,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 **Blocked:**
 
 - AI Knowledge (`/knowledge`)
-- Scheduling (`/scheduling`)
 - Vehicles (`/vehicles`)
 - Heartbeat (`/heartbeat`)
 - Admin (`/admin`)
