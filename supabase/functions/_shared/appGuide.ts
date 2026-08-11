@@ -341,9 +341,9 @@ export const APP_GUIDE: AppGuideEntry[] = [
   {
     path: "/scheduling",
     label: "Scheduling",
-    minRole: "supervisor",
+    minRole: "foreman",
     blurb:
-      "Build the crew schedule — assign foremen/installers to jobs over date ranges, then publish to push it to everyone's My Schedule.",
+      "The crew board and calendar: who is on which job, day by day. Foremen see the week's plan; supervisors and up move people, seed the board from yesterday's crew, and publish changes to the crew's phones.",
   },
   {
     path: "/vehicles",

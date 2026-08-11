@@ -157,7 +157,9 @@ export const NAV: NavDest[] = [
 
   // Supervisor+.
   { id: "knowledge", to: "/knowledge", label: "AI Knowledge", icon: "◈", minRole: "supervisor" },
-  { id: "scheduling", to: "/scheduling", label: "Scheduling", icon: "🗓", minRole: "supervisor" },
+  // Foremen can OPEN the board and read the week's plan; moving people is
+  // still a supervisor+ action, enforced inside the page (owner, 2026-08-11).
+  { id: "scheduling", to: "/scheduling", label: "Scheduling", icon: "🗓", minRole: "foreman" },
   { id: "vehicles", to: "/vehicles", label: "Vehicles", icon: "🚚", minRole: "supervisor" },
   { id: "heartbeat", to: "/heartbeat", label: "Heartbeat", icon: "❤", minRole: "supervisor" },
   { id: "admin", to: "/admin", label: "Admin", icon: "◈", minRole: "supervisor" },
