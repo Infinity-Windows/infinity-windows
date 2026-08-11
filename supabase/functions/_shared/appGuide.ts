@@ -236,10 +236,17 @@ export const APP_GUIDE: AppGuideEntry[] = [
   },
   {
     path: "/timecard",
-    label: "Timecard",
+    label: "My timecard",
     minRole: "installer",
     blurb:
-      "Your hours, week by week. Installers see their own timecard read-only; foreman and up also review, adjust, and approve the whole crew's hours by cost code before payroll export.",
+      "Your own hours — day, week or pay period, with overtime split out and a printable timesheet. Read-only; a lead fixes punches from Team timecards.",
+  },
+  {
+    path: "/team-timecards",
+    label: "Team timecards",
+    minRole: "foreman",
+    blurb:
+      "The whole crew's time: who is on the clock right now, week hours per person, punches waiting for approval, and the payroll export. Tap a member to view and edit their timecard.",
   },
   {
     path: "/issues",
