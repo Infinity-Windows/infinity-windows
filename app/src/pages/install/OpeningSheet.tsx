@@ -62,7 +62,6 @@ import { claimUnsavedWork } from "../../lib/pwa/unsavedWork";
 import { indexSpecsByMark, specForOpeningCode } from "../../lib/install/specs";
 import { SpecCard } from "../../components/install/SpecCard";
 import { MissingSpecNotice } from "../../components/install/MissingSpecNotice";
-import { MarkElevationViews } from "../../components/install/MarkElevationViews";
 import { OpeningMoved } from "../../components/install/OpeningMoved";
 import { rememberOpening } from "../../lib/install/staleOpening";
 import { useRealtimeOpenings } from "../../lib/useRealtimeOpenings";
@@ -754,10 +753,6 @@ export function OpeningSheet() {
           />
         )
       )}
-
-      {/* Unguarded: it renders nothing of its own accord when there is no
-          elevation to show, and a mark with no spec still has a wall. */}
-      <MarkElevationViews projectId={projectId} markCode={opening.data?.opening_code} />
 
       {message && (
         <p className={/^(Window|Install|Rough|Condition|Flag|Flagged|Site|Complication)/.test(message) ? "ok" : "error"}>

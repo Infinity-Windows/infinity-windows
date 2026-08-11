@@ -1,46 +1,39 @@
-// The elevation drawing ("Outside View") for one mark, cropped live out of the
-// project's specs planset and re-colored to white line-work on black.
+// The FULL specs-planset page a mark's spec was read from, re-colored to
+// white line-work on black.
 //
-// Nothing is stored as an image: the spec row only remembers WHICH specs planset
-// the drawing came from, which page it's on, and where on that page it sits (a
-// normalized box from the same Claude VISION pass that read the spec table).
-// `lib/install/drawingCrops` turns that into a picture and caches it — in memory
-// and in IndexedDB, so a reload doesn't re-download a 2MB planset to redraw one
-// small drawing.
+// This used to crop one mark's drawing out of the sheet. Owner call
+// (2026-08-10): show the whole page instead and let the installer navigate —
+// the neighboring marks on the sheet are exactly what a crew member uses to
+// confirm they're holding the right window, and a crop can only ever show a
+// guessed rectangle. `lib/install/drawingCrops` renders and caches the page —
+// in memory and in IndexedDB, so a reload doesn't re-download a 2MB planset.
 //
-// Two guardrails matter here:
+// Two guardrails carry over from the crop era:
 //   • nothing starts until the card is actually scrolled into view;
-//   • a drawing whose coordinates were measured against a DIFFERENT specs
-//     planset is not rendered at all. A missing picture is harmless; a
-//     confident picture of the wrong window is not.
-// Every failure path renders nothing — a missing drawing must never take a spec
-// card down with it, and the spec TEXT always survives.
+//   • a page number measured against a DIFFERENT specs planset is not
+//     rendered at all. A missing picture is harmless; a confident picture of
+//     the wrong sheet is not.
+// Every failure path renders nothing — a missing drawing must never take a
+// spec card down with it, and the spec TEXT always survives.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { findSpecsPlanset, listPlansets } from "../../lib/install/api";
-import { markDrawingDataUrl } from "../../lib/install/drawingCrops";
+import { specsPageDataUrl } from "../../lib/install/drawingCrops";
 import type { MarkSpec } from "../../lib/install/specs";
-import { isDrawingStale, validateBbox } from "../../lib/install/markDrawing";
+import { isDrawingStale } from "../../lib/install/markDrawing";
 
 interface MarkDrawingProps {
   spec: Pick<MarkSpec, "mark_code" | "image_page" | "image_bbox" | "planset_id">;
-  /** Project whose specs planset the drawing is cropped from. */
+  /** Project whose specs planset the page is rendered from. */
   projectId: string | null | undefined;
   /** Small thumbnail for dense lists (My Work rows). */
   compact?: boolean;
 }
 
 export function MarkDrawing({ spec, projectId, compact = false }: MarkDrawingProps) {
-  const bboxKey = Array.isArray(spec.image_bbox) ? spec.image_bbox.join(",") : "";
-  const bbox = useMemo(
-    () => validateBbox(spec.image_bbox),
-    // The array identity changes on every render; its contents don't.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [bboxKey],
-  );
   const page = spec.image_page;
-  const locatable = Boolean(projectId) && bbox != null && page != null;
+  const locatable = Boolean(projectId) && page != null;
 
   const [visible, setVisible] = useState(false);
   const [src, setSrc] = useState<string | null>(null);
@@ -79,29 +72,20 @@ export function MarkDrawing({ spec, projectId, compact = false }: MarkDrawingPro
   });
   const planset = plansets.data ? findSpecsPlanset(plansets.data) : null;
 
-  // The box was measured against one specific file. If the project's specs
-  // planset has since been replaced, cropping the same box out of the new one
-  // yields a real-looking drawing of the wrong unit, so we show nothing.
+  // The page number was measured against one specific file. If the project's
+  // specs planset has since been replaced, the same page of the new file may
+  // be a different sheet entirely, so we show nothing.
   const stale = planset ? isDrawingStale(spec, planset.id) : false;
 
   useEffect(() => {
-    if (!visible || !planset || !bbox || page == null || stale) return;
+    if (!visible || !planset || page == null || stale) return;
     let cancelled = false;
     setFailed(false);
     void (async () => {
       try {
-        const url = await markDrawingDataUrl({
-          planset,
-          pageNumber: page,
-          bbox,
-          markCode: spec.mark_code,
-        });
+        const url = await specsPageDataUrl({ planset, pageNumber: page });
         if (cancelled) return;
-        // Null means the sheet has no drawing to show for this mark — a blank
-        // panel, or a box we couldn't rescue. Same outcome as a failure: the
-        // spec text stands on its own rather than carrying a black rectangle.
-        if (url) setSrc(url);
-        else setFailed(true);
+        setSrc(url);
       } catch {
         // A page that won't render, a planset we can't download offline, a
         // browser that won't give us pixels — show text only.
@@ -112,14 +96,14 @@ export function MarkDrawing({ spec, projectId, compact = false }: MarkDrawingPro
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, planset, page, bbox, stale, spec.mark_code]);
+  }, [visible, planset, page, stale, spec.mark_code]);
 
   if (!locatable || stale) return null;
-  // No specs planset on this project (or the lookup failed) — nothing to crop.
+  // No specs planset on this project (or the lookup failed) — nothing to show.
   if (failed || (plansets.isFetched && !planset) || plansets.isError) return null;
 
-  const height = compact ? 54 : 190;
-  const label = `Elevation drawing for mark #${spec.mark_code}`;
+  const height = compact ? 54 : 230;
+  const label = `Spec sheet page ${page} for mark #${spec.mark_code}`;
 
   return (
     <>
@@ -145,7 +129,7 @@ export function MarkDrawing({ spec, projectId, compact = false }: MarkDrawingPro
               setMagnified(false);
               setZoomed(true);
             }}
-            aria-label={`${label} — tap to enlarge`}
+            aria-label={`${label} — tap to open the full sheet`}
           >
             <img src={src} alt={label} />
           </button>
@@ -168,9 +152,12 @@ export function MarkDrawing({ spec, projectId, compact = false }: MarkDrawingPro
               />
             </div>
             <div className="photo-viewer-info">
-              <p className="photo-viewer-caption">Mark #{spec.mark_code} — outside view</p>
+              <p className="photo-viewer-caption">
+                Spec sheet · page {page} — find mark #{spec.mark_code}
+              </p>
               <p className="muted">
-                Tap the drawing to {magnified ? "zoom out" : "zoom in"}.
+                Tap the sheet to {magnified ? "zoom out" : "zoom in"}
+                {magnified ? " — drag to move around the page." : "."}
               </p>
             </div>
             <button

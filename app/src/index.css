@@ -8743,137 +8743,6 @@ body {
   cursor: zoom-out;
 }
 
-/* ==========================================================================
-   Elevation reference: the mark ringed on the exterior elevation drawing.
-   Shown on a WHITE card, not inverted like the spec drawing — an architectural
-   elevation is stone hatching and colored callout numbers, and flipping it to
-   white-on-black destroys both (see lib/install/drawingCrops).
-   ========================================================================== */
-.elev-card-note {
-  margin: 2px 0 8px;
-  font-size: 12px;
-}
-.elev-view-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.elev-view-list.compact {
-  gap: 0;
-  margin-top: 4px;
-}
-.elev-view-thumb,
-.elev-view-skeleton {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #fff;
-  overflow: hidden;
-}
-.elev-view-thumb {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px;
-  cursor: zoom-in;
-}
-.elev-view-thumb img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  display: block;
-}
-.elev-view-skeleton {
-  background: linear-gradient(90deg, #e9e9ec 0%, #f7f7f9 50%, #e9e9ec 100%);
-  background-size: 200% 100%;
-  animation: markDrawingShimmer 1.4s ease-in-out infinite;
-}
-.elev-view-caption {
-  margin: 4px 0 0;
-  font-size: 12px;
-}
-.elev-view-full {
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  max-height: 70vh;
-  overflow: auto;
-}
-.elev-view-full img {
-  display: block;
-  width: 100%;
-  height: auto;
-  cursor: zoom-in;
-}
-.elev-view-full.magnified img {
-  width: 300%;
-  max-width: none;
-  cursor: zoom-out;
-}
-
-/* Specs-extraction progress. The run is page-by-page in the browser, so the
-   bar is the crew's only signal for whether it's worth waiting. */
-.extraction-progress-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-.extraction-progress-track {
-  margin-top: 8px;
-  height: 8px;
-  border-radius: 4px;
-  background: var(--border);
-  overflow: hidden;
-}
-.extraction-progress-fill {
-  height: 100%;
-  border-radius: 4px;
-  background: var(--primary);
-  transition: width 240ms ease;
-}
-.extraction-progress-fill.live {
-  background: linear-gradient(
-    90deg,
-    var(--primary) 0%,
-    color-mix(in oklch, var(--primary) 55%, white) 50%,
-    var(--primary) 100%
-  );
-}
-.extraction-progress .action-btn {
-  margin-top: 10px;
-}
-
-/* ---------------------------------------------------------------------------
-   Crew access: the one-time invite code.
-
-   Only two rules, both earning their keep. The card is accent-edged because it
-   is the one thing on the screen that cannot be recovered once dismissed — the
-   server stores a hash, not the code. The code itself is monospaced, spaced out
-   and large because it gets read aloud down a phone line and off a cracked
-   screen; everything else reuses .detail-card / .button-like as-is.
-   --------------------------------------------------------------------------- */
-.invite-issued {
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-}
-
-.invite-code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: clamp(22px, 7vw, 30px);
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-align: center;
-  padding: 14px 8px;
-  border: 1px dashed var(--accent-line);
-  border-radius: 10px;
-  background: var(--card);
-  color: var(--text);
-  /* Long-press to select on a phone, so it can be copied even if the clipboard
-     button is blocked by an in-app browser. */
-  user-select: all;
-}
-
 /* ===========================================================================
    Overlays and the edges of the phone
 
@@ -9057,4 +8926,51 @@ body {
 .mark-undo__all:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* ==========================================================================
+   Spec card fields: the numbers a crew member installs by. The labels sit in
+   the brand's ember orange, the values bright and bold, and each pair is
+   separated by a thin ember line that burns in the middle and fades out to
+   the sides (owner's ask, 2026-08-10).
+   ========================================================================== */
+.spec-field {
+  padding: 7px 0 6px;
+}
+.spec-field + .spec-field {
+  position: relative;
+}
+.spec-field + .spec-field::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 106, 61, 0.25) 18%,
+    rgba(255, 138, 92, 0.95) 50%,
+    rgba(255, 106, 61, 0.25) 82%,
+    transparent 100%
+  );
+  border-radius: 999px;
+  filter: drop-shadow(0 0 4px rgba(255, 106, 61, 0.45));
+}
+.spec-field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ff9a6a;
+  margin-bottom: 2px;
+}
+.spec-field-value {
+  display: block;
+  font-weight: 700;
+  font-size: 14.5px;
+  color: var(--foreground, #fff);
+  line-height: 1.45;
 }
