@@ -222,37 +222,49 @@ export function Issues() {
     const unitColor = isDoor ? "var(--ok)" : "var(--info)";
     const assignedTo = i.assigned_to ?? null;
     const faultBy = i.fault_by ?? null;
+    // The note may be a bulleted punch list (framing files them joined with
+    // " \u2022 ") - break it into real lines so it reads like a checklist,
+    // not a stack trace.
+    const noteParts = (i.note ?? "")
+      .split(" \u2022 ")
+      .map((t) => t.trim())
+      .filter(Boolean);
     return (
-      <li key={i.id} className="find-row dispatch-row">
-        <div style={{ minWidth: 0 }}>
-          <div>
-            {mark && (
-              <strong className="error" style={{ marginRight: 6 }}>
-                {mark}
-              </strong>
-            )}
-            <strong>{KIND_LABELS[i.kind]}</strong>{" "}
-            <span className="muted">
+      <li
+        key={i.id}
+        className={`issue-card${urgent && i.status === "open" ? " urgent" : ""}${
+          i.status === "resolved" ? " resolved" : ""
+        }`}
+      >
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="issue-card-head">
+            <span className={`issue-kind kind-${i.kind}`}>
+              {mark ? `${mark} ` : ""}
+              {KIND_LABELS[i.kind]}
+            </span>
+            <span className="issue-job" title={project?.name ?? undefined}>
               {project?.job_code ?? "job?"}
-              {opening ? " · " : ""}
+              {project?.name ? ` · ${project.name}` : ""}
             </span>
             {opening && (
               <Link
                 to={`/projects/${i.project_id}/opening/${i.opening_id}`}
-                style={{
-                  color: unitColor,
-                  fontWeight: 600,
-                }}
+                className="issue-opening"
+                style={{ color: unitColor }}
                 title={isDoor ? "Door" : "Window"}
               >
                 {isDoor ? "▮" : "▯"} {opening.opening_code}
               </Link>
             )}
           </div>
-          {i.note && (
-            <div className={urgent ? "error" : "warn-text"} style={{ fontSize: 13 }}>
-              {i.note}
-            </div>
+          {noteParts.length > 1 ? (
+            <ul className="issue-note-list">
+              {noteParts.map((t, idx) => (
+                <li key={idx}>{t}</li>
+              ))}
+            </ul>
+          ) : (
+            noteParts[0] && <p className="issue-note">{noteParts[0]}</p>
           )}
           <div className="muted" style={{ fontSize: 12 }}>
             {i.status === "resolved"

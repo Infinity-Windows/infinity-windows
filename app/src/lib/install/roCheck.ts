@@ -46,6 +46,28 @@ export interface RoVerdict {
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
+/**
+ * Inches the way the trade writes them: 0.5 -> 1/2", 1.0625 -> 1 1/16".
+ * Rounded to the nearest sixteenth — finer than anyone's tape matters.
+ */
+export function inFrac(n: number): string {
+  const a = Math.abs(n);
+  let whole = Math.floor(a + 1e-9);
+  let sixteenths = Math.round((a - whole) * 16);
+  if (sixteenths === 16) {
+    whole += 1;
+    sixteenths = 0;
+  }
+  if (sixteenths === 0) return `${whole}"`;
+  let num = sixteenths;
+  let den = 16;
+  while (num % 2 === 0) {
+    num /= 2;
+    den /= 2;
+  }
+  return whole > 0 ? `${whole} ${num}/${den}"` : `${num}/${den}"`;
+}
+
 function present(values: (number | null)[]): number[] {
   return values.filter((v): v is number => typeof v === "number" && v > 0);
 }
@@ -54,7 +76,6 @@ function present(values: (number | null)[]): number[] {
 function gapVerdict(
   smallestIn: number | null,
   unitIn: number | null,
-  axis: "width" | "height",
 ): Pick<RoVerdict, "measured" | "detail"> {
   if (smallestIn == null) return { measured: null, detail: null };
   if (unitIn == null) {
@@ -69,17 +90,17 @@ function gapVerdict(
       measured: "bad",
       detail:
         gap < 0
-          ? `${r2(Math.abs(gap))}" SMALLER than the unit on ${axis} — it will not go in`
-          : `only ${gap}" over the unit — needs at least ${GAP_MIN_IN}" to shim`,
+          ? `${inFrac(gap)} smaller than the window — it will not go in`
+          : `only ${inFrac(gap)} over the window — needs ${inFrac(GAP_MIN_IN)} minimum to shim`,
     };
   }
   if (gap > GAP_MAX_IN) {
     return {
       measured: "bad",
-      detail: `${gap}" over the unit — more than the ${GAP_MAX_IN}" max, opening is oversized`,
+      detail: `${inFrac(gap)} over the window — past the ${inFrac(GAP_MAX_IN)} maximum, opening is oversized`,
     };
   }
-  return { measured: "good", detail: `${gap}" over the unit — within range` };
+  return { measured: "good", detail: `${inFrac(gap)} over the window — within range` };
 }
 
 /** All three verdicts, in checking order. */
@@ -96,21 +117,21 @@ export function roVerdicts(input: RoCheckInput): RoVerdict[] {
       measured: diff > SQUARE_TOL_IN ? "bad" : "good",
       detail:
         diff > SQUARE_TOL_IN
-          ? `diagonals ${r2(diags[0])}" vs ${r2(diags[1])}" — ${diff}" out of square`
-          : `diagonals within ${diff}" — square`,
+          ? `diagonals ${inFrac(diags[0])} vs ${inFrac(diags[1])} — ${inFrac(diff)} out of square`
+          : `diagonals within ${inFrac(diff)} — square`,
     });
   }
 
   const w = present(input.widths);
   out.push({
     check: "width",
-    ...gapVerdict(w.length ? Math.min(...w) : null, input.unitWidthIn, "width"),
+    ...gapVerdict(w.length ? Math.min(...w) : null, input.unitWidthIn),
   });
 
   const h = present(input.heights);
   out.push({
     check: "height",
-    ...gapVerdict(h.length ? Math.min(...h) : null, input.unitHeightIn, "height"),
+    ...gapVerdict(h.length ? Math.min(...h) : null, input.unitHeightIn),
   });
 
   return out;
@@ -129,23 +150,30 @@ export function roFailures(
   );
 }
 
-const CHECK_LABEL: Record<RoCheckId, string> = {
-  square: "out of square",
-  width: "width",
-  height: "height",
+const CHECK_TITLE: Record<RoCheckId, string> = {
+  square: "Square",
+  width: "Width",
+  height: "Height",
 };
 
-/** The framing issue's note — leads with the window, reads like a punch list. */
+/**
+ * The framing issue's note: one plain sentence per failed check, joined with
+ * " • " so the issue card can break them into a readable list. The card
+ * already names the window and the kind, so the note carries only the facts
+ * a framer needs on the wall.
+ */
 export function framingIssueNote(
-  openingCode: string,
+  _openingCode: string,
   failures: RoVerdict[],
   judgments: Record<RoCheckId, RoJudgment>,
 ): string {
   const parts = failures.map((f) => {
-    const label = CHECK_LABEL[f.check];
-    if (f.detail && f.measured === "bad") return `${label}: ${f.detail}`;
-    if (judgments[f.check] === "bad" && f.detail) return `${label} (marked bad): ${f.detail}`;
-    return `${label} marked bad by installer`;
+    const title = CHECK_TITLE[f.check];
+    if (f.measured === "bad" && f.detail) return `${title}: ${f.detail}`;
+    if (judgments[f.check] === "bad" && f.measured === "good" && f.detail) {
+      return `${title} marked Bad by the installer — but the tape reads fine (${f.detail})`;
+    }
+    return `${title} marked Bad by the installer`;
   });
-  return `${openingCode} — rough opening needs framing fix: ${parts.join("; ")}`;
+  return parts.join(" \u2022 ");
 }
