@@ -904,6 +904,19 @@ export async function savePlanOutline(args: {
   return saved;
 }
 
+/**
+ * Drop a browser-local outline draft without going near the database. Used
+ * when a draft GRADUATES: the tracer submits it as a real row, and the local
+ * copy must stop shadowing the saved one.
+ */
+export function discardLocalOutline(
+  plansetId: string,
+  pageNumber: number,
+  outlineId?: string,
+): void {
+  deleteLocalOutline(plansetId, pageNumber, outlineId);
+}
+
 export async function deletePlanOutline(
   plansetId: string,
   pageNumber: number,

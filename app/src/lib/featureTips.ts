@@ -109,6 +109,29 @@ export function tipKeyForRoute(
 
 const STORAGE_KEY = "infinity:dismissed-tips";
 
+/**
+ * Session-scoped memory of hidden tips. This is what makes dismissal reliable:
+ * "Skip" lives only here (gone next launch, quiet for the rest of today), and
+ * "Don't show again" writes here FIRST so that a phone whose localStorage is
+ * broken or evicted (iOS private mode, storage pressure) still stays quiet for
+ * the whole session instead of nagging on every route change.
+ */
+const sessionHidden = new Set<string>();
+
+/**
+ * A tip is one idea even when it has role variants: dismissing the landing tip
+ * as an owner must also silence the installer variant, or anyone who uses
+ * "view as role" sees the same-looking tip come back forever.
+ */
+const TIP_ALIASES: Record<string, string[]> = {
+  home: ["home", "home_installer"],
+  home_installer: ["home", "home_installer"],
+};
+
+function variantsOf(key: string): string[] {
+  return TIP_ALIASES[key] ?? [key];
+}
+
 function readDismissed(): Set<string> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -121,15 +144,28 @@ function readDismissed(): Set<string> {
 }
 
 export function isTipDismissed(key: string): boolean {
+  if (sessionHidden.has(key)) return true;
   return readDismissed().has(key);
 }
 
+/** "Skip": quiet for the rest of this session, back next launch. */
+export function skipTip(key: string): void {
+  for (const k of variantsOf(key)) sessionHidden.add(k);
+}
+
 export function dismissTip(key: string): void {
+  for (const k of variantsOf(key)) sessionHidden.add(k);
   try {
     const set = readDismissed();
-    set.add(key);
+    for (const k of variantsOf(key)) set.add(k);
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
   } catch {
-    /* ignore storage failures (private mode etc.) */
+    /* Storage failures (private mode etc.): sessionHidden above still keeps
+       this session quiet, which is the best a client can do. */
   }
+}
+
+/** Test hook: forget session-scoped hides. */
+export function resetSessionTips(): void {
+  sessionHidden.clear();
 }

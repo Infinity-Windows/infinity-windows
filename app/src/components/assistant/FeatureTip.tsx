@@ -5,6 +5,7 @@ import {
   FEATURE_TIPS,
   dismissTip,
   isTipDismissed,
+  skipTip,
   tipKeyForRoute,
 } from "../../lib/featureTips";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
@@ -33,7 +34,12 @@ export function FeatureTip() {
   const tip = FEATURE_TIPS[visibleKey];
   if (!tip) return null;
 
-  const skip = () => setVisibleKey(null);
+  const skip = () => {
+    // Session-sticky: without this, leaving and returning to the route brought
+    // the tip straight back, which read as "Skip doesn't work".
+    skipTip(tip.key);
+    setVisibleKey(null);
+  };
   const never = () => {
     dismissTip(tip.key);
     setVisibleKey(null);

@@ -14,8 +14,8 @@ interface ScrollTabsProps {
 /**
  * A row of tabs that scrolls sideways when it is wider than the phone.
  *
- * The project hub has up to eight sections. Eight is fine on the office laptop
- * and impossible on a 390px iPhone, where the row used to run off the side of
+ * The project hub has up to nine sections. Nine is a squeeze even on the
+ * office laptop and impossible on a 390px iPhone, where the row used to run off the side of
  * the screen and drag the whole page with it. Wrapping to three lines would eat
  * the top of every screen, and hiding the tail behind a "More" menu costs a tap
  * and puts a small target under a gloved thumb — so the row scrolls, and does

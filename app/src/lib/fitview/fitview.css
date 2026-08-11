@@ -1,0 +1,1895 @@
+/* Ported from the window-viewer prototype (app.css + index.html styles).
+ * Scoped under .fitview-app via native CSS nesting so the prototype's
+ * :root/body/* rules cannot leak into the host app. Keyframes are hoisted
+ * because @keyframes may not nest inside style rules. */
+.fitview-app {
+/* Shared design tokens and chrome for the installer view (index.html) and the
+   surveyor capture screen (survey.html). Page-specific rules stay inline in
+   each page; anything both pages use lives here so the two cannot drift. */
+
+& {
+  --paper:      #E9ECEA;
+  --paper-2:    #F6F8F6;
+  --paper-3:    #FDFEFD;
+  --ink:        #141C22;
+  --ink-2:      #46545E;
+  --ink-3:      #77858D;
+  --rule:       #C7CFCC;
+  --rule-soft:  #DBE1DE;
+
+  --accent:     #E85D0B;
+  --accent-ink: #FFFFFF;
+  --accent-wash:#FDEADD;
+
+  --st-tofit:     #5B7A99;
+  --st-installed: #1A8C67;
+  --st-issue:     #C93A32;
+
+  --wall-front: #FBFCFB;
+  --wall-side:  #E4E9E6;
+  --wall-rear:  #D5DCD8;
+  --roof-a:     #B9C3C0;
+  --roof-b:     #A2AEAB;
+  --gable:      #E4E9E6;
+  --glass:      rgba(120, 168, 178, 0.20);
+  --glass-2:    rgba(120, 168, 178, 0.07);
+  --shadow-gnd: rgba(20, 28, 34, 0.16);
+
+  --sky-a:      #D7E7F0;
+  --sky-b:      #EAF0EE;
+  --sky-c:      #DDE4D5;
+  --fascia:     #F5F5EF;
+  --mortar:     rgba(96, 86, 72, 0.11);
+  --plinth-a:   #BC8D70;
+  --plinth-b:   #A87A5F;
+  --tile-line:  rgba(20, 28, 34, 0.18);
+  --tile-hi:    rgba(255, 255, 255, 0.12);
+  --ridge:      #8E9A97;
+  --cill:       #E9E5DA;
+  --chimney:    #B5836B;
+  --chimney-cap:#DAD6CA;
+  --grass:      rgba(151, 178, 130, 0.55);
+  --stud:       #C89B66;
+  --plate:      #A97C4F;
+  --band:       #8F6A44;
+  --deck:       rgba(200, 155, 102, 0.10);
+  --joist:      #7E5B39;
+
+  --f-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "Roboto Mono", Consolas, monospace;
+  --f-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --r: 3px;
+}
+
+@media (prefers-color-scheme: dark) {
+  & {
+    --paper:      #0E1418;
+    --paper-2:    #161E23;
+    --paper-3:    #1D272D;
+    --ink:        #E7EDEA;
+    --ink-2:      #A3B0B6;
+    --ink-3:      #6D7C83;
+    --rule:       #2B363C;
+    --rule-soft:  #222C32;
+    --accent:     #FF7A2E;
+    --accent-ink: #21150C;
+    --accent-wash:#33200F;
+    --st-tofit:     #7FA3C4;
+    --st-installed: #35B98D;
+    --st-issue:     #E4655C;
+    --wall-front: #2A363D;
+    --wall-side:  #212C32;
+    --wall-rear:  #1A242A;
+    --roof-a:     #161F24;
+    --roof-b:     #121A1F;
+    --gable:      #212C32;
+    --glass:      rgba(126, 178, 190, 0.16);
+    --glass-2:    rgba(126, 178, 190, 0.05);
+    --shadow-gnd: rgba(0, 0, 0, 0.5);
+
+    --sky-a:      #0A131C;
+    --sky-b:      #121D24;
+    --sky-c:      #101B17;
+    --fascia:     #39454C;
+    --mortar:     rgba(0, 0, 0, 0.25);
+    --plinth-a:   #5D4539;
+    --plinth-b:   #4F3A2F;
+    --tile-line:  rgba(0, 0, 0, 0.38);
+    --tile-hi:    rgba(255, 255, 255, 0.04);
+    --ridge:      #0D1417;
+    --cill:       #3E4A51;
+    --chimney:    #5D4539;
+    --chimney-cap:#49545A;
+    --grass:      rgba(58, 88, 66, 0.4);
+    --stud:       #7A5A38;
+    --plate:      #5E4429;
+    --band:       #4A3620;
+    --deck:       rgba(122, 90, 56, 0.10);
+    --joist:      #3A2A18;
+  }
+}
+
+&.fv-dark {
+  --paper:      #0E1418;
+  --paper-2:    #161E23;
+  --paper-3:    #1D272D;
+  --ink:        #E7EDEA;
+  --ink-2:      #A3B0B6;
+  --ink-3:      #6D7C83;
+  --rule:       #2B363C;
+  --rule-soft:  #222C32;
+  --accent:     #FF7A2E;
+  --accent-ink: #21150C;
+  --accent-wash:#33200F;
+  --st-tofit:     #7FA3C4;
+  --st-installed: #35B98D;
+  --st-issue:     #E4655C;
+  --wall-front: #2A363D;
+  --wall-side:  #212C32;
+  --wall-rear:  #1A242A;
+  --roof-a:     #161F24;
+  --roof-b:     #121A1F;
+  --gable:      #212C32;
+  --glass:      rgba(126, 178, 190, 0.16);
+  --glass-2:    rgba(126, 178, 190, 0.05);
+  --shadow-gnd: rgba(0, 0, 0, 0.5);
+
+  --sky-a:      #0A131C;
+  --sky-b:      #121D24;
+  --sky-c:      #101B17;
+  --fascia:     #39454C;
+  --mortar:     rgba(0, 0, 0, 0.25);
+  --plinth-a:   #5D4539;
+  --plinth-b:   #4F3A2F;
+  --tile-line:  rgba(0, 0, 0, 0.38);
+  --tile-hi:    rgba(255, 255, 255, 0.04);
+  --ridge:      #0D1417;
+  --cill:       #3E4A51;
+  --chimney:    #5D4539;
+  --chimney-cap:#49545A;
+  --grass:      rgba(58, 88, 66, 0.4);
+  --stud:       #7A5A38;
+  --plate:      #5E4429;
+  --band:       #4A3620;
+  --deck:       rgba(122, 90, 56, 0.10);
+  --joist:      #3A2A18;
+}
+
+&.fv-light {
+  --paper:      #E9ECEA;
+  --paper-2:    #F6F8F6;
+  --paper-3:    #FDFEFD;
+  --ink:        #141C22;
+  --ink-2:      #46545E;
+  --ink-3:      #77858D;
+  --rule:       #C7CFCC;
+  --rule-soft:  #DBE1DE;
+  --accent:     #E85D0B;
+  --accent-ink: #FFFFFF;
+  --accent-wash:#FDEADD;
+  --st-tofit:     #5B7A99;
+  --st-installed: #1A8C67;
+  --st-issue:     #C93A32;
+  --wall-front: #FBFCFB;
+  --wall-side:  #E4E9E6;
+  --wall-rear:  #D5DCD8;
+  --roof-a:     #B9C3C0;
+  --roof-b:     #A2AEAB;
+  --gable:      #E4E9E6;
+  --glass:      rgba(120, 168, 178, 0.20);
+  --glass-2:    rgba(120, 168, 178, 0.07);
+  --shadow-gnd: rgba(20, 28, 34, 0.16);
+
+  --sky-a:      #D7E7F0;
+  --sky-b:      #EAF0EE;
+  --sky-c:      #DDE4D5;
+  --fascia:     #F5F5EF;
+  --mortar:     rgba(96, 86, 72, 0.11);
+  --plinth-a:   #BC8D70;
+  --plinth-b:   #A87A5F;
+  --tile-line:  rgba(20, 28, 34, 0.18);
+  --tile-hi:    rgba(255, 255, 255, 0.12);
+  --ridge:      #8E9A97;
+  --cill:       #E9E5DA;
+  --chimney:    #B5836B;
+  --chimney-cap:#DAD6CA;
+  --grass:      rgba(151, 178, 130, 0.55);
+  --stud:       #C89B66;
+  --plate:      #A97C4F;
+  --band:       #8F6A44;
+  --deck:       rgba(200, 155, 102, 0.10);
+  --joist:      #7E5B39;
+}
+
+& * { box-sizing: border-box; }
+
+& {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--f-ui);
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+}
+
+.app {
+  max-width: 560px;
+  margin: 0 auto;
+  min-height: 100vh;
+  background: var(--paper-2);
+  border-inline: 1px solid var(--rule-soft);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ---------- title block ---------- */
+
+.titleblock {
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper-3);
+  padding: 14px 16px 0;
+  flex: none;
+}
+
+.tb-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tb-ref {
+  font-family: var(--f-mono);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.tb-tag {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  border: 1px solid var(--rule);
+  padding: 3px 6px;
+  border-radius: var(--r);
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+a.tb-tag:hover { color: var(--ink); border-color: var(--ink-3); }
+a.tb-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.tb-addr {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-top: 3px;
+  line-height: 1.35;
+}
+
+.tb-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.bar {
+  flex: 1;
+  height: 5px;
+  background: var(--rule-soft);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.bar > i {
+  display: block;
+  height: 100%;
+  background: var(--st-installed);
+  border-radius: 99px;
+  transition: width 0.35s ease;
+}
+
+.tb-count {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tabs { display: flex; gap: 2px; margin-top: 12px; }
+
+.tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 8px 12px 9px;
+  cursor: pointer;
+}
+
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ---------- offline / sync ---------- */
+
+.syncbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  min-height: 26px;
+}
+
+.net { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+
+.net i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--st-installed);
+  flex: none;
+}
+.net.off i { background: var(--ink-3); }
+.net.pending i { background: var(--accent); }
+.net b { font-weight: 600; color: var(--ink-2); }
+
+.synced {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.mini {
+  appearance: none;
+  flex: none;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  color: var(--ink-2);
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 6px 8px;
+  min-height: 26px;
+  cursor: pointer;
+}
+.mini:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mini[disabled] { opacity: 0.45; cursor: default; }
+.mini.hot { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.mini[hidden] { display: none; }
+
+/* ---------- boot / toast / footer ---------- */
+
+.boot {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 24px;
+  text-align: center;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.boot b { display: block; font-size: 13px; color: var(--ink); letter-spacing: 0.04em; }
+.boot[hidden] { display: none; }
+
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translate(-50%, 14px);
+  z-index: 40;
+  background: var(--ink);
+  color: var(--paper-3);
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 10px 14px;
+  border-radius: var(--r);
+  box-shadow: 0 8px 22px rgba(0,0,0,0.28);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+  max-width: 88%;
+  text-align: center;
+}
+.toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+.foot {
+  flex: none;
+  padding: 9px 16px 12px;
+  border-top: 1px solid var(--rule-soft);
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  background: var(--paper-3);
+}
+
+/* ---------- sheet ---------- */
+
+.sheet {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  z-index: 20;
+  background: var(--paper-3);
+  border-top: 2px solid var(--ink);
+  box-shadow: 0 -14px 34px rgba(0,0,0,0.16);
+  transform: translateY(102%);
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0.24, 1);
+  max-height: 82%;
+  overflow-y: auto;
+}
+.sheet.open { transform: translateY(0); }
+
+.sh-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.sh-id {
+  font-family: var(--f-mono);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.sh-type { font-size: 14px; margin-top: 5px; line-height: 1.3; }
+
+.sh-close {
+  appearance: none;
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  color: var(--ink-2);
+  font-family: var(--f-mono);
+  font-size: 13px;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  flex: none;
+}
+.sh-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  background: rgba(10, 16, 20, 0.34);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.scrim.on { opacity: 1; pointer-events: auto; }
+
+.pill {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 4px 7px;
+  border-radius: 99px;
+  color: #fff;
+  white-space: nowrap;
+  flex: none;
+}
+
+.btn {
+  flex: 1;
+  appearance: none;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper-3);
+  border-radius: var(--r);
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 13px 10px;
+  cursor: pointer;
+  min-height: 46px;
+}
+.btn.ghost { background: none; color: var(--ink-2); border-color: var(--rule); }
+.btn.danger { background: none; color: var(--st-issue); border-color: var(--st-issue); flex: 0 0 auto; padding-inline: 14px; }
+.btn[disabled] { opacity: 0.45; cursor: default; }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.empty {
+  padding: 40px 16px;
+  text-align: center;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+
+
+  /* ---------- photos ---------- */
+
+  .pgrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .pgrid:empty { display: none; }
+
+  .pthumb {
+    position: relative;
+    aspect-ratio: 1;
+    overflow: hidden;
+    border: 1px solid var(--rule);
+    border-radius: var(--r);
+    background: var(--paper-2);
+  }
+  .pthumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  .pthumb .pwait {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--f-mono);
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    text-align: center;
+    padding: 4px;
+  }
+
+  .pdel {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    appearance: none;
+    border: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 3px;
+    background: rgba(10, 16, 20, 0.62);
+    color: #fff;
+    font-family: var(--f-mono);
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .pdel:focus-visible { outline: 2px solid var(--accent); }
+
+  .pbtn {
+    display: inline-block;
+    appearance: none;
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    border-radius: var(--r);
+    color: var(--ink-2);
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 11px 13px;
+    cursor: pointer;
+    min-height: 42px;
+    box-sizing: border-box;
+  }
+  .pbtn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .phint {
+    font-family: var(--f-mono);
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    line-height: 1.5;
+  }
+
+@media (prefers-reduced-motion: reduce) {
+  & * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+
+
+/* ---- index.html inline styles ---- */
+  /* Installer view only. Shared tokens and chrome live in app.css. */
+
+  .view { display: none; flex: 1; min-height: 0; flex-direction: column; }
+  .view.on { display: flex; }
+  .app.loading .view { display: none; }
+
+  /* ---------- stage ---------- */
+
+  .stage {
+    flex: 1;
+    min-height: 340px;
+    position: relative;
+    overflow: hidden;
+    touch-action: none;
+    cursor: grab;
+    background: linear-gradient(180deg,
+      var(--sky-a) 0%, var(--sky-b) 52%, var(--sky-c) 100%);
+  }
+
+  .stage:active { cursor: grabbing; }
+
+  .zoomctl {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    z-index: 8;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .zoomctl button {
+    appearance: none;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--rule);
+    border-radius: var(--r);
+    background: color-mix(in srgb, var(--paper-3) 85%, transparent);
+    color: var(--ink-2);
+    font-family: var(--f-mono);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .zoomctl button:last-child {
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .zoomctl button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .zoomctl button[aria-pressed="true"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+  }
+
+  .persp {
+    position: absolute;
+    inset: 0;
+    perspective: 1700px;
+    perspective-origin: 50% 46%;
+  }
+
+  .house {
+    position: absolute;
+    left: 50%;
+    top: 46%;
+    width: 0;
+    height: 0;
+    transform-style: preserve-3d;
+    will-change: transform;
+  }
+
+  .house.smooth { transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1); }
+
+  .face {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-style: flat;
+    backface-visibility: hidden;
+    border: 1px solid var(--rule);
+    overflow: visible;
+    /* Fine render-coat texture over the per-face base colour, so each wall
+       keeps its own light while reading as a real surface. */
+    background-image:
+      repeating-linear-gradient(0deg, var(--mortar) 0 1px, transparent 1px 9px);
+  }
+
+  .f-front { background-color: var(--wall-front); }
+  .f-side  { background-color: var(--wall-side); }
+  .f-rear  { background-color: var(--wall-rear); }
+
+  /* White fascia board under the eaves. */
+  .face::before {
+    content: "";
+    position: absolute;
+    left: -1px;
+    right: -1px;
+    top: -2px;
+    height: 5px;
+    background: var(--fascia);
+    box-shadow: 0 1px 2px rgba(20, 28, 34, 0.18);
+  }
+
+  /* Brick plinth at the foot of the wall. */
+  .face::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 18px;
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,0,0.14) 0 1px, transparent 1px 5px),
+      linear-gradient(var(--plinth-a), var(--plinth-b));
+  }
+
+  .roof {
+    position: absolute;
+    left: 0;
+    top: 0;
+    backface-visibility: hidden;
+    border: 1px solid var(--rule);
+  }
+  .roof-a { background: var(--roof-a); }
+  .roof-b { background: var(--roof-b); }
+
+  /* Tile courses running parallel to the eaves, with a faint vertical bond. */
+  .roof::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      repeating-linear-gradient(0deg,
+        var(--tile-line) 0 1px, var(--tile-hi) 1px 2px, transparent 2px 9px),
+      repeating-linear-gradient(90deg,
+        rgba(20, 28, 34, 0.05) 0 1px, transparent 1px 21px);
+  }
+
+  /* Ridge capping along the top edge of each slope. */
+  .roof::after {
+    content: "";
+    position: absolute;
+    left: -1px;
+    right: -1px;
+    top: -1px;
+    height: 4px;
+    background: var(--ridge);
+    box-shadow: 0 1px 1px rgba(20, 28, 34, 0.2);
+  }
+
+  .gable {
+    position: absolute;
+    left: 0;
+    top: 0;
+    background: var(--gable);
+    backface-visibility: hidden;
+    clip-path: polygon(0% 100%, 50% 0%, 100% 100%);
+  }
+
+  .ground {
+    position: absolute;
+    left: 0;
+    top: 0;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center, var(--shadow-gnd) 0%, transparent 68%);
+  }
+
+  .lawn {
+    position: absolute;
+    left: 0;
+    top: 0;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center,
+      var(--grass) 0%, var(--grass) 42%, transparent 72%);
+  }
+
+  /* Finished flat roof: membrane deck with a parapet cap ring. */
+  .flatroof {
+    position: absolute;
+    left: 0;
+    top: 0;
+    backface-visibility: visible;
+    background: var(--roof-b);
+    border: 2px solid var(--fascia);
+    box-shadow: inset 0 0 0 6px var(--roof-a);
+  }
+
+  /* ---------- timber-frame stage (job.framing) ----------
+     Open stud walls: the stud/plate/band pattern is computed per wall in JS
+     (positions depend on the building), these rules just set the material. */
+
+  .face.framing {
+    border: 0;
+    background-color: transparent;
+    backface-visibility: visible;   /* see the far wall's studs through the frame */
+  }
+  .face.framing::before, .face.framing::after { display: none; }
+
+  /* Window buttons never show mirrored through an open frame. */
+  .win { backface-visibility: hidden; }
+
+  /* Rough opening: header over, jack studs each side, sill under (not doors).
+     The .door variant is listed too or its glass fill would win on specificity. */
+  .win.rough, .win.rough.door { background: none; box-shadow: none; border-width: 2px; }
+
+  .win.rough::before {
+    content: "";
+    position: absolute;
+    left: -4px;
+    right: -4px;
+    top: -8px;
+    height: 8px;
+    background: var(--plate);
+    box-shadow: inset 0 -1px 0 rgba(20, 28, 34, 0.3);
+    pointer-events: none;
+  }
+
+  .win.rough:not(.door)::after {
+    content: "";
+    position: absolute;
+    left: -4px;
+    right: -4px;
+    top: 100%;
+    height: 6px;
+    background: var(--plate);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    border-radius: 0;
+    pointer-events: none;
+  }
+
+  .win.rough.door::after { display: none; }
+
+  .win.rough .jack {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--stud);
+    pointer-events: none;
+  }
+
+  /* Door openings are trimmed heavier: doubled jacks under the header, and a
+     threshold trimmer where the sole plate is cut away. */
+  .win.rough.door .jack { width: 7px; box-shadow: inset -1px 0 0 rgba(20, 28, 34, 0.3); }
+
+  .win.rough.door .threshold {
+    position: absolute;
+    left: -7px;
+    right: -7px;
+    top: 100%;
+    height: 5px;
+    background: var(--plate);
+    box-shadow: 0 1px 0 rgba(20, 28, 34, 0.25);
+    pointer-events: none;
+  }
+
+  /* Full-height king studs flanking a trimmed opening. */
+  .king {
+    position: absolute;
+    width: 4px;
+    background: var(--stud);
+    box-shadow: 0 0 0 1px rgba(20, 28, 34, 0.18);
+    pointer-events: none;
+  }
+
+  /* Deck joists, with the sole plate the walls stand on read as a band right
+     round the perimeter. */
+  .deck {
+    position: absolute;
+    left: 0;
+    top: 0;
+    backface-visibility: visible;
+    border: 1px solid var(--plate);
+    background:
+      repeating-linear-gradient(90deg, var(--plate) 0 3px, transparent 3px 34px),
+      var(--deck);
+    box-shadow: inset 0 0 0 7px var(--plate), inset 0 0 0 8px rgba(20, 28, 34, 0.22);
+  }
+
+  /* Framed roof: rafters and purlins instead of tiles, and an open gable.
+     The tile texture on ::before has to be cleared or it shows through. */
+  .roof.framing {
+    background:
+      repeating-linear-gradient(90deg, var(--stud) 0 3px, transparent 3px 33.6px),
+      repeating-linear-gradient(0deg, var(--plate) 0 4px, transparent 4px 67px);
+    border-color: var(--plate);
+    backface-visibility: visible;
+  }
+  .roof.framing::before { background: none; }
+  .roof.framing::after { background: var(--plate); }   /* ridge board */
+
+  .gable.framing {
+    background-color: transparent;
+    background-image:
+      repeating-linear-gradient(90deg, var(--stud) 0 3px, transparent 3px 33.6px),
+      linear-gradient(0deg, var(--plate) 0 6px, transparent 6px);
+  }
+
+  /* Noggins: blocking between the studs at mid-storey. The 3px offset lands
+     them between studs rather than on top of them. */
+  .noggins {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 5px;
+    pointer-events: none;
+    box-shadow: 0 1px 0 rgba(20, 28, 34, 0.18);
+  }
+
+  /* Cripple studs: short studs carrying the sill down to the deck below. */
+  .cripple {
+    position: absolute;
+    width: 3px;
+    background: var(--stud);
+    pointer-events: none;
+  }
+
+  /* Let-in diagonal brace, one at each end of every storey. */
+  .brace {
+    position: absolute;
+    height: 5px;
+    background: var(--plate);
+    transform-origin: left center;
+    box-shadow: 0 1px 0 rgba(20, 28, 34, 0.22);
+    pointer-events: none;
+  }
+
+  /* End grain of the floor joists, read along the rim band. */
+  .joist-ends {
+    position: absolute;
+    left: 0;
+    right: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(90deg,
+      var(--joist) 0 4px, transparent 4px 22px);
+  }
+
+  .chimney {
+    position: absolute;
+    left: 0;
+    top: 0;
+    backface-visibility: hidden;
+    border: 1px solid rgba(20, 28, 34, 0.16);
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,0,0.11) 0 1px, transparent 1px 5px);
+    background-color: var(--chimney);
+  }
+
+  .chimney-cap {
+    position: absolute;
+    left: 0;
+    top: 0;
+    background: var(--chimney-cap);
+    border: 1px solid rgba(20, 28, 34, 0.14);
+  }
+
+  /* ---------- windows ---------- */
+
+  .win {
+    position: absolute;
+    z-index: 1;                /* above the wall's fascia and plinth layers */
+    appearance: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    background:
+      linear-gradient(146deg, rgba(255,255,255,0.42) 0%, transparent 38%),
+      linear-gradient(180deg, var(--glass), var(--glass-2));
+    border: 2px solid var(--wc);
+    border-radius: 1px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.28);
+    transition: box-shadow 0.16s ease, border-color 0.16s ease;
+  }
+
+  .win.obscure {
+    background:
+      repeating-linear-gradient(45deg, transparent 0 3px, rgba(120,168,178,0.34) 3px 4px),
+      linear-gradient(180deg, var(--glass), var(--glass-2));
+  }
+
+  .win.door {
+    border-width: 3px;
+    background:
+      linear-gradient(146deg, rgba(255,255,255,0.34) 0%, transparent 44%),
+      linear-gradient(180deg, var(--glass), var(--glass-2));
+  }
+
+  .win:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+  .win.sel {
+    border-color: var(--accent);
+    box-shadow:
+      0 0 0 3px var(--accent),
+      0 0 0 7px color-mix(in srgb, var(--accent) 28%, transparent),
+      inset 0 0 0 1px rgba(255,255,255,0.4);
+    z-index: 6;
+  }
+
+  .win .mull {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: var(--wc);
+    opacity: 0.9;
+  }
+
+  .win .tran {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: var(--wc);
+    opacity: 0.9;
+  }
+
+  .win .kick {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    background: var(--wc);
+    opacity: 0.35;
+  }
+
+  /* Projecting stone cill under every window (doors sit on the ground). */
+  .win:not(.door)::after {
+    content: "";
+    position: absolute;
+    left: -3px;
+    right: -3px;
+    top: calc(100% + 1px);
+    height: 4px;
+    background: linear-gradient(var(--cill),
+      color-mix(in srgb, var(--cill) 78%, #20140a));
+    box-shadow: 0 1px 2px rgba(20, 28, 34, 0.28);
+    border-radius: 0 0 2px 2px;
+    pointer-events: none;
+  }
+
+  /* Door handle. */
+  .win.door::after {
+    content: "";
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    width: 3px;
+    height: 8px;
+    margin-top: -4px;
+    background: color-mix(in srgb, var(--wc) 55%, #fff);
+    border-radius: 1px;
+    pointer-events: none;
+  }
+
+  /* Center-opening pair (open: "bipart") - the single edge handle goes and
+     two handles meet at the middle stile instead. */
+  .win.door.bipart::after { content: none; }
+
+  /* Corner-meet slider: the piece whose corner is on its right edge gets its
+     handle from .chandle at the corner, so the default right-edge handle
+     would double up there. A corner-left piece keeps the default handle -
+     on #29 that is the French door leaf at the far end of the long leg. */
+  .win.door.cmeet-r::after { content: none; }
+
+  /* Per-pane width label along the head of the unit. */
+  .win .pdim {
+    position: absolute;
+    top: 3px;
+    transform: scale(0.3334);
+    transform-origin: 0 0;
+    font-family: var(--f-mono);
+    font-size: 21px;
+    line-height: 1;
+    text-align: center;
+    color: var(--ink);
+    opacity: 0.85;
+    white-space: nowrap;
+    overflow: hidden;
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Solid spacer band in a stacked unit (#1's aluminum tube). */
+  .win .tube {
+    position: absolute;
+    left: 0; right: 0;
+    background: var(--wc);
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
+  /* "F" fixed-panel marker, straight off the Strata sheets. */
+  .win .fglyph {
+    position: absolute;
+    transform: scale(0.3334);
+    transform-origin: 0 0;
+    font-family: var(--f-mono);
+    font-size: 21px;
+    line-height: 1;
+    color: var(--wc);
+    opacity: 0.75;
+    pointer-events: none;
+  }
+  .win .chandle {
+    position: absolute;
+    top: 50%;
+    width: 3px;
+    height: 8px;
+    margin-top: -4px;
+    background: color-mix(in srgb, var(--wc) 55%, #fff);
+    border-radius: 1px;
+    pointer-events: none;
+  }
+
+  .win svg { position: absolute; overflow: visible; }
+
+  .win svg polyline {
+    fill: none;
+    stroke: var(--wc);
+    stroke-width: 1.1;
+    stroke-dasharray: 3 2.5;
+    opacity: 0.65;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .chip {
+    position: absolute;
+    left: -1px;
+    bottom: calc(100% - 6px);   /* bottom edge 6px into the frame, as before */
+    font-family: var(--f-mono);
+    font-size: 27px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    padding: 9px 12px;
+    color: #fff;
+    background: var(--wc);
+    border-radius: 6px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .win.sel .chip { background: var(--accent); color: var(--accent-ink); }
+
+  /* All model text is drawn 3x oversize and scaled back down, so the
+     browser rasterizes it at triple density and it stays sharp when the
+     3D zoom magnifies the walls. */
+  .dim {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) scale(0.3334);
+    font-family: var(--f-mono);
+    font-size: 30px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1.1;
+    text-align: center;
+    color: var(--ink);
+    background: color-mix(in srgb, var(--paper-3) 88%, transparent);
+    padding: 6px 9px;
+    border-radius: 6px;
+    white-space: nowrap;
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Units with center-opening marks (handles, slide arrows, F panels) keep
+     their middle band clear: the size tag drops to the lower third. */
+  .win.bipart .dim,
+  .win.cmeet-r .dim,
+  .win.cmeet-l .dim { top: 71%; }
+
+  .dim i {
+    display: block;
+    height: 3px;
+    margin: 4.5px 0;
+    background: currentColor;
+    opacity: 0.35;
+  }
+
+  .labels-off .chip, .labels-off .dim, .labels-off .pdim { display: none; }
+  .labels-id .dim, .labels-id .pdim { display: none; }
+
+  /* ---------- focus x-ray ----------
+     When a search frames a unit, every other wall goes ghost so the target
+     is visible even when the rest of the building stands in front of it. */
+
+  .xray .face { transition: opacity 0.3s ease; }
+  .xray .face:not(.keep) { opacity: 0.13; pointer-events: none; }
+  .xray .face.gone { display: none; }   /* a different building: fully invisible */
+  .xray .flatroof, .xray .roof, .xray .gable,
+  .xray .chimney, .xray .chimney-cap, .xray .deck { opacity: 0.09; pointer-events: none; }
+
+  /* ---------- level of detail ----------
+     Zoomed right out, 1px textures crush below a pixel and alias into
+     shimmer. Far away: clean solids and legible tags. The fine grain
+     returns as you zoom in. */
+
+  .chip { transform: scale(calc(var(--chipscale, 1) * 0.3334)); transform-origin: left bottom; }
+
+  .lod-far .dim { display: none; }
+  .lod-far .face { background-image: none; }
+  .lod-far .face::after {
+    background: linear-gradient(var(--plinth-a), var(--plinth-b));
+  }
+  .lod-far .roof::before { background: none; }
+  .lod-far .deck {
+    background: var(--deck);
+  }
+  .lod-far .win .mull,
+  .lod-far .win .tran,
+  .lod-far .win .chandle,
+  .lod-far .win .fglyph,
+  .lod-far .win .pdim,
+  .lod-far .win svg { display: none; }
+
+  /* ---------- plan-view finder ---------- */
+
+  .psearch {
+    position: relative;
+    background: var(--paper-3);
+    border-bottom: 1px solid var(--rule);
+    padding: 8px 16px;
+    flex: none;
+    z-index: 12;
+  }
+
+  .psearch input {
+    width: 100%;
+    appearance: none;
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    border-radius: var(--r);
+    color: var(--ink);
+    font-family: var(--f-mono);
+    font-size: 12px;
+    letter-spacing: 0.03em;
+    padding: 9px 10px;
+    min-height: 38px;
+  }
+  .psearch input:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .psearch input::placeholder { color: var(--ink-3); text-transform: uppercase; font-size: 10px; letter-spacing: 0.1em; }
+
+  .pq-results {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    top: calc(100% - 4px);
+    background: var(--paper-3);
+    border: 1px solid var(--rule);
+    border-radius: var(--r);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+    max-height: 260px;
+    overflow-y: auto;
+    z-index: 13;
+  }
+  .pq-results[hidden] { display: none; }
+
+  .pq-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    text-align: left;
+    appearance: none;
+    background: none;
+    border: 0;
+    border-bottom: 1px solid var(--rule-soft);
+    padding: 10px 12px;
+    cursor: pointer;
+    color: inherit;
+    font-size: 13px;
+    min-height: 42px;
+  }
+  .pq-row:last-child { border-bottom: 0; }
+  .pq-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .pq-row b {
+    font-family: var(--f-mono);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+  }
+  .pq-row i {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex: none;
+    display: block;
+  }
+  .pq-row .pq-sub {
+    margin-left: auto;
+    font-family: var(--f-mono);
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    white-space: nowrap;
+  }
+
+  /* ---------- controls ---------- */
+
+  .controls {
+    flex: none;
+    border-top: 1px solid var(--rule);
+    background: var(--paper-3);
+    padding: 10px 0 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .strip {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-inline: 16px;
+    scrollbar-width: none;
+  }
+  .strip::-webkit-scrollbar { display: none; }
+
+  .elev {
+    appearance: none;
+    flex: none;
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    border-radius: var(--r);
+    color: var(--ink-2);
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 8px 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+  }
+
+  .elev b {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-3);
+  }
+
+  .elev[aria-pressed="true"] {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--paper-3);
+  }
+  .elev[aria-pressed="true"] b { color: var(--paper-3); opacity: 0.7; }
+  .elev:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .toolrow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-inline: 16px;
+  }
+
+  .seg {
+    display: flex;
+    border: 1px solid var(--rule);
+    border-radius: var(--r);
+    overflow: hidden;
+  }
+
+  .seg button {
+    appearance: none;
+    background: var(--paper-2);
+    border: 0;
+    border-right: 1px solid var(--rule);
+    font-family: var(--f-mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 7px 9px;
+    cursor: pointer;
+    min-height: 32px;
+  }
+  .seg button:last-child { border-right: 0; }
+  .seg button[aria-pressed="true"] { background: var(--accent-wash); color: var(--ink); }
+  .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  .legend {
+    margin-left: auto;
+    display: flex;
+    gap: 10px;
+    font-family: var(--f-mono);
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .legend span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .legend i { width: 8px; height: 8px; border-radius: 2px; display: block; }
+
+  .hint {
+    padding-inline: 16px;
+    font-family: var(--f-mono);
+    font-size: 9px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  /* ---------- schedule ---------- */
+
+  .sched { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+  .search {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--paper-3);
+    border-bottom: 1px solid var(--rule);
+    padding: 10px 16px;
+  }
+
+  .search input {
+    width: 100%;
+    appearance: none;
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    border-radius: var(--r);
+    color: var(--ink);
+    font-family: var(--f-mono);
+    font-size: 12px;
+    letter-spacing: 0.03em;
+    padding: 9px 10px;
+    min-height: 38px;
+  }
+  .search input:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .search input::placeholder { color: var(--ink-3); text-transform: uppercase; font-size: 10px; letter-spacing: 0.1em; }
+
+  .grp {
+    font-family: var(--f-mono);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    background: var(--paper);
+    padding: 7px 16px;
+    border-bottom: 1px solid var(--rule-soft);
+    position: sticky;
+    top: 59px;
+    z-index: 2;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 52px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    text-align: left;
+    appearance: none;
+    background: none;
+    border: 0;
+    border-bottom: 1px solid var(--rule-soft);
+    padding: 11px 16px;
+    cursor: pointer;
+    color: inherit;
+    min-height: 56px;
+  }
+
+  .row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .row.sel { background: var(--accent-wash); }
+
+  .row-id {
+    font-family: var(--f-mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .row-id i { width: 4px; height: 26px; border-radius: 2px; display: block; flex: none; }
+
+  .row-type { display: block; font-size: 13px; line-height: 1.3; }
+  .row-sub {
+    display: block;
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: var(--ink-3);
+    margin-top: 2px;
+    text-transform: uppercase;
+  }
+
+  .row-dim {
+    font-family: var(--f-mono);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .row-dim s { display: block; font-size: 9px; color: var(--ink-3); text-decoration: none; letter-spacing: 0.06em; }
+
+  /* ---------- detail sheet body ---------- */
+
+  .sh-dim { padding: 14px 16px; border-bottom: 1px solid var(--rule-soft); }
+
+  .dim-big {
+    font-family: var(--f-mono);
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .dim-big em { font-style: normal; color: var(--ink-3); font-size: 20px; padding: 0 4px; }
+  .dim-big small { font-size: 13px; color: var(--ink-2); font-weight: 400; padding-left: 4px; }
+
+  .dim-lab {
+    font-family: var(--f-mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 7px;
+  }
+
+  .dim-scan {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--rule);
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .dim-scan b {
+    font-family: var(--f-mono);
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .warn {
+    font-family: var(--f-mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--st-issue);
+    border: 1px solid currentColor;
+    border-radius: var(--r);
+    padding: 3px 5px;
+  }
+
+  .specs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+
+  .spec { padding: 11px 16px; border-bottom: 1px solid var(--rule-soft); }
+  .spec:nth-child(odd) { border-right: 1px solid var(--rule-soft); }
+  .spec:last-child { border-bottom: 0; }
+
+  .spec dt {
+    font-family: var(--f-mono);
+    font-size: 9px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 4px;
+  }
+  .spec dd { margin: 0; font-size: 13px; line-height: 1.35; }
+
+  .notes {
+    padding: 13px 16px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--ink-2);
+    border-bottom: 1px solid var(--rule-soft);
+    background: var(--paper-2);
+  }
+  .notes strong {
+    display: block;
+    font-family: var(--f-mono);
+    font-size: 9px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 4px;
+    font-weight: 400;
+  }
+
+  .sh-act { display: flex; gap: 8px; padding: 13px 16px 18px; }
+
+  /* ---------- assignment ---------- */
+
+  /* A window picked while in assign mode. */
+  .win.picked {
+    outline: 3px dashed var(--accent);
+    outline-offset: 3px;
+    z-index: 5;
+  }
+
+  /* A window assigned to whoever is signed in: a corner tab in accent. */
+  .win.mine::before {
+    content: "";
+    position: absolute;
+    right: -2px;
+    top: -2px;
+    width: 9px;
+    height: 9px;
+    background: var(--accent);
+    clip-path: polygon(0 0, 100% 0, 100% 100%);
+    pointer-events: none;
+  }
+  /* Rough openings use ::before for the header, so tab via border instead. */
+  .win.rough.mine { border-color: var(--accent); }
+
+  /* "Mine" filter: everyone else's work fades right back. */
+  .mine-only .win:not(.mine) { opacity: 0.18; }
+  .mine-only .win:not(.mine) .chip,
+  .mine-only .win:not(.mine) .dim,
+  .mine-only .win:not(.mine) .pdim { display: none; }
+
+  .assignbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-inline: 16px;
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  .assignbar[hidden] { display: none; }
+  .assignbar b { flex: 1; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .mini[aria-pressed="true"] { background: var(--accent-wash); border-color: var(--accent); color: var(--ink); }
+
+  /* Crew picker sheet bits (shared look with the survey form). */
+  .fsec { padding: 13px 16px; border-bottom: 1px solid var(--rule-soft); }
+  .flab {
+    font-family: var(--f-mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 7px;
+  }
+  .checks { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chk {
+    appearance: none;
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    border-radius: var(--r);
+    color: var(--ink-3);
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 10px 12px;
+    cursor: pointer;
+    min-height: 42px;
+  }
+  .chk[aria-pressed="true"] { background: var(--accent-wash); border-color: var(--accent); color: var(--ink); }
+  .chk:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- photo section + lightbox ---------- */
+
+  .sh-photos { padding: 13px 16px; border-bottom: 1px solid var(--rule-soft); }
+
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: rgba(8, 12, 16, 0.92);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: zoom-out;
+  }
+  .lightbox.on { display: flex; }
+  .lightbox img { max-width: 96vw; max-height: 92vh; display: block; }
+
+  .lightbox .lb-cap {
+    position: absolute;
+    left: 0; right: 0; bottom: 12px;
+    text-align: center;
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.75);
+  }
+}
+
+
+
+
+
+/* ================================================================
+   Infinity embed adjustments — NOT from the prototype.
+   The prototype owned the whole phone viewport; inside the Maps
+   Interactive tab it is a panel in a scrolling page, so it gets a
+   bounded height and gives up the 560px phone column. Keep every
+   override in this block so diffs against the prototype stay clean.
+   ================================================================ */
+.fitview-app {
+  min-height: 0;
+}
+.fitview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+/* Full screen as a fixed overlay (works in iOS PWAs where the Fullscreen API
+   does not). The panel drops its clamp and takes the whole viewport. */
+.fitview-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: var(--background);
+  padding: calc(10px + var(--inset-top, 0px)) 12px calc(10px + var(--inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+}
+.fitview-fullscreen .fitview-app {
+  flex: 1;
+  min-height: 0;
+}
+.fitview-fullscreen .fitview-app .app {
+  height: 100%;
+}
+/* The prototype sized its zoom/pan rail for a 560px phone column; keep the
+   buttons on one line in the wider embed. */
+.fitview-app .zoomctl button {
+  white-space: nowrap;
+  min-width: 46px;
+}
+
+/* Companion to the renderer's narrow-pane fix: when a pane is too slim for
+   horizontal text, its width label runs vertically like a drawing dimension
+   instead of being omitted. */
+.fitview-app .win .pdim-v {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  padding-top: 5px;
+  text-align: left;
+}
+.fitview-app .app {
+  max-width: none;
+  /* Fit under the hub header + tab row so the detail sheet — anchored to this
+     panel's bottom — stays on screen without scrolling the page. Scrolling
+     over the stage zooms the model, so a sheet below the fold is unreachable
+     on desktop; clamp instead of trusting one viewport arithmetic. */
+  height: clamp(440px, calc(100dvh - 360px), 760px);
+  /* The prototype's .app carries min-height: 100vh, which would beat the
+     height above — min-height wins that fight. Zero it out. */
+  min-height: 0;
+  border-inline: none;
+  border-radius: var(--radius-lg, 12px);
+}
+
+/* ---- Infinity reskin: map the prototype's tokens onto the Horizon
+   sunset-coral system so the fit view reads as part of this app.
+   Two rules here:
+   1. Reference the HOST's token names (--primary, --foreground, --border…),
+      never a name the prototype also defines locally (--accent, --ink) —
+      that would be a var() self-reference cycle inside this scope.
+   2. No media query: Infinity is always dark, so these values pin the fit
+      view to the dark look in both browser color schemes, overriding the
+      prototype's light theme and its prefers-color-scheme block alike. ---- */
+.fitview-app {
+  /* Chrome: paper, ink, rules, accent. */
+  --paper: var(--background);
+  --paper-2: var(--surface);
+  --paper-3: var(--card-raised);
+  --ink: var(--foreground);
+  --ink-2: var(--text-secondary);
+  --ink-3: var(--faint);
+  --rule: var(--border);
+  --rule-soft: var(--secondary);
+  --accent: var(--primary);
+  --accent-ink: var(--primary-foreground);
+  --accent-wash: var(--accent-bg);
+  --r: var(--radius-sm);
+  --f-ui: var(--font-body);
+  /* The prototype set most of its chrome in mono for a drafting-table feel;
+     Infinity reserves mono for codes alone (travel/invite codes) and speaks
+     Inter everywhere else. Match the app: one voice, Inter. */
+  --f-mono: var(--font-body);
+
+  /* Status speaks the app's semantic colors: the same green that means
+     "done" everywhere else, the same red that means "problem". To-fit uses
+     the info blue that already fills pins on the flat plan map. */
+  --st-tofit: var(--info);
+  --st-installed: var(--ok);
+  --st-issue: var(--danger);
+
+  /* Scene: the prototype's cool slate re-tinted to the warm hue-35 world.
+     Walls step darker front → side → rear exactly as before so the 3D read
+     (light direction) is preserved; sky fades toward the app background so
+     the model sits IN the page instead of floating on a foreign color. */
+  --wall-front: oklch(0.31 0.018 35);
+  --wall-side: oklch(0.26 0.017 35);
+  --wall-rear: oklch(0.215 0.016 35);
+  --gable: oklch(0.26 0.017 35);
+  --roof-a: oklch(0.19 0.015 35);
+  --roof-b: oklch(0.16 0.014 35);
+  --ridge: oklch(0.13 0.012 35);
+  --fascia: oklch(0.38 0.02 35);
+  --cill: oklch(0.4 0.022 45);
+  --sky-a: oklch(0.09 0.012 35);
+  --sky-b: oklch(0.13 0.015 35);
+  --sky-c: oklch(0.12 0.02 120);
+  --shadow-gnd: rgba(0, 0, 0, 0.5);
+  --grass: oklch(0.3 0.06 140 / 0.4);
+  /* Glass stays cool on purpose — real glazing reads blue-green, and the
+     contrast against warm walls is what makes openings pop. */
+}
+
+/* stories: with a story focused, the rest of the building drops to a dim
+   x-ray — still there for orientation, never competing for the eye, and
+   never swallowing taps meant for the focused story. */
+.fitview-app .face.story-dim {
+  opacity: 0.14;
+  pointer-events: none;
+}
+
+/* Role-aware window glow (adapter glowFor): red = assigned & waiting,
+   yellow = installed & awaiting QC, green = QC passed. The variables drive
+   BOTH the frame tint (the renderer routes them into --wc) and the halo.
+   Yellow is the one hue the scene doesn't already use; red deliberately
+   matches the issue red (both mean "this needs hands"), green matches the
+   installed green the crew already knows from pins. */
+.fitview-app {
+  --gl-red: #e4655c;
+  --gl-yellow: #e8c14a;
+  --gl-green: #35b98d;
+}
+
+/* drop-shadow, not box-shadow: .win's box-shadow already draws the glass
+   inset, and a halo must ride on top of it, not replace it. */
+.fitview-app .win.glow-red,
+.fitview-app .win.glow-yellow,
+.fitview-app .win.glow-green {
+  filter: drop-shadow(0 0 6px var(--wc)) drop-shadow(0 0 2px var(--wc));
+}
+
+/* Flashing frames (adapter flashFor) - the SECOND visual channel, apart
+   from the glow: envelope prep, crew-wide truth for every role. Aqua is
+   foreign to the status palette on purpose, and it reads as "sealed
+   against water" against the warm walls. */
+.fitview-app {
+  --fl-done: #3fd4c0;
+  --fl-needed: #2a8d81;
+}
+.fitview-app .win.flash-done {
+  outline: 4px solid var(--fl-done);
+  outline-offset: 2px;
+}
+.fitview-app .win.flash-needed {
+  outline: 4px dashed var(--fl-needed);
+  outline-offset: 2px;
+}
