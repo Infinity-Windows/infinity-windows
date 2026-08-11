@@ -8992,3 +8992,27 @@ body {
   user-select: none;
   -webkit-user-drag: none;
 }
+
+/* Cost-code switcher chips carry their NAME, not just a number — the old
+   hover tooltip never existed on a phone. Chips wrap instead of scrolling
+   so every code is visible at once. */
+.clock-chip.cost {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  border-radius: 12px;
+  max-width: 100%;
+}
+.clock-chip-num {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.clock-chip-desc {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--muted, #b3a498);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.clock-chip.cost.current .clock-chip-desc { color: inherit; }
