@@ -223,15 +223,17 @@ export async function listShiftsForProfile(
   profileId: string,
   sinceIso: string,
   untilIso: string,
+  /** Managers can ask for voided punches too ("Show removed entries"). */
+  includeVoided = false,
 ): Promise<TimeShift[]> {
-  const { data, error } = await supabase
+  let q = supabase
     .from("time_shifts")
     .select(SHIFT_SELECT)
     .eq("profile_id", profileId)
     .gte("clock_in_at", sinceIso)
-    .lt("clock_in_at", untilIso)
-    .neq("status", "voided")
-    .order("clock_in_at", { ascending: false });
+    .lt("clock_in_at", untilIso);
+  if (!includeVoided) q = q.neq("status", "voided");
+  const { data, error } = await q.order("clock_in_at", { ascending: false });
   if (error) throw error;
   return (data ?? []) as TimeShift[];
 }
@@ -664,6 +666,50 @@ export function weekRange(anchor: Date = new Date()): WeekRange {
     endIso: end.toISOString(),
     label,
   };
+}
+
+export type TimecardRangeMode = "day" | "week" | "pay";
+
+/**
+ * Pay periods are two Monday-start weeks on a fixed grid (epoch: Mon
+ * 2026-01-05), so every phone lands on the same boundaries with nothing
+ * stored. Day/week are the plain single spans.
+ */
+const PAY_PERIOD_EPOCH = new Date(2026, 0, 5); // Mon Jan 5 2026, local
+
+export function timecardRange(mode: TimecardRangeMode, anchor: Date): WeekRange {
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  if (mode === "day") {
+    const start = new Date(anchor);
+    start.setHours(0, 0, 0, 0);
+    const end = addDays(start, 1);
+    const label = start.toLocaleDateString(undefined, {
+      weekday: "long",
+      ...opts,
+    });
+    return { start, end, startIso: start.toISOString(), endIso: end.toISOString(), label };
+  }
+  if (mode === "pay") {
+    const wk = weekRange(anchor);
+    const weekIndex = Math.round(
+      (wk.start.getTime() - PAY_PERIOD_EPOCH.getTime()) / (7 * 86_400_000),
+    );
+    const start = addDays(wk.start, weekIndex % 2 === 0 ? 0 : -7);
+    const end = addDays(start, 14);
+    const lastDay = addDays(start, 13);
+    const label = `Pay period ${start.toLocaleDateString(undefined, opts)} – ${lastDay.toLocaleDateString(undefined, opts)}`;
+    return { start, end, startIso: start.toISOString(), endIso: end.toISOString(), label };
+  }
+  return weekRange(anchor);
+}
+
+/** Days a timecard range covers, as local punch-day keys (YYYY-MM-DD). */
+export function rangeDays(range: WeekRange): string[] {
+  const out: string[] = [];
+  for (let d = new Date(range.start); d < range.end; d = addDays(d, 1)) {
+    out.push(punchDay(d.toISOString()));
+  }
+  return out;
 }
 
 /** Local calendar day (YYYY-MM-DD) a punch belongs to, for day grouping. */
