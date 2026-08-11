@@ -724,20 +724,24 @@ export function ClockSheet({
             {!onBreak && !needsRealFinish && (costCodes.data?.length ?? 0) > 1 && (
               <div className="clock-chip-row-wrap">
                 <p className="clock-row-label">Switch cost code</p>
-                <div className="clock-chip-row">
+                <div className="clock-chip-row wrap">
                   {(costCodes.data ?? []).map((c) => {
                     const current = shift.cost_code_id === c.id;
                     return (
                       <button
                         key={c.id}
                         type="button"
-                        className={current ? "clock-chip current" : "clock-chip"}
+                        className={current ? "clock-chip cost current" : "clock-chip cost"}
                         disabled={busy || current}
                         onClick={() => doPhaseSwitch.mutate(c.id)}
-                        title={`${c.code} — ${c.label}`}
                       >
-                        {c.code}
-                        {current ? " · now" : ""}
+                        {/* Code AND name — a bare number means nothing on a
+                            phone, where the hover tooltip never existed. */}
+                        <span className="clock-chip-num">{c.code}</span>
+                        <span className="clock-chip-desc">
+                          {c.label}
+                          {current ? " · now" : ""}
+                        </span>
                       </button>
                     );
                   })}
