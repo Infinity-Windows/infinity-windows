@@ -47,6 +47,13 @@ import {
 import { computeInstallPoints } from "../../lib/points";
 import { checkFit, isInstallReadyStatus, readyToInstall, smallest } from "../../lib/install/fit";
 import {
+  framingIssueNote,
+  roFailures,
+  roVerdicts,
+  type RoCheckId,
+  type RoJudgment,
+} from "../../lib/install/roCheck";
+import {
   canStartInstall,
   clockEligibility,
   installTimer,
@@ -80,7 +87,7 @@ import { MissingSpecNotice } from "../../components/install/MissingSpecNotice";
 import { OpeningMoved } from "../../components/install/OpeningMoved";
 import { rememberOpening } from "../../lib/install/staleOpening";
 import { useRealtimeOpenings } from "../../lib/useRealtimeOpenings";
-import { createIssue } from "../../lib/issues";
+import { createIssue, listProjectIssues } from "../../lib/issues";
 import type { QrPayload } from "../../lib/qr";
 import { resolveWindowFromScan } from "../../lib/scanResolve";
 import { supabase } from "../../lib/supabase";
@@ -96,6 +103,47 @@ function pickAudioMime(): string {
     }
   }
   return "";
+}
+
+/**
+ * The teach-by-picture for each rough-opening check: the opening as a frame,
+ * with the measurement drawn the way you'd make it - X across the diagonals
+ * for square, top/bottom lines for width, left/right lines for height.
+ */
+function RoDiagram({ kind }: { kind: RoCheckId }) {
+  const frame = (
+    <rect x="7" y="5" width="34" height="52" rx="2" fill="none"
+      stroke="currentColor" strokeOpacity="0.45" strokeWidth="2" />
+  );
+  return (
+    <svg
+      className="ro-diagram"
+      viewBox="0 0 48 62"
+      width="44"
+      height="57"
+      aria-hidden
+    >
+      {frame}
+      {kind === "square" && (
+        <g stroke="#ff9a6a" strokeWidth="2.5" strokeLinecap="round">
+          <line x1="9" y1="7" x2="39" y2="55" />
+          <line x1="39" y1="7" x2="9" y2="55" />
+        </g>
+      )}
+      {kind === "width" && (
+        <g stroke="#ff9a6a" strokeWidth="2.5" strokeLinecap="round">
+          <line x1="9" y1="12" x2="39" y2="12" />
+          <line x1="9" y1="50" x2="39" y2="50" />
+        </g>
+      )}
+      {kind === "height" && (
+        <g stroke="#ff9a6a" strokeWidth="2.5" strokeLinecap="round">
+          <line x1="13" y1="7" x2="13" y2="55" />
+          <line x1="35" y1="7" x2="35" y2="55" />
+        </g>
+      )}
+    </svg>
+  );
 }
 
 const READY_LABEL: Record<string, string> = {
@@ -152,6 +200,12 @@ export function OpeningSheet() {
   // Rough-opening + condition local inputs
   const [roW, setRoW] = useState<string[]>(["", "", ""]);
   const [roH, setRoH] = useState<string[]>(["", ""]);
+  const [roDiag, setRoDiag] = useState<string[]>(["", ""]);
+  const [roJudge, setRoJudge] = useState<Record<RoCheckId, RoJudgment>>({
+    square: null,
+    width: null,
+    height: null,
+  });
   const [conditionNote, setConditionNote] = useState("");
   const [flagText, setFlagText] = useState("");
   const [jobNoteText, setJobNoteText] = useState("");
@@ -410,6 +464,24 @@ export function OpeningSheet() {
     [markSpecs.data, opening.data?.opening_code],
   );
 
+  // The checklist's referee: numbers judged live against the unit's size
+  // (catalog type first, spec sheet as fallback - same sizes the crew reads).
+  const roChecklist = useMemo(() => {
+    const num = (v: string) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    return roVerdicts({
+      diagonals: roDiag.map(num),
+      widths: roW.map(num),
+      heights: roH.map(num),
+      unitWidthIn:
+        opening.data?.window_types?.width_in ?? openingSpec?.width_in ?? null,
+      unitHeightIn:
+        opening.data?.window_types?.height_in ?? openingSpec?.height_in ?? null,
+    });
+  }, [roDiag, roW, roH, opening.data?.window_types, openingSpec]);
+
   const searchResults = useQuery({
     queryKey: ["unitSearch", search],
     queryFn: () => searchUnits(search),
@@ -527,11 +599,37 @@ export function OpeningSheet() {
       if (w == null || h == null) {
         throw new Error("Enter at least one width and one height measurement.");
       }
-      return setRoughOpening(openingId, w, h);
+      await setRoughOpening(openingId, w, h);
+
+      // The checklist's teeth: a Bad tap - or numbers that prove a problem
+      // even under a Good tap - files ONE framing issue, labeled with the
+      // window, deduped against an open one so re-saving never spams the
+      // framer's list.
+      const failures = roFailures(roChecklist, roJudge);
+      if (failures.length === 0) return { filed: false };
+      const existing = await listProjectIssues(projectId);
+      const alreadyOpen = existing.some(
+        (i) => i.opening_id === openingId && i.kind === "framing" && i.status === "open",
+      );
+      if (!alreadyOpen) {
+        await createIssue({
+          projectId,
+          openingId,
+          kind: "framing",
+          urgency: "urgent",
+          note: framingIssueNote(opening.data?.opening_code ?? "?", failures, roJudge),
+        });
+      }
+      return { filed: !alreadyOpen };
     },
-    onSuccess: () => {
-      setMessage("Rough opening saved.");
+    onSuccess: (r) => {
+      setMessage(
+        r.filed
+          ? "Rough opening saved — framing issue filed for this window."
+          : "Rough opening saved.",
+      );
       refresh();
+      void queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
     },
     onError: (e) => setMessage(formatApiError(e)),
   });
@@ -1206,50 +1304,148 @@ export function OpeningSheet() {
         <>
           <h2>Rough opening</h2>
           <p className="muted">
-            Measure width at 3 points, height at 2. We use the smallest.
+            Check in order: square, then width, then height. Tap Good or Bad,
+            then put the tape on it — the numbers are judged against this
+            window ({"\u2265"}1/8" and {"\u2264"}1/2" over the unit), and a
+            failed check files a framing issue by itself.
           </p>
-          <label className="field-label">Width (in) — 3 points</label>
-          <div className="ro-row">
-            {roW.map((v, i) => (
-              <input
-                key={i}
-                type="number"
-                inputMode="decimal"
-                step="0.0625"
-                value={v}
-                placeholder={["top", "mid", "bot"][i]}
-                onChange={(e) => {
-                  const next = [...roW];
-                  next[i] = e.target.value;
-                  setRoW(next);
-                }}
-              />
-            ))}
-          </div>
-          <label className="field-label">Height (in) — 2 points</label>
-          <div className="ro-row">
-            {roH.map((v, i) => (
-              <input
-                key={i}
-                type="number"
-                inputMode="decimal"
-                step="0.0625"
-                value={v}
-                placeholder={["left", "right"][i]}
-                onChange={(e) => {
-                  const next = [...roH];
-                  next[i] = e.target.value;
-                  setRoH(next);
-                }}
-              />
-            ))}
-          </div>
+
+          {([
+            {
+              id: "square" as RoCheckId,
+              title: "Square?",
+              how: "Measure both diagonals of the X — they should match.",
+              inputs: (
+                <div className="ro-row">
+                  {roDiag.map((v, i) => (
+                    <input
+                      key={i}
+                      type="number"
+                      inputMode="decimal"
+                      step="0.0625"
+                      value={v}
+                      placeholder={["diagonal 1", "diagonal 2"][i]}
+                      onChange={(e) => {
+                        const next = [...roDiag];
+                        next[i] = e.target.value;
+                        setRoDiag(next);
+                      }}
+                    />
+                  ))}
+                </div>
+              ),
+            },
+            {
+              id: "width" as RoCheckId,
+              title: "Width?",
+              how: "Across the top and bottom (and middle) — smallest wins.",
+              inputs: (
+                <div className="ro-row">
+                  {roW.map((v, i) => (
+                    <input
+                      key={i}
+                      type="number"
+                      inputMode="decimal"
+                      step="0.0625"
+                      value={v}
+                      placeholder={["top", "mid", "bot"][i]}
+                      onChange={(e) => {
+                        const next = [...roW];
+                        next[i] = e.target.value;
+                        setRoW(next);
+                      }}
+                    />
+                  ))}
+                </div>
+              ),
+            },
+            {
+              id: "height" as RoCheckId,
+              title: "Height?",
+              how: "Down the left and right sides — smallest wins.",
+              inputs: (
+                <div className="ro-row">
+                  {roH.map((v, i) => (
+                    <input
+                      key={i}
+                      type="number"
+                      inputMode="decimal"
+                      step="0.0625"
+                      value={v}
+                      placeholder={["left", "right"][i]}
+                      onChange={(e) => {
+                        const next = [...roH];
+                        next[i] = e.target.value;
+                        setRoH(next);
+                      }}
+                    />
+                  ))}
+                </div>
+              ),
+            },
+          ]).map((row) => {
+            const verdict = roChecklist.find((v) => v.check === row.id);
+            const judged = roJudge[row.id];
+            const disagree = judged === "good" && verdict?.measured === "bad";
+            return (
+              <div key={row.id} className="ro-check">
+                <div className="ro-check-head">
+                  <RoDiagram kind={row.id} />
+                  <div className="ro-check-title">
+                    <strong>{row.title}</strong>
+                    <span className="muted">{row.how}</span>
+                  </div>
+                  <div className="ro-judge" role="group" aria-label={row.title}>
+                    <button
+                      type="button"
+                      className={judged === "good" ? "ro-pill good on" : "ro-pill good"}
+                      onClick={() =>
+                        setRoJudge((j) => ({ ...j, [row.id]: j[row.id] === "good" ? null : "good" }))
+                      }
+                    >
+                      Good ✓
+                    </button>
+                    <button
+                      type="button"
+                      className={judged === "bad" ? "ro-pill bad on" : "ro-pill bad"}
+                      onClick={() =>
+                        setRoJudge((j) => ({ ...j, [row.id]: j[row.id] === "bad" ? null : "bad" }))
+                      }
+                    >
+                      Bad ✕
+                    </button>
+                  </div>
+                </div>
+                {judged !== null && (
+                  <>
+                    {row.inputs}
+                    {verdict?.detail && (
+                      <p
+                        className={
+                          verdict.measured === "bad" ? "ro-verdict bad" : "ro-verdict"
+                        }
+                      >
+                        {verdict.measured === "bad" ? "✕ " : verdict.measured === "good" ? "✓ " : ""}
+                        {verdict.detail}
+                        {disagree && " — the tape disagrees with your Good; this files as framing."}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })}
+
           <button
             className="action-btn"
             disabled={saveRo.isPending}
             onClick={() => saveRo.mutate()}
           >
-            {saveRo.isPending ? "Saving…" : "Save rough opening"}
+            {saveRo.isPending
+              ? "Saving…"
+              : roFailures(roChecklist, roJudge).length > 0
+                ? "Save — files a framing issue for this window"
+                : "Save rough opening"}
           </button>
           <div className={`fit-verdict fit-${fit.verdict}`}>
             {o.ro_width_in != null && o.ro_height_in != null ? (

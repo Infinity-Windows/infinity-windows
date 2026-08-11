@@ -16,10 +16,11 @@ describe("checkFit", () => {
   });
 
   it("passes with proper shim clearance", () => {
-    // 30x50 unit, RO 30.75 x 50.75 => 0.75 gap each = 0.375/side, within 0.25-0.5
-    const r = checkFit({ unitWidthIn: 30, unitHeightIn: 50, roWidthIn: 30.75, roHeightIn: 50.75 });
+    // Owner's rule (2026-08-11): overall gap between 1/8" and 1/2".
+    // 30x50 unit, RO 30.375 x 50.375 => 0.375 total gap, within range.
+    const r = checkFit({ unitWidthIn: 30, unitHeightIn: 50, roWidthIn: 30.375, roHeightIn: 50.375 });
     expect(r.verdict).toBe("fits");
-    expect(r.widthGap).toBe(0.75);
+    expect(r.widthGap).toBe(0.38); // round2
   });
 
   it("flags too_small as a hard stop", () => {
@@ -29,14 +30,14 @@ describe("checkFit", () => {
   });
 
   it("flags tight when under min clearance", () => {
-    // gap 0.25 total = 0.125/side < 0.25 min
-    const r = checkFit({ unitWidthIn: 30, unitHeightIn: 50, roWidthIn: 30.25, roHeightIn: 50.75 });
+    // gap 1/16" total < the 1/8" minimum - won't shim in.
+    const r = checkFit({ unitWidthIn: 30, unitHeightIn: 50, roWidthIn: 30.0625, roHeightIn: 50.375 });
     expect(r.verdict).toBe("tight");
   });
 
   it("flags too_big when over max clearance", () => {
-    // gap 1.5 total = 0.75/side > 0.5 max
-    const r = checkFit({ unitWidthIn: 30, unitHeightIn: 50, roWidthIn: 31.5, roHeightIn: 50.75 });
+    // gap 3/4" total > the 1/2" maximum - opening oversized.
+    const r = checkFit({ unitWidthIn: 30, unitHeightIn: 50, roWidthIn: 30.75, roHeightIn: 50.375 });
     expect(r.verdict).toBe("too_big");
   });
 
@@ -95,9 +96,9 @@ describe("readyToInstall", () => {
     expect(readyToInstall({ ...base, hasUnit: false }).status).toBe("incomplete");
   });
 
-  it("exposes default clearance constants", () => {
-    expect(DEFAULT_CLEARANCE.minPerSide).toBe(0.25);
-    expect(DEFAULT_CLEARANCE.maxPerSide).toBe(0.5);
+  it("exposes default clearance constants (the owner's 1/8-to-1/2 overall rule)", () => {
+    expect(DEFAULT_CLEARANCE.minPerSide).toBe(0.0625);
+    expect(DEFAULT_CLEARANCE.maxPerSide).toBe(0.25);
   });
 });
 
