@@ -1,5 +1,5 @@
+import { BackChip } from "../components/BackChip";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Sparkles } from "lucide-react";
 import { supabaseConfigured } from "../lib/supabase";
 import { queryClient } from "../lib/queryClient";
@@ -114,7 +114,6 @@ function brainMessage(outcome: BrainOutcome, note?: string): ChatMsg {
 }
 
 export function AskInfinity() {
-  const navigate = useNavigate();
   const [input, setInput] = useState("");
   const [catalog, setCatalog] = useState<CatalogType[]>(() => currentCatalog().types);
   const [messages, setMessages] = useState<ChatMsg[]>([
@@ -229,9 +228,7 @@ export function AskInfinity() {
           </p>
           <h1>Company brain</h1>
         </div>
-        <button type="button" className="back-chip" aria-label="Back" onClick={() => navigate(-1)}>
-          ‹
-        </button>
+        <BackChip label="Back" />
       </header>
 
       <div className="ask-thread">

@@ -1,3 +1,4 @@
+import { BackChip } from "../components/BackChip";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -52,7 +53,7 @@ export function Admin() {
       <div className="page">
         <header className="page-header">
           <h1>Admin</h1>
-          <Link to="/" className="back-chip" aria-label="Home">‹</Link>
+          <BackChip fallback="/" label="Home" />
         </header>
         <p className="muted">Admin is for supervisors and the owner.</p>
       </div>
@@ -71,7 +72,7 @@ export function Admin() {
             Accounts, approvals and the AI connection.
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">‹</Link>
+        <BackChip fallback="/" label="Home" />
       </header>
 
       <h2>Add someone yourself</h2>

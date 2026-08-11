@@ -1,6 +1,6 @@
+import { BackChip } from "../components/BackChip";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { isOwner } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { pushToast, toastError } from "../lib/toast";
@@ -64,7 +64,7 @@ export function AiSpend() {
       <div className="page">
         <header className="page-header">
           <h1>AI spend</h1>
-          <Link to="/" className="back-chip" aria-label="Home">‹</Link>
+          <BackChip fallback="/" label="Home" />
         </header>
         <p className="muted">
           What the assistant costs is the owner's business. Nothing you do is
@@ -92,7 +92,7 @@ export function AiSpend() {
             What the assistant costs, and the limits that stop it running away.
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">‹</Link>
+        <BackChip fallback="/" label="Home" />
       </header>
 
       {overview.isLoading && <p className="muted">Reading the meter…</p>}

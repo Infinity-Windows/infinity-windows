@@ -1,6 +1,6 @@
+import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import {
   BrainCircuit,
   Check,
@@ -601,9 +601,7 @@ export function Knowledge() {
           </p>
           <h1>AI Knowledge</h1>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">
-          ‹
-        </Link>
+        <BackChip fallback="/" label="Home" />
       </header>
 
       <p className="muted">

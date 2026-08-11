@@ -1,6 +1,6 @@
+import { BackChip } from "../components/BackChip";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import {
   groupAskLog,
   listAskedQuestions,
@@ -47,9 +47,7 @@ export function AskMisses() {
               : "Questions our own notes could not answer."}
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">
-          ‹
-        </Link>
+        <BackChip fallback="/" label="Home" />
       </header>
 
       <div className="row-gap" style={{ marginBottom: 12 }}>

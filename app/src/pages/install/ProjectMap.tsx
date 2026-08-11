@@ -1,3 +1,4 @@
+import { BackChip } from "../../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -1675,9 +1676,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       {!embedded && (
         <header className="page-header">
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <Link to={`/projects/${projectId}`} className="back-chip" aria-label="Back">
-              ‹
-            </Link>
+            <BackChip fallback={`/projects/${projectId}`} label="Back" />
             <h1>{project?.job_code ?? "Job"} map</h1>
           </div>
           <div className="row-gap">

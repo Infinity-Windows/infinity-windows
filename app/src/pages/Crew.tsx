@@ -1,5 +1,5 @@
+import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { getMyProfile, listProfiles, updateProfile } from "../lib/install/api";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { PinSetter } from "../components/PinGate";
@@ -48,9 +48,7 @@ export function Crew() {
             Skill tier drives who gets which window.
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">
-          ‹
-        </Link>
+        <BackChip fallback="/" label="Home" />
       </header>
       {!isLead && (
         <p className="muted">

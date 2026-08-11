@@ -1,3 +1,4 @@
+import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -86,7 +87,7 @@ export function Training() {
             Clearance says who can install what.
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">‹</Link>
+        <BackChip fallback="/" label="Home" />
       </header>
       <p className="muted">
         A cleared apprentice can be routed to a harder type — training changes

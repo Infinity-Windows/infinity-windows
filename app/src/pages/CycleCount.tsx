@@ -1,6 +1,7 @@
+import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { Scanner } from "../components/Scanner";
 import {
   findWindowByCode,
@@ -79,9 +80,7 @@ export function CycleCount() {
             <p className="home-greeting">Warehouse</p>
             <h1>Cycle count</h1>
           </div>
-          <Link to="/warehouse" className="back-chip" aria-label="Warehouse">
-            ‹
-          </Link>
+          <BackChip fallback="/warehouse" label="Warehouse" />
         </header>
         <p className="scanner-hint">Scan the slot label you want to count.</p>
         <Scanner
@@ -101,9 +100,7 @@ export function CycleCount() {
           <p className="home-greeting">Counting</p>
           <h1>{location.address}</h1>
         </div>
-        <Link to="/warehouse" className="back-chip" aria-label="Warehouse">
-          ‹
-        </Link>
+        <BackChip fallback="/warehouse" label="Warehouse" />
       </header>
       <p className="muted">
         Scan every window physically in this slot. Expected:{" "}

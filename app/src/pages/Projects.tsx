@@ -1,3 +1,4 @@
+import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -93,9 +94,7 @@ export function Projects() {
           <p className="home-greeting">Jobs</p>
           <h1>Active projects</h1>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">
-          ‹
-        </Link>
+        <BackChip fallback="/" label="Home" />
       </header>
       <p className="muted">
         One hub per job — warehouse pick list, opening map, and type brain.

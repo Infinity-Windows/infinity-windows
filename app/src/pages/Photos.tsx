@@ -1,5 +1,6 @@
+import { BackChip } from "../components/BackChip";
 import { useMemo } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { listProjects } from "../lib/api";
 import { PhotoFeed } from "../components/photos/PhotoFeed";
@@ -35,9 +36,7 @@ export function Photos() {
           <p className="home-greeting">Photos</p>
           <h1>{selectedJobCode ? selectedJobCode : "Recent across all jobs"}</h1>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">
-          ‹
-        </Link>
+        <BackChip fallback="/" label="Home" />
       </header>
 
       <PhotoFeed

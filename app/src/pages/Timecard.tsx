@@ -1,6 +1,6 @@
+import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
@@ -525,7 +525,7 @@ export function Timecard() {
             {isLead ? "Crew hours, approvals & payroll" : "Your hours this week"}
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home" />
+        <BackChip fallback="/" label="Home" />
       </header>
 
       {/* Week navigation */}

@@ -1,3 +1,4 @@
+import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -107,7 +108,7 @@ export function Receive() {
             Add unplanned / extra units into inventory and print labels.
           </p>
         </div>
-        <Link to="/warehouse" className="back-chip" aria-label="Warehouse">‹</Link>
+        <BackChip fallback="/warehouse" label="Warehouse" />
       </header>
 
       <div className="detail-card" style={{ marginBottom: 16 }}>

@@ -1,6 +1,6 @@
+import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import {
   confirmInstallMemo,
   getMyProfile,
@@ -75,7 +75,7 @@ export function MemoReview() {
             Confirm fields so the brain gets smarter.
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="My work">‹</Link>
+        <BackChip fallback="/" label="My work" />
       </header>
       <p className="muted">
         The AI split your voice memos into fields. A quick confirm makes the

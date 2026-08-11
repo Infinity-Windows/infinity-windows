@@ -1,3 +1,4 @@
+import { BackChip } from "../components/BackChip";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Scanner } from "../components/Scanner";
@@ -84,7 +85,7 @@ export function Scan() {
             Window label → unit. Slot label → what's in it.
           </p>
         </div>
-        <Link to="/warehouse" className="back-chip" aria-label="Warehouse">‹</Link>
+        <BackChip fallback="/warehouse" label="Warehouse" />
       </header>
       <div className="detail-card" style={{ padding: 12 }}>
         <Scanner

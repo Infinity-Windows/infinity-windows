@@ -1,6 +1,7 @@
+import { BackChip } from "../components/BackChip";
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { CalendarDays, MapPin, Plane, Plus, Users } from "lucide-react";
 import { getMyProfile } from "../lib/install/api";
 import { isSupervisorPlus } from "../lib/install/types";
@@ -61,7 +62,7 @@ export function Travel() {
             {isSupervisor ? "Trips for the crew — flights, lodging, and more." : "Your trips — flights, lodging, and more."}
           </p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home" />
+        <BackChip fallback="/" label="Home" />
       </header>
 
       <div className="travel-toolbar">

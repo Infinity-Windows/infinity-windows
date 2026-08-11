@@ -1,3 +1,4 @@
+import { BackChip } from "../components/BackChip";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { listWindowTypes } from "../lib/api";
@@ -45,7 +46,7 @@ export function Analytics() {
           <h1>Analytics</h1>
           <p className="muted" style={{ margin: 0 }}>Speed, quality, and bid accuracy.</p>
         </div>
-        <Link to="/" className="back-chip" aria-label="Home">‹</Link>
+        <BackChip fallback="/" label="Home" />
       </header>
 
       <h2>Installer leaderboard</h2>

@@ -1,3 +1,4 @@
+import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -223,9 +224,7 @@ export function ProjectDetail() {
     <div className="page">
       <header className="page-header">
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-          <Link to="/projects" className="back-chip" aria-label="Back to jobs">
-            ‹
-          </Link>
+          <BackChip fallback="/projects" label="Back to jobs" />
           <div style={{ minWidth: 0 }}>
             <h1 style={{ fontSize: 26 }}>{project?.job_code ?? "Job"}</h1>
             <p className="muted" style={{ margin: 0, fontSize: 12 }}>
