@@ -10,6 +10,7 @@ import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
 import { supabase } from "../lib/supabase";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
+import { IncomingMondayJobs } from "../components/projects/IncomingMondayJobs";
 import { MessagesSquare } from "lucide-react";
 
 interface OpeningCountRow {
@@ -99,6 +100,7 @@ export function Projects() {
       <p className="muted">
         One hub per job — warehouse pick list, opening map, and type brain.
       </p>
+      {canAdd && <IncomingMondayJobs />}
       {canAdd && (
         <div className="project-create">
           {!adding ? (

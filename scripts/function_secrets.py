@@ -84,6 +84,7 @@ FEATURE_NAMES = {
     'generate-toolbox-talk': 'toolbox talks',
     'ingest-knowledge': 'adding documents to the brain',
     'manage-crew-access': 'adding and removing crew logins',
+    'monday-sync': 'pulling upcoming jobs from Monday.com',
     'redeem-crew-invite': 'setting up a new crew login from a code',
     'send-push': 'push notifications',
     'synthesize-type-tips': 'window-type tips',
