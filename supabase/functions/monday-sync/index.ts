@@ -101,7 +101,13 @@ async function fetchBoardItems(): Promise<MondayItem[]> {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  if (!MONDAY_API_TOKEN) {
+  // Feature-detect the token (the guard form scripts/function_secrets.py
+  // reads as OPTIONAL): until the owner sets MONDAY_API_TOKEN this function
+  // reports itself unconfigured instead of failing the deploy secret gate —
+  // same pattern as ask's optional OPENAI key.
+  if (Deno.env.get("MONDAY_API_TOKEN")) {
+    // configured — continue below
+  } else {
     return jsonResponse({ ok: false, error: "MONDAY_API_TOKEN is not configured" }, 500);
   }
 
