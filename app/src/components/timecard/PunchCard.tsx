@@ -106,6 +106,14 @@ export function PunchCard({ shift: s, isLead, isSup, canEdit, projects, costCode
             than a normal day
           </div>
         )}
+        {/* The revert reason stays visible on the punch until re-approval,
+            so a swiped-away push never loses the explanation. */}
+        {s.status === "submitted" &&
+          s.edited_note?.startsWith("Approval reverted:") && (
+            <div className="warn-text" style={{ fontSize: 11.5 }}>
+              {s.edited_note}
+            </div>
+          )}
         {s.status === "rejected" && s.reject_reason && (
           <div className="error" style={{ fontSize: 11.5 }}>
             “{s.reject_reason}”

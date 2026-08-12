@@ -13,6 +13,7 @@ import { listInstallEventsForProfile } from "../../lib/install/api";
 import {
   addDays,
   approveShift,
+  unapproveShift,
   currentBreakSeconds,
   elapsedWorkSeconds,
   listOvertimeRules,
@@ -40,6 +41,7 @@ import { PunchCard } from "./PunchCard";
 import { ShiftEditor, type CostOpt, type ProjectOpt } from "./ShiftEditor";
 import { fmtHours, fmtTime } from "./format";
 import { printTimesheet } from "./printTimesheet";
+import { sendPush } from "../../lib/permissions/pushServer";
 
 function downloadText(text: string, filename: string, mime: string) {
   const blob = new Blob([text], { type: mime });
@@ -123,6 +125,30 @@ export function TimecardPanel({
     },
     onSuccess: refresh,
   });
+  // The escape hatch (supervisor+): revert the week's approval with a
+  // required reason. Hours untouched; punches return to submitted, the
+  // person gets a push carrying the reason, and the amber "Approval
+  // reverted" line stays on each punch until re-approval.
+  const [unapproving, setUnapproving] = useState(false);
+  const [unapproveReason, setUnapproveReason] = useState("");
+  const unapproveWeek = useMutation({
+    mutationFn: async (args: { ids: string[]; reason: string }) => {
+      for (const id of args.ids) await unapproveShift(id, args.reason);
+      return args.ids.length;
+    },
+    onSuccess: () => {
+      void sendPush({
+        profileIds: [personId],
+        title: "Week approval reverted",
+        body: `Your approved week was reverted: ${unapproveReason.trim()}. Check My timecard — it needs re-approval.`,
+        tag: `timecard-unapproved-${personId}-${range.startIso.slice(0, 10)}`,
+        url: "/timecard",
+      });
+      setUnapproving(false);
+      setUnapproveReason("");
+      refresh();
+    },
+  });
   const reject = useMutation({
     mutationFn: (args: { id: string; reason: string }) =>
       rejectShift(args.id, args.reason),
@@ -196,6 +222,10 @@ export function TimecardPanel({
 
   const submittedIds = useMemo(
     () => paidRows.filter((s) => s.status === "submitted").map((s) => s.id),
+    [paidRows],
+  );
+  const approvedIds = useMemo(
+    () => paidRows.filter((s) => s.status === "approved").map((s) => s.id),
     [paidRows],
   );
   // "Approved" only when every closed punch made it through — open shifts
@@ -320,10 +350,48 @@ export function TimecardPanel({
                 : `Approve week (${submittedIds.length})`}
             </button>
           ) : weekApproved ? (
-            <span className="tcx-week-ok">
-              <CheckCircle2 size={15} aria-hidden /> Week approved
+            <span className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+              <span className="tcx-week-ok">
+                <CheckCircle2 size={15} aria-hidden /> Week approved
+              </span>
+              {isSup && (
+                <button
+                  className="button-like"
+                  style={{ fontSize: 12 }}
+                  onClick={() => setUnapproving((v) => !v)}
+                >
+                  {unapproving ? "Keep approved" : "Unapprove week"}
+                </button>
+              )}
             </span>
           ) : null
+        )}
+        {unapproving && isSup && weekApproved && (
+          <div style={{ marginTop: 8, flexBasis: "100%" }}>
+            <p className="muted" style={{ margin: "0 0 6px", fontSize: 12 }}>
+              The hours stay exactly as they are — only the approval is taken
+              back. {personName} gets notified with your reason, and the week
+              can be re-approved after the fix.
+            </p>
+            <div className="row-gap">
+              <input
+                type="text"
+                style={{ flex: 1 }}
+                placeholder="Why is this approval being reverted?"
+                value={unapproveReason}
+                onChange={(e) => setUnapproveReason(e.target.value)}
+              />
+              <button
+                className="button-like active-pill"
+                disabled={unapproveWeek.isPending || unapproveReason.trim() === ""}
+                onClick={() =>
+                  unapproveWeek.mutate({ ids: approvedIds, reason: unapproveReason.trim() })
+                }
+              >
+                {unapproveWeek.isPending ? "Reverting…" : "Revert approval"}
+              </button>
+            </div>
+          </div>
         )}
       </div>
 

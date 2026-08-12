@@ -349,6 +349,22 @@ export async function leadEditShift(
  * drops out of every list and total (status 'voided'), while the row and a
  * permanent audit entry with the required reason stay behind.
  */
+/**
+ * Supervisor+ takes an approval back — reason required, hours untouched.
+ * The punch returns to 'submitted' for normal re-approval.
+ */
+export async function unapproveShift(
+  shiftId: string,
+  note: string,
+): Promise<TimeShift> {
+  const { data, error } = await supabase.rpc("lead_unapprove_shift", {
+    p_shift_id: shiftId,
+    p_note: note,
+  });
+  if (error) throw error;
+  return data as TimeShift;
+}
+
 export async function leadVoidShift(
   shiftId: string,
   note: string,
