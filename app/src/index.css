@@ -9503,3 +9503,11 @@ body {
   display: inline-flex; align-items: center; gap: 5px;
   color: #34d399; font-size: 12.5px; font-weight: 600; flex: none;
 }
+
+.notif-clear {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 8px; flex: none;
+  border: 1px solid rgba(255,255,255,.1); background: none;
+  color: var(--muted); cursor: pointer;
+}
+.notif-clear:hover { background: rgba(255,255,255,.06); color: #fff; }

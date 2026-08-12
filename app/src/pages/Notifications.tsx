@@ -1,8 +1,13 @@
 import { BackChip } from "../components/BackChip";
 import { useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Settings2 } from "lucide-react";
+import { Settings2, X } from "lucide-react";
+import {
+  dismissKeys,
+  fingerprint,
+  listDismissedKeys,
+} from "../lib/notificationDismissals";
 import { notifyLocal } from "../lib/permissions/notifyLocal";
 import {
   getMyProfile,
@@ -32,9 +37,21 @@ interface Note {
   title: string;
   sub: string;
   to: string;
+  /**
+   * Content fingerprint. id+fp is the dismissal key: clearing hides THIS
+   * occurrence for good, while new content (new punches, a changed badge)
+   * mints a new key and the row comes back.
+   */
+  fp?: string;
+}
+
+/** id + content fingerprint — the durable dismissal identity of a row. */
+function noteKey(n: Note): string {
+  return n.fp ? `${n.id}::${n.fp}` : n.id;
 }
 
 export function Notifications() {
+  const qcClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
@@ -179,6 +196,7 @@ export function Notifications() {
         title: msg.title,
         sub: msg.body,
         to: "/my-schedule",
+        fp: fingerprint([...digest.assignmentIds].sort()),
       });
     }
   }
@@ -196,6 +214,7 @@ export function Notifications() {
       title: msg.title,
       sub: msg.body,
       to: `/travel/${t.id}`,
+      fp: fingerprint([t.start_date ?? "", t.end_date ?? ""]),
     });
   }
 
@@ -207,6 +226,7 @@ export function Notifications() {
       title: `${pendingQc.length} install${pendingQc.length > 1 ? "s" : ""} awaiting QC`,
       sub: "Sign off passes and callbacks",
       to: "/qc",
+      fp: fingerprint(pendingQc.map((r) => r.id).sort()),
     });
   }
 
@@ -216,7 +236,8 @@ export function Notifications() {
       dot: "warn",
       title: `${shifts.data!.length} timecard${shifts.data!.length > 1 ? "s" : ""} to approve`,
       sub: "Review submitted shifts",
-      to: "/clock",
+      to: "/team-timecards",
+      fp: fingerprint(shifts.data!.map((r) => r.id).sort()),
     });
   }
 
@@ -228,6 +249,7 @@ export function Notifications() {
       title: `${pendingReq.length} access request${pendingReq.length > 1 ? "s" : ""}`,
       sub: "Approve or deny new crew",
       to: "/admin",
+      fp: fingerprint(pendingReq.map((r) => r.id).sort()),
     });
   }
 
@@ -244,6 +266,7 @@ export function Notifications() {
       title: `${vehicleTitle(v)} — ${badge.label}`,
       sub: "Schedule fleet service",
       to: `/vehicles/${v.id}`,
+      fp: fingerprint([badge.label]),
     });
   }
 
@@ -254,6 +277,7 @@ export function Notifications() {
       title: `${r.project.job_code}: ${r.total} unit${r.total > 1 ? "s" : ""} to reorder`,
       sub: "Damaged or missing — reorder to keep the crew moving",
       to: `/projects/${r.project.id}?tab=warehouse`,
+      fp: fingerprint([r.total]),
     });
   }
 
@@ -265,19 +289,35 @@ export function Notifications() {
       title: `${conflictPeople} crew double-booked`,
       sub: "Overlapping schedule assignments — resolve before publishing",
       to: "/scheduling",
+      fp: fingerprint([...new Set((conflicts.data ?? []).map((c) => c.profileId))].sort()),
     });
   }
+
+  // Seen-once-then-gone (owner call, 2026-08-11): rows the person cleared
+  // stay cleared — per person, server-stored, keyed by content so a NEW
+  // occurrence still shows up.
+  const dismissed = useQuery({
+    queryKey: ["notifDismissed", id],
+    queryFn: () => listDismissedKeys(id!),
+    enabled: Boolean(id),
+  });
+  const dismiss = useMutation({
+    mutationFn: (keys: string[]) => dismissKeys(id!, keys),
+    onSuccess: () => void qcClient.invalidateQueries({ queryKey: ["notifDismissed", id] }),
+  });
+  const visible = notes.filter((n) => !(dismissed.data?.has(noteKey(n)) ?? false));
 
   // Local-notification seam: mirror the in-app "what needs you" list to a device
   // notification. No-op unless the user granted notifications; deduped by tag so
   // each distinct item only pings once per session. This is a real client-side
   // hook (no server events) — when web push lands it will deliver the same
   // {title, body, tag, url} shape from the server instead. See notifyLocal.ts.
-  const noteSignature = notes.map((n) => n.id).join("|");
+  const noteSignature = visible.map((n) => n.id).join("|");
   useEffect(() => {
-    for (const n of notes) {
+    for (const n of visible) {
       void notifyLocal({ title: n.title, body: n.sub, tag: `needs-you-${n.id}`, url: n.to });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteSignature]);
 
   return (
@@ -296,18 +336,40 @@ export function Notifications() {
         <span className="muted" aria-hidden>›</span>
       </Link>
 
-      {notes.length === 0 ? (
+      {visible.length > 0 && (
+        <div className="row-gap" style={{ justifyContent: "flex-end", marginBottom: 6 }}>
+          <button
+            className="button-like"
+            disabled={dismiss.isPending}
+            onClick={() => dismiss.mutate(visible.map(noteKey))}
+          >
+            {dismiss.isPending ? "Clearing…" : "Clear all"}
+          </button>
+        </div>
+      )}
+      {visible.length === 0 ? (
         <p className="muted">You're all caught up.</p>
       ) : (
         <div className="notif-list">
-          {notes.map((n) => (
+          {visible.map((n) => (
             <Link key={n.id} to={n.to} className="notif-row">
               <i className={n.dot === "ok" ? "dot-ok" : n.dot === "warn" ? "dot-warn" : "dot-info"} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600 }}>{n.title}</div>
                 <div className="muted" style={{ fontSize: 12.5 }}>{n.sub}</div>
               </div>
-              <span className="muted">›</span>
+              <button
+                type="button"
+                className="notif-clear"
+                aria-label={`Clear "${n.title}"`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  dismiss.mutate([noteKey(n)]);
+                }}
+              >
+                <X size={14} aria-hidden />
+              </button>
             </Link>
           ))}
         </div>
