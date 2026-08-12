@@ -41,3 +41,6 @@ verify_jwt = true
 # runs). The real credential is the invite code, checked inside the function.
 [functions.redeem-crew-invite]
 verify_jwt = true
+
+[functions.monday-sync]
+verify_jwt = true
