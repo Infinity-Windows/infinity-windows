@@ -174,8 +174,16 @@ export function MapsInteractive({ project }: { project: Project }) {
     const host = hostRef.current;
     if (!host || !job) return;
     if (viewRef.current) {
-      viewRef.current.refresh(job);
-      return;
+      if (host.childElementCount > 0) {
+        // Same live host — refresh in place, keep the camera.
+        viewRef.current.refresh(job);
+        return;
+      }
+      // The Sheets toggle unmounted the old host: the renderer is stranded
+      // on a detached node (black 3D view — owner report, 2026-08-13).
+      // Tear it down and mount fresh into the new div.
+      viewRef.current.destroy();
+      viewRef.current = null;
     }
     viewRef.current = mountFitView(host, job, {
       toast: pushToast,
@@ -201,7 +209,7 @@ export function MapsInteractive({ project }: { project: Project }) {
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [job]);
+  }, [job, mapView]);
 
   // Unmount-only teardown: the renderer owns global listeners until then,
   // and a still-pending deferred navigation must die with the tab.
@@ -277,7 +285,7 @@ export function MapsInteractive({ project }: { project: Project }) {
   // a branch swap here would strand the mounted view on a detached div.
   return (
     <div>
-      {!fullscreen && viewToggle}
+      <div style={fullscreen ? { display: "none" } : undefined}>{viewToggle}</div>
       <div className={fullscreen ? "fitview-shell fitview-fullscreen" : "fitview-shell"}>
       <div className="fitview-toolbar">
         {job && job.windows.length === 0 && (
