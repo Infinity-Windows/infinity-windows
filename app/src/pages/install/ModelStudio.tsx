@@ -14,6 +14,7 @@ import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BackChip } from "../../components/BackChip";
 import { pushToast } from "../../lib/toast";
+import { formatApiError } from "../../lib/errors";
 import {
   listMarkSpecs,
   listOpenings,
@@ -29,6 +30,7 @@ import {
 } from "../../lib/fitview/adapter";
 import { buildStudioSeed } from "../../lib/modelstudio/fromProject";
 import { UnitBuilder } from "../../components/studio/UnitBuilder";
+import { buildFitviewModelFromStudio, type PublishStats } from "../../lib/modelstudio/toFitview";
 import {
   listStudioUnits,
   saveStudioUnit,
@@ -148,6 +150,9 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
   /** The whole palette hides behind one drop bar (owner ask). */
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
+  const [publishPreview, setPublishPreview] = useState<
+    { model: Record<string, unknown>; stats: PublishStats } | null
+  >(null);
   const units = useQuery({ queryKey: ["studioUnits"], queryFn: listStudioUnits });
   /** Undo: serialized snapshots pushed BEFORE each mutating gesture. */
   const undoStack = useRef<string[]>([]);
@@ -385,6 +390,107 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
     pushToast("Rebuilt from the traced building.");
   };
 
+  /** Sizes for seeded mark items come from the job's specs. */
+  const sizeByName = useMemo(() => {
+    const m = new Map<string, { wMm: number; hMm: number; type?: string }>();
+    for (const sp of specs.data ?? []) {
+      if (sp.width_in == null || sp.height_in == null) continue;
+      const entry = {
+        wMm: sp.width_in * 25.4,
+        hMm: sp.height_in * 25.4,
+        type: sp.style ?? undefined,
+      };
+      // Seeded items are named by opening code ("13-1"); specs key by base
+      // mark ("13") — register both spellings.
+      m.set(sp.mark_code, entry);
+      m.set(`${sp.mark_code}-1`, entry);
+      m.set(`${sp.mark_code}-2`, entry);
+    }
+    return m;
+  }, [specs.data]);
+
+  const preparePublish = () => {
+    const bp = bpRef.current;
+    if (!bp) return;
+    const converted = buildFitviewModelFromStudio(
+      bp.model.floorplan.walls as never,
+      bp.model.scene.getItems() as never,
+      sizeByName,
+    );
+    if (!converted) {
+      pushToast("Nothing to publish — the model has no closed walls yet.");
+      return;
+    }
+    setPublishPreview(converted);
+  };
+
+  const publish = useMutation({
+    mutationFn: async () => {
+      const bp = bpRef.current;
+      if (!bp || !outline || !publishPreview) throw new Error("Nothing to publish");
+      const prev = (outline.features ?? {}) as Record<string, unknown>;
+      const prevFitview = (prev.fitview ?? {}) as Record<string, unknown>;
+      await savePlanOutline({
+        outlineId: outline.id,
+        projectId,
+        plansetId: outline.planset_id,
+        pageNumber: outline.page_number,
+        points: outline.points,
+        pageAspect: outline.page_aspect,
+        features: {
+          ...prev,
+          // The Studio model rides along so re-editing resumes from here.
+          modelstudio: {
+            serialized: bp.model.exportSerialized(),
+            savedAt: new Date().toISOString(),
+          },
+          // Previous map model kept for one-tap revert (owner decision).
+          ...(prevFitview.model
+            ? { fitview_backup: { model: prevFitview.model, at: new Date().toISOString() } }
+            : {}),
+          fitview: { ...prevFitview, model: publishPreview.model },
+        },
+      });
+    },
+    onSuccess: () => {
+      setPublishPreview(null);
+      pushToast("Published — the interactive map now renders this model.");
+      void qc.invalidateQueries({ queryKey: ["planOutlines", projectId] });
+    },
+  });
+
+  const revert = useMutation({
+    mutationFn: async () => {
+      if (!outline) throw new Error("No model");
+      const prev = (outline.features ?? {}) as Record<string, unknown>;
+      const backup = (prev.fitview_backup ?? {}) as Record<string, unknown>;
+      if (!backup.model) throw new Error("No backup to revert to");
+      const prevFitview = (prev.fitview ?? {}) as Record<string, unknown>;
+      await savePlanOutline({
+        outlineId: outline.id,
+        projectId,
+        plansetId: outline.planset_id,
+        pageNumber: outline.page_number,
+        points: outline.points,
+        pageAspect: outline.page_aspect,
+        features: {
+          ...prev,
+          fitview_backup: { model: prevFitview.model, at: new Date().toISOString() },
+          fitview: { ...prevFitview, model: backup.model },
+        },
+      });
+    },
+    onSuccess: () => {
+      pushToast("Reverted — the map uses the previous model again.");
+      void qc.invalidateQueries({ queryKey: ["planOutlines", projectId] });
+    },
+  });
+
+  const hasBackup = Boolean(
+    ((outline?.features ?? {}) as { fitview_backup?: { model?: unknown } })
+      .fitview_backup?.model,
+  );
+
   const insertUnit = (config: UnitConfig, name: string) => {
     const bp = bpRef.current;
     if (!bp) return;
@@ -484,6 +590,18 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
           ↩ Undo{undoDepth > 0 ? ` (${undoDepth})` : ""}
         </button>
         <button className="button-like studio-mini" onClick={reseed}>Re-seed</button>
+        <button className="button-like studio-mini active-pill" onClick={preparePublish}>
+          Publish to map
+        </button>
+        {hasBackup && (
+          <button
+            className="button-like studio-mini"
+            disabled={revert.isPending}
+            onClick={() => revert.mutate()}
+          >
+            Revert map
+          </button>
+        )}
       </div>
       <details open>
         <summary className="tcx-label">Tools</summary>
@@ -657,6 +775,42 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
           No traced building yet — trace one on the job's Maps Interactive tab
           (Sheets view) first, then come back.
         </p>
+      )}
+
+      {publishPreview && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={() => setPublishPreview(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <p style={{ margin: 0, fontWeight: 700 }}>Publish to the interactive map?</p>
+            <p className="muted" style={{ margin: "6px 0 0", fontSize: 12.5 }}>
+              {publishPreview.stats.masses} building mass
+              {publishPreview.stats.masses === 1 ? "" : "es"} ·{" "}
+              {publishPreview.stats.stories} stor
+              {publishPreview.stats.stories === 1 ? "y" : "ies"} ·{" "}
+              {publishPreview.stats.windows} window
+              {publishPreview.stats.windows === 1 ? "" : "s"}
+              {publishPreview.stats.skippedWindows > 0 &&
+                ` (${publishPreview.stats.skippedWindows} skipped — not on a wall)`}
+            </p>
+            <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
+              The crew's Maps Interactive tab renders this immediately — glows,
+              specs and window taps included. The current map model is kept for
+              one-tap revert.
+            </p>
+            {publish.isError && <p className="error">{formatApiError(publish.error)}</p>}
+            <div className="row-gap" style={{ marginTop: 10 }}>
+              <button
+                className="button-like active-pill"
+                disabled={publish.isPending}
+                onClick={() => publish.mutate()}
+              >
+                {publish.isPending ? "Publishing…" : "Publish"}
+              </button>
+              <button className="button-like" onClick={() => setPublishPreview(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {builderOpen && (
