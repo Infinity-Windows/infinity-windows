@@ -26,6 +26,14 @@ import {
   saveStudioProject,
 } from "../../lib/modelstudio/projects";
 import {
+  duplicateFloorSerialized,
+  floorElevationsCm,
+  MAX_FLOORS,
+  parseFloorLite,
+  parseFloors,
+} from "../../lib/modelstudio/floors";
+import { buildFloorShell } from "../../lib/modelstudio/floorShell";
+import {
   buildAuthoredJob,
   buildFitViewJob,
   fitviewCalibration,
@@ -201,6 +209,12 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   const [mode, setModeState] = useState<number>(0);
   /** ONE view at a time (owner ask — no more split panes): 3D is home. */
   const [view, setView] = useState<"model" | "plan">("model");
+  /** Floors: serialized plans per floor; only the active one is live in
+   * the vendor, the rest render as shells. */
+  const floorsRef = useRef<string[]>([]);
+  const [floorInfo, setFloorInfo] = useState({ count: 1, active: 0 });
+  const shellsRef = useRef<unknown[]>([]);
+  const [addingFloor, setAddingFloor] = useState(false);
   /** Full-screen the stage — editing needs the whole laptop screen. */
   const [fs, setFs] = useState(false);
   /** The wall the user clicked (persists past hover) + a version tick so
@@ -339,11 +353,15 @@ export function ModelStudio({ source }: { source: StudioSource }) {
 
   // What the session boots from: a standalone row's own model first, then
   // the job outline's saved model, then the traced seed, then a BLANK plan
-  // (the standalone start-from-nothing path).
-  const savedSerialized =
-    (source.kind === "standalone" ? proj.data?.model?.serialized : null) ??
-    ((outline?.features as { modelstudio?: { serialized?: string } } | null)
-      ?.modelstudio?.serialized ?? null);
+  // (the standalone start-from-nothing path). Multi-floor saves carry a
+  // floors[] array; a lone serialized string is a one-floor building.
+  const savedModel =
+    ((source.kind === "standalone" ? proj.data?.model : null) ??
+      (outline?.features as {
+        modelstudio?: { serialized?: string; floors?: string[] };
+      } | null)?.modelstudio ??
+      null) as { serialized?: string; floors?: string[] } | null;
+  const savedSerialized = savedModel?.floors?.[0] ?? savedModel?.serialized ?? null;
 
   // Job sources still need their outline chain before mounting (the seed);
   // a standalone source only needs its row fetched — blank is a valid boot.
@@ -374,7 +392,12 @@ export function ModelStudio({ source }: { source: StudioSource }) {
 
     // Saved Studio model wins; then the traced-building seed; then blank.
     const saved = savedSerialized;
-    bp.model.loadSerialized(saved ?? seed?.serialized ?? BLANK_SERIALIZED);
+    const boot = parseFloors(savedModel, seed?.serialized ?? BLANK_SERIALIZED);
+    floorsRef.current = boot.floors;
+    activeFloorRef.current = 0;
+    setFloorInfo({ count: boot.floors.length, active: 0 });
+    bp.model.loadSerialized(boot.floors[0]);
+    rebuildFloorContext(boot.floors, 0);
 
     if (!saved && seed) {
       for (const w of seed.windows) {
@@ -528,15 +551,22 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     if (!bp) return;
     setSaving(true);
     try {
-      const serialized = bp.model.exportSerialized();
-      const savedAt = new Date().toISOString();
+      // Flush the live floor into the set, then save ALL floors. The lone
+      // `serialized` field mirrors floor 1 for old readers.
+      floorsRef.current[activeFloorRef.current] = bp.model.exportSerialized();
+      const floors = [...floorsRef.current];
+      const modelBody = {
+        serialized: floors[0],
+        floors,
+        savedAt: new Date().toISOString(),
+      };
       if (source.kind === "standalone") {
         if (!proj.data) throw new Error("Project not loaded yet");
         await saveStudioProject({
           id: proj.data.id,
           name: proj.data.name,
           projectId: proj.data.project_id,
-          model: { serialized, savedAt },
+          model: modelBody,
         });
         void qc.invalidateQueries({ queryKey: ["studioProject", standaloneId] });
       } else {
@@ -550,7 +580,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           points: outline.points,
           pageAspect: outline.page_aspect,
           // Merge: the fitview model and 2D features must survive untouched.
-          features: { ...prev, modelstudio: { serialized, savedAt } },
+          features: { ...prev, modelstudio: modelBody },
         });
       }
       pushToast("Studio model saved.");
@@ -722,6 +752,88 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     item.redrawWall?.();
   };
 
+  // ------------------------------------------------------- floors 2–10
+
+  const activeFloorRef = useRef(0);
+
+  /** Shells + lids for the frozen floors, and the 2D ghost of the floor
+   * below. The active floor edits at y=0, so shells sit RELATIVE to it —
+   * the floor below's ceiling is the ground you build on. */
+  const rebuildFloorContext = (floors: string[], active: number) => {
+    const bp = bpRef.current;
+    if (!bp) return;
+    const scene = bp.model.scene.getScene();
+    for (const g of shellsRef.current) scene.remove(g as never);
+    shellsRef.current = [];
+    const elevs = floorElevationsCm(floors);
+    floors.forEach((f, i) => {
+      if (i === active) return;
+      const { walls } = parseFloorLite(f);
+      if (walls.length === 0) return;
+      // A floor with one above it wears its flat ceiling lid.
+      const withLid = i < floors.length - 1;
+      const g = buildFloorShell(walls, elevs[i] - elevs[active], withLid);
+      scene.add(g);
+      shellsRef.current.push(g);
+    });
+    const fp = bp.floorplanner;
+    if (fp) {
+      fp.view.underlayWalls =
+        active > 0 ? parseFloorLite(floors[active - 1]).walls : null;
+      fp.view.draw();
+    }
+  };
+
+  const switchFloor = (n: number) => {
+    const bp = bpRef.current;
+    if (!bp || n === activeFloorRef.current) return;
+    if (n < 0 || n >= floorsRef.current.length) return;
+    floorsRef.current[activeFloorRef.current] = bp.model.exportSerialized();
+    bp.model.loadSerialized(floorsRef.current[n] ?? BLANK_SERIALIZED);
+    // Undo history is per-floor: a stack of floor-3 snapshots must never
+    // restore onto floor 2.
+    undoStack.current = [];
+    setUndoDepth(0);
+    setSelWall(null);
+    setSelUnit(null);
+    activeFloorRef.current = n;
+    setFloorInfo({ count: floorsRef.current.length, active: n });
+    rebuildFloorContext(floorsRef.current, n);
+    requestAnimationFrame(() => {
+      bp.floorplanner?.resizeView();
+      fitPlan(bp);
+    });
+  };
+
+  const addFloor = (copyBelow: boolean) => {
+    const bp = bpRef.current;
+    if (!bp || floorsRef.current.length >= MAX_FLOORS) return;
+    floorsRef.current[activeFloorRef.current] = bp.model.exportSerialized();
+    const below = floorsRef.current[floorsRef.current.length - 1];
+    floorsRef.current.push(
+      copyBelow ? duplicateFloorSerialized(below) : BLANK_SERIALIZED,
+    );
+    setAddingFloor(false);
+    switchFloor(floorsRef.current.length - 1);
+    pushToast(
+      copyBelow
+        ? `Floor ${floorsRef.current.length} — copied from the floor below.`
+        : `Floor ${floorsRef.current.length} — the floor below wears its ceiling; build what actually goes up.`,
+    );
+  };
+
+  const deleteTopFloor = () => {
+    const top = floorsRef.current.length - 1;
+    if (top === 0) return;
+    if (!window.confirm(`Delete floor ${top + 1}? Its walls and windows go with it.`)) {
+      return;
+    }
+    if (activeFloorRef.current === top) switchFloor(top - 1);
+    floorsRef.current.pop();
+    setFloorInfo({ count: floorsRef.current.length, active: activeFloorRef.current });
+    rebuildFloorContext(floorsRef.current, activeFloorRef.current);
+  };
+
   // ------------------------------------------------ 3D drag handles wiring
 
   /** Re-park the handle spheres on the current selection. */
@@ -882,9 +994,34 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   const preparePublish = () => {
     const bp = bpRef.current;
     if (!bp) return;
+    // Every floor publishes: the live one straight from the vendor, frozen
+    // ones parsed from their serialized plans — stacked into stories.
+    floorsRef.current[activeFloorRef.current] = bp.model.exportSerialized();
+    const publishFloors = floorsRef.current.map((f, i) => {
+      if (i === activeFloorRef.current) {
+        return {
+          walls: bp.model.floorplan.walls,
+          items: bp.model.scene.getItems(),
+        };
+      }
+      const lite = parseFloorLite(f);
+      return {
+        walls: lite.walls.map((w) => ({
+          height: w.height,
+          getStartX: () => w.x1,
+          getStartY: () => w.y1,
+          getEndX: () => w.x2,
+          getEndY: () => w.y2,
+        })),
+        items: lite.items.map((it) => ({
+          position: { x: it.x, y: it.y, z: it.z },
+          rotation: { y: it.rotationY },
+          metadata: it.metadata,
+        })),
+      };
+    });
     const converted = buildFitviewModelFromStudio(
-      bp.model.floorplan.walls as never,
-      bp.model.scene.getItems() as never,
+      publishFloors as never,
       sizeByName,
     );
     if (!converted) {
@@ -1299,6 +1436,59 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       <details>
         <summary className="tcx-label">Building</summary>
         <div className="studio-palette-body">
+          <label className="field-label">Floors</label>
+          <div className="row-gap" style={{ flexWrap: "wrap" }}>
+            {Array.from({ length: floorInfo.count }, (_, i) => (
+              <button
+                key={i}
+                className={
+                  floorInfo.active === i
+                    ? "button-like active-pill studio-mini"
+                    : "button-like studio-mini"
+                }
+                onClick={() => switchFloor(i)}
+              >
+                {i + 1}
+              </button>
+            ))}
+            {floorInfo.count < MAX_FLOORS && (
+              <button
+                className="button-like studio-mini"
+                onClick={() => setAddingFloor((v) => !v)}
+              >
+                + Floor
+              </button>
+            )}
+            {floorInfo.count > 1 && (
+              <button
+                className="button-like studio-mini"
+                title={`Delete floor ${floorInfo.count}`}
+                style={{ color: "var(--danger, #f87171)" }}
+                onClick={deleteTopFloor}
+              >
+                🗑
+              </button>
+            )}
+          </div>
+          {addingFloor && (
+            <div className="row-gap" style={{ flexWrap: "wrap" }}>
+              <button className="button-like studio-mini active-pill" onClick={() => addFloor(false)}>
+                Start empty
+              </button>
+              <button className="button-like studio-mini" onClick={() => addFloor(true)}>
+                Copy floor below
+              </button>
+              <span className="muted" style={{ fontSize: 10.5, alignSelf: "center" }}>
+                empty = only what goes up (like BLACK22); copy = hotel repeats
+              </span>
+            </div>
+          )}
+          {floorInfo.active > 0 && (
+            <p className="muted" style={{ margin: 0, fontSize: 10.5 }}>
+              Floor {floorInfo.active + 1} — the floor below shows as a ghost
+              in 2D and wears its ceiling in 3D.
+            </p>
+          )}
           <label className="field-label">Wall height (all walls)</label>
           <div className="row-gap">
             <input

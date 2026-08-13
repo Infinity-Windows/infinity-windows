@@ -96,11 +96,30 @@ export class FloorplannerView {
     this.draw()
   }
 
+  // infinity: the floor BELOW the one being edited, drawn as a light ghost
+  // so upper floors can be traced against it (owner floors spec). Set by
+  // the page; cm plan coordinates, same space as walls.
+  public underlayWalls: Array<{ x1: number; y1: number; x2: number; y2: number }> | null = null
+
   /** */
   public draw() {
     this.context.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height)
 
     this.drawGrid()
+
+    // infinity: ghost of the floor below, under everything editable.
+    if (this.underlayWalls && this.underlayWalls.length > 0) {
+      for (const w of this.underlayWalls) {
+        this.drawLine(
+          this.viewmodel.convertX(w.x1),
+          this.viewmodel.convertY(w.y1),
+          this.viewmodel.convertX(w.x2),
+          this.viewmodel.convertY(w.y2),
+          8,
+          'rgba(120, 120, 120, 0.25)'
+        )
+      }
+    }
 
     this.floorplan.getRooms().forEach((room) => {
       this.drawRoom(room)

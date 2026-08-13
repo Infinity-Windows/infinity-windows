@@ -18,6 +18,10 @@ export interface SerializedItem {
   fixed: boolean
   resizable?: boolean
   description?: string // Description for AI understanding
+  // infinity: the FULL metadata rides along — the parametric unit config
+  // (panels/rows/corner) lived only in memory before, so a saved model
+  // reloaded every window as a generic stretched mesh.
+  metadata?: Record<string, unknown>
 }
 
 /**
@@ -82,7 +86,9 @@ export class Model {
         scale_z: object.scale.z,
         fixed: object.fixed,
         resizable: metadata.resizable,
-        description: metadata.description
+        description: metadata.description,
+        // infinity: see SerializedItem — keep unitConfig & friends.
+        metadata: { ...metadata }
       }
     }
 
@@ -100,6 +106,9 @@ export class Model {
     items.forEach((item) => {
       const position = new THREE.Vector3(item.xpos, item.ypos, item.zpos)
       const metadata = {
+        // infinity: restore the full saved metadata first (unitConfig,
+        // frameGapMm, …), then the identity fields win over stale copies.
+        ...(item.metadata ?? {}),
         itemName: item.item_name,
         resizable: item.resizable,
         itemType: item.item_type,

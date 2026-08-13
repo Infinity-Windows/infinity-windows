@@ -127,6 +127,109 @@ test("creating a project calls the RPC and opens the editor", async ({ page }) =
   await expect(page).toHaveURL(new RegExp(`/studio/p/${SP1}`));
 });
 
+test("floors: add empty floor 2, ghost + ceiling appear, save carries both", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  const calls = await useStudioFixtures(page);
+  await page.goto(`/studio/p/${SP1}`);
+  await expect(page.getByText("Model (3D)")).toBeVisible();
+
+  // Give floor 1 a real footprint (programmatic — drawing is tested by hand).
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const fp = bp.model.floorplan;
+    const a = fp.newCorner(0, 0, "a");
+    const b = fp.newCorner(1000, 0, "b");
+    const c = fp.newCorner(1000, 600, "c");
+    const d = fp.newCorner(0, 600, "d");
+    fp.newWall(a, b);
+    fp.newWall(b, c);
+    fp.newWall(c, d);
+    fp.newWall(d, a);
+    fp.update();
+  });
+
+  // Tools → Building → + Floor → Start empty.
+  await page.getByRole("button", { name: /Tools/ }).click();
+  await page.getByText("Building", { exact: true }).click();
+  await page.getByRole("button", { name: "+ Floor" }).click();
+  await page.getByRole("button", { name: "Start empty" }).click();
+
+  // Floor 2 active: chip state + the hint + the ghost underlay in 2D.
+  await expect(
+    page.getByText(/the floor below shows as a ghost/),
+  ).toBeVisible();
+  const state = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const scene = bp.model.scene.getScene();
+    const shells = scene.children.filter((g: any) => g.name === "studio-floor-shell");
+    return {
+      activeWalls: bp.model.floorplan.getWalls().length,
+      shells: shells.length,
+      // Floor 1's shell = 4 wall quads + 1 ceiling lid.
+      shellChildren: shells[0]?.children.length ?? 0,
+      ghost: bp.floorplanner?.view?.underlayWalls?.length ?? 0,
+    };
+  });
+  expect(state.activeWalls).toBe(0); // empty — NOT a copy of floor 1
+  expect(state.shells).toBe(1);
+  expect(state.shellChildren).toBe(5);
+  expect(state.ghost).toBe(4);
+
+  // Back to floor 1: ghost gone, floor 1's walls live again.
+  await page.getByRole("button", { name: "1", exact: true }).click();
+  const back = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    return {
+      activeWalls: bp.model.floorplan.getWalls().length,
+      ghost: bp.floorplanner?.view?.underlayWalls?.length ?? 0,
+    };
+  });
+  expect(back.activeWalls).toBe(4);
+  expect(back.ghost).toBe(0);
+
+  // Save: the RPC body carries BOTH floors.
+  await page.getByRole("button", { name: "Save model" }).click();
+  await expect.poll(() => calls.length).toBeGreaterThan(0);
+  const body = calls[calls.length - 1].body as {
+    p_model: { floors: string[]; serialized: string };
+  };
+  expect(body.p_model.floors).toHaveLength(2);
+  expect(body.p_model.serialized).toBe(body.p_model.floors[0]);
+});
+
+test("copy-floor-below duplicates the plan for hotel repeats", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useStudioFixtures(page);
+  await page.goto(`/studio/p/${SP1}`);
+  await expect(page.getByText("Model (3D)")).toBeVisible();
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const fp = bp.model.floorplan;
+    const a = fp.newCorner(0, 0, "a");
+    const b = fp.newCorner(800, 0, "b");
+    const c = fp.newCorner(800, 500, "c");
+    const d = fp.newCorner(0, 500, "d");
+    fp.newWall(a, b);
+    fp.newWall(b, c);
+    fp.newWall(c, d);
+    fp.newWall(d, a);
+    fp.update();
+  });
+  await page.getByRole("button", { name: /Tools/ }).click();
+  await page.getByText("Building", { exact: true }).click();
+  await page.getByRole("button", { name: "+ Floor" }).click();
+  await page.getByRole("button", { name: "Copy floor below" }).click();
+  const walls = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    return bp.model.floorplan.getWalls().length;
+  });
+  expect(walls).toBe(4); // identical plan, ready to adjust
+});
+
 test("old job-tab links land on the standalone Studio", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "supervisor" });
   await useStudioFixtures(page);

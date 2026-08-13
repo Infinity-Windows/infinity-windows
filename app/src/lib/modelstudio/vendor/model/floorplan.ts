@@ -15,6 +15,9 @@ export interface SavedFloorplan {
     corner2: string
     frontTexture?: WallTexture
     backTexture?: WallTexture
+    // infinity: per-wall height overrides were silently LOST on save —
+    // an 18 ft wall came back at the config default after every reload.
+    height?: number
   }>
   wallTextures?: unknown[]
   floorTextures?: Record<string, FloorTexture>
@@ -227,7 +230,9 @@ export class Floorplan {
         corner1: wall.getStart().id,
         corner2: wall.getEnd().id,
         frontTexture: wall.frontTexture,
-        backTexture: wall.backTexture
+        backTexture: wall.backTexture,
+        // infinity: see SavedFloorplan — heights survive the round trip.
+        height: wall.height
       })
     })
     floorplan.newFloorTextures = this.floorTextures
@@ -253,6 +258,10 @@ export class Floorplan {
       }
       if (wall.backTexture) {
         newWall.backTexture = wall.backTexture
+      }
+      // infinity: restore the saved height (see SavedFloorplan).
+      if (typeof wall.height === 'number' && wall.height > 0) {
+        newWall.height = wall.height
       }
     })
 

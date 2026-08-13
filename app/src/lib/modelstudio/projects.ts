@@ -11,7 +11,7 @@ export interface StudioProjectRow {
   id: string;
   name: string;
   project_id: string | null;
-  model: { serialized?: string; savedAt?: string } | null;
+  model: { serialized?: string; savedAt?: string; floors?: string[] } | null;
   archived: boolean;
   created_by: string | null;
   created_at: string;
@@ -59,7 +59,7 @@ export async function saveStudioProject(input: {
   id?: string | null;
   name: string;
   projectId?: string | null;
-  model?: { serialized: string; savedAt: string } | null;
+  model?: { serialized: string; savedAt: string; floors?: string[] } | null;
   archived?: boolean;
 }): Promise<StudioProjectRow> {
   const { data, error } = await supabase.rpc("save_studio_project", {
