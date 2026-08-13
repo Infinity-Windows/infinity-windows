@@ -47,7 +47,8 @@ export class Floorplanner {
   private canvasElement: HTMLCanvasElement
 
   /** */
-  private view: FloorplannerView
+  // infinity: public — the page sets view.underlayWalls (floor ghost).
+  public view: FloorplannerView
 
   /** */
   private mouseDown = false

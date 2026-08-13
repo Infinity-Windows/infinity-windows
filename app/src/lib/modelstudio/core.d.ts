@@ -103,6 +103,13 @@ export interface StudioFloorplanner {
   pixelsPerCm: number;
   cmPerPixel: number;
   wallWidth: number;
+  /** 6-inch drawing snap (0 disables) — infinity vendor diff. */
+  gridSnapCm: number;
+  /** The 2D canvas view; `underlayWalls` ghosts the floor below. */
+  view: {
+    underlayWalls: Array<{ x1: number; y1: number; x2: number; y2: number }> | null;
+    draw(): void;
+  };
   setMode(mode: number): void;
   reset(): void;
   resizeView(): void;

@@ -61,7 +61,7 @@ function key(p: Pt): string {
 }
 
 /** Outer boundary per connected wall component, leftmost-turn walk. */
-function outerPolygons(walls: StudioWallLike[]): { poly: Pt[]; heightM: number }[] {
+export function outerPolygons(walls: StudioWallLike[]): { poly: Pt[]; heightM: number }[] {
   type Node = { p: Pt; nbrs: { to: string; heightM: number }[] };
   const nodes = new Map<string, Node>();
   const add = (p: Pt) => {
@@ -162,53 +162,97 @@ function distToSegment(p: Pt, a: Pt, b: Pt): { d: number; t: number } {
   return { d: Math.hypot(p.x - px, p.z - pz), t };
 }
 
+/** One floor's live or parsed content, ground floor first. */
+export interface PublishFloor {
+  walls: StudioWallLike[];
+  items: SceneItemLike[];
+}
+
 export function buildFitviewModelFromStudio(
-  walls: StudioWallLike[],
-  items: SceneItemLike[],
+  floors: PublishFloor[],
   sizeByName: Map<string, { wMm: number; hMm: number; type?: string }>,
 ): { model: Record<string, unknown>; stats: PublishStats } | null {
-  const masses = outerPolygons(walls);
-  if (masses.length === 0) return null;
+  // Every floor stacks on the tallest walls of the floors below it; an
+  // empty floor still lifts the ones above by a default storey.
+  const DEFAULT_FLOOR_M = 2.5;
 
-  // Story bands from distinct mass heights (rounded to cm so float noise
-  // doesn't mint phantom stories).
-  const distinct = [...new Set(masses.map((m) => Math.round(m.heightM * 100)))]
-    .sort((a, b) => a - b)
-    .map((v) => v / 100);
-  const stories = distinct.map((top, i) => {
-    const bottom = i === 0 ? 0 : distinct[i - 1];
-    return {
-      n: i + 1,
-      elevM: bottom,
-      heightM: top - bottom,
-      footprints: masses
-        .filter((m) => m.heightM >= top - EPS_M)
-        .map((m) => m.poly.map((p) => ({ x: p.x, z: p.z }))),
-    };
-  });
+  interface Story {
+    n: number;
+    elevM: number;
+    heightM: number;
+    footprints: { x: number; z: number }[][];
+  }
+  const stories: Story[] = [];
+  const edges: (Edge & { floor: number })[] = [];
+  let elevAcc = 0;
+  let anyMass = false;
 
-  // Edge enumeration mirroring elevationsOf: stories bottom-up → footprints
-  // → ring edges, one continuous counter.
-  const edges: Edge[] = [];
-  for (const st of stories) {
-    for (const fp of st.footprints) {
-      for (let i = 0; i < fp.length; i++) {
-        const a = fp[i];
-        const b = fp[(i + 1) % fp.length];
-        edges.push({
-          a,
-          b,
-          len: Math.hypot(b.x - a.x, b.z - a.z),
-          story: st.n,
-          elevM: st.elevM,
-        });
+  floors.forEach((floor, fi) => {
+    const masses = outerPolygons(floor.walls);
+    const floorElev = elevAcc;
+    const maxWall = floor.walls.reduce(
+      (h, w) => Math.max(h, w.height * CM_TO_M),
+      0,
+    );
+    elevAcc += maxWall || DEFAULT_FLOOR_M;
+    if (masses.length === 0) return;
+    anyMass = true;
+
+    // Story bands from distinct mass heights WITHIN the floor (rounded to
+    // cm so float noise doesn't mint phantom stories), lifted to the
+    // floor's own elevation.
+    const distinct = [...new Set(masses.map((m) => Math.round(m.heightM * 100)))]
+      .sort((a, b) => a - b)
+      .map((v) => v / 100);
+    for (let i = 0; i < distinct.length; i++) {
+      const top = distinct[i];
+      const bottom = i === 0 ? 0 : distinct[i - 1];
+      const st: Story = {
+        n: stories.length + 1,
+        elevM: floorElev + bottom,
+        heightM: top - bottom,
+        footprints: masses
+          .filter((m) => m.heightM >= top - EPS_M)
+          .map((m) => m.poly.map((p) => ({ x: p.x, z: p.z }))),
+      };
+      stories.push(st);
+      // Edge enumeration mirroring elevationsOf: stories bottom-up →
+      // footprints → ring edges, one continuous counter.
+      for (const fp of st.footprints) {
+        for (let j = 0; j < fp.length; j++) {
+          const a = fp[j];
+          const b = fp[(j + 1) % fp.length];
+          edges.push({
+            a,
+            b,
+            len: Math.hypot(b.x - a.x, b.z - a.z),
+            story: st.n,
+            elevM: st.elevM,
+            floor: fi,
+          });
+        }
       }
+    }
+  });
+  if (!anyMass) return null;
+
+  const floorElevs: number[] = [];
+  {
+    let acc = 0;
+    for (const floor of floors) {
+      floorElevs.push(acc);
+      const maxWall = floor.walls.reduce(
+        (h, w) => Math.max(h, w.height * CM_TO_M),
+        0,
+      );
+      acc += maxWall || DEFAULT_FLOOR_M;
     }
   }
 
   const windows: Record<string, unknown>[] = [];
   let skipped = 0;
-  for (const item of items) {
+  const matchItems = (items: SceneItemLike[], fi: number) => {
+    for (const item of items) {
     const name = item.metadata?.itemName ?? "unit";
     const cfg = item.metadata?.unitConfig;
     const fromCatalog = cfg?.panels?.length
@@ -220,13 +264,17 @@ export function buildFitviewModelFromStudio(
       : null;
     const size = fromCatalog ?? sizeByName.get(name) ?? { wMm: 914, hMm: 1524 };
     const p: Pt = { x: item.position.x * CM_TO_M, z: item.position.z * CM_TO_M };
+    // Items are edited floor-relative (each floor sits at y=0 in the
+    // vendor); the floor's elevation makes their height absolute, and only
+    // the item's own floor's edges are candidates.
+    const centreM = item.position.y * CM_TO_M + floorElevs[fi];
     let bestIdx = -1;
     let bestD = Infinity;
     let bestT = 0;
     edges.forEach((e, i) => {
+      if (e.floor !== fi) return;
       const { d, t } = distToSegment(p, e.a, e.b);
       // Prefer the story band the item's height actually sits in.
-      const centreM = item.position.y * CM_TO_M;
       const inBand = centreM >= e.elevM - EPS_M;
       const score = d + (inBand ? 0 : 100);
       if (score < bestD) {
@@ -240,10 +288,7 @@ export function buildFitviewModelFromStudio(
       continue; // not near any wall — don't invent a placement
     }
     const e = edges[bestIdx];
-    const sillM = Math.max(
-      0,
-      item.position.y * CM_TO_M - (size.hMm / 1000) / 2 - e.elevM,
-    );
+    const sillM = Math.max(0, centreM - (size.hMm / 1000) / 2 - e.elevM);
     // A 90° corner unit publishes the legs + wrap the map renderer already
     // walks wall-to-wall (leg 0 on the anchored wall). The longer leg is
     // the anchored one — mirror of cornerGeometryInfo in the Studio.
@@ -288,16 +333,19 @@ export function buildFitviewModelFromStudio(
       status: "tofit",
       ...legFields,
     });
-  }
+    }
+  };
+  floors.forEach((floor, fi) => matchItems(floor.items, fi));
 
-  const all = masses.flatMap((m) => m.poly);
+  const all = stories.flatMap((st) => st.footprints.flat());
   const xs = all.map((p) => p.x);
   const zs = all.map((p) => p.z);
+  const topM = stories.reduce((t, st) => Math.max(t, st.elevM + st.heightM), 0);
   const model = {
     building: {
       width: Math.max(...xs) - Math.min(...xs),
       depth: Math.max(...zs) - Math.min(...zs),
-      height: distinct[distinct.length - 1],
+      height: topM,
       rise: 0,
       footprints: stories[0].footprints,
       stories,
@@ -307,7 +355,7 @@ export function buildFitviewModelFromStudio(
   return {
     model,
     stats: {
-      masses: masses.length,
+      masses: stories[0].footprints.length,
       stories: stories.length,
       windows: windows.length,
       skippedWindows: skipped,
