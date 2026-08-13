@@ -1,6 +1,6 @@
 import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Scanner } from "../components/Scanner";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
@@ -69,7 +69,6 @@ import { listRoster } from "../lib/chat/api";
 import { mergeJobPeople } from "../lib/whoOnJob";
 import { CalendarClock, Plane, Truck, Users } from "lucide-react";
 import { resolveWindowFromScan } from "../lib/scanResolve";
-import { ProjectMap } from "./install/ProjectMap";
 import { MapsInteractive } from "./install/MapsInteractive";
 import { DispatchBoard } from "./install/DispatchBoard";
 import { ScrollTabs } from "../components/nav/ScrollTabs";
@@ -107,6 +106,15 @@ export function ProjectDetail() {
       ? tabParam
       : "overview";
 
+  // Legacy deep links (?tab=map) land on the merged tab's Sheets view — the
+  // 8 places that link to the 2D map keep working without edits.
+  useEffect(() => {
+    if (tabParam === "map") {
+      setSearchParams({ tab: "maps-interactive", mapview: "sheets" }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabParam]);
+
   useRealtimeOpenings(projectId);
   const { effectiveRole } = useEffectiveRole();
   const isLead = isForemanPlus(effectiveRole);
@@ -119,7 +127,8 @@ export function ProjectDetail() {
     { id: "warehouse", label: "Warehouse" },
     { id: "chat", label: "Chat" },
     { id: "photos", label: "Photos" },
-    { id: "map", label: "Map" },
+    // "Map" and "Maps Interactive" merged 2026-08-13 (owner call): one tab,
+    // 3D + Sheets views inside. ?tab=map deep links redirect below.
     { id: "maps-interactive", label: "Maps Interactive" },
     ...(isLead ? [{ id: "exceptions" as HubTab, label: "Exceptions" }] : []),
     { id: "brain", label: "Brain" },
@@ -312,8 +321,6 @@ export function ProjectDetail() {
           jobLabel={project?.job_code ?? project?.name ?? "this job"}
         />
       )}
-
-      {tab === "map" && <ProjectMap embedded />}
 
       {tab === "maps-interactive" && project && <MapsInteractive project={project} />}
 
