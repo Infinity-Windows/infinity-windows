@@ -221,6 +221,75 @@ test("a unit on a twin-wall boundary cuts holes in BOTH walls", async ({
     .screenshot({ path: join(SHOTS, "twin-wall-hole.png") });
 });
 
+test("panels read left-to-right as seen from OUTSIDE", async ({ page }) => {
+  // Spec drawings are always the Outside View (owner, window 16), so a unit
+  // whose config is [wide, narrow] must show the wide panel on the LEFT to
+  // someone standing outside the wall. On the building's east wall
+  // (x = 1800, outside toward +x), an outside viewer looking -x has +z on
+  // their left — so panel 0's world-z must exceed the last panel's.
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useOutline(page, { fitview: { model: FITVIEW_MODEL } });
+  await openStudio(page);
+
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    bp.model.scene.addItem(
+      3,
+      "/modelstudio/models/window.json",
+      {
+        itemName: "E2E outside-view unit",
+        itemType: 3,
+        modelUrl: "/modelstudio/models/window.json",
+        unitConfig: {
+          kind: "window",
+          heightMm: 1500,
+          panels: [
+            { widthMm: 1600, mechanism: "fixed" },
+            { widthMm: 400, mechanism: "fixed" },
+          ],
+        },
+      },
+      { x: 1800, y: 120, z: 300 },
+      0,
+      undefined,
+      false,
+    );
+  });
+  await page.waitForFunction(() => {
+    const bp = (window as any).__studio;
+    const items = bp.model.scene.getItems();
+    return items.length === 1 && Boolean(items[0].currentWallEdge);
+  });
+
+  // Measure the BUILT geometry, not the config: the two glass panes are the
+  // last two merged boxes (24 vertices each — an all-fixed unit has no sash
+  // bars). The wider slice is the wide panel; its world-z is where the
+  // outside viewer sees it.
+  const panels = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const item = bp.model.scene.getItems()[0];
+    const attr = item.geometry.getAttribute("position");
+    const ry = item.rotation.y;
+    const slice = (from: number) => {
+      const xs: number[] = [];
+      for (let i = from; i < from + 24; i++) xs.push(attr.getX(i));
+      const mean = xs.reduce((t, v) => t + v, 0) / xs.length;
+      return {
+        extent: Math.max(...xs) - Math.min(...xs),
+        worldZ: item.position.z - Math.sin(ry) * mean,
+      };
+    };
+    return [slice(attr.count - 48), slice(attr.count - 24)];
+  });
+  const [a, b] = panels as { extent: number; worldZ: number }[];
+  const wide = a.extent > b.extent ? a : b;
+  const narrow = a.extent > b.extent ? b : a;
+  // Sanity: the two panes really are the 1600 mm and 400 mm glass (cm).
+  expect(wide.extent).toBeGreaterThan(100);
+  expect(narrow.extent).toBeLessThan(50);
+  expect(wide.worldZ).toBeGreaterThan(narrow.worldZ);
+});
+
 test("a fresh seed never mints twin walls", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "supervisor" });
   // No saved Studio model: the tab seeds from the traced building.

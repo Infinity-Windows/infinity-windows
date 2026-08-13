@@ -76,6 +76,26 @@ export async function saveStudioUnit(
   return data as StudioUnit;
 }
 
+/**
+ * Rewrite a catalog unit in place — how a spec import gets refined to match
+ * its drawing (window 16 arrives as one fixed panel because the spec row
+ * only carries overall dims; the builder splits it into its five).
+ */
+export async function updateStudioUnit(
+  id: string,
+  name: string,
+  config: UnitConfig,
+): Promise<StudioUnit> {
+  const { data, error } = await supabase
+    .from("studio_units")
+    .update({ name, kind: config.kind, config, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as StudioUnit;
+}
+
 export async function retireStudioUnit(id: string): Promise<void> {
   const { error } = await supabase
     .from("studio_units")
@@ -121,11 +141,18 @@ export function specToUnitConfig(spec: ProjectMarkSpec): UnitConfig | null {
   return { kind, heightMm: h, panels };
 }
 
-export function specImportName(spec: ProjectMarkSpec): string {
-  const op = spec.operation ?? "Fixed";
-  const wIn = spec.width_in != null ? Math.round(spec.width_in) : "?";
-  const hIn = spec.height_in != null ? Math.round(spec.height_in) : "?";
-  return `${op} ${wIn}×${hIn}"`;
+/**
+ * Spec imports are named by their MARK — "Window 16", "Door 3" — because
+ * that is what the crew calls them (owner, 2026-08-13: "have the number of
+ * the window"). The catalog is company-wide while marks are per-job, so the
+ * job code rides along to keep two jobs' window 16s apart. The drawing
+ * details live in the config, not the name.
+ */
+export function specImportName(spec: ProjectMarkSpec, jobCode?: string | null): string {
+  const style = (spec.style ?? "").toLowerCase();
+  const isDoor = /door|slider door|patio/.test(style);
+  const base = `${isDoor ? "Door" : "Window"} ${spec.mark_code}`;
+  return jobCode ? `${base} · ${jobCode}` : base;
 }
 
 // ------------------------------------------------------------- SVG drawing

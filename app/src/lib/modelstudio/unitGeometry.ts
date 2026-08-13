@@ -55,9 +55,15 @@ export function buildUnitGeometry(
   frameGeos.push(box(frame, H - 2 * frame, depth, -W / 2 + frame / 2, 0));
   frameGeos.push(box(frame, H - 2 * frame, depth, W / 2 - frame / 2, 0));
 
-  // Panels left → right: glass pane per panel, mullion between neighbours.
+  // Panels in the order the DRAWING reads them — left → right as seen from
+  // OUTSIDE (spec elevations are always the Outside View). An item's local
+  // +x faces the outside viewer's left once it is attached to a wall
+  // (verified empirically in e2e/studio-holes.spec.ts), so the config order
+  // is laid out reversed along local x: glass pane per panel, mullion
+  // between neighbours.
+  const ordered = [...config.panels].reverse();
   let x = -W / 2;
-  config.panels.forEach((p, i) => {
+  ordered.forEach((p, i) => {
     const pw = p.widthMm * MM_TO_CM;
     const isFirst = i === 0;
     const isLast = i === config.panels.length - 1;

@@ -7,13 +7,15 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "../../lib/errors";
-import { fmtFtIn, parseFtIn } from "../../pages/install/ModelStudio";
+import { fmtFtIn, fmtInchesFromMm, parseFtIn } from "../../lib/modelstudio/dims";
 import {
   MECHANISM_LABELS,
   saveStudioUnit,
+  updateStudioUnit,
   unitSvg,
   unitWidthMm,
   type Mechanism,
+  type StudioUnit,
   type UnitConfig,
   type UnitKind,
   type UnitPanel,
@@ -34,23 +36,33 @@ function defaultPanel(kind: UnitKind): UnitPanel {
 export function UnitBuilder({
   onInsert,
   onClose,
+  initial,
 }: {
   /** Insert the finished unit into the plan (config in cm width/height). */
   onInsert: (config: UnitConfig, name: string, widthCm: number, heightCm: number) => void;
   onClose: () => void;
+  /** Editing an existing catalog unit — how a spec import ("Window 16",
+   * one fixed panel: the spec row only has overall dims) gets split into
+   * the drawing's real panels. Save rewrites the row instead of adding. */
+  initial?: StudioUnit | null;
 }) {
   const qc = useQueryClient();
   const [step, setStep] = useState(1);
-  const [kind, setKind] = useState<UnitKind>("window");
-  const [panels, setPanels] = useState<UnitPanel[]>([defaultPanel("window")]);
+  const [kind, setKind] = useState<UnitKind>(initial?.config.kind ?? "window");
+  const [panels, setPanels] = useState<UnitPanel[]>(
+    initial ? initial.config.panels.map((p) => ({ ...p })) : [defaultPanel("window")],
+  );
   const [heightInput, setHeightInput] = useState("");
   const [widthInput, setWidthInput] = useState("");
-  const [name, setName] = useState("");
+  const [panelInputs, setPanelInputs] = useState<Record<number, string>>({});
+  const [name, setName] = useState(initial?.name ?? "");
 
   const heightMm = useMemo(() => {
     const cm = heightInput ? parseFtIn(heightInput) : null;
-    return cm != null ? cm * 10 : kind === "door" ? 2032 : 1524; // 6'8" / 5'
-  }, [heightInput, kind]);
+    if (cm != null) return cm * 10;
+    if (initial) return initial.config.heightMm;
+    return kind === "door" ? 2032 : 1524; // 6'8" / 5'
+  }, [heightInput, kind, initial]);
 
   const config: UnitConfig = useMemo(
     () => ({ kind, heightMm, panels }),
@@ -79,7 +91,10 @@ export function UnitBuilder({
   };
 
   const save = useMutation({
-    mutationFn: () => saveStudioUnit(name.trim(), config),
+    mutationFn: () =>
+      initial
+        ? updateStudioUnit(initial.id, name.trim(), config)
+        : saveStudioUnit(name.trim(), config),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["studioUnits"] }),
   });
 
@@ -102,7 +117,9 @@ export function UnitBuilder({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="row-gap" style={{ alignItems: "baseline" }}>
-          <p style={{ margin: 0, fontWeight: 700 }}>Build a unit</p>
+          <p style={{ margin: 0, fontWeight: 700 }}>
+            {initial ? `Edit ${initial.name}` : "Build a unit"}
+          </p>
           <span className="muted" style={{ fontSize: 11.5, marginLeft: "auto" }}>
             Step {Math.min(step, steps.length)} of {steps.length} · {stepName}
           </span>
@@ -226,11 +243,42 @@ export function UnitBuilder({
               value={heightInput}
               onChange={(e) => setHeightInput(e.target.value)}
             />
-            <p className="muted" style={{ fontSize: 11, margin: "6px 0 0" }}>
-              Width splits across panels proportionally — per-panel widths get
-              fine-tuning in a later slice. 90° corner units are the next slice
-              too.
-            </p>
+            {panels.length > 1 && (
+              <>
+                <label className="field-label">
+                  Panel widths — type them straight off the drawing (30 1/4",
+                  88 1/2"…)
+                </label>
+                <div className="studio-panel-grid">
+                  {panels.map((p, i) => (
+                    <div key={i} className="row-gap" style={{ alignItems: "center" }}>
+                      <span className="tcx-label" style={{ minWidth: 54 }}>
+                        Panel {i + 1}
+                      </span>
+                      <input
+                        style={{ flex: 1, minWidth: 0 }}
+                        placeholder={fmtInchesFromMm(p.widthMm)}
+                        value={panelInputs[i] ?? ""}
+                        onChange={(e) =>
+                          setPanelInputs((prev) => ({ ...prev, [i]: e.target.value }))
+                        }
+                        onBlur={() => {
+                          const cm = panelInputs[i] ? parseFtIn(panelInputs[i]) : null;
+                          if (cm != null && cm * 10 >= 50) {
+                            patchPanel(i, { widthMm: cm * 10 });
+                          }
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <p className="muted" style={{ fontSize: 11, margin: "6px 0 0" }}>
+                  Total {fmtInchesFromMm(unitWidthMm(config))} ·{" "}
+                  {fmtFtIn(unitWidthMm(config) * MM_TO_CM)} — the total-width
+                  box above rescales all panels together.
+                </p>
+              </>
+            )}
           </div>
         )}
 
@@ -250,7 +298,11 @@ export function UnitBuilder({
                 disabled={!name.trim() || save.isPending}
                 onClick={() => save.mutate()}
               >
-                {save.isPending ? "Saving…" : "Save to catalog"}
+                {save.isPending
+                  ? "Saving…"
+                  : initial
+                    ? "Save changes"
+                    : "Save to catalog"}
               </button>
               <button
                 className="button-like active-pill"
