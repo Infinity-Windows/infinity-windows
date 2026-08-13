@@ -88,7 +88,7 @@ export class Main {
 
   private init(): void {
     this.domElement = this.element // Container
-    this.camera = new THREE.PerspectiveCamera(45, 1, 1, 10000)
+    this.camera = new THREE.PerspectiveCamera(45, 1, 1, 50000) // infinity: far plane past the 200m orbit limit
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
       preserveDrawingBuffer: true // required to support .toDataURL()

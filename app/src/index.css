@@ -9545,3 +9545,15 @@ body {
 .studio-pane.hidden-pane { display: none; }
 
 .studio-mini { font-size: 11.5px; padding: 2px 9px; }
+
+.studio-pane.fs.studio-fs-plan { flex-direction: row; gap: 12px; }
+.studio-fs-plan .studio-drawer {
+  width: 230px; flex: none; display: flex; flex-direction: column; gap: 8px;
+  overflow-y: auto; padding-right: 4px;
+}
+.studio-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.studio-main .studio-canvas { flex: 1; min-height: 0; }
+.studio-card {
+  border: 1px solid rgba(255,255,255,.1); border-radius: 10px;
+  background: rgba(255,255,255,.03); padding: 10px 12px;
+}

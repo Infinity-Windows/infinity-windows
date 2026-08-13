@@ -5,3 +5,4 @@
 // grows, never by importing vendor/*.ts directly from TypeScript.
 export { Blueprint3d } from "./vendor/blueprint3d";
 export { floorplannerModes } from "./vendor/floorplanner/floorplanner_view";
+export { Configuration, configWallHeight } from "./vendor/core/configuration";
