@@ -388,6 +388,104 @@ test("a 90° corner unit snaps to the building corner and cuts BOTH walls", asyn
     .screenshot({ path: join(SHOTS, "corner-unit.png") });
 });
 
+test("3D drag handles: pulling the top handle makes the unit taller", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useOutline(page, { fitview: { model: FITVIEW_MODEL } });
+  await openStudio(page);
+
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    bp.model.scene.addItem(
+      3,
+      "/modelstudio/models/window.json",
+      {
+        itemName: "E2E handle unit",
+        itemType: 3,
+        modelUrl: "/modelstudio/models/window.json",
+        unitConfig: {
+          kind: "window",
+          heightMm: 1500,
+          panels: [
+            { widthMm: 1200, mechanism: "fixed" },
+            { widthMm: 1200, mechanism: "slider", direction: "left" },
+          ],
+        },
+      },
+      { x: 900, y: 150, z: 600 },
+      0,
+      undefined,
+      false,
+    );
+  });
+  await page.waitForFunction(() => {
+    const bp = (window as any).__studio;
+    const items = bp.model.scene.getItems();
+    return items.length === 1 && Boolean(items[0].currentWallEdge);
+  });
+
+  /** World → CSS pixels inside the 3D pane, via the live camera. */
+  const project = `((wx, wy, wz) => {
+    const bp = window.__studio;
+    const cam = bp.three.camera;
+    cam.updateMatrixWorld();
+    const v = bp.model.scene.getItems()[0].position.clone();
+    v.set(wx, wy, wz);
+    v.project(cam);
+    const r = bp.three.element.getBoundingClientRect();
+    return {
+      x: r.left + ((v.x + 1) / 2) * r.width,
+      y: r.top + ((1 - v.y) / 2) * r.height,
+    };
+  })`;
+
+  // Tap-select the unit: a real click at its projected centre.
+  const centre = await page.evaluate(`(() => {
+    const bp = window.__studio;
+    const p = bp.model.scene.getItems()[0].position;
+    return ${project}(p.x, p.y, p.z);
+  })()`);
+  const { x: cx, y: cy } = centre as { x: number; y: number };
+  await page.mouse.click(cx, cy);
+  await page.waitForFunction(() => {
+    const bp = (window as any).__studio;
+    const scene = bp.model.scene.getScene();
+    // The handles group: four spheres drawn on top of everything.
+    return scene.children.some(
+      (g: any) => g.isGroup && g.children.length === 4 && g.renderOrder === 999,
+    );
+  });
+
+  const before = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    return bp.model.scene.getItems()[0].metadata.unitConfig.heightMm;
+  });
+
+  // Grab the TOP handle sphere and pull it up 60 px.
+  const top = await page.evaluate(`(() => {
+    const bp = window.__studio;
+    const scene = bp.model.scene.getScene();
+    const group = scene.children.find(
+      (g) => g.isGroup && g.children.length === 4 && g.renderOrder === 999,
+    );
+    // Highest sphere = the height handle.
+    const h = [...group.children].sort((a, b) => b.position.y - a.position.y)[0];
+    return ${project}(h.position.x, h.position.y, h.position.z);
+  })()`);
+  const { x: hx, y: hy } = top as { x: number; y: number };
+  await page.mouse.move(hx, hy);
+  await page.mouse.down();
+  await page.mouse.move(hx, hy - 60, { steps: 6 });
+  await page.mouse.up();
+
+  const after = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    return bp.model.scene.getItems()[0].metadata.unitConfig.heightMm;
+  });
+  expect(after).toBeGreaterThan(before + 50); // meaningfully taller, in mm
+});
+
 test("a fresh seed never mints twin walls", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "supervisor" });
   // No saved Studio model: the tab seeds from the traced building.

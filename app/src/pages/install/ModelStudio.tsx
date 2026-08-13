@@ -36,6 +36,11 @@ import {
   cornerGeometryInfo,
   UNIT_GEOMETRY_DEFAULTS,
 } from "../../lib/modelstudio/unitGeometry";
+import {
+  StudioHandles3d,
+  type UnitHandleKind,
+  type WallHandleKind,
+} from "../../lib/modelstudio/handles3d";
 import type { StudioItem } from "../../lib/modelstudio/core";
 import {
   listStudioUnits,
@@ -181,6 +186,34 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
   const [editUnit, setEditUnit] = useState<StudioUnit | null>(null);
   /** The 3D-tapped unit — Home-Design-3D-style numeric editing. */
   const [selUnit, setSelUnit] = useState<StudioItem | null>(null);
+  /** 3D drag handles on the selection (grab a side to stretch). */
+  const handlesRef = useRef<StudioHandles3d | null>(null);
+  const selUnitRef = useRef<StudioItem | null>(null);
+  const selWallRef = useRef<StudioWall | null>(null);
+  /** Baselines captured at handle-grab; every move applies base + delta. */
+  const dragBaseRef = useRef<{
+    unit?: {
+      item: StudioItem;
+      config: UnitConfig;
+      widthCm: number;
+      heightCm: number;
+      sillCm: number;
+      x: number;
+      z: number;
+      ry: number;
+    };
+    wall?: {
+      wall: StudioWall;
+      sx: number;
+      sy: number;
+      ex: number;
+      ey: number;
+      len: number;
+      h: number;
+      ax: number;
+      az: number;
+    };
+  } | null>(null);
   const [unitW, setUnitW] = useState("");
   const [unitH, setUnitH] = useState("");
   const [unitSill, setUnitSill] = useState("");
@@ -328,6 +361,17 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
       setUnitGap(String(it.metadata?.frameGapMm ?? UNIT_GEOMETRY_DEFAULTS.mullionMm));
       setPaletteOpen(true);
     });
+    // Grab-and-stretch handles in the 3D pane — spheres on the selection's
+    // edges drive the same edit math as the numeric cards.
+    handlesRef.current = new StudioHandles3d({
+      scene: bp.model.scene.getScene(),
+      camera: bp.three.camera,
+      element: bp.three.element,
+      controls: bp.three.controls,
+      onGrab: () => onHandleGrab(),
+      onUnitDrag: (k, d, p) => onUnitHandleDrag(k, d, p),
+      onWallDrag: (k, d, p) => onWallHandleDrag(k, d, p),
+    });
     bp.three.itemUnselectedCallbacks.add(() => setSelUnit(null));
     bp.three.wallClicked.add((edge) => {
       const w = edge?.wall;
@@ -377,9 +421,19 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
     () => () => {
       roRef.current?.disconnect();
       roRef.current = null;
+      handlesRef.current?.dispose();
+      handlesRef.current = null;
     },
     [],
   );
+
+  // Handles follow the selection (and vanish with it).
+  useEffect(() => {
+    selUnitRef.current = selUnit;
+    selWallRef.current = selWall;
+    refreshHandles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selUnit, selWall]);
 
   const setMode = (m: number) => {
     bpRef.current?.floorplanner?.setMode(m);
@@ -570,6 +624,137 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
     item.position.x += wx * delta;
     item.position.z += wz * delta;
     item.redrawWall?.();
+  };
+
+  // ------------------------------------------------ 3D drag handles wiring
+
+  /** Re-park the handle spheres on the current selection. */
+  const refreshHandles = () => {
+    const handles = handlesRef.current;
+    if (!handles) return;
+    const item = selUnitRef.current;
+    const wall = selWallRef.current;
+    if (item) {
+      const cfg = item.metadata?.unitConfig as UnitConfig | undefined;
+      const corner = cfg ? cornerGeometryInfo(cfg) : null;
+      const widthCm = corner
+        ? corner.mainWcm
+        : cfg
+          ? cfg.panels.reduce((t, p) => t + p.widthMm, 0) / 10
+          : item.getWidth();
+      const heightCm = cfg ? cfg.heightMm / 10 : item.getHeight();
+      handles.attachUnit({
+        center: item.position,
+        rotationY: item.rotation?.y ?? 0,
+        widthCm,
+        heightCm,
+      });
+    } else if (wall) {
+      handles.attachWall({
+        start: { x: wall.getStartX(), z: wall.getStartY() },
+        end: { x: wall.getEndX(), z: wall.getEndY() },
+        heightCm: wall.height,
+      });
+    } else {
+      handles.clear();
+    }
+  };
+
+  const onHandleGrab = () => {
+    pushUndo();
+    const item = selUnitRef.current;
+    const wall = selWallRef.current;
+    dragBaseRef.current = {};
+    if (item) {
+      const cfg = item.metadata?.unitConfig as UnitConfig | undefined;
+      if (!cfg) return;
+      dragBaseRef.current.unit = {
+        item,
+        config: JSON.parse(JSON.stringify(cfg)) as UnitConfig,
+        widthCm: cfg.panels.reduce((t, p) => t + p.widthMm, 0) / 10,
+        heightCm: cfg.heightMm / 10,
+        sillCm: Math.max(0, item.position.y - cfg.heightMm / 20),
+        x: item.position.x,
+        z: item.position.z,
+        ry: item.rotation?.y ?? 0,
+      };
+    } else if (wall) {
+      const sx = wall.getStartX();
+      const sy = wall.getStartY();
+      const ex = wall.getEndX();
+      const ey = wall.getEndY();
+      const len = Math.hypot(ex - sx, ey - sy) || 1;
+      dragBaseRef.current.wall = {
+        wall, sx, sy, ex, ey, len,
+        h: wall.height,
+        ax: (ex - sx) / len,
+        az: (ey - sy) / len,
+      };
+    }
+  };
+
+  const onUnitHandleDrag = (kind: UnitHandleKind, deltaCm: number, phase: "move" | "end") => {
+    const base = dragBaseRef.current?.unit;
+    if (!base) return;
+    const item = base.item;
+    if (kind === "sill") {
+      const sill = Math.min(1200, Math.max(0, base.sillCm + deltaCm));
+      item.position.set(base.x, sill + base.heightCm / 2, base.z);
+      item.redrawWall?.();
+    } else if (kind === "height") {
+      const h = Math.min(1500, Math.max(30, base.heightCm + deltaCm));
+      const cfg: UnitConfig = { ...base.config, heightMm: h * 10 };
+      item.position.set(base.x, base.sillCm + h / 2, base.z);
+      applyUnitGeometry(item, cfg);
+    } else {
+      // width-left / width-right: the grabbed edge follows the mouse, the
+      // opposite edge stays planted — so the centre shifts by half.
+      const w = Math.min(6000, Math.max(30, base.widthCm + deltaCm));
+      const factor = w / base.widthCm;
+      const cfg: UnitConfig = {
+        ...base.config,
+        panels: base.config.panels.map((p) => ({ ...p, widthMm: p.widthMm * factor })),
+      };
+      const wx = Math.cos(base.ry);
+      const wz = -Math.sin(base.ry);
+      const sign = kind === "width-left" ? 1 : -1;
+      const shift = (sign * (w - base.widthCm)) / 2;
+      item.position.set(base.x + wx * shift, item.position.y, base.z + wz * shift);
+      applyUnitGeometry(item, cfg);
+    }
+    if (phase === "end") {
+      item.placeInRoom();
+      snapIfCorner(item);
+      refreshHandles();
+      const cfg = item.metadata?.unitConfig as UnitConfig | undefined;
+      if (cfg) {
+        setUnitW(fmtFtIn(cfg.panels.reduce((t, p) => t + p.widthMm, 0) / 10));
+        setUnitH(fmtFtIn(cfg.heightMm / 10));
+        setUnitSill(fmtFtIn(Math.max(0, item.position.y - cfg.heightMm / 20)));
+      }
+    }
+  };
+
+  const onWallHandleDrag = (kind: WallHandleKind, deltaCm: number, phase: "move" | "end") => {
+    const base = dragBaseRef.current?.wall;
+    if (!base) return;
+    if (kind === "height") {
+      base.wall.height = Math.min(2000, Math.max(60, base.h + deltaCm));
+      base.wall.fireRedraw?.();
+    } else {
+      const len = Math.max(30, base.len + deltaCm);
+      if (kind === "length-end") {
+        base.wall.getEnd().move(base.sx + base.ax * len, base.sy + base.az * len);
+      } else {
+        base.wall.getStart().move(base.ex - base.ax * len, base.ey - base.az * len);
+      }
+    }
+    if (phase === "end") {
+      refreshModel();
+      refreshHandles();
+      setLenInput(fmtFtIn(wallLengthCm(base.wall)));
+      setHeightInput(fmtFtIn(base.wall.height));
+    }
   };
 
   /** Sizes for seeded mark items come from the job's specs. */
@@ -783,6 +968,7 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
     if (!bp) return;
     bp.model.floorplan.update();
     setSelTick((n) => n + 1);
+    refreshHandles();
   };
 
   const applyWallLength = () => {
@@ -852,6 +1038,7 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
     }
     item.placeInRoom();
     snapIfCorner(item);
+    refreshHandles();
     pushToast("Unit updated.");
   };
 
@@ -877,6 +1064,7 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
     applyUnitGeometry(item, next);
     item.placeInRoom();
     snapIfCorner(item);
+    refreshHandles();
   };
 
   const saveUnitAsCatalog = useMutation({

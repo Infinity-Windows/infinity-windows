@@ -1,6 +1,8 @@
 // Hand-written types for exactly the vendor surface the Studio uses.
 // See core.js for why this boundary exists.
 
+import type * as THREE from "three";
+
 export interface StudioOptions {
   widget?: boolean;
   threeElement?: string;
@@ -45,6 +47,8 @@ export interface StudioFloorplan {
 
 export interface StudioItem {
   position: { x: number; y: number; z: number; set(x: number, y: number, z: number): void };
+  /** Item yaw — set by the vendor to face its wall on attach. */
+  rotation: { y: number };
   scale: { set(x: number, y: number, z: number): void };
   metadata?: { itemName?: string; unitConfig?: unknown; frameGapMm?: number };
   geometry: { dispose(): void; computeBoundingBox(): void; boundingBox: { max: { x: number; y: number; z: number }; min: { x: number; y: number; z: number } } | null };
@@ -61,6 +65,8 @@ export interface StudioItem {
 }
 
 export interface StudioScene {
+  /** The underlying THREE scene — page-side overlays (3D drag handles). */
+  getScene(): THREE.Scene;
   removeItem(item: StudioItem): void;
   itemLoadedCallbacks: StudioEventEmitter<StudioItem>;
   addItem(
@@ -112,6 +118,16 @@ export interface StudioThree {
   centerCamera(): void;
   getController(): { enabled: boolean };
   stopSpin?: () => void;
+  /** The 3D pane's container element (the renderer canvas lives inside). */
+  element: HTMLElement;
+  camera: THREE.PerspectiveCamera;
+  /** Orbit controls — `enabled = false` freezes orbit during a handle drag. */
+  controls: {
+    enabled: boolean;
+    update?(): void;
+    object: { position: { set(x: number, y: number, z: number): void } };
+    target?: { set(x: number, y: number, z: number): void };
+  };
   itemSelectedCallbacks: StudioEventEmitter<StudioItem>;
   itemUnselectedCallbacks: StudioEventEmitter<void>;
   wallClicked: StudioEventEmitter<{ wall: StudioWall }>;
