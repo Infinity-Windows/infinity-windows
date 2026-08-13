@@ -39,8 +39,10 @@ import {
   specImportName,
   specToUnitConfig,
   unitSvg,
+  type StudioUnit,
   type UnitConfig,
 } from "../../lib/modelstudio/units";
+import { supabase } from "../../lib/supabase";
 import {
   Blueprint3d,
   Configuration,
@@ -91,25 +93,10 @@ function applyPlanScale(bp: Blueprint3d, pxPerCm: number) {
 }
 
 /** Parse crew-style lengths: 28'6", 28' 6, 28.5', 342" or plain feet. → cm */
-export function parseFtIn(raw: string): number | null {
-  const t = raw.trim().replace(/[""]/g, '"').replace(/['']/g, "'");
-  if (!t) return null;
-  let m = t.match(/^(\d+(?:\.\d+)?)\s*'\s*(?:(\d+(?:\.\d+)?)\s*"?)?$/);
-  if (m) return (parseFloat(m[1]) * 12 + (m[2] ? parseFloat(m[2]) : 0)) * 2.54;
-  m = t.match(/^(\d+(?:\.\d+)?)\s*"$/);
-  if (m) return parseFloat(m[1]) * 2.54;
-  m = t.match(/^(\d+(?:\.\d+)?)$/);
-  if (m) return parseFloat(m[1]) * 12 * 2.54; // bare number = feet
-  return null;
-}
-
-export function fmtFtIn(cm: number): string {
-  const totalIn = cm / 2.54;
-  const ft = Math.floor(totalIn / 12);
-  const inch = Math.round(totalIn - ft * 12);
-  if (inch === 12) return `${ft + 1}'0"`;
-  return `${ft}'${inch}"`;
-}
+// Dimension grammar lives in lib/modelstudio/dims (pure, unit-tested);
+// re-exported here so existing imports keep working.
+import { fmtFtIn, parseFtIn } from "../../lib/modelstudio/dims";
+export { fmtFtIn, parseFtIn };
 
 function wallLengthCm(w: StudioWall): number {
   const dx = w.getEndX() - w.getStartX();
@@ -185,6 +172,9 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
   /** The whole palette hides behind one drop bar (owner ask). */
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
+  /** Catalog unit being refined in the builder (spec imports arrive as one
+   * fixed panel — the drawing's real panels get typed in here). */
+  const [editUnit, setEditUnit] = useState<StudioUnit | null>(null);
   /** The 3D-tapped unit — Home-Design-3D-style numeric editing. */
   const [selUnit, setSelUnit] = useState<StudioItem | null>(null);
   const [unitW, setUnitW] = useState("");
@@ -673,12 +663,20 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
 
   const importSpecs = useMutation({
     mutationFn: async () => {
+      // Marks are per-job but the catalog is company-wide: the job code in
+      // the name keeps two jobs' "Window 16" apart.
+      const { data: proj } = await supabase
+        .from("projects")
+        .select("job_code")
+        .eq("id", projectId)
+        .single();
+      const jobCode = (proj as { job_code?: string } | null)?.job_code ?? null;
       const have = new Set((units.data ?? []).map((u) => u.name));
       let added = 0;
       for (const spec of specs.data ?? []) {
         const cfg = specToUnitConfig(spec);
         if (!cfg) continue;
-        const name = specImportName(spec);
+        const name = specImportName(spec, jobCode);
         if (have.has(name)) continue;
         have.add(name);
         await saveStudioUnit(name, cfg, "spec-import");
@@ -1026,7 +1024,23 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
                 className="studio-unit-thumb"
                 dangerouslySetInnerHTML={{ __html: unitSvg(u.config, 64, 40) }}
               />
-              <span className="studio-unit-name" title={u.name}>{u.name}</span>
+              <span
+                className="studio-unit-name"
+                title={`${u.name} — ${fmtFtIn(
+                  (u.config.panels.reduce((t, p) => t + p.widthMm, 0) / 10),
+                )} × ${fmtFtIn(u.config.heightMm / 10)} · ${u.config.panels.length} panel${
+                  u.config.panels.length === 1 ? "" : "s"
+                }`}
+              >
+                {u.name}
+              </span>
+              <button
+                className="button-like studio-mini"
+                title="Edit panels & dimensions"
+                onClick={() => setEditUnit(u)}
+              >
+                ✎
+              </button>
               <button
                 className="button-like studio-mini"
                 onClick={() => insertUnit(u.config, u.name)}
@@ -1124,10 +1138,14 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
         </div>
       )}
 
-      {builderOpen && (
+      {(builderOpen || editUnit) && (
         <UnitBuilder
+          initial={editUnit}
           onInsert={(cfg, name) => insertUnit(cfg, name)}
-          onClose={() => setBuilderOpen(false)}
+          onClose={() => {
+            setBuilderOpen(false);
+            setEditUnit(null);
+          }}
         />
       )}
 
