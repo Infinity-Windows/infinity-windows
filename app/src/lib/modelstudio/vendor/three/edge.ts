@@ -105,7 +105,10 @@ export class Edge {
     const dot = normal.dot(direction)
 
     // update visible
-    this.visible = dot >= 0
+    // infinity: walls stay solid from every angle. The upstream hides
+    // camera-facing walls so an interior designer can see into rooms; for a
+    // window company the walls ARE the subject (owner call, 2026-08-13).
+    this.visible = true
 
     // show or hide plans
     this.planes.forEach((plane) => {

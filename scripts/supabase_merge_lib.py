@@ -469,6 +469,7 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "toolbox_talk_assignments": ("assigned_date",),
     "notification_dismissals": ("profile_id", "key"),
     "monday_jobs": ("monday_item_id",),
+    "studio_units": ("name", "kind"),
     "knowledge_chunks": ("doc_id", "chunk_index"),
     "learn_progress": ("profile_id", "term_id"),
     "project_mark_specs": ("project_id", "mark_code"),

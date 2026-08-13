@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BackChip } from "../../components/BackChip";
 import { pushToast } from "../../lib/toast";
 import {
@@ -28,6 +28,15 @@ import {
   preferModelOutline,
 } from "../../lib/fitview/adapter";
 import { buildStudioSeed } from "../../lib/modelstudio/fromProject";
+import { UnitBuilder } from "../../components/studio/UnitBuilder";
+import {
+  listStudioUnits,
+  saveStudioUnit,
+  specImportName,
+  specToUnitConfig,
+  unitSvg,
+  type UnitConfig,
+} from "../../lib/modelstudio/units";
 import {
   Blueprint3d,
   Configuration,
@@ -119,6 +128,7 @@ function zoomPlan(bp: Blueprint3d, factor: number) {
 }
 
 export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) {
+  const qc = useQueryClient();
   const { id: routeId = "" } = useParams();
   const projectId = propId ?? routeId;
   const embedded = Boolean(propId);
@@ -137,6 +147,8 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
   const [buildingHeight, setBuildingHeight] = useState("");
   /** The whole palette hides behind one drop bar (owner ask). */
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const units = useQuery({ queryKey: ["studioUnits"], queryFn: listStudioUnits });
   /** Undo: serialized snapshots pushed BEFORE each mutating gesture. */
   const undoStack = useRef<string[]>([]);
   const [undoDepth, setUndoDepth] = useState(0);
@@ -373,6 +385,45 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
     pushToast("Rebuilt from the traced building.");
   };
 
+  const insertUnit = (config: UnitConfig, name: string) => {
+    const bp = bpRef.current;
+    if (!bp) return;
+    pushUndo();
+    bp.model.scene.addItem(
+      3,
+      WINDOW_MODEL,
+      // The full panel config rides in metadata — the parametric per-panel
+      // 3D geometry and the publish-to-map pipeline read it from here.
+      { itemName: name, itemType: 3, modelUrl: WINDOW_MODEL, unitConfig: config },
+      undefined,
+      undefined,
+      undefined,
+      false,
+    );
+    pushToast(`${name} added — drag it onto a wall in the 3D view.`);
+  };
+
+  const importSpecs = useMutation({
+    mutationFn: async () => {
+      const have = new Set((units.data ?? []).map((u) => u.name));
+      let added = 0;
+      for (const spec of specs.data ?? []) {
+        const cfg = specToUnitConfig(spec);
+        if (!cfg) continue;
+        const name = specImportName(spec);
+        if (have.has(name)) continue;
+        have.add(name);
+        await saveStudioUnit(name, cfg, "spec-import");
+        added += 1;
+      }
+      return added;
+    },
+    onSuccess: (n) => {
+      pushToast(n > 0 ? `Imported ${n} unit${n === 1 ? "" : "s"} from this job's specs.` : "Nothing new to import.");
+      void qc.invalidateQueries({ queryKey: ["studioUnits"] });
+    },
+  });
+
   const refreshModel = () => {
     const bp = bpRef.current;
     if (!bp) return;
@@ -527,6 +578,41 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
           Click a wall to edit its length or height.
         </p>
       )}
+      <details>
+        <summary className="tcx-label">Catalog</summary>
+        <div className="studio-palette-body">
+          <button className="button-like active-pill" onClick={() => setBuilderOpen(true)}>
+            Build a unit…
+          </button>
+          <button
+            className="button-like"
+            disabled={importSpecs.isPending || (specs.data ?? []).length === 0}
+            onClick={() => importSpecs.mutate()}
+          >
+            {importSpecs.isPending ? "Importing…" : "Import from job specs"}
+          </button>
+          {(units.data ?? []).map((u) => (
+            <div key={u.id} className="studio-unit-row">
+              <span
+                className="studio-unit-thumb"
+                dangerouslySetInnerHTML={{ __html: unitSvg(u.config, 64, 40) }}
+              />
+              <span className="studio-unit-name" title={u.name}>{u.name}</span>
+              <button
+                className="button-like studio-mini"
+                onClick={() => insertUnit(u.config, u.name)}
+              >
+                Insert
+              </button>
+            </div>
+          ))}
+          {(units.data ?? []).length === 0 && (
+            <p className="muted" style={{ fontSize: 11, margin: 0 }}>
+              No saved units yet — build one or import from specs.
+            </p>
+          )}
+        </div>
+      </details>
       </>
       )}
     </div>
@@ -571,6 +657,13 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
           No traced building yet — trace one on the job's Maps Interactive tab
           (Sheets view) first, then come back.
         </p>
+      )}
+
+      {builderOpen && (
+        <UnitBuilder
+          onInsert={(cfg, name) => insertUnit(cfg, name)}
+          onClose={() => setBuilderOpen(false)}
+        />
       )}
 
       <div className="studio-split">

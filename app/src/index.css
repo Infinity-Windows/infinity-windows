@@ -9576,3 +9576,17 @@ body {
   width: auto; padding: 4px; background: rgba(20,16,13,.85);
 }
 .studio-palette-toggle { font-size: 12px; padding: 4px 10px; white-space: nowrap; }
+
+.studio-builder { max-width: 380px; }
+.studio-unit-preview {
+  display: flex; justify-content: center; padding: 8px 0 2px;
+  color: var(--ink, #f2e9e2);
+}
+.studio-panel-grid { display: flex; flex-direction: column; gap: 6px; max-height: 34vh; overflow-y: auto; }
+.studio-unit-row { display: flex; align-items: center; gap: 6px; }
+.studio-unit-thumb { flex: none; width: 64px; height: 40px; color: inherit; }
+.studio-unit-thumb svg { width: 100%; height: 100%; }
+.studio-unit-name {
+  flex: 1; min-width: 0; font-size: 11.5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
