@@ -56,6 +56,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 **Blocked:**
 
+- Studio (`/studio`)
 - Team (`/team`)
 - Team timecards (`/team-timecards`)
 - Issues (`/issues`)
@@ -171,6 +172,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 **Blocked:**
 
+- Studio (`/studio`)
 - AI Knowledge (`/knowledge`)
 - Vehicles (`/vehicles`)
 - Heartbeat (`/heartbeat`)
@@ -195,6 +197,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Home (`/`)
 - My Work (`/my-work`)
 - Jobs (`/projects`)
+- Studio (`/studio`)
 - Photos & receipts (`/photos`)
 - Clock in / out (action)
 - My timecard (`/timecard`)
@@ -231,7 +234,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Admin (`/admin`)
 
-**Can reach (all 46 allowed destinations):**
+**Can reach (all 47 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -243,6 +246,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Storage (`/storage`)
 - Warehouse (`/warehouse`)
 - Jobs (`/projects`)
+- Studio (`/studio`)
 - Ask (`/ask`)
 - Notifications (`/notifications`)
 - Search (`/search`)
@@ -300,6 +304,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Home (`/`)
 - My Work (`/my-work`)
 - Jobs (`/projects`)
+- Studio (`/studio`)
 - Photos & receipts (`/photos`)
 - Clock in / out (action)
 - My timecard (`/timecard`)
@@ -338,7 +343,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Admin (`/admin`)
 
-**Can reach (all 48 allowed destinations):**
+**Can reach (all 49 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -350,6 +355,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Storage (`/storage`)
 - Warehouse (`/warehouse`)
 - Jobs (`/projects`)
+- Studio (`/studio`)
 - Ask (`/ask`)
 - Notifications (`/notifications`)
 - Search (`/search`)

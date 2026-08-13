@@ -122,7 +122,7 @@ async function useOutline(
 }
 
 async function openStudio(page: import("@playwright/test").Page) {
-  await page.goto(`/projects/${BLACK22.projectId}?tab=model-studio`);
+  await page.goto(`/studio/j/${BLACK22.projectId}`);
   await page.waitForFunction(
     () => {
       const bp = (window as { __studio?: unknown }).__studio as

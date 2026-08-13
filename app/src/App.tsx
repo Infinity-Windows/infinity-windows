@@ -46,8 +46,14 @@ import { WindowDetail } from "./pages/WindowDetail";
 import { OpeningReview } from "./pages/install/OpeningReview";
 import { OpeningSheetRoute } from "./pages/install/OpeningSheet";
 import { MapsTrace } from "./pages/install/MapsTrace";
-const ModelStudio = lazy(() =>
-  import("./pages/install/ModelStudio").then((m) => ({ default: m.ModelStudio })),
+const StudioList = lazy(() =>
+  import("./pages/install/StudioList").then((m) => ({ default: m.StudioList })),
+)
+const StudioJobRoute = lazy(() =>
+  import("./pages/install/StudioList").then((m) => ({ default: m.StudioJobRoute })),
+)
+const StudioProjectRoute = lazy(() =>
+  import("./pages/install/StudioList").then((m) => ({ default: m.StudioProjectRoute })),
 );
 import { FlashRun } from "./pages/install/FlashRun";
 import { PlansetUpload } from "./pages/install/PlansetUpload";
@@ -159,6 +165,12 @@ function LegacyInstallOpeningRedirect() {
   return (
     <Navigate to={`/projects/${projectId}/opening/${openingId}`} replace />
   );
+}
+
+/** The Studio left the job tabs (owner ask) — old links land on the new home. */
+function LegacyStudioRedirect() {
+  const { id = "" } = useParams();
+  return <Navigate to={`/studio/j/${id}`} replace />;
 }
 
 export default function App() {
@@ -344,14 +356,38 @@ export default function App() {
               element={<OpeningSheetRoute />}
             />
             <Route
-              path="/projects/:id/model-studio"
+              path="/studio"
               element={
-                <RequireRole minRole="supervisor">
+                <RequireRole path="/studio">
                   <Suspense fallback={<div className="page"><p className="muted">Loading the Studio…</p></div>}>
-                    <ModelStudio />
+                    <StudioList />
                   </Suspense>
                 </RequireRole>
               }
+            />
+            <Route
+              path="/studio/j/:projectId"
+              element={
+                <RequireRole minRole="supervisor">
+                  <Suspense fallback={<div className="page"><p className="muted">Loading the Studio…</p></div>}>
+                    <StudioJobRoute />
+                  </Suspense>
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/studio/p/:id"
+              element={
+                <RequireRole minRole="supervisor">
+                  <Suspense fallback={<div className="page"><p className="muted">Loading the Studio…</p></div>}>
+                    <StudioProjectRoute />
+                  </Suspense>
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/projects/:id/model-studio"
+              element={<LegacyStudioRedirect />}
             />
             <Route
               path="/projects/:projectId/trace-model"

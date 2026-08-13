@@ -9550,6 +9550,19 @@ body {
 }
 .studio-pane.hidden-pane { display: none; }
 
+/* One stage, one view at a time (owner ask): both hosts stay mounted at
+   full size — the vendor binds to both at construction and canvases must
+   keep real dimensions — but only the chosen one is visible. */
+.studio-pane.single { height: 78vh; }
+.studio-view { position: absolute; inset: 0; display: flex; }
+.studio-view .studio-canvas, .studio-view .studio-three { flex: 1; height: auto; min-height: 0; }
+.studio-view-hidden { visibility: hidden; pointer-events: none; }
+.studio-view-switch {
+  font-size: 12px; padding: 3px 8px; border-radius: 8px;
+  background: var(--card, rgba(255,255,255,.06)); color: inherit;
+  border: 1px solid rgba(255,255,255,.18);
+}
+
 .studio-mini { font-size: 11.5px; padding: 2px 9px; }
 
 .studio-stage { position: relative; flex: 1; min-height: 0; display: flex; }

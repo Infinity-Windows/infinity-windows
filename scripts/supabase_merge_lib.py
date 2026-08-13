@@ -470,6 +470,9 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "notification_dismissals": ("profile_id", "key"),
     "monday_jobs": ("monday_item_id",),
     "studio_units": ("name", "kind"),
+    # Standalone Studio projects are authored content: two rows with the
+    # same name are two drawings, never a duplicate.
+    "studio_projects": None,
     # Storage tracking: containers and packages carry immutable printed
     # serials, so the serial is the identity a merge must respect.
     "storage_containers": ("serial",),

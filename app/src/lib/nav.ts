@@ -21,6 +21,7 @@ import {
   ListChecks,
   MoreHorizontal,
   PackageCheck,
+  PenTool,
   Plane,
   ScanLine,
   ShieldCheck,
@@ -57,6 +58,7 @@ export type RoutePath =
   | "/safety"
   | "/scan"
   | "/count"
+  | "/studio"
   | "/storage"
   | "/storage/tag"
   | "/storage/out"
@@ -135,6 +137,7 @@ export const NAV: NavDest[] = [
   { id: "storage", to: "/storage", label: "Storage", icon: "▧", minRole: "installer" },
   { id: "warehouse", to: "/warehouse", label: "Warehouse", icon: "▦", minRole: "installer" },
   { id: "projects", to: "/projects", label: "Jobs", icon: "▤", minRole: "installer" },
+  { id: "studio", to: "/studio", label: "Studio", icon: "◧", minRole: "supervisor" },
   { id: "ask", to: "/ask", label: "Ask", icon: "?", minRole: "installer" },
   { id: "notifications", to: "/notifications", label: "Notifications", icon: "◔", minRole: "installer" },
   { id: "search", to: "/search", label: "Search", icon: "⌕", minRole: "installer" },
@@ -316,6 +319,7 @@ const MENU_DEF: MenuSection[] = [
       { to: "/", label: "Home", Icon: LayoutGrid },
       { to: "/my-work", label: "My Work", Icon: ListChecks },
       { to: "/projects", label: "Jobs", Icon: LayoutGrid },
+      { to: "/studio", label: "Studio", Icon: PenTool },
       { to: "/photos", label: "Photos & receipts", Icon: Camera },
     ],
   },

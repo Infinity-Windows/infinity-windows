@@ -114,6 +114,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "Scan a window/door QR or slot label to pull up that unit or location. Use it to find a unit, confirm what's in a slot, or move/stage units in the warehouse.",
   },
   {
+    path: "/studio",
+    label: "Studio",
+    minRole: "supervisor",
+    blurb:
+      "Design studio for building models: start a blank project or open a job's model, draw the planset in 2D (6-inch snap), and the 3D builds itself. Windows and doors come from the unit catalog; linked projects publish straight to the job's interactive map.",
+  },
+  {
     path: "/storage",
     label: "Storage",
     minRole: "installer",
