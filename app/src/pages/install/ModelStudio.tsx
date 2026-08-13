@@ -115,6 +115,39 @@ function wallLengthCm(w: StudioWall): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+/** Nearest wall to a plan point (cm): clamped point on it + its angle. */
+function nearestWallPlacement(bp: Blueprint3d, xCm: number, yCm: number) {
+  let best: { x: number; z: number; rotation: number; d: number } | null = null;
+  for (const w of bp.model.floorplan.walls) {
+    const ax = w.getStartX(), ay = w.getStartY();
+    const bx = w.getEndX(), by = w.getEndY();
+    const dx = bx - ax, dy = by - ay;
+    const l2 = dx * dx + dy * dy || 1e-9;
+    let t = ((xCm - ax) * dx + (yCm - ay) * dy) / l2;
+    t = Math.max(0.05, Math.min(0.95, t));
+    const px = ax + t * dx, py = ay + t * dy;
+    const d = Math.hypot(xCm - px, yCm - py);
+    if (!best || d < best.d) {
+      best = { x: px, z: py, rotation: -Math.atan2(dy, dx), d };
+    }
+  }
+  return best;
+}
+
+/** Midpoint of the longest wall — the visible default landing spot. */
+function longestWallPlacement(bp: Blueprint3d) {
+  let best: { x: number; z: number; rotation: number; len: number } | null = null;
+  for (const w of bp.model.floorplan.walls) {
+    const ax = w.getStartX(), ay = w.getStartY();
+    const bx = w.getEndX(), by = w.getEndY();
+    const len = Math.hypot(bx - ax, by - ay);
+    if (!best || len > best.len) {
+      best = { x: (ax + bx) / 2, z: (ay + by) / 2, rotation: -Math.atan2(by - ay, bx - ax), len };
+    }
+  }
+  return best;
+}
+
 /** Zoom the plan about its canvas centre. */
 function zoomPlan(bp: Blueprint3d, factor: number) {
   const fp = bp.floorplanner;
@@ -491,22 +524,75 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
       .fitview_backup?.model,
   );
 
-  const insertUnit = (config: UnitConfig, name: string) => {
+  const insertUnit = (
+    config: UnitConfig,
+    name: string,
+    atCm?: { x: number; y: number },
+  ) => {
     const bp = bpRef.current;
     if (!bp) return;
     pushUndo();
+    // Land ON a wall, never at the origin — dropped point's nearest wall, or
+    // the longest wall's midpoint from the Insert button (owner report: the
+    // unit spawned invisible and unassignable).
+    const spot = atCm
+      ? nearestWallPlacement(bp, atCm.x, atCm.y)
+      : longestWallPlacement(bp);
+    const wCm = (config.panels.reduce((t, p) => t + p.widthMm, 0) / 1000) * 100;
+    const hCm = (config.heightMm / 1000) * 100;
+    const sillCm = config.kind === "door" ? 0 : 91; // 3ft window sill default
+    const before = bp.model.scene.getItems().length;
     bp.model.scene.addItem(
       3,
       WINDOW_MODEL,
       // The full panel config rides in metadata — the parametric per-panel
       // 3D geometry and the publish-to-map pipeline read it from here.
       { itemName: name, itemType: 3, modelUrl: WINDOW_MODEL, unitConfig: config },
-      undefined,
-      undefined,
+      spot ? { x: spot.x, y: sillCm + hCm / 2, z: spot.z } : undefined,
+      spot?.rotation,
       undefined,
       false,
     );
-    pushToast(`${name} added — drag it onto a wall in the 3D view.`);
+    // The mesh loads async; once it lands, size it to the CONFIG's real
+    // dimensions so a 16ft slider reads as 16ft against the building.
+    const t0 = Date.now();
+    const sizeIt = () => {
+      const items = bp.model.scene.getItems();
+      const it = items.length > before
+        ? items[items.length - 1]
+        : null;
+      if (it && it.metadata?.itemName === name) {
+        try {
+          it.resize(hCm, wCm, it.getDepth());
+        } catch {
+          /* geometry not ready — next tick */
+        }
+        pushToast(`${name} placed — drag it along the walls in 3D to fine-tune.`);
+        return;
+      }
+      if (Date.now() - t0 < 8000) setTimeout(sizeIt, 250);
+    };
+    setTimeout(sizeIt, 250);
+  };
+
+  /** Drop target: catalog row dragged onto the 2D plan. */
+  const onPlanDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const bp = bpRef.current;
+    const fp = bp?.floorplanner;
+    const raw = e.dataTransfer.getData("application/x-studio-unit");
+    if (!bp || !fp || !raw) return;
+    try {
+      const { config, name } = JSON.parse(raw) as { config: UnitConfig; name: string };
+      const canvas = document.getElementById("studio-floorplan");
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const xCm = (e.clientX - rect.left) * fp.cmPerPixel + fp.originX * fp.cmPerPixel;
+      const yCm = (e.clientY - rect.top) * fp.cmPerPixel + fp.originY * fp.cmPerPixel;
+      insertUnit(config, name, { x: xCm, y: yCm });
+    } catch {
+      /* not our drag */
+    }
   };
 
   const importSpecs = useMutation({
@@ -710,7 +796,19 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
             {importSpecs.isPending ? "Importing…" : "Import from job specs"}
           </button>
           {(units.data ?? []).map((u) => (
-            <div key={u.id} className="studio-unit-row">
+            <div
+              key={u.id}
+              className="studio-unit-row"
+              draggable
+              title="Drag onto the plan to place it on a wall"
+              onDragStart={(e) => {
+                e.dataTransfer.setData(
+                  "application/x-studio-unit",
+                  JSON.stringify({ config: u.config, name: u.name }),
+                );
+                e.dataTransfer.effectAllowed = "copy";
+              }}
+            >
               <span
                 className="studio-unit-thumb"
                 dangerouslySetInnerHTML={{ __html: unitSvg(u.config, 64, 40) }}
@@ -843,7 +941,16 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
               </button>
             </span>
           </div>
-          <div className="studio-stage">
+          <div
+            className="studio-stage"
+            onDragOver={(e) => {
+              if (e.dataTransfer.types.includes("application/x-studio-unit")) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "copy";
+              }
+            }}
+            onDrop={onPlanDrop}
+          >
             {palette}
             <canvas id="studio-floorplan" className="studio-canvas" />
           </div>
