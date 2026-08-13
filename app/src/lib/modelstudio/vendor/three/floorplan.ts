@@ -42,7 +42,11 @@ export class FloorplanThree {
 
     // draw edges
     this.floorplan.wallEdges().forEach((edge) => {
-      const threeEdge = new Edge(this.scene, edge, this.controls, this.renderer)
+      // infinity: Edge needs the whole floorplan so coincident/overlapping
+      // walls (traced multi-mass buildings share boundaries) cut holes for
+      // units that live on a twin wall — see makeWall (owner report 2026-08-13:
+      // "the window is still hiding behind the wall").
+      const threeEdge = new Edge(this.scene, edge, this.controls, this.renderer, this.floorplan)
       this.edges.push(threeEdge)
     })
   }

@@ -100,6 +100,17 @@ export abstract class WallItem extends Item {
   private redrawWall() {
     if (this.addToWall && this.currentWallEdge) {
       this.currentWallEdge.wall.fireRedraw()
+      // infinity: coincident/overlapping walls (shared boundaries on traced
+      // multi-mass buildings) cut holes for this item too (see Edge.makeWall),
+      // so they must re-cut when it moves or leaves. Nearby = within a wall's
+      // thickness of the item, which never matches walls across the room.
+      const walls = this.model?.floorplan?.getWalls?.() ?? []
+      walls.forEach((wall: any) => {
+        if (wall === this.currentWallEdge!.wall) return
+        if (wall.distanceFrom(this.position.x, this.position.z) < 30) {
+          wall.fireRedraw()
+        }
+      })
     }
   }
 

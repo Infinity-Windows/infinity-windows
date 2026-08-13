@@ -115,6 +115,15 @@ const TEST_PROFILE = {
   updated_at: "2026-01-01T00:00:00Z",
 };
 
+export interface FixtureOptions {
+  /**
+   * Role the fixture user signs in as. Defaults to installer (fewest powers —
+   * see TEST_USER above); a spec for a gated screen (Model Studio is
+   * supervisor+) names the weakest role that can reach it.
+   */
+  role?: "installer" | "foreman" | "supervisor" | "owner";
+}
+
 /** Every first-run micro-tip, pre-dismissed (see lib/featureTips). */
 const DISMISSED_TIPS = [
   "home",
@@ -224,12 +233,16 @@ function byProject<T extends { project_id?: string }>(
  * `unmatched` collects every REST table and RPC the router had to guess at, so
  * a test can fail loudly when the app starts asking for something new.
  */
-export async function useSupabaseFixtures(page: Page): Promise<{
+export async function useSupabaseFixtures(
+  page: Page,
+  opts: FixtureOptions = {},
+): Promise<{
   unmatched: string[];
   missingStorage: string[];
 }> {
   const unmatched: string[] = [];
   const missingStorage: string[] = [];
+  const profile = { ...TEST_PROFILE, role: opts.role ?? TEST_PROFILE.role };
 
   // A session in localStorage, under whatever key this build's Supabase URL
   // produces (`sb-<ref>-auth-token`), so the app boots signed in. Also settles
@@ -315,7 +328,7 @@ export async function useSupabaseFixtures(page: Page): Promise<{
       case "window_types":
         return jsonRoute(route, windowTypes, windowTypes.length);
       case "profiles": {
-        const all = [...profiles, TEST_PROFILE];
+        const all = [...profiles, profile];
         const id = eqParam(url, "id");
         const rows = id ? all.filter((p) => p.id === id) : all;
         if (wantsSingleObject(route)) {

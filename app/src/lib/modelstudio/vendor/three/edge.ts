@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { Utils } from '../core/utils'
 import type { HalfEdge } from '../model/half_edge'
+import type { Floorplan } from '../model/floorplan'
 import type { Controls } from './controls'
 
 export class Edge {
@@ -27,11 +28,16 @@ export class Edge {
   private readonly boundRedraw: () => void
   private readonly boundUpdateVisibility: () => void
 
-  constructor(scene: THREE.Scene, edge: HalfEdge, controls: Controls, renderer: THREE.WebGLRenderer) {
+  // infinity: the whole floorplan, so holes can come from units attached to a
+  // coincident/overlapping wall (multi-mass traced buildings share boundaries).
+  private readonly floorplan: Floorplan | null
+
+  constructor(scene: THREE.Scene, edge: HalfEdge, controls: Controls, renderer: THREE.WebGLRenderer, floorplan?: Floorplan) {
     this.scene = scene
     this.edge = edge
     this.controls = controls
     this.renderer = renderer
+    this.floorplan = floorplan ?? null
     this.wall = edge.wall
     this.front = edge.front
     this.lightMap = this.textureLoader.load('https://cdn-images.lumenfeng.com/models-cover/walllightmap.png')
@@ -260,23 +266,66 @@ export class Edge {
     ])
 
     // add holes for each wall item
-    this.wall.items.forEach((item: any) => {
-      const pos = item.position.clone()
-      pos.applyMatrix4(transform)
-      const halfSize = item.halfSize
-      const min = halfSize.clone().multiplyScalar(-1)
-      const max = halfSize.clone()
-      min.add(pos)
-      max.add(pos)
+    //
+    // infinity: consider EVERY wall's in-wall items, not just this wall's.
+    // Traced multi-mass buildings share boundaries, so two coincident (or
+    // partially overlapping) walls can occupy the same line — a unit attaches
+    // to one and the twin used to render solid in front of it. An item cuts a
+    // hole here when it genuinely lies in THIS plane: close along the plane
+    // normal, width axis parallel to the wall (so a unit near a corner never
+    // nicks the perpendicular wall), and overlapping this plane's span. Holes
+    // are clamped to the shape so a partial overlap can't break triangulation.
+    const shapeMinX = Math.min(points[0].x, points[1].x)
+    const shapeMaxX = Math.max(points[0].x, points[1].x)
+    const shapeMinY = Math.min(points[0].y, points[2].y)
+    const shapeMaxY = Math.max(points[0].y, points[2].y)
+    const CLAMP_INSET = 1 // cm — keep clamped holes strictly inside the shape
+    const NEAR_PLANE = 25 // cm — half wall + item depth, generously
+    const wallDirX = end.x - start.x
+    const wallDirY = end.y - start.y
+    const wallDirLen = Math.sqrt(wallDirX * wallDirX + wallDirY * wallDirY) || 1
 
-      const holePoints = [
-        new THREE.Vector2(min.x, min.y),
-        new THREE.Vector2(max.x, min.y),
-        new THREE.Vector2(max.x, max.y),
-        new THREE.Vector2(min.x, max.y)
-      ]
+    const walls = this.floorplan ? this.floorplan.getWalls() : [this.wall]
+    const seen = new Set<unknown>()
+    walls.forEach((wall: any) => {
+      wall.items.forEach((item: any) => {
+        if (seen.has(item)) return
+        seen.add(item)
 
-      shape.holes.push(new THREE.Path(holePoints))
+        const pos = item.position.clone()
+        pos.applyMatrix4(transform)
+        if (item.currentWallEdge?.wall !== this.wall) {
+          // Foreign item: must actually lie in this plane…
+          if (Math.abs(pos.z) > NEAR_PLANE) return
+          // …with its width axis parallel to this wall (rotation about +y
+          // maps local +x to world (cos ry, -sin ry) on the XZ plane).
+          const ry = item.rotation?.y ?? 0
+          const dot =
+            (Math.cos(ry) * wallDirX + -Math.sin(ry) * wallDirY) / wallDirLen
+          if (Math.abs(dot) < 0.97) return
+        }
+
+        const halfSize = item.halfSize
+        const min = halfSize.clone().multiplyScalar(-1)
+        const max = halfSize.clone()
+        min.add(pos)
+        max.add(pos)
+
+        const x0 = Math.max(min.x, shapeMinX + CLAMP_INSET)
+        const x1 = Math.min(max.x, shapeMaxX - CLAMP_INSET)
+        const y0 = Math.max(min.y, shapeMinY + CLAMP_INSET)
+        const y1 = Math.min(max.y, shapeMaxY - CLAMP_INSET)
+        if (x1 - x0 < 2 || y1 - y0 < 2) return // outside this plane, or a sliver
+
+        const holePoints = [
+          new THREE.Vector2(x0, y0),
+          new THREE.Vector2(x1, y0),
+          new THREE.Vector2(x1, y1),
+          new THREE.Vector2(x0, y1)
+        ]
+
+        shape.holes.push(new THREE.Path(holePoints))
+      })
     })
 
     const geometry = new THREE.ShapeGeometry(shape)

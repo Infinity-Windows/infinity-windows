@@ -53,16 +53,39 @@ function groundFootprints(job: FitJobLike): { x: number; z: number }[][] {
 export function buildStudioSeed(job: FitJobLike, maxWindows = 8): StudioSeed {
   const fps = groundFootprints(job).filter((fp) => fp.length >= 3);
 
+  // Corners are merged ACROSS masses by coordinate (3 cm snap) and duplicate
+  // segments dropped: adjacent masses trace the same boundary, and seeding it
+  // twice used to mint coincident twin walls — a window cut its hole in one
+  // while the twin rendered solid in front of it ("window hiding behind the
+  // wall"). One shared wall is also what an editor expects to drag.
   const corners: Record<string, { x: number; y: number }> = {};
+  const cornerList: { id: string; x: number; y: number }[] = [];
   const walls: { corner1: string; corner2: string }[] = [];
-  fps.forEach((fp, pi) => {
-    const ids = fp.map((p, i) => {
-      const id = `c${pi}-${i}`;
-      corners[id] = { x: p.x * M_TO_CM, y: p.z * M_TO_CM };
-      return id;
-    });
+  const wallKeys = new Set<string>();
+  const SNAP_CM = 3;
+  const cornerId = (p: { x: number; z: number }): string => {
+    const xCm = p.x * M_TO_CM;
+    const yCm = p.z * M_TO_CM;
+    // Linear proximity scan — corner counts are tiny, and a grid bucket
+    // would miss near-identical points straddling a bucket boundary.
+    for (const c of cornerList) {
+      if (Math.hypot(c.x - xCm, c.y - yCm) <= SNAP_CM) return c.id;
+    }
+    const id = `c${cornerList.length}`;
+    cornerList.push({ id, x: xCm, y: yCm });
+    corners[id] = { x: xCm, y: yCm };
+    return id;
+  };
+  fps.forEach((fp) => {
+    const ids = fp.map(cornerId);
     for (let i = 0; i < ids.length; i++) {
-      walls.push({ corner1: ids[i], corner2: ids[(i + 1) % ids.length] });
+      const a = ids[i];
+      const b = ids[(i + 1) % ids.length];
+      if (a === b) continue; // merged corners collapse zero-length segments
+      const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+      if (wallKeys.has(key)) continue;
+      wallKeys.add(key);
+      walls.push({ corner1: a, corner2: b });
     }
   });
 
