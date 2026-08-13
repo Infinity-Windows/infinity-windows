@@ -56,6 +56,8 @@ function fitPlan(bp: Blueprint3d) {
     (canvas.clientWidth * 0.85) / Math.max(spanX, 1),
     (canvas.clientHeight * 0.85) / Math.max(spanY, 1),
   );
+  // A zero-width canvas mid-layout would compute scale 0 and brick the pane.
+  if (!Number.isFinite(px) || px <= 0) return;
   applyPlanScale(bp, px);
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
   const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
@@ -92,6 +94,7 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
   const embedded = Boolean(propId);
   const hostReady = useRef(false);
   const bpRef = useRef<Blueprint3d | null>(null);
+  const roRef = useRef<ResizeObserver | null>(null);
   const [mode, setModeState] = useState<number>(0);
   /** Full-screen one pane at a time — editing needs the whole laptop screen. */
   const [fs, setFs] = useState<"none" | "plan" | "model">("none");
@@ -191,6 +194,18 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
       bp.three.updateWindowSize();
       bp.three.centerCamera();
     });
+    // Layout can settle after the raf (lazy chunk, tab transition, pane
+    // resize). Re-fit whenever the canvas gets a real size — the guard in
+    // fitPlan makes duplicate calls harmless.
+    const canvasEl = document.getElementById("studio-floorplan");
+    if (canvasEl && "ResizeObserver" in window) {
+      const ro = new ResizeObserver(() => {
+        bp.floorplanner?.resizeView();
+        fitPlan(bp);
+      });
+      ro.observe(canvasEl);
+      roRef.current = ro;
+    }
     setStatus(
       saved
         ? "Loaded your saved Studio model."
@@ -210,6 +225,14 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
       bp.three.centerCamera();
     });
   }, [fs]);
+
+  useEffect(
+    () => () => {
+      roRef.current?.disconnect();
+      roRef.current = null;
+    },
+    [],
+  );
 
   const setMode = (m: number) => {
     bpRef.current?.floorplanner?.setMode(m);
