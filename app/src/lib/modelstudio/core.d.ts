@@ -41,6 +41,15 @@ export interface StudioFloorplan {
   update(): void;
 }
 
+export interface StudioItem {
+  position: { x: number; y: number; z: number; set(x: number, y: number, z: number): void };
+  metadata?: { itemName?: string; unitConfig?: unknown };
+  resize(height: number, width: number, depth: number): void;
+  getWidth(): number;
+  getHeight(): number;
+  getDepth(): number;
+}
+
 export interface StudioScene {
   addItem(
     itemType: number,
@@ -51,7 +60,7 @@ export interface StudioScene {
     scale?: StudioVector3,
     fixed?: boolean,
   ): void;
-  getItems(): unknown[];
+  getItems(): StudioItem[];
 }
 
 export interface StudioModel {
