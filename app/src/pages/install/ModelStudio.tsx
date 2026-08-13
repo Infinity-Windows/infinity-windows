@@ -135,6 +135,8 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
   const [lenInput, setLenInput] = useState("");
   const [heightInput, setHeightInput] = useState("");
   const [buildingHeight, setBuildingHeight] = useState("");
+  /** The whole palette hides behind one drop bar (owner ask). */
+  const [paletteOpen, setPaletteOpen] = useState(false);
   /** Undo: serialized snapshots pushed BEFORE each mutating gesture. */
   const undoStack = useRef<string[]>([]);
   const [undoDepth, setUndoDepth] = useState(0);
@@ -415,7 +417,17 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
   const narrow = typeof window !== "undefined" && window.innerWidth < 900;
 
   const palette = (
-    <div className="studio-palette">
+    <div className={paletteOpen ? "studio-palette" : "studio-palette collapsed"}>
+      <button
+        type="button"
+        className="button-like studio-palette-toggle"
+        aria-expanded={paletteOpen}
+        onClick={() => setPaletteOpen((v) => !v)}
+      >
+        🛠 Tools {paletteOpen ? "▴" : "▾"}
+      </button>
+      {paletteOpen && (
+      <>
       <div className="row-gap" style={{ flexWrap: "wrap" }}>
         <button className="button-like studio-mini" disabled={undoDepth === 0} onClick={undo}>
           ↩ Undo{undoDepth > 0 ? ` (${undoDepth})` : ""}
@@ -514,6 +526,8 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
         <p className="muted" style={{ fontSize: 11, margin: "4px 0 0" }}>
           Click a wall to edit its length or height.
         </p>
+      )}
+      </>
       )}
     </div>
   );
