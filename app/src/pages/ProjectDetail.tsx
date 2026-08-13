@@ -1,6 +1,6 @@
 import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Scanner } from "../components/Scanner";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
@@ -59,7 +59,7 @@ import {
   type ProjectWindow,
   type WindowUnit,
 } from "../lib/types";
-import { isForemanPlus } from "../lib/install/types";
+import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { listProjectAssignments } from "../lib/schedule/api";
 import { listVehicleLinksForProject } from "../lib/vehicles/api";
@@ -77,12 +77,18 @@ import { JobChat } from "../components/chat/JobChat";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
 import { formatApiError } from "../lib/errors";
 
+// Lazy: the Studio pulls three.js — phones and non-supervisors never load it.
+const ModelStudioTab = lazy(() =>
+  import("./install/ModelStudio").then((m) => ({ default: m.ModelStudio })),
+);
+
 const windowLookups = { getWindowByWindowId, findWindowByCode, findWindowBySerial };
 
 type HubTab =
   | "overview"
   | "warehouse"
   | "map"
+  | "model-studio"
   | "maps-interactive"
   | "brain"
   | "dispatch"
@@ -97,6 +103,7 @@ export function ProjectDetail() {
   const tab: HubTab =
     tabParam === "warehouse" ||
     tabParam === "map" ||
+    tabParam === "model-studio" ||
     tabParam === "maps-interactive" ||
     tabParam === "brain" ||
     tabParam === "dispatch" ||
@@ -118,6 +125,7 @@ export function ProjectDetail() {
   useRealtimeOpenings(projectId);
   const { effectiveRole } = useEffectiveRole();
   const isLead = isForemanPlus(effectiveRole);
+  const isSup = isSupervisorPlus(effectiveRole);
   const unread = useUnreadCounts();
   const chatUnread = unread.data?.[projectId] ?? 0;
 
@@ -130,6 +138,9 @@ export function ProjectDetail() {
     // "Map" and "Maps Interactive" merged 2026-08-13 (owner call): one tab,
     // 3D + Sheets views inside. ?tab=map deep links redirect below.
     { id: "maps-interactive", label: "Maps Interactive" },
+    // The editable building model (spike). Supervisor+ - same floor as the
+    // tracer, because reshaping the model is an office call.
+    ...(isSup ? [{ id: "model-studio" as HubTab, label: "Model Studio" }] : []),
     ...(isLead ? [{ id: "exceptions" as HubTab, label: "Exceptions" }] : []),
     { id: "brain", label: "Brain" },
   ];
@@ -323,6 +334,12 @@ export function ProjectDetail() {
       )}
 
       {tab === "maps-interactive" && project && <MapsInteractive project={project} />}
+
+      {tab === "model-studio" && isSup && (
+        <Suspense fallback={<p className="muted">Loading the Studio…</p>}>
+          <ModelStudioTab projectId={projectId} />
+        </Suspense>
+      )}
 
       {tab === "exceptions" && isLead && <ExceptionsTab projectId={projectId} />}
 
