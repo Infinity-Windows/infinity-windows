@@ -290,6 +290,104 @@ test("panels read left-to-right as seen from OUTSIDE", async ({ page }) => {
   expect(wide.worldZ).toBeGreaterThan(narrow.worldZ);
 });
 
+test("a 90° corner unit snaps to the building corner and cuts BOTH walls", async ({
+  page,
+}) => {
+  // Window 16's shape: a long main run with a short first panel wrapping
+  // the corner. The wrap reads at the drawing's LEFT, which on the east
+  // wall is the +z end — the (1800, 600) corner. Dropped short of it, the
+  // unit must seat itself AT that corner and open holes in the east wall
+  // (x=1800, its own) AND the south wall (z=600, the neighbour it is not
+  // attached to).
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useOutline(page, { fitview: { model: FITVIEW_MODEL } });
+  await openStudio(page);
+
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    bp.model.scene.addItem(
+      3,
+      "/modelstudio/models/window.json",
+      {
+        itemName: "E2E corner unit",
+        itemType: 3,
+        modelUrl: "/modelstudio/models/window.json",
+        unitConfig: {
+          kind: "window",
+          heightMm: 2000,
+          panels: [
+            { widthMm: 800, mechanism: "fixed" },
+            { widthMm: 2400, mechanism: "fixed" },
+            { widthMm: 2400, mechanism: "fixed" },
+          ],
+          cornerAfterPanel: 0, // the 800 mm first panel wraps
+        },
+      },
+      // Near the corner but deliberately ~80 cm short of it: the snap has
+      // to finish the job.
+      { x: 1800, y: 120, z: 320 },
+      0,
+      undefined,
+      false,
+    );
+  });
+  await page.waitForFunction(() => {
+    const bp = (window as any).__studio;
+    const items = bp.model.scene.getItems();
+    return items.length === 1 && Boolean(items[0].currentWallEdge);
+  });
+
+  const state = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const item = bp.model.scene.getItems()[0];
+    const holed = (predicate: (w: any) => boolean) =>
+      bp.three.floorplan.edges
+        .filter((e: any) => predicate(e.wall))
+        .flatMap((e: any) =>
+          [e.planes[0], e.planes[1]].map(
+            (m: any) => m.geometry.getAttribute("position").count,
+          ),
+        );
+    return {
+      rects: typeof item.holeRects === "function" ? item.holeRects().length : 0,
+      itemZ: item.position.z,
+      east: holed(
+        (w: any) =>
+          Math.abs(w.getStartX() - 1800) < 1 && Math.abs(w.getEndX() - 1800) < 1,
+      ),
+      south: holed(
+        (w: any) =>
+          Math.abs(w.getStartY() - 600) < 1 &&
+          Math.abs(w.getEndY() - 600) < 1 &&
+          Math.min(w.getStartX(), w.getEndX()) >= 999,
+      ),
+    };
+  });
+  expect(state.rects).toBe(2);
+  // Snap seated the wrap tip at the (1800, 600) corner: the main leg is
+  // 480 cm + 5 cm half-post, so its centre lands at z ≈ 600 − 245 = 355.
+  expect(Math.abs(state.itemZ - 355)).toBeLessThan(2);
+  // Both walls' faces tessellated around a hole (a plain quad is 4 verts).
+  expect(state.east.length).toBeGreaterThan(0);
+  for (const c of state.east) expect(c).toBeGreaterThanOrEqual(8);
+  expect(state.south.length).toBeGreaterThan(0);
+  for (const c of state.south) expect(c).toBeGreaterThanOrEqual(8);
+
+  // Aim the camera at the corner from outside before the eyeball shot.
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const controls = bp.three.controls;
+    controls.object.position.set(2600, 500, 1200);
+    controls.target?.set?.(1750, 120, 550);
+    controls.update?.();
+  });
+  await page.waitForTimeout(300);
+  mkdirSync(SHOTS, { recursive: true });
+  await page
+    .locator("#studio-three canvas")
+    .screenshot({ path: join(SHOTS, "corner-unit.png") });
+});
+
 test("a fresh seed never mints twin walls", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "supervisor" });
   // No saved Studio model: the tab seeds from the traced building.

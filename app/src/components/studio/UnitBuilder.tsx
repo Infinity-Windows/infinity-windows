@@ -55,6 +55,11 @@ export function UnitBuilder({
   const [heightInput, setHeightInput] = useState("");
   const [widthInput, setWidthInput] = useState("");
   const [panelInputs, setPanelInputs] = useState<Record<number, string>>({});
+  /** 0-based last panel before the 90° turn, or null for a flat unit —
+   * window 16 wraps its building corner after panel 1 (index 0). */
+  const [cornerAfter, setCornerAfter] = useState<number | null>(
+    initial?.config.cornerAfterPanel ?? null,
+  );
   const [name, setName] = useState(initial?.name ?? "");
 
   const heightMm = useMemo(() => {
@@ -65,8 +70,14 @@ export function UnitBuilder({
   }, [heightInput, kind, initial]);
 
   const config: UnitConfig = useMemo(
-    () => ({ kind, heightMm, panels }),
-    [kind, heightMm, panels],
+    () => ({
+      kind,
+      heightMm,
+      panels,
+      cornerAfterPanel:
+        cornerAfter != null && cornerAfter < panels.length - 1 ? cornerAfter : null,
+    }),
+    [kind, heightMm, panels, cornerAfter],
   );
 
   const setPanelCount = (n: number) => {
@@ -75,6 +86,7 @@ export function UnitBuilder({
       while (next.length < n) next.push(defaultPanel(kind));
       return next.slice(0, n);
     });
+    setCornerAfter((prev) => (prev != null && prev < n - 1 ? prev : null));
   };
 
   const patchPanel = (i: number, patch: Partial<UnitPanel>) => {
@@ -105,6 +117,7 @@ export function UnitBuilder({
     "Panels",
     "Mechanisms",
     anyMoving ? "Directions" : null,
+    panels.length >= 2 ? "Corner" : null,
     "Dimensions",
     "Finish",
   ].filter(Boolean) as string[];
@@ -222,6 +235,33 @@ export function UnitBuilder({
                 </div>
               ) : null,
             )}
+          </div>
+        )}
+
+        {stepName === "Corner" && (
+          <div>
+            <p className="muted" style={{ fontSize: 12, margin: "0 0 6px" }}>
+              Does this unit turn a building corner at 90°? Window 16 does —
+              its first panel wraps onto the next wall. Reading the drawing
+              left to right (always the outside view), pick where it turns.
+            </p>
+            <div className="row-gap" style={{ flexWrap: "wrap" }}>
+              <button
+                className={cornerAfter == null ? "button-like active-pill" : "button-like"}
+                onClick={() => setCornerAfter(null)}
+              >
+                No corner
+              </button>
+              {panels.slice(0, -1).map((_, i) => (
+                <button
+                  key={i}
+                  className={cornerAfter === i ? "button-like active-pill" : "button-like"}
+                  onClick={() => setCornerAfter(i)}
+                >
+                  ⌐ after panel {i + 1}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

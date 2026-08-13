@@ -292,39 +292,52 @@ export class Edge {
         if (seen.has(item)) return
         seen.add(item)
 
-        const pos = item.position.clone()
-        pos.applyMatrix4(transform)
-        if (item.currentWallEdge?.wall !== this.wall) {
-          // Foreign item: must actually lie in this plane…
-          if (Math.abs(pos.z) > NEAR_PLANE) return
-          // …with its width axis parallel to this wall (rotation about +y
-          // maps local +x to world (cos ry, -sin ry) on the XZ plane).
-          const ry = item.rotation?.y ?? 0
-          const dot =
-            (Math.cos(ry) * wallDirX + -Math.sin(ry) * wallDirY) / wallDirLen
-          if (Math.abs(dot) < 0.97) return
-        }
+        // infinity: an item may carry EXPLICIT world-space hole rects — a
+        // 90° corner unit has one per leg, each on a different wall. Flat
+        // items fall back to their position/halfSize/rotation as one rect.
+        const own = item.currentWallEdge?.wall === this.wall
+        const ry = item.rotation?.y ?? 0
+        const explicit = typeof item.holeRects === 'function'
+        const rects = explicit
+          ? item.holeRects()
+          : [
+              {
+                x: item.position.x,
+                y: item.position.y,
+                z: item.position.z,
+                halfW: item.halfSize.x,
+                halfH: item.halfSize.y,
+                dirX: Math.cos(ry),
+                dirZ: -Math.sin(ry)
+              }
+            ]
 
-        const halfSize = item.halfSize
-        const min = halfSize.clone().multiplyScalar(-1)
-        const max = halfSize.clone()
-        min.add(pos)
-        max.add(pos)
+        rects.forEach((r: any) => {
+          const pos = new THREE.Vector3(r.x, r.y, r.z)
+          pos.applyMatrix4(transform)
+          if (!own || explicit) {
+            // The rect must actually lie in THIS plane: close along the
+            // plane normal, and running parallel to the wall.
+            if (Math.abs(pos.z) > NEAR_PLANE) return
+            const dot = (r.dirX * wallDirX + r.dirZ * wallDirY) / wallDirLen
+            if (Math.abs(dot) < 0.97) return
+          }
 
-        const x0 = Math.max(min.x, shapeMinX + CLAMP_INSET)
-        const x1 = Math.min(max.x, shapeMaxX - CLAMP_INSET)
-        const y0 = Math.max(min.y, shapeMinY + CLAMP_INSET)
-        const y1 = Math.min(max.y, shapeMaxY - CLAMP_INSET)
-        if (x1 - x0 < 2 || y1 - y0 < 2) return // outside this plane, or a sliver
+          const x0 = Math.max(pos.x - r.halfW, shapeMinX + CLAMP_INSET)
+          const x1 = Math.min(pos.x + r.halfW, shapeMaxX - CLAMP_INSET)
+          const y0 = Math.max(pos.y - r.halfH, shapeMinY + CLAMP_INSET)
+          const y1 = Math.min(pos.y + r.halfH, shapeMaxY - CLAMP_INSET)
+          if (x1 - x0 < 2 || y1 - y0 < 2) return // outside this plane, or a sliver
 
-        const holePoints = [
-          new THREE.Vector2(x0, y0),
-          new THREE.Vector2(x1, y0),
-          new THREE.Vector2(x1, y1),
-          new THREE.Vector2(x0, y1)
-        ]
+          const holePoints = [
+            new THREE.Vector2(x0, y0),
+            new THREE.Vector2(x1, y0),
+            new THREE.Vector2(x1, y1),
+            new THREE.Vector2(x0, y1)
+          ]
 
-        shape.holes.push(new THREE.Path(holePoints))
+          shape.holes.push(new THREE.Path(holePoints))
+        })
       })
     })
 
