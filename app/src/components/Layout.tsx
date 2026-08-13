@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -12,7 +12,7 @@ import {
   ScanLine,
   Sparkles,
 } from "lucide-react";
-import { countMyOpenOpenings, getMyProfile } from "../lib/install/api";
+import { countMyOpenOpenings, getMyProfile, getRealProfile, listProfiles } from "../lib/install/api";
 import { ROLE_LABELS, type CrewRole } from "../lib/install/types";
 import { bottomBarForRole, menuForRole, roleRank, type MenuAction } from "../lib/nav";
 import { useClock } from "../lib/clockContext";
@@ -56,7 +56,9 @@ const TAB_ICONS: Record<string, ReactNode> = {
  * FAB. The menu content + role gating flow from the shared NAV registry.
  */
 export function Layout() {
+  const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const realMe = useQuery({ queryKey: ["myRealProfile"], queryFn: getRealProfile });
   const view = useViewAsRole();
   const role = effectiveRole(me.data?.role, view);
   const isInstaller = roleRank(role) === 0;
@@ -107,6 +109,25 @@ export function Layout() {
 
   const applyPreview = (nextRole: CrewRole | null) => {
     view.setPreviewRole(nextRole);
+    view.setPreviewPerson(null);
+    navigate("/");
+  };
+  // Owner-only person preview: every "my …" query keys off getMyProfile, so
+  // switching person must drop the whole query cache and start clean.
+  const crew = useQuery({
+    queryKey: ["profiles"],
+    queryFn: listProfiles,
+    enabled: view.canPreviewPerson,
+  });
+  const applyPersonPreview = (personId: string) => {
+    if (!personId) {
+      view.setPreviewPerson(null);
+    } else {
+      const p = (crew.data ?? []).find((c) => c.id === personId);
+      if (!p) return;
+      view.setPreviewPerson({ id: p.id, name: p.display_name, role: p.role });
+    }
+    void queryClient.invalidateQueries();
     navigate("/");
   };
 
@@ -158,6 +179,7 @@ export function Layout() {
   }
 
   const previewing = view.canPreview && view.previewRole;
+  const previewingPerson = view.canPreviewPerson ? view.previewPerson : null;
 
   const clockTab = (
     <button
@@ -186,23 +208,48 @@ export function Layout() {
       <p className="view-as-title">View as role (preview)</p>
       <div className="view-as-options">
         {PREVIEW_ROLES.map((r) => {
-          const active = (view.previewRole ?? me.data?.role) === r;
+          const active = (view.previewRole ?? realMe.data?.role) === r;
           return (
             <button
               key={r}
               type="button"
               className={active ? "view-as-chip active" : "view-as-chip"}
               aria-pressed={active}
-              onClick={() => applyPreview(r === me.data?.role ? null : r)}
+              onClick={() => applyPreview(r === realMe.data?.role ? null : r)}
             >
               {ROLE_LABELS[r]}
             </button>
           );
         })}
       </div>
-      {view.previewRole && (
-        <button type="button" className="view-as-reset" onClick={() => applyPreview(null)}>
-          Reset to my role
+      {view.canPreviewPerson && (
+        <select
+          className="view-as-person"
+          aria-label="View as a specific person"
+          value={view.previewPerson?.id ?? ""}
+          onChange={(e) => applyPersonPreview(e.target.value)}
+        >
+          <option value="">— view as a person —</option>
+          {(crew.data ?? [])
+            .filter((c) => c.active && c.id !== realMe.data?.id)
+            .map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.display_name} ({c.role})
+              </option>
+            ))}
+        </select>
+      )}
+      {(view.previewRole || view.previewPerson) && (
+        <button
+          type="button"
+          className="view-as-reset"
+          onClick={() => {
+            view.setPreviewPerson(null);
+            applyPreview(null);
+            void queryClient.invalidateQueries();
+          }}
+        >
+          Reset to my view
         </button>
       )}
     </div>
@@ -237,7 +284,21 @@ export function Layout() {
           <div className="sync-strip">
             <SyncStatusPill />
           </div>
-          {previewing && (
+          {previewingPerson ? (
+            <div className="view-as-banner" role="status">
+              <span>
+                Viewing as <strong>{previewingPerson.name}</strong> (their data) —
+                anything you tap still acts as <strong>you</strong>
+              </span>
+              <button
+                type="button"
+                className="view-as-reset"
+                onClick={() => applyPersonPreview("")}
+              >
+                Reset
+              </button>
+            </div>
+          ) : previewing ? (
             <div className="view-as-banner" role="status">
               <span>
                 Viewing as{" "}
@@ -248,7 +309,7 @@ export function Layout() {
                 Reset
               </button>
             </div>
-          )}
+          ) : null}
           <Outlet />
         </main>
       </div>

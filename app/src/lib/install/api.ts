@@ -1,5 +1,6 @@
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import { supabase } from "../supabase";
+import { isOwner } from "./types";
 import { isMissingColumn, isMissingFunction as isMissingSchemaFunction, isMissingTable } from "../schemaErrors";
 import type { WindowType } from "../types";
 import type { DraftOpening, ExistingOpeningLite, PlansetKindLike } from "./extract";
@@ -129,7 +130,8 @@ export async function ensureMyProfile(): Promise<Profile | null> {
   return profile;
 }
 
-export async function getMyProfile(): Promise<Profile | null> {
+/** The signed-in user's own profile — NEVER affected by person preview. */
+export async function getRealProfile(): Promise<Profile | null> {
   const { data: userData } = await supabase.auth.getUser();
   const user = userData.user;
   if (!user) return null;
@@ -140,6 +142,32 @@ export async function getMyProfile(): Promise<Profile | null> {
     .maybeSingle();
   if (error) throw error;
   return data as Profile | null;
+}
+
+export async function getMyProfile(): Promise<Profile | null> {
+  const me = await getRealProfile();
+
+  // Person preview (owner-only, session-scoped): every "my …" surface keys
+  // off this profile, so returning the previewed person makes the whole app
+  // read as THEM. Display-side only — server writes still stamp the real
+  // auth.uid(), and RLS still governs what this login may read.
+  if (me && isOwner(me.role)) {
+    try {
+      const raw = sessionStorage.getItem("infinity.viewAsPerson");
+      const preview = raw ? (JSON.parse(raw) as { id?: string }) : null;
+      if (preview?.id && preview.id !== me.id) {
+        const { data: other } = await supabase
+          .from("profiles")
+          .select(PROFILE_COLS)
+          .eq("id", preview.id)
+          .maybeSingle();
+        if (other) return other as Profile;
+      }
+    } catch {
+      /* no preview */
+    }
+  }
+  return me;
 }
 
 export async function listProfiles(): Promise<Profile[]> {

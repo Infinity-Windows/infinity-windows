@@ -9511,3 +9511,10 @@ body {
   color: var(--muted); cursor: pointer;
 }
 .notif-clear:hover { background: rgba(255,255,255,.06); color: #fff; }
+
+.view-as-person {
+  width: 100%; margin-top: 6px; font-size: 12px;
+  padding: 6px 8px; border-radius: 8px;
+  background: var(--card, rgba(255,255,255,.04));
+  border: 1px solid rgba(255,255,255,.12); color: inherit;
+}

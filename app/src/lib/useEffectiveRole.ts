@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { getMyProfile } from "./install/api";
+import { getRealProfile } from "./install/api";
 import type { CrewRole } from "./install/types";
 import { effectiveRole, useViewAsRole } from "./viewAsRoleContext";
 
@@ -25,10 +25,12 @@ export interface EffectiveRole {
  * not previewing, `effectiveRole === realRole` so behavior is identical.
  */
 export function useEffectiveRole(): EffectiveRole {
-  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const me = useQuery({ queryKey: ["myRealProfile"], queryFn: getRealProfile });
   const view = useViewAsRole();
   const realRole = me.data?.role ?? null;
-  const isPreviewing = view.canPreview && view.previewRole != null;
+  const isPreviewing =
+    (view.canPreview && view.previewRole != null) ||
+    (view.canPreviewPerson && view.previewPerson != null);
   return {
     realRole,
     effectiveRole: effectiveRole(realRole, view),
