@@ -11,6 +11,7 @@ import {
 } from "../lib/api";
 import type { QrPayload } from "../lib/qr";
 import { resolveLocationFromScan, resolveWindowFromScan } from "../lib/scanResolve";
+import { getContainerBySerial, getPackageBySerial } from "../lib/storage";
 import { formatApiError } from "../lib/errors";
 
 const windowLookups = { getWindowByWindowId, findWindowByCode, findWindowBySerial };
@@ -35,6 +36,20 @@ export function Scan() {
         } else if (res.status === "not-found") {
           setMessage(`No slot found for "${res.query}".`);
         }
+        return;
+      }
+      // Storage labels: a conex door poster opens the container, a package
+      // sticker opens the package's sheet.
+      if (payload.kind === "containerSerial") {
+        const c = await getContainerBySerial(payload.serial);
+        if (c) navigate(`/storage/c/${c.id}`);
+        else setMessage(`No container found for "${payload.serial}".`);
+        return;
+      }
+      if (payload.kind === "packageSerial") {
+        const p = await getPackageBySerial(payload.serial);
+        if (p) navigate(`/pkg/${p.serial}`);
+        else setMessage(`No package found for "${payload.serial}".`);
         return;
       }
       const res = await resolveWindowFromScan(payload, windowLookups);

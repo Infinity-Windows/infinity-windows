@@ -3,8 +3,10 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import QRCode from "qrcode";
 import {
+  encodeContainerSerialQr,
   encodeLocationQr,
   encodeLocationSerialQr,
+  encodePackageSerialQr,
   encodeWindowQr,
   encodeWindowSerialQr,
 } from "./qr";
@@ -151,6 +153,105 @@ export async function locationLabelsPdf(
       };
     }),
   );
+}
+
+/**
+ * Blank license-plate stickers, one per 4×2 thermal label: QR + big serial +
+ * hand-writable short code. They mean nothing until first scan binds them to
+ * a package at the truck — print by the hundred and keep the roll in the cab.
+ */
+export async function packageLabelsPdf(
+  packages: { serial: string; short_code?: string | null }[],
+): Promise<Uint8Array> {
+  return buildLabelPdf(
+    packages.map((p) => ({
+      qrPayload: encodePackageSerialQr(p.serial),
+      hero: p.short_code
+        ? { text: p.short_code, maxSize: 40 }
+        : { text: p.serial, maxSize: 26 },
+      lines: [
+        ...(p.short_code
+          ? [{ text: p.serial, size: 13, bold: true } as LabelLine]
+          : []),
+        { text: "Package — scan to assign", size: 10, color: MUTED },
+      ],
+    })),
+  );
+}
+
+/**
+ * Letter-size door poster for a conex/warehouse: one page per container,
+ * giant QR + name + serial, readable from a forklift. Print, laminate, zip-tie.
+ */
+export async function containerPostersPdf(
+  containers: { serial: string; name: string; address?: string | null }[],
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const regular = await doc.embedFont(StandardFonts.Helvetica);
+  const W = 612; // 8.5in
+  const H = 792; // 11in
+
+  for (const c of containers) {
+    const page = doc.addPage([W, H]);
+    const qrDataUrl = await QRCode.toDataURL(encodeContainerSerialQr(c.serial), {
+      errorCorrectionLevel: "M",
+      margin: 1,
+      width: 640,
+    });
+    const png = await doc.embedPng(qrDataUrl);
+    const qrSize = 440;
+    page.drawImage(png, {
+      x: (W - qrSize) / 2,
+      y: H - qrSize - 120,
+      width: qrSize,
+      height: qrSize,
+    });
+
+    let nameSize = 54;
+    while (nameSize > 18 && bold.widthOfTextAtSize(c.name, nameSize) > W - 72) {
+      nameSize -= 2;
+    }
+    page.drawText(c.name, {
+      x: (W - bold.widthOfTextAtSize(c.name, nameSize)) / 2,
+      y: H - 84,
+      size: nameSize,
+      font: bold,
+      color: rgb(0, 0, 0),
+    });
+    page.drawText(c.serial, {
+      x: (W - bold.widthOfTextAtSize(c.serial, 30)) / 2,
+      y: H - qrSize - 170,
+      size: 30,
+      font: bold,
+      color: rgb(0, 0, 0),
+    });
+    if (c.address) {
+      let addrSize = 18;
+      while (
+        addrSize > 10 &&
+        regular.widthOfTextAtSize(c.address, addrSize) > W - 72
+      ) {
+        addrSize -= 1;
+      }
+      page.drawText(c.address, {
+        x: (W - regular.widthOfTextAtSize(c.address, addrSize)) / 2,
+        y: H - qrSize - 200,
+        size: addrSize,
+        font: regular,
+        color: rgb(0.25, 0.25, 0.25),
+      });
+    }
+    page.drawText("Scan to open this container in the app", {
+      x: (W - regular.widthOfTextAtSize("Scan to open this container in the app", 14)) / 2,
+      y: 48,
+      size: 14,
+      font: regular,
+      color: rgb(0.4, 0.4, 0.4),
+    });
+  }
+
+  return doc.save();
 }
 
 export function downloadPdf(bytes: Uint8Array, filename: string) {

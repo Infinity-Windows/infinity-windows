@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  encodeContainerSerialQr,
   encodeLocationQr,
   encodeLocationSerialQr,
+  encodePackageSerialQr,
   encodeWindowQr,
   encodeWindowSerialQr,
   parseQr,
@@ -31,6 +33,30 @@ describe("qr payloads", () => {
     expect(parseQr(encodeLocationSerialQr("SLOT-000123"))).toEqual({
       kind: "locationSerial",
       serial: "SLOT-000123",
+    });
+  });
+
+  it("round-trips container poster and package sticker labels", () => {
+    expect(encodeContainerSerialQr("CTR-000007")).toBe("WOPS:CS:CTR-000007");
+    expect(parseQr(encodeContainerSerialQr("CTR-000007"))).toEqual({
+      kind: "containerSerial",
+      serial: "CTR-000007",
+    });
+    expect(encodePackageSerialQr("PKG-000123")).toBe("WOPS:PS:PKG-000123");
+    expect(parseQr(encodePackageSerialQr("PKG-000123"))).toEqual({
+      kind: "packageSerial",
+      serial: "PKG-000123",
+    });
+  });
+
+  it("accepts bare container/package serials typed off a scuffed label", () => {
+    expect(parseQr("ctr-000007")).toEqual({
+      kind: "containerSerial",
+      serial: "CTR-000007",
+    });
+    expect(parseQr("pkg-000123")).toEqual({
+      kind: "packageSerial",
+      serial: "PKG-000123",
     });
   });
 

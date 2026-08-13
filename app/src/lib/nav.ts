@@ -57,6 +57,9 @@ export type RoutePath =
   | "/safety"
   | "/scan"
   | "/count"
+  | "/storage"
+  | "/storage/tag"
+  | "/storage/out"
   | "/ask"
   | "/knowledge"
   | "/ai-spend"
@@ -129,6 +132,7 @@ export const NAV: NavDest[] = [
   { id: "safety", to: "/safety", label: "Safety", icon: "⛑", minRole: "installer" },
   { id: "scan", to: "/scan", label: "Scan", icon: "▣", minRole: "installer" },
   { id: "count", to: "/count", label: "Cycle count", icon: "#", minRole: "installer" },
+  { id: "storage", to: "/storage", label: "Storage", icon: "▧", minRole: "installer" },
   { id: "warehouse", to: "/warehouse", label: "Warehouse", icon: "▦", minRole: "installer" },
   { id: "projects", to: "/projects", label: "Jobs", icon: "▤", minRole: "installer" },
   { id: "ask", to: "/ask", label: "Ask", icon: "?", minRole: "installer" },
@@ -345,6 +349,7 @@ const MENU_DEF: MenuSection[] = [
     Icon: WarehouseIcon,
     items: [
       { to: "/warehouse", label: "Hub", Icon: WarehouseIcon },
+      { to: "/storage", label: "Storage", Icon: Boxes },
       { to: "/scan", label: "Scan", Icon: ScanLine },
       { to: "/count", label: "Cycle count", Icon: ListChecks },
       { to: "/receive", label: "Receive", Icon: PackageCheck },

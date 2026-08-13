@@ -27,7 +27,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Settings (`/settings`)
 
-**Can reach (all 23 allowed destinations):**
+**Can reach (all 24 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -36,6 +36,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Safety (`/safety`)
 - Scan (`/scan`)
 - Cycle count (`/count`)
+- Storage (`/storage`)
 - Warehouse (`/warehouse`)
 - Jobs (`/projects`)
 - Ask (`/ask`)
@@ -101,6 +102,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Team timecards (`/team-timecards`)
 - Analytics (`/analytics`)
 - Hub (`/warehouse`)
+- Storage (`/storage`)
 - Scan (`/scan`)
 - Cycle count (`/count`)
 - Receive (`/receive`)
@@ -124,7 +126,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Settings (`/settings`)
 
-**Can reach (all 39 allowed destinations):**
+**Can reach (all 40 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -133,6 +135,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Safety (`/safety`)
 - Scan (`/scan`)
 - Cycle count (`/count`)
+- Storage (`/storage`)
 - Warehouse (`/warehouse`)
 - Jobs (`/projects`)
 - Ask (`/ask`)
@@ -200,6 +203,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Analytics (`/analytics`)
 - Heartbeat (`/heartbeat`)
 - Hub (`/warehouse`)
+- Storage (`/storage`)
 - Scan (`/scan`)
 - Cycle count (`/count`)
 - Receive (`/receive`)
@@ -227,7 +231,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Admin (`/admin`)
 
-**Can reach (all 45 allowed destinations):**
+**Can reach (all 46 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -236,6 +240,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Safety (`/safety`)
 - Scan (`/scan`)
 - Cycle count (`/count`)
+- Storage (`/storage`)
 - Warehouse (`/warehouse`)
 - Jobs (`/projects`)
 - Ask (`/ask`)
@@ -304,6 +309,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Analytics (`/analytics`)
 - Heartbeat (`/heartbeat`)
 - Hub (`/warehouse`)
+- Storage (`/storage`)
 - Scan (`/scan`)
 - Cycle count (`/count`)
 - Receive (`/receive`)
@@ -332,7 +338,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Admin (`/admin`)
 
-**Can reach (all 47 allowed destinations):**
+**Can reach (all 48 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -341,6 +347,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Safety (`/safety`)
 - Scan (`/scan`)
 - Cycle count (`/count`)
+- Storage (`/storage`)
 - Warehouse (`/warehouse`)
 - Jobs (`/projects`)
 - Ask (`/ask`)
