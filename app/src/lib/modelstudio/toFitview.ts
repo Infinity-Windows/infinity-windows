@@ -29,9 +29,15 @@ interface StudioWallLike {
 
 interface SceneItemLike {
   position: { x: number; y: number; z: number }; // cm, y = centre height
+  rotation?: { y: number };
   metadata?: {
     itemName?: string;
-    unitConfig?: { heightMm?: number; panels?: { widthMm: number }[]; kind?: string };
+    unitConfig?: {
+      heightMm?: number;
+      panels?: { widthMm: number }[];
+      kind?: string;
+      cornerAfterPanel?: number | null;
+    };
   };
 }
 
@@ -238,6 +244,37 @@ export function buildFitviewModelFromStudio(
       0,
       item.position.y * CM_TO_M - (size.hMm / 1000) / 2 - e.elevM,
     );
+    // A 90° corner unit publishes the legs + wrap the map renderer already
+    // walks wall-to-wall (leg 0 on the anchored wall). The longer leg is
+    // the anchored one — mirror of cornerGeometryInfo in the Studio.
+    const k = cfg?.cornerAfterPanel;
+    let legFields: Record<string, unknown> = {};
+    if (
+      cfg?.panels?.length &&
+      k != null &&
+      k >= 0 &&
+      k < cfg.panels.length - 1
+    ) {
+      const leftMm = cfg.panels.slice(0, k + 1).reduce((t, p) => t + p.widthMm, 0);
+      const rightMm = cfg.panels.slice(k + 1).reduce((t, p) => t + p.widthMm, 0);
+      const mainMm = Math.max(leftMm, rightMm);
+      const wrapMm = Math.min(leftMm, rightMm);
+      // Which end of the edge the wrap turns at: project the wrap-side tip
+      // of the main leg onto the edge and see which half it lands in.
+      const sideSign = leftMm <= rightMm ? 1 : -1; // wrap at outside-left = local +x
+      const ry = item.rotation?.y ?? 0;
+      const tipX =
+        item.position.x * CM_TO_M +
+        sideSign * (mainMm / 2000) * Math.cos(ry);
+      const tipZ =
+        item.position.z * CM_TO_M +
+        sideSign * (mainMm / 2000) * -Math.sin(ry);
+      const tip = distToSegment({ x: tipX, z: tipZ }, e.a, e.b);
+      legFields = {
+        legs: [mainMm, wrapMm],
+        wrap: tip.t > 0.5 ? "end" : "start",
+      };
+    }
     windows.push({
       id: name,
       elev: `s${bestIdx}`,
@@ -249,6 +286,7 @@ export function buildFitviewModelFromStudio(
       h: size.hMm,
       type: size.type ?? "Window",
       status: "tofit",
+      ...legFields,
     });
   }
 

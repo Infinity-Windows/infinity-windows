@@ -100,19 +100,45 @@ export abstract class WallItem extends Item {
   private redrawWall() {
     if (this.addToWall && this.currentWallEdge) {
       this.currentWallEdge.wall.fireRedraw()
-      // infinity: coincident/overlapping walls (shared boundaries on traced
-      // multi-mass buildings) cut holes for this item too (see Edge.makeWall),
-      // so they must re-cut when it moves or leaves. Nearby = within a wall's
-      // thickness of the item, which never matches walls across the room.
+      // infinity: other walls can carry this item's holes too — coincident
+      // twins on shared boundaries, and the far wall of a 90° corner unit's
+      // wrap leg (see Edge.makeWall) — so they must re-cut when it moves or
+      // leaves. Nearby is judged from each HOLE RECT's centre (a corner
+      // unit's wrap rect sits on a wall its centre is metres from), within
+      // a wall's thickness, which never matches walls across the room.
+      const rects =
+        typeof (this as any).holeRects === 'function'
+          ? (this as any).holeRects()
+          : [{ x: this.position.x, z: this.position.z }]
       const walls = this.model?.floorplan?.getWalls?.() ?? []
+      const fired: unknown[] = []
       walls.forEach((wall: any) => {
         if (wall === this.currentWallEdge!.wall) return
-        if (wall.distanceFrom(this.position.x, this.position.z) < 30) {
+        const near = rects.some(
+          (r: any) => wall.distanceFrom(r.x, r.z) < 30
+        )
+        if (near) {
           wall.fireRedraw()
+          fired.push(wall)
         }
       })
+      // Walls holed at the PREVIOUS position lose their hole when the item
+      // moves on — re-fire them once so nothing stale lingers.
+      this.lastHoleWalls.forEach((wall: any) => {
+        if (wall !== this.currentWallEdge!.wall && !fired.includes(wall)) {
+          try {
+            wall.fireRedraw()
+          } catch {
+            /* wall since removed */
+          }
+        }
+      })
+      this.lastHoleWalls = fired
     }
   }
+
+  /** infinity: walls (other than our own) holed on the last redraw. */
+  private lastHoleWalls: unknown[] = []
 
   /** */
   // @ts-ignore - updateEdgeVisibility is declared but not used, keeping for future use

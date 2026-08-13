@@ -21,6 +21,26 @@ export interface UnitConfig {
   kind: UnitKind;
   heightMm: number;
   panels: UnitPanel[];
+  /**
+   * 0-based index of the last panel BEFORE a 90° turn — window 16's five
+   * panels wrap a building corner after its first 30¼" panel, so
+   * `cornerAfterPanel: 0`. Panels read left→right in the drawing's Outside
+   * View on both legs. Absent/null = flat unit.
+   */
+  cornerAfterPanel?: number | null;
+}
+
+/** Split a corner config into its two legs (outside view, left then right). */
+export function cornerLegs(
+  c: UnitConfig,
+): { left: UnitPanel[]; right: UnitPanel[] } | null {
+  const k = c.cornerAfterPanel;
+  if (k == null || k < 0 || k >= c.panels.length - 1) return null;
+  return { left: c.panels.slice(0, k + 1), right: c.panels.slice(k + 1) };
+}
+
+export function panelsWidthMm(panels: UnitPanel[]): number {
+  return panels.reduce((t, p) => t + p.widthMm, 0);
 }
 
 export interface StudioUnit {
@@ -211,6 +231,18 @@ export function unitSvg(c: UnitConfig, boxW = 220, boxH = 140): string {
       );
     }
     px += pw;
+  }
+  // 90° corner marker at the split, drawn the way the spec sheet draws it:
+  // an arc over the joint plus the label.
+  const legs = cornerLegs(c);
+  if (legs) {
+    const splitX =
+      x0 + (legs.left.reduce((t, p) => t + p.widthMm, 0) * scale);
+    parts.push(
+      `<path d="M ${splitX - 10} ${y0 - 2} A 10 10 0 0 1 ${splitX + 10} ${y0 - 2}" fill="none" stroke="${stroke}" stroke-width="1.4"/>`,
+      `<line x1="${splitX}" y1="${y0}" x2="${splitX}" y2="${y0 + H}" stroke="${stroke}" stroke-width="2.6"/>`,
+      `<text x="${splitX}" y="${Math.max(8, y0 - 4)}" text-anchor="middle" font-size="8" fill="${stroke}">90°</text>`,
+    );
   }
   return `<svg viewBox="0 0 ${boxW} ${boxH}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`;
 }

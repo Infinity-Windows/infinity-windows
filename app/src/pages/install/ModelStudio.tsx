@@ -31,7 +31,11 @@ import {
 import { buildStudioSeed } from "../../lib/modelstudio/fromProject";
 import { UnitBuilder } from "../../components/studio/UnitBuilder";
 import { buildFitviewModelFromStudio, type PublishStats } from "../../lib/modelstudio/toFitview";
-import { buildUnitGeometry, UNIT_GEOMETRY_DEFAULTS } from "../../lib/modelstudio/unitGeometry";
+import {
+  buildUnitGeometry,
+  cornerGeometryInfo,
+  UNIT_GEOMETRY_DEFAULTS,
+} from "../../lib/modelstudio/unitGeometry";
 import type { StudioItem } from "../../lib/modelstudio/core";
 import {
   listStudioUnits,
@@ -304,6 +308,7 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
         const cfg = it?.metadata?.unitConfig as UnitConfig | undefined;
         if (cfg?.panels?.length) applyUnitGeometry(it, cfg);
         it.placeInRoom();
+        snapIfCorner(it);
       } catch {
         /* not a wall item */
       }
@@ -471,17 +476,99 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
     item.scale.set(1, 1, 1);
     built.geometry.computeBoundingBox?.();
     const bb = (built.geometry as { boundingBox: { max: { x: number; y: number; z: number }; min: { x: number; y: number; z: number } } | null }).boundingBox;
-    if (bb) {
+    const corner = cornerGeometryInfo(config);
+    if (bb && corner) {
+      // The vendor derives its wall offset and drag bounds from the
+      // bounding BOX; a wrap leg extending in local z would shove the main
+      // leg half a leg-width out of its wall. Clamp the box to the MAIN
+      // leg — the wrap leg lives on the neighbouring wall and gets its
+      // hole via holeRects below. Culling stays correct: three.js culls by
+      // bounding SPHERE, which is left honest.
+      bb.min.x = -corner.mainWcm / 2;
+      bb.max.x = corner.mainWcm / 2;
+      bb.min.z = -corner.depthCm / 2;
+      bb.max.z = corner.depthCm / 2;
+      built.geometry.computeBoundingSphere?.();
+      item.halfSize.set(
+        corner.mainWcm / 2,
+        (bb.max.y - bb.min.y) / 2,
+        corner.depthCm / 2,
+      );
+    } else if (bb) {
       item.halfSize.set(
         (bb.max.x - bb.min.x) / 2,
         (bb.max.y - bb.min.y) / 2,
         (bb.max.z - bb.min.z) / 2,
       );
     }
+    // Explicit world-space hole rects, one per leg, for the vendor's hole
+    // cutter (see Edge.makeWall) — the wrap leg's hole lands on a wall the
+    // item is NOT attached to.
+    const itemAny = item as unknown as {
+      rotation?: { y: number };
+      holeRects?: () => unknown[];
+    };
+    if (corner) {
+      itemAny.holeRects = () => {
+        const ry = itemAny.rotation?.y ?? 0;
+        const wx = Math.cos(ry);
+        const wz = -Math.sin(ry); // width axis (local +x) in plan coords
+        const nx = Math.sin(ry);
+        const nz = Math.cos(ry); // local +z (recedes from the outside viewer)
+        const halfH = config.heightMm / 20;
+        const cx = item.position.x + corner.sideSign * (corner.mainWcm / 2) * wx;
+        const cz = item.position.z + corner.sideSign * (corner.mainWcm / 2) * wz;
+        const wrapOff = corner.depthCm / 2 + corner.wrapWcm / 2;
+        return [
+          {
+            x: item.position.x, y: item.position.y, z: item.position.z,
+            halfW: corner.mainWcm / 2, halfH, dirX: wx, dirZ: wz,
+          },
+          {
+            x: cx + nx * wrapOff, y: item.position.y, z: cz + nz * wrapOff,
+            halfW: corner.wrapWcm / 2, halfH, dirX: nx, dirZ: nz,
+          },
+        ];
+      };
+    } else {
+      delete itemAny.holeRects;
+    }
     if (item.metadata) {
       item.metadata.unitConfig = config;
       if (frameGapMm != null) item.metadata.frameGapMm = frameGapMm;
     }
+    item.redrawWall?.();
+  };
+
+  /** Seat a corner unit AT a wall end so its wrap leg turns down the
+   * adjacent wall — placed anywhere near a corner, it snaps the last bit. */
+  const snapIfCorner = (item: StudioItem) => {
+    const cfg = item.metadata?.unitConfig as UnitConfig | undefined;
+    const corner = cfg ? cornerGeometryInfo(cfg) : null;
+    const itemAny = item as unknown as {
+      rotation?: { y: number };
+      currentWallEdge?: { wall: StudioWall };
+    };
+    const wall = itemAny.currentWallEdge?.wall;
+    if (!corner || !wall) return;
+    const ry = itemAny.rotation?.y ?? 0;
+    const wx = Math.cos(ry);
+    const wz = -Math.sin(ry);
+    // Where the wrap end of the main leg sits now, plan cm.
+    const reach = corner.sideSign * (corner.mainWcm / 2 + corner.depthCm / 2);
+    const ex = item.position.x + reach * wx;
+    const ez = item.position.z + reach * wz;
+    const ends = [
+      { x: wall.getStartX(), z: wall.getStartY() },
+      { x: wall.getEndX(), z: wall.getEndY() },
+    ];
+    const nearest = ends.reduce((a, b) =>
+      Math.hypot(a.x - ex, a.z - ez) <= Math.hypot(b.x - ex, b.z - ez) ? a : b,
+    );
+    if (Math.hypot(nearest.x - ex, nearest.z - ez) > 600) return; // parked mid-wall on purpose
+    const delta = (nearest.x - ex) * wx + (nearest.z - ez) * wz;
+    item.position.x += wx * delta;
+    item.position.z += wz * delta;
     item.redrawWall?.();
   };
 
@@ -629,6 +716,7 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
           // attachment is what cuts the opening (wall above and beside stays).
           applyUnitGeometry(it, config);
           it.placeInRoom();
+          snapIfCorner(it);
         } catch {
           /* geometry not ready — next tick */
         }
@@ -763,6 +851,7 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
       item.position.set(item.position.x, sillCm + next.heightMm / 20, item.position.z);
     }
     item.placeInRoom();
+    snapIfCorner(item);
     pushToast("Unit updated.");
   };
 
@@ -779,9 +868,15 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
         mechanism: cfg.panels[Math.min(i, cfg.panels.length - 1)].mechanism,
         direction: cfg.panels[Math.min(i, cfg.panels.length - 1)].direction,
       })),
+      // A corner can't sit past the last split anymore.
+      cornerAfterPanel:
+        cfg.cornerAfterPanel != null && cfg.cornerAfterPanel < n - 1
+          ? cfg.cornerAfterPanel
+          : null,
     };
     applyUnitGeometry(item, next);
     item.placeInRoom();
+    snapIfCorner(item);
   };
 
   const saveUnitAsCatalog = useMutation({
