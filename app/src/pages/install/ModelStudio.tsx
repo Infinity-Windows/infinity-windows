@@ -135,6 +135,9 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
   const [lenInput, setLenInput] = useState("");
   const [heightInput, setHeightInput] = useState("");
   const [buildingHeight, setBuildingHeight] = useState("");
+  /** Undo: serialized snapshots pushed BEFORE each mutating gesture. */
+  const undoStack = useRef<string[]>([]);
+  const [undoDepth, setUndoDepth] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -245,7 +248,11 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
     }
     // Click-to-select: the vendor tracks hover targets every mousemove;
     // reading them at mousedown gives a persistent selection for the panel.
+    // The SAME mousedown snapshots the model for undo — every drag, draw or
+    // delete gesture starts here, so one hook covers them all (owner report:
+    // an accidental 200-ft wall needed reverting).
     canvasEl?.addEventListener("mousedown", () => {
+      pushUndo();
       const fp2 = bp.floorplanner;
       const w = fp2?.activeWall ?? null;
       setSelWall(w);
@@ -312,6 +319,58 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
     }
   };
 
+  const pushUndo = () => {
+    const bp = bpRef.current;
+    if (!bp) return;
+    const snap = bp.model.exportSerialized();
+    const stack = undoStack.current;
+    if (stack[stack.length - 1] === snap) return; // nothing changed since
+    stack.push(snap);
+    if (stack.length > 30) stack.shift();
+    setUndoDepth(stack.length);
+  };
+
+  const undo = () => {
+    const bp = bpRef.current;
+    const snap = undoStack.current.pop();
+    if (!bp || !snap) return;
+    setUndoDepth(undoStack.current.length);
+    bp.model.loadSerialized(snap);
+    setSelWall(null);
+    requestAnimationFrame(() => {
+      bp.floorplanner?.resizeView();
+      fitPlan(bp);
+    });
+  };
+
+  const reseed = () => {
+    const bp = bpRef.current;
+    if (!bp || !seed) return;
+    if (!window.confirm(
+      "Throw away the Studio model and rebuild it from the traced building? " +
+      "(Nothing is saved until you tap Save model.)",
+    )) return;
+    pushUndo();
+    bp.model.loadSerialized(seed.serialized);
+    for (const w of seed.windows) {
+      bp.model.scene.addItem(
+        3,
+        WINDOW_MODEL,
+        { itemName: w.id, itemType: 3, modelUrl: WINDOW_MODEL },
+        { x: w.x, y: w.elevation, z: w.y },
+        w.rotation,
+        undefined,
+        false,
+      );
+    }
+    setSelWall(null);
+    requestAnimationFrame(() => {
+      bp.floorplanner?.resizeView();
+      fitPlan(bp);
+    });
+    pushToast("Rebuilt from the traced building.");
+  };
+
   const refreshModel = () => {
     const bp = bpRef.current;
     if (!bp) return;
@@ -323,6 +382,7 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
     const bp = bpRef.current;
     const cm = lenInput ? parseFtIn(lenInput) : null;
     if (!bp || !selWall || cm == null || cm < 30) return;
+    pushUndo();
     // Keep the start corner planted; slide the end corner along the wall's
     // own direction — the numeric edit the office asked for.
     const sx = selWall.getStartX(), sy = selWall.getStartY();
@@ -336,6 +396,7 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
   const applyWallHeight = () => {
     const cm = heightInput ? parseFtIn(heightInput) : null;
     if (!selWall || cm == null || cm < 60) return;
+    pushUndo();
     selWall.height = cm;
     refreshModel();
   };
@@ -344,6 +405,7 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
     const bp = bpRef.current;
     const cm = buildingHeight ? parseFtIn(buildingHeight) : null;
     if (!bp || cm == null || cm < 60) return;
+    pushUndo();
     Configuration.setValue(configWallHeight, cm);
     // Existing walls captured the old default at construction — apply to all.
     for (const w of bp.model.floorplan.walls) w.height = cm;
@@ -352,98 +414,108 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
 
   const narrow = typeof window !== "undefined" && window.innerWidth < 900;
 
-  const toolButtons = (
-    <>
-      <button
-        className={mode === floorplannerModes.MOVE ? "button-like active-pill" : "button-like"}
-        onClick={() => setMode(floorplannerModes.MOVE)}
-      >
-        Select / Move
-      </button>
-      <button
-        className={mode === floorplannerModes.DRAW ? "button-like active-pill" : "button-like"}
-        onClick={() => setMode(floorplannerModes.DRAW)}
-      >
-        Draw walls
-      </button>
-      <button
-        className={mode === floorplannerModes.DELETE ? "button-like active-pill" : "button-like"}
-        onClick={() => setMode(floorplannerModes.DELETE)}
-      >
-        Delete
-      </button>
-      <button
-        className="button-like"
-        onClick={() => {
-          bpRef.current?.model.scene.addItem(
-            3,
-            WINDOW_MODEL,
-            { itemName: "New window", itemType: 3, modelUrl: WINDOW_MODEL },
-            undefined,
-            undefined,
-            undefined,
-            false,
-          );
-          pushToast("Window added — drag it onto a wall in the 3D view.");
-        }}
-      >
-        + Add window
-      </button>
-    </>
-  );
-
-  const editPanels = (
-    <>
-      <div className="studio-card">
-        <p className="tcx-label" style={{ margin: "0 0 4px" }}>Building</p>
-        <label className="field-label">Wall height (all walls)</label>
-        <div className="row-gap">
-          <input
-            style={{ flex: 1, minWidth: 0 }}
-            placeholder={fmtFtIn(Configuration.getNumericValue(configWallHeight))}
-            value={buildingHeight}
-            onChange={(e) => setBuildingHeight(e.target.value)}
-          />
-          <button className="button-like" onClick={applyBuildingHeight}>Apply</button>
-        </div>
+  const palette = (
+    <div className="studio-palette">
+      <div className="row-gap" style={{ flexWrap: "wrap" }}>
+        <button className="button-like studio-mini" disabled={undoDepth === 0} onClick={undo}>
+          ↩ Undo{undoDepth > 0 ? ` (${undoDepth})` : ""}
+        </button>
+        <button className="button-like studio-mini" onClick={reseed}>Re-seed</button>
       </div>
-      {selWall ? (
-        <div className="studio-card">
-          <p className="tcx-label" style={{ margin: "0 0 4px" }}>Selected wall</p>
-          <label className="field-label">Length</label>
-          <div className="row-gap">
-            <input
-              style={{ flex: 1, minWidth: 0 }}
-              value={lenInput}
-              onChange={(e) => setLenInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && applyWallLength()}
-            />
-            <button className="button-like" onClick={applyWallLength}>Set</button>
-          </div>
-          <label className="field-label">Height (this wall)</label>
-          <div className="row-gap">
-            <input
-              style={{ flex: 1, minWidth: 0 }}
-              value={heightInput}
-              onChange={(e) => setHeightInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && applyWallHeight()}
-            />
-            <button className="button-like" onClick={applyWallHeight}>Set</button>
-          </div>
+      <details open>
+        <summary className="tcx-label">Tools</summary>
+        <div className="studio-palette-body">
+          <button
+            className={mode === floorplannerModes.MOVE ? "button-like active-pill" : "button-like"}
+            onClick={() => setMode(floorplannerModes.MOVE)}
+          >
+            Select / Move
+          </button>
+          <button
+            className={mode === floorplannerModes.DRAW ? "button-like active-pill" : "button-like"}
+            onClick={() => setMode(floorplannerModes.DRAW)}
+          >
+            Draw walls
+          </button>
+          <button
+            className={mode === floorplannerModes.DELETE ? "button-like active-pill" : "button-like"}
+            onClick={() => setMode(floorplannerModes.DELETE)}
+          >
+            Delete
+          </button>
           <button
             className="button-like"
-            style={{ marginTop: 6, fontSize: 11.5 }}
-            onClick={() => setSelWall(null)}
+            onClick={() => {
+              bpRef.current?.model.scene.addItem(
+                3,
+                WINDOW_MODEL,
+                { itemName: "New window", itemType: 3, modelUrl: WINDOW_MODEL },
+                undefined,
+                undefined,
+                undefined,
+                false,
+              );
+              pushToast("Window added — drag it onto a wall in the 3D view.");
+            }}
           >
-            Deselect
+            + Add window
           </button>
         </div>
+      </details>
+      <details>
+        <summary className="tcx-label">Building</summary>
+        <div className="studio-palette-body">
+          <label className="field-label">Wall height (all walls)</label>
+          <div className="row-gap">
+            <input
+              style={{ flex: 1, minWidth: 0 }}
+              placeholder={fmtFtIn(Configuration.getNumericValue(configWallHeight))}
+              value={buildingHeight}
+              onChange={(e) => setBuildingHeight(e.target.value)}
+            />
+            <button className="button-like" onClick={applyBuildingHeight}>Apply</button>
+          </div>
+        </div>
+      </details>
+      {selWall ? (
+        <details open>
+          <summary className="tcx-label">Selected wall</summary>
+          <div className="studio-palette-body">
+            <label className="field-label">Length</label>
+            <div className="row-gap">
+              <input
+                style={{ flex: 1, minWidth: 0 }}
+                value={lenInput}
+                onChange={(e) => setLenInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && applyWallLength()}
+              />
+              <button className="button-like" onClick={applyWallLength}>Set</button>
+            </div>
+            <label className="field-label">Height (this wall)</label>
+            <div className="row-gap">
+              <input
+                style={{ flex: 1, minWidth: 0 }}
+                value={heightInput}
+                onChange={(e) => setHeightInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && applyWallHeight()}
+              />
+              <button className="button-like" onClick={applyWallHeight}>Set</button>
+            </div>
+            <button
+              className="button-like"
+              style={{ marginTop: 4, fontSize: 11.5 }}
+              onClick={() => setSelWall(null)}
+            >
+              Deselect
+            </button>
+          </div>
+        </details>
       ) : (
-        <p className="muted" style={{ fontSize: 11.5, margin: 0 }}>
-          Click a wall in the plan to set its exact length or height.
+        <p className="muted" style={{ fontSize: 11, margin: "4px 0 0" }}>
+          Click a wall to edit its length or height.
         </p>
       )}
-    </>
+    </div>
   );
 
   return (
@@ -467,9 +539,6 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
       )}
 
       <div className="row-gap" style={{ flexWrap: "wrap", marginBottom: 8 }}>
-        <div className="seg" role="group" aria-label="Plan tool">
-          {toolButtons}
-        </div>
         <button
           className="button-like active-pill"
           style={{ marginLeft: "auto" }}
@@ -482,9 +551,6 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
       {status && (
         <p className="muted" style={{ margin: "0 0 8px", fontSize: 11.5 }}>{status}</p>
       )}
-      {fs !== "plan" && selWall && (
-        <div className="row-gap" style={{ marginBottom: 8, flexWrap: "wrap" }}>{editPanels}</div>
-      )}
 
       {!outline && !outlines.isLoading && (
         <p className="muted">
@@ -495,13 +561,6 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
 
       <div className="studio-split">
         <div className={fs === "plan" ? "studio-pane fs studio-fs-plan" : fs === "model" ? "studio-pane hidden-pane" : "studio-pane"}>
-          {fs === "plan" && (
-            <aside className="studio-drawer">
-              <p className="tcx-label" style={{ margin: "0 0 2px" }}>Tools</p>
-              {toolButtons}
-              {editPanels}
-            </aside>
-          )}
           <div className="studio-main">
           <div className="row-gap" style={{ alignItems: "baseline" }}>
             <p className="tcx-label" style={{ margin: "0 0 4px" }}>Plan (2D)</p>
@@ -523,7 +582,10 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
               </button>
             </span>
           </div>
-          <canvas id="studio-floorplan" className="studio-canvas" />
+          <div className="studio-stage">
+            {palette}
+            <canvas id="studio-floorplan" className="studio-canvas" />
+          </div>
           </div>
         </div>
         <div className={fs === "model" ? "studio-pane fs" : fs === "plan" ? "studio-pane hidden-pane" : "studio-pane"}>

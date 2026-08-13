@@ -9524,9 +9524,11 @@ body {
   display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
 }
 @media (max-width: 900px) { .studio-split { grid-template-columns: 1fr; } }
-.studio-pane { min-width: 0; }
+/* Both panes are FIXED-height stages (owner ask): the page never grows,
+   the content pans/zooms inside. */
+.studio-pane { min-width: 0; display: flex; flex-direction: column; height: 72vh; }
 .studio-canvas, .studio-three {
-  width: 100%; height: 62vh; border-radius: 12px;
+  width: 100%; flex: 1; min-height: 0; border-radius: 12px;
   border: 1px solid rgba(255,255,255,.1); background: #f5f2ee;
   display: block; overflow: hidden;
 }
@@ -9546,11 +9548,19 @@ body {
 
 .studio-mini { font-size: 11.5px; padding: 2px 9px; }
 
-.studio-pane.fs.studio-fs-plan { flex-direction: row; gap: 12px; }
-.studio-fs-plan .studio-drawer {
-  width: 230px; flex: none; display: flex; flex-direction: column; gap: 8px;
-  overflow-y: auto; padding-right: 4px;
+.studio-stage { position: relative; flex: 1; min-height: 0; display: flex; }
+.studio-stage .studio-canvas { flex: 1; min-height: 0; height: auto; }
+.studio-palette {
+  position: absolute; top: 10px; left: 10px; z-index: 20; width: 210px;
+  display: flex; flex-direction: column; gap: 6px;
+  background: rgba(20, 16, 13, 0.92); border: 1px solid rgba(255,255,255,.12);
+  border-radius: 12px; padding: 10px; backdrop-filter: blur(4px);
+  max-height: calc(100% - 20px); overflow-y: auto;
 }
+.studio-palette details > summary { cursor: pointer; list-style: none; padding: 2px 0; }
+.studio-palette details > summary::before { content: "▸ "; }
+.studio-palette details[open] > summary::before { content: "▾ "; }
+.studio-palette-body { display: flex; flex-direction: column; gap: 6px; padding: 4px 0 2px; }
 .studio-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .studio-main .studio-canvas { flex: 1; min-height: 0; }
 .studio-card {
