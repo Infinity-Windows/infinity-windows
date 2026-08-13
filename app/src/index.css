@@ -9537,6 +9537,10 @@ body {
 
 .studio-pane.fs {
   position: fixed; inset: 0; z-index: 70; margin: 0;
+  /* The split view's 72vh pane height would clip a FIXED overlay to the top
+     72% of the screen with the page showing through below (owner report) —
+     full screen means the whole viewport. */
+  height: 100vh; height: 100dvh;
   background: var(--bg, #14100d);
   padding: calc(10px + var(--safe-top)) 14px calc(14px + var(--safe-bottom));
   display: flex; flex-direction: column;
@@ -9567,3 +9571,8 @@ body {
   border: 1px solid rgba(255,255,255,.1); border-radius: 10px;
   background: rgba(255,255,255,.03); padding: 10px 12px;
 }
+
+.studio-palette.collapsed {
+  width: auto; padding: 4px; background: rgba(20,16,13,.85);
+}
+.studio-palette-toggle { font-size: 12px; padding: 4px 10px; white-space: nowrap; }
