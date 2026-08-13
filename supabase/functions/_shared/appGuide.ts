@@ -298,13 +298,6 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "The people roster — crew members, roles and skill levels. Use it to see who's available and how skilled they are.",
   },
   {
-    path: "/training",
-    label: "Training",
-    minRole: "foreman",
-    blurb:
-      "Training modules and how-to content. Assign or review training to bring crew up to speed on a type or technique.",
-  },
-  {
     path: "/receive",
     label: "Receive",
     minRole: "foreman",

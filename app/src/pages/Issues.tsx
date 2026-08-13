@@ -8,7 +8,8 @@ import {
   KIND_LABELS,
   listIssues,
   resolveIssue,
-  setIssueFault,
+  FAULT_TRADES,
+  setIssueFaultTrade,
   URGENCY_MARK,
   type Issue,
   type IssueKind,
@@ -113,8 +114,10 @@ export function Issues() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["issues"] }),
   });
   const fault = useMutation({
-    mutationFn: ({ id, faultBy }: { id: string; faultBy: string | null }) =>
-      setIssueFault(id, faultBy),
+    // Fault is a TRADE (owner call): Carpentry, Plumbing, HVAC… — people
+    // stay on Assign.
+    mutationFn: ({ id, trade }: { id: string; trade: string | null }) =>
+      setIssueFaultTrade(id, trade),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["issues"] }),
   });
 
@@ -221,7 +224,7 @@ export function Issues() {
     );
     const unitColor = isDoor ? "var(--ok)" : "var(--info)";
     const assignedTo = i.assigned_to ?? null;
-    const faultBy = i.fault_by ?? null;
+    const faultTrade = i.fault_trade ?? null;
     // The note may be a bulleted punch list (framing files them joined with
     // " \u2022 ") - break it into real lines so it reads like a checklist,
     // not a stack trace.
@@ -281,9 +284,7 @@ export function Issues() {
               ? `Assigned to ${nameById.get(assignedTo) ?? "someone"}`
               : "Unassigned"}
             {" · "}
-            {faultBy
-              ? `Fault: ${nameById.get(faultBy) ?? "someone"}`
-              : "Fault: not attributed"}
+            {faultTrade ? `Fault: ${faultTrade}` : "Fault: not attributed"}
           </div>
           <div
             style={{
@@ -314,16 +315,16 @@ export function Issues() {
             <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <span className="muted">Fault</span>
               <select
-                value={faultBy ?? ""}
+                value={faultTrade ?? ""}
                 disabled={fault.isPending}
                 onChange={(e) =>
-                  fault.mutate({ id: i.id, faultBy: e.target.value || null })
+                  fault.mutate({ id: i.id, trade: e.target.value || null })
                 }
               >
                 <option value="">— not attributed —</option>
-                {people.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.display_name}
+                {FAULT_TRADES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
                   </option>
                 ))}
               </select>

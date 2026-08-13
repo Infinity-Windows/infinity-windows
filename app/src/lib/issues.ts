@@ -53,6 +53,8 @@ export interface Issue {
   assigned_to?: string | null;
   /** Whose fault it was, if determined (fault attribution). See note above. */
   fault_by?: string | null;
+  /** The TRADE at fault (owner call 2026-08-13) — people stay on Assign. */
+  fault_trade?: string | null;
 }
 
 /** Higher rank sorts first: emergency > urgent > normal. */
@@ -159,6 +161,40 @@ export async function setIssueFault(
   const { data, error } = await supabase.rpc("set_issue_fault", {
     p_id: id,
     p_fault_by: faultBy,
+  });
+  if (error) throw error;
+  return data as Issue;
+}
+
+/** The trades an issue's fault can land on (owner list, extendable). */
+export const FAULT_TRADES = [
+  "Carpentry",
+  "Framing",
+  "Concrete",
+  "Plumbing",
+  "Electrical",
+  "HVAC",
+  "Roofing",
+  "Sheetrock",
+  "Insulation",
+  "Siding",
+  "Stucco",
+  "Windows",
+  "Doors",
+  "Flashing",
+  "Painting",
+  "Landscaping",
+  "Other",
+] as const;
+
+/** Attribute (or clear) the TRADE at fault. Foreman+ (guarded by the RPC). */
+export async function setIssueFaultTrade(
+  id: string,
+  trade: string | null,
+): Promise<Issue> {
+  const { data, error } = await supabase.rpc("set_issue_fault_trade", {
+    p_id: id,
+    p_trade: trade,
   });
   if (error) throw error;
   return data as Issue;
