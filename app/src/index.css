@@ -9518,3 +9518,30 @@ body {
   background: var(--card, rgba(255,255,255,.04));
   border: 1px solid rgba(255,255,255,.12); color: inherit;
 }
+
+/* ---- Model Studio (spike) --------------------------------------------- */
+.studio-split {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+}
+@media (max-width: 900px) { .studio-split { grid-template-columns: 1fr; } }
+.studio-pane { min-width: 0; }
+.studio-canvas, .studio-three {
+  width: 100%; height: 62vh; border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.1); background: #f5f2ee;
+  display: block; overflow: hidden;
+}
+.studio-three { background: #101418; }
+.studio-three canvas { border-radius: 12px; }
+
+.studio-pane.fs {
+  position: fixed; inset: 0; z-index: 70; margin: 0;
+  background: var(--bg, #14100d);
+  padding: calc(10px + var(--safe-top)) 14px calc(14px + var(--safe-bottom));
+  display: flex; flex-direction: column;
+}
+.studio-pane.fs .studio-canvas, .studio-pane.fs .studio-three {
+  flex: 1; height: auto; min-height: 0;
+}
+.studio-pane.hidden-pane { display: none; }
+
+.studio-mini { font-size: 11.5px; padding: 2px 9px; }

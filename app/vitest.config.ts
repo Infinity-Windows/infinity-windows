@@ -14,7 +14,9 @@ export default mergeConfig(
   viteConfig,
   defineConfig({
     test: {
-      exclude: [...configDefaults.exclude, "e2e/**"],
+      // e2e/ are Playwright specs, not unit tests; the vendored
+      // blueprint3d-modern core ships its own suite tuned to its repo.
+      exclude: [...configDefaults.exclude, "e2e/**", "src/lib/modelstudio/vendor/**"],
     },
   }),
 );

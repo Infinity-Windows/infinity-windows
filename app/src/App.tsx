@@ -1,6 +1,6 @@
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import type { Session } from "@supabase/supabase-js";
-import { useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { persister, queryClient, shouldPersistQuery } from "./lib/queryClient";
 import {
   BrowserRouter,
@@ -41,6 +41,9 @@ import { WindowDetail } from "./pages/WindowDetail";
 import { OpeningReview } from "./pages/install/OpeningReview";
 import { OpeningSheetRoute } from "./pages/install/OpeningSheet";
 import { MapsTrace } from "./pages/install/MapsTrace";
+const ModelStudio = lazy(() =>
+  import("./pages/install/ModelStudio").then((m) => ({ default: m.ModelStudio })),
+);
 import { FlashRun } from "./pages/install/FlashRun";
 import { PlansetUpload } from "./pages/install/PlansetUpload";
 import { ProjectMap } from "./pages/install/ProjectMap";
@@ -329,6 +332,16 @@ export default function App() {
             <Route
               path="/projects/:projectId/opening/:openingId"
               element={<OpeningSheetRoute />}
+            />
+            <Route
+              path="/projects/:id/model-studio"
+              element={
+                <RequireRole minRole="supervisor">
+                  <Suspense fallback={<div className="page"><p className="muted">Loading the Studio…</p></div>}>
+                    <ModelStudio />
+                  </Suspense>
+                </RequireRole>
+              }
             />
             <Route
               path="/projects/:projectId/trace-model"

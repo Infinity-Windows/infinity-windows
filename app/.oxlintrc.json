@@ -1,12 +1,22 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
+  "plugins": [
+    "react",
+    "typescript",
+    "oxc"
+  ],
   "ignorePatterns": [
     "src/lib/fitview/fitviewRenderer.ts",
-    "src/lib/fitview/traceRenderer.ts"
+    "src/lib/fitview/traceRenderer.ts",
+    "src/lib/modelstudio/vendor/**"
   ],
   "rules": {
     "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+    "react/only-export-components": [
+      "warn",
+      {
+        "allowConstantExport": true
+      }
+    ]
   }
 }
