@@ -70,7 +70,6 @@ import { Service } from "./pages/Service";
 import { Heartbeat } from "./pages/Heartbeat";
 import { Analytics } from "./pages/Analytics";
 import { MemoReview } from "./pages/MemoReview";
-import { Training } from "./pages/Training";
 import { Admin } from "./pages/Admin";
 import { TimeClock } from "./pages/TimeClock";
 import { Timecard } from "./pages/Timecard";
@@ -426,10 +425,7 @@ export default function App() {
             />
             <Route path="/my-work" element={<MyWork />} />
             <Route path="/review" element={<MemoReview />} />
-            <Route
-              path="/training"
-              element={<RequireRole path="/training"><Training /></RequireRole>}
-            />
+            <Route path="/training" element={<Navigate to="/learn" replace />} />
             <Route path="/clock" element={<TimeClock />} />
             <Route
               path="/timecard"

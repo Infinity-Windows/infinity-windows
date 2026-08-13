@@ -83,7 +83,6 @@ describe("minRoleForPath matches page-level gating", () => {
       "/qc",
       "/analytics",
       "/crew",
-      "/training",
       "/receive",
       "/labels",
       "/catalog",

@@ -473,6 +473,8 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # Standalone Studio projects are authored content: two rows with the
     # same name are two drawings, never a duplicate.
     "studio_projects": None,
+    # Training videos are authored content too.
+    "learning_videos": None,
     # Storage tracking: containers and packages carry immutable printed
     # serials, so the serial is the identity a merge must respect.
     "storage_containers": ("serial",),

@@ -342,7 +342,14 @@ export class Main {
 
     this.controls.target = pan
 
-    const distance = this.model.floorplan.getSize().z * 1.5
+    let distance = this.model.floorplan.getSize().z * 1.5
+    // infinity: an EMPTY floorplan (a fresh upper floor) has size 0 — the
+    // camera collapsed onto its own target and orbiting locked up (owner
+    // report: "a locked in view that i cant do my global rotation on").
+    // Never let the orbit radius degenerate.
+    if (!(distance > 100)) {
+      distance = 900
+    }
 
     const offset = pan.clone().add(new THREE.Vector3(0, distance, distance))
     this.camera.position.copy(offset)

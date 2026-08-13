@@ -14,7 +14,6 @@ import {
   ClipboardList,
   Clock,
   DollarSign,
-  GraduationCap,
   Hash,
   KeyRound,
   LayoutGrid,
@@ -81,7 +80,6 @@ export type RoutePath =
   | "/qc"
   | "/analytics"
   | "/crew"
-  | "/training"
   | "/receive"
   | "/labels"
   | "/catalog"
@@ -159,7 +157,6 @@ export const NAV: NavDest[] = [
   { id: "qc", to: "/qc", label: "Quality", icon: "✓", minRole: "foreman" },
   { id: "analytics", to: "/analytics", label: "Analytics", icon: "◲", minRole: "foreman" },
   { id: "crew", to: "/crew", label: "Roster", icon: "☰", minRole: "foreman" },
-  { id: "training", to: "/training", label: "Training", icon: "✎", minRole: "foreman" },
   { id: "receive", to: "/receive", label: "Receive", icon: "⬇", minRole: "foreman" },
   { id: "labels", to: "/labels", label: "Slot labels", icon: "❏", minRole: "foreman" },
   { id: "catalog", to: "/catalog", label: "Catalog", icon: "❒", minRole: "foreman" },
@@ -391,7 +388,6 @@ const MENU_DEF: MenuSection[] = [
     title: "Learning",
     items: [
       { to: "/learn", label: "Learn", Icon: BookOpen },
-      { to: "/training", label: "Training", Icon: GraduationCap },
       { to: "/points", label: "Points", Icon: Trophy },
       { to: "/review", label: "Memo review", Icon: ClipboardList },
       { to: "/safety", label: "Safety", Icon: ShieldCheck },

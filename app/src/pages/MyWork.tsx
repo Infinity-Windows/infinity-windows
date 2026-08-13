@@ -30,10 +30,8 @@ import { openingReadiness } from "../lib/install/fit";
 import { isInstallInProgress } from "../lib/install/installTimer";
 import { areaKey, toDispatchOpening } from "../lib/install/nextOpening";
 import {
-  isForemanPlus,
   type ProjectOpening,
 } from "../lib/install/types";
-import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { getOpenShift } from "../lib/timeclock";
 import { listMyPublished } from "../lib/schedule/api";
 import { formatStartTime } from "../lib/schedule/dates";
@@ -50,7 +48,6 @@ function todayLocalISO(): string {
 export function MyWork() {
   const navigate = useNavigate();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const { effectiveRole } = useEffectiveRole();
   const openings = useQuery({
     queryKey: ["myOpenings", me.data?.id],
     queryFn: () => listMyOpeningsAllJobs(me.data!.id),
@@ -304,11 +301,6 @@ export function MyWork() {
           <p className="home-greeting">Your day</p>
           <h1>My work</h1>
         </div>
-        {isForemanPlus(effectiveRole) && (
-          <Link to="/training" className="button-like">
-            Training
-          </Link>
-        )}
       </header>
       <p className="muted">
         {me.data?.display_name ? `${me.data.display_name} — ` : ""}do the top

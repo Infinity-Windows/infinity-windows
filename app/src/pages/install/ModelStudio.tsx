@@ -784,6 +784,48 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     }
   };
 
+  /** Orbit the WHOLE building into view — every floor's extent, not just
+   * the (possibly empty) active plan. An empty upper floor used to leave
+   * the camera collapsed on its target with rotation locked. */
+  const frameBuilding = () => {
+    const bp = bpRef.current;
+    if (!bp) return;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    let top = 0;
+    const consider = (x: number, z: number) => {
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minZ = Math.min(minZ, z);
+      maxZ = Math.max(maxZ, z);
+    };
+    for (const w of bp.model.floorplan.walls) {
+      consider(w.getStartX(), w.getStartY());
+      consider(w.getEndX(), w.getEndY());
+      top = Math.max(top, w.height);
+    }
+    floorsRef.current.forEach((f, i) => {
+      if (i === activeFloorRef.current) return;
+      for (const w of parseFloorLite(f).walls) {
+        consider(w.x1, w.y1);
+        consider(w.x2, w.y2);
+        top = Math.max(top, w.height);
+      }
+    });
+    if (!Number.isFinite(minX)) {
+      minX = -500; maxX = 500; minZ = -400; maxZ = 400;
+    }
+    const cx = (minX + maxX) / 2;
+    const cz = (minZ + maxZ) / 2;
+    const span = Math.max(maxX - minX, maxZ - minZ, 600);
+    const three = bp.three;
+    three.controls.target?.set(cx, Math.max(120, top * 0.4), cz);
+    three.controls.object.position.set(cx + span * 0.9, span * 0.7, cz + span * 0.9);
+    three.controls.update?.();
+  };
+
   const switchFloor = (n: number) => {
     const bp = bpRef.current;
     if (!bp || n === activeFloorRef.current) return;
@@ -802,6 +844,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     requestAnimationFrame(() => {
       bp.floorplanner?.resizeView();
       fitPlan(bp);
+      frameBuilding();
     });
   };
 

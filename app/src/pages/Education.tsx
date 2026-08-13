@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getMyProfile } from "../lib/install/api";
-import { isForemanPlus } from "../lib/install/types";
+import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
 import {
   buildDeck,
   CATS,
@@ -20,8 +20,9 @@ import {
   recordCard,
 } from "../lib/learn";
 import { awardPoints, POINT_RULES } from "../lib/points";
+import { VideoLibrary } from "../components/learn/VideoLibrary";
 
-type Tab = "daily" | "quiz" | "sequence" | "glossary";
+type Tab = "daily" | "quiz" | "sequence" | "glossary" | "videos";
 
 export function Education() {
   const queryClient = useQueryClient();
@@ -64,9 +65,9 @@ export function Education() {
       </div>
 
       <nav className="hub-tabs">
-        {(["daily", "quiz", "sequence", "glossary"] as Tab[]).map((t) => (
+        {(["daily", "quiz", "sequence", "glossary", "videos"] as Tab[]).map((t) => (
           <button key={t} className={tab === t ? "hub-tab active" : "hub-tab"} onClick={() => setTab(t)}>
-            {t === "daily" ? "Daily 5" : t === "quiz" ? "Quiz" : t === "sequence" ? "Sequence" : "Glossary"}
+            {t === "daily" ? "Daily 5" : t === "quiz" ? "Quiz" : t === "sequence" ? "Sequence" : t === "glossary" ? "Glossary" : "Videos"}
           </button>
         ))}
       </nav>
@@ -81,6 +82,10 @@ export function Education() {
       )}
       {tab === "quiz" && <Quiz profileId={me.data?.id} />}
       {tab === "sequence" && <Sequence profileId={me.data?.id} />}
+      {tab === "videos" && (
+        <VideoLibrary canAuthor={isSupervisorPlus(me.data?.role)} />
+      )}
+
       {tab === "glossary" && (
         <Glossary
           lead={lead}

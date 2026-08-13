@@ -64,7 +64,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Quality (`/qc`)
 - Analytics (`/analytics`)
 - Roster (`/crew`)
-- Training (`/training`)
 - Receive (`/receive`)
 - Slot labels (`/labels`)
 - Catalog (`/catalog`)
@@ -119,7 +118,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Team (`/team`)
 - Roster (`/crew`)
 - Learn (`/learn`)
-- Training (`/training`)
 - Points (`/points`)
 - Memo review (`/review`)
 - Safety (`/safety`)
@@ -127,7 +125,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Settings (`/settings`)
 
-**Can reach (all 40 allowed destinations):**
+**Can reach (all 39 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -153,7 +151,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Quality (`/qc`)
 - Analytics (`/analytics`)
 - Roster (`/crew`)
-- Training (`/training`)
 - Receive (`/receive`)
 - Slot labels (`/labels`)
 - Catalog (`/catalog`)
@@ -224,7 +221,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Roster (`/crew`)
 - Crew access (`/access`)
 - Learn (`/learn`)
-- Training (`/training`)
 - Points (`/points`)
 - Memo review (`/review`)
 - Safety (`/safety`)
@@ -234,7 +230,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Admin (`/admin`)
 
-**Can reach (all 47 allowed destinations):**
+**Can reach (all 46 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -261,7 +257,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Quality (`/qc`)
 - Analytics (`/analytics`)
 - Roster (`/crew`)
-- Training (`/training`)
 - Receive (`/receive`)
 - Slot labels (`/labels`)
 - Catalog (`/catalog`)
@@ -332,7 +327,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Roster (`/crew`)
 - Crew access (`/access`)
 - Learn (`/learn`)
-- Training (`/training`)
 - Points (`/points`)
 - Memo review (`/review`)
 - Safety (`/safety`)
@@ -343,7 +337,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Admin (`/admin`)
 
-**Can reach (all 49 allowed destinations):**
+**Can reach (all 48 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -370,7 +364,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Quality (`/qc`)
 - Analytics (`/analytics`)
 - Roster (`/crew`)
-- Training (`/training`)
 - Receive (`/receive`)
 - Slot labels (`/labels`)
 - Catalog (`/catalog`)
