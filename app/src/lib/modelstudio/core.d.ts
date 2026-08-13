@@ -19,6 +19,7 @@ export interface StudioVector3 {
 export interface StudioFloorplan {
   newCorner(x: number, y: number, id?: string): unknown;
   newWall(start: unknown, end: unknown): unknown;
+  getCorners(): { x: number; y: number }[];
   update(): void;
 }
 
@@ -44,6 +45,16 @@ export interface StudioModel {
 
 export interface StudioFloorplanner {
   mode: number;
+  originX: number;
+  originY: number;
+  /**
+   * Private in the vendor's TS but plain fields at runtime — the Studio
+   * mutates them for fit/zoom (the vendor draws through them every frame).
+   * Spike-level maneuver; Phase 1 upstreams a real zoom API.
+   */
+  pixelsPerCm: number;
+  cmPerPixel: number;
+  wallWidth: number;
   setMode(mode: number): void;
   reset(): void;
   resizeView(): void;
