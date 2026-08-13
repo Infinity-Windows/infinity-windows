@@ -8,6 +8,13 @@ import type { CrewRole } from "./install/types";
  * enforced by Supabase RLS. It only lets a supervisor+ experience how another
  * role's app is laid out from a single login.
  */
+/** A person being previewed (owner-only): enough to render as them. */
+export interface PreviewPerson {
+  id: string;
+  name: string;
+  role: CrewRole | string;
+}
+
 export interface ViewAsRoleValue {
   /** The previewed role, or null when viewing as yourself. */
   previewRole: CrewRole | null;
@@ -15,12 +22,23 @@ export interface ViewAsRoleValue {
   setPreviewRole: (role: CrewRole | null) => void;
   /** Whether the current user is allowed to use the preview at all. */
   canPreview: boolean;
+  /**
+   * Person preview (owner-only): reads render THEIR data (queue, timecard,
+   * schedule) via the getMyProfile seam; writes still run as the real user —
+   * the server stamps auth.uid(), so acting mid-preview acts as YOU.
+   */
+  previewPerson: PreviewPerson | null;
+  setPreviewPerson: (p: PreviewPerson | null) => void;
+  canPreviewPerson: boolean;
 }
 
 export const ViewAsRoleContext = createContext<ViewAsRoleValue>({
   previewRole: null,
   setPreviewRole: () => {},
   canPreview: false,
+  previewPerson: null,
+  setPreviewPerson: () => {},
+  canPreviewPerson: false,
 });
 
 export function useViewAsRole(): ViewAsRoleValue {
@@ -34,8 +52,11 @@ export function useViewAsRole(): ViewAsRoleValue {
  */
 export function effectiveRole(
   realRole: CrewRole | string | null | undefined,
-  view: Pick<ViewAsRoleValue, "previewRole" | "canPreview">,
+  view: Pick<ViewAsRoleValue, "previewRole" | "canPreview"> &
+    Partial<Pick<ViewAsRoleValue, "previewPerson" | "canPreviewPerson">>,
 ): CrewRole | string | null | undefined {
+  // Person preview wins: seeing Maria's app means seeing it at HER role.
+  if (view.canPreviewPerson && view.previewPerson) return view.previewPerson.role;
   if (view.canPreview && view.previewRole) return view.previewRole;
   return realRole;
 }
