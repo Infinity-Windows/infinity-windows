@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   getMyProfile,
   listMarkSpecs,
@@ -22,6 +22,7 @@ import {
   preferModelOutline,
 } from "../../lib/fitview/adapter";
 import { mountFitView } from "../../lib/fitview/fitviewRenderer";
+import { ProjectMap } from "./ProjectMap";
 import "../../lib/fitview/fitview.css";
 
 /**
@@ -35,6 +36,27 @@ import "../../lib/fitview/fitview.css";
 export function MapsInteractive({ project }: { project: Project }) {
   const projectId = project.id;
   const navigate = useNavigate();
+  // Merged tab (owner call, 2026-08-13): 3D is the showpiece, Sheets is the
+  // old 2D plan map (pins, dispatch, planset pages) — one tab, two views.
+  // First open lands on 3D; after that the tab remembers the last view.
+  // ?mapview=sheets (the ?tab=map redirect) forces Sheets for deep links.
+  const [searchParams] = useSearchParams();
+  const [mapView, setMapViewState] = useState<"3d" | "sheets">(() => {
+    if (searchParams.get("mapview") === "sheets") return "sheets";
+    try {
+      return localStorage.getItem("infinity.mapsView") === "sheets" ? "sheets" : "3d";
+    } catch {
+      return "3d";
+    }
+  });
+  const setMapView = (v: "3d" | "sheets") => {
+    setMapViewState(v);
+    try {
+      localStorage.setItem("infinity.mapsView", v);
+    } catch {
+      /* in-memory only */
+    }
+  };
   const { effectiveRole } = useEffectiveRole();
   // Editing the model is supervisor+ (stories design doc); the tab itself
   // is everyone's reference.
@@ -193,21 +215,60 @@ export function MapsInteractive({ project }: { project: Project }) {
     [],
   );
 
+  const viewToggle = (
+    <div className="seg" role="group" aria-label="Map view" style={{ marginBottom: 8 }}>
+      <button
+        className={mapView === "3d" ? "button-like active-pill" : "button-like"}
+        aria-pressed={mapView === "3d"}
+        onClick={() => setMapView("3d")}
+      >
+        3D
+      </button>
+      <button
+        className={mapView === "sheets" ? "button-like active-pill" : "button-like"}
+        aria-pressed={mapView === "sheets"}
+        onClick={() => setMapView("sheets")}
+      >
+        Sheets
+      </button>
+    </div>
+  );
+
+  // The Sheets view IS the old 2D map — pins, dispatch, planset pages,
+  // re-extract. Everything the 3D model is fed by gets fixed here.
+  if (mapView === "sheets") {
+    return (
+      <div>
+        {viewToggle}
+        <ProjectMap embedded />
+      </div>
+    );
+  }
+
   if (outlines.isLoading || openings.isLoading) {
-    return <p className="muted">Loading the model…</p>;
+    return (
+      <div>
+        {viewToggle}
+        <p className="muted">Loading the model…</p>
+      </div>
+    );
   }
 
   if (!outline) {
     return (
-      <div className="empty-state">
-        <h3>No building model yet</h3>
-        <p className="muted">
-          The interactive map builds itself from this job's traced outline.
-          Trace one from the floor plan and it appears here automatically.
-        </p>
-        <Link className="button-like" to={`/projects/${projectId}?tab=map`}>
-          Open the plan map to trace the outline
-        </Link>
+      <div>
+        {viewToggle}
+        <div className="empty-state">
+          <h3>No building model yet</h3>
+          <p className="muted">
+            The interactive map builds itself from this job's traced outline.
+            Trace one from the floor plan (Sheets view) and it appears here
+            automatically.
+          </p>
+          <button className="button-like" onClick={() => setMapView("sheets")}>
+            Open Sheets to trace the outline
+          </button>
+        </div>
       </div>
     );
   }
@@ -215,7 +276,9 @@ export function MapsInteractive({ project }: { project: Project }) {
   // One stable tree so the renderer's host node survives data transitions —
   // a branch swap here would strand the mounted view on a detached div.
   return (
-    <div className={fullscreen ? "fitview-shell fitview-fullscreen" : "fitview-shell"}>
+    <div>
+      {!fullscreen && viewToggle}
+      <div className={fullscreen ? "fitview-shell fitview-fullscreen" : "fitview-shell"}>
       <div className="fitview-toolbar">
         {job && job.windows.length === 0 && (
           <p className="muted" style={{ margin: 0, flex: 1 }}>
@@ -242,7 +305,8 @@ export function MapsInteractive({ project }: { project: Project }) {
           {fullscreen ? "Exit full screen" : "Full screen"}
         </button>
       </div>
-      <div className="fitview-app" ref={hostRef} />
+        <div className="fitview-app" ref={hostRef} />
+      </div>
     </div>
   );
 }
