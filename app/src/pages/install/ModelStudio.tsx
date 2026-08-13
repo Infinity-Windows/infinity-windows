@@ -10,17 +10,21 @@
 // materials are Phase 1 work once this foundation is judged on BLACK22.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BackChip } from "../../components/BackChip";
 import { pushToast } from "../../lib/toast";
 import { formatApiError } from "../../lib/errors";
+import { listProjects } from "../../lib/api";
 import {
   listMarkSpecs,
   listOpenings,
   listPlanOutlines,
   savePlanOutline,
 } from "../../lib/install/api";
+import {
+  getStudioProject,
+  saveStudioProject,
+} from "../../lib/modelstudio/projects";
 import {
   buildAuthoredJob,
   buildFitViewJob,
@@ -160,17 +164,40 @@ function zoomPlan(bp: Blueprint3d, factor: number) {
   fp.resizeView();
 }
 
-export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) {
+/** Where a Studio session loads from and saves to (owner pick 2026-08-13:
+ * "linked but independent"). Job sources keep living on the job's outline
+ * (Publish/Revert untouched); standalone rows live in studio_projects and
+ * may link a job later. */
+export type StudioSource =
+  | { kind: "job"; projectId: string }
+  | { kind: "standalone"; id: string };
+
+const BLANK_SERIALIZED = JSON.stringify({
+  floorplan: { corners: {}, walls: [], wallTextures: [], floorTextures: {}, newFloorTextures: {} },
+  items: [],
+});
+
+export function ModelStudio({ source }: { source: StudioSource }) {
   const qc = useQueryClient();
-  const { id: routeId = "" } = useParams();
-  const projectId = propId ?? routeId;
-  const embedded = Boolean(propId);
+  const standaloneId = source.kind === "standalone" ? source.id : null;
+  const proj = useQuery({
+    queryKey: ["studioProject", standaloneId],
+    queryFn: () => getStudioProject(standaloneId!),
+    enabled: Boolean(standaloneId),
+  });
+  // The job everything hangs off: direct for job sources, the linked job
+  // (if any) for standalone rows. Blank + unlinked = "" and every job-fed
+  // query below stays off.
+  const projectId =
+    source.kind === "job" ? source.projectId : proj.data?.project_id ?? "";
   const hostReady = useRef(false);
   const bpRef = useRef<Blueprint3d | null>(null);
   const roRef = useRef<ResizeObserver | null>(null);
   const [mode, setModeState] = useState<number>(0);
-  /** Full-screen one pane at a time — editing needs the whole laptop screen. */
-  const [fs, setFs] = useState<"none" | "plan" | "model">("none");
+  /** ONE view at a time (owner ask — no more split panes): 3D is home. */
+  const [view, setView] = useState<"model" | "plan">("model");
+  /** Full-screen the stage — editing needs the whole laptop screen. */
+  const [fs, setFs] = useState(false);
   /** The wall the user clicked (persists past hover) + a version tick so
    * React re-reads its mutable vendor fields after edits. */
   const [selWall, setSelWall] = useState<StudioWall | null>(null);
@@ -222,6 +249,33 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
     { model: Record<string, unknown>; stats: PublishStats } | null
   >(null);
   const units = useQuery({ queryKey: ["studioUnits"], queryFn: listStudioUnits });
+  /** Standalone extras: the job list for linking, and the link action. */
+  const allProjects = useQuery({
+    queryKey: ["projects"],
+    queryFn: listProjects,
+    enabled: source.kind === "standalone",
+  });
+  const jobCodeForLink = useMemo(
+    () => (allProjects.data ?? []).find((p) => p.id === projectId)?.job_code ?? null,
+    [allProjects.data, projectId],
+  );
+  const linkToJob = useMutation({
+    mutationFn: async (jobId: string) => {
+      if (!proj.data) throw new Error("Project not loaded yet");
+      // p_model null keeps the saved drawing (the RPC coalesces).
+      return saveStudioProject({
+        id: proj.data.id,
+        name: proj.data.name,
+        projectId: jobId,
+        model: null,
+      });
+    },
+    onSuccess: () => {
+      pushToast("Linked — job specs, seeding and Publish are now available.");
+      void qc.invalidateQueries({ queryKey: ["studioProject", standaloneId] });
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
   /** Undo: serialized snapshots pushed BEFORE each mutating gesture. */
   const undoStack = useRef<string[]>([]);
   const [undoDepth, setUndoDepth] = useState(0);
@@ -274,10 +328,25 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
     [job],
   );
 
-  // Mount once when the seed and both host elements exist. The vendor core
-  // owns everything inside its two containers from here.
+  // What the session boots from: a standalone row's own model first, then
+  // the job outline's saved model, then the traced seed, then a BLANK plan
+  // (the standalone start-from-nothing path).
+  const savedSerialized =
+    (source.kind === "standalone" ? proj.data?.model?.serialized : null) ??
+    ((outline?.features as { modelstudio?: { serialized?: string } } | null)
+      ?.modelstudio?.serialized ?? null);
+
+  // Job sources still need their outline chain before mounting (the seed);
+  // a standalone source only needs its row fetched — blank is a valid boot.
+  const bootReady =
+    source.kind === "standalone"
+      ? proj.isFetched && (!projectId || Boolean(seed) || Boolean(savedSerialized) || outlines.isFetched)
+      : Boolean(seed);
+
+  // Mount once when the boot data and both host elements exist. The vendor
+  // core owns everything inside its two containers from here.
   useEffect(() => {
-    if (!seed || hostReady.current) return;
+    if (!bootReady || hostReady.current) return;
     const floorplanEl = document.getElementById("studio-floorplan");
     const threeEl = document.getElementById("studio-three");
     if (!floorplanEl || !threeEl) return;
@@ -294,12 +363,11 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
     // Debug handle for the dev pane; harmless in prod.
     (window as { __studio?: unknown }).__studio = bp;
 
-    // Saved Studio model wins; otherwise seed from the traced building.
-    const saved = (outline?.features as { modelstudio?: { serialized?: string } } | null)
-      ?.modelstudio?.serialized;
-    bp.model.loadSerialized(saved ?? seed.serialized);
+    // Saved Studio model wins; then the traced-building seed; then blank.
+    const saved = savedSerialized;
+    bp.model.loadSerialized(saved ?? seed?.serialized ?? BLANK_SERIALIZED);
 
-    if (!saved) {
+    if (!saved && seed) {
       for (const w of seed.windows) {
         bp.model.scene.addItem(
           3,
@@ -400,22 +468,25 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
     setStatus(
       saved
         ? "Loaded your saved Studio model."
-        : `Seeded from the traced building — ${seed.windows.length} opening${seed.windows.length === 1 ? "" : "s"} placed.`,
+        : seed
+          ? `Seeded from the traced building — ${seed.windows.length} opening${seed.windows.length === 1 ? "" : "s"} placed.`
+          : "Blank slate — open Tools and Draw walls to start your planset.",
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seed]);
+  }, [bootReady]);
 
-  // Re-fit both views whenever a pane enters/leaves full screen.
+  // Re-fit whichever view is showing when the view or full screen changes —
+  // a hidden canvas keeps its size, but the vendor needs a nudge on swap.
   useEffect(() => {
     requestAnimationFrame(() => {
       const bp = bpRef.current;
       if (!bp) return;
       bp.floorplanner?.resizeView();
-      fitPlan(bp);
+      if (view === "plan") fitPlan(bp);
       window.dispatchEvent(new Event("resize"));
-      bp.three.centerCamera();
+      bp.three.updateWindowSize();
     });
-  }, [fs]);
+  }, [fs, view]);
 
   useEffect(
     () => () => {
@@ -442,21 +513,34 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
 
   const save = async () => {
     const bp = bpRef.current;
-    if (!bp || !outline) return;
+    if (!bp) return;
     setSaving(true);
     try {
       const serialized = bp.model.exportSerialized();
-      const prev = (outline.features ?? {}) as Record<string, unknown>;
-      await savePlanOutline({
-        outlineId: outline.id,
-        projectId,
-        plansetId: outline.planset_id,
-        pageNumber: outline.page_number,
-        points: outline.points,
-        pageAspect: outline.page_aspect,
-        // Merge: the fitview model and 2D features must survive untouched.
-        features: { ...prev, modelstudio: { serialized, savedAt: new Date().toISOString() } },
-      });
+      const savedAt = new Date().toISOString();
+      if (source.kind === "standalone") {
+        if (!proj.data) throw new Error("Project not loaded yet");
+        await saveStudioProject({
+          id: proj.data.id,
+          name: proj.data.name,
+          projectId: proj.data.project_id,
+          model: { serialized, savedAt },
+        });
+        void qc.invalidateQueries({ queryKey: ["studioProject", standaloneId] });
+      } else {
+        if (!outline) throw new Error("Trace the building first");
+        const prev = (outline.features ?? {}) as Record<string, unknown>;
+        await savePlanOutline({
+          outlineId: outline.id,
+          projectId,
+          plansetId: outline.planset_id,
+          pageNumber: outline.page_number,
+          points: outline.points,
+          pageAspect: outline.page_aspect,
+          // Merge: the fitview model and 2D features must survive untouched.
+          features: { ...prev, modelstudio: { serialized, savedAt } },
+        });
+      }
       pushToast("Studio model saved.");
     } catch (e) {
       pushToast(`Couldn't save: ${e instanceof Error ? e.message : String(e)}`);
@@ -1345,18 +1429,23 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
   );
 
   return (
-    <div className={embedded ? "studio-page" : "page studio-page"}>
-      {!embedded && (
-        <header className="page-header">
-          <div>
-            <h1>Model Studio</h1>
+    <div className="page studio-page">
+      <header className="page-header">
+        <div>
+          <p className="home-greeting">Studio</p>
+          <h1>
+            {source.kind === "standalone"
+              ? proj.data?.name ?? "Studio project"
+              : "Model Studio"}
+          </h1>
+          {source.kind === "standalone" && jobCodeForLink && (
             <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-              Spike — edit the plan on the left, the 3D builds itself on the right.
+              Linked to {jobCodeForLink}
             </p>
-          </div>
-          <BackChip fallback={`/projects/${projectId}?tab=maps-interactive`} label="Back" />
-        </header>
-      )}
+          )}
+        </div>
+        <BackChip fallback="/studio" label="Back" />
+      </header>
 
       {narrow && (
         <p className="warn-text" style={{ fontSize: 12.5 }}>
@@ -1365,10 +1454,26 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
       )}
 
       <div className="row-gap" style={{ flexWrap: "wrap", marginBottom: 8 }}>
+        {source.kind === "standalone" && !proj.data?.project_id && (
+          <select
+            aria-label="Link to job"
+            value=""
+            onChange={(e) => {
+              if (e.target.value) linkToJob.mutate(e.target.value);
+            }}
+          >
+            <option value="">Link to a job… (enables Publish)</option>
+            {(allProjects.data ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.job_code} — {p.name}
+              </option>
+            ))}
+          </select>
+        )}
         <button
           className="button-like active-pill"
           style={{ marginLeft: "auto" }}
-          disabled={saving || !outline}
+          disabled={saving || (source.kind === "job" && !outline)}
           onClick={() => void save()}
         >
           {saving ? "Saving…" : "Save model"}
@@ -1378,7 +1483,7 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
         <p className="muted" style={{ margin: "0 0 8px", fontSize: 11.5 }}>{status}</p>
       )}
 
-      {!outline && !outlines.isLoading && (
+      {source.kind === "job" && !outline && !outlines.isLoading && (
         <p className="muted">
           No traced building yet — trace one on the job's Maps Interactive tab
           (Sheets view) first, then come back.
@@ -1432,59 +1537,66 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
         />
       )}
 
-      <div className="studio-split">
-        <div className={fs === "plan" ? "studio-pane fs studio-fs-plan" : fs === "model" ? "studio-pane hidden-pane" : "studio-pane"}>
-          <div className="studio-main">
-          <div className="row-gap" style={{ alignItems: "baseline" }}>
-            <p className="tcx-label" style={{ margin: "0 0 4px" }}>Plan (2D)</p>
-            <span className="muted" style={{ fontSize: 11 }}>
-              drag walls & corners · drag empty space to pan
-            </span>
-            <span className="row-gap" style={{ marginLeft: "auto" }}>
-              <button className="button-like studio-mini" aria-label="Zoom in"
-                onClick={() => bpRef.current && zoomPlan(bpRef.current, 1.35)}>+</button>
-              <button className="button-like studio-mini" aria-label="Zoom out"
-                onClick={() => bpRef.current && zoomPlan(bpRef.current, 1 / 1.35)}>−</button>
-              <button className="button-like studio-mini"
-                onClick={() => bpRef.current && fitPlan(bpRef.current)}>Fit</button>
-              <button
-                className="button-like studio-mini"
-                onClick={() => setFs(fs === "plan" ? "none" : "plan")}
-              >
-                {fs === "plan" ? "Exit" : "Full screen"}
-              </button>
-            </span>
-          </div>
-          <div
-            className="studio-stage"
-            onDragOver={(e) => {
-              if (e.dataTransfer.types.includes("application/x-studio-unit")) {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "copy";
-              }
-            }}
-            onDrop={onPlanDrop}
-          >
-            {palette}
+      {/* ONE stage, one view at a time (owner ask): the 2D/3D dropdown top
+          right swaps them; both hosts stay mounted (the vendor binds to both
+          at construction) — the inactive one is just invisible. */}
+      <div className={fs ? "studio-pane single fs" : "studio-pane single"}>
+        <div className="row-gap" style={{ alignItems: "baseline" }}>
+          <p className="tcx-label" style={{ margin: "0 0 4px" }}>
+            {view === "model" ? "Model (3D)" : "Plan (2D)"}
+          </p>
+          <span className="muted" style={{ fontSize: 11 }}>
+            {view === "model"
+              ? "drag to orbit · scroll to zoom · tap windows & walls to edit"
+              : "drag walls & corners · drag empty space to pan"}
+          </span>
+          <span className="row-gap" style={{ marginLeft: "auto" }}>
+            {view === "plan" && (
+              <>
+                <button className="button-like studio-mini" aria-label="Zoom in"
+                  onClick={() => bpRef.current && zoomPlan(bpRef.current, 1.35)}>+</button>
+                <button className="button-like studio-mini" aria-label="Zoom out"
+                  onClick={() => bpRef.current && zoomPlan(bpRef.current, 1 / 1.35)}>−</button>
+                <button className="button-like studio-mini"
+                  onClick={() => bpRef.current && fitPlan(bpRef.current)}>Fit</button>
+              </>
+            )}
+            <select
+              className="studio-view-switch"
+              aria-label="View"
+              value={view}
+              onChange={(e) => setView(e.target.value as "model" | "plan")}
+            >
+              <option value="model">3D</option>
+              <option value="plan">2D</option>
+            </select>
+            <button
+              className="button-like studio-mini"
+              onClick={() => setFs((v) => !v)}
+            >
+              {fs ? "Exit full screen" : "Full screen"}
+            </button>
+          </span>
+        </div>
+        <div
+          className="studio-stage"
+          onDragOver={(e) => {
+            if (view === "plan" && e.dataTransfer.types.includes("application/x-studio-unit")) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "copy";
+            }
+          }}
+          onDrop={(e) => {
+            if (view === "plan") onPlanDrop(e);
+          }}
+        >
+          {palette}
+          <div className={view === "plan" ? "studio-view" : "studio-view studio-view-hidden"}>
             <canvas id="studio-floorplan" className="studio-canvas" />
           </div>
+          <div className={view === "model" ? "studio-view" : "studio-view studio-view-hidden"}>
+            <div id="studio-three" className="studio-three" />
           </div>
-        </div>
-        <div className={fs === "model" ? "studio-pane fs" : fs === "plan" ? "studio-pane hidden-pane" : "studio-pane"}>
-          <div className="row-gap" style={{ alignItems: "baseline" }}>
-            <p className="tcx-label" style={{ margin: "0 0 4px" }}>Model (3D)</p>
-            <span className="muted" style={{ fontSize: 11 }}>
-              drag to orbit · scroll to zoom · drag windows to move them
-            </span>
-            <button
-              className="button-like"
-              style={{ marginLeft: "auto", fontSize: 11.5, padding: "2px 8px" }}
-              onClick={() => setFs(fs === "model" ? "none" : "model")}
-            >
-              {fs === "model" ? "Exit full screen" : "Full screen"}
-            </button>
-          </div>
-          <div id="studio-three" className="studio-three" />
         </div>
       </div>
     </div>

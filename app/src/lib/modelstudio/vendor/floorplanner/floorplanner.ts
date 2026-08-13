@@ -142,25 +142,39 @@ export class Floorplanner {
     this.setMode(floorplannerModes.MOVE)
   }
 
+  // infinity: 6-inch drawing grid (owner pick, 2026-08-13) — drawn walls
+  // land on clean tape-measure numbers instead of 28'5 7/8". Axis-snap to
+  // the last node still wins so straight runs stay straight. 0 disables.
+  public gridSnapCm = 15.24
+
   /** */
   private updateTarget(): void {
     if (this.mode == floorplannerModes.DRAW && this.lastNode) {
       if (Math.abs(this.mouseX - this.lastNode.x) < snapTolerance) {
         this.targetX = this.lastNode.x
       } else {
-        this.targetX = this.mouseX
+        this.targetX = this.snapToGrid(this.mouseX)
       }
       if (Math.abs(this.mouseY - this.lastNode.y) < snapTolerance) {
         this.targetY = this.lastNode.y
       } else {
-        this.targetY = this.mouseY
+        this.targetY = this.snapToGrid(this.mouseY)
       }
+    } else if (this.mode == floorplannerModes.DRAW) {
+      this.targetX = this.snapToGrid(this.mouseX)
+      this.targetY = this.snapToGrid(this.mouseY)
     } else {
       this.targetX = this.mouseX
       this.targetY = this.mouseY
     }
 
     this.view.draw()
+  }
+
+  // infinity: see gridSnapCm above.
+  private snapToGrid(cm: number): number {
+    if (!(this.gridSnapCm > 0)) return cm
+    return Math.round(cm / this.gridSnapCm) * this.gridSnapCm
   }
 
   /** */
