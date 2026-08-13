@@ -552,21 +552,34 @@ export function mountFitView(host, job, shim) {
 
     if (!FRAMING && R <= 0.03 * S) {
       // A finished building with no pitch still needs a lid: membrane roof
-      // with the fascia reading as the parapet cap.
-      var fr = document.createElement("div");
-      fr.className = "flatroof";
-      place(fr, W + 6, D + 6, "translateY(" + (-(H / 2) - 1) + "px) rotateX(90deg)");
-      if (FOOT) {
-        // Clip the lid to the plan shapes - one subpath per building, so a
-        // detached garage gets its own roof island with a real gap between.
-        fr.style.clipPath = "path('" + FOOT.map(function (fp) {
+      // with the fascia reading as the parapet cap. stories: each story mass
+      // gets ITS OWN lid at its own top - one lid at the envelope put a
+      // second-story roof over every one-story wing (owner report,
+      // 2026-08-13). A story without a usable outline draws no lid rather
+      // than borrowing the whole footprint at the wrong height.
+      var lidClip = function (fps) {
+        return "path('" + fps.map(function (fp) {
           return "M" + fp.map(function (p) {
             return ((p.x - FMINX) * S + 3).toFixed(1) + " " +
                    ((p.z - FMINZ) * S + 3).toFixed(1);
           }).join(" L") + " Z";
         }).join(" ") + "')";
-      }
-      house.appendChild(fr);
+      };
+      var lids = (STORIES && STORIES.length > 0)
+        ? STORIES.map(function (st) {
+            return { topM: st.elevM + st.heightM, fps: st.footprints || [] };
+          })
+        : [{ topM: ENVELOPE, fps: FOOT || [] }];
+      lids.forEach(function (lid) {
+        var hasPoly = lid.fps.length > 0 && lid.fps[0].length >= 3;
+        if (STORIES && STORIES.length > 1 && !hasPoly) return;
+        var fr = document.createElement("div");
+        fr.className = "flatroof";
+        place(fr, W + 6, D + 6,
+          "translateY(" + (H / 2 - lid.topM * S - 1) + "px) rotateX(90deg)");
+        if (hasPoly) fr.style.clipPath = lidClip(lid.fps);
+        house.appendChild(fr);
+      });
     }
   }
 
