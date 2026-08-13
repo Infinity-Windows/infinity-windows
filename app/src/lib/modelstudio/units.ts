@@ -28,6 +28,75 @@ export interface UnitConfig {
    * View on both legs. Absent/null = flat unit.
    */
   cornerAfterPanel?: number | null;
+  /**
+   * Horizontal breaks (owner ask 2026-08-13: split panes "like a grid").
+   * Rows read TOP→BOTTOM in the outside view and share their mullion
+   * lines with every column — typing one pane's height resizes its whole
+   * row, the way real butt-glazed grids work. Row heights sum to
+   * heightMm; absent = one full-height row.
+   */
+  rows?: { heightMm: number }[] | null;
+}
+
+/** Row heights top→bottom, cm — a missing/invalid grid is one full row. */
+export function rowHeightsCm(c: UnitConfig): number[] {
+  const rows = c.rows;
+  if (!rows || rows.length === 0) return [c.heightMm / 10];
+  const total = rows.reduce((t, r) => t + r.heightMm, 0);
+  if (!(total > 0)) return [c.heightMm / 10];
+  // Normalize drift so the grid always fills the unit exactly.
+  const scale = c.heightMm / total;
+  return rows.map((r) => (r.heightMm * scale) / 10);
+}
+
+// ------------------------------------------------------- pane grid editing
+// Shared mullion lines (owner pick): a pane's width IS its column's width,
+// its height IS its row's height — typing one resizes the whole line, the
+// way real butt-glazed grids are built. All pure; the Studio applies them.
+
+/** Set one column's width; the unit's total width follows. */
+export function setColumnWidthMm(c: UnitConfig, col: number, widthMm: number): UnitConfig {
+  return {
+    ...c,
+    panels: c.panels.map((p, i) => (i === col ? { ...p, widthMm } : p)),
+  };
+}
+
+/** Set one row's height; the unit's total height follows (other rows keep
+ * their real size — resizing pane R2 must not squash R1). */
+export function setRowHeightMm(c: UnitConfig, row: number, heightMm: number): UnitConfig {
+  const rows = (c.rows?.length ? c.rows : [{ heightMm: c.heightMm }]).map((r, i) =>
+    i === row ? { heightMm } : { heightMm: r.heightMm },
+  );
+  const total = rows.reduce((t, r) => t + r.heightMm, 0);
+  return { ...c, rows, heightMm: total };
+}
+
+/** Split a column into two equal halves (same mechanism). A corner at or
+ * right of the split shifts one column down the row. */
+export function splitColumn(c: UnitConfig, col: number): UnitConfig {
+  const p = c.panels[col];
+  if (!p) return c;
+  const half = { ...p, widthMm: p.widthMm / 2 };
+  const panels = [...c.panels.slice(0, col), half, { ...half }, ...c.panels.slice(col + 1)];
+  const k = c.cornerAfterPanel;
+  return {
+    ...c,
+    panels,
+    cornerAfterPanel: k != null && k >= col ? k + 1 : k,
+  };
+}
+
+/** Split a row into two equal halves. */
+export function splitRow(c: UnitConfig, row: number): UnitConfig {
+  const rows = c.rows?.length ? c.rows : [{ heightMm: c.heightMm }];
+  const r = rows[row];
+  if (!r) return c;
+  const half = { heightMm: r.heightMm / 2 };
+  return {
+    ...c,
+    rows: [...rows.slice(0, row), half, { ...half }, ...rows.slice(row + 1)],
+  };
 }
 
 /** Split a corner config into its two legs (outside view, left then right). */
@@ -231,6 +300,18 @@ export function unitSvg(c: UnitConfig, boxW = 220, boxH = 140): string {
       );
     }
     px += pw;
+  }
+  // Row break lines (grid support), shared across every column.
+  const rowsMm = rowHeightsCm(c).map((v) => v * 10);
+  if (rowsMm.length > 1) {
+    let yMm = 0;
+    for (let ri = 0; ri < rowsMm.length - 1; ri++) {
+      yMm += rowsMm[ri];
+      const ly = y0 + yMm * scale;
+      parts.push(
+        `<line x1="${x0}" y1="${ly}" x2="${x0 + W}" y2="${ly}" stroke="${stroke}" stroke-width="1.6"/>`,
+      );
+    }
   }
   // 90° corner marker at the split, drawn the way the spec sheet draws it:
   // an arc over the joint plus the label.

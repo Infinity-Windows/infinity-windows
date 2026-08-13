@@ -69,6 +69,58 @@ describe("buildUnitGeometry corner legs", () => {
   });
 });
 
+describe("pane grids (rows share mullion lines)", () => {
+  it("rowHeightsCm normalizes drift so the grid always fills the unit", async () => {
+    const { rowHeightsCm } = await import("./units");
+    const cfg: UnitConfig = {
+      kind: "window",
+      heightMm: 2000,
+      panels: [{ widthMm: 1000, mechanism: "fixed" }],
+      rows: [{ heightMm: 600 }, { heightMm: 600 }], // sums to 1200, not 2000
+    };
+    const rows = rowHeightsCm(cfg);
+    expect(rows).toHaveLength(2);
+    expect(rows[0] + rows[1]).toBeCloseTo(200, 6);
+    expect(rowHeightsCm({ ...cfg, rows: null })).toEqual([200]);
+  });
+
+  it("a 2×3 grid builds one glass cell per pane", () => {
+    const cfg: UnitConfig = {
+      kind: "window",
+      heightMm: 2000,
+      panels: [
+        { widthMm: 1000, mechanism: "fixed" },
+        { widthMm: 1000, mechanism: "fixed" },
+      ],
+      rows: [{ heightMm: 700 }, { heightMm: 700 }, { heightMm: 600 }],
+    };
+    const { geometry } = buildUnitGeometry(cfg);
+    // Glass group is group 1; each merged BoxGeometry contributes 24 verts.
+    const glass = geometry.groups[1];
+    const glassVerts = geometry.getAttribute("position").count - glass.start / 1;
+    void glassVerts;
+    // 2 columns × 3 rows = 6 cells; flat single-row would be 2.
+    const index = geometry.getIndex()!;
+    const glassTriangles = (index.count - glass.start) / 3;
+    expect(glassTriangles).toBe(6 * 12); // 12 triangles per box
+  });
+
+  it("unitSvg draws the shared row break lines", async () => {
+    const { unitSvg } = await import("./units");
+    const cfg: UnitConfig = {
+      kind: "window",
+      heightMm: 2000,
+      panels: [{ widthMm: 1000, mechanism: "fixed" }],
+      rows: [{ heightMm: 1000 }, { heightMm: 1000 }],
+    };
+    const withRows = unitSvg(cfg);
+    const flat = unitSvg({ ...cfg, rows: null });
+    expect((withRows.match(/<line/g) ?? []).length).toBeGreaterThan(
+      (flat.match(/<line/g) ?? []).length,
+    );
+  });
+});
+
 describe("unitSvg corner marker", () => {
   it("draws the 90° label the way the spec sheet does", () => {
     expect(unitSvg(WINDOW_16)).toContain("90°");
