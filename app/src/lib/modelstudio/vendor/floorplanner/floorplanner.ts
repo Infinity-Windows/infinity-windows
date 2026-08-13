@@ -204,8 +204,11 @@ export class Floorplanner {
 
     // update object target
     if (this.mode != floorplannerModes.DRAW && !this.mouseDown) {
-      const hoverCorner: Corner | null = this.floorplan.overlappedCorner(this.mouseX, this.mouseY)
-      const hoverWall: Wall | null = this.floorplan.overlappedWall(this.mouseX, this.mouseY)
+      // infinity: tolerance in SCREEN pixels, not cm — at a fitted-out zoom
+      // the 10cm default is under one pixel and nothing is selectable.
+      const hitTol = 12 * this.cmPerPixel
+      const hoverCorner: Corner | null = this.floorplan.overlappedCorner(this.mouseX, this.mouseY, hitTol)
+      const hoverWall: Wall | null = this.floorplan.overlappedWall(this.mouseX, this.mouseY, hitTol)
       let draw = false
       if (hoverCorner != this.activeCorner) {
         this.activeCorner = hoverCorner
