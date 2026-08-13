@@ -13,7 +13,7 @@
 import * as THREE from "three";
 
 export type UnitHandleKind = "width-left" | "width-right" | "height" | "sill";
-export type WallHandleKind = "length-start" | "length-end" | "height";
+export type WallHandleKind = "length-start" | "length-end" | "height" | "slide";
 
 export interface UnitHandleSpec {
   /** Unit centre, world cm. */
@@ -58,6 +58,7 @@ const COLOR: Record<string, number> = {
   sill: 0x53c46c,
   "length-start": 0x2bb3c8,
   "length-end": 0x2bb3c8,
+  slide: 0xa78bfa,
 };
 
 export class StudioHandles3d {
@@ -128,7 +129,9 @@ export class StudioHandles3d {
       new THREE.Vector3(c.x, Math.max(HANDLE_RADIUS, c.y - vOff), c.z));
   }
 
-  /** Ends slide the wall longer/shorter; the top mid handle sets height. */
+  /** Ends slide the wall longer/shorter; the top mid handle sets height;
+   * the purple mid handle DRAGS the whole wall along its own perpendicular
+   * (owner ask: "click on walls and drag them around" in 3D). */
   attachWall(spec: WallHandleSpec): void {
     this.clear();
     const dx = spec.end.x - spec.start.x;
@@ -137,16 +140,17 @@ export class StudioHandles3d {
     const ax = dx / len;
     const az = dz / len;
     const top = spec.heightCm + HANDLE_RADIUS * 1.6;
+    const midX = (spec.start.x + spec.end.x) / 2;
+    const midZ = (spec.start.z + spec.end.z) / 2;
     this.add("length-start", "wall", new THREE.Vector3(-ax, 0, -az),
       new THREE.Vector3(spec.start.x, top, spec.start.z));
     this.add("length-end", "wall", new THREE.Vector3(ax, 0, az),
       new THREE.Vector3(spec.end.x, top, spec.end.z));
     this.add("height", "wall", new THREE.Vector3(0, 1, 0),
-      new THREE.Vector3(
-        (spec.start.x + spec.end.x) / 2,
-        top + HANDLE_RADIUS,
-        (spec.start.z + spec.end.z) / 2,
-      ));
+      new THREE.Vector3(midX, top + HANDLE_RADIUS, midZ));
+    // Perpendicular = rotate the wall direction 90° in plan.
+    this.add("slide", "wall", new THREE.Vector3(-az, 0, ax),
+      new THREE.Vector3(midX, spec.heightCm * 0.55, midZ));
   }
 
   private add(

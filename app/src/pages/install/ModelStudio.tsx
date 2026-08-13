@@ -49,12 +49,17 @@ import type { StudioItem } from "../../lib/modelstudio/core";
 import {
   listStudioUnits,
   saveStudioUnit,
+  setColumnWidthMm,
+  setRowHeightMm,
   specImportName,
   specToUnitConfig,
+  splitColumn,
+  splitRow,
   unitSvg,
   type StudioUnit,
   type UnitConfig,
 } from "../../lib/modelstudio/units";
+import { fmtInchesFromMm } from "../../lib/modelstudio/dims";
 import { supabase } from "../../lib/supabase";
 import {
   Blueprint3d,
@@ -245,6 +250,10 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   const [unitH, setUnitH] = useState("");
   const [unitSill, setUnitSill] = useState("");
   const [unitGap, setUnitGap] = useState("");
+  /** The tapped pane in the grid picker (col 0 = drawing's left, row 0 = top). */
+  const [selPane, setSelPane] = useState<{ col: number; row: number } | null>(null);
+  const [paneW, setPaneW] = useState("");
+  const [paneH, setPaneH] = useState("");
   const [publishPreview, setPublishPreview] = useState<
     { model: Record<string, unknown>; stats: PublishStats } | null
   >(null);
@@ -410,6 +419,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         if (cfg?.panels?.length) applyUnitGeometry(it, cfg);
         it.placeInRoom();
         snapIfCorner(it);
+        growWallToFit(it);
       } catch {
         /* not a wall item */
       }
@@ -498,10 +508,12 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     [],
   );
 
-  // Handles follow the selection (and vanish with it).
+  // Handles follow the selection (and vanish with it); the pane picker
+  // resets so a stale (col,row) can't point past a different unit's grid.
   useEffect(() => {
     selUnitRef.current = selUnit;
     selWallRef.current = selWall;
+    setSelPane(null);
     refreshHandles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selUnit, selWall]);
@@ -825,6 +837,13 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     if (kind === "height") {
       base.wall.height = Math.min(2000, Math.max(60, base.h + deltaCm));
       base.wall.fireRedraw?.();
+    } else if (kind === "slide") {
+      // Drag the whole wall along its own perpendicular: both corners move
+      // together, connected walls stretch to follow.
+      const nx = -base.az;
+      const nz = base.ax;
+      base.wall.getStart().move(base.sx + nx * deltaCm, base.sy + nz * deltaCm);
+      base.wall.getEnd().move(base.ex + nx * deltaCm, base.ey + nz * deltaCm);
     } else {
       const len = Math.max(30, base.len + deltaCm);
       if (kind === "length-end") {
@@ -986,6 +1005,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           applyUnitGeometry(it, config);
           it.placeInRoom();
           snapIfCorner(it);
+          growWallToFit(it);
         } catch {
           /* geometry not ready — next tick */
         }
@@ -1122,6 +1142,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     }
     item.placeInRoom();
     snapIfCorner(item);
+    growWallToFit(item);
     refreshHandles();
     pushToast("Unit updated.");
   };
@@ -1161,6 +1182,41 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       void qc.invalidateQueries({ queryKey: ["studioUnits"] });
     },
   });
+
+  /** A unit taller than its wall raises the wall to fit (owner ask: "make
+   * the wall a window is on at least match the height of it"). */
+  const growWallToFit = (item: StudioItem) => {
+    const cfg = item.metadata?.unitConfig as UnitConfig | undefined;
+    const wall = (item as unknown as { currentWallEdge?: { wall: StudioWall } })
+      .currentWallEdge?.wall;
+    if (!cfg || !wall) return;
+    const topCm = item.position.y + cfg.heightMm / 20;
+    if (wall.height < topCm - 1) {
+      wall.height = Math.ceil(topCm);
+      wall.fireRedraw?.();
+      pushToast(`Wall raised to ${fmtFtIn(wall.height)} to fit the unit.`);
+    }
+  };
+
+  /** One path for every pane-grid change from the palette. */
+  const applyGridChange = (next: UnitConfig) => {
+    const item = selUnit;
+    if (!item) return;
+    // Sill comes from the PREVIOUS config — height changes keep the sill
+    // planted and move the head.
+    const prev = item.metadata?.unitConfig as UnitConfig | undefined;
+    const sill = Math.max(0, item.position.y - (prev?.heightMm ?? next.heightMm) / 20);
+    pushUndo();
+    applyUnitGeometry(item, next);
+    item.position.set(item.position.x, sill + next.heightMm / 20, item.position.z);
+    item.redrawWall?.();
+    item.placeInRoom();
+    snapIfCorner(item);
+    growWallToFit(item);
+    refreshHandles();
+    setUnitW(fmtFtIn(next.panels.reduce((t, p) => t + p.widthMm, 0) / 10));
+    setUnitH(fmtFtIn(next.heightMm / 10));
+  };
 
   const deleteUnit = () => {
     if (!selUnit) return;
@@ -1322,6 +1378,121 @@ export function ModelStudio({ source }: { source: StudioSource }) {
             <input value={unitSill} onChange={(e) => setUnitSill(e.target.value)} />
             <label className="field-label">Frame gap between panes (mm)</label>
             <input value={unitGap} onChange={(e) => setUnitGap(e.target.value)} />
+            {(() => {
+              const cfg = selUnit.metadata?.unitConfig as UnitConfig | undefined;
+              if (!cfg) return null;
+              const rows = cfg.rows?.length ? cfg.rows : [{ heightMm: cfg.heightMm }];
+              const cols = cfg.panels;
+              const pane =
+                selPane &&
+                selPane.col < cols.length &&
+                selPane.row < rows.length
+                  ? selPane
+                  : null;
+              return (
+                <>
+                  <label className="field-label">
+                    Panes — tap one, then type its size or split it
+                  </label>
+                  <div
+                    className="studio-pane-grid-picker"
+                    style={{
+                      gridTemplateColumns: cols
+                        .map((p) => `${Math.max(p.widthMm, 200)}fr`)
+                        .join(" "),
+                    }}
+                  >
+                    {rows.map((r, ri) =>
+                      cols.map((p, ci) => (
+                        <button
+                          key={`${ci}-${ri}`}
+                          title={`Pane ${ci + 1}·${ri + 1} — ${fmtInchesFromMm(p.widthMm)} × ${fmtInchesFromMm(r.heightMm)}`}
+                          className={
+                            pane && pane.col === ci && pane.row === ri
+                              ? "studio-pane-cell on"
+                              : "studio-pane-cell"
+                          }
+                          style={{ height: Math.max(16, Math.min(40, r.heightMm / 60)) }}
+                          onClick={() => {
+                            setSelPane({ col: ci, row: ri });
+                            setPaneW(fmtInchesFromMm(p.widthMm));
+                            setPaneH(fmtInchesFromMm(r.heightMm));
+                          }}
+                        />
+                      )),
+                    )}
+                  </div>
+                  {pane && (
+                    <div className="studio-card" style={{ padding: "6px 8px" }}>
+                      <p className="tcx-label" style={{ margin: "0 0 4px" }}>
+                        Pane {pane.col + 1}·{pane.row + 1}
+                      </p>
+                      <div className="row-gap">
+                        <input
+                          aria-label="Pane width"
+                          style={{ flex: 1, minWidth: 0 }}
+                          value={paneW}
+                          onChange={(e) => setPaneW(e.target.value)}
+                          onBlur={() => {
+                            const cm = paneW ? parseFtIn(paneW) : null;
+                            if (cm != null && cm * 10 >= 50) {
+                              applyGridChange(setColumnWidthMm(cfg, pane.col, cm * 10));
+                            }
+                          }}
+                        />
+                        <span className="muted" style={{ alignSelf: "center" }}>×</span>
+                        <input
+                          aria-label="Pane height"
+                          style={{ flex: 1, minWidth: 0 }}
+                          value={paneH}
+                          onChange={(e) => setPaneH(e.target.value)}
+                          onBlur={() => {
+                            const cm = paneH ? parseFtIn(paneH) : null;
+                            if (cm != null && cm * 10 >= 50) {
+                              applyGridChange(setRowHeightMm(cfg, pane.row, cm * 10));
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 4 }}>
+                        <button
+                          className="button-like studio-mini"
+                          title="Split this pane's column in two"
+                          onClick={() => applyGridChange(splitColumn(cfg, pane.col))}
+                        >
+                          ▯▯ Split
+                        </button>
+                        <button
+                          className="button-like studio-mini"
+                          title="Split this pane's row in two"
+                          onClick={() => applyGridChange(splitRow(cfg, pane.row))}
+                        >
+                          ▭ Split
+                        </button>
+                        {cols.length > 1 && (
+                          <button
+                            className="button-like studio-mini"
+                            title="The unit turns 90° after this pane's column"
+                            onClick={() =>
+                              applyGridChange({
+                                ...cfg,
+                                cornerAfterPanel:
+                                  cfg.cornerAfterPanel === pane.col &&
+                                  pane.col < cols.length - 1
+                                    ? null
+                                    : Math.min(pane.col, cols.length - 2),
+                              })
+                            }
+                          >
+                            ⌐ Corner here
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
             <label className="field-label">Panels</label>
             <div className="row-gap" style={{ flexWrap: "wrap" }}>
               {[1, 2, 3, 4, 5, 6].map((n) => (

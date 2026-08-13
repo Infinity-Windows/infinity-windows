@@ -7,7 +7,13 @@
 
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { cornerLegs, panelsWidthMm, type UnitConfig, type UnitPanel } from "./units";
+import {
+  cornerLegs,
+  panelsWidthMm,
+  rowHeightsCm,
+  type UnitConfig,
+  type UnitPanel,
+} from "./units";
 
 const MM_TO_CM = 0.1;
 
@@ -71,6 +77,7 @@ export function buildUnitGeometry(
   const mull = (opts.mullionMm ?? UNIT_GEOMETRY_DEFAULTS.mullionMm) * MM_TO_CM;
   const depth = (opts.depthMm ?? UNIT_GEOMETRY_DEFAULTS.depthMm) * MM_TO_CM;
   const H = config.heightMm * MM_TO_CM;
+  const rowsCm = rowHeightsCm(config);
 
   const frameGeos: THREE.BufferGeometry[] = [];
   const glassGeos: THREE.BufferGeometry[] = [];
@@ -124,12 +131,34 @@ export function buildUnitGeometry(
         pushBox(frameGeos, gw, sash, depth * 0.7, (innerLeft + innerRight) / 2, gh / 2 - sash / 2);
         pushBox(frameGeos, gw, sash, depth * 0.7, (innerLeft + innerRight) / 2, -gh / 2 + sash / 2);
       }
-      pushBox(glassGeos, gw, gh - 2 * sash, depth * 0.25, (innerLeft + innerRight) / 2, 0);
+      // One glass CELL per row (grid support): rows read top→bottom and
+      // share their break lines across every column.
+      let yTop = gh / 2 - sash;
+      rowsCm.forEach((rh, ri) => {
+        const isTopRow = ri === 0;
+        const isBottomRow = ri === rowsCm.length - 1;
+        // Row band scaled into the inner (glass) height.
+        const bandH = (rh / H) * (gh - 2 * sash);
+        const cellTop = yTop - (isTopRow ? 0 : mull / 2);
+        const cellBottom = yTop - bandH + (isBottomRow ? 0 : mull / 2);
+        const ch = Math.max(2, cellTop - cellBottom);
+        pushBox(
+          glassGeos, gw, ch, depth * 0.25,
+          (innerLeft + innerRight) / 2, (cellTop + cellBottom) / 2,
+        );
+        yTop -= bandH;
+      });
       if (!isLast) {
         pushBox(frameGeos, mull, H - 2 * frame, depth, u + pw, 0);
       }
       u += pw;
     });
+    // Full-width transom bars on each row boundary (shared mullion lines).
+    let yCut = H / 2;
+    for (let ri = 0; ri < rowsCm.length - 1; ri++) {
+      yCut -= rowsCm[ri];
+      pushBox(frameGeos, runW - 2 * frame, mull, depth, 0, yCut);
+    }
   };
 
   const corner = cornerGeometryInfo(config, opts);

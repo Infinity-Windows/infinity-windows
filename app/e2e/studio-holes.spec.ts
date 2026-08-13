@@ -486,6 +486,172 @@ test("3D drag handles: pulling the top handle makes the unit taller", async ({
   expect(after).toBeGreaterThan(before + 50); // meaningfully taller, in mm
 });
 
+test("pane grid: split, type a pane size, corner-by-pane, wall auto-grows", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useOutline(page, { fitview: { model: FITVIEW_MODEL } });
+  await openStudio(page);
+
+  // A 2-column unit TALLER than the 3 m wall: the wall must auto-grow.
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    bp.model.scene.addItem(
+      3,
+      "/modelstudio/models/window.json",
+      {
+        itemName: "E2E grid unit",
+        itemType: 3,
+        modelUrl: "/modelstudio/models/window.json",
+        unitConfig: {
+          kind: "window",
+          heightMm: 3200,
+          panels: [
+            { widthMm: 1200, mechanism: "fixed" },
+            { widthMm: 1200, mechanism: "fixed" },
+          ],
+        },
+      },
+      { x: 900, y: 170, z: 600 },
+      0,
+      undefined,
+      false,
+    );
+  });
+  await page.waitForFunction(() => {
+    const bp = (window as any).__studio;
+    const items = bp.model.scene.getItems();
+    return items.length === 1 && Boolean(items[0].currentWallEdge);
+  });
+
+  // Wall auto-grew to fit the 320 cm unit (sill ~10 cm → ≥ 330 cm).
+  const wallH = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    return bp.model.scene.getItems()[0].currentWallEdge.wall.height;
+  });
+  expect(wallH).toBeGreaterThanOrEqual(320);
+
+  // Tap-select in 3D via the camera-projected click (same as handles spec).
+  const centre = await page.evaluate(`(() => {
+    const bp = window.__studio;
+    const cam = bp.three.camera;
+    cam.updateMatrixWorld();
+    const p = bp.model.scene.getItems()[0].position;
+    const v = p.clone();
+    v.project(cam);
+    const r = bp.three.element.getBoundingClientRect();
+    return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+  })()`);
+  const { x: cx, y: cy } = centre as { x: number; y: number };
+  await page.mouse.click(cx, cy);
+  await expect(page.getByText("Panes — tap one", { exact: false })).toBeVisible();
+
+  // 1×2 grid → tap pane 1·1 → split its row → 2 rows → 4 cells.
+  await page.locator(".studio-pane-cell").first().click();
+  await page.getByRole("button", { name: "▭ Split" }).click();
+  await expect(page.locator(".studio-pane-cell")).toHaveCount(4);
+
+  // Type the top-left pane's height — the whole TOP ROW resizes and the
+  // config's total height follows (bottom row keeps its size).
+  await page.locator(".studio-pane-cell").first().click();
+  await page.getByLabel("Pane height").fill('40"');
+  await page.getByLabel("Pane height").blur();
+  const cfgAfter = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    return bp.model.scene.getItems()[0].metadata.unitConfig;
+  });
+  expect((cfgAfter as any).rows).toHaveLength(2);
+  expect((cfgAfter as any).rows[0].heightMm).toBeCloseTo(1016, 0);
+  expect((cfgAfter as any).heightMm).toBeCloseTo(1016 + 1600, 0);
+
+  // Corner-by-pane: mark the corner after column 1.
+  await page.locator(".studio-pane-cell").first().click();
+  await page.getByRole("button", { name: "⌐ Corner here" }).click();
+  const corner = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    return bp.model.scene.getItems()[0].metadata.unitConfig.cornerAfterPanel;
+  });
+  expect(corner).toBe(0);
+});
+
+test("3D wall slide handle drags the whole wall perpendicular", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useOutline(page, { fitview: { model: FITVIEW_MODEL } });
+  await openStudio(page);
+
+  // Select the south wall of mass A (z=600, x 0..1000) through the SAME
+  // emitter the vendor's own 3D raycast fires — a projected click can land
+  // on a back-facing plane and select nothing.
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const wall = bp.model.floorplan
+      .getWalls()
+      .find(
+        (w: any) =>
+          Math.abs(w.getStartY() - 600) < 1 &&
+          Math.abs(w.getEndY() - 600) < 1 &&
+          Math.min(w.getStartX(), w.getEndX()) < 1100,
+      );
+    bp.three.wallClicked.fire(wall.frontEdge ?? wall.backEdge);
+  });
+  // The wall card + 4 handles (2 ends, height, slide) appear.
+  await page.waitForFunction(() => {
+    const bp = (window as any).__studio;
+    const scene = bp.model.scene.getScene();
+    return scene.children.some(
+      (g: any) => g.isGroup && g.renderOrder === 999 && g.children.length === 4,
+    );
+  });
+
+  const before = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const wall = bp.model.floorplan
+      .getWalls()
+      .find((w: any) => Math.abs(w.getStartY() - 600) < 1 && Math.abs(w.getEndY() - 600) < 1);
+    return wall ? wall.getStartY() : null;
+  });
+  expect(before).toBe(600);
+
+  // Lowest sphere = the slide handle (it sits at 55% wall height).
+  const slide = await page.evaluate(`(() => {
+    const bp = window.__studio;
+    const cam = bp.three.camera;
+    cam.updateMatrixWorld();
+    const scene = bp.model.scene.getScene();
+    const group = scene.children.find(
+      (g) => g.isGroup && g.renderOrder === 999 && g.children.length === 4,
+    );
+    const h = [...group.children].sort((a, b) => a.position.y - b.position.y)[0];
+    const v = h.position.clone();
+    v.project(cam);
+    const r = bp.three.element.getBoundingClientRect();
+    return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+  })()`);
+  const { x: sx, y: sy } = slide as { x: number; y: number };
+  await page.mouse.move(sx, sy);
+  await page.mouse.down();
+  await page.mouse.move(sx, sy + 50, { steps: 6 });
+  await page.mouse.up();
+
+  const after = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const walls = bp.model.floorplan.getWalls();
+    // The dragged wall no longer sits on z=600; find where it went via the
+    // wall whose endpoints moved together off that line.
+    const moved = walls.find(
+      (w: any) =>
+        Math.abs(w.getStartY() - w.getEndY()) < 1 &&
+        Math.abs(w.getStartY() - 600) > 5 &&
+        Math.min(w.getStartX(), w.getEndX()) < 1100,
+    );
+    return moved ? moved.getStartY() : null;
+  });
+  expect(after).not.toBeNull();
+  expect(Math.abs((after as number) - 600)).toBeGreaterThan(5);
+});
+
 test("a fresh seed never mints twin walls", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "supervisor" });
   // No saved Studio model: the tab seeds from the traced building.
