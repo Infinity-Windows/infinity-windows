@@ -114,6 +114,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "Scan a window/door QR or slot label to pull up that unit or location. Use it to find a unit, confirm what's in a slot, or move/stage units in the warehouse.",
   },
   {
+    path: "/storage",
+    label: "Storage",
+    minRole: "installer",
+    blurb:
+      "Track material through the conex containers and the warehouse. Blank QR stickers bind to packages as they come off the delivery truck (job, category, optional marks), packages check in to a container by ticking a list, and installers check them out with a reason and the job they're going to. Every package keeps its full history.",
+  },
+  {
     path: "/count",
     label: "Cycle count",
     minRole: "installer",

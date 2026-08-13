@@ -15,6 +15,7 @@ interface WarehouseLink {
 }
 
 const LINKS: WarehouseLink[] = [
+  { to: "/storage", label: "Storage", desc: "Conex & package tracking" },
   { to: "/scan", label: "Scan", desc: "QR a window or a slot" },
   { to: "/count", label: "Cycle count", desc: "Count a slot, flag gaps" },
   { to: "/receive", label: "Receive", desc: "Log arriving units", lead: true },

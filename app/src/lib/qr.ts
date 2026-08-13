@@ -11,12 +11,20 @@
 // database rebuilds and can be read by eye. Both formats are supported forever
 // for backward compatibility — old labels keep scanning.
 
+// Storage tracking labels (containers + license-plate packages) are
+// serial-only — they were born after the serial migration, so there is no
+// legacy name-encoded form to support:
+// Container poster: WOPS:CS:<serial>   e.g. WOPS:CS:CTR-000007
+// Package sticker:  WOPS:PS:<serial>   e.g. WOPS:PS:PKG-000123
+
 export type QrPayload =
   | { kind: "window"; windowId: string }
   | { kind: "location"; address: string }
   | { kind: "windowCode"; code: string }
   | { kind: "windowSerial"; serial: string }
-  | { kind: "locationSerial"; serial: string };
+  | { kind: "locationSerial"; serial: string }
+  | { kind: "containerSerial"; serial: string }
+  | { kind: "packageSerial"; serial: string };
 
 // Short hand-writable code: 6 chars from a no-ambiguous alphabet (no O/0/I/1).
 const SHORT_CODE_RE = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/;
@@ -37,15 +45,30 @@ export function encodeLocationSerialQr(serial: string): string {
   return `WOPS:LS:${serial}`;
 }
 
+export function encodeContainerSerialQr(serial: string): string {
+  return `WOPS:CS:${serial}`;
+}
+
+export function encodePackageSerialQr(serial: string): string {
+  return `WOPS:PS:${serial}`;
+}
+
 export function parseQr(raw: string): QrPayload | null {
   const text = raw.trim();
   // Serial-encoded labels (permanent format). Match the two-letter WS/LS tags
   // BEFORE the single-letter W/L tags so they can't be mis-parsed.
-  const serialMatch = /^WOPS:(WS|LS):(.+)$/.exec(text);
+  const serialMatch = /^WOPS:(WS|LS|CS|PS):(.+)$/.exec(text);
   if (serialMatch) {
-    return serialMatch[1] === "WS"
-      ? { kind: "windowSerial", serial: serialMatch[2] }
-      : { kind: "locationSerial", serial: serialMatch[2] };
+    switch (serialMatch[1]) {
+      case "WS":
+        return { kind: "windowSerial", serial: serialMatch[2] };
+      case "LS":
+        return { kind: "locationSerial", serial: serialMatch[2] };
+      case "CS":
+        return { kind: "containerSerial", serial: serialMatch[2] };
+      default:
+        return { kind: "packageSerial", serial: serialMatch[2] };
+    }
   }
   const match = /^WOPS:(W|L):(.+)$/.exec(text);
   if (match) {
@@ -59,6 +82,13 @@ export function parseQr(raw: string): QrPayload | null {
   }
   if (/^[RJSD]-[A-Z0-9]+-[A-Z]$/i.test(text)) {
     return { kind: "location", address: text.toUpperCase() };
+  }
+  // Bare serials typed by hand off a scuffed label.
+  if (/^CTR-\d{6}$/i.test(text)) {
+    return { kind: "containerSerial", serial: text.toUpperCase() };
+  }
+  if (/^PKG-\d{6}$/i.test(text)) {
+    return { kind: "packageSerial", serial: text.toUpperCase() };
   }
   // Hand-writable short code stamped on the unit alongside the serial.
   if (SHORT_CODE_RE.test(text.toUpperCase())) {

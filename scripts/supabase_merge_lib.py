@@ -470,6 +470,13 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "notification_dismissals": ("profile_id", "key"),
     "monday_jobs": ("monday_item_id",),
     "studio_units": ("name", "kind"),
+    # Storage tracking: containers and packages carry immutable printed
+    # serials, so the serial is the identity a merge must respect.
+    "storage_containers": ("serial",),
+    "packages": ("serial",),
+    "package_deliveries": ("label", "arrived_on"),
+    "package_marks": ("package_id", "mark_code"),
+    "checkout_reasons": ("label",),
     "knowledge_chunks": ("doc_id", "chunk_index"),
     "learn_progress": ("profile_id", "term_id"),
     "project_mark_specs": ("project_id", "mark_code"),
@@ -524,6 +531,9 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "job_notes": None,
     "lodging": None,
     "movements": None,
+    # Same shape as movements: append-only package history — every touch is a
+    # real event, so lookalike rows are two touches, never a duplicate.
+    "package_events": None,
     "points_ledger": None,
     "procedures": None,
     "project_messages": None,

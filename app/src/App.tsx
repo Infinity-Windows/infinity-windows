@@ -35,6 +35,11 @@ import { ProjectDetail } from "./pages/ProjectDetail";
 import { Projects } from "./pages/Projects";
 import { Receive } from "./pages/Receive";
 import { Scan } from "./pages/Scan";
+import { StorageHub } from "./pages/storage/StorageHub";
+import { ContainerDetail } from "./pages/storage/ContainerDetail";
+import { TagPackages } from "./pages/storage/TagPackages";
+import { CheckoutPackages } from "./pages/storage/CheckoutPackages";
+import { PackageSheet } from "./pages/storage/PackageSheet";
 import { Settings } from "./pages/Settings";
 import { SignIn } from "./pages/SignIn";
 import { WindowDetail } from "./pages/WindowDetail";
@@ -302,6 +307,11 @@ export default function App() {
               element={<RequireRole path="/heartbeat"><Heartbeat /></RequireRole>}
             />
             <Route path="/scan" element={<Scan />} />
+            <Route path="/storage" element={<StorageHub />} />
+            <Route path="/storage/tag" element={<TagPackages />} />
+            <Route path="/storage/out" element={<CheckoutPackages />} />
+            <Route path="/storage/c/:id" element={<ContainerDetail />} />
+            <Route path="/pkg/:serial" element={<PackageSheet />} />
             <Route
               path="/receive"
               element={<RequireRole path="/receive"><Receive /></RequireRole>}
