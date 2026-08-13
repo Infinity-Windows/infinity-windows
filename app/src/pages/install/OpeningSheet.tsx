@@ -379,15 +379,22 @@ export function OpeningSheet() {
   const refreshPhases = () =>
     queryClient.invalidateQueries({ queryKey: ["openingPhases", projectId] });
 
+  const [flashError, setFlashError] = useState<string | null>(null);
   const startFlash = useMutation({
     mutationFn: () => startOpeningPhase(openingId, "flashing"),
-    onSuccess: refreshPhases,
+    onSuccess: () => {
+      setFlashError(null);
+      refreshPhases();
+    },
+    // The failure must be visible AT the button — a gate rejection that only
+    // renders up in the Check section reads as a dead button (owner report,
+    // 2026-08-13).
     onError: (e) => {
-      if (isClockGateError(e)) {
-        setStartGateError("Clock in and sign today's toolbox talk to start this task.");
-      } else {
-        setMessage(formatApiError(e));
-      }
+      const msg = isClockGateError(e)
+        ? "Clock in and sign today's toolbox talk to start this task."
+        : formatApiError(e);
+      setFlashError(msg);
+      if (isClockGateError(e)) setStartGateError(msg);
     },
   });
   const pauseFlash = useMutation({
@@ -1598,6 +1605,9 @@ export function OpeningSheet() {
                 >
                   {startFlash.isPending ? "Starting…" : "Start flashing clock"}
                 </button>
+              )}
+              {flashError && (
+                <p className="error" style={{ marginTop: 6, fontSize: 12 }}>{flashError}</p>
               )}
               {flashing && flashing.status === "active" && (
                 <>
