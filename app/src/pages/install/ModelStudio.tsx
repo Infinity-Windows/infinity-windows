@@ -31,6 +31,8 @@ import {
 import { buildStudioSeed } from "../../lib/modelstudio/fromProject";
 import { UnitBuilder } from "../../components/studio/UnitBuilder";
 import { buildFitviewModelFromStudio, type PublishStats } from "../../lib/modelstudio/toFitview";
+import { buildUnitGeometry, UNIT_GEOMETRY_DEFAULTS } from "../../lib/modelstudio/unitGeometry";
+import type { StudioItem } from "../../lib/modelstudio/core";
 import {
   listStudioUnits,
   saveStudioUnit,
@@ -183,6 +185,12 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
   /** The whole palette hides behind one drop bar (owner ask). */
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
+  /** The 3D-tapped unit — Home-Design-3D-style numeric editing. */
+  const [selUnit, setSelUnit] = useState<StudioItem | null>(null);
+  const [unitW, setUnitW] = useState("");
+  const [unitH, setUnitH] = useState("");
+  const [unitSill, setUnitSill] = useState("");
+  const [unitGap, setUnitGap] = useState("");
   const [publishPreview, setPublishPreview] = useState<
     { model: Record<string, unknown>; stats: PublishStats } | null
   >(null);
@@ -298,6 +306,43 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
       ro.observe(canvasEl);
       roRef.current = ro;
     }
+    // Every wall item that finishes loading attaches to its wall — the
+    // attachment cuts the opening. Covers seeded marks and saved models,
+    // not just fresh inserts.
+    bp.model.scene.itemLoadedCallbacks.add((it) => {
+      try {
+        const cfg = it?.metadata?.unitConfig as UnitConfig | undefined;
+        if (cfg?.panels?.length) applyUnitGeometry(it, cfg);
+        it.placeInRoom();
+      } catch {
+        /* not a wall item */
+      }
+    });
+    // 3D tap-select (owner call: edit from inside the 3D view). Items and
+    // walls both land in the SAME palette panels the 2D uses.
+    bp.three.itemSelectedCallbacks.add((it) => {
+      setSelUnit(it);
+      const cfg = it?.metadata?.unitConfig as UnitConfig | undefined;
+      const h = cfg ? cfg.heightMm / 10 : it.getHeight();
+      const w = cfg
+        ? cfg.panels.reduce((t, pp) => t + pp.widthMm, 0) / 10
+        : it.getWidth();
+      setUnitW(fmtFtIn(w));
+      setUnitH(fmtFtIn(h));
+      setUnitSill(fmtFtIn(Math.max(0, it.position.y - h / 2)));
+      setUnitGap(String(it.metadata?.frameGapMm ?? UNIT_GEOMETRY_DEFAULTS.mullionMm));
+      setPaletteOpen(true);
+    });
+    bp.three.itemUnselectedCallbacks.add(() => setSelUnit(null));
+    bp.three.wallClicked.add((edge) => {
+      const w = edge?.wall;
+      if (!w) return;
+      setSelWall(w as never);
+      setLenInput(fmtFtIn(wallLengthCm(w as never)));
+      setHeightInput(fmtFtIn((w as { height: number }).height));
+      setPaletteOpen(true);
+    });
+
     // Click-to-select: the vendor tracks hover targets every mousemove;
     // reading them at mousedown gives a persistent selection for the panel.
     // The SAME mousedown snapshots the model for undo — every drag, draw or
@@ -421,6 +466,33 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
       fitPlan(bp);
     });
     pushToast("Rebuilt from the traced building.");
+  };
+
+  /** Swap an item's mesh for the parametric build of its config, at true
+   * scale, and re-cut its wall hole. halfSize is refreshed from the new
+   * geometry so the vendor's drag/bounds math stays honest. */
+  const applyUnitGeometry = (item: StudioItem, config: UnitConfig, frameGapMm?: number) => {
+    const built = buildUnitGeometry(config, {
+      mullionMm: frameGapMm ?? item.metadata?.frameGapMm ?? UNIT_GEOMETRY_DEFAULTS.mullionMm,
+    });
+    item.geometry.dispose();
+    (item as { geometry: unknown }).geometry = built.geometry;
+    (item as { material: unknown }).material = built.materials;
+    item.scale.set(1, 1, 1);
+    built.geometry.computeBoundingBox?.();
+    const bb = (built.geometry as { boundingBox: { max: { x: number; y: number; z: number }; min: { x: number; y: number; z: number } } | null }).boundingBox;
+    if (bb) {
+      item.halfSize.set(
+        (bb.max.x - bb.min.x) / 2,
+        (bb.max.y - bb.min.y) / 2,
+        (bb.max.z - bb.min.z) / 2,
+      );
+    }
+    if (item.metadata) {
+      item.metadata.unitConfig = config;
+      if (frameGapMm != null) item.metadata.frameGapMm = frameGapMm;
+    }
+    item.redrawWall?.();
   };
 
   /** Sizes for seeded mark items come from the job's specs. */
@@ -563,16 +635,20 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
         : null;
       if (it && it.metadata?.itemName === name) {
         try {
-          it.resize(hCm, wCm, it.getDepth());
+          // Real panels + mullions at true scale, then attach to the wall —
+          // attachment is what cuts the opening (wall above and beside stays).
+          applyUnitGeometry(it, config);
+          it.placeInRoom();
         } catch {
           /* geometry not ready — next tick */
         }
-        pushToast(`${name} placed — drag it along the walls in 3D to fine-tune.`);
+        pushToast(`${name} placed — tap it in 3D to edit, drag to move.`);
         return;
       }
       if (Date.now() - t0 < 8000) setTimeout(sizeIt, 250);
     };
     setTimeout(sizeIt, 250);
+    void wCm; void hCm;
   };
 
   /** Drop target: catalog row dragged onto the 2D plan. */
@@ -658,6 +734,76 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
   };
 
   const narrow = typeof window !== "undefined" && window.innerWidth < 900;
+
+  const applyUnitEdits = () => {
+    const item = selUnit;
+    if (!item) return;
+    const cfg = (item.metadata?.unitConfig ?? null) as UnitConfig | null;
+    if (!cfg) {
+      pushToast("This window came from the old seed — re-insert it from the catalog to edit panels.");
+      return;
+    }
+    pushUndo();
+    const wCm = unitW ? parseFtIn(unitW) : null;
+    const hCm = unitH ? parseFtIn(unitH) : null;
+    const sillCm = unitSill ? parseFtIn(unitSill) : null;
+    const gapMm = unitGap ? Number(unitGap) : null;
+    const next: UnitConfig = {
+      ...cfg,
+      heightMm: hCm != null ? hCm * 10 : cfg.heightMm,
+      panels: cfg.panels.map((pp) => ({ ...pp })),
+    };
+    if (wCm != null) {
+      const cur = next.panels.reduce((t, pp) => t + pp.widthMm, 0) || 1;
+      next.panels = next.panels.map((pp) => ({
+        ...pp,
+        widthMm: (pp.widthMm / cur) * wCm * 10,
+      }));
+    }
+    applyUnitGeometry(item, next, gapMm != null && Number.isFinite(gapMm) ? gapMm : undefined);
+    if (sillCm != null) {
+      item.position.set(item.position.x, sillCm + next.heightMm / 20, item.position.z);
+    }
+    item.placeInRoom();
+    pushToast("Unit updated.");
+  };
+
+  const setPanelCountOnUnit = (n: number) => {
+    const item = selUnit;
+    const cfg = (item?.metadata?.unitConfig ?? null) as UnitConfig | null;
+    if (!item || !cfg) return;
+    pushUndo();
+    const total = cfg.panels.reduce((t, pp) => t + pp.widthMm, 0);
+    const next: UnitConfig = {
+      ...cfg,
+      panels: Array.from({ length: n }, (_, i) => ({
+        widthMm: total / n,
+        mechanism: cfg.panels[Math.min(i, cfg.panels.length - 1)].mechanism,
+        direction: cfg.panels[Math.min(i, cfg.panels.length - 1)].direction,
+      })),
+    };
+    applyUnitGeometry(item, next);
+    item.placeInRoom();
+  };
+
+  const saveUnitAsCatalog = useMutation({
+    mutationFn: () => {
+      const cfg = selUnit?.metadata?.unitConfig as UnitConfig;
+      return saveStudioUnit(`${selUnit?.metadata?.itemName ?? "Unit"} (edited)`, cfg);
+    },
+    onSuccess: () => {
+      pushToast("Saved to the catalog.");
+      void qc.invalidateQueries({ queryKey: ["studioUnits"] });
+    },
+  });
+
+  const deleteUnit = () => {
+    if (!selUnit) return;
+    pushUndo();
+    bpRef.current?.model.scene.removeItem(selUnit);
+    setSelUnit(null);
+    pushToast("Unit removed.");
+  };
 
   const palette = (
     <div className={paletteOpen ? "studio-palette" : "studio-palette collapsed"}>
@@ -768,19 +914,86 @@ export function ModelStudio({ projectId: propId }: { projectId?: string } = {}) 
               />
               <button className="button-like" onClick={applyWallHeight}>Set</button>
             </div>
-            <button
-              className="button-like"
-              style={{ marginTop: 4, fontSize: 11.5 }}
-              onClick={() => setSelWall(null)}
-            >
-              Deselect
-            </button>
+            <div className="row-gap" style={{ marginTop: 4 }}>
+              <button
+                className="button-like"
+                style={{ fontSize: 11.5, color: "var(--danger, #f87171)" }}
+                onClick={() => {
+                  pushUndo();
+                  selWall.remove();
+                  setSelWall(null);
+                  refreshModel();
+                }}
+              >
+                Delete wall
+              </button>
+              <button
+                className="button-like"
+                style={{ fontSize: 11.5 }}
+                onClick={() => setSelWall(null)}
+              >
+                Deselect
+              </button>
+            </div>
           </div>
         </details>
       ) : (
         <p className="muted" style={{ fontSize: 11, margin: "4px 0 0" }}>
           Click a wall to edit its length or height.
         </p>
+      )}
+      {selUnit && (
+        <details open>
+          <summary className="tcx-label">Selected unit</summary>
+          <div className="studio-palette-body">
+            <p className="muted" style={{ margin: 0, fontSize: 11.5 }}>
+              {selUnit.metadata?.itemName ?? "Unit"}
+            </p>
+            <label className="field-label">Width</label>
+            <input value={unitW} onChange={(e) => setUnitW(e.target.value)} />
+            <label className="field-label">Height</label>
+            <input value={unitH} onChange={(e) => setUnitH(e.target.value)} />
+            <label className="field-label">Sill height (from floor)</label>
+            <input value={unitSill} onChange={(e) => setUnitSill(e.target.value)} />
+            <label className="field-label">Frame gap between panes (mm)</label>
+            <input value={unitGap} onChange={(e) => setUnitGap(e.target.value)} />
+            <label className="field-label">Panels</label>
+            <div className="row-gap" style={{ flexWrap: "wrap" }}>
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <button
+                  key={n}
+                  className={
+                    ((selUnit.metadata?.unitConfig as UnitConfig | undefined)?.panels.length ?? 0) === n
+                      ? "button-like active-pill studio-mini"
+                      : "button-like studio-mini"
+                  }
+                  onClick={() => setPanelCountOnUnit(n)}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 4 }}>
+              <button className="button-like active-pill" onClick={applyUnitEdits}>
+                Apply
+              </button>
+              <button
+                className="button-like studio-mini"
+                disabled={saveUnitAsCatalog.isPending || !selUnit.metadata?.unitConfig}
+                onClick={() => saveUnitAsCatalog.mutate()}
+              >
+                Save as catalog unit
+              </button>
+              <button
+                className="button-like studio-mini"
+                style={{ color: "var(--danger, #f87171)" }}
+                onClick={deleteUnit}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </details>
       )}
       <details>
         <summary className="tcx-label">Catalog</summary>

@@ -25,6 +25,8 @@ export interface StudioCorner {
 export interface StudioWall {
   /** Per-wall height, cm — defaults to the building-wide config value. */
   height: number;
+  remove(): void;
+  fireRedraw?(): void;
   getStart(): StudioCorner;
   getEnd(): StudioCorner;
   getStartX(): number;
@@ -43,14 +45,24 @@ export interface StudioFloorplan {
 
 export interface StudioItem {
   position: { x: number; y: number; z: number; set(x: number, y: number, z: number): void };
-  metadata?: { itemName?: string; unitConfig?: unknown };
+  scale: { set(x: number, y: number, z: number): void };
+  metadata?: { itemName?: string; unitConfig?: unknown; frameGapMm?: number };
+  geometry: { dispose(): void; computeBoundingBox(): void; boundingBox: { max: { x: number; y: number; z: number }; min: { x: number; y: number; z: number } } | null };
+  material: unknown;
+  halfSize: { x: number; y: number; z: number; set(x: number, y: number, z: number): void };
   resize(height: number, width: number, depth: number): void;
   getWidth(): number;
   getHeight(): number;
   getDepth(): number;
+  /** Attach to the closest wall — this is what cuts the hole. */
+  placeInRoom(): void;
+  redrawWall?(): void;
+  remove?(): void;
 }
 
 export interface StudioScene {
+  removeItem(item: StudioItem): void;
+  itemLoadedCallbacks: StudioEventEmitter<StudioItem>;
   addItem(
     itemType: number,
     fileName: string,
@@ -90,11 +102,19 @@ export interface StudioFloorplanner {
   resizeView(): void;
 }
 
+export interface StudioEventEmitter<T> {
+  add(cb: (v: T) => void): void;
+  remove?(cb: (v: T) => void): void;
+}
+
 export interface StudioThree {
   updateWindowSize(): void;
   centerCamera(): void;
   getController(): { enabled: boolean };
   stopSpin?: () => void;
+  itemSelectedCallbacks: StudioEventEmitter<StudioItem>;
+  itemUnselectedCallbacks: StudioEventEmitter<void>;
+  wallClicked: StudioEventEmitter<{ wall: StudioWall }>;
 }
 
 export class Blueprint3d {
