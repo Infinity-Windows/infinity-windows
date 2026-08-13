@@ -16,7 +16,25 @@ export interface StudioVector3 {
   z: number;
 }
 
+export interface StudioCorner {
+  x: number;
+  y: number;
+  move(x: number, y: number): void;
+}
+
+export interface StudioWall {
+  /** Per-wall height, cm — defaults to the building-wide config value. */
+  height: number;
+  getStart(): StudioCorner;
+  getEnd(): StudioCorner;
+  getStartX(): number;
+  getStartY(): number;
+  getEndX(): number;
+  getEndY(): number;
+}
+
 export interface StudioFloorplan {
+  walls: StudioWall[];
   newCorner(x: number, y: number, id?: string): unknown;
   newWall(start: unknown, end: unknown): unknown;
   getCorners(): { x: number; y: number }[];
@@ -47,6 +65,9 @@ export interface StudioFloorplanner {
   mode: number;
   originX: number;
   originY: number;
+  /** Hover targets the vendor tracks every mousemove — read at mousedown for selection. */
+  activeWall: StudioWall | null;
+  activeCorner: StudioCorner | null;
   /**
    * Private in the vendor's TS but plain fields at runtime — the Studio
    * mutates them for fit/zoom (the vendor draws through them every frame).
@@ -75,3 +96,9 @@ export class Blueprint3d {
 }
 
 export const floorplannerModes: { MOVE: number; DRAW: number; DELETE: number };
+
+export const configWallHeight: string;
+export const Configuration: {
+  getNumericValue(key: string): number;
+  setValue(key: string, value: string | number): void;
+};

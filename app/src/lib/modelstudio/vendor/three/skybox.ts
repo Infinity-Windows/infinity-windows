@@ -5,7 +5,7 @@ export class Skybox {
   private readonly topColor: number
   private readonly bottomColor: number
   private readonly verticalOffset = 500
-  private readonly sphereRadius = 4000
+  private readonly sphereRadius = 25000 // infinity: dome outside the 200m orbit limit (was 40m)
   private readonly widthSegments = 32
   private readonly heightSegments = 15
 
