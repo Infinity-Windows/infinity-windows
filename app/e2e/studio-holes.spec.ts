@@ -970,6 +970,73 @@ test("glyph overlay: arrows/F always, dims on selection, pane-op flips it", asyn
     .screenshot({ path: join(SHOTS, "glyph-overlay.png") });
 });
 
+test("Pull from plans places specced marks; re-pull adds nothing", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  // A model with two plan windows: mark 16 (real BLACK22 spec fixture:
+  // 313.5" × 179.5" Fixed) and an un-specced mark 99.
+  await useOutline(page, {
+    fitview: {
+      model: {
+        ...FITVIEW_MODEL,
+        windows: [
+          { id: "16-1", elev: "s2", x: 1, y: 0.3, w: 7962, h: 4559 },
+          { id: "99-1", elev: "s0", x: 3, y: 0.9, w: 1200, h: 1200 },
+        ],
+      },
+    },
+  });
+  await openStudio(page);
+  // The seed already placed both marks as generics; this test wants the
+  // PULL to do the work — clear the scene first.
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    for (const it of [...bp.model.scene.getItems()]) bp.model.scene.removeItem(it);
+  });
+
+  await page.getByRole("button", { name: /Tools/ }).click();
+  await page.getByRole("button", { name: "Pull from plans", exact: true }).click();
+  await page.waitForFunction(() => {
+    const bp = (window as any).__studio;
+    const items = bp.model.scene.getItems();
+    return (
+      items.length === 2 && items.every((it: any) => Boolean(it.currentWallEdge))
+    );
+  });
+
+  const placed = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    return bp.model.scene.getItems().map((it: any) => ({
+      name: it.metadata.itemName,
+      widthMm: it.metadata.unitConfig.panels.reduce(
+        (t: number, p: any) => t + p.widthMm,
+        0,
+      ),
+      panels: it.metadata.unitConfig.panels.length,
+    }));
+  });
+  const sixteen = (placed as { name: string; widthMm: number }[]).find(
+    (p) => p.name === "16-1",
+  )!;
+  // Spec-exact: 313.5in = 7962.9mm.
+  expect(sixteen.widthMm).toBeGreaterThan(7900);
+  expect(sixteen.widthMm).toBeLessThan(8000);
+  const ninetynine = (placed as { name: string; widthMm: number }[]).find(
+    (p) => p.name === "99-1",
+  )!;
+  expect(ninetynine.widthMm).toBe(1200); // plan-size fallback, still parametric
+
+  // Re-pull: add-only — nothing new, nothing moved.
+  await page.getByRole("button", { name: "Pull from plans", exact: true }).click();
+  await expect(page.getByText(/2 already placed/)).toBeVisible();
+  const count = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    return bp.model.scene.getItems().length;
+  });
+  expect(count).toBe(2);
+});
+
 test("a fresh seed never mints twin walls", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "supervisor" });
   // No saved Studio model: the tab seeds from the traced building.

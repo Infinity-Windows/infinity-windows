@@ -41,7 +41,11 @@ import {
   fitviewModel,
   preferModelOutline,
 } from "../../lib/fitview/adapter";
-import { buildStudioSeed } from "../../lib/modelstudio/fromProject";
+import {
+  buildStudioPull,
+  buildStudioSeed,
+  markKeyOf,
+} from "../../lib/modelstudio/fromProject";
 import { UnitBuilder } from "../../components/studio/UnitBuilder";
 import { buildFitviewModelFromStudio, type PublishStats } from "../../lib/modelstudio/toFitview";
 import {
@@ -678,6 +682,108 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       bp.floorplanner?.resizeView();
       fitPlan(bp);
     });
+  };
+
+  /** Quiet per-item toasts during bulk placement. */
+  const bulkRef = useRef(false);
+
+  /** "Pull from plans": place every specced mark as a parametric labeled
+   * unit. ADD-ONLY (owner pick): anything already placed — by an earlier
+   * pull or by hand — is skipped, so edits are never moved. Also heals
+   * config-less generics whose mark now has a config. */
+  const pullFromPlans = (replaceAll = false) => {
+    const bp = bpRef.current;
+    if (!bp || !job) return;
+    pushUndo();
+    if (replaceAll) {
+      for (const it of [...bp.model.scene.getItems()]) {
+        bp.model.scene.removeItem(it);
+      }
+    }
+    // Existing names across EVERY floor (frozen floors included).
+    const existing = new Set<string>();
+    if (!replaceAll) {
+      for (const it of bp.model.scene.getItems()) {
+        const n = it.metadata?.itemName as string | undefined;
+        if (n) existing.add(n);
+      }
+      floorsRef.current.forEach((f, i) => {
+        if (i === activeFloorRef.current) return;
+        for (const it of parseFloorLite(f).items) {
+          const n = it.metadata?.itemName as string | undefined;
+          if (n) existing.add(n);
+        }
+      });
+    }
+    // The refined catalog unit for a mark beats the raw spec (brings the
+    // hand-split panels and corners of e.g. window 16 into the pull).
+    const catalogByMark = new Map<string, UnitConfig>();
+    for (const u of units.data ?? []) {
+      const m = /^(?:Window|Door)\s+([^\s·]+)/.exec(u.name);
+      if (m) catalogByMark.set(m[1].toUpperCase(), u.config);
+    }
+    const pull = buildStudioPull(
+      job as never,
+      specs.data ?? [],
+      existing,
+      catalogByMark,
+    );
+    // Heal: a placed generic (no config) whose mark now resolves — same
+    // rebuild the tap-heal does, position untouched.
+    let healed = 0;
+    if (!replaceAll) {
+      for (const it of bp.model.scene.getItems()) {
+        const cfg = it.metadata?.unitConfig as UnitConfig | undefined;
+        const name = it.metadata?.itemName as string | undefined;
+        if (cfg?.panels?.length || !name) continue;
+        const spec = (specs.data ?? []).find(
+          (sp) => sp.mark_code.toUpperCase() === markKeyOf(name),
+        );
+        const conf =
+          catalogByMark.get(markKeyOf(name)) ??
+          (spec ? specToUnitConfig(spec) : null);
+        if (!conf) continue;
+        applyUnitGeometry(it, conf);
+        it.placeInRoom();
+        growWallToFit(it);
+        healed += 1;
+      }
+    }
+    bulkRef.current = true;
+    let placedHere = 0;
+    let otherFloors = 0;
+    try {
+      for (const pl of pull.placements) {
+        if (pl.floorIndex !== activeFloorRef.current) {
+          otherFloors += 1;
+          continue;
+        }
+        bp.model.scene.addItem(
+          3,
+          WINDOW_MODEL,
+          { itemName: pl.itemName, itemType: 3, modelUrl: WINDOW_MODEL, unitConfig: pl.config },
+          { x: pl.xCm, y: pl.elevationCm, z: pl.yCm },
+          pl.rotation,
+          undefined,
+          false,
+        );
+        placedHere += 1;
+      }
+    } finally {
+      // Attach/geometry runs async in itemLoadedCallbacks; keep toasts
+      // quiet for a beat after the adds too.
+      setTimeout(() => {
+        bulkRef.current = false;
+      }, 2500);
+    }
+    const bits = [
+      `${placedHere} placed`,
+      healed > 0 ? `${healed} healed` : null,
+      pull.alreadyPlaced > 0 ? `${pull.alreadyPlaced} already placed` : null,
+      otherFloors > 0 ? `${otherFloors} on other floors — switch and pull again` : null,
+      pull.noWall > 0 ? `${pull.noWall} had no wall to land on` : null,
+    ].filter(Boolean);
+    pushToast(`Pull from plans: ${bits.join(" · ")}.`);
   };
 
   const reseed = () => {
@@ -1602,7 +1708,9 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     if (wall.height < topCm - 1) {
       wall.height = Math.ceil(topCm);
       wall.fireRedraw?.();
-      pushToast(`Wall raised to ${fmtFtIn(wall.height)} to fit the unit.`);
+      if (!bulkRef.current) {
+        pushToast(`Wall raised to ${fmtFtIn(wall.height)} to fit the unit.`);
+      }
     }
   };
 
@@ -1651,6 +1759,28 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           ↩ Undo{undoDepth > 0 ? ` (${undoDepth})` : ""}
         </button>
         <button className="button-like studio-mini" onClick={reseed}>Re-seed</button>
+        {projectId && (
+          <button
+            className="button-like studio-mini active-pill"
+            title="Auto-place every specced window from the plans (add-only: your edits are never moved)"
+            onClick={() => pullFromPlans(false)}
+          >
+            Pull from plans
+          </button>
+        )}
+        {projectId && (
+          <button
+            className="button-like studio-mini"
+            title="Wipe this floor's windows and re-place everything from the plans"
+            onClick={() => {
+              if (window.confirm("Replace ALL windows on this floor with a fresh pull from the plans? Your window edits on this floor are lost.")) {
+                pullFromPlans(true);
+              }
+            }}
+          >
+            Replace from plans
+          </button>
+        )}
         <button className="button-like studio-mini active-pill" onClick={preparePublish}>
           Publish to map
         </button>
