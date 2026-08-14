@@ -35,6 +35,10 @@ export interface StudioWall {
   getStartY(): number;
   getEndX(): number;
   getEndY(): number;
+  /** Recreated on every floorplan update — re-read, never cache. The
+   * invisible pick plane's geometry doubles as the selection highlight. */
+  frontEdge?: { plane?: THREE.Mesh } | null;
+  backEdge?: { plane?: THREE.Mesh } | null;
 }
 
 export interface StudioFloorplan {
@@ -42,6 +46,8 @@ export interface StudioFloorplan {
   newCorner(x: number, y: number, id?: string): unknown;
   newWall(start: unknown, end: unknown): unknown;
   getCorners(): { x: number; y: number }[];
+  /** Every wall's invisible pick planes (monkey-patched with .edge). */
+  wallEdgePlanes(): THREE.Mesh[];
   update(): void;
 }
 
@@ -123,7 +129,7 @@ export interface StudioEventEmitter<T> {
 export interface StudioThree {
   updateWindowSize(): void;
   centerCamera(): void;
-  getController(): { enabled: boolean };
+  getController(): { enabled: boolean; needsUpdate: boolean };
   stopSpin?: () => void;
   /** The 3D pane's container element (the renderer canvas lives inside). */
   element: HTMLElement;

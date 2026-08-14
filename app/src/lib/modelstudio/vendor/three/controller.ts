@@ -370,7 +370,12 @@ export class Controller {
     const customIntersections = item.customIntersectionPlanes()
     let intersections: THREE.Intersection[]
     if (customIntersections && customIntersections.length > 0) {
-      intersections = this.getIntersections(vec2, customIntersections, true)
+      // infinity: no filterByNormals — with always-visible walls the surface
+      // the user hovers is simply the NEAREST hit, whichever way it faces
+      // (intersectObjects is distance-sorted). In three r185 the flag was a
+      // no-op anyway (intersection.normal is flipped to oppose the ray), but
+      // under older three the face-normal path would re-cull the near wall.
+      intersections = this.getIntersections(vec2, customIntersections, false)
     } else {
       intersections = this.getIntersections(vec2, this.plane)
     }

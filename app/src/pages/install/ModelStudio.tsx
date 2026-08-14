@@ -491,7 +491,30 @@ export function ModelStudio({ source }: { source: StudioSource }) {
             if (hit) break;
           }
         }
-        if (hit) selectUnit(hit);
+        if (hit) {
+          selectUnit(hit);
+          return;
+        }
+        // No window under the tap — try WALLS. The vendor's own wall click
+        // requires a pixel-perfect still mouse AND can only hit a wall from
+        // its interior side; this raycast serves the wall the user actually
+        // sees (planes forced DoubleSide — floorplan updates recreate them
+        // with the default, so force every click; they're invisible).
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
+        const planes = bp.model.floorplan.wallEdgePlanes();
+        for (const p of planes) {
+          (p.material as THREE.Material & { side: THREE.Side }).side = THREE.DoubleSide;
+        }
+        const ndc = new THREE.Vector2(
+          ((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1,
+        );
+        ray.setFromCamera(ndc, bp.three.camera);
+        const wallHits = ray.intersectObjects(planes as THREE.Object3D[], false);
+        const wall = (wallHits[0]?.object as { edge?: { wall?: StudioWall } } | undefined)
+          ?.edge?.wall;
+        if (wall) selectWall(wall);
       });
       // Windows read as clickable: pointer cursor on hover (never clobber
       // the handle spheres' grab cursors).
@@ -520,11 +543,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     bp.three.itemUnselectedCallbacks.add(() => setSelUnit(null));
     bp.three.wallClicked.add((edge) => {
       const w = edge?.wall;
-      if (!w) return;
-      setSelWall(w as never);
-      setLenInput(fmtFtIn(wallLengthCm(w as never)));
-      setHeightInput(fmtFtIn((w as { height: number }).height));
-      setPaletteOpen(true);
+      if (w) selectWall(w as never);
     });
 
     // Click-to-select: the vendor tracks hover targets every mousemove;
@@ -956,9 +975,20 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     setPaletteOpen(true);
   };
 
+  /** Open a wall for editing — every wall-selection route lands here
+   * (vendor wallClicked, the still-click fallback, and future callers). */
+  const selectWall = (w: StudioWall) => {
+    setSelWall(w);
+    setLenInput(fmtFtIn(wallLengthCm(w)));
+    setHeightInput(fmtFtIn(w.height));
+    setPaletteOpen(true);
+  };
+
   /** The bright outline on whatever is selected in 3D — selection must be
    * unmissable (the owner read a working tap as broken without it). */
   const highlightRef = useRef<THREE.BoxHelper | null>(null);
+  /** Blue translucent quads on the selected wall (one per pick plane). */
+  const wallHighlightRef = useRef<THREE.Mesh[]>([]);
 
   /** Re-park the handle spheres on the current selection. */
   const refreshHandles = () => {
@@ -974,6 +1004,14 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         highlightRef.current.dispose();
         highlightRef.current = null;
       }
+      for (const m of wallHighlightRef.current) {
+        scene.remove(m);
+        (m.material as THREE.Material).dispose();
+        // Geometry is either shared with the vendor's pick plane (never
+        // dispose) or our own fallback quad (flagged for disposal).
+        if (m.userData.ownGeometry) m.geometry.dispose();
+      }
+      wallHighlightRef.current = [];
       if (item) {
         const box = new THREE.BoxHelper(item as unknown as THREE.Object3D, 0x2bb3c8);
         (box.material as THREE.LineBasicMaterial).depthTest = false;
@@ -982,6 +1020,53 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         scene.add(box);
         highlightRef.current = box;
       }
+      if (wall && !item) {
+        // Blue translucent glow on the whole straight run (owner ask: "the
+        // wall highlights blue when i click on it"). Edges are recreated on
+        // every floorplan update, so read them fresh each refresh.
+        const mat = () =>
+          new THREE.MeshBasicMaterial({
+            color: 0x2b7fff,
+            transparent: true,
+            opacity: 0.35,
+            side: THREE.DoubleSide,
+            depthTest: false,
+          });
+        const edges = [wall.frontEdge, wall.backEdge].filter(
+          (edg): edg is { plane?: THREE.Mesh } => Boolean(edg),
+        );
+        for (const edg of edges) {
+          if (!edg.plane) continue;
+          const m = new THREE.Mesh(edg.plane.geometry, mat());
+          m.renderOrder = 997;
+          m.name = "studio-wall-highlight";
+          scene.add(m);
+          wallHighlightRef.current.push(m);
+        }
+        if (wallHighlightRef.current.length === 0) {
+          // Mid-redraw fallback: build the quad from the centerline.
+          const sx = wall.getStartX();
+          const sy = wall.getStartY();
+          const ex = wall.getEndX();
+          const ey = wall.getEndY();
+          const h = wall.height;
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute(
+            "position",
+            new THREE.Float32BufferAttribute(
+              [sx, 0, sy, ex, 0, ey, ex, h, ey, sx, 0, sy, ex, h, ey, sx, h, sy],
+              3,
+            ),
+          );
+          const m = new THREE.Mesh(geo, mat());
+          m.userData.ownGeometry = true;
+          m.renderOrder = 997;
+          m.name = "studio-wall-highlight";
+          scene.add(m);
+          wallHighlightRef.current.push(m);
+        }
+      }
+      bp.three.getController().needsUpdate = true;
     }
     if (item) {
       const cfg = item.metadata?.unitConfig as UnitConfig | undefined;
