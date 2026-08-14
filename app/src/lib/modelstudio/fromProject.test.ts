@@ -156,6 +156,91 @@ describe("buildStudioPull", () => {
     expect(Math.abs(p.xCm - 364.75)).toBeLessThan(1);
   });
 
+  it("snaps placements onto the studio's REAL walls when the frames drifted apart", () => {
+    // The BLACK22 floaters: the saved studio plan was re-centred by the
+    // vendor, so its walls live 30 m away from the plan's absolute frame.
+    // Same 10×6 building, walls translated by (+3000, +1500) cm.
+    const shift = { x: 3000, y: 1500 };
+    const walls = [
+      { x1: 0, y1: 0, x2: 1000, y2: 0 },
+      { x1: 1000, y1: 0, x2: 1000, y2: 600 },
+      { x1: 1000, y1: 600, x2: 0, y2: 600 },
+      { x1: 0, y1: 600, x2: 0, y2: 0 },
+    ].map((w) => ({
+      x1: w.x1 + shift.x, y1: w.y1 + shift.y,
+      x2: w.x2 + shift.x, y2: w.y2 + shift.y,
+    }));
+    const out = buildStudioPull(
+      jobWith([win("a", 3), win("b", 7)]) as never,
+      [],
+      new Set(),
+      new Map(),
+      { walls, floorIndex: 0 },
+    );
+    expect(out.placements).toHaveLength(2);
+    for (const p of out.placements) {
+      // Landed ON a wall segment, not floating in the plan's old frame.
+      const onWall = walls.some((w) => {
+        const wx = w.x2 - w.x1;
+        const wy = w.y2 - w.y1;
+        const len = Math.hypot(wx, wy);
+        const t = ((p.xCm - w.x1) * wx + (p.yCm - w.y1) * wy) / (len * len);
+        const d = Math.hypot(p.xCm - (w.x1 + wx * t), p.yCm - (w.y1 + wy * t));
+        return t >= 0 && t <= 1 && d < 1;
+      });
+      expect(onWall).toBe(true);
+    }
+  });
+
+  it("snap survives a scale drift and adopts the wall's own angle", () => {
+    // Studio walls at 2× the plan's size (an uncalibrated seed the owner
+    // kept): windows still land on the walls, rotated to match them.
+    const walls = [
+      { x1: 0, y1: 0, x2: 2000, y2: 0 },
+      { x1: 2000, y1: 0, x2: 2000, y2: 1200 },
+      { x1: 2000, y1: 1200, x2: 0, y2: 1200 },
+      { x1: 0, y1: 1200, x2: 0, y2: 0 },
+    ];
+    const out = buildStudioPull(
+      jobWith([win("a", 3)]) as never,
+      [],
+      new Set(),
+      new Map(),
+      { walls, floorIndex: 0 },
+    );
+    const p = out.placements[0];
+    // Landed ON one of the 2×-frame walls, inside its span.
+    const hit = walls.find((w) => {
+      const wx = w.x2 - w.x1;
+      const wy = w.y2 - w.y1;
+      const len = Math.hypot(wx, wy);
+      const t = ((p.xCm - w.x1) * wx + (p.yCm - w.y1) * wy) / (len * len);
+      const d = Math.hypot(p.xCm - (w.x1 + wx * t), p.yCm - (w.y1 + wy * t));
+      return t >= 0 && t <= 1 && d < 1;
+    });
+    expect(hit).toBeTruthy();
+    // Rotation is wall-aligned (an axis wall → rotation ≡ 0 mod π/2).
+    const hx = hit!.x2 - hit!.x1;
+    expect(
+      Math.abs(hx !== 0 ? Math.sin(p.rotation) : Math.cos(p.rotation)),
+    ).toBeLessThan(0.01);
+  });
+
+  it("a window with no plausible wall nearby is counted, never left floating", () => {
+    // One lonely far-away wall running the WRONG direction: nothing to
+    // land on → the window is skipped and reported, not placed mid-air.
+    const walls = [{ x1: 5000, y1: 5000, x2: 5000, y2: 5600 }];
+    const out = buildStudioPull(
+      jobWith([win("a", 3)]) as never,
+      [],
+      new Set(),
+      new Map(),
+      { walls, floorIndex: 0 },
+    );
+    expect(out.placements).toHaveLength(0);
+    expect(out.noWall).toBe(1);
+  });
+
   it("counts windows whose wall key resolves nowhere", () => {
     const out = buildStudioPull(
       jobWith([{ id: "x", elev: "s99", x: 1, y: 1, w: 900, h: 900 }]) as never,

@@ -778,11 +778,21 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       const m = /^(?:Window|Door)\s+([^\s·]+)/.exec(u.name);
       if (m) catalogByMark.set(m[1].toUpperCase(), u.config);
     }
+    // The active floor's REAL walls: placements align to this frame and
+    // snap onto these segments — the vendor re-centres saved plans and the
+    // owner drags walls, so plan-absolute coordinates float otherwise.
+    const wallSegs = bp.model.floorplan.walls.map((w) => ({
+      x1: w.getStartX(),
+      y1: w.getStartY(),
+      x2: w.getEndX(),
+      y2: w.getEndY(),
+    }));
     const pull = buildStudioPull(
       plansJob as never,
       specs.data ?? [],
       existing,
       catalogByMark,
+      { walls: wallSegs, floorIndex: activeFloorRef.current },
     );
     // Heal: a placed generic (no config) whose mark now resolves — same
     // rebuild the tap-heal does, position untouched.
