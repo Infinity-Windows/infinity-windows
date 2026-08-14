@@ -821,6 +821,31 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     let otherFloors = 0;
     let shifted = 0;
     let lengthened = 0;
+    // Walls the PLANS have that this model doesn't (missing wing, newer
+    // trace): create them first so their windows have something to land
+    // on. Adjacent new edges share endpoints — reuse corners within 10 cm
+    // so the added wing arrives CONNECTED, not as loose stubs.
+    let wallsAdded = 0;
+    {
+      const made: { x: number; y: number; c: unknown }[] = [];
+      const cornerAt = (x: number, y: number) => {
+        const hit = made.find((m) => Math.hypot(m.x - x, m.y - y) <= 10);
+        if (hit) return hit.c;
+        const c = bp.model.floorplan.newCorner(x, y);
+        made.push({ x, y, c });
+        return c;
+      };
+      for (const pl of pull.placements) {
+        if (pl.newWall && pl.floorIndex === activeFloorRef.current) {
+          bp.model.floorplan.newWall(
+            cornerAt(pl.newWall.x1, pl.newWall.y1),
+            cornerAt(pl.newWall.x2, pl.newWall.y2),
+          );
+          wallsAdded += 1;
+        }
+      }
+    }
+    if (wallsAdded > 0) bp.model.floorplan.update();
     try {
       for (const pl of pull.placements) {
         if (pl.floorIndex !== activeFloorRef.current) {
@@ -872,6 +897,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         healed > 0 ? `${healed} healed` : null,
         shifted > 0 ? `${shifted} slid to fit their wall` : null,
         lengthened > 0 ? `${lengthened} wall${lengthened === 1 ? "" : "s"} lengthened` : null,
+        wallsAdded > 0 ? `${wallsAdded} wall${wallsAdded === 1 ? "" : "s"} added from the plans` : null,
         bulkStatsRef.current.raised > 0
           ? `${bulkStatsRef.current.raised} wall${bulkStatsRef.current.raised === 1 ? "" : "s"} raised`
           : null,

@@ -78,6 +78,9 @@ export interface PullPlacement {
   /** The wall is SHORTER than the unit: grow it by this much (cm) — the
    * last-resort width change (owner: height more often than width). */
   lengthenWallCm?: number;
+  /** The plans have a wall the studio model doesn't: CREATE this segment
+   * (studio-frame cm) before placing — emitted once per plan edge. */
+  newWall?: StudioWallSeg;
 }
 
 export interface PullResult {
@@ -147,16 +150,119 @@ function frameTransform(
     a.w > 100 ? b.w / a.w : null,
     a.h > 100 ? b.h / a.h : null,
   ].filter((r): r is number => r != null && r > 0);
-  const s = Math.min(
+  let s = Math.min(
     5,
     Math.max(0.2, ratios.length ? ratios.reduce((t, r) => t + r, 0) / ratios.length : 1),
   );
-  return (p) => ({ x: b.cx + (p.x - a.cx) * s, y: b.cy + (p.y - a.cy) * s });
+  let tx = b.cx - a.cx * s;
+  let ty = b.cy - a.cy * s;
+
+  // Refine on INLIERS: a save missing a wing shrinks its bbox and the
+  // seed transform squeezes everything (BLACK22: plan-added walls landed
+  // offset from the building). Match plan corners to their nearest wall
+  // endpoint under the seed transform, keep close pairs, and re-solve the
+  // uniform scale + translation from those pairs only — the missing
+  // region simply has no matches and stops distorting the fit.
+  for (let pass = 0; pass < 2; pass++) {
+    const pairs: { p: { x: number; y: number }; q: { x: number; y: number } }[] = [];
+    for (const p of planPts) {
+      const px = p.x * s + tx;
+      const py = p.y * s + ty;
+      let bq: { x: number; y: number } | null = null;
+      let bd = Infinity;
+      for (const q of wallPts) {
+        const d = Math.hypot(q.x - px, q.y - py);
+        if (d < bd) {
+          bd = d;
+          bq = q;
+        }
+      }
+      if (bq && bd <= 300) pairs.push({ p, q: bq });
+    }
+    if (pairs.length < 4) break;
+    const mean = (vals: number[]) => vals.reduce((t, v) => t + v, 0) / vals.length;
+    const mpx = mean(pairs.map(({ p }) => p.x));
+    const mpy = mean(pairs.map(({ p }) => p.y));
+    const mqx = mean(pairs.map(({ q }) => q.x));
+    const mqy = mean(pairs.map(({ q }) => q.y));
+    let num = 0;
+    let den = 0;
+    for (const { p, q } of pairs) {
+      num += (p.x - mpx) * (q.x - mqx) + (p.y - mpy) * (q.y - mqy);
+      den += (p.x - mpx) ** 2 + (p.y - mpy) ** 2;
+    }
+    if (den > 1) s = Math.min(5, Math.max(0.2, num / den));
+    tx = mqx - mpx * s;
+    ty = mqy - mpy * s;
+  }
+  return (p) => ({ x: p.x * s + tx, y: p.y * s + ty });
 }
 
-/** Nearest wall running the placement's direction (±25°, either facing),
- * within `maxDistCm` of the point. Returns the projection along it and the
- * wall-aligned rotation closest to the original. */
+/**
+ * Merge endpoint-connected, near-collinear walls into straight RUNS. A
+ * traced building is jagged (BLACK22: 93 walls, median 2.2 m) while spec
+ * windows run to 8.6 m — the map draws a window across a straight run of
+ * segments, so the studio must fit against the RUN, not one segment.
+ */
+export function buildWallRuns(walls: StudioWallSeg[]): StudioWallSeg[] {
+  const JOIN_CM = 5;
+  const COS_TOL = Math.cos((10 * Math.PI) / 180);
+  const used = new Array(walls.length).fill(false);
+  const runs: StudioWallSeg[] = [];
+  const straightOn = (
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+    q: { x: number; y: number },
+  ) => {
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const bqx = q.x - b.x;
+    const bqy = q.y - b.y;
+    const la = Math.hypot(abx, aby);
+    const lb = Math.hypot(bqx, bqy);
+    if (!(la > 1) || !(lb > 1)) return false;
+    return (abx * bqx + aby * bqy) / (la * lb) >= COS_TOL;
+  };
+  for (let i = 0; i < walls.length; i++) {
+    if (used[i]) continue;
+    used[i] = true;
+    let a = { x: walls[i].x1, y: walls[i].y1 };
+    let b = { x: walls[i].x2, y: walls[i].y2 };
+    let grown = true;
+    while (grown) {
+      grown = false;
+      for (let j = 0; j < walls.length; j++) {
+        if (used[j]) continue;
+        const w = walls[j];
+        const ends = [
+          [{ x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }],
+          [{ x: w.x2, y: w.y2 }, { x: w.x1, y: w.y1 }],
+        ] as const;
+        for (const [p, q] of ends) {
+          if (Math.hypot(p.x - b.x, p.y - b.y) <= JOIN_CM && straightOn(a, b, q)) {
+            b = q;
+            used[j] = true;
+            grown = true;
+            break;
+          }
+          if (Math.hypot(p.x - a.x, p.y - a.y) <= JOIN_CM && straightOn(b, a, q)) {
+            a = q;
+            used[j] = true;
+            grown = true;
+            break;
+          }
+        }
+        if (grown) break;
+      }
+    }
+    runs.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+  }
+  return runs;
+}
+
+/** Nearest run going the placement's direction (±35° — old saves drift
+ * off today's trace angles), within `maxDistCm`. Returns the projection
+ * along it and the run-aligned rotation closest to the original. */
 function snapToWall(
   x: number,
   y: number,
@@ -168,7 +274,7 @@ function snapToWall(
   // (cos ry, −sin ry) runs along the item's wall.
   const dx = Math.cos(rotation);
   const dy = -Math.sin(rotation);
-  const COS_TOL = Math.cos((25 * Math.PI) / 180);
+  const COS_TOL = Math.cos((35 * Math.PI) / 180);
   let best: { wall: StudioWallSeg; t: number; lenCm: number; d: number } | null = null;
   for (const w of walls) {
     const wx = w.x2 - w.x1;
@@ -229,6 +335,7 @@ export function buildStudioPull(
   // Plan → studio frame alignment, from the ground footprint's corners to
   // the real walls' corners. Identity when either side is degenerate.
   const snapWalls = studio?.walls ?? [];
+  const snapRuns = buildWallRuns(snapWalls);
   const toStudio = frameTransform(
     groundFootprints(job)
       .flat()
@@ -239,6 +346,8 @@ export function buildStudioPull(
     ]),
   );
   const SNAP_MAX_CM = 500;
+  /** Plan edges already emitted as new walls this pull (keyed by elev). */
+  const emittedWalls = new Map<string, StudioWallSeg>();
 
   const placements: PullPlacement[] = [];
   let alreadyPlaced = 0;
@@ -282,28 +391,56 @@ export function buildStudioPull(
     const desiredT = (w.x + halfM) / e.len;
 
     // Snap path: align the plan point into the studio frame, land it on
-    // the nearest same-direction REAL wall, refit inside that wall.
+    // the nearest same-direction RUN of real walls, refit inside the run.
     if (snapWalls.length > 0 && floorIndex === studio!.floorIndex) {
       const raw = toStudio({
         x: (e.x1 + (e.x2 - e.x1) * desiredT) * M_TO_CM,
         y: (e.z1 + (e.z2 - e.z1) * desiredT) * M_TO_CM,
       });
-      const snap = snapToWall(raw.x, raw.y, rotation, snapWalls, SNAP_MAX_CM);
-      if (!snap) {
-        noWall += 1;
+      const snap = snapToWall(raw.x, raw.y, rotation, snapRuns, SNAP_MAX_CM);
+      if (snap) {
+        const fit = fitAlongSegment(snap.t, wMm, snap.lenCm / 100);
+        placements.push({
+          itemName: w.id,
+          config,
+          xCm: snap.wall.x1 + (snap.wall.x2 - snap.wall.x1) * fit.t,
+          yCm: snap.wall.y1 + (snap.wall.y2 - snap.wall.y1) * fit.t,
+          elevationCm,
+          rotation: snap.rotation,
+          floorIndex,
+          shifted: fit.shifted || undefined,
+          lengthenWallCm: fit.lengthenWallCm,
+        });
         continue;
       }
-      const fit = fitAlongSegment(snap.t, wMm, snap.lenCm / 100);
+      // The plans have a wall this model doesn't (old save missing a
+      // wing, retraced geometry): BRING THE WALL WITH THE WINDOW — the
+      // plan edge, transformed into the studio frame, created once and
+      // shared by every window on it. Nothing is skipped or floated.
+      let seg = emittedWalls.get(w.elev);
+      const isNew = !seg;
+      if (!seg) {
+        const p1 = toStudio({ x: e.x1 * M_TO_CM, y: e.z1 * M_TO_CM });
+        const p2 = toStudio({ x: e.x2 * M_TO_CM, y: e.z2 * M_TO_CM });
+        seg = { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+        emittedWalls.set(w.elev, seg);
+      }
+      const segLenM = Math.hypot(seg.x2 - seg.x1, seg.y2 - seg.y1) / 100;
+      const fit = fitAlongSegment(desiredT, wMm, Math.max(0.01, segLenM));
+      const ry = Math.atan2(-(seg.y2 - seg.y1), seg.x2 - seg.x1);
+      const diffA = (p: number, q: number) =>
+        Math.abs(Math.atan2(Math.sin(p - q), Math.cos(p - q)));
       placements.push({
         itemName: w.id,
         config,
-        xCm: snap.wall.x1 + (snap.wall.x2 - snap.wall.x1) * fit.t,
-        yCm: snap.wall.y1 + (snap.wall.y2 - snap.wall.y1) * fit.t,
+        xCm: seg.x1 + (seg.x2 - seg.x1) * fit.t,
+        yCm: seg.y1 + (seg.y2 - seg.y1) * fit.t,
         elevationCm,
-        rotation: snap.rotation,
+        rotation: diffA(ry, rotation) <= diffA(ry + Math.PI, rotation) ? ry : ry + Math.PI,
         floorIndex,
         shifted: fit.shifted || undefined,
         lengthenWallCm: fit.lengthenWallCm,
+        newWall: isNew ? seg : undefined,
       });
       continue;
     }
