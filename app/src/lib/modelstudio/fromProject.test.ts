@@ -129,6 +129,33 @@ describe("buildStudioPull", () => {
     expect(toobig.lengthenWallCm).toBeGreaterThanOrEqual(200);
   });
 
+  it("fits a corner unit by its MAIN leg — the wrap leg never inflates the wall demand", () => {
+    // Window 16: main leg 7.195 m (the four panels after the corner), wrap
+    // leg 0.768 m, total 7.963 m. A 7.5 m wall fits the main leg but NOT
+    // the total — so any wall growth here means the wrap leg was wrongly
+    // counted against the main wall.
+    const corner16: UnitConfig = {
+      kind: "window",
+      heightMm: 4559,
+      panels: [768, 2248, 2286, 2229, 432].map((widthMm) => ({
+        widthMm, mechanism: "fixed" as const,
+      })),
+      cornerAfterPanel: 0,
+    };
+    const out = buildStudioPull(
+      { building: { footprints: [rect(0, 0, 7.5, 6)] }, windows: [win("16-1", 0)] } as never,
+      [],
+      new Set(),
+      new Map([["16", corner16]]),
+    );
+    const p = out.placements[0];
+    expect(p.lengthenWallCm).toBeUndefined();
+    // Pinned at x=0, the main leg's half-width (3.5975 m + 5 cm margin)
+    // slides the centre in to ~3.65 m — a small legal shift, no growth.
+    expect(p.shifted).toBe(true);
+    expect(Math.abs(p.xCm - 364.75)).toBeLessThan(1);
+  });
+
   it("counts windows whose wall key resolves nowhere", () => {
     const out = buildStudioPull(
       jobWith([{ id: "x", elev: "s99", x: 1, y: 1, w: 900, h: 900 }]) as never,

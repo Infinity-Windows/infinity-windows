@@ -11,7 +11,12 @@ import {
   specForOpeningCode,
   type ProjectMarkSpec,
 } from "../install/specs";
-import { specToUnitConfig, type UnitConfig } from "./units";
+import {
+  cornerLegs,
+  panelsWidthMm,
+  specToUnitConfig,
+  type UnitConfig,
+} from "./units";
 
 interface SeedWindow {
   id: string;
@@ -133,7 +138,15 @@ export function buildStudioPull(
         panels: [{ widthMm: w.w, mechanism: "fixed" }],
       };
 
-    const wMm = config.panels.reduce((t, p) => t + p.widthMm, 0);
+    // A corner unit fits its wall by the MAIN leg only (the longer one —
+    // cornerGeometryInfo's rule); the wrap leg turns 90° down the next
+    // wall, so counting it inflated the width, slid corner units to
+    // mid-wall and grew walls that were never short. snapIfCorner seats
+    // the wrap end exactly at the wall end after placement.
+    const legs = cornerLegs(config);
+    const wMm = legs
+      ? Math.max(panelsWidthMm(legs.left), panelsWidthMm(legs.right))
+      : panelsWidthMm(config.panels);
     const hMm = config.heightMm;
     // Fit-to-wall (owner report: "windows sticking past walls"): slide the
     // centre so the whole unit sits INSIDE the segment; if the wall itself

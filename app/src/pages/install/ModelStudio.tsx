@@ -336,14 +336,18 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     [outlines.data],
   );
 
-  // The same job the 3D map renders — one source of truth for geometry.
-  const job = useMemo(() => {
+  // The job the plans describe: traced outline + openings + specs. This is
+  // what "Pull from plans" and seeding read — NEVER the published model.
+  // (BLACK22 bug, 2026-08-14: publishing an early 8-window Studio model
+  // made the authored model the pull's source, so a 42-opening job could
+  // only ever pull those same 8 windows back — self-referential.)
+  const plansJob = useMemo(() => {
     if (!outline || !openings.data) return null;
-    const meta = { projectId, projectName: "Model Studio", projectAddress: null };
-    const authored = fitviewModel(outline.features);
-    if (authored) return buildAuthoredJob(authored, meta, openings.data);
+    if (!Array.isArray(outline.points) || outline.points.length < 3) return null;
     return buildFitViewJob({
-      ...meta,
+      projectId,
+      projectName: "Model Studio",
+      projectAddress: null,
       outline: {
         points: outline.points,
         pageAspect: outline.page_aspect,
@@ -356,10 +360,25 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outline, openings.data, specs.data, projectId]);
 
-  const seed = useMemo(
-    () => (job ? buildStudioSeed(job as never) : null),
-    [job],
-  );
+  // Wall-geometry fallback for jobs with a published model but no usable
+  // trace: seeding may use it (it's only wall shapes), the pull NEVER does.
+  const authoredJob = useMemo(() => {
+    if (!outline || !openings.data) return null;
+    const authored = fitviewModel(outline.features);
+    if (!authored) return null;
+    return buildAuthoredJob(
+      authored,
+      { projectId, projectName: "Model Studio", projectAddress: null },
+      openings.data,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [outline, openings.data, projectId]);
+
+  // Seed and Re-seed rebuild from the TRACED building when one exists.
+  const seed = useMemo(() => {
+    const src = plansJob ?? authoredJob;
+    return src ? buildStudioSeed(src as never) : null;
+  }, [plansJob, authoredJob]);
 
   // What the session boots from: a standalone row's own model first, then
   // the job outline's saved model, then the traced seed, then a BLANK plan
@@ -723,7 +742,14 @@ export function ModelStudio({ source }: { source: StudioSource }) {
    * config-less generics whose mark now has a config. */
   const pullFromPlans = (replaceAll = false) => {
     const bp = bpRef.current;
-    if (!bp || !job) return;
+    if (!bp) return;
+    if (!plansJob) {
+      pushToast(
+        "No traced plans to pull from — trace the building on the job's plans first.",
+        "error",
+      );
+      return;
+    }
     pushUndo();
     if (replaceAll) {
       for (const it of [...bp.model.scene.getItems()]) {
@@ -753,7 +779,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       if (m) catalogByMark.set(m[1].toUpperCase(), u.config);
     }
     const pull = buildStudioPull(
-      job as never,
+      plansJob as never,
       specs.data ?? [],
       existing,
       catalogByMark,
@@ -828,7 +854,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         bulkRef.current = false;
       }, 2500);
     }
-    const auto = (job as { autoScale?: { factor: number; longSideM: number } })
+    const auto = (plansJob as { autoScale?: { factor: number; longSideM: number } })
       .autoScale;
     window.setTimeout(() => {
       const bits = [
