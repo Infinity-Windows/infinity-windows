@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFitViewJob,
+  specDrivenScaleFactor,
   DEFAULT_LONG_SIDE_M,
   DEFAULT_SILL_M,
   inferHardware,
@@ -57,6 +58,47 @@ function input(over: Partial<AdapterInput> = {}): AdapterInput {
     ...over,
   };
 }
+
+describe("spec-driven auto-scale", () => {
+  it("grows an uncalibrated building until its windows fit, capped at 4x", () => {
+    // One wall 5 m at base scale carrying 8 m of window: needs 8*1.15/5.
+    expect(
+      specDrivenScaleFactor([{ edge: 0, wMm: 8000 }], [0.5], 10),
+    ).toBeCloseTo((8 * 1.15) / 5, 6);
+    // Fits already → 1. Absurd demand → capped.
+    expect(specDrivenScaleFactor([{ edge: 0, wMm: 1000 }], [0.5], 10)).toBe(1);
+    expect(
+      specDrivenScaleFactor([{ edge: 0, wMm: 90000 }], [0.5], 10),
+    ).toBe(4);
+  });
+
+  it("buildFitViewJob applies it only when no calibration exists", () => {
+    // The RECT's top wall (s0) gets a window far wider than the default
+    // scale allows; the building must grow and report the factor.
+    const wide = opening({
+      opening_code: "1",
+      page_number: 1,
+      pin_x: 0.5,
+      pin_y: 0.2,
+    });
+    const bigSpec = {
+      mark_code: "1",
+      width_in: 1400, // ~35.5 m of window
+      height_in: 60,
+      operation: "Fixed",
+    } as never;
+    const auto = buildFitViewJob(
+      input({ openings: [wide], specs: [bigSpec] }),
+    )!;
+    expect(auto.autoScale).toBeDefined();
+    expect(auto.autoScale!.factor).toBeGreaterThan(1);
+    // With an explicit calibration the factor never applies.
+    const calibrated = buildFitViewJob(
+      input({ openings: [wide], specs: [bigSpec], longSideM: 30 }),
+    )!;
+    expect(calibrated.autoScale).toBeUndefined();
+  });
+});
 
 describe("buildFitViewJob geometry", () => {
   it("returns null without a usable outline", () => {

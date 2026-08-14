@@ -110,6 +110,25 @@ describe("buildStudioPull", () => {
     expect(out.placements[0].elevationCm).toBeCloseTo(140, 0);
   });
 
+  it("slides a near-edge window inside its wall and flags too-small walls", () => {
+    // s0 is 10 m. A 3 m window pinned at the very start must slide in;
+    // a 12 m window can't fit and asks for the wall to grow.
+    const out = buildStudioPull(
+      jobWith([
+        { id: "edge", elev: "s0", x: 0, y: 0.9, w: 3000, h: 1500 },
+        { id: "toobig", elev: "s0", x: 1, y: 0.9, w: 12000, h: 1500 },
+      ]) as never,
+      [],
+      new Set(),
+    );
+    const edge = out.placements.find((p) => p.itemName === "edge")!;
+    expect(edge.shifted).toBe(true);
+    // Centre sits at least half-width + margin from the wall start.
+    expect(edge.xCm).toBeGreaterThanOrEqual(150 + 4);
+    const toobig = out.placements.find((p) => p.itemName === "toobig")!;
+    expect(toobig.lengthenWallCm).toBeGreaterThanOrEqual(200);
+  });
+
   it("counts windows whose wall key resolves nowhere", () => {
     const out = buildStudioPull(
       jobWith([{ id: "x", elev: "s99", x: 1, y: 1, w: 900, h: 900 }]) as never,

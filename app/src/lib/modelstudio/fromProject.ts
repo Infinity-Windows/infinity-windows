@@ -68,6 +68,11 @@ export interface PullPlacement {
   rotation: number;
   /** 0-based studio floor (fitview story n → floor n−1). */
   floorIndex: number;
+  /** The unit was slid along its wall to fit inside the segment. */
+  shifted?: boolean;
+  /** The wall is SHORTER than the unit: grow it by this much (cm) — the
+   * last-resort width change (owner: height more often than width). */
+  lengthenWallCm?: number;
 }
 
 export interface PullResult {
@@ -130,7 +135,24 @@ export function buildStudioPull(
 
     const wMm = config.panels.reduce((t, p) => t + p.widthMm, 0);
     const hMm = config.heightMm;
-    const t = Math.min(1, Math.max(0, (w.x + wMm / 2000) / e.len));
+    // Fit-to-wall (owner report: "windows sticking past walls"): slide the
+    // centre so the whole unit sits INSIDE the segment; if the wall itself
+    // is shorter than the unit, report how much it must grow.
+    const halfM = wMm / 2000;
+    const MARGIN_M = 0.05;
+    const desired = (w.x + halfM) / e.len;
+    let t: number;
+    let shifted = false;
+    let lengthenWallCm: number | undefined;
+    const lo = (halfM + MARGIN_M) / e.len;
+    const hi = 1 - lo;
+    if (lo > hi) {
+      t = 0.5;
+      lengthenWallCm = Math.ceil((wMm / 10 + 2 * MARGIN_M * 100) - e.len * 100);
+    } else {
+      t = Math.min(hi, Math.max(lo, desired));
+      shifted = Math.abs(t - desired) * e.len > 0.02;
+    }
     const baseM = e.base ?? 0;
     placements.push({
       itemName: w.id,
@@ -140,6 +162,8 @@ export function buildStudioPull(
       elevationCm: (w.y + hMm / 2000 - baseM) * M_TO_CM,
       rotation: (e.A * Math.PI) / 180,
       floorIndex: Math.max(0, (e.story ?? 1) - 1),
+      shifted: shifted || undefined,
+      lengthenWallCm,
     });
   }
 
