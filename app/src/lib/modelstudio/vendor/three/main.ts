@@ -127,7 +127,10 @@ export class Main {
 
     // setup camera nicely
     this.centerCamera()
-    this.model.floorplan.fireOnUpdatedRooms(this.centerCamera.bind(this))
+    // infinity: NO auto-recenter on floorplan updates — every wall edit
+    // yanked the camera back to centre and stomped the user's pan/orbit
+    // (owner report: "hard focused on center"). The page recenters
+    // explicitly (boot, floor switch, Recenter button).
 
     // @ts-ignore - Item is imported but not used, keeping for future use
     const lights = new Lights(this.scene.getScene(), this.model.floorplan)

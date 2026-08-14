@@ -69,10 +69,31 @@ export function cornerGeometryInfo(
   return { mainWcm: leftW, wrapWcm: rightW, sideSign: -1, depthCm: depth };
 }
 
+/**
+ * A moving sash split out for animation: its own little geometry (glass +
+ * sash bars) built RELATIVE to `origin` — the hinge stile for swings, the
+ * panel centre for slides — so a pivot Group at `origin` animates it with
+ * plain rotation/translation (three.js has no transform-origin).
+ */
+export interface MoverSpec {
+  panelIndex: number;
+  mechanism: Exclude<UnitPanel["mechanism"], "fixed">;
+  direction: "left" | "right";
+  /** Pivot position in unit-local space, cm. */
+  origin: { x: number; y: number; z: number };
+  /** Slide distance (slider/hung), cm. */
+  travelCm: number;
+  geometry: THREE.BufferGeometry;
+}
+
 export function buildUnitGeometry(
   config: UnitConfig,
   opts: UnitGeometryOptions = {},
-): { geometry: THREE.BufferGeometry; materials: THREE.Material[] } {
+): {
+  geometry: THREE.BufferGeometry;
+  materials: THREE.Material[];
+  movers: MoverSpec[];
+} {
   const frame = (opts.frameMm ?? UNIT_GEOMETRY_DEFAULTS.frameMm) * MM_TO_CM;
   const mull = (opts.mullionMm ?? UNIT_GEOMETRY_DEFAULTS.mullionMm) * MM_TO_CM;
   const depth = (opts.depthMm ?? UNIT_GEOMETRY_DEFAULTS.depthMm) * MM_TO_CM;
@@ -81,6 +102,7 @@ export function buildUnitGeometry(
 
   const frameGeos: THREE.BufferGeometry[] = [];
   const glassGeos: THREE.BufferGeometry[] = [];
+  const movers: MoverSpec[] = [];
   const box = (w: number, h: number, d: number, x: number, y: number, z = 0) => {
     const g = new THREE.BoxGeometry(w, h, d);
     g.translate(x, y, z);
@@ -110,6 +132,9 @@ export function buildUnitGeometry(
       y: number,
       vC?: number,
     ) => void,
+    // Movers split out only where run-space IS local space (the wall-
+    // parallel legs); the corner wrap leg animates in a later slice.
+    allowMovers = false,
   ) => {
     // Top and bottom rails, and the two end posts.
     pushBox(frameGeos, runW, frame, depth, 0, H / 2 - frame / 2);
@@ -127,9 +152,33 @@ export function buildUnitGeometry(
       const gh = H - 2 * frame;
       // Moving panels read as a pane in its own sash: slightly inset frame.
       const sash = p.mechanism === "fixed" ? 0 : frame * 0.6;
+      // A moving panel's sash + glass split into their OWN geometry so a
+      // pivot group can animate them. Origin: the hinge stile for swings
+      // ("opens left" hinges the outside-left = higher-u edge), the panel
+      // centre for slides.
+      const moving = allowMovers && p.mechanism !== "fixed";
+      const swing = p.mechanism === "casement" || p.mechanism === "bifold";
+      const dir: "left" | "right" = p.direction === "right" ? "right" : "left";
+      const originU = !moving
+        ? 0
+        : swing
+          ? dir === "left"
+            ? innerRight
+            : innerLeft
+          : (innerLeft + innerRight) / 2;
+      const mFrame: THREE.BufferGeometry[] = [];
+      const mGlass: THREE.BufferGeometry[] = [];
+      const sashTo = (w: number, h: number, d: number, x: number, y: number) => {
+        if (moving) mFrame.push(box(w, h, d, x - originU, y));
+        else pushBox(frameGeos, w, h, d, x, y);
+      };
+      const glassTo = (w: number, h: number, d: number, x: number, y: number) => {
+        if (moving) mGlass.push(box(w, h, d, x - originU, y));
+        else pushBox(glassGeos, w, h, d, x, y);
+      };
       if (sash > 0) {
-        pushBox(frameGeos, gw, sash, depth * 0.7, (innerLeft + innerRight) / 2, gh / 2 - sash / 2);
-        pushBox(frameGeos, gw, sash, depth * 0.7, (innerLeft + innerRight) / 2, -gh / 2 + sash / 2);
+        sashTo(gw, sash, depth * 0.7, (innerLeft + innerRight) / 2, gh / 2 - sash / 2);
+        sashTo(gw, sash, depth * 0.7, (innerLeft + innerRight) / 2, -gh / 2 + sash / 2);
       }
       // One glass CELL per row (grid support): rows read top→bottom and
       // share their break lines across every column.
@@ -142,12 +191,28 @@ export function buildUnitGeometry(
         const cellTop = yTop - (isTopRow ? 0 : mull / 2);
         const cellBottom = yTop - bandH + (isBottomRow ? 0 : mull / 2);
         const ch = Math.max(2, cellTop - cellBottom);
-        pushBox(
-          glassGeos, gw, ch, depth * 0.25,
-          (innerLeft + innerRight) / 2, (cellTop + cellBottom) / 2,
-        );
+        glassTo(gw, ch, depth * 0.25, (innerLeft + innerRight) / 2, (cellTop + cellBottom) / 2);
         yTop -= bandH;
       });
+      if (moving && (mFrame.length > 0 || mGlass.length > 0)) {
+        const parts: THREE.BufferGeometry[] = [];
+        if (mFrame.length > 0) parts.push(mergeGeometries(mFrame, false)!);
+        if (mGlass.length > 0) parts.push(mergeGeometries(mGlass, false)!);
+        const geometry = mergeGeometries(parts, true)!;
+        // Single-part movers still need TWO groups so the shared
+        // [frame, glass] material array indexes correctly.
+        if (parts.length === 1 && mGlass.length > 0 && geometry.groups[0]) {
+          geometry.groups[0].materialIndex = 1;
+        }
+        movers.push({
+          panelIndex: i,
+          mechanism: p.mechanism as MoverSpec["mechanism"],
+          direction: dir,
+          origin: { x: originU, y: 0, z: 0 },
+          travelCm: gw * 0.85,
+          geometry,
+        });
+      }
       if (!isLast) {
         pushBox(frameGeos, mull, H - 2 * frame, depth, u + pw, 0);
       }
@@ -174,6 +239,7 @@ export function buildUnitGeometry(
       mainW,
       (list, uLen, h, vLen, uC, y, vC = 0) =>
         list.push(box(uLen, h, vLen, uC, y, vC)),
+      true,
     );
     // Wrap leg: perpendicular run behind the corner (local +z recedes from
     // the outside viewer — the adjacent wall runs that way). The panel
@@ -199,6 +265,7 @@ export function buildUnitGeometry(
       W,
       (list, uLen, h, vLen, uC, y, vC = 0) =>
         list.push(box(uLen, h, vLen, uC, y, vC)),
+      true,
     );
   }
 
@@ -220,5 +287,5 @@ export function buildUnitGeometry(
     opacity: 0.45,
     side: THREE.DoubleSide,
   });
-  return { geometry: merged, materials: [frameMat, glassMat] };
+  return { geometry: merged, materials: [frameMat, glassMat], movers };
 }
