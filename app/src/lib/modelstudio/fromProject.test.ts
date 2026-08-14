@@ -226,19 +226,61 @@ describe("buildStudioPull", () => {
     ).toBeLessThan(0.01);
   });
 
-  it("a window with no plausible wall nearby is counted, never left floating", () => {
+  it("a window with no plausible wall BRINGS its plan wall with it", () => {
     // One lonely far-away wall running the WRONG direction: nothing to
-    // land on → the window is skipped and reported, not placed mid-air.
+    // land on → the pull emits the plan's own edge as a NEW wall and
+    // places the window on it — never skipped, never floating.
     const walls = [{ x1: 5000, y1: 5000, x2: 5000, y2: 5600 }];
     const out = buildStudioPull(
-      jobWith([win("a", 3)]) as never,
+      jobWith([win("a", 3), win("b", 6)]) as never,
       [],
       new Set(),
       new Map(),
       { walls, floorIndex: 0 },
     );
-    expect(out.placements).toHaveLength(0);
-    expect(out.noWall).toBe(1);
+    expect(out.placements).toHaveLength(2);
+    expect(out.noWall).toBe(0);
+    // Both windows share one elevation edge → the wall is emitted ONCE.
+    const withWall = out.placements.filter((p) => p.newWall);
+    expect(withWall).toHaveLength(1);
+    const seg = withWall[0].newWall!;
+    // Each window sits ON the emitted segment.
+    for (const p of out.placements) {
+      const dx = seg.x2 - seg.x1;
+      const dy = seg.y2 - seg.y1;
+      const len = Math.hypot(dx, dy);
+      const t = ((p.xCm - seg.x1) * dx + (p.yCm - seg.y1) * dy) / (len * len);
+      const d = Math.hypot(p.xCm - (seg.x1 + dx * t), p.yCm - (seg.y1 + dy * t));
+      expect(d).toBeLessThan(1);
+      expect(t).toBeGreaterThanOrEqual(0);
+      expect(t).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("wall runs: a wide window fits ACROSS collinear jagged segments", () => {
+    // A 10 m straight side drawn as four short collinear walls (a jagged
+    // trace): a 5 m window centred at a joint must fit the RUN — no slide
+    // to a single segment, no bogus wall growth.
+    const walls = [
+      { x1: 0, y1: 0, x2: 250, y2: 0 },
+      { x1: 250, y1: 0, x2: 520, y2: 0 },
+      { x1: 520, y1: 0, x2: 800, y2: 0 },
+      { x1: 800, y1: 0, x2: 1000, y2: 0 },
+      { x1: 1000, y1: 0, x2: 1000, y2: 600 },
+    ];
+    const out = buildStudioPull(
+      jobWith([{ id: "wide", elev: "s0", x: 2.5, y: 0.9, w: 5000, h: 1500 }]) as never,
+      [],
+      new Set(),
+      new Map(),
+      { walls, floorIndex: 0 },
+    );
+    const p = out.placements[0];
+    expect(p.lengthenWallCm).toBeUndefined();
+    expect(p.newWall).toBeUndefined();
+    expect(p.yCm).toBeCloseTo(0, 1); // on the merged run
+    expect(p.xCm).toBeGreaterThan(250);
+    expect(p.xCm).toBeLessThan(750);
   });
 
   it("counts windows whose wall key resolves nowhere", () => {
