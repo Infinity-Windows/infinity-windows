@@ -5,6 +5,13 @@
 // the foundation on a real building, not a demo house.
 
 import { elevationsOf } from "../fitview/fitviewRenderer";
+import { normalizeMarkCode } from "../fitview/adapter";
+import {
+  indexSpecsByMark,
+  specForOpeningCode,
+  type ProjectMarkSpec,
+} from "../install/specs";
+import { specToUnitConfig, type UnitConfig } from "./units";
 
 interface SeedWindow {
   id: string;
@@ -48,6 +55,102 @@ function groundFootprints(job: FitJobLike): { x: number; z: number }[][] {
     return st[0].footprints;
   }
   return job.building.footprints ?? [];
+}
+
+export interface PullPlacement {
+  itemName: string;
+  config: UnitConfig;
+  /** World plan position, cm (same axes as the seed). */
+  xCm: number;
+  yCm: number;
+  /** Floor-relative centre height, cm (each studio floor edits at y=0). */
+  elevationCm: number;
+  rotation: number;
+  /** 0-based studio floor (fitview story n → floor n−1). */
+  floorIndex: number;
+}
+
+export interface PullResult {
+  placements: PullPlacement[];
+  /** Marks skipped because they're already placed somewhere. */
+  alreadyPlaced: number;
+  /** Marks with no wall to land on (bad/missing elevation key). */
+  noWall: number;
+}
+
+/**
+ * "Pull from plans" (owner spec, 2026-08-14): every window the plans know
+ * about, auto-placed as a PARAMETRIC, mark-labeled, editable unit — the
+ * map's auto-placement, but in the Studio. Add-only by contract: anything
+ * already placed (by an earlier pull or by hand) is skipped, so re-pulls
+ * only fill gaps and never move a unit the owner has edited.
+ *
+ * Config priority per mark: the company catalog's refined unit when one
+ * exists (`catalogByMark`, keyed by BASE mark — the hand-split window 16
+ * with its corner beats the raw spec), then the spec row via
+ * specToUnitConfig, then a one-fixed-panel fallback from the window's own
+ * plan size — every mark still lands parametric and editable.
+ */
+export function buildStudioPull(
+  job: FitJobLike,
+  specs: ProjectMarkSpec[],
+  existingNames: Set<string>,
+  catalogByMark: Map<string, UnitConfig> = new Map(),
+): PullResult {
+  const elevs = elevationsOf(job) as {
+    key: string; x1: number; z1: number; x2: number; z2: number; len: number;
+    A: number; story?: number; base?: number;
+  }[];
+  const byKey = new Map(elevs.map((e) => [e.key, e]));
+  const specIndex = indexSpecsByMark(specs);
+
+  const placements: PullPlacement[] = [];
+  let alreadyPlaced = 0;
+  let noWall = 0;
+
+  for (const w of job.windows) {
+    if (existingNames.has(w.id)) {
+      alreadyPlaced += 1;
+      continue;
+    }
+    const e = byKey.get(w.elev);
+    if (!e || !(e.len > 0)) {
+      noWall += 1;
+      continue;
+    }
+    const mark = normalizeMarkCode(w.id);
+    const spec = specForOpeningCode(specIndex, mark);
+    const config: UnitConfig =
+      catalogByMark.get(markKeyOf(mark)) ??
+      (spec ? specToUnitConfig(spec) : null) ?? {
+        kind: "window",
+        heightMm: w.h,
+        panels: [{ widthMm: w.w, mechanism: "fixed" }],
+      };
+
+    const wMm = config.panels.reduce((t, p) => t + p.widthMm, 0);
+    const hMm = config.heightMm;
+    const t = Math.min(1, Math.max(0, (w.x + wMm / 2000) / e.len));
+    const baseM = e.base ?? 0;
+    placements.push({
+      itemName: w.id,
+      config,
+      xCm: (e.x1 + (e.x2 - e.x1) * t) * M_TO_CM,
+      yCm: (e.z1 + (e.z2 - e.z1) * t) * M_TO_CM,
+      elevationCm: (w.y + hMm / 2000 - baseM) * M_TO_CM,
+      rotation: (e.A * Math.PI) / 180,
+      floorIndex: Math.max(0, (e.story ?? 1) - 1),
+    });
+  }
+
+  return { placements, alreadyPlaced, noWall };
+}
+
+/** Base-mark key used for catalog preference lookups. */
+export function markKeyOf(idOrMark: string): string {
+  const norm = normalizeMarkCode(idOrMark);
+  const m = /^(.+?)-\d+$/.exec(norm);
+  return (m ? m[1] : norm).toUpperCase();
 }
 
 export function buildStudioSeed(job: FitJobLike, maxWindows = 8): StudioSeed {
