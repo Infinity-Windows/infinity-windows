@@ -62,10 +62,12 @@ import { buildUnitAnnotations } from "../../lib/modelstudio/unitAnnotations";
 import { toggleUnitOpening } from "../../lib/modelstudio/openingAnimation";
 import type { StudioItem } from "../../lib/modelstudio/core";
 import {
+  applyPanePreset,
   listStudioUnits,
   saveStudioUnit,
   setColumnWidthMm,
   setRowHeightMm,
+  slideCountOf,
   specImportName,
   specToUnitConfig,
   splitColumn,
@@ -2221,6 +2223,63 @@ export function ModelStudio({ source }: { source: StudioSource }) {
                               <option value="bifold-l">Bi-fold left</option>
                               <option value="bifold-r">Bi-fold right</option>
                             </select>
+                            {col.mechanism === "slider" && (() => {
+                              const n = slideCountOf(col);
+                              const setSlides = (next: number) =>
+                                applyGridChange({
+                                  ...cfg,
+                                  panels: cfg.panels.map((pp, i) =>
+                                    i === pane.col
+                                      ? { ...pp, slideCount: Math.min(8, Math.max(1, next)) }
+                                      : pp,
+                                  ),
+                                });
+                              return (
+                                <span
+                                  className="row-gap"
+                                  style={{ alignItems: "center", gap: 4 }}
+                                  title="How many panel-widths this pane slides (multi-track, up to 8)"
+                                >
+                                  <button
+                                    className="button-like studio-mini"
+                                    aria-label="Slides fewer panels"
+                                    disabled={n <= 1}
+                                    onClick={() => setSlides(n - 1)}
+                                  >
+                                    −
+                                  </button>
+                                  <span style={{ minWidth: 26, textAlign: "center" }}>
+                                    ×{n}
+                                  </span>
+                                  <button
+                                    className="button-like studio-mini"
+                                    aria-label="Slides more panels"
+                                    disabled={n >= 8}
+                                    onClick={() => setSlides(n + 1)}
+                                  >
+                                    +
+                                  </button>
+                                </span>
+                              );
+                            })()}
+                            <button
+                              className="button-like studio-mini"
+                              title="This pane and its neighbour meet in the middle and slide apart"
+                              onClick={() =>
+                                applyGridChange(applyPanePreset(cfg, pane.col, "middle-pair"))
+                              }
+                            >
+                              ⇤⇥ Part from middle
+                            </button>
+                            <button
+                              className="button-like studio-mini"
+                              title="French pair — casements hinged at the outer stiles, opening from the middle"
+                              onClick={() =>
+                                applyGridChange(applyPanePreset(cfg, pane.col, "french-pair"))
+                              }
+                            >
+                              French pair
+                            </button>
                           </div>
                         );
                       })()}

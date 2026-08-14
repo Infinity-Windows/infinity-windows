@@ -23,7 +23,9 @@ export function moverTransform(mover: MoverSpec, t: number): MoverTransform {
   const sign = mover.direction === "left" ? 1 : -1;
   switch (mover.mechanism) {
     case "slider":
-      return { x: sign * mover.travelCm * t, y: 0, rotY: 0 };
+      // Multi-track sliders travel slideCount panel-widths (owner: "up to
+      // 8 times that a window can slide").
+      return { x: sign * mover.travelCm * mover.slideCount * t, y: 0, rotY: 0 };
     case "hung":
       return { x: 0, y: mover.travelCm * 0.9 * t, rotY: 0 };
     case "casement":

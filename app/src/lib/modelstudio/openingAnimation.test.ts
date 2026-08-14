@@ -10,12 +10,14 @@ import type { UnitConfig } from "./units";
 const mover = (
   mechanism: "slider" | "casement" | "hung" | "bifold",
   direction: "left" | "right",
+  slideCount = 1,
 ) => ({
   panelIndex: 0,
   mechanism,
   direction,
   origin: { x: 0, y: 0, z: 0 },
   travelCm: 100,
+  slideCount,
   geometry: null as never,
 });
 
@@ -24,6 +26,12 @@ describe("moverTransform", () => {
     expect(moverTransform(mover("slider", "left"), 1).x).toBeCloseTo(100, 6);
     expect(moverTransform(mover("slider", "right"), 1).x).toBeCloseTo(-100, 6);
     expect(moverTransform(mover("slider", "left"), 0).x).toBe(0);
+  });
+  it("multi-track sliders travel slideCount panel-widths", () => {
+    expect(moverTransform(mover("slider", "left", 3), 1).x).toBeCloseTo(300, 6);
+    expect(moverTransform(mover("slider", "right", 8), 0.5).x).toBeCloseTo(-400, 6);
+    // Count never bleeds into swings: a casement's rotation ignores it.
+    expect(moverTransform(mover("casement", "left", 4), 1).x).toBe(0);
   });
   it("casements swing on the hinge, sign follows the side", () => {
     expect(moverTransform(mover("casement", "left"), 1).rotY).toBeGreaterThan(1.5);
@@ -59,6 +67,17 @@ describe("buildUnitGeometry movers", () => {
       expect(m.geometry.getAttribute("position").count).toBeGreaterThan(0);
       expect(m.travelCm).toBeGreaterThan(50);
     }
+  });
+
+  it("movers carry the panel's clamped slide count", () => {
+    const { movers } = buildUnitGeometry({
+      ...cfg,
+      panels: cfg.panels.map((p, i) =>
+        i === 0 ? { ...p, slideCount: 99 } : p,
+      ),
+    });
+    expect(movers.find((m) => m.mechanism === "slider")!.slideCount).toBe(8);
+    expect(movers.find((m) => m.mechanism === "casement")!.slideCount).toBe(1);
   });
 
   it("hinge origin sits at the stile, slide origin at the panel centre", () => {

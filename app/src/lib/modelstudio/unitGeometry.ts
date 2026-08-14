@@ -11,6 +11,7 @@ import {
   cornerLegs,
   panelsWidthMm,
   rowHeightsCm,
+  slideCountOf,
   type UnitConfig,
   type UnitPanel,
 } from "./units";
@@ -81,8 +82,10 @@ export interface MoverSpec {
   direction: "left" | "right";
   /** Pivot position in unit-local space, cm. */
   origin: { x: number; y: number; z: number };
-  /** Slide distance (slider/hung), cm. */
+  /** Slide distance (slider/hung), cm — ONE panel-width of travel. */
   travelCm: number;
+  /** Panel-widths of travel for multi-track sliders (1–8); 1 otherwise. */
+  slideCount: number;
   geometry: THREE.BufferGeometry;
 }
 
@@ -210,6 +213,7 @@ export function buildUnitGeometry(
           direction: dir,
           origin: { x: originU, y: 0, z: 0 },
           travelCm: gw * 0.85,
+          slideCount: slideCountOf(p),
           geometry,
         });
       }

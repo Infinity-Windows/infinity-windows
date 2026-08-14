@@ -30,6 +30,21 @@ describe("annotationLayout", () => {
     expect(leg.glyphs[1].x).toBeCloseTo(90, 6);
   });
 
+  it("multi-track sliders carry their ×n count; singles stay clean", () => {
+    const multi: UnitConfig = {
+      ...CFG,
+      panels: [
+        { widthMm: 900, mechanism: "slider", direction: "left", slideCount: 3 },
+        { widthMm: 900, mechanism: "slider", direction: "right" },
+        { widthMm: 900, mechanism: "casement", direction: "left", slideCount: 4 },
+      ],
+    };
+    const [leg] = annotationLayout(multi, { dims: false });
+    expect(leg.glyphs[0].count).toBe(3);
+    expect(leg.glyphs[1].count).toBeUndefined(); // ×1 draws no badge
+    expect(leg.glyphs[2].count).toBeUndefined(); // swings never count
+  });
+
   it("puts one glyph per pane CELL when rows split the unit", () => {
     const grid: UnitConfig = {
       ...CFG,
