@@ -1037,6 +1037,121 @@ test("Pull from plans places specced marks; re-pull adds nothing", async ({
   expect(count).toBe(2);
 });
 
+test("animation: ▶ opens the slider, toggling closes it; dbl-click refocuses", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useOutline(page, { fitview: { model: FITVIEW_MODEL } });
+  await openStudio(page);
+
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    bp.model.scene.addItem(
+      3,
+      "/modelstudio/models/window.json",
+      {
+        itemName: "anim-1",
+        itemType: 3,
+        modelUrl: "/modelstudio/models/window.json",
+        unitConfig: {
+          kind: "window",
+          heightMm: 1800,
+          panels: [
+            { widthMm: 1200, mechanism: "slider", direction: "left" },
+            { widthMm: 1200, mechanism: "fixed" },
+          ],
+        },
+      },
+      { x: 900, y: 150, z: 600 },
+      0,
+      undefined,
+      false,
+    );
+  });
+  await page.waitForFunction(() => {
+    const bp = (window as any).__studio;
+    const items = bp.model.scene.getItems();
+    return items.length === 1 && Boolean(items[0].currentWallEdge);
+  });
+
+  const moverX = () =>
+    page.evaluate(() => {
+      const bp = (window as any).__studio;
+      const item = bp.model.scene.getItems()[0];
+      const g = item.children.find((c: any) => c.name === "unit-mover");
+      return g ? g.position.x - (g.userData.baseX ?? 0) : null;
+    });
+
+  // One mover exists (the slider), parked closed.
+  expect(await moverX()).toBe(0);
+
+  // Select via tap, then hit ▶ Open / close.
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const cam = bp.three.camera;
+    cam.updateMatrixWorld();
+    const v = bp.model.scene.getItems()[0].position.clone();
+    v.project(cam);
+    const r = bp.three.element.getBoundingClientRect();
+    const opts = {
+      bubbles: true,
+      clientX: r.left + ((v.x + 1) / 2) * r.width,
+      clientY: r.top + ((1 - v.y) / 2) * r.height,
+      button: 0,
+    };
+    bp.three.element.dispatchEvent(new MouseEvent("mousedown", opts));
+    bp.three.element.dispatchEvent(new MouseEvent("mouseup", opts));
+  });
+  await expect(page.getByText("Selected unit")).toBeVisible();
+  await page.getByRole("button", { name: "▶ Open / close" }).click();
+  // Opens-left slides toward local +x; settle past the ease.
+  await expect.poll(moverX, { timeout: 3000 }).toBeGreaterThan(50);
+
+  // Toggle again — closes back to the frame.
+  await page.getByRole("button", { name: "▶ Open / close" }).click();
+  await expect.poll(moverX, { timeout: 3000 }).toBeLessThan(2);
+
+  // Camera: double-click near the unit moves the orbit target off centre.
+  const before = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const t = bp.three.controls.target;
+    return { x: t.x, z: t.z };
+  });
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const cam = bp.three.camera;
+    cam.updateMatrixWorld();
+    const v = bp.model.scene.getItems()[0].position.clone();
+    v.project(cam);
+    const r = bp.three.element.getBoundingClientRect();
+    bp.three.element.dispatchEvent(
+      new MouseEvent("dblclick", {
+        bubbles: true,
+        clientX: r.left + ((v.x + 1) / 2) * r.width,
+        clientY: r.top + ((1 - v.y) / 2) * r.height,
+      }),
+    );
+  });
+  const after = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const t = bp.three.controls.target;
+    return { x: t.x, z: t.z };
+  });
+  const moved =
+    Math.hypot(after.x - before.x, after.z - before.z) > 50 ||
+    Math.abs(after.z - 600) < 60; // target near the unit's wall
+  expect(moved).toBe(true);
+
+  // Recenter frames the building again.
+  await page.getByRole("button", { name: "Recenter" }).click();
+  const recentred = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const t = bp.three.controls.target;
+    return { x: t.x, z: t.z };
+  });
+  expect(Math.abs(recentred.x - 900)).toBeLessThan(120); // building centre ~ (900, 300)
+});
+
 test("a fresh seed never mints twin walls", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "supervisor" });
   // No saved Studio model: the tab seeds from the traced building.

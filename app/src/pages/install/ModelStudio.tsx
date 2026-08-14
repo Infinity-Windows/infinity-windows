@@ -59,6 +59,7 @@ import {
   type WallHandleKind,
 } from "../../lib/modelstudio/handles3d";
 import { buildUnitAnnotations } from "../../lib/modelstudio/unitAnnotations";
+import { toggleUnitOpening } from "../../lib/modelstudio/openingAnimation";
 import type { StudioItem } from "../../lib/modelstudio/core";
 import {
   listStudioUnits,
@@ -522,6 +523,32 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           ?.edge?.wall;
         if (wall) selectWall(wall);
       });
+      // Double-click FOCUSES the orbit on the point under the cursor —
+      // window, wall or floor — so zoom works on what you care about
+      // (owner report: "hard focused on center"). Pan stays on right-drag.
+      el.addEventListener("dblclick", (e) => {
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
+        const planes = bp.model.floorplan.wallEdgePlanes();
+        for (const pl of planes) {
+          (pl.material as THREE.Material & { side: THREE.Side }).side = THREE.DoubleSide;
+        }
+        const ndc = new THREE.Vector2(
+          ((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1,
+        );
+        ray.setFromCamera(ndc, bp.three.camera);
+        const targets = [
+          ...(bp.model.scene.getItems() as unknown as THREE.Object3D[]),
+          ...(planes as THREE.Object3D[]),
+        ];
+        const pt = ray.intersectObjects(targets, true)[0]?.point;
+        if (pt) {
+          bp.three.controls.target?.set(pt.x, pt.y, pt.z);
+          bp.three.controls.update?.();
+          bp.three.getController().needsUpdate = true;
+        }
+      });
       // Windows read as clickable: pointer cursor on hover (never clobber
       // the handle spheres' grab cursors).
       let hoverPending = false;
@@ -887,6 +914,27 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     if (item.metadata) {
       item.metadata.unitConfig = config;
       if (frameGapMm != null) item.metadata.frameGapMm = frameGapMm;
+    }
+    // Moving sashes become pivot-group children so they can animate
+    // (slider slides, casement swings on its hinge stile, hung rises).
+    {
+      const obj = item as unknown as THREE.Object3D;
+      for (const child of [...obj.children]) {
+        if (child.name !== "unit-mover") continue;
+        obj.remove(child);
+        child.traverse((n) => {
+          const mesh = n as THREE.Mesh;
+          if (mesh.geometry) mesh.geometry.dispose();
+        });
+      }
+      for (const mover of built.movers) {
+        const group = new THREE.Group();
+        group.name = "unit-mover";
+        group.position.set(mover.origin.x, mover.origin.y, mover.origin.z);
+        group.userData = { mover, baseX: mover.origin.x, baseY: mover.origin.y };
+        group.add(new THREE.Mesh(mover.geometry, built.materials));
+        obj.add(group);
+      }
     }
     setUnitAnnotations(item, selUnitRef.current === item);
     item.redrawWall?.();
@@ -2178,6 +2226,26 @@ export function ModelStudio({ source }: { source: StudioSource }) {
               </button>
               <button
                 className="button-like studio-mini"
+                title="Play this unit's real opening motion"
+                onClick={() => {
+                  const item = selUnit;
+                  if (!item) return;
+                  const groups = (item as unknown as THREE.Object3D).children.filter(
+                    (c) => c.name === "unit-mover",
+                  );
+                  const r = toggleUnitOpening(item, groups as never, () => {
+                    const b = bpRef.current;
+                    if (b) b.three.getController().needsUpdate = true;
+                  });
+                  if (r === "none") {
+                    pushToast("No moving panels — set a pane to Opens left/right first.");
+                  }
+                }}
+              >
+                ▶ Open / close
+              </button>
+              <button
+                className="button-like studio-mini"
                 disabled={saveUnitAsCatalog.isPending || !selUnit.metadata?.unitConfig}
                 onClick={() => saveUnitAsCatalog.mutate()}
               >
@@ -2381,7 +2449,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           </p>
           <span className="muted" style={{ fontSize: 11 }}>
             {view === "model"
-              ? "drag to orbit · scroll to zoom · tap windows & walls to edit"
+              ? "drag to orbit · right-drag to pan · double-click to focus · tap to edit"
               : "drag walls & corners · drag empty space to pan"}
           </span>
           <span className="row-gap" style={{ marginLeft: "auto" }}>
@@ -2394,6 +2462,15 @@ export function ModelStudio({ source }: { source: StudioSource }) {
                 <button className="button-like studio-mini"
                   onClick={() => bpRef.current && fitPlan(bpRef.current)}>Fit</button>
               </>
+            )}
+            {view === "model" && (
+              <button
+                className="button-like studio-mini"
+                title="Frame the whole building"
+                onClick={() => frameBuilding()}
+              >
+                Recenter
+              </button>
             )}
             <select
               className="studio-view-switch"
