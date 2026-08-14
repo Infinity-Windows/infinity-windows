@@ -10,6 +10,7 @@
 // materials are Phase 1 work once this foundation is judged on BLACK22.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BackChip } from "../../components/BackChip";
 import { pushToast } from "../../lib/toast";
@@ -449,19 +450,62 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     });
     // 3D tap-select (owner call: edit from inside the 3D view). Items and
     // walls both land in the SAME palette panels the 2D uses.
-    bp.three.itemSelectedCallbacks.add((it) => {
-      setSelUnit(it);
-      const cfg = it?.metadata?.unitConfig as UnitConfig | undefined;
-      const h = cfg ? cfg.heightMm / 10 : it.getHeight();
-      const w = cfg
-        ? cfg.panels.reduce((t, pp) => t + pp.widthMm, 0) / 10
-        : it.getWidth();
-      setUnitW(fmtFtIn(w));
-      setUnitH(fmtFtIn(h));
-      setUnitSill(fmtFtIn(Math.max(0, it.position.y - h / 2)));
-      setUnitGap(String(it.metadata?.frameGapMm ?? UNIT_GEOMETRY_DEFAULTS.mullionMm));
-      setPaletteOpen(true);
-    });
+    bp.three.itemSelectedCallbacks.add((it) => selectUnit(it));
+    // First-tap pick: the vendor only selects what its HOVER raycast
+    // already registered, so the first tap after opening (or any tap on a
+    // trackpad that didn't glide over the window first) selected nothing.
+    // A still click (< 6 px travel) raycasts the items directly, with a
+    // small tolerance ring for near misses. Handle grabs never reach this
+    // (their capture listener stops propagation).
+    {
+      const el = bp.three.element;
+      const ray = new THREE.Raycaster();
+      let downX = 0;
+      let downY = 0;
+      const pickAt = (px: number, py: number) => {
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return null;
+        const ndc = new THREE.Vector2(
+          ((px - rect.left) / rect.width) * 2 - 1,
+          -((py - rect.top) / rect.height) * 2 + 1,
+        );
+        ray.setFromCamera(ndc, bp.three.camera);
+        const items = bp.model.scene.getItems() as unknown as THREE.Object3D[];
+        return (ray.intersectObjects(items, false)[0]?.object ??
+          null) as unknown as StudioItem | null;
+      };
+      // Debug handle alongside __studio; harmless in prod.
+      (window as { __studioPick?: unknown }).__studioPick = pickAt;
+      el.addEventListener("mousedown", (e) => {
+        downX = e.clientX;
+        downY = e.clientY;
+      });
+      el.addEventListener("mouseup", (e) => {
+        if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return;
+        let hit = pickAt(e.clientX, e.clientY);
+        if (!hit) {
+          for (const [dx, dy] of [
+            [8, 0], [-8, 0], [0, 8], [0, -8], [8, 8], [-8, -8], [8, -8], [-8, 8],
+          ]) {
+            hit = pickAt(e.clientX + dx, e.clientY + dy);
+            if (hit) break;
+          }
+        }
+        if (hit) selectUnit(hit);
+      });
+      // Windows read as clickable: pointer cursor on hover (never clobber
+      // the handle spheres' grab cursors).
+      let hoverPending = false;
+      el.addEventListener("mousemove", (e) => {
+        if (hoverPending) return;
+        hoverPending = true;
+        requestAnimationFrame(() => {
+          hoverPending = false;
+          if (el.style.cursor === "grab" || el.style.cursor === "grabbing") return;
+          el.style.cursor = pickAt(e.clientX, e.clientY) ? "pointer" : "";
+        });
+      });
+    }
     // Grab-and-stretch handles in the 3D pane — spheres on the selection's
     // edges drive the same edit math as the numeric cards.
     handlesRef.current = new StudioHandles3d({
@@ -879,12 +923,66 @@ export function ModelStudio({ source }: { source: StudioSource }) {
 
   // ------------------------------------------------ 3D drag handles wiring
 
+  /** Open a unit for editing — the ONE path every selection route uses
+   * (vendor hover-click, our first-tap raycast, and future callers).
+   * Windows saved before the metadata fix (2026-08-13) lost their panel
+   * config permanently; those heal here: a config is rebuilt from the
+   * unit's measured size so Apply, the pane picker and the handles all
+   * work on first tap. */
+  const selectUnit = (it: StudioItem) => {
+    let cfg = it.metadata?.unitConfig as UnitConfig | undefined;
+    if (!cfg?.panels?.length && it.metadata) {
+      cfg = {
+        kind: "window",
+        heightMm: Math.max(200, Math.round(it.getHeight() * 10)),
+        panels: [
+          { widthMm: Math.max(200, Math.round(it.getWidth() * 10)), mechanism: "fixed" },
+        ],
+      };
+      applyUnitGeometry(it, cfg);
+      it.placeInRoom();
+      growWallToFit(it);
+      pushToast("Rebuilt this window from its size — panels are editable now.");
+    }
+    setSelUnit(it);
+    const h = cfg ? cfg.heightMm / 10 : it.getHeight();
+    const w = cfg
+      ? cfg.panels.reduce((t, pp) => t + pp.widthMm, 0) / 10
+      : it.getWidth();
+    setUnitW(fmtFtIn(w));
+    setUnitH(fmtFtIn(h));
+    setUnitSill(fmtFtIn(Math.max(0, it.position.y - h / 2)));
+    setUnitGap(String(it.metadata?.frameGapMm ?? UNIT_GEOMETRY_DEFAULTS.mullionMm));
+    setPaletteOpen(true);
+  };
+
+  /** The bright outline on whatever is selected in 3D — selection must be
+   * unmissable (the owner read a working tap as broken without it). */
+  const highlightRef = useRef<THREE.BoxHelper | null>(null);
+
   /** Re-park the handle spheres on the current selection. */
   const refreshHandles = () => {
     const handles = handlesRef.current;
     if (!handles) return;
     const item = selUnitRef.current;
     const wall = selWallRef.current;
+    const bp = bpRef.current;
+    if (bp) {
+      const scene = bp.model.scene.getScene();
+      if (highlightRef.current) {
+        scene.remove(highlightRef.current);
+        highlightRef.current.dispose();
+        highlightRef.current = null;
+      }
+      if (item) {
+        const box = new THREE.BoxHelper(item as unknown as THREE.Object3D, 0x2bb3c8);
+        (box.material as THREE.LineBasicMaterial).depthTest = false;
+        box.renderOrder = 998;
+        box.name = "studio-select-highlight";
+        scene.add(box);
+        highlightRef.current = box;
+      }
+    }
     if (item) {
       const cfg = item.metadata?.unitConfig as UnitConfig | undefined;
       const corner = cfg ? cornerGeometryInfo(cfg) : null;

@@ -652,6 +652,77 @@ test("3D wall slide handle drags the whole wall perpendicular", async ({
   expect(Math.abs((after as number) - 600)).toBeGreaterThan(5);
 });
 
+test("polish: first tap selects (no hover), highlight appears, legacy windows heal", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useOutline(page, { fitview: { model: FITVIEW_MODEL } });
+  await openStudio(page);
+
+  // A LEGACY window: attached but saved without any unitConfig (the
+  // pre-2026-08-13 format) — its card's Apply/pane tools used to be dead.
+  // Real legacy saves DO carry their scale (the raw model is ~1 unit tall),
+  // so the fixture passes one too.
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    bp.model.scene.addItem(
+      3,
+      "/modelstudio/models/window.json",
+      { itemName: "Legacy 12", itemType: 3, modelUrl: "/modelstudio/models/window.json" },
+      { x: 900, y: 150, z: 600 },
+      0,
+      { x: 240, y: 150, z: 10 },
+      false,
+    );
+  });
+  await page.waitForFunction(() => {
+    const bp = (window as any).__studio;
+    const items = bp.model.scene.getItems();
+    return items.length === 1 && Boolean(items[0].currentWallEdge);
+  });
+
+  // Tap WITHOUT any prior mousemove: synthetic mousedown+mouseup straight
+  // at the projected centre. The vendor's hover-dependent path can't fire
+  // here — only the new first-tap raycast can.
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const cam = bp.three.camera;
+    cam.updateMatrixWorld();
+    const v = bp.model.scene.getItems()[0].position.clone();
+    v.project(cam);
+    const r = bp.three.element.getBoundingClientRect();
+    const x = r.left + ((v.x + 1) / 2) * r.width;
+    const y = r.top + ((1 - v.y) / 2) * r.height;
+    const opts = { bubbles: true, clientX: x, clientY: y, button: 0 };
+    bp.three.element.dispatchEvent(new MouseEvent("mousedown", opts));
+    bp.three.element.dispatchEvent(new MouseEvent("mouseup", opts));
+  });
+
+  // Selection landed: the palette's unit card is open…
+  await expect(page.getByText("Selected unit")).toBeVisible();
+  // …the bright outline is in the scene…
+  const state = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const scene = bp.model.scene.getScene();
+    const item = bp.model.scene.getItems()[0];
+    return {
+      highlight: scene.children.some(
+        (c: any) => c.name === "studio-select-highlight",
+      ),
+      // …and the legacy window healed: a config synthesized from its size,
+      // parametric frame+glass geometry (2 material groups).
+      cfg: item.metadata.unitConfig ?? null,
+      groups: item.geometry.groups?.length ?? 0,
+    };
+  });
+  expect(state.highlight).toBe(true);
+  expect(state.cfg).not.toBeNull();
+  expect((state.cfg as { panels: unknown[] }).panels).toHaveLength(1);
+  expect(state.groups).toBe(2);
+  // The pane picker renders for it — the card is fully live.
+  await expect(page.getByText(/Panes — tap one/)).toBeVisible();
+});
+
 test("a fresh seed never mints twin walls", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "supervisor" });
   // No saved Studio model: the tab seeds from the traced building.
