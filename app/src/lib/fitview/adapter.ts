@@ -139,6 +139,9 @@ export interface FitViewJob {
     footprints: { x: number; z: number; name?: string }[][];
   };
   windows: FitViewWindow[];
+  /** Present when the spec-driven auto-scale grew an uncalibrated building
+   * so its windows fit — surfaced so the Studio can say so. */
+  autoScale?: { factor: number; longSideM: number };
 }
 
 /** Longest bounding-box side of the footprint, metres, absent a real scale. */
@@ -357,6 +360,35 @@ export function fitviewCalibration(
   return out;
 }
 
+/** Frames/mullions take room beyond the glass — packing headroom. */
+const SCALE_PACK = 1.15;
+/** Never auto-scale past 4× (a mis-pinned window on a short wall would
+ * otherwise inflate the whole building). */
+const SCALE_CAP = 4;
+
+/**
+ * PURE: how much an uncalibrated building must grow so that no wall's
+ * windows (true mm widths) overflow it. 1 = the default scale already fits.
+ */
+export function specDrivenScaleFactor(
+  demands: { edge: number; wMm: number }[],
+  pageEdgeLen: number[],
+  baseScale: number,
+  cap = SCALE_CAP,
+): number {
+  const perEdge = new Map<number, number>();
+  for (const d of demands) {
+    perEdge.set(d.edge, (perEdge.get(d.edge) ?? 0) + d.wMm / 1000);
+  }
+  let factor = 1;
+  for (const [edge, totalM] of perEdge) {
+    const lenM = (pageEdgeLen[edge] ?? 0) * baseScale;
+    if (!(lenM > 0)) continue;
+    factor = Math.max(factor, (totalM * SCALE_PACK) / lenM);
+  }
+  return Math.min(cap, factor);
+}
+
 /**
  * Build the fit-view job, or null when the outline can't support one.
  * Only openings pinned on the outline's page are placed on the model.
@@ -379,20 +411,28 @@ export function buildFitViewJob(
   const span = Math.max(spanX, spanZ);
   if (span <= 0) return null;
 
-  const scale = (input.longSideM ?? DEFAULT_LONG_SIDE_M) / span;
+  const baseScale = (input.longSideM ?? DEFAULT_LONG_SIDE_M) / span;
   const wallH = input.wallHeightM ?? DEFAULT_WALL_HEIGHT_M;
-  const footprint = phys.map((p) => ({ x: p.x * scale, z: p.z * scale }));
 
-  // Wall lengths in metres, matching elevationsOf()'s edge enumeration.
-  const edgeLen: number[] = footprint.map((a, i) => {
-    const b = footprint[(i + 1) % footprint.length];
+  // Page-space edge lengths (scale-independent).
+  const pageEdgeLen: number[] = phys.map((a, i) => {
+    const b = phys[(i + 1) % phys.length];
     return Math.hypot(b.x - a.x, b.z - a.z);
   });
 
   const specByMark = new Map<string, ProjectMarkSpec>();
   for (const s of input.specs) specByMark.set(s.mark_code, s);
 
-  const windows: FitViewWindow[] = [];
+  // First pass: resolve every placeable opening's wall + true mm size, so
+  // the spec-driven scale check can run BEFORE geometry is built.
+  interface Placement {
+    o: (typeof input.openings)[number];
+    hit: { edge: number; t: number };
+    spec: ProjectMarkSpec | null;
+    wMm: number;
+    hMm: number;
+  }
+  const placements: Placement[] = [];
   for (const o of input.openings) {
     if (o.page_number !== outline.pageNumber) continue;
     if (o.pin_x == null || o.pin_y == null) continue;
@@ -402,14 +442,43 @@ export function buildFitViewJob(
       aspect,
     );
     if (!hit) continue;
-
     const spec = specByMark.get(markBase(o.opening_code)) ?? null;
     const type = o.window_types ?? null;
     const wIn = spec?.width_in ?? type?.width_in ?? null;
     const hIn = spec?.height_in ?? type?.height_in ?? null;
-    const wMm = wIn != null ? Math.round(wIn * IN_TO_MM) : FALLBACK_W_MM;
-    const hMm = hIn != null ? Math.round(hIn * IN_TO_MM) : FALLBACK_H_MM;
+    placements.push({
+      o,
+      hit,
+      spec,
+      wMm: wIn != null ? Math.round(wIn * IN_TO_MM) : FALLBACK_W_MM,
+      hMm: hIn != null ? Math.round(hIn * IN_TO_MM) : FALLBACK_H_MM,
+    });
+  }
 
+  // Windows are TRUE size (mm from specs) while an uncalibrated building is
+  // a 30 m guess — the mismatch put windows wider than their walls (owner
+  // screenshot). When no explicit calibration exists, scale the building up
+  // until no wall's windows overflow it. A tracer calibration always wins.
+  const factor =
+    input.longSideM != null
+      ? 1
+      : specDrivenScaleFactor(
+          placements.map((p) => ({ edge: p.hit.edge, wMm: p.wMm })),
+          pageEdgeLen,
+          baseScale,
+        );
+  const scale = baseScale * factor;
+  const footprint = phys.map((p) => ({ x: p.x * scale, z: p.z * scale }));
+
+  // Wall lengths in metres, matching elevationsOf()'s edge enumeration.
+  const edgeLen: number[] = footprint.map((a, i) => {
+    const b = footprint[(i + 1) % footprint.length];
+    return Math.hypot(b.x - a.x, b.z - a.z);
+  });
+
+  const windows: FitViewWindow[] = [];
+  for (const { o, hit, spec, wMm, hMm } of placements) {
+    const type = o.window_types ?? null;
     const styleText = [spec?.style, type?.name, type?.category]
       .filter(Boolean)
       .join(" ");
@@ -460,5 +529,12 @@ export function buildFitViewJob(
       footprints: [footprint],
     },
     windows,
+    autoScale:
+      factor > 1.001
+        ? {
+            factor: Math.round(factor * 100) / 100,
+            longSideM: Math.round(span * scale * 10) / 10,
+          }
+        : undefined,
   };
 }

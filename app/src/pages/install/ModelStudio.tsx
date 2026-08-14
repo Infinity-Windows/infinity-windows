@@ -713,6 +713,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
 
   /** Quiet per-item toasts during bulk placement. */
   const bulkRef = useRef(false);
+  const bulkStatsRef = useRef({ raised: 0 });
 
   /** "Pull from plans": place every specced mark as a parametric labeled
    * unit. ADD-ONLY (owner pick): anything already placed — by an earlier
@@ -777,13 +778,35 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       }
     }
     bulkRef.current = true;
+    bulkStatsRef.current.raised = 0;
     let placedHere = 0;
     let otherFloors = 0;
+    let shifted = 0;
+    let lengthened = 0;
     try {
       for (const pl of pull.placements) {
         if (pl.floorIndex !== activeFloorRef.current) {
           otherFloors += 1;
           continue;
+        }
+        if (pl.shifted) shifted += 1;
+        if (pl.lengthenWallCm && pl.lengthenWallCm > 0) {
+          // Last-resort wall WIDTH change (owner: height more often than
+          // width): stretch the nearest wall's end so the unit fits.
+          const wall = nearestWallTo(pl.xCm, pl.yCm);
+          if (wall) {
+            const sx = wall.getStartX();
+            const sy = wall.getStartY();
+            const ex = wall.getEndX();
+            const ey = wall.getEndY();
+            const len = Math.hypot(ex - sx, ey - sy) || 1;
+            const grow = pl.lengthenWallCm;
+            wall.getEnd().move(
+              sx + ((ex - sx) / len) * (len + grow),
+              sy + ((ey - sy) / len) * (len + grow),
+            );
+            lengthened += 1;
+          }
         }
         bp.model.scene.addItem(
           3,
@@ -803,14 +826,24 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         bulkRef.current = false;
       }, 2500);
     }
-    const bits = [
-      `${placedHere} placed`,
-      healed > 0 ? `${healed} healed` : null,
-      pull.alreadyPlaced > 0 ? `${pull.alreadyPlaced} already placed` : null,
-      otherFloors > 0 ? `${otherFloors} on other floors — switch and pull again` : null,
-      pull.noWall > 0 ? `${pull.noWall} had no wall to land on` : null,
-    ].filter(Boolean);
-    pushToast(`Pull from plans: ${bits.join(" · ")}.`);
+    const auto = (job as { autoScale?: { factor: number; longSideM: number } })
+      .autoScale;
+    window.setTimeout(() => {
+      const bits = [
+        `${placedHere} placed`,
+        healed > 0 ? `${healed} healed` : null,
+        shifted > 0 ? `${shifted} slid to fit their wall` : null,
+        lengthened > 0 ? `${lengthened} wall${lengthened === 1 ? "" : "s"} lengthened` : null,
+        bulkStatsRef.current.raised > 0
+          ? `${bulkStatsRef.current.raised} wall${bulkStatsRef.current.raised === 1 ? "" : "s"} raised`
+          : null,
+        auto ? `building auto-scaled ×${auto.factor} from specs (${Math.round(auto.longSideM)} m long side)` : null,
+        pull.alreadyPlaced > 0 ? `${pull.alreadyPlaced} already placed` : null,
+        otherFloors > 0 ? `${otherFloors} on other floors — switch and pull again` : null,
+        pull.noWall > 0 ? `${pull.noWall} had no wall to land on` : null,
+      ].filter(Boolean);
+      pushToast(`Pull from plans: ${bits.join(" · ")}.`);
+    }, 1200);
   };
 
   const reseed = () => {
@@ -961,6 +994,30 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     })) {
       obj.add(mesh);
     }
+  };
+
+  /** Nearest wall to a plan point, cm — for last-resort wall stretching. */
+  const nearestWallTo = (xCm: number, yCm: number): StudioWall | null => {
+    const bp = bpRef.current;
+    if (!bp) return null;
+    let best: StudioWall | null = null;
+    let bestD = Infinity;
+    for (const w of bp.model.floorplan.walls) {
+      const ax = w.getStartX();
+      const ay = w.getStartY();
+      const bx = w.getEndX();
+      const by = w.getEndY();
+      const dx = bx - ax;
+      const dy = by - ay;
+      const l2 = dx * dx + dy * dy || 1e-9;
+      const t = Math.max(0, Math.min(1, ((xCm - ax) * dx + (yCm - ay) * dy) / l2));
+      const d = Math.hypot(xCm - (ax + t * dx), yCm - (ay + t * dy));
+      if (d < bestD) {
+        bestD = d;
+        best = w;
+      }
+    }
+    return bestD < 200 ? best : null;
   };
 
   /** Seat a corner unit AT a wall end so its wrap leg turns down the
@@ -1756,7 +1813,9 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     if (wall.height < topCm - 1) {
       wall.height = Math.ceil(topCm);
       wall.fireRedraw?.();
-      if (!bulkRef.current) {
+      if (bulkRef.current) {
+        bulkStatsRef.current.raised += 1;
+      } else {
         pushToast(`Wall raised to ${fmtFtIn(wall.height)} to fit the unit.`);
       }
     }
