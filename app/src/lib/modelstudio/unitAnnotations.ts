@@ -14,6 +14,7 @@ import {
   cornerLegs,
   panelsWidthMm,
   rowHeightsCm,
+  slideCountOf,
   type UnitConfig,
   type UnitPanel,
 } from "./units";
@@ -42,6 +43,8 @@ export interface GlyphOp {
   y: number;
   w: number;
   h: number;
+  /** Multi-track slide count — drawn as "×n" beside the arrow when ≥2. */
+  count?: number;
 }
 
 export interface LabelOp {
@@ -117,7 +120,10 @@ export function annotationLayout(
       let y = 0;
       rows.forEach((rh) => {
         const kind = glyphFor(p);
-        if (kind) glyphs.push({ kind, x, y, w: pw, h: rh });
+        if (kind) {
+          const count = slideCountOf(p);
+          glyphs.push({ kind, x, y, w: pw, h: rh, count: count > 1 ? count : undefined });
+        }
         y += rh;
       });
       if (o.dims) {
@@ -169,64 +175,119 @@ function resolvePaint(): Paint {
   }
 }
 
-function dashed(ctx: CanvasRenderingContext2D, paint: Paint) {
-  ctx.strokeStyle = paint.accent;
-  ctx.lineWidth = 2.4;
-  ctx.setLineDash([9, 7.5]); // the map's 3/2.5 at 3x
-  ctx.globalAlpha = 0.7;
+/** Dark halo behind every glyph stroke — the owner's redesign (2026-08-14:
+ * the dashed arrows were "not obvious, and are hard to see"): each shape is
+ * stroked twice, a fat dark underlay then the opaque accent on top, so it
+ * reads against glass, sky and framing alike. */
+const HALO = "rgba(10, 8, 6, 0.85)";
+
+function strokeBold(ctx: CanvasRenderingContext2D, accent: string, trace: () => void) {
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = HALO;
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  trace();
+  ctx.stroke();
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 3.5;
+  ctx.beginPath();
+  trace();
+  ctx.stroke();
+}
+
+/** Filled chevron arrowhead at (tipX, tipY) pointing along dir (±1 in x). */
+function fillHead(
+  ctx: CanvasRenderingContext2D,
+  accent: string,
+  tipX: number,
+  tipY: number,
+  dx: number,
+  dy: number,
+) {
+  const trace = () => {
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(tipX - dx * 16 - dy * 9, tipY - dy * 16 + dx * 9);
+    ctx.lineTo(tipX - dx * 16 + dy * 9, tipY - dy * 16 - dx * 9);
+    ctx.closePath();
+  };
+  ctx.globalAlpha = 1;
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = HALO;
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  trace();
+  ctx.stroke();
+  ctx.fillStyle = accent;
+  ctx.beginPath();
+  trace();
+  ctx.fill();
+}
+
+/** Halo-backed text — the same two-pass trick for letters and ×n badges. */
+function boldText(
+  ctx: CanvasRenderingContext2D,
+  accent: string,
+  text: string,
+  x: number,
+  y: number,
+  fontPx: number,
+) {
+  ctx.globalAlpha = 1;
+  ctx.font = `700 ${fontPx}px ui-monospace, monospace`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = HALO;
+  ctx.lineWidth = 5;
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = accent;
+  ctx.fillText(text, x, y);
 }
 
 function drawGlyph(ctx: CanvasRenderingContext2D, g: GlyphOp, paint: Paint) {
   const px = (v: number) => v * PX_PER_CM;
   const cx = px(g.x + g.w / 2);
   const cy = px(CHIP_BAND_CM + g.y + g.h / 2);
-  const a = Math.min(px(g.w), px(g.h)) * 0.26;
+  // Minimum size floor: a small pane still gets a legible arrow.
+  const a = Math.max(16, Math.min(px(g.w), px(g.h)) * 0.3);
   ctx.save();
   if (g.kind === "fixed") {
-    ctx.fillStyle = paint.accent;
-    ctx.globalAlpha = 0.75;
-    ctx.font = `600 ${Math.max(16, a * 0.9)}px ui-monospace, monospace`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("F", cx, cy);
+    boldText(ctx, paint.accent, "F", cx, cy, Math.max(22, a * 0.9));
     ctx.restore();
     return;
   }
-  dashed(ctx, paint);
-  ctx.beginPath();
   if (g.kind === "arrow-left" || g.kind === "arrow-right") {
     const dir = g.kind === "arrow-left" ? -1 : 1;
-    ctx.moveTo(cx - a * dir, cy);
-    ctx.lineTo(cx + a * dir, cy);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.setLineDash([]);
-    ctx.moveTo(cx + a * dir, cy);
-    ctx.lineTo(cx + a * dir - 10 * dir, cy - 7);
-    ctx.moveTo(cx + a * dir, cy);
-    ctx.lineTo(cx + a * dir - 10 * dir, cy + 7);
-    ctx.stroke();
+    strokeBold(ctx, paint.accent, () => {
+      ctx.moveTo(cx - a * dir, cy);
+      ctx.lineTo(cx + (a - 12) * dir, cy);
+    });
+    fillHead(ctx, paint.accent, cx + a * dir, cy, dir, 0);
+    if (g.count && g.count > 1) {
+      // Multi-track: ×n rides above the shaft, clear of the head.
+      boldText(ctx, paint.accent, `×${g.count}`, cx - 4 * dir, cy - 20, 17);
+    }
   } else if (g.kind === "hinge-left" || g.kind === "hinge-right") {
-    // Dashed sight-lines converging at the hinge side (trade standard).
-    const hingeX = g.kind === "hinge-left" ? px(g.x) + 3 : px(g.x + g.w) - 3;
-    const farX = g.kind === "hinge-left" ? px(g.x + g.w) - 3 : px(g.x) + 3;
-    const top = px(CHIP_BAND_CM + g.y) + 3;
-    const bot = px(CHIP_BAND_CM + g.y + g.h) - 3;
-    ctx.moveTo(farX, top);
-    ctx.lineTo(hingeX, cy);
-    ctx.lineTo(farX, bot);
-    ctx.stroke();
+    // Sight-lines converging at the hinge side (trade standard), now
+    // solid + haloed so the V reads at a glance.
+    const hingeX = g.kind === "hinge-left" ? px(g.x) + 5 : px(g.x + g.w) - 5;
+    const farX = g.kind === "hinge-left" ? px(g.x + g.w) - 5 : px(g.x) + 5;
+    const top = px(CHIP_BAND_CM + g.y) + 5;
+    const bot = px(CHIP_BAND_CM + g.y + g.h) - 5;
+    strokeBold(ctx, paint.accent, () => {
+      ctx.moveTo(farX, top);
+      ctx.lineTo(hingeX, cy);
+      ctx.lineTo(farX, bot);
+    });
   } else if (g.kind === "up-arrow") {
-    ctx.moveTo(cx, cy + a);
-    ctx.lineTo(cx, cy - a);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.setLineDash([]);
-    ctx.moveTo(cx, cy - a);
-    ctx.lineTo(cx - 7, cy - a + 10);
-    ctx.moveTo(cx, cy - a);
-    ctx.lineTo(cx + 7, cy - a + 10);
-    ctx.stroke();
+    strokeBold(ctx, paint.accent, () => {
+      ctx.moveTo(cx, cy + a);
+      ctx.lineTo(cx, cy - a + 12);
+    });
+    fillHead(ctx, paint.accent, cx, cy - a, 0, -1);
   }
   ctx.restore();
 }

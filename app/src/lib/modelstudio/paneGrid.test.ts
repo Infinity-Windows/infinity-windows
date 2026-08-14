@@ -3,8 +3,10 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  applyPanePreset,
   setColumnWidthMm,
   setRowHeightMm,
+  slideCountOf,
   specToUnitConfig,
   splitColumn,
   splitRow,
@@ -107,5 +109,60 @@ describe("pane grid ops", () => {
     const next = splitRow(CFG, 0);
     expect(next.rows).toEqual([{ heightMm: 1000 }, { heightMm: 1000 }]);
     expect(next.heightMm).toBe(2000);
+  });
+});
+
+describe("pane presets (pairs)", () => {
+  const three: UnitConfig = {
+    kind: "window",
+    heightMm: 1800,
+    panels: [
+      { widthMm: 900, mechanism: "fixed" },
+      { widthMm: 900, mechanism: "fixed" },
+      { widthMm: 900, mechanism: "fixed" },
+    ],
+  };
+
+  it("middle-pair: selected pane slides left, its neighbour slides right", () => {
+    const next = applyPanePreset(three, 1, "middle-pair");
+    expect(next.panels[1]).toMatchObject({ mechanism: "slider", direction: "left" });
+    expect(next.panels[2]).toMatchObject({ mechanism: "slider", direction: "right" });
+    expect(next.panels[0].mechanism).toBe("fixed");
+  });
+
+  it("french-pair hinges at the outer stiles", () => {
+    const next = applyPanePreset(three, 0, "french-pair");
+    expect(next.panels[0]).toMatchObject({ mechanism: "casement", direction: "left" });
+    expect(next.panels[1]).toMatchObject({ mechanism: "casement", direction: "right" });
+  });
+
+  it("splits a single-panel unit in half first; last-column picks clamp back", () => {
+    const one: UnitConfig = {
+      kind: "window",
+      heightMm: 1500,
+      panels: [{ widthMm: 1600, mechanism: "fixed" }],
+    };
+    const next = applyPanePreset(one, 0, "middle-pair");
+    expect(next.panels).toHaveLength(2);
+    expect(next.panels.map((p) => p.widthMm)).toEqual([800, 800]);
+    expect(next.panels[0].direction).toBe("left");
+    expect(next.panels[1].direction).toBe("right");
+    // Selecting the LAST column pairs with the neighbour on its left.
+    const last = applyPanePreset(three, 2, "french-pair");
+    expect(last.panels[1].direction).toBe("left");
+    expect(last.panels[2].direction).toBe("right");
+  });
+});
+
+describe("slideCountOf", () => {
+  it("clamps to 1–8 and only applies to sliders", () => {
+    const s = (slideCount?: number) =>
+      slideCountOf({ widthMm: 900, mechanism: "slider", direction: "left", slideCount });
+    expect(s()).toBe(1);
+    expect(s(3)).toBe(3);
+    expect(s(0)).toBe(1);
+    expect(s(99)).toBe(8);
+    expect(s(Number.NaN)).toBe(1);
+    expect(slideCountOf({ widthMm: 900, mechanism: "casement", slideCount: 5 })).toBe(1);
   });
 });

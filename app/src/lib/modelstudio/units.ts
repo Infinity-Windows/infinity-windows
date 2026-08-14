@@ -15,6 +15,19 @@ export interface UnitPanel {
   mechanism: Mechanism;
   /** Which way a moving panel slides/folds. Meaningless for fixed/hung. */
   direction?: SlideDirection;
+  /**
+   * How many panel-widths a SLIDING pane travels (owner, 2026-08-14: "i
+   * should be able to select up to 8 times that a window can slide" —
+   * multi-track stacks). 1–8; absent = 1, ignored off sliders.
+   */
+  slideCount?: number;
+}
+
+/** Clamp a panel's slide count into the buildable 1–8 range. */
+export function slideCountOf(p: UnitPanel): number {
+  if (p.mechanism !== "slider") return 1;
+  const n = Math.round(p.slideCount ?? 1);
+  return Math.min(8, Math.max(1, Number.isFinite(n) ? n : 1));
 }
 
 export interface UnitConfig {
@@ -96,6 +109,42 @@ export function splitRow(c: UnitConfig, row: number): UnitConfig {
   return {
     ...c,
     rows: [...rows.slice(0, row), half, { ...half }, ...rows.slice(row + 1)],
+  };
+}
+
+export type PanePresetKind = "middle-pair" | "french-pair";
+
+/**
+ * Preset PAIRS (owner, 2026-08-14: "on some windows they will start in the
+ * middle and slide out... i need the option to have a casement hinge left
+ * and right"). Applied to the selected pane and its right-hand neighbour
+ * (outside view):
+ *
+ * - middle-pair: the two panels meet in the middle and slide APART — left
+ *   panel opens left, right panel opens right.
+ * - french-pair: French casements — hinged on their OUTER stiles, both
+ *   free edges meeting in the middle.
+ *
+ * A single-panel unit is split in half first; a selection on the last
+ * column pairs with the neighbour on its left instead.
+ */
+export function applyPanePreset(
+  c: UnitConfig,
+  col: number,
+  kind: PanePresetKind,
+): UnitConfig {
+  const next = c.panels.length === 1 ? splitColumn(c, 0) : c;
+  const left = Math.max(0, Math.min(col, next.panels.length - 2));
+  const mechanism: Mechanism = kind === "middle-pair" ? "slider" : "casement";
+  return {
+    ...next,
+    panels: next.panels.map((p, i) =>
+      i === left
+        ? { ...p, mechanism, direction: "left" as const }
+        : i === left + 1
+          ? { ...p, mechanism, direction: "right" as const }
+          : p,
+    ),
   };
 }
 
