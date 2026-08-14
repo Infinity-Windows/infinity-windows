@@ -137,7 +137,15 @@ export class HalfEdge {
     geometry.computeVertexNormals()
     geometry.computeBoundingBox()
 
-    this.plane = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial())
+    // infinity: DoubleSide so the ray can hit this invisible collision plane
+    // from either side. Walls render always-visible now (see three/edge.ts),
+    // so the wall under the mouse must catch the ray even when its interior
+    // faces away from the camera — the default FrontSide material let the
+    // raycaster cull it, and drags/clicks landed on the wall ACROSS the room.
+    this.plane = new THREE.Mesh(
+      geometry,
+      new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })
+    )
     this.plane.visible = false
     ;(this.plane as any).edge = this // js monkey patch
 

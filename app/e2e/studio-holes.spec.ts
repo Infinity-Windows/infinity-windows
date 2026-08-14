@@ -723,6 +723,162 @@ test("polish: first tap selects (no hover), highlight appears, legacy windows he
   await expect(page.getByText(/Panes — tap one/)).toBeVisible();
 });
 
+test("outside wall click selects the NEAR wall and glows it blue", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useOutline(page, { fitview: { model: FITVIEW_MODEL } });
+  await openStudio(page);
+
+  // Aim from OUTSIDE the south side at mass A's south wall (z=600): the
+  // wall the camera faces. Pre-fix, its pick plane was backface-culled and
+  // the click either selected the NORTH wall across the room or nothing.
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const c = bp.three.controls;
+    c.object.position.set(500, 260, 1500);
+    c.target?.set?.(500, 130, 300);
+    c.update?.();
+  });
+  await page.waitForTimeout(250);
+
+  const target = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const cam = bp.three.camera;
+    cam.updateMatrixWorld();
+    // Project the south wall's midpoint at half height.
+    const v = bp.model.scene.getItems === undefined ? null : null;
+    void v;
+    const p = new (bp.three.camera.position.constructor)(500, 125, 600);
+    p.project(cam);
+    const r = bp.three.element.getBoundingClientRect();
+    return {
+      x: r.left + ((p.x + 1) / 2) * r.width,
+      y: r.top + ((1 - p.y) / 2) * r.height,
+    };
+  });
+  const { x, y } = target as { x: number; y: number };
+  // Synthetic still click (no hover needed for our fallback).
+  await page.evaluate(
+    ([px, py]) => {
+      const el = (window as any).__studio.three.element;
+      const opts = { bubbles: true, clientX: px, clientY: py, button: 0 };
+      el.dispatchEvent(new MouseEvent("mousedown", opts));
+      el.dispatchEvent(new MouseEvent("mouseup", opts));
+    },
+    [x, y] as [number, number],
+  );
+
+  const picked = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const scene = bp.model.scene.getScene();
+    const glow = scene.children.filter((c: any) => c.name === "studio-wall-highlight");
+    return { glow: glow.length };
+  });
+  expect(picked.glow).toBeGreaterThan(0);
+  // The selected wall is the SOUTH one (z=600 line), not the north.
+  await expect(page.getByText("Selected wall")).toBeVisible();
+  const wallLine = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const scene = bp.model.scene.getScene();
+    const glow = scene.children.find((c: any) => c.name === "studio-wall-highlight");
+    if (!glow) return null;
+    glow.geometry.computeBoundingBox();
+    const b = glow.geometry.boundingBox;
+    return (b.min.z + b.max.z) / 2;
+  });
+  expect(Math.abs((wallLine as number) - 600)).toBeLessThan(20);
+});
+
+test("dragging a window lands it on the wall under the mouse, not across the room", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useOutline(page, { fitview: { model: FITVIEW_MODEL } });
+  await openStudio(page);
+
+  // Unit starts on mass A's NORTH wall (z=0).
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    bp.model.scene.addItem(
+      3,
+      "/modelstudio/models/window.json",
+      {
+        itemName: "E2E drag unit",
+        itemType: 3,
+        modelUrl: "/modelstudio/models/window.json",
+        unitConfig: {
+          kind: "window",
+          heightMm: 1500,
+          panels: [{ widthMm: 1200, mechanism: "fixed" }],
+        },
+      },
+      { x: 500, y: 120, z: 0 },
+      0,
+      undefined,
+      false,
+    );
+  });
+  await page.waitForFunction(() => {
+    const bp = (window as any).__studio;
+    const items = bp.model.scene.getItems();
+    return items.length === 1 && Boolean(items[0].currentWallEdge);
+  });
+
+  // Camera outside the SOUTH side, both walls in view; the south wall is
+  // the near one under the mouse when we drop there.
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const c = bp.three.controls;
+    c.object.position.set(500, 300, 1600);
+    c.target?.set?.(500, 120, 300);
+    c.update?.();
+  });
+  await page.waitForTimeout(250);
+
+  const proj = async (wx: number, wy: number, wz: number) =>
+    page.evaluate(
+      ([a, b, cc]) => {
+        const bp = (window as any).__studio;
+        const cam = bp.three.camera;
+        cam.updateMatrixWorld();
+        const p = new (bp.three.camera.position.constructor)(a, b, cc);
+        p.project(cam);
+        const r = bp.three.element.getBoundingClientRect();
+        return {
+          x: r.left + ((p.x + 1) / 2) * r.width,
+          y: r.top + ((1 - p.y) / 2) * r.height,
+        };
+      },
+      [wx, wy, wz] as [number, number, number],
+    );
+
+  const from = (await proj(500, 120, 0)) as { x: number; y: number };
+  const to = (await proj(430, 125, 600)) as { x: number; y: number };
+  // Real mouse drag: hover establishes the vendor's intersected item, then
+  // drag onto the SOUTH wall's face.
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.move(from.x, from.y, { steps: 2 });
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 14 });
+  await page.mouse.up();
+
+  const landed = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const item = bp.model.scene.getItems()[0];
+    const w = item.currentWallEdge?.wall;
+    return w
+      ? { z1: w.getStartY(), z2: w.getEndY(), itemZ: item.position.z }
+      : null;
+  });
+  expect(landed).not.toBeNull();
+  // Attached to the SOUTH wall (z=600) — the one the mouse hovered — not
+  // back on the north wall across the room.
+  const l = landed as { z1: number; z2: number; itemZ: number };
+  expect(Math.abs(l.z1 - 600)).toBeLessThan(20);
+  expect(Math.abs(l.z2 - 600)).toBeLessThan(20);
+});
+
 test("a fresh seed never mints twin walls", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "supervisor" });
   // No saved Studio model: the tab seeds from the traced building.
