@@ -5,10 +5,12 @@ import { describe, expect, it } from "vitest";
 import {
   setColumnWidthMm,
   setRowHeightMm,
+  specToUnitConfig,
   splitColumn,
   splitRow,
   type UnitConfig,
 } from "./units";
+import type { ProjectMarkSpec } from "../install/specs";
 
 const CFG: UnitConfig = {
   kind: "window",
@@ -19,6 +21,63 @@ const CFG: UnitConfig = {
   ],
   cornerAfterPanel: 0,
 };
+
+describe("specToUnitConfig with drawing-read panels", () => {
+  const base: ProjectMarkSpec = {
+    mark_code: "16", style: "Fixed Window", glass: null, color: null,
+    size_code: null, width_in: 313.5, height_in: 179.5, operation: "Fixed",
+    tempered: null, egress: null, u_factor: null, shgc: null, grids: null,
+    screen: null, product_line: null, extra: null, image_page: null,
+    image_bbox: null, planset_id: null, confirmed: false, source: "ai",
+    id: "s16", project_id: "p", created_at: "", updated_at: "",
+  };
+
+  it("prefers extra.panels — window 16 arrives with its exact five widths", () => {
+    const spec: ProjectMarkSpec = {
+      ...base,
+      extra: {
+        panels: [
+          { width_in: 30.25, op: "F" },
+          { width_in: 88.5, op: "F" },
+          { width_in: 90, op: "F" },
+          { width_in: 87.75, op: "F" },
+          { width_in: 17, op: "F" },
+        ],
+        corner: { after_panel: 0, side: "left" },
+      },
+    };
+    const cfg = specToUnitConfig(spec)!;
+    expect(cfg.panels).toHaveLength(5);
+    expect(cfg.panels[0].widthMm).toBeCloseTo(30.25 * 25.4, 1);
+    expect(cfg.panels.every((p) => p.mechanism === "fixed")).toBe(true);
+    expect(cfg.cornerAfterPanel).toBe(0);
+  });
+
+  it("marks X panels operable and derives a side-only corner", () => {
+    const spec: ProjectMarkSpec = {
+      ...base,
+      operation: "XO",
+      extra: {
+        panels: [
+          { width_in: 36, op: "X" },
+          { width_in: 36, op: "O" },
+          { width_in: 36, op: "O" },
+        ],
+        corner: { side: "right" },
+      },
+    };
+    const cfg = specToUnitConfig(spec)!;
+    expect(cfg.panels[0].mechanism).toBe("slider");
+    expect(cfg.panels[1].mechanism).toBe("fixed");
+    expect(cfg.cornerAfterPanel).toBe(1); // right side ⇒ before the last panel
+  });
+
+  it("falls back to operation splitting when the drawing gave no panels", () => {
+    const cfg = specToUnitConfig({ ...base, operation: "XO", width_in: 72, height_in: 48 })!;
+    expect(cfg.panels).toHaveLength(2);
+    expect(cfg.panels[0].widthMm).toBeCloseTo(cfg.panels[1].widthMm, 6);
+  });
+});
 
 describe("pane grid ops", () => {
   it("typing a pane's width resizes its whole column; total follows", () => {

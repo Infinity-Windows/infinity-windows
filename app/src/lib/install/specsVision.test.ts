@@ -162,6 +162,39 @@ describe("prepVisionSpec", () => {
     });
     expect(prepped.glass).toMatch(/Low-E 366/);
   });
+
+  it("keeps per-panel widths verbatim with parsed inches and ops (window 16)", () => {
+    const prepped = prepVisionSpec({
+      mark: "#16",
+      style: "Fixed Window",
+      size_code: null,
+      operation: "Fixed",
+      panel_widths: ['768(30 1/4")', '2248(88 1/2")', '2286(90")', '2229(87 3/4")', '432(17")'],
+      panel_ops: ["F", "F", "F", "F", "F"],
+      corner: { after_panel: 0, side: "left" },
+    } as RawVisionMark);
+    const extra = prepped.extra as {
+      panels: { printed: string; width_in: number | null; op: string | null }[];
+      corner: { after_panel: number; side: string };
+    };
+    expect(extra.panels).toHaveLength(5);
+    expect(extra.panels[0]).toEqual({ printed: '768(30 1/4")', width_in: 30.25, op: "F" });
+    expect(extra.panels[2].width_in).toBe(90);
+    expect(extra.corner).toEqual({ after_panel: 0, side: "left" });
+  });
+
+  it("drops the panel set when any width fails to parse, keeps a valid corner", () => {
+    const prepped = prepVisionSpec({
+      mark: "#7",
+      style: "Sliding",
+      size_code: "6080",
+      operation: "XO",
+      panel_widths: ['914(36")', "smudged"],
+      corner: { after_panel: 99, side: "left" },
+    } as RawVisionMark);
+    // Both rejected (unparsed width, after_panel out of range) → extra empty.
+    expect(prepped.extra).toBeNull();
+  });
 });
 
 describe("visionMarksToDrafts (proven page-1 output)", () => {
