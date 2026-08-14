@@ -879,6 +879,97 @@ test("dragging a window lands it on the wall under the mouse, not across the roo
   expect(Math.abs(l.z2 - 600)).toBeLessThan(20);
 });
 
+test("glyph overlay: arrows/F always, dims on selection, pane-op flips it", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useOutline(page, { fitview: { model: FITVIEW_MODEL } });
+  await openStudio(page);
+
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    bp.model.scene.addItem(
+      3,
+      "/modelstudio/models/window.json",
+      {
+        itemName: "16",
+        itemType: 3,
+        modelUrl: "/modelstudio/models/window.json",
+        unitConfig: {
+          kind: "window",
+          heightMm: 1800,
+          panels: [
+            { widthMm: 1200, mechanism: "slider", direction: "left" },
+            { widthMm: 1200, mechanism: "fixed" },
+          ],
+        },
+      },
+      { x: 900, y: 150, z: 600 },
+      0,
+      undefined,
+      false,
+    );
+  });
+  await page.waitForFunction(() => {
+    const bp = (window as any).__studio;
+    const items = bp.model.scene.getItems();
+    return items.length === 1 && Boolean(items[0].currentWallEdge);
+  });
+
+  const paintedPixels = () =>
+    page.evaluate(() => {
+      const bp = (window as any).__studio;
+      const item = bp.model.scene.getItems()[0];
+      const ann = item.children.find((c: any) => c.name === "unit-annotations");
+      if (!ann) return -1;
+      const canvas = ann.material.map.image as HTMLCanvasElement;
+      const ctx = canvas.getContext("2d")!;
+      const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let n = 0;
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 10) n++;
+      return n;
+    });
+
+  // Unselected: glyphs + mark chip painted.
+  const base = await paintedPixels();
+  expect(base).toBeGreaterThan(100);
+
+  // Select it (synthetic still tap) — measurement labels join the paint.
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const cam = bp.three.camera;
+    cam.updateMatrixWorld();
+    const v = bp.model.scene.getItems()[0].position.clone();
+    v.project(cam);
+    const r = bp.three.element.getBoundingClientRect();
+    const opts = {
+      bubbles: true,
+      clientX: r.left + ((v.x + 1) / 2) * r.width,
+      clientY: r.top + ((1 - v.y) / 2) * r.height,
+      button: 0,
+    };
+    bp.three.element.dispatchEvent(new MouseEvent("mousedown", opts));
+    bp.three.element.dispatchEvent(new MouseEvent("mouseup", opts));
+  });
+  await expect(page.getByText("Selected unit")).toBeVisible();
+  const withDims = await paintedPixels();
+  expect(withDims).toBeGreaterThan(base);
+
+  // Pane options: tap pane 1·1 and make it Fixed — config + glyphs update.
+  await page.locator(".studio-pane-cell").first().click();
+  await page.getByRole("button", { name: "F Fixed" }).click();
+  const cfg = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    return bp.model.scene.getItems()[0].metadata.unitConfig.panels[0];
+  });
+  expect((cfg as { mechanism: string }).mechanism).toBe("fixed");
+
+  mkdirSync(SHOTS, { recursive: true });
+  await page
+    .locator("#studio-three canvas")
+    .screenshot({ path: join(SHOTS, "glyph-overlay.png") });
+});
+
 test("a fresh seed never mints twin walls", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "supervisor" });
   // No saved Studio model: the tab seeds from the traced building.

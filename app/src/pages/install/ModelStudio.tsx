@@ -54,6 +54,7 @@ import {
   type UnitHandleKind,
   type WallHandleKind,
 } from "../../lib/modelstudio/handles3d";
+import { buildUnitAnnotations } from "../../lib/modelstudio/unitAnnotations";
 import type { StudioItem } from "../../lib/modelstudio/core";
 import {
   listStudioUnits,
@@ -67,6 +68,7 @@ import {
   unitSvg,
   type StudioUnit,
   type UnitConfig,
+  type UnitPanel,
 } from "../../lib/modelstudio/units";
 import { fmtInchesFromMm } from "../../lib/modelstudio/dims";
 import { supabase } from "../../lib/supabase";
@@ -780,7 +782,31 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       item.metadata.unitConfig = config;
       if (frameGapMm != null) item.metadata.frameGapMm = frameGapMm;
     }
+    setUnitAnnotations(item, selUnitRef.current === item);
     item.redrawWall?.();
+  };
+
+  /** Repaint a unit's glyph/label overlay (map parity): operation glyphs
+   * and the mark chip ALWAYS, measurements only while selected (owner
+   * pick). Children ride the item, so placement is free. */
+  const setUnitAnnotations = (item: StudioItem, dims: boolean) => {
+    const obj = item as unknown as THREE.Object3D;
+    const cfg = item.metadata?.unitConfig as UnitConfig | undefined;
+    for (const child of [...obj.children]) {
+      if (child.name !== "unit-annotations") continue;
+      obj.remove(child);
+      const mesh = child as THREE.Mesh;
+      (mesh.material as THREE.MeshBasicMaterial).map?.dispose();
+      (mesh.material as THREE.Material).dispose();
+      mesh.geometry.dispose();
+    }
+    if (!cfg?.panels?.length) return;
+    for (const mesh of buildUnitAnnotations(cfg, {
+      mark: (item.metadata?.itemName as string | undefined) ?? null,
+      dims,
+    })) {
+      obj.add(mesh);
+    }
   };
 
   /** Seat a corner unit AT a wall end so its wrap leg turns down the
@@ -989,6 +1015,8 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   const highlightRef = useRef<THREE.BoxHelper | null>(null);
   /** Blue translucent quads on the selected wall (one per pick plane). */
   const wallHighlightRef = useRef<THREE.Mesh[]>([]);
+  /** The unit currently wearing measurement labels (dims-on-selection). */
+  const prevAnnotatedRef = useRef<StudioItem | null>(null);
 
   /** Re-park the handle spheres on the current selection. */
   const refreshHandles = () => {
@@ -1066,6 +1094,23 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           wallHighlightRef.current.push(m);
         }
       }
+      // Measurements ride the SELECTED unit only (marks always) — repaint
+      // the one losing selection and the one gaining it.
+      if (prevAnnotatedRef.current && prevAnnotatedRef.current !== item) {
+        try {
+          setUnitAnnotations(prevAnnotatedRef.current, false);
+        } catch {
+          /* item since removed */
+        }
+      }
+      if (item) {
+        try {
+          setUnitAnnotations(item, true);
+        } catch {
+          /* mid-rebuild */
+        }
+      }
+      prevAnnotatedRef.current = item;
       bp.three.getController().needsUpdate = true;
     }
     if (item) {
@@ -1870,6 +1915,78 @@ export function ModelStudio({ source }: { source: StudioSource }) {
                           }}
                         />
                       </div>
+                      {(() => {
+                        const col = cfg.panels[pane.col];
+                        const setOp = (
+                          mechanism: UnitPanel["mechanism"],
+                          direction?: "left" | "right",
+                        ) =>
+                          applyGridChange({
+                            ...cfg,
+                            panels: cfg.panels.map((pp, i) =>
+                              i === pane.col ? { ...pp, mechanism, direction } : pp,
+                            ),
+                          });
+                        const isOp = (m: string, d?: string) =>
+                          col.mechanism === m && (d === undefined || col.direction === d);
+                        return (
+                          <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 4 }}>
+                            <button
+                              className={
+                                isOp("slider", "left") || isOp("bifold", "left")
+                                  ? "button-like studio-mini active-pill"
+                                  : "button-like studio-mini"
+                              }
+                              title="This panel slides open to the left"
+                              onClick={() => setOp(col.mechanism === "bifold" ? "bifold" : "slider", "left")}
+                            >
+                              ← Opens left
+                            </button>
+                            <button
+                              className={
+                                isOp("slider", "right") || isOp("bifold", "right")
+                                  ? "button-like studio-mini active-pill"
+                                  : "button-like studio-mini"
+                              }
+                              title="This panel slides open to the right"
+                              onClick={() => setOp(col.mechanism === "bifold" ? "bifold" : "slider", "right")}
+                            >
+                              Opens right →
+                            </button>
+                            <button
+                              className={
+                                isOp("fixed")
+                                  ? "button-like studio-mini active-pill"
+                                  : "button-like studio-mini"
+                              }
+                              title="This panel doesn't move"
+                              onClick={() => setOp("fixed", undefined)}
+                            >
+                              F Fixed
+                            </button>
+                            <select
+                              aria-label="More mechanisms"
+                              className="studio-mini"
+                              value=""
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v === "casement-l") setOp("casement", "left");
+                                else if (v === "casement-r") setOp("casement", "right");
+                                else if (v === "hung") setOp("hung", undefined);
+                                else if (v === "bifold-l") setOp("bifold", "left");
+                                else if (v === "bifold-r") setOp("bifold", "right");
+                              }}
+                            >
+                              <option value="">More…</option>
+                              <option value="casement-l">Casement (hinge left)</option>
+                              <option value="casement-r">Casement (hinge right)</option>
+                              <option value="hung">Single-hung</option>
+                              <option value="bifold-l">Bi-fold left</option>
+                              <option value="bifold-r">Bi-fold right</option>
+                            </select>
+                          </div>
+                        );
+                      })()}
                       <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 4 }}>
                         <button
                           className="button-like studio-mini"
