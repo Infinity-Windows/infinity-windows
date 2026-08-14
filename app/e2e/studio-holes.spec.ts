@@ -90,13 +90,16 @@ function twinWallPlan(): string {
   });
 }
 
-function outlineRow(features: Record<string, unknown>) {
+function outlineRow(
+  features: Record<string, unknown>,
+  points: { x: number; y: number }[] = [],
+) {
   return {
     id: "00000000-0000-4000-8000-00000000531d",
     project_id: BLACK22.projectId,
     planset_id: null,
     page_number: 1,
-    points: [],
+    points,
     page_aspect: 0.7,
     features,
     created_at: "2026-01-01T00:00:00Z",
@@ -105,12 +108,14 @@ function outlineRow(features: Record<string, unknown>) {
 }
 
 /** Serve one synthetic outline row; registered AFTER the fixture router so
- * it wins (Playwright matches routes newest-first). */
+ * it wins (Playwright matches routes newest-first). Pass `points` to give
+ * the job a real TRACE — what "Pull from plans" reads. */
 async function useOutline(
   page: import("@playwright/test").Page,
   features: Record<string, unknown>,
+  points: { x: number; y: number }[] = [],
 ) {
-  const row = outlineRow(features);
+  const row = outlineRow(features, points);
   await page.route("**/rest/v1/project_plan_outlines**", (route) =>
     route.fulfill({
       status: 200,
@@ -970,26 +975,36 @@ test("glyph overlay: arrows/F always, dims on selection, pane-op flips it", asyn
     .screenshot({ path: join(SHOTS, "glyph-overlay.png") });
 });
 
-test("Pull from plans places specced marks; re-pull adds nothing", async ({
+test("Pull from plans reads the PLANS — a published model never caps it", async ({
   page,
 }) => {
   await useSupabaseFixtures(page, { role: "supervisor" });
-  // A model with two plan windows: mark 16 (real BLACK22 spec fixture:
-  // 313.5" × 179.5" Fixed) and an un-specced mark 99.
-  await useOutline(page, {
-    fitview: {
-      model: {
-        ...FITVIEW_MODEL,
-        windows: [
-          { id: "16-1", elev: "s2", x: 1, y: 0.3, w: 7962, h: 4559 },
-          { id: "99-1", elev: "s0", x: 3, y: 0.9, w: 1200, h: 1200 },
-        ],
+  // The BLACK22 bug, re-staged: a published (authored) model with ONE
+  // window sits on the outline, while the TRACE + the job's 42 pinned
+  // openings describe the real building. The pull must come from the
+  // plans — every pinned opening — not echo the publish back.
+  await useOutline(
+    page,
+    {
+      fitview: {
+        model: {
+          ...FITVIEW_MODEL,
+          windows: [{ id: "decoy", elev: "s0", x: 1, y: 1, w: 1000, h: 1000 }],
+        },
       },
     },
-  });
+    // A trace covering the fixture pins' page area (pins span roughly
+    // x 0.13–0.65, y 0.20–0.82) so every opening lands on an edge.
+    [
+      { x: 0.1, y: 0.15 },
+      { x: 0.7, y: 0.15 },
+      { x: 0.7, y: 0.9 },
+      { x: 0.1, y: 0.9 },
+    ],
+  );
   await openStudio(page);
-  // The seed already placed both marks as generics; this test wants the
-  // PULL to do the work — clear the scene first.
+  // The seed pre-places a handful of marks; this test wants the PULL to do
+  // the work — clear the scene first.
   await page.evaluate(() => {
     const bp = (window as any).__studio;
     for (const it of [...bp.model.scene.getItems()]) bp.model.scene.removeItem(it);
@@ -997,13 +1012,19 @@ test("Pull from plans places specced marks; re-pull adds nothing", async ({
 
   await page.getByRole("button", { name: /Tools/ }).click();
   await page.getByRole("button", { name: "Pull from plans", exact: true }).click();
-  await page.waitForFunction(() => {
-    const bp = (window as any).__studio;
-    const items = bp.model.scene.getItems();
-    return (
-      items.length === 2 && items.every((it: any) => Boolean(it.currentWallEdge))
-    );
-  });
+  // All 42 pinned BLACK22 openings arrive and attach — not the model's 1.
+  await page.waitForFunction(
+    () => {
+      const bp = (window as any).__studio;
+      const items = bp.model.scene.getItems();
+      return (
+        items.length === 42 &&
+        items.every((it: any) => Boolean(it.currentWallEdge))
+      );
+    },
+    undefined,
+    { timeout: 60_000 },
+  );
 
   const placed = await page.evaluate(() => {
     const bp = (window as any).__studio;
@@ -1013,28 +1034,27 @@ test("Pull from plans places specced marks; re-pull adds nothing", async ({
         (t: number, p: any) => t + p.widthMm,
         0,
       ),
-      panels: it.metadata.unitConfig.panels.length,
     }));
   });
-  const sixteen = (placed as { name: string; widthMm: number }[]).find(
-    (p) => p.name === "16-1",
+  const names = (placed as { name: string }[]).map((p) => p.name);
+  expect(names).not.toContain("decoy"); // the publish is not a source
+  // Mark 16 lands SPEC-exact (313.5in = 7962.9mm), parametric.
+  const sixteen = (placed as { name: string; widthMm: number }[]).find((p) =>
+    /^16([^0-9]|$)/.test(p.name),
   )!;
-  // Spec-exact: 313.5in = 7962.9mm.
   expect(sixteen.widthMm).toBeGreaterThan(7900);
   expect(sixteen.widthMm).toBeLessThan(8000);
-  const ninetynine = (placed as { name: string; widthMm: number }[]).find(
-    (p) => p.name === "99-1",
-  )!;
-  expect(ninetynine.widthMm).toBe(1200); // plan-size fallback, still parametric
 
   // Re-pull: add-only — nothing new, nothing moved.
   await page.getByRole("button", { name: "Pull from plans", exact: true }).click();
-  await expect(page.getByText(/2 already placed/)).toBeVisible();
+  await expect(page.getByText(/42 already placed/)).toBeVisible({
+    timeout: 15_000,
+  });
   const count = await page.evaluate(() => {
     const bp = (window as any).__studio;
     return bp.model.scene.getItems().length;
   });
-  expect(count).toBe(2);
+  expect(count).toBe(42);
 });
 
 test("animation: ▶ opens the slider, toggling closes it; dbl-click refocuses", async ({
