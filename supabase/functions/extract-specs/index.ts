@@ -160,6 +160,15 @@ interface RawVisionMark {
    */
   printed_width: string | null;
   printed_height: string | null;
+  /** Per-panel widths transcribed LEFT TO RIGHT off the drawing (outside
+   * view), verbatim — e.g. ["768(30 1/4\")", "2248(88 1/2\")"]. Null when
+   * only the overall width is printed. */
+  panel_widths: string[] | null;
+  /** Per-panel operation letters left to right ("X" operable, "O"/"F"
+   * fixed), matching panel_widths. */
+  panel_ops: string[] | null;
+  /** 90° corner wrap read off the drawing, when marked. */
+  corner: { after_panel: number; side: "left" | "right" } | null;
   /** Normalized [x0,y0,x1,y1] of this mark's elevation drawing on the page. */
   bbox: [number, number, number, number] | null;
   /** 1-based page the drawing (and this transcription) came from. */
@@ -186,6 +195,27 @@ function cleanBbox(raw: unknown): [number, number, number, number] | null {
 }
 
 /** Coerce one loose vision object into a RawVisionMark, or null (no mark). */
+function cleanStringArray(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out = raw
+    .map((v) => (typeof v === "string" ? v.trim() : ""))
+    .filter((v) => v.length > 0 && v.length < 64);
+  // 12 panels is already beyond any real unit; more smells like the model
+  // transcribing a dimension chain that isn't panel widths.
+  return out.length > 0 && out.length <= 12 ? out : null;
+}
+
+function cleanCorner(
+  raw: unknown,
+): { after_panel: number; side: "left" | "right" } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const after = Number(o.after_panel ?? o.afterPanel);
+  const side = o.side === "right" ? "right" : o.side === "left" ? "left" : null;
+  if (!Number.isInteger(after) || after < 0 || after > 10 || !side) return null;
+  return { after_panel: after, side };
+}
+
 function cleanVisionMark(raw: unknown, pageNumber: number): RawVisionMark | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -208,6 +238,9 @@ function cleanVisionMark(raw: unknown, pageNumber: number): RawVisionMark | null
     // size code is worse than no dimension at all.
     printed_width: str(o.printed_width) ?? str(o.printedWidth),
     printed_height: str(o.printed_height) ?? str(o.printedHeight),
+    panel_widths: cleanStringArray(o.panel_widths ?? o.panelWidths),
+    panel_ops: cleanStringArray(o.panel_ops ?? o.panelOps),
+    corner: cleanCorner(o.corner),
     bbox,
     // The page is ours, not the model's — we know which image we sent. Only
     // meaningful alongside a box, so it rides along with one.
@@ -309,8 +342,22 @@ const VISION_SCHEMA =
   "LEFT corner (x grows right, y grows down). INCLUDE the drawing's dimension " +
   'lines, leader labels, and its "Outside View" caption. EXCLUDE the spec ' +
   "table / text block printed below or beside it, and exclude every other " +
-  "mark's drawing. Use null if you cannot see a drawing for that mark. One " +
-  "object per mark.";
+  "mark's drawing. Use null if you cannot see a drawing for that mark. " +
+  "panel_widths: when the elevation drawing dimensions its INDIVIDUAL panels " +
+  "along the bottom or top (separate width callouts per vertical panel, e.g. " +
+  '768(30 1/4") then 2248(88 1/2") then 2286(90")), transcribe each panel ' +
+  "width CHARACTER FOR CHARACTER as an array of strings, LEFT TO RIGHT as " +
+  "drawn (spec sheets are the Outside View). Use null when the drawing shows " +
+  "only the overall width. Do NOT derive panel widths by dividing. " +
+  "panel_ops: an array the same length as panel_widths (or matching the " +
+  "operation string) giving each panel's operation LEFT TO RIGHT, from the " +
+  'letters/symbols ON the drawing: "X" operable, "O"/"F" fixed. Use null ' +
+  "when not distinguishable per panel. " +
+  "corner: when the drawing marks a 90-degree corner wrap (an angle arc, " +
+  '"90°" label, or the plan-view break at a panel joint), return ' +
+  '{ "after_panel": number (0-based index of the LAST panel before the turn, ' +
+  'left to right), "side": "left"|"right" (which END of the drawing wraps) }. ' +
+  "Use null when the unit is flat. One object per mark.";
 
 const SYSTEM =
   "You extract rich per-mark window and door line-item specifications from a " +

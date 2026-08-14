@@ -461,6 +461,28 @@ export function PlansetUpload() {
     onError: (e) => setRetryNote(formatApiError(e)),
   });
 
+  /**
+   * Re-read the WHOLE specs sheet with the current extractor — how existing
+   * jobs pick up newly-extracted detail (per-panel widths, 90° corners).
+   * Confirmed marks are never touched; unconfirmed rows (including
+   * unconfirmed hand edits) are replaced by the fresh read.
+   */
+  const rereadSpecs = useMutation({
+    mutationFn: async () => {
+      if (!currentSpecs) throw new Error("No specs file on this job yet.");
+      setRetryNote("Re-reading every specs page (panel widths + corners)…");
+      const { reextractSpecPages } = await import("../../lib/install/api");
+      return reextractSpecPages(projectId, currentSpecs);
+    },
+    onSuccess: (result) => {
+      setRetryNote(
+        `Re-read done — specs refreshed for ${result.saved} mark(s). Confirmed marks were left untouched.`,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["markSpecs", projectId] });
+    },
+    onError: (e) => setRetryNote(formatApiError(e)),
+  });
+
   const specPageNote = specPages
     ? specPages.visionFailed
       ? "We couldn't read the detailed specs off this sheet at all — only the basics were saved."
@@ -596,6 +618,27 @@ export function PlansetUpload() {
           resuming={resumeExtraction.isPending}
           note={[specPageNote, retryNote].filter(Boolean).join(" ") || null}
         />
+      )}
+
+      {currentSpecs && currentSpecs.status !== "extracting" && (
+        <div className="row-gap" style={{ marginTop: 12 }}>
+          <button
+            className="button-like"
+            disabled={rereadSpecs.isPending}
+            title="Re-read every specs page with the current extractor — picks up per-panel widths and 90° corners. Confirmed marks are never touched; unconfirmed edits are replaced."
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Re-read the whole specs sheet? Confirmed marks stay as-is; unconfirmed marks (including unconfirmed hand edits) are replaced by the fresh read.",
+                )
+              ) {
+                rereadSpecs.mutate();
+              }
+            }}
+          >
+            {rereadSpecs.isPending ? "Re-reading…" : "Re-read specs (panels + corners)"}
+          </button>
+        </div>
       )}
 
       <p className="muted" style={{ marginTop: 16 }}>

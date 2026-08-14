@@ -209,6 +209,41 @@ export function specToUnitConfig(spec: ProjectMarkSpec): UnitConfig | null {
   const isDoor = /door|slider door|patio/.test(style);
   const kind: UnitKind = isDoor ? "door" : "window";
 
+  // The extractor's drawing read wins: EXACT per-panel widths (window 16's
+  // 30¼ | 88½ | 90 | 87¾ | 17) + per-panel ops + the 90° corner, straight
+  // off the elevation. Falls through to operation-string splitting when
+  // the drawing only printed an overall width.
+  const ex = spec.extra as {
+    panels?: { width_in?: number | null; op?: string | null }[];
+    corner?: { after_panel?: number; side?: "left" | "right" };
+  } | null;
+  const drawn = ex?.panels?.filter(
+    (p): p is { width_in: number; op: string | null } =>
+      typeof p?.width_in === "number" && p.width_in > 2,
+  );
+  if (drawn && drawn.length >= 2) {
+    const panels: UnitPanel[] = drawn.map((p, i) => {
+      const operable = p.op === "X";
+      return {
+        widthMm: p.width_in * IN_TO_MM,
+        mechanism: operable ? "slider" : "fixed",
+        direction: operable ? (i === 0 ? "right" : "left") : undefined,
+      };
+    });
+    let cornerAfterPanel: number | null = null;
+    const c = ex?.corner;
+    if (c && Number.isInteger(c.after_panel)) {
+      cornerAfterPanel = Math.min(
+        Math.max(0, c.after_panel!),
+        panels.length - 2,
+      );
+      if (cornerAfterPanel < 0) cornerAfterPanel = null;
+    } else if (c?.side) {
+      cornerAfterPanel = c.side === "left" ? 0 : panels.length - 2;
+    }
+    return { kind, heightMm: h, panels, cornerAfterPanel };
+  }
+
   const xo = op.match(/^[XO]{2,4}$/);
   let panels: UnitPanel[];
   if (xo) {

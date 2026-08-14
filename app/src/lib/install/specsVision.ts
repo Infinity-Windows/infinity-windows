@@ -47,7 +47,9 @@ export interface RawVisionMark {
   bboxes?: unknown;
   /** 1-based specs-planset page the drawing was found on. */
   image_page?: unknown;
-  page?: unknown;
+  page?: unknown;  panel_widths?: unknown;
+  panel_ops?: unknown;
+  corner?: unknown;
 }
 
 function str(v: unknown): string | null {
@@ -273,6 +275,38 @@ export function prepVisionSpec(raw: RawVisionMark): Record<string, unknown> {
   if (printedHeightIn != null) extra.printed_height_in = printedHeightIn;
   const mismatch = sizeMismatchRecord(size_code, printedWidthIn, printedHeightIn);
   if (mismatch) extra.size_mismatch = mismatch;
+
+  // Per-panel widths + corner read off the elevation drawing (owner ask:
+  // pulls arrive pre-split and pre-cornered). Verbatim strings kept as
+  // evidence; parsed inches ride alongside for every consumer.
+  const panelWidths = Array.isArray(raw.panel_widths)
+    ? (raw.panel_widths as unknown[]).map((v) => str(v)).filter((v): v is string => Boolean(v))
+    : [];
+  const panelOps = Array.isArray(raw.panel_ops)
+    ? (raw.panel_ops as unknown[]).map((v) => str(v)?.toUpperCase() ?? "")
+    : [];
+  if (panelWidths.length >= 2) {
+    const panels = panelWidths.map((printed, i) => ({
+      printed,
+      width_in: parsePrintedInches(printed),
+      op: panelOps[i] && /^[XOF]/.test(panelOps[i]) ? panelOps[i][0] : null,
+    }));
+    // Only keep a set the drawing actually dimensioned: every panel parsed.
+    if (panels.every((pp) => pp.width_in != null && pp.width_in > 2)) {
+      extra.panels = panels;
+    }
+  }
+  const corner = raw.corner as
+    | { after_panel?: unknown; side?: unknown }
+    | null
+    | undefined;
+  if (corner && typeof corner === "object") {
+    const after = Number(corner.after_panel);
+    const side = corner.side === "right" ? "right" : corner.side === "left" ? "left" : null;
+    if (Number.isInteger(after) && after >= 0 && after <= 10 && side) {
+      extra.corner = { after_panel: after, side };
+    }
+  }
 
   return {
     mark_code,
