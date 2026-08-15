@@ -91,7 +91,6 @@ export function mountFitView(host, job, shim) {
     window.addEventListener(ev, fn, opts);
     cleanups.push(function () { window.removeEventListener(ev, fn, opts); });
   }
-  function noopPush() {}
 
   "use strict";
 
@@ -189,7 +188,9 @@ export function mountFitView(host, job, shim) {
     assignMode: false, picked: {}
   };
 
-  var EMPLOYEES = [];      // {name, role} - loaded once the job is up
+  // {id, name, role} — the host feeds the real crew through the shim; the
+  // prototype's fetch never shipped. Assign stays hidden without it.
+  var EMPLOYEES = SHIM.crew || [];
 
   function cap(s) { return String(s).charAt(0).toUpperCase() + String(s).slice(1); }
 
@@ -1535,7 +1536,8 @@ export function mountFitView(host, job, shim) {
         '<div class="flab">Assign to</div>' +
         '<div class="checks" id="crew">' +
           (EMPLOYEES.length ? EMPLOYEES.map(function (u) {
-            return '<button type="button" class="chk" data-name="' + esc(u.name) +
+            return '<button type="button" class="chk" data-id="' + esc(u.id) +
+              '" data-name="' + esc(u.name) +
               '" aria-pressed="false">' + esc(cap(u.name)) +
               ' &middot; ' + esc(u.role) + '</button>';
           }).join("") : '<span class="flab">No crew list on this device yet - go online once.</span>') +
@@ -1553,38 +1555,38 @@ export function mountFitView(host, job, shim) {
       scrim.classList.remove("on");
     });
 
+    // ONE installer per opening is the data model — the chips act as a
+    // radio group, not checkboxes.
     Array.prototype.forEach.call(sheet.querySelectorAll("#crew .chk"), function (b) {
       b.addEventListener("click", function () {
-        b.setAttribute("aria-pressed",
-          String(b.getAttribute("aria-pressed") !== "true"));
+        var on = b.getAttribute("aria-pressed") !== "true";
+        Array.prototype.forEach.call(sheet.querySelectorAll("#crew .chk"), function (o) {
+          o.setAttribute("aria-pressed", "false");
+        });
+        b.setAttribute("aria-pressed", String(on));
       });
     });
 
-    function apply(names) {
-      ids.forEach(function (id) {
-        noopPush({ op: "assign", id: id, assigned: names });
-        eachWinEl(id, function (el) {
-          el.classList.toggle("mine", !!SHIM.auth && names.indexOf(SHIM.auth.user) > -1);
-        });
-      });
+    // The host persists (sequenced RPCs) and refreshes the job — the map
+    // remounts with real assigned state, so no local pretending here.
+    function apply(personId) {
       sheet.classList.remove("open");
       scrim.classList.remove("on");
-      renderRows();
       exitAssign();
-      SHIM.toast(ids.length + (ids.length === 1 ? " opening" : " openings") +
-        (names.length ? " assigned to " + names.map(cap).join(", ") : " unassigned"));
+      if (SHIM.onAssign) SHIM.onAssign(ids, personId);
     }
 
     $("assignApply").addEventListener("click", function () {
-      var names = Array.prototype.map.call(
-        sheet.querySelectorAll('#crew .chk[aria-pressed="true"]'),
-        function (b) { return b.dataset.name; });
-      if (!names.length) { SHIM.toast("Pick at least one person, or Unassign"); return; }
-      apply(names);
+      var picked = sheet.querySelector('#crew .chk[aria-pressed="true"]');
+      if (!picked) { SHIM.toast("Pick a person, or Unassign"); return; }
+      apply(picked.dataset.id);
     });
-    $("assignNone").addEventListener("click", function () { apply([]); });
+    $("assignNone").addEventListener("click", function () { apply(null); });
   }
 
+  // The button wakes only when the host can actually persist assignments
+  // (foreman+ with an onAssign shim) — everyone else keeps the clean map.
+  if (SHIM.onAssign) $("assignBtn").hidden = false;
   $("assignBtn").addEventListener("click", function () {
     if (state.assignMode) exitAssign(); else enterAssign();
   });
