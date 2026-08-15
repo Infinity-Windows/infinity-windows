@@ -8,8 +8,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { listOpenings } from "../../lib/install/api";
+import { getMyProfile, listOpenings } from "../../lib/install/api";
 import {
+  flashRunTarget,
   flashingOutstanding,
   formatPhaseClock,
   listOpeningPhases,
@@ -60,7 +61,16 @@ export function FlashRun() {
       );
   }, [openings.data, phases.data]);
 
-  const current: ProjectOpening | null = queue[0] ?? null;
+  // Several runners can leapfrog one queue: an explicit pick wins, then
+  // the window I already have a clock on, then the first free window.
+  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  const current: ProjectOpening | null = flashRunTarget(
+    queue,
+    phases.data ?? [],
+    pickedId,
+    me.data?.id ?? null,
+  );
   const runningPhase: OpeningPhase | null =
     (current &&
       (phases.data ?? []).find(
@@ -69,6 +79,16 @@ export function FlashRun() {
       )) ||
     null;
   const running = runningPhase != null;
+  /** Who's actively flashing each queued window (the other runners). */
+  const activeBy = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of phases.data ?? []) {
+      if (p.kind === "flashing" && p.status === "active") {
+        m.set(p.opening_id, p.starter?.display_name ?? "someone");
+      }
+    }
+    return m;
+  }, [phases.data]);
 
   // The stopwatch is watched: tick every second while a clock runs.
   const ticking = Boolean(runningPhase && !runningPhase.paused_at);
@@ -120,7 +140,13 @@ export function FlashRun() {
       // Spam-through: the next window's clock starts in the same breath, so
       // the runner's day is photo → submit → walk → photo → submit. A refused
       // start (lost signal, clocked out mid-run) leaves the submit standing.
-      const next = queue.find((o) => o.id !== current.id) ?? null;
+      // Skip windows another runner is on.
+      const next = flashRunTarget(
+        queue.filter((o) => o.id !== current.id),
+        (phases.data ?? []).filter((p) => p.opening_id !== current.id),
+        null,
+        null,
+      );
       if (next) {
         try {
           await startOpeningPhase(next.id, "flashing");
@@ -133,6 +159,7 @@ export function FlashRun() {
     onSuccess: ({ next }) => {
       setPhoto(null);
       setMessage(null);
+      setPickedId(null);
       toastSuccess(
         next ? `Flashed — next up ${next.opening_code}` : "Flashed — that was the last one",
       );
@@ -196,7 +223,11 @@ export function FlashRun() {
                 <strong>
                   {runningPhase!.paused_at ? "paused · " : ""}
                   {formatPhaseClock(phaseElapsedSeconds(runningPhase!, now))}
-                </strong>{" "}
+                </strong>
+                {runningPhase!.starter?.display_name &&
+                  runningPhase!.started_by !== me.data?.id && (
+                    <span className="muted"> · {runningPhase!.starter.display_name}</span>
+                  )}{" "}
                 {runningPhase!.paused_at ? (
                   <button
                     className="link"
@@ -244,11 +275,27 @@ export function FlashRun() {
 
       {queue.length > 1 && (
         <div className="detail-card" style={{ marginTop: 8 }}>
-          <span className="field-label">Coming up</span>
-          <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
-            {queue.slice(1, 9).map((o) => o.opening_code).join(" · ")}
-            {queue.length > 9 ? " · …" : ""}
-          </p>
+          <span className="field-label">Coming up — tap to jump to a window</span>
+          <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 6 }}>
+            {queue
+              .filter((o) => o.id !== current?.id)
+              .slice(0, 12)
+              .map((o) => {
+                const busyBy = activeBy.get(o.id);
+                return (
+                  <button
+                    key={o.id}
+                    className="button-like studio-mini"
+                    title={busyBy ? `${busyBy} is flashing this one` : `Jump to ${o.opening_code}`}
+                    onClick={() => setPickedId(o.id)}
+                  >
+                    {o.opening_code}
+                    {busyBy ? ` · ${busyBy}` : ""}
+                  </button>
+                );
+              })}
+            {queue.length > 13 ? <span className="muted">…</span> : null}
+          </div>
         </div>
       )}
     </div>

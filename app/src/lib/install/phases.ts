@@ -204,3 +204,86 @@ export async function listMyActivePhases(profileId: string): Promise<MyActivePha
   if (error) throw error;
   return (data ?? []) as unknown as MyActivePhase[];
 }
+
+/**
+ * The run's CURRENT target when several runners leapfrog one queue
+ * (owner, 2026-08-14: assignable to 1,2,3… installers "who can select the
+ * window they are flashing"). An explicit pick wins; otherwise resume the
+ * window I already have a clock on; otherwise the first window nobody
+ * else is actively flashing; otherwise the head of the queue.
+ */
+export function flashRunTarget<T extends { id: string }>(
+  queue: T[],
+  phases: OpeningPhase[],
+  pickedId: string | null,
+  myProfileId: string | null,
+): T | null {
+  if (pickedId) {
+    const hit = queue.find((o) => o.id === pickedId);
+    if (hit) return hit;
+  }
+  const active = phases.filter((p) => p.kind === "flashing" && p.status === "active");
+  if (myProfileId) {
+    const mine = active.find((p) => p.started_by === myProfileId);
+    if (mine) {
+      const hit = queue.find((o) => o.id === mine.opening_id);
+      if (hit) return hit;
+    }
+  }
+  const busy = new Set(active.map((p) => p.opening_id));
+  return queue.find((o) => !busy.has(o.id)) ?? queue[0] ?? null;
+}
+
+// ------------------------------------------------- flash run assignments
+// The flash run is its own dispatched task (owner, 2026-08-14): foremen
+// put 1..N runners on a job from the Dispatch tab; runners see the run in
+// My Work. Flashing time itself still lives on opening_phases per window.
+
+export interface FlashRunAssignment {
+  id: string;
+  project_id: string;
+  profile_id: string;
+  assigned_by: string | null;
+  assigned_at: string;
+  profile?: { display_name: string | null } | null;
+  projects?: { job_code: string; name: string | null } | null;
+}
+
+/** A job's flash runners, for the Dispatch card. */
+export async function listFlashRunners(projectId: string): Promise<FlashRunAssignment[]> {
+  const { data, error } = await supabase
+    .from("flash_run_assignments")
+    .select("*, profile:profiles!flash_run_assignments_profile_id_fkey(display_name)")
+    .eq("project_id", projectId)
+    .order("assigned_at");
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return (data ?? []) as unknown as FlashRunAssignment[];
+}
+
+/** THIS person's flash runs across every job, for the My Work card. */
+export async function listMyFlashRuns(profileId: string): Promise<FlashRunAssignment[]> {
+  const { data, error } = await supabase
+    .from("flash_run_assignments")
+    .select("*, projects(job_code, name)")
+    .eq("profile_id", profileId);
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return (data ?? []) as unknown as FlashRunAssignment[];
+}
+
+export async function assignFlashRunner(projectId: string, profileId: string): Promise<void> {
+  const { error } = await supabase.rpc("assign_flash_runner", {
+    p_project_id: projectId,
+    p_profile_id: profileId,
+  });
+  if (error) throw error;
+}
+
+export async function unassignFlashRunner(projectId: string, profileId: string): Promise<void> {
+  const { error } = await supabase.rpc("unassign_flash_runner", {
+    p_project_id: projectId,
+    p_profile_id: profileId,
+  });
+  if (error) throw error;
+}

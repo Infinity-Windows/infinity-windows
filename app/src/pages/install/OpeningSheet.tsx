@@ -34,16 +34,11 @@ import {
 import { pickNextOpening } from "../../lib/install/nextOpening";
 import { submitBlockersLine } from "../../lib/install/submitGate";
 import {
-  cancelOpeningPhase,
   flashingOutstanding,
   formatPhaseClock,
   listOpeningPhases,
-  pauseOpeningPhase,
   phaseElapsedSeconds,
-  resumeOpeningPhase,
   setOpeningNeedsFlashing,
-  startOpeningPhase,
-  submitOpeningPhase,
 } from "../../lib/install/phases";
 import { computeInstallPoints } from "../../lib/points";
 import { checkFit, isInstallReadyStatus, readyToInstall, smallest } from "../../lib/install/fit";
@@ -187,8 +182,6 @@ export function OpeningSheet() {
   const [now, setNow] = useState(() => Date.now());
 
   const [photos, setPhotos] = useState<BeforeAfterValue>({ before: null, after: null });
-  /** Finished-flashing proof, held until the phase submit sends it. */
-  const [flashPhoto, setFlashPhoto] = useState<File | null>(null);
   const [video, setVideo] = useState<File | null>(null);
   const [stage, setStage] = useState<"check" | "install" | "capture">("check");
   const [minutes, setMinutes] = useState("");
@@ -376,67 +369,6 @@ export function OpeningSheet() {
   const flashingBlocked = opening.data
     ? flashingOutstanding(opening.data, myPhases)
     : false;
-  const refreshPhases = () =>
-    queryClient.invalidateQueries({ queryKey: ["openingPhases", projectId] });
-
-  const [flashError, setFlashError] = useState<string | null>(null);
-  const startFlash = useMutation({
-    mutationFn: () => startOpeningPhase(openingId, "flashing"),
-    onSuccess: () => {
-      setFlashError(null);
-      refreshPhases();
-    },
-    // The failure must be visible AT the button — a gate rejection that only
-    // renders up in the Check section reads as a dead button (owner report,
-    // 2026-08-13).
-    onError: (e) => {
-      const msg = isClockGateError(e)
-        ? "Clock in and sign today's toolbox talk to start this task."
-        : formatApiError(e);
-      setFlashError(msg);
-      if (isClockGateError(e)) setStartGateError(msg);
-    },
-  });
-  const pauseFlash = useMutation({
-    mutationFn: () => pauseOpeningPhase(openingId, "flashing"),
-    onSuccess: refreshPhases,
-    onError: (e) => setMessage(formatApiError(e)),
-  });
-  const resumeFlash = useMutation({
-    mutationFn: () => resumeOpeningPhase(openingId, "flashing"),
-    onSuccess: refreshPhases,
-    onError: (e) => setMessage(formatApiError(e)),
-  });
-  const cancelFlash = useMutation({
-    mutationFn: () => cancelOpeningPhase(openingId, "flashing"),
-    onSuccess: () => {
-      setFlashPhoto(null);
-      refreshPhases();
-    },
-    onError: (e) => setMessage(formatApiError(e)),
-  });
-  const submitFlash = useMutation({
-    mutationFn: () => {
-      const o2 = opening.data;
-      if (!o2) throw new Error("Opening not loaded.");
-      if (!flashPhoto) throw new Error("Take the finished-flashing photo first.");
-      return submitOpeningPhase({
-        openingId,
-        kind: "flashing",
-        projectId,
-        openingCode: o2.opening_code,
-        photo: flashPhoto,
-        contentType: flashPhoto.type || "image/jpeg",
-      });
-    },
-    onSuccess: () => {
-      setFlashPhoto(null);
-      setMessage("Flashing submitted.");
-      refreshPhases();
-      refresh();
-    },
-    onError: (e) => setMessage(formatApiError(e)),
-  });
   // Undo an install from the window itself (foreman+): required reason,
   // nothing lost - the event is voided, never deleted.
   const [undoReason, setUndoReason] = useState("");
@@ -1565,8 +1497,9 @@ export function OpeningSheet() {
             </>
           )}
 
-          {/* Flashing phase: its own clock, its own photo, done by whoever
-              gets here first — assignment owns the install, not the window. */}
+          {/* Flashing is the FLASH RUN's job now (owner, 2026-08-14): the
+              sheet only reports status — the clock, photo and submit live
+              on the dispatched run. The install gate below still holds. */}
           {o.needs_flashing === true && (
             <div className="detail-card" style={{ marginTop: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1597,70 +1530,9 @@ export function OpeningSheet() {
                 )}
               </div>
               {!flashing && (
-                <button
-                  className="button-like active-pill"
-                  style={{ marginTop: 8 }}
-                  disabled={startFlash.isPending}
-                  onClick={() => startFlash.mutate()}
-                >
-                  {startFlash.isPending ? "Starting…" : "Start flashing clock"}
-                </button>
-              )}
-              {flashError && (
-                <p className="error" style={{ marginTop: 6, fontSize: 12 }}>{flashError}</p>
-              )}
-              {flashing && flashing.status === "active" && (
-                <>
-                  <div className="row-gap" style={{ marginTop: 8 }}>
-                    {flashing.paused_at ? (
-                      <button
-                        className="button-like active-pill"
-                        disabled={resumeFlash.isPending}
-                        onClick={() => resumeFlash.mutate()}
-                      >
-                        Resume flashing
-                      </button>
-                    ) : (
-                      <button
-                        className="button-like"
-                        disabled={pauseFlash.isPending}
-                        onClick={() => pauseFlash.mutate()}
-                      >
-                        Pause
-                      </button>
-                    )}
-                  </div>
-                  <div style={{ marginTop: 8 }}>
-                    <PhotoCaptureSheet
-                      mode="single"
-                      value={flashPhoto}
-                      onChange={setFlashPhoto}
-                      label={`${o.opening_code} flashing`}
-                      prompt="Photo of the finished flashing"
-                    />
-                  </div>
-                  <button
-                    className="primary big"
-                    style={{ marginTop: 8 }}
-                    disabled={!flashPhoto || submitFlash.isPending}
-                    onClick={() => submitFlash.mutate()}
-                  >
-                    {submitFlash.isPending
-                      ? "Submitting…"
-                      : flashPhoto
-                        ? "Submit flashing"
-                        : "Take the photo to submit"}
-                  </button>
-                  {/* Wrong window happens; the escape is quiet on purpose. */}
-                  <button
-                    className="link"
-                    style={{ fontSize: 12, marginTop: 6 }}
-                    disabled={cancelFlash.isPending}
-                    onClick={() => cancelFlash.mutate()}
-                  >
-                    Stop without submitting — erase this clock
-                  </button>
-                </>
+                <p className="muted" style={{ margin: "8px 0 0", fontSize: 12 }}>
+                  Flashing happens on the flash run — your foreman dispatches it.
+                </p>
               )}
             </div>
           )}
@@ -1845,9 +1717,13 @@ export function OpeningSheet() {
       {!installed && stage === "capture" && (
         <>
           <h2>Photos</h2>
-          <p className="muted">Before and after — the after lines up over the before.</p>
+          {/* The before was captured in step 1 (owner, 2026-08-14: no
+              double-ask) — this stage only takes the after, lined up over
+              the ghosted before. */}
+          <p className="muted">The after lines up over the before you took in step 1.</p>
           <PhotoCaptureSheet
             mode="beforeAfter"
+            slots={["after"]}
             value={photos}
             onChange={setPhotos}
             label={o.opening_code}

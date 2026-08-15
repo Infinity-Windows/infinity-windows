@@ -32,6 +32,12 @@ import {
   resolveIssue,
   URGENCY_MARK,
 } from "../../lib/issues";
+import {
+  assignFlashRunner,
+  listFlashRunners,
+  listOpeningPhases,
+  unassignFlashRunner,
+} from "../../lib/install/phases";
 
 export function DispatchBoard({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
@@ -255,6 +261,8 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
         {installedCount}/{all.length} installed · {activeCrew.length} on site
       </p>
 
+      <FlashRunCard projectId={projectId} crew={activeCrew} />
+
       {blockerCount > 0 && (
         <>
           <h2 className="blocker-head">Blockers ({blockerCount}) — resolve to unblock</h2>
@@ -362,6 +370,111 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
           ? ""
           : "Add crew on the Crew screen to assign work."}
       </p>
+    </div>
+  );
+}
+
+/**
+ * The flash run as a DISPATCHED task (owner, 2026-08-14): foremen put
+ * 1..N runners on it here; runners see it in My Work; the run screen does
+ * the clocking. Flashing time still lands per window on opening_phases.
+ */
+function FlashRunCard({
+  projectId,
+  crew,
+}: {
+  projectId: string;
+  crew: { id: string; display_name: string | null }[];
+}) {
+  const queryClient = useQueryClient();
+  const [err, setErr] = useState<string | null>(null);
+  const openings = useQuery({
+    queryKey: ["openings", projectId],
+    queryFn: () => listOpenings(projectId),
+  });
+  const phases = useQuery({
+    queryKey: ["openingPhases", projectId],
+    queryFn: () => listOpeningPhases(projectId),
+  });
+  const runners = useQuery({
+    queryKey: ["flashRunners", projectId],
+    queryFn: () => listFlashRunners(projectId),
+  });
+  const refresh = () =>
+    void queryClient.invalidateQueries({ queryKey: ["flashRunners", projectId] });
+  const add = useMutation({
+    mutationFn: (profileId: string) => assignFlashRunner(projectId, profileId),
+    onSuccess: refresh,
+    onError: (e) => setErr(formatApiError(e)),
+  });
+  const remove = useMutation({
+    mutationFn: (profileId: string) => unassignFlashRunner(projectId, profileId),
+    onSuccess: refresh,
+    onError: (e) => setErr(formatApiError(e)),
+  });
+
+  const total = (openings.data ?? []).filter((o) => o.needs_flashing === true).length;
+  const flashed = new Set(
+    (phases.data ?? [])
+      .filter((p) => p.kind === "flashing" && p.status === "submitted")
+      .map((p) => p.opening_id),
+  );
+  const done = (openings.data ?? []).filter(
+    (o) => o.needs_flashing === true && flashed.has(o.id),
+  ).length;
+  const onRun = new Set((runners.data ?? []).map((r) => r.profile_id));
+  const addable = crew.filter((c) => !onRun.has(c.id));
+  if (total === 0) return null;
+
+  return (
+    <div className="detail-card" style={{ marginTop: 8 }}>
+      <div className="row-between">
+        <span className="field-label" style={{ margin: 0 }}>
+          Flash run — flash ahead of the crew
+        </span>
+        <Link to={`/projects/${projectId}/flash-run`} className="button-like">
+          Open the run
+        </Link>
+      </div>
+      <p className="muted" style={{ margin: "4px 0 8px" }}>
+        {done}/{total} flashed · {total - done} to go
+      </p>
+      <div className="row-gap" style={{ flexWrap: "wrap", alignItems: "center" }}>
+        {(runners.data ?? []).map((r) => (
+          <span key={r.id} className="button-like studio-mini" style={{ cursor: "default" }}>
+            {r.profile?.display_name ?? "runner"}{" "}
+            <button
+              className="link"
+              aria-label={`Take ${r.profile?.display_name ?? "runner"} off the flash run`}
+              disabled={remove.isPending}
+              onClick={() => remove.mutate(r.profile_id)}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        {(runners.data ?? []).length === 0 && (
+          <span className="muted" style={{ fontSize: 12.5 }}>No runners yet.</span>
+        )}
+        {addable.length > 0 && (
+          <select
+            aria-label="Add a flash runner"
+            value=""
+            disabled={add.isPending}
+            onChange={(e) => {
+              if (e.target.value) add.mutate(e.target.value);
+            }}
+          >
+            <option value="">+ Add runner…</option>
+            {addable.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.display_name ?? c.id.slice(0, 8)}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+      {err && <p className="error" style={{ marginTop: 6 }}>{err}</p>}
     </div>
   );
 }

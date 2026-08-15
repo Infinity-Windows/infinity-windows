@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flashingOutstanding, type OpeningPhase } from "./phases";
+import { flashRunTarget, flashingOutstanding, type OpeningPhase } from "./phases";
 
 const phase = (over: Partial<OpeningPhase>): OpeningPhase => ({
   id: "ph1",
@@ -66,5 +66,45 @@ describe("phaseElapsedSeconds (the live clock, net of pauses)", () => {
         T0 + 1000,
       ),
     ).toBe(0);
+  });
+});
+
+describe("flashRunTarget (several runners leapfrog one queue)", () => {
+  const q = [{ id: "a" }, { id: "b" }, { id: "c" }];
+  const active = (opening: string, by: string) =>
+    ({
+      id: `p-${opening}`,
+      opening_id: opening,
+      kind: "flashing",
+      status: "active",
+      started_at: "2026-08-14T10:00:00Z",
+      started_by: by,
+      submitted_at: null,
+      submitted_by: null,
+      minutes: null,
+      photo_path: null,
+      paused_at: null,
+      paused_seconds: 0,
+    }) as never;
+
+  it("an explicit pick wins over everything", () => {
+    expect(flashRunTarget(q, [active("a", "me")], "c", "me")!.id).toBe("c");
+  });
+
+  it("resumes the window I already have a clock on", () => {
+    expect(flashRunTarget(q, [active("b", "me")], null, "me")!.id).toBe("b");
+  });
+
+  it("skips windows another runner is on", () => {
+    expect(flashRunTarget(q, [active("a", "them")], null, "me")!.id).toBe("b");
+  });
+
+  it("falls back to the head when everything is busy", () => {
+    const busy = [active("a", "x"), active("b", "y"), active("c", "z")];
+    expect(flashRunTarget(q, busy, null, "me")!.id).toBe("a");
+  });
+
+  it("empty queue → null", () => {
+    expect(flashRunTarget([], [], null, "me")).toBeNull();
   });
 });
