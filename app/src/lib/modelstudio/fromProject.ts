@@ -471,14 +471,15 @@ export function markKeyOf(idOrMark: string): string {
   return (m ? m[1] : norm).toUpperCase();
 }
 
-export function buildStudioSeed(job: FitJobLike, maxWindows = 8): StudioSeed {
-  const fps = groundFootprints(job).filter((fp) => fp.length >= 3);
-
-  // Corners are merged ACROSS masses by coordinate (3 cm snap) and duplicate
-  // segments dropped: adjacent masses trace the same boundary, and seeding it
-  // twice used to mint coincident twin walls — a window cut its hole in one
-  // while the twin rendered solid in front of it ("window hiding behind the
-  // wall"). One shared wall is also what an editor expects to drag.
+/**
+ * One story's rings → one studio floor plan. Corners are merged ACROSS
+ * masses by coordinate (3 cm snap) and duplicate segments dropped:
+ * adjacent masses trace the same boundary, and seeding it twice used to
+ * mint coincident twin walls — a window cut its hole in one while the
+ * twin rendered solid in front of it ("window hiding behind the wall").
+ * One shared wall is also what an editor expects to drag.
+ */
+function planFromRings(fps: { x: number; z: number }[][]): string {
   const corners: Record<string, { x: number; y: number }> = {};
   const cornerList: { id: string; x: number; y: number }[] = [];
   const walls: { corner1: string; corner2: string }[] = [];
@@ -509,11 +510,32 @@ export function buildStudioSeed(job: FitJobLike, maxWindows = 8): StudioSeed {
       walls.push({ corner1: a, corner2: b });
     }
   });
-
-  const serialized = JSON.stringify({
+  return JSON.stringify({
     floorplan: { corners, walls, wallTextures: [], floorTextures: {}, newFloorTextures: {} },
     items: [],
   });
+}
+
+/**
+ * Every traced STORY → a studio floor plan (owner, 2026-08-14: "go up a
+ * floor and do it again for as many floors as we have designed for").
+ * Walls only — windows land per floor via Pull from plans or by hand.
+ * A job with no stories array is one ground floor.
+ */
+export function buildStudioFloorsSeed(job: FitJobLike): string[] {
+  const st = job.building.stories;
+  const perStory =
+    Array.isArray(st) && st.length > 0
+      ? st.map((s) => s.footprints ?? [])
+      : [job.building.footprints ?? []];
+  return perStory.map((fps) =>
+    planFromRings(fps.filter((fp) => fp.length >= 3)),
+  );
+}
+
+export function buildStudioSeed(job: FitJobLike, maxWindows = 8): StudioSeed {
+  const fps = groundFootprints(job).filter((fp) => fp.length >= 3);
+  const serialized = planFromRings(fps);
 
   // Windows: wall-relative fit-view coords -> world points via the same
   // elevation walk the 3D map uses, so both views agree on where a mark is.

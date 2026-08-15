@@ -1,6 +1,6 @@
 import { BackChip } from "../../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   discardLocalOutline,
@@ -77,22 +77,34 @@ export function MapsTrace() {
 
   // The model-bearing outline wins; the auto-extracted one is a fallback.
   const outline = preferModelOutline(outlines.data);
+  // The underlay is the trader's choice (owner, 2026-08-14: "pull in the
+  // spec sheet and the plan-set and let me toggle to the plan-set"): any
+  // uploaded planset, any page — flip to the right floor-plan sheet for
+  // the story being traced. Defaults to the building set's outline page.
+  const [pickedPlansetId, setPickedPlansetId] = useState<string | null>(null);
+  const [pickedPage, setPickedPage] = useState<number | null>(null);
   const plansPlanset = useMemo(() => {
     const all = plansets.data ?? [];
-    return all.find((p) => p.kind === "building") ?? all[0] ?? null;
-  }, [plansets.data]);
+    return (
+      (pickedPlansetId ? all.find((p) => p.id === pickedPlansetId) : null) ??
+      all.find((p) => p.kind === "building") ??
+      all[0] ??
+      null
+    );
+  }, [plansets.data, pickedPlansetId]);
+  const underlayPage = pickedPage ?? outline?.page_number ?? 1;
 
   // The plan sheet as an image, rendered from the same planset the pins
   // live on. Dimensions ride along: pin coords are normalized, and both the
   // dot seed and trace re-registration need them in image pixels.
   const planImage = useQuery({
-    queryKey: ["tracePlanImage", plansPlanset?.id, outline?.page_number ?? 1],
+    queryKey: ["tracePlanImage", plansPlanset?.id, underlayPage],
     enabled: !!plansPlanset,
     staleTime: Infinity,
     queryFn: async () => {
       const bytes = await downloadPlanset(plansPlanset!);
       const doc = await loadPdf(bytes);
-      const page = Math.min(outline?.page_number ?? 1, doc.numPages);
+      const page = Math.min(underlayPage, doc.numPages);
       const pg = await doc.getPage(Math.max(1, page));
       const paperInchesWide = pg.getViewport({ scale: 1 }).width / 72;
       const url = await renderPageJpeg(doc, Math.max(1, page));
@@ -463,6 +475,50 @@ export function MapsTrace() {
         </div>
         {save.isPending && <span className="muted">Saving…</span>}
       </header>
+      {/* Sheet picker: toggle spec sheet ⇄ plan-set and flip to the page
+          for the floor being traced. Underlay only — the trace itself is
+          image-independent (re-registered by dot↔pin matching). */}
+      {(plansets.data?.length ?? 0) > 0 && (
+        <div className="row-gap" style={{ alignItems: "center", marginBottom: 6 }}>
+          <select
+            aria-label="Sheet set"
+            value={plansPlanset?.id ?? ""}
+            onChange={(e) => {
+              setPickedPlansetId(e.target.value || null);
+              setPickedPage(1);
+            }}
+          >
+            {(plansets.data ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.kind === "specs" ? "Spec sheet" : "Plan-set"}
+                {p.page_count ? ` · ${p.page_count} pages` : ""}
+              </option>
+            ))}
+          </select>
+          <button
+            className="button-like studio-mini"
+            aria-label="Previous page"
+            disabled={underlayPage <= 1}
+            onClick={() => setPickedPage(Math.max(1, underlayPage - 1))}
+          >
+            ◀
+          </button>
+          <span style={{ fontVariantNumeric: "tabular-nums" }}>
+            page {underlayPage}
+            {plansPlanset?.page_count ? ` / ${plansPlanset.page_count}` : ""}
+          </span>
+          <button
+            className="button-like studio-mini"
+            aria-label="Next page"
+            disabled={
+              plansPlanset?.page_count != null && underlayPage >= plansPlanset.page_count
+            }
+            onClick={() => setPickedPage(underlayPage + 1)}
+          >
+            ▶
+          </button>
+        </div>
+      )}
       <div className="fitview-app fittrace-app" ref={hostRef} />
     </div>
   );

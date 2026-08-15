@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildFitViewJob,
-  specDrivenScaleFactor,
   DEFAULT_LONG_SIDE_M,
   DEFAULT_SILL_M,
+  buildFitViewJob,
+  humanTraceModel,
   inferHardware,
   isDoorLike,
+  specDrivenScaleFactor,
   type AdapterInput,
 } from "./adapter";
 import type { ProjectOpening } from "../install/types";
@@ -465,5 +466,23 @@ describe("door detection", () => {
     expect(isDoorLike("Sliding doors")).toBe(true);
     expect(isDoorLike("Double-hung window")).toBe(false);
     expect(isDoorLike("Outdoor-rated fixed unit")).toBe(false);
+  });
+});
+
+describe("humanTraceModel (the tracer's model vs a Studio publish)", () => {
+  const base = {
+    building: { width: 10, depth: 6, height: 3, rise: 0, footprints: [[]] },
+    windows: [],
+  };
+  it("a model carrying building.trace is the human trace", () => {
+    const features = {
+      fitview: { model: { ...base, building: { ...base.building, trace: { polys: [] } } } },
+    };
+    expect(humanTraceModel(features)).not.toBeNull();
+  });
+  it("a publish (no trace) and junk are not", () => {
+    expect(humanTraceModel({ fitview: { model: base } })).toBeNull();
+    expect(humanTraceModel({})).toBeNull();
+    expect(humanTraceModel(null)).toBeNull();
   });
 });

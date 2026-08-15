@@ -261,6 +261,21 @@ export function fitviewModel(features: unknown): AuthoredModel | null {
 }
 
 /**
+ * The HUMAN trace, when one exists: a model written by the in-app tracer
+ * carries its raw trace (`building.trace` — calibration, per-story pixel
+ * polys) which a Studio publish never has. The distinction matters
+ * because both writers share `features.fitview.model`: the trace is
+ * plans-truth the Studio should build FROM; a publish is Studio OUTPUT
+ * and must never feed back in (the BLACK22 echo, 2026-08-14).
+ */
+export function humanTraceModel(features: unknown): AuthoredModel | null {
+  const model = fitviewModel(features);
+  if (!model) return null;
+  const trace = (model.building as { trace?: unknown }).trace;
+  return trace && typeof trace === "object" ? model : null;
+}
+
+/**
  * One physical opening, two label dialects: Infinity's extraction writes the
  * QTY-2 twins as "13-1"/"13-2", the survey format as "13A"/"13B". Normalize
  * both to the dashed form so live status can find its window and vice versa.

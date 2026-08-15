@@ -14,7 +14,12 @@ import { defineConfig } from "@playwright/test";
  * instead — an agent checking a change in a worktree must not reload the server
  * somebody is watching.
  */
-const PORT = Number(process.env.IW_MAP_PORT ?? 5173);
+// A DEDICATED e2e port, never 5173: the webServer below runs with the
+// fixture env, and squatting on the owner's iwdev port once served him a
+// fixture-backed app ("Wrong database", 2026-08-14). A separate port also
+// keeps the fixture guarantee honest — reusing a real-env server would
+// let an escaped request reach the real project.
+const PORT = Number(process.env.IW_MAP_PORT ?? 5183);
 
 export default defineConfig({
   testDir: "./e2e",
