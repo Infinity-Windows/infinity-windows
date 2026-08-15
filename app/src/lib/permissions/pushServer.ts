@@ -17,6 +17,8 @@ export interface SendPushInput {
   tag?: string;
   /** Deep link opened on click. */
   url?: string;
+  /** Ring as hard as the platform allows (Summon). */
+  urgent?: boolean;
 }
 
 /**

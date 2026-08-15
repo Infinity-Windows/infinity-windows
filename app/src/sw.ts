@@ -66,6 +66,7 @@ interface PushPayload {
   tag?: string;
   url?: string;
   icon?: string;
+  urgent?: boolean;
 }
 
 function parsePush(event: PushEvent): PushPayload {
@@ -93,7 +94,13 @@ self.addEventListener("push", (event: PushEvent) => {
       // Keep the same data.url contract as notifyLocal so notificationclick
       // can deep-link identically.
       data: payload.url ? { url: payload.url } : undefined,
-    }),
+      // A Summon rings as hard as the platform allows: stays on screen,
+      // re-alerts on updates, vibrates. (iOS PWAs still cap this at a
+      // standard chime — a true call-style ring is not possible there.)
+      ...(payload.urgent
+        ? { requireInteraction: true, renotify: true, vibrate: [200, 100, 200, 100, 400] }
+        : {}),
+    } as NotificationOptions),
   );
 });
 
