@@ -59,7 +59,7 @@ import {
   type ProjectWindow,
   type WindowUnit,
 } from "../lib/types";
-import { isForemanPlus } from "../lib/install/types";
+import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { listProjectAssignments } from "../lib/schedule/api";
 import { listVehicleLinksForProject } from "../lib/vehicles/api";
@@ -287,6 +287,7 @@ export function ProjectDetail() {
           units={units.data ?? []}
           estimate={jobEstimate}
           isLead={isLead}
+          canStudio={isSupervisorPlus(effectiveRole)}
           project={project}
         />
       )}
@@ -396,6 +397,7 @@ function OverviewTab({
   units,
   estimate,
   isLead,
+  canStudio,
   project,
 }: {
   projectId: string;
@@ -410,6 +412,7 @@ function OverviewTab({
   units: WindowUnit[];
   estimate: { est: JobEstimate; crew: CrewRecommendation } | null;
   isLead: boolean;
+  canStudio: boolean;
   project?: Project;
 }) {
   const queryClient = useQueryClient();
@@ -495,9 +498,18 @@ function OverviewTab({
       </div>
 
       <div className="action-list">
-        <Link to={`/projects/${projectId}/upload`} className="action-btn primary">
-          Upload plansets
-        </Link>
+        {/* Plan-set upload + tracing live in the Studio now (owner,
+            2026-08-14: "that is where the build will begin anyways").
+            Foremen can't open the Studio, so they keep the direct upload. */}
+        {canStudio ? (
+          <Link to={`/studio/j/${projectId}`} className="action-btn primary">
+            Studio — plans, trace &amp; build
+          </Link>
+        ) : (
+          <Link to={`/projects/${projectId}/upload`} className="action-btn primary">
+            Upload plansets
+          </Link>
+        )}
         <Link to={`/projects/${projectId}/review`} className="action-btn">
           Review openings
         </Link>

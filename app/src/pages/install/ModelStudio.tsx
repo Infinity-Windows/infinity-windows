@@ -10,6 +10,7 @@
 // materials are Phase 1 work once this foundation is judged on BLACK22.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import * as THREE from "three";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BackChip } from "../../components/BackChip";
@@ -39,9 +40,11 @@ import {
   buildFitViewJob,
   fitviewCalibration,
   fitviewModel,
+  humanTraceModel,
   preferModelOutline,
 } from "../../lib/fitview/adapter";
 import {
+  buildStudioFloorsSeed,
   buildStudioPull,
   buildStudioSeed,
   markKeyOf,
@@ -374,11 +377,28 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outline, openings.data, projectId]);
 
-  // Seed and Re-seed rebuild from the TRACED building when one exists.
+  // Seed and Re-seed rebuild from the TRACED building. A HUMAN trace
+  // (building.trace — the in-app tracer's own record) wins outright: its
+  // per-story, multi-ring, calibrated footprints ARE the plans (owner,
+  // 2026-08-14: "trace its outline... then you will have a correct
+  // border"). The page-points polygon and the pin-derived model are the
+  // fallbacks. A Studio publish never seeds anything.
+  const traceModel = useMemo(
+    () => (outline ? humanTraceModel(outline.features) : null),
+    [outline],
+  );
   const seed = useMemo(() => {
-    const src = plansJob ?? authoredJob;
+    const src = traceModel ? authoredJob : plansJob ?? authoredJob;
     return src ? buildStudioSeed(src as never) : null;
-  }, [plansJob, authoredJob]);
+  }, [traceModel, plansJob, authoredJob]);
+  // Every traced story → a studio floor (walls only above ground).
+  const seedFloors = useMemo(
+    () =>
+      traceModel && authoredJob
+        ? buildStudioFloorsSeed(authoredJob as never)
+        : null,
+    [traceModel, authoredJob],
+  );
 
   // What the session boots from: a standalone row's own model first, then
   // the job outline's saved model, then the traced seed, then a BLANK plan
@@ -419,9 +439,13 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     // Debug handle for the dev pane; harmless in prod.
     (window as { __studio?: unknown }).__studio = bp;
 
-    // Saved Studio model wins; then the traced-building seed; then blank.
+    // Saved Studio model wins; then the traced-building seed (every traced
+    // story becomes a floor); then blank.
     const saved = savedSerialized;
-    const boot = parseFloors(savedModel, seed?.serialized ?? BLANK_SERIALIZED);
+    const boot =
+      !saved && seedFloors && seedFloors.length > 1
+        ? { floors: seedFloors }
+        : parseFloors(savedModel, seed?.serialized ?? BLANK_SERIALIZED);
     floorsRef.current = boot.floors;
     activeFloorRef.current = 0;
     setFloorInfo({ count: boot.floors.length, active: 0 });
@@ -918,7 +942,14 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       "(Nothing is saved until you tap Save model.)",
     )) return;
     pushUndo();
-    bp.model.loadSerialized(seed.serialized);
+    // A human trace rebuilds EVERY floor it drew; the fallbacks are one.
+    const floors =
+      seedFloors && seedFloors.length > 1 ? seedFloors : [seed.serialized];
+    floorsRef.current = floors;
+    activeFloorRef.current = 0;
+    setFloorInfo({ count: floors.length, active: 0 });
+    rebuildFloorContext(floors, 0);
+    bp.model.loadSerialized(floors[0]);
     for (const w of seed.windows) {
       bp.model.scene.addItem(
         3,
@@ -1965,6 +1996,31 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           </button>
         )}
       </div>
+      {/* The build starts at the plans (owner, 2026-08-14): upload the
+          plan-sets and trace the building right here — the trace's floors
+          and buildings become this model's walls on Re-seed. */}
+      {projectId && (
+        <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 4 }}>
+          <Link className="button-like studio-mini" to={`/projects/${projectId}/upload`}>
+            📄 Upload plan-sets
+          </Link>
+          <Link
+            className="button-like studio-mini"
+            title="Trace the building outline over the plans — corner to corner, one shape per building, a story per floor"
+            to={`/projects/${projectId}/trace-model`}
+          >
+            ✏️ Trace plans
+          </Link>
+          {traceModel && (
+            <span className="muted" style={{ fontSize: 12, alignSelf: "center" }}>
+              trace on file
+              {Array.isArray(traceModel.building.stories)
+                ? ` · ${traceModel.building.stories.length} floor${traceModel.building.stories.length === 1 ? "" : "s"}`
+                : ""}
+            </span>
+          )}
+        </div>
+      )}
       <details open>
         <summary className="tcx-label">Tools</summary>
         <div className="studio-palette-body">

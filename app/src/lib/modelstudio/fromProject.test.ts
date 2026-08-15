@@ -3,7 +3,7 @@
 // every window on the shared line ("window hiding behind the wall").
 
 import { describe, expect, it } from "vitest";
-import { buildStudioPull, buildStudioSeed, markKeyOf } from "./fromProject";
+import { buildStudioFloorsSeed, buildStudioPull, buildStudioSeed, markKeyOf } from "./fromProject";
 import type { ProjectMarkSpec } from "../install/specs";
 import type { UnitConfig } from "./units";
 
@@ -354,5 +354,34 @@ describe("buildStudioSeed wall dedupe", () => {
     for (const w of plan.walls) {
       expect(w.corner1).not.toBe(w.corner2);
     }
+  });
+});
+
+describe("buildStudioFloorsSeed (every traced story → a studio floor)", () => {
+  it("two stories become two floor plans, walls per story", () => {
+    const job = {
+      building: {
+        footprints: [rect(0, 0, 10, 6)],
+        stories: [
+          { n: 1, elevM: 0, heightM: 3, footprints: [rect(0, 0, 10, 6), rect(12, 0, 16, 4)] },
+          { n: 2, elevM: 3, heightM: 2.5, footprints: [rect(0, 0, 10, 6)] },
+        ],
+      },
+      windows: [],
+    };
+    const floors = buildStudioFloorsSeed(job as never);
+    expect(floors).toHaveLength(2);
+    const f1 = JSON.parse(floors[0]) as { floorplan: { walls: unknown[] } };
+    const f2 = JSON.parse(floors[1]) as { floorplan: { walls: unknown[] } };
+    expect(f1.floorplan.walls).toHaveLength(8); // two separate masses
+    expect(f2.floorplan.walls).toHaveLength(4);
+  });
+
+  it("no stories array → one ground floor", () => {
+    const floors = buildStudioFloorsSeed(job([rect(0, 0, 8, 5)]) as never);
+    expect(floors).toHaveLength(1);
+    expect(
+      (JSON.parse(floors[0]) as { floorplan: { walls: unknown[] } }).floorplan.walls,
+    ).toHaveLength(4);
   });
 });

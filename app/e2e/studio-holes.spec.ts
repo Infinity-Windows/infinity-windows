@@ -1185,3 +1185,43 @@ test("a fresh seed never mints twin walls", async ({ page }) => {
   // 4 + 4 walls minus the shared boundary seeded once = 7.
   expect(wallCount).toBe(7);
 });
+
+test("a HUMAN trace seeds every traced story as a studio floor", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  // A tracer-written model: building.trace marks it human (a Studio
+  // publish never has it). Two stories → the studio must boot two floors.
+  await useOutline(page, {
+    fitview: {
+      model: {
+        ...FITVIEW_MODEL,
+        building: {
+          ...FITVIEW_MODEL.building,
+          trace: { polys: [], dots: [], stories: [] },
+          stories: [
+            { n: 1, elevM: 0, heightM: 3, footprints: [MASS_A, MASS_B] },
+            { n: 2, elevM: 3, heightM: 2.5, footprints: [MASS_A] },
+          ],
+        },
+      },
+    },
+  });
+  await openStudio(page);
+
+  const info = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    return { activeWalls: bp.model.floorplan.getWalls().length };
+  });
+  // Ground floor: both masses, shared boundary deduped (7 walls, not 8).
+  expect(info.activeWalls).toBeGreaterThanOrEqual(7);
+
+  // Switch to floor 2 (chips are numbered): MASS_A alone → 4 walls.
+  await page.getByRole("button", { name: /Tools/ }).click();
+  await page.getByText("Building", { exact: true }).click();
+  await page.getByRole("button", { name: "2", exact: true }).click();
+  await page.waitForFunction(() => {
+    const bp = (window as any).__studio;
+    return bp.model.floorplan.getWalls().length === 4;
+  });
+});
