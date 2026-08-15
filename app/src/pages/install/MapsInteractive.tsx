@@ -1,14 +1,22 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
+  assignOpeningToInstaller,
   getMyProfile,
   listMarkSpecs,
   listOpenings,
   listPlanOutlines,
+  listProfiles,
+  unassignOpening,
 } from "../../lib/install/api";
 import type { Project } from "../../lib/types";
 import { pushToast } from "../../lib/toast";
+import { formatApiError } from "../../lib/install/errors";
+import {
+  buildSequenceAssignments,
+  maxExistingSequence,
+} from "../../lib/install/mapDispatch";
 import { listQcPassedOpeningIds } from "../../lib/ops";
 import { listOpeningPhases } from "../../lib/install/phases";
 import { isForemanPlus, isSupervisorPlus } from "../../lib/install/types";
@@ -75,6 +83,9 @@ export function MapsInteractive({ project }: { project: Project }) {
     queryFn: () => listMarkSpecs(projectId),
   });
   const myProfile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  // Crew roster for the map's Assign mode (foreman+): pick windows on the
+  // model, pick a person, done — the Dispatch tab lists it as always.
+  const profiles = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
   const qcPassed = useQuery({
     queryKey: ["qcPassed", projectId],
     queryFn: () => listQcPassedOpeningIds(projectId),
@@ -167,6 +178,9 @@ export function MapsInteractive({ project }: { project: Project }) {
   // Latest openings for the tap-through lookup without remounting on refetch.
   const openingsRef = useRef(openings.data);
   openingsRef.current = openings.data;
+  const profilesRef = useRef(profiles.data);
+  profilesRef.current = profiles.data;
+  const queryClient = useQueryClient();
 
   // Mount once, refresh in place on data changes — refresh keeps the camera
   // where the user left it, a remount would snap it back to the default.
@@ -207,6 +221,57 @@ export function MapsInteractive({ project }: { project: Project }) {
           navigate(`/projects/${projectId}/opening/${match.id}`);
         }, 0);
       },
+      // Assign mode (owner, 2026-08-14: "click on an installer, then multi
+      // select windows... while i'm on the map interactive"): foreman+
+      // only. Picks arrive as mark codes in tap order; they append to the
+      // installer's existing sequence, same as the Sheets view.
+      ...(isForemanPlus(effectiveRole)
+        ? {
+            crew: (profilesRef.current ?? [])
+              .filter((p) => p.active)
+              .map((p) => ({
+                id: p.id,
+                name: p.display_name ?? p.id.slice(0, 8),
+                role: p.role,
+              })),
+            onAssign: (codes: string[], profileId: string | null) => {
+              const all = openingsRef.current ?? [];
+              const ids = codes
+                .map((c) => {
+                  const want = normalizeMarkCode(c);
+                  return all.find((o) => normalizeMarkCode(o.opening_code) === want)?.id;
+                })
+                .filter((id): id is string => Boolean(id));
+              if (ids.length === 0) {
+                pushToast("Those windows have no openings yet.", "error");
+                return;
+              }
+              void (async () => {
+                try {
+                  if (!profileId) {
+                    for (const id of ids) await unassignOpening(id);
+                  } else {
+                    const start = maxExistingSequence(all, profileId, ids);
+                    const seq = buildSequenceAssignments(ids, start);
+                    for (const s of seq) {
+                      await assignOpeningToInstaller(s.openingId, profileId, s.sequence);
+                    }
+                  }
+                  await queryClient.invalidateQueries({
+                    queryKey: ["openings", projectId],
+                  });
+                  pushToast(
+                    profileId
+                      ? `${ids.length} window${ids.length === 1 ? "" : "s"} assigned.`
+                      : `${ids.length} window${ids.length === 1 ? "" : "s"} unassigned.`,
+                  );
+                } catch (e) {
+                  pushToast(formatApiError(e), "error");
+                }
+              })();
+            },
+          }
+        : {}),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job, mapView]);
