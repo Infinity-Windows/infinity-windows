@@ -41,6 +41,7 @@ import {
   setOpeningNeedsFlashing,
 } from "../../lib/install/phases";
 import { computeInstallPoints } from "../../lib/points";
+import { SummonPanel } from "../../components/install/SummonPanel";
 import { checkFit, isInstallReadyStatus, readyToInstall, smallest } from "../../lib/install/fit";
 import {
   framingIssueNote,
@@ -1545,6 +1546,20 @@ export function OpeningSheet() {
             </p>
           )}
 
+          {/* A live summon shows HERE too: helpers answering the ring land
+              on this stage, not the caller's install screen. */}
+          <SummonPanel
+            projectId={projectId}
+            openingId={openingId}
+            openingCode={o.opening_code}
+            widthIn={o.window_types?.width_in ?? openingSpec?.width_in ?? null}
+            heightIn={o.window_types?.height_in ?? openingSpec?.height_in ?? null}
+            myProfileId={myProfile.data?.id ?? null}
+            myName={myProfile.data?.display_name ?? null}
+            effectiveRole={effectiveRole ?? "installer"}
+            installRunning={false}
+          />
+
           {/* The deliberate act. This is the moment the clock starts — and the
               moment the lead board sees this window as in progress. */}
           <button
@@ -1677,6 +1692,17 @@ export function OpeningSheet() {
                   ))}
                 </ol>
               )}
+              <SummonPanel
+                projectId={projectId}
+                openingId={openingId}
+                openingCode={o.opening_code}
+                widthIn={o.window_types?.width_in ?? openingSpec?.width_in ?? null}
+                heightIn={o.window_types?.height_in ?? openingSpec?.height_in ?? null}
+                myProfileId={myProfile.data?.id ?? null}
+                myName={myProfile.data?.display_name ?? null}
+                effectiveRole={effectiveRole ?? "installer"}
+                installRunning
+              />
               <button className="primary big" onClick={() => setStage("capture")}>
                 Done — capture it →
               </button>

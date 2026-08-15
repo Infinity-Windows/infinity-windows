@@ -28,6 +28,7 @@ interface SendPushBody {
   profileIds?: string[];
   title?: string;
   body?: string;
+  urgent?: boolean;
   tag?: string;
   url?: string;
 }
@@ -86,12 +87,20 @@ Deno.serve(async (req) => {
     }
 
     const subs = (data ?? []) as SubscriptionRow[];
+    // `urgent` rides in the payload (the service worker rings harder) AND
+    // sets the Web Push Urgency header so platforms deliver it promptly
+    // even in battery-saver states (Summon, 2026-08-14).
+    const urgent = payload.urgent === true;
     const notificationJson = JSON.stringify({
       title,
       body: payload.body ?? "",
       tag: payload.tag,
       url: payload.url,
+      urgent: urgent || undefined,
     });
+    const sendOptions = urgent
+      ? { headers: { Urgency: "high" }, TTL: 600 }
+      : undefined;
 
     let sent = 0;
     const goneEndpoints: string[] = [];
@@ -104,7 +113,7 @@ Deno.serve(async (req) => {
           keys: { p256dh: row.p256dh, auth: row.auth },
         };
         try {
-          await webpush.sendNotification(subscription, notificationJson);
+          await webpush.sendNotification(subscription, notificationJson, sendOptions);
           sent += 1;
         } catch (err) {
           const status = Number(

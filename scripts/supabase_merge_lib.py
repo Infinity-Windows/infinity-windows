@@ -477,6 +477,10 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "learning_videos": None,
     # One row per (project, runner) already — the natural key IS the row.
     "flash_run_assignments": ("project_id", "profile_id"),
+    # Summons are events: two calls on one window at different times are
+    # two records, never duplicates.
+    "summons": None,
+    "summon_helpers": ("summon_id", "profile_id"),
     # Storage tracking: containers and packages carry immutable printed
     # serials, so the serial is the identity a merge must respect.
     "storage_containers": ("serial",),

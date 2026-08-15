@@ -38,6 +38,7 @@ import {
   listOpeningPhases,
   unassignFlashRunner,
 } from "../../lib/install/phases";
+import { listLiveSummons } from "../../lib/install/summons";
 
 export function DispatchBoard({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
@@ -262,6 +263,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
       </p>
 
       <FlashRunCard projectId={projectId} crew={activeCrew} />
+      <SummonStrip projectId={projectId} openingCodeById={openingCodeById} />
 
       {blockerCount > 0 && (
         <>
@@ -475,6 +477,36 @@ function FlashRunCard({
         )}
       </div>
       {err && <p className="error" style={{ marginTop: 6 }}>{err}</p>}
+    </div>
+  );
+}
+
+/** Live summons at a glance: a foreman sees a heavy lift forming the
+ * moment it's called (owner, 2026-08-14). */
+function SummonStrip({
+  projectId,
+  openingCodeById,
+}: {
+  projectId: string;
+  openingCodeById: Map<string, string>;
+}) {
+  const live = useQuery({
+    queryKey: ["summons", projectId],
+    queryFn: () => listLiveSummons(projectId),
+    refetchInterval: 20_000,
+  });
+  if ((live.data ?? []).length === 0) return null;
+  return (
+    <div className="detail-card" style={{ marginTop: 8 }}>
+      {(live.data ?? []).map((s) => (
+        <p key={s.id} style={{ margin: "2px 0" }}>
+          🔔 <strong>{openingCodeById.get(s.opening_id) ?? "window"}</strong>{" "}
+          <span className="muted">
+            — {s.requester?.display_name ?? "installer"} needs {s.needed}
+            {s.status === "covered" ? " · covered" : " · ringing"}
+          </span>
+        </p>
+      ))}
     </div>
   );
 }
