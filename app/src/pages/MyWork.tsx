@@ -14,6 +14,7 @@ import {
   undoInstall,
 } from "../lib/install/api";
 import { formatApiError } from "../lib/install/errors";
+import { listMyFlashRuns } from "../lib/install/phases";
 import {
   schedulePrefetchMarkDrawings,
 } from "../lib/install/prefetchDrawings";
@@ -67,6 +68,11 @@ export function MyWork() {
   const todayPublished = useQuery({
     queryKey: ["mySchedule", me.data?.id, todayISO, todayISO],
     queryFn: () => listMyPublished(me.data!.id, todayISO, todayISO),
+    enabled: Boolean(me.data?.id),
+  });
+  const myFlashRuns = useQuery({
+    queryKey: ["myFlashRuns", me.data?.id],
+    queryFn: () => listMyFlashRuns(me.data!.id),
     enabled: Boolean(me.data?.id),
   });
   // Same read-only helpers My Schedule uses, so the Today strip can show the
@@ -403,6 +409,19 @@ export function MyWork() {
           Review {toConfirm.data!.length} AI-filled memo(s) →
         </Link>
       )}
+
+      {/* Flash runs I'm dispatched on (owner, 2026-08-14: the run is its
+          own task) — one card per job, straight into the run screen. */}
+      {(myFlashRuns.data ?? []).map((r) => (
+        <Link
+          key={r.id}
+          to={`/projects/${r.project_id}/flash-run`}
+          className="action-btn"
+        >
+          ⚡ Flash run — {r.projects?.job_code ?? "job"}
+          {r.projects?.name ? ` · ${r.projects.name}` : ""}
+        </Link>
+      ))}
 
       {activeInstall && (
         <button

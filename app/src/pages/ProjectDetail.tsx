@@ -501,9 +501,6 @@ function OverviewTab({
         <Link to={`/projects/${projectId}/review`} className="action-btn">
           Review openings
         </Link>
-        <Link to={`/projects/${projectId}/flash-run`} className="action-btn">
-          Flash run — flash ahead of the crew
-        </Link>
         <Link to={`/supplies?job=${projectId}`} className="action-btn">
           Supplies for this job
         </Link>
