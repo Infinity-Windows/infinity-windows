@@ -44,6 +44,8 @@ Both are derived from sessions. Neither is stored directly. Storing an aggregate
 
 **Summon help** — a helper's stint on a unit after answering a Summon: a session like any other, in the helper role. The clock starts at the Answer tap — the walk over is part of what that window costs. Counts in labor-minutes *and* in install evidence — a four-man lift is real install cost for that signature, and pretending it took one installer would make heavy units look cheap.
 
+**Record** — the full story of one unit, read back on its sheet: every install round (including sent-back and redo rounds, each with its media, memo, and grade), the session-by-session timeline in plain language, and the AI's contributions labelled as AI. Nothing in the Record is stored for it — it is a *reading* of what the atoms already hold. Raw facts about one unit are visible to every role; anything that *compares* (estimate vs actual, cohort averages, per-person rollups) stays foreman+.
+
 ## The estimation model
 
 **Signature** — the structured, computed key a unit is grouped by. Composed from kind, mechanism mix (including slide count), panel count, moving/fixed split, corner (none/corner — the side is recorded but never grouped), story per tier, and inset/outset. Dimensions and handedness never enter it: sizes are continuous evidence, and mirror images share a cohort. Versioned, so definition changes never silently fracture cohort history. Never typed by a human. A free-text name cannot be grouped on; "Bifold 5 panel" and "5-panel bifold" are two cohorts forever. Inset/outset is a new field: the extractor reads it from the spec sheets and it is confirmed at spec review, like every other spec field.

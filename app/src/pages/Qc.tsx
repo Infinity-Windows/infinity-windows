@@ -136,7 +136,11 @@ export function Qc() {
           return (
             <li key={o.id} className="find-row" style={{ flexWrap: "wrap" }}>
               <div>
-                <strong>{o.opening_code}</strong>{" "}
+                {/* QC judges the window — it should be able to OPEN it. The
+                    sheet carries the Record (photos, memo, timeline). */}
+                <Link to={`/projects/${o.project_id}/opening/${o.id}`} className="link">
+                  <strong>{o.opening_code}</strong>
+                </Link>{" "}
                 <span className="muted">{o.window_types?.type_code}</span>
                 <div className={status === "passed" ? "ok" : status === "callback" ? "error" : "muted"} style={{ fontSize: 12 }}>
                   {status}
