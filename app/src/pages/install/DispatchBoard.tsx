@@ -39,6 +39,11 @@ import {
   unassignFlashRunner,
 } from "../../lib/install/phases";
 import { listLiveSummons } from "../../lib/install/summons";
+import {
+  blockedUnits,
+  listOpenRedos,
+  listProjectSessions,
+} from "../../lib/install/sessions";
 
 export function DispatchBoard({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
@@ -264,6 +269,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
 
       <FlashRunCard projectId={projectId} crew={activeCrew} />
       <SummonStrip projectId={projectId} openingCodeById={openingCodeById} />
+      <SessionStrips projectId={projectId} openingCodeById={openingCodeById} />
 
       {blockerCount > 0 && (
         <>
@@ -504,6 +510,48 @@ function SummonStrip({
           <span className="muted">
             — {s.requester?.display_name ?? "installer"} needs {s.needed}
             {s.status === "covered" ? " · covered" : " · ringing"}
+          </span>
+        </p>
+      ))}
+    </div>
+  );
+}
+
+
+/** Blocked units (derived from sessions — nothing stored) and open redos:
+ * the foreman sees stuck work and comebacks the moment they happen. */
+function SessionStrips({
+  projectId,
+  openingCodeById,
+}: {
+  projectId: string;
+  openingCodeById: Map<string, string>;
+}) {
+  const sessions = useQuery({
+    queryKey: ["unitSessions", projectId],
+    queryFn: () => listProjectSessions(projectId),
+    refetchInterval: 30_000,
+  });
+  const redos = useQuery({
+    queryKey: ["openRedos", projectId],
+    queryFn: () => listOpenRedos(projectId),
+    refetchInterval: 30_000,
+  });
+  const blocked = blockedUnits(sessions.data ?? []);
+  if (blocked.length === 0 && (redos.data ?? []).length === 0) return null;
+  return (
+    <div className="detail-card" style={{ marginTop: 8 }}>
+      {blocked.map((b) => (
+        <p key={b.openingId} style={{ margin: "2px 0" }}>
+          🚫 <strong>{openingCodeById.get(b.openingId) ?? "window"}</strong>{" "}
+          <span className="muted">blocked — {b.reason ?? "no reason recorded"}</span>
+        </p>
+      ))}
+      {(redos.data ?? []).map((r) => (
+        <p key={r.id} style={{ margin: "2px 0" }}>
+          🔁 <strong>{openingCodeById.get(r.opening_id) ?? "window"}</strong>{" "}
+          <span className="muted">
+            redo — {r.presser?.display_name ?? "installer"}: {r.reason}
           </span>
         </p>
       ))}

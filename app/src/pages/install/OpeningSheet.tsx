@@ -25,6 +25,7 @@ import {
   undoInstall,
   synthesizeTypeTips,
   generateHowto,
+  listProfiles,
 } from "../../lib/install/api";
 import {
   formatAssignMeta,
@@ -42,6 +43,7 @@ import {
 import { computeInstallPoints } from "../../lib/points";
 import {
   BLOCK_REASONS,
+  pressRedo,
   blockUnit,
   chainGraceRemainingMs,
   reattributeSession,
@@ -96,6 +98,7 @@ import { resolveWindowFromScan } from "../../lib/scanResolve";
 import { supabase } from "../../lib/supabase";
 import { formatApiError } from "../../lib/install/errors";
 import { pushToast } from "../../lib/toast";
+import { sendPush } from "../../lib/permissions/pushServer";
 
 const windowLookups = { getWindowByWindowId, findWindowByCode, findWindowBySerial };
 
@@ -400,6 +403,37 @@ export function OpeningSheet() {
       setMessage("Install undone - every record kept. The window is back on the list.");
       refresh();
       void queryClient.invalidateQueries({ queryKey: ["undoneInstalls", openingId] });
+    },
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+
+  // Redo (spec .scratch/sessions): press → foreman push → back in play.
+  const [redoSheetOpen, setRedoSheetOpen] = useState(false);
+  const [redoReason, setRedoReason] = useState("");
+  const doRedo = useMutation({
+    mutationFn: () => pressRedo(openingId, redoReason.trim()),
+    onSuccess: async () => {
+      setRedoSheetOpen(false);
+      setRedoReason("");
+      setMessage("Redo filed — the window is back on the list.");
+      refresh();
+      // Foreman notified, never asked (owner rule). Best-effort.
+      try {
+        const foremen = (await listProfiles()).filter(
+          (p) => p.active && isForemanPlus(p.role),
+        );
+        if (foremen.length > 0 && opening.data) {
+          await sendPush({
+            profileIds: foremen.map((f) => f.id),
+            title: `🔁 Redo — ${opening.data.opening_code}`,
+            body: `${myProfile.data?.display_name ?? "An installer"}: ${redoReason.trim()}`,
+            tag: `redo-${openingId}`,
+            url: `/projects/${projectId}/opening/${openingId}`,
+          });
+        }
+      } catch {
+        /* push is best-effort */
+      }
     },
     onError: (e) => setMessage(formatApiError(e)),
   });
@@ -1185,6 +1219,53 @@ export function OpeningSheet() {
             <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
               Ask your foreman to send it back — undoing an install is their call.
             </p>
+          )}
+        </div>
+      )}
+
+      {/* REDO (CONTEXT.md): the install was REAL but the window needs doing
+          again — different truth than undo, so a different button. Any
+          installer, reason required; the foreman is notified, never asked.
+          The original record stands; the window goes back in play. */}
+      {installed && (
+        <div className="detail-card">
+          {!redoSheetOpen ? (
+            <button className="button-like" onClick={() => setRedoSheetOpen(true)}>
+              🔁 Redo this window — it needs doing again
+            </button>
+          ) : (
+            <>
+              <label className="field-label">
+                Why does it need redoing? (required — your foreman gets pinged,
+                the window goes back on the list)
+              </label>
+              <textarea
+                rows={2}
+                maxLength={500}
+                value={redoReason}
+                placeholder="e.g. failed inspection / glass fogged / wrong unit went in"
+                onChange={(e) => setRedoReason(e.target.value)}
+              />
+              <div className="row-gap" style={{ marginTop: 8 }}>
+                <button
+                  className="button-like active-pill"
+                  disabled={doRedo.isPending || redoReason.trim() === ""}
+                  onClick={() => doRedo.mutate()}
+                >
+                  {doRedo.isPending ? "Filing…" : "Redo — put it back in play"}
+                </button>
+                <button
+                  className="button-like"
+                  disabled={doRedo.isPending}
+                  onClick={() => {
+                    setRedoSheetOpen(false);
+                    setRedoReason("");
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
           )}
         </div>
       )}

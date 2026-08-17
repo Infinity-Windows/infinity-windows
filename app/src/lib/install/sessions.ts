@@ -154,3 +154,40 @@ export function blockedUnits(
   }
   return out;
 }
+
+// ---------------------------------------------------------------- redo
+
+export interface UnitRedo {
+  id: string;
+  opening_id: string;
+  pressed_by: string;
+  reason: string;
+  pressed_at: string;
+  resolved_at: string | null;
+  presser?: { display_name: string | null } | null;
+}
+
+/** The Redo button (CONTEXT.md): any installer, reason required, foreman
+ * notified never asked. The original install record stands. */
+export async function pressRedo(openingId: string, reason: string): Promise<UnitRedo> {
+  const { data, error } = await supabase.rpc("press_redo", {
+    p_opening_id: openingId,
+    p_reason: reason,
+  });
+  if (error) throw error;
+  return data as UnitRedo;
+}
+
+/** A project's OPEN redos — the badge source for lists and Dispatch. */
+export async function listOpenRedos(projectId: string): Promise<UnitRedo[]> {
+  const { data, error } = await supabase
+    .from("unit_redos")
+    .select(
+      "*, presser:profiles!unit_redos_pressed_by_fkey(display_name), opening:project_openings!inner(project_id)",
+    )
+    .eq("opening.project_id", projectId)
+    .is("resolved_at", null);
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return (data ?? []) as unknown as UnitRedo[];
+}
