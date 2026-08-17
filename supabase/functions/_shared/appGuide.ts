@@ -121,6 +121,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "Design studio for building models: start a blank project or open a job's model, draw the planset in 2D (6-inch snap), and the 3D builds itself. Windows and doors come from the unit catalog; linked projects publish straight to the job's interactive map.",
   },
   {
+    path: "/data",
+    label: "Data",
+    minRole: "supervisor",
+    blurb:
+      "The company's ledger of where time goes: hours lost to blocks by reason, rework and redos, true labor cost per job, estimating coverage and evidence health, crew on-tool time, and each job's data quality. Every number derives from stored sessions and keeps its provenance.",
+  },
+  {
     path: "/storage",
     label: "Storage",
     minRole: "installer",

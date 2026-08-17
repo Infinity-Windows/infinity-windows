@@ -40,6 +40,8 @@ Both are derived from sessions. Neither is stored directly. Storing an aggregate
 
 **Rework** — work on a unit after its Redo button is pressed, for any reason: failed inspection, damage, wrong unit, customer complaint. Any installer can press Redo, reason required; the foreman is notified, never asked first — friction belongs on hiding problems, not on admitting them. The unit returns to the work list as open, visibly marked as a redo, until finished again. The fix is timed as its own rework-tagged sessions on the *same* unit — one opening is one unit, always — kept as separate data. Excluded from estimating averages; counted in a rework rate. The original install's sessions stand as evidence.
 
+**On-tool** — the share of a shift spent inside sessions: session minutes ÷ worked shift minutes. A crew-level efficiency lens first; low on-tool across everyone means the schedule or the warehouse is the problem, not the people. Never shown to installers.
+
 **Summon help** — a helper's stint on a unit after answering a Summon: a session like any other, in the helper role. The clock starts at the Answer tap — the walk over is part of what that window costs. Counts in labor-minutes *and* in install evidence — a four-man lift is real install cost for that signature, and pretending it took one installer would make heavy units look cheap.
 
 ## The estimation model
