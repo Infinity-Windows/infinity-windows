@@ -23,10 +23,15 @@ import { listMarkSpecs } from "../lib/install/api";
 import { listTeamShifts } from "../lib/timeclock";
 import {
   autoClosedCount,
+  blockedNow,
+  estimateVsActual,
+  legacyLabor,
+  listProjectInstallMinutes,
   onTool,
   reworkTotals,
   stallsByReason,
   topUnitsByLabor,
+  weeklyTrend,
 } from "../lib/data/insights";
 import {
   combineEvidence,
@@ -49,6 +54,10 @@ interface JobBundle {
   flashingOwed: number;
   specsConfirmedPct: number | null;
   laborMin: number;
+  /** Old-era hand-recorded install minutes (windows sessions don't cover). */
+  legacyEvents: { opening_id: string; minutes: number }[];
+  legacyMin: number;
+  legacyUnits: number;
 }
 
 function Bar({
@@ -114,13 +123,15 @@ export function DataHub() {
     queryFn: async (): Promise<JobBundle[]> =>
       Promise.all(
         scope.map(async (p) => {
-          const [openings, sessions, redos, phases, specs] = await Promise.all([
-            listOpenings(p.id),
-            listProjectSessions(p.id),
-            listOpenRedos(p.id),
-            listOpeningPhases(p.id),
-            listMarkSpecs(p.id),
-          ]);
+          const [openings, sessions, redos, phases, specs, oldMinutes] =
+            await Promise.all([
+              listOpenings(p.id),
+              listProjectSessions(p.id),
+              listOpenRedos(p.id),
+              listOpeningPhases(p.id),
+              listMarkSpecs(p.id),
+              listProjectInstallMinutes(p.id),
+            ]);
           const flashingOwed = openings.filter((o) =>
             flashingOutstanding(o, phases.filter((ph) => ph.opening_id === o.id)),
           ).length;
@@ -144,6 +155,10 @@ export function DataHub() {
                 ),
               0,
             );
+          // Windows installed before automatic timing keep their old
+          // hand-recorded minutes — counted once, automatic timing wins
+          // per window, and the panel says how many came in this way.
+          const legacy = legacyLabor(oldMinutes, sessions);
           return {
             projectId: p.id,
             jobCode: p.job_code,
@@ -154,7 +169,10 @@ export function DataHub() {
             specsConfirmedPct: specs.length
               ? Math.round((confirmed / specs.length) * 100)
               : null,
-            laborMin: sessMin + flashMin,
+            laborMin: sessMin + flashMin + legacy.minutes,
+            legacyEvents: oldMinutes,
+            legacyMin: legacy.minutes,
+            legacyUnits: legacy.units,
           };
         }),
       ),
@@ -196,8 +214,17 @@ export function DataHub() {
         m.set(o.id, { code: o.opening_code, projectId: b.projectId });
     return m;
   }, [all]);
-  const costliest = useMemo(() => topUnitsByLabor(allSessions, 5), [allSessions]);
+  const allLegacyEvents = useMemo(() => all.flatMap((b) => b.legacyEvents), [all]);
+  const legacyUnitsTotal = all.reduce((t, b) => t + b.legacyUnits, 0);
+  const costliest = useMemo(
+    () => topUnitsByLabor(allSessions, 5, Date.now(), allLegacyEvents),
+    [allSessions, allLegacyEvents],
+  );
   const maxUnitCost = costliest[0]?.minutes ?? 0;
+  const stuck = useMemo(() => blockedNow(allSessions), [allSessions]);
+  const trend = useMemo(() => weeklyTrend(allSessions, 6), [allSessions]);
+  const trendMax = Math.max(1, ...trend.map((w) => Math.max(w.laborMin, w.lostMin)));
+  const trendHasData = trend.some((w) => w.laborMin > 0 || w.lostMin > 0);
 
   const evidence = useMemo(
     () => combineEvidence(sessionsEv.data ?? [], legacyEv.data ?? []),
@@ -207,6 +234,12 @@ export function DataHub() {
     let signed = 0;
     let unsigned = 0;
     const rungs = new Map<string, number>();
+    // Actual recorded minutes per unit (automatic timing only).
+    const actualBy = new Map<string, number>();
+    for (const ev of sessionsEv.data ?? []) {
+      if (ev.unitId) actualBy.set(ev.unitId, ev.minutes);
+    }
+    const pairs: { estimateMin: number; actualMin: number }[] = [];
     for (const b of all) {
       const job = estimateJobUnits(
         b.openings.map((o) => ({
@@ -225,10 +258,20 @@ export function DataHub() {
         if (r.estimate) {
           rungs.set(r.estimate.rung, (rungs.get(r.estimate.rung) ?? 0) + 1);
         }
+        const actual = actualBy.get(r.openingId);
+        if (r.installed && r.estimate?.minutes != null && actual) {
+          pairs.push({ estimateMin: r.estimate.minutes, actualMin: actual });
+        }
       }
     }
-    return { signed, unsigned, rungs: [...rungs.entries()] };
-  }, [all, evidence]);
+    return {
+      signed,
+      unsigned,
+      rungs: [...rungs.entries()],
+      accuracy: estimateVsActual(pairs),
+      finishedPairs: pairs.length,
+    };
+  }, [all, evidence, sessionsEv.data]);
   const signedPct =
     estimating.signed + estimating.unsigned > 0
       ? (estimating.signed / (estimating.signed + estimating.unsigned)) * 100
@@ -285,6 +328,42 @@ export function DataHub() {
         </div>
       </div>
 
+      {/* ---- TREND · six Monday weeks, same calendar as payroll ---- */}
+      {trendHasData && (
+        <div className="detail-card">
+          <p className="data-section-kicker">Trend</p>
+          <h2 style={{ margin: "0 0 6px" }}>The last six weeks</h2>
+          <Explain>
+            Each week (Monday to Sunday, same as payroll) shows two bars: work
+            time recorded on windows, and time lost to blocks that week. You
+            want the top bar growing and the amber bar shrinking — direction
+            matters more than any single week's number.
+          </Explain>
+          {trend.map((w) => (
+            <div key={w.weekStart} style={{ padding: "3px 0" }}>
+              <div className="databar-row" style={{ padding: "1px 0" }}>
+                <span className="bar-name muted" style={{ fontSize: 12, width: 64 }}>
+                  {new Date(`${w.weekStart}T00:00:00Z`).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    timeZone: "UTC",
+                  })}
+                </span>
+                <Bar pct={(w.laborMin / trendMax) * 100} />
+                <span className="bar-num">{fmtH(w.laborMin)}</span>
+              </div>
+              <div className="databar-row" style={{ padding: "1px 0" }}>
+                <span className="bar-name" style={{ width: 64 }} />
+                <Bar pct={(w.lostMin / trendMax) * 100} tone="warn" />
+                <span className="bar-num">
+                  {w.lostMin > 0 ? `${fmtH(w.lostMin)} lost` : "—"}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ---- 1 · WHERE DID WE LOSE TIME? ---- */}
       <div className="detail-card">
         <p className="data-section-kicker">Lost time</p>
@@ -297,6 +376,32 @@ export function DataHub() {
           the biggest problem to go fix. This time never counts against the
           installer — it points at what stopped them.
         </Explain>
+        {stuck.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <span className="field-label" style={{ color: "var(--warn)" }}>
+              Blocked right now — go unstick these
+            </span>
+            {stuck.map((u) => {
+              const info = openingIndex.get(u.openingId);
+              return (
+                <div className="databar-row" key={u.openingId} style={{ padding: "3px 0" }}>
+                  <span className="bar-name">
+                    {info ? (
+                      <Link to={`/projects/${info.projectId}/opening/${u.openingId}`}>
+                        {info.code}
+                      </Link>
+                    ) : (
+                      u.openingId.slice(0, 8)
+                    )}
+                  </span>
+                  <span className="bar-num" style={{ marginLeft: "auto" }}>
+                    sitting {fmtH(u.sittingMin)} · {u.reason ?? "no reason recorded"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
         {stalls.length > 0 ? (
           <div>
             {stalls.map((s) => (
@@ -399,6 +504,8 @@ export function DataHub() {
         <p className="muted" style={{ margin: "8px 0 0", fontSize: 12 }}>
           Time spent redoing windows is counted in its own chip up top — never
           hidden inside these averages.
+          {legacyUnitsTotal > 0 &&
+            ` Includes ${legacyUnitsTotal} window${legacyUnitsTotal === 1 ? "" : "s"} timed the old hand-recorded way, before automatic timing shipped.`}
         </p>
       </div>
 
@@ -441,6 +548,40 @@ export function DataHub() {
             ))}
           </div>
         )}
+        <p style={{ margin: "8px 0 0", fontSize: 13 }}>
+          {estimating.accuracy ? (
+            (() => {
+              const pctOff = Math.round(
+                Math.abs(estimating.accuracy.medianRatio - 1) * 100,
+              );
+              return (
+                <>
+                  Estimates are{" "}
+                  <strong style={{ color: pctOff <= 10 ? "var(--ok)" : "var(--warn)" }}>
+                    {pctOff === 0
+                      ? "right on the money"
+                      : `running ${pctOff}% ${
+                          estimating.accuracy.medianRatio > 1 ? "low" : "high"
+                        }`}
+                  </strong>{" "}
+                  <span className="muted">
+                    {pctOff === 0
+                      ? ""
+                      : `(real installs took ${
+                          estimating.accuracy.medianRatio > 1 ? "longer" : "less"
+                        } than the guess) `}
+                    — measured on {estimating.accuracy.n} finished windows.
+                  </span>
+                </>
+              );
+            })()
+          ) : (
+            <span className="muted">
+              Estimate accuracy shows after 5 finished windows have both a
+              number and a recorded time — {estimating.finishedPairs} so far.
+            </span>
+          )}
+        </p>
         <p className="muted" style={{ margin: "8px 0 0", fontSize: 12 }}>
           Timing data: {(sessionsEv.data ?? []).length} window(s) timed the new
           automatic way, {(legacyEv.data ?? []).length} from the old hand-typed
