@@ -195,7 +195,18 @@ export async function setToolHolder(id: string, holderId: string | null): Promis
 }
 
 // --- Supplies ---
-export interface Supply { id: string; name: string; unit: string; }
+export interface Supply {
+  id: string;
+  name: string;
+  unit: string;
+  /** Where it lives — the one spot an installer is told (ticket 07).
+   * Optional: rows read before the supplies migration lack the keys. */
+  home_location_id?: string | null;
+  /** The running estimate. Null = never counted; the UI says so and never
+   * invents a zero. */
+  on_hand?: number | null;
+  last_counted_at?: string | null;
+}
 export interface SupplyOrder {
   id: string; project_id: string | null; name: string | null; qty: number; status: string;
   supplies?: { name: string; unit: string } | null;
@@ -204,6 +215,61 @@ export async function listSupplies(): Promise<Supply[]> {
   const { data, error } = await supabase.from("supplies").select("*").order("name");
   if (error) throw error;
   return (data ?? []) as Supply[];
+}
+
+/**
+ * "about 140 on hand · last counted Aug 3" — or "not counted yet". The
+ * estimate NEVER appears without its date (the ticket's one hard rule): a
+ * bare number would read as exact, and this number is deliberately not.
+ */
+export function onHandLabel(
+  s: Pick<Supply, "on_hand" | "last_counted_at">,
+): string {
+  if (s.on_hand == null || !s.last_counted_at) return "not counted yet";
+  const when = new Date(s.last_counted_at).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+  return `about ${s.on_hand} on hand · last counted ${when}`;
+}
+
+/** Take supplies: how many, which job. Decrements the estimate server-side
+ * and ticks the oldest matching pull-list row. */
+export async function takeSupply(input: {
+  supplyId: string;
+  projectId: string;
+  qty: number;
+}): Promise<Supply> {
+  const { data, error } = await supabase.rpc("take_supply", {
+    p_supply: input.supplyId,
+    p_project: input.projectId,
+    p_qty: input.qty,
+  });
+  if (error) throw error;
+  return data as Supply;
+}
+
+/** Counting the shelf corrects the estimate and stamps the date. */
+export async function countSupply(supplyId: string, counted: number): Promise<Supply> {
+  const { data, error } = await supabase.rpc("count_supply", {
+    p_supply: supplyId,
+    p_counted: counted,
+  });
+  if (error) throw error;
+  return data as Supply;
+}
+
+/** Foreman+: set where a supply lives. */
+export async function setSupplyHome(
+  supplyId: string,
+  locationId: string | null,
+): Promise<Supply> {
+  const { data, error } = await supabase.rpc("set_supply_home", {
+    p_supply: supplyId,
+    p_location: locationId,
+  });
+  if (error) throw error;
+  return data as Supply;
 }
 export async function addSupply(name: string, unit: string): Promise<void> {
   const { error } = await supabase.from("supplies").insert({ name, unit });

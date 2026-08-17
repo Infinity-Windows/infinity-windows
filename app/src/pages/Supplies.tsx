@@ -1,28 +1,63 @@
+// Supplies: where it lives, how many we think we have, take what you need
+// (warehouse ticket 07 — grill Q8/Q9/Q25, owner-confirmed).
+//
+// The page leads with what an installer came for: find the caulk, see the
+// home spot, tap Take, say how many and which job — three taps, never a
+// pull list in the way. The count is always an estimate and always says so
+// ("about 140 · last counted Aug 3" — onHandLabel enforces the pairing).
+// Counting the shelf corrects it. The old per-job pull list survives below
+// as REQUEST — a foreman planning ahead — and a take that matches a request
+// ticks it off server-side.
+
 import { BackChip } from "../components/BackChip";
+import { Explain } from "../components/ui/Explain";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { listProjects } from "../lib/api";
+import { listLocations, listProjects } from "../lib/api";
+import { formatApiError } from "../lib/errors";
+import { isForemanPlus } from "../lib/install/types";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { pushToast } from "../lib/toast";
 import {
   addOrder,
   addSupply,
+  countSupply,
   listOrders,
   listSupplies,
+  onHandLabel,
   setOrderStatus,
+  setSupplyHome,
+  takeSupply,
+  type Supply,
 } from "../lib/ops";
 
 const STATUSES = ["needed", "ordered", "picked", "used"];
+// Same key the tag screen uses: one muscle memory for "which job am I on".
+const LAST_JOB_KEY = "infinity.storage.lastJob";
 
 export function Supplies() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
+  const { effectiveRole } = useEffectiveRole();
+  const lead = isForemanPlus(effectiveRole);
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const supplies = useQuery({ queryKey: ["supplies"], queryFn: listSupplies });
+  const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
   // Deep-link from a job hub ("Supplies for this job") preselects that job.
   const [proj, setProj] = useState(searchParams.get("job") ?? "");
   const [supplyId, setSupplyId] = useState("");
   const [qty, setQty] = useState("1");
   const [newName, setNewName] = useState("");
+  const [taking, setTaking] = useState<Supply | null>(null);
+  const [counting, setCounting] = useState<Supply | null>(null);
+  const [homing, setHoming] = useState<Supply | null>(null);
+
+  const locationAddress = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const l of locations.data ?? []) m.set(l.id, l.address);
+    return m;
+  }, [locations.data]);
 
   const orders = useQuery({
     queryKey: ["orders", proj],
@@ -31,13 +66,15 @@ export function Supplies() {
   });
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["orders", proj] });
+  const refreshSupplies = () =>
+    queryClient.invalidateQueries({ queryKey: ["supplies"] });
   const add = useMutation({
     mutationFn: () => addOrder(proj, supplyId, Number(qty) || 1),
     onSuccess: () => { setQty("1"); refresh(); },
   });
   const addCat = useMutation({
     mutationFn: () => addSupply(newName, "ea"),
-    onSuccess: () => { setNewName(""); queryClient.invalidateQueries({ queryKey: ["supplies"] }); },
+    onSuccess: () => { setNewName(""); void refreshSupplies(); },
   });
   const setStatus = useMutation({
     mutationFn: (a: { id: string; status: string }) => setOrderStatus(a.id, a.status),
@@ -50,13 +87,60 @@ export function Supplies() {
         <div>
           <h1>Supplies</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Job pull lists + the company supply catalog.
+            Find it, take it, log it — three taps.
           </p>
         </div>
         <BackChip fallback="/warehouse" label="Warehouse" />
       </header>
 
-      <h2>Assign to job</h2>
+      <Explain id="supplies-how">
+        Every supply has one home spot, so you always know where to go. Tap Take,
+        say how many and which job — that&rsquo;s the whole log. The count is an
+        estimate, not a promise: it drops when people take, and counting the shelf
+        is what sets it right. Foremen can still request material for a job ahead
+        of time under Request, and a take that matches a request ticks it off on
+        its own.
+      </Explain>
+
+      <h2>On the shelf</h2>
+      {supplies.isError && <p className="error">{formatApiError(supplies.error)}</p>}
+      <ul className="unit-list" style={{ margin: 0 }}>
+        {(supplies.data ?? []).map((s) => (
+          <li key={s.id} className="find-row" style={{ alignItems: "center", gap: 10 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <strong>{s.name}</strong>{" "}
+              <span className="muted" style={{ fontSize: 12 }}>
+                {s.home_location_id
+                  ? (locationAddress.get(s.home_location_id) ?? "home spot set")
+                  : "no home spot yet"}
+                {" · "}
+                {onHandLabel(s)}
+              </span>
+            </div>
+            <div className="row-gap" style={{ flexWrap: "wrap" }}>
+              <button
+                className="button-like active-pill"
+                onClick={() => setTaking(s)}
+              >
+                Take
+              </button>
+              <button className="button-like" onClick={() => setCounting(s)}>
+                Count
+              </button>
+              {lead && (
+                <button className="button-like" onClick={() => setHoming(s)}>
+                  Home
+                </button>
+              )}
+            </div>
+          </li>
+        ))}
+        {(supplies.data ?? []).length === 0 && (
+          <p className="muted">Nothing in the catalog yet — add supplies below.</p>
+        )}
+      </ul>
+
+      <h2>Request for a job (ahead of time)</h2>
       <div className="job-chip-row">
         {(projects.data ?? []).map((p) => (
           <button
@@ -73,7 +157,7 @@ export function Supplies() {
       {proj && (
         <>
           <div className="detail-card">
-            <label className="field-label">Add to pull list</label>
+            <label className="field-label">Add to the request list</label>
             <select value={supplyId} onChange={(e) => setSupplyId(e.target.value)}>
               <option value="">— supply —</option>
               {(supplies.data ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -84,7 +168,7 @@ export function Supplies() {
             </button>
           </div>
 
-          <h2>Pull list</h2>
+          <h2>Requested</h2>
           <ul className="unit-list work-list">
             {(orders.data ?? []).map((o) => (
               <li key={o.id} className="find-row">
@@ -101,7 +185,7 @@ export function Supplies() {
                 </select>
               </li>
             ))}
-            {orders.data?.length === 0 && <p className="muted">Nothing on the pull list yet.</p>}
+            {orders.data?.length === 0 && <p className="muted">Nothing requested yet.</p>}
           </ul>
         </>
       )}
@@ -112,6 +196,219 @@ export function Supplies() {
           <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New supply type" />
           <button className="primary" disabled={addCat.isPending || !newName.trim()} onClick={() => addCat.mutate()}>
             Add
+          </button>
+        </div>
+      </div>
+
+      {taking && (
+        <TakeForm
+          supply={taking}
+          onClose={() => setTaking(null)}
+          onDone={() => {
+            setTaking(null);
+            void refreshSupplies();
+            refresh();
+          }}
+        />
+      )}
+      {counting && (
+        <CountForm
+          supply={counting}
+          onClose={() => setCounting(null)}
+          onDone={() => {
+            setCounting(null);
+            void refreshSupplies();
+          }}
+        />
+      )}
+      {homing && (
+        <HomeForm
+          supply={homing}
+          onClose={() => setHoming(null)}
+          onDone={() => {
+            setHoming(null);
+            void refreshSupplies();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Take: how many, which job, go — the three taps. Job defaults to the last
+ * one used anywhere in the warehouse, same key as tagging. */
+function TakeForm({
+  supply,
+  onClose,
+  onDone,
+}: {
+  supply: Supply;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  const [projectId, setProjectId] = useState<string>(
+    () => localStorage.getItem(LAST_JOB_KEY) ?? "",
+  );
+  const [qty, setQty] = useState("1");
+  const n = Number(qty);
+  const invalid = !Number.isFinite(n) || n <= 0;
+
+  const take = useMutation({
+    mutationFn: () => takeSupply({ supplyId: supply.id, projectId, qty: n }),
+    onSuccess: (s) => {
+      localStorage.setItem(LAST_JOB_KEY, projectId);
+      pushToast(`Took ${n} — ${onHandLabel(s)}.`);
+      onDone();
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <p style={{ margin: 0, fontWeight: 700 }}>Take {supply.name}</p>
+        <label className="field-label">How many ({supply.unit})</label>
+        <input
+          type="number"
+          min={1}
+          inputMode="numeric"
+          value={qty}
+          onChange={(e) => setQty(e.target.value)}
+          autoFocus
+        />
+        <label className="field-label">For which job</label>
+        <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+          <option value="">Pick the job…</option>
+          {(projects.data ?? []).map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.job_code} — {p.name}
+            </option>
+          ))}
+        </select>
+        <div className="row-gap" style={{ marginTop: 10 }}>
+          <button
+            className="button-like active-pill"
+            disabled={invalid || !projectId || take.isPending}
+            onClick={() => take.mutate()}
+          >
+            {take.isPending ? "Logging…" : "Take it"}
+          </button>
+          <button className="button-like" onClick={onClose}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Count: what's actually on the shelf right now. Sets the estimate and its
+ * date in one move — the correction the running number lives on. */
+function CountForm({
+  supply,
+  onClose,
+  onDone,
+}: {
+  supply: Supply;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [counted, setCounted] = useState(
+    supply.on_hand != null ? String(supply.on_hand) : "",
+  );
+  const n = Number(counted);
+  const invalid = counted.trim() === "" || !Number.isFinite(n) || n < 0;
+
+  const count = useMutation({
+    mutationFn: () => countSupply(supply.id, n),
+    onSuccess: () => {
+      pushToast(`${supply.name}: counted ${n}.`);
+      onDone();
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <p style={{ margin: 0, fontWeight: 700 }}>Count {supply.name}</p>
+        <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
+          What&rsquo;s physically on the shelf right now. This replaces the
+          estimate — it doesn&rsquo;t add to it.
+        </p>
+        <label className="field-label">Counted ({supply.unit})</label>
+        <input
+          type="number"
+          min={0}
+          inputMode="numeric"
+          value={counted}
+          onChange={(e) => setCounted(e.target.value)}
+          autoFocus
+        />
+        <div className="row-gap" style={{ marginTop: 10 }}>
+          <button
+            className="button-like active-pill"
+            disabled={invalid || count.isPending}
+            onClick={() => count.mutate()}
+          >
+            {count.isPending ? "Saving…" : "Save count"}
+          </button>
+          <button className="button-like" onClick={onClose}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Home: the one spot this supply lives (foreman+ — it's the answer the app
+ * gives an installer, so somebody accountable sets it). */
+function HomeForm({
+  supply,
+  onClose,
+  onDone,
+}: {
+  supply: Supply;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
+  const [locationId, setLocationId] = useState(supply.home_location_id ?? "");
+
+  const save = useMutation({
+    mutationFn: () => setSupplyHome(supply.id, locationId || null),
+    onSuccess: () => {
+      pushToast(`${supply.name} lives at its new spot.`);
+      onDone();
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <p style={{ margin: 0, fontWeight: 700 }}>Where does {supply.name} live?</p>
+        <label className="field-label">Home spot</label>
+        <select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+          <option value="">— no spot —</option>
+          {(locations.data ?? []).map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.address}
+            </option>
+          ))}
+        </select>
+        <div className="row-gap" style={{ marginTop: 10 }}>
+          <button
+            className="button-like active-pill"
+            disabled={save.isPending}
+            onClick={() => save.mutate()}
+          >
+            {save.isPending ? "Saving…" : "Save"}
+          </button>
+          <button className="button-like" onClick={onClose}>
+            Cancel
           </button>
         </div>
       </div>
