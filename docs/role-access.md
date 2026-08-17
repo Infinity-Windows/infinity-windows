@@ -15,7 +15,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 **Menu drawer:**
 
 - My Work (`/`)
-- Hub (`/warehouse`)
+- Warehouse (`/warehouse`)
 - My Schedule (`/my-schedule`)
 - Clock in / out (action)
 - My timecard (`/timecard`)
@@ -102,14 +102,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - My timecard (`/timecard`)
 - Team timecards (`/team-timecards`)
 - Analytics (`/analytics`)
-- Hub (`/warehouse`)
-- Storage (`/storage`)
-- Scan (`/scan`)
-- Cycle count (`/count`)
-- Receive (`/receive`)
-- Slot labels (`/labels`)
-- Catalog (`/catalog`)
-- Supplies (`/supplies`)
+- Warehouse (`/warehouse`)
 - Issues (`/issues`)
 - Service (`/service`)
 - Quality (`/qc`)
@@ -125,6 +118,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Ask (`/ask`)
 - Notifications (`/notifications`)
 - Settings (`/settings`)
+- Catalog (`/catalog`)
 
 **Can reach (all 39 allowed destinations):**
 
@@ -205,14 +199,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Cost codes (`/cost-codes`)
 - Analytics (`/analytics`)
 - Heartbeat (`/heartbeat`)
-- Hub (`/warehouse`)
-- Storage (`/storage`)
-- Scan (`/scan`)
-- Cycle count (`/count`)
-- Receive (`/receive`)
-- Slot labels (`/labels`)
-- Catalog (`/catalog`)
-- Supplies (`/supplies`)
+- Warehouse (`/warehouse`)
 - Issues (`/issues`)
 - Service (`/service`)
 - Quality (`/qc`)
@@ -231,6 +218,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - AI Knowledge (`/knowledge`)
 - Notifications (`/notifications`)
 - Settings (`/settings`)
+- Catalog (`/catalog`)
 - Admin (`/admin`)
 
 **Can reach (all 47 allowed destinations):**
@@ -313,14 +301,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Cost (`/costing`)
 - Analytics (`/analytics`)
 - Heartbeat (`/heartbeat`)
-- Hub (`/warehouse`)
-- Storage (`/storage`)
-- Scan (`/scan`)
-- Cycle count (`/count`)
-- Receive (`/receive`)
-- Slot labels (`/labels`)
-- Catalog (`/catalog`)
-- Supplies (`/supplies`)
+- Warehouse (`/warehouse`)
 - Issues (`/issues`)
 - Service (`/service`)
 - Quality (`/qc`)
@@ -340,6 +321,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - AI spend (`/ai-spend`)
 - Notifications (`/notifications`)
 - Settings (`/settings`)
+- Catalog (`/catalog`)
 - Admin (`/admin`)
 
 **Can reach (all 49 allowed destinations):**

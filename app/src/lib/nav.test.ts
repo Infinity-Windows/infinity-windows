@@ -216,6 +216,25 @@ describe("menuForRole (Horizon grouped menu)", () => {
   });
 });
 
+describe("the warehouse is one row", () => {
+  // Ticket 08's whole point: eight rows were the symptom of two location
+  // models. If a row creeps back here, the page stopped holding the job.
+  it("shows exactly one warehouse row, for every role that has it", () => {
+    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
+      const section = menuForRole(role).find((s) => s.title === "Warehouse");
+      if (!section) continue;
+      expect(section.items.map((i) => i.to), `${role} sees more than one row`).toEqual([
+        "/warehouse",
+      ]);
+    }
+  });
+
+  it("catalog moved to Account — importing types is data admin, not warehouse", () => {
+    const account = menuForRole("owner").find((s) => s.title === "Account");
+    expect(account?.items.map((i) => i.to)).toContain("/catalog");
+  });
+});
+
 describe("every NAV destination has a door", () => {
   // A registry entry with no menu row is a page nobody can find — /data
   // shipped exactly that way (route + gating live, zero UI path to it, PR
@@ -235,6 +254,17 @@ describe("every NAV destination has a door", () => {
     "/contacts",
     "/profile",
     "/public-site",
+    // Warehouse ticket 08: the eight warehouse rows collapsed to one page.
+    // These are NOT orphans — /warehouse links every one of them from the
+    // section it belongs to (tagging and receiving under "Coming in", the
+    // containers under "In storage", check-out under "Going out", supplies
+    // and counting under their own sections, and the unit-system tools
+    // under "Other tools"). They lost their menu rows, not their doors.
+    "/storage",
+    "/receive",
+    "/count",
+    "/labels",
+    "/supplies",
   ];
 
   it("every other NAV path appears in some role's menu or bottom bar", () => {

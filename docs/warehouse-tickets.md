@@ -112,6 +112,18 @@ Then the menu collapses to one row: `Catalog` moves to Admin, `Slot labels` and 
 
 **Test:** the existing "every NAV destination has a door" test still passes after the rows are removed.
 
+**Shipped 2026-08-17**, minus the status collapse — see 08b. The nav test's allowlist now names the five paths that lost menu rows but kept doors on the page, and a new test freezes the warehouse section at exactly one row.
+
+---
+
+## 08b — Retire the unit system's location model
+
+Split out of 08 on the day, deliberately. Q35/Q37 settled that `windows.status`'s `staged`/`loaded` values and `windows.location_id` die "in the same PR that rebuilds those screens" — and that rebuild is the work: `Receive` (284 lines), `Scan` (132), `CycleCount` (170) and `InventoryList` (178) all read and write the unit location model today, daily.
+
+Shipping the union page and rewriting those four screens in one PR would mean introducing the page everyone uses while simultaneously replacing the screens they use today. Staged instead: the page landed first, those screens stay reachable and working from its "Other tools" fold, and this ticket makes their flows package-first and then drops the columns.
+
+Order: make Receive tag packages rather than log units → make Scan resolve a package first → make Cycle count count a container → repoint `InventoryList`/`inventoryViews` at packages → drop `staged`/`loaded` from the status check and `windows.location_id`.
+
 ---
 
 ## 09 — Sticker minting gets a real form
