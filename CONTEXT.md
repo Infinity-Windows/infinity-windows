@@ -77,6 +77,7 @@ Rationale: cohorts at the unit level are too sparse to trust. We may install thr
 - Summon help is sessions on the unit, counted in install evidence.
 - Ending a break puts the installer straight back on the held unit — a minute or two of walk-back inflation accepted for zero friction (owner call).
 - Sessions ship as the first installer-facing flow; there is no migration, because there was never an installed base (ADR-0003).
+- The installer's first screen is one tap: clock in and land on the recommended window; the window's own gates (toolbox, before photo, flashing) stay on the sheet. The recommendation never points at a session-blocked unit.
 
 ## Open questions
 

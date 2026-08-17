@@ -192,6 +192,25 @@ export async function listOpenRedos(projectId: string): Promise<UnitRedo[]> {
   return (data ?? []) as unknown as UnitRedo[];
 }
 
+/**
+ * Sessions for a set of openings, newest first — the block-state source
+ * for My Work and the next-window picker (blockedUnits expects newest
+ * first). One query regardless of how many jobs the openings span.
+ */
+export async function listSessionsForOpenings(
+  openingIds: string[],
+): Promise<UnitSession[]> {
+  if (openingIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("unit_sessions")
+    .select("*")
+    .in("opening_id", openingIds)
+    .order("started_at", { ascending: false });
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return (data ?? []) as UnitSession[];
+}
+
 /** One unit's sessions, oldest first — the history/breakdown source. */
 export async function listOpeningSessions(openingId: string): Promise<UnitSession[]> {
   const { data, error } = await supabase

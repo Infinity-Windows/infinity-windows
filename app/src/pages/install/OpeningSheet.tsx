@@ -43,8 +43,10 @@ import {
 import { computeInstallPoints } from "../../lib/points";
 import {
   BLOCK_REASONS,
+  blockedUnits,
   laborBreakdown,
   listOpeningSessions,
+  listSessionsForOpenings,
   pressRedo,
   blockUnit,
   chainGraceRemainingMs,
@@ -332,10 +334,30 @@ export function OpeningSheet() {
 
   const isInstaller = !isForemanPlus(effectiveRole);
 
+  // Live session-blocks for my queue (grilled Q4): the chain must never
+  // propose a window that's sitting blocked.
+  const myQueueIds = useMemo(
+    () =>
+      (myOpenings.data ?? [])
+        .filter((o) => o.status !== "installed")
+        .map((o) => o.id),
+    [myOpenings.data],
+  );
+  const queueBlockSessions = useQuery({
+    queryKey: ["myOpeningBlocks", myQueueIds.join(",")],
+    queryFn: () => listSessionsForOpenings(myQueueIds),
+    enabled: myQueueIds.length > 0,
+  });
+  const queueBlockedIds = useMemo(
+    () =>
+      new Set(blockedUnits(queueBlockSessions.data ?? []).map((b) => b.openingId)),
+    [queueBlockSessions.data],
+  );
+
   // The single next window to jump to (excludes this one; ready-first ordering).
   const nextOpening = useMemo(
-    () => pickNextOpening(myOpenings.data ?? [], openingId),
-    [myOpenings.data, openingId],
+    () => pickNextOpening(myOpenings.data ?? [], openingId, queueBlockedIds),
+    [myOpenings.data, openingId, queueBlockedIds],
   );
 
   const goToNext = (chainedAt?: string | null) => {

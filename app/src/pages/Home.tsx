@@ -8,7 +8,8 @@ import { orderMyWork } from "../lib/dispatch";
 import { toDispatchOpening } from "../lib/install/nextOpening";
 import { openingReadiness } from "../lib/install/fit";
 import { isInstallInProgress } from "../lib/install/installTimer";
-import { getMyProfile, listMyOpeningsAllJobs, listMemosToConfirm } from "../lib/install/api";
+import { getMyProfile, listMyOpeningsAllJobs, listMemosToConfirm, listOpenings } from "../lib/install/api";
+import { flashingAlarm, listOpeningPhases } from "../lib/install/phases";
 import { isOwner, ROLE_LABELS, type CrewRole } from "../lib/install/types";
 import { roleRank } from "../lib/nav";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
@@ -129,6 +130,27 @@ export function Home() {
     },
   });
 
+  // The flashing alarm (owner, 2026-08-17): windows waiting on flashing
+  // with NOBODY on a flash run is a dispatch failure — it leads the
+  // manager's page, big, until someone is running.
+  const flashAlarms = useQuery({
+    queryKey: ["flashAlarms", (projects.data ?? []).map((p) => p.id).join(",")],
+    enabled: manager && (projects.data ?? []).length > 0,
+    queryFn: async () =>
+      (
+        await Promise.all(
+          (projects.data ?? []).map(async (p) => {
+            const [os, phases] = await Promise.all([
+              listOpenings(p.id),
+              listOpeningPhases(p.id),
+            ]);
+            const a = flashingAlarm(os, phases);
+            return { projectId: p.id, jobCode: p.job_code, owed: a.owed, alarm: a.alarm };
+          }),
+        )
+      ).filter((r) => r.alarm),
+  });
+
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -233,6 +255,31 @@ export function Home() {
       </header>
 
       <ToolboxTalkNagBanner profileId={profileId} clockedIn={isOnTheClock(openShift.data)} />
+
+      {/* Nobody flashing while windows wait = installs stalled at the source. */}
+      {(flashAlarms.data ?? []).map((a) => (
+        <Link
+          key={a.projectId}
+          to={`/projects/${a.projectId}?tab=dispatch`}
+          className="detail-card"
+          style={{
+            display: "block",
+            borderColor: "var(--warn)",
+            textDecoration: "none",
+            color: "inherit",
+            marginBottom: 10,
+          }}
+        >
+          <strong style={{ color: "var(--warn)", fontSize: 15 }}>
+            ⚡ {a.owed} window{a.owed === 1 ? "" : "s"} waiting on flashing at{" "}
+            {a.jobCode} — nobody is on a flash run
+          </strong>
+          <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
+            Installs can't start until flashing is in. Tap to dispatch a flash
+            run from the job's board.
+          </p>
+        </Link>
+      ))}
 
       {foreman ? (
         <>

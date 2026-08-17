@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flashRunTarget, flashingOutstanding, type OpeningPhase } from "./phases";
+import { flashRunTarget, flashingAlarm, flashingOutstanding, type OpeningPhase } from "./phases";
 
 const phase = (over: Partial<OpeningPhase>): OpeningPhase => ({
   id: "ph1",
@@ -106,5 +106,33 @@ describe("flashRunTarget (several runners leapfrog one queue)", () => {
 
   it("empty queue → null", () => {
     expect(flashRunTarget([], [], null, "me")).toBeNull();
+  });
+});
+
+describe("flashingAlarm (the foreman's landing-page alarm)", () => {
+  const openings = [
+    { id: "a", needs_flashing: true },
+    { id: "b", needs_flashing: true },
+    { id: "c", needs_flashing: false },
+  ];
+  it("fires when windows are owed flashing and nobody is on a run", () => {
+    expect(flashingAlarm(openings, [])).toEqual({
+      owed: 2,
+      runActive: false,
+      alarm: true,
+    });
+  });
+  it("stands down while a flash run is active, and when nothing is owed", () => {
+    const active = phase({ opening_id: "a", status: "active" });
+    expect(flashingAlarm(openings, [active]).alarm).toBe(false);
+    const done = [
+      phase({ opening_id: "a", status: "submitted" }),
+      phase({ opening_id: "b", status: "submitted" }),
+    ];
+    expect(flashingAlarm(openings, done)).toEqual({
+      owed: 0,
+      runActive: false,
+      alarm: false,
+    });
   });
 });

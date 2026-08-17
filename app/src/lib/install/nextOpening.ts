@@ -33,20 +33,40 @@ export function toDispatchOpening(o: ProjectOpening): DispatchOpening {
 }
 
 /**
+ * Overlay live session-blocks onto the pure dispatch shape. openingReadiness
+ * only knows the opening row; a unit whose NEWEST session ended in a Block
+ * (grilled Q4, 2026-08-17) must never be recommended — a recommendation that
+ * sends someone to a window waiting on hardware burns trust on day one.
+ */
+export function applySessionBlocks(
+  list: DispatchOpening[],
+  blockedIds: ReadonlySet<string>,
+): DispatchOpening[] {
+  if (blockedIds.size === 0) return list;
+  return list.map((d) =>
+    blockedIds.has(d.id) ? { ...d, ready: false, blocked: true } : d,
+  );
+}
+
+/**
  * The single next opening an installer should start after finishing one.
  * Excludes already-installed openings and (optionally) a just-completed opening
  * whose local cache may still read as not-installed, then defers to the pure
  * nextForInstaller ordering. Returns null when the installer is all caught up.
+ * Session-blocked units (see applySessionBlocks) sort out of the running.
  */
 export function pickNextOpening(
   openings: ProjectOpening[],
   excludeId?: string,
+  blockedIds: ReadonlySet<string> = new Set(),
 ): ProjectOpening | null {
   const candidates = openings.filter(
     (o) => o.status !== "installed" && o.id !== excludeId,
   );
   if (candidates.length === 0) return null;
   const byId = new Map(candidates.map((o) => [o.id, o]));
-  const next = nextForInstaller(candidates.map(toDispatchOpening));
+  const next = nextForInstaller(
+    applySessionBlocks(candidates.map(toDispatchOpening), blockedIds),
+  );
   return next ? byId.get(next.id) ?? null : null;
 }
