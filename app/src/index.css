@@ -9626,3 +9626,189 @@ body {
   font-size: 13px; line-height: 1.55; white-space: pre-wrap;
   margin: 6px 0 2px;
 }
+
+/* ---- Data Tab (the company's ledger of where time goes) ------------------
+   Dashboard kit on the Horizon tokens: stat tiles, thin bars, chips, and a
+   conic ring gauge. Semantic color only — amber for lost time, green for
+   done/on-tool, coral for the accent line. */
+
+.data-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.stat-tile {
+  background: var(--card-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+.stat-tile .stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.stat-tile .stat-label {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.stat-tile.stat-warn { border-color: oklch(0.8 0.16 75 / 0.45); }
+.stat-tile.stat-warn .stat-value { color: var(--warn); }
+.stat-tile.stat-ok .stat-value { color: var(--ok); }
+.stat-tile.stat-accent .stat-value {
+  background: var(--gradient-sunset);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.databar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--card-hot);
+  overflow: hidden;
+  flex: 1;
+  min-width: 40px;
+}
+
+.databar > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.6s var(--ease-out);
+}
+
+.databar.bar-warn > span { background: var(--warn); }
+.databar.bar-ok > span { background: var(--ok); }
+.databar.bar-info > span { background: var(--info); }
+
+.databar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.databar-row .bar-name {
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  max-width: 46%;
+}
+
+.databar-row .bar-num {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.data-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.data-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.data-chip strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.data-chip.chip-hot {
+  border-color: oklch(0.8 0.16 75 / 0.5);
+  background: oklch(0.8 0.16 75 / 0.08);
+}
+
+.data-chip.chip-hot strong { color: var(--warn); }
+
+.ring-gauge {
+  --pct: 0;
+  --ring-color: var(--ok);
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--ring-color) calc(var(--pct) * 1%),
+    var(--card-hot) 0
+  );
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.ring-gauge::before {
+  content: attr(data-label);
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--card-raised);
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-section-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 2px;
+}
+
+/* "What is this?" fold under each Data Tab heading — plain-language notes. */
+.data-explain {
+  margin: 2px 0 8px;
+  font-size: 12.5px;
+}
+
+.data-explain summary {
+  cursor: pointer;
+  color: var(--info);
+  font-size: 12px;
+  user-select: none;
+  width: fit-content;
+}
+
+.data-explain summary:hover { text-decoration: underline; }
+
+.data-explain p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+}
