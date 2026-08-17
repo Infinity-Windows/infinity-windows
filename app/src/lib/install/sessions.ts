@@ -191,3 +191,50 @@ export async function listOpenRedos(projectId: string): Promise<UnitRedo[]> {
   if (error) throw error;
   return (data ?? []) as unknown as UnitRedo[];
 }
+
+/** One unit's sessions, oldest first — the history/breakdown source. */
+export async function listOpeningSessions(openingId: string): Promise<UnitSession[]> {
+  const { data, error } = await supabase
+    .from("unit_sessions")
+    .select("*")
+    .eq("opening_id", openingId)
+    .order("started_at");
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return (data ?? []) as UnitSession[];
+}
+
+/**
+ * LABOR-MINUTES breakdown (CONTEXT.md): every session (install + helper)
+ * plus the unit's flash-run minutes — with rework kept as its own line,
+ * separate data by the owner's rule.
+ */
+export function laborBreakdown(
+  sessions: readonly UnitSession[],
+  flashMinutes: number | null,
+  now: number = Date.now(),
+): { installMin: number; helperMin: number; reworkMin: number; flashMin: number; totalMin: number } {
+  let installMin = 0;
+  let helperMin = 0;
+  let reworkMin = 0;
+  for (const s of sessions) {
+    const m = sessionMinutes(s, now);
+    if (s.is_rework) reworkMin += m;
+    else if (s.role === "helper") helperMin += m;
+    else installMin += m;
+  }
+  const flashMin = Math.max(0, flashMinutes ?? 0);
+  return {
+    installMin,
+    helperMin,
+    reworkMin,
+    flashMin,
+    totalMin: installMin + helperMin + reworkMin + flashMin,
+  };
+}
+
+/** Rework rate: units with any redo ever, over units finished. */
+export function reworkRate(redoUnitCount: number, finishedUnitCount: number): number | null {
+  if (finishedUnitCount <= 0) return null;
+  return redoUnitCount / finishedUnitCount;
+}

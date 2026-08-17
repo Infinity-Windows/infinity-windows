@@ -128,3 +128,70 @@ export const installEventsEvidence: EvidenceSource = async () => {
       minutes: r.minutes,
     }));
 };
+
+// -------------------------------------------------- sessions evidence
+
+interface SessionEvidenceRow {
+  started_at: string;
+  ended_at: string | null;
+  role: "install" | "helper";
+  is_rework: boolean;
+  end_reason: string | null;
+  opening: {
+    id: string;
+    sig_key: string | null;
+    signature: SignatureV1 | null;
+  } | null;
+}
+
+/**
+ * PURE: fold session rows into per-UNIT evidence samples. One sample per
+ * unit = Σ its non-rework install+helper session minutes (480-cap each) —
+ * and only units with at least one FINISHED round count; half-done work
+ * is not evidence. Blocked time is excluded structurally: no session runs
+ * while a unit sits blocked.
+ */
+export function evidenceFromSessions(
+  rows: readonly SessionEvidenceRow[],
+): CohortEvidence[] {
+  const perUnit = new Map<
+    string,
+    { sigKey: string; signature: SignatureV1 | null; minutes: number; finished: boolean }
+  >();
+  for (const r of rows) {
+    const o = r.opening;
+    if (!o?.sig_key || !r.ended_at) continue;
+    const entry =
+      perUnit.get(o.id) ??
+      { sigKey: o.sig_key, signature: o.signature, minutes: 0, finished: false };
+    if (!r.is_rework) {
+      const mins = Math.max(
+        0,
+        Math.min(480, Math.floor((Date.parse(r.ended_at) - Date.parse(r.started_at)) / 60000)),
+      );
+      entry.minutes += mins;
+    }
+    if (r.end_reason === "finish") entry.finished = true;
+    perUnit.set(o.id, entry);
+  }
+  return [...perUnit.values()]
+    .filter((u) => u.finished && u.minutes > 0)
+    .map((u) => ({ sigKey: u.sigKey, signature: u.signature, minutes: u.minutes }));
+}
+
+/**
+ * The sessions-era evidence source (spec .scratch/sessions): real
+ * man-minutes per unit, company-wide. The ladder above never changed —
+ * exactly the swap ticket 04 promised.
+ */
+export const sessionsEvidence: EvidenceSource = async () => {
+  const { data, error } = await supabase
+    .from("unit_sessions")
+    .select(
+      "started_at, ended_at, role, is_rework, end_reason, opening:project_openings!inner(id, sig_key, signature)",
+    )
+    .not("ended_at", "is", null)
+    .not("opening.sig_key", "is", null);
+  if (error) return [];
+  return evidenceFromSessions((data ?? []) as unknown as SessionEvidenceRow[]);
+};
