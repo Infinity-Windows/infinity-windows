@@ -27,7 +27,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Settings (`/settings`)
 
-**Can reach (all 25 allowed destinations):**
+**Can reach (all 26 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -37,6 +37,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Scan (`/scan`)
 - Cycle count (`/count`)
 - Storage (`/storage`)
+- Arrival check (`/storage/arrive`)
 - Warehouse (`/warehouse`)
 - Jobs (`/projects`)
 - Ask (`/ask`)
@@ -120,7 +121,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Catalog (`/catalog`)
 
-**Can reach (all 39 allowed destinations):**
+**Can reach (all 40 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -130,6 +131,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Scan (`/scan`)
 - Cycle count (`/count`)
 - Storage (`/storage`)
+- Arrival check (`/storage/arrive`)
 - Warehouse (`/warehouse`)
 - Jobs (`/projects`)
 - Ask (`/ask`)
@@ -221,7 +223,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 47 allowed destinations):**
+**Can reach (all 48 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -231,6 +233,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Scan (`/scan`)
 - Cycle count (`/count`)
 - Storage (`/storage`)
+- Arrival check (`/storage/arrive`)
 - Warehouse (`/warehouse`)
 - Jobs (`/projects`)
 - Studio (`/studio`)
@@ -324,7 +327,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 49 allowed destinations):**
+**Can reach (all 50 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -334,6 +337,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Scan (`/scan`)
 - Cycle count (`/count`)
 - Storage (`/storage`)
+- Arrival check (`/storage/arrive`)
 - Warehouse (`/warehouse`)
 - Jobs (`/projects`)
 - Studio (`/studio`)

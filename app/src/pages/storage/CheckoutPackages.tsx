@@ -1,8 +1,14 @@
-// Check out: installers multi-select packages across containers, pick a
-// reason (the supervisor-curated list) and the job the material is going
-// to, and submit once. Checkout CONCLUDES tracking (owner pick) — history
-// stays forever, and the mismatch guard flags a crate bound to a DIFFERENT
-// job before it leaves under the wrong one.
+// Going out: the same multi-select, two destinations.
+//
+// STAGE sets packages aside on the job's own bay so they go out together —
+// still ours, still on hand, just on the job's shelf instead of in a conex.
+// CHECK OUT concludes tracking (owner pick): history stays forever, and the
+// mismatch guard flags a crate bound to a DIFFERENT job before it leaves
+// under the wrong one.
+//
+// One picker for both because it is one decision with two endings — asking a
+// crew to learn a second screen for "same crates, shorter trip" is how the
+// staging step gets skipped.
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -21,7 +27,9 @@ import {
   listCheckoutReasons,
   listContainers,
   mismatchedPackages,
+  stagePackages,
 } from "../../lib/storage";
+import { isMissingStagingBayError } from "../../lib/staging";
 
 export function CheckoutPackages() {
   const qc = useQueryClient();
@@ -35,6 +43,7 @@ export function CheckoutPackages() {
   const [otherNote, setOtherNote] = useState("");
   const [projectId, setProjectId] = useState("");
   const [containerFilter, setContainerFilter] = useState("");
+  const [mode, setMode] = useState<"stage" | "out">("out");
 
   const jobCode = useMemo(() => {
     const m = new Map<string, string>();
@@ -66,6 +75,26 @@ export function CheckoutPackages() {
     return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
   }, [pickedRows]);
 
+  const stage = useMutation({
+    mutationFn: () => stagePackages([...picked], projectId),
+    onSuccess: (n) => {
+      pushToast(`${n} package${n === 1 ? "" : "s"} set aside for the job.`);
+      setPicked(new Set());
+      void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+      navigate("/warehouse");
+    },
+    onError: (e) => {
+      // The server refuses rather than using a shared stock shelf — say what
+      // to do instead of showing the raw refusal.
+      pushToast(
+        isMissingStagingBayError(e)
+          ? "This job has no staging bay yet. A foreman can add one from the job page, then try again."
+          : formatApiError(e),
+        "error",
+      );
+    },
+  });
+
   const submit = useMutation({
     mutationFn: () => checkoutPackagesOffline([...picked], finalReason, projectId),
     onSuccess: (r) => {
@@ -84,9 +113,29 @@ export function CheckoutPackages() {
         <div>
           <BackChip />
           <p className="home-greeting">Storage</p>
-          <h1>Check out</h1>
+          <h1>{mode === "stage" ? "Set aside for a job" : "Check out"}</h1>
         </div>
       </header>
+
+      <div className="row-gap" style={{ flexWrap: "wrap" }}>
+        <button
+          className={mode === "stage" ? "button-like active-pill" : "button-like"}
+          onClick={() => setMode("stage")}
+        >
+          Set aside (staging)
+        </button>
+        <button
+          className={mode === "out" ? "button-like active-pill" : "button-like"}
+          onClick={() => setMode("out")}
+        >
+          Check out
+        </button>
+      </div>
+      <p className="muted" style={{ margin: "6px 0 0", fontSize: 13 }}>
+        {mode === "stage"
+          ? "Puts them on this job's own shelf so they go out together. Still ours, still on hand — check one back into a conex any time."
+          : "Takes them out of storage to the job. This is the end of the trail; the history stays forever."}
+      </p>
 
       <h2>1 · Packages ({picked.size} picked)</h2>
       <select
@@ -137,6 +186,8 @@ export function CheckoutPackages() {
         {available.length === 0 && <p className="muted">Nothing in storage.</p>}
       </div>
 
+      {mode === "out" && (
+        <>
       <h2>2 · Why</h2>
       <div className="row-gap" style={{ flexWrap: "wrap" }}>
         {(reasons.data ?? []).map((r) => (
@@ -157,7 +208,10 @@ export function CheckoutPackages() {
         />
       )}
 
-      <h2>3 · To what job</h2>
+        </>
+      )}
+
+      <h2>{mode === "out" ? "3 · To what job" : "2 · Which job"}</h2>
       <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
         <option value="">
           {suggestedProject
@@ -193,19 +247,29 @@ export function CheckoutPackages() {
       )}
 
       <div style={{ marginTop: 12 }}>
-        <button
-          className="button-like active-pill"
-          disabled={
-            picked.size === 0 ||
-            !finalReason ||
-            (isOther && !otherNote.trim()) ||
-            !projectId ||
-            submit.isPending
-          }
-          onClick={() => submit.mutate()}
-        >
-          {submit.isPending ? "Checking out…" : `Check out ${picked.size}`}
-        </button>
+        {mode === "stage" ? (
+          <button
+            className="button-like active-pill"
+            disabled={picked.size === 0 || !projectId || stage.isPending}
+            onClick={() => stage.mutate()}
+          >
+            {stage.isPending ? "Setting aside…" : `Set aside ${picked.size}`}
+          </button>
+        ) : (
+          <button
+            className="button-like active-pill"
+            disabled={
+              picked.size === 0 ||
+              !finalReason ||
+              (isOther && !otherNote.trim()) ||
+              !projectId ||
+              submit.isPending
+            }
+            onClick={() => submit.mutate()}
+          >
+            {submit.isPending ? "Checking out…" : `Check out ${picked.size}`}
+          </button>
+        )}
       </div>
     </div>
   );

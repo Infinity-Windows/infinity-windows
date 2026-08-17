@@ -17,13 +17,24 @@ export interface PlaceChain {
   parent: StorageContainer | null;
   /** Rack-slot id when the package (or its outermost container) sits at one. */
   locationId: string | null;
+  /** The location itself, when the caller passed the lookup in. */
+  location?: PlaceLocation | null;
   /** No container and no slot — the cannot-find-it pile. */
   loose: boolean;
+}
+
+/** Enough of a location to name it. Staging bays are zone 'J'. */
+export interface PlaceLocation {
+  id: string;
+  address: string;
+  zone?: string;
+  rack?: string;
 }
 
 export function placeChain(
   pkg: Pick<StoragePackage, "container_id" | "location_id">,
   containersById: Map<string, StorageContainer>,
+  locationsById?: Map<string, PlaceLocation>,
 ): PlaceChain {
   const container = pkg.container_id ? (containersById.get(pkg.container_id) ?? null) : null;
   const parent = container?.parent_container_id
@@ -37,6 +48,7 @@ export function placeChain(
     container,
     parent,
     locationId,
+    location: locationId ? (locationsById?.get(locationId) ?? null) : null,
     loose: !container && !pkg.location_id,
   };
 }
@@ -47,7 +59,15 @@ export function placeLabel(chain: PlaceChain): string {
     return `${chain.container.name} — inside ${chain.parent.name}`;
   }
   if (chain.container) return chain.container.name;
-  if (chain.locationId) return "on a rack slot";
+  const loc = chain.location;
+  // Zone 'J' is a job staging bay, and its rack IS the job code, character
+  // for character (see 20260729220000). Naming the job is the whole point of
+  // staging — "on J-BLACK22-A" makes somebody decode it.
+  if (loc?.zone === "J") {
+    return `staged for ${loc.rack ?? "a job"} — ${loc.address}`;
+  }
+  if (loc) return `on ${loc.address}`;
+  if (chain.locationId) return "on a shelf";
   return "loose — no container, no slot";
 }
 

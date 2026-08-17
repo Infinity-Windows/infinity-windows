@@ -39,6 +39,7 @@ import { StorageHub } from "./pages/storage/StorageHub";
 import { ContainerDetail } from "./pages/storage/ContainerDetail";
 import { TagPackages } from "./pages/storage/TagPackages";
 import { CheckoutPackages } from "./pages/storage/CheckoutPackages";
+import { ArrivePackages } from "./pages/storage/ArrivePackages";
 import { PackageSheet } from "./pages/storage/PackageSheet";
 import { Settings } from "./pages/Settings";
 import { SignIn } from "./pages/SignIn";
@@ -322,6 +323,7 @@ export default function App() {
             <Route path="/storage" element={<StorageHub />} />
             <Route path="/storage/tag" element={<TagPackages />} />
             <Route path="/storage/out" element={<CheckoutPackages />} />
+            <Route path="/storage/arrive" element={<ArrivePackages />} />
             <Route path="/storage/c/:id" element={<ContainerDetail />} />
             <Route path="/pkg/:serial" element={<PackageSheet />} />
             <Route

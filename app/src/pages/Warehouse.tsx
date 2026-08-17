@@ -260,13 +260,20 @@ export function Warehouse() {
           {s.id === "going-out" && (
             <>
               <Explain id="wh-going-out">
-                Taking material to a job: scan it out and pick a reason. Taking a
-                package tagged for another job is fine — it warns you and asks
-                why, so the borrow is on the record.
+                Two steps, and the first is optional. <strong>Set aside</strong> puts a
+                job&rsquo;s packages on its own shelf so they go out together.{" "}
+                <strong>Check out</strong> takes them to the job — pick a reason;
+                taking a package tagged for another job is fine, it just warns you
+                and asks why so the borrow is on the record. When something arrives
+                broken, the <strong>arrival check</strong> raises an issue that names
+                the package.
               </Explain>
               <div className="row-gap" style={{ flexWrap: "wrap" }}>
                 <Link className="button-like active-pill" to="/storage/out">
-                  Check out
+                  Set aside / check out
+                </Link>
+                <Link className="button-like" to="/storage/arrive">
+                  Arrival check
                 </Link>
               </div>
               {goingOut.length > 0 && (

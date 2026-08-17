@@ -270,6 +270,10 @@ describe("every NAV destination has a door", () => {
     "/count",
     "/labels",
     "/supplies",
+    // Ticket 08b: the arrival check is reached from the warehouse page's
+    // Going out section. It is an occasional damage report, not a daily
+    // destination, and a menu row would oversell it.
+    "/storage/arrive",
   ];
 
   it("every other NAV path appears in some role's menu or bottom bar", () => {
