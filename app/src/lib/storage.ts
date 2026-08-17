@@ -53,6 +53,34 @@ export interface StoragePackage {
   package_marks?: { mark_code: string }[];
 }
 
+/**
+ * A package_marks row as the database returns it, in either era. Before the
+ * project_marks migration the row carried the code itself; after it, the code
+ * lives on the joined mark row. Both normalize to the flat `{ mark_code }`
+ * shape the pages consume, so no screen knows the schema moved under it.
+ */
+export interface RawPackageMark {
+  mark_code?: string | null;
+  mark?: { mark_code: string } | null;
+}
+
+/** Flatten either era's mark rows to the public shape. Exported for tests. */
+export function normalizeMarks(
+  rows: RawPackageMark[] | null | undefined,
+): { mark_code: string }[] {
+  const out: { mark_code: string }[] = [];
+  for (const r of rows ?? []) {
+    const code = r.mark?.mark_code ?? r.mark_code;
+    if (code) out.push({ mark_code: code });
+  }
+  return out;
+}
+
+function normalizePackage(row: Record<string, unknown>): StoragePackage {
+  const pkg = row as unknown as StoragePackage & { package_marks?: RawPackageMark[] };
+  return { ...pkg, package_marks: normalizeMarks(pkg.package_marks) };
+}
+
 export interface PackageEvent {
   id: string;
   package_id: string;
@@ -77,7 +105,29 @@ export interface PackageDelivery {
   arrived_on: string;
 }
 
-const PACKAGE_SELECT = "*, package_marks(mark_code)";
+// Marks join through project_marks now (ticket 01); the legacy select is the
+// fallback for a database the migration hasn't reached yet. Once it lands
+// everywhere, the fallback and RawPackageMark's `mark_code` field can go.
+const PACKAGE_SELECT = "*, package_marks(mark:project_marks(mark_code))";
+const LEGACY_PACKAGE_SELECT = "*, package_marks(mark_code)";
+
+/**
+ * Run a package read with the new select, falling back to the legacy shape
+ * when the database predates project_marks. PostgREST reports the unknown
+ * join as a missing-relationship error naming the table, which is what
+ * isMissingTable matches on. Returns the raw result either way — callers keep
+ * their own error handling (missing `packages` still degrades to empty).
+ */
+async function withMarkJoin(
+  // `data: unknown` on purpose: the select string is dynamic, so supabase-js
+  // cannot type the rows anyway — normalizePackage is the one boundary where
+  // the shape is asserted.
+  run: (select: string) => PromiseLike<{ data: unknown; error: unknown }>,
+): Promise<{ data: unknown; error: unknown }> {
+  const first = await run(PACKAGE_SELECT);
+  if (!first.error || !isMissingTable(first.error, "project_marks")) return first;
+  return run(LEGACY_PACKAGE_SELECT);
+}
 
 // ---------------------------------------------------------------- reads
 
@@ -96,16 +146,18 @@ export async function listContainers(): Promise<StorageContainer[]> {
 
 /** Every non-blank package — the hub search and container manifests slice it. */
 export async function listActivePackages(): Promise<StoragePackage[]> {
-  const { data, error } = await supabase
-    .from("packages")
-    .select(PACKAGE_SELECT)
-    .neq("status", "blank")
-    .order("bound_at", { ascending: false });
+  const { data, error } = await withMarkJoin((select) =>
+    supabase
+      .from("packages")
+      .select(select)
+      .neq("status", "blank")
+      .order("bound_at", { ascending: false }),
+  );
   if (error) {
     if (isMissingTable(error, "packages")) return [];
     throw error;
   }
-  return (data ?? []) as StoragePackage[];
+  return ((data ?? []) as Record<string, unknown>[]).map(normalizePackage);
 }
 
 export async function listBlankPackages(): Promise<StoragePackage[]> {
@@ -122,26 +174,30 @@ export async function listBlankPackages(): Promise<StoragePackage[]> {
 }
 
 export async function getPackageBySerial(serial: string): Promise<StoragePackage | null> {
-  const { data, error } = await supabase
-    .from("packages")
-    .select(PACKAGE_SELECT)
-    .eq("serial", serial.toUpperCase())
-    .maybeSingle();
+  const { data, error } = await withMarkJoin((select) =>
+    supabase
+      .from("packages")
+      .select(select)
+      .eq("serial", serial.toUpperCase())
+      .maybeSingle(),
+  );
   if (error) {
     if (isMissingTable(error, "packages")) return null;
     throw error;
   }
-  return (data as StoragePackage) ?? null;
+  return data ? normalizePackage(data as Record<string, unknown>) : null;
 }
 
 export async function getPackageByShortCode(code: string): Promise<StoragePackage | null> {
-  const { data, error } = await supabase
-    .from("packages")
-    .select(PACKAGE_SELECT)
-    .eq("short_code", code.toUpperCase())
-    .maybeSingle();
+  const { data, error } = await withMarkJoin((select) =>
+    supabase
+      .from("packages")
+      .select(select)
+      .eq("short_code", code.toUpperCase())
+      .maybeSingle(),
+  );
   if (error) throw error;
-  return (data as StoragePackage) ?? null;
+  return data ? normalizePackage(data as Record<string, unknown>) : null;
 }
 
 export async function getContainerBySerial(serial: string): Promise<StorageContainer | null> {

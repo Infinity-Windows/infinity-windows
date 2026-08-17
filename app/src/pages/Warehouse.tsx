@@ -6,6 +6,8 @@ import { INVENTORY_VIEWS, inventoryCounts } from "../lib/inventoryViews";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { UnitSearch } from "../components/UnitSearch";
+import { Explain } from "../components/ui/Explain";
+import { PackageMap } from "../components/warehouse/PackageMap";
 
 interface WarehouseLink {
   to: string;
@@ -41,6 +43,12 @@ export function Warehouse() {
           <h1>Inventory hub</h1>
         </div>
       </header>
+
+      {/* Folded by default and remembered per person: new crew open it once,
+          a foreman who knows the system never sees it again. */}
+      <Explain id="warehouse-how" summary="How does tracking work?" raw>
+        <PackageMap />
+      </Explain>
 
       <h2>Locate</h2>
       <UnitSearch limit={8} />

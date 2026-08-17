@@ -489,7 +489,10 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "storage_containers": ("serial",),
     "packages": ("serial",),
     "package_deliveries": ("label", "arrived_on"),
-    "package_marks": ("package_id", "mark_code"),
+    # Since 20260822000000 a package's mark is a foreign key into
+    # project_marks, itself deduped by the printed code within its job.
+    "package_marks": ("package_id", "mark_id"),
+    "project_marks": ("project_id", "mark_code"),
     "checkout_reasons": ("label",),
     "knowledge_chunks": ("doc_id", "chunk_index"),
     "learn_progress": ("profile_id", "term_id"),
