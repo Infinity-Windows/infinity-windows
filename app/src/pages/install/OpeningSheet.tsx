@@ -22,7 +22,6 @@ import {
   listUndoneInstalls,
   setOpeningCondition,
   setRoughOpening,
-  startOpeningWork,
   undoInstall,
   synthesizeTypeTips,
   generateHowto,
@@ -41,6 +40,13 @@ import {
   setOpeningNeedsFlashing,
 } from "../../lib/install/phases";
 import { computeInstallPoints } from "../../lib/points";
+import {
+  BLOCK_REASONS,
+  blockUnit,
+  chainGraceRemainingMs,
+  reattributeSession,
+  startUnitSession,
+} from "../../lib/install/sessions";
 import { SummonPanel } from "../../components/install/SummonPanel";
 import { checkFit, isInstallReadyStatus, readyToInstall, smallest } from "../../lib/install/fit";
 import {
@@ -89,6 +95,7 @@ import type { QrPayload } from "../../lib/qr";
 import { resolveWindowFromScan } from "../../lib/scanResolve";
 import { supabase } from "../../lib/supabase";
 import { formatApiError } from "../../lib/install/errors";
+import { pushToast } from "../../lib/toast";
 
 const windowLookups = { getWindowByWindowId, findWindowByCode, findWindowBySerial };
 
@@ -185,8 +192,10 @@ export function OpeningSheet() {
   const [photos, setPhotos] = useState<BeforeAfterValue>({ before: null, after: null });
   const [video, setVideo] = useState<File | null>(null);
   const [stage, setStage] = useState<"check" | "install" | "capture">("check");
-  const [minutes, setMinutes] = useState("");
-  const [minutesTouched, setMinutesTouched] = useState(false);
+  // The hand-typed minutes era ended with sessions (spec .scratch/sessions);
+  // these stay only to feed recordedMinutes' points estimate untouched-mode.
+  const [minutes] = useState("");
+  const [minutesTouched] = useState(false);
   const [grade, setGrade] = useState<number | null>(null);
   const [topics, setTopics] = useState<Partial<MemoTopics>>({});
   const [pending, setPending] = useState(0);
@@ -323,13 +332,16 @@ export function OpeningSheet() {
     [myOpenings.data, openingId],
   );
 
-  const goToNext = () => {
+  const goToNext = (chainedAt?: string | null) => {
     if (nextOpening) {
-      // Tapping "Next one" after a submit IS the deliberate "I am installing
-      // this now" - the start carries into the next sheet so the clock is
-      // already running when it opens (see the carried-start effect below).
+      // The CHAIN (spec .scratch/sessions): finish_unit already started the
+      // next unit's session server-side in the same transaction — the sheet
+      // arrives with the clock running and shows the 5-minute "change?"
+      // banner instead of asking for a tap. When the chain didn't run (the
+      // outbox held the finish offline, or the next unit refused its gate),
+      // the sheet's normal Start button is simply there as always.
       navigate(`/projects/${nextOpening.project_id}/opening/${nextOpening.id}`, {
-        state: { carryStart: true },
+        state: chainedAt ? { chainedAt } : { carryStart: true },
       });
     } else {
       navigate("/");
@@ -476,7 +488,7 @@ export function OpeningSheet() {
     mutationFn: async () => {
       const startedNow = new Date().toISOString();
       try {
-        await startOpeningWork(openingId);
+        await startUnitSession(openingId);
       } catch (e) {
         // A refusal from the gate is a real answer and stops us. No signal is
         // not: they are clocked in as far as this device knows, so let them
@@ -521,6 +533,55 @@ export function OpeningSheet() {
     navigate(location.pathname, { replace: true, state: {} });
     beginCarried();
   }, [location.state, location.pathname, opening.data, startedAt, navigate, beginCarried]);
+
+  // The CHAIN banner: finish_unit started this unit's session server-side;
+  // for 5 minutes the hand-off stays redirectable (spec .scratch/sessions).
+  const [chainedAt, setChainedAt] = useState<string | null>(null);
+  const [chainPickerOpen, setChainPickerOpen] = useState(false);
+  useEffect(() => {
+    const st = (location.state as { chainedAt?: string } | null)?.chainedAt;
+    if (!st) return;
+    navigate(location.pathname, { replace: true, state: {} });
+    setChainedAt(st);
+    // The chained session stamped work_started_at — pull it in.
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state, location.pathname, navigate]);
+  const chainGraceLeft = chainedAt ? chainGraceRemainingMs(chainedAt, now) : 0;
+  const redirectChain = useMutation({
+    mutationFn: (targetId: string) => reattributeSession(targetId),
+    onSuccess: (_s, targetId) => {
+      const target = (myOpenings.data ?? []).find((o) => o.id === targetId);
+      setChainPickerOpen(false);
+      setChainedAt(null);
+      if (target) {
+        navigate(`/projects/${target.project_id}/opening/${target.id}`, {
+          state: { chainedAt: new Date().toISOString() },
+        });
+      }
+    },
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+
+  // BLOCK: the first-class exit (spec .scratch/sessions) — reason sheet,
+  // issue link/auto-create server-side, then the same hand-off as finish.
+  const [blockOpen, setBlockOpen] = useState(false);
+  const [blockOther, setBlockOther] = useState("");
+  const doBlock = useMutation({
+    mutationFn: (reason: string) =>
+      blockUnit({
+        openingId,
+        reason,
+        nextOpeningId: nextOpening?.id ?? null,
+      }),
+    onSuccess: () => {
+      setBlockOpen(false);
+      pushToast("Blocked — the reason is on the board.");
+      refresh();
+      goToNext(nextOpening ? new Date().toISOString() : null);
+    },
+    onError: (e) => setMessage(formatApiError(e)),
+  });
 
   const assign = useMutation({
     mutationFn: async (windowUuid: string) =>
@@ -803,6 +864,9 @@ export function OpeningSheet() {
         createdBy,
         submitParams: {
           openingId,
+          // The chain target rides in the finish itself (server-side
+          // hand-off, spec .scratch/sessions).
+          nextOpeningId: nextOpening?.id ?? null,
           minutes: submittedMinutes,
           estimateMinutes: brain.data?.medianMinutes
             ? Math.round(brain.data.medianMinutes)
@@ -907,6 +971,47 @@ export function OpeningSheet() {
 
   return (
     <div className="page">
+      {/* The chain banner: the clock is already on this window; for five
+          minutes the hand-off stays redirectable (spec .scratch/sessions). */}
+      {chainGraceLeft > 0 && (
+        <div
+          className="detail-card"
+          role="status"
+          style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 10 }}
+        >
+          <span aria-hidden>⛓️</span>
+          <span style={{ flex: 1 }}>
+            Clock's on <strong>{opening.data?.opening_code ?? "this window"}</strong>
+            <span className="muted" style={{ fontSize: 12 }}>
+              {" "}· redirectable {Math.ceil(chainGraceLeft / 60000)}m
+            </span>
+          </span>
+          <button className="button-like" onClick={() => setChainPickerOpen((v) => !v)}>
+            Change window
+          </button>
+        </div>
+      )}
+      {chainPickerOpen && chainGraceLeft > 0 && (
+        <div className="detail-card" style={{ marginBottom: 8 }}>
+          <span className="field-label">Where are you actually headed?</span>
+          <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 6 }}>
+            {(myOpenings.data ?? [])
+              .filter((o) => o.id !== openingId && o.status !== "installed")
+              .slice(0, 12)
+              .map((o) => (
+                <button
+                  key={o.id}
+                  className="button-like studio-mini"
+                  disabled={redirectChain.isPending}
+                  onClick={() => redirectChain.mutate(o.id)}
+                >
+                  {o.opening_code}
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
+
       <header className="page-header">
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <BackChip fallback={`/projects/${projectId}?tab=map`} label="Back to map" />
@@ -1706,6 +1811,54 @@ export function OpeningSheet() {
               <button className="primary big" onClick={() => setStage("capture")}>
                 Done — capture it →
               </button>
+              {/* BLOCK: the first-class exit — stuck through no fault of
+                  yours. Reason required; the blocker issue files itself;
+                  the clock hands off exactly like Finish. */}
+              <button
+                className="button-like"
+                style={{ marginTop: 8 }}
+                onClick={() => setBlockOpen((v) => !v)}
+              >
+                🚫 Blocked — can't continue
+              </button>
+              {blockOpen && (
+                <div className="detail-card" style={{ marginTop: 8, textAlign: "left" }}>
+                  <span className="field-label">What's stopping you?</span>
+                  <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 6 }}>
+                    {BLOCK_REASONS.map((r) => (
+                      <button
+                        key={r}
+                        className="button-like studio-mini"
+                        disabled={doBlock.isPending}
+                        onClick={() => doBlock.mutate(r)}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="row-gap" style={{ marginTop: 8 }}>
+                    <input
+                      style={{ flex: 1, minWidth: 0 }}
+                      placeholder="Something else — say what"
+                      value={blockOther}
+                      onChange={(e) => setBlockOther(e.target.value)}
+                    />
+                    <button
+                      className="button-like"
+                      disabled={doBlock.isPending || !blockOther.trim()}
+                      onClick={() => doBlock.mutate(blockOther.trim())}
+                    >
+                      Block
+                    </button>
+                  </div>
+                  {nextOpening && (
+                    <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
+                      The clock hands off to {nextOpening.opening_code} — same as
+                      finishing.
+                    </p>
+                  )}
+                </div>
+              )}
             </>
           ) : timer.status === "blocked" ? (
             <>
@@ -1808,27 +1961,14 @@ export function OpeningSheet() {
             ))}
           </details>
 
-          <label className="field-label">
-            Minutes{" "}
-            {minutesTouched ? null : timer.minutes != null ? (
-              <span className="muted">(timed from when you started — tap to override)</span>
-            ) : (
-              <span className="muted">(not timed — type how long it took)</span>
-            )}
-          </label>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            // Untouched, this mirrors what was actually timed; blank when
-            // nothing was, so an untimed install is never filed as zero.
-            value={minutesTouched ? minutes : (timer.minutes ?? "")}
-            onChange={(e) => {
-              setMinutes(e.target.value);
-              setMinutesTouched(true);
-            }}
-            placeholder="e.g. 45"
-          />
+          {/* The hand-typed era is over (spec .scratch/sessions): minutes
+              are derived server-side from this window's sessions — breaks
+              and lunches never count, and nobody argues with a stopwatch. */}
+          <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
+            Time records itself from your sessions
+            {timer.minutes != null ? ` — about ${timer.minutes} min so far` : ""}.
+            Breaks never count.
+          </p>
 
           <label className="field-label">Quality grade</label>
           <div className="grade-row">
@@ -1896,13 +2036,15 @@ export function OpeningSheet() {
               className="primary big"
               onClick={() => {
                 setDoneModal(false);
-                goToNext();
+                goToNext(nextOpening ? new Date().toISOString() : null);
               }}
             >
               {nextOpening ? (
                 <>
                   Next one →{" "}
-                  <span style={{ opacity: 0.85 }}>{nextOpening.opening_code}</span>
+                  <span style={{ opacity: 0.85 }}>
+                    {nextOpening.opening_code} — clock's already on it
+                  </span>
                 </>
               ) : (
                 "All caught up — my work"

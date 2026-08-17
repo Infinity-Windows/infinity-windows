@@ -15,6 +15,8 @@ import { listProjects } from "../../lib/api";
 import { listMyPublished } from "../../lib/schedule/api";
 import { captureGeoSoft } from "../../lib/geo";
 import { pushToast, toastError, toastSuccess } from "../../lib/toast";
+import { supabase } from "../../lib/supabase";
+import { getMyOpenSession } from "../../lib/install/sessions";
 import { isNetworkError } from "../../lib/offline/outbox-core";
 import {
   enqueueBreakStart,
@@ -440,6 +442,27 @@ export function ClockSheet({
     onSuccess: (r) => {
       toastSuccess(r.queued ? "Back on the clock — will sync when online" : "Back on the clock");
       if (!r.queued) refresh();
+      // The held unit auto-resumed server-side (sessions trigger, owner
+      // call): tell them which window they're back on.
+      if (!r.queued) {
+        void (async () => {
+          try {
+            const uid = (await supabase.auth.getUser()).data.user?.id;
+            if (!uid) return;
+            const open = await getMyOpenSession(uid);
+            if (!open) return;
+            const { data } = await supabase
+              .from("project_openings")
+              .select("opening_code")
+              .eq("id", open.opening_id)
+              .maybeSingle();
+            const code = (data as { opening_code?: string } | null)?.opening_code;
+            if (code) toastSuccess(`Back on window ${code} — clock's running.`);
+          } catch {
+            /* cosmetic only */
+          }
+        })();
+      }
     },
     onError: (e) => toastError(e),
   });
