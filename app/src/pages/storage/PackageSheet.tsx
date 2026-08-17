@@ -14,6 +14,7 @@ import {
   getPackageBySerial,
   listContainers,
   listPackageEvents,
+  partLabel,
 } from "../../lib/storage";
 
 const EVENT_LABELS: Record<string, string> = {
@@ -96,6 +97,12 @@ export function PackageSheet() {
             {p.category ? ` · ${CATEGORY_LABELS[p.category]}` : ""}
             {days != null ? ` · tagged ${days}d ago` : ""}
           </p>
+          {p.status !== "blank" && (
+            <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+              {partLabel(p) ?? "No part number on label — treated as 1 of 1"}
+              {p.mfr_mark ? ` · their #${p.mfr_mark}` : ""}
+            </p>
+          )}
           {(p.package_marks ?? []).length > 0 && (
             <p className="muted" style={{ margin: 0, fontSize: 12 }}>
               Marks inside: {(p.package_marks ?? []).map((m) => m.mark_code).join(", ")}

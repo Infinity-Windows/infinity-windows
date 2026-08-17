@@ -18,7 +18,10 @@ import {
   defaultDeliveryLabel,
   ensureDelivery,
   listBlankPackages,
+  PART_LABELS,
+  PART_TYPES,
   type PackageCategory,
+  type PartType,
   type StoragePackage,
 } from "../../lib/storage";
 
@@ -35,6 +38,13 @@ export function TagPackages() {
   );
   const [category, setCategory] = useState<PackageCategory | null>("windows");
   const [marks, setMarks] = useState<Set<string>>(new Set());
+  // The label's "#16 2/3": which piece, and N of M. Type and total stay put
+  // between binds — a truck usually unloads a run of same-kind packages —
+  // while the piece number and the manufacturer's mark reset every sticker.
+  const [partType, setPartType] = useState<PartType | null>(null);
+  const [partIndex, setPartIndex] = useState("");
+  const [partTotal, setPartTotal] = useState("");
+  const [mfrMark, setMfrMark] = useState("");
   const [note, setNote] = useState("");
   const [deliveryId, setDeliveryId] = useState<string | null>(null);
   const [tagged, setTagged] = useState(0);
@@ -69,6 +79,16 @@ export function TagPackages() {
     [specs.data],
   );
 
+  // "2 of 3" needs both halves and the first can't beat the second. Empty is
+  // fine — plenty of labels carry no part number, and receiving never blocks.
+  const idx = partIndex.trim() === "" ? null : parseInt(partIndex, 10);
+  const tot = partTotal.trim() === "" ? null : parseInt(partTotal, 10);
+  const partInvalid =
+    (idx === null) !== (tot === null) ||
+    (idx !== null && (!Number.isFinite(idx) || idx < 1)) ||
+    (tot !== null && (!Number.isFinite(tot) || tot < 1)) ||
+    (idx !== null && tot !== null && idx > tot);
+
   const bind = useMutation({
     mutationFn: async () => {
       if (!selected || !projectId) throw new Error("Pick a sticker and a job");
@@ -79,6 +99,10 @@ export function TagPackages() {
         note: note || null,
         marks: [...marks],
         deliveryId,
+        partIndex: idx,
+        partTotal: tot,
+        partType,
+        mfrMark: mfrMark.trim() || null,
       });
     },
     onSuccess: (p) => {
@@ -87,6 +111,10 @@ export function TagPackages() {
       setSelected(null);
       setMarks(new Set());
       setNote("");
+      // Piece number and their mark are per-package; type and total usually
+      // repeat down the truck, so those stay for the next sticker.
+      setPartIndex("");
+      setMfrMark("");
       setTagged((n) => n + 1);
       void qc.invalidateQueries({ queryKey: ["storageBlanks"] });
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
@@ -201,6 +229,58 @@ export function TagPackages() {
           </div>
         </>
       )}
+      <label className="field-label">
+        Which piece is it? (from the label, e.g. “#16 2/3”)
+      </label>
+      <div className="row-gap" style={{ flexWrap: "wrap" }}>
+        {PART_TYPES.map((t) => (
+          <button
+            key={t}
+            className={partType === t ? "button-like active-pill" : "button-like"}
+            onClick={() => setPartType(partType === t ? null : t)}
+          >
+            {PART_LABELS[t]}
+          </button>
+        ))}
+      </div>
+      <div className="row-gap" style={{ alignItems: "center", marginTop: 6 }}>
+        <span className="muted" style={{ fontSize: 13 }}>Part</span>
+        <input
+          type="number"
+          min={1}
+          inputMode="numeric"
+          placeholder="2"
+          value={partIndex}
+          onChange={(e) => setPartIndex(e.target.value)}
+          style={{ width: 64, marginBottom: 0 }}
+        />
+        <span className="muted" style={{ fontSize: 13 }}>of</span>
+        <input
+          type="number"
+          min={1}
+          inputMode="numeric"
+          placeholder="3"
+          value={partTotal}
+          onChange={(e) => setPartTotal(e.target.value)}
+          style={{ width: 64, marginBottom: 0 }}
+        />
+        <span className="muted" style={{ fontSize: 12 }}>
+          — leave empty if the label has none
+        </span>
+      </div>
+      {partInvalid && (
+        <p className="error" style={{ fontSize: 12, margin: "4px 0 0" }}>
+          A part number needs both halves, and “2 of 3” can’t be “4 of 3”.
+        </p>
+      )}
+      <label className="field-label">
+        Their mark # (only if it differs from ours)
+      </label>
+      <input
+        placeholder="e.g. A-2216"
+        value={mfrMark}
+        onChange={(e) => setMfrMark(e.target.value)}
+      />
       <label className="field-label">Note (optional)</label>
       <input
         placeholder="e.g. glass crate, fragile"
@@ -211,7 +291,7 @@ export function TagPackages() {
       <div style={{ marginTop: 12 }}>
         <button
           className="button-like active-pill"
-          disabled={!selected || !projectId || bind.isPending}
+          disabled={!selected || !projectId || partInvalid || bind.isPending}
           onClick={() => bind.mutate()}
         >
           {bind.isPending
