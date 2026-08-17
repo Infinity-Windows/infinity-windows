@@ -5,10 +5,14 @@
 import { describe, expect, it } from "vitest";
 import {
   autoClosedCount,
+  blockedNow,
+  estimateVsActual,
+  legacyLabor,
   onTool,
   reworkTotals,
   stallsByReason,
   topUnitsByLabor,
+  weeklyTrend,
 } from "./insights";
 import type { UnitSession } from "../install/sessions";
 
@@ -94,6 +98,86 @@ describe("topUnitsByLabor", () => {
       { openingId: "a", minutes: 105 },
       { openingId: "b", minutes: 90 },
     ]);
+  });
+});
+
+describe("legacyLabor / topUnitsByLabor with old-era minutes", () => {
+  it("old minutes fill gaps only — automatic timing wins per window", () => {
+    const sessions = [sess({ opening_id: "a" })]; // a: 60m automatic
+    const events = [
+      { opening_id: "a", minutes: 999 }, // ignored — sessions cover a
+      { opening_id: "b", minutes: 207 }, // counted — no sessions for b
+    ];
+    expect(legacyLabor(events, sessions)).toEqual({ minutes: 207, units: 1 });
+    expect(topUnitsByLabor(sessions, 5, NOW, events)).toEqual([
+      { openingId: "b", minutes: 207 },
+      { openingId: "a", minutes: 60 },
+    ]);
+  });
+});
+
+describe("blockedNow", () => {
+  it("newest session decides; resumed units drop off; longest-sitting first", () => {
+    const out = blockedNow(
+      [
+        // o1 blocked at 09:00, resumed at 10:30 → not blocked now.
+        sess({ opening_id: "o1", end_reason: "block", block_reason: "Wrong glass" }),
+        sess({ opening_id: "o1", started_at: "2026-08-17T10:30:00Z", ended_at: null, end_reason: null }),
+        // o2 blocked at 10:00, still sitting → 120m at NOW.
+        sess({
+          opening_id: "o2",
+          started_at: "2026-08-17T09:00:00Z",
+          ended_at: "2026-08-17T10:00:00Z",
+          end_reason: "block",
+          block_reason: "Missing hardware",
+        }),
+      ],
+      NOW,
+    );
+    expect(out).toEqual([
+      { openingId: "o2", reason: "Missing hardware", sittingMin: 120 },
+    ]);
+  });
+});
+
+describe("weeklyTrend", () => {
+  it("buckets labor by Monday week, attributes lost time to the block's week", () => {
+    // NOW is Mon Aug 17 2026 12:00 UTC — this week starts Aug 17.
+    const out = weeklyTrend(
+      [
+        sess({}), // 60m labor this week
+        // Last week: 30m labor, then blocked Mon Aug 10 09:00 → resumed Aug 10 11:00 = 120m lost.
+        sess({
+          opening_id: "w",
+          started_at: "2026-08-10T08:30:00Z",
+          ended_at: "2026-08-10T09:00:00Z",
+          end_reason: "block",
+          block_reason: "Wrong glass",
+        }),
+        sess({
+          opening_id: "w",
+          started_at: "2026-08-10T11:00:00Z",
+          ended_at: "2026-08-10T11:30:00Z",
+        }),
+      ],
+      2,
+      NOW,
+    );
+    expect(out).toEqual([
+      { weekStart: "2026-08-10", laborMin: 60, lostMin: 120 },
+      { weekStart: "2026-08-17", laborMin: 60, lostMin: 0 },
+    ]);
+  });
+});
+
+describe("estimateVsActual", () => {
+  it("median ratio at n>=5; null below — a percentage from three windows is a guess", () => {
+    const five = [1.2, 0.9, 1.1, 1.0, 1.3].map((r) => ({
+      estimateMin: 100,
+      actualMin: r * 100,
+    }));
+    expect(estimateVsActual(five)).toEqual({ n: 5, medianRatio: 1.1 });
+    expect(estimateVsActual(five.slice(0, 4))).toBeNull();
   });
 });
 
