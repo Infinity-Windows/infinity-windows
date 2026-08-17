@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  NAV,
   bottomBarForRole,
   canAccess,
   menuForRole,
@@ -212,5 +213,52 @@ describe("menuForRole (Horizon grouped menu)", () => {
     ]) {
       expect(t).toContain(name);
     }
+  });
+});
+
+describe("every NAV destination has a door", () => {
+  // A registry entry with no menu row is a page nobody can find — /data
+  // shipped exactly that way (route + gating live, zero UI path to it, PR
+  // #305). This freezes the intentional exceptions; anything new that lands
+  // here is a missing MENU_DEF row, not a candidate for this list.
+  const INTENTIONALLY_MENU_LESS = [
+    "/clock", // lives as the clock ACTION in the menu + bottom bar, never a row
+    "/search", // header search icon in Layout
+    // Horizon stubs / in-page destinations (profile via Account, toolbox
+    // history via the clock sheet, the rest "Coming soon" or project-scoped).
+    "/daily-logs",
+    "/completed-installs",
+    "/milestones",
+    "/first-pane",
+    "/toolbox-history",
+    "/conditions",
+    "/contacts",
+    "/profile",
+    "/public-site",
+  ];
+
+  it("every other NAV path appears in some role's menu or bottom bar", () => {
+    const reachable = new Set<string>();
+    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
+      for (const s of menuForRole(role))
+        for (const item of s.items) if (item.to) reachable.add(item.to);
+      for (const tab of bottomBarForRole(role))
+        if ("to" in tab) reachable.add(tab.to);
+    }
+    const orphans = NAV.filter(
+      (d) => !reachable.has(d.to) && !INTENTIONALLY_MENU_LESS.includes(d.to),
+    ).map((d) => d.to);
+    expect(orphans).toEqual([]);
+  });
+
+  it("the allowlist stays honest: nothing on it has quietly gained a menu row", () => {
+    const reachable = new Set<string>();
+    for (const role of ["installer", "foreman", "supervisor", "owner"] as const) {
+      for (const s of menuForRole(role))
+        for (const item of s.items) if (item.to) reachable.add(item.to);
+      for (const tab of bottomBarForRole(role))
+        if ("to" in tab) reachable.add(tab.to);
+    }
+    expect(INTENTIONALLY_MENU_LESS.filter((p) => reachable.has(p))).toEqual([]);
   });
 });
