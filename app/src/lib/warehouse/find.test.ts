@@ -146,3 +146,55 @@ describe("precedence and misses", () => {
     expect(findInWarehouse("1", base())).toBeNull();
   });
 });
+
+describe("the older unit system still answers (ticket 08b)", () => {
+  // Two systems describe this warehouse until the units retire. One box has
+  // to answer for both, or it is not the one box it claims to be. This gap
+  // was real: ticket 08 promised unit ids and rack slots (grill Q4) and the
+  // first version delivered neither, while also removing the old unit search.
+  const unit = {
+    id: "u1",
+    window_id: "W-CAS3050-0004",
+    short_code: "K7RT2",
+    status: "in_warehouse",
+    location_id: "loc-1",
+    locations: { address: "S-01-A" },
+    window_types: { type_code: "CAS3050", name: "Casement 30x50" },
+  };
+  const staged = {
+    id: "u2",
+    window_id: "W-DH3252-0002",
+    status: "staged",
+    location_id: null,
+    locations: null,
+  };
+
+  it("finds a unit by its printed id and says which shelf", () => {
+    const a = findInWarehouse("w-cas3050-0004", base({ units: [unit] }))!;
+    expect(a.kind).toBe("unit-row");
+    expect(a.kind === "unit-row" && a.where).toBe("on S-01-A");
+  });
+
+  it("finds a unit by its short code too", () => {
+    expect(findInWarehouse("K7RT2", base({ units: [unit] }))!.kind).toBe("unit-row");
+  });
+
+  it("reads a status that means a place, not a condition", () => {
+    const a = findInWarehouse("W-DH3252-0002", base({ units: [staged] }))!;
+    expect(a.kind === "unit-row" && a.where).toBe("staged for a job");
+  });
+
+  it("finds a rack slot and lists what is on it", () => {
+    const a = findInWarehouse("s-01-a", base({ units: [unit, staged] }))!;
+    expect(a.kind).toBe("slot");
+    if (a.kind !== "slot") return;
+    expect(a.units.map((u) => u.window_id)).toEqual(["W-CAS3050-0004"]);
+  });
+
+  it("a package sticker still wins over a unit — most specific first", () => {
+    const p = pkg({ serial: "PKG-000099" });
+    const clash = { ...unit, window_id: "PKG-000099" };
+    const a = findInWarehouse("PKG-000099", base({ packages: [p], units: [clash] }))!;
+    expect(a.kind).toBe("package");
+  });
+});
