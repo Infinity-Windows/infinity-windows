@@ -50,6 +50,7 @@ export interface RawVisionMark {
   page?: unknown;  panel_widths?: unknown;
   panel_ops?: unknown;
   corner?: unknown;
+  inset_outset?: unknown;
 }
 
 function str(v: unknown): string | null {
@@ -307,6 +308,11 @@ export function prepVisionSpec(raw: RawVisionMark): Record<string, unknown> {
       extra.corner = { after_panel: after, side };
     }
   }
+  // Inset vs outset mounting (signature field, spec .scratch/signature):
+  // stored only when the sheet actually said — a blank is an honest blank,
+  // never a default.
+  const io = typeof raw.inset_outset === "string" ? raw.inset_outset.trim().toLowerCase() : null;
+  if (io === "inset" || io === "outset") extra.inset_outset = io;
 
   return {
     mark_code,

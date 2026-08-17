@@ -148,6 +148,14 @@ export function SpecReviewSection({ projectId }: Props) {
       onNum={(key, value) =>
         patch.mutate({ id: s.id, patch: { [key]: num(value) } as SpecPatch })
       }
+      onInsetOutset={(value) => {
+        // Signature field (.scratch/signature): stored in extra, blank is
+        // an honest blank — clearing removes the key entirely.
+        const extra = { ...(s.extra ?? {}) };
+        if (value) extra.inset_outset = value;
+        else delete extra.inset_outset;
+        patch.mutate({ id: s.id, patch: { extra } });
+      }}
       onConfirm={() => confirmOne.mutate(s.id)}
     />
   );
@@ -211,6 +219,7 @@ function SpecRow({
   onSizeCode,
   onFlag,
   onNum,
+  onInsetOutset,
   onConfirm,
 }: {
   spec: ProjectMarkSpec;
@@ -219,6 +228,7 @@ function SpecRow({
   onSizeCode: (sizeCode: string) => void;
   onFlag: (key: "tempered" | "egress", value: boolean) => void;
   onNum: (key: "u_factor" | "shgc", value: string) => void;
+  onInsetOutset: (value: "inset" | "outset" | null) => void;
   onConfirm: () => void;
 }) {
   const [sizeCode, setSizeCode] = useState(spec.size_code ?? "");
@@ -272,6 +282,32 @@ function SpecRow({
             />
           </label>
         ))}
+
+        <label style={{ display: "grid", gap: 2 }}>
+          <span className="field-label" style={{ margin: 0 }}>
+            Mounts inset or outset — a signature field; blank until the sheet
+            (or you) says
+          </span>
+          <select
+            value={
+              ((spec.extra as { inset_outset?: string } | null)?.inset_outset as
+                | "inset"
+                | "outset"
+                | undefined) ?? ""
+            }
+            onChange={(e) =>
+              onInsetOutset(
+                e.target.value === "inset" || e.target.value === "outset"
+                  ? e.target.value
+                  : null,
+              )
+            }
+          >
+            <option value="">— not stated —</option>
+            <option value="inset">Inset (recessed into the opening)</option>
+            <option value="outset">Outset (flange/fin onto the face)</option>
+          </select>
+        </label>
 
         <label style={{ display: "grid", gap: 2 }}>
           <span className="field-label" style={{ margin: 0 }}>

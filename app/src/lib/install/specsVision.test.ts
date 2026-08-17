@@ -183,6 +183,16 @@ describe("prepVisionSpec", () => {
     expect(extra.corner).toEqual({ after_panel: 0, side: "left" });
   });
 
+  it("keeps inset/outset only when the sheet actually said", () => {
+    const io = (v: unknown) =>
+      (prepVisionSpec({ mark: "#5", style: "Fixed", size_code: "3060", operation: "Fixed", inset_outset: v } as RawVisionMark)
+        .extra as { inset_outset?: string } | null)?.inset_outset;
+    expect(io("inset")).toBe("inset");
+    expect(io(" Outset ")).toBe("outset");
+    expect(io("recessed")).toBeUndefined(); // unvalidated words never sneak in
+    expect(io(null)).toBeUndefined(); // blank is an honest blank
+  });
+
   it("drops the panel set when any width fails to parse, keeps a valid corner", () => {
     const prepped = prepVisionSpec({
       mark: "#7",

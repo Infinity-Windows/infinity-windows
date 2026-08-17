@@ -1,6 +1,6 @@
 # 02 — Inset/outset capture
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 
 New spec field, captured exactly like the panel-widths round (PR #280 pattern):
@@ -11,3 +11,5 @@ New spec field, captured exactly like the panel-widths round (PR #280 pattern):
 - Rollout via the existing per-job "Re-read specs" button; confirmed rows untouched, as always.
 
 ## Comments
+
+2026-08-16 — Built: `VISION_SCHEMA` + `cleanInsetOutset` in extract-specs (null unless the sheet literally says — never guessed), `prepVisionSpec` → `extra.inset_outset` validated, and a "Mounts inset or outset" select on each spec-review row (blank = "— not stated —", clearing deletes the key). Rolls out through the existing Re-read specs button.
