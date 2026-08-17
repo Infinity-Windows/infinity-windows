@@ -9,11 +9,13 @@ test("Block: preset reason fires block_unit with the chain target", async ({
   page,
 }) => {
   await useSupabaseFixtures(page, { role: "installer" });
-  const opening = { ...openingsFor(BLACK22.projectId)[0] };
   // Mid-install: the sheet opens on the install stage with the Block exit.
-  opening.work_started_at = "2026-08-16T10:00:00Z";
-  opening.needs_flashing = false;
-  opening.status = "assigned";
+  const opening = {
+    ...openingsFor(BLACK22.projectId)[0],
+    work_started_at: "2026-08-16T10:00:00Z",
+    needs_flashing: false,
+    status: "assigned",
+  };
 
   await page.route(
     (url) =>
