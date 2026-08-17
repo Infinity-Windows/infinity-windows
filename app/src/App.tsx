@@ -94,6 +94,7 @@ import { PinGate } from "./components/PinGate";
 import { ComingSoon } from "./pages/ComingSoon";
 import { ensureMyProfile } from "./lib/install/api";
 import "./index.css";
+import { DataHub } from "./pages/DataHub";
 
 /**
  * Role-aware landing: installers land on My Work, foremen on the Infinity day
@@ -353,6 +354,14 @@ export default function App() {
             <Route
               path="/projects/:projectId/opening/:openingId"
               element={<OpeningSheetRoute />}
+            />
+            <Route
+              path="/data"
+              element={
+                <RequireRole path="/data">
+                  <DataHub />
+                </RequireRole>
+              }
             />
             <Route
               path="/studio"

@@ -58,6 +58,7 @@ export type RoutePath =
   | "/scan"
   | "/count"
   | "/studio"
+  | "/data"
   | "/storage"
   | "/storage/tag"
   | "/storage/out"
@@ -136,6 +137,9 @@ export const NAV: NavDest[] = [
   { id: "warehouse", to: "/warehouse", label: "Warehouse", icon: "▦", minRole: "installer" },
   { id: "projects", to: "/projects", label: "Jobs", icon: "▤", minRole: "installer" },
   { id: "studio", to: "/studio", label: "Studio", icon: "◧", minRole: "supervisor" },
+  // The company's ledger of where time goes (grilled 2026-08-17):
+  // supervisor+ ONLY — on-tool and per-person time live here.
+  { id: "data", to: "/data", label: "Data", icon: "▤", minRole: "supervisor" },
   { id: "ask", to: "/ask", label: "Ask", icon: "?", minRole: "installer" },
   { id: "notifications", to: "/notifications", label: "Notifications", icon: "◔", minRole: "installer" },
   { id: "search", to: "/search", label: "Search", icon: "⌕", minRole: "installer" },
