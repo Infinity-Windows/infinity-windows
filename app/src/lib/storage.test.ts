@@ -7,6 +7,7 @@ import {
   defaultDeliveryLabel,
   groupByJob,
   mismatchedPackages,
+  normalizeMarks,
 } from "./storage";
 
 const pkg = (project_id: string | null) => ({ project_id });
@@ -53,5 +54,28 @@ describe("mismatchedPackages", () => {
 describe("defaultDeliveryLabel", () => {
   it("names today's truck the way a crew would", () => {
     expect(defaultDeliveryLabel(new Date(2026, 7, 14))).toBe("Delivery Aug 14");
+  });
+});
+
+describe("normalizeMarks", () => {
+  it("reads the new shape — codes joined through project_marks", () => {
+    expect(
+      normalizeMarks([{ mark: { mark_code: "16" } }, { mark: { mark_code: "13A" } }]),
+    ).toEqual([{ mark_code: "16" }, { mark_code: "13A" }]);
+  });
+
+  it("reads the legacy shape — bare codes from before the migration", () => {
+    expect(normalizeMarks([{ mark_code: "16" }])).toEqual([{ mark_code: "16" }]);
+  });
+
+  it("drops rows with no code at all rather than inventing blanks", () => {
+    expect(
+      normalizeMarks([{ mark: null }, { mark_code: null }, { mark: { mark_code: "4A" } }]),
+    ).toEqual([{ mark_code: "4A" }]);
+  });
+
+  it("treats a missing join as an empty list, not a crash", () => {
+    expect(normalizeMarks(null)).toEqual([]);
+    expect(normalizeMarks(undefined)).toEqual([]);
   });
 });
