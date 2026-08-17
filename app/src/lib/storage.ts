@@ -443,6 +443,49 @@ export async function moveContainer(input: {
   return data as StorageContainer;
 }
 
+/**
+ * Set packages aside on the job's staging bay so they go out together.
+ *
+ * Reversible: checking one back into a conex just re-stores it. Throws with
+ * the `no_staging_bay` hint when the job has no bay — the server refuses
+ * rather than falling back to a shared stock shelf, because material staged
+ * on a shared shelf gets installed at the wrong address.
+ */
+export async function stagePackages(
+  packageIds: string[],
+  projectId: string,
+): Promise<number> {
+  const { data, error } = await supabase.rpc("stage_packages", {
+    p_packages: packageIds,
+    p_project: projectId,
+  });
+  if (error) throw error;
+  return (data as number) ?? 0;
+}
+
+/**
+ * The jobsite half of load-out: confirm what actually turned up, and flag
+ * what turned up broken. Not a required step and not a status change — it
+ * exists for the one thing arrival adds, which is catching transit damage
+ * while somebody is standing in front of it. Damaged packages open a deduped
+ * urgent issue naming the package.
+ */
+export async function arrivePackages(input: {
+  okIds: string[];
+  damagedIds: string[];
+  projectId: string;
+  note?: string | null;
+}): Promise<number> {
+  const { data, error } = await supabase.rpc("arrive_packages", {
+    p_ok: input.okIds,
+    p_damaged: input.damagedIds,
+    p_project: input.projectId,
+    p_note: input.note ?? null,
+  });
+  if (error) throw error;
+  return (data as number) ?? 0;
+}
+
 export async function checkoutPackages(
   packageIds: string[],
   reason: string,

@@ -60,6 +60,7 @@ export type RoutePath =
   | "/storage"
   | "/storage/tag"
   | "/storage/out"
+  | "/storage/arrive"
   | "/ask"
   | "/knowledge"
   | "/ai-spend"
@@ -132,6 +133,8 @@ export const NAV: NavDest[] = [
   { id: "scan", to: "/scan", label: "Scan", icon: "▣", minRole: "installer" },
   { id: "count", to: "/count", label: "Cycle count", icon: "#", minRole: "installer" },
   { id: "storage", to: "/storage", label: "Storage", icon: "▧", minRole: "installer" },
+  // Reached from the warehouse page's Going out section, never a menu row.
+  { id: "storage-arrive", to: "/storage/arrive", label: "Arrival check", icon: "⬇", minRole: "installer" },
   { id: "warehouse", to: "/warehouse", label: "Warehouse", icon: "▦", minRole: "installer" },
   { id: "projects", to: "/projects", label: "Jobs", icon: "▤", minRole: "installer" },
   { id: "studio", to: "/studio", label: "Studio", icon: "◧", minRole: "supervisor" },

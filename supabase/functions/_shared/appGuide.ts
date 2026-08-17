@@ -326,6 +326,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "The window/door type catalog — codes, sizes, difficulty and saved install tips. Browse or edit type details here.",
   },
   {
+    path: "/storage/arrive",
+    label: "Arrival check",
+    minRole: "installer",
+    blurb:
+      "What actually turned up at the job, and what turned up broken. Optional — only worth doing when something looks wrong. Marking a package damaged raises an urgent issue naming it, so a replacement gets ordered the same day.",
+  },
+  {
     path: "/supplies",
     label: "Supplies",
     minRole: "installer",

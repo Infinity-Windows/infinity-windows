@@ -71,7 +71,9 @@ describe("placeChain", () => {
     const chain = placeChain(pkg({ location_id: "slot-9" }), byId);
     expect(chain.locationId).toBe("slot-9");
     expect(chain.loose).toBe(false);
-    expect(placeLabel(chain)).toBe("on a rack slot");
+    // Without the location lookup all it can honestly say is "a shelf";
+    // pass the lookup and it names the shelf (see the staging-bay tests).
+    expect(placeLabel(chain)).toBe("on a shelf");
   });
 
   it("no container and no slot is LOOSE, said plainly", () => {
@@ -122,5 +124,38 @@ describe("ridesAlong", () => {
 
   it("checked-out packages stopped riding along when they left", () => {
     expect(ridesAlong("conex", all, containers)).not.toContain(takenOut);
+  });
+});
+
+describe("staged packages name their job (ticket 08b)", () => {
+  // A staging bay's rack IS the job code, character for character
+  // (20260729220000). Showing "on J-BLACK22-A" makes somebody decode it;
+  // naming the job is the entire point of setting material aside.
+  const bay = { id: "bay-1", address: "J-BLACK22-A", zone: "J", rack: "BLACK22" };
+  const shelf = { id: "shelf-1", address: "S-01-A", zone: "S", rack: "01" };
+  const locs = new Map([
+    [bay.id, bay],
+    [shelf.id, shelf],
+  ]);
+
+  it("says which job a staged package is set aside for", () => {
+    const chain = placeChain(pkg({ container_id: null, location_id: "bay-1" }), byId, locs);
+    expect(placeLabel(chain)).toBe("staged for BLACK22 — J-BLACK22-A");
+    expect(chain.loose).toBe(false);
+  });
+
+  it("a plain stock shelf just says the shelf", () => {
+    const chain = placeChain(pkg({ container_id: null, location_id: "shelf-1" }), byId, locs);
+    expect(placeLabel(chain)).toBe("on S-01-A");
+  });
+
+  it("degrades honestly when the lookup was not passed", () => {
+    const chain = placeChain(pkg({ container_id: null, location_id: "bay-1" }), byId);
+    expect(placeLabel(chain)).toBe("on a shelf");
+  });
+
+  it("a container still beats a location — the crate is what holds it", () => {
+    const chain = placeChain(pkg({ container_id: "crate" }), byId, locs);
+    expect(placeLabel(chain)).toBe("Crate 7 — inside Conex 3");
   });
 });
