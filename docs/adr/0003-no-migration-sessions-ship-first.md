@@ -1,0 +1,3 @@
+# Sessions ship as the first installer-facing flow — no migration
+
+The sessions design assumed a live crew to protect, so the original recommendation was a phased rollout: silent dual-write under today's buttons, then the new screens. The owner corrected the premise (2026-08-16): **the app has never shipped to installers** — the existing data is internal testing. So there is nothing to migrate and nobody to disrupt; the Finish/Block/chain flow ships directly as the first thing installers are trained on, forming the right habits from day one. All dual-write, coexistence, and transition machinery was deliberately not built. If you're reading this looking for the migration plan: there never was an installed base to migrate.

@@ -32,7 +32,7 @@ Infinity Windows installs windows and doors. A project builder models every open
 
 Both are derived from sessions. Neither is stored directly. Storing an aggregate would destroy the other one permanently.
 
-**Chain** — finishing a unit hands the running clock to the next unit on the installer's list rather than stopping it. Walk time and prep time are real install cost and are captured this way, attributed to the unit being walked to. The chain suppresses on multi-tier units: finishing one stops the clock, and the next unit starts fresh by hand — a storefront's teardown is not walk time. The field app's existing finish-proposes-next + carry-start flow is the chain's foundation, not a rival.
+**Chain** — finishing a unit hands the running clock to the next unit on the installer's list rather than stopping it. Walk time and prep time are real install cost and are captured this way, attributed to the unit being walked to. Block hands off exactly the same way — one behavior to learn; only the ended session is marked differently. The chain suppresses on multi-tier units: finishing one stops the clock, and the next unit starts fresh by hand — a storefront's teardown is not walk time. The field app's finish-proposes-next flow is the chain's UX foundation, but its clock semantics are new: today the walk between units is recorded nowhere.
 
 **Transition** — the part of a session between finishing one unit and starting work on the next. Inside the chain, accrues to the incoming unit.
 
@@ -71,6 +71,8 @@ Rationale: cohorts at the unit level are too sparse to trust. We may install thr
 - Installer-vs-average is never visible to installers — foreman and above only. Revisit only if quality grading becomes QC-verified instead of self-rated; a speed ranking against self-rated quality degrades the very data this system exists to produce.
 - Flash-run minutes are a sibling record, not a session: in labor-minutes, never in the install average.
 - Summon help is sessions on the unit, counted in install evidence.
+- Ending a break puts the installer straight back on the held unit — a minute or two of walk-back inflation accepted for zero friction (owner call).
+- Sessions ship as the first installer-facing flow; there is no migration, because there was never an installed base (ADR-0003).
 
 ## Open questions
 
