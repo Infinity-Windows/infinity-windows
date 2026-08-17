@@ -20,6 +20,7 @@ import {
 import { decodeSizeCode, formatSize, type ProjectMarkSpec } from "../../lib/install/specs";
 import { MarkDrawing } from "./MarkDrawing";
 import { formatApiError } from "../../lib/install/errors";
+import { syncProjectSignatures } from "../../lib/estimate/signatureSync";
 import { setProjectNeedsFlashing } from "../../lib/install/phases";
 import type { ProjectOpening } from "../../lib/install/types";
 import { SpecReconciliationReport } from "./SpecReconciliationReport";
@@ -77,13 +78,20 @@ export function SpecReviewSection({ projectId }: Props) {
 
   const confirmOne = useMutation({
     mutationFn: confirmMarkSpec,
-    onSuccess: refresh,
+    onSuccess: () => {
+      refresh();
+      // A confirm can change the config-of-record → cohort key.
+      void syncProjectSignatures(projectId);
+    },
     onError: (e) => setMessage(formatApiError(e)),
   });
 
   const confirmAll = useMutation({
     mutationFn: () => confirmMarkSpecs(projectId),
-    onSuccess: refresh,
+    onSuccess: () => {
+      refresh();
+      void syncProjectSignatures(projectId);
+    },
     onError: (e) => setMessage(formatApiError(e)),
   });
 
