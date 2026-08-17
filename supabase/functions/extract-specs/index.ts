@@ -169,6 +169,9 @@ interface RawVisionMark {
   panel_ops: string[] | null;
   /** 90° corner wrap read off the drawing, when marked. */
   corner: { after_panel: number; side: "left" | "right" } | null;
+  /** Whether the unit mounts inset (recessed into the opening) or outset
+   * (proud of / flanged onto the face), when the sheet says. */
+  inset_outset: "inset" | "outset" | null;
   /** Normalized [x0,y0,x1,y1] of this mark's elevation drawing on the page. */
   bbox: [number, number, number, number] | null;
   /** 1-based page the drawing (and this transcription) came from. */
@@ -203,6 +206,11 @@ function cleanStringArray(raw: unknown): string[] | null {
   // 12 panels is already beyond any real unit; more smells like the model
   // transcribing a dimension chain that isn't panel widths.
   return out.length > 0 && out.length <= 12 ? out : null;
+}
+
+function cleanInsetOutset(raw: unknown): "inset" | "outset" | null {
+  const v = typeof raw === "string" ? raw.trim().toLowerCase() : null;
+  return v === "inset" || v === "outset" ? v : null;
 }
 
 function cleanCorner(
@@ -241,6 +249,7 @@ function cleanVisionMark(raw: unknown, pageNumber: number): RawVisionMark | null
     panel_widths: cleanStringArray(o.panel_widths ?? o.panelWidths),
     panel_ops: cleanStringArray(o.panel_ops ?? o.panelOps),
     corner: cleanCorner(o.corner),
+    inset_outset: cleanInsetOutset(o.inset_outset ?? o.insetOutset),
     bbox,
     // The page is ours, not the model's — we know which image we sent. Only
     // meaningful alongside a box, so it rides along with one.
@@ -357,7 +366,12 @@ const VISION_SCHEMA =
   '"90°" label, or the plan-view break at a panel joint), return ' +
   '{ "after_panel": number (0-based index of the LAST panel before the turn, ' +
   'left to right), "side": "left"|"right" (which END of the drawing wraps) }. ' +
-  "Use null when the unit is flat. One object per mark.";
+  "Use null when the unit is flat. " +
+  'inset_outset: "inset" when the sheet says the unit mounts recessed into ' +
+  'the opening (block frame, recessed, "inset"), "outset" when it mounts ' +
+  'proud of the face (nail fin/flange onto the face, "outset", surface ' +
+  "mount). Read it from the style text, mounting notes, or section detail. " +
+  "Use null when the sheet does not say — NEVER guess. One object per mark.";
 
 const SYSTEM =
   "You extract rich per-mark window and door line-item specifications from a " +
