@@ -6,8 +6,10 @@ import {
   agingDays,
   defaultDeliveryLabel,
   groupByJob,
+  hasPartNumber,
   mismatchedPackages,
   normalizeMarks,
+  partLabel,
 } from "./storage";
 
 const pkg = (project_id: string | null) => ({ project_id });
@@ -77,5 +79,29 @@ describe("normalizeMarks", () => {
   it("treats a missing join as an empty list, not a crash", () => {
     expect(normalizeMarks(null)).toEqual([]);
     expect(normalizeMarks(undefined)).toEqual([]);
+  });
+});
+
+describe("part labels", () => {
+  it("reads the whole label — number and piece", () => {
+    expect(partLabel({ part_index: 2, part_total: 3, part_type: "glass" })).toBe(
+      "Part 2 of 3 · Glass",
+    );
+  });
+
+  it("works with either half alone", () => {
+    expect(partLabel({ part_index: 2, part_total: 3, part_type: null })).toBe("Part 2 of 3");
+    expect(partLabel({ part_type: "threshold" })).toBe("Threshold");
+  });
+
+  it("returns null when the label said nothing — callers show the flag", () => {
+    expect(partLabel({})).toBeNull();
+    expect(partLabel({ part_index: null, part_total: null, part_type: null })).toBeNull();
+  });
+
+  it("hasPartNumber needs both halves — half a fraction is no fraction", () => {
+    expect(hasPartNumber({ part_index: 2, part_total: 3 })).toBe(true);
+    expect(hasPartNumber({ part_index: 2, part_total: null })).toBe(false);
+    expect(hasPartNumber({})).toBe(false);
   });
 });

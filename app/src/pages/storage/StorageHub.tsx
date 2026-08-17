@@ -63,7 +63,10 @@ export function StorageHub() {
           p.serial.includes(query) ||
           (p.short_code ?? "").includes(query) ||
           (jobCode.get(p.project_id ?? "") ?? "").toUpperCase().includes(query) ||
-          (p.package_marks ?? []).some((m) => m.mark_code === query),
+          (p.package_marks ?? []).some((m) => m.mark_code === query) ||
+          // The manufacturer's own number, when it differs from the plan mark
+          // — the label in hand is sometimes the only number someone has.
+          (p.mfr_mark ?? "").includes(query),
       )
       .slice(0, 12);
   }, [packages.data, query, jobCode]);

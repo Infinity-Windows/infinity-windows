@@ -12,7 +12,7 @@
 // no direct-write policies at all.
 
 import { supabase } from "./supabase";
-import { isMissingTable } from "./schemaErrors";
+import { isMissingFunction, isMissingTable } from "./schemaErrors";
 
 export type PackageStatus = "blank" | "received" | "stored" | "checked_out";
 export type PackageCategory = "windows" | "doors" | "frames" | "hardware" | "other";
@@ -22,6 +22,36 @@ export const CATEGORY_LABELS: Record<PackageCategory, string> = {
   doors: "Doors",
   frames: "Frames",
   hardware: "Hardware",
+  other: "Other",
+};
+
+/** Which piece of the window this package is — the grill's fixed list (Q17). */
+export type PartType =
+  | "frame"
+  | "glass"
+  | "panel"
+  | "threshold"
+  | "hardware"
+  | "screen"
+  | "other";
+
+export const PART_TYPES: PartType[] = [
+  "frame",
+  "glass",
+  "panel",
+  "threshold",
+  "hardware",
+  "screen",
+  "other",
+];
+
+export const PART_LABELS: Record<PartType, string> = {
+  frame: "Frame",
+  glass: "Glass",
+  panel: "Panel / sash",
+  threshold: "Threshold",
+  hardware: "Hardware",
+  screen: "Screen",
   other: "Other",
 };
 
@@ -43,6 +73,15 @@ export interface StoragePackage {
   status: PackageStatus;
   project_id: string | null;
   category: PackageCategory | null;
+  /** "#16 2/3" → 2. Null/absent when the label carries no part number.
+   * Optional because rows read from a database the part-fields migration
+   * hasn't reached yet simply lack the keys. */
+  part_index?: number | null;
+  /** "#16 2/3" → 3 — how many pieces the whole unit ships as. */
+  part_total?: number | null;
+  part_type?: PartType | null;
+  /** The manufacturer's own mark, only when it differs from the plan mark. */
+  mfr_mark?: string | null;
   note: string | null;
   delivery_id: string | null;
   container_id: string | null;
@@ -279,17 +318,43 @@ export async function bindPackage(input: {
   note?: string | null;
   marks?: string[];
   deliveryId?: string | null;
+  partIndex?: number | null;
+  partTotal?: number | null;
+  partType?: PartType | null;
+  mfrMark?: string | null;
 }): Promise<StoragePackage> {
-  const { data, error } = await supabase.rpc("bind_package", {
+  const base = {
     p_package: input.packageId,
     p_project: input.projectId,
     p_category: input.category ?? null,
     p_note: input.note ?? null,
     p_marks: input.marks ?? null,
     p_delivery: input.deliveryId ?? null,
+  };
+  const hasParts =
+    input.partIndex != null ||
+    input.partTotal != null ||
+    input.partType != null ||
+    Boolean(input.mfrMark?.trim());
+
+  const { data, error } = await supabase.rpc("bind_package", {
+    ...base,
+    p_part_index: input.partIndex ?? null,
+    p_part_total: input.partTotal ?? null,
+    p_part_type: input.partType ?? null,
+    p_mfr_mark: input.mfrMark ?? null,
   });
-  if (error) throw error;
-  return data as StoragePackage;
+  if (!error) return data as StoragePackage;
+
+  // Deploy window: the database still has the old 6-arg signature. Retrying
+  // without the part fields is only safe when there are none to lose — a tag
+  // WITH part data must fail loudly rather than silently shed it.
+  if (isMissingFunction(error) && !hasParts) {
+    const legacy = await supabase.rpc("bind_package", base);
+    if (legacy.error) throw legacy.error;
+    return legacy.data as StoragePackage;
+  }
+  throw error;
 }
 
 export async function storePackages(packageIds: string[], containerId: string): Promise<number> {
@@ -367,4 +432,32 @@ export function mismatchedPackages<T extends { project_id: string | null }>(
 /** "Delivery Aug 14" — the default label for today's truck. */
 export function defaultDeliveryLabel(now: Date): string {
   return `Delivery ${now.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+}
+
+/** Enough of a package to describe which piece it is. */
+export interface PartLike {
+  part_index?: number | null;
+  part_total?: number | null;
+  part_type?: PartType | null;
+}
+
+/**
+ * Did the label carry a part number? Without one the package is treated as
+ * 1 of 1 everywhere downstream — and FLAGGED, never silently upgraded to
+ * knowledge nobody actually had (CONTEXT.md: completeness is read off the
+ * labels, never assumed).
+ */
+export function hasPartNumber(p: PartLike): boolean {
+  return p.part_index != null && p.part_total != null;
+}
+
+/**
+ * "Part 2 of 3 · Glass", "Part 2 of 3", "Glass" — or null when the label
+ * said nothing at all (callers show the "no part number" flag instead).
+ */
+export function partLabel(p: PartLike): string | null {
+  const num = hasPartNumber(p) ? `Part ${p.part_index} of ${p.part_total}` : null;
+  const kind = p.part_type ? PART_LABELS[p.part_type] : null;
+  if (num && kind) return `${num} · ${kind}`;
+  return num ?? kind;
 }
