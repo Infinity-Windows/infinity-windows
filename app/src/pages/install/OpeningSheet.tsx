@@ -93,6 +93,7 @@ import { MEMO_TOPICS, isForemanPlus, type MemoTopics } from "../../lib/install/t
 import { claimUnsavedWork } from "../../lib/pwa/unsavedWork";
 import { indexSpecsByMark, specForOpeningCode } from "../../lib/install/specs";
 import { SpecCard } from "../../components/install/SpecCard";
+import { PartsPanel } from "../../components/install/PartsPanel";
 import { MissingSpecNotice } from "../../components/install/MissingSpecNotice";
 import { OpeningMoved } from "../../components/install/OpeningMoved";
 import { rememberOpening } from "../../lib/install/staleOpening";
@@ -1148,6 +1149,11 @@ export function OpeningSheet() {
           />
         )
       )}
+
+      {/* Parts: every package tagged for this window and where it sits — the
+          "do I have everything?" answer, read off the manufacturer's labels
+          (warehouse ticket 03). */}
+      <PartsPanel projectId={projectId} openingCode={opening.data?.opening_code} />
 
       {message && (
         <p className={/^(Window|Install|Rough|Condition|Flag|Flagged|Site|Complication)/.test(message) ? "ok" : "error"}>
