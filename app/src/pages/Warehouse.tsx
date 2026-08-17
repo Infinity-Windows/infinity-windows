@@ -1,13 +1,21 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { listInventory, listProjects } from "../lib/api";
+import { listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
-import { INVENTORY_VIEWS, inventoryCounts } from "../lib/inventoryViews";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { UnitSearch } from "../components/UnitSearch";
 import { Explain } from "../components/ui/Explain";
 import { PackageMap } from "../components/warehouse/PackageMap";
+import { listActivePackages, listContainers } from "../lib/storage";
+import { listIssues } from "../lib/issues";
+import {
+  cardLink,
+  listScheduledMarks,
+  WAREHOUSE_CARDS,
+  warehouseCounts,
+} from "../lib/warehouse/warehouseCards";
 
 interface WarehouseLink {
   to: string;
@@ -29,9 +37,33 @@ const LINKS: WarehouseLink[] = [
 export function Warehouse() {
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
-  const inventory = useQuery({ queryKey: ["inventory"], queryFn: listInventory });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
-  const counts = inventoryCounts(inventory.data?.units ?? []);
+  // Same query keys as the storage screens, so the hub rides their cache.
+  const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
+  const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
+  const issues = useQuery({ queryKey: ["issues"], queryFn: listIssues });
+
+  const activeIds = useMemo(
+    () => (projects.data ?? []).map((p) => p.id),
+    [projects.data],
+  );
+  const marks = useQuery({
+    queryKey: ["scheduledMarks", activeIds],
+    queryFn: () => listScheduledMarks(activeIds),
+    enabled: activeIds.length > 0,
+  });
+
+  const openDamage = (issues.data ?? []).filter(
+    (i) => i.kind === "damage" && i.status === "open",
+  ).length;
+
+  const counts = warehouseCounts(
+    packages.data ?? [],
+    containers.data ?? [],
+    marks.data ?? [],
+    openDamage,
+  );
+  const ready = packages.isSuccess && containers.isSuccess;
 
   const links = LINKS.filter((l) => !l.lead || lead);
 
@@ -54,21 +86,33 @@ export function Warehouse() {
       <UnitSearch limit={8} />
 
       <div className="stat-grid">
-        {INVENTORY_VIEWS.map((v) => (
+        {WAREHOUSE_CARDS.map((c) => (
           <Link
-            key={v.id}
-            to={`/warehouse/${v.id}`}
-            className={v.tone ? `stat-card ${v.tone}` : "stat-card"}
+            key={c.id}
+            to={cardLink(c.id)}
+            className={c.tone ? `stat-card ${c.tone}` : "stat-card"}
           >
-            <span className="stat-num">
-              {inventory.isSuccess ? counts[v.id] : "-"}
-            </span>
-            <span>{v.label}</span>
+            <span className="stat-num">{ready ? counts[c.id] : "-"}</span>
+            <span>{c.label}</span>
           </Link>
         ))}
       </div>
-      {inventory.isError && (
-        <p className="error">{formatApiError(inventory.error)}</p>
+      <Explain id="warehouse-cards" summary="What do these numbers mean?">
+        <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+          {WAREHOUSE_CARDS.map((c) => (
+            <li key={c.id} style={{ marginBottom: 6 }}>
+              <strong>{c.label}</strong> — {c.blurb}
+            </li>
+          ))}
+          <li>
+            One thing to know about <strong>not tagged</strong>: a window mark
+            that shows up eight times on the plans counts once, because the
+            manufacturer&rsquo;s labels don&rsquo;t number the eight apart.
+          </li>
+        </ul>
+      </Explain>
+      {packages.isError && (
+        <p className="error">{formatApiError(packages.error)}</p>
       )}
 
       <h2>Operations</h2>

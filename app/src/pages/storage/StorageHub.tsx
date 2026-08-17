@@ -3,7 +3,7 @@
 // three flows (tag at the truck, check in, check out).
 
 import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listProjects } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
@@ -23,8 +23,16 @@ import {
   listContainers,
   mintPackages,
   saveContainer,
+  type StoragePackage,
   type StorageContainer,
 } from "../../lib/storage";
+import {
+  cardPackages,
+  listScheduledMarks,
+  untaggedMarks,
+  WAREHOUSE_CARDS,
+  type CardId,
+} from "../../lib/warehouse/warehouseCards";
 
 export function StorageHub() {
   const navigate = useNavigate();
@@ -37,6 +45,13 @@ export function StorageHub() {
   const [search, setSearch] = useState("");
   const [newContainer, setNewContainer] = useState(false);
   const [minting, setMinting] = useState(false);
+  // Arriving from a hub card: show just that card's rows above everything
+  // else, so a number is always openable (ticket 06).
+  const [params] = useSearchParams();
+  const cardParam = params.get("card");
+  const card = WAREHOUSE_CARDS.some((c) => c.id === cardParam)
+    ? (cardParam as CardId)
+    : null;
 
   const jobCode = useMemo(() => {
     const m = new Map<string, string>();
@@ -118,6 +133,15 @@ export function StorageHub() {
           </>
         )}
       </div>
+
+      {card && (
+        <CardList
+          card={card}
+          packages={packages.data ?? []}
+          containers={containers.data ?? []}
+          jobCode={jobCode}
+        />
+      )}
 
       <h2>Find a package</h2>
       <input
@@ -203,6 +227,98 @@ export function StorageHub() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * One hub card's rows (warehouse ticket 06). Every number on the Warehouse
+ * page opens here, so a count always has something behind it.
+ *
+ * "Not tagged" is the odd one and deliberately so: it counts scheduled marks
+ * with NO package, so there are no package rows to show — it lists the marks
+ * themselves, which is the actual to-do list ("go find window 17, or admit it
+ * hasn't arrived").
+ */
+function CardList({
+  card,
+  packages,
+  containers,
+  jobCode,
+}: {
+  card: CardId;
+  packages: StoragePackage[];
+  containers: StorageContainer[];
+  jobCode: Map<string, string>;
+}) {
+  const def = WAREHOUSE_CARDS.find((c) => c.id === card)!;
+  const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  const activeIds = useMemo(
+    () => (projects.data ?? []).map((p) => p.id),
+    [projects.data],
+  );
+  const marks = useQuery({
+    queryKey: ["scheduledMarks", activeIds],
+    queryFn: () => listScheduledMarks(activeIds),
+    enabled: card === "not-tagged" && activeIds.length > 0,
+  });
+
+  const rows = cardPackages(card, packages, containers);
+  const missing = card === "not-tagged" ? untaggedMarks(packages, marks.data ?? []) : [];
+
+  return (
+    <>
+      <h2 style={{ textTransform: "capitalize" }}>{def.label}</h2>
+      <p className="muted" style={{ margin: "0 0 8px", fontSize: 13 }}>
+        {def.blurb}
+      </p>
+
+      {card === "not-tagged" ? (
+        <div className="home-projects">
+          {missing.map((m) => (
+            <div key={`${m.project_id}-${m.mark_code}`} className="project-card home-project">
+              <div className="home-project-head">
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600 }}>Window {m.mark_code}</div>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    {jobCode.get(m.project_id) ?? "?"} · nothing tagged yet
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+          {missing.length === 0 && (
+            <p className="muted">
+              Every window on every active job has at least one package tagged.
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="home-projects">
+          {rows.map((p) => (
+            <Link key={p.id} to={`/pkg/${p.serial}`} className="project-card home-project">
+              <div className="home-project-head">
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600 }}>
+                    {p.serial}
+                    {p.short_code ? ` · ${p.short_code}` : ""}
+                  </div>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    {jobCode.get(p.project_id ?? "") ?? "no job"}
+                    {(p.package_marks ?? []).length > 0 &&
+                      ` · marks ${(p.package_marks ?? []).map((m) => m.mark_code).join(", ")}`}
+                  </div>
+                </div>
+                <span className="muted">›</span>
+              </div>
+            </Link>
+          ))}
+          {rows.length === 0 && <p className="muted">Nothing here — good.</p>}
+        </div>
+      )}
+      <Link className="button-like" to="/storage">
+        Clear filter
+      </Link>
+    </>
   );
 }
 
