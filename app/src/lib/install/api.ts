@@ -2483,21 +2483,31 @@ export async function setOpeningCondition(
 
 export interface SubmitInstallParams extends Partial<MemoTopics> {
   openingId: string;
+  /** Kept for outbox back-compat and the points estimate; the SERVER
+   * derives the stored minutes from sessions now (spec .scratch/sessions). */
   minutes?: number | null;
   qualityGrade?: number | null;
   transcriptRaw?: string | null;
   startedAt?: string | null;
   estimateMinutes?: number | null;
+  /** The chain: the unit the clock hands off to at finish. */
+  nextOpeningId?: string | null;
 }
 
+/**
+ * Finish = submit + the session close + the CHAIN, one server transaction
+ * (finish_unit composes over submit_install_event). Minutes and start are
+ * session-derived server-side; the old client-sent figures are ignored by
+ * design — the hand-typed era is over.
+ */
 export async function submitInstallEvent(
   params: SubmitInstallParams,
 ): Promise<InstallEvent> {
-  const { data, error } = await supabase.rpc("submit_install_event", {
+  const { data, error } = await supabase.rpc("finish_unit", {
     p_opening_id: params.openingId,
+    p_next_opening_id: params.nextOpeningId ?? null,
     p_installer: await actor(),
     p_installer_id: await actorId(),
-    p_minutes: params.minutes ?? null,
     p_estimate_minutes: params.estimateMinutes ?? null,
     p_quality_grade: params.qualityGrade ?? null,
     p_difficulty: params.difficulty ?? null,
@@ -2509,7 +2519,6 @@ export async function submitInstallEvent(
     p_safety_notes: params.safety_notes ?? null,
     p_do_again: params.do_again ?? null,
     p_transcript_raw: params.transcriptRaw ?? null,
-    p_started_at: params.startedAt ?? null,
   });
   if (error) throw error;
   return data as InstallEvent;
