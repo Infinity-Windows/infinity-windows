@@ -12,7 +12,8 @@ import {
   ScanLine,
   Sparkles,
 } from "lucide-react";
-import { countMyOpenOpenings, getMyProfile, getRealProfile, listProfiles } from "../lib/install/api";
+import { getMyProfile, getRealProfile, listMyOpeningsAllJobs, listProfiles } from "../lib/install/api";
+import { openingReadiness } from "../lib/install/fit";
 import { ROLE_LABELS, type CrewRole } from "../lib/install/types";
 import { bottomBarForRole, menuForRole, roleRank, type MenuAction } from "../lib/nav";
 import { useClock } from "../lib/clockContext";
@@ -95,9 +96,16 @@ export function Layout() {
       : formatClock(clockGuard!.workedSeconds);
 
   useRealtimeMyOpenings(isInstaller ? me.data?.id : undefined);
+  // The badge means what it says (grilled Q5): TRULY ready windows — the
+  // "how much can I actually do right now" number — not merely assigned.
   const openCount = useQuery({
     queryKey: ["myReadyCount", me.data?.id],
-    queryFn: () => countMyOpenOpenings(me.data!.id),
+    queryFn: async () => {
+      const rows = await listMyOpeningsAllJobs(me.data!.id);
+      return rows.filter(
+        (o) => o.status !== "installed" && openingReadiness(o).status === "ready",
+      ).length;
+    },
     enabled: Boolean(me.data?.id) && isInstaller,
   });
   const readyBadge = isInstaller ? openCount.data ?? 0 : 0;

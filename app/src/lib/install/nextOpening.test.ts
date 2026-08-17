@@ -100,4 +100,13 @@ describe("pickNextOpening", () => {
     ]);
     expect(next?.id).toBe("todo");
   });
+
+  it("skips a session-blocked opening even if it sorts first (grilled Q4)", () => {
+    const next = pickNextOpening(
+      [opening({ id: "stuck", sequence: 0 }), opening({ id: "free", sequence: 1 })],
+      undefined,
+      new Set(["stuck"]),
+    );
+    expect(next?.id).toBe("free");
+  });
 });

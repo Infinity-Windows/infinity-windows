@@ -100,6 +100,27 @@ export async function submitOpeningPhase(opts: {
   return data as OpeningPhase;
 }
 
+/**
+ * The foreman's flashing alarm (owner, 2026-08-17): windows are waiting on
+ * flashing and NOBODY is on a flash run. `owed` counts openings still owed
+ * flashing; `runActive` is true when any flashing phase is running right
+ * now. The alarm fires when owed > 0 and no run is active — windows sitting
+ * for want of a dispatch is a management failure, so it goes on the
+ * foreman's landing page, big.
+ */
+export function flashingAlarm(
+  openings: readonly { id: string; needs_flashing?: boolean | null }[],
+  phases: readonly OpeningPhase[],
+): { owed: number; runActive: boolean; alarm: boolean } {
+  const owed = openings.filter((o) =>
+    flashingOutstanding(o, phases.filter((p) => p.opening_id === o.id)),
+  ).length;
+  const runActive = phases.some(
+    (p) => p.kind === "flashing" && p.status === "active",
+  );
+  return { owed, runActive, alarm: owed > 0 && !runActive };
+}
+
 /** The one question the install gate asks. */
 export function flashingOutstanding(
   opening: { needs_flashing?: boolean | null },

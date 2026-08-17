@@ -29,11 +29,18 @@ import { orderMyWork } from "../lib/dispatch";
 import { orderNumberMap } from "../lib/install/mapDispatch";
 import { openingReadiness } from "../lib/install/fit";
 import { isInstallInProgress } from "../lib/install/installTimer";
-import { areaKey, toDispatchOpening } from "../lib/install/nextOpening";
+import {
+  applySessionBlocks,
+  areaKey,
+  toDispatchOpening,
+} from "../lib/install/nextOpening";
+import { blockedUnits, listSessionsForOpenings } from "../lib/install/sessions";
 import {
   type ProjectOpening,
 } from "../lib/install/types";
-import { getOpenShift } from "../lib/timeclock";
+import { useClock } from "../lib/clockContext";
+import { captureGeoSoft } from "../lib/geo";
+import { clockIn, getOpenShift, listRecentJobs } from "../lib/timeclock";
 import { listMyPublished } from "../lib/schedule/api";
 import { formatStartTime } from "../lib/schedule/dates";
 import { listVehicleLinksForAssignments } from "../lib/vehicles/api";
@@ -89,6 +96,28 @@ export function MyWork() {
     enabled: Boolean(todayAssignmentId),
   });
   useRealtimeMyOpenings(me.data?.id);
+  const clock = useClock();
+
+  // Live session-blocks (grilled Q4): a window whose newest session ended in
+  // a Block is never recommended — it wears its reason in the list instead.
+  const myOpeningIds = useMemo(
+    () => (openings.data ?? []).filter((o) => o.status !== "installed").map((o) => o.id),
+    [openings.data],
+  );
+  const blockSessions = useQuery({
+    queryKey: ["myOpeningBlocks", myOpeningIds.join(",")],
+    queryFn: () => listSessionsForOpenings(myOpeningIds),
+    enabled: myOpeningIds.length > 0,
+  });
+  const blocks = useMemo(
+    () => new Map(blockedUnits(blockSessions.data ?? []).map((b) => [b.openingId, b.reason])),
+    [blockSessions.data],
+  );
+  const recents = useQuery({
+    queryKey: ["recentJobs", me.data?.id],
+    queryFn: () => listRecentJobs(me.data!.id),
+    enabled: Boolean(me.data?.id),
+  });
 
   // Un-submit: take back an install you just submitted, reason required.
   // Same undo path as the foreman's "send it back" — the server only lets an
@@ -196,7 +225,9 @@ export function MyWork() {
   }, [active.length]);
 
   const byId = new Map(active.map((o) => [o.id, o]));
-  const ordered = orderMyWork(active.map(toDispatchOpening))
+  const ordered = orderMyWork(
+    applySessionBlocks(active.map(toDispatchOpening), new Set(blocks.keys())),
+  )
     .map((d) => byId.get(d.id)!)
     .filter(Boolean);
   // The core loop resumes what you started: an in-progress window jumps to the
@@ -223,7 +254,9 @@ export function MyWork() {
         ...baseQueue.filter((o) => o.project_id !== todayJobId),
       ]
     : baseQueue;
-  const next = queue[0];
+  // The recommendation never points at a session-blocked window (grilled
+  // Q4); blocked rows stay in the lists below wearing their reason.
+  const next = queue.find((o) => !blocks.has(o.id));
   // Explicit first→last numbering over the do-order list, so every card/row can
   // show "you are here" (#1 is the Next card; #2, #3 … follow). Derived from the
   // shared orderMyWork result — orderMyWork itself is left untouched.
@@ -249,6 +282,13 @@ export function MyWork() {
     navigate(`/projects/${o.project_id}/opening/${o.id}`);
 
   const readinessTag = (o: ProjectOpening) => {
+    if (blocks.has(o.id)) {
+      return (
+        <span className="error">
+          blocked{blocks.get(o.id) ? ` — ${blocks.get(o.id)}` : ""}
+        </span>
+      );
+    }
     const r = openingReadiness(o);
     const inProgress = isInstallInProgress(o);
     const cls = inProgress
@@ -262,11 +302,41 @@ export function MyWork() {
   };
 
   const captureHint = (o: ProjectOpening) => {
+    if (blocks.has(o.id))
+      return `Waiting on: ${blocks.get(o.id) ?? "a blocker"} — pick it back up once it's cleared`;
     const r = openingReadiness(o);
     if (r.status === "ready") return "Tap to install — photos, voice memo, grade";
     if (r.status === "blocked") return r.reasons.join(" ");
     return r.reasons[0] ?? "Finish checks before installing";
   };
+
+  // ---- The morning hero (grilled Q1/Q3): off the clock, ONE tap clocks
+  // you in and lands you on your window — its gates (toolbox, before
+  // photo, flashing) still stand on the sheet. Clock-in itself is the
+  // ungated part, so a refused start can never un-ring that bell.
+  const flashRun = (myFlashRuns.data ?? [])[0] ?? null;
+  const heroTarget = activeInstall ?? (flashRun ? null : next ?? null);
+  const heroClockIn = useMutation({
+    mutationFn: async () => {
+      const projectId =
+        heroTarget?.project_id ?? flashRun?.project_id ?? todayJobId ??
+        recents.data?.[0]?.projectId ?? null;
+      if (!projectId) throw new Error("no-project");
+      const costCodeId =
+        recents.data?.find((r) => r.projectId === projectId)?.costCodeId ??
+        recents.data?.[0]?.costCodeId ?? null;
+      const geo = await captureGeoSoft();
+      await clockIn(projectId, costCodeId, geo, null);
+    },
+    onSuccess: () => {
+      void openShift.refetch();
+      if (heroTarget) go(heroTarget);
+      else if (flashRun) navigate(`/projects/${flashRun.project_id}/flash-run`);
+    },
+    // Whatever went wrong (offline, no job to pin the punch to), the clock
+    // sheet is the full-featured path — outbox, pickers, toolbox sign-off.
+    onError: () => clock.openClock(),
+  });
 
   if (me.isLoading || (Boolean(me.data?.id) && openings.isLoading)) {
     return (
@@ -313,7 +383,64 @@ export function MyWork() {
         window next; capture as you go.
       </p>
 
-      {todayAssignment && (
+      {/* THE MORNING HERO (grilled Q1): off the clock, the first thing on
+          screen is one button that clocks you in and puts you on your
+          window. The Today strip's facts fold in underneath. */}
+      {!openShift.data && !openShift.isLoading && (
+        <div className="today-strip home-card" style={{ borderColor: "var(--accent-line)" }}>
+          <span className="next-label">Good morning</span>
+          {(todayAssignment || heroTarget || flashRun) && (
+            <p style={{ margin: "4px 0 2px", fontSize: 14.5 }}>
+              <strong>
+                {todayAssignment?.project?.name ??
+                  heroTarget?.projects?.name ??
+                  heroTarget?.projects?.job_code ??
+                  flashRun?.projects?.name ??
+                  "Your day"}
+              </strong>
+              {todayAssignment?.start_time && (
+                <span className="muted"> · {formatStartTime(todayAssignment.start_time)}</span>
+              )}
+              {todayTruck && (
+                <span className="muted" style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 8 }}>
+                  <Truck size={13} aria-hidden /> {todayTruck}
+                </span>
+              )}
+            </p>
+          )}
+          <button
+            className="primary big"
+            style={{ width: "100%", marginTop: 8 }}
+            disabled={heroClockIn.isPending}
+            onClick={() => heroClockIn.mutate()}
+          >
+            {heroClockIn.isPending
+              ? "Clocking in…"
+              : activeInstall
+                ? `Clock in & finish ${activeInstall.opening_code} →`
+                : flashRun
+                  ? `Clock in — flash run at ${flashRun.projects?.job_code ?? "your job"} →`
+                  : next
+                    ? `Clock in & start on ${next.opening_code} →`
+                    : "Clock in"}
+          </button>
+          <div
+            style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginTop: 8 }}
+          >
+            {todayAssignment?.project?.address && (
+              <DirectionsButton
+                address={todayAssignment.project.address}
+                title="Directions to today's job"
+              />
+            )}
+            <button className="link" style={{ fontSize: 12.5 }} onClick={() => clock.openClock()}>
+              Just clock in — pick the job or window yourself
+            </button>
+          </div>
+        </div>
+      )}
+
+      {Boolean(openShift.data) && todayAssignment && (
         <div className="today-strip home-card">
           <div className="home-card-top">
             <span className="next-label">Today</span>
@@ -374,11 +501,6 @@ export function MyWork() {
               address={todayAssignment.project?.address}
               title="Directions to today's job"
             />
-            {!openShift.data && (
-              <Link to="/clock" className="home-card-cta">
-                Clock in for this job ›
-              </Link>
-            )}
           </div>
         </div>
       )}
@@ -388,40 +510,6 @@ export function MyWork() {
           {newlyAssigned} new window{newlyAssigned > 1 ? "s" : ""} assigned to you — tap to dismiss
         </div>
       )}
-
-      <div className="stat-grid">
-        <div className="stat-card">
-          <span className="stat-num">{active.length}</span>
-          <span>assigned</span>
-        </div>
-        <div className="stat-card accent">
-          <span className="stat-num">{readyCount}</span>
-          <span>ready now</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-num">{done.length}</span>
-          <span>done today</span>
-        </div>
-      </div>
-
-      {(toConfirm.data?.length ?? 0) > 0 && (
-        <Link to="/review" className="action-btn">
-          Review {toConfirm.data!.length} AI-filled memo(s) →
-        </Link>
-      )}
-
-      {/* Flash runs I'm dispatched on (owner, 2026-08-14: the run is its
-          own task) — one card per job, straight into the run screen. */}
-      {(myFlashRuns.data ?? []).map((r) => (
-        <Link
-          key={r.id}
-          to={`/projects/${r.project_id}/flash-run`}
-          className="action-btn"
-        >
-          ⚡ Flash run — {r.projects?.job_code ?? "job"}
-          {r.projects?.name ? ` · ${r.projects.name}` : ""}
-        </Link>
-      ))}
 
       {activeInstall && (
         <button
@@ -473,6 +561,42 @@ export function MyWork() {
           })()}
         </button>
       )}
+
+      {/* Stats + secondary tasks live BELOW the do-this-now cards (grilled
+          Q1): the first screenful is clock in → your window, nothing else. */}
+      <div className="stat-grid">
+        <div className="stat-card">
+          <span className="stat-num">{active.length}</span>
+          <span>assigned</span>
+        </div>
+        <div className="stat-card accent">
+          <span className="stat-num">{readyCount}</span>
+          <span>ready now</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-num">{done.length}</span>
+          <span>done today</span>
+        </div>
+      </div>
+
+      {(toConfirm.data?.length ?? 0) > 0 && (
+        <Link to="/review" className="action-btn">
+          Review {toConfirm.data!.length} AI-filled memo(s) →
+        </Link>
+      )}
+
+      {/* Flash runs I'm dispatched on (owner, 2026-08-14: the run is its
+          own task) — one card per job, straight into the run screen. */}
+      {(myFlashRuns.data ?? []).map((r) => (
+        <Link
+          key={r.id}
+          to={`/projects/${r.project_id}/flash-run`}
+          className="action-btn"
+        >
+          ⚡ Flash run — {r.projects?.job_code ?? "job"}
+          {r.projects?.name ? ` · ${r.projects.name}` : ""}
+        </Link>
+      ))}
 
       {[...jobs.values()].map((job) => (
         <div key={job.code}>
