@@ -481,6 +481,9 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # two records, never duplicates.
     "summons": None,
     "summon_helpers": ("summon_id", "profile_id"),
+    # Sessions and redos are time-stamped events — append-only, never deduped.
+    "unit_sessions": None,
+    "unit_redos": None,
     # Storage tracking: containers and packages carry immutable printed
     # serials, so the serial is the identity a merge must respect.
     "storage_containers": ("serial",),
