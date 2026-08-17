@@ -12,7 +12,7 @@
 // no direct-write policies at all.
 
 import { supabase } from "./supabase";
-import { isMissingFunction, isMissingTable } from "./schemaErrors";
+import { isMissingColumn, isMissingFunction, isMissingTable } from "./schemaErrors";
 
 export type PackageStatus = "blank" | "received" | "stored" | "checked_out";
 export type PackageCategory = "windows" | "doors" | "frames" | "hardware" | "other";
@@ -140,6 +140,38 @@ export interface PackageEvent {
   created_at: string;
 }
 
+/** A movements row, as far as the package timeline needs it (ticket 05). */
+export interface MovementRow {
+  id: string;
+  package_id: string | null;
+  event: string;
+  from_container_id?: string | null;
+  to_container_id?: string | null;
+  project_id: string | null;
+  reason: string | null;
+  actor: string | null;
+  created_at: string;
+}
+
+/**
+ * A movements row read back in the package timeline's shape. The old log's
+ * container_id meant "destination" on store/move and "source" on checkout —
+ * `to ?? from` reproduces exactly that, so the sheet's copy never shifts.
+ * Exported for tests.
+ */
+export function movementToPackageEvent(m: MovementRow): PackageEvent {
+  return {
+    id: m.id,
+    package_id: m.package_id ?? "",
+    event: m.event as PackageEvent["event"],
+    container_id: m.to_container_id ?? m.from_container_id ?? null,
+    project_id: m.project_id,
+    reason: m.reason,
+    actor: m.actor,
+    created_at: m.created_at,
+  };
+}
+
 export interface CheckoutReason {
   id: string;
   label: string;
@@ -262,13 +294,30 @@ export async function getContainerBySerial(serial: string): Promise<StorageConta
 }
 
 export async function listPackageEvents(packageId: string): Promise<PackageEvent[]> {
-  const { data, error } = await supabase
+  // One log now: the package's timeline is its movements rows (ticket 05).
+  const modern = await supabase
+    .from("movements")
+    .select("*")
+    .eq("package_id", packageId)
+    .order("created_at", { ascending: false });
+  if (!modern.error) {
+    return ((modern.data ?? []) as MovementRow[]).map(movementToPackageEvent);
+  }
+  // Deploy window: a database that predates the fold-in has no package_id on
+  // movements — the old table is still there, so read it as before.
+  if (
+    !isMissingColumn(modern.error, "package_id") &&
+    !isMissingTable(modern.error, "movements")
+  ) {
+    throw modern.error;
+  }
+  const legacy = await supabase
     .from("package_events")
     .select("*")
     .eq("package_id", packageId)
     .order("created_at", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as PackageEvent[];
+  if (legacy.error) throw legacy.error;
+  return (legacy.data ?? []) as PackageEvent[];
 }
 
 export async function listCheckoutReasons(): Promise<CheckoutReason[]> {
