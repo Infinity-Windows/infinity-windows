@@ -64,6 +64,11 @@ export interface StorageContainer {
   notes: string | null;
   active: boolean;
   created_at: string;
+  /** The container this one sits inside (a crate in a conex) — one level max.
+   * Optional: rows read before the nesting migration lack the keys. */
+  parent_container_id?: string | null;
+  /** A recorded spot for a container that sits on its own. */
+  location_id?: string | null;
 }
 
 export interface StoragePackage {
@@ -85,6 +90,10 @@ export interface StoragePackage {
   note: string | null;
   delivery_id: string | null;
   container_id: string | null;
+  /** A rack slot for a package sitting loose outside any container. Neither
+   * this nor container_id set = LOOSE, the cannot-find-it pile. Optional:
+   * pre-migration rows lack the key. */
+  location_id?: string | null;
   bound_at: string | null;
   bound_by: string | null;
   created_at: string;
@@ -364,6 +373,25 @@ export async function storePackages(packageIds: string[], containerId: string): 
   });
   if (error) throw error;
   return (data as number) ?? 0;
+}
+
+/**
+ * Relocate a container — into another container (a crate into a conex), or
+ * out on its own. Everything inside moves by inheritance; the server writes
+ * the ride-along history. One level only; the database enforces it.
+ */
+export async function moveContainer(input: {
+  containerId: string;
+  parentContainerId?: string | null;
+  locationId?: string | null;
+}): Promise<StorageContainer> {
+  const { data, error } = await supabase.rpc("move_container", {
+    p_container: input.containerId,
+    p_parent: input.parentContainerId ?? null,
+    p_location: input.locationId ?? null,
+  });
+  if (error) throw error;
+  return data as StorageContainer;
 }
 
 export async function checkoutPackages(
