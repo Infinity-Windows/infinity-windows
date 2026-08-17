@@ -9993,3 +9993,43 @@ body {
 .pkgmap-note p { margin: 0 0 8px; font-size: 13.5px; line-height: 1.55; color: var(--muted); }
 .pkgmap-note p:last-child { margin: 0; }
 .pkgmap-note strong { color: var(--text); font-weight: 600; }
+
+/* ============================================================================
+   The one-page warehouse (ticket 08). The Find bar is sticky because the
+   warehouse answers exactly one question — it should never be a scroll away.
+   ========================================================================= */
+
+.wh-find {
+  position: sticky;
+  /* Past the status bar on an installed phone: --safe-top is the only
+     sanctioned way to read the inset (see lib/ui/safeArea.test.ts). */
+  top: calc(var(--safe-top) + 8px);
+  z-index: 20;
+  background: var(--bg);
+  padding: 8px 0 10px;
+  margin-bottom: 4px;
+}
+
+.wh-answer {
+  margin-top: 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+}
+
+.wh-answer.tone-ok { border-left-color: var(--ok); }
+.wh-answer.tone-warn { border-left-color: var(--warn); }
+
+.wh-page section { margin-top: 18px; }
+.wh-page section h2 { margin-bottom: 4px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .wh-answer { animation: wh-answer-in 0.16s var(--ease-out); }
+}
+
+@keyframes wh-answer-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: none; }
+}

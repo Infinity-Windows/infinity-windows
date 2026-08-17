@@ -5,7 +5,6 @@ import {
   BarChart3,
   Bell,
   BookOpen,
-  Boxes,
   BrainCircuit,
   Camera,
   CalendarClock,
@@ -20,10 +19,8 @@ import {
   LayoutGrid,
   ListChecks,
   MoreHorizontal,
-  PackageCheck,
   PenTool,
   Plane,
-  ScanLine,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
@@ -349,21 +346,21 @@ const MENU_DEF: MenuSection[] = [
       { to: "/heartbeat", label: "Heartbeat", Icon: Activity },
     ],
   },
+  // ONE row (warehouse ticket 08). The eight that lived here were the visible
+  // symptom of two location models: no single screen could answer "where is
+  // it", so the question was spread across eight. With one model, /warehouse
+  // holds the whole job — tagging, storing, checking out, supplies, problems —
+  // and its actions open over the page instead of navigating. The old
+  // destinations all still exist as routes (deep links, the page's own
+  // buttons, the "Other tools" fold); they simply stopped needing menu rows.
+  // Catalog moved to Account: importing window types is data admin, not
+  // warehouse work.
   {
     title: "Warehouse",
     pill: true,
     collapsible: true,
     Icon: WarehouseIcon,
-    items: [
-      { to: "/warehouse", label: "Hub", Icon: WarehouseIcon },
-      { to: "/storage", label: "Storage", Icon: Boxes },
-      { to: "/scan", label: "Scan", Icon: ScanLine },
-      { to: "/count", label: "Cycle count", Icon: ListChecks },
-      { to: "/receive", label: "Receive", Icon: PackageCheck },
-      { to: "/labels", label: "Slot labels", Icon: Hash },
-      { to: "/catalog", label: "Catalog", Icon: BookOpen },
-      { to: "/supplies", label: "Supplies", Icon: Boxes },
-    ],
+    items: [{ to: "/warehouse", label: "Warehouse", Icon: WarehouseIcon }],
   },
   {
     title: "Problems & quality",
@@ -412,6 +409,8 @@ const MENU_DEF: MenuSection[] = [
     items: [
       { to: "/notifications", label: "Notifications", Icon: Bell },
       { to: "/settings", label: "Settings", Icon: SlidersHorizontal },
+      // Importing window types is data admin, not warehouse work (ticket 08).
+      { to: "/catalog", label: "Catalog", Icon: BookOpen },
       { to: "/admin", label: "Admin", Icon: ShieldCheck },
     ],
   },
