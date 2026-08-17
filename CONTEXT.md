@@ -10,7 +10,7 @@ Infinity Windows installs windows and doors. A project builder models every open
 
 ## Core nouns
 
-**Unit** — everything that fills one opening: frame package, panes, panels or doors, and the hardware required. One opening is always one unit, even when it spans multiple stories — an opening can't be left unfilled for a customer, so it's one installer's responsibility from start to finish.
+**Unit** — everything that fills one opening: frame package, panes, panels or doors, and the hardware required. One opening is always one unit, even when it spans multiple stories — an opening can't be left unfilled for a customer, so it's one installer's responsibility from start to finish. A unit arrives as several **packages** and is only ready to install when all of them are on hand.
 
 **Panel** — one leaf of a unit. Has a width, a mechanism (fixed, slider, casement, hung, bifold), and for moving mechanisms a direction. The panel is the unit of evidence, not the unit — see Panel-level evidence.
 
@@ -21,6 +21,32 @@ Infinity Windows installs windows and doors. A project builder models every open
 **Opening** — the hole in the building. One opening, one unit.
 
 **Flash Run** — flashing performed as its own pass, usually by a different installer on a different day. Its minutes are a sibling record on the unit (not a session): they count in the unit's labor-minutes, but never in the install cohort average — flashing carries its own per-panel modifier.
+
+## The warehouse
+
+Settled 2026-08-17. The warehouse answers one question — *where is it* — and records one thing — *who moved it*. Everything below serves those two.
+
+**Package** — one physical piece of a unit: its frame, its glass, its hardware, its threshold. The package is what carries a sticker, what sits somewhere, and what moves; a unit never moves, its packages do. Every package runs the same six-stage life regardless of what's inside it: blank sticker → tagged → stored → checked out → on site → installed.
+
+**Part number** — the manufacturer's "N of M" printed on a package: `#16 2/3` is the second of three packages making up unit 16. M is the number of packages that unit was built as, and it varies — some units are one package, some are six. Because M is printed on the very first package to arrive, the count of what's still missing is knowable from the first delivery onward, without anyone declaring it in advance.
+
+**Container** — anywhere a package can sit: a conex, a crate, a shelf spot, a truck. Containers hold packages and may sit inside one other container, never deeper. Moving a container moves everything inside it in one action — that is the whole reason a container is worth tracking.
+
+**Conex** — a shipping container used as warehouse storage, on the yard or on a site.
+
+**Crate** — a small container, usually holding glass for units with no pre-assembled frame. A crate is a *place*, not a package: it holds packages and has a location of its own. Crates are broken down and rebuilt, so a crate's identity dies with the physical crate.
+
+**Sticker** — an Infinity-printed label bound to exactly one package, for that package's whole life. Printed blank in batches, bound once when the package is tagged, and never reused — a reused sticker would make every earlier record point at the wrong physical thing.
+
+**Tagged** — a package that has been bound to a sticker, a unit, and a job. Until tagged, a package is untracked and cannot be found by anyone who didn't personally put it down.
+
+**Checkout** — a package leaving storage for a job, with a reason recorded. Checking out is per-package, never per-container: an installer takes the four packages they need and the crate stays where it is until it is empty.
+
+**Loose stock** — an on-hand package with no container and no shelf spot. The genuinely-cannot-find-it pile, and the number that says how much the warehouse is drifting.
+
+**Home spot** — the one place a supply lives, so it can be told to someone: *"Caulk · Bin A3."* Supplies are countable and identical, so they have a home spot and a rough count rather than individual stickers.
+
+**On hand** — how much of a supply we believe we have. Always an estimate, always shown with when it was last counted, because it is decremented by what installers say they took and corrected only by counting.
 
 ## Time and measurement
 
@@ -78,6 +104,13 @@ Rationale: cohorts at the unit level are too sparse to trust. We may install thr
 - Ending a break puts the installer straight back on the held unit — a minute or two of walk-back inflation accepted for zero friction (owner call).
 - Sessions ship as the first installer-facing flow; there is no migration, because there was never an installed base (ADR-0003).
 - The installer's first screen is one tap: clock in and land on the recommended window; the window's own gates (toolbox, before photo, flashing) stay on the sheet. The recommendation never points at a session-blocked unit.
+- Nothing stores its own location. A package's location is the container holding it; a unit's location is where its packages are. One question, one answer, nothing to reconcile (ADR-0004).
+- Every package lives the same six stages, whatever is inside it. A crate is a container, not a stage.
+- Completeness is read off the manufacturer's part numbers, never assumed. The app says "2 of 3 here"; it never guesses that a unit needs a threshold.
+- Warehouse is one screen. Actions open over it and never navigate away — the tab-switching was the symptom, two location models were the disease.
+- Stickers and crate identities are never reused; both are cheaper than a trail that lies.
+- Nothing about a mismatch stops the receiving line. Wrong-job checkouts warn loudly and require a reason, but are never blocked — a blocked scan is a scan that stops happening.
+- Existing stock is tagged when someone touches it, not in a big-bang pass. The untagged count is the progress bar.
 
 ## Open questions
 
