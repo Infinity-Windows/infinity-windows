@@ -14,35 +14,37 @@ Infinity Windows installs windows and doors. A project builder models every open
 
 **Panel** — one leaf of a unit. Has a width, a mechanism (fixed, slider, casement, hung, bifold), and for moving mechanisms a direction. The panel is the unit of evidence, not the unit — see Panel-level evidence.
 
-**Tier** — a horizontal row of panels within a unit, at one story. A 9-pane storefront across three floors is one unit with three tiers of three panels. Studio's current model is flat (one `heightMm`, one `panels[]` array) and cannot express this. Fixing that is open work.
+**Tier** — a horizontal row of panels within a unit, at one story. A 9-pane storefront across three floors is one unit with three tiers of three panels. Studio's current model is flat (one `heightMm`, one `panels[]` array) and cannot express this; fixing that is open work. Studio's `rows[]` are pane breaks — glass divisions *within* a tier — not tiers; don't conflate them.
 
-**Story** — which floor a tier sits on. Ground level is story 1.
+**Story** — which floor a tier sits on. Ground level is story 1. Story lives on the tier; a single-tier unit (almost every unit) inherits its opening's story.
 
 **Opening** — the hole in the building. One opening, one unit.
 
-**Flash Run** — flashing performed as its own pass, usually by a different installer on a different day. Its minutes belong to the unit even though the unit was already marked finished.
+**Flash Run** — flashing performed as its own pass, usually by a different installer on a different day. Its minutes are a sibling record on the unit (not a session): they count in the unit's labor-minutes, but never in the install cohort average — flashing carries its own per-panel modifier.
 
 ## Time and measurement
 
 **Session** — the atomic time record: one installer, one unit, a start, a stop. Sessions are what the app stores. Everything else is derived from them.
 
-**Labor-minutes** — total human minutes across all sessions on a unit. What cost estimating wants.
+**Labor-minutes** — total human minutes on a unit: every session (install and helper alike) plus its flash-run minutes. What cost estimating wants.
 
 **Wall-clock** — calendar time from first start to last stop on a unit. What a customer asking "when will my house be done" wants.
 
 Both are derived from sessions. Neither is stored directly. Storing an aggregate would destroy the other one permanently.
 
-**Chain** — finishing a unit hands the running clock to the next unit on the installer's list rather than stopping it. Walk time and prep time are real install cost and are captured this way, attributed to the unit being walked to.
+**Chain** — finishing a unit hands the running clock to the next unit on the installer's list rather than stopping it. Walk time and prep time are real install cost and are captured this way, attributed to the unit being walked to. The field app's existing finish-proposes-next + carry-start flow is the chain's foundation, not a rival.
 
 **Transition** — the part of a session between finishing one unit and starting work on the next. Inside the chain, accrues to the incoming unit.
 
-**Block** — a unit stopped by something outside the installer's control: missing hardware, wrong glass, opening not ready, waiting on equipment. Recorded with a reason. Blocked minutes are excluded from install averages and reported separately. Without this, warehouse and GC failures get recorded as slow installation.
+**Block** — a unit stopped by something outside the installer's control: missing hardware, wrong glass, opening not ready, waiting on equipment. Recorded with a reason. Blocked minutes are excluded from install averages and reported separately. Without this, warehouse and GC failures get recorded as slow installation. A Block is a *time state*; a *blocker issue* is the reported problem — when the reason is a reported issue, the Block references it, so the accountability trail is one record.
 
-**Rework** — a unit reinstalled after failing inspection. Recorded as a separate unit record, labelled as rework. Excluded from estimating averages; counted in a rework rate.
+**Rework** — work on a unit reinstalled after failing inspection. Recorded as rework-tagged sessions and events on the *same* unit — one opening is one unit, always. Excluded from estimating averages; counted in a rework rate.
+
+**Summon help** — a helper's stint on a unit after answering a Summon: a session like any other, in the helper role. Counts in labor-minutes *and* in install evidence — a four-man lift is real install cost for that signature, and pretending it took one installer would make heavy units look cheap.
 
 ## The estimation model
 
-**Signature** — the structured, computed key a unit is grouped by. Composed from kind, mechanism mix, panel count, moving/fixed split, story per tier, and inset/outset. Never typed by a human. A free-text name cannot be grouped on; "Bifold 5 panel" and "5-panel bifold" are two cohorts forever.
+**Signature** — the structured, computed key a unit is grouped by. Composed from kind, mechanism mix (including slide count), panel count, moving/fixed split, corner (none/left/right), story per tier, and inset/outset. Never typed by a human. A free-text name cannot be grouped on; "Bifold 5 panel" and "5-panel bifold" are two cohorts forever. Inset/outset exists nowhere in today's data — it is a new field captured at spec review.
 
 **Cohort** — all units sharing a signature.
 
@@ -56,7 +58,7 @@ Rationale: cohorts at the unit level are too sparse to trust. We may install thr
 
 **Modifier** — a coefficient estimated by pooling across all unit types, not per-cohort. The story-2 penalty is learned from every unit ever installed above ground level. Data-efficient: trustworthy after ~dozens of units rather than dozens of one specific cohort.
 
-**Fallback ladder** — when a cohort is thin, fall back a rung: exact signature → same kind + panel count → same kind → global. Sample count is shown in the UI so a foreman knows whether to trust the number. Minimum sample count for showing a number is undecided.
+**Fallback ladder** — when a cohort is thin, fall back a rung: exact signature → same kind + panel count → same kind → global. A rung's number is shown at n ≥ 5; below that, fall to the next rung. The rung and its sample count are always displayed ("same kind · n=23") — the label is the real safeguard, not the threshold.
 
 ## Standing decisions
 
@@ -66,14 +68,18 @@ Rationale: cohorts at the unit level are too sparse to trust. We may install thr
 - Finish never stops the clock; it proposes the next unit and remains changeable for a few minutes.
 - Blocked is a first-class exit from a unit, alongside Finish and Break.
 - Break and Clock Out hold the current unit open. A unit survives across days and across installers.
+- Installer-vs-average is never visible to installers — foreman and above only. Revisit only if quality grading becomes QC-verified instead of self-rated; a speed ranking against self-rated quality degrades the very data this system exists to produce.
+- Flash-run minutes are a sibling record, not a session: in labor-minutes, never in the install average.
+- Summon help is sessions on the unit, counted in install evidence.
 
 ## Open questions
 
-- Exact field list composing the signature.
-- Whether story lives on the tier, the opening, or the project.
-- Minimum sample count before a cohort average is shown.
-- Whether flash-run time is a session on the unit or a sibling record.
-- Whether installer-vs-average is ever visible to installers. Caution: the moment installers know they're ranked on speed, the timer stops measuring install duration and starts measuring what they want us to see — degrading the estimating data this whole system exists to produce. Quality is currently a self-rating, which compounds this.
+- Exact field list composing the signature (Session 3 / ticket 1).
+- What ends a session vs holds the unit open — the precise Finish/Block/Break/Clock Out semantics.
+- Whether the chain suppresses on multi-tier units.
+- Whether the rework tag is derived automatically (a prior voided or QC-failed install exists) or set by hand.
+- How inset/outset gets captured (extractor read + spec-review confirm, or hand-entered).
+- What shows when even the global rung is under n = 5.
 
 ## Out of scope for the current effort
 
