@@ -38,7 +38,7 @@ Both are derived from sessions. Neither is stored directly. Storing an aggregate
 
 **Block** — a unit stopped by something outside the installer's control: missing hardware, wrong glass, opening not ready, waiting on equipment. Recorded with a reason. Blocked minutes are excluded from install averages and reported separately. Without this, warehouse and GC failures get recorded as slow installation. A Block is a *time state*; a *blocker issue* is the reported problem — when the reason is a reported issue, the Block references it, so the accountability trail is one record.
 
-**Rework** — work on a unit after its Redo button is pressed, for any reason: failed inspection, damage, wrong unit, customer complaint. The installer records the reason; the fix is timed as its own rework-tagged sessions on the *same* unit — one opening is one unit, always — kept as separate data. Excluded from estimating averages; counted in a rework rate. The original install's sessions stand as evidence.
+**Rework** — work on a unit after its Redo button is pressed, for any reason: failed inspection, damage, wrong unit, customer complaint. Any installer can press Redo, reason required; the foreman is notified, never asked first — friction belongs on hiding problems, not on admitting them. The unit returns to the work list as open, visibly marked as a redo, until finished again. The fix is timed as its own rework-tagged sessions on the *same* unit — one opening is one unit, always — kept as separate data. Excluded from estimating averages; counted in a rework rate. The original install's sessions stand as evidence.
 
 **Summon help** — a helper's stint on a unit after answering a Summon: a session like any other, in the helper role. The clock starts at the Answer tap — the walk over is part of what that window costs. Counts in labor-minutes *and* in install evidence — a four-man lift is real install cost for that signature, and pretending it took one installer would make heavy units look cheap.
 
@@ -75,7 +75,6 @@ Rationale: cohorts at the unit level are too sparse to trust. We may install thr
 ## Open questions
 
 - Exact field list composing the signature (Session 3 / ticket 1).
-- Who can press Redo (installer with reason, or foreman-gated), and whether a redone unit goes back on the work list as open.
 
 
 ## Out of scope for the current effort
