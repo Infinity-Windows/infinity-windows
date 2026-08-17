@@ -5,7 +5,10 @@
 import { describe, expect, it } from "vitest";
 import { computeSignature } from "./signature";
 import {
+  combineEvidence,
+  describeSignature,
   estimateForSignature,
+  estimateJobUnits,
   evidenceFromSessions,
   manualEstimate,
   type CohortEvidence,
@@ -128,5 +131,66 @@ describe("evidenceFromSessions (per-unit samples, finished rounds only)", () => 
     ]);
     expect(out).toHaveLength(1);
     expect(out[0].minutes).toBe(30 + 20 + 15); // both install sessions + helper
+  });
+});
+
+describe("combineEvidence (sessions win per unit, legacy fills gaps)", () => {
+  it("never double-counts a unit and keeps legacy-only units", () => {
+    const t = computeSignature(fixedWindow(3), { story: 1, insetOutset: null });
+    const mk = (unitId: string, minutes: number): CohortEvidence => ({
+      sigKey: t.sigKey,
+      signature: t.signature,
+      minutes,
+      unitId,
+    });
+    const out = combineEvidence(
+      [mk("a", 40)],
+      [mk("a", 99), mk("b", 30)], // a's legacy figure must drop
+    );
+    expect(out.map((e) => [e.unitId, e.minutes])).toEqual([
+      ["a", 40],
+      ["b", 30],
+    ]);
+  });
+});
+
+describe("describeSignature", () => {
+  it("reads like a row label", () => {
+    const { signature } = computeSignature(
+      {
+        kind: "window",
+        heightMm: 1500,
+        panels: [
+          { widthMm: 900, mechanism: "fixed" },
+          { widthMm: 900, mechanism: "slider", direction: "left", slideCount: 2 },
+        ],
+        cornerAfterPanel: 0,
+      },
+      { story: 2, insetOutset: "outset" },
+    );
+    expect(describeSignature(signature)).toBe(
+      "window · 2 panels (1 fixed + 1 sliderx2) · corner · story 2 · outset",
+    );
+  });
+});
+
+describe("estimateJobUnits (the foreman's job view)", () => {
+  it("totals the remaining covered units, counts the honest gaps", () => {
+    const t = computeSignature(fixedWindow(3), { story: 1, insetOutset: null });
+    const pool = [30, 35, 40, 45, 50].map((m) => evidence(fixedWindow(3), m));
+    const job = estimateJobUnits(
+      [
+        { id: "a", opening_code: "1", status: "assigned", sig_key: t.sigKey, signature: t.signature },
+        { id: "b", opening_code: "2", status: "installed", sig_key: t.sigKey, signature: t.signature },
+        { id: "c", opening_code: "3", status: "assigned", sig_key: null, signature: null },
+      ],
+      pool,
+    );
+    expect(job.rows).toHaveLength(3);
+    expect(job.remainingMin).toBe(40); // only "1": median 40; installed "2" excluded
+    expect(job.remainingCovered).toBe(1);
+    expect(job.remainingUncovered).toBe(0);
+    expect(job.unsigned).toBe(1);
+    expect(job.rows[2].described).toBeNull();
   });
 });

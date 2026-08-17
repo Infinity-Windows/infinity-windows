@@ -19,6 +19,9 @@ export interface CohortEvidence {
   sigKey: string;
   signature: SignatureV1 | null;
   minutes: number;
+  /** The unit the sample came from, when known — lets sources be merged
+   * without double-counting a unit. Never affects ladder resolution. */
+  unitId?: string;
 }
 
 export type LadderRung = "exact" | "kind+panels" | "kind" | "global" | "none" | "manual";
@@ -111,14 +114,14 @@ export type EvidenceSource = () => Promise<CohortEvidence[]>;
 export const installEventsEvidence: EvidenceSource = async () => {
   const { data, error } = await supabase
     .from("install_events")
-    .select("minutes, opening:project_openings!inner(sig_key, signature)")
+    .select("minutes, opening:project_openings!inner(id, sig_key, signature)")
     .is("voided_at", null)
     .not("minutes", "is", null)
     .not("opening.sig_key", "is", null);
   if (error) return [];
   const rows = (data ?? []) as unknown as {
     minutes: number;
-    opening: { sig_key: string; signature: SignatureV1 | null } | null;
+    opening: { id: string; sig_key: string; signature: SignatureV1 | null } | null;
   }[];
   return rows
     .filter((r) => r.opening?.sig_key && r.minutes != null && r.minutes >= 0)
@@ -126,6 +129,7 @@ export const installEventsEvidence: EvidenceSource = async () => {
       sigKey: r.opening!.sig_key,
       signature: r.opening!.signature,
       minutes: r.minutes,
+      unitId: r.opening!.id,
     }));
 };
 
@@ -174,9 +178,14 @@ export function evidenceFromSessions(
     if (r.end_reason === "finish") entry.finished = true;
     perUnit.set(o.id, entry);
   }
-  return [...perUnit.values()]
-    .filter((u) => u.finished && u.minutes > 0)
-    .map((u) => ({ sigKey: u.sigKey, signature: u.signature, minutes: u.minutes }));
+  return [...perUnit.entries()]
+    .filter(([, u]) => u.finished && u.minutes > 0)
+    .map(([unitId, u]) => ({
+      sigKey: u.sigKey,
+      signature: u.signature,
+      minutes: u.minutes,
+      unitId,
+    }));
 }
 
 /**
@@ -195,3 +204,104 @@ export const sessionsEvidence: EvidenceSource = async () => {
   if (error) return [];
   return evidenceFromSessions((data ?? []) as unknown as SessionEvidenceRow[]);
 };
+
+
+/**
+ * Merge evidence sources without double-counting: a unit with SESSION
+ * evidence (real man-minutes) never also contributes its legacy
+ * wall-clock figure. Legacy-only units still count — pre-sessions test
+ * data beats an empty screen, honestly labeled by the caller.
+ */
+export function combineEvidence(
+  sessions: readonly CohortEvidence[],
+  legacy: readonly CohortEvidence[],
+): CohortEvidence[] {
+  const covered = new Set(sessions.map((e) => e.unitId).filter(Boolean));
+  return [...sessions, ...legacy.filter((e) => !e.unitId || !covered.has(e.unitId))];
+}
+
+/** Short human line for a signature — the estimating screen's row label. */
+export function describeSignature(sig: SignatureV1): string {
+  const tier = sig.tiers[0];
+  const mix = Object.entries(tier?.mix ?? {})
+    .map(([k, n]) => `${n} ${k}`)
+    .join(" + ");
+  const bits = [
+    sig.kind,
+    `${sig.panelCount} panel${sig.panelCount === 1 ? "" : "s"} (${mix})`,
+    sig.corner === "corner" ? "corner" : null,
+    tier?.story != null ? `story ${tier.story}` : "story ?",
+    sig.insetOutset ?? null,
+  ].filter(Boolean);
+  return bits.join(" · ");
+}
+
+export interface JobEstimateRow {
+  openingId: string;
+  code: string;
+  installed: boolean;
+  /** null = no stored signature yet (specs unconfirmed / not recomputed). */
+  described: string | null;
+  estimate: CohortEstimate | null;
+}
+
+/**
+ * PURE: the foreman's job view — one row per unit, the ladder resolved
+ * per signature, totals over the NOT-installed units (the actionable
+ * number). Units without a signature are counted out loud, never guessed.
+ */
+export function estimateJobUnits(
+  openings: readonly {
+    id: string;
+    opening_code: string;
+    status?: string | null;
+    sig_key?: string | null;
+    signature?: unknown;
+  }[],
+  evidence: readonly CohortEvidence[],
+  minN: number = MIN_COHORT_N,
+): {
+  rows: JobEstimateRow[];
+  remainingMin: number;
+  remainingCovered: number;
+  remainingUncovered: number;
+  unsigned: number;
+} {
+  const rows: JobEstimateRow[] = [];
+  let remainingMin = 0;
+  let remainingCovered = 0;
+  let remainingUncovered = 0;
+  let unsigned = 0;
+  for (const o of openings) {
+    const installed = o.status === "installed";
+    const sig = (o.signature ?? null) as SignatureV1 | null;
+    if (!o.sig_key || !sig) {
+      unsigned += 1;
+      rows.push({
+        openingId: o.id,
+        code: o.opening_code,
+        installed,
+        described: null,
+        estimate: null,
+      });
+      continue;
+    }
+    const est = estimateForSignature({ signature: sig, sigKey: o.sig_key }, evidence, minN);
+    rows.push({
+      openingId: o.id,
+      code: o.opening_code,
+      installed,
+      described: describeSignature(sig),
+      estimate: est,
+    });
+    if (!installed) {
+      if (est.minutes != null) {
+        remainingMin += est.minutes;
+        remainingCovered += 1;
+      } else {
+        remainingUncovered += 1;
+      }
+    }
+  }
+  return { rows, remainingMin, remainingCovered, remainingUncovered, unsigned };
+}

@@ -184,6 +184,7 @@ export interface ProjectOpening {
   /** Stored cohort signature key (spec .scratch/signature) — server-written
    * via set_unit_signature only. */
   sig_key?: string | null;
+  signature?: unknown;
   work_started_at: string | null;
   work_ended_at: string | null;
   flag_note: string | null;
