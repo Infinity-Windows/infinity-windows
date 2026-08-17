@@ -44,7 +44,7 @@ Both are derived from sessions. Neither is stored directly. Storing an aggregate
 
 ## The estimation model
 
-**Signature** — the structured, computed key a unit is grouped by. Composed from kind, mechanism mix (including slide count), panel count, moving/fixed split, corner (none/left/right), story per tier, and inset/outset. Never typed by a human. A free-text name cannot be grouped on; "Bifold 5 panel" and "5-panel bifold" are two cohorts forever. Inset/outset is a new field: the extractor reads it from the spec sheets and it is confirmed at spec review, like every other spec field.
+**Signature** — the structured, computed key a unit is grouped by. Composed from kind, mechanism mix (including slide count), panel count, moving/fixed split, corner (none/corner — the side is recorded but never grouped), story per tier, and inset/outset. Dimensions and handedness never enter it: sizes are continuous evidence, and mirror images share a cohort. Versioned, so definition changes never silently fracture cohort history. Never typed by a human. A free-text name cannot be grouped on; "Bifold 5 panel" and "5-panel bifold" are two cohorts forever. Inset/outset is a new field: the extractor reads it from the spec sheets and it is confirmed at spec review, like every other spec field.
 
 **Cohort** — all units sharing a signature.
 
@@ -74,7 +74,7 @@ Rationale: cohorts at the unit level are too sparse to trust. We may install thr
 
 ## Open questions
 
-- Exact field list composing the signature (Session 3 / ticket 1).
+None right now — the next ones come from building.
 
 
 ## Out of scope for the current effort
