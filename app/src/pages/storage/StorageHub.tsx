@@ -36,6 +36,7 @@ export function StorageHub() {
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const [search, setSearch] = useState("");
   const [newContainer, setNewContainer] = useState(false);
+  const [minting, setMinting] = useState(false);
 
   const jobCode = useMemo(() => {
     const m = new Map<string, string>();
@@ -71,22 +72,9 @@ export function StorageHub() {
       .slice(0, 12);
   }, [packages.data, query, jobCode]);
 
-  const mint = useMutation({
-    mutationFn: async () => {
-      const raw = window.prompt("How many blank stickers? (1-500)", "50");
-      if (!raw) return null;
-      const n = Math.max(1, Math.min(500, parseInt(raw, 10) || 0));
-      const rows = await mintPackages(n);
-      const pdf = await packageLabelsPdf(rows);
-      downloadPdf(pdf, `package-stickers-${rows[0]?.serial}-${rows[rows.length - 1]?.serial}.pdf`);
-      return rows.length;
-    },
-    onSuccess: (n) => {
-      if (n) pushToast(`${n} blank stickers ready to print.`);
-      void qc.invalidateQueries({ queryKey: ["storagePackages"] });
-    },
-    onError: (e) => pushToast(formatApiError(e), "error"),
-  });
+  // The mint form replaced a browser prompt() here (warehouse ticket 09):
+  // sticker serials are permanent, and a phone-hostile popup guarding a
+  // permanent number was the one piece of this page that looked broken.
 
   const posters = useMutation({
     mutationFn: async (rows: StorageContainer[]) => {
@@ -114,12 +102,8 @@ export function StorageHub() {
         </Link>
         {lead && (
           <>
-            <button
-              className="button-like"
-              disabled={mint.isPending}
-              onClick={() => mint.mutate()}
-            >
-              {mint.isPending ? "Printing…" : "Print blank stickers"}
+            <button className="button-like" onClick={() => setMinting(true)}>
+              Print blank stickers
             </button>
             <button className="button-like" onClick={() => setNewContainer(true)}>
               New container
@@ -208,6 +192,90 @@ export function StorageHub() {
           }}
         />
       )}
+      {minting && (
+        <MintForm
+          onClose={() => setMinting(false)}
+          onMinted={() => {
+            setMinting(false);
+            void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+            void qc.invalidateQueries({ queryKey: ["storageBlanks"] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Sticker batches get a real form (warehouse ticket 09). Serials are
+ * permanent — a fat-fingered 500 pollutes the numbering forever — so the
+ * count deserves an actual input with the rule stated, not a browser prompt
+ * that phones render badly and demos make look broken.
+ */
+function MintForm({
+  onClose,
+  onMinted,
+}: {
+  onClose: () => void;
+  onMinted: (n: number) => void;
+}) {
+  const [count, setCount] = useState("50");
+  const n = parseInt(count, 10);
+  const invalid = !Number.isFinite(n) || n < 1 || n > 500;
+
+  const mint = useMutation({
+    mutationFn: async () => {
+      const rows = await mintPackages(n);
+      const pdf = await packageLabelsPdf(rows);
+      downloadPdf(
+        pdf,
+        `package-stickers-${rows[0]?.serial}-${rows[rows.length - 1]?.serial}.pdf`,
+      );
+      return rows.length;
+    },
+    onSuccess: (made) => {
+      pushToast(`${made} blank stickers ready to print.`);
+      onMinted(made);
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <p style={{ margin: 0, fontWeight: 700 }}>Print blank stickers</p>
+        <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
+          Each sticker gets a permanent serial the moment it prints — batches
+          are 1&ndash;500 at a time.
+        </p>
+        <label className="field-label">How many</label>
+        <input
+          type="number"
+          min={1}
+          max={500}
+          inputMode="numeric"
+          value={count}
+          onChange={(e) => setCount(e.target.value)}
+          autoFocus
+        />
+        {invalid && count.trim() !== "" && (
+          <p className="error" style={{ fontSize: 12, margin: "4px 0 0" }}>
+            Pick a number from 1 to 500.
+          </p>
+        )}
+        <div className="row-gap" style={{ marginTop: 10 }}>
+          <button
+            className="button-like active-pill"
+            disabled={invalid || mint.isPending}
+            onClick={() => mint.mutate()}
+          >
+            {mint.isPending ? "Printing…" : `Print ${invalid ? "" : n} stickers`}
+          </button>
+          <button className="button-like" onClick={onClose}>
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
