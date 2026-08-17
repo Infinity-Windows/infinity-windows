@@ -52,6 +52,7 @@ import {
   startUnitSession,
 } from "../../lib/install/sessions";
 import { SummonPanel } from "../../components/install/SummonPanel";
+import { UnitRecordCard } from "../../components/install/UnitRecordCard";
 import { checkFit, isInstallReadyStatus, readyToInstall, smallest } from "../../lib/install/fit";
 import {
   framingIssueNote,
@@ -1292,6 +1293,12 @@ export function OpeningSheet() {
           )}
         </div>
       )}
+
+      {/* The Record (CONTEXT.md): the full story of this window, read back
+          from what the crew saved. Every role sees it — raw facts about one
+          window are history, not comparison. Shows on any status once the
+          window has a story (sent-back windows keep theirs). */}
+      <UnitRecordCard openingId={openingId} flashing={flashing} />
 
       {/* Past undos stay visible on ANY status — the why is the point. */}
       {(undoHistory.data?.length ?? 0) > 0 && (
