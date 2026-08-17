@@ -16,6 +16,34 @@
 
 -- ---------------------------------------------------------------- table
 
+-- Production carries an ORPHAN project_marks: an abandoned spec-extraction
+-- experiment (columns mark/color_text/size_text/…, zero rows) that no
+-- migration ever declared. Every consolidation doc since 2026-07-29 records
+-- it as "empty and nothing references it" and left reconciling it to the
+-- migration that would eventually claim the name — this one. `create table
+-- if not exists` would silently ADOPT that wrong shape and the seeds below
+-- would fail, so: recognise the orphan by its shape and drop it — but stop
+-- loudly if rows ever appeared, because data beats a migration's convenience.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'project_marks'
+  ) and not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'project_marks'
+      and column_name = 'mark_code'
+  ) then
+    if exists (select 1 from project_marks limit 1) then
+      raise exception
+        'project_marks exists with the legacy orphan shape AND has rows — refusing to drop it; reconcile by hand';
+    end if;
+    raise notice 'project_marks: dropping the empty undeclared orphan table';
+    drop table project_marks;
+  end if;
+end;
+$$;
+
 create table if not exists project_marks (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references projects (id) on delete cascade,

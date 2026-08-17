@@ -106,10 +106,11 @@ class TestSchemaParsing(unittest.TestCase):
         # 75 tables declared by the migrations: 67, plus the five AI spend
         # meters, plus `crew_invites`, plus `project_opening_pin_moves` (the
         # undo history for marks moved on the plan), plus `sandbox_projects`
-        # (the jobs a test login is allowed to write). Production reported one
-        # more base table than the migrations declare; the extra is
-        # `project_marks`, which no migration declares.
-        self.assertEqual(len(SCHEMA.tables), 96)
+        # (the jobs a test login is allowed to write). Production's old
+        # undeclared extra (`project_marks`, an empty orphan) is finally
+        # declared — and its orphan reconciled — by 20260822000000, so the
+        # migrations and production agree on the name at last.
+        self.assertEqual(len(SCHEMA.tables), 97)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
