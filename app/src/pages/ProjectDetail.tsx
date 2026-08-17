@@ -71,6 +71,7 @@ import { CalendarClock, Plane, Truck, Users } from "lucide-react";
 import { resolveWindowFromScan } from "../lib/scanResolve";
 import { MapsInteractive } from "./install/MapsInteractive";
 import { DispatchBoard } from "./install/DispatchBoard";
+import { SignatureEstimates } from "../components/install/SignatureEstimates";
 import { ScrollTabs } from "../components/nav/ScrollTabs";
 import { PhotoFeed } from "../components/photos/PhotoFeed";
 import { JobChat } from "../components/chat/JobChat";
@@ -339,6 +340,8 @@ export function ProjectDetail() {
 
       {tab === "brain" && (
         <div>
+          {/* Foreman+ only (standing decision): the cohort ladder's numbers. */}
+          {isLead && <SignatureEstimates projectId={projectId} />}
           <p className="muted">
             Type brain cards — tips and times from installs on this job&apos;s
             window types.
