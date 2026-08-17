@@ -19,6 +19,7 @@ import { formatApiError } from "../lib/errors";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { pushToast } from "../lib/toast";
+import { takeSupplyOffline, writeToast } from "../lib/warehouse/offlineWrites";
 import {
   addOrder,
   addSupply,
@@ -28,7 +29,6 @@ import {
   onHandLabel,
   setOrderStatus,
   setSupplyHome,
-  takeSupply,
   type Supply,
 } from "../lib/ops";
 
@@ -255,10 +255,12 @@ function TakeForm({
   const invalid = !Number.isFinite(n) || n <= 0;
 
   const take = useMutation({
-    mutationFn: () => takeSupply({ supplyId: supply.id, projectId, qty: n }),
-    onSuccess: (s) => {
+    mutationFn: () => takeSupplyOffline({ supplyId: supply.id, projectId, qty: n }),
+    onSuccess: (r) => {
       localStorage.setItem(LAST_JOB_KEY, projectId);
-      pushToast(`Took ${n} — ${onHandLabel(s)}.`);
+      // Offline the server never answered, so there is no corrected count to
+      // quote — say what was taken and be honest about where it got to.
+      pushToast(writeToast(r, `Took ${n} ${supply.name}.`));
       onDone();
     },
     onError: (e) => pushToast(formatApiError(e), "error"),

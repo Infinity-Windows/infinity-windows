@@ -328,9 +328,9 @@ export const APP_GUIDE: AppGuideEntry[] = [
   {
     path: "/supplies",
     label: "Supplies",
-    minRole: "foreman",
+    minRole: "installer",
     blurb:
-      "Consumable supplies (tape, shims, sealant). See what's outstanding, mark items needed, and track orders.",
+      "Consumable supplies (tape, shims, sealant). Each one has a home spot so you know where to go, and a rough count shown with the date it was last counted. Take what you need — how many and which job — in three taps. Foremen can also request material for a job ahead of time.",
   },
   {
     path: "/daily-logs",

@@ -10033,3 +10033,17 @@ body {
   from { opacity: 0; transform: translateY(-2px); }
   to { opacity: 1; transform: none; }
 }
+
+/* Warehouse writes still sitting on the phone (ticket 10). Amber, not red:
+   nothing is wrong — the work is done and the phone is waiting for bars. */
+.wh-pending {
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--warn);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-md);
+}

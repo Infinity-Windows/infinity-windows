@@ -21,10 +21,13 @@ import {
   listActivePackages,
   listContainers,
   moveContainer,
-  storePackages,
   type StoragePackage,
 } from "../../lib/storage";
 import { canNest, ridesAlong } from "../../lib/warehouse/containment";
+import {
+  storePackagesOffline,
+  writeToast,
+} from "../../lib/warehouse/offlineWrites";
 
 export function ContainerDetail() {
   const { id = "" } = useParams();
@@ -59,9 +62,11 @@ export function ContainerDetail() {
   );
 
   const store = useMutation({
-    mutationFn: () => storePackages([...picked], id),
-    onSuccess: (n) => {
-      pushToast(`${n} package${n === 1 ? "" : "s"} checked in.`);
+    mutationFn: () => storePackagesOffline([...picked], id),
+    onSuccess: (r) => {
+      pushToast(
+        writeToast(r, `${r.count} package${r.count === 1 ? "" : "s"} checked in.`),
+      );
       setPicked(new Set());
       setCheckin(false);
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });

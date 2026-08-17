@@ -63,9 +63,17 @@ begin
   end loop;
 end;
 $$;
+-- The window set is the list as it stood at 20260718060030_loadout_unload —
+-- NOT the original 20260715 list. It was widened four times after that
+-- (assigned, uninstalled, preissued, unloaded), and rebuilding this check
+-- from the first definition is how the first version of this migration broke
+-- the deploy: production rows carrying those four values violated it and the
+-- ALTER refused, blocking every migration behind it. Widen this list, never
+-- retype it from memory.
 alter table movements add constraint movements_event_ck check (event in (
   'received', 'putaway', 'moved', 'staged', 'loaded', 'installed', 'damaged',
   'count_verified', 'count_missing', 'override',
+  'assigned', 'uninstalled', 'preissued', 'unloaded',
   'bound', 'stored', 'checked_out',
   'took'
 ));

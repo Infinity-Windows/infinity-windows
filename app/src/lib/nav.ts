@@ -162,7 +162,13 @@ export const NAV: NavDest[] = [
   { id: "receive", to: "/receive", label: "Receive", icon: "⬇", minRole: "foreman" },
   { id: "labels", to: "/labels", label: "Slot labels", icon: "❏", minRole: "foreman" },
   { id: "catalog", to: "/catalog", label: "Catalog", icon: "❒", minRole: "foreman" },
-  { id: "supplies", to: "/supplies", label: "Supplies", icon: "⛃", minRole: "foreman" },
+  // Installers, not foreman+: the whole point of ticket 07 is that an
+  // installer finds the caulk and logs what they took, three taps, no list.
+  // Ticket 08 puts a Supplies section on their warehouse page, and a section
+  // whose button lands on "Not available for your role" is worse than no
+  // section. The page still scopes ITSELF — setting a home spot is foreman+,
+  // and set_supply_home enforces that server-side regardless.
+  { id: "supplies", to: "/supplies", label: "Supplies", icon: "⛃", minRole: "installer" },
 
   // Supervisor+.
   { id: "knowledge", to: "/knowledge", label: "AI Knowledge", icon: "◈", minRole: "supervisor" },

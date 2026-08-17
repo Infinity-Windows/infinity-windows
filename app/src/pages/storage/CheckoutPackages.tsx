@@ -10,10 +10,13 @@ import { useNavigate } from "react-router-dom";
 import { listProjects } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
 import { pushToast } from "../../lib/toast";
+import {
+  checkoutPackagesOffline,
+  writeToast,
+} from "../../lib/warehouse/offlineWrites";
 import { BackChip } from "../../components/BackChip";
 import {
   CATEGORY_LABELS,
-  checkoutPackages,
   listActivePackages,
   listCheckoutReasons,
   listContainers,
@@ -64,9 +67,11 @@ export function CheckoutPackages() {
   }, [pickedRows]);
 
   const submit = useMutation({
-    mutationFn: () => checkoutPackages([...picked], finalReason, projectId),
-    onSuccess: (n) => {
-      pushToast(`${n} package${n === 1 ? "" : "s"} checked out.`);
+    mutationFn: () => checkoutPackagesOffline([...picked], finalReason, projectId),
+    onSuccess: (r) => {
+      pushToast(
+        writeToast(r, `${r.count} package${r.count === 1 ? "" : "s"} checked out.`),
+      );
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
       navigate("/storage");
     },
