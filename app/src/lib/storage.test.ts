@@ -8,6 +8,7 @@ import {
   groupByJob,
   hasPartNumber,
   mismatchedPackages,
+  movementToPackageEvent,
   normalizeMarks,
   partLabel,
 } from "./storage";
@@ -103,5 +104,48 @@ describe("part labels", () => {
     expect(hasPartNumber({ part_index: 2, part_total: 3 })).toBe(true);
     expect(hasPartNumber({ part_index: 2, part_total: null })).toBe(false);
     expect(hasPartNumber({})).toBe(false);
+  });
+});
+
+describe("movementToPackageEvent", () => {
+  const base = {
+    id: "m1",
+    package_id: "p1",
+    project_id: null,
+    reason: null,
+    actor: "ammon",
+    created_at: "2026-08-17T00:00:00Z",
+  };
+
+  it("a store reads its destination", () => {
+    const e = movementToPackageEvent({ ...base, event: "stored", to_container_id: "conex" });
+    expect(e.container_id).toBe("conex");
+    expect(e.event).toBe("stored");
+  });
+
+  it("a checkout reads the container it LEFT — same as the old log", () => {
+    const e = movementToPackageEvent({
+      ...base,
+      event: "checked_out",
+      from_container_id: "conex",
+      project_id: "job",
+      reason: "install day",
+    });
+    expect(e.container_id).toBe("conex");
+    expect(e.reason).toBe("install day");
+  });
+
+  it("a ride-along move keeps naming the box it sat in", () => {
+    const e = movementToPackageEvent({
+      ...base,
+      event: "moved",
+      to_container_id: "crate",
+      reason: "rode along — Crate 7 moved",
+    });
+    expect(e.container_id).toBe("crate");
+  });
+
+  it("no context at all maps to null, not undefined", () => {
+    expect(movementToPackageEvent({ ...base, event: "bound" }).container_id).toBeNull();
   });
 });
