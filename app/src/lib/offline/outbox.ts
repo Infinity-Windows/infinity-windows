@@ -360,3 +360,37 @@ function refDependency(shiftRef: string): string | null {
   const prefix = "pending:";
   return shiftRef.startsWith(prefix) ? shiftRef.slice(prefix.length) : null;
 }
+
+// --- warehouse writes from inside a conex (ticket 10) --------------------
+//
+// A conex is a metal box with no bars. Nobody is walking outside to make the
+// app happy — they will do the work and skip the scan, and then the record is
+// gone. These queue and drain when signal returns; the UI shows them as done
+// with a "not sent yet" mark, because to the person holding the crate it IS
+// done.
+
+/** Queue "these packages went into this container". */
+export function enqueueStorePackages(
+  packageIds: string[],
+  containerId: string,
+): Promise<string> {
+  return enqueue({ op: "store_packages", payload: { packageIds, containerId } });
+}
+
+/** Queue "these packages left, for this reason, to this job". */
+export function enqueueCheckoutPackages(input: {
+  packageIds: string[];
+  reason: string;
+  projectId: string;
+}): Promise<string> {
+  return enqueue({ op: "checkout_packages", payload: { ...input } });
+}
+
+/** Queue "somebody took this many of this supply for this job". */
+export function enqueueTakeSupply(input: {
+  supplyId: string;
+  projectId: string;
+  qty: number;
+}): Promise<string> {
+  return enqueue({ op: "take_supply", payload: { ...input } });
+}

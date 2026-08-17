@@ -18,7 +18,7 @@
 // docs/warehouse-tickets.md ticket 08b. Until then those screens stay
 // reachable and working from the Operations section.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { listProjects } from "../lib/api";
@@ -44,6 +44,8 @@ import {
   warehouseCounts,
 } from "../lib/warehouse/warehouseCards";
 import { placeChain } from "../lib/warehouse/containment";
+import { prefetchWarehousePack } from "../lib/queryClient";
+import { useOutbox } from "../lib/offline/useOutbox";
 
 /** Sections run in the order the physical day runs. */
 interface Section {
@@ -64,6 +66,17 @@ const SECTIONS: Section[] = [
 export function Warehouse() {
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
+  const { counts: outbox } = useOutbox();
+
+  // Fill the cache WHILE there is still signal, so the answers are already on
+  // the phone before somebody walks into a conex (ticket 10). Writing offline
+  // was the easy half; being able to find things in there is the half that
+  // decides whether the trip is useful.
+  useEffect(() => {
+    void prefetchWarehousePack();
+  }, []);
+
+  const waiting = outbox.warehouse;
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
@@ -118,6 +131,14 @@ export function Warehouse() {
         projects={projects.data ?? []}
         scheduledMarks={marks.data ?? []}
       />
+
+      {waiting > 0 && (
+        <p className="wh-pending">
+          {waiting} warehouse {waiting === 1 ? "change is" : "changes are"} saved on
+          this phone and not sent yet — they go up on their own when you have
+          signal.
+        </p>
+      )}
 
       <Explain id="warehouse-how" summary="How does tracking work?" raw>
         <PackageMap />

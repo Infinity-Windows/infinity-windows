@@ -42,8 +42,15 @@ const OFFLINE_KEYS = new Set([
   "openingCounts",
   "projectWindows",
   "projectUnits",
-  // The warehouse hub's four numbers and the lists behind them — a phone in a
-  // dead spot still answers "where is it?" from the last good read.
+  // "Where is it?" from the last good read. A conex is a metal box with no
+  // bars, and the harder half of working in one is READING — you have to find
+  // things in there, not just record what you took (ticket 10). The hub's
+  // numbers moved off `inventory` onto packages in ticket 06, so these four
+  // are what the Find bar and the cards actually need.
+  "storagePackages",
+  "storageContainers",
+  "scheduledMarks",
+  "issues",
   "inventory",
   "windowTypes",
   "typeBrain",
@@ -117,4 +124,48 @@ export async function prefetchJobPack(projectId: string): Promise<number> {
   );
 
   return typeIds.length;
+}
+
+/**
+ * Download everything the warehouse page needs to answer "where is it" with
+ * no signal (ticket 10).
+ *
+ * Called when the page opens WHILE ONLINE, so the answer is already on the
+ * phone before somebody walks into a conex. Writing offline was the easy half;
+ * this is the half that decides whether the trip inside is useful at all.
+ *
+ * Deliberately quiet: a failure here means the cache keeps whatever it had,
+ * which is exactly the fallback anyway. Never blocks the page.
+ */
+export async function prefetchWarehousePack(): Promise<void> {
+  const { listActivePackages, listContainers } = await import("./storage");
+  const { listIssues } = await import("./issues");
+  const { listScheduledMarks } = await import("./warehouse/warehouseCards");
+
+  try {
+    await Promise.all([
+      queryClient.prefetchQuery({ queryKey: ["projects"], queryFn: listProjects }),
+      queryClient.prefetchQuery({
+        queryKey: ["storagePackages"],
+        queryFn: listActivePackages,
+      }),
+      queryClient.prefetchQuery({
+        queryKey: ["storageContainers"],
+        queryFn: listContainers,
+      }),
+      queryClient.prefetchQuery({ queryKey: ["issues"], queryFn: listIssues }),
+    ]);
+
+    const projects =
+      queryClient.getQueryData<{ id: string }[]>(["projects"]) ?? [];
+    const activeIds = projects.map((p) => p.id);
+    if (activeIds.length > 0) {
+      await queryClient.prefetchQuery({
+        queryKey: ["scheduledMarks", activeIds],
+        queryFn: () => listScheduledMarks(activeIds),
+      });
+    }
+  } catch {
+    /* offline already, or a read failed — the cache keeps its last good copy */
+  }
 }

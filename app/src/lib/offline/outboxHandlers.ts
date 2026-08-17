@@ -243,6 +243,62 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     if (error) throw error;
   };
 
+  // --- warehouse writes from inside a conex (ticket 10) ------------------
+  //
+  // All three are RPCs that take an explicit list, so a replay is safe: the
+  // storage RPCs skip packages that are no longer in a movable state (a
+  // package stored twice is stored once), and every one of them writes its
+  // own movement row, so the history stays honest about when it really
+  // reached the server.
+
+  function ids(entry: OutboxEntry): string[] {
+    const raw = entry.payload.packageIds;
+    return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
+  }
+
+  const storePackages: OpHandler = async (entry) => {
+    const containerId = str(entry.payload.containerId);
+    const packageIds = ids(entry);
+    if (!containerId || packageIds.length === 0) {
+      throw tagPermanent(new Error("Check-in is missing its container or its packages"));
+    }
+    const { error } = await supabase.rpc("store_packages", {
+      p_packages: packageIds,
+      p_container: containerId,
+    });
+    if (error) throw error;
+  };
+
+  const checkoutPackages: OpHandler = async (entry) => {
+    const reason = str(entry.payload.reason);
+    const projectId = str(entry.payload.projectId);
+    const packageIds = ids(entry);
+    if (!reason || !projectId || packageIds.length === 0) {
+      throw tagPermanent(new Error("Check-out is missing its reason, job or packages"));
+    }
+    const { error } = await supabase.rpc("checkout_packages", {
+      p_packages: packageIds,
+      p_reason: reason,
+      p_project: projectId,
+    });
+    if (error) throw error;
+  };
+
+  const takeSupply: OpHandler = async (entry) => {
+    const supplyId = str(entry.payload.supplyId);
+    const projectId = str(entry.payload.projectId);
+    const qty = num(entry.payload.qty);
+    if (!supplyId || !projectId || qty == null || qty <= 0) {
+      throw tagPermanent(new Error("Supply take is missing what, how many, or for which job"));
+    }
+    const { error } = await supabase.rpc("take_supply", {
+      p_supply: supplyId,
+      p_project: projectId,
+      p_qty: qty,
+    });
+    if (error) throw error;
+  };
+
   return {
     clock_in: clockIn,
     clock_out: clockOut,
@@ -254,6 +310,9 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     pin_undo: pinUndo,
     pin_reset_project: pinResetProject,
     pin_reset_opening: pinResetOpening,
+    store_packages: storePackages,
+    checkout_packages: checkoutPackages,
+    take_supply: takeSupply,
   } satisfies OpHandlers;
 }
 

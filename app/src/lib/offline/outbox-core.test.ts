@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ALL_OPS,
   applyFailure,
   BACKOFF_BASE_MS,
   BACKOFF_CAP_MS,
@@ -15,6 +16,7 @@ import {
   makeEntry,
   markSending,
   MAX_ATTEMPTS,
+  OPS,
   pillSummary,
   requeueStranded,
   serializeEntry,
@@ -354,5 +356,31 @@ describe("MemoryOutboxStore blob handling", () => {
     expect(got).not.toBeNull();
     await store.delete("a");
     expect(await store.getBlob("a")).toBeNull();
+  });
+});
+
+describe("every op survives the disk round-trip", () => {
+  // The bug this exists to prevent, found live in ticket 10: an op added to
+  // OutboxOp but not to the OPS allowlist serializes fine, lands in
+  // IndexedDB, and deserializes to null forever — the drainer never sees it
+  // and the write is silently lost, with no error anywhere.
+  it("deserializes back to itself for every op the queue can carry", () => {
+    for (const op of ALL_OPS) {
+      const entry = makeEntry({ op, payload: { a: 1 } }, `id-${op}`, 1000);
+      const back = deserializeEntry(serializeEntry(entry));
+      expect(back, `${op} does not survive serialize -> deserialize`).not.toBeNull();
+      expect(back!.op).toBe(op);
+    }
+  });
+
+  it("the allowlist and the op list are the same set", () => {
+    expect([...OPS].sort()).toEqual([...ALL_OPS].sort());
+  });
+
+  it("every op lands in exactly one count bucket", () => {
+    for (const op of ALL_OPS) {
+      const c = countsByOp([makeEntry({ op, payload: {} }, `id-${op}`, 0)]);
+      expect(totalPending(c), `${op} is counted in no bucket`).toBe(1);
+    }
   });
 });

@@ -18,7 +18,13 @@ export type OutboxOp =
   | "receipt_upload"
   | "pin_undo"
   | "pin_reset_project"
-  | "pin_reset_opening";
+  | "pin_reset_opening"
+  // Warehouse ticket 10: a conex is a metal box with no bars. Nobody walks
+  // outside to make the app happy — they do the work and skip the scan, and
+  // then the record is gone forever. These three queue instead.
+  | "store_packages"
+  | "checkout_packages"
+  | "take_supply";
 
 /**
  * queued   — waiting to be sent (respecting nextAttemptAt backoff)
@@ -226,6 +232,10 @@ export interface OpCounts {
   logs: number;
   other: number;
   deadLetter: number;
+  /** Warehouse writes made with no signal (ticket 10). Counted SEPARATELY
+   * from `other` rather than sharing it: the warehouse page says "3 not sent
+   * yet" and must not be quoting somebody's queued pin-reset. */
+  warehouse: number;
 }
 
 const EMPTY_COUNTS: OpCounts = {
@@ -235,6 +245,7 @@ const EMPTY_COUNTS: OpCounts = {
   logs: 0,
   other: 0,
   deadLetter: 0,
+  warehouse: 0,
 };
 
 /** Roll a queue up into per-category pending counts for the status pill. */
@@ -261,6 +272,11 @@ export function countsByOp(entries: OutboxEntry[]): OpCounts {
       case "daily_log":
         c.logs += 1;
         break;
+      case "store_packages":
+      case "checkout_packages":
+      case "take_supply":
+        c.warehouse += 1;
+        break;
       default:
         c.other += 1;
     }
@@ -269,7 +285,7 @@ export function countsByOp(entries: OutboxEntry[]): OpCounts {
 }
 
 export function totalPending(c: OpCounts): number {
-  return c.clock + c.photos + c.receipts + c.logs + c.other;
+  return c.clock + c.photos + c.receipts + c.logs + c.other + c.warehouse;
 }
 
 export type PillTone = "synced" | "syncing" | "attention";
@@ -323,7 +339,16 @@ export function serializeEntry(entry: OutboxEntry): string {
   return JSON.stringify({ v: SERIALIZE_VERSION, ...entry });
 }
 
-const OPS: ReadonlySet<string> = new Set<OutboxOp>([
+/**
+ * Ops accepted when reading a row back off disk.
+ *
+ * This list is load-bearing and easy to miss: an op added to `OutboxOp` but
+ * NOT added here serializes fine, lands in IndexedDB, and then deserializes
+ * to `null` forever — the queue can't see it, the drainer never sends it, and
+ * the write is silently lost with no error anywhere. `every op round-trips`
+ * in the test file is what keeps the two in step; do not delete it.
+ */
+export const OPS: ReadonlySet<string> = new Set<OutboxOp>([
   "clock_in",
   "clock_out",
   "break_start",
@@ -334,7 +359,27 @@ const OPS: ReadonlySet<string> = new Set<OutboxOp>([
   "pin_undo",
   "pin_reset_project",
   "pin_reset_opening",
+  "store_packages",
+  "checkout_packages",
+  "take_supply",
 ]);
+
+/** Every op the queue can carry — the single list tests enumerate. */
+export const ALL_OPS: readonly OutboxOp[] = [
+  "clock_in",
+  "clock_out",
+  "break_start",
+  "break_stop",
+  "daily_log",
+  "photo_upload",
+  "receipt_upload",
+  "pin_undo",
+  "pin_reset_project",
+  "pin_reset_opening",
+  "store_packages",
+  "checkout_packages",
+  "take_supply",
+];
 
 export function deserializeEntry(json: string): OutboxEntry | null {
   let raw: unknown;

@@ -27,7 +27,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Notifications (`/notifications`)
 - Settings (`/settings`)
 
-**Can reach (all 24 allowed destinations):**
+**Can reach (all 25 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -46,6 +46,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - My Schedule (`/my-schedule`)
 - Travel (`/travel`)
 - My timecard (`/timecard`)
+- Supplies (`/supplies`)
 - Photos & receipts (`/photos`)
 - Completed installs (`/completed-installs`)
 - Milestones (`/milestones`)
@@ -68,7 +69,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Receive (`/receive`)
 - Slot labels (`/labels`)
 - Catalog (`/catalog`)
-- Supplies (`/supplies`)
 - AI Knowledge (`/knowledge`)
 - Scheduling (`/scheduling`)
 - Vehicles (`/vehicles`)

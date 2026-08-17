@@ -77,8 +77,13 @@ describe("canAccess", () => {
     expect(canAccess("installer", "/admin")).toBe(false);
     expect(canAccess("installer", "/qc")).toBe(false);
     expect(canAccess("installer", "/analytics")).toBe(false);
-    expect(canAccess("installer", "/supplies")).toBe(false);
     expect(canAccess("installer", "/service")).toBe(false);
+  });
+
+  it("opens Supplies to installers — they are the ones taking the caulk", () => {
+    // Ticket 07/08: an installer finds the supply and logs what they took.
+    // Setting a home spot stays foreman+, enforced by set_supply_home.
+    expect(canAccess("installer", "/supplies")).toBe(true);
   });
 
   it("opens Service (warranty) to foreman+ only", () => {

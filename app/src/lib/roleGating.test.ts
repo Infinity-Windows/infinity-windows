@@ -86,12 +86,18 @@ describe("minRoleForPath matches page-level gating", () => {
       "/receive",
       "/labels",
       "/catalog",
-      "/supplies",
       "/team",
       "/issues",
     ]) {
       expect(minRoleForPath(path)).toBe("foreman");
     }
+  });
+
+  it("opens Supplies to installers — they are the ones taking the caulk", () => {
+    // Warehouse tickets 07/08: an installer finds the supply, taps Take, says
+    // how many and which job. Setting a HOME SPOT stays foreman+, enforced by
+    // set_supply_home server-side rather than by the route floor.
+    expect(minRoleForPath("/supplies")).toBe("installer");
   });
 
   it("keeps admin + heartbeat supervisor+ and costing owner-only", () => {
