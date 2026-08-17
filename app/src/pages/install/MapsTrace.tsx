@@ -23,6 +23,7 @@ import {
   type StoryDetection,
 } from "../../lib/fitview/storyDetect";
 import { formatApiError } from "../../lib/install/errors";
+import { syncProjectSignatures } from "../../lib/estimate/signatureSync";
 import { pushToast, toastSuccess } from "../../lib/toast";
 import {
   buildAuthoredJob,
@@ -342,6 +343,8 @@ export function MapsTrace() {
       });
     },
     onSuccess: () => {
+      // A new trace can move stories — cohort keys follow.
+      void syncProjectSignatures(projectId);
       queryClient.invalidateQueries({ queryKey: ["planOutlines", projectId] });
       toastSuccess("Model saved — Maps Interactive is using it now.");
       navigate(`/projects/${projectId}?tab=maps-interactive`);

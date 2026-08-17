@@ -181,6 +181,9 @@ export interface ProjectOpening {
    * absent reads as "no gate" so an unmigrated database changes nothing.
    */
   needs_flashing?: boolean | null;
+  /** Stored cohort signature key (spec .scratch/signature) — server-written
+   * via set_unit_signature only. */
+  sig_key?: string | null;
   work_started_at: string | null;
   work_ended_at: string | null;
   flag_note: string | null;

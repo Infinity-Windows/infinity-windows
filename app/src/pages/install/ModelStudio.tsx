@@ -81,6 +81,7 @@ import {
   type UnitPanel,
 } from "../../lib/modelstudio/units";
 import { fmtInchesFromMm } from "../../lib/modelstudio/dims";
+import { syncProjectSignatures } from "../../lib/estimate/signatureSync";
 import { supabase } from "../../lib/supabase";
 import {
   Blueprint3d,
@@ -1894,6 +1895,8 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     onSuccess: () => {
       pushToast("Saved to the catalog.");
       void qc.invalidateQueries({ queryKey: ["studioUnits"] });
+      // A refined catalog unit changes its mark's config-of-record.
+      if (projectId) void syncProjectSignatures(projectId);
     },
   });
 

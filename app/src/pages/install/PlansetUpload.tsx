@@ -41,6 +41,7 @@ import {
   summarizeExtractOutcome,
 } from "../../lib/install/extract";
 import { formatApiError } from "../../lib/install/errors";
+import { syncProjectSignatures } from "../../lib/estimate/signatureSync";
 import {
   extractCadDetailPages,
   splitCalloutsByFloorPlan,
@@ -479,6 +480,8 @@ export function PlansetUpload() {
         `Re-read done — specs refreshed for ${result.saved} mark(s). Confirmed marks were left untouched.`,
       );
       void queryClient.invalidateQueries({ queryKey: ["markSpecs", projectId] });
+      // Fresh panel/corner/inset reads change cohort keys.
+      void syncProjectSignatures(projectId);
     },
     onError: (e) => setRetryNote(formatApiError(e)),
   });
