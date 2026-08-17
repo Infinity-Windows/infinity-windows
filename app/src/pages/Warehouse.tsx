@@ -21,7 +21,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { listProjects } from "../lib/api";
+import { listInventory, listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
@@ -83,6 +83,10 @@ export function Warehouse() {
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
   const issues = useQuery({ queryKey: ["issues"], queryFn: listIssues });
   const supplies = useQuery({ queryKey: ["supplies"], queryFn: listSupplies });
+  // Two systems still describe this warehouse (ADR-0004, ticket 08b). Until
+  // the units retire, ONE search box has to answer for both — otherwise the
+  // page cannot find the 11 units and 46 shelves that exist today.
+  const inventory = useQuery({ queryKey: ["inventory"], queryFn: listInventory });
 
   const activeIds = useMemo(() => (projects.data ?? []).map((p) => p.id), [projects.data]);
   const marks = useQuery({
@@ -130,6 +134,7 @@ export function Warehouse() {
         containers={boxes}
         projects={projects.data ?? []}
         scheduledMarks={marks.data ?? []}
+        units={inventory.data?.units ?? []}
       />
 
       {waiting > 0 && (

@@ -124,6 +124,25 @@ Shipping the union page and rewriting those four screens in one PR would mean in
 
 Order: make Receive tag packages rather than log units → make Scan resolve a package first → make Cycle count count a container → repoint `InventoryList`/`inventoryViews` at packages → drop `staged`/`loaded` from the status check and `windows.location_id`.
 
+### What actually happened when 08b was picked up (2026-08-17)
+
+Two of those five turned out to be wrong, and the last one is blocked. Written down so nobody re-derives it:
+
+- **"Make Scan resolve a package first" was already done.** `Scan.tsx` has handled `packageSerial` and `containerSerial` since the storage feature shipped.
+- **The Find bar was the real gap, and it was a regression.** Ticket 08 promised (grill Q4) that one box takes "job code, mark, unit ID, short code, package LPN, container serial, rack slot" — it delivered neither unit IDs nor slots, *and* removed the old `UnitSearch` from the page. So the 11 real units and 46 real shelves became unfindable from the warehouse. Fixed here: Find now resolves a unit by id/short code/serial and a shelf by address, reading the unit's place out of the old system's own status vocabulary.
+- **Dropping the columns is blocked, and not by code.** Production holds **11 windows (7 on shelves, 1 staged), 46 locations including 8 job staging bays — and 100 blank stickers with zero packages tagged.** Retiring the unit location model today would delete the only warehouse data that exists and replace it with an empty system.
+
+**Two features have no package equivalent at all**, which the original ticket missed:
+
+| Unit feature | Package equivalent |
+| --- | --- |
+| Job staging bays (`J-<JOBCODE>-A/B`, two-per-job guaranteed in the database, `suggest_location()`) | none — packages have `location_id` but no staging flow |
+| Load-out / unload (`load_units`, `unload_units`, `'loaded'` → `'on_site'`) | none — no truck container, no jobsite unload |
+
+**The precondition for 08b is usage, not code:** packages have to be carrying the warehouse before the units can stop. Concretely — tag a delivery, store it, check it out, and let the "not tagged" number fall. Then build the two missing flows above, migrate the handful of units, and only then drop `staged` / `loaded` / `windows.location_id`.
+
+Until then the two systems coexist deliberately, and the Find bar is the seam that makes that invisible to whoever is holding the phone.
+
 ---
 
 ## 09 — Sticker minting gets a real form
