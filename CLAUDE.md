@@ -162,3 +162,17 @@ keeping:
   "Stop windows showing as being installed for days on end". Not conventional commits
 - Degrade instead of crashing: a missing table or an offline phone should empty a
   screen, never white-screen it
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live as local markdown under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, default strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` at the repo root is the shared vocabulary — read it before exploring, and use its terms rather than synonyms. ADRs live in `docs/adr/`. See `docs/agents/domain.md`.
