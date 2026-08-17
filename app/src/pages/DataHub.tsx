@@ -3,10 +3,12 @@
 // time first (actionable tomorrow), true cost second, estimating health
 // third, data quality underneath everything. Every number is derived
 // from stored atoms and keeps its provenance; the crew view is
-// aggregate-first with per-person behind a deliberate tap.
+// aggregate-first with per-person behind a deliberate tap. Visual kit
+// (stat tiles, bars, ring gauge) lives in index.css on the Horizon
+// tokens — semantic color only: amber = lost, green = done/on-tool.
 
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { listProjects } from "../lib/api";
 import { listOpenings, listProfiles } from "../lib/install/api";
@@ -24,6 +26,7 @@ import {
   onTool,
   reworkTotals,
   stallsByReason,
+  topUnitsByLabor,
 } from "../lib/data/insights";
 import {
   combineEvidence,
@@ -47,6 +50,38 @@ interface JobBundle {
   specsConfirmedPct: number | null;
   laborMin: number;
 }
+
+function Bar({
+  pct,
+  tone,
+}: {
+  pct: number;
+  tone?: "warn" | "ok" | "info";
+}) {
+  return (
+    <div className={`databar${tone ? ` bar-${tone}` : ""}`}>
+      <span style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+    </div>
+  );
+}
+
+/** The "What is this?" fold — every panel explains itself in plain words. */
+function Explain({ children }: { children: ReactNode }) {
+  return (
+    <details className="data-explain">
+      <summary>What is this?</summary>
+      <p>{children}</p>
+    </details>
+  );
+}
+
+/** Ladder rungs in plain words — how close the look-alikes are. */
+const RUNG_LABELS: Record<string, string> = {
+  exact: "exact look-alikes",
+  "kind+panels": "same type & panel count",
+  kind: "same type",
+  global: "all windows",
+};
 
 export function DataHub() {
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
@@ -140,10 +175,29 @@ export function DataHub() {
   const allSessions = useMemo(() => all.flatMap((b) => b.sessions), [all]);
   const stalls = useMemo(() => stallsByReason(allSessions), [allSessions]);
   const stalledTotal = stalls.reduce((t, s) => t + s.stalledMin, 0);
+  const maxStall = stalls[0]?.stalledMin ?? 0;
   const rework = useMemo(() => reworkTotals(allSessions), [allSessions]);
   const deadSessions = autoClosedCount(allSessions);
   const openRedos = all.reduce((t, b) => t + b.redos.length, 0);
   const flashingOwed = all.reduce((t, b) => t + b.flashingOwed, 0);
+  const laborTotal = all.reduce((t, b) => t + b.laborMin, 0);
+  const installedTotal = all.reduce(
+    (t, b) => t + b.openings.filter((o) => o.status === "installed").length,
+    0,
+  );
+  const unitsTotal = all.reduce((t, b) => t + b.openings.length, 0);
+
+  // The five costliest windows across scope — each links to its sheet,
+  // where the Record answers "why so much?" with photos and a timeline.
+  const openingIndex = useMemo(() => {
+    const m = new Map<string, { code: string; projectId: string }>();
+    for (const b of all)
+      for (const o of b.openings)
+        m.set(o.id, { code: o.opening_code, projectId: b.projectId });
+    return m;
+  }, [all]);
+  const costliest = useMemo(() => topUnitsByLabor(allSessions, 5), [allSessions]);
+  const maxUnitCost = costliest[0]?.minutes ?? 0;
 
   const evidence = useMemo(
     () => combineEvidence(sessionsEv.data ?? [], legacyEv.data ?? []),
@@ -175,11 +229,16 @@ export function DataHub() {
     }
     return { signed, unsigned, rungs: [...rungs.entries()] };
   }, [all, evidence]);
+  const signedPct =
+    estimating.signed + estimating.unsigned > 0
+      ? (estimating.signed / (estimating.signed + estimating.unsigned)) * 100
+      : 0;
 
   const crew = useMemo(
     () => onTool(allSessions, shifts.data ?? []),
     [allSessions, shifts.data],
   );
+  const crewPct = crew.total.pct != null ? Math.round(crew.total.pct * 100) : null;
   const nameOf = (id: string) =>
     (profiles.data ?? []).find((p) => p.id === id)?.display_name ?? id.slice(0, 8);
 
@@ -201,129 +260,284 @@ export function DataHub() {
         </select>
       </header>
 
-      {/* ---- 1 · WHERE DID WE LOSE TIME? ---- */}
-      <div className="detail-card">
-        <h2 style={{ marginTop: 0 }}>Where did we lose time?</h2>
-        <p style={{ margin: 0, fontVariantNumeric: "tabular-nums" }}>
-          <strong style={{ fontSize: 22 }}>{fmtH(stalledTotal)}</strong>{" "}
-          <span className="muted">
-            lost to blocks — every hour traces to a reason and an issue
+      {/* ---- The morning glance: four numbers before any reading ---- */}
+      <div className="data-stats">
+        <div className={`stat-tile${stalledTotal > 0 ? " stat-warn" : ""}`}>
+          <span className="stat-value">{fmtH(stalledTotal)}</span>
+          <span className="stat-label">Time lost waiting</span>
+        </div>
+        <div className="stat-tile stat-accent">
+          <span className="stat-value">{fmtH(laborTotal)}</span>
+          <span className="stat-label">Work time recorded</span>
+        </div>
+        <div className="stat-tile stat-ok">
+          <span className="stat-value">
+            {installedTotal}
+            <span style={{ fontSize: 15, fontWeight: 600, color: "var(--faint)" }}>
+              /{unitsTotal}
+            </span>
           </span>
-        </p>
-        <ul className="unit-list" style={{ marginTop: 6 }}>
-          {stalls.map((s) => (
-            <li key={s.reason} style={{ fontVariantNumeric: "tabular-nums" }}>
-              <strong>{fmtH(s.stalledMin)}</strong>{" "}
-              <span className="muted">
-                · {s.reason} · {s.count} block{s.count === 1 ? "" : "s"}
-              </span>
-            </li>
-          ))}
-          {stalls.length === 0 && (
-            <li className="muted">No blocked time recorded yet.</li>
-          )}
-        </ul>
-        <p className="muted" style={{ margin: "8px 0 0", fontSize: 12.5 }}>
-          Rework: {rework.units} unit{rework.units === 1 ? "" : "s"} ·{" "}
-          {fmtH(rework.minutes)} · Open redos: {openRedos} · Still owed flashing:{" "}
-          {flashingOwed} · Dead sessions swept: {deadSessions}
-        </p>
+          <span className="stat-label">Windows installed</span>
+        </div>
+        <div className="stat-tile">
+          <span className="stat-value">{crewPct != null ? `${crewPct}%` : "—"}</span>
+          <span className="stat-label">Time on windows · 30d</span>
+        </div>
       </div>
 
-      {/* ---- 2 · WHAT DOES A WINDOW TRULY COST? ---- */}
-      <div className="detail-card" style={{ marginTop: 8 }}>
-        <h2 style={{ marginTop: 0 }}>What does the work truly cost?</h2>
-        <ul className="unit-list">
-          {all.map((b) => {
-            const installedCount = b.openings.filter((o) => o.status === "installed").length;
-            return (
-              <li key={b.projectId} style={{ fontVariantNumeric: "tabular-nums" }}>
+      {/* ---- 1 · WHERE DID WE LOSE TIME? ---- */}
+      <div className="detail-card">
+        <p className="data-section-kicker">Lost time</p>
+        <h2 style={{ margin: "0 0 6px" }}>Where did we lose time?</h2>
+        <Explain>
+          When something outside the installer's control stops a window — wrong
+          glass, missing hardware, opening not ready — they tap Block and pick
+          the reason. This panel adds up all the hours windows sat waiting
+          after a Block, grouped by what caused the wait. The biggest bar is
+          the biggest problem to go fix. This time never counts against the
+          installer — it points at what stopped them.
+        </Explain>
+        {stalls.length > 0 ? (
+          <div>
+            {stalls.map((s) => (
+              <div className="databar-row" key={s.reason}>
+                <span className="bar-name">{s.reason}</span>
+                <Bar pct={maxStall > 0 ? (s.stalledMin / maxStall) * 100 : 0} tone="warn" />
+                <span className="bar-num">
+                  {fmtH(s.stalledMin)} · {s.count} block{s.count === 1 ? "" : "s"}
+                </span>
+              </div>
+            ))}
+            <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
+              Every hour traces to a reason and an issue.
+            </p>
+          </div>
+        ) : (
+          <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+            No blocked time yet. When a window gets blocked — missing hardware,
+            wrong glass — the lost hours land here, by reason.
+          </p>
+        )}
+        <div className="data-chips">
+          <span className={`data-chip${rework.units > 0 ? " chip-hot" : ""}`}>
+            Windows redone <strong>{rework.units}</strong>
+            {rework.units > 0 && <span>· {fmtH(rework.minutes)} spent fixing</span>}
+          </span>
+          <span className={`data-chip${openRedos > 0 ? " chip-hot" : ""}`}>
+            Waiting on a redo <strong>{openRedos}</strong>
+          </span>
+          <span className={`data-chip${flashingOwed > 0 ? " chip-hot" : ""}`}>
+            Still need flashing <strong>{flashingOwed}</strong>
+          </span>
+          <span className="data-chip">
+            Timers left running (auto-stopped) <strong>{deadSessions}</strong>
+          </span>
+        </div>
+      </div>
+
+      {/* ---- 2 · WHAT DOES THE WORK TRULY COST? ---- */}
+      <div className="detail-card">
+        <p className="data-section-kicker">True cost</p>
+        <h2 style={{ margin: "0 0 6px" }}>What does the work truly cost?</h2>
+        <Explain>
+          The app records every minute someone spends on a window automatically
+          — no one types time in. Each job's line shows: how many of its
+          windows are in (the green bar), total work time so far, and the
+          average minutes per finished window. "Work time" = install time +
+          helper time + flashing time. The costliest-windows list below shows
+          which individual windows ate the most time — tap one to see its full
+          story, minute by minute, with photos.
+        </Explain>
+        {all.map((b) => {
+          const installedCount = b.openings.filter((o) => o.status === "installed").length;
+          return (
+            <div className="databar-row" key={b.projectId}>
+              <span className="bar-name">
                 <Link to={`/projects/${b.projectId}?tab=brain`}>
                   <strong>{b.jobCode}</strong>
-                </Link>{" "}
-                <span className="muted">
-                  · {fmtH(b.laborMin)} labor · {installedCount}/{b.openings.length} installed
-                  {installedCount > 0
-                    ? ` · ~${Math.round(b.laborMin / installedCount)}m per installed unit`
-                    : ""}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-        <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
-          Labor = install + helper sessions + flashing; rework counted in its own
-          line above, never hidden here.
+                </Link>
+              </span>
+              <Bar
+                pct={b.openings.length > 0 ? (installedCount / b.openings.length) * 100 : 0}
+                tone="ok"
+              />
+              <span className="bar-num">
+                {installedCount}/{b.openings.length} · {fmtH(b.laborMin)}
+                {installedCount > 0
+                  ? ` · ~${Math.round(b.laborMin / installedCount)}m/unit`
+                  : ""}
+              </span>
+            </div>
+          );
+        })}
+        {costliest.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <span className="field-label">Costliest windows</span>
+            {costliest.map((u) => {
+              const info = openingIndex.get(u.openingId);
+              return (
+                <div className="databar-row" key={u.openingId}>
+                  <span className="bar-name">
+                    {info ? (
+                      <Link to={`/projects/${info.projectId}/opening/${u.openingId}`}>
+                        {info.code}
+                      </Link>
+                    ) : (
+                      u.openingId.slice(0, 8)
+                    )}
+                  </span>
+                  <Bar pct={maxUnitCost > 0 ? (u.minutes / maxUnitCost) * 100 : 0} />
+                  <span className="bar-num">{fmtH(u.minutes)}</span>
+                </div>
+              );
+            })}
+            <p className="muted" style={{ margin: "4px 0 0", fontSize: 12 }}>
+              Tap one — its Record shows the why, minute by minute.
+            </p>
+          </div>
+        )}
+        <p className="muted" style={{ margin: "8px 0 0", fontSize: 12 }}>
+          Time spent redoing windows is counted in its own chip up top — never
+          hidden inside these averages.
         </p>
       </div>
 
       {/* ---- 3 · CAN WE TRUST OUR ESTIMATES YET? ---- */}
-      <div className="detail-card" style={{ marginTop: 8 }}>
-        <h2 style={{ marginTop: 0 }}>Can we trust our estimates yet?</h2>
-        <p style={{ margin: 0, fontVariantNumeric: "tabular-nums" }}>
-          {estimating.signed} unit{estimating.signed === 1 ? "" : "s"} signed ·{" "}
-          {estimating.unsigned} unsigned
-          {estimating.unsigned > 0 ? " (confirm specs, then Re-read)" : ""}
-        </p>
-        <ul className="unit-list" style={{ marginTop: 6 }}>
-          {estimating.rungs.map(([rung, n]) => (
-            <li key={rung} className="muted" style={{ fontSize: 13 }}>
-              {n} resolving at <strong>{rung}</strong>
-            </li>
-          ))}
-        </ul>
-        <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
-          Evidence: {(sessionsEv.data ?? []).length} session-timed unit(s),{" "}
-          {(legacyEv.data ?? []).length} legacy-timed. The legacy share decays to
-          zero on its own.
+      <div className="detail-card">
+        <p className="data-section-kicker">Estimating health</p>
+        <h2 style={{ margin: "0 0 6px" }}>Can we trust our estimates yet?</h2>
+        <Explain>
+          The app is learning how long each kind of window takes, so future
+          bids come from real numbers instead of gut feel. A window is
+          "signed" when the app knows its shape — how many panels, what slides,
+          how many stories, corner or flat. Signed windows get grouped with
+          look-alikes, and the recorded times of those look-alikes become the
+          estimate. When there aren't enough exact look-alikes yet, the app
+          widens the circle (same type, then all windows) and always says how
+          wide it had to go. More signed windows + more recorded installs =
+          estimates you can bid with.
+        </Explain>
+        <div className="databar-row">
+          <span className="bar-name muted" style={{ fontSize: 12.5 }}>
+            Shapes known
+          </span>
+          <Bar pct={signedPct} tone="info" />
+          <span className="bar-num">
+            {estimating.signed} known · {estimating.unsigned} not yet
+          </span>
+        </div>
+        {estimating.unsigned > 0 && (
+          <p className="muted" style={{ margin: "2px 0 0", fontSize: 12 }}>
+            The app can't group a window it can't describe — confirm the specs
+            on each job, then hit Re-read, and these sign themselves.
+          </p>
+        )}
+        {estimating.rungs.length > 0 && (
+          <div className="data-chips">
+            {estimating.rungs.map(([rung, n]) => (
+              <span className="data-chip" key={rung}>
+                {RUNG_LABELS[rung] ?? rung} <strong>{n}</strong>
+              </span>
+            ))}
+          </div>
+        )}
+        <p className="muted" style={{ margin: "8px 0 0", fontSize: 12 }}>
+          Timing data: {(sessionsEv.data ?? []).length} window(s) timed the new
+          automatic way, {(legacyEv.data ?? []).length} from the old hand-typed
+          era. The old share fades out on its own as new installs happen.
         </p>
       </div>
 
       {/* ---- CREW · aggregate first, people behind a deliberate tap ---- */}
-      <div className="detail-card" style={{ marginTop: 8 }}>
-        <h2 style={{ marginTop: 0 }}>On-tool — last 30 days</h2>
-        <p style={{ margin: 0, fontVariantNumeric: "tabular-nums" }}>
-          <strong style={{ fontSize: 22 }}>
-            {crew.total.pct != null ? `${Math.round(crew.total.pct * 100)}%` : "—"}
-          </strong>{" "}
-          <span className="muted">
-            of worked shift time spent on units ({fmtH(crew.total.sessionMin)} of{" "}
-            {fmtH(crew.total.shiftMin)}). Low across the board indicts the
-            schedule or the warehouse — not the people.
-          </span>
-        </p>
+      <div className="detail-card">
+        <p className="data-section-kicker">Crew</p>
+        <h2 style={{ margin: "0 0 8px" }}>Time on windows — last 30 days</h2>
+        <Explain>
+          Of all the hours the crew was clocked in this month, how many were
+          spent actually working on a window? (We call this "on-tool" time.)
+          The rest is driving, loading, waiting, and meetings — real work, but
+          not window work. If this number is low for everyone at once, the
+          problem is the schedule or the warehouse, not the people. Breaks are
+          already subtracted before the math.
+        </Explain>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div
+            className="ring-gauge"
+            style={{ ["--pct" as string]: crewPct ?? 0 }}
+            data-label={crewPct != null ? `${crewPct}%` : "—"}
+          />
+          <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+            {fmtH(crew.total.sessionMin)} of {fmtH(crew.total.shiftMin)} clocked
+            time was spent on windows.
+          </p>
+        </div>
         <button
           className="link"
-          style={{ fontSize: 12, marginTop: 6 }}
+          style={{ fontSize: 12, marginTop: 8 }}
           onClick={() => setShowPeople((v) => !v)}
         >
           {showPeople ? "Hide people" : "Per person (supervisors only — never installers)"}
         </button>
         {showPeople && (
-          <ul className="unit-list" style={{ marginTop: 4 }}>
+          <div style={{ marginTop: 4 }}>
             {crew.perPerson.map((p) => (
-              <li key={p.profileId} className="muted" style={{ fontSize: 13, fontVariantNumeric: "tabular-nums" }}>
-                {nameOf(p.profileId)} — {p.pct != null ? `${Math.round(p.pct * 100)}%` : "no shifts"}{" "}
-                ({fmtH(p.sessionMin)} / {fmtH(p.shiftMin)})
-              </li>
+              <div className="databar-row" key={p.profileId}>
+                <span className="bar-name" style={{ fontSize: 12.5 }}>
+                  {nameOf(p.profileId)}
+                </span>
+                <Bar pct={p.pct != null ? p.pct * 100 : 0} tone="ok" />
+                <span className="bar-num">
+                  {p.pct != null
+                    ? `${Math.round(p.pct * 100)}% · ${fmtH(p.sessionMin)} / ${fmtH(p.shiftMin)}`
+                    : "no shifts"}
+                </span>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </div>
 
       {/* ---- 4 · DATA QUALITY — everything above is only this good ---- */}
-      <div className="detail-card" style={{ marginTop: 8 }}>
-        <h2 style={{ marginTop: 0 }}>Data quality</h2>
-        <ul className="unit-list">
-          {all.map((b) => (
-            <li key={b.projectId} className="muted" style={{ fontSize: 13 }}>
-              <strong>{b.jobCode}</strong> — specs confirmed:{" "}
-              {b.specsConfirmedPct != null ? `${b.specsConfirmedPct}%` : "no specs"} ·
-              unsigned units:{" "}
-              {b.openings.filter((o) => !o.sig_key).length}/{b.openings.length}
-            </li>
-          ))}
-        </ul>
+      <div className="detail-card">
+        <p className="data-section-kicker">Data quality</p>
+        <h2 style={{ margin: "0 0 6px" }}>How much can we trust the numbers?</h2>
+        <Explain>
+          Every panel above is only as good as what got recorded. "Specs
+          confirmed" = a person double-checked the window details the AI read
+          off the plans. "Shapes known" = the app can describe that window
+          well enough to group it with look-alikes. When these bars are low,
+          the numbers above are working with incomplete information — filling
+          these in is how the whole page gets sharper.
+        </Explain>
+        {all.map((b) => {
+          const signedCount = b.openings.filter((o) => o.sig_key).length;
+          return (
+            <div key={b.projectId} style={{ padding: "4px 0" }}>
+              <strong style={{ fontSize: 13 }}>{b.jobCode}</strong>
+              <div className="databar-row" style={{ padding: "3px 0" }}>
+                <span className="bar-name muted" style={{ fontSize: 12 }}>
+                  Specs confirmed
+                </span>
+                <Bar pct={b.specsConfirmedPct ?? 0} tone="info" />
+                <span className="bar-num">
+                  {b.specsConfirmedPct != null ? `${b.specsConfirmedPct}%` : "no specs"}
+                </span>
+              </div>
+              <div className="databar-row" style={{ padding: "3px 0" }}>
+                <span className="bar-name muted" style={{ fontSize: 12 }}>
+                  Shapes known
+                </span>
+                <Bar
+                  pct={b.openings.length > 0 ? (signedCount / b.openings.length) * 100 : 0}
+                  tone="info"
+                />
+                <span className="bar-num">
+                  {signedCount}/{b.openings.length}
+                </span>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

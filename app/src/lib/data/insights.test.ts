@@ -3,7 +3,13 @@
 // percentage of nothing.
 
 import { describe, expect, it } from "vitest";
-import { autoClosedCount, onTool, reworkTotals, stallsByReason } from "./insights";
+import {
+  autoClosedCount,
+  onTool,
+  reworkTotals,
+  stallsByReason,
+  topUnitsByLabor,
+} from "./insights";
 import type { UnitSession } from "../install/sessions";
 
 const NOW = Date.parse("2026-08-17T12:00:00Z");
@@ -69,6 +75,25 @@ describe("reworkTotals / autoClosedCount", () => {
     ];
     expect(reworkTotals(sessions, NOW)).toEqual({ units: 1, minutes: 90 });
     expect(autoClosedCount(sessions)).toBe(1);
+  });
+});
+
+describe("topUnitsByLabor", () => {
+  it("sums finished minutes per unit, biggest first, open sessions excluded", () => {
+    const out = topUnitsByLabor(
+      [
+        sess({ opening_id: "a" }), // 60m
+        sess({ opening_id: "b", started_at: "2026-08-17T08:00:00Z", ended_at: "2026-08-17T09:30:00Z" }), // 90m
+        sess({ opening_id: "a", started_at: "2026-08-17T10:00:00Z", ended_at: "2026-08-17T10:45:00Z" }), // +45m
+        sess({ opening_id: "c", ended_at: null, end_reason: null }), // open — excluded
+      ],
+      2,
+      NOW,
+    );
+    expect(out).toEqual([
+      { openingId: "a", minutes: 105 },
+      { openingId: "b", minutes: 90 },
+    ]);
   });
 });
 

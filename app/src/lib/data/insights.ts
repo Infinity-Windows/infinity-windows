@@ -65,6 +65,28 @@ export function reworkTotals(
   return { units: units.size, minutes };
 }
 
+/**
+ * The costliest units: total finished labor minutes per opening, biggest
+ * first. The Data Tab links each to its sheet — where the Record answers
+ * "why did this one cost so much?" with photos and a timeline.
+ */
+export function topUnitsByLabor(
+  sessions: readonly UnitSession[],
+  limit = 5,
+  now: number = Date.now(),
+): { openingId: string; minutes: number }[] {
+  const byUnit = new Map<string, number>();
+  for (const s of sessions) {
+    if (!s.ended_at) continue;
+    byUnit.set(s.opening_id, (byUnit.get(s.opening_id) ?? 0) + sessionMinutes(s, now));
+  }
+  return [...byUnit.entries()]
+    .map(([openingId, minutes]) => ({ openingId, minutes }))
+    .filter((u) => u.minutes > 0)
+    .sort((a, b) => b.minutes - a.minutes)
+    .slice(0, limit);
+}
+
 /** Sessions a dead phone left running until the sweep flagged them. */
 export function autoClosedCount(sessions: readonly UnitSession[]): number {
   return sessions.filter((s) => s.end_reason === "auto_closed").length;
