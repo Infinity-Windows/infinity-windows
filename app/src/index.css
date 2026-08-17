@@ -9805,10 +9805,191 @@ body {
 
 .data-explain summary:hover { text-decoration: underline; }
 
-.data-explain p {
+/* Direct child only. A fold can now hold a whole panel (the package map) whose
+   own paragraphs must not inherit the quoted-note treatment meant for the
+   one-line explanation. */
+.data-explain > p {
   margin: 6px 0 0;
   color: var(--muted);
   line-height: 1.5;
   border-left: 2px solid var(--border);
   padding-left: 10px;
 }
+
+/* ============================================================================
+   Package map — "How does tracking work?" on the Warehouse page.
+   Drawn from lib/warehouse/packageFlow.ts; see that file for the model.
+   The diagram is wider than a phone on purpose: shrinking it to fit would put
+   the labels below reading size, so the frame scrolls sideways instead and the
+   page never does.
+   ========================================================================= */
+
+.pkgmap { display: flex; flex-direction: column; gap: 14px; }
+
+.pkgmap-lede {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  max-width: 68ch;
+}
+
+.pkgmap-lede strong { color: var(--text); font-weight: 600; }
+
+.pkgmap-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  color: var(--accent);
+}
+
+.pkgmap-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pkgmap-legend span { display: inline-flex; align-items: center; gap: 8px; }
+.pkgmap-legend svg { display: block; flex: none; }
+.pkgmap-hint { color: var(--faint); font-style: italic; }
+
+.pkgmap-frame {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pkgmap-svg { display: block; width: 100%; height: auto; min-width: 880px; }
+
+/* ---- marks ---- */
+.pkgmap-box { fill: var(--card-raised); stroke: var(--border); stroke-width: 1.2; }
+.pkgmap-chip { fill: var(--bg); stroke: var(--border); stroke-width: 1; }
+
+.pkgmap-t-title { font-size: 15px; font-weight: 600; fill: var(--text); }
+.pkgmap-t-sub { font-size: 10.5px; fill: var(--muted); }
+.pkgmap-t-chip { font-size: 11px; fill: var(--text-secondary); }
+.pkgmap-t-edge { font-size: 10.5px; font-weight: 500; fill: var(--muted); }
+.pkgmap-t-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  fill: var(--accent);
+}
+
+.pkgmap-flow { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+.pkgmap-flow-dash { stroke: var(--faint); stroke-width: 1.2; fill: none; stroke-dasharray: 5 4; }
+.pkgmap-edge { color: var(--muted); }
+.pkgmap-edge:has(.pkgmap-flow-dash) { color: var(--faint); }
+
+.pkgmap-node.is-stuck .pkgmap-box { fill: var(--surface); }
+.pkgmap-node.is-stuck .pkgmap-t-title { font-size: 13.5px; font-weight: 500; fill: var(--text-secondary); }
+
+/* ---- lighting up ---- */
+.pkgmap-node, .pkgmap-edge { transition: opacity 0.18s var(--ease-out); }
+.pkgmap-node { cursor: pointer; }
+.pkgmap-node:focus { outline: none; }
+.pkgmap-node:focus-visible .pkgmap-box { stroke: var(--accent); stroke-width: 2.4; }
+
+.pkgmap-svg.is-dim .pkgmap-node { opacity: 0.26; }
+.pkgmap-svg.is-dim .pkgmap-edge { opacity: 0.12; }
+.pkgmap-svg.is-dim .pkgmap-node.is-hot,
+.pkgmap-svg.is-dim .pkgmap-edge.is-hot { opacity: 1; }
+
+.pkgmap-node.is-hot .pkgmap-box { stroke: var(--accent); stroke-width: 2; }
+.pkgmap-node.is-hot .pkgmap-t-title { fill: var(--accent); }
+.pkgmap-node.is-pinned .pkgmap-box { fill: var(--accent-bg); }
+.pkgmap-edge.is-hot { color: var(--accent); }
+.pkgmap-edge.is-hot .pkgmap-flow,
+.pkgmap-edge.is-hot .pkgmap-flow-dash { stroke: var(--accent); stroke-width: 2; }
+.pkgmap-edge.is-hot .pkgmap-t-edge { fill: var(--accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pkgmap-node, .pkgmap-edge { transition: none; }
+}
+
+.pkgmap-caption {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--muted);
+  max-width: 74ch;
+}
+
+/* ---- the detail card under the map ---- */
+.pkgmap-detail {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-lg);
+  padding: 14px 18px;
+  min-height: 118px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 0 28px;
+  align-content: start;
+}
+
+.pkgmap-detail-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pkgmap-detail h3 {
+  grid-column: 1 / -1;
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.pkgmap-detail-head h3 { margin: 0 0 8px; }
+
+.pkgmap-clear {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 11.5px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.pkgmap-clear:hover { color: var(--text); border-color: var(--accent-line); }
+
+.pkgmap-detail dl { margin: 0; }
+
+.pkgmap-detail dt {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+
+.pkgmap-detail dd {
+  margin: 0 0 12px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.pkgmap-detail-hint { grid-column: 1 / -1; margin: 0; font-size: 13px; color: var(--muted); }
+
+.pkgmap-note {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 18px;
+}
+
+.pkgmap-note p { margin: 0 0 8px; font-size: 13.5px; line-height: 1.55; color: var(--muted); }
+.pkgmap-note p:last-child { margin: 0; }
+.pkgmap-note strong { color: var(--text); font-weight: 600; }

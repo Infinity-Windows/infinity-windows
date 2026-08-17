@@ -8,9 +8,10 @@
 // tokens — semantic color only: amber = lost, green = done/on-tool.
 
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listProjects } from "../lib/api";
+import { Explain } from "../components/ui/Explain";
 import { listOpenings, listProfiles } from "../lib/install/api";
 import { listOpeningPhases, flashingOutstanding } from "../lib/install/phases";
 import {
@@ -71,16 +72,6 @@ function Bar({
     <div className={`databar${tone ? ` bar-${tone}` : ""}`}>
       <span style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
     </div>
-  );
-}
-
-/** The "What is this?" fold — every panel explains itself in plain words. */
-function Explain({ children }: { children: ReactNode }) {
-  return (
-    <details className="data-explain">
-      <summary>What is this?</summary>
-      <p>{children}</p>
-    </details>
   );
 }
 
