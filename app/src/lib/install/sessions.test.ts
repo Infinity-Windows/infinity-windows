@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import {
   blockedUnits,
   chainGraceRemainingMs,
+  laborBreakdown,
+  reworkRate,
   sessionMinutes,
   type UnitSession,
 } from "./sessions";
@@ -87,5 +89,26 @@ describe("blockedUnits (derived, newest session decides)", () => {
     expect(blockedUnits(sessions)).toEqual([
       { openingId: "o2", reason: "Missing hardware", issueId: "issue-9" },
     ]);
+  });
+});
+
+describe("laborBreakdown (labor-minutes with rework separate)", () => {
+  it("splits install / helper / rework and adds flashing", () => {
+    const b = laborBreakdown(
+      [
+        sess({ started_at: "2026-08-17T08:00:00Z", ended_at: "2026-08-17T08:40:00Z" }),
+        sess({ started_at: "2026-08-17T08:10:00Z", ended_at: "2026-08-17T08:25:00Z", role: "helper" }),
+        sess({ started_at: "2026-08-17T10:00:00Z", ended_at: "2026-08-17T10:30:00Z", is_rework: true }),
+      ],
+      12,
+    );
+    expect(b).toEqual({ installMin: 40, helperMin: 15, reworkMin: 30, flashMin: 12, totalMin: 97 });
+  });
+});
+
+describe("reworkRate", () => {
+  it("redone units over finished units; null before anything finished", () => {
+    expect(reworkRate(2, 40)).toBeCloseTo(0.05, 6);
+    expect(reworkRate(0, 0)).toBeNull();
   });
 });

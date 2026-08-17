@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { computeSignature } from "./signature";
 import {
   estimateForSignature,
+  evidenceFromSessions,
   manualEstimate,
   type CohortEvidence,
 } from "./cohorts";
@@ -92,5 +93,40 @@ describe("estimateForSignature", () => {
     expect(est.rung).toBe("manual");
     expect(est.minutes).toBe(90);
     expect(est.label).toBe("manual estimate — not from data");
+  });
+});
+
+describe("evidenceFromSessions (per-unit samples, finished rounds only)", () => {
+  const opening = (id: string) => ({
+    id,
+    sig_key: computeSignature(fixedWindow(3), { story: 1, insetOutset: null }).sigKey,
+    signature: computeSignature(fixedWindow(3), { story: 1, insetOutset: null }).signature,
+  });
+  const row = (
+    o: ReturnType<typeof opening>,
+    startMin: number,
+    endMin: number,
+    over: Partial<{ role: "install" | "helper"; is_rework: boolean; end_reason: string | null }> = {},
+  ) => ({
+    started_at: new Date(Date.UTC(2026, 7, 17, 8, startMin)).toISOString(),
+    ended_at: new Date(Date.UTC(2026, 7, 17, 8, endMin)).toISOString(),
+    role: over.role ?? ("install" as const),
+    is_rework: over.is_rework ?? false,
+    end_reason: over.end_reason ?? null,
+    opening: o,
+  });
+
+  it("sums install + helper minutes per unit; rework never counts; must be finished", () => {
+    const a = opening("a");
+    const b = opening("b");
+    const out = evidenceFromSessions([
+      row(a, 0, 30, { end_reason: "break" }),
+      row(a, 35, 55, { end_reason: "finish" }),
+      row(a, 10, 25, { role: "helper", end_reason: "complete" }),
+      row(a, 60, 90, { is_rework: true, end_reason: "finish" }), // redo round — excluded
+      row(b, 0, 40), // never finished — not evidence
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].minutes).toBe(30 + 20 + 15); // both install sessions + helper
   });
 });

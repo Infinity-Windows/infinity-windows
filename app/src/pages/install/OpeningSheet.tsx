@@ -43,6 +43,8 @@ import {
 import { computeInstallPoints } from "../../lib/points";
 import {
   BLOCK_REASONS,
+  laborBreakdown,
+  listOpeningSessions,
   pressRedo,
   blockUnit,
   chainGraceRemainingMs,
@@ -406,6 +408,18 @@ export function OpeningSheet() {
     },
     onError: (e) => setMessage(formatApiError(e)),
   });
+
+  // The unit's true cost line (CONTEXT.md labor-minutes): sessions +
+  // flashing, rework separate. Only fetched once installed.
+  const unitSessions = useQuery({
+    queryKey: ["openingSessions", openingId],
+    queryFn: () => listOpeningSessions(openingId),
+    enabled: opening.data?.status === "installed",
+  });
+  const crewTime =
+    opening.data?.status === "installed"
+      ? laborBreakdown(unitSessions.data ?? [], flashing?.minutes ?? null)
+      : null;
 
   // Redo (spec .scratch/sessions): press → foreman push → back in play.
   const [redoSheetOpen, setRedoSheetOpen] = useState(false);
@@ -1167,6 +1181,15 @@ export function OpeningSheet() {
       {installed && (
         <div className="detail-card">
           <p className="ok" style={{ margin: 0, fontWeight: 700 }}>Installed ✓</p>
+          {crewTime && crewTime.totalMin > 0 && (
+            <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
+              Crew time: {crewTime.installMin}m install
+              {crewTime.helperMin > 0 ? ` · ${crewTime.helperMin}m helpers` : ""}
+              {crewTime.flashMin > 0 ? ` · ${crewTime.flashMin}m flashing` : ""}
+              {crewTime.reworkMin > 0 ? ` · ${crewTime.reworkMin}m rework` : ""}
+              {" — "}{crewTime.totalMin}m total
+            </p>
+          )}
           <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
             Forgot something, or need a fix? Undoing keeps every record — the
             memo, photos, grade and minutes stay on file — and puts this window
