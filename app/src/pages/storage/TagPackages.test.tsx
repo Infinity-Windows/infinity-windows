@@ -33,6 +33,8 @@ const server = vi.hoisted(() => ({
   received: [] as string[][],
   /** Totals set_mark_part_total was asked for (the late package). */
   grown: [] as number[],
+  /** Marks add_project_mark put on a schedule (the door in the wall). */
+  scheduled: [] as string[],
 }));
 
 const BLANKS: StoragePackage[] = [
@@ -57,6 +59,17 @@ function blankRow(id: string, serial: string, code: string): StoragePackage {
     created_at: "2026-08-18T00:00:00Z",
   };
 }
+
+vi.mock("../../lib/warehouse/warehouseCards", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../lib/warehouse/warehouseCards")>();
+  return {
+    ...real,
+    addProjectMark: async (projectId: string, mark: string) => {
+      if (server.offline) throw new TypeError("Failed to fetch");
+      server.scheduled.push(`${projectId}:${mark}`);
+    },
+  };
+});
 
 vi.mock("../../lib/storage", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/storage")>();
@@ -157,6 +170,12 @@ interface Mounted {
 /** Pre-labeled packages the arrival section shows; tests set this. */
 let seedMinted: unknown[] = [];
 
+/** The job's schedule; window 16 is on it so the plain tag flow just works. */
+let seedSchedule: { project_id: string; mark_code: string }[] = [
+  { project_id: "job-1", mark_code: "16" },
+];
+let seedRole = "installer";
+
 async function mount(): Promise<Mounted> {
   const qc = new QueryClient({
     defaultOptions: {
@@ -181,6 +200,8 @@ async function mount(): Promise<Mounted> {
   qc.setQueryData(["projects"], JOBS);
   qc.setQueryData(["markSpecs", "job-1"], []);
   qc.setQueryData(["storagePackages"], seedMinted);
+  qc.setQueryData(["scheduledMarks", ["job-1"]], seedSchedule);
+  qc.setQueryData(["myRealProfile"], { id: "me", role: seedRole });
 
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -490,5 +511,63 @@ describe("the worksheet (owner spec, 2026-08-18)", () => {
       server.offline = true;
       server.grown = [];
     }
+  });
+});
+
+describe("the schedule's door (owner report, 2026-08-18)", () => {
+  it("a foreman typing an unscheduled window gets the one-tap add", async () => {
+    seedRole = "foreman";
+    server.offline = false;
+    try {
+      const { el } = await mount();
+      const mark = el.querySelector<HTMLInputElement>('input[aria-label="Window number"]')!;
+      act(() => {
+        const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+        set.call(mark, "6");
+        mark.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await settle();
+      expect(el.textContent).toContain("Window 6 isn’t on this job’s schedule yet");
+      const add = [...el.querySelectorAll("button")].find((b) =>
+        (b.textContent ?? "").includes("Add window 6"),
+      );
+      expect(add, "no add-to-schedule button for a foreman").toBeTruthy();
+      click(add!);
+      await settle();
+      expect(server.scheduled).toEqual(["job-1:6"]);
+    } finally {
+      seedRole = "installer";
+      server.offline = true;
+      server.scheduled = [];
+    }
+  });
+
+  it("an installer is told who can open the door, not offered the handle", async () => {
+    const { el } = await mount();
+    const mark = el.querySelector<HTMLInputElement>('input[aria-label="Window number"]')!;
+    act(() => {
+      const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+      set.call(mark, "6");
+      mark.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await settle();
+    expect(el.textContent).toContain("A foreman can add it");
+    expect(
+      [...el.querySelectorAll("button")].some((b) =>
+        (b.textContent ?? "").includes("Add window 6"),
+      ),
+    ).toBe(false);
+  });
+
+  it("a scheduled window says nothing — the door only shows at the wall", async () => {
+    const { el } = await mount();
+    const mark = el.querySelector<HTMLInputElement>('input[aria-label="Window number"]')!;
+    act(() => {
+      const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+      set.call(mark, "16");
+      mark.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await settle();
+    expect(el.textContent).not.toContain("isn’t on this job’s schedule");
   });
 });
