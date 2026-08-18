@@ -92,7 +92,15 @@ describe("placeChain", () => {
 });
 
 describe("canNest", () => {
-  const all = [conex, crate, ctr({ id: "empty", name: "Crate 9" })];
+  // Kinds carried explicitly: after the kinds migration every production row
+  // has one (default conex), and a kind-less row is the LEGACY case, tested on
+  // its own below — a fixture leaving kind off here would be testing a shape
+  // production no longer produces.
+  const all = [
+    { ...conex, kind: "conex" },
+    { ...crate, kind: "crate" },
+    ctr({ id: "empty", name: "Crate 9", kind: "crate" }),
+  ];
 
   it("allows a lone crate into a top-level conex", () => {
     expect(canNest("empty", "conex", all)).toBe(true);
@@ -207,5 +215,48 @@ describe("building the lookup from the rows a screen actually has", () => {
     expect(placeWhere(pkg({ container_id: "crate" }), byId, map)).toBe(
       "Crate 7 — inside Conex 3",
     );
+  });
+});
+
+describe("canNest knows what kind of box it is dealing with", () => {
+  const box = (id: string, kind: string, parent: string | null = null) =>
+    ({ id, kind, parent_container_id: parent }) as unknown as StorageContainer;
+
+  const YARD = [
+    box("conex-1", "conex"),
+    box("conex-2", "conex"),
+    box("crate-1", "crate"),
+    box("crate-2", "crate"),
+    box("truck-1", "truck"),
+    box("wh", "building"),
+  ];
+
+  it("lets a crate ride in a conex, on a truck, or in the building", () => {
+    expect(canNest("crate-1", "conex-1", YARD)).toBe(true);
+    expect(canNest("crate-1", "truck-1", YARD)).toBe(true);
+    expect(canNest("crate-1", "wh", YARD)).toBe(true);
+  });
+
+  it("puts nothing inside a crate — it is the smallest box there is", () => {
+    expect(canNest("crate-1", "crate-2", YARD)).toBe(false);
+    expect(canNest("conex-1", "crate-1", YARD)).toBe(false);
+  });
+
+  it("a conex only rides on a truck", () => {
+    expect(canNest("conex-1", "truck-1", YARD)).toBe(true);
+    expect(canNest("conex-1", "conex-2", YARD)).toBe(false);
+    expect(canNest("conex-1", "wh", YARD)).toBe(false);
+  });
+
+  it("the building and a truck go inside nothing", () => {
+    expect(canNest("wh", "truck-1", YARD)).toBe(false);
+    expect(canNest("truck-1", "wh", YARD)).toBe(false);
+  });
+
+  it("treats a row from before the kinds migration as a conex", () => {
+    // Rows read by an old bundle (or cached offline) have no kind key at all.
+    const old = { id: "legacy", parent_container_id: null } as unknown as StorageContainer;
+    expect(canNest("legacy", "truck-1", [...YARD, old])).toBe(true);
+    expect(canNest("legacy", "conex-1", [...YARD, old])).toBe(false);
   });
 });

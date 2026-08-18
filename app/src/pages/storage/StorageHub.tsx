@@ -25,6 +25,7 @@ import {
   saveContainer,
   type StoragePackage,
   type StorageContainer,
+  containerKind,
 } from "../../lib/storage";
 import {
   cardPackages,
@@ -189,7 +190,14 @@ export function StorageHub() {
           }, 0);
           return (
             <Link key={c.id} to={`/storage/c/${c.id}`} className="warehouse-tile">
-              <strong>{c.name}</strong>
+              <strong>
+                {c.name}
+                {containerKind(c) !== "conex" && (
+                  <span className="muted" style={{ fontWeight: 400 }}>
+                    {" "}· {containerKind(c)}
+                  </span>
+                )}
+              </strong>
               <span className="muted">
                 {stored.length} package{stored.length === 1 ? "" : "s"}
                 {stored.length > 0 &&
@@ -415,6 +423,21 @@ export function ContainerForm({
   const [address, setAddress] = useState(initial?.address ?? "");
   const [accessCode, setAccessCode] = useState(initial?.access_code ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  // Kind is picked once, at creation. Editing keeps whatever the box is —
+  // a crate that "becomes" a conex is really a new box (ticket 12).
+  const [kind, setKind] = useState(containerKind(initial));
+  const [dims, setDims] = useState({
+    length: initial?.length_cm != null ? String(initial.length_cm) : "",
+    width: initial?.width_cm != null ? String(initial.width_cm) : "",
+    height: initial?.height_cm != null ? String(initial.height_cm) : "",
+    weight: initial?.weight_kg != null ? String(initial.weight_kg) : "",
+  });
+  // "120" -> 120, "" -> null, junk -> null. A dimension is a measurement:
+  // null is "not measured yet", and the server refuses zero and below.
+  const dim = (raw: string): number | null => {
+    const n = Number(raw.trim());
+    return raw.trim() !== "" && Number.isFinite(n) ? n : null;
+  };
   const save = useMutation({
     mutationFn: () =>
       saveContainer({
@@ -423,6 +446,11 @@ export function ContainerForm({
         address: address || null,
         accessCode: accessCode || null,
         notes: notes || null,
+        kind,
+        lengthCm: dim(dims.length),
+        widthCm: dim(dims.width),
+        heightCm: dim(dims.height),
+        weightKg: dim(dims.weight),
       }),
     onSuccess: (c) => {
       pushToast(initial ? "Container updated." : `${c.name} added.`);
@@ -438,10 +466,50 @@ export function ContainerForm({
         </p>
         <label className="field-label">Name</label>
         <input
-          placeholder="Conex 7 / Main warehouse"
+          placeholder="Conex 7 / Glass crate 12"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
+        <label className="field-label">What kind of box</label>
+        {/* Locked after creation — the kind rules every move it has ever made. */}
+        <select value={kind} disabled={!!initial} onChange={(e) => setKind(e.target.value)}>
+          <option value="conex">Conex</option>
+          <option value="crate">Crate</option>
+          <option value="truck">Truck</option>
+        </select>
+        {kind === "crate" && (
+          <>
+            <p className="muted" style={{ fontSize: 12.5, margin: "6px 0 0" }}>
+              Size and weight, so anyone can tell whether it fits in a conex and
+              what the forklift is picking up. Centimeters and kilograms; leave
+              blank until it's measured.
+            </p>
+            <div className="row-gap">
+              <div style={{ flex: 1 }}>
+                <label className="field-label">Length (cm)</label>
+                <input inputMode="decimal" value={dims.length}
+                  onChange={(e) => setDims({ ...dims, length: e.target.value })} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label className="field-label">Width (cm)</label>
+                <input inputMode="decimal" value={dims.width}
+                  onChange={(e) => setDims({ ...dims, width: e.target.value })} />
+              </div>
+            </div>
+            <div className="row-gap">
+              <div style={{ flex: 1 }}>
+                <label className="field-label">Height (cm)</label>
+                <input inputMode="decimal" value={dims.height}
+                  onChange={(e) => setDims({ ...dims, height: e.target.value })} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label className="field-label">Weight (kg)</label>
+                <input inputMode="decimal" value={dims.weight}
+                  onChange={(e) => setDims({ ...dims, weight: e.target.value })} />
+              </div>
+            </div>
+          </>
+        )}
         <label className="field-label">Address</label>
         <input
           placeholder="Where it sits"
