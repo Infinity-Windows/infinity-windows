@@ -457,6 +457,24 @@ export async function setMarkPartTotal(input: {
   return (data as number) ?? 0;
 }
 
+/**
+ * Put an already-tagged package on its window, REPLACING any window it had
+ * (owner ask, 2026-08-18): fixes both the package tagged before the worksheet
+ * existed (no window at all) and the mis-typed window. Foreman+; the mark
+ * must be on the package's own job's schedule.
+ */
+export async function setPackageWindow(
+  packageId: string,
+  markCode: string,
+): Promise<StoragePackage> {
+  const { data, error } = await supabase.rpc("set_package_window", {
+    p_package: packageId,
+    p_mark: markCode,
+  });
+  if (error) throw error;
+  return normalizePackage(data as Record<string, unknown>);
+}
+
 /** What the maker's label claims, when it disagrees with ours (ticket 20).
  * Any crew — whoever is at the truck is who saw it. Null clears a misread. */
 export async function reportMakerCount(
