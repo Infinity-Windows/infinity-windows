@@ -7,7 +7,14 @@
 // map of Supabase op handlers. The install-flow outbox (lib/install/*) is a
 // separate module and is intentionally left untouched.
 
-/** Every kind of write the outbox can carry. Add new ops here + a handler. */
+/**
+ * Every kind of write the outbox can carry.
+ *
+ * Adding one means three edits: this union, `OP_REGISTRY` further down, and a
+ * handler in outboxHandlers.ts. You cannot forget the second — the registry
+ * `satisfies Record<OutboxOp, true>`, so a name here with no entry there is a
+ * compile error, not a write that vanishes off disk in the field.
+ */
 export type OutboxOp =
   | "clock_in"
   | "clock_out"
@@ -24,7 +31,14 @@ export type OutboxOp =
   // then the record is gone forever. These three queue instead.
   | "store_packages"
   | "checkout_packages"
-  | "take_supply";
+  | "take_supply"
+  // The other three writes made standing in that same box (audit F3): tagging
+  // a package at the truck, setting one aside for a job, and moving a whole
+  // container. Same rule — the server first, the queue only when there is no
+  // signal.
+  | "bind_package"
+  | "stage_packages"
+  | "move_container";
 
 /**
  * queued   — waiting to be sent (respecting nextAttemptAt backoff)
@@ -333,6 +347,9 @@ export function countsByOp(entries: OutboxEntry[]): OpCounts {
       case "store_packages":
       case "checkout_packages":
       case "take_supply":
+      case "bind_package":
+      case "stage_packages":
+      case "move_container":
         c.warehouse += 1;
         break;
       default:
@@ -342,8 +359,49 @@ export function countsByOp(entries: OutboxEntry[]): OpCounts {
   return c;
 }
 
+/**
+ * The buckets that are still going to be sent. `deadLetter` is not one of
+ * them — it has stopped trying and is counted on its own.
+ */
+type PendingCategory = Exclude<keyof OpCounts, "deadLetter">;
+
+/**
+ * What each pending bucket calls itself on the pill face, in reading order.
+ *
+ * Typed as a Record over EVERY pending bucket on purpose. A bucket counted in
+ * OpCounts but never named here doesn't break anything loudly — it just adds
+ * to the total while contributing no words, so a phone holding nothing but
+ * that kind of write drew a pill with a spinning icon and no text at all.
+ * That is exactly how the warehouse bucket shipped in ticket 10, and audit F3
+ * routed three more ops into it, so a blank pill went from rare to routine.
+ * Now leaving a bucket unnamed is a compile error.
+ */
+const PART_LABELS: Record<PendingCategory, (n: number) => string> = {
+  clock: (n) => `Clock ${n}`,
+  photos: (n) => `Photos ${n}`,
+  receipts: (n) => `Receipts ${n}`,
+  logs: (n) => (n === 1 ? "1 log queued" : `${n} logs queued`),
+  warehouse: (n) => `Warehouse ${n}`,
+  other: (n) => `${n} queued`,
+};
+
+const PENDING_CATEGORIES = Object.keys(PART_LABELS) as PendingCategory[];
+
 export function totalPending(c: OpCounts): number {
-  return c.clock + c.photos + c.receipts + c.logs + c.other + c.warehouse;
+  return PENDING_CATEGORIES.reduce((sum, key) => sum + c[key], 0);
+}
+
+/**
+ * The pill face's words, one per non-empty bucket. Summed and named off the
+ * same list, so "something is pending" and "the pill has words" can never
+ * disagree again.
+ */
+function pendingParts(c: OpCounts): string[] {
+  const parts: string[] = [];
+  for (const key of PENDING_CATEGORIES) {
+    if (c[key] > 0) parts.push(PART_LABELS[key](c[key]));
+  }
+  return parts;
 }
 
 export type PillTone = "synced" | "syncing" | "attention";
@@ -362,12 +420,7 @@ export interface PillSummary {
  * attention"; otherwise we list pending work, or a calm "all synced".
  */
 export function pillSummary(c: OpCounts): PillSummary {
-  const parts: string[] = [];
-  if (c.clock > 0) parts.push(`Clock ${c.clock}`);
-  if (c.photos > 0) parts.push(`Photos ${c.photos}`);
-  if (c.receipts > 0) parts.push(`Receipts ${c.receipts}`);
-  if (c.logs > 0) parts.push(c.logs === 1 ? "1 log queued" : `${c.logs} logs queued`);
-  if (c.other > 0) parts.push(`${c.other} queued`);
+  const parts = pendingParts(c);
   const pending = totalPending(c);
 
   if (c.deadLetter > 0) {
@@ -398,46 +451,51 @@ export function serializeEntry(entry: OutboxEntry): string {
 }
 
 /**
- * Ops accepted when reading a row back off disk.
+ * Every op the queue can carry, written out ONCE and checked against the
+ * `OutboxOp` union by the compiler.
  *
- * This list is load-bearing and easy to miss: an op added to `OutboxOp` but
- * NOT added here serializes fine, lands in IndexedDB, and then deserializes
- * to `null` forever — the queue can't see it, the drainer never sends it, and
- * the write is silently lost with no error anywhere. `every op round-trips`
- * in the test file is what keeps the two in step; do not delete it.
+ * This list is load-bearing and was easy to miss: an op added to `OutboxOp`
+ * but NOT added here serializes fine, lands in IndexedDB, and then
+ * deserializes to `null` forever — the queue can't see it, the drainer never
+ * sends it, and the write is silently lost with no error anywhere and every
+ * test still green. It has cost real writes here already.
+ *
+ * `satisfies Record<OutboxOp, true>` is what stops it happening again, and it
+ * catches BOTH directions before the code ever runs:
+ *   - an op added to the union and not to this list → "Property 'x' is
+ *     missing in type ... but required in type Record<OutboxOp, true>";
+ *   - a name typed here that is not in the union → "Object literal may only
+ *     specify known properties".
+ * `OPS` and `ALL_OPS` are then derived from it, so there is no second list
+ * left to drift. If you are adding an op: add it to `OutboxOp` above, add it
+ * here, and register a handler in outboxHandlers.ts.
  */
-export const OPS: ReadonlySet<string> = new Set<OutboxOp>([
-  "clock_in",
-  "clock_out",
-  "break_start",
-  "break_stop",
-  "daily_log",
-  "photo_upload",
-  "receipt_upload",
-  "pin_undo",
-  "pin_reset_project",
-  "pin_reset_opening",
-  "store_packages",
-  "checkout_packages",
-  "take_supply",
-]);
+const OP_REGISTRY = {
+  clock_in: true,
+  clock_out: true,
+  break_start: true,
+  break_stop: true,
+  daily_log: true,
+  photo_upload: true,
+  receipt_upload: true,
+  pin_undo: true,
+  pin_reset_project: true,
+  pin_reset_opening: true,
+  store_packages: true,
+  checkout_packages: true,
+  take_supply: true,
+  bind_package: true,
+  stage_packages: true,
+  move_container: true,
+} as const satisfies Record<OutboxOp, true>;
 
 /** Every op the queue can carry — the single list tests enumerate. */
-export const ALL_OPS: readonly OutboxOp[] = [
-  "clock_in",
-  "clock_out",
-  "break_start",
-  "break_stop",
-  "daily_log",
-  "photo_upload",
-  "receipt_upload",
-  "pin_undo",
-  "pin_reset_project",
-  "pin_reset_opening",
-  "store_packages",
-  "checkout_packages",
-  "take_supply",
-];
+export const ALL_OPS: readonly OutboxOp[] = Object.keys(
+  OP_REGISTRY,
+) as (keyof typeof OP_REGISTRY)[];
+
+/** Ops accepted when reading a row back off disk. Derived, never hand-typed. */
+export const OPS: ReadonlySet<string> = new Set<string>(ALL_OPS);
 
 export function deserializeEntry(json: string): OutboxEntry | null {
   let raw: unknown;

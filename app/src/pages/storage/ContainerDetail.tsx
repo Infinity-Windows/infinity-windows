@@ -20,12 +20,12 @@ import {
   groupByJob,
   listActivePackages,
   listContainers,
-  moveContainer,
   saveContainer,
   type StoragePackage,
 } from "../../lib/storage";
 import { canNest, ridesAlong } from "../../lib/warehouse/containment";
 import {
+  moveContainerOffline,
   storePackagesOffline,
   writeToast,
 } from "../../lib/warehouse/offlineWrites";
@@ -75,6 +75,26 @@ export function archiveBlockMessage(
   return null;
 }
 
+/**
+ * What the move button says afterwards.
+ *
+ * Named where it went rather than just "Moved", because a conex and three
+ * crates all answer to that button and the person who tapped it is usually
+ * looking at the packages, not the header. And it goes through `writeToast`
+ * so a move made inside a conex with no bars says the one thing that is
+ * different about it: the container is where they put it, and the record of
+ * that is still on the phone.
+ */
+export function movedMessage(
+  destName: string | null,
+  riders: number,
+  queued: boolean,
+): string {
+  const riding = `${riders} package${riders === 1 ? "" : "s"} rode along`;
+  const where = destName ? `Moved into ${destName}` : "Out on its own";
+  return writeToast({ count: riders, queued }, `${where}, ${riding}`);
+}
+
 export function ContainerDetail() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
@@ -110,10 +130,19 @@ export function ContainerDetail() {
   );
 
   const store = useMutation({
-    mutationFn: () => storePackagesOffline([...picked], id),
+    // The ROWS, not the ids. Each one carries what this screen believed about
+    // the package when it was ticked, and that note rides with the write so a
+    // check-in that waits out a dead conex cannot land on top of something
+    // newer (warehouse audit F2). Picked ids with no row left are dropped
+    // rather than sent noteless — the list they came from is the same query.
+    mutationFn: () =>
+      storePackagesOffline(
+        candidates.filter((p) => picked.has(p.id)),
+        id,
+      ),
     onSuccess: (r) => {
       pushToast(
-        writeToast(r, `${r.count} package${r.count === 1 ? "" : "s"} checked in.`),
+        writeToast(r, `${r.count} package${r.count === 1 ? "" : "s"} checked in`),
       );
       setPicked(new Set());
       setCheckin(false);
@@ -142,14 +171,11 @@ export function ContainerDetail() {
 
   const move = useMutation({
     mutationFn: (parentContainerId: string | null) =>
-      moveContainer({ containerId: id, parentContainerId }),
-    onSuccess: (_c, dest) => {
-      const n = riders.length;
-      pushToast(
-        dest
-          ? `Moved — ${n} package${n === 1 ? "" : "s"} rode along.`
-          : `Out on its own — ${n} package${n === 1 ? "" : "s"} rode along.`,
-      );
+      moveContainerOffline({ containerId: id, parentContainerId }),
+    onSuccess: (r, dest) => {
+      const destName =
+        (containers.data ?? []).find((c) => c.id === dest)?.name ?? null;
+      pushToast(movedMessage(destName, riders.length, r.queued));
       setMoving(false);
       void qc.invalidateQueries({ queryKey: ["storageContainers"] });
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });

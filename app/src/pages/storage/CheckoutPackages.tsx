@@ -18,6 +18,7 @@ import { formatApiError } from "../../lib/errors";
 import { pushToast } from "../../lib/toast";
 import {
   checkoutPackagesOffline,
+  stagePackagesOffline,
   writeToast,
 } from "../../lib/warehouse/offlineWrites";
 import { BackChip } from "../../components/BackChip";
@@ -27,7 +28,6 @@ import {
   listCheckoutReasons,
   listContainers,
   mismatchedPackages,
-  stagePackages,
 } from "../../lib/storage";
 import { isMissingStagingBayError } from "../../lib/staging";
 
@@ -91,10 +91,29 @@ export function CheckoutPackages() {
     return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
   }, [pickedRows]);
 
+  // The rows behind the ticks, for the note a queued set-aside has to carry:
+  // what this phone believed about each package at the moment it was ticked.
+  // Without it, a set-aside that sits in a conex for ten minutes lands on top
+  // of a checkout made one minute ago and records the package on this job's
+  // shelf while it is on a truck to another one.
+  //
+  // Taken from the WHOLE list and not from `available`: `available` is filtered
+  // by the container dropdown, so changing that filter after ticking would
+  // quietly drop packages out of the write instead of setting them aside.
+  const pickedBeliefs = useMemo(
+    () => (packages.data ?? []).filter((p) => picked.has(p.id)),
+    [packages.data, picked],
+  );
+
   const stage = useMutation({
-    mutationFn: () => stagePackages([...picked], projectId),
-    onSuccess: (n) => {
-      pushToast(`${n} package${n === 1 ? "" : "s"} set aside for the job.`);
+    mutationFn: () => stagePackagesOffline(pickedBeliefs, projectId),
+    onSuccess: (r) => {
+      pushToast(
+        writeToast(
+          r,
+          `${r.count} package${r.count === 1 ? "" : "s"} set aside for the job`,
+        ),
+      );
       setPicked(new Set());
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
       navigate("/warehouse");

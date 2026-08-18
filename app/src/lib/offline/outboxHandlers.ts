@@ -17,6 +17,7 @@
 // the entry, so it dead-letters where a foreman can see it.
 
 import { supabase } from "../supabase";
+import { isMissingStagingBayError } from "../staging";
 import {
   errorMessage,
   type OpHandler,
@@ -46,6 +47,33 @@ export function isPendingRef(ref: string): boolean {
  * function overload or unknown column). We detect those to fall back, rather
  * than treating them as real failures.
  */
+/**
+ * The app arriving somewhere its database has not.
+ *
+ * Both stale-belief guards call a NEW overload of an existing function. If the
+ * app bundle reaches a phone before the migration lands, PostgREST answers
+ * "could not find the function", which is not a network error and not one this
+ * queue treats as permanent — so every queued check-in and set-aside would burn
+ * all eight retries and then dead-letter with raw PostgREST text nobody can act
+ * on. Deploying the backend has silently failed on this project before, so this
+ * is the likelier direction, not the theoretical one.
+ *
+ * It fails on the FIRST try instead of the eighth, and says something true. The
+ * one thing it must never do is fall back to the old two-argument call — that
+ * would send the write with no note at all, which is the bug all this exists to
+ * close.
+ */
+function missingGuard(err: unknown, what: string): unknown {
+  if (!isMissingFunction(err)) return err;
+  return tagPermanent(
+    new Error(
+      `This ${what} needs an app update that has not reached the server yet. ` +
+        "Nothing was lost and nothing was changed — tell whoever manages the " +
+        "app, then press Try again.",
+    ),
+  );
+}
+
 function isMissingFunction(err: unknown): boolean {
   const code = (err as { code?: string })?.code;
   if (code === "PGRST202") return true;
@@ -61,6 +89,183 @@ function isMissingColumn(err: unknown): boolean {
   if (code === "PGRST204" || code === "42703") return true;
   const msg = errorMessage(err).toLowerCase();
   return msg.includes("client_id") && msg.includes("column");
+}
+
+/** The server's refusal when a sticker has already been bound to a package. */
+function isAlreadyAssigned(err: unknown): boolean {
+  return errorMessage(err).toLowerCase().includes("already assigned");
+}
+
+/**
+ * What a tag carries that ends up ON the package row — everything except the
+ * marks, which live in their own table.
+ *
+ * Normalized the way bind_package stores it (note trimmed, maker's mark
+ * uppercased) so a resend of the very same tag compares equal instead of
+ * looking like a different one.
+ */
+interface TagDetails {
+  category: string | null;
+  note: string | null;
+  partIndex: number | null;
+  partTotal: number | null;
+  partType: string | null;
+  mfrMark: string | null;
+  deliveryId: string | null;
+}
+
+function trimmed(v: unknown): string | null {
+  const s = str(v)?.trim() ?? "";
+  return s === "" ? null : s;
+}
+
+function upperTrimmed(v: unknown): string | null {
+  return trimmed(v)?.toUpperCase() ?? null;
+}
+
+/** What the sticker actually holds right now. */
+interface TaggedNow {
+  /** The job it is on; `null` when it is still blank, so a bind can be retried. */
+  projectId: string | null;
+  /** What a person reads off the sticker. Null when the row carried none. */
+  serial: string | null;
+  /** The marks actually on the row, so ours can be weighed against them. */
+  marks: string[];
+  /** The details on the row, to weigh against the ones this entry carried. */
+  details: TagDetails;
+}
+
+/**
+ * Read a sticker back — asked only when the server has refused a second bind,
+ * to tell "the tag we are holding already landed" from "somebody else used
+ * that sticker".
+ *
+ * `undefined` means COULD NOT ASK, and that is the answer that matters most.
+ * Guessing on a failed read either throws away a tag that never landed or
+ * calls a wrong one done, and both are silent.
+ *
+ * It reads the details as well as the job because a refusal has to be able to
+ * say what did NOT make it (see the bind handler): the row's own fields are
+ * the fingerprint of which tag won this sticker.
+ */
+async function taggedNow(packageId: string): Promise<TaggedNow | undefined> {
+  const { data, error } = await supabase
+    .from("packages")
+    .select(
+      "status, project_id, serial, category, note, part_index, part_total, part_type, mfr_mark, delivery_id, package_marks(mark_code)",
+    )
+    .eq("id", packageId)
+    .maybeSingle();
+  if (error || !data) return undefined;
+  const row = data as Record<string, unknown>;
+  const joined = Array.isArray(row.package_marks) ? row.package_marks : [];
+  return {
+    projectId: row.status === "blank" ? null : str(row.project_id),
+    serial: str(row.serial),
+    marks: joined
+      .map((m) => str((m as Record<string, unknown>)?.mark_code))
+      .filter((m): m is string => Boolean(m)),
+    details: {
+      category: str(row.category),
+      note: trimmed(row.note),
+      partIndex: num(row.part_index),
+      partTotal: num(row.part_total),
+      partType: str(row.part_type),
+      mfrMark: upperTrimmed(row.mfr_mark),
+      deliveryId: str(row.delivery_id),
+    },
+  };
+}
+
+/**
+ * A job's short code, for a message a person has to act on.
+ *
+ * A uuid on the stuck-writes screen is worth nothing — there is no screen that
+ * takes one — so a failed read degrades to a phrase rather than to an id.
+ */
+async function jobCode(projectId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("projects")
+    .select("job_code")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return str((data as { job_code?: unknown }).job_code);
+}
+
+function jobPhrase(code: string | null, unknown = "this job"): string {
+  return code ? `job ${code}` : unknown;
+}
+
+/** "#16 2/3" the way it is printed on the package, or null when there is none. */
+function partNumber(d: TagDetails): string | null {
+  if (d.partIndex != null && d.partTotal != null) {
+    return d.mfrMark
+      ? `#${d.mfrMark} ${d.partIndex}/${d.partTotal}`
+      : `${d.partIndex} of ${d.partTotal}`;
+  }
+  return d.mfrMark ? `#${d.mfrMark}` : null;
+}
+
+/**
+ * Everything this tag carried that the sticker does NOT have, in plain words.
+ *
+ * Only what was actually sent is checked, so a bare tag reports nothing and a
+ * plain resend stays silent.
+ *
+ * Marks ARE read back, in the same select, and compared one by one. The first
+ * version of this skipped them on the theory that the row's other fields
+ * already said which tag won the sticker — but two people working the same
+ * delivery label send identical fields, so a mark only one of them ticked
+ * vanished with nothing reported anywhere.
+ */
+function detailsThatDidNotLand(
+  sent: TagDetails,
+  marks: string[],
+  row: TagDetails,
+  have: string[] = [],
+): string[] {
+  const out: string[] = [];
+  const part = partNumber(sent);
+  if (part && part !== partNumber(row)) out.push(`the part number ${part}`);
+  if (sent.partType && sent.partType !== row.partType) {
+    out.push(`which piece it is (${sent.partType})`);
+  }
+  if (sent.category && sent.category !== row.category) {
+    out.push(`what is inside (${sent.category})`);
+  }
+  if (sent.note && sent.note !== row.note) out.push("the note");
+  if (sent.deliveryId && sent.deliveryId !== row.deliveryId) {
+    out.push("the delivery it came on");
+  }
+  // Whichever of OUR marks are not on the row, named individually. This used
+  // to fire only when some other field already differed, on the theory that
+  // matching fields proved the same tag — but two phones working the same
+  // delivery label send identical fields, so the one person who also ticked
+  // mark A1 lost it with no error anywhere. Identical fields do not prove the
+  // same origin; only the marks themselves do.
+  const lost = marks.filter((m) => !have.includes(m));
+  if (lost.length > 0) out.push(`mark${lost.length === 1 ? "" : "s"} ${lost.join(", ")}`);
+  return out;
+}
+
+/** True when a container is already sitting exactly where a queued move was sending it. */
+async function containerIsAlreadyAt(
+  containerId: string,
+  parent: string | null,
+  location: string | null,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("storage_containers")
+    .select("parent_container_id, location_id")
+    .eq("id", containerId)
+    .maybeSingle();
+  if (error || !data) return false; // can't tell → send it and let the server decide
+  const row = data as { parent_container_id?: unknown; location_id?: unknown };
+  return (
+    (row.parent_container_id ?? null) === parent &&
+    (row.location_id ?? null) === location
+  );
 }
 
 /** A network/permanent error tagged so the core's classifier can route it. */
@@ -259,9 +464,16 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
   // wrong in a comment is how the bug shipped (warehouse audit F1) — so read
   // the difference rather than the shape:
   //
-  //   store_packages / checkout_packages — safe. They name an explicit list
-  //   and skip any package that is no longer in a movable state, so a package
-  //   stored twice is stored once. The second send moves nothing.
+  //   store_packages — safe, and it no longer skips in silence. It compares
+  //   the note the phone wrote down against the row as it stands and applies
+  //   only what still matches (warehouse audit F2); a package already sitting
+  //   exactly where this write was sending it is counted and NOT logged again,
+  //   so the second send moves nothing and writes no history.
+  //
+  //   checkout_packages — safe. It names an explicit list and skips any
+  //   package that is no longer in a movable state, so checking a package out
+  //   twice checks it out once. (It has the same overwrite shape store_packages
+  //   had, and has NOT been given the same guard — see the audit.)
   //
   //   take_supply — NOT safe on its own. There is no "already taken" state to
   //   skip against; a count only goes down. Sending it twice subtracted twice
@@ -271,12 +483,69 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
   //   (20260830000000_take_supply_idempotent.sql) — the guard is that key,
   //   not the shape of the call.
   //
-  // All three still write their own movement row, so the history stays honest
-  // about when a write really reached the server.
+  // Each of these writes its own movement row when it really moves something,
+  // so the history stays honest about when a write reached the server — with
+  // one deliberate exception, stated eight lines up: a check-in for a package
+  // already sitting exactly where it was being sent counts and logs NOTHING,
+  // because a resend is not a second move. Saying "all of them always" here
+  // would contradict that, and a comment contradicting the code is how the
+  // double-subtract shipped.
 
   function ids(entry: OutboxEntry): string[] {
     const raw = entry.payload.packageIds;
     return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
+  }
+
+  /**
+   * One refused package, said the way a foreman would say it.
+   *
+   * The database hands back what is actually true of the package now, so the
+   * sentence names the thing that beat this write rather than just refusing
+   * (warehouse audit F2). "It moved" with no more detail sends somebody
+   * hunting; "it was checked out to BLACK22" ends the question.
+   *
+   * `destination` is a phrase and not a name — "into Conex 7" for a check-in,
+   * "on BLACK22's shelf" for a set-aside — because the two writes end the same
+   * sentence differently and a package does not go "into" a shelf.
+   */
+  function refusedLine(r: Record<string, unknown>, destination: string): string {
+    const serial = typeof r.serial === "string" ? r.serial : "A package";
+    const status = typeof r.status === "string" ? r.status : null;
+    const where = typeof r.container === "string" ? r.container : null;
+    const shelf = typeof r.location === "string" ? r.location : null;
+    const job = typeof r.job === "string" ? r.job : null;
+    const head = `${serial} did not go ${destination}`;
+    if (status === "checked_out") {
+      return job ? `${head} — it was checked out to ${job} first.` : `${head} — it was checked out first.`;
+    }
+    if (status === "stored" && where) return `${head} — it is in ${where} now.`;
+    // A package already set aside on ANOTHER job's bay: same status, same
+    // empty container, different shelf. Naming the shelf address names the
+    // job too, because a bay's address carries its job code.
+    if (status === "stored" && shelf) return `${head} — it is on shelf ${shelf} now.`;
+    if (status === null) return `${head} — that sticker is not on a package any more.`;
+    return `${head} — it moved before this went up.`;
+  }
+
+  /**
+   * Turn a refusal list into one thing a human reads, and stop.
+   *
+   * Shared by check-in and set-aside on purpose. Resolving a partly-applied
+   * batch is the old bug wearing a different coat — the write "succeeded" and
+   * nobody learns that two of the five packages are somewhere else — and that
+   * judgement should not be written twice and drift apart. Permanent because
+   * re-sending cannot change the answer: the packages that went in are already
+   * in (the database no-ops those), and the ones that moved are not coming
+   * back on their own.
+   */
+  function stopForRefusals(refused: unknown[], destination: string): never {
+    const lines = refused
+      .slice(0, 3)
+      .map((r) => refusedLine((r ?? {}) as Record<string, unknown>, destination));
+    const rest = refused.length - lines.length;
+    throw tagPermanent(
+      new Error(lines.join(" ") + (rest > 0 ? ` And ${rest} more like it.` : "")),
+    );
   }
 
   const storePackages: OpHandler = async (entry) => {
@@ -285,11 +554,24 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     if (!containerId || packageIds.length === 0) {
       throw tagPermanent(new Error("Check-in is missing its container or its packages"));
     }
-    const { error } = await supabase.rpc("store_packages", {
+    // The note the phone wrote down when somebody ticked these packages. An
+    // entry queued by an older bundle has none; the database refuses those
+    // rather than guessing, which is the correct end of that story — it says
+    // so out loud instead of overwriting whatever is there now.
+    const expected = entry.payload.expected;
+    const { data, error } = await supabase.rpc("store_packages", {
       p_packages: packageIds,
       p_container: containerId,
+      p_expected: expected && typeof expected === "object" ? expected : {},
     });
-    if (error) throw error;
+    if (error) throw missingGuard(error, "check-in");
+
+    const result = (data ?? {}) as { container?: unknown; refused?: unknown };
+    const refused = Array.isArray(result.refused) ? result.refused : [];
+    if (refused.length === 0) return;
+
+    const container = typeof result.container === "string" ? result.container : "that container";
+    stopForRefusals(refused, `into ${container}`);
   };
 
   const checkoutPackages: OpHandler = async (entry) => {
@@ -345,6 +627,243 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     if (error) throw error;
   };
 
+  // --- and the three writes F3 added to the same queue -------------------
+  //
+  // Read the note above before adding a fourth: what makes a queued write
+  // safe is never the shape of the call, it is what the SERVER does with a
+  // second copy. These three each answer that differently.
+
+  /**
+   * Tag a package: bind a blank sticker to a job, forever.
+   *
+   * bind_package is the one warehouse write that REFUSES a second send. It
+   * updates `where status = 'blank'` and raises when that matches nothing, so
+   * the ordinary lost-answer case — the bind landed, the reply never made it
+   * back through the conex wall, the write queued — comes back around as an
+   * error for work that already succeeded. Left alone that error is not even
+   * classified as permanent, so it burns eight retries over ten minutes and
+   * then sits on the stuck-writes screen as a failure retrying can never fix.
+   *
+   * So when the server says the sticker is taken, look at the sticker. If it
+   * already names this job, this tag is done and the entry can go. If it
+   * names a different one, somebody used that sticker on another package and
+   * no amount of waiting changes it — that goes to a human on the first try.
+   *
+   * Both of those messages NAME the sticker and the job. They are the only
+   * thing a foreman gets: the stuck-writes screen shows the label ("Package
+   * tagged"), the time, and the error text, and nothing else on that screen
+   * identifies which package this was. "Put a fresh sticker on the package and
+   * tag it again" is not an instruction until it says which package.
+   */
+  const bindPackage: OpHandler = async (entry) => {
+    const p = entry.payload;
+    const packageId = str(p.packageId);
+    const projectId = str(p.projectId);
+    if (!packageId || !projectId) {
+      throw tagPermanent(new Error("This tag is missing its sticker or its job"));
+    }
+    const marks = Array.isArray(p.marks)
+      ? p.marks.filter((v): v is string => typeof v === "string")
+      : [];
+    const base = {
+      p_package: packageId,
+      p_project: projectId,
+      p_category: str(p.category),
+      p_note: str(p.note),
+      p_marks: marks,
+      p_delivery: str(p.deliveryId),
+    };
+    const parts = {
+      p_part_index: num(p.partIndex),
+      p_part_total: num(p.partTotal),
+      p_part_type: str(p.partType),
+      p_mfr_mark: str(p.mfrMark),
+    };
+    // The same fields again, but as the DATABASE would store them, so a
+    // refusal can weigh what this tag carried against what the sticker holds.
+    // Built here and not from `base`/`parts` on purpose: those go on the wire
+    // raw and the server does the trimming, so reusing them would compare an
+    // untrimmed note against a trimmed one and call a plain resend a loss.
+    const sent: TagDetails = {
+      category: str(p.category),
+      note: trimmed(p.note),
+      partIndex: num(p.partIndex),
+      partTotal: num(p.partTotal),
+      partType: str(p.partType),
+      mfrMark: upperTrimmed(p.mfrMark),
+      deliveryId: str(p.deliveryId),
+    };
+    // Same deploy-window tiers as lib/storage.ts, and the same rule about
+    // them: dropping the part fields is only safe when there are none to
+    // lose. A tag WITH "#16 2/3" on it fails loudly rather than landing
+    // without the number that says what is still missing.
+    const hasParts =
+      parts.p_part_index != null ||
+      parts.p_part_total != null ||
+      parts.p_part_type != null ||
+      Boolean(parts.p_mfr_mark);
+    let res = await supabase.rpc("bind_package", { ...base, ...parts });
+    if (res.error && isMissingFunction(res.error) && !hasParts) {
+      res = await supabase.rpc("bind_package", base);
+    }
+    if (!res.error) return;
+    if (isAlreadyAssigned(res.error)) {
+      const now = await taggedNow(packageId);
+      if (now === undefined) throw res.error; // could not ask → try again later
+      if (now.projectId == null) throw res.error; // still blank → try again
+      const sticker = now.serial ? `Sticker ${now.serial}` : "That sticker";
+
+      if (now.projectId === projectId) {
+        // The tag landed on the job this entry meant. Usually that is this
+        // very entry arriving twice — the first answer was lost in the conex —
+        // and the sticker already carries everything it was carrying.
+        //
+        // Not always. Two phones can pick the same blank sticker for the same
+        // job, and the one that won may have been the one WITHOUT the part
+        // number read off the label, or without the marks or the note. This
+        // used to resolve the entry flat, so that work vanished with no error
+        // anywhere — "#16 2/3" is the number that says what is still missing
+        // off a delivery, and losing it quietly is the whole reason it is
+        // tracked.
+        //
+        // There is no RPC that can put those fields on an already-bound
+        // package, so they cannot be applied from here; they are REPORTED
+        // instead, named one by one, to the one screen a human reads. The
+        // write itself is not a failure and does not retry — the sticker is
+        // bound and re-sending can never bind it again — but the entry stays
+        // on the stuck-writes screen until somebody deals with it.
+        //
+        // The last line has to be an instruction a foreman can actually
+        // follow, which is the whole lesson of the message below it. There is
+        // no screen anywhere that edits a tagged package: bind_package is the
+        // only writer of these fields and it is `where status = 'blank'`, the
+        // tag screen only offers blank stickers, and the package sheet is
+        // read-only apart from Reprint. So it must not say "open the package
+        // and add them" — that names a screen the app does not have. It says
+        // what is left: put the detail on the physical package. (If an edit
+        // path is ever built, the handler already clears itself — Try again
+        // re-reads the row, finds nothing missing, and resolves.)
+        const missing = detailsThatDidNotLand(sent, marks, now.details, now.marks);
+        if (missing.length === 0) return;
+        const mine = jobPhrase(await jobCode(projectId));
+        const it = missing.length === 1 ? "it" : "them";
+        throw tagPermanent(
+          new Error(
+            `${sticker} is already tagged to ${mine}, so the tag itself went ` +
+              `through. What this one carried did not: ${missing.join(", ")}. ` +
+              `Nothing in the app can add ${it} to a sticker that is already ` +
+              `tagged, so write ${it} on the package by hand.`,
+          ),
+        );
+      }
+
+      const [other, mine] = await Promise.all([
+        jobCode(now.projectId),
+        jobCode(projectId),
+      ]);
+      const forMine = jobPhrase(mine);
+      throw tagPermanent(
+        new Error(
+          `${sticker} is already tagged to ${jobPhrase(other, "a different job")}, ` +
+            `so this tag for ${forMine} cannot go through. Put a fresh sticker ` +
+            `on the package and tag it for ${forMine} again.`,
+        ),
+      );
+    }
+    throw res.error;
+  };
+
+  /**
+   * Set packages aside on a job's own staging bay.
+   *
+   * This comment used to say "safe to send twice", which was true about the
+   * SHELF and beside the point. Staging is a destination, so a repeat puts the
+   * package where the first one put it — but a queued set-aside is not a
+   * repeat, it is a stale belief, and putting a package where a ten-minute-old
+   * tap wanted it is how the record says BLACK22's bay while the crate is on a
+   * truck to PECAN14. Queueing this write (F3) opened the same race F2 had
+   * just closed for check-in, so it is closed the same way and not a second
+   * way: the phone's note travels with the write, the database compares it per
+   * package, and anything that moved in the meantime is refused by name.
+   *
+   * The other refusal worth catching is a job with no staging bay. The server
+   * refuses rather than dropping a job's material on a shared stock shelf, and
+   * waiting fixes nothing — only a person adding the bay does. So it goes to
+   * the stuck-writes screen on the first try, where a foreman can add the bay
+   * and press Retry, instead of eight quiet failures first.
+   */
+  const stagePackages: OpHandler = async (entry) => {
+    const projectId = str(entry.payload.projectId);
+    const packageIds = ids(entry);
+    if (!projectId || packageIds.length === 0) {
+      throw tagPermanent(
+        new Error("Set-aside is missing its job or its packages"),
+      );
+    }
+    // The note the phone wrote down when somebody ticked these packages. An
+    // entry queued by an older bundle has none; the database refuses those
+    // rather than guessing, which is the correct end of that story — it says
+    // so out loud instead of overwriting whatever is there now.
+    const expected = entry.payload.expected;
+    const { data, error } = await supabase.rpc("stage_packages", {
+      p_packages: packageIds,
+      p_project: projectId,
+      p_expected: expected && typeof expected === "object" ? expected : {},
+    });
+    if (error) {
+      if (isMissingStagingBayError(error)) {
+        throw tagPermanent(
+          new Error(
+            "This job has no staging bay yet, so there was nowhere to set these " +
+              "aside. A foreman can add one from the job page, then try this again.",
+          ),
+        );
+      }
+      throw missingGuard(error, "set-aside");
+    }
+
+    const result = (data ?? {}) as { job?: unknown; refused?: unknown };
+    const refused = Array.isArray(result.refused) ? result.refused : [];
+    if (refused.length === 0) return;
+
+    // "BLACK22's shelf" and not the bay address: the job code is what a
+    // foreman calls that shelf, and the address is on the label for anyone who
+    // has to walk to it.
+    const job = typeof result.job === "string" ? `${result.job}'s shelf` : "that job's shelf";
+    stopForRefusals(refused, `on ${job}`);
+  };
+
+  /**
+   * Move a container, and everything inside it with it.
+   *
+   * move_container has NO guard of its own: it writes a fresh "rode along"
+   * line for every package inside, every time it is called, with no state to
+   * skip against. A resend after a lost answer would say each package moved
+   * twice when it moved once — not a wrong location, but a history that lies,
+   * which is the thing this warehouse is tracked for in the first place.
+   *
+   * There is no client id to dedupe on, so the check is the destination
+   * itself: if the container is already sitting where this entry was sending
+   * it, the move happened and there is nothing left to do. If that check
+   * cannot be made, send it — a duplicated history line is the lesser loss
+   * against a move that never happens.
+   */
+  const moveContainer: OpHandler = async (entry) => {
+    const containerId = str(entry.payload.containerId);
+    if (!containerId) {
+      throw tagPermanent(new Error("This move is missing the container it was for"));
+    }
+    const parent = str(entry.payload.parentContainerId);
+    const location = str(entry.payload.locationId);
+    if (await containerIsAlreadyAt(containerId, parent, location)) return;
+    const { error } = await supabase.rpc("move_container", {
+      p_container: containerId,
+      p_parent: parent,
+      p_location: location,
+    });
+    if (error) throw error;
+  };
+
   return {
     clock_in: clockIn,
     clock_out: clockOut,
@@ -359,6 +878,9 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     store_packages: storePackages,
     checkout_packages: checkoutPackages,
     take_supply: takeSupply,
+    bind_package: bindPackage,
+    stage_packages: stagePackages,
+    move_container: moveContainer,
   } satisfies OpHandlers;
 }
 

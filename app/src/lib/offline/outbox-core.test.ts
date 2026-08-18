@@ -219,6 +219,42 @@ describe("countsByOp + pillSummary (p1-12 status pill)", () => {
     expect(s.tone).toBe("attention");
     expect(s.label).toContain("Needs attention");
   });
+
+  // The bug: warehouse writes were counted in their own bucket but the pill
+  // face never named that bucket. A phone that had only warehouse writes
+  // queued — the normal state of a phone inside a conex — drew a pill with a
+  // spinning icon and NO WORDS. It looked broken, and it told the person
+  // nothing about the work sitting unsent on their phone.
+  it("names warehouse writes on the pill face", () => {
+    const s = pillSummary(
+      countsByOp([
+        entry({ id: "1", op: "store_packages" }),
+        entry({ id: "2", op: "stage_packages" }),
+      ]),
+    );
+    expect(s.tone).toBe("syncing");
+    expect(s.label).toBe("Warehouse 2");
+  });
+
+  it("reads warehouse work out alongside everything else", () => {
+    const s = pillSummary(
+      countsByOp([
+        entry({ id: "1", op: "clock_in" }),
+        entry({ id: "2", op: "move_container" }),
+      ]),
+    );
+    expect(s.label).toBe("Clock 1 · Warehouse 1");
+  });
+
+  // The structural version of the same check: anything the pill counts as
+  // pending has to put words on the pill. A count with no words is a blank
+  // pill, whatever bucket it lands in.
+  it("never draws a blank pill while work is waiting", () => {
+    for (const op of ALL_OPS) {
+      const s = pillSummary(countsByOp([makeEntry({ op, payload: {} }, `id-${op}`, 0)]));
+      expect(s.label, `a queued ${op} draws a pill with no words`).not.toBe("");
+    }
+  });
 });
 
 // --- drainStore integration over an in-memory store + fake handlers ------
@@ -375,14 +411,40 @@ describe("every op survives the disk round-trip", () => {
     }
   });
 
+  // Both lists are now derived from one registry that `satisfies
+  // Record<OutboxOp, true>`, so an op in the union and not in the registry
+  // fails tsc before anything runs — this test can no longer be the thing
+  // that catches it. It stays as the cheap check that the derivation itself
+  // still produces two matching lists.
   it("the allowlist and the op list are the same set", () => {
     expect([...OPS].sort()).toEqual([...ALL_OPS].sort());
+    expect(ALL_OPS.length).toBeGreaterThan(0);
   });
 
   it("every op lands in exactly one count bucket", () => {
     for (const op of ALL_OPS) {
       const c = countsByOp([makeEntry({ op, payload: {} }, `id-${op}`, 0)]);
       expect(totalPending(c), `${op} is counted in no bucket`).toBe(1);
+    }
+  });
+
+  // The count switch has no exhaustiveness check — a warehouse op left out of
+  // it still gets counted, just in the generic `other` bucket. Nothing breaks
+  // loudly; the warehouse page simply says "2 changes queued" while quoting
+  // somebody's pin reset, which is the exact thing the `warehouse` bucket was
+  // split out to stop.
+  it("counts every warehouse write as a warehouse write", () => {
+    const warehouseOps = [
+      "store_packages",
+      "checkout_packages",
+      "take_supply",
+      "bind_package",
+      "stage_packages",
+      "move_container",
+    ] as const;
+    for (const op of warehouseOps) {
+      const c = countsByOp([makeEntry({ op, payload: {} }, `id-${op}`, 0)]);
+      expect(c.warehouse, `${op} is not counted as a warehouse write`).toBe(1);
     }
   });
 });

@@ -375,8 +375,18 @@ function refDependency(shiftRef: string): string | null {
 export function enqueueStorePackages(
   packageIds: string[],
   containerId: string,
+  /**
+   * What the phone believed about each package when it was ticked: its status
+   * and the container it was in. REQUIRED — an entry queued without it cannot
+   * be checked against reality when it finally goes up, which is the whole of
+   * warehouse audit F2. The type is the guard; a spread would not be.
+   */
+  expected: Record<string, { status: string; container: string | null }>,
 ): Promise<string> {
-  return enqueue({ op: "store_packages", payload: { packageIds, containerId } });
+  return enqueue({
+    op: "store_packages",
+    payload: { packageIds, containerId, expected },
+  });
 }
 
 /** Queue "these packages left, for this reason, to this job". */
@@ -404,6 +414,111 @@ export function enqueueTakeSupply(input: {
 }): Promise<string> {
   return enqueue({ op: "take_supply", payload: { ...input } });
 }
+
+/**
+ * What a queued tag carries.
+ *
+ * Spelled out field by field rather than typed off lib/storage's input, so
+ * this file stays free of the storage module — and, more to the point, so the
+ * payload is written out in one place a reader can check against the handler
+ * that reads it back. The two lists are held in step by a test, because a
+ * field renamed on one side and not the other loses the tag with no error.
+ */
+export interface BindPackageInput {
+  packageId: string;
+  projectId: string;
+  category?: string | null;
+  note?: string | null;
+  marks?: string[];
+  deliveryId?: string | null;
+  partIndex?: number | null;
+  partTotal?: number | null;
+  partType?: string | null;
+  mfrMark?: string | null;
+}
+
+/** Queue "this sticker belongs to this package, on this job". */
+export function enqueueBindPackage(input: BindPackageInput): Promise<string> {
+  return enqueue({
+    op: "bind_package",
+    payload: {
+      packageId: input.packageId,
+      projectId: input.projectId,
+      category: input.category ?? null,
+      note: input.note ?? null,
+      marks: input.marks ?? [],
+      deliveryId: input.deliveryId ?? null,
+      partIndex: input.partIndex ?? null,
+      partTotal: input.partTotal ?? null,
+      partType: input.partType ?? null,
+      mfrMark: input.mfrMark ?? null,
+    },
+  });
+}
+
+/** Queue "these packages went on this job's own shelf to go out together". */
+export function enqueueStagePackages(
+  packageIds: string[],
+  projectId: string,
+  /**
+   * What the phone believed about each package when it was ticked: its status,
+   * the container it was in, and the shelf it was on. REQUIRED, for the same
+   * reason the check-in note above is — a set-aside queued without it cannot
+   * be checked against reality when it finally goes up, and a set-aside that
+   * lost the race records a package on a job's bay while it is physically in a
+   * conex or on a truck. The type is the guard; a spread would not be.
+   *
+   * The shelf is in the note and is not in check-in's, because "already staged
+   * on a DIFFERENT job's bay" leaves status and container untouched and moves
+   * only the shelf — the one stale belief a status/container note would wave
+   * through.
+   */
+  expected: Record<
+    string,
+    { status: string; container: string | null; location: string | null }
+  >,
+): Promise<string> {
+  return enqueue({
+    op: "stage_packages",
+    payload: { packageIds, projectId, expected },
+  });
+}
+
+/** Queue "this container moved, and everything inside it went with it". */
+export function enqueueMoveContainer(input: {
+  containerId: string;
+  parentContainerId?: string | null;
+  locationId?: string | null;
+}): Promise<string> {
+  return enqueue({
+    op: "move_container",
+    payload: {
+      containerId: input.containerId,
+      parentContainerId: input.parentContainerId ?? null,
+      locationId: input.locationId ?? null,
+    },
+  });
+}
+
+// ORDERING: none of these three sets `dependsOn`, and the one chain worth
+// worrying about — tag a package offline, then check it into a conex offline,
+// which MUST reach the server in that order or the check-in silently stores
+// nothing — cannot be built through the app today. The check-in list is the
+// only place a package is picked for storing (ContainerDetail.tsx), and it is
+// filtered from listActivePackages(), which asks the server for
+// `.neq("status", "blank")`. A package whose tag is only queued is still
+// blank on the server, and nothing writes it into that cache by hand — the
+// tag screen only invalidates the query, which offline re-serves the same
+// stale list. So a tag-queued package is not offerable for check-in, and the
+// out-of-order pair cannot be made.
+//
+// If a scan-to-check-in path is ever added — a scanner puts a serial straight
+// into the picker without asking the server — that stops being true, and this
+// is what would have to be wired: `dependsOn` takes an entry id, and unlike
+// the clock chain no resolver is needed, because a package id is minted on
+// the client and is the same value on both entries. Look up the queued
+// bind_package entry carrying that packageId and hand its id to
+// enqueueStorePackages as `dependsOn`.
 
 // --- stuck writes: seeing them, and doing something about them -----------
 //
