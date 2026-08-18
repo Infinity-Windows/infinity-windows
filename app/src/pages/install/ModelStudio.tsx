@@ -12,6 +12,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import * as THREE from "three";
+import {
+  buildShelfGeometry,
+  normalizeShelfConfig,
+  SHELF_DEFAULT,
+  type ShelfConfig,
+} from "../../lib/modelstudio/shelfGeometry";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BackChip } from "../../components/BackChip";
 import { pushToast } from "../../lib/toast";
@@ -492,6 +498,13 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     // not just fresh inserts.
     bp.model.scene.itemLoadedCallbacks.add((it) => {
       try {
+        // A saved shelf rebuilds its rack from its own dimensions — same
+        // placeholder-then-swap dance the windows do.
+        const shelfCfg = normalizeShelfConfig(it?.metadata?.shelfConfig);
+        if (shelfCfg) {
+          applyShelfGeometryTo(it, shelfCfg);
+          return;
+        }
         const cfg = it?.metadata?.unitConfig as UnitConfig | undefined;
         if (cfg?.panels?.length) applyUnitGeometry(it, cfg);
         it.placeInRoom();
@@ -1281,7 +1294,51 @@ export function ModelStudio({ source }: { source: StudioSource }) {
    * config permanently; those heal here: a config is rebuilt from the
    * unit's measured size so Apply, the pane picker and the handles all
    * work on first tap. */
+  // The shelf (ticket 22, slice 2): Studio's first free-standing object.
+  // Selection is its OWN state — a shelf landing in the window palette would
+  // get "rebuilt from its size" into a window, which is the one thing the
+  // guard below must never let happen.
+  const [selShelf, setSelShelf] = useState<StudioItem | null>(null);
+  const [shelfDims, setShelfDims] = useState({ l: "", d: "", h: "", levels: "" });
+
+  const applyShelfGeometryTo = (item: StudioItem, cfg: ShelfConfig) => {
+    const built = buildShelfGeometry(cfg);
+    item.geometry.dispose();
+    (item as { geometry: unknown }).geometry = built.geometry;
+    (item as { material: unknown }).material = built.materials;
+    item.scale.set(1, 1, 1);
+    const bb = built.geometry.boundingBox;
+    if (bb) {
+      item.halfSize.set(
+        (bb.max.x - bb.min.x) / 2,
+        (bb.max.y - bb.min.y) / 2,
+        (bb.max.z - bb.min.z) / 2,
+      );
+    }
+    if (item.metadata) item.metadata.shelfConfig = cfg;
+  };
+
+  const selectShelf = (it: StudioItem) => {
+    const cfg = normalizeShelfConfig(it.metadata?.shelfConfig) ?? SHELF_DEFAULT;
+    setSelShelf(it);
+    setSelUnit(null);
+    setSelWall(null);
+    setShelfDims({
+      l: String(cfg.lengthCm),
+      d: String(cfg.depthCm),
+      h: String(cfg.heightCm),
+      levels: String(cfg.levels),
+    });
+    setPaletteOpen(true);
+  };
+
   const selectUnit = (it: StudioItem) => {
+    // A shelf is not a window — route it to its own panel before the
+    // window fallback below invents panels for it.
+    if (it?.metadata?.shelfConfig) {
+      selectShelf(it);
+      return;
+    }
     let cfg = it.metadata?.unitConfig as UnitConfig | undefined;
     if (!cfg?.panels?.length && it.metadata) {
       cfg = {
@@ -2062,6 +2119,28 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           >
             + Add window
           </button>
+          <button
+            className="button-like"
+            onClick={() => {
+              bpRef.current?.model.scene.addItem(
+                8,
+                WINDOW_MODEL,
+                {
+                  itemName: "Shelf",
+                  itemType: 8,
+                  modelUrl: WINDOW_MODEL,
+                  shelfConfig: { ...SHELF_DEFAULT },
+                },
+                undefined,
+                undefined,
+                undefined,
+                false,
+              );
+              pushToast("Shelf added — drag it where it stands.");
+            }}
+          >
+            + Add shelf
+          </button>
         </div>
       </details>
       <details>
@@ -2184,6 +2263,71 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           Click a wall to edit its length or height.
         </p>
       )}
+      {selShelf && (
+        <details open>
+          <summary className="tcx-label">Selected shelf</summary>
+          <div className="studio-palette-body">
+            <p className="muted" style={{ margin: 0, fontSize: 11.5 }}>
+              Real centimeters — the drawing tells the truth about what fits.
+            </p>
+            <div className="row-gap" style={{ flexWrap: "wrap" }}>
+              {(
+                [
+                  ["l", "Length"],
+                  ["d", "Depth"],
+                  ["h", "Height"],
+                  ["levels", "Boards"],
+                ] as const
+              ).map(([k, label]) => (
+                <div key={k} style={{ width: 84 }}>
+                  <label className="field-label">{label}</label>
+                  <input
+                    inputMode="numeric"
+                    value={shelfDims[k]}
+                    onChange={(e) =>
+                      setShelfDims({ ...shelfDims, [k]: e.target.value })
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="row-gap" style={{ marginTop: 6 }}>
+              <button
+                className="button-like active-pill"
+                onClick={() => {
+                  const cfg = normalizeShelfConfig({
+                    lengthCm: Number(shelfDims.l),
+                    depthCm: Number(shelfDims.d),
+                    heightCm: Number(shelfDims.h),
+                    levels: Number(shelfDims.levels),
+                  });
+                  if (!cfg || !selShelf) {
+                    pushToast("A shelf needs all three sizes, above zero.", "error");
+                    return;
+                  }
+                  applyShelfGeometryTo(selShelf, cfg);
+                  refreshHandles();
+                  pushToast("Shelf resized.");
+                }}
+              >
+                Apply size
+              </button>
+              <button
+                className="button-like"
+                onClick={() => {
+                  if (!selShelf) return;
+                  bpRef.current?.model.scene.removeItem(selShelf);
+                  setSelShelf(null);
+                  pushToast("Shelf removed.");
+                }}
+              >
+                Remove shelf
+              </button>
+            </div>
+          </div>
+        </details>
+      )}
+
       {selUnit && (
         <details open>
           <summary className="tcx-label">Selected unit</summary>

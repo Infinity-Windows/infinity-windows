@@ -236,3 +236,32 @@ test("old job-tab links land on the standalone Studio", async ({ page }) => {
   await page.goto(`/projects/${BLACK22.projectId}?tab=model-studio`);
   await expect(page).toHaveURL(new RegExp(`/studio/j/${BLACK22.projectId}`));
 });
+
+test("a shelf: placed, saved with its real dimensions, and typed as free-standing (ticket 22)", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  const calls = await useStudioFixtures(page);
+  await page.goto(`/studio/p/${SP1}`);
+  await expect(page.getByText("Model (3D)")).toBeVisible();
+
+  // The palette drawer starts closed; its Tools fold starts open.
+  await page.getByRole("button", { name: /Tools/ }).click();
+  await page.getByRole("button", { name: "+ Add shelf" }).click();
+
+  await page.getByRole("button", { name: "Save model" }).click();
+  await expect.poll(() => calls.length, { timeout: 15_000 }).toBeGreaterThan(0);
+  const model = (calls.at(-1)!.body as { p_model: { serialized: string } }).p_model;
+  const parsed = JSON.parse(model.serialized) as {
+    items: {
+      item_type: number;
+      metadata?: { shelfConfig?: { lengthCm: number; heightCm: number } };
+    }[];
+  };
+  const shelf = parsed.items.find((i) => i.item_type === 8);
+  expect(shelf, "no itemType-8 shelf in the saved model").toBeTruthy();
+  // The default pallet-rack bay, in real centimeters — the whole point of
+  // the map is that the drawing tells the truth about what fits.
+  expect(shelf!.metadata?.shelfConfig?.lengthCm).toBe(240);
+  expect(shelf!.metadata?.shelfConfig?.heightCm).toBe(200);
+});
