@@ -30,11 +30,14 @@ import {
 } from "../../lib/storage";
 import {
   cardPackages,
+  listMarkSpecTypes,
+  listOpeningRefs,
   listScheduledMarks,
   untaggedMarks,
   WAREHOUSE_CARDS,
   type CardId,
 } from "../../lib/warehouse/warehouseCards";
+import { normalizeMarkCode } from "../../lib/fitview/adapter";
 
 export function StorageHub() {
   const navigate = useNavigate();
@@ -279,6 +282,34 @@ function CardList({
 
   const rows = cardPackages(card, packages, containers);
   const missing = card === "not-tagged" ? untaggedMarks(packages, marks.data ?? []) : [];
+  // The doors and the types for the Not-Tagged rows (ticket 20). A dead row
+  // teaches people the list is a dead end; each one now opens its window.
+  const missingProjects = useMemo(
+    () => [...new Set(missing.map((m) => m.project_id))],
+    [missing],
+  );
+  const openings = useQuery({
+    queryKey: ["openingRefs", missingProjects],
+    queryFn: () => listOpeningRefs(missingProjects),
+    enabled: card === "not-tagged" && missingProjects.length > 0,
+  });
+  const specTypes = useQuery({
+    queryKey: ["markSpecTypes", missingProjects],
+    queryFn: () => listMarkSpecTypes(missingProjects),
+    enabled: card === "not-tagged" && missingProjects.length > 0,
+  });
+  const openingFor = (projectId: string, mark: string) =>
+    (openings.data ?? []).find(
+      (o) =>
+        o.project_id === projectId &&
+        normalizeMarkCode(o.opening_code) === normalizeMarkCode(mark),
+    );
+  const typeFor = (projectId: string, mark: string) => {
+    const s = (specTypes.data ?? []).find(
+      (t) => t.project_id === projectId && t.mark_code === mark,
+    );
+    return s?.operation ?? s?.style ?? null;
+  };
 
   return (
     <>
@@ -289,18 +320,47 @@ function CardList({
 
       {card === "not-tagged" ? (
         <div className="home-projects">
-          {missing.map((m) => (
-            <div key={`${m.project_id}-${m.mark_code}`} className="project-card home-project">
+          {missing.map((m) => {
+            const opening = openingFor(m.project_id, m.mark_code);
+            const type = typeFor(m.project_id, m.mark_code);
+            const body = (
               <div className="home-project-head">
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 600 }}>Window {m.mark_code}</div>
+                  <div style={{ fontWeight: 600 }}>
+                    Window {m.mark_code}
+                    {type && (
+                      <span className="muted" style={{ fontWeight: 400 }}>
+                        {" "}· {type}
+                      </span>
+                    )}
+                  </div>
                   <div className="muted" style={{ fontSize: 12 }}>
                     {jobCode.get(m.project_id) ?? "?"} · nothing tagged yet
+                    {!opening && openings.isSuccess
+                      ? " · no spec page yet — spec review adds it"
+                      : ""}
                   </div>
                 </div>
+                {opening && <span className="muted">›</span>}
               </div>
-            </div>
-          ))}
+            );
+            return opening ? (
+              <Link
+                key={`${m.project_id}-${m.mark_code}`}
+                to={`/projects/${m.project_id}/opening/${opening.id}`}
+                className="project-card home-project"
+              >
+                {body}
+              </Link>
+            ) : (
+              <div
+                key={`${m.project_id}-${m.mark_code}`}
+                className="project-card home-project"
+              >
+                {body}
+              </div>
+            );
+          })}
           {missing.length === 0 && (
             <p className="muted">
               Every window on every active job has at least one package tagged.

@@ -36,6 +36,9 @@ export interface UnitPartsReport {
   missingIndexes: number[];
   /** True/false when knowable; null when no total exists to judge against. */
   complete: boolean | null;
+  /** The maker's printed count, when somebody recorded it disagreeing with
+   * ours (ticket 20). The maker wins; the fix is burn + re-mint. */
+  makerSays: number | null;
 }
 
 export function unitParts(
@@ -95,6 +98,14 @@ export function unitParts(
       ? presentIndexes.length === expectedTotal
       : null;
 
+  const makerClaims = [
+    ...new Set(
+      rows.map((p) => p.mfr_part_total).filter((t): t is number => t != null),
+    ),
+  ];
+  const makerSays =
+    makerClaims.length === 1 && makerClaims[0] !== expectedTotal ? makerClaims[0] : null;
+
   return {
     rows,
     expectedTotal,
@@ -103,6 +114,7 @@ export function unitParts(
     onTheWayIndexes,
     missingIndexes,
     complete,
+    makerSays,
   };
 }
 
@@ -120,6 +132,12 @@ export function partsHeadline(r: UnitPartsReport): { text: string; tone: PartsTo
   if (r.totalsDisagree) {
     return {
       text: "The labels disagree on how many parts this window has — a foreman should settle it",
+      tone: "warn",
+    };
+  }
+  if (r.makerSays != null) {
+    return {
+      text: `Ours say ${r.expectedTotal}, the maker's label says ${r.makerSays} — the maker wins: burn the wrong labels and mint ${r.makerSays}`,
       tone: "warn",
     };
   }

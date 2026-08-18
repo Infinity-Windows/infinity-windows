@@ -95,6 +95,51 @@ export async function listScheduledMarks(
   return (data ?? []) as ScheduledMark[];
 }
 
+/** An opening reference, enough to link a mark row to its page (ticket 20). */
+export interface OpeningRef {
+  id: string;
+  project_id: string;
+  opening_code: string;
+}
+
+/**
+ * Openings across several jobs at once, for the Not-Tagged card's links. The
+ * card spans every active job, and one .in() read beats a query per job.
+ */
+export async function listOpeningRefs(projectIds: string[]): Promise<OpeningRef[]> {
+  if (projectIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("project_openings")
+    .select("id, project_id, opening_code")
+    .in("project_id", projectIds);
+  if (error) {
+    if (isMissingTable(error, "project_openings")) return [];
+    throw error;
+  }
+  return (data ?? []) as OpeningRef[];
+}
+
+/** style/operation per (job, mark), for the type shown inline on the row. */
+export interface MarkSpecType {
+  project_id: string;
+  mark_code: string;
+  operation: string | null;
+  style: string | null;
+}
+
+export async function listMarkSpecTypes(projectIds: string[]): Promise<MarkSpecType[]> {
+  if (projectIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("project_mark_specs")
+    .select("project_id, mark_code, operation, style")
+    .in("project_id", projectIds);
+  if (error) {
+    if (isMissingTable(error, "project_mark_specs")) return [];
+    throw error;
+  }
+  return (data ?? []) as MarkSpecType[];
+}
+
 /**
  * Count the four cards.
  *
