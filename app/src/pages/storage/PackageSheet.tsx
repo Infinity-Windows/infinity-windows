@@ -164,7 +164,14 @@ export function PackageSheet() {
           <h1>{p.serial}</h1>
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>
             {statusLine}
-            {p.project_id ? ` · ${jobCode.get(p.project_id) ?? "?"}` : ""}
+            {/* Boneyard = tagged company stock, project null ON PURPOSE
+                (ticket 17). A finished job's packages keep their job — the
+                two must never blur (audit F9). A blank sticker is neither. */}
+            {p.project_id
+              ? ` · ${jobCode.get(p.project_id) ?? "?"}`
+              : p.status !== "blank"
+                ? " · Boneyard"
+                : ""}
             {p.category ? ` · ${CATEGORY_LABELS[p.category]}` : ""}
             {days != null ? ` · tagged ${days}d ago` : ""}
           </p>

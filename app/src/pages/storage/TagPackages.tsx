@@ -34,6 +34,8 @@ import {
 } from "../../lib/storage";
 
 const LAST_JOB_KEY = "infinity.storage.lastJob";
+/** The job dropdown's value for company stock. Not a uuid on purpose. */
+const BONEYARD = "__boneyard__";
 
 /**
  * Stickers this phone has already spent, so the roll stops offering them.
@@ -223,7 +225,8 @@ export function TagPackages() {
   const specs = useQuery({
     queryKey: ["markSpecs", projectId],
     queryFn: () => listMarkSpecs(projectId),
-    enabled: Boolean(projectId),
+    // The Boneyard is not a job; asking the spec table about it is noise.
+    enabled: Boolean(projectId) && projectId !== BONEYARD,
   });
   const markOptions = useMemo(
     () => (specs.data ?? []).map((s) => s.mark_code),
@@ -243,6 +246,7 @@ export function TagPackages() {
   const bind = useMutation({
     mutationFn: async () => {
       if (!selected || !projectId) throw new Error("Pick a sticker and a job");
+      const boneyard = projectId === BONEYARD;
       // The sticker in hand is held BEFORE the write, because a queued tag
       // never gets a row back from the server to read its serial — or its
       // short code — off.
@@ -250,10 +254,13 @@ export function TagPackages() {
       const serial = sticker.serial;
       const r = await bindPackageOffline({
         packageId: selected.id,
-        projectId,
+        projectId: boneyard ? null : projectId,
+        boneyard,
         category,
         note: note || null,
-        marks: [...marks],
+        // A window number is a position on one job's plans; the Boneyard has
+        // none, and the mark list is hidden when it is picked.
+        marks: boneyard ? [] : [...marks],
         deliveryId,
         partIndex: idx,
         partTotal: tot,
@@ -459,6 +466,9 @@ export function TagPackages() {
       <label className="field-label">Job</label>
       <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
         <option value="">Pick the job…</option>
+        {/* The crew's word, kept on purpose (ticket 17). Company stock gets
+            tagged like anything else — it just belongs to nobody yet. */}
+        <option value={BONEYARD}>Boneyard — company stock, no job yet</option>
         {(projects.data ?? []).map((p) => (
           <option key={p.id} value={p.id}>
             {p.job_code} — {p.name}
@@ -477,7 +487,7 @@ export function TagPackages() {
           </button>
         ))}
       </div>
-      {projectId && markOptions.length > 0 && (
+      {projectId && projectId !== BONEYARD && markOptions.length > 0 && (
         <>
           <label className="field-label">
             Marks inside (optional — makes “where is window 16?” answerable)

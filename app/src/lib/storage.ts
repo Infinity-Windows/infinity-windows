@@ -85,6 +85,22 @@ export interface StorageContainer {
   weight_kg?: number | null;
 }
 
+/**
+ * The words for who owns a package (ticket 17). Null project on a BOUND
+ * package is the Boneyard — company stock, on purpose. A blank sticker owns
+ * nothing yet, and a package whose job just isn't in the map (a finished job
+ * filtered out of an active-jobs list) shows its absence honestly instead of
+ * being adopted by the Boneyard — audit F9 is one rename away otherwise.
+ */
+export function jobLabel(
+  p: Pick<StoragePackage, "project_id" | "status">,
+  jobCodeById: Map<string, string>,
+): string {
+  if (p.status === "blank") return "";
+  if (p.project_id == null) return "Boneyard";
+  return jobCodeById.get(p.project_id) ?? "job not listed";
+}
+
 /** The kind of a container, defaulting missing/unknown rows to conex. */
 export function containerKind(c: Pick<StorageContainer, "kind"> | null | undefined): string {
   return c?.kind ?? "conex";
@@ -504,7 +520,10 @@ export async function ensureDelivery(label: string): Promise<PackageDelivery> {
 
 export async function bindPackage(input: {
   packageId: string;
-  projectId: string;
+  /** Empty/absent + boneyard=true means company stock (ticket 17). */
+  projectId: string | null;
+  /** The Boneyard, said on purpose — never inferred from a missing job. */
+  boneyard?: boolean;
   category?: PackageCategory | null;
   note?: string | null;
   marks?: string[];
@@ -516,7 +535,8 @@ export async function bindPackage(input: {
 }): Promise<StoragePackage> {
   const base = {
     p_package: input.packageId,
-    p_project: input.projectId,
+    p_project: input.boneyard ? null : input.projectId,
+    p_boneyard: input.boneyard ?? false,
     p_category: input.category ?? null,
     p_note: input.note ?? null,
     p_marks: input.marks ?? null,
@@ -537,11 +557,14 @@ export async function bindPackage(input: {
   });
   if (!error) return data as StoragePackage;
 
-  // Deploy window: the database still has the old 6-arg signature. Retrying
-  // without the part fields is only safe when there are none to lose — a tag
-  // WITH part data must fail loudly rather than silently shed it.
-  if (isMissingFunction(error) && !hasParts) {
-    const legacy = await supabase.rpc("bind_package", base);
+  // Deploy window: the database still has an older signature. Retrying with
+  // fewer fields is only safe when there is nothing to lose — a tag WITH part
+  // data must fail loudly rather than silently shed it, and a BONEYARD tag
+  // must never fall back at all: an old database would refuse the null job
+  // with the wrong words, or worse.
+  if (isMissingFunction(error) && !hasParts && !input.boneyard) {
+    const { p_boneyard: _drop, ...legacyArgs } = base;
+    const legacy = await supabase.rpc("bind_package", legacyArgs);
     if (legacy.error) throw legacy.error;
     return legacy.data as StoragePackage;
   }
