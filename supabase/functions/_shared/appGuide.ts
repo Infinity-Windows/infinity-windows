@@ -333,6 +333,20 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "The window/door type catalog — codes, sizes, difficulty and saved install tips. Browse or edit type details here.",
   },
   {
+    path: "/storage/tag",
+    label: "Tag packages",
+    minRole: "installer",
+    blurb:
+      "At the truck: stick a sticker on each package and say which window it belongs to, which piece it is (the label's \"#16 2/3\"), and which job. Until a package is tagged, nobody can be told where it is.",
+  },
+  {
+    path: "/storage/out",
+    label: "Set aside / check out",
+    minRole: "installer",
+    blurb:
+      "Two endings for the same picker. Set aside puts a job's packages on its own shelf so they go out together; check out takes them to the job with a reason. Taking a package tagged for another job warns you and asks why.",
+  },
+  {
     path: "/storage/arrive",
     label: "Arrival check",
     minRole: "installer",

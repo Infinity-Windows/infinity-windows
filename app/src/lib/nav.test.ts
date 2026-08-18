@@ -274,6 +274,8 @@ describe("every NAV destination has a door", () => {
     // Going out section. It is an occasional damage report, not a daily
     // destination, and a menu row would oversell it.
     "/storage/arrive",
+    "/storage/tag",
+    "/storage/out",
   ];
 
   it("every other NAV path appears in some role's menu or bottom bar", () => {
