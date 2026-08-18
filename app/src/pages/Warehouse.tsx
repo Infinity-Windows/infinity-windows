@@ -45,6 +45,7 @@ import {
   warehouseCounts,
 } from "../lib/warehouse/warehouseCards";
 import { placeChain, toLocationsById } from "../lib/warehouse/containment";
+import { splitUnits } from "../lib/warehouse/splitUnits";
 import { useOutbox } from "../lib/offline/useOutbox";
 
 /** Sections run in the order the physical day runs. */
@@ -142,6 +143,8 @@ export function Warehouse() {
     (p) => p.status === "received" && placeChain(p, byId).loose,
   );
   const untagged = untaggedMarks(rows, marks.data ?? []);
+  // Windows the warehouse holds in more than one place right now (ticket 19).
+  const split = splitUnits(rows, byId, locsById);
   const goingOut = rows.filter((p) => p.status === "checked_out");
 
   const visible = SECTIONS.filter((s) => lead || s.everyone);
@@ -244,6 +247,18 @@ export function Warehouse() {
                   <strong>{needsPutaway.length}</strong> tagged package
                   {needsPutaway.length === 1 ? "" : "s"} with nowhere to be —{" "}
                   <Link to={cardLink("loose")}>put them away</Link>.
+                </p>
+              )}
+              {lead && split.length > 0 && (
+                <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+                  <strong>{split.length}</strong> window
+                  {split.length === 1 ? "" : "s"} split across places —{" "}
+                  {split
+                    .slice(0, 3)
+                    .map((s) => `W${s.markCode}`)
+                    .join(", ")}
+                  {split.length > 3 ? ` and ${split.length - 3} more` : ""}.
+                  Ask Find for one to see where its parts sit.
                 </p>
               )}
               {lead && untagged.length > 0 && (
