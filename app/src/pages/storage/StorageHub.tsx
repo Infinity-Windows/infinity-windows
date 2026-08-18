@@ -26,6 +26,7 @@ import {
   type StoragePackage,
   type StorageContainer,
   containerKind,
+  jobLabel,
 } from "../../lib/storage";
 import {
   cardPackages,
@@ -167,7 +168,7 @@ export function StorageHub() {
                     {p.short_code ? ` · ${p.short_code}` : ""}
                   </div>
                   <div className="muted" style={{ fontSize: 12 }}>
-                    {jobCode.get(p.project_id ?? "") ?? "no job"} · {p.status}
+                    {jobLabel(p, jobCode)} · {p.status}
                   </div>
                 </div>
                 <span className="muted">›</span>
@@ -317,7 +318,7 @@ function CardList({
                     {p.short_code ? ` · ${p.short_code}` : ""}
                   </div>
                   <div className="muted" style={{ fontSize: 12 }}>
-                    {jobCode.get(p.project_id ?? "") ?? "no job"}
+                    {jobLabel(p, jobCode)}
                     {(p.package_marks ?? []).length > 0 &&
                       ` · marks ${(p.package_marks ?? []).map((m) => m.mark_code).join(", ")}`}
                   </div>

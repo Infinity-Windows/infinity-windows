@@ -28,6 +28,7 @@ import {
   listCheckoutReasons,
   listContainers,
   mismatchedPackages,
+  jobLabel,
 } from "../../lib/storage";
 import { isMissingStagingBayError } from "../../lib/staging";
 
@@ -209,7 +210,7 @@ export function CheckoutPackages() {
                     {p.short_code ? ` · ${p.short_code}` : ""}
                   </div>
                   <div className="muted" style={{ fontSize: 12 }}>
-                    {jobCode.get(p.project_id ?? "") ?? "no job"}
+                    {jobLabel(p, jobCode)}
                     {p.category ? ` · ${CATEGORY_LABELS[p.category]}` : ""} · {where}
                   </div>
                 </div>

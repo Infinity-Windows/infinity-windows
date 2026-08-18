@@ -659,7 +659,10 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     const p = entry.payload;
     const packageId = str(p.packageId);
     const projectId = str(p.projectId);
-    if (!packageId || !projectId) {
+    const boneyard = p.boneyard === true;
+    // Boneyard tags have no job ON PURPOSE (ticket 17); only a tag that is
+    // neither is missing something.
+    if (!packageId || (!projectId && !boneyard)) {
       throw tagPermanent(new Error("This tag is missing its sticker or its job"));
     }
     const marks = Array.isArray(p.marks)
@@ -667,7 +670,8 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       : [];
     const base = {
       p_package: packageId,
-      p_project: projectId,
+      p_project: boneyard ? null : projectId,
+      p_boneyard: boneyard,
       p_category: str(p.category),
       p_note: str(p.note),
       p_marks: marks,
@@ -703,8 +707,12 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       parts.p_part_type != null ||
       Boolean(parts.p_mfr_mark);
     let res = await supabase.rpc("bind_package", { ...base, ...parts });
-    if (res.error && isMissingFunction(res.error) && !hasParts) {
-      res = await supabase.rpc("bind_package", base);
+    if (res.error && isMissingFunction(res.error) && !hasParts && !boneyard) {
+      // The pre-boneyard signature. Dropping p_boneyard is only safe when it
+      // is false — an old database cannot express a job-less package, and
+      // falling back would send one with the flag silently gone.
+      const { p_boneyard: _drop, ...legacy } = base;
+      res = await supabase.rpc("bind_package", legacy);
     }
     if (!res.error) return;
     if (isAlreadyAssigned(res.error)) {
@@ -713,7 +721,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       if (now.projectId == null) throw res.error; // still blank → try again
       const sticker = now.serial ? `Sticker ${now.serial}` : "That sticker";
 
-      if (now.projectId === projectId) {
+      if (boneyard ? now.projectId == null : now.projectId === projectId) {
         // The tag landed on the job this entry meant. Usually that is this
         // very entry arriving twice — the first answer was lost in the conex —
         // and the sticker already carries everything it was carrying.
@@ -745,7 +753,9 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
         // re-reads the row, finds nothing missing, and resolves.)
         const missing = detailsThatDidNotLand(sent, marks, now.details, now.marks);
         if (missing.length === 0) return;
-        const mine = jobPhrase(await jobCode(projectId));
+        const mine = boneyard
+          ? "the Boneyard"
+          : jobPhrase(await jobCode(projectId ?? ""));
         const it = missing.length === 1 ? "it" : "them";
         throw tagPermanent(
           new Error(
@@ -759,9 +769,9 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
 
       const [other, mine] = await Promise.all([
         jobCode(now.projectId),
-        jobCode(projectId),
+        projectId ? jobCode(projectId) : Promise.resolve(null),
       ]);
-      const forMine = jobPhrase(mine);
+      const forMine = boneyard ? "the Boneyard" : jobPhrase(mine);
       throw tagPermanent(
         new Error(
           `${sticker} is already tagged to ${jobPhrase(other, "a different job")}, ` +

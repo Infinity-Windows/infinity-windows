@@ -79,6 +79,7 @@ const TAG = {
 const TAG_RPC_ARGS = {
   p_package: "pkg-1",
   p_project: "job-1",
+  p_boneyard: false,
   p_category: "windows",
   p_note: "cracked corner",
   p_marks: ["A1"],
@@ -750,5 +751,45 @@ describe("a queued delivery confirmation (ticket 15)", () => {
     );
     expect(isRetryableError(err)).toBe(false);
     expect(String(err)).toContain("app update");
+  });
+});
+
+describe("a queued Boneyard tag (ticket 17)", () => {
+  it("sends no job and says the Boneyard on purpose", async () => {
+    rpc.mockResolvedValue({ data: { id: "pkg-1" }, error: null });
+    await send("bind_package", {
+      packageId: "pkg-1",
+      projectId: null,
+      boneyard: true,
+      category: "doors",
+      partIndex: 1,
+      partTotal: 3,
+    });
+    expect(rpc).toHaveBeenCalledWith(
+      "bind_package",
+      expect.objectContaining({ p_project: null, p_boneyard: true }),
+    );
+  });
+
+  it("never falls back to a database that cannot say Boneyard", async () => {
+    // The legacy signature has no p_boneyard. Dropping the flag would tag
+    // company stock to... nothing the old function accepts — and a silent
+    // retry with the flag gone is the exact shed-a-field failure the part
+    // guard exists for.
+    rpc.mockResolvedValue({
+      data: null,
+      error: { code: "PGRST202", message: "Could not find the function" },
+    });
+    await expect(
+      send("bind_package", { packageId: "pkg-1", projectId: null, boneyard: true }),
+    ).rejects.toBeDefined();
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("a tag with NEITHER a job nor the Boneyard is missing something", async () => {
+    await expect(
+      send("bind_package", { packageId: "pkg-1", projectId: null }),
+    ).rejects.toThrow("missing its sticker or its job");
+    expect(rpc).not.toHaveBeenCalled();
   });
 });

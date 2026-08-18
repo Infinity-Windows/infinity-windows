@@ -426,7 +426,9 @@ export function enqueueTakeSupply(input: {
  */
 export interface BindPackageInput {
   packageId: string;
-  projectId: string;
+  projectId: string | null;
+  /** Company stock, said on purpose (ticket 17). */
+  boneyard?: boolean;
   category?: string | null;
   note?: string | null;
   marks?: string[];
@@ -444,6 +446,7 @@ export function enqueueBindPackage(input: BindPackageInput): Promise<string> {
     payload: {
       packageId: input.packageId,
       projectId: input.projectId,
+      boneyard: input.boneyard ?? false,
       category: input.category ?? null,
       note: input.note ?? null,
       marks: input.marks ?? [],
