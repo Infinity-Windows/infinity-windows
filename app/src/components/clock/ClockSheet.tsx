@@ -869,7 +869,9 @@ export function ClockSheet({
               </button>
             )}
 
-            <Link to="/clock" className="clock-timecard-link" onClick={onClose}>
+            {/* /clock is another clock-in screen; the hours summary is
+                /timecard, which is exactly what this link says. */}
+            <Link to="/timecard" className="clock-timecard-link" onClick={onClose}>
               View my timecard
             </Link>
           </div>

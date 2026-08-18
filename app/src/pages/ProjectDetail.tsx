@@ -504,18 +504,26 @@ function OverviewTab({
         {/* Plan-set upload + tracing live in the Studio now (owner,
             2026-08-14: "that is where the build will begin anyways").
             Foremen can't open the Studio, so they keep the direct upload. */}
+        {/* Both destinations are foreman+ routes. Shown to an installer they
+            dead-end on "Not available for your role", and the app's own rule
+            is that a button landing there is worse than no button
+            (installer audit, 2026-08-17). */}
         {canStudio ? (
           <Link to={`/studio/j/${projectId}`} className="action-btn primary">
             Studio — plans, trace &amp; build
           </Link>
         ) : (
-          <Link to={`/projects/${projectId}/upload`} className="action-btn primary">
-            Upload plansets
+          isLead && (
+            <Link to={`/projects/${projectId}/upload`} className="action-btn primary">
+              Upload plansets
+            </Link>
+          )
+        )}
+        {isLead && (
+          <Link to={`/projects/${projectId}/review`} className="action-btn">
+            Review openings
           </Link>
         )}
-        <Link to={`/projects/${projectId}/review`} className="action-btn">
-          Review openings
-        </Link>
         <Link to={`/supplies?job=${projectId}`} className="action-btn">
           Supplies for this job
         </Link>

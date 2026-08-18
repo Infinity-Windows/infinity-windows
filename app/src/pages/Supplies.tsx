@@ -12,7 +12,7 @@
 import { BackChip } from "../components/BackChip";
 import { Explain } from "../components/ui/Explain";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { listLocations, listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
@@ -253,6 +253,17 @@ function TakeForm({
   const [qty, setQty] = useState("1");
   const n = Number(qty);
   const invalid = !Number.isFinite(n) || n <= 0;
+
+  // The remembered job may have finished since it was stored. It then drops
+  // out of the dropdown while STAYING selected behind the scenes, so the
+  // picker looks blank, Take stays live, and the material lands on a closed
+  // job's costs. Same guard the tag-packages screen already carries.
+  useEffect(() => {
+    if (!projectId) return;
+    const list = projects.data;
+    if (!list) return;
+    if (!list.some((p) => p.id === projectId)) setProjectId("");
+  }, [projects.data, projectId]);
 
   const take = useMutation({
     mutationFn: () => takeSupplyOffline({ supplyId: supply.id, projectId, qty: n }),

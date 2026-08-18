@@ -12,6 +12,9 @@ import { listMyPublished } from "../lib/schedule/api";
 import { listVehicleLinksForAssignments } from "../lib/vehicles/api";
 import { vehicleTitle } from "../lib/vehicles/display";
 import { listTrips } from "../lib/travel/api";
+import { visibleTrips } from "../lib/travel/visibility";
+import { isSupervisorPlus } from "../lib/install/types";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -48,6 +51,11 @@ export function MySchedule() {
     enabled: assignmentIds.length > 0,
   });
   const trips = useQuery({ queryKey: ["trips"], queryFn: listTrips });
+  const { effectiveRole } = useEffectiveRole();
+  const viewer = useMemo(
+    () => ({ profileId: me.data?.id ?? null, isSupervisor: isSupervisorPlus(effectiveRole) }),
+    [me.data?.id, effectiveRole],
+  );
 
   const vehicleByAssignment = useMemo(() => {
     const map = new Map<string, string>();
@@ -59,11 +67,14 @@ export function MySchedule() {
 
   const tripByProject = useMemo(() => {
     const map = new Map<string, { id: string; label: string }>();
-    for (const t of trips.data ?? []) {
+    // Published only, for crew: the Travel tab already hides drafts, and a
+    // schedule badge naming an unannounced destination leaks the same thing
+    // one line at a time.
+    for (const t of visibleTrips(trips.data ?? [], viewer)) {
       if (t.project_id) map.set(t.project_id, { id: t.id, label: t.destination || t.name });
     }
     return map;
-  }, [trips.data]);
+  }, [trips.data, viewer]);
 
   return (
     <div className="page sched-mine">

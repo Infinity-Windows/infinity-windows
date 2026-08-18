@@ -52,6 +52,7 @@ const OFFLINE_KEYS = new Set([
   "scheduledMarks",
   "issues",
   "inventory",
+  "findableUnits",
   "windowTypes",
   "typeBrain",
   "plansets",
@@ -69,6 +70,17 @@ const OFFLINE_KEYS = new Set([
   "tools",
   "supplies",
   "todayTalk",
+  // The talk itself was cached but not whether YOU signed it, so after an
+  // offline reload the app could see a talk exists and not that the gate was
+  // already cleared — every Start install silently refused, with no message,
+  // for as long as there was no signal. That is the exact situation the
+  // offline work exists for (installer audit, 2026-08-17).
+  "toolboxToday",
+  "toolboxHistory",
+  // Shelf and bin addresses. Without these a supply with a home spot degrades
+  // to "home spot set" — which looks configured and tells nobody where to go,
+  // in the conex where the answer matters most.
+  "locations",
   // Travel Info — assigned trips must be viewable in transit / dead zones.
   "trips",
   "trip",

@@ -262,10 +262,22 @@ export function MyWork() {
   // shared orderMyWork result — orderMyWork itself is left untouched.
   const orderNumbers = orderNumberMap(queue.map((o) => o.id));
   const totalOrder = queue.length;
-  const readyCount = active.filter((o) => openingReadiness(o).status === "ready").length;
+  // Blocked FIRST, same as the recommendation and the row tags do:
+  // openingReadiness only knows physical fit, so without this the header can
+  // read "2 ready now" while a row below it says "blocked — missing hardware".
+  const readyCount = active.filter(
+    (o) => !blocks.has(o.id) && openingReadiness(o).status === "ready",
+  ).length;
 
   // Group the rest by job so a multi-job installer sees where work lives.
-  const rest = queue.slice(1);
+  //
+  // Filter by the recommendation's IDENTITY, not its position. `next` searches
+  // past blocked windows, so queue[0] is not always `next` — and slicing index
+  // 0 then dropped that blocked window from the page entirely (not the Next
+  // card, not the job list, not its reason) while showing `next` twice and
+  // undercounting the job header. The comment above says blocked rows "stay in
+  // the lists below wearing their reason"; this is what makes that true.
+  const rest = next ? queue.filter((o) => o.id !== next.id) : queue;
   const jobs = new Map<string, { code: string; name: string; items: ProjectOpening[] }>();
   for (const o of rest) {
     const key = o.project_id;
