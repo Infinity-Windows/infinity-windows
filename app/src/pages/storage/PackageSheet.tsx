@@ -1,8 +1,8 @@
 // One package: what it is, where it sits, and every touch it ever had —
 // the license plate's full life. Scanning a sticker lands here.
 
-import { useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listLocations, listProjects } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
@@ -10,12 +10,14 @@ import { BackChip } from "../../components/BackChip";
 import { downloadPdf, packageLabelsPdf } from "../../lib/labels";
 import { placeWhere, toLocationsById } from "../../lib/warehouse/containment";
 import { areaLabel, areaOptions } from "../../lib/warehouse/areas";
+import { bindLine } from "../../lib/warehouse/markPlan";
 import { setPackageAreaOffline } from "../../lib/warehouse/offlineWrites";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isForemanPlus } from "../../lib/install/types";
 import { pushToast } from "../../lib/toast";
 import {
   agingDays,
+  burnPackages,
   CATEGORY_LABELS,
   getPackageBySerial,
   listContainers,
@@ -48,6 +50,7 @@ export function PackageSheet() {
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const setArea = useMutation({
     // Offline-first like every warehouse write: pointing at a package happens
     // standing inside the box, which is exactly where the bars are not.
@@ -83,12 +86,40 @@ export function PackageSheet() {
   const reprint = useMutation({
     mutationFn: async () => {
       if (!pkg.data) return;
+      const row = pkg.data;
+      const mark = (row.package_marks ?? [])[0]?.mark_code;
+      // The reprinted paper says what the record knows (ticket 16): the job —
+      // or BONEYARD — the window and the part. A bare serial on a re-stuck
+      // sticker made somebody walk back to a screen to learn what it was.
+      const line =
+        row.status === "blank"
+          ? null
+          : bindLine(
+              row.project_id ? (jobCode.get(row.project_id) ?? null) : "BONEYARD",
+              mark ?? "?",
+              row.part_index ?? null,
+              row.part_total ?? null,
+            );
       downloadPdf(
-        await packageLabelsPdf([pkg.data]),
-        `${pkg.data.serial}-sticker.pdf`,
+        await packageLabelsPdf([{ ...row, bindLine: line }]),
+        `${row.serial}-sticker.pdf`,
       );
+      pushToast("Destroy the old sticker so there aren't two.", "info");
     },
   });
+
+  const burn = useMutation({
+    mutationFn: () => burnPackages([pkg.data!.id]),
+    onSuccess: () => {
+      pushToast(
+        "Label burned. Destroy the paper — anything still wearing it scans as nothing.",
+      );
+      void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+      navigate(-1);
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
+  const [confirmBurn, setConfirmBurn] = useState(false);
 
   if (pkg.isLoading) {
     return (
@@ -158,7 +189,47 @@ export function PackageSheet() {
         <button className="button-like" onClick={() => reprint.mutate()}>
           Reprint sticker
         </button>
+        {/* Burn: minted only — the server refuses anything with a life behind
+            it, and this button does not even offer. Foreman+, two taps. */}
+        {lead && p.status === "minted" && !confirmBurn && (
+          <button className="button-like" onClick={() => setConfirmBurn(true)}>
+            Burn this label…
+          </button>
+        )}
       </div>
+      {confirmBurn && p.status === "minted" && (
+        <div
+          className="detail-card"
+          style={{ borderLeft: "3px solid #c0392b", marginTop: 8 }}
+        >
+          <p style={{ margin: 0, fontSize: 14 }}>
+            This throws away label{" "}
+            <strong>
+              {p.part_index != null && p.part_total != null
+                ? `${p.part_index} of ${p.part_total}`
+                : p.serial}
+            </strong>
+            {(p.package_marks ?? [])[0]
+              ? ` for window ${(p.package_marks ?? [])[0].mark_code}`
+              : ""}
+            . The serial dies and the part slot reopens. Destroy the paper —
+            anything still wearing it will scan as nothing.
+          </p>
+          <div className="row-gap" style={{ marginTop: 8 }}>
+            <button
+              className="button-like"
+              style={{ background: "#c0392b", color: "white" }}
+              disabled={burn.isPending}
+              onClick={() => burn.mutate()}
+            >
+              {burn.isPending ? "Burning…" : "Burn it — no way back"}
+            </button>
+            <button className="button-like" onClick={() => setConfirmBurn(false)}>
+              Keep it
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Where in the box (ticket 14, ADR-0006). Foreman+, and only while the
           package is actually IN a box — the options come from what kind of box

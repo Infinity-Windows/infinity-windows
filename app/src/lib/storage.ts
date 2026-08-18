@@ -405,6 +405,19 @@ export async function mintMarkPackages(input: {
   return ((data ?? []) as Record<string, unknown>[]).map(normalizePackage);
 }
 
+/**
+ * Burn minted labels that never lived (ticket 16). Foreman+. All-or-nothing:
+ * one label with history refuses the whole batch by serial and points at
+ * Reprint. A missing id is skipped — already gone is what burning wanted.
+ */
+export async function burnPackages(packageIds: string[]): Promise<number> {
+  const { data, error } = await supabase.rpc("burn_packages", {
+    p_packages: packageIds,
+  });
+  if (error) throw error;
+  return (data as number) ?? 0;
+}
+
 /** Flip pre-labeled packages to received — the truck-side confirm. Any crew. */
 export async function receiveMintedPackages(packageIds: string[]): Promise<number> {
   const { data, error } = await supabase.rpc("receive_minted_packages", {
