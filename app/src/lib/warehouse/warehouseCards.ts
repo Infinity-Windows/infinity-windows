@@ -119,6 +119,19 @@ export async function listOpeningRefs(projectIds: string[]): Promise<OpeningRef[
   return (data ?? []) as OpeningRef[];
 }
 
+/** Put a window on a job's schedule by hand (foreman+). The spec catches up
+ * at spec review; a mark without a spec is legal and always has been. */
+export async function addProjectMark(
+  projectId: string,
+  markCode: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("add_project_mark", {
+    p_project: projectId,
+    p_mark: markCode,
+  });
+  if (error) throw error;
+}
+
 /** style/operation per (job, mark), for the type shown inline on the row. */
 export interface MarkSpecType {
   project_id: string;

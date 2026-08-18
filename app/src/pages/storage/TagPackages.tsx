@@ -19,6 +19,9 @@ import {
   writeToast,
 } from "../../lib/warehouse/offlineWrites";
 import { Explain } from "../../components/ui/Explain";
+import { addProjectMark, listScheduledMarks } from "../../lib/warehouse/warehouseCards";
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
+import { isForemanPlus } from "../../lib/install/types";
 import {
   CATEGORY_LABELS,
   defaultDeliveryLabel,
@@ -233,10 +236,42 @@ export function TagPackages() {
     // The Boneyard is not a job; asking the spec table about it is noise.
     enabled: Boolean(projectId) && projectId !== BONEYARD,
   });
-  const markOptions = useMemo(
-    () => (specs.data ?? []).map((s) => s.mark_code),
-    [specs.data],
-  );
+  // The REAL schedule — project_marks, the list the server checks tags
+  // against. Specs are a subset (a hand-added window has no spec yet), so the
+  // suggestions and the not-on-schedule check both read from here.
+  const scheduled = useQuery({
+    queryKey: ["scheduledMarks", [projectId]],
+    queryFn: () => listScheduledMarks([projectId]),
+    enabled: Boolean(projectId) && projectId !== BONEYARD,
+  });
+  const markOptions = useMemo(() => {
+    const fromSchedule = (scheduled.data ?? []).map((m) => m.mark_code);
+    const fromSpecs = (specs.data ?? []).map((s) => s.mark_code);
+    return [...new Set([...fromSchedule, ...fromSpecs])].sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true }),
+    );
+  }, [scheduled.data, specs.data]);
+  const { effectiveRole } = useEffectiveRole();
+  const lead = isForemanPlus(effectiveRole);
+
+  // The wall gets a door (owner report, 2026-08-18): a typed window that is
+  // not on the schedule used to bounce off the server with nothing saying how
+  // to fix it — ZZTEST had zero marks, so EVERY tag there was refused.
+  const markTyped = markCode.trim().toUpperCase();
+  const markUnscheduled =
+    Boolean(projectId) &&
+    projectId !== BONEYARD &&
+    markTyped !== "" &&
+    scheduled.isSuccess &&
+    !(scheduled.data ?? []).some((m) => m.mark_code === markTyped);
+  const addMark = useMutation({
+    mutationFn: () => addProjectMark(projectId, markTyped),
+    onSuccess: () => {
+      pushToast(`Window ${markTyped} added to the schedule.`);
+      void qc.invalidateQueries({ queryKey: ["scheduledMarks"] });
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
 
   const boneyard = projectId === BONEYARD;
   const count = Math.min(20, Math.max(1, parseInt(countText, 10) || 1));
@@ -521,6 +556,25 @@ export function TagPackages() {
               <option key={m} value={m} />
             ))}
           </datalist>
+          {markUnscheduled && (
+            <p className="wh-pending" style={{ marginTop: 4 }}>
+              Window {markTyped} isn&rsquo;t on this job&rsquo;s schedule yet.{" "}
+              {lead ? (
+                <button
+                  className="link"
+                  style={{ font: "inherit" }}
+                  disabled={addMark.isPending}
+                  onClick={() => addMark.mutate()}
+                >
+                  {addMark.isPending
+                    ? "Adding…"
+                    : `Add window ${markTyped} to the schedule`}
+                </button>
+              ) : (
+                "A foreman can add it — the schedule fills from the plans at spec review."
+              )}
+            </p>
+          )}
         </>
       )}
       <div className="row-gap" style={{ alignItems: "center", marginTop: 6 }}>
