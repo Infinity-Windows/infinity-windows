@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { archiveBlockMessage } from "./ContainerDetail";
+import { archiveBlockMessage, movedMessage } from "./ContainerDetail";
 
 /**
  * Archiving a container is the one action on this page that cannot be undone
@@ -52,6 +52,37 @@ describe("archiveBlockMessage", () => {
     // The packages are the thing that actually gets lost, so they go first.
     expect(archiveBlockMessage("Conex 7", 2, ["Crate 4"])).toBe(
       "2 packages are still in Conex 7. Move them out before you archive it.",
+    );
+  });
+});
+
+/**
+ * Moving a container is the one warehouse action a person takes with a forklift
+ * rather than a phone, and the yard is exactly where the signal dies. The line
+ * afterwards has to say where the container went AND, when there was no
+ * signal, that the record of it is still sitting on the phone — otherwise the
+ * next person to look at the grid sees the crate in its old spot and moves it
+ * back (warehouse audit F3).
+ */
+describe("movedMessage", () => {
+  it("names where it went and how many rode along", () => {
+    expect(movedMessage("Conex 7", 3, false)).toBe(
+      "Moved into Conex 7, 3 packages rode along",
+    );
+  });
+
+  it("reads right for one package and for coming out on its own", () => {
+    expect(movedMessage("Conex 7", 1, false)).toBe(
+      "Moved into Conex 7, 1 package rode along",
+    );
+    expect(movedMessage(null, 2, false)).toBe(
+      "Out on its own, 2 packages rode along",
+    );
+  });
+
+  it("says so when the move is only on the phone", () => {
+    expect(movedMessage("Conex 7", 3, true)).toBe(
+      "Moved into Conex 7, 3 packages rode along — not sent yet, no signal in here.",
     );
   });
 });

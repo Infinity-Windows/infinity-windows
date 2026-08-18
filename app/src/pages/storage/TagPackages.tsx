@@ -12,8 +12,12 @@ import { pushToast } from "../../lib/toast";
 import { BackChip } from "../../components/BackChip";
 import { Scanner } from "../../components/Scanner";
 import type { QrPayload } from "../../lib/qr";
+import { subscribeSynced } from "../../lib/offline/outbox";
 import {
-  bindPackage,
+  bindPackageOffline,
+  tagToast,
+} from "../../lib/warehouse/offlineWrites";
+import {
   CATEGORY_LABELS,
   defaultDeliveryLabel,
   ensureDelivery,
@@ -26,6 +30,92 @@ import {
 } from "../../lib/storage";
 
 const LAST_JOB_KEY = "infinity.storage.lastJob";
+
+/**
+ * Stickers this phone has already spent, so the roll stops offering them.
+ *
+ * The roll is drawn from the server's list of blank stickers, and a tag made
+ * with no signal never reaches the server — so the sticker somebody just stuck
+ * on a crate kept sitting in the roll, and the screen went on calling it free
+ * for the rest of the session. Two ways that ends badly, and the second is the
+ * one that cannot be undone: the screen contradicts its own toast, and the
+ * same sticker gets tagged twice to two different packages. Which tap wins is
+ * then decided by the order the queue drains. Binding is permanent —
+ * CONTEXT.md: a sticker belongs to one package for that package's whole life,
+ * and "a reused sticker would make every earlier record point at the wrong
+ * physical thing".
+ *
+ * WHY A KEY ON THIS PHONE, and not the outbox itself. The outbox is the truth
+ * about what is still waiting, but nothing it exports today can be asked
+ * "which packages have a tag in the queue" — a screen gets counts by category
+ * (getCounts), a change notification (subscribe), a sent notification
+ * (subscribeSynced), and the dead letters (listFailed). Counts cannot name a
+ * sticker: they lump all six warehouse ops into one number. The clean version
+ * of this is a pending-entries-by-op reader on lib/offline/outbox.ts; until
+ * that exists the page has to keep its own note, and localStorage is what
+ * survives the trip this note has to survive: a remount, a tab switch, and the
+ * app being closed and reopened standing inside a conex.
+ *
+ * The two records can only disagree once the write leaves the queue, and both
+ * ways are safe:
+ *   - it went up — the server stops calling that sticker blank, so the next
+ *     good read of the roll drops it from this note too (the prune below).
+ *   - it died in the dead letter — the sticker stays off the roll, which is
+ *     right: a human is looking at it on Stuck writes, and a retry from there
+ *     still binds it. Hiding one printed sticker costs a reprint. Offering a
+ *     spent one costs a trail that lies.
+ */
+const SPENT_STICKERS_KEY = "infinity.storage.spentStickers";
+
+interface SpentSticker {
+  /** The package it was bound to — what the roll is matched against. */
+  id: string;
+  /** Read off the sticker before the write, so a queued tag can still name it. */
+  serial: string;
+  /** What the pill prints: the short code when the sticker carries one. */
+  code: string;
+  /** True while the tag is still sitting on this phone, unsent. */
+  queued: boolean;
+}
+
+function isSpentSticker(v: unknown): v is SpentSticker {
+  if (typeof v !== "object" || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.id === "string" &&
+    typeof o.serial === "string" &&
+    typeof o.code === "string" &&
+    typeof o.queued === "boolean"
+  );
+}
+
+function readSpent(): SpentSticker[] {
+  try {
+    const raw = localStorage.getItem(SPENT_STICKERS_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter(isSpentSticker) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Save the note and hand it back, so callers can set state from one call. */
+function writeSpent(list: SpentSticker[]): SpentSticker[] {
+  try {
+    localStorage.setItem(SPENT_STICKERS_KEY, JSON.stringify(list));
+  } catch {
+    // A full disk is not a reason to start offering a spent sticker again:
+    // the list still holds for this run, it just won't survive a reload.
+  }
+  return list;
+}
+
+/** The line above the spent pills. Says where the write got to, nothing more. */
+function waitingLine(n: number): string {
+  return n === 1
+    ? "1 sticker is assigned and saved on this phone, not sent yet. It goes up on its own when you have signal."
+    : `${n} stickers are assigned and saved on this phone, not sent yet. They go up on their own when you have signal.`;
+}
 
 export function TagPackages() {
   const qc = useQueryClient();
@@ -48,6 +138,9 @@ export function TagPackages() {
   const [note, setNote] = useState("");
   const [deliveryId, setDeliveryId] = useState<string | null>(null);
   const [tagged, setTagged] = useState(0);
+  // Seeded from the phone, so a remount or a cold start in a conex still knows
+  // which stickers this phone has already spent.
+  const [spent, setSpent] = useState<SpentSticker[]>(readSpent);
 
   // One delivery group per truck: created lazily on first bind, reused after.
   useEffect(() => {
@@ -68,6 +161,42 @@ export function TagPackages() {
       setProjectId("");
     }
   }, [projects.data, projectId]);
+
+  // Drop a sticker from the note the moment the server stops calling it blank
+  // — that is the server saying the tag landed, and the roll can carry it from
+  // there. Only a read that actually came back counts: with no signal the
+  // query keeps its last data (or none), so nothing is pruned on a failed
+  // read and no spent sticker comes back to the roll.
+  const blankRows = blanks.data;
+  useEffect(() => {
+    if (!blankRows || spent.length === 0) return;
+    const stillBlank = new Set(blankRows.map((b) => b.id));
+    const kept = spent.filter((s) => stillBlank.has(s.id));
+    if (kept.length !== spent.length) setSpent(writeSpent(kept));
+  }, [blankRows, spent]);
+
+  // The prune above only runs on a read that came back, and standing on this
+  // screen nothing asks for one: the roll is 30s-stale at worst and refetches
+  // on focus, and somebody watching the queue empty never blurs the tab. So
+  // when the drainer says it sent something, read the blank list again. Without
+  // this the "not sent yet" line below outlives the write it describes — the
+  // screen lying the other way round. Same wiring the clock and the photo feed
+  // use for the same reason (lib/clockContext.tsx, components/photos).
+  useEffect(
+    () =>
+      subscribeSynced(() => {
+        void qc.invalidateQueries({ queryKey: ["storageBlanks"] });
+      }),
+    [qc],
+  );
+
+  const spentIds = useMemo(() => new Set(spent.map((s) => s.id)), [spent]);
+  /** The free roll: what the server calls blank, minus what this phone spent. */
+  const roll = useMemo(
+    () => (blankRows ?? []).filter((b) => !spentIds.has(b.id)),
+    [blankRows, spentIds],
+  );
+  const waiting = useMemo(() => spent.filter((s) => s.queued), [spent]);
 
   const specs = useQuery({
     queryKey: ["markSpecs", projectId],
@@ -92,7 +221,12 @@ export function TagPackages() {
   const bind = useMutation({
     mutationFn: async () => {
       if (!selected || !projectId) throw new Error("Pick a sticker and a job");
-      return bindPackage({
+      // The sticker in hand is held BEFORE the write, because a queued tag
+      // never gets a row back from the server to read its serial — or its
+      // short code — off.
+      const sticker = selected;
+      const serial = sticker.serial;
+      const r = await bindPackageOffline({
         packageId: selected.id,
         projectId,
         category,
@@ -104,10 +238,29 @@ export function TagPackages() {
         partType,
         mfrMark: mfrMark.trim() || null,
       });
+      return { sticker, serial: r.package?.serial ?? serial, queued: r.queued };
     },
-    onSuccess: (p) => {
+    onSuccess: ({ sticker, serial, queued }) => {
       localStorage.setItem(LAST_JOB_KEY, projectId);
-      pushToast(`${p.serial} assigned — sticker is now permanent.`);
+      pushToast(tagToast(serial, queued));
+      // This sticker is spoken for either way. A tag that reached the server
+      // is dropped again by the prune above on the next good read of the roll;
+      // a queued one stays until its write goes up. Both are written down
+      // before the invalidate below, because offline that invalidate cannot
+      // refetch and re-serves the same list with this sticker still in it.
+      setSpent((prev) =>
+        prev.some((s) => s.id === sticker.id)
+          ? prev
+          : writeSpent([
+              ...prev,
+              {
+                id: sticker.id,
+                serial,
+                code: sticker.short_code ?? sticker.serial,
+                queued,
+              },
+            ]),
+      );
       setSelected(null);
       setMarks(new Set());
       setNote("");
@@ -127,7 +280,20 @@ export function TagPackages() {
       pushToast("That's not a package sticker.", "error");
       return;
     }
-    const hit = (blanks.data ?? []).find((b) => b.serial === payload.serial);
+    // The scanner is the other door onto the roll, so it gets the same answer.
+    // Named separately from "already assigned or unknown" because this one has
+    // a reason worth hearing: nothing is wrong, the write is just still here.
+    const held = spent.find((s) => s.serial === payload.serial);
+    if (held) {
+      pushToast(
+        held.queued
+          ? `${payload.serial} is already assigned — saved on this phone and not sent yet.`
+          : `${payload.serial} is already assigned.`,
+        "error",
+      );
+      return;
+    }
+    const hit = roll.find((b) => b.serial === payload.serial);
     if (!hit) {
       pushToast(`${payload.serial} is already assigned or unknown.`, "error");
       return;
@@ -163,8 +329,8 @@ export function TagPackages() {
         </span>
       </div>
       {scanning && <Scanner onScan={onScan} />}
-      <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 6 }}>
-        {(blanks.data ?? []).slice(0, 24).map((b) => (
+      <div className="row-gap" data-roll="free" style={{ flexWrap: "wrap", marginTop: 6 }}>
+        {roll.slice(0, 24).map((b) => (
           <button
             key={b.id}
             className={
@@ -175,12 +341,38 @@ export function TagPackages() {
             {b.short_code ?? b.serial}
           </button>
         ))}
-        {(blanks.data ?? []).length === 0 && (
+        {roll.length === 0 && (
           <p className="muted">
             No blank stickers left — print a batch from the Storage page.
           </p>
         )}
       </div>
+
+      {waiting.length > 0 && (
+        <div data-roll="waiting">
+          <p className="wh-pending">{waitingLine(waiting.length)}</p>
+          <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
+            Off the roll for good — a sticker only ever belongs to one package.
+          </p>
+          <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 6 }}>
+            {waiting.slice(0, 12).map((s) => (
+              <button
+                key={s.id}
+                className="button-like"
+                disabled
+                title="Assigned — saved on this phone and not sent yet."
+              >
+                {s.code}
+              </button>
+            ))}
+            {waiting.length > 12 && (
+              <span className="muted" style={{ fontSize: 12, alignSelf: "center" }}>
+                and {waiting.length - 12} more
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       <h2>2 · What it is</h2>
       <label className="field-label">Job</label>

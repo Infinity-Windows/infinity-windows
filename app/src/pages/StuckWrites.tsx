@@ -47,6 +47,9 @@ const OP_LABELS: Record<OutboxOp, string> = {
   store_packages: "Packages checked in",
   checkout_packages: "Packages checked out",
   take_supply: "Supplies taken",
+  bind_package: "Package tagged",
+  stage_packages: "Packages set aside",
+  move_container: "Container moved",
 };
 
 /**
@@ -71,6 +74,35 @@ interface StuckRow {
 function fmtWhen(ms: number): string {
   const d = new Date(ms);
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleString();
+}
+
+/**
+ * How long a write has been sitting here, in words rather than a timestamp.
+ *
+ * "Try again" replays a write exactly as it was written — the same packages,
+ * the same job, the same numbers, decided whenever it was made. A stamp like
+ * "8/14/2026, 4:12 PM" makes a person do that subtraction in their head while
+ * standing in a warehouse, and most won't. Saying "queued 3 days ago" is the
+ * one fact that changes the answer, so it goes on the row.
+ *
+ * This screen only ever REPORTS the age. It does not refuse an old write —
+ * the check for whether a write still matches the world belongs on the
+ * server, where the world actually is. Here, the person decides.
+ *
+ * Wording matches the rest of the app's "last seen" copy (vehicles, pin
+ * history): just now / N min / N hr / N days.
+ */
+export function queuedAgoLabel(when: number, nowMs: number): string {
+  // Install rows carry a text timestamp that can be missing, and 0 would draw
+  // a confident "1/1/1970" — worse than admitting we don't know.
+  if (!Number.isFinite(when) || when <= 0) return "Queued — no time recorded";
+  const min = Math.floor(Math.max(0, nowMs - when) / 60_000);
+  if (min < 1) return "Queued just now";
+  if (min < 60) return `Queued ${min} min ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `Queued ${hr} hr ago`;
+  const days = Math.floor(hr / 24);
+  return days === 1 ? "Queued 1 day ago" : `Queued ${days} days ago`;
 }
 
 export function StuckWrites() {
@@ -122,6 +154,15 @@ export function StuckWrites() {
   // unmistakably-different confirm before anything is deleted.
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
+  // The age is the reason this screen shows a time at all, so it can't freeze
+  // at whatever it said when the page opened. A minute is fine — nothing here
+  // changes faster than that.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(tick);
+  }, []);
+
   const entries: StuckRow[] = [
     ...(failedQ.data ?? []).map((e) => ({
       id: e.id,
@@ -157,6 +198,11 @@ export function StuckWrites() {
         These are saves that never made it to the server — a clock punch, a
         photo, a plan change. Nothing here was thrown away on its own; each
         one is waiting for you to try it again or throw it away yourself.
+      </p>
+      <p className="muted">
+        Try again sends a write exactly as it was written, with the details
+        from the moment it was made. Check how long one has been waiting
+        before you send it — an old write may not match what is there now.
       </p>
 
       {(failedQ.isLoading || installsQ.isLoading) && <p className="muted">Checking for stuck writes…</p>}
@@ -194,7 +240,8 @@ export function StuckWrites() {
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontWeight: 600 }}>{e.label}</div>
                     <div className="muted" style={{ fontSize: 12.5 }}>
-                      {fmtWhen(e.when)}
+                      {queuedAgoLabel(e.when, now)}
+                      {e.when > 0 ? ` · ${fmtWhen(e.when)}` : ""}
                     </div>
                     {e.detail && (
                       <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
