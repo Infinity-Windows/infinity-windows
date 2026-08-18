@@ -16,6 +16,7 @@ import {
   unapproveShift,
   currentBreakSeconds,
   elapsedWorkSeconds,
+  formatClock,
   listOvertimeRules,
   listShiftsForProfile,
   punchDay,
@@ -27,6 +28,7 @@ import {
   type TimecardRangeMode,
   type TimeShift,
 } from "../../lib/timeclock";
+import { describeDuration, shiftGuard } from "../../lib/shiftGuard";
 import {
   overtimeRuleFromRow,
   pickOvertimeRule,
@@ -255,6 +257,17 @@ export function TimecardPanel({
   });
 
   const onBreak = Boolean(openShift?.break_started_at);
+  /**
+   * `elapsedWorkSeconds` formatted with `toISOString().slice(11, 19)` reads
+   * off a calendar date, so anything past 24h silently wraps back to
+   * "00:00:00" — a shift open since last week can look freshly clocked in.
+   * `shiftGuard` is the same check ClockSheet.tsx runs before it shows this
+   * person's own live timer, so a shift nobody closed says so in words
+   * instead of rendering a number that only looks trustworthy.
+   */
+  const openGuard = openShift ? shiftGuard(openShift) : null;
+  const openNeedsRealFinish =
+    openGuard?.state === "over-cap" || openGuard?.state === "needs-finish";
 
   return (
     <div className="tcx-panel">
@@ -266,14 +279,26 @@ export function TimecardPanel({
               {onBreak ? "On break" : "On the clock"}
               {openShift.projects?.job_code && ` · ${openShift.projects.job_code}`}
             </div>
-            <div className="tcx-hero-timer">
-              {new Date(elapsedWorkSeconds(openShift) * 1000).toISOString().slice(11, 19)}
-            </div>
-            <div className="muted" style={{ fontSize: 11.5 }}>
-              since {fmtTime(openShift.clock_in_at)}
-              {currentBreakSeconds(openShift) > 0 &&
-                ` · ${fmtHours(currentBreakSeconds(openShift) / 3600)} on breaks`}
-            </div>
+            {openNeedsRealFinish ? (
+              <>
+                <div className="tcx-hero-timer">Not clocked out</div>
+                <div className="muted" style={{ fontSize: 11.5 }}>
+                  On the clock {describeDuration(openGuard!.sinceClockInSeconds)} — too
+                  long to total up. Needs a real finish time.
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="tcx-hero-timer">
+                  {formatClock(elapsedWorkSeconds(openShift))}
+                </div>
+                <div className="muted" style={{ fontSize: 11.5 }}>
+                  since {fmtTime(openShift.clock_in_at)}
+                  {currentBreakSeconds(openShift) > 0 &&
+                    ` · ${fmtHours(currentBreakSeconds(openShift) / 3600)} on breaks`}
+                </div>
+              </>
+            )}
           </div>
           <span className={`tcx-dot${onBreak ? " amber" : ""}`} aria-hidden />
         </div>

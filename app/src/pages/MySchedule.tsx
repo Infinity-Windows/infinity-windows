@@ -15,6 +15,7 @@ import { listTrips } from "../lib/travel/api";
 import { visibleTrips } from "../lib/travel/visibility";
 import { isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { DirectionsButton } from "../components/maps/DirectionsButton";
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -129,6 +130,12 @@ export function MySchedule() {
                           <MapPin size={13} aria-hidden /> {a.project.address}
                         </span>
                       )}
+                      {/* The whole card is a Link to the job page, so an installer who
+                          only wants directions had to open the job first to find them.
+                          DirectionsButton already swallows its click (preventDefault +
+                          stopPropagation) so tapping it here can't also trigger the
+                          card's navigation. */}
+                      <DirectionsButton address={a.project?.address} />
                       {mates.length > 0 && (
                         <span className="sched-agenda-crew">
                           <Users size={13} aria-hidden /> with {mates.join(", ")}

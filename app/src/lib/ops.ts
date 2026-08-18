@@ -292,6 +292,55 @@ export async function setOrderStatus(id: string, status: string): Promise<void> 
   if (error) throw error;
 }
 
+/** One row of "who took this and where it went" (owner request, ticket 07
+ * follow-up: once material leaves the stores he wants a paper trail). */
+export interface SupplyTake {
+  id: string;
+  project_id: string | null;
+  qty: number | null;
+  /** take_supply writes auth.uid()::text here, not an email like the window
+   * movement log does — so it lines up with profiles.id, but there's no
+   * declared foreign key from movements.actor (plain text) to profiles.id
+   * (uuid) for PostgREST to embed. actor_name is a second lookup by id, the
+   * same two-query pattern points.ts already uses for its leaderboard — not
+   * a join, because the database has none to invent. */
+  actor: string;
+  actor_name: string | null;
+  created_at: string;
+}
+
+/**
+ * Every "took" movement for one supply, newest first: who, how many, and
+ * which job. Job code isn't resolved here — the Supplies page already loads
+ * every project for its own chips, so it looks the code up itself instead of
+ * this function re-querying projects it doesn't otherwise need. A name that
+ * can't be resolved (bad id, deleted profile) falls back to the raw actor id
+ * rather than failing the whole history.
+ */
+export async function listSupplyTakes(supplyId: string): Promise<SupplyTake[]> {
+  const { data, error } = await supabase
+    .from("movements")
+    .select("id, project_id, qty, actor, created_at")
+    .eq("supply_id", supplyId)
+    .eq("event", "took")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  const rows = (data ?? []) as Omit<SupplyTake, "actor_name">[];
+
+  const actorIds = [...new Set(rows.map((r) => r.actor).filter(Boolean))];
+  const nameById = new Map<string, string>();
+  if (actorIds.length > 0) {
+    const profiles = await supabase.from("profiles").select("id, display_name").in("id", actorIds);
+    if (!profiles.error) {
+      for (const p of (profiles.data ?? []) as { id: string; display_name: string }[]) {
+        nameById.set(p.id, p.display_name);
+      }
+    }
+  }
+
+  return rows.map((r) => ({ ...r, actor_name: nameById.get(r.actor) ?? null }));
+}
+
 // --- QC ---
 export interface QcRow {
   id: string; opening_code: string; project_id: string; status: string;

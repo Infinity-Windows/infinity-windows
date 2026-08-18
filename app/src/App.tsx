@@ -13,7 +13,7 @@ import {
 import { Layout } from "./components/Layout";
 import { canAccess, roleRank, ROLE_NAV_V2, type RoutePath } from "./lib/nav";
 import type { CrewRole } from "./lib/install/types";
-import { ClockProvider } from "./lib/clockContext";
+import { ClockProvider, useClock } from "./lib/clockContext";
 import { routerBasename } from "./lib/pwa/basePaths";
 import { ViewAsRoleProvider } from "./lib/viewAsRole";
 import { useEffectiveRole } from "./lib/useEffectiveRole";
@@ -72,7 +72,6 @@ import { Heartbeat } from "./pages/Heartbeat";
 import { Analytics } from "./pages/Analytics";
 import { MemoReview } from "./pages/MemoReview";
 import { Admin } from "./pages/Admin";
-import { TimeClock } from "./pages/TimeClock";
 import { Timecard } from "./pages/Timecard";
 import { TeamTimecards } from "./pages/TeamTimecards";
 import { Scheduling } from "./pages/Scheduling";
@@ -172,6 +171,22 @@ function LegacyInstallOpeningRedirect() {
 function LegacyStudioRedirect() {
   const { id = "" } = useParams();
   return <Navigate to={`/studio/j/${id}`} replace />;
+}
+
+/**
+ * /clock used to be its own page with a second, weaker clock-in flow (hard
+ * toolbox-talk gate, no offline support, breaks always logged as "other").
+ * Push-notification deep links and old bookmarks still point here, so the
+ * route has to keep working — it just opens the one real clock sheet (the
+ * same bottom sheet the nav Clock tab and Home's clock card use) and lands
+ * on the normal home screen behind it, instead of a page of its own.
+ */
+function ClockRoute() {
+  const { openClock } = useClock();
+  useEffect(() => {
+    openClock();
+  }, [openClock]);
+  return <Navigate to="/" replace />;
 }
 
 export default function App() {
@@ -437,7 +452,7 @@ export default function App() {
             <Route path="/my-work" element={<MyWork />} />
             <Route path="/review" element={<MemoReview />} />
             <Route path="/training" element={<Navigate to="/learn" replace />} />
-            <Route path="/clock" element={<TimeClock />} />
+            <Route path="/clock" element={<ClockRoute />} />
             <Route
               path="/timecard"
               element={<RequireRole path="/timecard"><Timecard /></RequireRole>}

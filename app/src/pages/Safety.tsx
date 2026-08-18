@@ -1,4 +1,5 @@
 import { BackChip } from "../components/BackChip";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { listProjects } from "../lib/api";
@@ -16,7 +17,6 @@ import { TalkLibrary } from "../components/safety/TalkLibrary";
 import { TalkContent } from "../components/safety/TalkContent";
 import {
   generateToolboxTalk,
-  listMyCompletions,
   myTodayCompletion,
   signedRecordUrl,
   submitToolboxCompletion,
@@ -107,11 +107,6 @@ export function Safety() {
   const myDone = useQuery({
     queryKey: ["toolboxToday", me.data?.id],
     queryFn: () => myTodayCompletion(me.data!.id),
-    enabled: Boolean(me.data?.id),
-  });
-  const myHistory = useQuery({
-    queryKey: ["toolboxHistory", me.data?.id],
-    queryFn: () => listMyCompletions(me.data!.id),
     enabled: Boolean(me.data?.id),
   });
   const compliance = useQuery({
@@ -268,28 +263,12 @@ export function Safety() {
         )
       )}
 
-      {(myHistory.data?.length ?? 0) > 0 && (
-        <>
-          <h2>My signed talks</h2>
-          <ul className="unit-list work-list">
-            {(myHistory.data ?? []).map((c) => (
-              <li key={c.id} className="find-row">
-                <div>
-                  <strong>{c.safety_talks?.title ?? "Toolbox talk"}</strong>
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    {new Date(c.signed_at).toLocaleString()}
-                  </div>
-                </div>
-                {c.pdf_path && (
-                  <span style={{ marginLeft: "auto" }}>
-                    <PdfLink path={c.pdf_path} label="PDF" />
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+      {/* The full history page already tracks MISSED days, not just signed
+          ones — a second, simpler signed-only list here would just be a worse
+          copy of it. One link in, same place its own back button returns to. */}
+      <Link to="/toolbox-history" className="button-like" style={{ display: "inline-block", marginTop: 10 }}>
+        My toolbox talk history
+      </Link>
 
       {lead && <TalkLibrary />}
 

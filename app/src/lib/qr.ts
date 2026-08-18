@@ -84,6 +84,16 @@ export function parseQr(raw: string): QrPayload | null {
     return { kind: "location", address: text.toUpperCase() };
   }
   // Bare serials typed by hand off a scuffed label.
+  //
+  // WIN- was missing here while CTR-/PKG- were handled, so a window serial
+  // read straight off its own sticker resolved to nothing — the one number
+  // printed on the label the installer is holding. The Scan page used to
+  // paper over it with a second lookup on a second typed box; that box is
+  // gone (one box does more), so the tolerance belongs here where every
+  // typed and scanned path shares it.
+  if (/^WIN-\d{6}$/i.test(text)) {
+    return { kind: "windowSerial", serial: text.toUpperCase() };
+  }
   if (/^CTR-\d{6}$/i.test(text)) {
     return { kind: "containerSerial", serial: text.toUpperCase() };
   }
