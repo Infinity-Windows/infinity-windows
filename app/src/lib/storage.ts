@@ -434,6 +434,25 @@ export async function burnPackages(packageIds: string[]): Promise<number> {
   return (data as number) ?? 0;
 }
 
+/**
+ * The Boneyard's one exit (ticket 18). Foreman+ — putting material on a job
+ * changes what that job expects. Desk work, not conex work: no offline queue,
+ * a real error surfaces (same call as minting).
+ */
+export async function assignPackageToJob(input: {
+  packageId: string;
+  projectId: string;
+  markCode: string;
+}): Promise<StoragePackage> {
+  const { data, error } = await supabase.rpc("assign_package_to_job", {
+    p_package: input.packageId,
+    p_project: input.projectId,
+    p_mark: input.markCode,
+  });
+  if (error) throw error;
+  return normalizePackage(data as Record<string, unknown>);
+}
+
 /** Flip pre-labeled packages to received — the truck-side confirm. Any crew. */
 export async function receiveMintedPackages(packageIds: string[]): Promise<number> {
   const { data, error } = await supabase.rpc("receive_minted_packages", {
