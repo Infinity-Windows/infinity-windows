@@ -26,6 +26,8 @@ import {
   saveContainer,
   type StoragePackage,
   containerKind,
+  jobLabel,
+  pieceLine,
 } from "../../lib/storage";
 import { canNest, ridesAlong } from "../../lib/warehouse/containment";
 import {
@@ -252,10 +254,12 @@ export function ContainerDetail() {
         {p.short_code ? ` · ${p.short_code}` : ""}
       </div>
       <div className="muted" style={{ fontSize: 12 }}>
-        {jobCode.get(p.project_id ?? "") ?? "no job"}
-        {p.category ? ` · ${CATEGORY_LABELS[p.category]}` : ""}
-        {(p.package_marks ?? []).length > 0 &&
-          ` · marks ${(p.package_marks ?? []).map((m) => m.mark_code).join(", ")}`}
+        {jobLabel(p, jobCode)}
+        {pieceLine(p)
+          ? ` · ${pieceLine(p)}`
+          : p.category
+            ? ` · ${CATEGORY_LABELS[p.category]}`
+            : ""}
         {extra ? ` · ${extra}` : ""}
       </div>
     </div>

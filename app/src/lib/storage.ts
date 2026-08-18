@@ -787,6 +787,28 @@ export function hasPartNumber(p: PartLike): boolean {
  * "Part 2 of 3 · Glass", "Part 2 of 3", "Glass" — or null when the label
  * said nothing at all (callers show the "no part number" flag instead).
  */
+/**
+ * What a picker row calls a package: "#6 1/4 · Frame" (owner ask,
+ * 2026-08-18 — the checkout list showed job and category but hid the window
+ * number and the piece, the two things the tag screen just collected).
+ * Degrades honestly: a mark with no fraction is "#6", a fraction with no mark
+ * is "1/4", a piece alone is "Frame", nothing is null.
+ */
+export function pieceLine(
+  p: Pick<StoragePackage, "part_index" | "part_total" | "part_type"> & {
+    package_marks?: { mark_code: string }[];
+  },
+): string | null {
+  const marks = (p.package_marks ?? []).map((m) => `#${m.mark_code}`).join(", ");
+  const frac =
+    p.part_index != null && p.part_total != null
+      ? `${p.part_index}/${p.part_total}`
+      : null;
+  const kind = p.part_type ? PART_LABELS[p.part_type] : null;
+  const where = marks && frac ? `${marks} ${frac}` : marks || frac;
+  return [where, kind].filter(Boolean).join(" · ") || null;
+}
+
 export function partLabel(p: PartLike): string | null {
   const num = hasPartNumber(p) ? `Part ${p.part_index} of ${p.part_total}` : null;
   const kind = p.part_type ? PART_LABELS[p.part_type] : null;
