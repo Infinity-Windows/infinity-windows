@@ -2,7 +2,7 @@
 // the license plate's full life. Scanning a sticker lands here.
 
 import { useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listLocations, listProjects } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
@@ -276,6 +276,16 @@ export function PackageSheet() {
         <button className="button-like" onClick={() => reprint.mutate()}>
           Reprint sticker
         </button>
+        {/* The map (ticket 22): only when the box it sits in HAS a shell. */}
+        {p.container_id &&
+          containersById.get(p.container_id)?.studio_project_id && (
+            <Link
+              className="button-like"
+              to={`/warehouse/3d/${p.container_id}?pkg=${encodeURIComponent(p.serial)}`}
+            >
+              See it in 3D
+            </Link>
+          )}
         {lead && p.status !== "blank" && p.project_id == null && (
           <button className="button-like" onClick={() => setAssigning((v) => !v)}>
             {assigning ? "Cancel assign" : "Assign to job…"}

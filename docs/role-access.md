@@ -28,7 +28,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Stuck writes (`/stuck`)
 - Settings (`/settings`)
 
-**Can reach (all 27 allowed destinations):**
+**Can reach (all 28 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -39,6 +39,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Arrival check (`/storage/arrive`)
 - Tag packages (`/storage/tag`)
 - Set aside / check out (`/storage/out`)
+- Container in 3D (`/warehouse/3d`)
 - Warehouse (`/warehouse`)
 - Jobs (`/projects`)
 - Ask (`/ask`)
@@ -125,7 +126,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Catalog (`/catalog`)
 
-**Can reach (all 42 allowed destinations):**
+**Can reach (all 43 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -136,6 +137,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Arrival check (`/storage/arrive`)
 - Tag packages (`/storage/tag`)
 - Set aside / check out (`/storage/out`)
+- Container in 3D (`/warehouse/3d`)
 - Warehouse (`/warehouse`)
 - Jobs (`/projects`)
 - Ask (`/ask`)
@@ -230,7 +232,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 50 allowed destinations):**
+**Can reach (all 51 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -241,6 +243,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Arrival check (`/storage/arrive`)
 - Tag packages (`/storage/tag`)
 - Set aside / check out (`/storage/out`)
+- Container in 3D (`/warehouse/3d`)
 - Warehouse (`/warehouse`)
 - Jobs (`/projects`)
 - Studio (`/studio`)
@@ -337,7 +340,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 52 allowed destinations):**
+**Can reach (all 53 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -348,6 +351,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Arrival check (`/storage/arrive`)
 - Tag packages (`/storage/tag`)
 - Set aside / check out (`/storage/out`)
+- Container in 3D (`/warehouse/3d`)
 - Warehouse (`/warehouse`)
 - Jobs (`/projects`)
 - Studio (`/studio`)

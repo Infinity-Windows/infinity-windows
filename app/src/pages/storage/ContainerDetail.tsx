@@ -501,12 +501,17 @@ export function ContainerDetail() {
           <div className="row-between">
             <h2 style={{ margin: 0, fontSize: 18 }}>3D shell</h2>
             {container.studio_project_id ? (
-              <Link
-                className="button-like"
-                to={`/studio/p/${container.studio_project_id}`}
-              >
-                Open in Studio
-              </Link>
+              <div className="row-gap">
+                <Link className="button-like" to={`/warehouse/3d/${container.id}`}>
+                  View in 3D
+                </Link>
+                <Link
+                  className="button-like"
+                  to={`/studio/p/${container.studio_project_id}`}
+                >
+                  Open in Studio
+                </Link>
+              </div>
             ) : (
               <button
                 className="button-like"
