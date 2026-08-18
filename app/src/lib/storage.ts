@@ -87,6 +87,10 @@ export function containerKind(c: Pick<StorageContainer, "kind"> | null | undefin
 }
 
 export interface StoragePackage {
+  /** Where inside its current box: front/middle/back, or a compass point in
+   * the building. Cleared by the database the moment the package changes
+   * places — a pointer, not a place (ADR-0006). */
+  area?: string | null;
   id: string;
   serial: string;
   short_code: string | null;
@@ -373,6 +377,20 @@ export async function listContainerMovements(
     throw error;
   }
   return (data ?? []) as ContainerMovementRow[];
+}
+
+/** Point at where in the box a package sits. Foreman+; the server checks the
+ * area fits the KIND of the box the package is in right now. */
+export async function setPackageArea(
+  packageId: string,
+  area: string | null,
+): Promise<StoragePackage> {
+  const { data, error } = await supabase.rpc("set_package_area", {
+    p_package: packageId,
+    p_area: area,
+  });
+  if (error) throw error;
+  return data as StoragePackage;
 }
 
 export async function listCheckoutReasons(): Promise<CheckoutReason[]> {

@@ -680,3 +680,46 @@ describe("a queued check-in that lost the race (F2)", () => {
     ).resolves.toBeUndefined();
   });
 });
+
+describe("a queued area note (ticket 14)", () => {
+  it("sends the package and the pointer", async () => {
+    rpc.mockResolvedValue({ data: { id: "pkg-1" }, error: null });
+    await send("set_package_area", { packageId: "pkg-1", area: "front" });
+    expect(rpc).toHaveBeenCalledWith("set_package_area", {
+      p_package: "pkg-1",
+      p_area: "front",
+    });
+  });
+
+  it("clearing is a legal value, not a missing one", async () => {
+    rpc.mockResolvedValue({ data: { id: "pkg-1" }, error: null });
+    await send("set_package_area", { packageId: "pkg-1", area: null });
+    expect(rpc).toHaveBeenCalledWith("set_package_area", {
+      p_package: "pkg-1",
+      p_area: null,
+    });
+  });
+
+  it("a pointer that went stale stops once, in plain words, instead of burning retries", async () => {
+    // The package moved between queueing and sending. No resend changes that:
+    // the pointer is stale by definition, and whoever is there next points
+    // again. Eight retries of a hopeless write is how the queue clogs.
+    rpc.mockResolvedValue({
+      data: null,
+      error: { message: "that area does not fit this kind of box" },
+    });
+    const err = await send("set_package_area", {
+      packageId: "pkg-1",
+      area: "north",
+    }).catch((e: unknown) => e);
+    expect(isRetryableError(err)).toBe(false);
+    expect(String(err)).toContain("point at it again");
+  });
+
+  it("refuses an entry with no package", async () => {
+    await expect(send("set_package_area", { area: "front" })).rejects.toThrow(
+      "missing its package",
+    );
+    expect(rpc).not.toHaveBeenCalled();
+  });
+});

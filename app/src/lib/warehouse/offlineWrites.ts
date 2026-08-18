@@ -20,6 +20,7 @@ import {
   enqueueCheckoutPackages,
   enqueueMoveContainer,
   enqueueStagePackages,
+  enqueueSetPackageArea,
   enqueueStorePackages,
   enqueueTakeSupply,
 } from "../offline/outbox";
@@ -27,6 +28,7 @@ import {
   bindPackage,
   checkoutPackages,
   moveContainer,
+  setPackageArea,
   stagePackages,
   storePackages,
   type StoragePackage,
@@ -99,6 +101,20 @@ export function checkInNote(
   const note: Record<string, { status: string; container: string | null }> = {};
   for (const p of packages) note[p.id] = { status: p.status, container: p.container_id };
   return note;
+}
+
+/** Point at where in the box a package sits; queues when there is no signal —
+ * areas get set standing INSIDE the box, which is exactly where the bars are
+ * not. A resend lands on the same pointer, so twice is once. */
+export function setPackageAreaOffline(
+  packageId: string,
+  area: string | null,
+): Promise<WriteResult> {
+  return attempt(
+    () => setPackageArea(packageId, area).then(() => 1),
+    () => enqueueSetPackageArea({ packageId, area }),
+    1,
+  );
 }
 
 export function storePackagesOffline(
