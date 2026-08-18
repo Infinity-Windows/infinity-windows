@@ -130,9 +130,9 @@ export const APP_GUIDE: AppGuideEntry[] = [
   {
     path: "/storage",
     label: "Storage",
-    minRole: "installer",
+    minRole: "foreman",
     blurb:
-      "Track material through the conex containers and the warehouse. Blank QR stickers bind to packages as they come off the delivery truck (job, category, optional marks), packages check in to a container by ticking a list, and installers check them out with a reason and the job they're going to. Every package keeps its full history.",
+      "The container hub, for foreman and up: every conex, crate and the warehouse on one grid, with what is inside each one and how long it has sat there. Leads add containers, print blank stickers and door posters, check packages in by ticking a list, and archive a container once it is empty. Installers tag packages at the truck and check them out on their own screens; this is where the containers themselves are managed. Every package keeps its full history.",
   },
   {
     path: "/count",

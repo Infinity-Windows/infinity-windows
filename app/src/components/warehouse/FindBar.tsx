@@ -11,6 +11,7 @@ import { Scanner } from "../Scanner";
 import type { QrPayload } from "../../lib/qr";
 import type { StorageContainer, StoragePackage } from "../../lib/storage";
 import { partLabel } from "../../lib/storage";
+import type { PlaceLocation } from "../../lib/warehouse/containment";
 import {
   findInWarehouse,
   type FindAnswer,
@@ -46,19 +47,39 @@ export function FindBar({
   projects,
   scheduledMarks,
   units,
+  locationsById,
 }: {
   packages: StoragePackage[];
   containers: StorageContainer[];
   projects: { id: string; job_code: string; name: string | null }[];
   scheduledMarks: { project_id: string; mark_code: string }[];
   units: UnitLike[];
+  /** Racks and staging bays, so a staged package names its job instead of
+   * making somebody read a slot address. */
+  locationsById: Map<string, PlaceLocation>;
 }) {
   const [query, setQuery] = useState("");
   const [scanning, setScanning] = useState(false);
+  /** The job picked when one mark belonged to more than one job. */
+  const [markChoice, setMarkChoice] = useState<string | null>(null);
 
   const answer = useMemo(
-    () => findInWarehouse(query, { packages, containers, projects, scheduledMarks, units }),
-    [query, packages, containers, projects, scheduledMarks, units],
+    () =>
+      findInWarehouse(
+        query,
+        { packages, containers, projects, scheduledMarks, units, locationsById },
+        { markProjectId: markChoice ?? undefined },
+      ),
+    [
+      query,
+      packages,
+      containers,
+      projects,
+      scheduledMarks,
+      units,
+      locationsById,
+      markChoice,
+    ],
   );
 
   return (
@@ -67,11 +88,22 @@ export function FindBar({
         <input
           placeholder="Find: window 16, PKG-000123, W-DH3252-0001, S-01-A, Conex 3, BLACK22…"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            // A new search means the old job pick is about something else.
+            setMarkChoice(null);
+          }}
           aria-label="Find anything in the warehouse"
         />
         {query ? (
-          <button className="locate-go" onClick={() => setQuery("")} aria-label="Clear">
+          <button
+            className="locate-go"
+            onClick={() => {
+              setQuery("");
+              setMarkChoice(null);
+            }}
+            aria-label="Clear"
+          >
             <X size={18} />
           </button>
         ) : (
@@ -97,7 +129,7 @@ export function FindBar({
         />
       )}
 
-      {answer && <Answer answer={answer} />}
+      {answer && <Answer answer={answer} onPickMarkJob={setMarkChoice} />}
     </div>
   );
 }
@@ -120,7 +152,13 @@ function Rows({ hits }: { hits: PackageHit[] }) {
   );
 }
 
-function Answer({ answer }: { answer: FindAnswer }) {
+function Answer({
+  answer,
+  onPickMarkJob,
+}: {
+  answer: FindAnswer;
+  onPickMarkJob: (projectId: string) => void;
+}) {
   if (answer.kind === "miss") {
     return (
       <div className="wh-answer">
@@ -146,6 +184,36 @@ function Answer({ answer }: { answer: FindAnswer }) {
         </strong>
         <p style={{ margin: "2px 0 0", fontSize: 13 }}>{answer.headline}</p>
         <Rows hits={answer.hits} />
+      </div>
+    );
+  }
+
+  if (answer.kind === "mark-choices") {
+    return (
+      <div className="wh-answer tone-warn">
+        <strong>Window {answer.markCode} — more than one job has one</strong>
+        <p className="muted" style={{ margin: "2px 0 0", fontSize: 13 }}>
+          Window numbers come off the plans, so they start over on every job.
+          Pick the job you are on.
+        </p>
+        <ul className="unit-list" style={{ margin: "6px 0 0" }}>
+          {answer.choices.map((c) => (
+            <li key={c.projectId} className="find-row">
+              <button
+                type="button"
+                className="link"
+                style={{ font: "inherit", textAlign: "left", minWidth: 0 }}
+                onClick={() => onPickMarkJob(c.projectId)}
+              >
+                <strong>{c.jobCode}</strong>{" "}
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {c.headline}
+                  {c.where ? ` · ${c.where}` : ""}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
       </div>
     );
   }

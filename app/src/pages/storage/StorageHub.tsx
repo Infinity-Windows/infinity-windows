@@ -108,15 +108,21 @@ export function StorageHub() {
         </div>
       </header>
 
+      {/* One rule for the whole page (D6): the route is foreman+, so every
+          button on it is too. Tag and Check out still belong to installers —
+          they reach both from the warehouse page: Tag from "Coming in", Check
+          out from "Going out". Both of those sections are open to everyone,
+          which is what keeps this page's lock from taking tagging away from
+          the person standing at the truck. */}
       <div className="row-gap" style={{ flexWrap: "wrap" }}>
-        <Link className="button-like active-pill" to="/storage/tag">
-          Tag packages (truck)
-        </Link>
-        <Link className="button-like" to="/storage/out">
-          Check out
-        </Link>
         {lead && (
           <>
+            <Link className="button-like active-pill" to="/storage/tag">
+              Tag packages (truck)
+            </Link>
+            <Link className="button-like" to="/storage/out">
+              Check out
+            </Link>
             <button className="button-like" onClick={() => setMinting(true)}>
               Print blank stickers
             </button>

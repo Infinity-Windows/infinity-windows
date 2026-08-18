@@ -30,11 +30,13 @@ Settled 2026-08-17. The warehouse answers one question — *where is it* — and
 
 **Part number** — the manufacturer's "N of M" printed on a package: `#16 2/3` is the second of three packages making up unit 16. M is the number of packages that unit was built as, and it varies — some units are one package, some are six. Because M is printed on the very first package to arrive, the count of what's still missing is knowable from the first delivery onward, without anyone declaring it in advance.
 
-**Container** — anywhere a package can sit: a conex, a crate, a shelf spot, a truck. Containers hold packages and may sit inside one other container, never deeper. Moving a container moves everything inside it in one action — that is the whole reason a container is worth tracking.
+**Container** — a physical box a package sits in: a conex, a crate, a truck. Containers hold packages and may sit inside one other container, never deeper. Moving a container moves everything inside it in one action — that is the whole reason a container is worth tracking. A shelf is *not* a container; see below.
 
 **Conex** — a shipping container used as warehouse storage, on the yard or on a site.
 
 **Crate** — a small container, usually holding glass for units with no pre-assembled frame. A crate is a *place*, not a package: it holds packages and has a location of its own. Crates are broken down and rebuilt, so a crate's identity dies with the physical crate.
+
+**Shelf** — an addressed spot in the warehouse: zone, rack, slot. A shelf is not a container and does not act like one. A package is in a container **or** on a shelf, never both, and the only thing that puts a package on a shelf is **Set aside**, which stages it on its own job's bay and always names that job. There is no general "put this anywhere" action for a shelf the way there is for a conex — for a package, a shelf is staging, not storage.
 
 **Sticker** — an Infinity-printed label bound to exactly one package, for that package's whole life. Printed blank in batches, bound once when the package is tagged, and never reused — a reused sticker would make every earlier record point at the wrong physical thing.
 

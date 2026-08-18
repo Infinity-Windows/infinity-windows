@@ -14,7 +14,7 @@
 // rules, and both are testable without a database.
 
 import type { StorageContainer, StoragePackage } from "../storage";
-import { placeChain, placeLabel } from "./containment";
+import { placeWhere, type PlaceLocation } from "./containment";
 import { partsHeadline, unitParts, type UnitPartsReport } from "./unitParts";
 
 /**
@@ -44,6 +44,16 @@ export interface FindInputs {
   scheduledMarks?: { project_id: string; mark_code: string }[];
   /** Units from the older system, so their IDs and slots still answer. */
   units?: UnitLike[];
+  /**
+   * Every rack and staging bay, keyed by id — what names the job a staged
+   * package is set aside for instead of a bare "on a shelf".
+   *
+   * Required, unlike the two optional fields above. This is the exact field
+   * that went missing from every real screen: when it defaulted, a staged
+   * package read "on a shelf" everywhere and nothing failed. A caller with no
+   * locations loaded yet has to pass an empty Map on purpose.
+   */
+  locationsById: Map<string, PlaceLocation>;
 }
 
 /** One package, with where it sits spelled out. */
@@ -68,6 +78,22 @@ export type FindAnswer =
   | { kind: "package"; hit: PackageHit }
   /** A container and what is in it. */
   | { kind: "container"; container: StorageContainer; hits: PackageHit[] }
+  /**
+   * More than one job has a window by that number. Marks are position numbers,
+   * so "16" is real on several jobs at once — ask which, never guess.
+   */
+  | {
+      kind: "mark-choices";
+      markCode: string;
+      choices: {
+        projectId: string;
+        jobCode: string;
+        /** The completeness verdict for that job's copy — "2 of 3 here". */
+        headline: string;
+        /** Where the first piece sits, so two jobs tell themselves apart. */
+        where: string | null;
+      }[];
+    }
   /** A whole job. */
   | { kind: "job"; projectId: string; jobCode: string; hits: PackageHit[] }
   /** One physical unit from the older system, and the slot it sits on. */
@@ -80,9 +106,10 @@ export type FindAnswer =
 function describe(
   pkg: StoragePackage,
   containersById: Map<string, StorageContainer>,
+  locationsById: Map<string, PlaceLocation>,
 ): PackageHit {
   if (pkg.status === "checked_out") return { pkg, where: "checked out to a job" };
-  return { pkg, where: placeLabel(placeChain(pkg, containersById)) };
+  return { pkg, where: placeWhere(pkg, containersById, locationsById) };
 }
 
 /**
@@ -116,11 +143,24 @@ export function unitWhere(u: UnitLike): string {
  * Resolve one query. Order matters: the most specific identifier wins, so a
  * sticker code never gets swallowed by a job whose name happens to contain it.
  */
-export function findInWarehouse(raw: string, inputs: FindInputs): FindAnswer | null {
+export function findInWarehouse(
+  raw: string,
+  inputs: FindInputs,
+  /** A job already picked from the mark pick-list, so the second look-up
+   * lands straight on that job's window. */
+  opts?: { markProjectId?: string },
+): FindAnswer | null {
   const query = raw.trim().toUpperCase();
   if (query.length < 2) return null;
 
-  const { packages, containers, projects, scheduledMarks = [], units = [] } = inputs;
+  const {
+    packages,
+    containers,
+    projects,
+    scheduledMarks = [],
+    units = [],
+    locationsById,
+  } = inputs;
   const byId = new Map(containers.map((c) => [c.id, c]));
   const jobCodeOf = new Map(projects.map((p) => [p.id, p.job_code]));
 
@@ -131,7 +171,7 @@ export function findInWarehouse(raw: string, inputs: FindInputs): FindAnswer | n
       (p.short_code ?? "").toUpperCase() === query ||
       (p.mfr_mark ?? "").toUpperCase() === query,
   );
-  if (pkg) return { kind: "package", hit: describe(pkg, byId) };
+  if (pkg) return { kind: "package", hit: describe(pkg, byId, locationsById) };
 
   // 1b. A unit from the older system, by its printed id / short code / serial.
   //     Same tier as a package sticker: both are a thing you hold in your hand.
@@ -152,7 +192,7 @@ export function findInWarehouse(raw: string, inputs: FindInputs): FindAnswer | n
   if (container) {
     const hits = packages
       .filter((p) => p.status === "stored" && p.container_id === container.id)
-      .map((p) => describe(p, byId));
+      .map((p) => describe(p, byId, locationsById));
     return { kind: "container", container, hits };
   }
 
@@ -172,7 +212,7 @@ export function findInWarehouse(raw: string, inputs: FindInputs): FindAnswer | n
       // exists they show here beside the units on the same shelf.
       hits: slotPackages
         .filter((p) => slotUnits.some((u) => u.location_id === p.location_id))
-        .map((p) => describe(p, byId)),
+        .map((p) => describe(p, byId, locationsById)),
     };
   }
 
@@ -181,22 +221,40 @@ export function findInWarehouse(raw: string, inputs: FindInputs): FindAnswer | n
   if (project) {
     const hits = packages
       .filter((p) => p.project_id === project.id)
-      .map((p) => describe(p, byId));
+      .map((p) => describe(p, byId, locationsById));
     return { kind: "job", projectId: project.id, jobCode: project.job_code, hits };
   }
 
-  // 4. A window mark. Tagged packages first; failing that, the schedule — so
-  //    "17" answers "nothing tagged yet" instead of pretending 17 isn't real.
-  const tagged = packages.find(
-    (p) =>
-      p.project_id != null &&
-      (p.package_marks ?? []).some((m) => m.mark_code.toUpperCase() === query),
-  );
-  const scheduled = scheduledMarks.find(
-    (m) => m.mark_code.trim().toUpperCase() === query,
-  );
-  const markProject = tagged?.project_id ?? scheduled?.project_id ?? null;
-  if (markProject) {
+  // 4. A window mark. Tagged packages first, then the schedule — so "17"
+  //    answers "nothing tagged yet" instead of pretending 17 isn't real.
+  //
+  //    A mark is a position number off the plans, and it is only unique WITHIN
+  //    a job (project_marks: unique (project_id, mark_code)). Two jobs running
+  //    at once both have a window 16. Taking the first match handed back a
+  //    confident, fully detailed answer about a different window on a different
+  //    job — so gather every job the mark could mean, and only ask when there
+  //    is more than one.
+  const taggedProjectIds = packages
+    .filter(
+      (p) =>
+        p.project_id != null &&
+        (p.package_marks ?? []).some((m) => m.mark_code.toUpperCase() === query),
+    )
+    .map((p) => p.project_id as string);
+  const scheduledProjectIds = scheduledMarks
+    .filter((m) => m.mark_code.trim().toUpperCase() === query)
+    .map((m) => m.project_id);
+  const markProjectIds = new Set([...taggedProjectIds, ...scheduledProjectIds]);
+
+  // Once somebody has picked a job off the list, that pick wins outright —
+  // that is the "no second question" half of the promise.
+  if (opts?.markProjectId && markProjectIds.has(opts.markProjectId)) {
+    markProjectIds.clear();
+    markProjectIds.add(opts.markProjectId);
+  }
+
+  if (markProjectIds.size === 1) {
+    const [markProject] = markProjectIds;
     const report = unitParts(packages, markProject, query);
     return {
       kind: "unit",
@@ -205,8 +263,27 @@ export function findInWarehouse(raw: string, inputs: FindInputs): FindAnswer | n
       jobCode: jobCodeOf.get(markProject) ?? "?",
       report,
       headline: partsHeadline(report).text,
-      hits: report.rows.map((p) => describe(p, byId)),
+      hits: report.rows.map((p) => describe(p, byId, locationsById)),
     };
+  }
+  if (markProjectIds.size > 1) {
+    // Job code first: it is the one word that tells an installer which of the
+    // two windows is theirs. Then what is here, then where it sits.
+    const choices = [...markProjectIds]
+      .map((projectId) => {
+        const report = unitParts(packages, projectId, query);
+        const first = report.rows[0]
+          ? describe(report.rows[0], byId, locationsById)
+          : null;
+        return {
+          projectId,
+          jobCode: jobCodeOf.get(projectId) ?? "?",
+          headline: partsHeadline(report).text,
+          where: first?.where ?? null,
+        };
+      })
+      .sort((a, b) => a.jobCode.localeCompare(b.jobCode));
+    return { kind: "mark-choices", markCode: query, choices };
   }
 
   // 5. Nothing. Say what to do about it.
@@ -223,6 +300,8 @@ export function answerHeadline(a: FindAnswer): string {
   switch (a.kind) {
     case "unit":
       return `Window ${a.markCode} · ${a.jobCode} — ${a.headline}`;
+    case "mark-choices":
+      return `Window ${a.markCode} — ${a.choices.length} jobs have one`;
     case "package":
       return `${a.hit.pkg.short_code ?? a.hit.pkg.serial} — ${a.hit.where}`;
     case "container":

@@ -30,10 +30,8 @@ const MODEL = {
   ],
 };
 
-test("map assign: pick windows, pick a person, sequenced RPCs fire", async ({
-  page,
-}) => {
-  await useSupabaseFixtures(page, { role: "supervisor" });
+/** The one authored outline the map reads its model out of. */
+async function useOutline(page: import("@playwright/test").Page) {
   await page.route("**/rest/v1/project_plan_outlines**", (route) =>
     route.fulfill({
       status: 200,
@@ -54,6 +52,37 @@ test("map assign: pick windows, pick a person, sequenced RPCs fire", async ({
       ]),
     }),
   );
+}
+
+test("the Assign button survives a profile that lands after the map", async ({
+  page,
+}) => {
+  // The renderer reads `onAssign` ONCE, at mount, and unhides the Assign
+  // button then or never. So the button depended on the supervisor's own
+  // profile arriving before the job did — a race that used to be won by
+  // accident and is lost by any slow connection. Whoever loses it gets a map
+  // with no way to assign anything, and no error to explain it, until they
+  // leave the tab and come back.
+  //
+  // Here the profile read is deliberately held back so the map is built for a
+  // role that is not yet known. The button still has to show up.
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useOutline(page);
+  await page.route(/\/rest\/v1\/profiles\?.*id=eq\./, async (route) => {
+    await new Promise((r) => setTimeout(r, 2500));
+    await route.fallback();
+  });
+
+  await page.goto(`/projects/${BLACK22.projectId}?tab=maps-interactive`);
+  await expect(page.locator("button.win").first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator("#assignBtn")).toBeVisible({ timeout: 30_000 });
+});
+
+test("map assign: pick windows, pick a person, sequenced RPCs fire", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useOutline(page);
 
   const assigns: { opening: string; profile: string; sequence: number }[] = [];
   await page.route("**/rest/v1/rpc/assign_opening_to_installer", async (route) => {

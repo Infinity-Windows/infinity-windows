@@ -10,6 +10,9 @@ supabase/.temp/
 # live customer-database state taken against a real login.
 app/e2e/test-results/
 app/e2e/test-results-foreman/
+# Playwright also drops a run summary at the repo root when it is invoked
+# from app/ with a rootDir above it. Same throwaway output, different place.
+test-results/
 app/e2e/__screenshots__/foreman/
 app/playwright-report/
 app/blob-report/

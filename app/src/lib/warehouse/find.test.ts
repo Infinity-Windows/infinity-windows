@@ -52,6 +52,7 @@ const base = (over: Partial<FindInputs> = {}): FindInputs => ({
   packages: [],
   containers: [conex, crate],
   projects: [{ id: "job-1", job_code: "BLACK22", name: "Black Desert" }],
+  locationsById: new Map(),
   ...over,
 });
 
@@ -109,6 +110,111 @@ describe("finding a window", () => {
     if (a.kind !== "unit") return;
     expect(a.hits).toHaveLength(0);
     expect(a.headline).toBe("Nothing tagged for this window yet");
+  });
+});
+
+describe("a staged package names its job through Find (F6)", () => {
+  // The label existed and was unit-tested; Find never handed it the locations,
+  // so every staged package on every screen read "on a shelf". This pins the
+  // whole path — findInWarehouse's own answer, not placeLabel in isolation.
+  const bay = { id: "bay-1", address: "J-BLACK22-A", zone: "J", rack: "BLACK22" };
+  const locationsById = new Map([[bay.id, bay]]);
+
+  it("says which job a found package is set aside for", () => {
+    const p = pkg({ container_id: null, location_id: "bay-1" });
+    const a = findInWarehouse(p.serial, base({ packages: [p], locationsById }))!;
+    expect(a.kind).toBe("package");
+    expect(a.kind === "package" && a.hit.where).toBe("staged for BLACK22 — J-BLACK22-A");
+  });
+
+  it("names the bay on a window's rows too, not just a lone sticker", () => {
+    const p = pkg({ marks: ["44"], container_id: null, location_id: "bay-1" });
+    const a = findInWarehouse("44", base({ packages: [p], locationsById }))!;
+    expect(a.kind).toBe("unit");
+    expect(a.kind === "unit" && a.hits[0].where).toBe("staged for BLACK22 — J-BLACK22-A");
+  });
+});
+
+describe("one mark, more than one job (D1)", () => {
+  // Marks are position numbers off the plans and are unique only WITHIN a job
+  // (project_marks: unique (project_id, mark_code)). Two live jobs both have a
+  // window 16. Answering with whichever came first was confident and wrong.
+  const jobs = [
+    { id: "job-1", job_code: "BLACK22", name: "Black Desert" },
+    { id: "job-2", job_code: "SUNVALE14", name: "Sun Valley" },
+  ];
+
+  const both = () => [
+    pkg({ project_id: "job-1", marks: ["16"], part_index: 1, part_total: 2 }),
+    pkg({ project_id: "job-2", marks: ["16"], part_index: 1, part_total: 2 }),
+  ];
+
+  it("asks which job instead of guessing one", () => {
+    const a = findInWarehouse("16", base({ packages: both(), projects: jobs }))!;
+    expect(a.kind).toBe("mark-choices");
+    if (a.kind !== "mark-choices") return;
+    expect(a.choices.map((c) => c.jobCode)).toEqual(["BLACK22", "SUNVALE14"]);
+  });
+
+  it("every row carries what tells the two windows apart", () => {
+    const bay = { id: "bay-1", address: "J-BLACK22-A", zone: "J", rack: "BLACK22" };
+    const [one, two] = both();
+    one.container_id = null;
+    one.location_id = "bay-1";
+    const a = findInWarehouse(
+      "16",
+      base({
+        packages: [one, two],
+        projects: jobs,
+        locationsById: new Map([[bay.id, bay]]),
+      }),
+    )!;
+    if (a.kind !== "mark-choices") throw new Error("expected a pick-list");
+    expect(a.choices[0].where).toBe("staged for BLACK22 — J-BLACK22-A");
+    expect(a.choices[0].headline).toContain("1 of 2 here");
+    expect(a.choices[1].where).toBe("Conex 3");
+  });
+
+  it("one job with that mark still answers straight through — no extra tap", () => {
+    const a = findInWarehouse("16", base({ packages: [both()[0]], projects: jobs }))!;
+    expect(a.kind).toBe("unit");
+    expect(a.kind === "unit" && a.jobCode).toBe("BLACK22");
+  });
+
+  it("picking a job off the list goes straight to that job's window", () => {
+    const a = findInWarehouse(
+      "16",
+      base({ packages: both(), projects: jobs }),
+      { markProjectId: "job-2" },
+    )!;
+    expect(a.kind).toBe("unit");
+    expect(a.kind === "unit" && a.jobCode).toBe("SUNVALE14");
+  });
+
+  it("counts a scheduled mark as a job in the running, even with nothing tagged", () => {
+    // The rejected fix was "only search the open job". Nothing here scopes to
+    // a job, so the hub — where no job is open — still sees both.
+    const a = findInWarehouse(
+      "16",
+      base({
+        packages: [both()[0]],
+        projects: jobs,
+        scheduledMarks: [{ project_id: "job-2", mark_code: "16" }],
+      }),
+    )!;
+    expect(a.kind).toBe("mark-choices");
+    if (a.kind !== "mark-choices") return;
+    expect(a.choices.map((c) => c.jobCode)).toEqual(["BLACK22", "SUNVALE14"]);
+    expect(a.choices[1].headline).toBe("Nothing tagged for this window yet");
+  });
+
+  it("a stale pick from an older search is ignored, not obeyed", () => {
+    const a = findInWarehouse(
+      "16",
+      base({ packages: [both()[0]], projects: jobs }),
+      { markProjectId: "job-2" },
+    )!;
+    expect(a.kind === "unit" && a.jobCode).toBe("BLACK22");
   });
 });
 

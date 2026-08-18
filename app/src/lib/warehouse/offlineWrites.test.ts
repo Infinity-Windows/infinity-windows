@@ -4,12 +4,22 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+/** What both take paths must receive — including the key that guards a retry. */
+interface KeyedTake {
+  supplyId: string;
+  projectId: string;
+  qty: number;
+  clientId: string;
+}
+
 const storePackages = vi.fn();
 const checkoutPackages = vi.fn();
-const takeSupply = vi.fn();
+const takeSupply = vi.fn<(input: KeyedTake) => Promise<unknown>>();
 const enqueueStorePackages = vi.fn(async () => "entry-1");
 const enqueueCheckoutPackages = vi.fn(async () => "entry-2");
-const enqueueTakeSupply = vi.fn(async () => "entry-3");
+const enqueueTakeSupply = vi.fn<(input: KeyedTake) => Promise<string>>(
+  async () => "entry-3",
+);
 
 vi.mock("../storage", () => ({ storePackages, checkoutPackages }));
 vi.mock("../ops", () => ({ takeSupply }));
@@ -63,6 +73,34 @@ describe("no signal", () => {
     const r = await takeSupplyOffline({ supplyId: "s", projectId: "j", qty: 3 });
     expect(r).toEqual({ count: 3, queued: true });
     expect(enqueueTakeSupply).toHaveBeenCalled();
+  });
+
+  // Warehouse audit F1, and the whole point of the fix. A dead connection and
+  // "the server took it but the answer never came back" look identical from
+  // here, so this fallback fires in BOTH cases. If the queued copy carried a
+  // new key, the second case would subtract the tubes twice.
+  it("sends the queued copy of a take under the same key the live try used", async () => {
+    takeSupply.mockRejectedValue(new TypeError("Failed to fetch"));
+    await takeSupplyOffline({ supplyId: "s", projectId: "j", qty: 4 });
+
+    expect(takeSupply).toHaveBeenCalledTimes(1);
+    expect(enqueueTakeSupply).toHaveBeenCalledTimes(1);
+    const live = takeSupply.mock.calls[0][0];
+    const queued = enqueueTakeSupply.mock.calls[0][0];
+    expect(typeof live.clientId).toBe("string");
+    expect(live.clientId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+    expect(queued.clientId).toBe(live.clientId);
+  });
+
+  it("gives two separate takes two different keys", async () => {
+    takeSupply.mockRejectedValue(new TypeError("Failed to fetch"));
+    await takeSupplyOffline({ supplyId: "s", projectId: "j", qty: 1 });
+    await takeSupplyOffline({ supplyId: "s", projectId: "j", qty: 1 });
+    const first = enqueueTakeSupply.mock.calls[0][0];
+    const second = enqueueTakeSupply.mock.calls[1][0];
+    expect(first.clientId).not.toBe(second.clientId);
   });
 });
 

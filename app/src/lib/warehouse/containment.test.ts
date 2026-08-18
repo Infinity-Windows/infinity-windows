@@ -4,7 +4,15 @@
 
 import { describe, expect, it } from "vitest";
 import type { StorageContainer, StoragePackage } from "../storage";
-import { canNest, placeChain, placeLabel, ridesAlong } from "./containment";
+import type { Location } from "../types";
+import {
+  canNest,
+  placeChain,
+  placeLabel,
+  placeWhere,
+  ridesAlong,
+  toLocationsById,
+} from "./containment";
 
 let seq = 0;
 function ctr(over: Partial<StorageContainer>): StorageContainer {
@@ -157,5 +165,47 @@ describe("staged packages name their job (ticket 08b)", () => {
   it("a container still beats a location — the crate is what holds it", () => {
     const chain = placeChain(pkg({ container_id: "crate" }), byId, locs);
     expect(placeLabel(chain)).toBe("Crate 7 — inside Conex 3");
+  });
+});
+
+describe("building the lookup from the rows a screen actually has", () => {
+  // Every test above hands placeLabel a map somebody typed out by hand, which
+  // is why "staged for BLACK22" passed its tests for weeks while no screen in
+  // the app ever showed it. These two go through the rows listLocations()
+  // really returns, and through the one call a display screen makes.
+  const bay: Location = {
+    id: "bay-1",
+    zone: "J",
+    rack: "BLACK22",
+    slot: "A",
+    address: "J-BLACK22-A",
+    capacity: 4,
+    active: true,
+  };
+  const shelf: Location = {
+    id: "shelf-1",
+    zone: "S",
+    rack: "01",
+    slot: "A",
+    address: "S-01-A",
+    capacity: 6,
+    active: true,
+  };
+
+  it("turns a locations query straight into the lookup, no hand-trimming", () => {
+    const map = toLocationsById([bay, shelf]);
+    expect(map.get("bay-1")?.address).toBe("J-BLACK22-A");
+    expect(map.size).toBe(2);
+  });
+
+  it("placeWhere gives the whole sentence in one call", () => {
+    const map = toLocationsById([bay, shelf]);
+    const staged = pkg({ container_id: null, location_id: "bay-1" });
+    expect(placeWhere(staged, byId, map)).toBe("staged for BLACK22 — J-BLACK22-A");
+    const onShelf = pkg({ container_id: null, location_id: "shelf-1" });
+    expect(placeWhere(onShelf, byId, map)).toBe("on S-01-A");
+    expect(placeWhere(pkg({ container_id: "crate" }), byId, map)).toBe(
+      "Crate 7 — inside Conex 3",
+    );
   });
 });

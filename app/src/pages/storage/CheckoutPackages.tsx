@@ -31,6 +31,22 @@ import {
 } from "../../lib/storage";
 import { isMissingStagingBayError } from "../../lib/staging";
 
+/**
+ * The mismatch warning, per mode — because the two modes do different things
+ * to the package and the warning used to claim only one of them.
+ *
+ * Check out ends the trail: the package leaves the building. Set aside does
+ * not — `stage_packages` moves it onto THIS job's staging bay and leaves it on
+ * hand, so "before it leaves" was simply untrue in staging mode. Reworded, not
+ * gated: staging is undone by re-staging or by scanning the package back into
+ * a conex, so a warning is the whole cost of getting it wrong.
+ */
+export function mismatchWarning(mode: "stage" | "out"): string {
+  return mode === "stage"
+    ? "Double-check before it goes on this job's shelf."
+    : "Double-check before it leaves.";
+}
+
 export function CheckoutPackages() {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -242,7 +258,7 @@ export function CheckoutPackages() {
             .map((p) => `${p.serial}→${jobCode.get(p.project_id ?? "") ?? "?"}`)
             .slice(0, 4)
             .join(", ")}
-          ). Double-check before it leaves.
+          ). {mismatchWarning(mode)}
         </p>
       )}
 

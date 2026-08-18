@@ -388,11 +388,19 @@ export function enqueueCheckoutPackages(input: {
   return enqueue({ op: "checkout_packages", payload: { ...input } });
 }
 
-/** Queue "somebody took this many of this supply for this job". */
+/**
+ * Queue "somebody took this many of this supply for this job".
+ *
+ * clientId is REQUIRED, and that is the whole point of it (F1). A take with no
+ * key subtracts again on every retry, so the compiler has to be the thing that
+ * stops an unkeyed one being queued — this used to type-check without it and
+ * survive only because the body spreads `input` wholesale.
+ */
 export function enqueueTakeSupply(input: {
   supplyId: string;
   projectId: string;
   qty: number;
+  clientId: string;
 }): Promise<string> {
   return enqueue({ op: "take_supply", payload: { ...input } });
 }

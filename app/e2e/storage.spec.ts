@@ -114,7 +114,12 @@ async function useStorageFixtures(page: Page) {
 test.use({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 
 test("hub shows each container with its contents and aging", async ({ page }) => {
-  await useSupabaseFixtures(page, { role: "installer" });
+  // A foreman, not an installer. The container hub went foreman+ (D6): it had
+  // been listed as installer-reachable while nothing in the app ever took an
+  // installer there, and it showed Tag and Check out to every role while the
+  // warehouse page kept the same tools to leads. Two doors to one set of tools
+  // with two different rules is the drift that got closed.
+  await useSupabaseFixtures(page, { role: "foreman" });
   await useStorageFixtures(page);
   await page.goto("/storage");
 
@@ -129,6 +134,22 @@ test("hub shows each container with its contents and aging", async ({ page }) =>
 
   mkdirSync(SHOTS, { recursive: true });
   await page.screenshot({ path: join(SHOTS, "hub.png"), fullPage: true });
+});
+
+test("an installer is turned away from the container hub", async ({ page }) => {
+  // The other half of D6, and the half a registry cannot prove: the floor in
+  // the route registry says who MAY open a path, and the app still has to
+  // actually stop them. Tagging and checking out are unaffected — those belong
+  // to whoever is at the truck (S3) and they are reached from the warehouse
+  // page, which is why locking this hub does not cost an installer anything.
+  await useSupabaseFixtures(page, { role: "installer" });
+  await useStorageFixtures(page);
+  await page.goto("/storage");
+
+  await expect(
+    page.getByRole("heading", { name: "Not available for your role" }),
+  ).toBeVisible();
+  await expect(page.getByText("Conex 7")).toHaveCount(0);
 });
 
 test("check-in: pick the conex once, tick packages, one submit", async ({

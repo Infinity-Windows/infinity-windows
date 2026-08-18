@@ -233,17 +233,30 @@ export function onHandLabel(
   return `about ${s.on_hand} on hand · last counted ${when}`;
 }
 
-/** Take supplies: how many, which job. Decrements the estimate server-side
- * and ticks the oldest matching pull-list row. */
+/**
+ * Take supplies: how many, which job. Decrements the estimate server-side
+ * and ticks the oldest matching pull-list row.
+ *
+ * `clientId` is required, not optional (warehouse audit F1). A phone cannot
+ * tell "the server never got it" from "the server got it and the answer never
+ * came back", so it retries — and without a key the server would subtract a
+ * second time. The caller makes the key ONCE, before the first try, and
+ * reuses it on every retry, including the queued one that runs after this
+ * call's answer is lost; the server ignores a key it has already applied.
+ * See takeSupplyOffline in lib/warehouse/offlineWrites.ts, which is where the
+ * key is minted, and migration 20260830000000_take_supply_idempotent.sql.
+ */
 export async function takeSupply(input: {
   supplyId: string;
   projectId: string;
   qty: number;
+  clientId: string;
 }): Promise<Supply> {
   const { data, error } = await supabase.rpc("take_supply", {
     p_supply: input.supplyId,
     p_project: input.projectId,
     p_qty: input.qty,
+    p_client_id: input.clientId,
   });
   if (error) throw error;
   return data as Supply;
