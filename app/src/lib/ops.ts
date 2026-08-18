@@ -202,6 +202,11 @@ export interface Supply {
   /** Where it lives — the one spot an installer is told (ticket 07).
    * Optional: rows read before the supplies migration lack the keys. */
   home_location_id?: string | null;
+  /** The BOX it lives in — crate, conex or the warehouse — findable the way
+   * packages are (owner ask, 2026-08-18). Slots stay parked; this is the
+   * rough answer, and the note carries what a box cannot say. */
+  home_container_id?: string | null;
+  home_note?: string | null;
   /** The running estimate. Null = never counted; the UI says so and never
    * invents a zero. */
   on_hand?: number | null;
@@ -272,14 +277,38 @@ export async function countSupply(supplyId: string, counted: number): Promise<Su
   return data as Supply;
 }
 
-/** Foreman+: set where a supply lives. */
-export async function setSupplyHome(
-  supplyId: string,
-  locationId: string | null,
-): Promise<Supply> {
+/**
+ * Where a supply lives, in words: "Main Warehouse — north wall, blue bins".
+ * The box first, the note after; a dormant slot address still shows for rows
+ * set before homes became containers; honest when nothing is set.
+ */
+export function supplyHomeLabel(
+  s: Pick<Supply, "home_container_id" | "home_note" | "home_location_id">,
+  containerName: Map<string, string>,
+  locationAddress: Map<string, string>,
+): string {
+  const box = s.home_container_id
+    ? (containerName.get(s.home_container_id) ?? "a container")
+    : null;
+  const slot = s.home_location_id
+    ? (locationAddress.get(s.home_location_id) ?? null)
+    : null;
+  const place = box ?? slot;
+  if (!place) return s.home_note ? s.home_note : "no home spot yet";
+  return s.home_note ? `${place} — ${s.home_note}` : place;
+}
+
+/** Foreman+: set where a supply lives — the box, and the note a box cannot
+ * say ("north wall, blue bins"). */
+export async function setSupplyHome(input: {
+  supplyId: string;
+  containerId?: string | null;
+  note?: string | null;
+}): Promise<Supply> {
   const { data, error } = await supabase.rpc("set_supply_home", {
-    p_supply: supplyId,
-    p_location: locationId,
+    p_supply: input.supplyId,
+    p_container: input.containerId ?? null,
+    p_note: input.note ?? null,
   });
   if (error) throw error;
   return data as Supply;
