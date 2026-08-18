@@ -326,6 +326,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "The window/door type catalog — codes, sizes, difficulty and saved install tips. Browse or edit type details here.",
   },
   {
+    path: "/warehouse/3d",
+    label: "Container in 3D",
+    minRole: "installer",
+    blurb:
+      "A container's shell in 3D — look, orbit, zoom. Coming from a package, the zone where it sits glows (front/middle/back of a conex, compass corner of the warehouse). The map, not the pen: nothing here can be moved.",
+  },
+  {
     path: "/storage/tag",
     label: "Tag packages",
     minRole: "installer",

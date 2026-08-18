@@ -268,6 +268,7 @@ describe("every NAV destination has a door", () => {
   // here is a missing MENU_DEF row, not a candidate for this list.
   const INTENTIONALLY_MENU_LESS = [
     "/clock", // lives as the clock ACTION in the menu + bottom bar, never a row
+    "/warehouse/3d", // the 3D map viewer — reached from package sheets and container pages
     "/search", // header search icon in Layout
     // Horizon stubs / in-page destinations (profile via Account, toolbox
     // history via the clock sheet, the rest "Coming soon" or project-scoped).

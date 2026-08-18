@@ -80,6 +80,7 @@ export type RoutePath =
   | "/analytics"
   | "/crew"
   | "/receive"
+  | "/warehouse/3d"
   | "/labels"
   | "/catalog"
   | "/supplies"
@@ -141,6 +142,9 @@ export const NAV: NavDest[] = [
   // Reached from the warehouse page's sections, never as menu rows.
   { id: "storage-tag", to: "/storage/tag", label: "Tag packages", icon: "▧", minRole: "installer" },
   { id: "storage-out", to: "/storage/out", label: "Set aside / check out", icon: "▧", minRole: "installer" },
+  // The 3D map viewer (ticket 22). Reached from a package's sheet and a
+  // container's page, never as a menu row.
+  { id: "warehouse-3d", to: "/warehouse/3d", label: "Container in 3D", icon: "▧", minRole: "installer" },
   { id: "warehouse", to: "/warehouse", label: "Warehouse", icon: "▦", minRole: "installer" },
   { id: "projects", to: "/projects", label: "Jobs", icon: "▤", minRole: "installer" },
   { id: "studio", to: "/studio", label: "Studio", icon: "◧", minRole: "supervisor" },
