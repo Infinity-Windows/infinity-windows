@@ -1,0 +1,11 @@
+# One tracking chain: packages, planned per window number
+
+Two chains both claimed to answer "what material does this job expect, and where is it." The **unit** chain (`project_windows` → pre-issue → `window_units` → Receive) counts by window *type and quantity*: "six of type A," IDs minted before arrival, labels applied on delivery. The **package** chain (job schedule → marks → stickers → packages) works by *position*: window 16's frame is in Conex 3. They share no records. That is why one panel on a job page said "all planned units have IDs" while forty windows on the same job read "nothing tagged yet" — both were telling the truth about their own chain.
+
+Considered and rejected: **keep both** — every count in the app has two answers forever, and every new screen has to pick a side, which is exactly how the eight-tab warehouse happened the first time. **Merge planning into packages by type** — keeps pre-issue's shape and its label-batch idea, but a type count can never answer "where is window 16's glass," and position is what installers actually ask by.
+
+Chosen (owner call, 2026-08-18): **the package chain is the only chain, and planning happens per window number.** A foreman opens a window on the job schedule, declares how many packages it arrives as, and the app mints that many stickers already bound to job + window + part N of M. Receiving becomes sticking a label on, not typing at a truck. The one good idea the unit chain had — IDs existing before the truck arrives, so a missing delivery is visible — moves into the package chain instead of dying with it.
+
+What made this affordable: production has 100 packages and **every one of them is blank** — the package chain has never tracked a real delivery, so its shape was still free to change. The unit chain holds 11 rows, all internal testing. Like ADR-0004's backfill, this decision gets more expensive every week it waits.
+
+Consequences: Receive rebuilds on packages; the inventory list, the pre-issue panel, and the pre-issue reconciliation retire with the chain — in one pass, *after* label minting ships, because deleting the old chain while the new one is half-built leaves neither. Until that pass lands, the two chains coexist and their numbers are allowed to disagree; nothing new gets built against `window_units`.

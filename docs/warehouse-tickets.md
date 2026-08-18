@@ -182,3 +182,77 @@ Four pieces, and none of them work without the other three:
 - Renaming the `packages` tables to say "package" everywhere the field does — accepted gap, recorded in ADR-0004.
 - Reading expected parts off spec sheets. The manufacturer's `N of M` already answers it; revisit only if labels start arriving without part numbers.
 - Multi-location supply counts. One home spot per supply until somebody is genuinely blocked by it.
+
+---
+
+# Round 2 — from the grill of 2026-08-18
+
+The model is settled in `CONTEXT.md` ("The warehouse", updated the same day) and in ADR-0005 (one chain, planned per window number) and ADR-0006 (an area is a pointer, not a place). Same rules as round 1: each ticket ships on its own branch with tests, and each leaves the app working.
+
+Order matters. 12–14 are the floor the others stand on; 21 is last on purpose; 22 is parked by owner decision until the physical slot reorganization.
+
+## 12 — A container knows what it is
+
+**Why first:** three later tickets branch on the kind of a container, and today every container is the same shape — which is how a crate ends up described as a conex on screen.
+
+`storage_containers` gets `kind` (`conex | crate | truck | building`, default `conex` for the two existing rows), `length_cm / width_cm / height_cm / weight_kg` (nullable — dimensions are a crate's problem first). Seed one `building` row named "Main warehouse", idempotently — production already has 2 containers and this migration must not care whether it has run before. Nesting rules move onto kind: a conex nests in nothing, a crate rides in a conex or a truck, a building holds anything and sits in nothing. The New-container form gets a kind picker and, for crates, the dimension fields; every screen that says "conex" about a crate stops.
+
+## 13 — Where a container has been is history
+
+**Why:** the owner's conexes genuinely move between yard and jobs. Today the address is a text field somebody overwrites, which answers "where is Conex 7" and destroys "where was it last Tuesday" — the question that matters the first time material goes missing between two yards.
+
+Changing a container's address writes a movement line (same log everything else uses) instead of silently editing the row. The `building` kind refuses moves and address changes outright. The container page grows a short trail — "Yard A since Aug 12 · BLACK22 before that." Find can then say "Conex 7 — at BLACK22" with a straight face.
+
+## 14 — Where in the box: areas
+
+**Why:** slots are parked, the reorganization needs rough position anyway, and "it's in Conex 7" is a five-minute hunt inside a forty-foot box.
+
+`packages.area` (text, check-constrained). Foreman+ set it from the package sheet and the container page; the option list comes from the kind of the current container — Front / Middle / Back inside anything that moves, compass + Middle inside the building (ADR-0006). Every server-side move — store, checkout, stage, container move cascade — clears it in the same statement that moves the package, exactly where `location_id` learned to clear. Find and the package sheet read "Conex 7 — front." Tests prove the clear on every move path, not just one.
+
+## 15 — Plan a window's packages and mint its labels
+
+**Why:** this is the merge (ADR-0005). Typing at a truck is where wrong data comes from; a label that already says BLACK22 · Window 16 · 2 of 4 turns receiving into sticking.
+
+On a job's window (the mark page, foreman+): "arrives as N packages." Minting creates N package rows pre-bound — job, window, part i of N — in a pre-arrival state that the arrival check then flips to received; the batch prints in one go, formatted like the blank-roll stickers plus the binding line. The blank-roll path stays for everything unplanned. The maker's printed "of M" still wins a disagreement with the declared N: mismatch warns at the truck and lands as a spec-review question, never a block, never a silent overwrite. This ticket decides the pre-arrival state's name and lifecycle and writes it down — it is the one good idea the unit chain had, kept.
+
+## 16 — Burn and Reprint
+
+**Why:** the owner asked for burning directly; review split it in two so a coffee spill cannot erase a package's history.
+
+Both foreman+. **Burn** (multi-select for a ruined batch): only while the package has no history; the serial dies, the part slot reopens, the warning is loud and names what it kills — "This throws away label 2 of 4 for Window 16. Destroy the paper — anything still wearing it will scan as nothing." **Reprint**: any real package, same serial, fresh paper, history intact, small warning to destroy the old sticker. Burn refuses a package with history and points at Reprint by name.
+
+## 17 — The Boneyard
+
+**Why:** the reorganization is mostly labeling stock that no job owns, and today the tag screen cannot express that — a job is required.
+
+The tag screen's job dropdown gets "Boneyard — company stock, no job yet" (same access as tagging: whoever is at the truck). Picking it hides the window-number list; part fields stay; the label prints BONEYARD where the job code would go. `packages.project_id` becomes nullable with `bind_package` accepting the boneyard case explicitly. Everywhere the app would say "no job" about boneyard stock it says Boneyard instead — but NOT for a finished job's packages, which keep their job; conflating those two would recreate the F9 bug with friendlier words.
+
+## 18 — Assign to job
+
+**Why:** boneyard stock exists to be used; the exit has to be as deliberate as the entrance.
+
+Foreman+ on the package page: pick job, pick window number, one movement line — "assigned to BLACK22 as Window 16" — and an offered, never required, fresh label. Putting material on a job changes what that job expects, which is why this is a decision and not a putaway.
+
+## 19 — Splitting a unit warns and is counted
+
+**Why (owner call):** warn, never block — a frame on site while its glass waits is sometimes the job — but a warning at the moment of the tap is seen by one person, so the standing state needs its own number.
+
+At set-aside and checkout, when other parts of the same unit sit elsewhere: one-tap warning naming where the rest are ("Window 16's other 3 parts are in Conex 3"). On the warehouse page: a standing count of units currently split across places, built on the same read model as "2 of 3 here."
+
+## 20 — An untagged window opens
+
+**Why:** the Not-Tagged list is rows of dead text; a dead row teaches people the list is a dead end.
+
+Each row opens its window: the mark page with the spec when one exists, and an honest "no spec on file yet — add one" (linking the estimating screen, foreman+) when none does. Where the type is known it also shows inline on the row, so the common question costs zero taps.
+
+## 21 — Retire the unit chain (deliberately last)
+
+**Why last:** deleting the old chain while the new one is half-built leaves neither. This lands only after 15 has shipped and been used once in anger.
+
+Receive rebuilds on packages (it becomes a thin door onto Tag/arrival). The pre-issue panel, the reconciliation, the `window_units` reads (inventory list included) all go in one pass; reads die first, the table survives one release as an archive, then drops. Production reality when written: 11 unit rows, all internal testing (ADR-0005).
+
+## 22 — The warehouse map (parked)
+
+**Owner call 2026-08-18:** rides with the physical slot reorganization, not before. At today's coarseness a 3D view can only glow a third of a box, and "Conex 7 — front" already says that in words.
+
+Scope when it wakes, so it is ready the day shelves start moving: a shelf/rack object in Studio (the engine's free-standing item machinery exists but no product wiring does — real work, not a flag); simple true-dimension shell models of each conex and the main warehouse as standalone Studio projects; a link from a container record to its model; and Find lighting up the package's slot — or, until slots exist somewhere, its area zone. Nothing here starts while slots are parked.
