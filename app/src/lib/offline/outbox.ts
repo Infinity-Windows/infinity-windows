@@ -503,6 +503,11 @@ export function enqueueMoveContainer(input: {
   });
 }
 
+/** Queue "I picked up this takeoff" — the take rides the server side. */
+export function enqueuePickupTakeoff(input: { takeoffId: string }): Promise<string> {
+  return enqueue({ op: "pickup_takeoff", payload: { takeoffId: input.takeoffId } });
+}
+
 /** Queue "these pre-labeled packages came off the truck" (ticket 15). */
 export function enqueueReceiveMinted(input: { packageIds: string[] }): Promise<string> {
   return enqueue({ op: "receive_minted", payload: { packageIds: input.packageIds } });

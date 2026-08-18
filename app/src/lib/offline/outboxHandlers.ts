@@ -858,6 +858,23 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
    * cannot be made, send it — a duplicated history line is the lesser loss
    * against a move that never happens.
    */
+  const pickupTakeoff: OpHandler = async (entry) => {
+    const takeoffId = str(entry.payload.takeoffId);
+    if (!takeoffId) {
+      throw tagPermanent(new Error("This pickup names no takeoff"));
+    }
+    const { error } = await supabase.rpc("pickup_takeoff", { p_takeoff: takeoffId });
+    if (error) {
+      const msg = String((error as { message?: unknown }).message ?? "");
+      // "not ready yet" / "for somebody else": no resend changes either —
+      // stop once, in words, instead of burning retries.
+      if (/not ready yet|for somebody else|takeoff not found/.test(msg)) {
+        throw tagPermanent(error as Error);
+      }
+      throw missingGuard(error, "takeoff pickup");
+    }
+  };
+
   const receiveMinted: OpHandler = async (entry) => {
     const packageIds = ids(entry);
     if (packageIds.length === 0) {
@@ -932,6 +949,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     bind_package: bindPackage,
     set_package_area: setPackageArea,
     receive_minted: receiveMinted,
+    pickup_takeoff: pickupTakeoff,
     stage_packages: stagePackages,
     move_container: moveContainer,
   } satisfies OpHandlers;

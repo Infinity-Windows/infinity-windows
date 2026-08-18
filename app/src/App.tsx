@@ -35,6 +35,7 @@ import { Team } from "./pages/Team";
 import { Warehouse } from "./pages/Warehouse";
 import { LocationDetail } from "./pages/LocationDetail";
 import { ContainerViewer } from "./pages/storage/ContainerViewer";
+import { Takeoffs } from "./pages/Takeoffs";
 import { ProjectDetail } from "./pages/ProjectDetail";
 import { Projects } from "./pages/Projects";
 import { Receive } from "./pages/Receive";
@@ -378,6 +379,7 @@ export default function App() {
             {/* The 3D viewer is installer-open ON PURPOSE — it is the map,
                 not the pen. The Studio editor stays supervisor+. */}
             <Route path="/warehouse/3d/:id" element={<ContainerViewer />} />
+            <Route path="/takeoffs" element={<Takeoffs />} />
             <Route path="/pkg/:serial" element={<PackageSheet />} />
             <Route
               path="/receive"

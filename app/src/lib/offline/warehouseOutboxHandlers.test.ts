@@ -793,3 +793,35 @@ describe("a queued Boneyard tag (ticket 17)", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 });
+
+describe("a queued takeoff pickup (2026-08-18)", () => {
+  it("sends the takeoff", async () => {
+    rpc.mockResolvedValue({ data: { id: "t1", status: "picked_up" }, error: null });
+    await send("pickup_takeoff", { takeoffId: "t1" });
+    expect(rpc).toHaveBeenCalledWith("pickup_takeoff", { p_takeoff: "t1" });
+  });
+
+  it("a pickup no resend can fix stops once, in its own words", async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { message: "this takeoff is not ready yet" },
+    });
+    const err = await send("pickup_takeoff", { takeoffId: "t1" }).catch((e: unknown) => e);
+    expect(isRetryableError(err)).toBe(false);
+  });
+
+  it("an app ahead of its database stops on the first try", async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { code: "PGRST202", message: "Could not find the function" },
+    });
+    const err = await send("pickup_takeoff", { takeoffId: "t1" }).catch((e: unknown) => e);
+    expect(isRetryableError(err)).toBe(false);
+    expect(String(err)).toContain("app update");
+  });
+
+  it("refuses an empty pickup", async () => {
+    await expect(send("pickup_takeoff", {})).rejects.toThrow("names no takeoff");
+    expect(rpc).not.toHaveBeenCalled();
+  });
+});

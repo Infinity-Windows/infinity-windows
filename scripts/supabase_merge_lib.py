@@ -552,6 +552,11 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # real event, so lookalike rows are two touches, never a duplicate.
     "package_events": None,
     "points_ledger": None,
+    # A takeoff is one prepared bundle; two identical-looking ones are two
+    # real bundles (the same job orders caulk twice a week). Its items are
+    # lines under one bundle — same reasoning, never deduped.
+    "takeoffs": None,
+    "takeoff_items": None,
     "procedures": None,
     "project_messages": None,
     # One row per time someone dragged a mark on the plan. The same mark can be

@@ -110,7 +110,7 @@ class TestSchemaParsing(unittest.TestCase):
         # undeclared extra (`project_marks`, an empty orphan) is finally
         # declared — and its orphan reconciled — by 20260822000000, so the
         # migrations and production agree on the name at last.
-        self.assertEqual(len(SCHEMA.tables), 97)
+        self.assertEqual(len(SCHEMA.tables), 99)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

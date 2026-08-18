@@ -358,6 +358,11 @@ export function Warehouse() {
                 where to go, and the count is an estimate that only means
                 something with its last count date beside it.
               </Explain>
+              <div className="row-gap" style={{ flexWrap: "wrap", marginBottom: 6 }}>
+                <Link className="button-like" to="/takeoffs">
+                  Takeoffs
+                </Link>
+              </div>
               <ul className="unit-list" style={{ margin: 0 }}>
                 {supplyPreview.map((s2) => (
                   <li key={s2.id} className="find-row">
