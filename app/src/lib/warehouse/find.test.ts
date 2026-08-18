@@ -281,3 +281,47 @@ describe("shelves answer through their own addresses (audit F7, ticket 21)", () 
     expect(a.hits).toEqual([]);
   });
 });
+
+describe("a supply answers with its home box (owner ask, 2026-08-18)", () => {
+  const CAULK = {
+    id: "s1",
+    name: "Caulk (grey)",
+    unit: "tube",
+    on_hand: 12,
+    home_container_id: "conex",
+    home_note: "north wall, blue bins",
+  };
+
+  it("finds it by part of the name and says the box and the note", () => {
+    const a = findInWarehouse("caulk", base({ supplies: [CAULK] }))!;
+    expect(a.kind).toBe("supply");
+    if (a.kind !== "supply") return;
+    expect(a.home).toBe("Conex 3 — north wall, blue bins");
+    expect(a.onHand).toBe(12);
+  });
+
+  it("an exact name beats a contains match", () => {
+    const exact = { ...CAULK, id: "s2", name: "CAULK", home_note: null, home_container_id: null };
+    const a = findInWarehouse("caulk", base({ supplies: [CAULK, exact] }))!;
+    if (a.kind !== "supply") return;
+    expect(a.name).toBe("CAULK");
+  });
+
+  it("stickers and boxes still win — a supply never shadows a serial", () => {
+    const p = pkg({ serial: "CAULKGUN1" });
+    const a = findInWarehouse("caulkgun1", base({ packages: [p], supplies: [CAULK] }))!;
+    expect(a.kind).toBe("package");
+  });
+
+  it("two letters never match a supply — too easy to hit by accident", () => {
+    const a = findInWarehouse("ca", base({ supplies: [CAULK] }))!;
+    expect(a.kind).toBe("miss");
+  });
+
+  it("no home yet is said plainly", () => {
+    const bare = { id: "s3", name: "Screws", unit: "box" };
+    const a = findInWarehouse("screws", base({ supplies: [bare] }))!;
+    if (a.kind !== "supply") return;
+    expect(a.home).toBe("no home spot yet");
+  });
+});

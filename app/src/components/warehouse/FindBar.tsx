@@ -16,6 +16,7 @@ import {
   findInWarehouse,
   type FindAnswer,
   type PackageHit,
+  type FindInputs,
 } from "../../lib/warehouse/find";
 
 /** Pull a searchable string out of any scanned payload. */
@@ -45,12 +46,14 @@ export function FindBar({
   containers,
   projects,
   scheduledMarks,
+  supplies = [],
   locationsById,
 }: {
   packages: StoragePackage[];
   containers: StorageContainer[];
   projects: { id: string; job_code: string; name: string | null }[];
   scheduledMarks: { project_id: string; mark_code: string }[];
+  supplies?: FindInputs["supplies"];
   /** Racks and staging bays, so a staged package names its job instead of
    * making somebody read a slot address. */
   locationsById: Map<string, PlaceLocation>;
@@ -64,7 +67,7 @@ export function FindBar({
     () =>
       findInWarehouse(
         query,
-        { packages, containers, projects, scheduledMarks, locationsById },
+        { packages, containers, projects, scheduledMarks, supplies, locationsById },
         { markProjectId: markChoice ?? undefined },
       ),
     [
@@ -73,6 +76,7 @@ export function FindBar({
       containers,
       projects,
       scheduledMarks,
+      supplies,
       locationsById,
       markChoice,
     ],
@@ -210,6 +214,23 @@ function Answer({
             </li>
           ))}
         </ul>
+      </div>
+    );
+  }
+
+  if (answer.kind === "supply") {
+    return (
+      <div className="wh-answer">
+        <strong>{answer.name}</strong>
+        <p style={{ margin: "2px 0 0", fontSize: 13 }}>{answer.home}</p>
+        <p className="muted" style={{ margin: "2px 0 0", fontSize: 12.5 }}>
+          {answer.onHand != null
+            ? `about ${answer.onHand} ${answer.unit} on hand`
+            : "never counted"}
+        </p>
+        <Link className="button-like" style={{ marginTop: 8 }} to="/supplies">
+          Take some
+        </Link>
       </div>
     );
   }

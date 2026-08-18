@@ -25,6 +25,17 @@ export interface FindInputs {
   /** Marks on active jobs — lets a search for "17" answer even when nothing
    * is tagged for it yet ("no packages tagged for window 17"). */
   scheduledMarks?: { project_id: string; mark_code: string }[];
+  /** The supply catalog, so "caulk" answers with its home box (owner ask,
+   * 2026-08-18: supplies are findable the way packages are). */
+  supplies?: {
+    id: string;
+    name: string;
+    unit: string;
+    on_hand?: number | null;
+    home_container_id?: string | null;
+    home_note?: string | null;
+    home_location_id?: string | null;
+  }[];
   /**
    * Every rack and staging bay, keyed by id — what names the job a staged
    * package is set aside for instead of a bare "on a shelf".
@@ -80,6 +91,7 @@ export type FindAnswer =
   /** One physical unit from the older system, and the slot it sits on. */
   /** A rack slot, and what is on it. */
   | { kind: "slot"; address: string; hits: PackageHit[] }
+  | { kind: "supply"; name: string; unit: string; onHand: number | null; home: string }
   /** Nothing matched — say what to do next, never "no results". */
   | { kind: "miss"; query: string; suggestion: string };
 
@@ -117,6 +129,7 @@ export function findInWarehouse(
     containers,
     projects,
     scheduledMarks = [],
+    supplies = [],
     locationsById,
   } = inputs;
   const byId = new Map(containers.map((c) => [c.id, c]));
@@ -232,6 +245,33 @@ export function findInWarehouse(
   }
 
   // 5. Nothing. Say what to do about it.
+  // 5. A supply, by name — exact first, then contains, so "caulk" finds
+  //    "Caulk (grey)" but an exact "Caulk" row wins outright.
+  const supply =
+    supplies.find((s) => s.name.toUpperCase() === query) ??
+    supplies.find((s) => s.name.toUpperCase().includes(query));
+  if (supply && query.length >= 3) {
+    const box = supply.home_container_id
+      ? (byId.get(supply.home_container_id)?.name ?? "a container")
+      : null;
+    const slot = supply.home_location_id
+      ? (locationsById.get(supply.home_location_id)?.address ?? null)
+      : null;
+    const place = box ?? slot;
+    const home = place
+      ? supply.home_note
+        ? `${place} — ${supply.home_note}`
+        : place
+      : (supply.home_note ?? "no home spot yet");
+    return {
+      kind: "supply",
+      name: supply.name,
+      unit: supply.unit,
+      onHand: supply.on_hand ?? null,
+      home,
+    };
+  }
+
   return {
     kind: "miss",
     query: raw.trim(),
@@ -255,6 +295,8 @@ export function answerHeadline(a: FindAnswer): string {
       return `${a.jobCode} — ${a.hits.length} package${a.hits.length === 1 ? "" : "s"} tagged`;
     case "slot":
       return `${a.address} — ${a.hits.length} package${a.hits.length === 1 ? "" : "s"}`;
+    case "supply":
+      return `${a.name} — ${a.home}`;
     case "miss":
       return `Nothing found for “${a.query}”`;
   }

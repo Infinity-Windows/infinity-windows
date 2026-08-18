@@ -160,6 +160,7 @@ export function Warehouse() {
         containers={boxes}
         projects={projects.data ?? []}
         scheduledMarks={marks.data ?? []}
+        supplies={supplies.data ?? []}
         locationsById={locsById}
       />
 

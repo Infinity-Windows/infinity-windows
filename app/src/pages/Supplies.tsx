@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { listLocations, listProjects } from "../lib/api";
+import { containerKind, listContainers } from "../lib/storage";
 import { formatApiError } from "../lib/errors";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
@@ -30,6 +31,7 @@ import {
   onHandLabel,
   setOrderStatus,
   setSupplyHome,
+  supplyHomeLabel,
   type Supply,
   type SupplyTake,
 } from "../lib/ops";
@@ -87,6 +89,12 @@ export function Supplies() {
   const [homing, setHoming] = useState<Supply | null>(null);
   const [viewingHistory, setViewingHistory] = useState<Supply | null>(null);
 
+  const containersQ = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
+  const containerName = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of containersQ.data ?? []) m.set(c.id, c.name);
+    return m;
+  }, [containersQ.data]);
   const locationAddress = useMemo(() => {
     const m = new Map<string, string>();
     for (const l of locations.data ?? []) m.set(l.id, l.address);
@@ -149,9 +157,7 @@ export function Supplies() {
             <div style={{ minWidth: 0, flex: 1 }}>
               <strong>{s.name}</strong>{" "}
               <span className="muted" style={{ fontSize: 12 }}>
-                {s.home_location_id
-                  ? (locationAddress.get(s.home_location_id) ?? "home spot set")
-                  : "no home spot yet"}
+                {supplyHomeLabel(s, containerName, locationAddress)}
                 {" · "}
                 {onHandLabel(s)}
               </span>
@@ -477,11 +483,17 @@ function HomeForm({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
-  const [locationId, setLocationId] = useState(supply.home_location_id ?? "");
+  const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
+  const [containerId, setContainerId] = useState(supply.home_container_id ?? "");
+  const [note, setNote] = useState(supply.home_note ?? "");
 
   const save = useMutation({
-    mutationFn: () => setSupplyHome(supply.id, locationId || null),
+    mutationFn: () =>
+      setSupplyHome({
+        supplyId: supply.id,
+        containerId: containerId || null,
+        note: note || null,
+      }),
     onSuccess: () => {
       pushToast(`${supply.name} lives at its new spot.`);
       onDone();
@@ -493,15 +505,27 @@ function HomeForm({
     <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <p style={{ margin: 0, fontWeight: 700 }}>Where does {supply.name} live?</p>
-        <label className="field-label">Home spot</label>
-        <select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-          <option value="">— no spot —</option>
-          {(locations.data ?? []).map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.address}
-            </option>
-          ))}
+        <label className="field-label">Which box</label>
+        {/* The same crates, conexes and warehouse packages live in — one set
+            of places for everything (owner ask, 2026-08-18). Slots come when
+            the reorganization wakes them. */}
+        <select value={containerId} onChange={(e) => setContainerId(e.target.value)}>
+          <option value="">— nowhere yet —</option>
+          {(containers.data ?? [])
+            .filter((c) => c.active)
+            .map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+                {containerKind(c) !== "conex" ? ` (${containerKind(c)})` : ""}
+              </option>
+            ))}
         </select>
+        <label className="field-label">Where in it (optional)</label>
+        <input
+          placeholder="e.g. north wall, blue bins"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
         <div className="row-gap" style={{ marginTop: 10 }}>
           <button
             className="button-like active-pill"
