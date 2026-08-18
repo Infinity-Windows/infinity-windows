@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listLocations, listProjects } from "../../lib/api";
 import { Explain } from "../../components/ui/Explain";
 import { containerTrailLine } from "../../lib/warehouse/containerTrail";
+import { PackageRowText } from "../../components/warehouse/PackageRowText";
 import { formatApiError } from "../../lib/errors";
 import { isForemanPlus } from "../../lib/install/types";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
@@ -18,7 +19,6 @@ import { containerPostersPdf, downloadPdf } from "../../lib/labels";
 import { ContainerForm } from "./StorageHub";
 import {
   agingDays,
-  CATEGORY_LABELS,
   groupByJob,
   listActivePackages,
   listContainers,
@@ -26,8 +26,6 @@ import {
   saveContainer,
   type StoragePackage,
   containerKind,
-  jobLabel,
-  pieceLine,
 } from "../../lib/storage";
 import { canNest, ridesAlong } from "../../lib/warehouse/containment";
 import {
@@ -248,21 +246,7 @@ export function ContainerDetail() {
   }
 
   const row = (p: StoragePackage, extra?: string) => (
-    <div style={{ minWidth: 0 }}>
-      <div style={{ fontWeight: 600 }}>
-        {p.serial}
-        {p.short_code ? ` · ${p.short_code}` : ""}
-      </div>
-      <div className="muted" style={{ fontSize: 12 }}>
-        {jobLabel(p, jobCode)}
-        {pieceLine(p)
-          ? ` · ${pieceLine(p)}`
-          : p.category
-            ? ` · ${CATEGORY_LABELS[p.category]}`
-            : ""}
-        {extra ? ` · ${extra}` : ""}
-      </div>
-    </div>
+    <PackageRowText p={p} jobCode={jobCode} extra={extra} />
   );
 
   return (

@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { listLocations, listProjects } from "../../lib/api";
 import { splitLines } from "../../lib/warehouse/splitUnits";
+import { PackageRowText } from "../../components/warehouse/PackageRowText";
 import { toLocationsById } from "../../lib/warehouse/containment";
 import { formatApiError } from "../../lib/errors";
 import { pushToast } from "../../lib/toast";
@@ -25,13 +26,10 @@ import {
 } from "../../lib/warehouse/offlineWrites";
 import { BackChip } from "../../components/BackChip";
 import {
-  CATEGORY_LABELS,
   listActivePackages,
   listCheckoutReasons,
   listContainers,
   mismatchedPackages,
-  jobLabel,
-  pieceLine,
 } from "../../lib/storage";
 import { isMissingStagingBayError } from "../../lib/staging";
 
@@ -222,24 +220,7 @@ export function CheckoutPackages() {
               }
             >
               <div className="home-project-head">
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 600 }}>
-                    {p.serial}
-                    {p.short_code ? ` · ${p.short_code}` : ""}
-                  </div>
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    {jobLabel(p, jobCode)}
-                    {/* The window and the piece first — they are what a
-                        picker is FOR; category only earns the space when the
-                        tag carried nothing finer. */}
-                    {pieceLine(p)
-                      ? ` · ${pieceLine(p)}`
-                      : p.category
-                        ? ` · ${CATEGORY_LABELS[p.category]}`
-                        : ""}{" "}
-                    · {where}
-                  </div>
-                </div>
+                <PackageRowText p={p} jobCode={jobCode} extra={where} />
                 <span style={{ fontSize: 20 }}>{on ? "☑" : "☐"}</span>
               </div>
             </button>

@@ -38,6 +38,7 @@ import {
   type CardId,
 } from "../../lib/warehouse/warehouseCards";
 import { normalizeMarkCode } from "../../lib/fitview/adapter";
+import { PackageRowText } from "../../components/warehouse/PackageRowText";
 
 export function StorageHub() {
   const navigate = useNavigate();
@@ -372,17 +373,7 @@ function CardList({
           {rows.map((p) => (
             <Link key={p.id} to={`/pkg/${p.serial}`} className="project-card home-project">
               <div className="home-project-head">
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 600 }}>
-                    {p.serial}
-                    {p.short_code ? ` · ${p.short_code}` : ""}
-                  </div>
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    {jobLabel(p, jobCode)}
-                    {(p.package_marks ?? []).length > 0 &&
-                      ` · marks ${(p.package_marks ?? []).map((m) => m.mark_code).join(", ")}`}
-                  </div>
-                </div>
+                <PackageRowText p={p} jobCode={jobCode} />
                 <span className="muted">›</span>
               </div>
             </Link>

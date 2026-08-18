@@ -12,6 +12,7 @@ import { placeWhere, toLocationsById } from "../../lib/warehouse/containment";
 import { areaLabel, areaOptions } from "../../lib/warehouse/areas";
 import { bindLine } from "../../lib/warehouse/markPlan";
 import { listScheduledMarks } from "../../lib/warehouse/warehouseCards";
+// setPackageWindow rides the storage import below
 import { setPackageAreaOffline } from "../../lib/warehouse/offlineWrites";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isForemanPlus } from "../../lib/install/types";
@@ -20,6 +21,7 @@ import {
   agingDays,
   assignPackageToJob,
   reportMakerCount,
+  setPackageWindow,
   burnPackages,
   CATEGORY_LABELS,
   getPackageBySerial,
@@ -144,6 +146,29 @@ export function PackageSheet() {
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
   });
+  // The window fix-up (owner ask, 2026-08-18): a package tagged before the
+  // worksheet existed carries no window, and a mis-typed one needs moving
+  // without burning a live sticker. Offered only at zero-or-one window links —
+  // a rare old multi-mark package should not be silently collapsed to one.
+  const [settingWindow, setSettingWindow] = useState(false);
+  const [windowPick, setWindowPick] = useState("");
+  const jobMarks = useQuery({
+    queryKey: ["scheduledMarks", [pkg.data?.project_id ?? ""]],
+    queryFn: () => listScheduledMarks([pkg.data?.project_id ?? ""]),
+    enabled: settingWindow && Boolean(pkg.data?.project_id),
+  });
+  const setWindow = useMutation({
+    mutationFn: () => setPackageWindow(pkg.data!.id, windowPick),
+    onSuccess: () => {
+      pushToast(`Window set to #${windowPick.trim().toUpperCase()}.`);
+      setSettingWindow(false);
+      setWindowPick("");
+      void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+      void qc.invalidateQueries({ queryKey: ["storagePackage", serial] });
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
+
   // Assign to job (ticket 18): the Boneyard's one exit. Open only on boneyard
   // rows; the server refuses everything else anyway.
   const [assigning, setAssigning] = useState(false);
@@ -256,6 +281,18 @@ export function PackageSheet() {
             {assigning ? "Cancel assign" : "Assign to job…"}
           </button>
         )}
+        {lead &&
+          p.status !== "blank" &&
+          p.project_id != null &&
+          (p.package_marks ?? []).length <= 1 && (
+            <button className="button-like" onClick={() => setSettingWindow((v) => !v)}>
+              {settingWindow
+                ? "Cancel"
+                : (p.package_marks ?? []).length === 0
+                  ? "Set the window…"
+                  : "Change the window…"}
+            </button>
+          )}
         {/* Burn: minted only — the server refuses anything with a life behind
             it, and this button does not even offer. Foreman+, two taps. */}
         {lead && p.status === "minted" && !confirmBurn && (
@@ -264,6 +301,46 @@ export function PackageSheet() {
           </button>
         )}
       </div>
+      {settingWindow && p.project_id != null && (
+        <div className="detail-card" style={{ marginTop: 8 }}>
+          <p style={{ margin: 0, fontWeight: 600 }}>
+            {(p.package_marks ?? []).length === 0
+              ? "Which window is this part of?"
+              : `Move it off #${(p.package_marks ?? [])[0]?.mark_code}?`}
+          </p>
+          <p className="muted" style={{ margin: "4px 0 8px", fontSize: 13 }}>
+            The part fields stay as they are — only the window link moves, and
+            the history says so. The number has to be on this job&rsquo;s
+            schedule; the tag screen can add one that isn&rsquo;t.
+          </p>
+          <div className="row-gap" style={{ alignItems: "center" }}>
+            <input
+              placeholder="e.g. 6"
+              value={windowPick}
+              onChange={(e) => setWindowPick(e.target.value)}
+              list="sheet-window-options"
+              style={{ width: 110, marginBottom: 0 }}
+              aria-label="Which window"
+            />
+            <datalist id="sheet-window-options">
+              {(jobMarks.data ?? [])
+                .map((m) => m.mark_code)
+                .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+                .map((m) => (
+                  <option key={m} value={m} />
+                ))}
+            </datalist>
+            <button
+              className="button-like active-pill"
+              disabled={windowPick.trim() === "" || setWindow.isPending}
+              onClick={() => setWindow.mutate()}
+            >
+              {setWindow.isPending ? "Saving…" : "Set it"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {assigning && p.project_id == null && (
         <div className="detail-card" style={{ marginTop: 8 }}>
           <p style={{ margin: 0, fontWeight: 600 }}>Out of the Boneyard</p>
