@@ -19,6 +19,7 @@ import { pushToast } from "../../lib/toast";
 import {
   agingDays,
   assignPackageToJob,
+  reportMakerCount,
   burnPackages,
   CATEGORY_LABELS,
   getPackageBySerial,
@@ -122,6 +123,27 @@ export function PackageSheet() {
     onError: (e) => pushToast(formatApiError(e), "error"),
   });
   const [confirmBurn, setConfirmBurn] = useState(false);
+  const [makerCount, setMakerCount] = useState("");
+  const maker = useMutation({
+    mutationFn: (total: number | null) => {
+      const n = total == null ? null : Math.trunc(total);
+      if (n != null && (!Number.isFinite(n) || n < 1)) {
+        throw new Error("A package count starts at 1");
+      }
+      return reportMakerCount(pkg.data!.id, n);
+    },
+    onSuccess: (row) => {
+      pushToast(
+        row.mfr_part_total == null
+          ? "Cleared."
+          : `Recorded — the maker says ${row.mfr_part_total}. The flag is up for the foreman.`,
+      );
+      setMakerCount("");
+      void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+      void qc.invalidateQueries({ queryKey: ["storagePackage", serial] });
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
   // Assign to job (ticket 18): the Boneyard's one exit. Open only on boneyard
   // rows; the server refuses everything else anyway.
   const [assigning, setAssigning] = useState(false);
@@ -209,6 +231,9 @@ export function PackageSheet() {
             <p className="muted" style={{ margin: 0, fontSize: 12 }}>
               {partLabel(p) ?? "No part number on label — treated as 1 of 1"}
               {p.mfr_mark ? ` · their #${p.mfr_mark}` : ""}
+              {p.mfr_part_total != null && p.mfr_part_total !== p.part_total
+                ? ` · maker's label says of ${p.mfr_part_total}`
+                : ""}
             </p>
           )}
           {(p.package_marks ?? []).length > 0 && (
@@ -333,6 +358,47 @@ export function PackageSheet() {
             </button>
           </div>
         </div>
+      )}
+
+      {p.status !== "blank" && (
+        <details style={{ marginTop: 8 }}>
+          <summary className="muted" style={{ cursor: "pointer", fontSize: 13 }}>
+            The maker&rsquo;s label disagrees?
+          </summary>
+          <div className="row-gap" style={{ marginTop: 6, alignItems: "center" }}>
+            <label className="field-label" style={{ margin: 0 }}>
+              Their label says this window ships as
+            </label>
+            <input
+              inputMode="numeric"
+              style={{ width: 70 }}
+              placeholder={p.mfr_part_total != null ? String(p.mfr_part_total) : "how many?"}
+              value={makerCount}
+              onChange={(e) => setMakerCount(e.target.value)}
+              aria-label="What the maker's label says"
+            />
+            <button
+              className="button-like"
+              disabled={maker.isPending || makerCount.trim() === ""}
+              onClick={() => maker.mutate(Number(makerCount))}
+            >
+              Record it
+            </button>
+            {p.mfr_part_total != null && (
+              <button
+                className="button-like"
+                disabled={maker.isPending}
+                onClick={() => maker.mutate(null)}
+              >
+                Clear — misread
+              </button>
+            )}
+          </div>
+          <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+            The maker wins the argument. A foreman burns the wrong labels and
+            mints the right count; recording it here is what raises the flag.
+          </p>
+        </details>
       )}
 
       {/* Where in the box (ticket 14, ADR-0006). Foreman+, and only while the

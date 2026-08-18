@@ -243,7 +243,9 @@ At set-aside and checkout, when other parts of the same unit sit elsewhere: one-
 
 **Why:** the Not-Tagged list is rows of dead text; a dead row teaches people the list is a dead end.
 
-Each row opens its window: the mark page with the spec when one exists, and an honest "no spec on file yet — add one" (linking the estimating screen, foreman+) when none does. Where the type is known it also shows inline on the row, so the common question costs zero taps.
+Each row opens its window: the opening page with the spec when one exists (marks map to openings the same way Maps Interactive maps them), and an honest "no spec page yet — spec review adds it" note when none does. Where the type is known it shows inline on the row, so the common question costs zero taps.
+
+Also landed here, from 15: the maker-count disagreement got its column. `mfr_part_total` is what the maker's printed label claims; anyone at the truck records it from the package page ("The maker's label disagrees?"), and the parts math raises the flag everywhere parts already show — including the window's own spec page, which is what "lands as a spec-review question" turned out to honestly mean. The spec-discrepancy TABLE was the wrong landing spot: it stores acknowledgements of computed reconciliation findings, not findings themselves, so a row written there would have displayed nowhere.
 
 ## 21 — Retire the unit chain (deliberately last)
 

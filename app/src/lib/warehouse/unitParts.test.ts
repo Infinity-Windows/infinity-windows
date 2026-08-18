@@ -199,3 +199,39 @@ describe("minted labels (ticket 15): expected, never present", () => {
     expect(h.text).toContain("1 on the way");
   });
 });
+
+describe("the maker's label disagrees (ticket 20)", () => {
+  it("one recorded maker count that differs raises the flag, maker's number named", () => {
+    const r = unitParts(
+      [
+        pkg({ status: "received", part_index: 1, part_total: 4, mfr_part_total: 3, marks: ["16"] }),
+        pkg({ status: "minted", part_index: 2, part_total: 4, marks: ["16"] }),
+      ],
+      "job-1",
+      "16",
+    );
+    expect(r.makerSays).toBe(3);
+    const h = partsHeadline(r);
+    expect(h.tone).toBe("warn");
+    expect(h.text).toContain("the maker's label says 3");
+    expect(h.text).toContain("burn");
+  });
+
+  it("a maker count that AGREES raises nothing", () => {
+    const r = unitParts(
+      [pkg({ part_index: 1, part_total: 3, mfr_part_total: 3, marks: ["16"] })],
+      "job-1",
+      "16",
+    );
+    expect(r.makerSays).toBe(null);
+  });
+
+  it("nobody looked, nothing said", () => {
+    const r = unitParts(
+      [pkg({ part_index: 1, part_total: 3, marks: ["16"] })],
+      "job-1",
+      "16",
+    );
+    expect(r.makerSays).toBe(null);
+  });
+});

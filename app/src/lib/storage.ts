@@ -111,6 +111,10 @@ export interface StoragePackage {
    * the building. Cleared by the database the moment the package changes
    * places — a pointer, not a place (ADR-0006). */
   area?: string | null;
+  /** What the maker's own printed label says the window ships as, when
+   * somebody at the truck saw it disagree with ours (ticket 20). The maker
+   * wins the argument; this is the argument, on the record. */
+  mfr_part_total?: number | null;
   id: string;
   serial: string;
   short_code: string | null;
@@ -432,6 +436,20 @@ export async function burnPackages(packageIds: string[]): Promise<number> {
   });
   if (error) throw error;
   return (data as number) ?? 0;
+}
+
+/** What the maker's label claims, when it disagrees with ours (ticket 20).
+ * Any crew — whoever is at the truck is who saw it. Null clears a misread. */
+export async function reportMakerCount(
+  packageId: string,
+  total: number | null,
+): Promise<StoragePackage> {
+  const { data, error } = await supabase.rpc("report_maker_count", {
+    p_package: packageId,
+    p_total: total,
+  });
+  if (error) throw error;
+  return normalizePackage(data as Record<string, unknown>);
 }
 
 /**
