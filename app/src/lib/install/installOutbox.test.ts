@@ -11,6 +11,11 @@ const RECORD: InstallOutboxRecord = {
   id: "outbox-1",
   step: "queued",
   installEventId: null,
+  // A queued install now carries its own retry state, so a permanently broken
+  // one can stop and be seen instead of retrying every 30 seconds forever.
+  attemptCount: 0,
+  lastError: null,
+  status: "pending",
   payload: {
     clientKey: "client-key-1",
     openingId: "opening-1",

@@ -6,6 +6,8 @@
 // (lib/install/*), which is untouched.
 
 import {
+  retryEntry,
+  type OutboxEntry,
   countsByOp,
   drainStore,
   makeEntry,
@@ -393,4 +395,53 @@ export function enqueueTakeSupply(input: {
   qty: number;
 }): Promise<string> {
   return enqueue({ op: "take_supply", payload: { ...input } });
+}
+
+// --- stuck writes: seeing them, and doing something about them -----------
+//
+// The core's own note says a dead-lettered entry "needs human attention,
+// never silently dropped" — and until now there was no human anywhere in the
+// loop. Nothing listed failed writes, nothing could retry one, and a punch
+// stranded behind a failed clock-in was invisible AND unfixable. These three
+// are what a foreman needs to actually close that loop.
+
+/** Every write that gave up, newest first. */
+export async function listFailed(): Promise<OutboxEntry[]> {
+  const all = await store.getAll();
+  return all
+    .filter((e) => e.status === "failed")
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/**
+ * Put one failed write back in the queue and try it now.
+ *
+ * Also revives anything that was stranded waiting on it — otherwise retrying
+ * a clock-in would leave its clock-out sitting failed, which is exactly the
+ * half-fixed state this feature exists to end.
+ */
+export async function retryFailed(id: string): Promise<void> {
+  const all = await store.getAll();
+  const target = all.find((e) => e.id === id);
+  if (!target) return;
+  const now = Date.now();
+  await store.put(retryEntry(target, now));
+  for (const e of all) {
+    if (e.status === "failed" && e.dependsOn === id) {
+      await store.put(retryEntry(e, now));
+    }
+  }
+  await refresh();
+  if (isOnline()) void drain();
+}
+
+/**
+ * Throw one away for good.
+ *
+ * Deliberately explicit and one at a time: this destroys a record of work
+ * somebody did, so it must be a decision, never a cleanup sweep.
+ */
+export async function discardFailed(id: string): Promise<void> {
+  await store.delete(id);
+  await refresh();
 }

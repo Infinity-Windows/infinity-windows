@@ -25,9 +25,10 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Memo review (`/review`)
 - Safety (`/safety`)
 - Notifications (`/notifications`)
+- Stuck writes (`/stuck`)
 - Settings (`/settings`)
 
-**Can reach (all 26 allowed destinations):**
+**Can reach (all 27 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -42,6 +43,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Jobs (`/projects`)
 - Ask (`/ask`)
 - Notifications (`/notifications`)
+- Stuck writes (`/stuck`)
 - Search (`/search`)
 - Memo review (`/review`)
 - My Schedule (`/my-schedule`)
@@ -118,10 +120,11 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Safety (`/safety`)
 - Ask (`/ask`)
 - Notifications (`/notifications`)
+- Stuck writes (`/stuck`)
 - Settings (`/settings`)
 - Catalog (`/catalog`)
 
-**Can reach (all 40 allowed destinations):**
+**Can reach (all 41 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -136,6 +139,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Jobs (`/projects`)
 - Ask (`/ask`)
 - Notifications (`/notifications`)
+- Stuck writes (`/stuck`)
 - Search (`/search`)
 - Memo review (`/review`)
 - My Schedule (`/my-schedule`)
@@ -219,11 +223,12 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Ask (`/ask`)
 - AI Knowledge (`/knowledge`)
 - Notifications (`/notifications`)
+- Stuck writes (`/stuck`)
 - Settings (`/settings`)
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 48 allowed destinations):**
+**Can reach (all 49 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -240,6 +245,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Data (`/data`)
 - Ask (`/ask`)
 - Notifications (`/notifications`)
+- Stuck writes (`/stuck`)
 - Search (`/search`)
 - Memo review (`/review`)
 - My Schedule (`/my-schedule`)
@@ -323,11 +329,12 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - AI Knowledge (`/knowledge`)
 - AI spend (`/ai-spend`)
 - Notifications (`/notifications`)
+- Stuck writes (`/stuck`)
 - Settings (`/settings`)
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 50 allowed destinations):**
+**Can reach (all 51 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -344,6 +351,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Data (`/data`)
 - Ask (`/ask`)
 - Notifications (`/notifications`)
+- Stuck writes (`/stuck`)
 - Search (`/search`)
 - Memo review (`/review`)
 - My Schedule (`/my-schedule`)
