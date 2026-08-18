@@ -326,6 +326,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "The window/door type catalog — codes, sizes, difficulty and saved install tips. Browse or edit type details here.",
   },
   {
+    path: "/takeoffs",
+    label: "Takeoffs",
+    minRole: "installer",
+    blurb:
+      "A job's supplies, bundled by the warehouse for a named person. Foremen request or build them; the warehouse answers with a rough when and marks them ready; picking one up logs every line against the job — pickup IS the take.",
+  },
+  {
     path: "/warehouse/3d",
     label: "Container in 3D",
     minRole: "installer",

@@ -46,7 +46,11 @@ export type OutboxOp =
   // Ticket 15: confirming pre-labeled packages off the truck. The yard is the
   // signal dead zone; the server counts an already-received package without
   // writing a second history line, so a resend is not a second truck.
-  | "receive_minted";
+  | "receive_minted"
+  // Takeoffs (2026-08-18): pickup happens standing at the racks. The status
+  // flip is the server-side idempotency guard — a resend finds picked_up and
+  // changes nothing — so the queue can retry it blind.
+  | "pickup_takeoff";
 
 /**
  * queued   — waiting to be sent (respecting nextAttemptAt backoff)
@@ -360,6 +364,7 @@ export function countsByOp(entries: OutboxEntry[]): OpCounts {
       case "move_container":
       case "set_package_area":
       case "receive_minted":
+      case "pickup_takeoff":
         c.warehouse += 1;
         break;
       default:
@@ -499,6 +504,7 @@ const OP_REGISTRY = {
   move_container: true,
   set_package_area: true,
   receive_minted: true,
+  pickup_takeoff: true,
 } as const satisfies Record<OutboxOp, true>;
 
 /** Every op the queue can carry — the single list tests enumerate. */

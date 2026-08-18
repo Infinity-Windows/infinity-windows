@@ -20,6 +20,7 @@ import {
   enqueueCheckoutPackages,
   enqueueMoveContainer,
   enqueueStagePackages,
+  enqueuePickupTakeoff,
   enqueueReceiveMinted,
   enqueueSetPackageArea,
   enqueueStorePackages,
@@ -36,6 +37,7 @@ import {
   type StoragePackage,
 } from "../storage";
 import { takeSupply } from "../ops";
+import { pickupTakeoff } from "../takeoffs";
 
 /** What happened: it reached the server, or it is waiting for signal. */
 export interface WriteResult {
@@ -103,6 +105,16 @@ export function checkInNote(
   const note: Record<string, { status: string; container: string | null }> = {};
   for (const p of packages) note[p.id] = { status: p.status, container: p.container_id };
   return note;
+}
+
+/** Pick up a takeoff; queues at the racks with no bars. The server's status
+ * flip is the idempotency guard, so a blind retry is safe. */
+export function pickupTakeoffOffline(takeoffId: string): Promise<WriteResult> {
+  return attempt(
+    () => pickupTakeoff(takeoffId).then(() => 1),
+    () => enqueuePickupTakeoff({ takeoffId }),
+    1,
+  );
 }
 
 /** Confirm pre-labeled packages off the truck; queues when there is no

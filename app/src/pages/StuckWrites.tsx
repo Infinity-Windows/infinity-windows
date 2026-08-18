@@ -52,6 +52,7 @@ const OP_LABELS: Record<OutboxOp, string> = {
   move_container: "Container moved",
   set_package_area: "Package pointed at",
   receive_minted: "Delivery confirmed",
+  pickup_takeoff: "Takeoff picked up",
 };
 
 /**
