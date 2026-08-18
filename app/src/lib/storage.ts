@@ -335,6 +335,46 @@ export async function listPackageEvents(packageId: string): Promise<PackageEvent
   return (legacy.data ?? []) as PackageEvent[];
 }
 
+/** A movements row as the container trail needs it (ticket 13). */
+export interface ContainerMovementRow {
+  id: string;
+  event: string;
+  from_container_id: string | null;
+  to_container_id: string | null;
+  from_location_id: string | null;
+  to_location_id: string | null;
+  reason: string | null;
+  actor: string | null;
+  created_at: string;
+}
+
+/**
+ * Where this container has been: its moves (nesting, slots) and its address
+ * changes, newest first. Address changes are 'moved' rows whose reason carries
+ * the from → to in words — reusing the event was the price of never touching
+ * movements_event_ck again (ticket 13).
+ */
+export async function listContainerMovements(
+  containerId: string,
+): Promise<ContainerMovementRow[]> {
+  const { data, error } = await supabase
+    .from("movements")
+    .select(
+      "id, event, from_container_id, to_container_id, from_location_id, to_location_id, reason, actor, created_at",
+    )
+    .eq("container_id", containerId)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) {
+    // Deploy window: a database that predates the fold-in has no container_id.
+    if (isMissingColumn(error, "container_id") || isMissingTable(error, "movements")) {
+      return [];
+    }
+    throw error;
+  }
+  return (data ?? []) as ContainerMovementRow[];
+}
+
 export async function listCheckoutReasons(): Promise<CheckoutReason[]> {
   const { data, error } = await supabase
     .from("checkout_reasons")
