@@ -20,6 +20,7 @@ import {
   enqueueCheckoutPackages,
   enqueueMoveContainer,
   enqueueStagePackages,
+  enqueueReceiveMinted,
   enqueueSetPackageArea,
   enqueueStorePackages,
   enqueueTakeSupply,
@@ -28,6 +29,7 @@ import {
   bindPackage,
   checkoutPackages,
   moveContainer,
+  receiveMintedPackages,
   setPackageArea,
   stagePackages,
   storePackages,
@@ -101,6 +103,17 @@ export function checkInNote(
   const note: Record<string, { status: string; container: string | null }> = {};
   for (const p of packages) note[p.id] = { status: p.status, container: p.container_id };
   return note;
+}
+
+/** Confirm pre-labeled packages off the truck; queues when there is no
+ * signal — the yard is the dead zone. The server counts an already-received
+ * package without a second history line, so a resend is not a second truck. */
+export function receiveMintedOffline(packageIds: string[]): Promise<WriteResult> {
+  return attempt(
+    () => receiveMintedPackages(packageIds),
+    () => enqueueReceiveMinted({ packageIds }),
+    packageIds.length,
+  );
 }
 
 /** Point at where in the box a package sits; queues when there is no signal —

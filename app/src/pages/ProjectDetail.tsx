@@ -1,4 +1,5 @@
 import { BackChip } from "../components/BackChip";
+import { PlanPackagesPanel } from "../components/warehouse/PlanPackagesPanel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -304,6 +305,12 @@ export function ProjectDetail() {
             jobCode={project?.job_code ?? null}
             isLead={isLead}
           />
+          {isLead && (
+            <PlanPackagesPanel
+              projectId={projectId}
+              jobCode={project?.job_code ?? null}
+            />
+          )}
           {isLead && (
             <PreissuePanel
               projectId={projectId}

@@ -120,7 +120,9 @@ export function PackageSheet() {
         ? "Tagged — not stored yet"
         : p.status === "checked_out"
           ? "Checked out"
-          : "Blank sticker";
+          : p.status === "minted"
+            ? "On the way — label printed, material not arrived"
+            : "Blank sticker";
 
   return (
     <div className="page">

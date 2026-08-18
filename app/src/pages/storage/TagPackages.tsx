@@ -15,12 +15,16 @@ import type { QrPayload } from "../../lib/qr";
 import { subscribeSynced } from "../../lib/offline/outbox";
 import {
   bindPackageOffline,
+  receiveMintedOffline,
   tagToast,
+  writeToast,
 } from "../../lib/warehouse/offlineWrites";
+import { Explain } from "../../components/ui/Explain";
 import {
   CATEGORY_LABELS,
   defaultDeliveryLabel,
   ensureDelivery,
+  listActivePackages,
   listBlankPackages,
   PART_LABELS,
   PART_TYPES,
@@ -121,6 +125,24 @@ export function TagPackages() {
   const qc = useQueryClient();
   const blanks = useQuery({ queryKey: ["storageBlanks"], queryFn: listBlankPackages });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  // Pre-labeled packages (ticket 15): minted at planning, confirmed here at
+  // the truck. Same query the warehouse page uses, so it is usually a cache hit.
+  const actives = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
+  const [arriving, setArriving] = useState<Set<string>>(new Set());
+  const receive = useMutation({
+    mutationFn: () => receiveMintedOffline([...arriving]),
+    onSuccess: (r) => {
+      pushToast(
+        writeToast(
+          r,
+          `${r.count} package${r.count === 1 ? "" : "s"} received.`,
+        ),
+      );
+      setArriving(new Set());
+      void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
   const [selected, setSelected] = useState<StoragePackage | null>(null);
   const [scanning, setScanning] = useState(false);
   const [projectId, setProjectId] = useState<string>(
@@ -315,6 +337,65 @@ export function TagPackages() {
           </p>
         </div>
       </header>
+
+      {(() => {
+        const expected = (actives.data ?? []).filter(
+          (p) => p.status === "minted" && (!projectId || p.project_id === projectId),
+        );
+        if (expected.length === 0) return null;
+        const label = (p: StoragePackage) => {
+          const mark = (p.package_marks ?? [])[0]?.mark_code ?? "?";
+          const part =
+            p.part_index != null && p.part_total != null
+              ? ` · ${p.part_index} of ${p.part_total}`
+              : "";
+          return `W${mark}${part}`;
+        };
+        return (
+          <>
+            <h2>Pre-labeled — off the truck</h2>
+            <Explain id="wh-receive-minted">
+              These labels were printed before the truck. Stick each one on its
+              package, tap it here, and hit Arrived. If the maker&rsquo;s own
+              label says a different count than the sticker (&ldquo;2 of
+              3&rdquo; against our &ldquo;2 of 4&rdquo;), the maker wins —
+              tell a foreman so the wrong stickers get burned and the count
+              fixed. Nothing here blocks the truck.
+            </Explain>
+            <div className="row-gap" style={{ flexWrap: "wrap" }}>
+              {expected.slice(0, 30).map((p) => {
+                const on = arriving.has(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    className={on ? "button-like active-pill" : "button-like"}
+                    onClick={() => {
+                      const next = new Set(arriving);
+                      if (on) next.delete(p.id);
+                      else next.add(p.id);
+                      setArriving(next);
+                    }}
+                  >
+                    {label(p)}
+                  </button>
+                );
+              })}
+            </div>
+            {arriving.size > 0 && (
+              <button
+                className="button-like active-pill"
+                style={{ marginTop: 8 }}
+                disabled={receive.isPending}
+                onClick={() => receive.mutate()}
+              >
+                {receive.isPending
+                  ? "Receiving…"
+                  : `Arrived — receive ${arriving.size}`}
+              </button>
+            )}
+          </>
+        );
+      })()}
 
       <h2>1 · The sticker</h2>
       <div className="row-gap" style={{ flexWrap: "wrap" }}>

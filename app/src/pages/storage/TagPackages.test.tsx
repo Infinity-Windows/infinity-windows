@@ -29,6 +29,8 @@ import { TagPackages } from "./TagPackages";
 const server = vi.hoisted(() => ({
   offline: true,
   bound: new Set<string>(),
+  /** Package ids the fake server has marked received (ticket 15). */
+  received: [] as string[][],
 }));
 
 const BLANKS: StoragePackage[] = [
@@ -66,6 +68,14 @@ vi.mock("../../lib/storage", async (importOriginal) => {
     // failing; held still so nothing reaches for a network.
     ensureDelivery: async () => {
       throw new TypeError("Failed to fetch");
+    },
+    // The truck-side confirm (ticket 15). Records what arrived; the offline
+    // path is already proven for every op by the round-trip suite, so this
+    // test runs it with bars.
+    receiveMintedPackages: async (ids: string[]) => {
+      if (server.offline) throw new TypeError("Failed to fetch");
+      server.received.push(ids);
+      return ids.length;
     },
     bindPackage: async (input: { packageId: string }) => {
       // Exactly what supabase-js does with no bars, which is what the offline
@@ -136,6 +146,9 @@ interface Mounted {
   qc: QueryClient;
 }
 
+/** Pre-labeled packages the arrival section shows; tests set this. */
+let seedMinted: unknown[] = [];
+
 async function mount(): Promise<Mounted> {
   const qc = new QueryClient({
     defaultOptions: {
@@ -159,6 +172,7 @@ async function mount(): Promise<Mounted> {
   });
   qc.setQueryData(["projects"], JOBS);
   qc.setQueryData(["markSpecs", "job-1"], []);
+  qc.setQueryData(["storagePackages"], seedMinted);
 
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -315,5 +329,64 @@ describe("a sticker tagged with bars", () => {
 
     expect(freeRoll(el)).toEqual(["M7X2LR"]);
     expect(el.textContent).not.toContain("not sent yet");
+  });
+});
+
+describe("pre-labeled packages at the truck (ticket 15)", () => {
+  it("shows the expected labels and receives the tapped ones", async () => {
+    seedMinted = [
+      {
+        id: "m1",
+        serial: "PKG-000201",
+        short_code: "AAAAAA",
+        status: "minted",
+        project_id: "job-1",
+        part_index: 1,
+        part_total: 2,
+        package_marks: [{ mark_code: "16" }],
+      },
+      {
+        id: "m2",
+        serial: "PKG-000202",
+        short_code: "BBBBBB",
+        status: "minted",
+        project_id: "job-1",
+        part_index: 2,
+        part_total: 2,
+        package_marks: [{ mark_code: "16" }],
+      },
+    ];
+    server.offline = false;
+    try {
+      const m = await mount();
+      const pills = [...m.el.querySelectorAll("button")].filter((b) =>
+        /W16 · [12] of 2/.test(b.textContent ?? ""),
+      );
+      expect(pills.length).toBe(2);
+
+      click(pills[0]);
+      const go = [...m.el.querySelectorAll("button")].find((b) =>
+        (b.textContent ?? "").startsWith("Arrived — receive 1"),
+      );
+      expect(go, "no Arrived button after picking a package").toBeTruthy();
+      click(go!);
+      // The mutation resolves a tick later; let the write reach the fake server.
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(
+        server.received.some((ids) => JSON.stringify(ids) === JSON.stringify(["m1"])),
+        "the receive never reached the server",
+      ).toBe(true);
+    } finally {
+      seedMinted = [];
+      server.offline = true;
+      server.received = [];
+    }
+  });
+
+  it("shows nothing when nothing is expected — the blank roll is the whole screen", async () => {
+    const m = await mount();
+    expect(m.el.textContent).not.toContain("Pre-labeled");
   });
 });

@@ -500,6 +500,11 @@ export function enqueueMoveContainer(input: {
   });
 }
 
+/** Queue "these pre-labeled packages came off the truck" (ticket 15). */
+export function enqueueReceiveMinted(input: { packageIds: string[] }): Promise<string> {
+  return enqueue({ op: "receive_minted", payload: { packageIds: input.packageIds } });
+}
+
 /** Queue "this package sits at the front of its box" (ticket 14). Setting a
  * pointer twice lands on the same pointer, so a resend is harmless. */
 export function enqueueSetPackageArea(input: {

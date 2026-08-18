@@ -144,3 +144,58 @@ describe("unitParts", () => {
     expect(h).toEqual({ text: "Nothing tagged for this window yet", tone: "muted" });
   });
 });
+
+describe("minted labels (ticket 15): expected, never present", () => {
+  it("a declared window counts its labels as on the way, not here", () => {
+    // Foreman declared "arrives as 3"; nothing has arrived. Saying "3 of 3
+    // here" would be the app lying about a shelf.
+    const r = unitParts(
+      [
+        pkg({ status: "minted", part_index: 1, part_total: 3, marks: ["16"] }),
+        pkg({ status: "minted", part_index: 2, part_total: 3, marks: ["16"] }),
+        pkg({ status: "minted", part_index: 3, part_total: 3, marks: ["16"] }),
+      ],
+      "job-1",
+      "16",
+    );
+    expect(r.expectedTotal).toBe(3);
+    expect(r.presentIndexes).toEqual([]);
+    expect(r.onTheWayIndexes).toEqual([1, 2, 3]);
+    expect(r.complete).toBe(false);
+    expect(partsHeadline(r)).toEqual({
+      text: "0 of 3 here · 3 on the way",
+      tone: "muted",
+    });
+  });
+
+  it("receiving flips a part from on-the-way to here", () => {
+    const r = unitParts(
+      [
+        pkg({ status: "received", part_index: 1, part_total: 3, marks: ["16"] }),
+        pkg({ status: "minted", part_index: 2, part_total: 3, marks: ["16"] }),
+        pkg({ status: "minted", part_index: 3, part_total: 3, marks: ["16"] }),
+      ],
+      "job-1",
+      "16",
+    );
+    expect(r.presentIndexes).toEqual([1]);
+    expect(r.onTheWayIndexes).toEqual([2, 3]);
+    expect(r.missingIndexes).toEqual([]);
+  });
+
+  it("a part with NO label anywhere still raises the alarm, on the way or not", () => {
+    const r = unitParts(
+      [
+        pkg({ status: "received", part_index: 1, part_total: 3, marks: ["16"] }),
+        pkg({ status: "minted", part_index: 2, part_total: 3, marks: ["16"] }),
+      ],
+      "job-1",
+      "16",
+    );
+    expect(r.missingIndexes).toEqual([3]);
+    const h = partsHeadline(r);
+    expect(h.tone).toBe("warn");
+    expect(h.text).toContain("no label yet for part 3");
+    expect(h.text).toContain("1 on the way");
+  });
+});

@@ -723,3 +723,32 @@ describe("a queued area note (ticket 14)", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 });
+
+describe("a queued delivery confirmation (ticket 15)", () => {
+  it("sends the packages that came off the truck", async () => {
+    rpc.mockResolvedValue({ data: 2, error: null });
+    await send("receive_minted", { packageIds: ["pkg-1", "pkg-2"] });
+    expect(rpc).toHaveBeenCalledWith("receive_minted_packages", {
+      p_packages: ["pkg-1", "pkg-2"],
+    });
+  });
+
+  it("refuses an empty confirmation instead of sending a no-op forever", async () => {
+    await expect(send("receive_minted", { packageIds: [] })).rejects.toThrow(
+      "names no packages",
+    );
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("an app ahead of its database stops on the first try, in words", async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { code: "PGRST202", message: "Could not find the function" },
+    });
+    const err = await send("receive_minted", { packageIds: ["pkg-1"] }).catch(
+      (e: unknown) => e,
+    );
+    expect(isRetryableError(err)).toBe(false);
+    expect(String(err)).toContain("app update");
+  });
+});

@@ -161,7 +161,14 @@ export async function locationLabelsPdf(
  * a package at the truck — print by the hundred and keep the roll in the cab.
  */
 export async function packageLabelsPdf(
-  packages: { serial: string; short_code?: string | null }[],
+  packages: {
+    serial: string;
+    short_code?: string | null;
+    /** "BLACK22 · Window 16 · 2 of 4" on a pre-bound label (ticket 15). A
+     * blank-roll sticker has none and keeps its "scan to assign" line — the
+     * words on the paper always match what the record already knows. */
+    bindLine?: string | null;
+  }[],
 ): Promise<Uint8Array> {
   return buildLabelPdf(
     packages.map((p) => ({
@@ -173,7 +180,9 @@ export async function packageLabelsPdf(
         ...(p.short_code
           ? [{ text: p.serial, size: 13, bold: true } as LabelLine]
           : []),
-        { text: "Package — scan to assign", size: 10, color: MUTED },
+        p.bindLine
+          ? ({ text: p.bindLine, size: 12, bold: true } as LabelLine)
+          : { text: "Package — scan to assign", size: 10, color: MUTED },
       ],
     })),
   );
