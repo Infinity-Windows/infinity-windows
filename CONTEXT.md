@@ -28,23 +28,33 @@ Settled 2026-08-17. The warehouse answers one question — *where is it* — and
 
 **Package** — one physical piece of a unit: its frame, its glass, its hardware, its threshold. The package is what carries a sticker, what sits somewhere, and what moves; a unit never moves, its packages do. Every package runs the same six-stage life regardless of what's inside it: blank sticker → tagged → stored → checked out → on site → installed.
 
-**Part number** — the manufacturer's "N of M" printed on a package: `#16 2/3` is the second of three packages making up unit 16. M is the number of packages that unit was built as, and it varies — some units are one package, some are six. Because M is printed on the very first package to arrive, the count of what's still missing is knowable from the first delivery onward, without anyone declaring it in advance.
+**Part number** — the manufacturer's "N of M" printed on a package: `#16 2/3` is the second of three packages making up unit 16. M is the number of packages that unit was built as, and it varies — some units are one package, some are six. M is printed on the very first package to arrive — and, once a foreman mints a window's labels in advance (see Sticker), declared up front. Either way the count of what's still missing is knowable before everything is here.
 
-**Container** — a physical box a package sits in: a conex, a crate, a truck. Containers hold packages and may sit inside one other container, never deeper. Moving a container moves everything inside it in one action — that is the whole reason a container is worth tracking. A shelf is *not* a container; see below.
+**Container** — a physical box a package sits in, of a declared kind: a conex, a crate, a truck, or a building. Containers hold packages and may sit inside one other container, never deeper. Moving a container moves everything inside it in one action — that is the whole reason a container is worth tracking — and writes a movement line, because where a container has been is history, not an edit. The main warehouse is itself a container (kind: building), the one container that never moves, so "it's in the main warehouse" is sayable without inventing a shelf. A shelf is *not* a container; see below.
 
 **Conex** — a shipping container used as warehouse storage, on the yard or on a site.
 
-**Crate** — a small container, usually holding glass for units with no pre-assembled frame. A crate is a *place*, not a package: it holds packages and has a location of its own. Crates are broken down and rebuilt, so a crate's identity dies with the physical crate.
+**Crate** — a container usually holding glass for units with no pre-assembled frame. A crate is a *place*, not a package: it holds packages and has a location of its own. Crates are broken down and rebuilt, so a crate's identity dies with the physical crate. A crate carries its dimensions and weight — some do not fit in any conex, and a forklift puts them on jobs whole.
 
 **Shelf** — an addressed spot in the warehouse: zone, rack, slot. A shelf is not a container and does not act like one. A package is in a container **or** on a shelf, never both, and the only thing that puts a package on a shelf is **Set aside**, which stages it on its own job's bay and always names that job. There is no general "put this anywhere" action for a shelf the way there is for a conex — for a package, a shelf is staging, not storage.
 
-**Sticker** — an Infinity-printed label bound to exactly one package, for that package's whole life. Printed blank in batches, bound once when the package is tagged, and never reused — a reused sticker would make every earlier record point at the wrong physical thing.
+**Sticker** — an Infinity-printed label bound to exactly one package, for that package's whole life. Two ways one is born: printed blank in batches and bound at the truck, or minted pre-bound — job, window number, part N of M — when a foreman declares a window's package count, so receiving is sticking a label on rather than typing at a truck. Either way it binds once and is never reused — a reused sticker would make every earlier record point at the wrong physical thing. A ruined sticker is Burned or Reprinted; see both.
 
-**Tagged** — a package that has been bound to a sticker, a unit, and a job. Until tagged, a package is untracked and cannot be found by anyone who didn't personally put it down.
+**Tagged** — a package that has been bound to a sticker, to what it is (its part fields), and to a job — or to the Boneyard, when no job owns it yet. Until tagged, a package is untracked and cannot be found by anyone who didn't personally put it down.
 
 **Checkout** — a package leaving storage for a job, with a reason recorded. Checking out is per-package, never per-container: an installer takes the four packages they need and the crate stays where it is until it is empty.
 
 **Loose stock** — an on-hand package with no container and no shelf spot. The genuinely-cannot-find-it pile, and the number that says how much the warehouse is drifting.
+
+**Area** — roughly where inside its current box a package sits. Front / Middle / Back inside anything that moves — a conex has a door end, and the door end is the front wherever it is parked — and the compass plus Middle only inside the main warehouse, which never moves. Foreman and up set it; every move clears it, because "Back" carried into a different box reads as an answer and is a lie. An area is a pointer, not an address: nothing points at it and no label prints for it (ADR-0006). The stopgap until slots are real.
+
+**Boneyard** — the crew's word, and therefore the app's, for company stock no job owns yet. A boneyard package is tagged like any other — sticker, part fields, BONEYARD printed where the job code would go — but carries no window number, because a window number is a position on one job's plans. Not the same thing as a finished job's packages; those still belong to their job.
+
+**Assign to job** — the foreman-and-up action that moves a package out of the Boneyard: pick the job, pick the window number, one movement line. The sticker's QR is the package's identity, so the old label still scans; a fresh printed label is offered, never required.
+
+**Burn** — killing a minted label that never lived: the serial dies and its part slot reopens for a fresh label. Allowed only while the package has no history — Burn refuses anything that has been stored or moved and points at Reprint instead. Carries a loud warning because the paper must be destroyed: anything still wearing a burned sticker scans as nothing.
+
+**Reprint** — fresh paper for a package that exists: same serial, same QR, history intact. For stickers that got destroyed or unreadable on a real package. The old sticker gets destroyed so there are never two.
 
 **Home spot** — the one place a supply lives, so it can be told to someone: *"Caulk · Bin A3."* Supplies are countable and identical, so they have a home spot and a rough count rather than individual stickers.
 
@@ -113,6 +123,14 @@ Rationale: cohorts at the unit level are too sparse to trust. We may install thr
 - Stickers and crate identities are never reused; both are cheaper than a trail that lies.
 - Nothing about a mismatch stops the receiving line. Wrong-job checkouts warn loudly and require a reason, but are never blocked — a blocked scan is a scan that stops happening.
 - Existing stock is tagged when someone touches it, not in a big-bang pass. The untagged count is the progress bar.
+- One chain. Packages are the only material record, planned per window number; the unit chain — pre-issue, `window_units`, Receive-by-unit — retires (ADR-0005).
+- Labels mint at declaration, pre-bound to job + window + part, and print in one batch. Receiving is sticking, not typing.
+- An area is a pointer, not a place: options depend on the kind of box, every move clears it, foreman+ sets it (ADR-0006).
+- Slots stay parked until the physical reorganization. Nothing new points at them until then; areas are the interim.
+- The Boneyard keeps its name. The crew's word beats a cleaner word the crew would have to learn.
+- Container moves are movement events, never edits. The main warehouse never moves.
+- Splitting a unit's packages warns and is counted, never blocked — a frame on site while its glass waits is sometimes the job.
+- Burn is for labels that never lived; Reprint is for packages that did. One action covering both would eat history.
 
 ## Open questions
 
