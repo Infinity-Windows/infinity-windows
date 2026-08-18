@@ -438,6 +438,25 @@ export async function burnPackages(packageIds: string[]): Promise<number> {
   return (data as number) ?? 0;
 }
 
+/**
+ * Grow (or set) a window's package count, renumbering every label it already
+ * has (owner ask, 2026-08-18: the missed fourth box, the add-on ordered
+ * later). Foreman+; refuses to shrink below an existing part number.
+ */
+export async function setMarkPartTotal(input: {
+  projectId: string;
+  markCode: string;
+  total: number;
+}): Promise<number> {
+  const { data, error } = await supabase.rpc("set_mark_part_total", {
+    p_project: input.projectId,
+    p_mark: input.markCode,
+    p_total: input.total,
+  });
+  if (error) throw error;
+  return (data as number) ?? 0;
+}
+
 /** What the maker's label claims, when it disagrees with ours (ticket 20).
  * Any crew — whoever is at the truck is who saw it. Null clears a misread. */
 export async function reportMakerCount(
