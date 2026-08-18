@@ -7,7 +7,7 @@
 // database trigger) so every screen derives the same answer from the same
 // rows — the client-side mirror of what move_container relies on.
 
-import type { StorageContainer, StoragePackage } from "../storage";
+import { containerKind, type StorageContainer, type StoragePackage } from "../storage";
 
 /** Where a package physically is, spelled out link by link. */
 export interface PlaceChain {
@@ -116,7 +116,17 @@ export function canNest(
   if (childId === parentId) return false;
   const parent = containers.find((c) => c.id === parentId);
   if (!parent || parent.parent_container_id) return false; // parent is itself inside something
-  return !containers.some((c) => c.parent_container_id === childId); // child holds others
+  if (containers.some((c) => c.parent_container_id === childId)) return false; // child holds others
+
+  // The kind rules (ticket 12). Same checks move_container enforces server-side;
+  // this copy exists so the picker never offers a move the server would refuse.
+  const child = containers.find((c) => c.id === childId);
+  const childKind = containerKind(child);
+  const parentKind = containerKind(parent);
+  if (childKind === "building" || childKind === "truck") return false; // neither goes inside anything
+  if (parentKind === "crate") return false; // a crate is the smallest box there is
+  if (childKind === "conex" && parentKind !== "truck") return false; // a conex only rides on a truck
+  return true;
 }
 
 /**

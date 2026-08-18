@@ -22,6 +22,7 @@ import {
   listContainers,
   saveContainer,
   type StoragePackage,
+  containerKind,
 } from "../../lib/storage";
 import { canNest, ridesAlong } from "../../lib/warehouse/containment";
 import {
@@ -283,9 +284,12 @@ export function ContainerDetail() {
         <button className="button-like" onClick={() => poster.mutate()}>
           Print poster
         </button>
-        <button className="button-like" onClick={() => setMoving((v) => !v)}>
-          {moving ? "Cancel move" : "Move"}
-        </button>
+        {/* The building never moves — no button, matching the server's refusal. */}
+        {containerKind(container) !== "building" && (
+          <button className="button-like" onClick={() => setMoving((v) => !v)}>
+            {moving ? "Cancel move" : "Move"}
+          </button>
+        )}
         {lead && (
           <button className="button-like" onClick={() => setEditing(true)}>
             Edit
@@ -334,8 +338,9 @@ export function ContainerDetail() {
             {children.length > 0
               ? ` (including what's in ${children.map((c) => c.name).join(", ")})`
               : ""}{" "}
-            in one action. One level only: a crate can sit in a conex, never in
-            another crate.
+            in one action. One level only, and the box's kind sets the rules: a
+            crate rides in a conex or on a truck, a conex only rides on a truck,
+            and nothing goes inside a crate.
           </p>
           <div className="row-gap" style={{ flexWrap: "wrap" }}>
             {nestTargets.map((c) => (

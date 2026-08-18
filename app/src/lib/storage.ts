@@ -69,6 +69,21 @@ export interface StorageContainer {
   parent_container_id?: string | null;
   /** A recorded spot for a container that sits on its own. */
   location_id?: string | null;
+  /** What kind of box: conex | crate | truck | building. Rows read before the
+   * kinds migration lack it — treat missing as a conex, which is what every
+   * pre-kind container actually was. */
+  kind?: string | null;
+  /** A crate's measurements — some fit in no conex, and a forklift needs the
+   * weight. Null means "not measured", never zero. */
+  length_cm?: number | null;
+  width_cm?: number | null;
+  height_cm?: number | null;
+  weight_kg?: number | null;
+}
+
+/** The kind of a container, defaulting missing/unknown rows to conex. */
+export function containerKind(c: Pick<StorageContainer, "kind"> | null | undefined): string {
+  return c?.kind ?? "conex";
 }
 
 export interface StoragePackage {
@@ -348,6 +363,13 @@ export async function saveContainer(input: {
   accessCode?: string | null;
   notes?: string | null;
   active?: boolean;
+  /** Set at creation only; the server ignores it on an update — a crate that
+   * "becomes" a conex is really a new box. */
+  kind?: string | null;
+  lengthCm?: number | null;
+  widthCm?: number | null;
+  heightCm?: number | null;
+  weightKg?: number | null;
 }): Promise<StorageContainer> {
   const { data, error } = await supabase.rpc("save_storage_container", {
     p_id: input.id ?? null,
@@ -356,6 +378,11 @@ export async function saveContainer(input: {
     p_access_code: input.accessCode ?? null,
     p_notes: input.notes ?? null,
     p_active: input.active ?? true,
+    p_kind: input.kind ?? null,
+    p_length_cm: input.lengthCm ?? null,
+    p_width_cm: input.widthCm ?? null,
+    p_height_cm: input.heightCm ?? null,
+    p_weight_kg: input.weightKg ?? null,
   });
   if (error) throw error;
   return data as StorageContainer;

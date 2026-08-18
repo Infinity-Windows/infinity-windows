@@ -34,6 +34,7 @@ import {
   groupByJob,
   listActivePackages,
   listContainers,
+  containerKind,
 } from "../lib/storage";
 import { listSupplies, onHandLabel } from "../lib/ops";
 import {
@@ -276,7 +277,14 @@ export function Warehouse() {
                     );
                     return (
                       <Link key={c.id} to={`/storage/c/${c.id}`} className="warehouse-tile">
-                        <strong>{c.name}</strong>
+                        <strong>
+                          {c.name}
+                          {containerKind(c) !== "conex" && (
+                            <span className="muted" style={{ fontWeight: 400 }}>
+                              {" "}· {containerKind(c)}
+                            </span>
+                          )}
+                        </strong>
                         <span className="muted">
                           {inside.length} package{inside.length === 1 ? "" : "s"}
                           {nested.length > 0 && ` · holding ${nested.length} crate${nested.length === 1 ? "" : "s"}`}
