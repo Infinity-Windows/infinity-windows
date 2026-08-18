@@ -14,6 +14,7 @@ import { formatApiError } from "../../lib/errors";
 import { pushToast } from "../../lib/toast";
 import { Explain } from "../ui/Explain";
 import {
+  burnPackages,
   listActivePackages,
   mintMarkPackages,
   type StoragePackage,
@@ -36,6 +37,22 @@ export function PlanPackagesPanel({
   });
   const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
   const [counts, setCounts] = useState<Record<string, string>>({});
+  // Burn mode (ticket 16): pick the labels that die, confirm once, loudly.
+  const [burning, setBurning] = useState<Set<string>>(new Set());
+  const [burnMode, setBurnMode] = useState(false);
+
+  const burn = useMutation({
+    mutationFn: () => burnPackages([...burning]),
+    onSuccess: (n) => {
+      pushToast(
+        `${n} label${n === 1 ? "" : "s"} burned. Destroy the paper — anything still wearing one scans as nothing.`,
+      );
+      setBurning(new Set());
+      setBurnMode(false);
+      void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
 
   const mint = useMutation({
     mutationFn: (input: { markCode: string; total: number }) =>
@@ -85,9 +102,20 @@ export function PlanPackagesPanel({
       <div className="row-between">
         <h2 style={{ margin: 0 }}>Plan packages & labels</h2>
         {mintedRows.length > 0 && (
-          <button className="action-btn" onClick={() => void printLabels(mintedRows)}>
-            Print all on-the-way labels ({mintedRows.length})
-          </button>
+          <div className="row-gap">
+            <button className="action-btn" onClick={() => void printLabels(mintedRows)}>
+              Print all on-the-way labels ({mintedRows.length})
+            </button>
+            <button
+              className="action-btn"
+              onClick={() => {
+                setBurnMode((v) => !v);
+                setBurning(new Set());
+              }}
+            >
+              {burnMode ? "Cancel burn" : "Burn labels…"}
+            </button>
+          </div>
         )}
       </div>
       <Explain id="wh-plan-packages">
@@ -97,6 +125,60 @@ export function PlanPackagesPanel({
         Arrived. If the maker&rsquo;s own label says a different count, the
         maker wins — burn the wrong stickers and mint the right number.
       </Explain>
+
+      {burnMode && (
+        <div
+          className="detail-card"
+          style={{ borderLeft: "3px solid #c0392b", margin: "10px 0" }}
+        >
+          <p style={{ margin: 0, fontWeight: 600 }}>
+            Burning kills a label for good.
+          </p>
+          <p className="muted" style={{ margin: "4px 0 8px", fontSize: 13 }}>
+            Only labels whose material never arrived can burn. The serial dies,
+            the part slot reopens for a fresh label, and the paper must be
+            destroyed — anything still wearing a burned sticker will scan as
+            nothing. A sticker on a real package gets a Reprint instead, from
+            its package page.
+          </p>
+          <div className="row-gap" style={{ flexWrap: "wrap" }}>
+            {mintedRows.map((p) => {
+              const mark = (p.package_marks ?? [])[0]?.mark_code ?? "?";
+              const part =
+                p.part_index != null && p.part_total != null
+                  ? ` · ${p.part_index} of ${p.part_total}`
+                  : "";
+              const on = burning.has(p.id);
+              return (
+                <button
+                  key={p.id}
+                  className={on ? "button-like active-pill" : "button-like"}
+                  onClick={() => {
+                    const next = new Set(burning);
+                    if (on) next.delete(p.id);
+                    else next.add(p.id);
+                    setBurning(next);
+                  }}
+                >
+                  W{mark}{part}
+                </button>
+              );
+            })}
+          </div>
+          {burning.size > 0 && (
+            <button
+              className="button-like"
+              style={{ marginTop: 8, background: "#c0392b", color: "white" }}
+              disabled={burn.isPending}
+              onClick={() => burn.mutate()}
+            >
+              {burn.isPending
+                ? "Burning…"
+                : `Burn ${burning.size} label${burning.size === 1 ? "" : "s"} — no way back`}
+            </button>
+          )}
+        </div>
+      )}
 
       {rows.length === 0 && (
         <p className="muted">
