@@ -27,14 +27,12 @@ import { AskInfinity } from "./pages/AskInfinity";
 import { AskMisses } from "./pages/AskMisses";
 import { Knowledge } from "./pages/Knowledge";
 import { AiSpend } from "./pages/AiSpend";
-import { CycleCount } from "./pages/CycleCount";
 import { Home } from "./pages/Home";
 import { Labels } from "./pages/Labels";
 import { Landing } from "./pages/Landing";
 import { Notifications } from "./pages/Notifications";
 import { Team } from "./pages/Team";
 import { Warehouse } from "./pages/Warehouse";
-import { InventoryList } from "./pages/InventoryList";
 import { LocationDetail } from "./pages/LocationDetail";
 import { ProjectDetail } from "./pages/ProjectDetail";
 import { Projects } from "./pages/Projects";
@@ -49,7 +47,6 @@ import { ArrivePackages } from "./pages/storage/ArrivePackages";
 import { PackageSheet } from "./pages/storage/PackageSheet";
 import { Settings } from "./pages/Settings";
 import { SignIn } from "./pages/SignIn";
-import { WindowDetail } from "./pages/WindowDetail";
 import { OpeningReview } from "./pages/install/OpeningReview";
 import { OpeningSheetRoute } from "./pages/install/OpeningSheet";
 import { MapsTrace } from "./pages/install/MapsTrace";
@@ -316,7 +313,6 @@ export default function App() {
             <Route path="/warehouse" element={<Warehouse />} />
             {/* One list per hub number: /warehouse/on-hand, /putaway, /staged,
                 /damaged. Anything else redirects back to the hub. */}
-            <Route path="/warehouse/:view" element={<InventoryList />} />
             <Route path="/ask" element={<AskInfinity />} />
             <Route
               path="/ask-misses"
@@ -551,13 +547,11 @@ export default function App() {
               path="/qc"
               element={<RequireRole path="/qc"><Qc /></RequireRole>}
             />
-            <Route path="/w/:windowId" element={<WindowDetail />} />
             <Route path="/loc/:address" element={<LocationDetail />} />
             <Route
               path="/labels"
               element={<RequireRole path="/labels"><Labels /></RequireRole>}
             />
-            <Route path="/count" element={<CycleCount />} />
 
             {/* Horizon-menu stub destinations → shared "Coming soon" page.
                 Role gating still flows from the NAV registry via RequireRole. */}

@@ -253,6 +253,10 @@ Also landed here, from 15: the maker-count disagreement got its column. `mfr_par
 
 Receive rebuilds on packages (it becomes a thin door onto Tag/arrival). The pre-issue panel, the reconciliation, the `window_units` reads (inventory list included) all go in one pass; reads die first, the table survives one release as an archive, then drops. Production reality when written: 11 unit rows, all internal testing (ADR-0005).
 
+**What the pass turned out to cover (2026-08-18):** deeper than written. The job page's whole warehouse tab was the unit LOAD flow (scan-onto-truck), and the overview stats counted units — both rebuilt in package terms (checkout is the load flow; "N packages on hand · M checked out"). "Needed (by type)" now counts an opening as on-hand only when every part is physically here. Slot search resolves through the locations themselves (finishing audit F7 — the old path answered only when a retired-chain unit was parked there). Scan answers old WIN labels honestly instead of a dead page. Deleted outright: Receive-as-intake, InventoryList, CycleCount, WindowDetail, pre-issue, reconciliation, unload, and their libs.
+
+**Three reads deliberately survive until the table drops:** OpeningSheet's scan-assign (links a physical unit to an opening; still functional against the living table), the ReorderNeeds RPC (server-computed; rebuilt on packages when the table drops), and the pure loadout helpers behind it. The table itself was NOT dropped — that is the one-release archive this ticket promised, and the rollback if the package flow disappoints its first real truck.
+
 ## 22 — The warehouse map (parked)
 
 **Owner call 2026-08-18:** rides with the physical slot reorganization, not before. At today's coarseness a 3D view can only glow a third of a box, and "Conex 7 — front" already says that in words.

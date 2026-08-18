@@ -2,27 +2,21 @@ import { BackChip } from "../components/BackChip";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Scanner } from "../components/Scanner";
-import {
-  findWindowByCode,
-  findWindowBySerial,
-  getLocationByAddress,
-  getLocationBySerial,
-  getWindowByWindowId,
-} from "../lib/api";
+import { getLocationByAddress, getLocationBySerial } from "../lib/api";
+import { resolveLocationFromScan } from "../lib/scanResolve";
 import type { QrPayload } from "../lib/qr";
-import { resolveLocationFromScan, resolveWindowFromScan } from "../lib/scanResolve";
 import { getContainerBySerial, getPackageBySerial } from "../lib/storage";
 import { formatApiError } from "../lib/errors";
 
-const windowLookups = { getWindowByWindowId, findWindowByCode, findWindowBySerial };
 const locationLookups = { getLocationByAddress, getLocationBySerial };
 
 export function Scan() {
   const navigate = useNavigate();
   const [message, setMessage] = useState<string | null>(null);
 
-  // One resolver for every scanned label: a window/short-code/serial jumps to
-  // the unit, a slot label jumps to the slot, anything else explains itself.
+  // One resolver for every scanned label: a sticker opens its package, a conex
+  // poster its container, a slot label its shelf — and an old-chain unit label
+  // gets a plain answer instead of a dead page (ticket 21).
   const handleScan = async (payload: QrPayload) => {
     setMessage(null);
     try {
@@ -49,14 +43,15 @@ export function Scan() {
         else setMessage(`No package found for "${payload.serial}".`);
         return;
       }
-      const res = await resolveWindowFromScan(payload, windowLookups);
-      if (res.status === "ok") {
-        navigate(`/w/${encodeURIComponent(res.unit.window_id)}`);
-      } else if (res.status === "not-found") {
-        setMessage(`No window found for "${res.query}".`);
-      } else {
-        setMessage("That's a slot label — scan a window label.");
-      }
+      // Old-chain window labels (WIN- serials, W- ids) stopped resolving when
+      // the unit chain retired (ticket 21). The paper is still on some frames;
+      // the answer is honest instead of a dead page.
+      // Old-chain window labels (WIN- serials, W- ids, 5-char unit codes)
+      // stopped resolving when the unit chain retired (ticket 21). The paper
+      // is still on some frames; the answer is honest instead of a dead page.
+      setMessage(
+        "That's an old unit label — stickers replaced these. Tag the package at the truck and scan the sticker instead.",
+      );
     } catch (e) {
       setMessage(formatApiError(e));
     }

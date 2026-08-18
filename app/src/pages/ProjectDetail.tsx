@@ -1,37 +1,19 @@
 import { BackChip } from "../components/BackChip";
 import { PlanPackagesPanel } from "../components/warehouse/PlanPackagesPanel";
+import { JobPackagesPanel } from "../components/warehouse/JobPackagesPanel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Scanner } from "../components/Scanner";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
-  activatePreissuedUnit,
   ensureStagingBays,
-  findWindowByCode,
-  findWindowBySerial,
-  getProjectUnits,
   getProjectWindows,
-  getWindowByWindowId,
   listLocations,
   listProjects,
   listReorderNeeds,
-  loadUnits,
-  loadWindow,
-  preissueProjectUnits,
-  reconcileProjectDeliveries,
-  unloadUnits,
   updateProject,
 } from "../lib/api";
-import { selectedLoadableIds, toggleSelected, totalReorder } from "../lib/loadout";
-import { downloadPdf, windowLabelsPdf } from "../lib/labels";
-import {
-  computePreissuePlan,
-  totalExisting,
-  totalPlanned,
-  totalToIssue,
-} from "../lib/preissue";
-import { computeDeliveryProgress } from "../lib/receiving";
+import { totalReorder } from "../lib/loadout";
 import { missingStagingSlots, stagingBaysFor } from "../lib/staging";
 import { pushToast, toastError } from "../lib/toast";
 import { listOpenings, saveJobEstimate } from "../lib/install/api";
@@ -54,12 +36,10 @@ import {
 } from "../lib/estimate";
 import { prefetchJobPack } from "../lib/queryClient";
 import { useRealtimeOpenings } from "../lib/useRealtimeOpenings";
-import {
-  STATUS_LABELS,
-  type Project,
-  type ProjectWindow,
-  type WindowUnit,
-} from "../lib/types";
+import { type Project } from "../lib/types";
+import { listActivePackages, type StoragePackage } from "../lib/storage";
+import { normalizeMarkCode } from "../lib/fitview/adapter";
+import { unitParts } from "../lib/warehouse/unitParts";
 import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { listProjectAssignments } from "../lib/schedule/api";
@@ -69,7 +49,6 @@ import { listTrips } from "../lib/travel/api";
 import { listRoster } from "../lib/chat/api";
 import { mergeJobPeople } from "../lib/whoOnJob";
 import { CalendarClock, Plane, Truck, Users } from "lucide-react";
-import { resolveWindowFromScan } from "../lib/scanResolve";
 import { MapsInteractive } from "./install/MapsInteractive";
 import { DispatchBoard } from "./install/DispatchBoard";
 import { SignatureEstimates } from "../components/install/SignatureEstimates";
@@ -80,7 +59,6 @@ import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
 import { formatApiError } from "../lib/errors";
 
 
-const windowLookups = { getWindowByWindowId, findWindowByCode, findWindowBySerial };
 
 type HubTab =
   | "overview"
@@ -165,25 +143,25 @@ export function ProjectDetail() {
     queryKey: ["projectWindows", projectId],
     queryFn: () => getProjectWindows(projectId),
   });
-  const units = useQuery({
-    queryKey: ["projectUnits", projectId],
-    queryFn: () => getProjectUnits(projectId),
-  });
   const openings = useQuery({
     queryKey: ["openings", projectId],
     queryFn: () => listOpenings(projectId),
   });
-
-  const pickList = useMemo(() => {
-    return (units.data ?? [])
-      .filter((u) => u.status === "in_warehouse" || u.status === "staged")
-      .sort((a, b) =>
-        (a.locations?.address ?? "~").localeCompare(b.locations?.address ?? "~"),
-      );
-  }, [units.data]);
-
-  const loaded = (units.data ?? []).filter((u) => u.status === "loaded");
-  const installedUnits = (units.data ?? []).filter((u) => u.status === "installed");
+  // The job's material, in the package chain's own terms (ticket 21). Same
+  // query key every warehouse screen uses, so it is a cache hit on a phone
+  // that has been anywhere near the warehouse today.
+  const jobPackages = useQuery({
+    queryKey: ["storagePackages"],
+    queryFn: listActivePackages,
+  });
+  const minePkgs = useMemo(
+    () => (jobPackages.data ?? []).filter((p) => p.project_id === projectId),
+    [jobPackages.data, projectId],
+  );
+  const heldCount = minePkgs.filter(
+    (p) => p.status === "received" || p.status === "stored",
+  ).length;
+  const outCount = minePkgs.filter((p) => p.status === "checked_out").length;
   const brainTypes = useMemo(() => {
     const map = new Map<
       string,
@@ -282,15 +260,14 @@ export function ProjectDetail() {
       {tab === "overview" && (
         <OverviewTab
           projectId={projectId}
-          unitsCount={units.data?.length ?? 0}
           neededTotal={neededTotal}
-          pickCount={pickList.length}
-          loadedCount={loaded.length}
-          installedUnits={installedUnits.length}
+          heldCount={heldCount}
+          outCount={outCount}
           openingsTotal={openingsList.length}
           openingsInstalled={openingsInstalled}
           needs={needs.data ?? []}
-          units={units.data ?? []}
+          packages={minePkgs}
+          openings={openingsList}
           estimate={jobEstimate}
           isLead={isLead}
           canStudio={isSupervisorPlus(effectiveRole)}
@@ -311,24 +288,14 @@ export function ProjectDetail() {
               jobCode={project?.job_code ?? null}
             />
           )}
-          {isLead && (
-            <PreissuePanel
-              projectId={projectId}
-              needs={needs.data ?? []}
-              units={units.data ?? []}
-            />
-          )}
-          {isLead && (
-            <ReceivingPanel projectId={projectId} units={units.data ?? []} />
-          )}
-          {isLead && <UnloadPanel projectId={projectId} loaded={loaded} />}
           {isLead && <ReorderNeedsPanel projectId={projectId} />}
-          <WarehouseTab
-            projectId={projectId}
-            pickList={pickList}
-            loaded={loaded}
-            isLead={isLead}
-          />
+          {/* The unit chain's panels lived here — pre-issue, the delivery
+              reconciliation, unload, and the load-to-truck tab (ticket 21,
+              ADR-0005). Their jobs moved onto packages: labels mint in the
+              plan panel above, the truck confirms on Tag packages, taking
+              material to the job is Check out, and site arrival is the
+              arrival check. */}
+          <JobPackagesPanel projectId={projectId} />
         </>
       )}
 
@@ -400,30 +367,28 @@ function OfflineDownloadButton({ projectId }: { projectId: string }) {
 
 function OverviewTab({
   projectId,
-  unitsCount,
   neededTotal,
-  pickCount,
-  loadedCount,
-  installedUnits,
+  heldCount,
+  outCount,
   openingsTotal,
   openingsInstalled,
   needs,
-  units,
+  packages,
+  openings,
   estimate,
   isLead,
   canStudio,
   project,
 }: {
   projectId: string;
-  unitsCount: number;
   neededTotal: number;
-  pickCount: number;
-  loadedCount: number;
-  installedUnits: number;
+  heldCount: number;
+  outCount: number;
   openingsTotal: number;
   openingsInstalled: number;
   needs: Awaited<ReturnType<typeof getProjectWindows>>;
-  units: WindowUnit[];
+  packages: StoragePackage[];
+  openings: Awaited<ReturnType<typeof listOpenings>>;
   estimate: { est: JobEstimate; crew: CrewRecommendation } | null;
   isLead: boolean;
   canStudio: boolean;
@@ -499,26 +464,27 @@ function OverviewTab({
         </div>
       )}
 
+      {/* Package language now (ticket 21): what the warehouse holds for this
+          job, what has left for the site, and how the install itself stands.
+          "N of M assigned/on truck" were the unit chain's words. */}
       <div className="briefing-stats" style={{ marginBottom: 16 }}>
         <span>
-          <strong>{unitsCount}</strong>
-          of {neededTotal || "—"} assigned
+          <strong>{heldCount}</strong>
+          packages on hand
         </span>
         <span>
-          <strong>{pickCount}</strong>
-          in warehouse
-        </span>
-        <span>
-          <strong>{loadedCount}</strong>
-          on truck
+          <strong>{outCount}</strong>
+          checked out
         </span>
         <span>
           <strong>
-            {openingsTotal > 0
-              ? `${openingsInstalled}/${openingsTotal}`
-              : installedUnits}
+            {openingsTotal > 0 ? `${openingsInstalled}/${openingsTotal}` : "—"}
           </strong>
-          {openingsTotal > 0 ? "openings done" : "units installed"}
+          openings done
+        </span>
+        <span>
+          <strong>{neededTotal || "—"}</strong>
+          windows planned
         </span>
       </div>
 
@@ -558,17 +524,23 @@ function OverviewTab({
       </p>
       <ul className="unit-list work-list">
         {needs.map((n) => {
-          // "On hand" means a crew could pick it up today. A damaged unit is
-          // a SHORTAGE — the database's own reorder rule already says so, and
-          // counting it here made Overview show a green 5/5 while the same
-          // job's Warehouse tab said "2 damaged, needs reorder". Pre-issued
-          // units are ordered but not physically here, so they are counted
-          // separately rather than hidden (owner call, P8).
-          const forType = units.filter((u) => u.window_type_id === n.window_type_id);
-          const have = forType.filter(
-            (u) => u.status !== "damaged" && u.status !== "pre_issued",
-          ).length;
-          const onTheWay = forType.filter((u) => u.status === "pre_issued").length;
+          // "On hand" means a crew could pick the whole window up today
+          // (ticket 21): every part of the opening's window physically here.
+          // Minted labels are on the way, counted separately rather than
+          // hidden — the same owner call (P8) the unit chain honored, kept in
+          // package terms. A window with no packages at all counts nowhere,
+          // which is what the Not-Tagged card is for.
+          const typeOpenings = openings.filter(
+            (o) => o.window_types?.id === n.window_type_id,
+          );
+          let have = 0;
+          let onTheWay = 0;
+          for (const o of typeOpenings) {
+            const r = unitParts(packages, projectId, normalizeMarkCode(o.opening_code));
+            if (r.rows.length === 0) continue;
+            if (r.complete) have += 1;
+            else if (r.onTheWayIndexes.length > 0) onTheWay += 1;
+          }
           return (
             <li key={n.id} className="find-row">
               <div>
@@ -1061,144 +1033,6 @@ function JobDetailsPanel({
   );
 }
 
-/**
- * Foreman+ action: turn a project's planned quantities into pre-issued unit
- * records (serial + short_code + QR, status pre_issued) BEFORE the windows
- * physically arrive, then print the label batch so labels get applied on
- * delivery. This is the front of the tracking chain — every expected unit has
- * an ID before arrival, enabling missing-delivery detection next.
- */
-function PreissuePanel({
-  projectId,
-  needs,
-  units,
-}: {
-  projectId: string;
-  needs: ProjectWindow[];
-  units: WindowUnit[];
-}) {
-  const queryClient = useQueryClient();
-
-  const plan = useMemo(
-    () =>
-      computePreissuePlan(
-        needs.map((n) => ({
-          window_type_id: n.window_type_id,
-          quantity: n.quantity,
-        })),
-        units.map((u) => ({ window_type_id: u.window_type_id })),
-      ),
-    [needs, units],
-  );
-  const expected = totalPlanned(plan);
-  const issued = totalExisting(plan);
-  const toIssue = totalToIssue(plan);
-
-  const preIssuedUnits = useMemo(
-    () => (units ?? []).filter((u) => u.status === "pre_issued"),
-    [units],
-  );
-
-  const preissue = useMutation({
-    mutationFn: () => preissueProjectUnits(projectId),
-    onSuccess: (created) => {
-      queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["inventory"] });
-      pushToast(
-        created.length > 0
-          ? `Pre-issued ${created.length} unit ID${created.length === 1 ? "" : "s"}.`
-          : "All planned units already have IDs.",
-        "info",
-      );
-    },
-    onError: (e) => toastError(e),
-  });
-
-  const printPreIssued = async () => {
-    const list = preIssuedUnits;
-    if (list.length === 0) {
-      pushToast("No pre-issued units to print yet.", "info");
-      return;
-    }
-    try {
-      const bytes = await windowLabelsPdf(
-        list.map((u) => ({
-          window_id: u.window_id,
-          typeName: u.window_types?.name ?? u.window_types?.type_code ?? "",
-          short_code: u.short_code,
-          serial: u.serial,
-          display_name: u.display_name,
-        })),
-      );
-      downloadPdf(bytes, `preissued-labels-${projectId}.pdf`);
-    } catch (e) {
-      toastError(e);
-    }
-  };
-
-  return (
-    <section className="detail-card" style={{ marginBottom: 16 }}>
-      <div className="row-between">
-        <h2 style={{ margin: 0 }}>Pre-issue unit IDs & labels</h2>
-        <span className={toIssue > 0 ? "warn-text" : "ok"}>
-          {issued}/{expected || "—"} issued
-        </span>
-      </div>
-      <p className="muted" style={{ marginTop: 6 }}>
-        Create an ID + printable label for every expected window before it
-        arrives, so crew can label units on delivery and we can spot a missing
-        delivery later.
-      </p>
-
-      <div className="action-list">
-        <button
-          className="action-btn primary"
-          disabled={expected === 0 || toIssue === 0 || preissue.isPending}
-          onClick={() => preissue.mutate()}
-        >
-          {preissue.isPending
-            ? "Pre-issuing…"
-            : toIssue > 0
-              ? `Pre-issue ${toIssue} unit ID${toIssue === 1 ? "" : "s"}`
-              : expected === 0
-                ? "No planned windows yet"
-                : "All planned units have IDs"}
-        </button>
-        <button
-          className="action-btn"
-          disabled={preIssuedUnits.length === 0}
-          onClick={printPreIssued}
-        >
-          Print labels for pre-issued units ({preIssuedUnits.length})
-        </button>
-      </div>
-
-      {expected === 0 && (
-        <p className="muted">
-          No planned quantities yet. Confirm openings from a planset to populate
-          the plan, then pre-issue IDs here.
-        </p>
-      )}
-
-      {preIssuedUnits.length > 0 && (
-        <ul className="unit-list work-list">
-          {preIssuedUnits.map((u) => (
-            <li key={u.id} className="find-row">
-              <Link to={`/w/${encodeURIComponent(u.window_id)}`}>
-                <strong>{u.window_id}</strong>
-              </Link>
-              {u.short_code && (
-                <span className="short-code-chip"> {u.short_code}</span>
-              )}
-              <span className="muted"> {u.window_types?.type_code}</span>
-              <span className="big-address">{STATUS_LABELS[u.status]}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
 
 /**
  * The job's two staging bays — the shelves that keep this job's windows
@@ -1297,289 +1131,7 @@ function StagingBaysPanel({
   );
 }
 
-/**
- * Foreman+ action: RECEIVE against the plan. Scan/type a unit's code as it
- * arrives to match it to its pre-issued ID and activate it (into the warehouse,
- * or held as damaged). Shows a "Received X of Y expected" readout, and a
- * reconcile action that flags any still-undelivered pre-issued units as missing
- * issues. The ad-hoc receive_window path (unplanned units) stays on /receive.
- */
-function ReceivingPanel({
-  projectId,
-  units,
-}: {
-  projectId: string;
-  units: WindowUnit[];
-}) {
-  const queryClient = useQueryClient();
-  const [code, setCode] = useState("");
-  const [locationId, setLocationId] = useState("");
-  const [damaged, setDamaged] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
 
-  const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
-  const issues = useQuery({
-    queryKey: ["projectIssues", projectId],
-    queryFn: () => listProjectIssues(projectId),
-  });
-
-  const progress = useMemo(() => computeDeliveryProgress(units), [units]);
-
-  const activate = useMutation({
-    mutationFn: () => {
-      const c = code.trim();
-      if (!c) throw new Error("Scan or type a unit code first.");
-      return activatePreissuedUnit(c, locationId || null, damaged);
-    },
-    onSuccess: (unit: WindowUnit) => {
-      setMessage(
-        `${damaged ? "Received DAMAGED" : "Received"} ${unit.window_id}` +
-          (unit.locations?.address ? ` → ${unit.locations.address}` : ""),
-      );
-      setCode("");
-      setDamaged(false);
-      queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["inventory"] });
-    },
-    onError: (e) => setMessage(formatApiError(e)),
-  });
-
-  const reconcile = useMutation({
-    mutationFn: () => reconcileProjectDeliveries(projectId),
-    onSuccess: (created) => {
-      pushToast(
-        created.length > 0
-          ? `Flagged ${created.length} unit${created.length === 1 ? "" : "s"} as missing.`
-          : "No missing units — every pre-issued unit is accounted for.",
-        created.length > 0 ? "error" : "info",
-      );
-      queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["issues"] });
-    },
-    onError: (e) => toastError(e),
-  });
-
-  const openIssues = (issues.data ?? []).filter((i) => i.status === "open");
-  const missingOpen = openIssues.filter((i) => i.kind === "missing");
-  const damagedOpen = openIssues.filter((i) => i.kind === "damage");
-  const flagged = [...damagedOpen, ...missingOpen];
-
-  return (
-    <section className="detail-card" style={{ marginBottom: 16 }}>
-      <div className="row-between">
-        <h2 style={{ margin: 0 }}>Receive against the plan</h2>
-        <span className={progress.preIssuedRemaining > 0 ? "warn-text" : "ok"}>
-          Received {progress.received} of {progress.expected || "—"} expected
-        </span>
-      </div>
-      <p className="muted" style={{ marginTop: 6 }}>
-        Scan or type a unit&apos;s code as it arrives to match it to its
-        pre-issued ID and put it in the warehouse. Flip &quot;arrived
-        damaged&quot; to hold it and open a damage issue.{" "}
-        <Link to="/receive" className="link">
-          Extra / unplanned stock? Receive it here →
-        </Link>
-      </p>
-
-      <div className="manual-entry">
-        <input
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          placeholder="6-char code or serial"
-          autoCapitalize="characters"
-          onKeyDown={(e) => e.key === "Enter" && activate.mutate()}
-        />
-        <button
-          disabled={activate.isPending || !code.trim()}
-          onClick={() => activate.mutate()}
-        >
-          {activate.isPending ? "…" : "Receive"}
-        </button>
-      </div>
-
-      <label className="field-label">Put in location (optional)</label>
-      <select
-        value={locationId}
-        onChange={(e) => setLocationId(e.target.value)}
-      >
-        <option value="">No slot yet</option>
-        {(locations.data ?? []).map((l) => (
-          <option key={l.id} value={l.id}>
-            {l.address}
-          </option>
-        ))}
-      </select>
-
-      <label
-        style={{
-          display: "flex",
-          gap: 8,
-          alignItems: "center",
-          marginTop: 10,
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={damaged}
-          onChange={(e) => setDamaged(e.target.checked)}
-        />
-        Arrived damaged (hold + open a damage issue)
-      </label>
-
-      {message && (
-        <p className={message.startsWith("Received") ? "ok" : "error"}>
-          {message}
-        </p>
-      )}
-
-      <div className="briefing-stats" style={{ margin: "12px 0" }}>
-        <span>
-          <strong>{progress.preIssuedRemaining}</strong>
-          awaiting arrival
-        </span>
-        <span>
-          <strong>{damagedOpen.length}</strong>
-          damaged
-        </span>
-        <span>
-          <strong>{missingOpen.length}</strong>
-          missing
-        </span>
-      </div>
-
-      <div className="action-list">
-        <button
-          className="action-btn"
-          disabled={reconcile.isPending || progress.preIssuedRemaining === 0}
-          onClick={() => reconcile.mutate()}
-        >
-          {reconcile.isPending
-            ? "Reconciling delivery…"
-            : progress.preIssuedRemaining > 0
-              ? `Reconcile delivery — flag ${progress.preIssuedRemaining} missing`
-              : "All pre-issued units received"}
-        </button>
-        {flagged.length > 0 && (
-          <Link to="/issues" className="action-btn">
-            View damaged / missing issues ({flagged.length})
-          </Link>
-        )}
-      </div>
-
-      {flagged.length > 0 && (
-        <ul className="unit-list work-list">
-          {flagged.map((i) => (
-            <li key={i.id} className="find-row">
-              <strong style={{ color: "#ef4444" }}>{KIND_LABELS[i.kind]}</strong>
-              <span className="muted"> {i.note ?? ""}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-/**
- * Foreman+ action: JOBSITE UNLOAD + condition report. Every loaded unit defaults
- * to “arrived OK”; flip any that arrived damaged. Submitting sends the OK units
- * to 'on_site' (ready to install) and holds the damaged ones (opening a
- * damage issue each). Optional location note is logged on the movement.
- */
-function UnloadPanel({
-  projectId,
-  loaded,
-}: {
-  projectId: string;
-  loaded: WindowUnit[];
-}) {
-  const queryClient = useQueryClient();
-  const [damaged, setDamaged] = useState<Set<string>>(new Set());
-  const [note, setNote] = useState("");
-
-  const damagedIds = loaded.filter((u) => damaged.has(u.id)).map((u) => u.id);
-  const okIds = loaded.filter((u) => !damaged.has(u.id)).map((u) => u.id);
-
-  const unload = useMutation({
-    mutationFn: () => unloadUnits(okIds, damagedIds, projectId, note),
-    onSuccess: (res) => {
-      setDamaged(new Set());
-      setNote("");
-      pushToast(
-        `Unloaded ${res.unloaded} on site` +
-          (res.damaged > 0 ? `, ${res.damaged} held damaged.` : "."),
-        res.damaged > 0 ? "error" : "info",
-      );
-      queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["issues"] });
-      queryClient.invalidateQueries({ queryKey: ["reorderNeeds", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["inventory"] });
-    },
-    onError: (e) => toastError(e),
-  });
-
-  if (loaded.length === 0) return null;
-
-  return (
-    <section className="detail-card" style={{ marginBottom: 16 }}>
-      <div className="row-between">
-        <h2 style={{ margin: 0 }}>Unload at the jobsite</h2>
-        <span className={damagedIds.length > 0 ? "warn-text" : "ok"}>
-          {damagedIds.length > 0 ? `${damagedIds.length} flagged` : "all OK"}
-        </span>
-      </div>
-      <p className="muted" style={{ marginTop: 6 }}>
-        Confirm the truck arrived. Everything is marked good by default — flip any
-        unit that showed up damaged. Good units become on-site &amp; ready to
-        install; damaged units are held and reported.
-      </p>
-
-      <ul className="unit-list work-list">
-        {loaded.map((u) => {
-          const isDamaged = damaged.has(u.id);
-          return (
-            <li key={u.id} className="find-row">
-              <Link to={`/w/${encodeURIComponent(u.window_id)}`}>
-                <strong>{u.window_id}</strong>
-              </Link>
-              <span className="muted"> {u.window_types?.type_code}</span>
-              <button
-                className={isDamaged ? "action-btn" : "link"}
-                style={{ marginLeft: "auto", color: isDamaged ? "#ef4444" : undefined }}
-                onClick={() => setDamaged((s) => toggleSelected(s, u.id))}
-              >
-                {isDamaged ? "Damaged ✓" : "Flag damaged"}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-
-      <label className="field-label">Where on site (optional)</label>
-      <input
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        placeholder="e.g. staged in garage"
-      />
-
-      <div className="action-list" style={{ marginTop: 12 }}>
-        <button
-          className="action-btn primary"
-          disabled={unload.isPending}
-          onClick={() => unload.mutate()}
-        >
-          {unload.isPending
-            ? "Unloading…"
-            : damagedIds.length > 0
-              ? `Unload — ${okIds.length} OK, ${damagedIds.length} damaged`
-              : `Confirm arrival — unload ${okIds.length}`}
-        </button>
-      </div>
-    </section>
-  );
-}
 
 /**
  * Foreman+/office ROLLUP: units that need reordering for this job — damaged
@@ -1631,225 +1183,6 @@ function ReorderNeedsPanel({ projectId }: { projectId: string }) {
   );
 }
 
-/**
- * Pick list + one merged load-out for a run. Two modes over the same list:
- * Scan (scan units one at a time onto the truck — available to everyone) and
- * Select all (foreman+ multi-select a batch and load in one go). Keeps both
- * server actions: `loadWindow` per scan, `loadUnits` for the batch.
- */
-function WarehouseTab({
-  projectId,
-  pickList,
-  loaded,
-  isLead,
-}: {
-  projectId: string;
-  pickList: WindowUnit[];
-  loaded: WindowUnit[];
-  isLead: boolean;
-}) {
-  const queryClient = useQueryClient();
-  const [mode, setMode] = useState<"scan" | "select">("scan");
-  const [scanning, setScanning] = useState(false);
-  const [scanMessage, setScanMessage] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-
-  const selectMode = mode === "select" && isLead;
-
-  // Keep the batch selection in sync when units leave the pick list (loaded).
-  const availableIds = useMemo(() => pickList.map((u) => u.id), [pickList]);
-  const idsToLoad = selectedLoadableIds(pickList, selected);
-  const allSelected = pickList.length > 0 && idsToLoad.length === pickList.length;
-
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
-    queryClient.invalidateQueries({ queryKey: ["inventory"] });
-  };
-
-  // Scan one unit onto the truck. The unit comes pre-resolved from the shared
-  // scan helper; we only re-check it belongs here and is warehouse-ready.
-  const loadScan = useMutation({
-    mutationFn: async (unit: WindowUnit) => {
-      if (unit.project_id !== projectId) {
-        throw new Error(
-          `${unit.window_id} belongs to ${unit.projects?.job_code ?? "no job"} — not this job!`,
-        );
-      }
-      if (unit.status === "loaded") {
-        throw new Error(`${unit.window_id} is already loaded.`);
-      }
-      if (unit.status !== "in_warehouse" && unit.status !== "staged") {
-        throw new Error(
-          `${unit.window_id} is not warehouse-ready to load (${STATUS_LABELS[unit.status]}).`,
-        );
-      }
-      return loadWindow(unit.id);
-    },
-    onSuccess: (unit: WindowUnit) => {
-      setScanMessage(`Loaded ${unit.window_id}`);
-      invalidate();
-    },
-    onError: (e) => setScanMessage(formatApiError(e)),
-  });
-
-  const loadBatch = useMutation({
-    mutationFn: () => loadUnits(idsToLoad, projectId),
-    onSuccess: (loadedUnits) => {
-      setSelected(new Set());
-      pushToast(
-        loadedUnits.length > 0
-          ? `Loaded ${loadedUnits.length} unit${loadedUnits.length === 1 ? "" : "s"} for the run.`
-          : "Nothing eligible to load.",
-        "info",
-      );
-      invalidate();
-    },
-    onError: (e) => toastError(e),
-  });
-
-  const toggleAll = () => {
-    setSelected(allSelected ? new Set() : new Set(availableIds));
-  };
-
-  return (
-    <>
-      <div className="row-between">
-        <h2 style={{ margin: 0 }}>Pick list ({pickList.length})</h2>
-        {isLead && pickList.length > 0 && (
-          <nav className="hub-tabs" aria-label="Load-out mode" style={{ margin: 0 }}>
-            <button
-              type="button"
-              className={mode === "scan" ? "hub-tab active" : "hub-tab"}
-              onClick={() => setMode("scan")}
-            >
-              Scan
-            </button>
-            <button
-              type="button"
-              className={mode === "select" ? "hub-tab active" : "hub-tab"}
-              onClick={() => setMode("select")}
-            >
-              Select all
-            </button>
-          </nav>
-        )}
-      </div>
-
-      {pickList.length > 0 && !selectMode && (
-        <>
-          <button
-            className={scanning ? "" : "primary"}
-            onClick={() => {
-              setScanning(!scanning);
-              setScanMessage(null);
-            }}
-          >
-            {scanning ? "Stop load-out" : "Start load-out"}
-          </button>
-          {scanning && (
-            <>
-              <p className="scanner-hint">
-                Scan each window as it goes on the truck. Wrong-job windows are
-                rejected automatically.
-              </p>
-              {scanMessage && (
-                <p className={scanMessage.startsWith("Loaded") ? "ok" : "error"}>
-                  {scanMessage}
-                </p>
-              )}
-              <Scanner
-                onScan={async (payload) => {
-                  const res = await resolveWindowFromScan(payload, windowLookups);
-                  if (res.status === "ok") {
-                    loadScan.mutate(res.unit);
-                  } else if (res.status === "not-found") {
-                    setScanMessage(`No window found for ${res.query}.`);
-                  } else {
-                    setScanMessage("That's a slot label — scan a window label.");
-                  }
-                }}
-              />
-            </>
-          )}
-        </>
-      )}
-
-      {selectMode && pickList.length > 0 && (
-        <>
-          <label
-            style={{ display: "flex", gap: 8, alignItems: "center", margin: "8px 0" }}
-          >
-            <input type="checkbox" checked={allSelected} onChange={toggleAll} />
-            Select all ({pickList.length})
-          </label>
-          <div className="action-list">
-            <button
-              className="action-btn primary"
-              disabled={idsToLoad.length === 0 || loadBatch.isPending}
-              onClick={() => loadBatch.mutate()}
-            >
-              {loadBatch.isPending
-                ? "Loading…"
-                : `Load ${idsToLoad.length || ""} for run`.trim()}
-            </button>
-          </div>
-        </>
-      )}
-
-      <ul className="unit-list work-list">
-        {pickList.map((u) => (
-          <li key={u.id} className="find-row">
-            {selectMode ? (
-              <label
-                style={{ display: "flex", gap: 8, alignItems: "center", flex: 1 }}
-              >
-                <input
-                  type="checkbox"
-                  checked={selected.has(u.id)}
-                  onChange={() => setSelected((s) => toggleSelected(s, u.id))}
-                />
-                <strong>{u.window_id}</strong>
-                <span className="muted"> {u.window_types?.type_code}</span>
-                <span className="big-address">
-                  {u.locations?.address ?? STATUS_LABELS[u.status]}
-                </span>
-              </label>
-            ) : (
-              <>
-                <Link to={`/w/${encodeURIComponent(u.window_id)}`}>
-                  <strong>{u.window_id}</strong>
-                </Link>
-                <span className="muted"> {u.window_types?.type_code}</span>
-                <span className="big-address">
-                  {u.locations?.address ?? STATUS_LABELS[u.status]}
-                </span>
-              </>
-            )}
-          </li>
-        ))}
-        {pickList.length === 0 && (
-          <p className="muted">Nothing left in the warehouse for this job.</p>
-        )}
-      </ul>
-
-      {loaded.length > 0 && (
-        <>
-          <h2>On truck ({loaded.length})</h2>
-          <ul className="unit-list work-list">
-            {loaded.map((u) => (
-              <li key={u.id} className="find-row">
-                <Link to={`/w/${encodeURIComponent(u.window_id)}`}>
-                  {u.window_id}
-                </Link>{" "}
-                <span className="muted">{u.window_types?.type_code}</span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </>
-  );
-}
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "";

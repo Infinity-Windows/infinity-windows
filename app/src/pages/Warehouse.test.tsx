@@ -235,14 +235,10 @@ describe("Find on the real warehouse page", () => {
   });
 });
 
-describe("Other tools keeps the old unit screens reachable (ticket 08b)", () => {
-  // 08b put the union page in front of everyone and promised in writing that
-  // the four unit screens it did not rewrite "stay reachable and working from
-  // its 'Other tools' fold". The inventory list was left out, and it still
-  // holds the only warehouse data that exists.
-  // Scoped to the fold itself, not the whole page: /count and /storage are
-  // also linked from the Problems and Coming-in sections, so a page-wide sweep
-  // would go on passing after somebody deleted those two tiles.
+describe("Other tools after the unit chain retired (ticket 21)", () => {
+  // 08b kept the unit screens reachable "until the units retire" — that
+  // retirement happened (ADR-0005), so the fold now holds only the living
+  // tools, and the dead doors are gone rather than dead-ending people.
   function openOtherTools(el: HTMLElement): string[] {
     const toggle = [...el.querySelectorAll("button")].find((b) =>
       b.textContent?.includes("Other tools"),
@@ -253,17 +249,19 @@ describe("Other tools keeps the old unit screens reachable (ticket 08b)", () => 
     return [...fold.querySelectorAll("a")].map((a) => a.getAttribute("href") ?? "");
   }
 
-  it("has a door to the inventory list", () => {
-    const el = mount({ packages: [], locations: [bay] });
-    expect(openOtherTools(el)).toContain("/warehouse/on-hand");
-  });
-
-  it("still has the doors it already had", () => {
+  it("keeps the living tools", () => {
     const el = mount({ packages: [], locations: [bay] });
     const hrefs = openOtherTools(el);
-    for (const to of ["/scan", "/count", "/labels", "/storage"]) {
+    for (const to of ["/scan", "/labels", "/storage"]) {
       expect(hrefs).toContain(to);
     }
+  });
+
+  it("the unit-chain doors are gone, not dead-ending", () => {
+    const el = mount({ packages: [], locations: [bay] });
+    const hrefs = openOtherTools(el);
+    expect(hrefs).not.toContain("/warehouse/on-hand");
+    expect(hrefs).not.toContain("/count");
   });
 });
 
@@ -295,11 +293,13 @@ describe("what an installer can still reach", () => {
     expect(hrefs).not.toContain("/storage");
   });
 
-  it("still gives a foreman all three", () => {
+  it("still gives a foreman the tag door and the container hub", () => {
+    // "/receive" left this list when the unit chain retired (ticket 21):
+    // receiving IS tagging now, and the old address is a thin door elsewhere.
     const el = mount({ packages: [], locations: [], role: "foreman" });
     const hrefs = [...el.querySelectorAll("a")].map((a) => a.getAttribute("href"));
     expect(hrefs).toContain("/storage/tag");
-    expect(hrefs).toContain("/receive");
+    expect(hrefs).not.toContain("/receive");
     expect(hrefs).toContain("/storage");
   });
 });

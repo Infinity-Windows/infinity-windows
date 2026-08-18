@@ -16,7 +16,6 @@ import {
   findInWarehouse,
   type FindAnswer,
   type PackageHit,
-  type UnitLike,
 } from "../../lib/warehouse/find";
 
 /** Pull a searchable string out of any scanned payload. */
@@ -46,14 +45,12 @@ export function FindBar({
   containers,
   projects,
   scheduledMarks,
-  units,
   locationsById,
 }: {
   packages: StoragePackage[];
   containers: StorageContainer[];
   projects: { id: string; job_code: string; name: string | null }[];
   scheduledMarks: { project_id: string; mark_code: string }[];
-  units: UnitLike[];
   /** Racks and staging bays, so a staged package names its job instead of
    * making somebody read a slot address. */
   locationsById: Map<string, PlaceLocation>;
@@ -67,7 +64,7 @@ export function FindBar({
     () =>
       findInWarehouse(
         query,
-        { packages, containers, projects, scheduledMarks, units, locationsById },
+        { packages, containers, projects, scheduledMarks, locationsById },
         { markProjectId: markChoice ?? undefined },
       ),
     [
@@ -76,7 +73,6 @@ export function FindBar({
       containers,
       projects,
       scheduledMarks,
-      units,
       locationsById,
       markChoice,
     ],
@@ -218,40 +214,17 @@ function Answer({
     );
   }
 
-  if (answer.kind === "unit-row") {
-    const u = answer.unit;
-    return (
-      <div className="wh-answer">
-        <strong>{u.window_id}</strong>
-        <p style={{ margin: "2px 0 0", fontSize: 13 }}>
-          {u.window_types?.name ?? u.window_types?.type_code ?? "window"} — {answer.where}
-        </p>
-        <Link className="button-like" style={{ marginTop: 8 }} to={`/w/${encodeURIComponent(u.window_id)}`}>
-          Open this window
-        </Link>
-      </div>
-    );
-  }
-
   if (answer.kind === "slot") {
+    // Packages only, since ticket 21 — the shelf names what actually sits on
+    // it, and a bay with nothing on it says so instead of "not found".
     return (
       <div className="wh-answer">
         <strong>{answer.address}</strong>
         <p className="muted" style={{ margin: "2px 0 0", fontSize: 13 }}>
-          {answer.units.length} window{answer.units.length === 1 ? "" : "s"} on this shelf
+          {answer.hits.length === 0
+            ? "Nothing on this shelf right now"
+            : `${answer.hits.length} package${answer.hits.length === 1 ? "" : "s"} here`}
         </p>
-        <ul className="unit-list" style={{ margin: "6px 0 0" }}>
-          {answer.units.map((u) => (
-            <li key={u.id} className="find-row">
-              <Link to={`/w/${encodeURIComponent(u.window_id)}`} style={{ minWidth: 0 }}>
-                <strong>{u.window_id}</strong>{" "}
-                <span className="muted" style={{ fontSize: 12 }}>
-                  {u.window_types?.type_code ?? ""}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
         <Rows hits={answer.hits} />
       </div>
     );
