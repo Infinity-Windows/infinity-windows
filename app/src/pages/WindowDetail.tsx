@@ -275,7 +275,18 @@ export function WindowDetail() {
       </div>
 
       {unitSpec ? (
-        <SpecCard spec={unitSpec} projectId={unit.data?.project_id ?? null} />
+        <SpecCard
+          spec={unitSpec}
+          projectId={unit.data?.project_id ?? null}
+          fallback={
+            unitOpening && (markSpecs.data?.length ?? 0) > 0 ? (
+              <MissingSpecNotice
+                projectId={unit.data?.project_id ?? null}
+                openingCode={unitOpening.opening_code}
+              />
+            ) : null
+          }
+        />
       ) : (
         // Same calm note as the install sheet, and on the same terms: only when
         // the specs sheet has been read and this mark still isn't in it.

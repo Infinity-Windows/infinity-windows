@@ -433,7 +433,7 @@ function OverviewTab({
     <>
       {project && <JobDetailsPanel project={project} isLead={isLead} />}
 
-      <ScheduledCrewPanel projectId={projectId} />
+      <ScheduledCrewPanel projectId={projectId} isLead={isLead} />
 
       <WhoOnJobPanel projectId={projectId} />
 
@@ -565,7 +565,13 @@ function OverviewTab({
  * scheduling board (does not duplicate or edit it) and sits alongside the
  * hand-typed project.start_date/end_date in Job details.
  */
-function ScheduledCrewPanel({ projectId }: { projectId: string }) {
+function ScheduledCrewPanel({
+  projectId,
+  isLead,
+}: {
+  projectId: string;
+  isLead: boolean;
+}) {
   const assignments = useQuery({
     queryKey: ["projectSchedule", projectId],
     queryFn: () => listProjectAssignments(projectId),
@@ -600,9 +606,13 @@ function ScheduledCrewPanel({ projectId }: { projectId: string }) {
         <h2 style={{ margin: 0 }}>
           <CalendarClock size={16} aria-hidden /> Published crew dates
         </h2>
-        <Link to="/scheduling" className="link">
-          Scheduling
-        </Link>
+        {/* /scheduling is foreman+. The crew dates stay visible to everyone —
+            only the edit door is gated. */}
+        {isLead && (
+          <Link to="/scheduling" className="link">
+            Scheduling
+          </Link>
+        )}
       </div>
       <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
         The dates &amp; crew that actually work this job, from the published
@@ -1205,9 +1215,11 @@ function StagingBaysPanel({
             .map((b) => b.address)
             .join(" and ")}{" "}
           — this job&apos;s windows are kept together here.{" "}
-          <Link to="/labels" className="link">
-            Print the shelf labels →
-          </Link>
+          {isLead && (
+            <Link to="/labels" className="link">
+              Print the shelf labels →
+            </Link>
+          )}
         </p>
       </section>
     );
@@ -1818,6 +1830,11 @@ const EXCEPTION_KIND_ORDER: { kind: IssueKind; heading: string }[] = [
   { kind: "blocker", heading: "Blockers" },
   { kind: "complication", heading: "Complications" },
   { kind: "spec_gap", heading: "Spec sheet gaps" },
+  // framing was added to IssueKind later and this list was never updated, so a
+  // failed rough-opening check filed an URGENT issue that rendered zero
+  // sections here — and, because an open issue existed, suppressed the
+  // "everything looks clean" message too. The foreman saw an empty tab.
+  { kind: "framing", heading: "Framing fixes needed" },
 ];
 
 function ExceptionsTab({ projectId }: { projectId: string }) {
