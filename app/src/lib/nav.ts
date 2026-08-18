@@ -136,6 +136,12 @@ export const NAV: NavDest[] = [
   { id: "storage", to: "/storage", label: "Storage", icon: "▧", minRole: "installer" },
   // Reached from the warehouse page's Going out section, never a menu row.
   { id: "storage-arrive", to: "/storage/arrive", label: "Arrival check", icon: "⬇", minRole: "installer" },
+  // In the registry so the access doc and the role tests can SEE them. They
+  // behaved correctly before only because the default is "allow" — which
+  // means the guard built to catch a wrong gate could not see them at all.
+  // Reached from the warehouse page's sections, never as menu rows.
+  { id: "storage-tag", to: "/storage/tag", label: "Tag packages", icon: "▧", minRole: "installer" },
+  { id: "storage-out", to: "/storage/out", label: "Set aside / check out", icon: "▧", minRole: "installer" },
   { id: "warehouse", to: "/warehouse", label: "Warehouse", icon: "▦", minRole: "installer" },
   { id: "projects", to: "/projects", label: "Jobs", icon: "▤", minRole: "installer" },
   { id: "studio", to: "/studio", label: "Studio", icon: "◧", minRole: "supervisor" },

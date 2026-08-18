@@ -271,8 +271,23 @@ export async function setSupplyHome(
   if (error) throw error;
   return data as Supply;
 }
+/**
+ * Add a supply to the catalog.
+ *
+ * Goes through an RPC now, not a direct insert: `supplies` used to sit on a
+ * blanket "any signed-in user, full access" policy, which made the foreman+
+ * gate on home spots decoration — an installer could add a row, change a home
+ * spot or fake a count by going around the app. The table is read-only to
+ * crew as of the lockdown migration, and this is the one write that was ever
+ * made from the client. The server checks the role the UI already checks, and
+ * folds a case-insensitive duplicate into the existing row so the catalog
+ * cannot fill with "Caulk", "caulk" and "CAULK".
+ */
 export async function addSupply(name: string, unit: string): Promise<void> {
-  const { error } = await supabase.from("supplies").insert({ name, unit });
+  const { error } = await supabase.rpc("add_supply", {
+    p_name: name,
+    p_unit: unit,
+  });
   if (error) throw error;
 }
 export async function listOrders(projectId: string): Promise<SupplyOrder[]> {
