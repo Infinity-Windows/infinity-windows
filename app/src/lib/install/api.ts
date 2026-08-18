@@ -2287,6 +2287,34 @@ export async function updateMarkSpec(
   if (error) throw error;
 }
 
+/**
+ * Merge keys into a mark spec's `extra` without touching the others.
+ *
+ * `updateMarkSpec` writes `extra` as a whole column, so two fields that share
+ * the blob (the size code and Inset/Outset) could overwrite each other's work
+ * — each built its copy from state that was fresh when its row drew, and the
+ * later save silently won. Re-reading before saving narrowed that window but
+ * could not close it: two saves still interleave between the read and the
+ * write. This does the read, the merge and the write in one statement in the
+ * database, so a field can only ever speak for its own keys.
+ *
+ * `drop` removes keys outright — a cleared Inset/Outset or a resolved size
+ * mismatch must be ABSENT, not present-and-null, because the signature
+ * builder and hasAnySpec both read a present key as a value.
+ */
+export async function mergeMarkSpecExtra(
+  id: string,
+  patch: Record<string, unknown>,
+  drop: string[] = [],
+): Promise<void> {
+  const { error } = await supabase.rpc("merge_mark_spec_extra", {
+    p_id: id,
+    p_patch: patch,
+    p_drop: drop,
+  });
+  if (error) throw error;
+}
+
 /** Confirm all draft specs on a project (foreman+). */
 export async function confirmMarkSpecs(projectId: string): Promise<void> {
   const { error } = await supabase

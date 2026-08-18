@@ -8,6 +8,7 @@ import {
   confirmMarkSpec,
   confirmMarkSpecs,
   listMarkSpecs,
+  mergeMarkSpecExtra,
   listOpenings,
   updateMarkSpec,
 } from "../../lib/install/api";
@@ -76,6 +77,24 @@ export function SpecReviewSection({ projectId }: Props) {
     onError: (e) => setMessage(formatApiError(e)),
   });
 
+  // The size-code box and the Inset/Outset dropdown both live in the same
+  // `extra` jsonb blob. A plain UPDATE writes that column whole, so whichever
+  // saved second silently wiped the other's key — and Inset/Outset feeds the
+  // signature a unit's cohort is keyed by, which nothing ever recomputes, so a
+  // dropped pick stayed dropped.
+  //
+  // The write is now atomic in the database: merge_mark_spec_extra does the
+  // read, the merge and the write inside one statement, so a field can only
+  // ever speak for its OWN keys. Re-reading before saving used to narrow this
+  // window; it could never close it, because two saves still interleave
+  // between the read and the write.
+  const mergeExtra = useMutation({
+    mutationFn: (v: { id: string; patch: Record<string, unknown>; drop?: string[] }) =>
+      mergeMarkSpecExtra(v.id, v.patch, v.drop ?? []),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: ["markSpecs", projectId] }),
+  });
+
   const confirmOne = useMutation({
     mutationFn: confirmMarkSpec,
     onSuccess: () => {
@@ -112,31 +131,14 @@ export function SpecReviewSection({ projectId }: Props) {
 
   type SpecPatch = Parameters<typeof updateMarkSpec>[1];
 
-  // The size-code box and the Inset/Outset dropdown both save into the same
-  // `extra` jsonb blob, and `updateMarkSpec` writes that column as a full
-  // replace, not a merge. Each handler used to build its copy of `extra` from
-  // the `spec` this row last rendered with — fine if the two are never edited
-  // close together, but a size-code fix followed by an Inset/Outset pick
-  // before the first save's refetch lands means the second save still holds
-  // the pre-fix `extra` and silently wipes the fix back out (or the reverse).
-  // Inset/Outset feeds the signature/cohort key and nothing ever recomputes
-  // it after the fact, so a dropped pick just stays dropped.
-  //
-  // Re-reading the row right before saving narrows that window from "as long
-  // as the tab's been open" to "the round trip of one fetch" — it can't close
-  // the window entirely. Closing it for good needs the update itself to merge
-  // (a server-side jsonb merge, e.g. `extra || patch`, or an RPC) so two saves
-  // can never stomp each other no matter how close together they land; that
-  // is server-side work this component can't do on its own.
+  // Still read fresh before COMPUTING, which is a different concern: the
+  // printed size lives in `extra` too and the mismatch verdict has to be
+  // judged against what is stored now, not what this row drew with.
   const freshExtra = async (
     id: string,
     fallback: Record<string, unknown> | null,
   ): Promise<Record<string, unknown>> => {
     const fresh = await listMarkSpecs(projectId);
-    // If the row can't be found (deleted mid-edit, or the read fails), fall
-    // back to what this component last rendered with — still stale, but
-    // better than treating a missing read as "extra is empty" and discarding
-    // whatever the row actually has stored.
     return fresh.find((f) => f.id === id)?.extra ?? fallback ?? {};
   };
 
@@ -167,18 +169,21 @@ export function SpecReviewSection({ projectId }: Props) {
           printed.widthIn,
           printed.heightIn,
         );
-        const extra = { ...base };
-        if (mismatch) extra.size_mismatch = mismatch;
-        else delete extra.size_mismatch;
+        // Scalar columns are this field's own — nothing else writes them.
         patch.mutate({
           id: s.id,
           patch: {
             size_code: size_code || null,
             width_in: size.widthIn,
             height_in: size.heightIn,
-            extra,
           },
         });
+        // The shared blob gets exactly the one key this field owns.
+        mergeExtra.mutate(
+          mismatch
+            ? { id: s.id, patch: { size_mismatch: mismatch } }
+            : { id: s.id, patch: {}, drop: ["size_mismatch"] },
+        );
       }}
       onFlag={(key, value) =>
         patch.mutate({ id: s.id, patch: { [key]: value } as SpecPatch })
@@ -186,14 +191,14 @@ export function SpecReviewSection({ projectId }: Props) {
       onNum={(key, value) =>
         patch.mutate({ id: s.id, patch: { [key]: num(value) } as SpecPatch })
       }
-      onInsetOutset={async (value) => {
+      onInsetOutset={(value) => {
         // Signature field (.scratch/signature): stored in extra, blank is
         // an honest blank — clearing removes the key entirely.
-        const base = await freshExtra(s.id, s.extra);
-        const extra = { ...base };
-        if (value) extra.inset_outset = value;
-        else delete extra.inset_outset;
-        patch.mutate({ id: s.id, patch: { extra } });
+        mergeExtra.mutate(
+          value
+            ? { id: s.id, patch: { inset_outset: value } }
+            : { id: s.id, patch: {}, drop: ["inset_outset"] },
+        );
       }}
       onConfirm={() => confirmOne.mutate(s.id)}
     />
