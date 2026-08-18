@@ -11,6 +11,7 @@ import {
   searchUnits,
 } from "../../lib/api";
 import {
+  confirmOpening,
   addJobNote,
   assignWindowToOpening,
   flagOpening,
@@ -1009,6 +1010,17 @@ export function OpeningSheet() {
   // Both buttons used to call this with no type, so "Lunch" and "Break"
   // recorded identically as "other" — the two buttons were the same button,
   // and the break records from this screen could not tell lunch from a rest.
+  // See the ready banner for why this is open to every role.
+  const confirmSpecs = useMutation({
+    mutationFn: () => confirmOpening(openingId),
+    onSuccess: () => {
+      setMessage("Window checked — thanks, that clears it for everyone.");
+      void queryClient.invalidateQueries({ queryKey: ["opening", openingId] });
+      void queryClient.invalidateQueries({ queryKey: ["myOpenings"] });
+    },
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+
   const takeBreak = useMutation({
     mutationFn: async (kind: BreakType) => {
       const shift = clock.shift ?? (myProfile.data?.id
@@ -1390,6 +1402,23 @@ export function OpeningSheet() {
               <li key={r}>{r}</li>
             ))}
           </ul>
+          {/* Any crew can clear this one, on purpose. Readiness now requires a
+              checked opening, and the bulk review screen is foreman+ — without
+              a path here, an installer at an unreviewed window would have to go
+              find a foreman before starting, which is exactly the friction that
+              gets a safety check switched back off. The person standing at the
+              window is the one who can compare it to the drawing. */}
+          {o.confirmed === false && (
+            <button
+              className="button-like"
+              disabled={confirmSpecs.isPending}
+              onClick={() => confirmSpecs.mutate()}
+            >
+              {confirmSpecs.isPending
+                ? "Saving…"
+                : "I checked this against the plans"}
+            </button>
+          )}
         </div>
       )}
 

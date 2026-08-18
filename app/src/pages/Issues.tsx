@@ -6,17 +6,17 @@ import {
   assignIssue,
   compareIssues,
   KIND_LABELS,
+  KIND_ORDER,
   listIssues,
   resolveIssue,
   FAULT_TRADES,
   setIssueFaultTrade,
   URGENCY_MARK,
   type Issue,
-  type IssueKind,
   type IssueStatus,
 } from "../lib/issues";
 import { listServiceCases } from "../lib/service";
-import { listInstalledForQc } from "../lib/ops";
+import { listQcStatusForOpenings } from "../lib/ops";
 import { formatApiError } from "../lib/errors";
 import {
   openingUnitKind,
@@ -82,15 +82,6 @@ function fmtWhen(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleString();
 }
 
-const KIND_ORDER: IssueKind[] = [
-  "failed_install",
-  "damage",
-  "flag",
-  "blocker",
-  "complication",
-  "spec_gap",
-];
-
 export function Issues() {
   const queryClient = useQueryClient();
   const [projectFilter, setProjectFilter] = useState<string>("all");
@@ -102,7 +93,20 @@ export function Issues() {
   // Cross-links into the quality surfaces: an open warranty case on the same
   // unit, or the QC result on the same opening.
   const servicesQ = useQuery({ queryKey: ["serviceCasesAll"], queryFn: listServiceCases });
-  const qcQ = useQuery({ queryKey: ["qcInstalled"], queryFn: listInstalledForQc });
+  // Only the openings the VISIBLE issues actually reference — this used to
+  // pull the whole installed-openings pool, which is capped and starves past
+  // 100 installs company-wide, so the cross-link quietly stopped appearing for
+  // anything past the cut (P2).
+  const qcOpeningIds = useMemo(
+    () =>
+      [...new Set((issuesQ.data ?? []).map((i) => i.opening_id).filter((v): v is string => Boolean(v)))],
+    [issuesQ.data],
+  );
+  const qcQ = useQuery({
+    queryKey: ["qcStatusForOpenings", qcOpeningIds],
+    queryFn: () => listQcStatusForOpenings(qcOpeningIds),
+    enabled: qcOpeningIds.length > 0,
+  });
 
   const resolve = useMutation({
     mutationFn: (id: string) => resolveIssue(id),
@@ -170,13 +174,7 @@ export function Issues() {
     return s;
   }, [servicesQ.data]);
   // QC result keyed by opening id.
-  const qcByOpening = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const o of qcQ.data ?? []) {
-      if (o.qc?.status) m.set(o.id, o.qc.status);
-    }
-    return m;
-  }, [qcQ.data]);
+  const qcByOpening = qcQ.data ?? new Map<string, string>();
 
   // Every active job, so a user can filter to a job and see its issues — both
   // open AND resolved — even if that job has none right now. Any job that has
@@ -299,7 +297,11 @@ export function Issues() {
               <span className="muted">Assign</span>
               <select
                 value={assignedTo ?? ""}
-                disabled={assign.isPending}
+                // Compare to THIS row's id, not just isPending — the mutation
+                // flag is shared across every row, so without the id check,
+                // assigning one issue would grey out every other issue's
+                // Assign dropdown until the request finished.
+                disabled={assign.isPending && assign.variables?.id === i.id}
                 onChange={(e) =>
                   assign.mutate({ id: i.id, assignee: e.target.value || null })
                 }
@@ -316,7 +318,10 @@ export function Issues() {
               <span className="muted">Fault</span>
               <select
                 value={faultTrade ?? ""}
-                disabled={fault.isPending}
+                // Same fix as Assign above: match the in-flight row's id so
+                // attributing fault on one issue doesn't lock the Fault
+                // dropdown on every other issue in the list.
+                disabled={fault.isPending && fault.variables?.id === i.id}
                 onChange={(e) =>
                   fault.mutate({ id: i.id, trade: e.target.value || null })
                 }
@@ -349,7 +354,11 @@ export function Issues() {
           <button
             className="link"
             style={{ marginLeft: "auto" }}
-            disabled={resolve.isPending}
+            // Same fix as Assign/Fault: resolve.mutate() takes the issue id
+            // directly, so compare it to this row's id instead of the bare
+            // isPending flag, or resolving one issue would disable every
+            // other issue's Resolve button too.
+            disabled={resolve.isPending && resolve.variables === i.id}
             onClick={() => resolve.mutate(i.id)}
           >
             Resolve

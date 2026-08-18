@@ -1503,6 +1503,24 @@ export async function resetOpeningPin(openingId: string): Promise<number> {
   return Number(data ?? 0);
 }
 
+/**
+ * Confirm ONE opening — "I checked this window's numbers against the plans."
+ *
+ * Any signed-in crew, deliberately. Readiness now requires a confirmed opening
+ * (see lib/install/fit.ts), and the bulk review screen is foreman+. Without a
+ * per-opening path an installer standing at an unreviewed window would have to
+ * find a foreman before they could start — which is exactly the bottleneck
+ * that would make the whole check get switched back off. The person at the
+ * window is the one who can actually compare it to the drawing.
+ */
+export async function confirmOpening(openingId: string): Promise<void> {
+  const { error } = await supabase
+    .from("project_openings")
+    .update({ confirmed: true })
+    .eq("id", openingId);
+  if (error) throw error;
+}
+
 export async function confirmOpenings(projectId: string): Promise<void> {
   const { error } = await supabase
     .from("project_openings")

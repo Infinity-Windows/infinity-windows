@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
-import { listInstalledForQc, setQc } from "../lib/ops";
+import { listQcQueue, setQc } from "../lib/ops";
 import { addPriorityTerm } from "../lib/learn";
 import { resolvePendingPoints } from "../lib/points";
 import { openServiceCase } from "../lib/service";
@@ -13,12 +13,24 @@ import { CATS, TERMS } from "../lib/glossary";
 import { pushToast, toastError } from "../lib/toast";
 import { SkeletonList } from "../components/ui/States";
 
+// listQcQueue's range is (0, limit-1) from the start, not an offset cursor —
+// so "load more" here just re-asks for a bigger limit rather than tracking a
+// page number. Simple, and matches how the query itself is built.
+const QC_PAGE_SIZE = 50;
+
 export function Qc() {
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
-  const rows = useQuery({ queryKey: ["qcRows"], queryFn: listInstalledForQc, enabled: lead });
+  // limit grows on "load more" instead of tracking an offset — see the note
+  // by QC_PAGE_SIZE above.
+  const [limit, setLimit] = useState(QC_PAGE_SIZE);
+  const rows = useQuery({
+    queryKey: ["qcQueue", limit],
+    queryFn: () => listQcQueue(limit),
+    enabled: lead,
+  });
 
   // Which opening is mid-callback (awaiting a root-cause term), and the picked term.
   const [callbackFor, setCallbackFor] = useState<{ id: string; code: string } | null>(null);
@@ -37,7 +49,9 @@ export function Qc() {
       await resolvePendingPoints(a.id, a.status === "passed" ? "confirmed" : "void");
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["qcRows"] });
+      // Prefix match: invalidates every ["qcQueue", limit] variant, not just
+      // whatever limit is active right now.
+      queryClient.invalidateQueries({ queryKey: ["qcQueue"] });
       queryClient.invalidateQueries({ queryKey: ["ledger"] });
       queryClient.invalidateQueries({ queryKey: ["pointsLeaderboard"] });
     },
@@ -87,7 +101,8 @@ export function Qc() {
     );
   }
 
-  const list = rows.data ?? [];
+  const list = rows.data?.rows ?? [];
+  const hasMore = rows.data?.hasMore ?? false;
   return (
     <div className="page">
       <header className="page-header">
@@ -141,6 +156,10 @@ export function Qc() {
                 <Link to={`/projects/${o.project_id}/opening/${o.id}`} className="link">
                   <strong>{o.opening_code}</strong>
                 </Link>{" "}
+                {/* Opening codes are only unique within a job ("A1" can be two
+                    different windows on two different jobs), so the job code
+                    has to ride along or a foreman can't tell which is which. */}
+                <span className="muted">{o.projects?.job_code ?? "job?"}</span>{" "}
                 <span className="muted">{o.window_types?.type_code}</span>
                 <div className={status === "passed" ? "ok" : status === "callback" ? "error" : "muted"} style={{ fontSize: 12 }}>
                   {status}
@@ -204,6 +223,15 @@ export function Qc() {
         })}
         {list.length === 0 && <p className="muted">No installed openings to review.</p>}
       </ul>
+      )}
+      {hasMore && (
+        <button
+          className="button-like"
+          disabled={rows.isFetching}
+          onClick={() => setLimit((n) => n + QC_PAGE_SIZE)}
+        >
+          Load more
+        </button>
       )}
     </div>
   );
