@@ -98,6 +98,7 @@ export type RoutePath =
   | "/conditions"
   | "/contacts"
   | "/profile"
+  | "/stuck"
   | "/settings"
   | "/public-site";
 
@@ -143,6 +144,12 @@ export const NAV: NavDest[] = [
   { id: "data", to: "/data", label: "Data", icon: "▤", minRole: "supervisor" },
   { id: "ask", to: "/ask", label: "Ask", icon: "?", minRole: "installer" },
   { id: "notifications", to: "/notifications", label: "Notifications", icon: "◔", minRole: "installer" },
+  // Installer floor, deliberately — NOT foreman as first recommended. The
+  // outbox is IndexedDB, so a phone only ever holds ITS OWN stuck writes.
+  // Gating this to leads would leave an installer's stranded clock punch
+  // invisible and unfixable on the one device it exists on, which is the
+  // exact failure the screen was built to end.
+  { id: "stuck", to: "/stuck", label: "Stuck writes", icon: "⚠", minRole: "installer" },
   { id: "search", to: "/search", label: "Search", icon: "⌕", minRole: "installer" },
   { id: "review", to: "/review", label: "Memo review", icon: "✍", minRole: "installer" },
   { id: "my-schedule", to: "/my-schedule", label: "My Schedule", icon: "◷", minRole: "installer" },
@@ -417,6 +424,7 @@ const MENU_DEF: MenuSection[] = [
     title: "Account",
     items: [
       { to: "/notifications", label: "Notifications", Icon: Bell },
+      { to: "/stuck", label: "Stuck writes", Icon: AlertTriangle },
       { to: "/settings", label: "Settings", Icon: SlidersHorizontal },
       // Importing window types is data admin, not warehouse work (ticket 08).
       { to: "/catalog", label: "Catalog", Icon: BookOpen },
@@ -449,6 +457,9 @@ const INSTALLER_MORE_PATHS: RoutePath[] = [
   "/safety",
   "/supplies",
   "/notifications",
+  // An installer's own stranded punch lives on their own phone; the drawer is
+  // the only way they would ever reach it.
+  "/stuck",
   "/settings",
 ];
 

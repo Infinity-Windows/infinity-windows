@@ -39,6 +39,7 @@ import { StorageHub } from "./pages/storage/StorageHub";
 import { ContainerDetail } from "./pages/storage/ContainerDetail";
 import { TagPackages } from "./pages/storage/TagPackages";
 import { CheckoutPackages } from "./pages/storage/CheckoutPackages";
+import { StuckWrites } from "./pages/StuckWrites";
 import { ArrivePackages } from "./pages/storage/ArrivePackages";
 import { PackageSheet } from "./pages/storage/PackageSheet";
 import { Settings } from "./pages/Settings";
@@ -317,6 +318,7 @@ export default function App() {
               element={<RequireRole path="/ai-spend"><AiSpend /></RequireRole>}
             />
             <Route path="/notifications" element={<Notifications />} />
+            <Route path="/stuck" element={<StuckWrites />} />
             <Route path="/settings" element={<Settings />} />
             <Route
               path="/team"

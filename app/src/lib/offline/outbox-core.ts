@@ -223,6 +223,64 @@ export function dueEntries(entries: OutboxEntry[], now: number): OutboxEntry[] {
     .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
 }
 
+/**
+ * Everything transitively waiting on an entry that has permanently failed.
+ *
+ * A clock-out depends on its clock-in, so it may not be sent first — correct.
+ * But `dueEntries` asks "is the dependency still in the queue", and a
+ * PERMANENTLY FAILED clock-in is still sitting there, just marked failed. So
+ * the clock-out waited forever: never attempted, never counted as failed,
+ * never shown anywhere, and with no screen to clear it. A lost punch is a
+ * payroll dispute, so the failure has to travel to everything it strands.
+ *
+ * Transitive on purpose — B waits on A and C waits on B, so A dying kills
+ * both. Pure; returns the entries to write, not a mutation.
+ */
+export function cascadeFailure(
+  entries: OutboxEntry[],
+  failedId: string,
+): OutboxEntry[] {
+  const dead = new Set([failedId]);
+  const out: OutboxEntry[] = [];
+  // Oldest first, so a chain is walked in the order it was built.
+  const ordered = [...entries].sort((a, b) => a.createdAt - b.createdAt);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const e of ordered) {
+      if (e.status === "failed" || dead.has(e.id)) continue;
+      if (!e.dependsOn || !dead.has(e.dependsOn)) continue;
+      dead.add(e.id);
+      out.push({
+        ...e,
+        status: "failed",
+        lastError:
+          e.lastError ??
+          "The clock-in this was waiting on failed, so this could never be sent.",
+      });
+      changed = true;
+    }
+  }
+  return out;
+}
+
+/**
+ * Put a dead-lettered entry back in the queue for another attempt.
+ *
+ * Clears the error and the attempt count: a human looked at it and decided it
+ * is worth trying again, so it should get a full run of retries rather than
+ * dying on the next one.
+ */
+export function retryEntry(entry: OutboxEntry, now: number): OutboxEntry {
+  return {
+    ...entry,
+    status: "queued",
+    attemptCount: 0,
+    lastError: null,
+    nextAttemptAt: now,
+  };
+}
+
 // --- pending counts + the sync-status pill copy (p1-12) -----------------
 
 export interface OpCounts {
@@ -478,8 +536,16 @@ export async function drainStore(
     } catch (err) {
       const next = applyFailure(entry, err, now);
       await store.put(next);
-      if (next.status === "failed") deadLettered += 1;
-      else retried += 1;
+      if (next.status === "failed") {
+        deadLettered += 1;
+        // Anything waiting on this can never be sent now. Fail it here rather
+        // than leaving it queued forever, invisible and uncounted.
+        const stranded = cascadeFailure(await store.getAll(), next.id);
+        for (const s of stranded) {
+          await store.put(s);
+          deadLettered += 1;
+        }
+      } else retried += 1;
     }
     opts.onChange?.();
   }

@@ -3,6 +3,11 @@
 // ordered, idempotent steps. Crews in dead zones no longer lose installs.
 
 import { awardPoints, type PointEntry } from "../points";
+import {
+  errorMessage,
+  isRetryableError,
+  MAX_ATTEMPTS,
+} from "../offline/outbox-core";
 import { submitInstallEvent, type SubmitInstallParams } from "./api";
 import { enqueueUpload, flushQueue, type QueuedUploadMeta } from "./queue";
 
@@ -50,6 +55,22 @@ export interface InstallOutboxRecord {
   payload: InstallOutboxPayload;
   step: InstallOutboxStep;
   installEventId: string | null;
+  /**
+   * How many flush attempts have hit an error on this record. Capped at
+   * MAX_ATTEMPTS (shared with the sibling outbox in ../offline/outbox-core)
+   * so a permanently broken install — bad data, a window that got deleted —
+   * stops retrying instead of quietly hammering the network every 30s
+   * forever with nobody ever told.
+   */
+  attemptCount: number;
+  /** Plain-language reason for the last failure, or null if it hasn't failed. */
+  lastError: string | null;
+  /**
+   * "failed" once attempts are exhausted or the error is permanent. The
+   * record is kept either way — never deleted on failure — so it can be seen
+   * and retried (or explicitly discarded) by a person instead of vanishing.
+   */
+  status: "pending" | "failed";
 }
 
 const DB_NAME = "wops-install-outbox";
@@ -144,6 +165,12 @@ export function deserializeInstallOutbox(json: string): InstallOutboxRecord | nu
     id: r.id,
     step: r.step,
     installEventId: typeof r.installEventId === "string" ? r.installEventId : null,
+    // Older rows written before failure-tracking existed have none of these
+    // fields — default them to "never failed yet" rather than rejecting the
+    // row (that would silently lose a real pending install).
+    attemptCount: typeof r.attemptCount === "number" ? r.attemptCount : 0,
+    lastError: typeof r.lastError === "string" ? r.lastError : null,
+    status: r.status === "failed" ? "failed" : "pending",
     payload: {
       clientKey: p.clientKey,
       openingId: p.openingId,
@@ -224,13 +251,35 @@ async function listRows(): Promise<InstallStoreRow[]> {
   return rows as InstallStoreRow[];
 }
 
+/**
+ * Count of installs still actively trying to sync. A failed install is NOT
+ * "pending" — it has stopped retrying and needs a person — so it must not
+ * count here, or the header pill would claim work is in flight when it has
+ * actually given up. Counts by deserializing rather than IDB's cheap
+ * `count()` because "pending" depends on a field inside the stored record,
+ * not the row's existence.
+ */
 export async function pendingInstallCount(): Promise<number> {
-  const db = await openDb();
-  const count = await requestAsPromise(
-    db.transaction(STORE).objectStore(STORE).count(),
-  );
-  db.close();
-  return count;
+  const rows = await listRows();
+  let n = 0;
+  for (const row of rows) {
+    const record = deserializeInstallOutbox(row.meta);
+    if (record && record.status !== "failed") n++;
+  }
+  return n;
+}
+
+/** Count of installs that gave up and are waiting on a person. Kept separate
+ * from pendingInstallCount() so a screen can show "3 syncing" and "1 stuck"
+ * as two different, honest numbers instead of one blended count. */
+export async function failedInstallCount(): Promise<number> {
+  const rows = await listRows();
+  let n = 0;
+  for (const row of rows) {
+    const record = deserializeInstallOutbox(row.meta);
+    if (record?.status === "failed") n++;
+  }
+  return n;
 }
 
 export interface EnqueueInstallInput {
@@ -259,6 +308,9 @@ export async function enqueueInstall(
     id,
     step: "queued",
     installEventId: null,
+    attemptCount: 0,
+    lastError: null,
+    status: "pending",
     payload: {
       clientKey,
       openingId: input.openingId,
@@ -301,10 +353,13 @@ export async function flushInstallOutbox(): Promise<{
         await removeRecord(row.id);
         continue;
       }
-      try {
-        let current = record;
-        const blobs = row.blobs ?? [];
+      // Already given up on — needs a person to hit retry or discard, not
+      // another silent automatic attempt every 30s.
+      if (record.status === "failed") continue;
 
+      let current = record;
+      const blobs = row.blobs ?? [];
+      try {
         // RPC
         if (stageToAttempt(current.step) === "rpc") {
           const event = await submitInstallEvent(current.payload.submitParams);
@@ -362,8 +417,23 @@ export async function flushInstallOutbox(): Promise<{
           await removeRecord(current.id);
           synced++;
         }
-      } catch {
-        // Leave for next flush / reconnect.
+      } catch (err) {
+        // A permanent error (bad data, a deleted window) will never succeed
+        // no matter how many times we retry it, so it skips straight to
+        // failed instead of burning through MAX_ATTEMPTS first.
+        const attemptCount = current.attemptCount + 1;
+        const givenUp = !isRetryableError(err) || attemptCount >= MAX_ATTEMPTS;
+        current = {
+          ...current,
+          attemptCount,
+          lastError: errorMessage(err) || "Couldn't sync this install.",
+          status: givenUp ? "failed" : "pending",
+        };
+        // Keep it either way — a failed row is never deleted, only marked,
+        // so a person can see it and retry or discard it later. The step is
+        // untouched, so a retry resumes instead of repeating a stage (like
+        // the RPC) that already landed on the server.
+        await putRecord(current, blobs);
       }
     }
   } finally {
@@ -371,6 +441,61 @@ export async function flushInstallOutbox(): Promise<{
     notifySyncListeners();
   }
   return { synced, remaining: await pendingInstallCount() };
+}
+
+// --- stuck installs: seeing them, and doing something about them ---------
+//
+// Mirrors listFailed / retryFailed / discardFailed in lib/offline/outbox.ts —
+// same shape of question (what gave up, can I try it again, can I throw it
+// away) for the sibling outbox that carries installs instead of shifts/photos.
+
+/** Every install that gave up, newest first. */
+export async function listFailedInstalls(): Promise<InstallOutboxRecord[]> {
+  const rows = await listRows();
+  const failed: InstallOutboxRecord[] = [];
+  for (const row of rows) {
+    const record = deserializeInstallOutbox(row.meta);
+    if (record && record.status === "failed") failed.push(record);
+  }
+  return failed.sort(
+    (a, b) => Date.parse(b.payload.createdAt) - Date.parse(a.payload.createdAt),
+  );
+}
+
+/**
+ * Put one failed install back in the queue and try it now.
+ *
+ * Resets attemptCount/lastError but leaves `step` alone, so the retry resumes
+ * from whatever stage it reached before it died instead of repeating a stage
+ * (like the RPC that marks the window installed) that already landed.
+ */
+export async function retryFailedInstall(id: string): Promise<void> {
+  const rows = await listRows();
+  const row = rows.find((r) => r.id === id);
+  if (!row) return;
+  const record = deserializeInstallOutbox(row.meta);
+  if (!record || record.status !== "failed") return;
+  const revived: InstallOutboxRecord = {
+    ...record,
+    status: "pending",
+    attemptCount: 0,
+    lastError: null,
+  };
+  await putRecord(revived, row.blobs ?? []);
+  notifySyncListeners();
+  await flushInstallOutbox();
+}
+
+/**
+ * Throw one away for good.
+ *
+ * Deliberately explicit and one at a time: this destroys the record of a
+ * window someone actually installed, so it has to be a decision a person
+ * makes, never something a cleanup sweep does on its own.
+ */
+export async function discardFailedInstall(id: string): Promise<void> {
+  await removeRecord(id);
+  notifySyncListeners();
 }
 
 /**

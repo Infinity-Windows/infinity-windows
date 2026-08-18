@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ALL_OPS,
   applyFailure,
+  cascadeFailure,
   BACKOFF_BASE_MS,
   BACKOFF_CAP_MS,
   computeBackoffMs,
@@ -19,6 +20,7 @@ import {
   OPS,
   pillSummary,
   requeueStranded,
+  retryEntry,
   serializeEntry,
   totalPending,
   type OpHandlers,
@@ -382,5 +384,65 @@ describe("every op survives the disk round-trip", () => {
       const c = countsByOp([makeEntry({ op, payload: {} }, `id-${op}`, 0)]);
       expect(totalPending(c), `${op} is counted in no bucket`).toBe(1);
     }
+  });
+});
+
+describe("a permanent failure travels to everything it strands", () => {
+  // The bug: a clock-out waits on its clock-in, and dueEntries asks "is the
+  // dependency still in the queue" — a PERMANENTLY FAILED clock-in still is.
+  // So the clock-out waited forever: never attempted, never counted, never
+  // shown, with no screen to clear it. A lost punch is a payroll dispute.
+  const at = (id: string, createdAt: number, dependsOn?: string): OutboxEntry => ({
+    ...makeEntry({ op: "clock_out", payload: {}, dependsOn: dependsOn ?? null }, id, createdAt),
+  });
+
+  it("fails the entry waiting on a dead one", () => {
+    const clockIn = { ...at("in", 1), status: "failed" as const };
+    const clockOut = at("out", 2, "in");
+    const out = cascadeFailure([clockIn, clockOut], "in");
+    expect(out.map((e) => e.id)).toEqual(["out"]);
+    expect(out[0].status).toBe("failed");
+    expect(out[0].lastError).toContain("could never be sent");
+  });
+
+  it("travels down a whole chain, not just one link", () => {
+    const a = { ...at("a", 1), status: "failed" as const };
+    const b = at("b", 2, "a");
+    const c = at("c", 3, "b");
+    expect(cascadeFailure([a, b, c], "a").map((e) => e.id)).toEqual(["b", "c"]);
+  });
+
+  it("leaves unrelated work alone", () => {
+    const a = { ...at("a", 1), status: "failed" as const };
+    const b = at("b", 2, "a");
+    const unrelated = at("solo", 3);
+    expect(cascadeFailure([a, b, unrelated], "a").map((e) => e.id)).toEqual(["b"]);
+  });
+
+  it("keeps an existing error rather than overwriting why it really died", () => {
+    const a = { ...at("a", 1), status: "failed" as const };
+    const b = { ...at("b", 2, "a"), lastError: "server said no" };
+    expect(cascadeFailure([a, b], "a")[0].lastError).toBe("server said no");
+  });
+
+  it("does nothing when nothing was waiting", () => {
+    expect(cascadeFailure([{ ...at("a", 1), status: "failed" as const }], "a")).toEqual([]);
+  });
+});
+
+describe("retrying a dead-lettered entry", () => {
+  it("gives it a clean run rather than dying on the next attempt", () => {
+    const dead: OutboxEntry = {
+      ...makeEntry({ op: "clock_in", payload: {} }, "x", 1),
+      status: "failed",
+      attemptCount: MAX_ATTEMPTS,
+      lastError: "token expired",
+      nextAttemptAt: 99999,
+    };
+    const again = retryEntry(dead, 500);
+    expect(again.status).toBe("queued");
+    expect(again.attemptCount).toBe(0);
+    expect(again.lastError).toBeNull();
+    expect(again.nextAttemptAt).toBe(500);
   });
 });

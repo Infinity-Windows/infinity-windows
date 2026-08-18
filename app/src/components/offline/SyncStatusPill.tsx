@@ -10,27 +10,35 @@
 // caller: a queued install was invisible everywhere, so closing the app
 // mid-flight looked identical to a finished submit. Fold its count in here.
 
+import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { CheckCircle2, CloudOff, RefreshCw, TriangleAlert } from "lucide-react";
 import { useOutbox } from "../../lib/offline/useOutbox";
 import type { PillSummary, PillTone } from "../../lib/offline/outbox-core";
 import {
+  failedInstallCount,
   pendingInstallCount,
   subscribeSyncListeners,
 } from "../../lib/install/installOutbox";
 
 /** Live count of installs waiting in the install outbox. */
-function useInstallOutboxCount(): number {
-  const [count, setCount] = useState(0);
+function useInstallOutboxCount(): { pending: number; failed: number } {
+  const [count, setCount] = useState({ pending: 0, failed: 0 });
   useEffect(() => {
     let cancelled = false;
     const refresh = () => {
-      pendingInstallCount().then((n) => {
-        if (!cancelled) setCount(n);
-      });
+      void Promise.all([pendingInstallCount(), failedInstallCount()]).then(
+        ([pending, failed]) => {
+          if (!cancelled) setCount({ pending, failed });
+        },
+      );
     };
     refresh();
-    return subscribeSyncListeners(refresh);
+    const unsubscribe = subscribeSyncListeners(refresh);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
   return count;
 }
@@ -38,12 +46,30 @@ function useInstallOutboxCount(): number {
 /**
  * Fold the install-outbox count into the offline-outbox pill summary. Kept
  * here rather than in outbox-core.ts's pillSummary because OpCounts only
- * enumerates lib/offline/outbox ops — installs are a different queue with no
- * dead-letter state of their own (retry cap is deliberately deferred), so a
- * queued install can only ever push the pill toward "syncing", never toward
- * "needs attention" by itself.
+ * enumerates lib/offline/outbox ops.
+ *
+ * A GIVEN-UP install turns the pill to "needs attention" on its own: the retry
+ * cap now exists, so an install can stop trying, and a stopped install that
+ * never turned the pill red would be exactly the silent loss the cap was
+ * supposed to end. Tapping the pill opens the stuck-writes screen.
  */
-function withInstalls(pill: PillSummary, installsPending: number): PillSummary {
+function withInstalls(
+  pill: PillSummary,
+  installsPending: number,
+  installsFailed: number,
+): PillSummary {
+  if (installsFailed > 0) {
+    const failedLabel =
+      installsFailed === 1 ? "1 install needs you" : `${installsFailed} installs need you`;
+    return {
+      tone: "attention",
+      label: pill.tone === "synced" ? failedLabel : `${pill.label} · ${failedLabel}`,
+      detail:
+        installsFailed === 1
+          ? "An install stopped trying to send. Open this to try it again."
+          : `${installsFailed} installs stopped trying to send. Open this to try them again.`,
+    };
+  }
   if (installsPending === 0) return pill;
   const installsLabel =
     installsPending === 1 ? "1 install queued" : `${installsPending} installs queued`;
@@ -62,8 +88,8 @@ function withInstalls(pill: PillSummary, installsPending: number): PillSummary {
 
 export function SyncStatusPill() {
   const { pill: outboxPill } = useOutbox();
-  const installsPending = useInstallOutboxCount();
-  const pill = withInstalls(outboxPill, installsPending);
+  const installs = useInstallOutboxCount();
+  const pill = withInstalls(outboxPill, installs.pending, installs.failed);
 
   const Icon =
     pill.tone === "attention"
@@ -72,12 +98,17 @@ export function SyncStatusPill() {
         ? CloudOff
         : CheckCircle2;
 
+  // The pill IS the indicator that something needs a person, so it is also the
+  // door: tapping it opens the stuck-writes screen where a failed punch can be
+  // retried or thrown away. Before this there was nowhere for a dead-lettered
+  // write to be acted on, which is why one could sit invisible forever.
   return (
-    <div
+    <Link
+      to="/stuck"
       className={`sync-pill sync-pill-${pill.tone}`}
       role="status"
       aria-live="polite"
-      aria-label={pill.detail}
+      aria-label={`${pill.detail} — open stuck writes`}
       title={pill.detail}
     >
       <span className="sync-pill-icon" aria-hidden>
@@ -88,6 +119,6 @@ export function SyncStatusPill() {
         )}
       </span>
       <span className="sync-pill-text">{pill.label}</span>
-    </div>
+    </Link>
   );
 }

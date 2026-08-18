@@ -235,6 +235,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
     blurb: "Your profile — name, skill level and account details.",
   },
   {
+    path: "/stuck",
+    label: "Stuck writes",
+    minRole: "installer",
+    blurb:
+      "Work this phone saved but could not send — a clock punch, a photo, packages checked out. Normally empty. When something is here you can try it again or throw it away. It only ever shows this device's own stuck items.",
+  },
+  {
     path: "/settings",
     label: "Settings",
     minRole: "installer",
