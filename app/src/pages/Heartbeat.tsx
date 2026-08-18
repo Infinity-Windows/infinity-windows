@@ -1,4 +1,5 @@
 import { BackChip } from "../components/BackChip";
+import { RoleMaps } from "../components/RoleMaps";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -283,6 +284,8 @@ export function Heartbeat() {
           </ul>
         </section>
       )}
+
+      <RoleMaps />
     </div>
   );
 }

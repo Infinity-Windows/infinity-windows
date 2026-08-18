@@ -13,6 +13,7 @@ import { flashingAlarm, listOpeningPhases } from "../lib/install/phases";
 import { isOwner, ROLE_LABELS, type CrewRole } from "../lib/install/types";
 import { roleRank } from "../lib/nav";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { RoleMaps } from "../components/RoleMaps";
 import { TERMS } from "../lib/glossary";
 import { listMyProgress } from "../lib/learn";
 import { listLedger } from "../lib/points";
@@ -532,6 +533,8 @@ export function Home() {
       )}
         </>
       )}
+
+      <RoleMaps />
     </div>
   );
 }
