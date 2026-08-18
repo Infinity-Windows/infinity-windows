@@ -13,7 +13,9 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { listProjects } from "../../lib/api";
+import { listLocations, listProjects } from "../../lib/api";
+import { splitLines } from "../../lib/warehouse/splitUnits";
+import { toLocationsById } from "../../lib/warehouse/containment";
 import { formatApiError } from "../../lib/errors";
 import { pushToast } from "../../lib/toast";
 import {
@@ -53,6 +55,8 @@ export function CheckoutPackages() {
   const navigate = useNavigate();
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
   const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
+  // Racks and bays, so a split line can say "staged for BLACK22" by name.
+  const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const reasons = useQuery({ queryKey: ["checkoutReasons"], queryFn: listCheckoutReasons });
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -80,6 +84,19 @@ export function CheckoutPackages() {
 
   const pickedRows = available.filter((p) => picked.has(p.id));
   const mismatched = projectId ? mismatchedPackages(pickedRows, projectId) : [];
+  // Splitting a unit warns, never blocks (ticket 19): taking SOME of a
+  // window's parts and leaving the rest is sometimes the job — the line just
+  // makes sure it is never an accident.
+  const splits = useMemo(
+    () =>
+      splitLines(
+        picked,
+        packages.data ?? [],
+        new Map((containers.data ?? []).map((c) => [c.id, c])),
+        toLocationsById(locations.data ?? []),
+      ),
+    [picked, packages.data, containers.data, locations.data],
+  );
   const isOther = reason === "Other";
   const finalReason = isOther && otherNote.trim() ? `Other — ${otherNote.trim()}` : reason;
 
@@ -280,6 +297,19 @@ export function CheckoutPackages() {
             .join(", ")}
           ). {mismatchWarning(mode)}
         </p>
+      )}
+
+      {splits.length > 0 && (
+        <div className="detail-card" style={{ marginTop: 8, padding: "10px 14px" }}>
+          {splits.map((line) => (
+            <p key={line} style={{ margin: "4px 0", fontSize: 13.5 }}>
+              {line}
+            </p>
+          ))}
+          <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
+            Sometimes that&rsquo;s the job — this is a heads-up, not a stop.
+          </p>
+        </div>
       )}
 
       <div style={{ marginTop: 12 }}>

@@ -1,0 +1,91 @@
+import { describe, expect, it } from "vitest";
+import { splitLines, splitUnits } from "./splitUnits";
+import type { StorageContainer, StoragePackage } from "../storage";
+
+let seq = 0;
+const pkg = (over: Partial<StoragePackage> & { marks?: string[] }): StoragePackage => {
+  const { marks, ...rest } = over;
+  seq += 1;
+  return {
+    id: over.id ?? `p${seq}`,
+    serial: `PKG-${seq}`,
+    short_code: null,
+    status: "stored",
+    project_id: "job-1",
+    category: null,
+    note: null,
+    delivery_id: null,
+    container_id: "conex-3",
+    location_id: null,
+    bound_at: null,
+    bound_by: null,
+    created_at: "",
+    package_marks: (marks ?? ["16"]).map((mark_code) => ({ mark_code })),
+    ...rest,
+  } as StoragePackage;
+};
+
+const containers = new Map<string, StorageContainer>([
+  ["conex-3", { id: "conex-3", name: "Conex 3" } as StorageContainer],
+  ["conex-7", { id: "conex-7", name: "Conex 7" } as StorageContainer],
+]);
+const locations = new Map();
+
+describe("the standing count (ticket 19)", () => {
+  it("a window with parts in two boxes is split", () => {
+    const rows = [
+      pkg({ container_id: "conex-3", part_index: 1, part_total: 2 }),
+      pkg({ container_id: "conex-7", part_index: 2, part_total: 2 }),
+    ];
+    const split = splitUnits(rows, containers, locations);
+    expect(split).toHaveLength(1);
+    expect(split[0].markCode).toBe("16");
+    expect(split[0].places).toEqual(["Conex 3", "Conex 7"]);
+  });
+
+  it("a window all in one box is not split", () => {
+    const rows = [pkg({}), pkg({})];
+    expect(splitUnits(rows, containers, locations)).toHaveLength(0);
+  });
+
+  it("a checked-out part does not make a window split — that is mid-install", () => {
+    const rows = [
+      pkg({}),
+      pkg({ status: "checked_out", container_id: null }),
+    ];
+    expect(splitUnits(rows, containers, locations)).toHaveLength(0);
+  });
+
+  it("a stored part plus a loose part IS split — loose is a place", () => {
+    const rows = [pkg({}), pkg({ container_id: null })];
+    const split = splitUnits(rows, containers, locations);
+    expect(split).toHaveLength(1);
+  });
+
+  it("a minted label on a boat does not split anything", () => {
+    const rows = [pkg({}), pkg({ status: "minted", container_id: null })];
+    expect(splitUnits(rows, containers, locations)).toHaveLength(0);
+  });
+});
+
+describe("the moment-of-tap lines (ticket 19)", () => {
+  it("taking one of two names where the other stays", () => {
+    const a = pkg({ id: "take-me" });
+    const b = pkg({});
+    const lines = splitLines(new Set(["take-me"]), [a, b], containers, locations);
+    expect(lines).toEqual([
+      "Window 16 — taking 1 of its 2 parts here; the other 1 stays at Conex 3.",
+    ]);
+  });
+
+  it("taking the whole window says nothing", () => {
+    const a = pkg({ id: "x1" });
+    const b = pkg({ id: "x2" });
+    expect(splitLines(new Set(["x1", "x2"]), [a, b], containers, locations)).toEqual([]);
+  });
+
+  it("a window with one part says nothing — there is nothing to split", () => {
+    const a = pkg({ id: "solo" });
+    expect(splitLines(new Set(["solo"]), [a], containers, locations)).toEqual([]);
+  });
+});
