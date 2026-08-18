@@ -31,6 +31,7 @@ import {
   listContainers,
   mismatchedPackages,
   jobLabel,
+  pieceLine,
 } from "../../lib/storage";
 import { isMissingStagingBayError } from "../../lib/staging";
 
@@ -228,7 +229,15 @@ export function CheckoutPackages() {
                   </div>
                   <div className="muted" style={{ fontSize: 12 }}>
                     {jobLabel(p, jobCode)}
-                    {p.category ? ` · ${CATEGORY_LABELS[p.category]}` : ""} · {where}
+                    {/* The window and the piece first — they are what a
+                        picker is FOR; category only earns the space when the
+                        tag carried nothing finer. */}
+                    {pieceLine(p)
+                      ? ` · ${pieceLine(p)}`
+                      : p.category
+                        ? ` · ${CATEGORY_LABELS[p.category]}`
+                        : ""}{" "}
+                    · {where}
                   </div>
                 </div>
                 <span style={{ fontSize: 20 }}>{on ? "☑" : "☐"}</span>
