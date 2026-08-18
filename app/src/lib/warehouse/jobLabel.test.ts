@@ -26,23 +26,25 @@ describe("who owns a package, in words (ticket 17)", () => {
 });
 
 describe("what a picker row calls a package (owner ask, 2026-08-18)", () => {
-  const base = { part_index: null, part_total: null, part_type: null } as never;
+  type Piece = Parameters<typeof pieceLine>[0];
+  const base: Piece = { part_index: null, part_total: null, part_type: null };
 
   it("window, fraction and piece, in that order", () => {
     expect(
       pieceLine({
+        ...base,
         package_marks: [{ mark_code: "6" }],
         part_index: 1,
         part_total: 4,
         part_type: "frame",
-      } as never),
+      }),
     ).toBe("#6 1/4 · Frame");
   });
 
   it("degrades honestly at every step", () => {
-    expect(pieceLine({ package_marks: [{ mark_code: "6" }], ...base } as never)).toBe("#6");
-    expect(pieceLine({ part_index: 2, part_total: 4, part_type: null } as never)).toBe("2/4");
-    expect(pieceLine({ part_type: "glass", ...{ part_index: null, part_total: null } } as never)).toBe("Glass");
-    expect(pieceLine({ ...base } as never)).toBe(null);
+    expect(pieceLine({ ...base, package_marks: [{ mark_code: "6" }] })).toBe("#6");
+    expect(pieceLine({ ...base, part_index: 2, part_total: 4 })).toBe("2/4");
+    expect(pieceLine({ ...base, part_type: "glass" })).toBe("Glass");
+    expect(pieceLine(base)).toBe(null);
   });
 });
