@@ -56,7 +56,7 @@ export interface StudioItem {
   /** Item yaw — set by the vendor to face its wall on attach. */
   rotation: { y: number };
   scale: { set(x: number, y: number, z: number): void };
-  metadata?: { itemName?: string; unitConfig?: unknown; frameGapMm?: number };
+  metadata?: { itemName?: string; unitConfig?: unknown; frameGapMm?: number; shelfConfig?: unknown };
   geometry: { dispose(): void; computeBoundingBox(): void; boundingBox: { max: { x: number; y: number; z: number }; min: { x: number; y: number; z: number } } | null };
   material: unknown;
   halfSize: { x: number; y: number; z: number; set(x: number, y: number, z: number): void };
