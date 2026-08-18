@@ -76,7 +76,12 @@ import {
   recallLocalStart,
   rememberLocalStart,
 } from "../../lib/install/installStart";
-import { getOpenShift, isOnTheClock, startBreak } from "../../lib/timeclock";
+import {
+  getOpenShift,
+  isOnTheClock,
+  startBreak,
+  type BreakType,
+} from "../../lib/timeclock";
 import { myTodayCompletion } from "../../lib/toolbox";
 import { useClock } from "../../lib/clockContext";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
@@ -1001,12 +1006,15 @@ export function OpeningSheet() {
 
   // Lunch/Break: start a shift break (so shift-time and task-time reconcile),
   // then head to the clock. If not clocked in, just route to the clock.
+  // Both buttons used to call this with no type, so "Lunch" and "Break"
+  // recorded identically as "other" — the two buttons were the same button,
+  // and the break records from this screen could not tell lunch from a rest.
   const takeBreak = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (kind: BreakType) => {
       const shift = clock.shift ?? (myProfile.data?.id
         ? await getOpenShift(myProfile.data.id)
         : null);
-      if (shift) await startBreak(shift.id);
+      if (shift) await startBreak(shift.id, kind);
     },
     onSettled: () => navigate("/clock"),
   });
@@ -1067,8 +1075,17 @@ export function OpeningSheet() {
         <div className="detail-card" style={{ marginBottom: 8 }}>
           <span className="field-label">Where are you actually headed?</span>
           <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 6 }}>
+            {/* Same filter the automatic pick uses: the chain must never put
+                a running clock onto a window that is sitting blocked. The
+                picker beside it was skipping this, so a manual redirect could
+                start the clock on work that cannot proceed. */}
             {(myOpenings.data ?? [])
-              .filter((o) => o.id !== openingId && o.status !== "installed")
+              .filter(
+                (o) =>
+                  o.id !== openingId &&
+                  o.status !== "installed" &&
+                  !queueBlockedIds.has(o.id),
+              )
               .slice(0, 12)
               .map((o) => (
                 <button
@@ -1155,8 +1172,13 @@ export function OpeningSheet() {
           (warehouse ticket 03). */}
       <PartsPanel projectId={projectId} openingCode={opening.data?.opening_code} />
 
+      {/* Guessing tone from the first word breaks every time somebody adds a
+          message: "Redo filed" and "Marked damaged" both rendered RED like
+          failures, and an installer who reads a red confirmation taps again —
+          filing a second redo. Patched here; the real fix is to carry the tone
+          with the message (see the audit's proposal list). */}
       {message && (
-        <p className={/^(Window|Install|Rough|Condition|Flag|Flagged|Site|Complication)/.test(message) ? "ok" : "error"}>
+        <p className={/^(Window|Install|Rough|Condition|Flag|Flagged|Site|Complication|Redo|Marked)/.test(message) ? "ok" : "error"}>
           {message}
         </p>
       )}
@@ -1817,16 +1839,21 @@ export function OpeningSheet() {
             }
             onClick={() => (startedAt ? setStage("install") : beginInstall.mutate())}
           >
+            {/* "already started" is checked FIRST, matching the order the
+                disable logic above uses. It used to sit below the clock-in
+                check, so somebody returning to a window they started
+                yesterday read "Clock in first to start" on a live button that
+                took them straight into the install — the label simply lied. */}
             {ready.status === "blocked"
               ? "Resolve blockers to start"
               : flashingBlocked
                 ? "Flash this opening first"
-                : !startedAt && photos.before === null
-                  ? "Take the before photo to start"
-                  : eligibility.status === "blocked"
-                    ? "Clock in first to start"
-                    : startedAt
-                      ? "Back to the install →"
+                : startedAt
+                  ? "Back to the install →"
+                  : photos.before === null
+                    ? "Take the before photo to start"
+                    : eligibility.status === "blocked"
+                      ? "Clock in first to start"
                       : beginInstall.isPending
                         ? "Starting…"
                         : "Start install →"}
@@ -2194,14 +2221,14 @@ export function OpeningSheet() {
               <button
                 className="big"
                 disabled={takeBreak.isPending}
-                onClick={() => takeBreak.mutate()}
+                onClick={() => takeBreak.mutate("lunch")}
               >
                 Lunch
               </button>
               <button
                 className="big"
                 disabled={takeBreak.isPending}
-                onClick={() => takeBreak.mutate()}
+                onClick={() => takeBreak.mutate("rest")}
               >
                 Break
               </button>

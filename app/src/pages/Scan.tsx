@@ -67,18 +67,26 @@ export function Scan() {
     }
   };
 
-  // Typed entry accepts a 6-char code or a serial — resolve it as a window code
-  // (the RPC handles both) and jump straight to the unit.
+  // Typed entry accepts a 6-char code or a serial. The code lookup does NOT
+  // cover serials despite the placeholder promising them, so a serial read off
+  // the sticker came back "no window found" while a QR scan of the same label
+  // worked. Fall back to the serial lookup, exactly as the scan path does.
   const resolveTyped = async (raw: string) => {
     const value = raw.trim();
     if (!value) return;
     setMessage(null);
     setLooking(true);
     try {
-      const res = await resolveWindowFromScan(
+      let res = await resolveWindowFromScan(
         { kind: "windowCode", code: value },
         windowLookups,
       );
+      if (res.status !== "ok") {
+        res = await resolveWindowFromScan(
+          { kind: "windowSerial", serial: value },
+          windowLookups,
+        );
+      }
       if (res.status === "ok") {
         navigate(`/w/${encodeURIComponent(res.unit.window_id)}`);
       } else {

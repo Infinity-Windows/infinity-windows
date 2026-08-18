@@ -26,7 +26,8 @@ import type {
 } from "../lib/travel/types";
 import { areCodesVisible, phaseLabel, tripPhase } from "../lib/travel/status";
 import { buildTimeline, selectNextUp } from "../lib/travel/timeline";
-import { flightsForViewer } from "../lib/travel/visibility";
+import {
+  canOpenTrip, flightsForViewer } from "../lib/travel/visibility";
 import { directionsTargets } from "../lib/travel/links";
 import { tripChangeMessage, tripPublishMessage } from "../lib/travel/notify";
 import { sendPush } from "../lib/permissions/pushServer";
@@ -195,7 +196,14 @@ export function TripDetail() {
       </div>
     );
   }
-  if (!detail) {
+  // Membership is not the whole rule: a DRAFT is supervisor-only until it is
+  // published. Without this, anyone already on a half-built trip could open
+  // the full pack — lodging, door codes, wifi passwords — weeks before it was
+  // announced. Same helper the Travel list already filters with.
+  const mayOpen =
+    !detail ||
+    canOpenTrip(detail.trip, { profileId: myId, isSupervisor: canEdit });
+  if (!detail || !mayOpen) {
     return (
       <div className="page travel-detail">
         <EmptyState title="Trip not found" message="It may have been removed." action={<Link className="button-like" to="/travel">Back to Travel</Link>} />

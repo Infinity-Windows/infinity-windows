@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Trip } from "./types";
 import {
+  canOpenTrip,
   canViewTrip,
   flightsForViewer,
   sortTripsForList,
@@ -87,3 +88,29 @@ describe("sortTripsForList", () => {
     expect(sortTripsForList(list, today).map((t) => t.id)).toEqual(["now", "soon", "past"]);
   });
 });
+
+describe("canOpenTrip — one trip, membership AND publication", () => {
+  // canViewTrip answers membership only. Screens that check a SINGLE trip
+  // (the trip page, the schedule badge) used it and so showed crew a draft's
+  // door codes and wifi passwords weeks before it was announced.
+  const draft = { crew: [{ profile_id: "me" }], status: "draft" } as never;
+  const published = { crew: [{ profile_id: "me" }], status: "published" } as never;
+  const crew = { profileId: "me", isSupervisor: false };
+  const boss = { profileId: "boss", isSupervisor: true };
+
+  it("hides a draft from assigned crew", () => {
+    expect(canOpenTrip(draft, crew)).toBe(false);
+  });
+
+  it("shows a published trip to assigned crew", () => {
+    expect(canOpenTrip(published, crew)).toBe(true);
+  });
+
+  it("shows a draft to a supervisor, who is the one building it", () => {
+    expect(canOpenTrip(draft, boss)).toBe(true);
+  });
+
+  it("hides a published trip from crew who are not on it", () => {
+    expect(canOpenTrip(published, { profileId: "other", isSupervisor: false })).toBe(false);
+  });
+})

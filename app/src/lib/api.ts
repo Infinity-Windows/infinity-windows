@@ -628,6 +628,27 @@ export async function listInventory(): Promise<InventorySnapshot> {
   };
 }
 
+/**
+ * Every unit the Find bar may be asked about — including the ones that have
+ * LEFT the warehouse.
+ *
+ * listInventory() deliberately excludes `installed` and `loaded` because it
+ * answers "what are we holding". Find answers a different question — "where is
+ * it" — and the moment somebody most needs that is standing at the truck
+ * asking whether a window is on board. Reusing the inventory list meant the
+ * answer "on the truck" existed in the code and could never be reached
+ * (installer audit, 2026-08-17).
+ */
+export async function listFindableUnits(): Promise<WindowUnit[]> {
+  const { data, error } = await supabase
+    .from("windows")
+    .select(WINDOW_SELECT)
+    .order("window_id")
+    .limit(INVENTORY_LIMIT);
+  if (error) throw error;
+  return (data ?? []) as WindowUnit[];
+}
+
 export interface CatalogImportResult {
   inserted: number;
   updated: number;

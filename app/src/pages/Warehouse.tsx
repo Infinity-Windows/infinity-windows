@@ -21,7 +21,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { listInventory, listProjects } from "../lib/api";
+import { listFindableUnits, listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
@@ -86,7 +86,7 @@ export function Warehouse() {
   // Two systems still describe this warehouse (ADR-0004, ticket 08b). Until
   // the units retire, ONE search box has to answer for both — otherwise the
   // page cannot find the 11 units and 46 shelves that exist today.
-  const inventory = useQuery({ queryKey: ["inventory"], queryFn: listInventory });
+  const inventory = useQuery({ queryKey: ["findableUnits"], queryFn: listFindableUnits });
 
   const activeIds = useMemo(() => (projects.data ?? []).map((p) => p.id), [projects.data]);
   const marks = useQuery({
@@ -134,7 +134,7 @@ export function Warehouse() {
         containers={boxes}
         projects={projects.data ?? []}
         scheduledMarks={marks.data ?? []}
-        units={inventory.data?.units ?? []}
+        units={inventory.data ?? []}
       />
 
       {waiting > 0 && (
@@ -278,7 +278,12 @@ export function Warehouse() {
               </div>
               {goingOut.length > 0 && (
                 <div className="home-projects" style={{ marginTop: 8 }}>
-                  {groupByJob(goingOut.slice(0, 40)).map((g) => (
+                  {/* Group FIRST, then cap the cards. Slicing the packages
+                      before grouping made a job's "N out" count wrong (or hid
+                      the job entirely) once more than 40 were out, because the
+                      cut is ordered by when packages were TAGGED, not when
+                      they left. */}
+                  {groupByJob(goingOut).slice(0, 40).map((g) => (
                     <div key={g.projectId ?? "none"} className="project-card home-project">
                       <div className="home-project-head">
                         <div style={{ minWidth: 0 }}>
