@@ -67,6 +67,13 @@ jobs:
         shell: bash
         run: scripts/verify-push-key.test.sh
 
+      # The local checkpoint. It is the thing that would be reached for on the
+      # worst day, so it does not get to be the one piece nobody tested.
+      # Offline: "origin" is a local bare repo, no network, no credential.
+      - name: Test scripts/checkpoint.sh
+        shell: bash
+        run: scripts/checkpoint.test.sh
+
       # How the nightly vault sync sends its Supabase key. Getting this wrong
       # rejects a valid key outright, so it is pinned by tests. Dependency-free
       # and offline: the fetch is stubbed, and no real key is involved.

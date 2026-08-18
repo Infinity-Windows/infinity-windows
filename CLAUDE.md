@@ -31,6 +31,21 @@ npm run build    # tsc -b && vite build
 npm run e2e      # playwright (needs `npx playwright install` first)
 ```
 
+After anything lands on `master`, take a checkpoint — the owner's standing call
+(2026-08-18):
+
+```bash
+scripts/checkpoint.sh   # one verified bundle in ~/Downloads/infinity-windows-checkpoints
+```
+
+It fast-forwards the local default branch first, then restores the bundle it
+just wrote and refuses to call it good unless the restored tip matches the
+server. The first one taken by hand quietly held the previous commit, because a
+fetch moves the remote-tracking ref and leaves the local branch behind, and
+cloning a bundle checks out the local one. `master` is protected on GitHub now
+(PRs required, no force-push, no deletion, admins included), so the checkpoint
+is the copy that covers what protection cannot: the machine, and this account.
+
 `npm run build` typechecks `e2e/` too, so it fails when `@playwright/test` isn't
 installed. To check only shipped code: `npx tsc --noEmit -p tsconfig.app.json`.
 
