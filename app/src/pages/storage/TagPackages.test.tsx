@@ -31,6 +31,8 @@ const server = vi.hoisted(() => ({
   bound: new Set<string>(),
   /** Package ids the fake server has marked received (ticket 15). */
   received: [] as string[][],
+  /** Totals set_mark_part_total was asked for (the late package). */
+  grown: [] as number[],
 }));
 
 const BLANKS: StoragePackage[] = [
@@ -76,6 +78,12 @@ vi.mock("../../lib/storage", async (importOriginal) => {
       if (server.offline) throw new TypeError("Failed to fetch");
       server.received.push(ids);
       return ids.length;
+    },
+    // Growing a window's count (the late package). Online-only by design.
+    setMarkPartTotal: async (input: { total: number }) => {
+      if (server.offline) throw new TypeError("Failed to fetch");
+      server.grown.push(input.total);
+      return 3;
     },
     bindPackage: async (input: { packageId: string }) => {
       // Exactly what supabase-js does with no bars, which is what the offline
@@ -197,11 +205,15 @@ async function settle() {
   });
 }
 
-/** The stickers the screen is offering as still free. */
-function freeRoll(el: HTMLElement): string[] {
-  return [...el.querySelectorAll('[data-roll="free"] button')].map((b) =>
-    (b.textContent ?? "").trim(),
-  );
+/** The sticker codes the worksheet's lines are currently holding. In the
+ * batch flow this IS the observable "free roll": lines auto-draw the next
+ * free stickers, so what they show is what the screen still believes is
+ * offerable. */
+function lineCodes(el: HTMLElement): string[] {
+  return [...el.querySelectorAll("[data-worksheet] [data-line]")].map((b) => {
+    const code = b.querySelector("span.muted + span, span[style*='monospace']");
+    return (code?.textContent ?? "").trim();
+  });
 }
 
 /** The stickers the screen says are spent but not sent. */
@@ -209,11 +221,15 @@ function waitingPills(el: HTMLElement): HTMLButtonElement[] {
   return [...el.querySelectorAll<HTMLButtonElement>('[data-roll="waiting"] button')];
 }
 
-/** Anything anywhere on the page a thumb could still press to pick a sticker. */
-function tappable(el: HTMLElement, code: string): HTMLButtonElement[] {
-  return [...el.querySelectorAll("button")].filter(
+/** Anywhere on the page this code is still offered as usable: on a live
+ * worksheet line, or as an enabled pill. Disabled waiting pills don't count —
+ * they exist to say "spoken for". */
+function offered(el: HTMLElement, code: string): number {
+  const onLines = lineCodes(el).filter((c) => c === code).length;
+  const asButtons = [...el.querySelectorAll("button")].filter(
     (b) => (b.textContent ?? "").trim() === code && !b.disabled,
-  );
+  ).length;
+  return onLines + asButtons;
 }
 
 function click(node: Element | null | undefined) {
@@ -223,24 +239,42 @@ function click(node: Element | null | undefined) {
   });
 }
 
-/** Tap a sticker in the roll, then tap Assign, the way the screen is used. */
-async function tag(el: HTMLElement, code: string) {
-  click(tappable(el, code)[0]);
-  const assign = [...el.querySelectorAll("button")].find((b) =>
-    (b.textContent ?? "").startsWith("Assign"),
+/** Drive the worksheet the way a thumb does: the line already holds the next
+ * free sticker, so tagging is typing the window number and hitting Submit. */
+async function tag(el: HTMLElement, expectCode?: string) {
+  if (expectCode) {
+    expect(lineCodes(el)[0], "the line is not holding the expected sticker").toBe(
+      expectCode,
+    );
+  }
+  const mark = el.querySelector<HTMLInputElement>('input[aria-label="Window number"]');
+  if (!mark) throw new Error("no window-number input on the page");
+  act(() => {
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )!.set!;
+    setter.call(mark, "16");
+    mark.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const go = [...el.querySelectorAll("button")].find((b) =>
+    /^Tag \d+ package/.test((b.textContent ?? "").trim()),
   );
-  click(assign);
+  if (!go) throw new Error("no submit button in a taggable state");
+  click(go);
   await settle();
 }
 
 describe("a sticker tagged with no signal", () => {
   it("leaves the roll of free stickers", async () => {
     const { el } = await mount();
-    expect(freeRoll(el)).toEqual(["K4T9QP", "M7X2LR"]);
+    // The single line auto-drew the first free sticker.
+    expect(lineCodes(el)).toEqual(["K4T9QP"]);
 
     await tag(el, "K4T9QP");
 
-    expect(freeRoll(el)).toEqual(["M7X2LR"]);
+    // The next worksheet draws the NEXT free sticker — the spent one is gone.
+    expect(lineCodes(el)).toEqual(["M7X2LR"]);
   });
 
   it("cannot be picked a second time from anywhere on the page", async () => {
@@ -249,7 +283,7 @@ describe("a sticker tagged with no signal", () => {
     const { el } = await mount();
     await tag(el, "K4T9QP");
 
-    expect(tappable(el, "K4T9QP")).toHaveLength(0);
+    expect(offered(el, "K4T9QP")).toBe(0);
   });
 
   it("still reads as spoken for, and says the write is not up yet", async () => {
@@ -275,8 +309,8 @@ describe("a sticker tagged with no signal", () => {
 
     const { el } = await mount();
 
-    expect(freeRoll(el)).toEqual(["M7X2LR"]);
-    expect(tappable(el, "K4T9QP")).toHaveLength(0);
+    expect(lineCodes(el)).toEqual(["M7X2LR"]);
+    expect(offered(el, "K4T9QP")).toBe(0);
     expect(el.textContent).toContain("saved on this phone, not sent yet");
   });
 
@@ -292,8 +326,8 @@ describe("a sticker tagged with no signal", () => {
     await settle();
 
     expect(el.textContent).not.toContain("not sent yet");
-    expect(freeRoll(el)).toEqual(["M7X2LR"]);
-    expect(tappable(el, "K4T9QP")).toHaveLength(0);
+    expect(lineCodes(el)).toEqual(["M7X2LR"]);
+    expect(offered(el, "K4T9QP")).toBe(0);
   });
 
   it("stops being called waiting the moment the queue reports it sent, with nobody touching the screen", async () => {
@@ -314,8 +348,8 @@ describe("a sticker tagged with no signal", () => {
     await settle();
 
     expect(el.textContent).not.toContain("not sent yet");
-    expect(freeRoll(el)).toEqual(["M7X2LR"]);
-    expect(tappable(el, "K4T9QP")).toHaveLength(0);
+    expect(lineCodes(el)).toEqual(["M7X2LR"]);
+    expect(offered(el, "K4T9QP")).toBe(0);
   });
 });
 
@@ -327,7 +361,7 @@ describe("a sticker tagged with bars", () => {
     await tag(el, "K4T9QP");
     await settle();
 
-    expect(freeRoll(el)).toEqual(["M7X2LR"]);
+    expect(lineCodes(el)).toEqual(["M7X2LR"]);
     expect(el.textContent).not.toContain("not sent yet");
   });
 });
@@ -388,5 +422,73 @@ describe("pre-labeled packages at the truck (ticket 15)", () => {
   it("shows nothing when nothing is expected — the blank roll is the whole screen", async () => {
     const m = await mount();
     expect(m.el.textContent).not.toContain("Pre-labeled");
+  });
+});
+
+describe("the worksheet (owner spec, 2026-08-18)", () => {
+  it("three pieces make three lines that all rename when the window is typed", async () => {
+    const { el } = await mount();
+    const count = el.querySelector<HTMLInputElement>('input[aria-label="How many pieces"]')!;
+    act(() => {
+      const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+      set.call(count, "3");
+      count.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await settle();
+    // Two blanks on the roll, three lines: the third says the roll is dry
+    // instead of silently tagging fewer than asked.
+    expect(el.querySelectorAll("[data-worksheet] [data-line]").length).toBe(3);
+    expect(el.textContent).toContain("no sticker — roll is dry");
+
+    const mark = el.querySelector<HTMLInputElement>('input[aria-label="Window number"]')!;
+    act(() => {
+      const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+      set.call(mark, "16");
+      mark.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await settle();
+    expect(el.textContent).toContain("#16 1/3");
+    expect(el.textContent).toContain("#16 2/3");
+    expect(el.textContent).toContain("#16 3/3");
+    // A dry line blocks submit in words rather than shrinking the batch.
+    expect(el.textContent).toContain("A line has no sticker");
+  });
+
+  it("a tapped line glows and takes the piece pick", async () => {
+    const { el } = await mount();
+    const line = el.querySelector<HTMLButtonElement>('[data-line="1"]')!;
+    click(line);
+    expect(line.getAttribute("style") ?? "").toContain("var(--accent-line)");
+    const glass = [...el.querySelectorAll("button")].find(
+      (b) => (b.textContent ?? "").trim() === "Glass",
+    );
+    expect(glass, "no piece pills for the glowing line").toBeTruthy();
+    click(glass!);
+    expect(el.textContent).toContain("· Glass");
+  });
+
+  it("the late package: typing a window that exists continues its numbering and grows the count", async () => {
+    // Window 16 is already tagged as 3-of-3 on this job; one more box shows up.
+    seedMinted = [1, 2, 3].map((i) => ({
+      id: `old-${i}`,
+      serial: `PKG-0009${i}`,
+      status: "received",
+      project_id: "job-1",
+      part_index: i,
+      part_total: 3,
+      package_marks: [{ mark_code: "16" }],
+    }));
+    server.offline = false;
+    try {
+      const { el } = await mount();
+      await tag(el, "K4T9QP");
+      expect(el.textContent ?? "").not.toContain("already has"); // reset after submit
+      // The growth ran first, to 4, then the bind carried 4/4.
+      expect(server.grown).toEqual([4]);
+    } finally {
+      seedMinted = [];
+      server.offline = true;
+      server.grown = [];
+    }
   });
 });

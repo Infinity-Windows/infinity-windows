@@ -107,7 +107,9 @@ export function findInWarehouse(
    * lands straight on that job's window. */
   opts?: { markProjectId?: string },
 ): FindAnswer | null {
-  const query = raw.trim().toUpperCase();
+  // "#16" and "16" are the same question — the sticker prints the number
+  // with the hash, so people type it that way (owner ask, 2026-08-18).
+  const query = raw.trim().toUpperCase().replace(/^#/, "");
   if (query.length < 2) return null;
 
   const {

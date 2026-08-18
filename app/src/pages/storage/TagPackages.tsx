@@ -16,7 +16,6 @@ import { subscribeSynced } from "../../lib/offline/outbox";
 import {
   bindPackageOffline,
   receiveMintedOffline,
-  tagToast,
   writeToast,
 } from "../../lib/warehouse/offlineWrites";
 import { Explain } from "../../components/ui/Explain";
@@ -31,7 +30,14 @@ import {
   type PackageCategory,
   type PartType,
   type StoragePackage,
+  setMarkPartTotal,
 } from "../../lib/storage";
+import {
+  buildLines,
+  existingParts,
+  lineLabel,
+  type TagLine,
+} from "../../lib/warehouse/tagBatch";
 
 const LAST_JOB_KEY = "infinity.storage.lastJob";
 /** The job dropdown's value for company stock. Not a uuid on purpose. */
@@ -135,30 +141,28 @@ export function TagPackages() {
     mutationFn: () => receiveMintedOffline([...arriving]),
     onSuccess: (r) => {
       pushToast(
-        writeToast(
-          r,
-          `${r.count} package${r.count === 1 ? "" : "s"} received.`,
-        ),
+        writeToast(r, `${r.count} package${r.count === 1 ? "" : "s"} received.`),
       );
       setArriving(new Set());
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
   });
-  const [selected, setSelected] = useState<StoragePackage | null>(null);
+
   const [scanning, setScanning] = useState(false);
   const [projectId, setProjectId] = useState<string>(
     () => localStorage.getItem(LAST_JOB_KEY) ?? "",
   );
   const [category, setCategory] = useState<PackageCategory | null>("windows");
-  const [marks, setMarks] = useState<Set<string>>(new Set());
-  // The label's "#16 2/3": which piece, and N of M. Type and total stay put
-  // between binds — a truck usually unloads a run of same-kind packages —
-  // while the piece number and the manufacturer's mark reset every sticker.
-  const [partType, setPartType] = useState<PartType | null>(null);
-  const [partIndex, setPartIndex] = useState("");
-  const [partTotal, setPartTotal] = useState("");
-  const [mfrMark, setMfrMark] = useState("");
+  // The worksheet (owner spec, 2026-08-18): declare the window once and tag
+  // its pieces as one batch. Everything shared lives up here — the job, the
+  // category, the window number, how many pieces — and everything per-piece
+  // lives on its line. The count is a string so the field can be emptied
+  // while retyping without the worksheet collapsing.
+  const [countText, setCountText] = useState("1");
+  const [markCode, setMarkCode] = useState("");
+  const [lines, setLines] = useState<TagLine[]>([]);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [deliveryId, setDeliveryId] = useState<string | null>(null);
   const [tagged, setTagged] = useState(0);
@@ -166,7 +170,7 @@ export function TagPackages() {
   // which stickers this phone has already spent.
   const [spent, setSpent] = useState<SpentSticker[]>(readSpent);
 
-  // One delivery group per truck: created lazily on first bind, reused after.
+  // One delivery group per truck: created lazily, reused after.
   useEffect(() => {
     void (async () => {
       try {
@@ -181,7 +185,11 @@ export function TagPackages() {
   // Job list defaults to the remembered one; validate it still exists.
   useEffect(() => {
     if (!projects.data) return;
-    if (projectId && !projects.data.some((p) => p.id === projectId)) {
+    if (
+      projectId &&
+      projectId !== BONEYARD &&
+      !projects.data.some((p) => p.id === projectId)
+    ) {
       setProjectId("");
     }
   }, [projects.data, projectId]);
@@ -200,12 +208,9 @@ export function TagPackages() {
   }, [blankRows, spent]);
 
   // The prune above only runs on a read that came back, and standing on this
-  // screen nothing asks for one: the roll is 30s-stale at worst and refetches
-  // on focus, and somebody watching the queue empty never blurs the tab. So
-  // when the drainer says it sent something, read the blank list again. Without
-  // this the "not sent yet" line below outlives the write it describes — the
-  // screen lying the other way round. Same wiring the clock and the photo feed
-  // use for the same reason (lib/clockContext.tsx, components/photos).
+  // screen nothing asks for one. So when the drainer says it sent something,
+  // read the blank list again — without this the "not sent yet" line below
+  // outlives the write it describes. Same wiring the clock uses.
   useEffect(
     () =>
       subscribeSynced(() => {
@@ -233,71 +238,132 @@ export function TagPackages() {
     [specs.data],
   );
 
-  // "2 of 3" needs both halves and the first can't beat the second. Empty is
-  // fine — plenty of labels carry no part number, and receiving never blocks.
-  const idx = partIndex.trim() === "" ? null : parseInt(partIndex, 10);
-  const tot = partTotal.trim() === "" ? null : parseInt(partTotal, 10);
-  const partInvalid =
-    (idx === null) !== (tot === null) ||
-    (idx !== null && (!Number.isFinite(idx) || idx < 1)) ||
-    (tot !== null && (!Number.isFinite(tot) || tot < 1)) ||
-    (idx !== null && tot !== null && idx > tot);
+  const boneyard = projectId === BONEYARD;
+  const count = Math.min(20, Math.max(1, parseInt(countText, 10) || 1));
 
-  const bind = useMutation({
+  // The late package (the missed fourth box, the add-on ordered later): when
+  // the typed window already has parts, these lines CONTINUE its numbering and
+  // every older label's "of N" grows to match on submit.
+  const growth = useMemo(
+    () =>
+      boneyard || !markCode.trim() || !projectId
+        ? null
+        : existingParts(actives.data ?? [], projectId, markCode, lines.length),
+    [actives.data, projectId, markCode, boneyard, lines.length],
+  );
+
+  // Rebuild the worksheet when the count or the continuation point changes.
+  // Stickers auto-assign from the roll — the codes are random, nobody picks
+  // (owner) — and piece types already chosen survive a rebuild by position.
+  const startIndex = (growth?.maxIndex ?? 0) + 1;
+  useEffect(() => {
+    setLines((prev) => {
+      const fresh = buildLines(count, roll, startIndex);
+      return fresh.map((l, i) => ({
+        ...l,
+        partType: prev[i]?.partType ?? null,
+        mfrMark: prev[i]?.mfrMark ?? "",
+        // A sticker somebody swapped by hand survives too, as long as it is
+        // still free.
+        sticker:
+          prev[i]?.sticker && !spentIds.has(prev[i].sticker.id)
+            ? prev[i].sticker
+            : l.sticker,
+      }));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [count, startIndex, blankRows, spentIds]);
+
+  const selected = lines.find((l) => l.key === selectedKey) ?? null;
+  const partTotal = growth ? growth.newTotal : Math.max(count, lines.length);
+
+  const patchLine = (key: string, patch: Partial<TagLine>) =>
+    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+
+  const removeLine = (key: string) => {
+    // Removing box 2 keeps boxes 1 and 3 wearing their printed numbers — the
+    // worksheet matches paper, it never renumbers it.
+    setLines((prev) => prev.filter((l) => l.key !== key));
+    if (selectedKey === key) setSelectedKey(null);
+  };
+
+  const linesReady = lines.filter((l) => l.sticker != null);
+  const canSubmit =
+    Boolean(projectId) &&
+    linesReady.length > 0 &&
+    (boneyard || markCode.trim() !== "") &&
+    linesReady.length === lines.length;
+
+  const submit = useMutation({
     mutationFn: async () => {
-      if (!selected || !projectId) throw new Error("Pick a sticker and a job");
-      const boneyard = projectId === BONEYARD;
-      // The sticker in hand is held BEFORE the write, because a queued tag
-      // never gets a row back from the server to read its serial — or its
-      // short code — off.
-      const sticker = selected;
-      const serial = sticker.serial;
-      const r = await bindPackageOffline({
-        packageId: selected.id,
-        projectId: boneyard ? null : projectId,
-        boneyard,
-        category,
-        note: note || null,
-        // A window number is a position on one job's plans; the Boneyard has
-        // none, and the mark list is hidden when it is picked.
-        marks: boneyard ? [] : [...marks],
-        deliveryId,
-        partIndex: idx,
-        partTotal: tot,
-        partType,
-        mfrMark: mfrMark.trim() || null,
-      });
-      return { sticker, serial: r.package?.serial ?? serial, queued: r.queued };
+      if (!projectId) throw new Error("Pick a job first");
+      const mark = markCode.trim().toUpperCase();
+
+      // Growing the count is one deliberate act, done BEFORE any bind so the
+      // new labels and the old ones never disagree. Online-only (a foreman
+      // decision, like minting) — if it fails, nothing has been tagged yet.
+      if (growth && growth.oldTotal !== growth.newTotal) {
+        await setMarkPartTotal({ projectId, markCode: mark, total: growth.newTotal });
+      }
+
+      // One bind per line, sequential, each offline-capable on its own — the
+      // same per-package write everything else already trusts.
+      const done: { line: TagLine; serial: string; queued: boolean }[] = [];
+      for (const line of lines) {
+        if (!line.sticker) continue;
+        const sticker = line.sticker;
+        const r = await bindPackageOffline({
+          packageId: sticker.id,
+          projectId: boneyard ? null : projectId,
+          boneyard,
+          category,
+          note: note || null,
+          marks: boneyard || !mark ? [] : [mark],
+          deliveryId,
+          partIndex: line.partIndex,
+          partTotal,
+          partType: (line.partType as PartType | null) ?? null,
+          mfrMark: line.mfrMark.trim() || null,
+        });
+        done.push({
+          line,
+          serial: r.package?.serial ?? sticker.serial,
+          queued: r.queued,
+        });
+        // Spoken for either way — written down before any invalidate, because
+        // offline that invalidate cannot refetch and re-serves the same roll.
+        setSpent((prev) =>
+          prev.some((s) => s.id === sticker.id)
+            ? prev
+            : writeSpent([
+                ...prev,
+                {
+                  id: sticker.id,
+                  serial: r.package?.serial ?? sticker.serial,
+                  code: sticker.short_code ?? sticker.serial,
+                  queued: r.queued,
+                },
+              ]),
+        );
+      }
+      return done;
     },
-    onSuccess: ({ sticker, serial, queued }) => {
+    onSuccess: (done) => {
       localStorage.setItem(LAST_JOB_KEY, projectId);
-      pushToast(tagToast(serial, queued));
-      // This sticker is spoken for either way. A tag that reached the server
-      // is dropped again by the prune above on the next good read of the roll;
-      // a queued one stays until its write goes up. Both are written down
-      // before the invalidate below, because offline that invalidate cannot
-      // refetch and re-serves the same list with this sticker still in it.
-      setSpent((prev) =>
-        prev.some((s) => s.id === sticker.id)
-          ? prev
-          : writeSpent([
-              ...prev,
-              {
-                id: sticker.id,
-                serial,
-                code: sticker.short_code ?? sticker.serial,
-                queued,
-              },
-            ]),
+      const queued = done.filter((d) => d.queued).length;
+      const mark = markCode.trim();
+      pushToast(
+        queued > 0
+          ? `${done.length} package${done.length === 1 ? "" : "s"} tagged${mark ? ` for #${mark}` : ""} — ${queued} saved on this phone, not sent yet.`
+          : `${done.length} package${done.length === 1 ? "" : "s"} tagged${mark ? ` for #${mark}` : ""}.`,
       );
-      setSelected(null);
-      setMarks(new Set());
+      setTagged((n) => n + done.length);
+      // The next window: category and the count usually repeat down a truck;
+      // the window number and the piece picks never do.
+      setMarkCode("");
+      setLines([]);
+      setSelectedKey(null);
       setNote("");
-      // Piece number and their mark are per-package; type and total usually
-      // repeat down the truck, so those stay for the next sticker.
-      setPartIndex("");
-      setMfrMark("");
-      setTagged((n) => n + 1);
       void qc.invalidateQueries({ queryKey: ["storageBlanks"] });
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
     },
@@ -309,9 +375,7 @@ export function TagPackages() {
       pushToast("That's not a package sticker.", "error");
       return;
     }
-    // The scanner is the other door onto the roll, so it gets the same answer.
-    // Named separately from "already assigned or unknown" because this one has
-    // a reason worth hearing: nothing is wrong, the write is just still here.
+    // The scanner is a door onto the roll, so it gets the same answers.
     const held = spent.find((s) => s.serial === payload.serial);
     if (held) {
       pushToast(
@@ -327,7 +391,19 @@ export function TagPackages() {
       pushToast(`${payload.serial} is already assigned or unknown.`, "error");
       return;
     }
-    setSelected(hit);
+    // Physical reality wins: the sticker in hand lands on the GLOWING line
+    // (or the first line when none is picked), replacing its auto-assigned
+    // code. Peel any sticker, scan it, stick it on that box.
+    const target = selected ?? lines[0];
+    if (!target) {
+      pushToast("Set how many pieces first.", "error");
+      return;
+    }
+    if (lines.some((l) => l.sticker?.id === hit.id && l.key !== target.key)) {
+      pushToast(`${payload.serial} is already on another line.`, "error");
+      return;
+    }
+    patchLine(target.key, { sticker: hit });
     setScanning(false);
   };
 
@@ -347,7 +423,7 @@ export function TagPackages() {
 
       {(() => {
         const expected = (actives.data ?? []).filter(
-          (p) => p.status === "minted" && (!projectId || p.project_id === projectId),
+          (p) => p.status === "minted" && (!projectId || boneyard || p.project_id === projectId),
         );
         if (expected.length === 0) return null;
         const label = (p: StoragePackage) => {
@@ -404,37 +480,171 @@ export function TagPackages() {
         );
       })()}
 
-      <h2>1 · The sticker</h2>
+      <h2>1 · The window</h2>
+      <label className="field-label">Job</label>
+      <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+        <option value="">Pick the job…</option>
+        {/* The crew's word, kept on purpose (ticket 17). Company stock gets
+            tagged like anything else — it just belongs to nobody yet. */}
+        <option value={BONEYARD}>Boneyard — company stock, no job yet</option>
+        {(projects.data ?? []).map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.job_code} — {p.name}
+          </option>
+        ))}
+      </select>
+      <label className="field-label">Category — holds for every piece below</label>
       <div className="row-gap" style={{ flexWrap: "wrap" }}>
-        <button
-          className="button-like"
-          onClick={() => setScanning((v) => !v)}
-        >
-          {scanning ? "Stop scanning" : "Scan sticker"}
-        </button>
-        <span className="muted" style={{ fontSize: 12, alignSelf: "center" }}>
-          or tap one from the roll:
-        </span>
-      </div>
-      {scanning && <Scanner onScan={onScan} />}
-      <div className="row-gap" data-roll="free" style={{ flexWrap: "wrap", marginTop: 6 }}>
-        {roll.slice(0, 24).map((b) => (
+        {(Object.keys(CATEGORY_LABELS) as PackageCategory[]).map((c) => (
           <button
-            key={b.id}
-            className={
-              selected?.id === b.id ? "button-like active-pill" : "button-like"
-            }
-            onClick={() => setSelected(b)}
+            key={c}
+            className={category === c ? "button-like active-pill" : "button-like"}
+            onClick={() => setCategory(c)}
           >
-            {b.short_code ?? b.serial}
+            {CATEGORY_LABELS[c]}
           </button>
         ))}
-        {roll.length === 0 && (
-          <p className="muted">
-            No blank stickers left — print a batch from the Storage page.
-          </p>
-        )}
       </div>
+      {!boneyard && (
+        <>
+          <label className="field-label">Window # (mark)</label>
+          <input
+            placeholder="e.g. 16"
+            value={markCode}
+            onChange={(e) => setMarkCode(e.target.value)}
+            list="tag-mark-options"
+            style={{ width: 120 }}
+            aria-label="Window number"
+          />
+          <datalist id="tag-mark-options">
+            {markOptions.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+        </>
+      )}
+      <div className="row-gap" style={{ alignItems: "center", marginTop: 6 }}>
+        <label className="field-label" style={{ margin: 0 }}>
+          How many pieces?
+        </label>
+        <input
+          type="number"
+          min={1}
+          max={20}
+          inputMode="numeric"
+          value={countText}
+          onChange={(e) => setCountText(e.target.value)}
+          style={{ width: 70, marginBottom: 0 }}
+          aria-label="How many pieces"
+        />
+      </div>
+      {growth && (
+        <p className="wh-pending" style={{ marginTop: 6 }}>
+          Window {markCode.trim().toUpperCase()} already has {growth.have} part
+          {growth.have === 1 ? "" : "s"}
+          {growth.oldTotal != null ? ` (of ${growth.oldTotal})` : ""}. These{" "}
+          {lines.length} continue at {startIndex} — on submit, every label for
+          this window becomes &ldquo;of {growth.newTotal}&rdquo;.
+        </p>
+      )}
+
+      <h2>2 · The pieces</h2>
+      <Explain id="wh-tag-worksheet">
+        One line per piece, matched to the maker&rsquo;s own numbers — the box
+        printed &ldquo;1/3&rdquo; gets the line that says 1/3, and that
+        line&rsquo;s sticker goes on it. Tap a line and it glows: the piece
+        buttons below, and any sticker you scan, land on the glowing line.
+      </Explain>
+      <div data-worksheet style={{ display: "grid", gap: 6 }}>
+        {lines.map((line) => {
+          const on = selectedKey === line.key;
+          return (
+            <button
+              key={line.key}
+              data-line={line.partIndex}
+              onClick={() => setSelectedKey(on ? null : line.key)}
+              className="project-card home-project"
+              style={{
+                textAlign: "left",
+                cursor: "pointer",
+                border: on
+                  ? "2px solid var(--accent-line)"
+                  : "2px solid transparent",
+                boxShadow: on ? "0 0 8px var(--accent-soft)" : undefined,
+              }}
+            >
+              <div className="row-between" style={{ gap: 8 }}>
+                <div style={{ minWidth: 0 }}>
+                  <strong>{lineLabel(boneyard ? "" : markCode, line.partIndex, partTotal)}</strong>
+                  <span className="muted" style={{ fontSize: 12.5 }}>
+                    {" "}· {line.partType ? PART_LABELS[line.partType as PartType] : "which piece? — tap to set"}
+                  </span>
+                </div>
+                <div className="row-gap" style={{ alignItems: "center" }}>
+                  <span className="muted" style={{ fontFamily: "monospace", fontSize: 12.5 }}>
+                    {line.sticker
+                      ? (line.sticker.short_code ?? line.sticker.serial)
+                      : "no sticker — roll is dry"}
+                  </span>
+                  {lines.length > 1 && (
+                    <span
+                      role="button"
+                      aria-label={`Remove line ${line.partIndex}`}
+                      className="muted"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeLine(line.key);
+                      }}
+                      style={{ padding: "0 4px" }}
+                    >
+                      ×
+                    </span>
+                  )}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {selected && (
+        <div style={{ marginTop: 8 }}>
+          <label className="field-label">
+            Which piece is {lineLabel(boneyard ? "" : markCode, selected.partIndex, partTotal)}?
+          </label>
+          <div className="row-gap" style={{ flexWrap: "wrap" }}>
+            {PART_TYPES.map((t) => (
+              <button
+                key={t}
+                className={selected.partType === t ? "button-like active-pill" : "button-like"}
+                onClick={() =>
+                  patchLine(selected.key, {
+                    partType: selected.partType === t ? null : t,
+                  })
+                }
+              >
+                {PART_LABELS[t]}
+              </button>
+            ))}
+          </div>
+          <label className="field-label">
+            Their # for this piece (only if it differs from ours)
+          </label>
+          <input
+            placeholder="e.g. A-2216"
+            value={selected.mfrMark}
+            onChange={(e) => patchLine(selected.key, { mfrMark: e.target.value })}
+            style={{ width: 160 }}
+          />
+        </div>
+      )}
+
+      <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 8 }}>
+        <button className="button-like" onClick={() => setScanning((v) => !v)}>
+          {scanning ? "Stop scanning" : "Scan a sticker onto the glowing line"}
+        </button>
+      </div>
+      {scanning && <Scanner onScan={onScan} />}
 
       {waiting.length > 0 && (
         <div data-roll="waiting">
@@ -461,127 +671,34 @@ export function TagPackages() {
           </div>
         </div>
       )}
-
-      <h2>2 · What it is</h2>
-      <label className="field-label">Job</label>
-      <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-        <option value="">Pick the job…</option>
-        {/* The crew's word, kept on purpose (ticket 17). Company stock gets
-            tagged like anything else — it just belongs to nobody yet. */}
-        <option value={BONEYARD}>Boneyard — company stock, no job yet</option>
-        {(projects.data ?? []).map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.job_code} — {p.name}
-          </option>
-        ))}
-      </select>
-      <label className="field-label">Category</label>
-      <div className="row-gap" style={{ flexWrap: "wrap" }}>
-        {(Object.keys(CATEGORY_LABELS) as PackageCategory[]).map((c) => (
-          <button
-            key={c}
-            className={category === c ? "button-like active-pill" : "button-like"}
-            onClick={() => setCategory(c)}
-          >
-            {CATEGORY_LABELS[c]}
-          </button>
-        ))}
-      </div>
-      {projectId && projectId !== BONEYARD && markOptions.length > 0 && (
-        <>
-          <label className="field-label">
-            Marks inside (optional — makes “where is window 16?” answerable)
-          </label>
-          <div className="row-gap" style={{ flexWrap: "wrap" }}>
-            {markOptions.map((m) => (
-              <button
-                key={m}
-                className={marks.has(m) ? "button-like active-pill studio-mini" : "button-like studio-mini"}
-                onClick={() =>
-                  setMarks((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(m)) next.delete(m);
-                    else next.add(m);
-                    return next;
-                  })
-                }
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-      <label className="field-label">
-        Which piece is it? (from the label, e.g. “#16 2/3”)
-      </label>
-      <div className="row-gap" style={{ flexWrap: "wrap" }}>
-        {PART_TYPES.map((t) => (
-          <button
-            key={t}
-            className={partType === t ? "button-like active-pill" : "button-like"}
-            onClick={() => setPartType(partType === t ? null : t)}
-          >
-            {PART_LABELS[t]}
-          </button>
-        ))}
-      </div>
-      <div className="row-gap" style={{ alignItems: "center", marginTop: 6 }}>
-        <span className="muted" style={{ fontSize: 13 }}>Part</span>
-        <input
-          type="number"
-          min={1}
-          inputMode="numeric"
-          placeholder="2"
-          value={partIndex}
-          onChange={(e) => setPartIndex(e.target.value)}
-          style={{ width: 64, marginBottom: 0 }}
-        />
-        <span className="muted" style={{ fontSize: 13 }}>of</span>
-        <input
-          type="number"
-          min={1}
-          inputMode="numeric"
-          placeholder="3"
-          value={partTotal}
-          onChange={(e) => setPartTotal(e.target.value)}
-          style={{ width: 64, marginBottom: 0 }}
-        />
-        <span className="muted" style={{ fontSize: 12 }}>
-          — leave empty if the label has none
-        </span>
-      </div>
-      {partInvalid && (
-        <p className="error" style={{ fontSize: 12, margin: "4px 0 0" }}>
-          A part number needs both halves, and “2 of 3” can’t be “4 of 3”.
+      {roll.length === 0 && (
+        <p className="muted" style={{ marginTop: 6 }}>
+          No blank stickers left — print a batch from the Storage page.
         </p>
       )}
-      <label className="field-label">
-        Their mark # (only if it differs from ours)
-      </label>
-      <input
-        placeholder="e.g. A-2216"
-        value={mfrMark}
-        onChange={(e) => setMfrMark(e.target.value)}
-      />
-      <label className="field-label">Note (optional)</label>
+
+      <h2>3 · Send it</h2>
+      <label className="field-label">Note (optional, rides every piece)</label>
       <input
         placeholder="e.g. glass crate, fragile"
         value={note}
         onChange={(e) => setNote(e.target.value)}
       />
-
       <div style={{ marginTop: 12 }}>
         <button
           className="button-like active-pill"
-          disabled={!selected || !projectId || partInvalid || bind.isPending}
-          onClick={() => bind.mutate()}
+          disabled={!canSubmit || submit.isPending}
+          onClick={() => submit.mutate()}
         >
-          {bind.isPending
-            ? "Assigning…"
-            : selected
-              ? `Assign ${selected.short_code ?? selected.serial} & next`
-              : "Pick a sticker first"}
+          {submit.isPending
+            ? "Tagging…"
+            : !projectId
+              ? "Pick a job first"
+              : !boneyard && markCode.trim() === ""
+                ? "Type the window number first"
+                : linesReady.length !== lines.length
+                  ? "A line has no sticker — the roll is dry"
+                  : `Tag ${lines.length} package${lines.length === 1 ? "" : "s"}`}
         </button>
       </div>
     </div>
