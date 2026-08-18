@@ -125,3 +125,23 @@ describe("the package sheet says where it is", () => {
     expect(html).toContain("loose — no container, no slot");
   });
 });
+
+describe("the Boneyard on the sheet (tickets 17-18)", () => {
+  it("a bound package with no job reads Boneyard, not silence", () => {
+    const html = render({ pkg: packageRow({ project_id: null }) });
+    expect(html).toContain("Boneyard");
+  });
+
+  it("a blank sticker is nobody's stock and says nothing", () => {
+    const html = render({
+      pkg: packageRow({ project_id: null, status: "blank" }),
+    });
+    expect(html).not.toContain("Boneyard");
+  });
+
+  it("a job's own package never reads Boneyard", () => {
+    const html = render({ pkg: packageRow({}) });
+    expect(html).toContain("BLACK22");
+    expect(html).not.toContain("Boneyard");
+  });
+});

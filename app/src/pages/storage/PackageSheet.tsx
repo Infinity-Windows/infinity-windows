@@ -11,12 +11,14 @@ import { downloadPdf, packageLabelsPdf } from "../../lib/labels";
 import { placeWhere, toLocationsById } from "../../lib/warehouse/containment";
 import { areaLabel, areaOptions } from "../../lib/warehouse/areas";
 import { bindLine } from "../../lib/warehouse/markPlan";
+import { listScheduledMarks } from "../../lib/warehouse/warehouseCards";
 import { setPackageAreaOffline } from "../../lib/warehouse/offlineWrites";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isForemanPlus } from "../../lib/install/types";
 import { pushToast } from "../../lib/toast";
 import {
   agingDays,
+  assignPackageToJob,
   burnPackages,
   CATEGORY_LABELS,
   getPackageBySerial,
@@ -120,6 +122,34 @@ export function PackageSheet() {
     onError: (e) => pushToast(formatApiError(e), "error"),
   });
   const [confirmBurn, setConfirmBurn] = useState(false);
+  // Assign to job (ticket 18): the Boneyard's one exit. Open only on boneyard
+  // rows; the server refuses everything else anyway.
+  const [assigning, setAssigning] = useState(false);
+  const [assignJob, setAssignJob] = useState("");
+  const [assignMark, setAssignMark] = useState("");
+  const assignMarks = useQuery({
+    queryKey: ["scheduledMarks", [assignJob]],
+    queryFn: () => listScheduledMarks([assignJob]),
+    enabled: Boolean(assignJob),
+  });
+  const assign = useMutation({
+    mutationFn: () =>
+      assignPackageToJob({
+        packageId: pkg.data!.id,
+        projectId: assignJob,
+        markCode: assignMark,
+      }),
+    onSuccess: (row) => {
+      const code = row.project_id ? (jobCode.get(row.project_id) ?? "the job") : "the job";
+      pushToast(`Assigned to ${code} as window ${assignMark}.`);
+      setAssigning(false);
+      setAssignJob("");
+      setAssignMark("");
+      void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+      void qc.invalidateQueries({ queryKey: ["storagePackage", serial] });
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
 
   if (pkg.isLoading) {
     return (
@@ -196,6 +226,11 @@ export function PackageSheet() {
         <button className="button-like" onClick={() => reprint.mutate()}>
           Reprint sticker
         </button>
+        {lead && p.status !== "blank" && p.project_id == null && (
+          <button className="button-like" onClick={() => setAssigning((v) => !v)}>
+            {assigning ? "Cancel assign" : "Assign to job…"}
+          </button>
+        )}
         {/* Burn: minted only — the server refuses anything with a life behind
             it, and this button does not even offer. Foreman+, two taps. */}
         {lead && p.status === "minted" && !confirmBurn && (
@@ -204,6 +239,68 @@ export function PackageSheet() {
           </button>
         )}
       </div>
+      {assigning && p.project_id == null && (
+        <div className="detail-card" style={{ marginTop: 8 }}>
+          <p style={{ margin: 0, fontWeight: 600 }}>Out of the Boneyard</p>
+          <p className="muted" style={{ margin: "4px 0 8px", fontSize: 13 }}>
+            Putting this on a job changes what that job expects. The sticker
+            keeps scanning — printing a fresh label after is offered, never
+            required.
+          </p>
+          <label className="field-label">Job</label>
+          <select
+            value={assignJob}
+            onChange={(e) => {
+              setAssignJob(e.target.value);
+              setAssignMark("");
+            }}
+          >
+            <option value="">Pick the job…</option>
+            {(projects.data ?? []).map((j) => (
+              <option key={j.id} value={j.id}>
+                {j.job_code} — {j.name}
+              </option>
+            ))}
+          </select>
+          {assignJob && (
+            <>
+              <label className="field-label">Which window</label>
+              <select value={assignMark} onChange={(e) => setAssignMark(e.target.value)}>
+                <option value="">Pick the window…</option>
+                {(assignMarks.data ?? [])
+                  .map((m) => m.mark_code)
+                  .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+                  .map((m) => (
+                    <option key={m} value={m}>
+                      Window {m}
+                    </option>
+                  ))}
+              </select>
+              {assignMarks.isSuccess && (assignMarks.data ?? []).length === 0 && (
+                <p className="muted" style={{ fontSize: 12.5 }}>
+                  That job has no windows on its schedule yet — they come from
+                  the plans at spec review.
+                </p>
+              )}
+            </>
+          )}
+          <div className="row-gap" style={{ marginTop: 8 }}>
+            <button
+              className="button-like active-pill"
+              disabled={!assignJob || !assignMark || assign.isPending}
+              onClick={() => assign.mutate()}
+            >
+              {assign.isPending ? "Assigning…" : "Assign"}
+            </button>
+            {pkg.data && (
+              <button className="button-like" onClick={() => reprint.mutate()}>
+                Print updated label
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {confirmBurn && p.status === "minted" && (
         <div
           className="detail-card"
