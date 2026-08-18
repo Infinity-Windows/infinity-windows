@@ -21,7 +21,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { listFindableUnits, listLocations, listProjects } from "../lib/api";
+import { listLocations, listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
@@ -107,10 +107,6 @@ export function Warehouse() {
       .sort((a, b) => (a.on_hand ?? unknownRank) - (b.on_hand ?? unknownRank))
       .slice(0, 6);
   }, [supplies.data]);
-  // Two systems still describe this warehouse (ADR-0004, ticket 08b). Until
-  // the units retire, ONE search box has to answer for both — otherwise the
-  // page cannot find the 11 units and 46 shelves that exist today.
-  const inventory = useQuery({ queryKey: ["findableUnits"], queryFn: listFindableUnits });
 
   const activeIds = useMemo(() => (projects.data ?? []).map((p) => p.id), [projects.data]);
   const marks = useQuery({
@@ -164,7 +160,6 @@ export function Warehouse() {
         containers={boxes}
         projects={projects.data ?? []}
         scheduledMarks={marks.data ?? []}
-        units={inventory.data ?? []}
         locationsById={locsById}
       />
 
@@ -227,19 +222,13 @@ export function Warehouse() {
                 <Link className="button-like active-pill" to="/storage/tag">
                   Tag packages (truck)
                 </Link>
-                {/* Both foreman+ on the server as well as here: /receive is the
-                    old unit intake, and /storage is the container hub D6 just
-                    locked. Showing an installer a door that answers "you can
-                    not open this" is worse than not showing it. */}
+                {/* Foreman+ on the server as well as here (D6). "Receive
+                    units" stood beside this until the unit chain retired
+                    (ticket 21) — receiving IS tagging now. */}
                 {lead && (
-                  <>
-                    <Link className="button-like" to="/receive">
-                      Receive units
-                    </Link>
-                    <Link className="button-like" to="/storage">
-                      Check in
-                    </Link>
-                  </>
+                  <Link className="button-like" to="/storage">
+                    Check in
+                  </Link>
                 )}
               </div>
               {lead && needsPutaway.length > 0 && (
@@ -400,9 +389,6 @@ export function Warehouse() {
                 <Link className="button-like" to={cardLink("loose")}>
                   Loose packages ({counts.loose})
                 </Link>
-                <Link className="button-like" to="/count">
-                  Cycle count
-                </Link>
               </div>
             </>
           )}
@@ -415,9 +401,9 @@ export function Warehouse() {
 }
 
 /**
- * The screens that still belong to the unit system, kept reachable while
- * ticket 08b makes their flows package-first. Folded away rather than given
- * menu rows — they are occasional admin, not the daily loop.
+ * Occasional admin, folded away rather than given menu rows. The unit-system
+ * screens that used to shelter here (Receive, Cycle count, the inventory
+ * list) retired with the chain (ticket 21, ADR-0005).
  */
 function Operations() {
   const [open, setOpen] = useState(false);
@@ -436,15 +422,7 @@ function Operations() {
         <div className="warehouse-grid">
           <Link to="/scan" className="warehouse-tile">
             <strong>Scan</strong>
-            <span className="muted">QR a window or a slot</span>
-          </Link>
-          <Link to="/count" className="warehouse-tile">
-            <strong>Cycle count</strong>
-            <span className="muted">Count a slot, flag gaps</span>
-          </Link>
-          <Link to="/warehouse/on-hand" className="warehouse-tile">
-            <strong>Inventory list</strong>
-            <span className="muted">Windows on hand, one by one</span>
+            <span className="muted">Any sticker, poster or slot label</span>
           </Link>
           <Link to="/labels" className="warehouse-tile">
             <strong>Slot labels</strong>

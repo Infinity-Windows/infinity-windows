@@ -17,23 +17,6 @@ import type { StorageContainer, StoragePackage } from "../storage";
 import { placeWhere, type PlaceLocation } from "./containment";
 import { partsHeadline, unitParts, type UnitPartsReport } from "./unitParts";
 
-/**
- * A physical window unit from the older inventory system, with the rack slot
- * it joined in. Two systems still describe the warehouse (see ADR-0004 and
- * ticket 08b): packages, and these units. Until the units retire, one search
- * box has to answer for BOTH or it is not the one box it claims to be.
- */
-export interface UnitLike {
-  id: string;
-  window_id: string;
-  short_code?: string | null;
-  serial?: string | null;
-  status: string;
-  location_id: string | null;
-  locations?: { address: string } | null;
-  window_types?: { type_code?: string | null; name?: string | null } | null;
-}
-
 export interface FindInputs {
   packages: StoragePackage[];
   containers: StorageContainer[];
@@ -42,8 +25,6 @@ export interface FindInputs {
   /** Marks on active jobs — lets a search for "17" answer even when nothing
    * is tagged for it yet ("no packages tagged for window 17"). */
   scheduledMarks?: { project_id: string; mark_code: string }[];
-  /** Units from the older system, so their IDs and slots still answer. */
-  units?: UnitLike[];
   /**
    * Every rack and staging bay, keyed by id — what names the job a staged
    * package is set aside for instead of a bare "on a shelf".
@@ -97,9 +78,8 @@ export type FindAnswer =
   /** A whole job. */
   | { kind: "job"; projectId: string; jobCode: string; hits: PackageHit[] }
   /** One physical unit from the older system, and the slot it sits on. */
-  | { kind: "unit-row"; unit: UnitLike; where: string }
   /** A rack slot, and what is on it. */
-  | { kind: "slot"; address: string; units: UnitLike[]; hits: PackageHit[] }
+  | { kind: "slot"; address: string; hits: PackageHit[] }
   /** Nothing matched — say what to do next, never "no results". */
   | { kind: "miss"; query: string; suggestion: string };
 
@@ -114,33 +94,6 @@ function describe(
   // the warehouse for a package that is still on a truck somewhere (ticket 15).
   if (pkg.status === "minted") return { pkg, where: "on the way — not arrived yet" };
   return { pkg, where: placeWhere(pkg, containersById, locationsById) };
-}
-
-/**
- * Where a unit is, in the older system's own terms. Its status carries both
- * condition AND location there (the thing ADR-0004 is unwinding), so the
- * answer reads off whichever the status implies.
- */
-export function unitWhere(u: UnitLike): string {
-  const slot = u.locations?.address;
-  switch (u.status) {
-    case "installed":
-      return "installed";
-    case "loaded":
-      return "on the truck";
-    case "on_site":
-      return "on site";
-    case "damaged":
-      return slot ? `damaged — held on ${slot}` : "damaged — held";
-    case "staged":
-      return slot ? `staged on ${slot}` : "staged for a job";
-    case "inbound":
-      return "arrived, no slot yet";
-    case "pre_issued":
-      return "expected, not arrived";
-    default:
-      return slot ? `on ${slot}` : "in the warehouse, no slot yet";
-  }
 }
 
 /**
@@ -162,7 +115,6 @@ export function findInWarehouse(
     containers,
     projects,
     scheduledMarks = [],
-    units = [],
     locationsById,
   } = inputs;
   const byId = new Map(containers.map((c) => [c.id, c]));
@@ -177,18 +129,6 @@ export function findInWarehouse(
   );
   if (pkg) return { kind: "package", hit: describe(pkg, byId, locationsById) };
 
-  // 1b. A unit from the older system, by its printed id / short code / serial.
-  //     Same tier as a package sticker: both are a thing you hold in your hand.
-  const unit = units.find(
-    (u) =>
-      u.window_id.toUpperCase() === query ||
-      (u.short_code ?? "").toUpperCase() === query ||
-      (u.serial ?? "").toUpperCase() === query,
-  );
-  if (unit) {
-    return { kind: "unit-row", unit, where: unitWhere(unit) };
-  }
-
   // 2. A container, by serial or by name ("conex 3").
   const container = containers.find(
     (c) => c.serial.toUpperCase() === query || c.name.toUpperCase() === query,
@@ -200,22 +140,21 @@ export function findInWarehouse(
     return { kind: "container", container, hits };
   }
 
-  // 2b. A rack or staging slot, by its printed address ("S-01-A", "J-BLACK22-A").
-  const slotUnits = units.filter(
-    (u) => (u.locations?.address ?? "").toUpperCase() === query,
+  // 2b. A rack or staging slot, by its printed address ("S-01-A",
+  //     "J-BLACK22-A"). Resolved against the LOCATIONS themselves (audit F7,
+  //     finished by ticket 21): the old path only answered when a unit from
+  //     the retired chain happened to be parked there — 8 real staging bays,
+  //     1 unit staged, so it failed for essentially every real bay.
+  const slotEntry = [...locationsById.entries()].find(
+    ([, l]) => (l.address ?? "").toUpperCase() === query,
   );
-  const slotPackages = packages.filter(
-    (p) => p.status !== "checked_out" && p.location_id != null,
-  );
-  if (slotUnits.length > 0) {
+  if (slotEntry) {
+    const [slotId, slot] = slotEntry;
     return {
       kind: "slot",
-      address: query,
-      units: slotUnits,
-      // Packages carry a location_id too (ticket 04); once the shelf flow
-      // exists they show here beside the units on the same shelf.
-      hits: slotPackages
-        .filter((p) => slotUnits.some((u) => u.location_id === p.location_id))
+      address: slot.address ?? query,
+      hits: packages
+        .filter((p) => p.status !== "checked_out" && p.location_id === slotId)
         .map((p) => describe(p, byId, locationsById)),
     };
   }
@@ -312,10 +251,8 @@ export function answerHeadline(a: FindAnswer): string {
       return `${a.container.name} — ${a.hits.length} package${a.hits.length === 1 ? "" : "s"} inside`;
     case "job":
       return `${a.jobCode} — ${a.hits.length} package${a.hits.length === 1 ? "" : "s"} tagged`;
-    case "unit-row":
-      return `${a.unit.window_id} — ${a.where}`;
     case "slot":
-      return `${a.address} — ${a.units.length} unit${a.units.length === 1 ? "" : "s"}`;
+      return `${a.address} — ${a.hits.length} package${a.hits.length === 1 ? "" : "s"}`;
     case "miss":
       return `Nothing found for “${a.query}”`;
   }

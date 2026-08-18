@@ -288,7 +288,6 @@ describe("every NAV destination has a door", () => {
     // under "Other tools"). They lost their menu rows, not their doors.
     "/storage",
     "/receive",
-    "/count",
     "/labels",
     "/supplies",
     // Ticket 08b: the arrival check is reached from the warehouse page's

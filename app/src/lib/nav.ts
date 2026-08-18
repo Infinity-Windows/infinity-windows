@@ -54,7 +54,6 @@ export type RoutePath =
   | "/points"
   | "/safety"
   | "/scan"
-  | "/count"
   | "/studio"
   | "/data"
   | "/storage"
@@ -132,7 +131,6 @@ export const NAV: NavDest[] = [
   { id: "points", to: "/points", label: "Points", icon: "✦", minRole: "installer" },
   { id: "safety", to: "/safety", label: "Safety", icon: "⛑", minRole: "installer" },
   { id: "scan", to: "/scan", label: "Scan", icon: "▣", minRole: "installer" },
-  { id: "count", to: "/count", label: "Cycle count", icon: "#", minRole: "installer" },
   // /storage moved down to the foreman block (D6) — it is the container hub,
   // not an installer surface. The two truck-side flows below stay open.
   // Reached from the warehouse page's Going out section, never a menu row.

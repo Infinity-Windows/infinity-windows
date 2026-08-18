@@ -134,14 +134,7 @@ export const APP_GUIDE: AppGuideEntry[] = [
     blurb:
       "The container hub, for foreman and up: every conex, crate and the warehouse on one grid, with what is inside each one and how long it has sat there. Leads add containers, print blank stickers and door posters, check packages in by ticking a list, and archive a container once it is empty. Installers tag packages at the truck and check them out on their own screens; this is where the containers themselves are managed. Every package keeps its full history.",
   },
-  {
-    path: "/count",
-    label: "Cycle count",
-    minRole: "installer",
-    blurb:
-      "Count what's actually in a warehouse slot vs. what the system expects. Scan the slot, count the units, and log any discrepancy so stock stays accurate.",
-  },
-  {
+    {
     path: "/warehouse",
     label: "Warehouse",
     minRole: "installer",
@@ -316,7 +309,7 @@ export const APP_GUIDE: AppGuideEntry[] = [
     label: "Receive",
     minRole: "foreman",
     blurb:
-      "Receive an incoming delivery — log the units in, then put them away to a slot. Use it when a truck of windows/doors arrives.",
+      "The old unit intake — retired. The address still works and walks you to where receiving lives now: labels plan and print from the job's Warehouse tab, and everything at the truck happens on Tag packages.",
   },
   {
     path: "/labels",

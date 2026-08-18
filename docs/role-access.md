@@ -28,7 +28,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Stuck writes (`/stuck`)
 - Settings (`/settings`)
 
-**Can reach (all 28 allowed destinations):**
+**Can reach (all 27 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -36,7 +36,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Points (`/points`)
 - Safety (`/safety`)
 - Scan (`/scan`)
-- Cycle count (`/count`)
 - Arrival check (`/storage/arrive`)
 - Tag packages (`/storage/tag`)
 - Set aside / check out (`/storage/out`)
@@ -126,7 +125,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Catalog (`/catalog`)
 
-**Can reach (all 43 allowed destinations):**
+**Can reach (all 42 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -134,7 +133,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Points (`/points`)
 - Safety (`/safety`)
 - Scan (`/scan`)
-- Cycle count (`/count`)
 - Arrival check (`/storage/arrive`)
 - Tag packages (`/storage/tag`)
 - Set aside / check out (`/storage/out`)
@@ -232,7 +230,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 51 allowed destinations):**
+**Can reach (all 50 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -240,7 +238,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Points (`/points`)
 - Safety (`/safety`)
 - Scan (`/scan`)
-- Cycle count (`/count`)
 - Arrival check (`/storage/arrive`)
 - Tag packages (`/storage/tag`)
 - Set aside / check out (`/storage/out`)
@@ -340,7 +337,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 53 allowed destinations):**
+**Can reach (all 52 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -348,7 +345,6 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Points (`/points`)
 - Safety (`/safety`)
 - Scan (`/scan`)
-- Cycle count (`/count`)
 - Arrival check (`/storage/arrive`)
 - Tag packages (`/storage/tag`)
 - Set aside / check out (`/storage/out`)

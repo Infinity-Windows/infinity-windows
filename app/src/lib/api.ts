@@ -1,6 +1,4 @@
 import { supabase } from "./supabase";
-import type { Issue } from "./issues";
-import { NOT_IN_INVENTORY } from "./inventoryViews";
 import {
   isMissingStagingBayError,
   missingBayMessage,
@@ -182,17 +180,6 @@ export async function getProjectWindows(
   return data;
 }
 
-export async function getProjectUnits(
-  projectId: string,
-): Promise<WindowUnit[]> {
-  const { data, error } = await supabase
-    .from("windows")
-    .select(WINDOW_SELECT)
-    .eq("project_id", projectId)
-    .order("window_id");
-  if (error) throw error;
-  return data;
-}
 
 export async function getWindowByWindowId(
   windowId: string,
@@ -339,17 +326,6 @@ export async function deleteLocations(ids: string[]): Promise<void> {
   if (error) throw error;
 }
 
-export async function getUnitsAtLocation(
-  locationId: string,
-): Promise<WindowUnit[]> {
-  const { data, error } = await supabase
-    .from("windows")
-    .select(WINDOW_SELECT)
-    .eq("location_id", locationId)
-    .order("window_id");
-  if (error) throw error;
-  return data;
-}
 
 export async function searchUnits(query: string): Promise<WindowUnit[]> {
   const q = query.trim();
@@ -398,57 +374,8 @@ export async function receiveWindow(
   return data as WindowUnit;
 }
 
-/**
- * Pre-issue physical-unit records for a project from its planned quantities.
- * Creates one `pre_issued` window (serial + short_code + QR) per still-missing
- * planned unit and returns the newly created rows. Idempotent server-side:
- * re-running never exceeds the plan. Foreman+ only (enforced by the RPC).
- */
-export async function preissueProjectUnits(
-  projectId: string,
-): Promise<WindowUnit[]> {
-  const { data, error } = await supabase.rpc("preissue_project_units", {
-    p_project_id: projectId,
-  });
-  if (error) throw error;
-  return (data ?? []) as WindowUnit[];
-}
 
-/**
- * Receive a physical unit against the plan: match a scanned/typed code to its
- * pre_issued ID and activate it (-> in_warehouse, or damaged + a damage issue
- * when `damaged`). Optionally drop it straight into a storage location.
- * Foreman+ only (enforced by the RPC). Returns the activated unit.
- */
-export async function activatePreissuedUnit(
-  code: string,
-  locationId?: string | null,
-  damaged = false,
-): Promise<WindowUnit> {
-  const { data, error } = await supabase.rpc("activate_preissued_unit", {
-    p_code: code,
-    p_location_id: locationId ?? null,
-    p_damaged: damaged,
-    p_actor: await actor(),
-  });
-  if (error) throw error;
-  return data as WindowUnit;
-}
 
-/**
- * Foreman-triggered delivery reconcile: flag every still-pre_issued unit for a
- * project as a 'missing' issue (deduped per unit). Returns the issues opened.
- * Foreman+ only (enforced by the RPC).
- */
-export async function reconcileProjectDeliveries(
-  projectId: string,
-): Promise<Issue[]> {
-  const { data, error } = await supabase.rpc("reconcile_project_deliveries", {
-    p_project_id: projectId,
-  });
-  if (error) throw error;
-  return (data ?? []) as Issue[];
-}
 
 export async function moveWindow(
   windowUuid: string,
@@ -465,61 +392,13 @@ export async function moveWindow(
   return data as WindowUnit;
 }
 
-export async function loadWindow(windowUuid: string): Promise<WindowUnit> {
-  const { data, error } = await supabase.rpc("load_window", {
-    p_window_id: windowUuid,
-    p_actor: await actor(),
-  });
-  if (error) throw error;
-  return data as WindowUnit;
-}
 
-/**
- * Batch load-out: put a set of the project's in-warehouse/staged units on the
- * truck ('loaded'). Ineligible ids (wrong job / already loaded) are skipped
- * server-side; returns only the units actually loaded. Foreman+ (enforced by
- * the RPC).
- */
-export async function loadUnits(
-  windowIds: string[],
-  projectId: string,
-): Promise<WindowUnit[]> {
-  const { data, error } = await supabase.rpc("load_units", {
-    p_window_ids: windowIds,
-    p_project_id: projectId,
-    p_actor: await actor(),
-  });
-  if (error) throw error;
-  return (data ?? []) as WindowUnit[];
-}
 
 export interface UnloadResult {
   unloaded: number;
   damaged: number;
 }
 
-/**
- * Jobsite unload + condition report: OK units go 'on_site' (ready to
- * install); damaged units go on hold + open a deduped damage issue. Optional
- * location note is folded into the movement log. Returns { unloaded, damaged }
- * counts. Foreman+ (enforced by the RPC).
- */
-export async function unloadUnits(
-  okIds: string[],
-  damagedIds: string[],
-  projectId: string,
-  locationNote?: string | null,
-): Promise<UnloadResult> {
-  const { data, error } = await supabase.rpc("unload_units", {
-    p_ok_ids: okIds,
-    p_damaged_ids: damagedIds,
-    p_project_id: projectId,
-    p_location_note: locationNote ?? null,
-    p_actor: await actor(),
-  });
-  if (error) throw error;
-  return (data ?? { unloaded: 0, damaged: 0 }) as UnloadResult;
-}
 
 export interface ReorderNeed {
   window_type_id: string;
@@ -543,14 +422,6 @@ export async function listReorderNeeds(
   return (data ?? []) as ReorderNeed[];
 }
 
-export async function installWindow(windowUuid: string): Promise<WindowUnit> {
-  const { data, error } = await supabase.rpc("install_window", {
-    p_window_id: windowUuid,
-    p_actor: await actor(),
-  });
-  if (error) throw error;
-  return data as WindowUnit;
-}
 
 /**
  * Where to put a unit away — and, just as importantly, whether that answer is
@@ -591,63 +462,9 @@ export async function suggestLocation(
   };
 }
 
-export interface InventorySnapshot {
-  /** Every unit still in the warehouse's care, newest slot order applied later. */
-  units: WindowUnit[];
-  /** Server-side row count for the same filter, used only to detect a cut-off. */
-  serverTotal: number;
-  /** True when there are more units than we fetched (see INVENTORY_LIMIT). */
-  truncated: boolean;
-}
 
-/**
- * PostgREST caps a response anyway; asking explicitly lets us notice when the
- * warehouse has outgrown a single page and say so instead of quietly showing a
- * count that no longer matches its list.
- */
-const INVENTORY_LIMIT = 1000;
 
-/**
- * One read of the whole inventory scope. The hub's four numbers and the four
- * lists behind them are all derived from this single result (see
- * lib/inventoryViews), so a number can never disagree with the list it opens.
- */
-export async function listInventory(): Promise<InventorySnapshot> {
-  const { data, error, count } = await supabase
-    .from("windows")
-    .select(WINDOW_SELECT, { count: "exact" })
-    .not("status", "in", `(${NOT_IN_INVENTORY.join(",")})`)
-    .order("window_id")
-    .limit(INVENTORY_LIMIT);
-  if (error) throw error;
-  const units = (data ?? []) as WindowUnit[];
-  return {
-    units,
-    serverTotal: count ?? units.length,
-    truncated: (count ?? units.length) > units.length,
-  };
-}
 
-/**
- * Every unit the Find bar may be asked about — including the ones that have
- * LEFT the warehouse.
- *
- * listInventory() deliberately excludes `installed` and `loaded` because it
- * answers "what are we holding". Find answers a different question — "where is
- * it" — and the moment somebody most needs that is standing at the truck
- * asking whether a window is on board. Reusing the inventory list meant the
- * answer "on the truck" existed in the code and could never be reached
- * (installer audit, 2026-08-17).
- */
-export async function listFindableUnits(): Promise<WindowUnit[]> {
-  const { data, error } = await supabase
-    .from("windows")
-    .select(WINDOW_SELECT)
-    .order("window_id")
-    .limit(INVENTORY_LIMIT);
-  if (error) throw error;
-  return (data ?? []) as WindowUnit[];
-}
 
 export interface CatalogImportResult {
   inserted: number;

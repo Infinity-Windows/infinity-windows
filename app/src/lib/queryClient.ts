@@ -1,6 +1,6 @@
 import { MutationCache, QueryClient } from "@tanstack/react-query";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
-import { getProjectUnits, getProjectWindows, listProjects } from "./api";
+import { getProjectWindows, listProjects } from "./api";
 import { getTypeBrainStats, listOpenings, listPlansets } from "./install/api";
 import { toastError } from "./toast";
 
@@ -41,7 +41,6 @@ const OFFLINE_KEYS = new Set([
   "openings",
   "openingCounts",
   "projectWindows",
-  "projectUnits",
   // "Where is it?" from the last good read. A conex is a metal box with no
   // bars, and the harder half of working in one is READING — you have to find
   // things in there, not just record what you took (ticket 10). The hub's
@@ -101,10 +100,6 @@ export async function prefetchJobPack(projectId: string): Promise<number> {
     queryClient.prefetchQuery({
       queryKey: ["openings", projectId],
       queryFn: () => listOpenings(projectId),
-    }),
-    queryClient.prefetchQuery({
-      queryKey: ["projectUnits", projectId],
-      queryFn: () => getProjectUnits(projectId),
     }),
     queryClient.prefetchQuery({
       queryKey: ["projectWindows", projectId],
