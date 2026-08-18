@@ -848,6 +848,17 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
    * cannot be made, send it — a duplicated history line is the lesser loss
    * against a move that never happens.
    */
+  const receiveMinted: OpHandler = async (entry) => {
+    const packageIds = ids(entry);
+    if (packageIds.length === 0) {
+      throw tagPermanent(new Error("This delivery confirmation names no packages"));
+    }
+    const { error } = await supabase.rpc("receive_minted_packages", {
+      p_packages: packageIds,
+    });
+    if (error) throw missingGuard(error, "delivery confirmation");
+  };
+
   const setPackageArea: OpHandler = async (entry) => {
     const packageId = str(entry.payload.packageId);
     // null is a legal value here — it clears the pointer — so only a missing
@@ -910,6 +921,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     take_supply: takeSupply,
     bind_package: bindPackage,
     set_package_area: setPackageArea,
+    receive_minted: receiveMinted,
     stage_packages: stagePackages,
     move_container: moveContainer,
   } satisfies OpHandlers;

@@ -14,7 +14,11 @@
 import { supabase } from "./supabase";
 import { isMissingColumn, isMissingFunction, isMissingTable } from "./schemaErrors";
 
-export type PackageStatus = "blank" | "received" | "stored" | "checked_out";
+// minted: a pre-bound label for material that has not arrived (ticket 15).
+// It can be found, printed and burned — and nothing else. Every door that
+// moves a package (store, stage, check out) names its statuses explicitly and
+// leaves minted out, so "you cannot store what has not arrived" costs nothing.
+export type PackageStatus = "blank" | "minted" | "received" | "stored" | "checked_out";
 export type PackageCategory = "windows" | "doors" | "frames" | "hardware" | "other";
 
 export const CATEGORY_LABELS: Record<PackageCategory, string> = {
@@ -377,6 +381,37 @@ export async function listContainerMovements(
     throw error;
   }
   return (data ?? []) as ContainerMovementRow[];
+}
+
+/**
+ * Declare "this window arrives as N packages" and mint the missing labels,
+ * pre-bound to job + window + part i of N (ticket 15, ADR-0005). Foreman+.
+ * Returns only the rows minted NOW — declaring 4 when 1 and 3 exist returns
+ * 2 and 4. A different total than existing labels carry is refused by name.
+ */
+export async function mintMarkPackages(input: {
+  projectId: string;
+  markCode: string;
+  total: number;
+  category?: string;
+}): Promise<StoragePackage[]> {
+  const { data, error } = await supabase.rpc("mint_mark_packages", {
+    p_project: input.projectId,
+    p_mark: input.markCode,
+    p_total: input.total,
+    p_category: input.category ?? "windows",
+  });
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map(normalizePackage);
+}
+
+/** Flip pre-labeled packages to received — the truck-side confirm. Any crew. */
+export async function receiveMintedPackages(packageIds: string[]): Promise<number> {
+  const { data, error } = await supabase.rpc("receive_minted_packages", {
+    p_packages: packageIds,
+  });
+  if (error) throw error;
+  return (data as number) ?? 0;
 }
 
 /** Point at where in the box a package sits. Foreman+; the server checks the

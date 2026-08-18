@@ -109,6 +109,10 @@ function describe(
   locationsById: Map<string, PlaceLocation>,
 ): PackageHit {
   if (pkg.status === "checked_out") return { pkg, where: "checked out to a job" };
+  // A minted label's material has not arrived. Without this branch it falls
+  // through to "loose — no container, no slot", which sends somebody hunting
+  // the warehouse for a package that is still on a truck somewhere (ticket 15).
+  if (pkg.status === "minted") return { pkg, where: "on the way — not arrived yet" };
   return { pkg, where: placeWhere(pkg, containersById, locationsById) };
 }
 

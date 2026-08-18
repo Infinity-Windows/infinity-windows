@@ -42,7 +42,11 @@ export type OutboxOp =
   // Ticket 14: areas get set standing INSIDE the box — the one place with no
   // signal. Setting a pointer twice lands on the same pointer, so a resend is
   // harmless by nature.
-  | "set_package_area";
+  | "set_package_area"
+  // Ticket 15: confirming pre-labeled packages off the truck. The yard is the
+  // signal dead zone; the server counts an already-received package without
+  // writing a second history line, so a resend is not a second truck.
+  | "receive_minted";
 
 /**
  * queued   — waiting to be sent (respecting nextAttemptAt backoff)
@@ -355,6 +359,7 @@ export function countsByOp(entries: OutboxEntry[]): OpCounts {
       case "stage_packages":
       case "move_container":
       case "set_package_area":
+      case "receive_minted":
         c.warehouse += 1;
         break;
       default:
@@ -493,6 +498,7 @@ const OP_REGISTRY = {
   stage_packages: true,
   move_container: true,
   set_package_area: true,
+  receive_minted: true,
 } as const satisfies Record<OutboxOp, true>;
 
 /** Every op the queue can carry — the single list tests enumerate. */
