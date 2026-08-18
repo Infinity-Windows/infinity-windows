@@ -16,6 +16,18 @@ import { MarkDrawing } from "./MarkDrawing";
 interface SpecCardProps {
   spec: MarkSpec;
   /**
+   * Rendered when the spec row exists but carries nothing to show.
+   *
+   * The card is the only thing that knows whether it has content — the test
+   * includes the elevation drawing, which is fetched in here. Callers used to
+   * choose between this card and the "no spec sheet" notice by asking whether
+   * a spec ROW existed, so an empty row (normal after a supplier revision is
+   * reprocessed) picked the card, the card returned null, and the screen
+   * showed blank space where the specs belong. Passing the notice as a
+   * fallback keeps that one decision in the one place that can make it.
+   */
+  fallback?: React.ReactNode;
+  /**
    * Project the spec belongs to. Supplying it lets the card show the mark's
    * elevation drawing, cropped from that project's specs planset.
    */
@@ -51,7 +63,12 @@ function badges(spec: MarkSpec): string[] {
  * Render a mark's spec. Degrades gracefully: renders nothing when the spec has
  * no usable content, and each field hides when absent.
  */
-export function SpecCard({ spec, projectId, compact = false }: SpecCardProps) {
+export function SpecCard({
+  spec,
+  projectId,
+  compact = false,
+  fallback,
+}: SpecCardProps) {
   const size = formatSize(spec);
   const chips = badges(spec);
   const energy = [
@@ -80,7 +97,7 @@ export function SpecCard({ spec, projectId, compact = false }: SpecCardProps) {
     spec.product_line ||
     extras.length > 0 ||
     hasDrawing;
-  if (!hasContent) return null;
+  if (!hasContent) return <>{fallback ?? null}</>;
 
   if (compact) {
     // One-line summary for dense lists: color · size · badges.

@@ -1154,7 +1154,18 @@ export function OpeningSheet() {
       </div>
 
       {openingSpec ? (
-        <SpecCard spec={openingSpec} projectId={projectId} />
+        <SpecCard
+          spec={openingSpec}
+          projectId={projectId}
+          fallback={
+            (markSpecs.data?.length ?? 0) > 0 ? (
+              <MissingSpecNotice
+                projectId={projectId}
+                openingCode={opening.data?.opening_code}
+              />
+            ) : null
+          }
+        />
       ) : (
         // Only once the sheet HAS been read and this mark still isn't in it —
         // a project with no specs at all simply hasn't had them uploaded yet,
