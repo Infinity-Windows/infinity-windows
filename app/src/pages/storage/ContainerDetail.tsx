@@ -6,7 +6,9 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { listProjects } from "../../lib/api";
+import { listLocations, listProjects } from "../../lib/api";
+import { Explain } from "../../components/ui/Explain";
+import { containerTrailLine } from "../../lib/warehouse/containerTrail";
 import { formatApiError } from "../../lib/errors";
 import { isForemanPlus } from "../../lib/install/types";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
@@ -20,6 +22,7 @@ import {
   groupByJob,
   listActivePackages,
   listContainers,
+  listContainerMovements,
   saveContainer,
   type StoragePackage,
   containerKind,
@@ -105,6 +108,13 @@ export function ContainerDetail() {
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
   const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  // Where this box has been (ticket 13). Its own key per container, so opening
+  // Conex 7 never shows Conex 3's travels out of a shared cache entry.
+  const trail = useQuery({
+    queryKey: ["containerMovements", id],
+    queryFn: () => listContainerMovements(id),
+  });
+  const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
   const [checkin, setCheckin] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState(false);
@@ -443,6 +453,34 @@ export function ContainerDetail() {
         </div>
       ))}
       {stored.length === 0 && <p className="muted">Empty.</p>}
+
+      {trail.isSuccess && trail.data.length > 0 && (
+        <>
+          <h2 style={{ marginTop: 18 }}>Where it&rsquo;s been</h2>
+          <Explain id="wh-container-trail">
+            Every move and every address change, newest first. Nothing here is
+            typed — each line was written the moment somebody moved the box or
+            changed where it sits.
+          </Explain>
+          <div className="detail-card" style={{ padding: "6px 14px" }}>
+            {trail.data.slice(0, 10).map((m) => {
+              const line = containerTrailLine(
+                m,
+                new Map((containers.data ?? []).map((c) => [c.id, c])),
+                new Map((locations.data ?? []).map((l) => [l.id, l])),
+              );
+              return (
+                <p key={line.id} style={{ margin: "8px 0", fontSize: 13.5 }}>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {new Date(line.when).toLocaleDateString()} ·{" "}
+                  </span>
+                  {line.text}
+                </p>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {editing && (
         <ContainerForm

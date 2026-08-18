@@ -276,7 +276,11 @@ function Answer({
     answer.kind === "container" ? answer.container.name : answer.jobCode;
   const sub =
     answer.kind === "container"
-      ? `${answer.hits.length} package${answer.hits.length === 1 ? "" : "s"} inside`
+      ? // "— at BLACK22" is the address field, which ticket 13 made an honest
+        // answer: changing it writes history now, so saying it out loud here
+        // no longer repeats a silent edit as fact.
+        `${answer.hits.length} package${answer.hits.length === 1 ? "" : "s"} inside` +
+        (answer.container.address ? ` — at ${answer.container.address}` : "")
       : `${answer.hits.length} package${answer.hits.length === 1 ? "" : "s"} tagged for this job`;
   return (
     <div className="wh-answer">
