@@ -5,7 +5,9 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  CONTAINERS,
   EDGES,
+  FLOW_ALT,
   FLOW_VIEWBOX,
   NODES,
   flowNode,
@@ -127,5 +129,47 @@ describe("highlighting", () => {
       const feeders = EDGES.filter((e) => e.to === s.id);
       expect(feeders.length, `${s.id} is drawn but nothing leads to it`).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * The map is the app explaining itself, so a sentence on it that the code does
+ * not back is a lie with a diagram attached. Each of these froze a claim that
+ * was wrong on 2026-08-17, against the migration that settles it.
+ */
+describe("the map only claims what the code does", () => {
+  it("does not promise a damage photo — nothing captures one and issues has no column for it", () => {
+    // Arrival check is one optional note box; `issues` has note/created_by and
+    // no photo path. Real capture is warehouse ticket 11.
+    expect(flowNode("damaged")!.asks.toLowerCase()).not.toContain("photo");
+  });
+
+  it("does not claim a foreman gate on tagging — bind_package has no role check", () => {
+    // 20260825000000: bind_package only refuses `auth.uid() is null`, and
+    // /storage/tag carries no RequireRole. Any installer can tag.
+    expect(flowNode("tagged")!.who.toLowerCase()).not.toContain("foreman");
+  });
+
+  it("keeps the foreman gate on printing, which IS real", () => {
+    // 20260814000000: mint_packages reads profiles.role and refuses installers.
+    // Guards against fixing the tagging line by scrubbing the wrong node.
+    expect(flowNode("stickers")!.who.toLowerCase()).toContain("foreman");
+  });
+
+  it("does not draw a shelf as a peer of conex and crate", () => {
+    // packages_one_place_ck: a package is in a container OR at a shelf spot,
+    // never both — and only stage_packages ever writes the shelf, always for
+    // one named job. A bare "Shelf" chip implies a putaway that does not exist.
+    const shelf = CONTAINERS.find((c) => c.toLowerCase().startsWith("shelf"));
+    expect(shelf, "the stored box no longer names a shelf at all").toBeTruthy();
+    expect(shelf).not.toBe("Shelf");
+    expect(shelf!.toLowerCase()).toMatch(/job/);
+  });
+
+  it("says the same thing to a reader who cannot see the picture", () => {
+    // The alt text listed conex, crate and shelf as three ways to store —
+    // same false parity, and it is the only version a screen reader gets.
+    expect(FLOW_ALT.toLowerCase()).not.toMatch(/crate or on a shelf/);
+    expect(FLOW_ALT.toLowerCase()).toMatch(/set aside/);
   });
 });

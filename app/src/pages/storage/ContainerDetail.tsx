@@ -4,7 +4,7 @@
 // then tick packages as they're carried in.
 
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listProjects } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
@@ -21,6 +21,7 @@ import {
   listActivePackages,
   listContainers,
   moveContainer,
+  saveContainer,
   type StoragePackage,
 } from "../../lib/storage";
 import { canNest, ridesAlong } from "../../lib/warehouse/containment";
@@ -29,8 +30,54 @@ import {
   writeToast,
 } from "../../lib/warehouse/offlineWrites";
 
+/**
+ * Why archiving is blocked, in words a foreman can act on — or null when the
+ * container is genuinely empty and the button should work (ticket D5).
+ *
+ * Two rules, one message. Packages come first because they are the thing that
+ * actually goes missing: the container list only reads active rows, so
+ * archiving a full conex hides every package inside it from the grid, the
+ * search and the posters at once. A container inside this one blocks too — an
+ * empty crate is still something in the way, and archiving around it would
+ * leave the crate naming a parent nobody can open.
+ *
+ * The container is named rather than called "this conex" on purpose: the same
+ * page runs for conexes, crates and the warehouse itself.
+ *
+ * `packageCount` is null when the package list has not come back yet — still
+ * loading, or the read failed. That is NOT the same as zero, and treating it
+ * as zero is how a full conex gets archived: the page shows an empty manifest
+ * either way, and archiving is the one action here the app cannot undo. An
+ * unknown count blocks.
+ */
+export function archiveBlockMessage(
+  containerName: string,
+  packageCount: number | null,
+  childNames: string[] = [],
+): string | null {
+  if (packageCount === null) {
+    return `Still loading what is in ${containerName}. Wait for the list before you archive it.`;
+  }
+  if (packageCount > 0) {
+    return packageCount === 1
+      ? `1 package is still in ${containerName}. Move it out before you archive it.`
+      : `${packageCount} packages are still in ${containerName}. Move them out before you archive it.`;
+  }
+  if (childNames.length > 0) {
+    const list =
+      childNames.length === 1
+        ? childNames[0]
+        : `${childNames.slice(0, -1).join(", ")} and ${childNames[childNames.length - 1]}`;
+    return `${containerName} still holds ${list}. Move ${
+      childNames.length === 1 ? "it" : "them"
+    } out before you archive it.`;
+  }
+  return null;
+}
+
 export function ContainerDetail() {
   const { id = "" } = useParams();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
@@ -41,6 +88,7 @@ export function ContainerDetail() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState(false);
   const [moving, setMoving] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   const container = (containers.data ?? []).find((c) => c.id === id) ?? null;
   const jobCode = useMemo(() => {
@@ -105,6 +153,46 @@ export function ContainerDetail() {
       setMoving(false);
       void qc.invalidateQueries({ queryKey: ["storageContainers"] });
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
+
+  // What stands between this container and the archive, if anything. Uses the
+  // same `riders` count the Move button shows, so "what's inside" means one
+  // thing on this page rather than two — and passes null, not 0, until that
+  // list has actually arrived, so a slow or failed read cannot read as empty.
+  const archiveBlock = container
+    ? archiveBlockMessage(
+        container.name,
+        packages.data ? riders.length : null,
+        children.map((c) => c.name),
+      )
+    : null;
+
+  const archive = useMutation({
+    mutationFn: async () => {
+      if (!container) return;
+      // The rule lives here, not only on the button: a hidden button is a
+      // habit, a refused write is a rule.
+      if (archiveBlock) throw new Error(archiveBlock);
+      // save_storage_container overwrites the whole row, so the untouched
+      // fields go back exactly as they came — sending only `active` would
+      // wipe the address and the gate code.
+      await saveContainer({
+        id: container.id,
+        name: container.name,
+        address: container.address,
+        accessCode: container.access_code,
+        notes: container.notes,
+        active: false,
+      });
+    },
+    onSuccess: () => {
+      pushToast(`${container?.name ?? "Container"} archived.`);
+      void qc.invalidateQueries({ queryKey: ["storageContainers"] });
+      // The list only reads active containers, so this page has nothing left
+      // to show — staying here would flash "Container not found."
+      navigate("/storage");
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
   });
@@ -177,7 +265,39 @@ export function ContainerDetail() {
             Edit
           </button>
         )}
+        {lead && (
+          <button className="button-like" onClick={() => setArchiving((v) => !v)}>
+            {archiving ? "Cancel archive" : "Archive container"}
+          </button>
+        )}
       </div>
+
+      {archiving && (
+        <>
+          <h2>Archive {container.name}</h2>
+          {archiveBlock ? (
+            <p className="error" style={{ margin: "0 0 8px" }}>
+              {archiveBlock}
+            </p>
+          ) : (
+            <>
+              <p className="muted" style={{ margin: "0 0 8px", fontSize: 13 }}>
+                It comes off the container grid and out of the poster and
+                sticker lists. Nothing that happened here is deleted — every
+                package keeps its history. Bringing it back is not something
+                this screen can do, so archive it when it is done for good.
+              </p>
+              <button
+                className="button-like active-pill"
+                disabled={archive.isPending}
+                onClick={() => archive.mutate()}
+              >
+                {archive.isPending ? "Archiving…" : `Archive ${container.name}`}
+              </button>
+            </>
+          )}
+        </>
+      )}
 
       {moving && (
         <>

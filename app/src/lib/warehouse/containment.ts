@@ -31,6 +31,19 @@ export interface PlaceLocation {
   rack?: string;
 }
 
+/**
+ * The lookup the labels need, built straight off a locations query — the rows
+ * `api.listLocations()` returns already satisfy `PlaceLocation`.
+ *
+ * One function so every screen builds the map the same way. The staged-for-a-job
+ * label shipped invisible for weeks not because anybody built this wrong, but
+ * because nobody built it at all: the tests handed `placeLabel` a map made by
+ * hand, and no real screen ever made one.
+ */
+export function toLocationsById(locations: PlaceLocation[]): Map<string, PlaceLocation> {
+  return new Map(locations.map((l) => [l.id, l]));
+}
+
 export function placeChain(
   pkg: Pick<StoragePackage, "container_id" | "location_id">,
   containersById: Map<string, StorageContainer>,
@@ -69,6 +82,25 @@ export function placeLabel(chain: PlaceChain): string {
   if (loc) return `on ${loc.address}`;
   if (chain.locationId) return "on a shelf";
   return "loose — no container, no slot";
+}
+
+/**
+ * "Where is it" as one sentence — the chain and the label in a single call,
+ * so a screen cannot half-supply it.
+ *
+ * The locations lookup is REQUIRED here, unlike `placeChain`'s optional third
+ * argument. `placeChain` keeps it optional because callers that only read
+ * `.loose` never need it. But anything showing the SENTENCE does: without the
+ * lookup a staged package reads "on a shelf" and the installer has to decode a
+ * slot address. Required means a screen that forgets to load locations fails to
+ * build instead of quietly printing the wrong thing.
+ */
+export function placeWhere(
+  pkg: Pick<StoragePackage, "container_id" | "location_id">,
+  containersById: Map<string, StorageContainer>,
+  locationsById: Map<string, PlaceLocation>,
+): string {
+  return placeLabel(placeChain(pkg, containersById, locationsById));
 }
 
 /**

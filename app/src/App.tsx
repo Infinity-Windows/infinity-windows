@@ -1,7 +1,12 @@
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import type { Session } from "@supabase/supabase-js";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
-import { persister, queryClient, shouldPersistQuery } from "./lib/queryClient";
+import {
+  persister,
+  prefetchWarehousePack,
+  queryClient,
+  shouldPersistQuery,
+} from "./lib/queryClient";
 import {
   BrowserRouter,
   Link,
@@ -221,14 +226,26 @@ export default function App() {
   }, [joinCode]);
 
   useEffect(() => {
+    // The warehouse pack is pulled here, at sign-in, and not on the warehouse
+    // page (D9): it used to fire from that page's own mount, at the same
+    // instant as the queries it was supposed to be ahead of, which bought
+    // nobody anything. Somebody who signs in at the shop and drives to a conex
+    // now has the answers on the phone before they lose signal. Quiet and
+    // non-blocking by design — it never rejects, and a miss just leaves the
+    // cache holding whatever it already had.
+    const onSignedIn = (s: Session | null) => {
+      if (!s) return;
+      void ensureMyProfile().catch(() => {});
+      void prefetchWarehousePack();
+    };
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setReady(true);
-      if (data.session) void ensureMyProfile().catch(() => {});
+      onSignedIn(data.session);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
-      if (s) void ensureMyProfile().catch(() => {});
+      onSignedIn(s);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -337,7 +354,26 @@ export default function App() {
               element={<RequireRole path="/heartbeat"><Heartbeat /></RequireRole>}
             />
             <Route path="/scan" element={<Scan />} />
-            <Route path="/storage" element={<StorageHub />} />
+            {/* The container hub is foreman+ (D6). The registry floor alone
+                does not lock a route — this wrapper does — and /storage was
+                open to anyone who typed the address while the warehouse page
+                kept the same tools to leads.
+
+                Everything else here stays open on purpose. Installers tag,
+                check out and check arrivals themselves — from the warehouse
+                page's "Coming in" and "Going out" sections, both of which stay
+                open to everyone precisely so this lock does not take tagging
+                away from whoever is at the truck (S3). And ONE container's
+                page is the far end of "where is it": the Find bar on the
+                warehouse page hands an installer an "Open Conex 7" button, and
+                store_packages / move_container ask only that you are signed
+                in. The lead-only actions on that page (Edit, Archive) are
+                gated inside it, which is the same line save_storage_container
+                draws server-side. */}
+            <Route
+              path="/storage"
+              element={<RequireRole path="/storage"><StorageHub /></RequireRole>}
+            />
             <Route path="/storage/tag" element={<TagPackages />} />
             <Route path="/storage/out" element={<CheckoutPackages />} />
             <Route path="/storage/arrive" element={<ArrivePackages />} />

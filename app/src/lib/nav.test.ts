@@ -240,6 +240,27 @@ describe("the warehouse is one row", () => {
   });
 });
 
+describe("the storage hub is one door with one rule (D6)", () => {
+  // The hub page kept "Coming in" and "In storage" to foreman and up, while
+  // /storage handed the same tools to anyone who typed the address. Two doors
+  // to the same room with different locks is how the drift started, so the
+  // hub's rule is the rule.
+  it("keeps the container hub to foreman and up", () => {
+    expect(canAccess("installer", "/storage")).toBe(false);
+    expect(canAccess("foreman", "/storage")).toBe(true);
+    expect(canAccess("supervisor", "/storage")).toBe(true);
+    expect(canAccess("owner", "/storage")).toBe(true);
+  });
+
+  it("leaves tagging and check-out with the installers who do them", () => {
+    // Installers tag at the truck and check packages out on their own screens.
+    // Raising these would take the work off the people doing it.
+    expect(canAccess("installer", "/storage/tag")).toBe(true);
+    expect(canAccess("installer", "/storage/out")).toBe(true);
+    expect(canAccess("installer", "/storage/arrive")).toBe(true);
+  });
+});
+
 describe("every NAV destination has a door", () => {
   // A registry entry with no menu row is a page nobody can find — /data
   // shipped exactly that way (route + gating live, zero UI path to it, PR

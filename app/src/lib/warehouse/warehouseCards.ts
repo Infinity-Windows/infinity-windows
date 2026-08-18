@@ -55,7 +55,7 @@ export const WAREHOUSE_CARDS: CardDef[] = [
     label: "damaged",
     tone: "danger",
     blurb:
-      "Open damage reports — material that arrived broken or got broken here. Each one needs a replacement ordered before that window can be finished. Tap through to the issue to see the photo and who reported it.",
+      "Open damage reports — material that arrived broken or got broken here. Each one needs a replacement ordered before that window can be finished. Tap through to the issue to see the note and who reported it.",
   },
 ];
 

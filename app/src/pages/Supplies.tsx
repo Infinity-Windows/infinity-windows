@@ -35,6 +35,35 @@ import {
 } from "../lib/ops";
 
 const STATUSES = ["needed", "ordered", "picked", "used"];
+
+/**
+ * The units the catalog already speaks (ticket D7).
+ *
+ * "ea" is the supplies table's own default; the rest are the units the catalog
+ * was seeded with — roll, can, bundle, tube, bag. A short list covers nearly
+ * every add, and "other" keeps it from being a cage: the unit is just the word
+ * the crew reads on the shelf, and the shelf occasionally has a word we did
+ * not think of.
+ */
+export const SUPPLY_UNIT_PRESETS = [
+  "ea",
+  "roll",
+  "tube",
+  "bag",
+  "bundle",
+  "can",
+] as const;
+
+/** What actually gets saved: the preset, or the typed-in word behind "other". */
+export function resolveNewSupplyUnit(preset: string, other: string): string {
+  return preset === "other" ? other.trim() : preset;
+}
+
+/** "Other" with nothing typed is the only way to end up with no unit at all. */
+export function newSupplyUnitInvalid(preset: string, other: string): boolean {
+  return preset === "other" && other.trim().length === 0;
+}
+
 // Same key the tag screen uses: one muscle memory for "which job am I on".
 const LAST_JOB_KEY = "infinity.storage.lastJob";
 
@@ -51,6 +80,8 @@ export function Supplies() {
   const [supplyId, setSupplyId] = useState("");
   const [qty, setQty] = useState("1");
   const [newName, setNewName] = useState("");
+  const [newUnit, setNewUnit] = useState<string>(SUPPLY_UNIT_PRESETS[0]);
+  const [newUnitOther, setNewUnitOther] = useState("");
   const [taking, setTaking] = useState<Supply | null>(null);
   const [counting, setCounting] = useState<Supply | null>(null);
   const [homing, setHoming] = useState<Supply | null>(null);
@@ -76,8 +107,13 @@ export function Supplies() {
     onSuccess: () => { setQty("1"); refresh(); },
   });
   const addCat = useMutation({
-    mutationFn: () => addSupply(newName, "ea"),
-    onSuccess: () => { setNewName(""); void refreshSupplies(); },
+    mutationFn: () => addSupply(newName, resolveNewSupplyUnit(newUnit, newUnitOther)),
+    onSuccess: () => {
+      setNewName("");
+      setNewUnit(SUPPLY_UNIT_PRESETS[0]);
+      setNewUnitOther("");
+      void refreshSupplies();
+    },
   });
   const setStatus = useMutation({
     mutationFn: (a: { id: string; status: string }) => setOrderStatus(a.id, a.status),
@@ -204,12 +240,49 @@ export function Supplies() {
         <>
           <h2>Add to catalog</h2>
           <div className="detail-card">
-            <div className="manual-entry">
+            {/* The unit is asked for here or it is wrong forever: there is no
+                screen that edits it afterwards, and it is the word every
+                installer reads on the Take form ("How many (roll)"). */}
+            <div className="manual-entry" style={{ flexWrap: "wrap" }}>
               <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New supply type" />
-              <button className="primary" disabled={addCat.isPending || !newName.trim()} onClick={() => addCat.mutate()}>
+              <select
+                aria-label="Unit"
+                value={newUnit}
+                style={{ marginBottom: 0 }}
+                onChange={(e) => setNewUnit(e.target.value)}
+              >
+                {SUPPLY_UNIT_PRESETS.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+                <option value="other">other…</option>
+              </select>
+              {newUnit === "other" && (
+                <input
+                  aria-label="Other unit"
+                  value={newUnitOther}
+                  style={{ marginBottom: 0 }}
+                  placeholder="spool, sheet, box…"
+                  onChange={(e) => setNewUnitOther(e.target.value)}
+                />
+              )}
+              <button
+                className="primary"
+                disabled={
+                  addCat.isPending ||
+                  !newName.trim() ||
+                  newSupplyUnitInvalid(newUnit, newUnitOther)
+                }
+                onClick={() => addCat.mutate()}
+              >
                 Add
               </button>
             </div>
+            <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
+              How it is counted on the shelf — a roll of tape, a tube of
+              sealant. Pick <em>other…</em> to type your own.
+            </p>
           </div>
         </>
       )}

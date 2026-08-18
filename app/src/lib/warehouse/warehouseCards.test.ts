@@ -196,3 +196,21 @@ describe("counts and their lists agree", () => {
     }
   });
 });
+
+/**
+ * A blurb is a promise about what the crew will find when they tap through.
+ * This one promised a photo for as long as the card existed; the arrival check
+ * has never had a camera, and `issues` has no column to hold one.
+ */
+describe("the damaged card promises only what is there", () => {
+  const damaged = WAREHOUSE_CARDS.find((c) => c.id === "damaged")!;
+
+  it("does not promise a photo the arrival check never takes", () => {
+    expect(damaged.blurb.toLowerCase()).not.toContain("photo");
+  });
+
+  it("still promises the reporter, which is real", () => {
+    // arrive_packages stamps issues.created_by; Issues.tsx renders the name.
+    expect(damaged.blurb.toLowerCase()).toContain("who reported it");
+  });
+});

@@ -159,6 +159,23 @@ Reads first: cache every conex's contents before someone walks into a metal box 
 
 ---
 
+## 11 — A damage report can carry a photo
+
+**Why:** the package map and the Damaged card both promised a photo the app never took. The words were corrected on 2026-08-17 — they say "a note" now, which is what actually happens. This ticket is for making the original promise true instead.
+
+Today the arrival check is a Good/Damaged pair per package plus **one** optional note shared by the whole submission. `arrive_packages` opens a `damage` issue per package and stamps `created_by`, which is why "who reported it" was already real. There is nowhere to put a picture: `issues` has no photo column, and `attachments` cannot hold one either — `attachments_target` requires a `window_id` or an `install_event_id`, and a damaged package has neither.
+
+Four pieces, and none of them work without the other three:
+
+- **On the screen.** Tapping Damaged on a package row opens `PhotoCaptureSheet` in `mode="single"` — the same stamped rear-camera sheet the flashing phase-proof shot already uses, with the same file-picker fallback. Per package, not per submission: one shared note covering six broken packages is already the weak part of this screen, and one shared photo would be worse.
+- **Where the file goes.** A private bucket scoped by project id, following `install-media` and `trip-attachments`. Uploads queue through the existing outbox (`enqueueUpload`) so this still works inside a conex — and the new op has to be added to the allowlist the runner actually reads, not only to the type union. That exact miss has already cost this repo a day.
+- **Where the path is recorded.** A photo path column on `issues`, added the way `package_id` was in `20260827000000` and for the same reason. Widening `attachments_target` to accept an issue is the other option; pick one and write down in the migration which, and why.
+- **Where it is seen.** `Issues.tsx` shows the note and the reporter today. A damage issue with a photo gets a thumbnail that opens in the photo viewer already on the page.
+
+**Test:** an arrival check filed with a photo leaves that photo reachable from the issue it opened — and one filed without a photo still opens the issue, because damage reported with no picture beats damage never reported.
+
+---
+
 ## Deliberately not doing yet
 
 - Converging the other three `mark_code` tables onto `project_marks` (no user-facing payoff).

@@ -181,6 +181,14 @@ export function MapsInteractive({ project }: { project: Project }) {
   const profilesRef = useRef(profiles.data);
   profilesRef.current = profiles.data;
   const queryClient = useQueryClient();
+  // Which role the live renderer was built for. The Assign button exists only
+  // if `onAssign` was in the shim AT MOUNT — the renderer reads it once and
+  // unhides the button, and nothing re-reads it later. So a supervisor whose
+  // profile lands AFTER the job does used to get a map with no Assign button,
+  // permanently, until they left the tab and came back. Nothing made that
+  // visible until the warehouse pre-load started running at sign-in (D9) and
+  // reliably won the race the profile fetch used to win.
+  const builtForRole = useRef<string | null | undefined>(null);
 
   // Mount once, refresh in place on data changes — refresh keeps the camera
   // where the user left it, a remount would snap it back to the default.
@@ -188,17 +196,20 @@ export function MapsInteractive({ project }: { project: Project }) {
     const host = hostRef.current;
     if (!host || !job) return;
     if (viewRef.current) {
-      if (host.childElementCount > 0) {
-        // Same live host — refresh in place, keep the camera.
+      if (host.childElementCount > 0 && builtForRole.current === effectiveRole) {
+        // Same live host, same role — refresh in place, keep the camera.
         viewRef.current.refresh(job);
         return;
       }
-      // The Sheets toggle unmounted the old host: the renderer is stranded
-      // on a detached node (black 3D view — owner report, 2026-08-13).
-      // Tear it down and mount fresh into the new div.
+      // Two ways to land here. The Sheets toggle unmounted the old host, so
+      // the renderer is stranded on a detached node (black 3D view — owner
+      // report, 2026-08-13). Or the role finally arrived and the live map was
+      // built for a different one, which is the only way to get the Assign
+      // button back. Either way: tear it down and mount fresh.
       viewRef.current.destroy();
       viewRef.current = null;
     }
+    builtForRole.current = effectiveRole;
     viewRef.current = mountFitView(host, job, {
       toast: pushToast,
       openOpening: (code: string) => {
@@ -274,7 +285,7 @@ export function MapsInteractive({ project }: { project: Project }) {
         : {}),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [job, mapView]);
+  }, [job, mapView, effectiveRole]);
 
   // Unmount-only teardown: the renderer owns global listeners until then,
   // and a still-pending deferred navigation must die with the tab.

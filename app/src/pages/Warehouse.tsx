@@ -18,10 +18,10 @@
 // docs/warehouse-tickets.md ticket 08b. Until then those screens stay
 // reachable and working from the Operations section.
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { listFindableUnits, listProjects } from "../lib/api";
+import { listFindableUnits, listLocations, listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
 import { isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
@@ -43,8 +43,7 @@ import {
   WAREHOUSE_CARDS,
   warehouseCounts,
 } from "../lib/warehouse/warehouseCards";
-import { placeChain } from "../lib/warehouse/containment";
-import { prefetchWarehousePack } from "../lib/queryClient";
+import { placeChain, toLocationsById } from "../lib/warehouse/containment";
 import { useOutbox } from "../lib/offline/useOutbox";
 
 /** Sections run in the order the physical day runs. */
@@ -56,7 +55,13 @@ interface Section {
 }
 
 const SECTIONS: Section[] = [
-  { id: "coming-in", title: "Coming in" },
+  // Everyone sees "Coming in" because tagging lives in it, and tagging is the
+  // installer's first job of the day — whoever is at the truck does it (S3).
+  // Locking the whole section to leads (D6) left an installer with no way to
+  // reach /storage/tag at all: the other door, the Storage hub, went foreman+
+  // in the same change. The foreman-only tools INSIDE the section are gated
+  // one at a time below, which is the pattern the rest of the page uses.
+  { id: "coming-in", title: "Coming in", everyone: true },
   { id: "in-storage", title: "In storage" },
   { id: "going-out", title: "Going out", everyone: true },
   { id: "supplies", title: "Supplies", everyone: true },
@@ -68,19 +73,16 @@ export function Warehouse() {
   const lead = isForemanPlus(effectiveRole);
   const { counts: outbox } = useOutbox();
 
-  // Fill the cache WHILE there is still signal, so the answers are already on
-  // the phone before somebody walks into a conex (ticket 10). Writing offline
-  // was the easy half; being able to find things in there is the half that
-  // decides whether the trip is useful.
-  useEffect(() => {
-    void prefetchWarehousePack();
-  }, []);
-
   const waiting = outbox.warehouse;
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
+  // Racks and staging bays. Find needs these to say "staged for BLACK22"
+  // instead of "on a shelf" — without them a staged package is a slot address
+  // somebody has to decode. Same query key the other screens use, so it is a
+  // cache hit more often than a fetch.
+  const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
   const issues = useQuery({ queryKey: ["issues"], queryFn: listIssues });
   const supplies = useQuery({ queryKey: ["supplies"], queryFn: listSupplies });
   // listSupplies orders by name, so an un-sorted preview showed roughly
@@ -118,6 +120,10 @@ export function Warehouse() {
   const rows = packages.data ?? [];
   const boxes = containers.data ?? [];
   const byId = useMemo(() => new Map(boxes.map((c) => [c.id, c])), [boxes]);
+  const locsById = useMemo(
+    () => toLocationsById(locations.data ?? []),
+    [locations.data],
+  );
   const jobCode = useMemo(() => {
     const m = new Map<string, string>();
     for (const p of projects.data ?? []) m.set(p.id, p.job_code);
@@ -155,6 +161,7 @@ export function Warehouse() {
         projects={projects.data ?? []}
         scheduledMarks={marks.data ?? []}
         units={inventory.data ?? []}
+        locationsById={locsById}
       />
 
       {waiting > 0 && (
@@ -216,21 +223,29 @@ export function Warehouse() {
                 <Link className="button-like active-pill" to="/storage/tag">
                   Tag packages (truck)
                 </Link>
-                <Link className="button-like" to="/receive">
-                  Receive units
-                </Link>
-                <Link className="button-like" to="/storage">
-                  Check in
-                </Link>
+                {/* Both foreman+ on the server as well as here: /receive is the
+                    old unit intake, and /storage is the container hub D6 just
+                    locked. Showing an installer a door that answers "you can
+                    not open this" is worse than not showing it. */}
+                {lead && (
+                  <>
+                    <Link className="button-like" to="/receive">
+                      Receive units
+                    </Link>
+                    <Link className="button-like" to="/storage">
+                      Check in
+                    </Link>
+                  </>
+                )}
               </div>
-              {needsPutaway.length > 0 && (
+              {lead && needsPutaway.length > 0 && (
                 <p className="muted" style={{ marginTop: 8, fontSize: 13 }}>
                   <strong>{needsPutaway.length}</strong> tagged package
                   {needsPutaway.length === 1 ? "" : "s"} with nowhere to be —{" "}
                   <Link to={cardLink("loose")}>put them away</Link>.
                 </p>
               )}
-              {untagged.length > 0 && (
+              {lead && untagged.length > 0 && (
                 <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
                   <strong>{untagged.length}</strong> window
                   {untagged.length === 1 ? "" : "s"} on the plans with nothing
@@ -403,6 +418,10 @@ function Operations() {
           <Link to="/count" className="warehouse-tile">
             <strong>Cycle count</strong>
             <span className="muted">Count a slot, flag gaps</span>
+          </Link>
+          <Link to="/warehouse/on-hand" className="warehouse-tile">
+            <strong>Inventory list</strong>
+            <span className="muted">Windows on hand, one by one</span>
           </Link>
           <Link to="/labels" className="warehouse-tile">
             <strong>Slot labels</strong>

@@ -133,7 +133,8 @@ export const NAV: NavDest[] = [
   { id: "safety", to: "/safety", label: "Safety", icon: "⛑", minRole: "installer" },
   { id: "scan", to: "/scan", label: "Scan", icon: "▣", minRole: "installer" },
   { id: "count", to: "/count", label: "Cycle count", icon: "#", minRole: "installer" },
-  { id: "storage", to: "/storage", label: "Storage", icon: "▧", minRole: "installer" },
+  // /storage moved down to the foreman block (D6) — it is the container hub,
+  // not an installer surface. The two truck-side flows below stay open.
   // Reached from the warehouse page's Going out section, never a menu row.
   { id: "storage-arrive", to: "/storage/arrive", label: "Arrival check", icon: "⬇", minRole: "installer" },
   // In the registry so the access doc and the role tests can SEE them. They
@@ -176,6 +177,12 @@ export const NAV: NavDest[] = [
   { id: "analytics", to: "/analytics", label: "Analytics", icon: "◲", minRole: "foreman" },
   { id: "crew", to: "/crew", label: "Roster", icon: "☰", minRole: "foreman" },
   { id: "receive", to: "/receive", label: "Receive", icon: "⬇", minRole: "foreman" },
+  // The container hub: every conex and crate, blank stickers, posters, adding
+  // and archiving containers. Foreman+ because the warehouse page already kept
+  // "Coming in" and "In storage" to leads, and /storage is the same room by
+  // another door — the installer floor here was drift, not a decision (D6).
+  // Tagging at the truck and checking out stay open, above.
+  { id: "storage", to: "/storage", label: "Storage", icon: "▧", minRole: "foreman" },
   { id: "labels", to: "/labels", label: "Slot labels", icon: "❏", minRole: "foreman" },
   { id: "catalog", to: "/catalog", label: "Catalog", icon: "❒", minRole: "foreman" },
   // Installers, not foreman+: the whole point of ticket 07 is that an

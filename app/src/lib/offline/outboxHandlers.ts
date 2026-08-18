@@ -6,6 +6,15 @@
 // server dedupes on it; when it is NOT applied we detect the missing
 // function/column and fall back to a best-effort plain write — the feature
 // never crashes and never blocks the crew.
+//
+// take_supply carries a key too, and it is the ONE op with no such fallback
+// tier (warehouse audit F1). Two reasons. First, its key is minted by the
+// caller in lib/warehouse/offlineWrites.ts and rides in the payload, not in
+// entry.id — that write tries the server before it ever queues, so the key
+// has to exist before the entry does. Second, degrading gracefully here would
+// mean sending an unguarded take, which is exactly the bug: subtracting twice
+// is worse than failing loudly. A take with no key is a bug in whatever built
+// the entry, so it dead-letters where a foreman can see it.
 
 import { supabase } from "../supabase";
 import {
@@ -245,11 +254,25 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
 
   // --- warehouse writes from inside a conex (ticket 10) ------------------
   //
-  // All three are RPCs that take an explicit list, so a replay is safe: the
-  // storage RPCs skip packages that are no longer in a movable state (a
-  // package stored twice is stored once), and every one of them writes its
-  // own movement row, so the history stays honest about when it really
-  // reached the server.
+  // TWO of these three are safe to send twice on their own, and this comment
+  // used to claim all three were. It was wrong about take_supply, and being
+  // wrong in a comment is how the bug shipped (warehouse audit F1) — so read
+  // the difference rather than the shape:
+  //
+  //   store_packages / checkout_packages — safe. They name an explicit list
+  //   and skip any package that is no longer in a movable state, so a package
+  //   stored twice is stored once. The second send moves nothing.
+  //
+  //   take_supply — NOT safe on its own. There is no "already taken" state to
+  //   skip against; a count only goes down. Sending it twice subtracted twice
+  //   and nobody could see it, because both movement rows looked like real
+  //   takes. It is safe now only because every take carries a client id the
+  //   database recognizes on a repeat
+  //   (20260830000000_take_supply_idempotent.sql) — the guard is that key,
+  //   not the shape of the call.
+  //
+  // All three still write their own movement row, so the history stays honest
+  // about when a write really reached the server.
 
   function ids(entry: OutboxEntry): string[] {
     const raw = entry.payload.packageIds;
@@ -288,13 +311,36 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     const supplyId = str(entry.payload.supplyId);
     const projectId = str(entry.payload.projectId);
     const qty = num(entry.payload.qty);
+    // The payload's key, NOT entry.id. The take is tried against the server
+    // before it is ever queued, so the key that has to survive from the first
+    // try through every retry is the one minted in offlineWrites.ts. entry.id
+    // is only born at queue time — too late to cover the first attempt.
+    const clientId = str(entry.payload.clientId);
     if (!supplyId || !projectId || qty == null || qty <= 0) {
       throw tagPermanent(new Error("Supply take is missing what, how many, or for which job"));
+    }
+    if (!clientId) {
+      // Never send an unkeyed take instead. That would be the old behavior —
+      // subtract again, silently — and this entry cannot be sent safely.
+      //
+      // The wording matters. The only way to get here is a take queued by a
+      // build from before the key existed, and that take may ALREADY have
+      // landed — a lost answer is why it queued at all. So it cannot say
+      // "take it again": that is the double-subtract this whole fix exists to
+      // stop, just done by hand. Count the shelf first, which is the one
+      // action that settles it either way.
+      throw tagPermanent(
+        new Error(
+          "Supply take is missing the id that keeps it from counting twice. " +
+            "It may already have gone through — count the shelf before taking it again.",
+        ),
+      );
     }
     const { error } = await supabase.rpc("take_supply", {
       p_supply: supplyId,
       p_project: projectId,
       p_qty: qty,
+      p_client_id: clientId,
     });
     if (error) throw error;
   };

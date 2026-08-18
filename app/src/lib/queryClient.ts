@@ -142,19 +142,33 @@ export async function prefetchJobPack(projectId: string): Promise<number> {
  * Download everything the warehouse page needs to answer "where is it" with
  * no signal (ticket 10).
  *
- * Called when the page opens WHILE ONLINE, so the answer is already on the
- * phone before somebody walks into a conex. Writing offline was the easy half;
- * this is the half that decides whether the trip inside is useful at all.
+ * Called once per session from App.tsx, right after the session is
+ * established — sign-in is the moment there is most likely to be signal, and
+ * it is well before anyone navigates to the warehouse, let alone walks into a
+ * conex. Writing offline was the easy half; this is the half that decides
+ * whether the trip inside is useful at all.
+ *
+ * It used to be called from the warehouse page's own mount (ticket D9), firing
+ * at the same instant as that page's own queries. It could not get ahead of
+ * anything, which made the "already on the phone" promise above untrue. The
+ * warehouse page may still call it; that is harmless — the 30s staleTime makes
+ * a repeat inside the same visit a no-op.
  *
  * Deliberately quiet: a failure here means the cache keeps whatever it had,
- * which is exactly the fallback anyway. Never blocks the page.
+ * which is exactly the fallback anyway. Never blocks the page, and never
+ * rejects, so callers do not need a .catch().
  */
 export async function prefetchWarehousePack(): Promise<void> {
-  const { listActivePackages, listContainers } = await import("./storage");
-  const { listIssues } = await import("./issues");
-  const { listScheduledMarks } = await import("./warehouse/warehouseCards");
-
   try {
+    // Inside the guard on purpose: these are chunks fetched over the network,
+    // and a phone on one bar drops a chunk as easily as it drops a read. Left
+    // outside, they were the one way this function could still reject — into a
+    // `void` call at sign-in with nobody listening.
+    const { listActivePackages, listContainers } = await import("./storage");
+    const { listIssues } = await import("./issues");
+    const { listScheduledMarks } = await import("./warehouse/warehouseCards");
+    const { listLocations } = await import("./api");
+
     await Promise.all([
       queryClient.prefetchQuery({ queryKey: ["projects"], queryFn: listProjects }),
       queryClient.prefetchQuery({
@@ -166,6 +180,15 @@ export async function prefetchWarehousePack(): Promise<void> {
         queryFn: listContainers,
       }),
       queryClient.prefetchQuery({ queryKey: ["issues"], queryFn: listIssues }),
+      // Racks and staging bays. Without these the warehouse page still answers
+      // "where is it" offline, but a staged package answers "on a shelf"
+      // instead of "staged for BLACK22" — the generic sentence F6 was raised to
+      // get rid of, back again in the one place it costs the most.
+      queryClient.prefetchQuery({ queryKey: ["locations"], queryFn: listLocations }),
+      // Racks and staging bays. Without these the warehouse page still answers
+      // "where is it" offline, but a staged package answers "on a shelf"
+      // instead of "staged for BLACK22" — the generic sentence F6 was raised to
+      // get rid of, back again in the one place it costs the most.
     ]);
 
     const projects =

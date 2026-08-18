@@ -31,6 +31,24 @@ export interface WriteResult {
   queued: boolean;
 }
 
+/**
+ * A fresh idempotency key, in the uuid shape the database column expects.
+ *
+ * The hand-rolled fallback is not decoration: crypto.randomUUID is missing on
+ * older phone browsers and on any page served without https, and a key that
+ * isn't uuid-shaped would be rejected by the RPC — which would turn a browser
+ * quirk into "this crew can't log supplies at all".
+ */
+function newClientId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 async function attempt(
   send: () => Promise<number>,
   queue: () => Promise<unknown>,
@@ -71,19 +89,37 @@ export function checkoutPackagesOffline(
   );
 }
 
-/** Log a supply take; queues when there is no signal. */
+/** What a queued supply take carries — the take, plus the key that guards it. */
+interface KeyedTake {
+  supplyId: string;
+  projectId: string;
+  qty: number;
+  clientId: string;
+}
+
+/**
+ * Log a supply take; queues when there is no signal.
+ *
+ * The key is made HERE, once, before the first try — not inside the outbox
+ * (warehouse audit F1). This write is the one that tries the server first and
+ * only queues if that throws, and a lost answer looks exactly like a dead
+ * connection from in here: the server subtracted, we never heard, and we
+ * queue. If the queued copy carried a brand-new key the server would count it
+ * as a second take and on hand would drop twice. One key, both paths.
+ */
 export function takeSupplyOffline(input: {
   supplyId: string;
   projectId: string;
   qty: number;
 }): Promise<WriteResult> {
+  const keyed: KeyedTake = { ...input, clientId: newClientId() };
   return attempt(
     async () => {
-      await takeSupply(input);
-      return input.qty;
+      await takeSupply(keyed);
+      return keyed.qty;
     },
-    () => enqueueTakeSupply(input),
-    input.qty,
+    () => enqueueTakeSupply(keyed),
+    keyed.qty,
   );
 }
 

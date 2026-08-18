@@ -83,11 +83,21 @@ export interface FlowEdge {
   dashed?: boolean;
 }
 
-/** What "stored" actually means, drawn as chips inside that box. */
+/**
+ * What "stored" actually means, drawn as chips inside that box.
+ *
+ * A shelf is NOT a container, whatever this list is called — the database
+ * holds them apart on purpose: `packages_one_place_ck` says a package is in a
+ * container OR at a shelf spot, never both (20260824000000). And nothing puts
+ * a package on a shelf except Set aside, which always names a job
+ * (`stage_packages` writes `job_staging_bay(project)`, 20260827000000). So the
+ * chip says whose shelf it is. There is no general "put this anywhere" action
+ * for a shelf the way there is for a conex, and the chip must not imply one.
+ */
 export const CONTAINERS = [
   "Conex",
   "Crate — inside a conex",
-  "Shelf",
+  "Shelf — a job's bay",
 ] as const;
 
 /**
@@ -137,7 +147,11 @@ export const NODES: FlowNode[] = [
     h: 72,
     label: "Tagged",
     lines: ["one sticker, one package", "unit · part no. · job"],
-    who: "A foreman, at the truck.",
+    // Open to anyone signed in, and said so on purpose: `bind_package` checks
+    // only that you are signed in (20260825000000), and /storage/tag has no
+    // RequireRole on it. Tagging happens at the truck, by whoever is at the
+    // truck — the map used to claim a foreman rule that nothing enforced.
+    who: "Whoever's at the truck.",
     asks:
       "Which window (#16), which piece (2 of 3), which job, and what it is — frame, glass, hardware or threshold.",
     wrong:
@@ -264,7 +278,11 @@ export const NODES: FlowNode[] = [
     label: "Damaged",
     lines: ["replacement needed"],
     who: "Whoever found it.",
-    asks: "A photo and a note. It raises an issue, and the job sees it.",
+    // No photo. The arrival check has one optional note box and no camera, and
+    // `issues` has no column to put a picture in — see ticket 11 for what real
+    // photo capture would take. The reporter is real, but it is never asked
+    // for: `arrive_packages` stamps `created_by` from who is signed in.
+    asks: "A note. It raises an issue, and the job sees it.",
     wrong:
       "Held back on purpose, not lost. Somebody has to order a replacement before that window can be finished.",
     related: ["stored"],
@@ -323,4 +341,4 @@ export function flowNode(id: NodeId): FlowNode | undefined {
  * Kept beside the data so it cannot drift from what is actually drawn.
  */
 export const FLOW_ALT =
-  "Blank stickers and arriving packages meet at tagging. A tagged package is stored in a conex, a crate or on a shelf, checked out by an installer with a reason, hauled to site, and installed. Below the main path, five ways a package stops moving: never tagged, waiting on its other parts, loose with no home, damaged, or borrowed under another job.";
+  "Blank stickers and arriving packages meet at tagging. A tagged package is stored in a conex or a crate — or set aside on a job's own shelf — then checked out by an installer with a reason, hauled to site, and installed. Below the main path, five ways a package stops moving: never tagged, waiting on its other parts, loose with no home, damaged, or borrowed under another job.";

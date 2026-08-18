@@ -4,10 +4,11 @@
 import { useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { listProjects } from "../../lib/api";
+import { listLocations, listProjects } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
 import { BackChip } from "../../components/BackChip";
 import { downloadPdf, packageLabelsPdf } from "../../lib/labels";
+import { placeWhere, toLocationsById } from "../../lib/warehouse/containment";
 import {
   agingDays,
   CATEGORY_LABELS,
@@ -37,6 +38,17 @@ export function PackageSheet() {
   });
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  // Racks and staging bays, so a package set aside for a job says so by name.
+  const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
+
+  const containersById = useMemo(
+    () => new Map((containers.data ?? []).map((c) => [c.id, c])),
+    [containers.data],
+  );
+  const locsById = useMemo(
+    () => toLocationsById(locations.data ?? []),
+    [locations.data],
+  );
 
   const jobCode = useMemo(() => {
     const m = new Map<string, string>();
@@ -75,9 +87,13 @@ export function PackageSheet() {
 
   const p = pkg.data;
   const days = agingDays(p.bound_at, new Date());
+  // The same "where is it" sentence the Find bar gives, from the same
+  // function. This used to be hand-rolled here and only knew about
+  // containers, so a package staged on a job's bay — no container, a bay for
+  // a location — fell through to the literal word "storage".
   const statusLine =
     p.status === "stored"
-      ? `In ${containerName(p.container_id) ?? "storage"}`
+      ? placeWhere(p, containersById, locsById)
       : p.status === "received"
         ? "Tagged — not stored yet"
         : p.status === "checked_out"
