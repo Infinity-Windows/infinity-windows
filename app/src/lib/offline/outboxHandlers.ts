@@ -848,6 +848,36 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
    * cannot be made, send it — a duplicated history line is the lesser loss
    * against a move that never happens.
    */
+  const setPackageArea: OpHandler = async (entry) => {
+    const packageId = str(entry.payload.packageId);
+    // null is a legal value here — it clears the pointer — so only a missing
+    // package id makes the entry unsendable.
+    if (!packageId) {
+      throw tagPermanent(new Error("This area note is missing its package"));
+    }
+    const area = str(entry.payload.area);
+    const { error } = await supabase.rpc("set_package_area", {
+      p_package: packageId,
+      p_area: area,
+    });
+    if (error) {
+      // "that area does not fit this kind of box" / "put it in a box first":
+      // the package moved between queueing and sending, and no resend changes
+      // that. Say so once instead of burning eight retries — the pointer is
+      // stale by definition, and whoever is there next just points again.
+      const msg = String((error as { message?: unknown }).message ?? "");
+      if (/does not fit this kind of box|put it in a box first|package not found/.test(msg)) {
+        throw tagPermanent(
+          new Error(
+            "This 'where in the box' note didn't stick — the package moved " +
+              "before it went up. If it still matters, point at it again.",
+          ),
+        );
+      }
+      throw missingGuard(error, "area note");
+    }
+  };
+
   const moveContainer: OpHandler = async (entry) => {
     const containerId = str(entry.payload.containerId);
     if (!containerId) {
@@ -879,6 +909,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     checkout_packages: checkoutPackages,
     take_supply: takeSupply,
     bind_package: bindPackage,
+    set_package_area: setPackageArea,
     stage_packages: stagePackages,
     move_container: moveContainer,
   } satisfies OpHandlers;

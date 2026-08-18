@@ -50,6 +50,7 @@ const OP_LABELS: Record<OutboxOp, string> = {
   bind_package: "Package tagged",
   stage_packages: "Packages set aside",
   move_container: "Container moved",
+  set_package_area: "Package pointed at",
 };
 
 /**

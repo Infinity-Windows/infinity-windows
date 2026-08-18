@@ -207,7 +207,7 @@ Changing a container's address writes a movement line (same log everything else 
 
 **Why:** slots are parked, the reorganization needs rough position anyway, and "it's in Conex 7" is a five-minute hunt inside a forty-foot box.
 
-`packages.area` (text, check-constrained). Foreman+ set it from the package sheet and the container page; the option list comes from the kind of the current container — Front / Middle / Back inside anything that moves, compass + Middle inside the building (ADR-0006). Every server-side move — store, checkout, stage, container move cascade — clears it in the same statement that moves the package, exactly where `location_id` learned to clear. Find and the package sheet read "Conex 7 — front." Tests prove the clear on every move path, not just one.
+`packages.area` (text, check-constrained). Foreman+ set it from the package sheet and the container page; the option list comes from the kind of the current container — Front / Middle / Back inside anything that moves, compass + Middle inside the building (ADR-0006). Every server-side move of the PACKAGE — store, checkout, stage — clears it in the same statement that moves it (a trigger, so every future writer is covered too). A container move deliberately does NOT clear the areas inside it: an area is relative to the box, and the package in the front of Conex 7 is still in the front when the conex arrives at the job. (Corrected from this ticket's first wording during implementation.) Find and the package sheet read "Conex 7 — front." Tests prove the clear on every move path, not just one.
 
 ## 15 — Plan a window's packages and mint its labels
 

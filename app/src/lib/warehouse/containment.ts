@@ -8,6 +8,7 @@
 // rows — the client-side mirror of what move_container relies on.
 
 import { containerKind, type StorageContainer, type StoragePackage } from "../storage";
+import { areaSuffix } from "./areas";
 
 /** Where a package physically is, spelled out link by link. */
 export interface PlaceChain {
@@ -96,11 +97,16 @@ export function placeLabel(chain: PlaceChain): string {
  * build instead of quietly printing the wrong thing.
  */
 export function placeWhere(
-  pkg: Pick<StoragePackage, "container_id" | "location_id">,
+  pkg: Pick<StoragePackage, "container_id" | "location_id" | "area">,
   containersById: Map<string, StorageContainer>,
   locationsById: Map<string, PlaceLocation>,
 ): string {
-  return placeLabel(placeChain(pkg, containersById, locationsById));
+  // "In Conex 7 — front": the area rides the same sentence everywhere,
+  // because a pointer nobody can read might as well not exist (ticket 14).
+  return (
+    placeLabel(placeChain(pkg, containersById, locationsById)) +
+    (pkg.container_id ? areaSuffix(pkg.area) : "")
+  );
 }
 
 /**

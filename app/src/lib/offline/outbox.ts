@@ -500,6 +500,18 @@ export function enqueueMoveContainer(input: {
   });
 }
 
+/** Queue "this package sits at the front of its box" (ticket 14). Setting a
+ * pointer twice lands on the same pointer, so a resend is harmless. */
+export function enqueueSetPackageArea(input: {
+  packageId: string;
+  area: string | null;
+}): Promise<string> {
+  return enqueue({
+    op: "set_package_area",
+    payload: { packageId: input.packageId, area: input.area },
+  });
+}
+
 // ORDERING: none of these three sets `dependsOn`, and the one chain worth
 // worrying about — tag a package offline, then check it into a conex offline,
 // which MUST reach the server in that order or the check-in silently stores

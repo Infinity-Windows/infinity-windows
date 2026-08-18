@@ -260,3 +260,22 @@ describe("canNest knows what kind of box it is dealing with", () => {
     expect(canNest("legacy", "conex-1", [...YARD, old])).toBe(false);
   });
 });
+
+describe("the area rides the place sentence (ticket 14)", () => {
+  it("a stored package reads its box and its area in one line", () => {
+    const p = pkg({ container_id: "conex", area: "front" });
+    expect(placeWhere(p, byId, new Map())).toContain(" — front");
+  });
+
+  it("no area, no suffix — the sentence ends at the box", () => {
+    const p = pkg({ container_id: "conex" });
+    expect(placeWhere(p, byId, new Map())).not.toContain(" — ");
+  });
+
+  it("a package with no box shows no area even if a stale one is on the row", () => {
+    // The database clears area on every move, but a cached row on a phone can
+    // lag — the sentence must not point inside a box the package is not in.
+    const p = pkg({ container_id: null, location_id: null, area: "back" });
+    expect(placeWhere(p, byId, new Map())).not.toContain("back");
+  });
+});

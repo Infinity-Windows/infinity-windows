@@ -3,12 +3,17 @@
 
 import { useMemo } from "react";
 import { useParams } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listLocations, listProjects } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
 import { BackChip } from "../../components/BackChip";
 import { downloadPdf, packageLabelsPdf } from "../../lib/labels";
 import { placeWhere, toLocationsById } from "../../lib/warehouse/containment";
+import { areaLabel, areaOptions } from "../../lib/warehouse/areas";
+import { setPackageAreaOffline } from "../../lib/warehouse/offlineWrites";
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
+import { isForemanPlus } from "../../lib/install/types";
+import { pushToast } from "../../lib/toast";
 import {
   agingDays,
   CATEGORY_LABELS,
@@ -40,6 +45,23 @@ export function PackageSheet() {
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   // Racks and staging bays, so a package set aside for a job says so by name.
   const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
+  const { effectiveRole } = useEffectiveRole();
+  const lead = isForemanPlus(effectiveRole);
+  const qc = useQueryClient();
+  const setArea = useMutation({
+    // Offline-first like every warehouse write: pointing at a package happens
+    // standing inside the box, which is exactly where the bars are not.
+    mutationFn: (area: string | null) =>
+      setPackageAreaOffline(pkg.data?.id ?? "", area),
+    onSuccess: (r) => {
+      if (r.queued) {
+        pushToast("Saved on this phone — goes up when you have signal.");
+      }
+      void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+      void qc.invalidateQueries({ queryKey: ["storagePackage", serial] });
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
 
   const containersById = useMemo(
     () => new Map((containers.data ?? []).map((c) => [c.id, c])),
@@ -135,6 +157,33 @@ export function PackageSheet() {
           Reprint sticker
         </button>
       </div>
+
+      {/* Where in the box (ticket 14, ADR-0006). Foreman+, and only while the
+          package is actually IN a box — the options come from what kind of box
+          it is, so a re-parkable conex never offers a compass. */}
+      {lead && p.status === "stored" && p.container_id && (
+        <div style={{ marginTop: 10 }}>
+          <label className="field-label">
+            Where in {containersById.get(p.container_id)?.name ?? "the box"}
+          </label>
+          <div className="row-gap" style={{ flexWrap: "wrap" }}>
+            {areaOptions(containersById.get(p.container_id)).map((a) => (
+              <button
+                key={a}
+                className={p.area === a ? "button-like active-pill" : "button-like"}
+                disabled={setArea.isPending}
+                onClick={() => setArea.mutate(p.area === a ? null : a)}
+              >
+                {areaLabel(a)}
+              </button>
+            ))}
+          </div>
+          <p className="muted" style={{ margin: "4px 0 0", fontSize: 12 }}>
+            A rough pointer, not a slot — it clears on its own the moment the
+            package moves. Tap again to unset.
+          </p>
+        </div>
+      )}
 
       <h2>History</h2>
       {events.isError && <p className="error">{formatApiError(events.error)}</p>}
