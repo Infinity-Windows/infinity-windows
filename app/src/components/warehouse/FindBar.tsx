@@ -82,7 +82,7 @@ export function FindBar({
     <div className="wh-find">
       <div className="locate-search">
         <input
-          placeholder="Find: window 16, PKG-000123, W-DH3252-0001, S-01-A, Conex 3, BLACK22…"
+          placeholder="Find: 16, PKG-000123, S-01-A, Conex 3, BLACK22…"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
