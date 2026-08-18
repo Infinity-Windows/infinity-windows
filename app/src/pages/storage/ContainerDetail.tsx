@@ -9,9 +9,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listLocations, listProjects } from "../../lib/api";
 import { Explain } from "../../components/ui/Explain";
 import { containerTrailLine } from "../../lib/warehouse/containerTrail";
+import { buildShellSerialized, shellDims, shellName } from "../../lib/modelstudio/shell";
+import { saveStudioProject } from "../../lib/modelstudio/projects";
 import { PackageRowText } from "../../components/warehouse/PackageRowText";
 import { formatApiError } from "../../lib/errors";
-import { isForemanPlus } from "../../lib/install/types";
+import { isForemanPlus, isSupervisorPlus } from "../../lib/install/types";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { pushToast } from "../../lib/toast";
 import { BackChip } from "../../components/BackChip";
@@ -24,6 +26,7 @@ import {
   listContainers,
   listContainerMovements,
   saveContainer,
+  setContainerModel,
   type StoragePackage,
   containerKind,
 } from "../../lib/storage";
@@ -105,6 +108,57 @@ export function ContainerDetail() {
   const qc = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
+  const canModel = isSupervisorPlus(effectiveRole);
+  // The 3D shell (ticket 22, first slice): dims form state, prefilled from
+  // the row or the standard box the moment the panel opens.
+  const [modeling, setModeling] = useState(false);
+  const [shellDimsText, setShellDimsText] = useState({ l: "", w: "", h: "" });
+  const makeShell = useMutation({
+    mutationFn: async () => {
+      const c = container!;
+      const dims = {
+        lengthCm: Number(shellDimsText.l),
+        widthCm: Number(shellDimsText.w),
+        heightCm: Number(shellDimsText.h),
+      };
+      if (
+        !Number.isFinite(dims.lengthCm) || dims.lengthCm <= 0 ||
+        !Number.isFinite(dims.widthCm) || dims.widthCm <= 0 ||
+        !Number.isFinite(dims.heightCm) || dims.heightCm <= 0
+      ) {
+        throw new Error("A shell needs all three measurements, in centimeters.");
+      }
+      // The container learns its measurements the moment somebody types them
+      // — the record should not stay dumber than the drawing.
+      await saveContainer({
+        id: c.id,
+        name: c.name,
+        address: c.address,
+        accessCode: c.access_code,
+        notes: c.notes,
+        active: c.active,
+        lengthCm: dims.lengthCm,
+        widthCm: dims.widthCm,
+        heightCm: dims.heightCm,
+        weightKg: c.weight_kg ?? null,
+      });
+      const project = await saveStudioProject({
+        name: shellName(c),
+        model: {
+          serialized: buildShellSerialized(dims),
+          savedAt: new Date().toISOString(),
+        },
+      });
+      await setContainerModel(c.id, project.id);
+      return project.id;
+    },
+    onSuccess: (studioId) => {
+      pushToast("Shell created — opening it in the Studio.");
+      void qc.invalidateQueries({ queryKey: ["storageContainers"] });
+      navigate(`/studio/p/${studioId}`);
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
   const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
@@ -441,6 +495,81 @@ export function ContainerDetail() {
         </div>
       ))}
       {stored.length === 0 && <p className="muted">Empty.</p>}
+
+      {canModel && (
+        <div className="detail-card" style={{ marginTop: 12 }}>
+          <div className="row-between">
+            <h2 style={{ margin: 0, fontSize: 18 }}>3D shell</h2>
+            {container.studio_project_id ? (
+              <Link
+                className="button-like"
+                to={`/studio/p/${container.studio_project_id}`}
+              >
+                Open in Studio
+              </Link>
+            ) : (
+              <button
+                className="button-like"
+                onClick={() => {
+                  const d = shellDims(container);
+                  setShellDimsText({
+                    l: d ? String(d.lengthCm) : "",
+                    w: d ? String(d.widthCm) : "",
+                    h: d ? String(d.heightCm) : "",
+                  });
+                  setModeling((v) => !v);
+                }}
+              >
+                {modeling ? "Cancel" : "Create the shell…"}
+              </button>
+            )}
+          </div>
+          {!container.studio_project_id && !modeling && (
+            <p className="muted" style={{ margin: "6px 0 0", fontSize: 13 }}>
+              A true-size 3D box of this container in the Studio — the floor
+              the warehouse map is built on. Shelves go in next.
+            </p>
+          )}
+          {modeling && !container.studio_project_id && (
+            <>
+              <p className="muted" style={{ margin: "6px 0 8px", fontSize: 13 }}>
+                Its real measurements, in centimeters.
+                {containerKind(container) === "conex"
+                  ? " Prefilled with the standard 20-foot box — fix them if this one differs."
+                  : " Nobody has measured this one yet."}
+              </p>
+              <div className="row-gap">
+                {(
+                  [
+                    ["l", "Length"],
+                    ["w", "Width"],
+                    ["h", "Height"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <div key={k} style={{ flex: 1 }}>
+                    <label className="field-label">{label} (cm)</label>
+                    <input
+                      inputMode="decimal"
+                      value={shellDimsText[k]}
+                      onChange={(e) =>
+                        setShellDimsText({ ...shellDimsText, [k]: e.target.value })
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+              <button
+                className="button-like active-pill"
+                style={{ marginTop: 8 }}
+                disabled={makeShell.isPending}
+                onClick={() => makeShell.mutate()}
+              >
+                {makeShell.isPending ? "Building…" : "Create the shell"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {trail.isSuccess && trail.data.length > 0 && (
         <>
