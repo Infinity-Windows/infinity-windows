@@ -298,13 +298,115 @@ export interface QcRow {
   assigned_window_id: string | null;
   window_types?: { type_code: string } | null;
   qc?: { status: string } | null;
+  // Opening codes are unique only WITHIN a job (the DB enforces
+  // unique(project_id, opening_code)) and tend to be short — "12-2", "A1" —
+  // so two rows from different jobs can carry the exact same code. Carry the
+  // job code along so a screen listing openings across jobs can always say
+  // which job a code belongs to.
+  projects?: { job_code: string } | null;
 }
+/**
+ * Every installed opening, newest-cap-100, alphabetical by code. Kept as-is
+ * (unchanged shape and behavior) because four screens share it for a rough
+ * "how many installs need eyes" read: Team, Home, and Notifications badges,
+ * plus the Issues screen's QC cross-link. The QC review screen itself no
+ * longer uses this — see listQcQueue below, which fixes the two problems
+ * this shared query has at scale (a still-open opening can fall past the
+ * cap and never surface; a decided opening never leaves the list).
+ */
 export async function listInstalledForQc(): Promise<QcRow[]> {
   const { data, error } = await supabase.from("project_openings")
-    .select("id, opening_code, project_id, status, assigned_window_id, window_types(type_code), qc:qc_checks(status)")
+    .select("id, opening_code, project_id, status, assigned_window_id, window_types(type_code), qc:qc_checks(status), projects(job_code)")
     .eq("status", "installed").order("opening_code").limit(100);
   if (error) throw error;
   return (data ?? []) as unknown as QcRow[];
+}
+
+const QC_PAGE_SIZE = 50;
+
+export interface QcQueuePage {
+  rows: QcRow[];
+  hasMore: boolean;
+}
+
+/**
+ * The QC review queue (Qc.tsx). Filters server-side to openings that still
+ * need a look and orders oldest-installed-first, with paging instead of a
+ * hard cap — so a job that has passed 100 lifetime installs can no longer
+ * bury an unreviewed window under already-decided ones, and the queue
+ * actually drains toward zero instead of silently losing rows.
+ *
+ * "Still needs a look" means not yet PASSED, not "no row at all" — a
+ * callback stays in the queue on purpose. Notifications.tsx's badge already
+ * treats a callback as unfinished ("Sign off passes and callbacks"), and
+ * Qc.tsx lets a foreman re-decide any row, so a callback has to keep
+ * showing up here until it's re-checked and passed.
+ */
+export async function listQcQueue(
+  limit = QC_PAGE_SIZE,
+): Promise<QcQueuePage> {
+  // setQc only ever writes 'passed' or 'callback' (never 'pending' — see
+  // setQc below), so the set of openings that are DONE is just the set with
+  // a 'passed' row. Everything else installed is still queue work.
+  const passed = await supabase
+    .from("qc_checks")
+    .select("project_opening_id")
+    .eq("status", "passed");
+  if (passed.error) throw passed.error;
+  const passedIds = (passed.data ?? []).map(
+    (r) => (r as { project_opening_id: string }).project_opening_id,
+  );
+
+  let query = supabase
+    .from("project_openings")
+    .select(
+      "id, opening_code, project_id, status, assigned_window_id, window_types(type_code), qc:qc_checks(status), projects(job_code)",
+      { count: "exact" },
+    )
+    .eq("status", "installed")
+    // work_ended_at is stamped the same moment an opening's status flips to
+    // 'installed' (see the install-complete RPC), so this is a genuine
+    // oldest-install-first order, not just insertion order.
+    .order("work_ended_at", { ascending: true })
+    .range(0, limit - 1);
+  if (passedIds.length > 0) {
+    query = query.not("id", "in", `(${passedIds.join(",")})`);
+  }
+
+  const { data, error, count } = await query;
+  if (error) throw error;
+  const rows = (data ?? []) as unknown as QcRow[];
+  // `count` is the total rows matching every filter above (the not-in
+  // exclusion included), independent of the range — exactly "how many
+  // openings are still queue work", so comparing it to `limit` says
+  // whether a bigger page would turn up more.
+  const hasMore = count != null ? limit < count : false;
+  return { rows, hasMore };
+}
+
+/**
+ * QC status for a specific set of openings, keyed by opening id. Built for
+ * the Issues screen's "QC: callback" cross-link, which only needs the
+ * status of the handful of openings its VISIBLE issues actually reference —
+ * not the whole installed-openings pool. Issues.tsx currently pulls that
+ * whole pool via listInstalledForQc just to look up a few ids; it should
+ * swap that call for this one instead.
+ */
+export async function listQcStatusForOpenings(
+  openingIds: string[],
+): Promise<Map<string, string>> {
+  const ids = [...new Set(openingIds)];
+  const byOpening = new Map<string, string>();
+  if (ids.length === 0) return byOpening;
+  const { data, error } = await supabase
+    .from("qc_checks")
+    .select("project_opening_id, status")
+    .in("project_opening_id", ids);
+  if (error) throw error;
+  for (const r of (data ?? []) as { project_opening_id: string; status: string }[]) {
+    byOpening.set(r.project_opening_id, r.status);
+  }
+  return byOpening;
 }
 /** Opening ids on this project whose QC check says 'passed' (green glow). */
 export async function listQcPassedOpeningIds(projectId: string): Promise<string[]> {

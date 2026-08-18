@@ -3,7 +3,7 @@
 // live decoded-size preview; Confirm marks the spec trusted.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   confirmMarkSpec,
   confirmMarkSpecs,
@@ -111,6 +111,35 @@ export function SpecReviewSection({ projectId }: Props) {
   };
 
   type SpecPatch = Parameters<typeof updateMarkSpec>[1];
+
+  // The size-code box and the Inset/Outset dropdown both save into the same
+  // `extra` jsonb blob, and `updateMarkSpec` writes that column as a full
+  // replace, not a merge. Each handler used to build its copy of `extra` from
+  // the `spec` this row last rendered with — fine if the two are never edited
+  // close together, but a size-code fix followed by an Inset/Outset pick
+  // before the first save's refetch lands means the second save still holds
+  // the pre-fix `extra` and silently wipes the fix back out (or the reverse).
+  // Inset/Outset feeds the signature/cohort key and nothing ever recomputes
+  // it after the fact, so a dropped pick just stays dropped.
+  //
+  // Re-reading the row right before saving narrows that window from "as long
+  // as the tab's been open" to "the round trip of one fetch" — it can't close
+  // the window entirely. Closing it for good needs the update itself to merge
+  // (a server-side jsonb merge, e.g. `extra || patch`, or an RPC) so two saves
+  // can never stomp each other no matter how close together they land; that
+  // is server-side work this component can't do on its own.
+  const freshExtra = async (
+    id: string,
+    fallback: Record<string, unknown> | null,
+  ): Promise<Record<string, unknown>> => {
+    const fresh = await listMarkSpecs(projectId);
+    // If the row can't be found (deleted mid-edit, or the read fails), fall
+    // back to what this component last rendered with — still stale, but
+    // better than treating a missing read as "extra is empty" and discarding
+    // whatever the row actually has stored.
+    return fresh.find((f) => f.id === id)?.extra ?? fallback ?? {};
+  };
+
   const row = (s: ProjectMarkSpec) => (
     <SpecRow
       key={s.id}
@@ -119,13 +148,14 @@ export function SpecReviewSection({ projectId }: Props) {
       onText={(key, value) =>
         patch.mutate({ id: s.id, patch: { [key]: value || null } as SpecPatch })
       }
-      onSizeCode={(size_code) => {
+      onSizeCode={async (size_code) => {
         // A hand-edited code goes through the same precedence as an extracted
         // one: the dimensions printed on the drawing win over a decode they
         // disagree with, and the stored mismatch record follows the new code
         // rather than describing the old one.
+        const base = await freshExtra(s.id, s.extra);
         const decoded = decodeSizeCode(size_code);
-        const printed = readPrintedSize(s.extra);
+        const printed = readPrintedSize(base);
         const size = resolveSpecSize({
           decodedWidthIn: decoded?.widthIn ?? null,
           decodedHeightIn: decoded?.heightIn ?? null,
@@ -137,7 +167,7 @@ export function SpecReviewSection({ projectId }: Props) {
           printed.widthIn,
           printed.heightIn,
         );
-        const extra = { ...(s.extra ?? {}) };
+        const extra = { ...base };
         if (mismatch) extra.size_mismatch = mismatch;
         else delete extra.size_mismatch;
         patch.mutate({
@@ -156,10 +186,11 @@ export function SpecReviewSection({ projectId }: Props) {
       onNum={(key, value) =>
         patch.mutate({ id: s.id, patch: { [key]: num(value) } as SpecPatch })
       }
-      onInsetOutset={(value) => {
+      onInsetOutset={async (value) => {
         // Signature field (.scratch/signature): stored in extra, blank is
         // an honest blank — clearing removes the key entirely.
-        const extra = { ...(s.extra ?? {}) };
+        const base = await freshExtra(s.id, s.extra);
+        const extra = { ...base };
         if (value) extra.inset_outset = value;
         else delete extra.inset_outset;
         patch.mutate({ id: s.id, patch: { extra } });
@@ -240,6 +271,18 @@ function SpecRow({
   onConfirm: () => void;
 }) {
   const [sizeCode, setSizeCode] = useState(spec.size_code ?? "");
+  // The box only reads `spec.size_code` on first mount. If someone else fixes
+  // the code (another foreman, or a background re-extraction) while this
+  // foreman has the page open, the box keeps showing the old value — and the
+  // "matches the drawing / disagrees" line below ends up comparing that stale
+  // typed value against the fresh printed dimensions, which can flag a
+  // disagreement that's already been fixed. Re-sync from the record whenever
+  // it changes, but only while nobody's mid-edit — otherwise a background
+  // update could yank a foreman's own keystrokes out from under them.
+  const [editingSizeCode, setEditingSizeCode] = useState(false);
+  useEffect(() => {
+    if (!editingSizeCode) setSizeCode(spec.size_code ?? "");
+  }, [spec.size_code, editingSizeCode]);
   const decoded = decodeSizeCode(sizeCode);
   const preview =
     formatSize({
@@ -324,8 +367,10 @@ function SpecRow({
           <input
             value={sizeCode}
             placeholder="e.g. 3060"
+            onFocus={() => setEditingSizeCode(true)}
             onChange={(e) => setSizeCode(e.target.value)}
             onBlur={(e) => {
+              setEditingSizeCode(false);
               const v = e.target.value.trim();
               if (v !== (spec.size_code ?? "")) onSizeCode(v);
             }}

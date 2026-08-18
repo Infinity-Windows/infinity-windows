@@ -156,3 +156,32 @@ describe("openingReadiness", () => {
     expect(r.reasons.some((m) => /staged\/loaded\/on-site/i.test(m))).toBe(true);
   });
 });
+
+describe("specs must be checked before a window counts as ready", () => {
+  // The docstring always said ready means "confirmed"; the calculation never
+  // looked. So an unreviewed AI draft — dimensions nobody verified — could be
+  // auto-distributed and recommended as somebody's next window.
+  const base = {
+    hasUnit: true,
+    typeMatches: true,
+    fit: "fits" as const,
+    condition: "ok" as const,
+    atLocationOrLoaded: true,
+  };
+
+  it("is incomplete, not blocked, when nobody has checked the specs", () => {
+    const r = readyToInstall({ ...base, confirmed: false });
+    expect(r.status).toBe("incomplete");
+    expect(r.reasons.join(" ")).toContain("Specs not checked");
+  });
+
+  it("is ready once somebody has", () => {
+    expect(readyToInstall({ ...base, confirmed: true }).status).toBe("ready");
+  });
+
+  it("behaves exactly as before when the caller cannot know", () => {
+    // Optional on purpose: a partial select must not silently flip every
+    // opening on the job to incomplete.
+    expect(readyToInstall(base).status).toBe("ready");
+  });
+});

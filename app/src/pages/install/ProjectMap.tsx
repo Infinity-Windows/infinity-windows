@@ -828,7 +828,6 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         { numeric: true },
       ),
     );
-  const unplaced = all.filter((o) => o.pin_x === null || o.pin_y === null);
   const installed = all.filter((o) => o.status === "installed").length;
   const detailPages = details.map((detail) => detail.pageNumber);
   const pinnedPlanPages = [
@@ -844,11 +843,14 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         ? detailPages
         : Array.from({ length: specsPageCount }, (_, index) => index + 1)
       : view === "building"
-        ? pinnedPlanPages.length > 0
-          ? pinnedPlanPages
-          : floorPages.length > 0
-            ? floorPages
-            : Array.from({ length: buildingPageCount }, (_, index) => index + 1)
+        ? /*
+           * Same fix as the outline view below: once any opening on the job has
+           * a pin, paging by "pages with pins" alone drops every floor that
+           * hasn't been pinned yet. A multi-story job needs its unpinned floors
+           * in the pager too, or the "Original plan" view looks like it lost
+           * them.
+           */
+          mergePageLists(floorPages, pinnedPlanPages, buildingPageCount)
         : /*
            * The outline view pages by the sheets the PDF reader thinks are floor
            * plans, PLUS any sheet that actually carries marks. Oakridge's marks
@@ -1115,16 +1117,15 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const showView = (next: DrawingView, nextPage?: number) => {
     setView(next);
     if (next !== "outline") setEditingModel(false);
+    // Building and outline share mergePageLists so switching views never drops
+    // an unpinned floor from the pager — see the matching visiblePages logic
+    // above for why "pages with pins" alone isn't enough once any mark is placed.
     const pages =
       next === "details"
         ? detailPages.length > 0
           ? detailPages
           : Array.from({ length: specsPageCount }, (_, index) => index + 1)
-        : next === "building" && pinnedPlanPages.length > 0
-          ? pinnedPlanPages
-          : floorPages.length > 0
-            ? floorPages
-            : Array.from({ length: buildingPageCount }, (_, index) => index + 1);
+        : mergePageLists(floorPages, pinnedPlanPages, buildingPageCount);
     setPage(nextPage ?? pages[0] ?? 1);
     setPdfZoom(1);
     setOutlineZoom(OUTLINE_ZOOM_DEFAULT);
@@ -1691,8 +1692,11 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       )}
       <p className="muted">
         {installed}/{all.length} installed
-        {unplaced.length > 0 &&
-          ` — ${unplaced.length} auto-placed (dashed) · drag dots to set them`}
+        {/* autos, not unplaced: unplaced counts the whole job, but with a filter
+            on (e.g. "Doors") only autos' dashed dots actually get drawn — so the
+            number here has to match what's on the plan, not the full job. */}
+        {autos.length > 0 &&
+          ` — ${autos.length} auto-placed (dashed) · drag dots to set them`}
       </p>
 
       {(buildingPdf || specsPdf) && (
@@ -1747,11 +1751,19 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               setView("outline");
               setOutlines({});
               setFullScreen(false);
+              // Otherwise the last file's "Loaded 12 openings across 4 marks"
+              // stays on screen with nothing saying it's not about this file.
+              setExtractSummary(null);
+              setExtractNote(null);
             }}
             onPickSpecsPlanset={(id: string) => {
               setSpecsPlansetId(id);
               setView("details");
               setFullScreen(false);
+              // Same reason as onPickBuildingPlanset: clear the old file's
+              // extraction results so they can't be mistaken for this one's.
+              setExtractSummary(null);
+              setExtractNote(null);
             }}
             onShowView={showView}
           />

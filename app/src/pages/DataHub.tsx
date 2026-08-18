@@ -43,6 +43,7 @@ import {
 import type { ProjectOpening } from "../lib/install/types";
 import type { ProjectMarkSpec } from "../lib/install/specs";
 import type { SignatureV1 } from "../lib/estimate/signature";
+import type { LadderRung } from "../lib/estimate/cohorts";
 
 const fmtH = (min: number) => `${Math.floor(min / 60)}h ${Math.round(min) % 60}m`;
 
@@ -75,12 +76,16 @@ function Bar({
   );
 }
 
-/** Ladder rungs in plain words — how close the look-alikes are. */
-const RUNG_LABELS: Record<string, string> = {
+/** Ladder rungs in plain words — how close the look-alikes are. Keyed on
+ * LadderRung (not string) so a new rung fails the TS build instead of
+ * rendering as a raw chip like "none 8". */
+const RUNG_LABELS: Record<LadderRung, string> = {
   exact: "exact look-alikes",
   "kind+panels": "same type & panel count",
   kind: "same type",
   global: "all windows",
+  none: "no estimate yet",
+  manual: "manual estimate",
 };
 
 export function DataHub() {
@@ -224,7 +229,8 @@ export function DataHub() {
   const estimating = useMemo(() => {
     let signed = 0;
     let unsigned = 0;
-    const rungs = new Map<string, number>();
+    // Typed on LadderRung (not string) so it lines up with RUNG_LABELS below.
+    const rungs = new Map<LadderRung, number>();
     // Actual recorded minutes per unit (automatic timing only).
     const actualBy = new Map<string, number>();
     for (const ev of sessionsEv.data ?? []) {
@@ -670,6 +676,18 @@ export function DataHub() {
             </div>
           );
         })}
+        {crew.overShiftCount > 0 && (
+          <div style={{ padding: "4px 0" }}>
+            <strong style={{ fontSize: 13 }}>Session time exceeds clocked time</strong>
+            <p className="muted" style={{ margin: "2px 0 0", fontSize: 12 }}>
+              {crew.overShiftCount} {crew.overShiftCount === 1 ? "person" : "people"} logged
+              more on-tool minutes than their clocked shift covers this month —{" "}
+              {fmtH(crew.overShiftMin)} more than their shifts can explain. That usually
+              means overlapping sessions, a shift edited after the fact, or clock drift.
+              Worth a check before trusting the on-tool numbers above.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -17,7 +17,12 @@ function opening(p: Partial<ProjectOpening> & { id: string }): ProjectOpening {
     pin_y: null,
     assigned_window_id: "unit-1",
     status: "pending",
-    confirmed: false,
+    // Confirmed by default: readiness now requires that somebody checked the
+    // opening against the plans, and these fixtures describe openings that ARE
+    // ready. The old `false` here is precisely the bug the audit found — the
+    // docstring always said ready meant confirmed and the check never looked,
+    // so this fixture asserted that an unreviewed draft was ready to install.
+    confirmed: true,
     created_at: "2026-07-17T00:00:00Z",
     ro_width_in: 25,
     ro_height_in: 37,

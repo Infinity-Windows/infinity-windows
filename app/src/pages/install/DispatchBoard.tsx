@@ -19,7 +19,11 @@ import {
   type DispatchContext,
   type DispatchCrew,
 } from "../../lib/dispatch";
-import { areaKey, toDispatchOpening } from "../../lib/install/nextOpening";
+import {
+  applySessionBlocks,
+  areaKey,
+  toDispatchOpening,
+} from "../../lib/install/nextOpening";
 import { OpeningDetailCard } from "../../components/install/OpeningDetailCard";
 import { OpeningRowButton } from "../../components/install/OpeningRowButton";
 import { installerColorMap } from "../../lib/install/mapDispatch";
@@ -73,6 +77,21 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
     queryKey: ["projectIssues", projectId],
     queryFn: () => listProjectIssues(projectId),
   });
+  // Same query SessionStrips uses below (identical key, so React Query shares
+  // the one fetch) — needed here too so auto-distribute can see which units
+  // are session-blocked before it hands them out.
+  const sessions = useQuery({
+    queryKey: ["unitSessions", projectId],
+    queryFn: () => listProjectSessions(projectId),
+    refetchInterval: 30_000,
+  });
+  // A unit whose newest session ended in a Block is never recommended (CONTEXT.md,
+  // 2026-08-17) — sending someone to a window that's waiting on hardware or a
+  // decision burns trust on day one. MyWork enforces this the same way.
+  const blockedIds = useMemo(
+    () => new Set(blockedUnits(sessions.data ?? []).map((b) => b.openingId)),
+    [sessions.data],
+  );
 
   const resolveIssueM = useMutation({
     mutationFn: (id: string) => resolveIssue(id),
@@ -101,7 +120,10 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
 
   const distribute = useMutation({
     mutationFn: async () => {
-      const dispatchOpenings = (openings.data ?? []).map(toDispatchOpening);
+      const dispatchOpenings = applySessionBlocks(
+        (openings.data ?? []).map(toDispatchOpening),
+        blockedIds,
+      );
       const dispatchCrew: DispatchCrew[] = (crew.data ?? []).map((c) => ({
         id: c.id,
         skill_level: c.skill_level,
@@ -374,9 +396,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
         );
       })}
       <p className="muted" style={{ fontSize: 12 }}>
-        {nameOf(activeCrew[0]?.id ?? "")
-          ? ""
-          : "Add crew on the Crew screen to assign work."}
+        {activeCrew.length === 0 ? "Add crew on the Crew screen to assign work." : ""}
       </p>
     </div>
   );

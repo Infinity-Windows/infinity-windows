@@ -96,6 +96,9 @@ type HubTab =
 export function ProjectDetail() {
   const { projectId = "" } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  // Read before the tab is resolved: which tabs a URL may open depends on it.
+  const { effectiveRole } = useEffectiveRole();
+  const isLead = isForemanPlus(effectiveRole);
   const tabParam = searchParams.get("tab");
   const tab: HubTab =
     tabParam === "warehouse" ||
@@ -103,8 +106,11 @@ export function ProjectDetail() {
     tabParam === "model-studio" ||
     tabParam === "maps-interactive" ||
     tabParam === "brain" ||
-    tabParam === "dispatch" ||
-    tabParam === "exceptions" ||
+    // Lead-only tabs, and ONLY when the viewer is one. The tab BUTTONS are
+    // already hidden from non-leads, but a shared or bookmarked link went
+    // straight through — the tab opened and its lead-gated content rendered
+    // nothing, so the page was a header and empty space with no message.
+    (isLead && (tabParam === "dispatch" || tabParam === "exceptions")) ||
     tabParam === "photos" ||
     tabParam === "chat"
       ? tabParam
@@ -125,8 +131,6 @@ export function ProjectDetail() {
   }, [tabParam]);
 
   useRealtimeOpenings(projectId);
-  const { effectiveRole } = useEffectiveRole();
-  const isLead = isForemanPlus(effectiveRole);
   const unread = useUnreadCounts();
   const chatUnread = unread.data?.[projectId] ?? 0;
 
@@ -437,7 +441,18 @@ function OverviewTab({
 
       <WhoOnJobPanel projectId={projectId} />
 
-      {estimate && estimate.est.remaining > 0 && (
+      {/* Foreman+ only (P1, owner-approved). This card comes from the OLDER
+          estimating code, which uses a per-type median with NO minimum sample
+          size — the first install ever recorded sets the baseline and the
+          second makes it a median, so a confident "slow-case" number can be
+          built from two events. The Brain tab's cohort ladder does it the way
+          CONTEXT.md settled: always labelled with its rung and sample count,
+          and it refuses to print a number below n=5. Two answers for one job,
+          and the un-hedged one was the one installers saw. Gating it is not a
+          new decision — comparisons across units are already foreman+.
+          Retiring lib/estimate.ts in favour of the ladder is the real fix and
+          is its own piece of work. */}
+      {isLead && estimate && estimate.est.remaining > 0 && (
         <div className="estimate-card">
           <div className="estimate-head">
             <span className="field-label">Forecast (remaining {estimate.est.remaining})</span>
@@ -536,7 +551,17 @@ function OverviewTab({
       </p>
       <ul className="unit-list work-list">
         {needs.map((n) => {
-          const have = units.filter((u) => u.window_type_id === n.window_type_id).length;
+          // "On hand" means a crew could pick it up today. A damaged unit is
+          // a SHORTAGE — the database's own reorder rule already says so, and
+          // counting it here made Overview show a green 5/5 while the same
+          // job's Warehouse tab said "2 damaged, needs reorder". Pre-issued
+          // units are ordered but not physically here, so they are counted
+          // separately rather than hidden (owner call, P8).
+          const forType = units.filter((u) => u.window_type_id === n.window_type_id);
+          const have = forType.filter(
+            (u) => u.status !== "damaged" && u.status !== "pre_issued",
+          ).length;
+          const onTheWay = forType.filter((u) => u.status === "pre_issued").length;
           return (
             <li key={n.id} className="find-row">
               <div>
@@ -544,6 +569,11 @@ function OverviewTab({
               </div>
               <span className={have >= n.quantity ? "ok" : "warn-text"} style={{ marginLeft: "auto" }}>
                 {have}/{n.quantity}
+                {onTheWay > 0 && (
+                  <span className="muted" style={{ fontSize: 12, marginLeft: 6 }}>
+                    · {onTheWay} on the way
+                  </span>
+                )}
               </span>
             </li>
           );

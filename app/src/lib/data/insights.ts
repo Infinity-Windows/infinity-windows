@@ -280,7 +280,7 @@ export function onTool(
     "profile_id" | "clock_in_at" | "clock_out_at" | "break_seconds"
   >[],
   now: number = Date.now(),
-): { total: OnToolRow; perPerson: OnToolRow[] } {
+): { total: OnToolRow; perPerson: OnToolRow[]; overShiftCount: number; overShiftMin: number } {
   const shiftMinBy = new Map<string, number>();
   for (const sh of shifts) {
     const start = Date.parse(sh.clock_in_at);
@@ -300,10 +300,16 @@ export function onTool(
     );
   }
   const people = new Set([...shiftMinBy.keys(), ...sessionMinBy.keys()]);
+  // Session minutes are reported RAW here, not trimmed to shiftMin. Trimming
+  // used to hide the case where recorded session time runs past the clocked
+  // shift (overlapping sessions, a shift edited after the fact, clock
+  // drift) — the overage would just vanish from the crew total instead of
+  // showing up as something to check. The percentage below still caps at
+  // 100%, so display never claims more than a full shift of on-tool time.
   const perPerson: OnToolRow[] = [...people]
     .map((profileId) => {
       const shiftMin = shiftMinBy.get(profileId) ?? 0;
-      const sessionMin = Math.min(sessionMinBy.get(profileId) ?? 0, shiftMin || Infinity);
+      const sessionMin = sessionMinBy.get(profileId) ?? 0;
       return {
         profileId,
         sessionMin,
@@ -314,6 +320,10 @@ export function onTool(
     .sort((a, b) => (b.shiftMin ?? 0) - (a.shiftMin ?? 0));
   const sessionMin = perPerson.reduce((t, p) => t + p.sessionMin, 0);
   const shiftMin = perPerson.reduce((t, p) => t + p.shiftMin, 0);
+  // Data-quality signal: who has more on-tool minutes than clocked minutes.
+  // Only counts people who actually have a shift — no shift at all is a
+  // different (already-visible) problem, not this one.
+  const overShift = perPerson.filter((p) => p.shiftMin > 0 && p.sessionMin > p.shiftMin);
   return {
     total: {
       profileId: "crew",
@@ -322,5 +332,7 @@ export function onTool(
       pct: shiftMin > 0 ? Math.min(1, sessionMin / shiftMin) : null,
     },
     perPerson,
+    overShiftCount: overShift.length,
+    overShiftMin: overShift.reduce((t, p) => t + (p.sessionMin - p.shiftMin), 0),
   };
 }

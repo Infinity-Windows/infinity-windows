@@ -39,6 +39,11 @@ export function Projects() {
   const canAdd = isForemanPlus(profile.data?.role);
   const counts = useQuery({
     queryKey: ["openingCounts"],
+    // NOTE: this pulls every opening row for every job with no limit or
+    // pagination. It works today but won't scale forever — the real fix is
+    // a server-side aggregate (counts grouped by project), not a client
+    // filter over the whole table. Deferred on purpose; flagging so the
+    // next reader doesn't think it was missed.
     queryFn: async (): Promise<OpeningCountRow[]> => {
       const { data, error } = await supabase
         .from("project_openings")
@@ -238,6 +243,15 @@ export function Projects() {
             onRetry={() => void projects.refetch()}
             label="Couldn't load jobs"
           />
+        )}
+        {/* If the counts query fails, countFor() quietly falls back to an empty
+            list and every card would show "0 openings / 0 done" — identical to
+            a job nobody has touched. Say so plainly instead of going silent,
+            so a broken read is never mistaken for no work done. */}
+        {!projects.isLoading && !projects.isError && counts.isError && (
+          <p className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+            Progress unavailable — job list below is current, but "openings done" counts couldn't load.
+          </p>
         )}
         {!projects.isLoading &&
           !projects.isError &&

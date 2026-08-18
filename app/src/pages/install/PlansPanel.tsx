@@ -106,8 +106,11 @@ export function PlansPanel({
           {/* Re-reading a planset rebuilds the job's whole list of windows and
               doors — it deletes the superseded marks and inserts fresh ones — so
               it is foreman+, and the database says so too. Hidden rather than
-              disabled: an installer has no reason to know this button exists. */}
-          {isLead && specsPdf && (
+              disabled: an installer has no reason to know this button exists.
+              Either file is enough to re-read — the handler only refuses when
+              both are missing — so requiring specs here stranded a lead who
+              had uploaded just a building plan with no way to load marks. */}
+          {isLead && (buildingPdf || specsPdf) && (
             <button
               type="button"
               className="button-like"

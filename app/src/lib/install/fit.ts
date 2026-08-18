@@ -143,6 +143,17 @@ export interface ReadyInput {
   fit: FitVerdict;
   condition: "unknown" | "ok" | "damaged";
   atLocationOrLoaded: boolean;
+  /**
+   * Has a person checked this opening's specs against the plans?
+   *
+   * The docstring below has always said ready means "confirmed", and the
+   * calculation never looked at it — so an unreviewed AI draft, with
+   * dimensions nobody verified, could be marked ready, auto-distributed, and
+   * recommended as somebody's next window. Optional so callers that genuinely
+   * cannot know (older rows, partial selects) behave exactly as before rather
+   * than silently flipping every opening to incomplete.
+   */
+  confirmed?: boolean;
 }
 
 export interface ReadyResult {
@@ -184,6 +195,13 @@ export function readyToInstall(input: ReadyInput): ReadyResult {
     reasons.push("Unit is not staged/loaded/on-site.");
   }
 
+  // Incomplete, never blocked: the window is fine, nobody has checked its
+  // numbers yet. Blocking would need a foreman; incomplete keeps it in the
+  // list wearing the reason, and any installer can clear it from the sheet.
+  if (input.confirmed === false) {
+    reasons.push("Specs not checked against the plans yet.");
+  }
+
   if (blocked) return { status: "blocked", reasons };
   if (reasons.length > 0) return { status: "incomplete", reasons };
   return { status: "ready", reasons: ["Right unit, fits, undamaged, on hand."] };
@@ -191,6 +209,8 @@ export function readyToInstall(input: ReadyInput): ReadyResult {
 
 export interface OpeningLike {
   status: string;
+  /** Whether a person has checked this opening against the plans. */
+  confirmed?: boolean;
   assigned_window_id: string | null;
   window_type_id: string | null;
   condition: "unknown" | "ok" | "damaged";
@@ -227,6 +247,7 @@ export function openingReadiness(o: OpeningLike): OpeningReadiness {
     fit: fit.verdict,
     condition: o.condition,
     atLocationOrLoaded,
+    confirmed: o.confirmed,
   });
   return { status: result.status, reasons: result.reasons, fit: fit.verdict };
 }

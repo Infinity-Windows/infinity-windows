@@ -83,6 +83,30 @@ export const KIND_LABELS: Record<IssueKind, string> = {
 };
 
 /**
+ * Display order for issue kinds (used by the Issues page filter dropdown).
+ * Written as a Record<IssueKind, number> so TypeScript fails the build if a
+ * new IssueKind is ever added without a rank here — a hand-copied array
+ * (the old approach) can silently drift out of sync with IssueKind, which is
+ * exactly what happened: "framing" and "missing" were added to IssueKind but
+ * never added to the dropdown's list, so foremen couldn't filter to them.
+ */
+const KIND_ORDER_RANK: Record<IssueKind, number> = {
+  failed_install: 0,
+  framing: 1,
+  damage: 2,
+  missing: 3,
+  flag: 4,
+  blocker: 5,
+  complication: 6,
+  spec_gap: 7,
+};
+
+/** All issue kinds, in display order, derived from KIND_ORDER_RANK above. */
+export const KIND_ORDER: IssueKind[] = (
+  Object.keys(KIND_ORDER_RANK) as IssueKind[]
+).sort((a, b) => KIND_ORDER_RANK[a] - KIND_ORDER_RANK[b]);
+
+/**
  * Tier-sort comparator: urgency tier first (emergency > urgent > normal), then
  * chronological (oldest-first) within a tier so the longest-waiting problem in
  * each tier rises to the top.
