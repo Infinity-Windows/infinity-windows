@@ -257,8 +257,12 @@ Receive rebuilds on packages (it becomes a thin door onto Tag/arrival). The pre-
 
 **Three reads deliberately survive until the table drops:** OpeningSheet's scan-assign (links a physical unit to an opening; still functional against the living table), the ReorderNeeds RPC (server-computed; rebuilt on packages when the table drops), and the pure loadout helpers behind it. The table itself was NOT dropped — that is the one-release archive this ticket promised, and the rollback if the package flow disappoints its first real truck.
 
-## 22 — The warehouse map (parked)
+## 22 — The warehouse map (unparked 2026-08-18, owner's word — building in three slices)
 
-**Owner call 2026-08-18:** rides with the physical slot reorganization, not before. At today's coarseness a 3D view can only glow a third of a box, and "Conex 7 — front" already says that in words.
+Original park: rides with the physical slot reorganization. The owner unparked it the same day; the three-slice order makes each piece useful alone.
 
-Scope when it wakes, so it is ready the day shelves start moving: a shelf/rack object in Studio (the engine's free-standing item machinery exists but no product wiring does — real work, not a flag); simple true-dimension shell models of each conex and the main warehouse as standalone Studio projects; a link from a container record to its model; and Find lighting up the package's slot — or, until slots exist somewhere, its area zone. Nothing here starts while slots are parked.
+**Slice 1 — shells and the link (SHIPPED).** `storage_containers.studio_project_id`, supervisor+ `set_container_model`, and a "3D shell" panel on the container page: real measurements in (a conex prefills the standard 20-foot box; the record learns the dims the moment they're typed), a true-dimension Studio project generated in the editor's own save format — the door end is +x, which the viewer's area glow will lean on — linked, and opened in Studio.
+
+**Slice 2 — the shelf (next).** Studio's first free-standing object: a rack/shelf box with real dimensions, placed inside a shell. The vendored engine carries the machinery (OnFloorItem); the product wiring — palette, geometry, serialization round-trip — is the work. This is what makes the reorganization drawable.
+
+**Slice 3 — the installer's view.** A read-only 3D viewer (installers never get the supervisor editor) where Find's "see it in 3D" glows the package's area zone — the +x third for "front", compass corners in the building — and real slots when slots exist.

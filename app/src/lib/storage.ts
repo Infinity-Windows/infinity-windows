@@ -83,6 +83,8 @@ export interface StorageContainer {
   width_cm?: number | null;
   height_cm?: number | null;
   weight_kg?: number | null;
+  /** The container's 3D shell in Studio, when one has been made (ticket 22). */
+  studio_project_id?: string | null;
 }
 
 /**
@@ -473,6 +475,20 @@ export async function setPackageWindow(
   });
   if (error) throw error;
   return normalizePackage(data as Record<string, unknown>);
+}
+
+/** Link a container to its Studio shell (ticket 22). Supervisor+ — a shell
+ * IS a Studio project, and this matches Studio authoring's own gate. */
+export async function setContainerModel(
+  containerId: string,
+  studioProjectId: string | null,
+): Promise<StorageContainer> {
+  const { data, error } = await supabase.rpc("set_container_model", {
+    p_container: containerId,
+    p_studio: studioProjectId,
+  });
+  if (error) throw error;
+  return data as StorageContainer;
 }
 
 /** What the maker's label claims, when it disagrees with ours (ticket 20).
