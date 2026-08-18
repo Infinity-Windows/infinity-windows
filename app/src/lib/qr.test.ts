@@ -106,3 +106,22 @@ describe("qr payloads", () => {
     expect(parseQr("WOPS:X:whatever")).toBeNull();
   });
 });
+
+describe("bare window serial typed off the sticker", () => {
+  // WIN- was missing while CTR-/PKG- were handled, so the one number printed
+  // on the label an installer is holding resolved to nothing.
+  it("resolves a bare WIN- serial", () => {
+    expect(parseQr("WIN-000123")).toEqual({ kind: "windowSerial", serial: "WIN-000123" });
+  });
+
+  it("is case-tolerant, like the other bare serials", () => {
+    expect(parseQr("win-000123")).toEqual({ kind: "windowSerial", serial: "WIN-000123" });
+  });
+
+  it("still resolves the QR form the same way", () => {
+    expect(parseQr("WOPS:WS:WIN-000123")).toEqual({
+      kind: "windowSerial",
+      serial: "WIN-000123",
+    });
+  });
+});

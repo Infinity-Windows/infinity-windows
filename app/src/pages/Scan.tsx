@@ -1,6 +1,6 @@
 import { BackChip } from "../components/BackChip";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Scanner } from "../components/Scanner";
 import {
   findWindowByCode,
@@ -19,15 +19,12 @@ const locationLookups = { getLocationByAddress, getLocationBySerial };
 
 export function Scan() {
   const navigate = useNavigate();
-  const [code, setCode] = useState("");
   const [message, setMessage] = useState<string | null>(null);
-  const [looking, setLooking] = useState(false);
 
   // One resolver for every scanned label: a window/short-code/serial jumps to
   // the unit, a slot label jumps to the slot, anything else explains itself.
   const handleScan = async (payload: QrPayload) => {
     setMessage(null);
-    setLooking(true);
     try {
       if (payload.kind === "location" || payload.kind === "locationSerial") {
         const res = await resolveLocationFromScan(payload, locationLookups);
@@ -62,40 +59,6 @@ export function Scan() {
       }
     } catch (e) {
       setMessage(formatApiError(e));
-    } finally {
-      setLooking(false);
-    }
-  };
-
-  // Typed entry accepts a 6-char code or a serial. The code lookup does NOT
-  // cover serials despite the placeholder promising them, so a serial read off
-  // the sticker came back "no window found" while a QR scan of the same label
-  // worked. Fall back to the serial lookup, exactly as the scan path does.
-  const resolveTyped = async (raw: string) => {
-    const value = raw.trim();
-    if (!value) return;
-    setMessage(null);
-    setLooking(true);
-    try {
-      let res = await resolveWindowFromScan(
-        { kind: "windowCode", code: value },
-        windowLookups,
-      );
-      if (res.status !== "ok") {
-        res = await resolveWindowFromScan(
-          { kind: "windowSerial", serial: value },
-          windowLookups,
-        );
-      }
-      if (res.status === "ok") {
-        navigate(`/w/${encodeURIComponent(res.unit.window_id)}`);
-      } else {
-        setMessage(`No window found for "${value}".`);
-      }
-    } catch (e) {
-      setMessage(formatApiError(e));
-    } finally {
-      setLooking(false);
     }
   };
 
@@ -117,24 +80,13 @@ export function Scan() {
         />
       </div>
 
-      <label className="field-label">Or type the window code</label>
-      <div className="manual-entry">
-        <input
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          placeholder="6-char code or serial, e.g. K7M2QX"
-          autoCapitalize="characters"
-          onKeyDown={(e) => e.key === "Enter" && resolveTyped(code)}
-        />
-        <button disabled={looking || !code.trim()} onClick={() => resolveTyped(code)}>
-          {looking ? "…" : "Go"}
-        </button>
-      </div>
+      {/* Scanner already has its own typed-entry box, and it resolves everything
+          a scan can (windows, slots, container serials, package serials) through
+          the same handleScan path. A second typed box here only ever found
+          windows, and the link that used to sit below it pointed at /search,
+          which just redirects to Warehouse and drops whatever was typed. One
+          working door beats three, two of which lied about what they did. */}
       {message && <p className="error">{message}</p>}
-
-      <Link to="/search" className="action-btn">
-        Or search by ID →
-      </Link>
     </div>
   );
 }

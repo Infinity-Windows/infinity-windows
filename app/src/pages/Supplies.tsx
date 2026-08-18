@@ -26,10 +26,12 @@ import {
   countSupply,
   listOrders,
   listSupplies,
+  listSupplyTakes,
   onHandLabel,
   setOrderStatus,
   setSupplyHome,
   type Supply,
+  type SupplyTake,
 } from "../lib/ops";
 
 const STATUSES = ["needed", "ordered", "picked", "used"];
@@ -52,6 +54,7 @@ export function Supplies() {
   const [taking, setTaking] = useState<Supply | null>(null);
   const [counting, setCounting] = useState<Supply | null>(null);
   const [homing, setHoming] = useState<Supply | null>(null);
+  const [viewingHistory, setViewingHistory] = useState<Supply | null>(null);
 
   const locationAddress = useMemo(() => {
     const m = new Map<string, string>();
@@ -132,6 +135,9 @@ export function Supplies() {
                   Home
                 </button>
               )}
+              <button className="button-like" onClick={() => setViewingHistory(s)}>
+                History
+              </button>
             </div>
           </li>
         ))}
@@ -190,15 +196,23 @@ export function Supplies() {
         </>
       )}
 
-      <h2>Add to catalog</h2>
-      <div className="detail-card">
-        <div className="manual-entry">
-          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New supply type" />
-          <button className="primary" disabled={addCat.isPending || !newName.trim()} onClick={() => addCat.mutate()}>
-            Add
-          </button>
-        </div>
-      </div>
+      {/* Owner's call: the catalog is the company's official supply list, not
+          a scratchpad — same reasoning that already keeps Home spots (above)
+          out of an installer's hands. Anyone can add a stray name otherwise,
+          and the list stops meaning anything. */}
+      {lead && (
+        <>
+          <h2>Add to catalog</h2>
+          <div className="detail-card">
+            <div className="manual-entry">
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New supply type" />
+              <button className="primary" disabled={addCat.isPending || !newName.trim()} onClick={() => addCat.mutate()}>
+                Add
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {taking && (
         <TakeForm
@@ -230,6 +244,9 @@ export function Supplies() {
             void refreshSupplies();
           }}
         />
+      )}
+      {viewingHistory && (
+        <HistoryForm supply={viewingHistory} onClose={() => setViewingHistory(null)} />
       )}
     </div>
   );
@@ -422,6 +439,49 @@ function HomeForm({
           </button>
           <button className="button-like" onClick={onClose}>
             Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** History: once a supply leaves the stores, the owner wants to know who
+ * took it and where it went — read-only, nothing to save here. */
+function HistoryForm({ supply, onClose }: { supply: Supply; onClose: () => void }) {
+  // Same queryKey the rest of the page already fetches projects under, so
+  // this rides the existing cache instead of firing a second network call.
+  const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  const takes = useQuery({
+    queryKey: ["supply-takes", supply.id],
+    queryFn: () => listSupplyTakes(supply.id),
+  });
+  const jobCode = (id: string | null) =>
+    (projects.data ?? []).find((p) => p.id === id)?.job_code ?? "no job on file";
+  const takeLine = (t: SupplyTake) => {
+    const when = new Date(t.created_at).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+    return `${t.actor_name ?? t.actor} took ${t.qty ?? "?"} · ${jobCode(t.project_id)} · ${when}`;
+  };
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <p style={{ margin: 0, fontWeight: 700 }}>{supply.name}: who took it</p>
+        {takes.isError && <p className="error">{formatApiError(takes.error)}</p>}
+        <ul className="unit-list" style={{ margin: "8px 0 0" }}>
+          {(takes.data ?? []).map((t) => (
+            <li key={t.id} className="find-row">
+              <span>{takeLine(t)}</span>
+            </li>
+          ))}
+        </ul>
+        {takes.data?.length === 0 && <p className="muted">Nothing taken yet.</p>}
+        <div className="row-gap" style={{ marginTop: 10 }}>
+          <button className="button-like" onClick={onClose}>
+            Close
           </button>
         </div>
       </div>

@@ -83,6 +83,26 @@ export function Warehouse() {
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
   const issues = useQuery({ queryKey: ["issues"], queryFn: listIssues });
   const supplies = useQuery({ queryKey: ["supplies"], queryFn: listSupplies });
+  // listSupplies orders by name, so an un-sorted preview showed roughly
+  // A-through-F regardless of what was actually running out. Sort by what's
+  // LOW ON HAND instead, so the six rows an installer sees are the six worth
+  // knowing about.
+  //
+  // on_hand can be null ("not counted yet" -- see ops.ts). A null isn't the
+  // biggest risk (a real zero is) or the smallest (a well-stocked item is);
+  // it's an unknown, so it's ranked as if it were the AVERAGE of whatever we
+  // do know, landing it after genuinely-low items but ahead of comfortable
+  // ones -- "we don't know" is closer to a problem than "we have plenty."
+  const supplyPreview = useMemo(() => {
+    const items = supplies.data ?? [];
+    const known = items
+      .map((s) => s.on_hand)
+      .filter((n): n is number => n != null);
+    const unknownRank = known.length ? known.reduce((sum, n) => sum + n, 0) / known.length : 0;
+    return [...items]
+      .sort((a, b) => (a.on_hand ?? unknownRank) - (b.on_hand ?? unknownRank))
+      .slice(0, 6);
+  }, [supplies.data]);
   // Two systems still describe this warehouse (ADR-0004, ticket 08b). Until
   // the units retire, ONE search box has to answer for both — otherwise the
   // page cannot find the 11 units and 46 shelves that exist today.
@@ -311,7 +331,7 @@ export function Warehouse() {
                 something with its last count date beside it.
               </Explain>
               <ul className="unit-list" style={{ margin: 0 }}>
-                {(supplies.data ?? []).slice(0, 6).map((s2) => (
+                {supplyPreview.map((s2) => (
                   <li key={s2.id} className="find-row">
                     <div style={{ minWidth: 0 }}>
                       <strong>{s2.name}</strong>{" "}

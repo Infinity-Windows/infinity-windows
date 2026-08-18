@@ -18,6 +18,7 @@ import { listMyProgress } from "../lib/learn";
 import { listLedger } from "../lib/points";
 import { supabase } from "../lib/supabase";
 import { getOpenShift, isOnTheClock, listShiftsToApprove } from "../lib/timeclock";
+import { useClock } from "../lib/clockContext";
 import { listInstalledForQc } from "../lib/ops";
 import { getHeartbeat } from "../lib/heartbeat";
 import { listAssignments } from "../lib/schedule/api";
@@ -54,6 +55,7 @@ function termOfDay(): (typeof TERMS)[number] {
 }
 
 export function Home() {
+  const clock = useClock();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const { effectiveRole: role } = useEffectiveRole();
   const boss = isOwner(role);
@@ -427,7 +429,10 @@ export function Home() {
       )}
 
       {!openShift.data && (
-        <Link to="/clock" className="home-card">
+        // Opens the same clock sheet as the nav Clock tab, instead of routing
+        // to a page — the old /clock page was a second, weaker clock-in flow
+        // (hard toolbox-talk gate, no offline support) that's now gone.
+        <button type="button" className="home-card" onClick={() => clock.openClock()}>
           <div className="home-card-top">
             <span className="next-label">Today — where to go</span>
             <span className="muted" style={{ fontSize: 11 }}>Clock</span>
@@ -437,7 +442,7 @@ export function Home() {
             Pick a job and cost code — time flows into payroll and costing.
           </p>
           <span className="home-card-cta">Tap to clock in ›</span>
-        </Link>
+        </button>
       )}
 
       {activeOpening && (

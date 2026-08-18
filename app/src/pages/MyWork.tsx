@@ -1,7 +1,7 @@
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { CheckCircle2, Plane, Truck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Plane, Truck } from "lucide-react";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
@@ -153,6 +153,13 @@ export function MyWork() {
       enabled: Boolean(pid),
     })),
   });
+  // A `.map()` literal in a dep array is a new array every render, so React
+  // never sees it as "unchanged" and this memo (and the prefetch effect that
+  // keys off it below) reran on every render instead of only when a spec
+  // query's data actually changed. Join the queries' own update timestamps
+  // into one string instead — same trick `plansetIds` uses further down —
+  // so the dep is a primitive that's only new when the data really is.
+  const specDataUpdatedAt = specQueries.map((q) => q.dataUpdatedAt).join(",");
   const specIndexByProject = useMemo(() => {
     const m = new Map<string, Map<string, ProjectMarkSpec>>();
     projectIds.forEach((pid, i) => {
@@ -160,7 +167,7 @@ export function MyWork() {
     });
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectIds, specQueries.map((q) => q.data)]);
+  }, [projectIds, specDataUpdatedAt]);
   const specFor = (o: ProjectOpening): ProjectMarkSpec | null => {
     const idx = specIndexByProject.get(o.project_id);
     return idx ? specForOpeningCode(idx, o.opening_code) : null;
@@ -540,7 +547,7 @@ export function MyWork() {
         </button>
       )}
 
-      {!activeInstall && !next && (
+      {!activeInstall && !next && active.length === 0 && (
         <EmptyState
           icon={<CheckCircle2 size={22} />}
           title="Nothing assigned right now"
@@ -549,6 +556,48 @@ export function MyWork() {
             <Link to="/projects" className="button-like">
               Browse jobs
             </Link>
+          }
+        />
+      )}
+
+      {/* PROPOSAL D (owner-approved): "next" only skips PAST blocked windows,
+          it never disappears them — so !next here does not mean nothing is
+          assigned. Before this, an installer with e.g. 3 windows all waiting
+          on hardware saw the exact same "nothing assigned, browse jobs" card
+          as someone with zero windows, while the stat grid below still said
+          "3 assigned" and each reason was listed further down the page. That
+          contradiction sent people off to another job instead of making the
+          one call that clears the block. If we're here with active windows,
+          every one of them is blocked (that's the only way `next` comes up
+          empty) — so say that plainly and point at the fix, not "browse jobs". */}
+      {!activeInstall && !next && active.length > 0 && (
+        <EmptyState
+          icon={<AlertTriangle size={22} />}
+          title={
+            active.length === 1
+              ? "Your window is waiting on something"
+              : `All ${active.length} of your windows are waiting on something`
+          }
+          message={
+            active.length === 1
+              ? "It can't start until the blocker clears — call your lead about it."
+              : "None of these can start until the blockers clear — call your lead about the ones below."
+          }
+          action={
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, textAlign: "left" }}>
+              {active.map((o) => (
+                <div key={o.id} className="muted" style={{ fontSize: 12.5 }}>
+                  <strong>{o.opening_code}</strong> — {blocks.get(o.id) ?? "a blocker"}
+                </div>
+              ))}
+              <Link
+                to={`/projects/${active[0].project_id}/opening/${active[0].id}`}
+                className="button-like"
+                style={{ marginTop: 4 }}
+              >
+                Open {active[0].opening_code} to flag it to your lead
+              </Link>
+            </div>
           }
         />
       )}
