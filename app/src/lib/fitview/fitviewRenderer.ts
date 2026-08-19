@@ -1117,9 +1117,14 @@ export function mountFitView(host, job, shim) {
 
   function goTo(key) {
     if (FLAT) {
-      var w = stage.querySelector('.flat-wall[data-elev="' + key + '"]');
-      if (w) w.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-      FLAT_CURRENT = key;
+      var w = null;
+      stage.querySelectorAll(".flat-wall").forEach(function (el) {
+        if ((" " + (el.dataset.keys || "") + " ").indexOf(" " + key + " ") > -1) w = el;
+      });
+      if (w) {
+        w.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+        FLAT_CURRENT = w.dataset.elev;
+      }
       syncElevChips();
       return;
     }
@@ -1171,29 +1176,61 @@ export function mountFitView(host, job, shim) {
     var row = document.createElement("div");
     row.className = "flatrow";
 
-    // Unique wall keys in ELEVS order = walking order around the building.
-    var keys = [];
-    ELEVS.forEach(function (e) { if (keys.indexOf(e.key) < 0) keys.push(e.key); });
+    // Group ELEVS entries into PHYSICAL walls: same polygon, same plan-view
+    // geometry — a wall's stories stack inside ONE panel. Order the panels
+    // building by building (polygon-major), each in edge order, so two
+    // buildings never interleave (owner report, 2026-08-19: door 36 was
+    // being attributed to the wall window 1-1 lives on — the walls of both
+    // buildings were shuffled together, story-major).
+    var geoOf = function (e) {
+      return (e.poly || 0) + "|" + [e.x1, e.z1, e.x2, e.z2]
+        .map(function (v) { return String(Math.round((v || 0) * 100) / 100); })
+        .join(",");
+    };
+    var groups = [], byGeo = {};
+    ELEVS.forEach(function (e, idx) {
+      var geo = geoOf(e);
+      var g = byGeo[geo];
+      if (!g) {
+        g = { gkey: e.key, poly: e.poly || 0, geo: geo,
+              name: e.name || e.key, keys: [], entries: [], order: idx };
+        byGeo[geo] = g;
+        groups.push(g);
+      }
+      g.keys.push(e.key);
+      g.entries.push(e);
+    });
+    groups.sort(function (a, b) { return a.poly - b.poly || a.order - b.order; });
+    var manyBuildings = groups.some(function (g) { return g.poly > 0; });
 
-    keys.forEach(function (key) {
-      var entries = ELEVS.filter(function (e) { return e.key === key; });
-      var name = entries[0].name || key;
+    var lastPoly = null;
+    groups.forEach(function (g) {
+      if (manyBuildings && g.poly !== lastPoly) {
+        var brk = document.createElement("div");
+        brk.className = "flat-building-break";
+        brk.innerHTML = "<span>Building " + (g.poly + 1) + "</span>";
+        row.appendChild(brk);
+      }
+      lastPoly = g.poly;
+
       var top = 0, width = 0;
-      entries.forEach(function (e) {
+      g.entries.forEach(function (e) {
         var h = ((e.base || 0) + (e.hM != null ? e.hM : ENVELOPE)) * S;
         if (h > top) top = h;
       });
       var wrap = document.createElement("div");
       wrap.className = "flat-wall";
-      wrap.dataset.elev = key;
+      wrap.dataset.elev = g.gkey;
+      wrap.dataset.keys = g.keys.join(" ");
+      wrap.dataset.geo = g.geo;
       var chip = document.createElement("div");
       chip.className = "flat-label";
-      chip.textContent = name;
+      chip.textContent = (manyBuildings ? "B" + (g.poly + 1) + " · " : "") + g.name;
       wrap.appendChild(chip);
+      wrap.dataset.label = chip.textContent;
 
-      entries.forEach(function (e) {
-        var sel = '.face[data-elev="' + key + '"][data-story="' + (e.story || 1) + '"]';
-        var face = house.querySelector(sel) || house.querySelector('.face[data-elev="' + key + '"]');
+      g.entries.forEach(function (e) {
+        var face = house.querySelector('.face[data-elev="' + e.key + '"]');
         if (!face || face.parentElement === wrap) return;
         var w = parseFloat(face.style.width) || 0;
         if (w > width) width = w;
@@ -1211,6 +1248,7 @@ export function mountFitView(host, job, shim) {
       wrap.style.height = top + "px";
       row.appendChild(wrap);
     });
+
     // Flat walls are normal DOM, so a normal click does what the 3D
     // pointer gymnastics did: one front door, tapWindow.
     row.addEventListener("click", function (e) {
@@ -1219,31 +1257,35 @@ export function mountFitView(host, job, shim) {
     });
     stage.appendChild(row);
 
-    // Minimap: the footprint outline with the current wall lit. Non-
-    // interactive by design — it answers "where am I?", nothing else.
-    var pts = [];
-    if (FOOT && FOOT.length && FOOT[0].length >= 3) {
-      pts = FOOT[0].map(function (p) { return { x: p.x, z: p.z }; });
-    }
+    // Minimap: EVERY building's outline, current wall matched by its plan
+    // geometry — no index arithmetic to drift. Non-interactive by design.
     var map = document.createElement("div");
     map.className = "flat-minimap";
     map.setAttribute("aria-hidden", "true");
-    if (pts.length >= 3) {
+    var polys = FOOT && FOOT.length ? FOOT : [];
+    if (polys.length && polys[0].length >= 3) {
       var minx = Infinity, minz = Infinity, maxx = -Infinity, maxz = -Infinity;
-      pts.forEach(function (p) {
-        if (p.x < minx) minx = p.x; if (p.x > maxx) maxx = p.x;
-        if (p.z < minz) minz = p.z; if (p.z > maxz) maxz = p.z;
+      polys.forEach(function (fp) {
+        fp.forEach(function (pt) {
+          if (pt.x < minx) minx = pt.x; if (pt.x > maxx) maxx = pt.x;
+          if (pt.z < minz) minz = pt.z; if (pt.z > maxz) maxz = pt.z;
+        });
       });
       var mw = Math.max(1, maxx - minx), mh = Math.max(1, maxz - minz);
       var scale = 112 / Math.max(mw, mh);
       var toX = function (x) { return ((x - minx) * scale + 8).toFixed(1); };
       var toZ = function (z) { return ((z - minz) * scale + 8).toFixed(1); };
       var svg = '<svg viewBox="0 0 128 128" width="128" height="128">';
-      for (var i = 0; i < pts.length; i++) {
-        var a = pts[i], b = pts[(i + 1) % pts.length];
-        svg += '<line data-edge="' + i + '" x1="' + toX(a.x) + '" y1="' + toZ(a.z) +
-               '" x2="' + toX(b.x) + '" y2="' + toZ(b.z) + '" />';
-      }
+      polys.forEach(function (fp, pi) {
+        for (var i = 0; i < fp.length; i++) {
+          var a = fp[i], b = fp[(i + 1) % fp.length];
+          var geo = pi + "|" + [a.x, a.z, b.x, b.z]
+            .map(function (v) { return String(Math.round((v || 0) * 100) / 100); })
+            .join(",");
+          svg += '<line data-geo="' + geo + '" x1="' + toX(a.x) + '" y1="' + toZ(a.z) +
+                 '" x2="' + toX(b.x) + '" y2="' + toZ(b.z) + '" />';
+        }
+      });
       svg += "</svg>";
       map.innerHTML = svg + '<div class="flat-minimap-label"></div>';
     } else {
@@ -1251,43 +1293,33 @@ export function mountFitView(host, job, shim) {
     }
     stage.appendChild(map);
 
-    // Which wall is under the middle of the screen right now?
     var syncCurrent = function () {
       // Pin the minimap to the visible corner: absolute children ride along
       // with the scrolled content, so walk it back by exactly the scroll
-      // (owner report, 2026-08-19: "the whole map goes out of frame — lock
-      // it into the corner so I can always see it").
+      // (owner: "lock it into the corner so I can always see it").
       map.style.transform = "translateX(" + stage.scrollLeft + "px)";
       var mid = stage.scrollLeft + stage.clientWidth / 2;
       var best = null, bestD = Infinity;
-      row.querySelectorAll(".flat-wall").forEach(function (w, i) {
+      row.querySelectorAll(".flat-wall").forEach(function (w) {
         var c = w.offsetLeft + w.offsetWidth / 2;
         var d = Math.abs(c - mid);
-        if (d < bestD) { bestD = d; best = { key: w.dataset.elev, idx: i }; }
+        if (d < bestD) { bestD = d; best = w; }
       });
       if (!best) return;
-      if (FLAT_CURRENT !== best.key) {
-        FLAT_CURRENT = best.key;
+      if (FLAT_CURRENT !== best.dataset.elev) {
+        FLAT_CURRENT = best.dataset.elev;
         syncElevChips();
       }
       var label = map.querySelector(".flat-minimap-label");
-      var entry = ELEVS.filter(function (e) { return e.key === best.key; })[0];
-      if (label && entry) label.textContent = entry.name || best.key;
-      // The wall's own key names its footprint edge ("s3" = edge 3) — the
-      // wrapper index only agrees on single-story boxes, so parse the key
-      // and fall back to the index.
-      var km = /^s(\d+)$/.exec(best.key);
-      var edgeIdx = km ? parseInt(km[1], 10) : best.idx;
-      map.querySelectorAll("line").forEach(function (ln, i) {
-        ln.classList.toggle("on", i === edgeIdx);
+      if (label) label.textContent = best.dataset.label || "";
+      map.querySelectorAll("line").forEach(function (ln) {
+        ln.classList.toggle("on", ln.getAttribute("data-geo") === best.dataset.geo);
       });
     };
     stage.addEventListener("scroll", syncCurrent, { passive: true });
-    // Belt and braces for phones (owner report, 2026-08-19: the dot never
-    // moved while scrolling): watch scrollLeft every frame instead of
+    // Belt and braces for phones: watch scrollLeft every frame instead of
     // trusting scroll events to arrive from whichever element the browser
-    // actually scrolls. One number compare per frame; self-terminates when
-    // the stage leaves the document.
+    // actually scrolls. Self-terminates when the stage leaves the document.
     var lastSL = -1;
     (function watchScroll() {
       if (!stage.isConnected) return;
@@ -1786,7 +1818,12 @@ export function mountFitView(host, job, shim) {
   $("pickElev").addEventListener("click", function () {
     var elev = activeElev();
     if (!elev) { SHIM.toast("Face an elevation first"); return; }
-    JOB.windows.filter(function (w) { return w.elev === elev; })
+    var keys = [elev];
+    if (FLAT) {
+      var wrap = stage.querySelector('.flat-wall[data-elev="' + elev + '"]');
+      if (wrap && wrap.dataset.keys) keys = wrap.dataset.keys.split(" ");
+    }
+    JOB.windows.filter(function (w) { return keys.indexOf(w.elev) > -1; })
       .forEach(function (w) {
         if (!state.picked[w.id]) togglePick(w.id);
       });
