@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getMyProfile } from "../../lib/install/api";
 import {
+  iAnswered,
   listAllLiveSummons,
   summonStripLine,
 } from "../../lib/install/summons";
@@ -28,6 +29,7 @@ export function LiveSummonsStrip() {
     <section aria-label="Live summons" style={{ display: "grid", gap: 8 }}>
       {rows.map((s) => {
         const mine = Boolean(me.data?.id && s.requested_by === me.data.id);
+        const answered = iAnswered(s, me.data?.id);
         const open = s.status === "open";
         return (
           <Link
@@ -46,12 +48,12 @@ export function LiveSummonsStrip() {
             }}
           >
             <div style={{ minWidth: 0, flex: 1 }}>
-              <strong className={open ? "error" : "muted"}>
-                {open ? "SUMMON" : "Summon covered"}
+              <strong className={answered ? "ok" : open ? "error" : "muted"}>
+                {answered ? "You answered" : open ? "SUMMON" : "Summon covered"}
               </strong>{" "}
               <span>{summonStripLine(s, mine)}</span>
             </div>
-            {open && !mine && (
+            {open && !mine && !answered && (
               <span className="button-like active-pill" aria-hidden>
                 Answer
               </span>
