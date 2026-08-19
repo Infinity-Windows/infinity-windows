@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildWebManifest,
   normalizeBase,
+  pageScopeUrl,
   renderWebManifest,
   resolveNotificationUrl,
   routerBasename,
@@ -163,5 +164,38 @@ describe("resolveNotificationUrl", () => {
 
   it("keeps the raw url rather than losing the click on a junk scope", () => {
     expect(resolveNotificationUrl("/clock", "not-a-url")).toBe("/clock");
+  });
+});
+
+describe("pageScopeUrl", () => {
+  it("is origin + base, matching what the worker would call its scope", () => {
+    expect(pageScopeUrl("https://infinity-windows.github.io", PAGES)).toBe(
+      `https://infinity-windows.github.io${PAGES}`,
+    );
+    expect(pageScopeUrl("http://localhost:5173", LOCAL)).toBe(
+      "http://localhost:5173/",
+    );
+  });
+
+  it("sends a page-level notification click into the subpath, not the domain root", () => {
+    // The fallback bug: with no SW registration, notifyLocal clicked through
+    // with window.location.assign("/clock") — the domain root, outside the app.
+    const scope = pageScopeUrl("https://infinity-windows.github.io", PAGES);
+    expect(resolveNotificationUrl("/clock", scope)).toBe(
+      "https://infinity-windows.github.io/infinity-windows/clock",
+    );
+  });
+
+  it("stays correct at the root for local dev", () => {
+    const scope = pageScopeUrl("http://localhost:5173", LOCAL);
+    expect(resolveNotificationUrl("/clock", scope)).toBe(
+      "http://localhost:5173/clock",
+    );
+  });
+
+  it("repairs a sloppy origin or base rather than composing a junk scope", () => {
+    expect(pageScopeUrl("https://example.com/", "infinity-windows")).toBe(
+      "https://example.com/infinity-windows/",
+    );
   });
 });

@@ -132,3 +132,18 @@ export function resolveNotificationUrl(
     return url;
   }
 }
+
+/**
+ * The page-side stand-in for a service worker's `registration.scope`: the
+ * app's full URL, origin plus base. The local-notification fallback (no SW
+ * registration yet — first visit, private browsing) clicks through on the
+ * page itself, and its `window.location.assign` needs the same resolution
+ * the worker gets, or `/clock` navigates to the domain root and misses the
+ * app. Feed this to resolveNotificationUrl as its `scope`.
+ */
+export function pageScopeUrl(
+  origin: string,
+  base: string | undefined | null,
+): string {
+  return origin.replace(/\/+$/, "") + normalizeBase(base);
+}
