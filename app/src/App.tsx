@@ -20,6 +20,8 @@ import { canAccess, roleRank, ROLE_NAV_V2, type RoutePath } from "./lib/nav";
 import type { CrewRole } from "./lib/install/types";
 import { ClockProvider, useClock } from "./lib/clockContext";
 import { routerBasename } from "./lib/pwa/basePaths";
+import { authErrorFromHash, isRecoveryLanding } from "./lib/passwordReset";
+import { SetNewPassword } from "./components/SetNewPassword";
 import { ViewAsRoleProvider } from "./lib/viewAsRole";
 import { useEffectiveRole } from "./lib/useEffectiveRole";
 import { supabase } from "./lib/supabase";
@@ -194,10 +196,23 @@ function ClockRoute() {
   return <Navigate to="/" replace />;
 }
 
+// The landing hash, read at IMPORT TIME — before the supabase client's async
+// URL detection strips it. This is how a cold load knows it came from a
+// password-reset email (type=recovery) or from an expired link (error_code).
+const LANDING_HASH = typeof window !== "undefined" ? window.location.hash : "";
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
+  // Password recovery: true when this load came from a reset email, or when
+  // supabase fires PASSWORD_RECOVERY after picking the tokens out of the URL.
+  const [recovery, setRecovery] = useState(() => isRecoveryLanding(LANDING_HASH));
+  // An expired/used reset link lands with an error hash and no session —
+  // surface it on the sign-in screen instead of booting as if nothing happened.
+  const [landingNotice] = useState(() => authErrorFromHash(LANDING_HASH));
   const [ready, setReady] = useState(false);
-  const [entered, setEntered] = useState(false);
+  // A landing notice (expired reset link) skips the splash — the person came
+  // here to fix their password, so land them on the sign-in screen that says so.
+  const [entered, setEntered] = useState(() => landingNotice != null);
   const [signInMode, setSignInMode] = useState<"signin" | "request">("signin");
 
   /**
@@ -242,7 +257,8 @@ export default function App() {
       setReady(true);
       onSignedIn(data.session);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === "PASSWORD_RECOVERY") setRecovery(true);
       setSession(s);
       onSignedIn(s);
     });
@@ -271,6 +287,20 @@ export default function App() {
     );
   }
 
+  // Landed here from a password-reset email with a live session: the ONE job
+  // is picking the new password. Everything else waits behind it.
+  if (recovery && session) {
+    return (
+      <SetNewPassword
+        onDone={() => {
+          setRecovery(false);
+          // Drop the spent tokens/hash from the address bar and history.
+          window.history.replaceState(null, "", window.location.pathname);
+        }}
+      />
+    );
+  }
+
   if (!session) {
     if (!entered) {
       return (
@@ -289,6 +319,7 @@ export default function App() {
     return (
       <SignIn
         initialMode={signInMode}
+        initialNotice={landingNotice}
         onHaveInviteCode={() => setJoining(true)}
       />
     );
