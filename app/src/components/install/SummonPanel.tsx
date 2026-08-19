@@ -21,6 +21,7 @@ import { listRoster } from "../../lib/chat/api";
 import { sendPush } from "../../lib/permissions/pushServer";
 import { formatApiError } from "../../lib/install/errors";
 import { isForemanPlus } from "../../lib/install/types";
+import { useViewAsRole } from "../../lib/viewAsRoleContext";
 
 export function SummonPanel({
   projectId,
@@ -44,6 +45,14 @@ export function SummonPanel({
   installRunning: boolean;
 }) {
   const queryClient = useQueryClient();
+  // View-as is a costume, not a login: every write here still runs as the
+  // REAL signed-in user (by design — an owner browsing as Chris must never
+  // write rows as Chris). So while a person-preview is on, the action
+  // buttons lock and say so plainly, instead of letting a tap fly and come
+  // back as "you called this summon — no answering yourself" (owner hit
+  // exactly that trying to test an answer from Chris's view, 2026-08-18).
+  const { previewPerson } = useViewAsRole();
+  const actionsLocked = Boolean(previewPerson);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [needed, setNeeded] = useState(2);
   const [dismissedPrompt, setDismissedPrompt] = useState(false);
@@ -127,6 +136,7 @@ export function SummonPanel({
   const manMinutes = summonHelperMinutes(helpers.data ?? []);
   const suggest =
     installRunning &&
+    !actionsLocked &&
     !summon &&
     !dismissedPrompt &&
     sizeSuggestsSummon(widthIn, heightIn);
@@ -151,7 +161,7 @@ export function SummonPanel({
         </div>
       )}
 
-      {!summon && !suggest && installRunning && (
+      {!summon && !suggest && installRunning && !actionsLocked && (
         <button
           className="button-like"
           style={{ marginTop: 8 }}
@@ -161,7 +171,7 @@ export function SummonPanel({
         </button>
       )}
 
-      {pickerOpen && !summon && (
+      {pickerOpen && !summon && !actionsLocked && (
         <div className="detail-card" style={{ marginTop: 8, textAlign: "left" }}>
           <span className="field-label">How many helpers?</span>
           <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 6 }}>
@@ -195,7 +205,7 @@ export function SummonPanel({
               🔔 Summon — {helperCount}/{summon.needed}{" "}
               {summon.status === "covered" ? "covered" : "answered"}
             </span>
-            {(iAmCaller || isForemanPlus(effectiveRole)) && (
+            {!actionsLocked && (iAmCaller || isForemanPlus(effectiveRole)) && (
               <button
                 className="link"
                 style={{ marginLeft: "auto", fontSize: 12 }}
@@ -219,7 +229,7 @@ export function SummonPanel({
               {manMinutes > 0 ? `  —  ${manMinutes} helper-min total` : ""}
             </p>
           )}
-          {!iAmCaller && !myHelp && summon.status === "open" && (
+          {!actionsLocked && !iAmCaller && !myHelp && summon.status === "open" && (
             <button
               className="primary big"
               style={{ marginTop: 8 }}
@@ -229,7 +239,7 @@ export function SummonPanel({
               {answer.isPending ? "Joining…" : "Answer — help carry (+10 pts)"}
             </button>
           )}
-          {myHelp && (
+          {!actionsLocked && myHelp && (
             <button
               className="primary big"
               style={{ marginTop: 8 }}
@@ -238,6 +248,14 @@ export function SummonPanel({
             >
               {complete.isPending ? "Stamping…" : "Complete — back to my work"}
             </button>
+          )}
+          {actionsLocked && (
+            <p className="muted" style={{ margin: "8px 0 0", fontSize: 12.5 }}>
+              You&rsquo;re viewing as {previewPerson?.name ?? "someone else"} —
+              buttons here still act as your real account, so they&rsquo;re
+              turned off. To answer as {previewPerson?.name ?? "them"}, they log
+              in themselves.
+            </p>
           )}
         </div>
       )}
