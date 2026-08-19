@@ -14,6 +14,7 @@ import { isOwner, ROLE_LABELS, type CrewRole } from "../lib/install/types";
 import { roleRank } from "../lib/nav";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { RoleMaps } from "../components/RoleMaps";
+import { LiveSummonsStrip } from "../components/install/LiveSummonsStrip";
 import { TERMS } from "../lib/glossary";
 import { listMyProgress } from "../lib/learn";
 import { listLedger } from "../lib/points";
@@ -256,6 +257,8 @@ export function Home() {
           </button>
         </div>
       </header>
+
+      <LiveSummonsStrip />
 
       <ToolboxTalkNagBanner profileId={profileId} clockedIn={isOnTheClock(openShift.data)} />
 
