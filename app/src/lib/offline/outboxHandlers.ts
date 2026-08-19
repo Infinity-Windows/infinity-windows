@@ -933,6 +933,31 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     if (error) throw error;
   };
 
+  // --- a damage report's photo (ticket 11) --------------------------------
+  //
+  // arrive_packages (lib/storage.ts) is a direct, unqueued call — it already
+  // wrote issues.photo_path to this exact bucket/path before this entry was
+  // ever queued (the path is minted client-side; see damagePhotoPath). So
+  // there is no row to write here and nothing to dedupe: the whole job is
+  // getting the bytes to the path the issue already points at. Unlike
+  // photo_upload/receipt_upload, this never touches `attachments` — a
+  // damaged package has neither a window_id nor an install_event_id, so
+  // attachments_target would refuse it.
+  const issuePhoto: OpHandler = async (entry, ctx) => {
+    const p = entry.payload;
+    const bucket = str(p.bucket) ?? "issue-photos";
+    const path = str(p.path);
+    const contentType = str(p.contentType) ?? "image/jpeg";
+    if (!path) throw tagPermanent(new Error("This photo is missing where it goes"));
+    const blob = await ctx.getBlob();
+    if (!blob) throw tagPermanent(new Error("This photo is missing its file"));
+
+    const { error } = await supabase.storage
+      .from(bucket)
+      .upload(path, blob, { contentType, upsert: true });
+    if (error) throw error;
+  };
+
   return {
     clock_in: clockIn,
     clock_out: clockOut,
@@ -953,6 +978,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     pickup_takeoff: pickupTakeoff,
     stage_packages: stagePackages,
     move_container: moveContainer,
+    issue_photo_upload: issuePhoto,
   } satisfies OpHandlers;
 }
 

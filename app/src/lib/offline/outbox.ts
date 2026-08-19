@@ -527,6 +527,34 @@ export function enqueueSetPackageArea(input: {
   });
 }
 
+/**
+ * Queue a damage report's photo (ticket 11). The issue itself is written by
+ * the direct arrivePackages() call in lib/storage.ts, which already knows
+ * this exact bucket/path — see damagePhotoPath — before this is ever queued.
+ * This call only has to get the bytes there. A conex has no bars: the note
+ * and the issue go up right away, and the picture catches up whenever the
+ * phone finds signal.
+ */
+export function enqueueIssuePhoto(input: {
+  bucket: string;
+  path: string;
+  contentType: string;
+  blob: Blob;
+}): Promise<string> {
+  return enqueue(
+    {
+      op: "issue_photo_upload",
+      hasBlob: true,
+      payload: {
+        bucket: input.bucket,
+        path: input.path,
+        contentType: input.contentType,
+      },
+    },
+    input.blob,
+  );
+}
+
 // ORDERING: none of these three sets `dependsOn`, and the one chain worth
 // worrying about — tag a package offline, then check it into a conex offline,
 // which MUST reach the server in that order or the check-in silently stores

@@ -9222,6 +9222,30 @@ body {
 .issue-note-list li { margin: 3px 0; }
 .issue-note-list li::marker { color: #ff9a6a; }
 
+/* A damage report's photo (ticket 11) — small enough to sit inline in the
+   issue row, tap to open the same photo-viewer lightbox the job feed and the
+   spec-sheet zoom already use (.photo-viewer-backdrop / .photo-viewer). */
+.issue-photo-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-top: 8px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--card);
+  cursor: pointer;
+}
+.issue-photo-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 /* ==========================================================================
    Crew board: the week at a glance. Lanes are people (foremen banded first)
    or jobs; chips are jobs in the block's own color, dashed while draft. Drag
