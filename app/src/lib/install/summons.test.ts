@@ -2,7 +2,7 @@
 // two-man-lift rule that drives the declinable install-start prompt.
 
 import { describe, expect, it } from "vitest";
-import { sizeSuggestsSummon, summonEtaLine, summonHelperMinutes, summonStripLine } from "./summons";
+import { iAnswered, sizeSuggestsSummon, summonEtaLine, summonHelperMinutes, summonStripLine } from "./summons";
 
 describe("summonHelperMinutes", () => {
   const t0 = Date.parse("2026-08-14T10:00:00Z");
@@ -138,5 +138,31 @@ describe("summonStripLine with an ETA", () => {
         false,
       ),
     ).toBe("Marcus needs 3 hands — BLACK22 · #14");
+  });
+});
+
+// Backing out (owner ask, 2026-08-19 evening): canceled helpers leave the
+// counts, the totals, and the "you answered" state — honestly, everywhere.
+describe("canceled helpers", () => {
+  it("summonHelperMinutes skips backed-out rows entirely", () => {
+    const now = Date.parse("2026-08-19T13:00:00");
+    const helpers = [
+      { joined_at: new Date(now - 30 * 60_000).toISOString(), completed_at: null, minutes: null, canceled_at: new Date(now - 10 * 60_000).toISOString() },
+      { joined_at: new Date(now - 20 * 60_000).toISOString(), completed_at: null, minutes: null, canceled_at: null },
+    ];
+    expect(summonHelperMinutes(helpers, now)).toBe(20);
+  });
+
+  it("iAnswered: true while active, false after backing out, false for strangers", () => {
+    const s = {
+      helpers: [
+        { profile_id: "chris", completed_at: null, canceled_at: null },
+        { profile_id: "dave", completed_at: null, canceled_at: "2026-08-19T12:00:00Z" },
+      ],
+    };
+    expect(iAnswered(s, "chris")).toBe(true);
+    expect(iAnswered(s, "dave")).toBe(false);
+    expect(iAnswered(s, "maria")).toBe(false);
+    expect(iAnswered(s, null)).toBe(false);
   });
 });

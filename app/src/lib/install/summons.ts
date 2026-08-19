@@ -21,6 +21,7 @@ export interface Summon {
   /** Embedded for the landing strip — absent on older reads, so optional. */
   project?: { job_code: string | null } | null;
   opening?: { opening_code: string | null } | null;
+  helpers?: Pick<SummonHelper, "profile_id" | "completed_at" | "canceled_at">[] | null;
 }
 
 export interface SummonHelper {
@@ -29,6 +30,8 @@ export interface SummonHelper {
   profile_id: string;
   joined_at: string;
   completed_at: string | null;
+  /** Backed out ("Can't make it") — seat reopened, points reversed. */
+  canceled_at?: string | null;
   minutes: number | null;
   helper?: { display_name: string | null } | null;
 }
@@ -40,7 +43,7 @@ function isMissingTableError(e: { code?: string; message?: string } | null): boo
 }
 
 const SUMMON_SELECT =
-  "*, requester:profiles!summons_requested_by_fkey(display_name), project:projects(job_code), opening:project_openings(opening_code)";
+  "*, requester:profiles!summons_requested_by_fkey(display_name), project:projects(job_code), opening:project_openings(opening_code), helpers:summon_helpers(profile_id, completed_at, canceled_at)";
 
 /** Live (open/covered) summons on a job — Dispatch indicator + the sheet. */
 export async function listLiveSummons(projectId: string): Promise<Summon[]> {
@@ -113,6 +116,15 @@ export async function completeSummonHelp(summonId: string): Promise<SummonHelper
   return data as SummonHelper;
 }
 
+/** Back out of a summon you answered — seat reopens, points reverse. */
+export async function cancelSummonHelp(summonId: string): Promise<SummonHelper> {
+  const { data, error } = await supabase.rpc("cancel_summon_help", {
+    p_summon_id: summonId,
+  });
+  if (error) throw error;
+  return data as SummonHelper;
+}
+
 export async function closeSummon(summonId: string): Promise<Summon> {
   const { data, error } = await supabase.rpc("close_summon", {
     p_summon_id: summonId,
@@ -126,11 +138,14 @@ export async function closeSummon(summonId: string): Promise<Summon> {
 /** Helper man-minutes on a summon: completed rows as stamped, open rows
  * live against `now` — the number the window's true cost breakdown shows. */
 export function summonHelperMinutes(
-  helpers: readonly Pick<SummonHelper, "joined_at" | "completed_at" | "minutes">[],
+  helpers: readonly Pick<SummonHelper, "joined_at" | "completed_at" | "minutes" | "canceled_at">[],
   now: number = Date.now(),
 ): number {
   let total = 0;
   for (const h of helpers) {
+    if (h.canceled_at) {
+      continue; // backed out — their 0 minutes stay out of the total
+    }
     if (h.minutes != null) {
       total += h.minutes;
     } else if (!h.completed_at) {
@@ -186,6 +201,21 @@ export function summonStripLine(
   const eta = summonEtaLine(s.needed_at, now);
   if (eta) base = `${base} · ${eta}`;
   return s.status === "covered" ? `${base} (covered)` : base;
+}
+
+/**
+ * Has this viewer answered this summon and not backed out? Drives the strip
+ * row ("You answered — on the way" instead of an Answer pill) so a person
+ * who already committed is never re-asked (owner report, 2026-08-19).
+ */
+export function iAnswered(
+  s: Pick<Summon, "helpers">,
+  myProfileId: string | null | undefined,
+): boolean {
+  if (!myProfileId) return false;
+  return (s.helpers ?? []).some(
+    (h) => h.profile_id === myProfileId && !h.canceled_at,
+  );
 }
 
 /**

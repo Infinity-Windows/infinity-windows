@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
   answerSummon,
+  cancelSummonHelp,
   closeSummon,
   completeSummonHelp,
   createSummon,
@@ -148,6 +149,15 @@ export function SummonPanel({
     mutationFn: () => answerSummon(summon!.id),
     onSuccess: () => {
       refresh();
+      // The ring is answered — take its notification out of the tray so it
+      // stops saying "Answer to help" (owner report, 2026-08-19).
+      if (summon) {
+        void navigator.serviceWorker?.getRegistration().then((r) =>
+          r?.getNotifications({ tag: `summon-${summon.id}` }).then((ns) => {
+            for (const n of ns) n.close();
+          }),
+        );
+      }
       // The caller learns THE MOMENT someone answers (owner report,
       // 2026-08-19) — a push straight to them, not a poll. Best-effort,
       // same as every other summon push.
@@ -171,6 +181,24 @@ export function SummonPanel({
     onSuccess: refresh,
     onError: (e) => setErr(formatApiError(e)),
   });
+  const bail = useMutation({
+    mutationFn: () => cancelSummonHelp(summon!.id),
+    onSuccess: () => {
+      refresh();
+      // Tell the caller straight away — a no-show they know about is a
+      // seat they can refill.
+      if (summon && summon.requested_by !== myProfileId) {
+        void sendPush({
+          profileIds: [summon.requested_by],
+          title: `↩️ ${myName ?? "A helper"} can't make it`,
+          body: `Their seat on ${openingCode} is open again.`,
+          tag: `summon-bail-${summon.id}`,
+          url: `/projects/${projectId}/opening/${openingId}`,
+        }).catch(() => {});
+      }
+    },
+    onError: (e) => setErr(formatApiError(e)),
+  });
   const end = useMutation({
     mutationFn: () => closeSummon(summon!.id),
     onSuccess: refresh,
@@ -178,10 +206,10 @@ export function SummonPanel({
   });
 
   const myHelp = (helpers.data ?? []).find(
-    (h) => h.profile_id === myProfileId && !h.completed_at,
+    (h) => h.profile_id === myProfileId && !h.completed_at && !h.canceled_at,
   );
   const iAmCaller = summon?.requested_by === myProfileId;
-  const helperCount = helpers.data?.length ?? 0;
+  const helperCount = (helpers.data ?? []).filter((h) => !h.canceled_at).length;
   const manMinutes = summonHelperMinutes(helpers.data ?? []);
   const suggest =
     installRunning &&
@@ -210,7 +238,10 @@ export function SummonPanel({
         </div>
       )}
 
-      {!summon && !suggest && installRunning && !actionsLocked && (
+      {/* No live summon = the button is there — a window can need several
+          summons in a day (owner, 2026-08-19), and ending one must always
+          offer the next. The server still requires an open shift. */}
+      {!summon && !suggest && !actionsLocked && (
         <button
           className="button-like"
           style={{ marginTop: 8 }}
@@ -306,11 +337,13 @@ export function SummonPanel({
                 <li key={h.id} style={{ fontSize: 13, padding: "2px 0" }}>
                   <strong>{h.helper?.display_name ?? "Helper"}</strong>{" "}
                   <span className="muted">
-                    {h.minutes != null
-                      ? `helped · ${h.minutes} min`
-                      : h.completed_at
-                        ? "done"
-                        : `answered ${new Date(h.joined_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} — on the way`}
+                    {h.canceled_at
+                      ? "backed out"
+                      : h.minutes != null
+                        ? `helped · ${h.minutes} min`
+                        : h.completed_at
+                          ? "done"
+                          : `answered ${new Date(h.joined_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} — on the way`}
                   </span>
                 </li>
               ))}
@@ -332,14 +365,26 @@ export function SummonPanel({
             </button>
           )}
           {!actionsLocked && myHelp && (
-            <button
-              className="primary big"
-              style={{ marginTop: 8 }}
-              disabled={complete.isPending}
-              onClick={() => complete.mutate()}
-            >
-              {complete.isPending ? "Stamping…" : "Complete — back to my work"}
-            </button>
+            <>
+              <button
+                className="primary big"
+                style={{ marginTop: 8 }}
+                disabled={complete.isPending}
+                onClick={() => complete.mutate()}
+              >
+                {complete.isPending ? "Stamping…" : "Complete — back to my work"}
+              </button>
+              <button
+                className="link"
+                style={{ marginTop: 6, fontSize: 12.5 }}
+                disabled={bail.isPending}
+                onClick={() => bail.mutate()}
+              >
+                {bail.isPending
+                  ? "Backing out…"
+                  : "Can't make it — give my seat back"}
+              </button>
+            </>
           )}
           {actionsLocked && (
             <p className="muted" style={{ margin: "8px 0 0", fontSize: 12.5 }}>
