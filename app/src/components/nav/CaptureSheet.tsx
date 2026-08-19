@@ -74,7 +74,7 @@ const ACTIONS: CaptureAction[] = [
   {
     key: "scan",
     label: "Scan a unit",
-    hint: "Look up a window by its QR/ID",
+    hint: "Look up a unit by its QR/ID",
     Icon: ScanLine,
     to: () => "/scan",
   },

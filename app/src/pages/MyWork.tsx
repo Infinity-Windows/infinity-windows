@@ -402,7 +402,7 @@ export function MyWork() {
       <LiveSummonsStrip />
       <p className="muted">
         {me.data?.display_name ? `${me.data.display_name} — ` : ""}do the top
-        window next; capture as you go.
+        unit next; capture as you go.
       </p>
 
       {/* THE MORNING HERO (grilled Q1): off the clock, the first thing on
@@ -456,7 +456,7 @@ export function MyWork() {
               />
             )}
             <button className="link" style={{ fontSize: 12.5 }} onClick={() => clock.openClock()}>
-              Just clock in — pick the job or window yourself
+              Just clock in — pick the job or unit yourself
             </button>
           </div>
         </div>
@@ -529,7 +529,7 @@ export function MyWork() {
 
       {newlyAssigned > 0 && (
         <div className="assign-toast" onClick={() => setNewlyAssigned(0)}>
-          {newlyAssigned} new window{newlyAssigned > 1 ? "s" : ""} assigned to you — tap to dismiss
+          {newlyAssigned} new unit{newlyAssigned > 1 ? "s" : ""} assigned to you — tap to dismiss
         </div>
       )}
 
@@ -554,7 +554,7 @@ export function MyWork() {
         <EmptyState
           icon={<CheckCircle2 size={22} />}
           title="Nothing assigned right now"
-          message="Check with your lead, or help stage the next windows."
+          message="Check with your lead, or help stage the next units."
           action={
             <Link to="/projects" className="button-like">
               Browse jobs
@@ -578,8 +578,8 @@ export function MyWork() {
           icon={<AlertTriangle size={22} />}
           title={
             active.length === 1
-              ? "Your window is waiting on something"
-              : `All ${active.length} of your windows are waiting on something`
+              ? "Your unit is waiting on something"
+              : `All ${active.length} of your units are waiting on something`
           }
           message={
             active.length === 1

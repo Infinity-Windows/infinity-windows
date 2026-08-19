@@ -75,7 +75,7 @@ export function OpeningMoved({
       <h1>This opening moved</h1>
       <p>
         The office reloaded the plans for this job, so{" "}
-        {lostCode ? <strong>{lostCode}</strong> : "this window"} has a new
+        {lostCode ? <strong>{lostCode}</strong> : "this unit"} has a new
         entry. Nothing you have recorded is lost.
       </p>
 

@@ -12,7 +12,7 @@ import { STATUS_LABELS } from "../lib/types";
  */
 export function UnitSearch({
   autoFocus = false,
-  placeholder = "Locate: window ID or type code…",
+  placeholder = "Locate: unit ID or type code…",
   limit,
 }: {
   autoFocus?: boolean;

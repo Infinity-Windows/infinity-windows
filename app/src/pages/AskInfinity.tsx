@@ -153,7 +153,7 @@ export function AskInfinity() {
       "Do I caulk the bottom?",
       "Which side does the drain face?",
       "What's on our schedule?",
-      "My next window",
+      "My next unit",
     ],
     [],
   );

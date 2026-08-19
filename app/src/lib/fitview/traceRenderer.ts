@@ -343,7 +343,7 @@ export function mountTracePlan(host, job, shim) {
         renderTray();
         redraw();
         SHIM.toast("Story removed" +
-          (gone ? " - " + gone + " window(s) back in the tray" : ""));
+          (gone ? " - " + gone + " unit(s) back in the tray" : ""));
       });
       rail.appendChild(rm);
     }

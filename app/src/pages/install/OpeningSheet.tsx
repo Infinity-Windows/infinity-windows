@@ -432,7 +432,7 @@ export function OpeningSheet() {
     onSuccess: () => {
       setUndoOpen(false);
       setUndoReason("");
-      setMessage("Install undone - every record kept. The window is back on the list.");
+      setMessage("Install undone - every record kept. The unit is back on the list.");
       refresh();
       void queryClient.invalidateQueries({ queryKey: ["undoneInstalls", openingId] });
     },
@@ -459,7 +459,7 @@ export function OpeningSheet() {
     onSuccess: async () => {
       setRedoSheetOpen(false);
       setRedoReason("");
-      setMessage("Redo filed — the window is back on the list.");
+      setMessage("Redo filed — the unit is back on the list.");
       refresh();
       // Foreman notified, never asked (owner rule). Best-effort.
       try {
@@ -665,7 +665,7 @@ export function OpeningSheet() {
     mutationFn: async (windowUuid: string) =>
       assignWindowToOpening(openingId, windowUuid),
     onSuccess: () => {
-      setMessage("Window assigned.");
+      setMessage("Unit assigned.");
       setScanOpen(false);
       setSearch("");
       refresh();
@@ -681,9 +681,9 @@ export function OpeningSheet() {
       if (res.status === "ok") {
         assign.mutate(res.unit.id);
       } else if (res.status === "not-found") {
-        setMessage(`No window found for "${res.query}".`);
+        setMessage(`No unit found for "${res.query}".`);
       } else {
-        setMessage("That's a slot label — scan a window label.");
+        setMessage("That's a slot label — scan a unit label.");
       }
     } catch (e) {
       setMessage(formatApiError(e));
@@ -740,7 +740,7 @@ export function OpeningSheet() {
     onSuccess: (r) => {
       setMessage(
         r.filed
-          ? "Rough opening saved — framing issue filed for this window."
+          ? "Rough opening saved — framing issue filed for this unit."
           : r.resolved
             ? "Rough opening saved — all good, framing issue resolved."
             : "Rough opening saved.",
@@ -1014,7 +1014,7 @@ export function OpeningSheet() {
   const confirmSpecs = useMutation({
     mutationFn: () => confirmOpening(openingId),
     onSuccess: () => {
-      setMessage("Window checked — thanks, that clears it for everyone.");
+      setMessage("Unit checked — thanks, that clears it for everyone.");
       void queryClient.invalidateQueries({ queryKey: ["opening", openingId] });
       void queryClient.invalidateQueries({ queryKey: ["myOpenings"] });
     },
@@ -1073,13 +1073,13 @@ export function OpeningSheet() {
         >
           <span aria-hidden>⛓️</span>
           <span style={{ flex: 1 }}>
-            Clock's on <strong>{opening.data?.opening_code ?? "this window"}</strong>
+            Clock's on <strong>{opening.data?.opening_code ?? "this unit"}</strong>
             <span className="muted" style={{ fontSize: 12 }}>
               {" "}· redirectable {Math.ceil(chainGraceLeft / 60000)}m
             </span>
           </span>
           <button className="button-like" onClick={() => setChainPickerOpen((v) => !v)}>
-            Change window
+            Change unit
           </button>
         </div>
       )}
@@ -1201,7 +1201,7 @@ export function OpeningSheet() {
           filing a second redo. Patched here; the real fix is to carry the tone
           with the message (see the audit's proposal list). */}
       {message && (
-        <p className={/^(Window|Install|Rough|Condition|Flag|Flagged|Site|Complication|Redo|Marked)/.test(message) ? "ok" : "error"}>
+        <p className={/^(Unit|Install|Rough|Condition|Flag|Flagged|Site|Complication|Redo|Marked)/.test(message) ? "ok" : "error"}>
           {message}
         </p>
       )}
@@ -1220,7 +1220,7 @@ export function OpeningSheet() {
           </ul>
           <p style={{ margin: "6px 0 10px" }}>
             {startGateError ??
-              "Clock in and sign today's toolbox talk, then start this window."}
+              "Clock in and sign today's toolbox talk, then start this unit."}
           </p>
           <div style={{ display: "flex", gap: 10 }}>
             {/* The clock is a sheet over this screen, so they punch in and
@@ -1266,7 +1266,7 @@ export function OpeningSheet() {
           )}
           <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
             Forgot something, or need a fix? Undoing keeps every record — the
-            memo, photos, grade and minutes stay on file — and puts this window
+            memo, photos, grade and minutes stay on file — and puts this unit
             back on the install list with a required note saying why.
           </p>
           {isForemanPlus(effectiveRole) ? (

@@ -90,17 +90,17 @@ function gapVerdict(
       measured: "bad",
       detail:
         gap < 0
-          ? `${inFrac(gap)} smaller than the window — it will not go in`
-          : `only ${inFrac(gap)} over the window — needs ${inFrac(GAP_MIN_IN)} minimum to shim`,
+          ? `${inFrac(gap)} smaller than the unit — it will not go in`
+          : `only ${inFrac(gap)} over the unit — needs ${inFrac(GAP_MIN_IN)} minimum to shim`,
     };
   }
   if (gap > GAP_MAX_IN) {
     return {
       measured: "bad",
-      detail: `${inFrac(gap)} over the window — past the ${inFrac(GAP_MAX_IN)} maximum, opening is oversized`,
+      detail: `${inFrac(gap)} over the unit — past the ${inFrac(GAP_MAX_IN)} maximum, opening is oversized`,
     };
   }
-  return { measured: "good", detail: `${inFrac(gap)} over the window — within range` };
+  return { measured: "good", detail: `${inFrac(gap)} over the unit — within range` };
 }
 
 /** All three verdicts, in checking order. */

@@ -277,7 +277,7 @@ export function Home() {
           }}
         >
           <strong style={{ color: "var(--warn)", fontSize: 15 }}>
-            ⚡ {a.owed} window{a.owed === 1 ? "" : "s"} waiting on flashing at{" "}
+            ⚡ {a.owed} unit{a.owed === 1 ? "" : "s"} waiting on flashing at{" "}
             {a.jobCode} — nobody is on a flash run
           </strong>
           <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
@@ -476,7 +476,7 @@ export function Home() {
           className="home-card home-next"
         >
           <div className="home-card-top">
-            <span className="next-label">Your next window</span>
+            <span className="next-label">Your next unit</span>
             <span className="ok" style={{ fontSize: 11 }}>ready</span>
           </div>
           <strong style={{ fontSize: 16 }}>

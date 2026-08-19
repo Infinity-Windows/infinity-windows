@@ -418,7 +418,7 @@ function answerNextWindow(data: AskLiveData): string | null {
   const next = inProgress ?? ordered[0];
   if (!next) return null;
   const lines = [
-    inProgress ? "You're mid-install:" : "Your next window:",
+    inProgress ? "You're mid-install:" : "Your next unit:",
     opening_line(next),
   ];
   const remaining = ordered.filter((o) => o.id !== next.id).length;

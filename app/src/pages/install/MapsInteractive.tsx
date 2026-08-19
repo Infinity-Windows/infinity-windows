@@ -254,7 +254,7 @@ export function MapsInteractive({ project }: { project: Project }) {
                 })
                 .filter((id): id is string => Boolean(id));
               if (ids.length === 0) {
-                pushToast("Those windows have no openings yet.", "error");
+                pushToast("Those units have no openings yet.", "error");
                 return;
               }
               void (async () => {
@@ -273,8 +273,8 @@ export function MapsInteractive({ project }: { project: Project }) {
                   });
                   pushToast(
                     profileId
-                      ? `${ids.length} window${ids.length === 1 ? "" : "s"} assigned.`
-                      : `${ids.length} window${ids.length === 1 ? "" : "s"} unassigned.`,
+                      ? `${ids.length} unit${ids.length === 1 ? "" : "s"} assigned.`
+                      : `${ids.length} unit${ids.length === 1 ? "" : "s"} unassigned.`,
                   );
                 } catch (e) {
                   pushToast(formatApiError(e), "error");

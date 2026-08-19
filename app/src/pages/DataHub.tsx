@@ -83,7 +83,7 @@ const RUNG_LABELS: Record<LadderRung, string> = {
   exact: "exact look-alikes",
   "kind+panels": "same type & panel count",
   kind: "same type",
-  global: "all windows",
+  global: "all units",
   none: "no estimate yet",
   manual: "manual estimate",
 };
@@ -317,11 +317,11 @@ export function DataHub() {
               /{unitsTotal}
             </span>
           </span>
-          <span className="stat-label">Windows installed</span>
+          <span className="stat-label">Units installed</span>
         </div>
         <div className="stat-tile">
           <span className="stat-value">{crewPct != null ? `${crewPct}%` : "—"}</span>
-          <span className="stat-label">Time on windows · 30d</span>
+          <span className="stat-label">Time on units · 30d</span>
         </div>
       </div>
 
@@ -332,7 +332,7 @@ export function DataHub() {
           <h2 style={{ margin: "0 0 6px" }}>The last six weeks</h2>
           <Explain>
             Each week (Monday to Sunday, same as payroll) shows two bars: work
-            time recorded on windows, and time lost to blocks that week. You
+            time recorded on units, and time lost to blocks that week. You
             want the top bar growing and the amber bar shrinking — direction
             matters more than any single week's number.
           </Explain>
@@ -366,9 +366,9 @@ export function DataHub() {
         <p className="data-section-kicker">Lost time</p>
         <h2 style={{ margin: "0 0 6px" }}>Where did we lose time?</h2>
         <Explain>
-          When something outside the installer's control stops a window — wrong
+          When something outside the installer's control stops a unit — wrong
           glass, missing hardware, opening not ready — they tap Block and pick
-          the reason. This panel adds up all the hours windows sat waiting
+          the reason. This panel adds up all the hours units sat waiting
           after a Block, grouped by what caused the wait. The biggest bar is
           the biggest problem to go fix. This time never counts against the
           installer — it points at what stopped them.
@@ -416,13 +416,13 @@ export function DataHub() {
           </div>
         ) : (
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-            No blocked time yet. When a window gets blocked — missing hardware,
+            No blocked time yet. When a unit gets blocked — missing hardware,
             wrong glass — the lost hours land here, by reason.
           </p>
         )}
         <div className="data-chips">
           <span className={`data-chip${rework.units > 0 ? " chip-hot" : ""}`}>
-            Windows redone <strong>{rework.units}</strong>
+            Units redone <strong>{rework.units}</strong>
             {rework.units > 0 && <span>· {fmtH(rework.minutes)} spent fixing</span>}
           </span>
           <span className={`data-chip${openRedos > 0 ? " chip-hot" : ""}`}>
@@ -442,11 +442,11 @@ export function DataHub() {
         <p className="data-section-kicker">True cost</p>
         <h2 style={{ margin: "0 0 6px" }}>What does the work truly cost?</h2>
         <Explain>
-          The app records every minute someone spends on a window automatically
+          The app records every minute someone spends on a unit automatically
           — no one types time in. Each job's line shows: how many of its
-          windows are in (the green bar), total work time so far, and the
-          average minutes per finished window. "Work time" = install time +
-          helper time + flashing time. The costliest-windows list below shows
+          units are in (the green bar), total work time so far, and the
+          average minutes per finished unit. "Work time" = install time +
+          helper time + flashing time. The costliest-units list below shows
           which individual windows ate the most time — tap one to see its full
           story, minute by minute, with photos.
         </Explain>

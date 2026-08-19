@@ -80,7 +80,7 @@ export function Scanner({ onScan, hint }: ScannerProps) {
       setManual("");
       setError(null);
     } else {
-      setError("Not a valid window ID or slot address.");
+      setError("Not a valid unit ID or slot address.");
     }
   };
 

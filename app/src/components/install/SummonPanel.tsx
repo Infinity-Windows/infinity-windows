@@ -93,7 +93,7 @@ export function SummonPanel({
           await sendPush({
             profileIds: ids,
             title: `🪟 Help needed — ${openingCode}`,
-            body: `${myName ?? "An installer"} needs ${needed} for a heavy window. Answer to help (+10 pts).`,
+            body: `${myName ?? "An installer"} needs ${needed} for a heavy unit. Answer to help (+10 pts).`,
             tag: `summon-${created.id}`,
             url: `/projects/${projectId}/opening/${openingId}`,
             urgent: true,
