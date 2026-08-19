@@ -55,3 +55,53 @@ export function newPasswordProblem(pw: string, confirm: string): string | null {
   if (pw !== confirm) return "The two passwords don't match.";
   return null;
 }
+
+/** How long the Reset button rests after a SUCCESSFUL send. The mailer
+ * enforces its own gap between emails anyway — a sooner tap only burns
+ * quota and bounces (owner hit the cap after two tries, 2026-08-18). */
+export const RESET_EMAIL_COOLDOWN_SEC = 60;
+
+export interface EmailRefusal {
+  /** The plain sentence to show instead of the server's error. */
+  line: string;
+  /** How long the button rests before another try is worth making. */
+  waitSec: number;
+}
+
+/**
+ * Was this send refused for pace rather than being wrong? Two flavors:
+ * the per-address gap ("only request this once every N seconds") gets a
+ * short rest; the service-wide cap ("rate limit exceeded") gets the full
+ * five minutes the owner asked for. Anything else returns null and the
+ * caller shows the error as-is.
+ *
+ * The CAP itself is Supabase dashboard config: on the built-in mail
+ * service it is fixed at a couple of emails an hour and cannot be raised —
+ * custom SMTP (go-live wizard stage) is what unlocks the real limit.
+ */
+export function resetEmailRefusal(message: string): EmailRefusal | null {
+  if (/once every \d+ seconds/i.test(message)) {
+    return {
+      line: "One reset email at a time — give it a minute, then tap again.",
+      waitSec: 60,
+    };
+  }
+  if (/rate limit|too many/i.test(message)) {
+    return {
+      line:
+        "The mail service hit its sending cap — not your fault. Wait 5 minutes, then try once more.",
+      waitSec: 300,
+    };
+  }
+  return null;
+}
+
+/** "5:00" / "1:30" / "45s" — the countdown on the resting Reset button. */
+export function cooldownLabel(sec: number): string {
+  if (sec >= 60) {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+  return `${sec}s`;
+}
