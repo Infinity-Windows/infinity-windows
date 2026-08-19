@@ -79,6 +79,10 @@ export function elevationsOf(job) {
 
 export function mountFitView(host, job, shim) {
   var SHIM = shim || {};
+  // Flat elevations (owner design, 2026-08-19): every wall laid side by side
+  // in walking order — no 3D transforms at all, which is also what ends the
+  // iOS layer-memory crashes for good. The 3D path stays behind the beta tab.
+  var FLAT = SHIM.flatView === true;
   if (!SHIM.toast) SHIM.toast = function () {};
   host.innerHTML = TEMPLATE;
   var ROOT = host;
@@ -1059,6 +1063,7 @@ export function mountFitView(host, job, shim) {
   /* ---------- camera ---------- */
 
   function render() {
+    if (FLAT) return;
     var lodFar = state.zoom < 0.45;
     if (lodFar !== render._lod) {
       render._lod = lodFar;
@@ -1077,6 +1082,7 @@ export function mountFitView(host, job, shim) {
   // than to the largest dimension means a flat elevation fills the width, which is
   // where the annotations actually need to be readable.
   function fit(reset) {
+    if (FLAT) return;
     var w = stage.clientWidth || 360;
     var h = stage.clientHeight || 380;
     var rad = state.ay * Math.PI / 180;
@@ -1110,6 +1116,13 @@ export function mountFitView(host, job, shim) {
   }
 
   function goTo(key) {
+    if (FLAT) {
+      var w = stage.querySelector('.flat-wall[data-elev="' + key + '"]');
+      if (w) w.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+      FLAT_CURRENT = key;
+      syncElevChips();
+      return;
+    }
     // Jumping to an elevation is a fresh framing: leave any pan mode first,
     // so the camera and the highlighted button can never disagree.
     if (state.panMode || state.panPlus) setPanModes(false, false);
@@ -1125,7 +1138,9 @@ export function mountFitView(host, job, shim) {
 
   function normalise(a) { return ((a % 360) + 360) % 360; }
 
+  var FLAT_CURRENT = null;
   function activeElev() {
+    if (FLAT) return FLAT_CURRENT;
     if (Math.abs(state.ax) > 8) return null;
     var a = normalise(state.ay);
     var hit = null;
@@ -1135,6 +1150,132 @@ export function mountFitView(host, job, shim) {
       if (d < 6) hit = e.key;
     });
     return hit;
+  }
+
+
+  /* ---------- flat elevations (owner design, 2026-08-19) ----------
+     The house is built exactly as for 3D, then each wall's faces move out
+     into a horizontal scroll row, in walking order around the building —
+     windows, story bands, glows and picking come along untouched. The 3D
+     stage (#persp) is hidden, so nothing 3D ever rasterizes: the crash
+     class the phones hit cannot occur here. A small top-down footprint
+     (the minimap) shows which wall you're looking at as you scroll. */
+  function flattenHouse() {
+    stage.classList.add("flat");
+    $("persp").style.display = "none";
+    var old = stage.querySelector(".flatrow");
+    if (old) old.remove();
+    var oldMap = stage.querySelector(".flat-minimap");
+    if (oldMap) oldMap.remove();
+
+    var row = document.createElement("div");
+    row.className = "flatrow";
+
+    // Unique wall keys in ELEVS order = walking order around the building.
+    var keys = [];
+    ELEVS.forEach(function (e) { if (keys.indexOf(e.key) < 0) keys.push(e.key); });
+
+    keys.forEach(function (key) {
+      var entries = ELEVS.filter(function (e) { return e.key === key; });
+      var name = entries[0].name || key;
+      var top = 0, width = 0;
+      entries.forEach(function (e) {
+        var h = ((e.base || 0) + (e.hM != null ? e.hM : ENVELOPE)) * S;
+        if (h > top) top = h;
+      });
+      var wrap = document.createElement("div");
+      wrap.className = "flat-wall";
+      wrap.dataset.elev = key;
+      var chip = document.createElement("div");
+      chip.className = "flat-label";
+      chip.textContent = name;
+      wrap.appendChild(chip);
+
+      entries.forEach(function (e) {
+        var sel = '.face[data-elev="' + key + '"][data-story="' + (e.story || 1) + '"]';
+        var face = house.querySelector(sel) || house.querySelector('.face[data-elev="' + key + '"]');
+        if (!face || face.parentElement === wrap) return;
+        var w = parseFloat(face.style.width) || 0;
+        if (w > width) width = w;
+        face.style.transform = "none";
+        face.style.marginLeft = "0";
+        face.style.marginTop = "0";
+        face.style.left = "0";
+        face.style.bottom = ((e.base || 0) * S) + "px";
+        face.style.top = "auto";
+        face.style.position = "absolute";
+        wrap.appendChild(face);
+      });
+
+      wrap.style.width = width + "px";
+      wrap.style.height = top + "px";
+      row.appendChild(wrap);
+    });
+    // Flat walls are normal DOM, so a normal click does what the 3D
+    // pointer gymnastics did: one front door, tapWindow.
+    row.addEventListener("click", function (e) {
+      var winEl = e.target && e.target.closest ? e.target.closest(".win") : null;
+      if (winEl && winEl.dataset.id) tapWindow(winEl.dataset.id);
+    });
+    stage.appendChild(row);
+
+    // Minimap: the footprint outline with the current wall lit. Non-
+    // interactive by design — it answers "where am I?", nothing else.
+    var pts = [];
+    if (FOOT && FOOT.length && FOOT[0].length >= 3) {
+      pts = FOOT[0].map(function (p) { return { x: p.x, z: p.z }; });
+    }
+    var map = document.createElement("div");
+    map.className = "flat-minimap";
+    map.setAttribute("aria-hidden", "true");
+    if (pts.length >= 3) {
+      var minx = Infinity, minz = Infinity, maxx = -Infinity, maxz = -Infinity;
+      pts.forEach(function (p) {
+        if (p.x < minx) minx = p.x; if (p.x > maxx) maxx = p.x;
+        if (p.z < minz) minz = p.z; if (p.z > maxz) maxz = p.z;
+      });
+      var mw = Math.max(1, maxx - minx), mh = Math.max(1, maxz - minz);
+      var scale = 72 / Math.max(mw, mh);
+      var toX = function (x) { return ((x - minx) * scale + 6).toFixed(1); };
+      var toZ = function (z) { return ((z - minz) * scale + 6).toFixed(1); };
+      var svg = '<svg viewBox="0 0 84 84" width="84" height="84">';
+      for (var i = 0; i < pts.length; i++) {
+        var a = pts[i], b = pts[(i + 1) % pts.length];
+        svg += '<line data-edge="' + i + '" x1="' + toX(a.x) + '" y1="' + toZ(a.z) +
+               '" x2="' + toX(b.x) + '" y2="' + toZ(b.z) + '" />';
+      }
+      svg += "</svg>";
+      map.innerHTML = svg + '<div class="flat-minimap-label"></div>';
+    } else {
+      map.innerHTML = '<div class="flat-minimap-label"></div>';
+    }
+    stage.appendChild(map);
+
+    // Which wall is under the middle of the screen right now?
+    var syncCurrent = function () {
+      var mid = stage.scrollLeft + stage.clientWidth / 2;
+      var best = null, bestD = Infinity;
+      row.querySelectorAll(".flat-wall").forEach(function (w, i) {
+        var c = w.offsetLeft + w.offsetWidth / 2;
+        var d = Math.abs(c - mid);
+        if (d < bestD) { bestD = d; best = { key: w.dataset.elev, idx: i }; }
+      });
+      if (!best) return;
+      if (FLAT_CURRENT !== best.key) {
+        FLAT_CURRENT = best.key;
+        syncElevChips();
+      }
+      var label = map.querySelector(".flat-minimap-label");
+      var entry = ELEVS.filter(function (e) { return e.key === best.key; })[0];
+      if (label && entry) label.textContent = entry.name || best.key;
+      map.querySelectorAll("line").forEach(function (ln, i) {
+        ln.classList.toggle("on", i === best.idx);
+      });
+    };
+    stage.addEventListener("scroll", syncCurrent, { passive: true });
+    setTimeout(syncCurrent, 0);
+
+    $("hint").innerHTML = "Scroll sideways — the walls run in walking order &middot; tap a unit for its spec";
   }
 
   /* ---------- gestures: orbit, tap, pinch-zoom, pan ---------- */
@@ -1149,6 +1290,7 @@ export function mountFitView(host, job, shim) {
   }
 
   stage.addEventListener("pointerdown", function (e) {
+    if (FLAT) return;
     // Presses on the zoom controls are theirs alone: capturing them would
     // swallow the button clicks entirely.
     if (e.target.closest && e.target.closest(".zoomctl")) return;
@@ -1179,6 +1321,7 @@ export function mountFitView(host, job, shim) {
   });
 
   stage.addEventListener("pointermove", function (e) {
+    if (FLAT) return;
     if (!pointers[e.pointerId]) return;
     pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
     var ids = Object.keys(pointers);
@@ -1223,6 +1366,7 @@ export function mountFitView(host, job, shim) {
 
   ["pointerup", "pointercancel"].forEach(function (ev) {
     stage.addEventListener(ev, function (e) {
+      if (FLAT) return;
       delete pointers[e.pointerId];
       try { stage.releasePointerCapture(e.pointerId); } catch (_) {}
       var left = Object.keys(pointers).length;
@@ -1241,6 +1385,7 @@ export function mountFitView(host, job, shim) {
 
   // Desktop: scroll (or trackpad pinch) zooms toward the cursor.
   stage.addEventListener("wheel", function (e) {
+    if (FLAT) return;
     e.preventDefault();
     var c = stageCentre();
     setZoom(state.zoom * Math.exp(-e.deltaY * 0.0018),
@@ -1304,6 +1449,7 @@ export function mountFitView(host, job, shim) {
   $("zfit").addEventListener("click", function () { fit(true); });
 
   stage.addEventListener("keydown", function (e) {
+    if (FLAT) return;
     var step = 8;
     if (e.key === "ArrowLeft") { state.ay -= step; }
     else if (e.key === "ArrowRight") { state.ay += step; }
@@ -1950,6 +2096,7 @@ export function mountFitView(host, job, shim) {
     winEls2 = {};
     winEls3 = {};
     buildHouse();
+    if (FLAT) flattenHouse();
     buildStoryStrip();
     buildElevStrip();
     buildLegend();

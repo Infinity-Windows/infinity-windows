@@ -49,15 +49,19 @@ export function MapsInteractive({ project }: { project: Project }) {
   // First open lands on 3D; after that the tab remembers the last view.
   // ?mapview=sheets (the ?tab=map redirect) forces Sheets for deep links.
   const [searchParams] = useSearchParams();
-  const [mapView, setMapViewState] = useState<"3d" | "sheets">(() => {
+  // Flat is the default (owner design, 2026-08-19): walls in walking order,
+  // no 3D — which is also what ends the iOS crash class. 3D stays as a beta
+  // tab; an explicit earlier choice of 3d/sheets is respected.
+  const [mapView, setMapViewState] = useState<"flat" | "3d" | "sheets">(() => {
     if (searchParams.get("mapview") === "sheets") return "sheets";
     try {
-      return localStorage.getItem("infinity.mapsView") === "sheets" ? "sheets" : "3d";
+      const stored = localStorage.getItem("infinity.mapsView");
+      return stored === "sheets" || stored === "3d" ? stored : "flat";
     } catch {
-      return "3d";
+      return "flat";
     }
   });
-  const setMapView = (v: "3d" | "sheets") => {
+  const setMapView = (v: "flat" | "3d" | "sheets") => {
     setMapViewState(v);
     try {
       localStorage.setItem("infinity.mapsView", v);
@@ -189,6 +193,9 @@ export function MapsInteractive({ project }: { project: Project }) {
   // visible until the warehouse pre-load started running at sign-in (D9) and
   // reliably won the race the profile fetch used to win.
   const builtForRole = useRef<string | null | undefined>(null);
+  // Same story for the view: flipping Map <-> 3D rebuilds the renderer,
+  // since flat is decided at mount.
+  const builtForView = useRef<string | null>(null);
 
   // Mount once, refresh in place on data changes — refresh keeps the camera
   // where the user left it, a remount would snap it back to the default.
@@ -196,7 +203,7 @@ export function MapsInteractive({ project }: { project: Project }) {
     const host = hostRef.current;
     if (!host || !job) return;
     if (viewRef.current) {
-      if (host.childElementCount > 0 && builtForRole.current === effectiveRole) {
+      if (host.childElementCount > 0 && builtForRole.current === effectiveRole && builtForView.current === mapView) {
         // Same live host, same role — refresh in place, keep the camera.
         viewRef.current.refresh(job);
         return;
@@ -210,8 +217,10 @@ export function MapsInteractive({ project }: { project: Project }) {
       viewRef.current = null;
     }
     builtForRole.current = effectiveRole;
+    builtForView.current = mapView;
     viewRef.current = mountFitView(host, job, {
       toast: pushToast,
+      flatView: mapView === "flat",
       openOpening: (code: string) => {
         // Codes come in two dialects (survey "13A" vs extraction "13-1");
         // normalize both sides so the deep link finds its opening.
@@ -302,11 +311,18 @@ export function MapsInteractive({ project }: { project: Project }) {
   const viewToggle = (
     <div className="seg" role="group" aria-label="Map view" style={{ marginBottom: 8 }}>
       <button
+        className={mapView === "flat" ? "button-like active-pill" : "button-like"}
+        aria-pressed={mapView === "flat"}
+        onClick={() => setMapView("flat")}
+      >
+        Map
+      </button>
+      <button
         className={mapView === "3d" ? "button-like active-pill" : "button-like"}
         aria-pressed={mapView === "3d"}
         onClick={() => setMapView("3d")}
       >
-        3D
+        3D (beta)
       </button>
       <button
         className={mapView === "sheets" ? "button-like active-pill" : "button-like"}
