@@ -8,12 +8,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import {
-  combineEvidence,
-  estimateJobUnits,
-  installEventsEvidence,
-  sessionsEvidence,
-} from "../../lib/estimate/cohorts";
+import { estimateJobUnits } from "../../lib/estimate/cohorts";
+import { useCohortEvidence } from "../../lib/estimate/liveEstimate";
 import { listOpenings } from "../../lib/install/api";
 
 export function SignatureEstimates({ projectId }: { projectId: string }) {
@@ -21,23 +17,10 @@ export function SignatureEstimates({ projectId }: { projectId: string }) {
     queryKey: ["openings", projectId],
     queryFn: () => listOpenings(projectId),
   });
-  const sessions = useQuery({
-    queryKey: ["cohortEvidence", "sessions"],
-    queryFn: sessionsEvidence,
-    staleTime: 60_000,
-  });
-  const legacy = useQuery({
-    queryKey: ["cohortEvidence", "legacy"],
-    queryFn: installEventsEvidence,
-    staleTime: 60_000,
-  });
+  const { evidence, sessions, legacy } = useCohortEvidence();
   // Local, unsaved, clearly labelled — never dressed as data.
   const [manual, setManual] = useState<Record<string, string>>({});
 
-  const evidence = useMemo(
-    () => combineEvidence(sessions.data ?? [], legacy.data ?? []),
-    [sessions.data, legacy.data],
-  );
   const job = useMemo(
     () =>
       estimateJobUnits(
@@ -54,11 +37,9 @@ export function SignatureEstimates({ projectId }: { projectId: string }) {
   );
 
   const legacyCount = useMemo(() => {
-    const covered = new Set(
-      (sessions.data ?? []).map((e) => e.unitId).filter(Boolean),
-    );
-    return (legacy.data ?? []).filter((e) => !e.unitId || !covered.has(e.unitId)).length;
-  }, [sessions.data, legacy.data]);
+    const covered = new Set(sessions.map((e) => e.unitId).filter(Boolean));
+    return legacy.filter((e) => !e.unitId || !covered.has(e.unitId)).length;
+  }, [sessions, legacy]);
 
   const manualTotal = job.rows
     .filter((r) => !r.installed && r.estimate?.minutes == null)

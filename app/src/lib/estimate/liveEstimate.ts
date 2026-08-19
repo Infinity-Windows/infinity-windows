@@ -2,9 +2,10 @@
 // unit builder's live preview line (Studio 100x #21) and the catalog
 // list's evidence-confidence badge (#26). Same evidence, same fallback
 // ladder (CONTEXT.md) as the foreman's estimating screen
-// (components/install/SignatureEstimates.tsx): the query keys below are
-// copied verbatim so React Query serves one cached fetch to every screen
-// that asks for it instead of each one opening its own.
+// (components/install/SignatureEstimates.tsx): useCohortEvidence below is
+// the one place that knows the evidence query keys, and every screen that
+// needs the pool mounts it, so React Query serves them all one cached
+// fetch instead of each opening its own.
 //
 // A drafted or catalog unit has no traced opening, so its story is
 // honestly unknown — `story` is always null here, the same "untraced"
@@ -26,12 +27,21 @@ import { computeSignature } from "./signature";
 import type { UnitConfig } from "../modelstudio/units";
 
 /**
- * The estimating screen's evidence, fetched once and shared: identical
- * query keys to SignatureEstimates.tsx / DataHub.tsx, so a screen that
- * mounts alongside (or after) one of those reuses the cached fetch
- * instead of doubling it.
+ * The estimating evidence, fetched once and shared — the only place that
+ * knows the evidence query keys and staleTime. SignatureEstimates.tsx,
+ * DataHub.tsx and the Studio screens all mount this, so whichever loads
+ * first fetches and the rest reuse the cache.
+ *
+ * `evidence` is the combined pool the ladder consumes (sessions-first,
+ * legacy deduped in). The raw `sessions`/`legacy` pools ride along for
+ * the screens that report provenance — the estimating screen's
+ * "N legacy-timed units" line and the Data Tab's timing-source counts.
  */
-export function useCohortEvidence(): CohortEvidence[] {
+export function useCohortEvidence(): {
+  evidence: CohortEvidence[];
+  sessions: CohortEvidence[];
+  legacy: CohortEvidence[];
+} {
   const sessions = useQuery({
     queryKey: ["cohortEvidence", "sessions"],
     queryFn: sessionsEvidence,
@@ -42,10 +52,11 @@ export function useCohortEvidence(): CohortEvidence[] {
     queryFn: installEventsEvidence,
     staleTime: 60_000,
   });
-  return useMemo(
-    () => combineEvidence(sessions.data ?? [], legacy.data ?? []),
-    [sessions.data, legacy.data],
-  );
+  return useMemo(() => {
+    const s = sessions.data ?? [];
+    const l = legacy.data ?? [];
+    return { evidence: combineEvidence(s, l), sessions: s, legacy: l };
+  }, [sessions.data, legacy.data]);
 }
 
 /**
@@ -73,6 +84,6 @@ export function estimateForUnitConfig(
  * config's own change.
  */
 export function useUnitCohortEstimate(config: UnitConfig): CohortEstimate {
-  const evidence = useCohortEvidence();
+  const { evidence } = useCohortEvidence();
   return useMemo(() => estimateForUnitConfig(config, evidence), [config, evidence]);
 }
