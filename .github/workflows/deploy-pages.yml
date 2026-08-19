@@ -37,7 +37,14 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          VITE_BASE: /infinity-windows/
+          # Custom-domain switch (owner ask, 2026-08-18): when the repo
+          # variable PAGES_DOMAIN is set (Settings -> Secrets and variables ->
+          # Actions -> Variables), the app builds for the domain root ("/")
+          # and a CNAME file is written below so GitHub Pages serves that
+          # domain. With the variable unset, everything behaves exactly as
+          # before: github.io under /infinity-windows/. One variable flips
+          # the cutover; deleting it flips back.
+          VITE_BASE: ${{ vars.PAGES_DOMAIN != '' && '/' || '/infinity-windows/' }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           # Vite inlines these at build time. A variable that is missing here is
@@ -50,6 +57,9 @@ jobs:
           # of sitting on a cached bundle until someone force-quits it. See
           # app/src/lib/pwa/updateCore.ts.
           VITE_BUILD_ID: ${{ github.sha }}
+      - name: Write CNAME for the custom domain
+        if: ${{ vars.PAGES_DOMAIN != '' }}
+        run: printf '%s' "${{ vars.PAGES_DOMAIN }}" > dist/CNAME
       - uses: actions/upload-pages-artifact@v3
         with:
           path: app/dist
