@@ -108,17 +108,12 @@ test("map assign: pick windows, pick a person, sequenced RPCs fire", async ({
   await expect(page.locator("button.win").first()).toBeVisible({ timeout: 60_000 });
 
   // Enter assign mode (foreman+ only sees this) and tap both windows.
-  // The stage resolves taps from pointerdown's target (CSS-3D transforms
-  // defeat coordinate hit-testing), so dispatch the pointer pair straight
-  // on each button — same path a finger takes.
+  // The FLAT view (the default since 2026-08-19) is normal DOM — a real
+  // click works; the old CSS-3D pointer gymnastics are only needed on the
+  // 3D beta tab.
   await page.locator("#assignBtn").click();
   for (const id of ["10", "11"]) {
-    await page.evaluate((winId) => {
-      const el = document.querySelector(`button.win[data-id="${winId}"]`)!;
-      const opts = { bubbles: true, pointerId: 7, clientX: 300, clientY: 300 };
-      el.dispatchEvent(new PointerEvent("pointerdown", opts));
-      el.dispatchEvent(new PointerEvent("pointerup", opts));
-    }, id);
+    await page.locator(`button.win[data-id="${id}"]`).first().click({ force: true });
   }
   await expect(page.locator("#assignCount")).toHaveText("2 picked");
 
