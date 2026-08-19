@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { formatApiError } from "../lib/errors";
+import { passwordResetRedirectUrl } from "../lib/passwordReset";
 import { supabase, supabaseConfigured } from "../lib/supabase";
 import { submitAccessRequest } from "../lib/install/api";
 
@@ -18,9 +19,12 @@ type Mode = "signin" | "request";
 
 export function SignIn({
   initialMode = "signin",
+  initialNotice = null,
   onHaveInviteCode,
 }: {
   initialMode?: Mode;
+  /** A plain sentence about how they landed here — e.g. an expired reset link. */
+  initialNotice?: string | null;
   /**
    * For someone a supervisor added on the Crew access screen. They were texted a
    * link, but chat apps mangle links, so they can type the code instead. This is
@@ -31,7 +35,7 @@ export function SignIn({
   const [mode, setMode] = useState<Mode>(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialNotice);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -63,9 +67,18 @@ export function SignIn({
       setBusy(false);
       return;
     }
+    // The app lives under a base path on GitHub Pages — bare origin was a 404
+    // page, which is where every reset email used to land (owner report,
+    // 2026-08-18). The helper joins origin + BASE_URL; App.tsx handles the
+    // recovery landing with the Set-new-password screen.
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(
       email.trim(),
-      { redirectTo: window.location.origin },
+      {
+        redirectTo: passwordResetRedirectUrl(
+          window.location.origin,
+          import.meta.env.BASE_URL,
+        ),
+      },
     );
     if (resetError) setError(resetError.message);
     else setInfo("Password reset email sent — check your inbox, then Sign in.");
