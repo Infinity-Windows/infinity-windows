@@ -81,6 +81,7 @@ export type RoutePath =
   | "/crew"
   | "/receive"
   | "/warehouse/3d"
+  | "/projects/:projectId/model"
   | "/takeoffs"
   | "/labels"
   | "/catalog"
@@ -146,6 +147,11 @@ export const NAV: NavDest[] = [
   // The 3D map viewer (ticket 22). Reached from a package's sheet and a
   // container's page, never as a menu row.
   { id: "warehouse-3d", to: "/warehouse/3d", label: "Container in 3D", icon: "▧", minRole: "installer" },
+  // The phone-friendly JOB model viewer (Studio 100x #27) — same read-only
+  // pattern as the container viewer above, pointed at a job's Studio model.
+  // Reached from the Maps Interactive tab's "Walk the 3D model" button,
+  // never as a menu row.
+  { id: "job-model", to: "/projects/:projectId/model", label: "Walk the 3D model", icon: "▧", minRole: "installer" },
   // Takeoffs: installers see the bundles built FOR them; reached from the
   // warehouse page's Supplies section.
   { id: "takeoffs", to: "/takeoffs", label: "Takeoffs", icon: "▤", minRole: "installer" },

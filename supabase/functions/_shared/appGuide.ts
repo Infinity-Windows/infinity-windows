@@ -340,6 +340,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "A container's shell in 3D — look, orbit, zoom. Coming from a package, the zone where it sits glows (front/middle/back of a conex, compass corner of the warehouse). The map, not the pen: nothing here can be moved.",
   },
   {
+    path: "/projects/:projectId/model",
+    label: "Walk the 3D model",
+    minRole: "installer",
+    blurb:
+      "A job's building in 3D, read-only — look, orbit, zoom, and tap a window or door to see its mark and size. Opens from the job's Maps Interactive tab when a supervisor has built a Studio model. Works from a cached copy with no signal. The map, not the pen: nothing here can be moved.",
+  },
+  {
     path: "/storage/tag",
     label: "Tag packages",
     minRole: "installer",

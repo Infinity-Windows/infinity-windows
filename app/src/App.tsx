@@ -64,6 +64,7 @@ const StudioProjectRoute = lazy(() =>
   import("./pages/install/StudioList").then((m) => ({ default: m.StudioProjectRoute })),
 );
 import { FlashRun } from "./pages/install/FlashRun";
+import { JobModelViewer } from "./pages/install/JobModelViewer";
 import { PlansetUpload } from "./pages/install/PlansetUpload";
 import { ProjectMap } from "./pages/install/ProjectMap";
 import { TypeBrainCard } from "./pages/install/TypeBrainCard";
@@ -496,6 +497,11 @@ export default function App() {
                 </RequireRole>
               }
             />
+            {/* The phone-friendly job model viewer (Studio 100x #27) is
+                installer-open ON PURPOSE — same line ContainerViewer draws
+                for a container's shell: it is the map, not the pen. Studio
+                itself stays supervisor+ and desktop-only, above. */}
+            <Route path="/projects/:projectId/model" element={<JobModelViewer />} />
             {/* Flashing ahead of the crew is any installer's job — no gate
                 beyond being signed in; the server enforces the clock rules. */}
             <Route path="/projects/:projectId/flash-run" element={<FlashRun />} />

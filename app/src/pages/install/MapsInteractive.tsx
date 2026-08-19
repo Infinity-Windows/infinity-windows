@@ -30,6 +30,7 @@ import {
   preferModelOutline,
 } from "../../lib/fitview/adapter";
 import { mountFitView } from "../../lib/fitview/fitviewRenderer";
+import { jobModelFromFeatures } from "../../lib/modelstudio/projects";
 import { ProjectMap } from "./ProjectMap";
 import "../../lib/fitview/fitview.css";
 
@@ -101,6 +102,11 @@ export function MapsInteractive({ project }: { project: Project }) {
 
   // The model-bearing outline wins; the auto-extracted one is a fallback.
   const outline = preferModelOutline(outlines.data);
+  // Whether a supervisor has saved a Studio (3D builder) model for this job
+  // — gates the "Walk the 3D model" door to the phone-friendly viewer
+  // (Studio 100x #27). A DIFFERENT thing from the fitview outline model
+  // above: this is features.modelstudio, not features.fitview.model.
+  const hasStudioModel = Boolean(jobModelFromFeatures(outline?.features));
 
   const job = useMemo(() => {
     if (!outline || !openings.data) return null;
@@ -340,6 +346,15 @@ export function MapsInteractive({ project }: { project: Project }) {
     return (
       <div>
         {viewToggle}
+        {hasStudioModel && (
+          <Link
+            className="button-like"
+            style={{ marginBottom: 8 }}
+            to={`/projects/${projectId}/model`}
+          >
+            Walk the 3D model
+          </Link>
+        )}
         <ProjectMap embedded />
       </div>
     );
@@ -377,7 +392,18 @@ export function MapsInteractive({ project }: { project: Project }) {
   // a branch swap here would strand the mounted view on a detached div.
   return (
     <div>
-      <div style={fullscreen ? { display: "none" } : undefined}>{viewToggle}</div>
+      <div style={fullscreen ? { display: "none" } : undefined}>
+        {viewToggle}
+        {hasStudioModel && (
+          <Link
+            className="button-like"
+            style={{ marginBottom: 8 }}
+            to={`/projects/${projectId}/model`}
+          >
+            Walk the 3D model
+          </Link>
+        )}
+      </div>
       <div className={fullscreen ? "fitview-shell fitview-fullscreen" : "fitview-shell"}>
       <div className="fitview-toolbar">
         {job && job.windows.length === 0 && (
