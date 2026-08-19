@@ -61,25 +61,36 @@ test("the minimap's you-are-here edge follows the scroll", async ({ page }) => {
   await useOutline(page);
   await page.goto(`/projects/${BLACK22.projectId}?tab=maps-interactive`);
   await expect(page.locator("button.win").first()).toBeVisible({ timeout: 60_000 });
-  await expect(page.locator(".flat-minimap line.on")).toHaveAttribute("data-edge", "0");
+  const firstGeo = await page
+    .locator(".flat-wall")
+    .first()
+    .getAttribute("data-geo");
+  const lastGeo = await page.locator(".flat-wall").last().getAttribute("data-geo");
+  await expect(page.locator(".flat-minimap line.on")).toHaveAttribute(
+    "data-geo",
+    firstGeo!,
+  );
 
   await page.evaluate(() => {
     const stage = document.querySelector(".stage.flat")!;
     stage.scrollLeft = stage.scrollWidth;
   });
-  // Frame-driven sync: the highlight lands on the last wall's edge.
-  await expect(page.locator(".flat-minimap line.on")).toHaveAttribute("data-edge", "3", {
-    timeout: 5_000,
-  });
+  // Frame-driven sync: the highlight lands on the LAST wall's edge.
+  await expect(page.locator(".flat-minimap line.on")).toHaveAttribute(
+    "data-geo",
+    lastGeo!,
+    { timeout: 5_000 },
+  );
 
-  // And the wall chips agree — the elevation strip marks the current wall.
   await page.evaluate(() => {
     const stage = document.querySelector(".stage.flat")!;
     stage.scrollLeft = 0;
   });
-  await expect(page.locator(".flat-minimap line.on")).toHaveAttribute("data-edge", "0", {
-    timeout: 5_000,
-  });
+  await expect(page.locator(".flat-minimap line.on")).toHaveAttribute(
+    "data-geo",
+    firstGeo!,
+    { timeout: 5_000 },
+  );
 });
 
 test("the minimap stays locked in the corner while the walls scroll", async ({ page }) => {
@@ -101,4 +112,109 @@ test("the minimap stays locked in the corner while the walls scroll", async ({ p
       timeout: 5_000,
     })
     .toBeLessThan(2);
+});
+
+/** Same outline route, different model — for the multi-building and
+ * multi-story cases below. */
+async function useModel(page: import("@playwright/test").Page, model: unknown) {
+  await page.route("**/rest/v1/project_plan_outlines**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "content-range": "0-0/1" },
+      body: JSON.stringify([
+        {
+          id: "00000000-0000-4000-8000-0000000a5520",
+          project_id: BLACK22.projectId,
+          planset_id: null,
+          page_number: 1,
+          points: [],
+          page_aspect: 0.7,
+          features: { fitview: { model } },
+          created_at: "2026-08-14T00:00:00Z",
+        },
+      ]),
+    }),
+  );
+}
+
+const TWO_BUILDINGS = {
+  building: {
+    width: 30, depth: 6, height: 3, rise: 0,
+    footprints: [
+      [ { x: 0, z: 0 }, { x: 12, z: 0 }, { x: 12, z: 6 }, { x: 0, z: 6 } ],
+      [ { x: 18, z: 0 }, { x: 30, z: 0 }, { x: 30, z: 6 }, { x: 18, z: 6 } ],
+    ],
+  },
+  windows: [
+    { id: "10", elev: "s0", x: 3, y: 0.9, w: 1500, h: 1200 },
+    { id: "11", elev: "s4", x: 2, y: 0.9, w: 1500, h: 1200 },
+  ],
+};
+
+const TWO_STORIES = {
+  building: {
+    width: 12, depth: 6, height: 6, rise: 0,
+    footprints: [[ { x: 0, z: 0 }, { x: 12, z: 0 }, { x: 12, z: 6 }, { x: 0, z: 6 } ]],
+    stories: [
+      { n: 1, elevM: 0, heightM: 3, footprints: [[ { x: 0, z: 0 }, { x: 12, z: 0 }, { x: 12, z: 6 }, { x: 0, z: 6 } ]] },
+      { n: 2, elevM: 3, heightM: 3, footprints: [[ { x: 0, z: 0 }, { x: 12, z: 0 }, { x: 12, z: 6 }, { x: 0, z: 6 } ]] },
+    ],
+  },
+  windows: [
+    { id: "10", elev: "s0", x: 3, y: 0.9, w: 1500, h: 1200, story: 1 },
+    { id: "11", elev: "s4", x: 6, y: 0.9, w: 1500, h: 1200, story: 2 },
+  ],
+};
+
+test("two buildings never interleave, and the minimap knows both", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  await useModel(page, TWO_BUILDINGS);
+  await page.goto(`/projects/${BLACK22.projectId}?tab=maps-interactive`);
+  await expect(page.locator("button.win").first()).toBeVisible({ timeout: 60_000 });
+
+  // Walls come building-by-building: 4 for building 1, then the break, then 4.
+  const polys = await page.$$eval(".flat-wall", (els) =>
+    els.map((el) => (el as HTMLElement).dataset.geo!.split("|")[0]),
+  );
+  expect(polys).toEqual(["0", "0", "0", "0", "1", "1", "1", "1"]);
+  // Both buildings get named dividers — the first one too, so the row
+  // reads "BUILDING 1 · walls · BUILDING 2 · walls".
+  await expect(page.locator(".flat-building-break")).toHaveCount(2);
+  await expect(page.locator(".flat-building-break").first()).toContainText("Building 1");
+  await expect(page.locator(".flat-building-break").last()).toContainText("Building 2");
+  // Both outlines drawn: 8 edges total on the minimap.
+  await expect(page.locator(".flat-minimap svg line")).toHaveCount(8);
+
+  // Scroll to the far end: the lit edge belongs to BUILDING 2.
+  await page.evaluate(() => {
+    const stage = document.querySelector(".stage.flat")!;
+    stage.scrollLeft = stage.scrollWidth;
+  });
+  await expect
+    .poll(async () =>
+      page
+        .locator(".flat-minimap line.on")
+        .getAttribute("data-geo")
+        .then((g) => g?.split("|")[0]),
+    )
+    .toBe("1");
+  // And the label says which building.
+  await expect(page.locator(".flat-minimap-label")).toContainText("B2");
+});
+
+test("a two-story wall is ONE panel with both stories stacked", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  await useModel(page, TWO_STORIES);
+  await page.goto(`/projects/${BLACK22.projectId}?tab=maps-interactive`);
+  await expect(page.locator("button.win").first()).toBeVisible({ timeout: 60_000 });
+
+  // 4 physical walls — not 8 story-bands.
+  await expect(page.locator(".flat-wall")).toHaveCount(4);
+  // The south wall carries both stories' faces, and both windows live in it.
+  const south = page.locator(".flat-wall").first();
+  await expect(south.locator(".face")).toHaveCount(2);
+  await expect(south.locator("button.win")).toHaveCount(2);
+  // No building break for a single building.
+  await expect(page.locator(".flat-building-break")).toHaveCount(0);
 });
