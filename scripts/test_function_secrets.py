@@ -211,7 +211,7 @@ class FunctionSecretsTest(unittest.TestCase):
 
     def test_every_real_function_is_covered(self):
         names = fs.function_names()
-        self.assertEqual(len(names), 14)
+        self.assertEqual(len(names), 15)
         self.assertIn("ask", names)
         # Creates accounts on the service-role key, and needs no secret of its
         # own: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are platform-provided.
