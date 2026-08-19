@@ -307,6 +307,19 @@ export function mountFitView(host, job, shim) {
     el.style.transform = transform;
   }
 
+  // Big flat planes (lawn, ground shadow, flat roofs) are featureless
+  // gradients, but Safari rasterizes every 3D face at its LAYOUT size before
+  // the scene transform shrinks it — on a big job the lawn alone is ~3000px
+  // square, and an iPhone pays devicePixelRatio² (9×) per pixel of that.
+  // Those four planes cost over a gigabyte of GPU layer memory on BLACK22,
+  // which is why Maps Interactive crash-looped on phones ("a problem
+  // repeatedly occurred", owner report 2026-08-19). Drawing them k× smaller
+  // and stretching back in-plane cuts the raster to 1/k² — invisible for a
+  // gradient. Faces, windows and labels keep full-size rasters.
+  function placeFlat(el, w, h, transform, k) {
+    place(el, w / k, h / k, transform + " scale(" + k + ")");
+  }
+
   // Stud-wall pattern for one face: corner posts, top and bottom plates, a
   // rim band at each floor level, then studs on 600mm centres underneath.
   // Painted as stacked gradients so the wall stays one cheap element.
@@ -443,12 +456,12 @@ export function mountFitView(host, job, shim) {
     // Lawn first, shadow on top of it (it sits 1px lower to avoid z-fighting).
     var lawn = document.createElement("div");
     lawn.className = "lawn";
-    place(lawn, W + 320, D + 320, "translateY(" + (H / 2 + 1) + "px) rotateX(90deg)");
+    placeFlat(lawn, W + 320, D + 320, "translateY(" + (H / 2 + 1) + "px) rotateX(90deg)", 4);
     house.appendChild(lawn);
 
     var g = document.createElement("div");
     g.className = "ground";
-    place(g, W + 190, D + 190, "translateY(" + (H / 2) + "px) rotateX(90deg)");
+    placeFlat(g, W + 190, D + 190, "translateY(" + (H / 2) + "px) rotateX(90deg)", 4);
     house.appendChild(g);
 
     if (FOOT) {
@@ -558,11 +571,13 @@ export function mountFitView(host, job, shim) {
       // second-story roof over every one-story wing (owner report,
       // 2026-08-13). A story without a usable outline draws no lid rather
       // than borrowing the whole footprint at the wrong height.
-      var lidClip = function (fps) {
+      // Coordinates are divided by the same k the roof plane is drawn at
+      // (placeFlat) — the clip applies BEFORE the stretch, in raster space.
+      var lidClip = function (fps, k) {
         return "path('" + fps.map(function (fp) {
           return "M" + fp.map(function (p) {
-            return ((p.x - FMINX) * S + 3).toFixed(1) + " " +
-                   ((p.z - FMINZ) * S + 3).toFixed(1);
+            return (((p.x - FMINX) * S + 3) / k).toFixed(1) + " " +
+                   (((p.z - FMINZ) * S + 3) / k).toFixed(1);
           }).join(" L") + " Z";
         }).join(" ") + "')";
       };
@@ -576,9 +591,14 @@ export function mountFitView(host, job, shim) {
         if (STORIES && STORIES.length > 1 && !hasPoly) return;
         var fr = document.createElement("div");
         fr.className = "flatroof";
-        place(fr, W + 6, D + 6,
-          "translateY(" + (H / 2 - lid.topM * S - 1) + "px) rotateX(90deg)");
-        if (hasPoly) fr.style.clipPath = lidClip(lid.fps);
+        placeFlat(fr, W + 6, D + 6,
+          "translateY(" + (H / 2 - lid.topM * S - 1) + "px) rotateX(90deg)", 4);
+        // The stylesheet's 2px parapet border and 6px membrane ring would
+        // read 4x thick after the stretch — thin them to compensate, so the
+        // roof draws pixel-identical to before.
+        fr.style.borderWidth = "0.5px";
+        fr.style.boxShadow = "inset 0 0 0 1.5px var(--roof-a)";
+        if (hasPoly) fr.style.clipPath = lidClip(lid.fps, 4);
         house.appendChild(fr);
       });
     }
