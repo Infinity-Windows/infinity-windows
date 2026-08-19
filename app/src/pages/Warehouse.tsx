@@ -36,7 +36,13 @@ import {
   listContainers,
   containerKind,
 } from "../lib/storage";
-import { listSupplies, onHandLabel } from "../lib/ops";
+import {
+  filterSuppliesByName,
+  listSupplies,
+  lowStockFirst,
+  onHandLabel,
+} from "../lib/ops";
+import { listTakeoffs } from "../lib/takeoffs";
 import {
   cardLink,
   listScheduledMarks,
@@ -87,26 +93,22 @@ export function Warehouse() {
   const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
   const issues = useQuery({ queryKey: ["issues"], queryFn: listIssues });
   const supplies = useQuery({ queryKey: ["supplies"], queryFn: listSupplies });
-  // listSupplies orders by name, so an un-sorted preview showed roughly
-  // A-through-F regardless of what was actually running out. Sort by what's
-  // LOW ON HAND instead, so the six rows an installer sees are the six worth
-  // knowing about.
-  //
-  // on_hand can be null ("not counted yet" -- see ops.ts). A null isn't the
-  // biggest risk (a real zero is) or the smallest (a well-stocked item is);
-  // it's an unknown, so it's ranked as if it were the AVERAGE of whatever we
-  // do know, landing it after genuinely-low items but ahead of comfortable
-  // ones -- "we don't know" is closer to a problem than "we have plenty."
-  const supplyPreview = useMemo(() => {
-    const items = supplies.data ?? [];
-    const known = items
-      .map((s) => s.on_hand)
-      .filter((n): n is number => n != null);
-    const unknownRank = known.length ? known.reduce((sum, n) => sum + n, 0) / known.length : 0;
-    return [...items]
-      .sort((a, b) => (a.on_hand ?? unknownRank) - (b.on_hand ?? unknownRank))
-      .slice(0, 6);
-  }, [supplies.data]);
+  const takeoffs = useQuery({ queryKey: ["takeoffs"], queryFn: listTakeoffs });
+  const openTakeoffs = (takeoffs.data ?? []).filter(
+    (t) => t.status !== "picked_up",
+  ).length;
+  // The supply drawer (owner ask, 2026-08-18): folded away with a search bar
+  // inside, instead of six rows always spread on the page. No search = the
+  // lowest-stock supplies first (lowStockFirst ranks "not counted yet" as the
+  // average of what we do know); typing narrows the WHOLE catalog by name,
+  // not just what's showing.
+  const [supplyQ, setSupplyQ] = useState("");
+  const supplyMatches = useMemo(
+    () => filterSuppliesByName(lowStockFirst(supplies.data ?? []), supplyQ),
+    [supplies.data, supplyQ],
+  );
+  const SUPPLY_ROWS_SHOWN = 12;
+  const supplyPreview = supplyMatches.slice(0, SUPPLY_ROWS_SHOWN);
 
   const activeIds = useMemo(() => (projects.data ?? []).map((p) => p.id), [projects.data]);
   const marks = useQuery({
@@ -359,25 +361,48 @@ export function Warehouse() {
                 something with its last count date beside it.
               </Explain>
               <div className="row-gap" style={{ flexWrap: "wrap", marginBottom: 6 }}>
-                <Link className="button-like" to="/takeoffs">
-                  Takeoffs
+                <Link className="button-like active-pill" to="/takeoffs">
+                  Takeoffs{openTakeoffs > 0 ? ` · ${openTakeoffs} open` : ""}
+                </Link>
+                <Link className="button-like" to="/supplies">
+                  Take supplies
                 </Link>
               </div>
-              <ul className="unit-list" style={{ margin: 0 }}>
-                {supplyPreview.map((s2) => (
-                  <li key={s2.id} className="find-row">
-                    <div style={{ minWidth: 0 }}>
-                      <strong>{s2.name}</strong>{" "}
-                      <span className="muted" style={{ fontSize: 12 }}>
-                        {onHandLabel(s2)}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-              <Link className="button-like" style={{ marginTop: 8 }} to="/supplies">
-                Take supplies
-              </Link>
+              <Explain id="wh-supply-drawer" summary="Supplies on the shelf" raw>
+                <input
+                  type="search"
+                  placeholder="Search supplies — caulk, screws…"
+                  value={supplyQ}
+                  onChange={(e) => setSupplyQ(e.target.value)}
+                  style={{ width: "100%", margin: "6px 0" }}
+                  aria-label="Search supplies"
+                />
+                <ul className="unit-list" style={{ margin: 0 }}>
+                  {supplyPreview.map((s2) => (
+                    <li key={s2.id} className="find-row">
+                      <div style={{ minWidth: 0 }}>
+                        <strong>{s2.name}</strong>{" "}
+                        <span className="muted" style={{ fontSize: 12 }}>
+                          {onHandLabel(s2)}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                {supplyMatches.length === 0 && (
+                  <p className="muted" style={{ margin: "6px 0 0" }}>
+                    {supplyQ.trim()
+                      ? `Nothing named like “${supplyQ.trim()}”.`
+                      : "Nothing in the catalog yet — add supplies from Take supplies."}
+                  </p>
+                )}
+                {supplyMatches.length > SUPPLY_ROWS_SHOWN && (
+                  <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
+                    Showing {SUPPLY_ROWS_SHOWN} of {supplyMatches.length} — type to
+                    narrow.
+                  </p>
+                )}
+              </Explain>
             </>
           )}
 

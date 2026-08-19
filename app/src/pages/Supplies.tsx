@@ -25,6 +25,7 @@ import {
   addOrder,
   addSupply,
   countSupply,
+  filterSuppliesByName,
   listOrders,
   listSupplies,
   listSupplyTakes,
@@ -81,6 +82,11 @@ export function Supplies() {
   const [proj, setProj] = useState(searchParams.get("job") ?? "");
   const [supplyId, setSupplyId] = useState("");
   const [qty, setQty] = useState("1");
+  // The shelf search (owner ask, 2026-08-18): the full catalog stays one
+  // list, typing narrows it by name. Order stays as the API gives it (by
+  // name), so the shelf reads like the shelf.
+  const [shelfQ, setShelfQ] = useState("");
+  const shelf = filterSuppliesByName(supplies.data ?? [], shelfQ);
   const [newName, setNewName] = useState("");
   const [newUnit, setNewUnit] = useState<string>(SUPPLY_UNIT_PRESETS[0]);
   const [newUnitOther, setNewUnitOther] = useState("");
@@ -151,8 +157,16 @@ export function Supplies() {
 
       <h2>On the shelf</h2>
       {supplies.isError && <p className="error">{formatApiError(supplies.error)}</p>}
+      <input
+        type="search"
+        placeholder="Search supplies — caulk, screws…"
+        value={shelfQ}
+        onChange={(e) => setShelfQ(e.target.value)}
+        style={{ width: "100%", margin: "0 0 8px" }}
+        aria-label="Search supplies"
+      />
       <ul className="unit-list" style={{ margin: 0 }}>
-        {(supplies.data ?? []).map((s) => (
+        {shelf.map((s) => (
           <li key={s.id} className="find-row" style={{ alignItems: "center", gap: 10 }}>
             <div style={{ minWidth: 0, flex: 1 }}>
               <strong>{s.name}</strong>{" "}
@@ -183,9 +197,12 @@ export function Supplies() {
             </div>
           </li>
         ))}
-        {(supplies.data ?? []).length === 0 && (
-          <p className="muted">Nothing in the catalog yet — add supplies below.</p>
-        )}
+        {shelf.length === 0 &&
+          (shelfQ.trim() ? (
+            <p className="muted">Nothing named like &ldquo;{shelfQ.trim()}&rdquo;.</p>
+          ) : (
+            <p className="muted">Nothing in the catalog yet — add supplies below.</p>
+          ))}
       </ul>
 
       <h2>Request for a job (ahead of time)</h2>
