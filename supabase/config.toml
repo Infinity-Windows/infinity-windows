@@ -44,3 +44,8 @@ verify_jwt = true
 
 [functions.monday-sync]
 verify_jwt = true
+
+[functions.summon-warning-sweep]
+# Parameterless, idempotent cron target — see the function header for why
+# no JWT is safe here. The pg_cron poke carries no auth on purpose.
+verify_jwt = false
