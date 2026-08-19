@@ -34,6 +34,15 @@ export interface SignatureV1 {
 
 export interface UnitFacts {
   story: number | null;
+  /**
+   * Resolved by the CALLER — this function never reads UnitConfig's own
+   * `insetOutset` field. `signatureSync.insetOutsetOf` (catalog config,
+   * else spec.extra) and `liveEstimate.estimateForUnitConfig` (config
+   * only — a draft has no spec) are today's two resolvers. Keeping that
+   * resolution outside computeSignature is what makes it safe for
+   * UnitConfig to carry its own `insetOutset`: a config that never sets
+   * it still computes the exact signature it always has, byte for byte.
+   */
   insetOutset: "inset" | "outset" | null;
 }
 

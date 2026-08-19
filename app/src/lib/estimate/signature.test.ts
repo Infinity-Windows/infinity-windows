@@ -107,6 +107,26 @@ describe("computeSignature", () => {
     expect(signature.insetOutset).toBe("outset");
     expect(signature.tiers[0].mix).toEqual({ casement: 2 });
   });
+
+  // #23: UnitConfig.insetOutset is the builder's 3-way control writing to
+  // the catalog config-of-record. computeSignature must never read that
+  // field itself — only the resolved UnitFacts a caller hands it — so
+  // adding the field can't fracture a single existing cohort key.
+  it("a config's OWN insetOutset never reaches computeSignature directly — #23's null-neutrality pin", () => {
+    // Set on the CONFIG, but facts (what the caller actually resolved)
+    // still says null — proves the config-level value is inert on its
+    // own, byte for byte against the pinned window-16 key above.
+    const withConfigField: UnitConfig = { ...WINDOW_16, insetOutset: "inset" };
+    expect(computeSignature(withConfigField, facts).sigKey).toBe(
+      '{"corner":"corner","insetOutset":null,"kind":"window","movingCount":0,"panelCount":5,"tiers":[{"mix":{"fixed":5},"story":1}],"v":1}',
+    );
+  });
+
+  it("a config with no insetOutset key at all reproduces the exact pre-#23 key", () => {
+    const bare: UnitConfig = { ...WINDOW_16 };
+    expect("insetOutset" in bare).toBe(false);
+    expect(computeSignature(bare, facts).sigKey).toBe(computeSignature(WINDOW_16, facts).sigKey);
+  });
 });
 
 describe("canonicalJson", () => {

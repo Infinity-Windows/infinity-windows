@@ -49,6 +49,32 @@ export interface UnitConfig {
    * heightMm; absent = one full-height row.
    */
   rows?: { heightMm: number }[] | null;
+  /**
+   * Mounts inset or outset — a SIGNATURE field (CONTEXT.md). Spec-driven
+   * units get this from the extractor via signatureSync's
+   * `insetOutsetOf`; a hand-built catalog unit has no spec to read it
+   * from, so the builder's 3-way control writes it here instead, and
+   * `insetOutsetOf` prefers this value when it's set, spec.extra
+   * otherwise (catalog beats spec, same priority the config itself
+   * already gets). Absent/null is its own honest "not sure" — and it's
+   * safe by construction: `computeSignature` never reads this field off
+   * the config, only the already-resolved `UnitFacts.insetOutset` a
+   * caller hands it, so a config that leaves this unset produces the
+   * exact signature it always has (pinned in signature.test.ts).
+   */
+  insetOutset?: "inset" | "outset" | null;
+  /**
+   * Weight in pounds, off the Strata paperwork. DELIBERATE: stored on the
+   * unit but never folded into SignatureV1. Weight is continuous — a
+   * 40lb sash and a 45lb sash are the same "kind" of install — so
+   * signing it would fracture every existing cohort key into
+   * near-singletons for zero grouping benefit, exactly the mistake
+   * dimensions already avoid (CONTEXT.md: "sizes are continuous
+   * evidence"). It rides here in the jsonb config purely so the catalog
+   * can show it back ("~180 lb"); no migration needed, no signature
+   * version bump.
+   */
+  weightLb?: number | null;
 }
 
 /** Row heights top→bottom, cm — a missing/invalid grid is one full row. */
