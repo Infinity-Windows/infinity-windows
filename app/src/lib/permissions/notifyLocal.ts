@@ -7,6 +7,8 @@
 // pure function (planNotification) so the no-op / dedupe guarantees are testable
 // without a browser.
 
+import { pageScopeUrl, resolveNotificationUrl } from "../pwa/basePaths";
+
 export interface LocalNotification {
   title: string;
   body?: string;
@@ -77,7 +79,15 @@ const browserNotifyEnv: NotifyEnv = {
       n.onclick = () => {
         try {
           window.focus();
-          window.location.assign(opts.url!);
+          // Call sites write router paths (`/clock`); assigning one verbatim
+          // on Pages lands on the domain root, outside the app. Resolve it
+          // the way sw.ts does, with origin + base standing in for the scope.
+          window.location.assign(
+            resolveNotificationUrl(
+              opts.url,
+              pageScopeUrl(window.location.origin, import.meta.env.BASE_URL),
+            ),
+          );
         } catch {
           // ignore — best-effort deep link
         }

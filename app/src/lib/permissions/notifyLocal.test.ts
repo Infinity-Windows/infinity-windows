@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   notifyLocalWith,
@@ -100,5 +101,20 @@ describe("notifyLocalWith", () => {
       },
     });
     await expect(notifyLocalWith(env, new Set(), opts)).resolves.toBeTruthy();
+  });
+});
+
+// Regression pin on the fallback click itself (same style as
+// passwordReset.test.ts): the bug was window.location.assign(opts.url)
+// verbatim, so "/clock" navigated to the domain root on Pages — outside the
+// app. The click handler is browser-only, so pin the source.
+describe("the fallback click resolves under the app's base", () => {
+  it("assigns a url resolved against origin + BASE_URL, never the raw path", () => {
+    const src = readFileSync(new URL("./notifyLocal.ts", import.meta.url), "utf8");
+    expect(src).toContain("resolveNotificationUrl(");
+    expect(src).toContain(
+      "pageScopeUrl(window.location.origin, import.meta.env.BASE_URL)",
+    );
+    expect(src).not.toMatch(/assign\(opts\.url/);
   });
 });
