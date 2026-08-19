@@ -721,12 +721,22 @@ export async function arrivePackages(input: {
   damagedIds: string[];
   projectId: string;
   note?: string | null;
+  /**
+   * package id -> "bucket/path" for whichever damaged packages got a photo
+   * (ticket 11). Build this only from paths whose upload is ALREADY queued
+   * (see ArrivePackages.tsx and enqueueIssuePhoto) — arrive_packages writes
+   * whatever it is given straight onto the issue it opens, so a path handed
+   * in here has to be one something has actually promised to deliver bytes
+   * to, never a guess.
+   */
+  photos?: Record<string, string>;
 }): Promise<number> {
   const { data, error } = await supabase.rpc("arrive_packages", {
     p_ok: input.okIds,
     p_damaged: input.damagedIds,
     p_project: input.projectId,
     p_note: input.note ?? null,
+    p_photos: input.photos ?? {},
   });
   if (error) throw error;
   return (data as number) ?? 0;
@@ -848,4 +858,21 @@ export function partLabel(p: PartLike): string | null {
   const kind = p.part_type ? PART_LABELS[p.part_type] : null;
   if (num && kind) return `${num} · ${kind}`;
   return num ?? kind;
+}
+
+// -------------------------------------------------------- damage photos (11)
+
+/** Where a damage report's photos live — private, path-scoped by project id,
+ * same shape as install-media / trip-attachments (20260922000000). */
+export const ISSUE_PHOTOS_BUCKET = "issue-photos";
+
+/**
+ * Deterministic, bucket-relative path for a damage-report photo. Both call
+ * sites that need one — the queued upload (enqueueIssuePhoto) and the
+ * arrivePackages() call that tells the issue where to find it — call this
+ * function rather than building the string twice, so they can never drift
+ * onto two different paths for what is supposed to be the same photo.
+ */
+export function damagePhotoPath(projectId: string, packageId: string, now: number): string {
+  return `${projectId}/${packageId}-${now}.jpg`;
 }

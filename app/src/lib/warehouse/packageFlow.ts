@@ -278,11 +278,12 @@ export const NODES: FlowNode[] = [
     label: "Damaged",
     lines: ["replacement needed"],
     who: "Whoever found it.",
-    // No photo. The arrival check has one optional note box and no camera, and
-    // `issues` has no column to put a picture in — see ticket 11 for what real
-    // photo capture would take. The reporter is real, but it is never asked
-    // for: `arrive_packages` stamps `created_by` from who is signed in.
-    asks: "A note. It raises an issue, and the job sees it.",
+    // A photo, now real (ticket 11, 20260922000000_damage_photo.sql): the
+    // Damaged button opens the same stamped camera the flashing phase-proof
+    // shot uses, optional, and `issues.photo_path` is where it lands. The
+    // reporter is also real but never asked for: `arrive_packages` stamps
+    // `created_by` from who is signed in.
+    asks: "A note, and a photo if you've got one. It raises an issue, and the job sees it.",
     wrong:
       "Held back on purpose, not lost. Somebody has to order a replacement before that unit can be finished.",
     related: ["stored"],

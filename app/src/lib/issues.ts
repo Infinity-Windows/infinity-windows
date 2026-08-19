@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { signedMedia } from "./photos";
 
 /**
  * Unified tiered issues model. The three scattered "problem" surfaces
@@ -55,6 +56,14 @@ export interface Issue {
   fault_by?: string | null;
   /** The TRADE at fault (owner call 2026-08-13) — people stay on Assign. */
   fault_trade?: string | null;
+  /**
+   * "bucket/path" for a damage report's photo (ticket 11), when the person
+   * filing it took one — arrival damage is the only writer today, and it is
+   * always optional. Optional here too: the column ships in
+   * 20260922000000_damage_photo.sql, so it may be absent until that migration
+   * is applied — treat as null when missing, same as fault_trade above.
+   */
+  photo_path?: string | null;
 }
 
 /** Higher rank sorts first: emergency > urgent > normal. */
@@ -222,4 +231,19 @@ export async function setIssueFaultTrade(
   });
   if (error) throw error;
   return data as Issue;
+}
+
+/**
+ * Signed URLs for a batch of damage-report photos (ticket 11), keyed by issue
+ * id. `photo_path` is stored "bucket/path" the same way attachments.storage_path
+ * is, so this reuses lib/photos.ts's signing helper rather than a second copy
+ * of the same bucket/path split.
+ */
+export async function issuePhotoUrls(
+  items: { id: string; photoPath: string }[],
+): Promise<Map<string, string | null>> {
+  const entries = await Promise.all(
+    items.map(async (it) => [it.id, await signedMedia(it.photoPath)] as const),
+  );
+  return new Map(entries);
 }

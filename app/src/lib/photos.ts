@@ -41,8 +41,9 @@ interface AttachmentRow {
   caption?: string | null;
 }
 
-/** Best-effort signed URL for a "bucket/path" storage reference. */
-async function signedMedia(storagePath: string): Promise<string | null> {
+/** Best-effort signed URL for a "bucket/path" storage reference. Exported for
+ * lib/issues.ts, which resolves damage-report photos the same way (ticket 11). */
+export async function signedMedia(storagePath: string): Promise<string | null> {
   const slash = storagePath.indexOf("/");
   const bucket = slash >= 0 ? storagePath.slice(0, slash) : "install-media";
   const path = slash >= 0 ? storagePath.slice(slash + 1) : storagePath;

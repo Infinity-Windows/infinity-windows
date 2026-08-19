@@ -138,10 +138,10 @@ describe("highlighting", () => {
  * was wrong on 2026-08-17, against the migration that settles it.
  */
 describe("the map only claims what the code does", () => {
-  it("does not promise a damage photo — nothing captures one and issues has no column for it", () => {
-    // Arrival check is one optional note box; `issues` has note/created_by and
-    // no photo path. Real capture is warehouse ticket 11.
-    expect(flowNode("damaged")!.asks.toLowerCase()).not.toContain("photo");
+  it("promises a damage photo now that arrival capture takes one (ticket 11)", () => {
+    // 20260922000000_damage_photo.sql: issues.photo_path exists and the
+    // Damaged button opens PhotoCaptureSheet mode="single".
+    expect(flowNode("damaged")!.asks.toLowerCase()).toContain("photo");
   });
 
   it("does not claim a foreman gate on tagging — bind_package has no role check", () => {

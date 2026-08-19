@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabase";
 import {
   assignIssue,
   compareIssues,
+  issuePhotoUrls,
   KIND_LABELS,
   KIND_ORDER,
   listIssues,
@@ -87,6 +88,8 @@ export function Issues() {
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const [kindFilter, setKindFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<IssueStatus>("open");
+  // Which issue's damage photo is open full-screen (ticket 11), or none.
+  const [viewerIssue, setViewerIssue] = useState<Issue | null>(null);
 
   const issuesQ = useQuery({ queryKey: ["issues"], queryFn: listIssues });
   const refsQ = useQuery({ queryKey: ["issueRefs"], queryFn: fetchIssueRefs });
@@ -206,6 +209,23 @@ export function Issues() {
 
   const openCount = all.filter((i) => i.status === "open").length;
 
+  // Signed URLs for the photos on whichever issues are actually on screen
+  // (ticket 11) — scoped to `visible`, not `all`, for the same reason
+  // qcOpeningIds is scoped above: no point signing a URL nobody can see.
+  const photoTargets = useMemo(
+    () =>
+      visible
+        .map((i) => (i.photo_path ? { id: i.id, photoPath: i.photo_path } : null))
+        .filter((t): t is { id: string; photoPath: string } => t !== null),
+    [visible],
+  );
+  const photosQ = useQuery({
+    queryKey: ["issuePhotoUrls", photoTargets.map((t) => t.id)],
+    queryFn: () => issuePhotoUrls(photoTargets),
+    enabled: photoTargets.length > 0,
+  });
+  const photoUrlById = photosQ.data ?? new Map<string, string | null>();
+
   const row = (i: Issue) => {
     const project = projectById.get(i.project_id);
     const opening = i.opening_id ? openingById.get(i.opening_id) : null;
@@ -266,6 +286,20 @@ export function Issues() {
             </ul>
           ) : (
             noteParts[0] && <p className="issue-note">{noteParts[0]}</p>
+          )}
+          {i.photo_path && (
+            <button
+              type="button"
+              className="issue-photo-thumb"
+              onClick={() => setViewerIssue(i)}
+              aria-label="View the damage photo"
+            >
+              {photoUrlById.get(i.id) ? (
+                <img src={photoUrlById.get(i.id)!} alt="" />
+              ) : (
+                <span className="muted" style={{ fontSize: 10 }}>Photo</span>
+              )}
+            </button>
           )}
           <div className="muted" style={{ fontSize: 12 }}>
             {i.status === "resolved"
@@ -433,6 +467,38 @@ export function Issues() {
             </p>
           )}
         </ul>
+      )}
+
+      {viewerIssue && (
+        <div
+          className="photo-viewer-backdrop overlay-enter"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setViewerIssue(null)}
+        >
+          <div className="photo-viewer" onClick={(e) => e.stopPropagation()}>
+            {photoUrlById.get(viewerIssue.id) ? (
+              <img src={photoUrlById.get(viewerIssue.id)!} alt="Damage photo" />
+            ) : (
+              <p className="muted">Photo unavailable right now.</p>
+            )}
+            <div className="photo-viewer-info">
+              <p className="photo-viewer-caption">
+                {KIND_LABELS[viewerIssue.kind]}
+                {projectById.get(viewerIssue.project_id)?.job_code
+                  ? ` · ${projectById.get(viewerIssue.project_id)!.job_code}`
+                  : ""}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="action-btn photo-viewer-close"
+              onClick={() => setViewerIssue(null)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

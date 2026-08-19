@@ -199,14 +199,15 @@ describe("counts and their lists agree", () => {
 
 /**
  * A blurb is a promise about what the crew will find when they tap through.
- * This one promised a photo for as long as the card existed; the arrival check
- * has never had a camera, and `issues` has no column to hold one.
+ * It went quiet about a photo on 2026-08-17 because the arrival check took
+ * none and `issues` had no column to hold one; warehouse ticket 11
+ * (20260922000000_damage_photo.sql) made that promise true again.
  */
 describe("the damaged card promises only what is there", () => {
   const damaged = WAREHOUSE_CARDS.find((c) => c.id === "damaged")!;
 
-  it("does not promise a photo the arrival check never takes", () => {
-    expect(damaged.blurb.toLowerCase()).not.toContain("photo");
+  it("promises the photo now that arrival capture takes one (ticket 11)", () => {
+    expect(damaged.blurb.toLowerCase()).toContain("photo");
   });
 
   it("still promises the reporter, which is real", () => {

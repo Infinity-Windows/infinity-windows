@@ -236,6 +236,15 @@ describe("countsByOp + pillSummary (p1-12 status pill)", () => {
     expect(s.label).toBe("Warehouse 2");
   });
 
+  // A damage report's photo (ticket 11) reads on the pill exactly like any
+  // other photo — a foreman does not need a THIRD bucket to learn "there's a
+  // picture waiting to send".
+  it("counts a damage photo as a photo, not a bucket of its own", () => {
+    const c = countsByOp([entry({ id: "1", op: "issue_photo_upload" })]);
+    expect(c.photos).toBe(1);
+    expect(pillSummary(c).label).toBe("Photos 1");
+  });
+
   it("reads warehouse work out alongside everything else", () => {
     const s = pillSummary(
       countsByOp([

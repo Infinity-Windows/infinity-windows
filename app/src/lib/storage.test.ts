@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
   agingDays,
+  damagePhotoPath,
   defaultDeliveryLabel,
   groupByJob,
   hasPartNumber,
@@ -104,6 +105,24 @@ describe("part labels", () => {
     expect(hasPartNumber({ part_index: 2, part_total: 3 })).toBe(true);
     expect(hasPartNumber({ part_index: 2, part_total: null })).toBe(false);
     expect(hasPartNumber({})).toBe(false);
+  });
+});
+
+describe("damagePhotoPath", () => {
+  it("is deterministic for the same job, package and moment", () => {
+    expect(damagePhotoPath("job-1", "pkg-1", 1000)).toBe("job-1/pkg-1-1000.jpg");
+  });
+
+  it("never collides two packages photographed in the same job at the same instant", () => {
+    expect(damagePhotoPath("job-1", "pkg-1", 1000)).not.toBe(
+      damagePhotoPath("job-1", "pkg-2", 1000),
+    );
+  });
+
+  it("never collides two jobs' packages that happen to share an id and a moment", () => {
+    expect(damagePhotoPath("job-1", "pkg-1", 1000)).not.toBe(
+      damagePhotoPath("job-2", "pkg-1", 1000),
+    );
   });
 });
 

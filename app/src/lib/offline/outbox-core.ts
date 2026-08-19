@@ -50,7 +50,14 @@ export type OutboxOp =
   // Takeoffs (2026-08-18): pickup happens standing at the racks. The status
   // flip is the server-side idempotency guard — a resend finds picked_up and
   // changes nothing — so the queue can retry it blind.
-  | "pickup_takeoff";
+  | "pickup_takeoff"
+  // Ticket 11 (2026-08-19): a damage report's photo. arrive_packages itself
+  // is a direct call, not queued — only the blob is slow or big enough to be
+  // worth surviving a dead conex wall. The path is minted client-side and
+  // handed to arrive_packages BEFORE this is ever queued, so the issue row
+  // and the object this eventually uploads always agree on where the photo
+  // is, with no second round trip needed once the upload lands.
+  | "issue_photo_upload";
 
 /**
  * queued   — waiting to be sent (respecting nextAttemptAt backoff)
@@ -348,6 +355,7 @@ export function countsByOp(entries: OutboxEntry[]): OpCounts {
         c.clock += 1;
         break;
       case "photo_upload":
+      case "issue_photo_upload":
         c.photos += 1;
         break;
       case "receipt_upload":
@@ -505,6 +513,7 @@ const OP_REGISTRY = {
   set_package_area: true,
   receive_minted: true,
   pickup_takeoff: true,
+  issue_photo_upload: true,
 } as const satisfies Record<OutboxOp, true>;
 
 /** Every op the queue can carry — the single list tests enumerate. */
