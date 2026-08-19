@@ -24,11 +24,20 @@ import { pushToast } from "../../lib/toast";
 import { formatApiError } from "../../lib/errors";
 import { listProjects } from "../../lib/api";
 import {
+  getMyProfile,
   listMarkSpecs,
   listOpenings,
   listPlanOutlines,
   savePlanOutline,
 } from "../../lib/install/api";
+import { isForemanPlus } from "../../lib/install/types";
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
+import { listOpeningPhases } from "../../lib/install/phases";
+import { listProjectSessions } from "../../lib/install/sessions";
+import { listQcPassedOpeningIds } from "../../lib/ops";
+import { listActivePackages } from "../../lib/storage";
+import { listScheduledMarks } from "../../lib/warehouse/warehouseCards";
+import { buildLiveOverlay, type OverlayState } from "../../lib/modelstudio/liveOverlay";
 import {
   getStudioProject,
   saveStudioProject,
@@ -340,6 +349,73 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     queryFn: () => listMarkSpecs(projectId),
     enabled: Boolean(projectId),
   });
+
+  // Studio live overlays (owner-approved recs #1,3,4,5,6,17,19): the SAME
+  // rows the map, Dispatch and the warehouse hub already fetch, under the
+  // SAME query keys — this page rides their cache instead of asking the
+  // server again. See lib/modelstudio/liveOverlay.ts for the pure match.
+  const { effectiveRole } = useEffectiveRole();
+  const myProfile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
+  const scheduledMarks = useQuery({
+    queryKey: ["scheduledMarks", [projectId]],
+    queryFn: () => listScheduledMarks([projectId]),
+    enabled: Boolean(projectId),
+  });
+  const sessions = useQuery({
+    queryKey: ["unitSessions", projectId],
+    queryFn: () => listProjectSessions(projectId),
+    enabled: Boolean(projectId),
+  });
+  const phases = useQuery({
+    queryKey: ["openingPhases", projectId],
+    queryFn: () => listOpeningPhases(projectId),
+    enabled: Boolean(projectId),
+  });
+  const qcPassed = useQuery({
+    queryKey: ["qcPassed", projectId],
+    queryFn: () => listQcPassedOpeningIds(projectId),
+    enabled: Boolean(projectId),
+  });
+  /** One toggle, per the spec — overlays default ON. */
+  const [showLiveOverlay, setShowLiveOverlay] = useState(true);
+  const overlayMap = useMemo(
+    () =>
+      buildLiveOverlay(
+        {
+          openings: openings.data ?? [],
+          packages: packages.data ?? [],
+          scheduledMarks: scheduledMarks.data ?? [],
+          sessions: sessions.data ?? [],
+          phases: phases.data ?? [],
+          qcPassedOpeningIds: qcPassed.data ?? [],
+          viewerId: myProfile.data?.id ?? null,
+          managerView: isForemanPlus(effectiveRole),
+          projectId,
+        },
+        // Every opening's own code — a studio unit's itemName IS its
+        // opening_code once pulled from plans (buildStudioPull), so this
+        // candidate list covers every unit that can legitimately carry
+        // live state. A hand-added/renamed unit simply matches nothing.
+        (openings.data ?? []).map((o) => o.opening_code),
+      ),
+    [
+      openings.data,
+      packages.data,
+      scheduledMarks.data,
+      sessions.data,
+      phases.data,
+      qcPassed.data,
+      myProfile.data?.id,
+      effectiveRole,
+      projectId,
+    ],
+  );
+  /** Imperative three.js callbacks (registered once at mount) read these
+   * refs, never the React state/memo directly — the same stale-closure
+   * defense the file already uses for openings/profiles elsewhere. */
+  const overlayMapRef = useRef<Map<string, OverlayState>>(new Map());
+  const showLiveOverlayRef = useRef(true);
 
   const outline = useMemo(
     () => preferModelOutline(outlines.data ?? []),
@@ -695,6 +771,26 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     refreshHandles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selUnit, selWall]);
+
+  // Live overlays repaint whenever the underlying data changes or the
+  // toggle flips. The mount-time itemLoadedCallbacks (registered once,
+  // see the boot effect) read overlayMapRef/showLiveOverlayRef through
+  // setUnitAnnotations rather than this state directly — this effect is
+  // what keeps those refs (and every already-loaded unit) honest.
+  useEffect(() => {
+    overlayMapRef.current = overlayMap;
+    showLiveOverlayRef.current = showLiveOverlay;
+    const bp = bpRef.current;
+    if (!bp) return;
+    for (const it of bp.model.scene.getItems()) {
+      try {
+        setUnitAnnotations(it, selUnitRef.current === it);
+      } catch {
+        /* mid-rebuild */
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overlayMap, showLiveOverlay]);
 
   const setMode = (m: number) => {
     bpRef.current?.floorplanner?.setMode(m);
@@ -1084,7 +1180,9 @@ export function ModelStudio({ source }: { source: StudioSource }) {
 
   /** Repaint a unit's glyph/label overlay (map parity): operation glyphs
    * and the mark chip ALWAYS, measurements only while selected (owner
-   * pick). Children ride the item, so placement is free. */
+   * pick), plus the live overlay (status/parts/flashing/blocked/loose)
+   * when the toggle is on and this unit's mark carries any. Children ride
+   * the item, so placement is free. */
   const setUnitAnnotations = (item: StudioItem, dims: boolean) => {
     const obj = item as unknown as THREE.Object3D;
     const cfg = item.metadata?.unitConfig as UnitConfig | undefined;
@@ -1097,9 +1195,13 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       mesh.geometry.dispose();
     }
     if (!cfg?.panels?.length) return;
+    const name = (item.metadata?.itemName as string | undefined) ?? null;
+    const overlay =
+      showLiveOverlayRef.current && name ? overlayMapRef.current.get(name) : undefined;
     for (const mesh of buildUnitAnnotations(cfg, {
-      mark: (item.metadata?.itemName as string | undefined) ?? null,
+      mark: name,
       dims,
+      overlay,
     })) {
       obj.add(mesh);
     }
@@ -2055,6 +2157,25 @@ export function ModelStudio({ source }: { source: StudioSource }) {
             Revert map
           </button>
         )}
+      </div>
+      {/* Studio live overlays (owner-approved recs #1,3,4,5,6,17,19): ON
+          by default, one toggle to hide them — no per-overlay settings. */}
+      <div className="row-gap" style={{ alignItems: "center", marginTop: 4 }}>
+        <button
+          type="button"
+          className={
+            showLiveOverlay
+              ? "button-like studio-mini active-pill"
+              : "button-like studio-mini"
+          }
+          aria-pressed={showLiveOverlay}
+          onClick={() => setShowLiveOverlay((v) => !v)}
+        >
+          {showLiveOverlay ? "Live overlays: on" : "Live overlays: off"}
+        </button>
+        <span className="muted" style={{ fontSize: 11 }}>
+          live: status · parts · flashing
+        </span>
       </div>
       {/* The build starts at the plans (owner, 2026-08-14): upload the
           plan-sets and trace the building right here — the trace's floors

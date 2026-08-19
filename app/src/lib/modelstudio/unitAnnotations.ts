@@ -8,6 +8,12 @@
 // Studio is real three.js, so the faithful port is one transparent
 // CanvasTexture plane per unit leg, hung as a child of the item. Layout is
 // PURE (unit-tested); only the painter touches a canvas.
+//
+// Studio live overlays (liveOverlay.ts) ride the SAME plane rather than a
+// mesh of their own — the lighter-weight option for phone memory, and it
+// means a unit with no live signal costs exactly what it cost before this
+// feature shipped: `overlay` is optional, and every overlay draw below is
+// gated on it being present.
 
 import * as THREE from "three";
 import {
@@ -20,12 +26,28 @@ import {
 } from "./units";
 import { cornerGeometryInfo, UNIT_GEOMETRY_DEFAULTS } from "./unitGeometry";
 import { inches } from "../fitview/fitviewRenderer";
+import type { OverlayState } from "./liveOverlay";
 
 const MM_TO_CM = 0.1;
 /** Canvas oversampling — the map uses a 3x trick for sharp text. */
 const PX_PER_CM = 3;
 /** Headroom above the frame for the mark chip, cm. */
 const CHIP_BAND_CM = 22;
+/** Vertical space one overlay badge line (blocked/loose/parts) takes, cm. */
+const OVERLAY_LINE_CM = 15;
+/** Padding above/below the badge stack, cm. */
+const OVERLAY_PAD_CM = 3;
+/** Status-glow hex, pinned to the SAME values fitview.css uses for the map
+ * (--gl-red/yellow/green) — the Studio must never show a different red
+ * than the map does for the same opening. */
+const GLOW_HEX: Record<"red" | "yellow" | "green", string> = {
+  red: "#e4655c",
+  yellow: "#e8c14a",
+  green: "#35b98d",
+};
+/** Flashing-owed accent, pinned to fitview.css's --fl-needed (dashed aqua
+ * on the map; same color here, dashed stroke does the rest). */
+const FLASH_OWED_HEX = "#2a8d81";
 
 export type GlyphKind =
   | "arrow-left"
@@ -160,6 +182,11 @@ interface Paint {
   accent: string;
   ink: string;
   pill: string;
+  /** Blocked-marker red (theme --danger — deliberately NOT the same red
+   * glowFor uses; blocked is its own small badge, not a frame tint). */
+  danger: string;
+  /** Loose-alarm amber (theme --warn). */
+  warn: string;
 }
 
 function resolvePaint(): Paint {
@@ -169,9 +196,17 @@ function resolvePaint(): Paint {
       accent: css.getPropertyValue("--info").trim() || "#4a9dff",
       ink: css.getPropertyValue("--ink").trim() || "#f2e9e2",
       pill: "rgba(20, 16, 13, 0.85)",
+      danger: css.getPropertyValue("--danger").trim() || "#c93a32",
+      warn: css.getPropertyValue("--warn").trim() || "#e8a23d",
     };
   } catch {
-    return { accent: "#4a9dff", ink: "#f2e9e2", pill: "rgba(20,16,13,0.85)" };
+    return {
+      accent: "#4a9dff",
+      ink: "#f2e9e2",
+      pill: "rgba(20,16,13,0.85)",
+      danger: "#c93a32",
+      warn: "#e8a23d",
+    };
   }
 }
 
@@ -337,6 +372,132 @@ function drawLabel(ctx: CanvasRenderingContext2D, l: LabelOp, paint: Paint) {
   ctx.restore();
 }
 
+// --------------------------------------------------------- live overlays
+// liveOverlay.ts hands over a plain data bag (OverlayState); everything
+// below is the ONE place that decides what it looks like. Precedence, top
+// to bottom: dim scrim first (a background wash everything else still
+// shows through), then the status border + halo, then the existing
+// glyphs/labels untouched, then the flashing outline, then the badges —
+// so an urgent signal (blocked, loose) is never the layer a dim scrim or
+// a glow tint could bury.
+
+/** Frame rect in canvas pixels: the glass+frame area below the chip band,
+ * excluding whatever badge band the unit also carries. */
+function frameRectPx(wPx: number, legHcm: number): { w: number; h: number } {
+  return { w: wPx, h: Math.round((legHcm + CHIP_BAND_CM) * PX_PER_CM) };
+}
+
+/**
+ * Dim (#17) + status glow/QC halo (#1, #6) — drawn UNDER the trade glyphs,
+ * across the whole frame rect (both legs on a corner unit; envelope state
+ * is true of the whole physical unit, not just the leg carrying the mark).
+ */
+function paintOverlayBackdrop(
+  ctx: CanvasRenderingContext2D,
+  wPx: number,
+  legHcm: number,
+  overlay: OverlayState,
+) {
+  const top = CHIP_BAND_CM * PX_PER_CM;
+  const { h } = frameRectPx(wPx, legHcm);
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.setLineDash([]);
+  if (overlay.dim) {
+    ctx.fillStyle = "rgba(10, 8, 6, 0.45)";
+    ctx.fillRect(0, top, wPx, h - top);
+  }
+  if (overlay.glow && overlay.glow !== "none") {
+    const color = GLOW_HEX[overlay.glow];
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 5;
+    // QC (green) gets a visibly bigger halo — item #6's "distinct visual"
+    // on top of the glow data it shares with #1, not a second query.
+    ctx.shadowColor = color;
+    ctx.shadowBlur = overlay.glow === "green" ? 26 : 12;
+    ctx.strokeRect(4, top + 4, wPx - 8, h - top - 8);
+  }
+  ctx.restore();
+}
+
+/** Flashing-owed (#5): a second, dashed, aqua outline — its own channel,
+ * apart from the glow fill, exactly like the map's flash-needed frame. */
+function paintOverlayFlashing(
+  ctx: CanvasRenderingContext2D,
+  wPx: number,
+  legHcm: number,
+  overlay: OverlayState,
+) {
+  if (!overlay.flashingOwed) return;
+  const top = CHIP_BAND_CM * PX_PER_CM;
+  const { h } = frameRectPx(wPx, legHcm);
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = FLASH_OWED_HEX;
+  ctx.lineWidth = 4;
+  ctx.setLineDash([10, 8]);
+  ctx.strokeRect(11, top + 11, wPx - 22, h - top - 22);
+  ctx.restore();
+}
+
+interface OverlayBadgeLine {
+  text: string;
+  color: string;
+}
+
+/** Blocked (#3), loose (#19) and the parts line (#4) — one line each, most
+ * urgent first. Main leg only (same convention the mark chip already
+ * uses): repeating them on the wrap leg would be the same fact twice. */
+function overlayBadgeLines(overlay: OverlayState, paint: Paint): OverlayBadgeLine[] {
+  const lines: OverlayBadgeLine[] = [];
+  if (overlay.blockedReason !== undefined) {
+    lines.push({
+      text: `⚠ Blocked — ${overlay.blockedReason ?? "no reason given"}`,
+      color: paint.danger,
+    });
+  }
+  if (overlay.loose) {
+    lines.push({ text: "❓ Loose — no container, no slot", color: paint.warn });
+  }
+  if (overlay.partsLine) {
+    lines.push({ text: overlay.partsLine, color: paint.ink });
+  }
+  return lines;
+}
+
+/** Total extra canvas height the badge band needs, cm. Zero when there's
+ * nothing to say — most units, most of the time. */
+function overlayBandCm(lines: OverlayBadgeLine[]): number {
+  return lines.length === 0 ? 0 : lines.length * OVERLAY_LINE_CM + OVERLAY_PAD_CM * 2;
+}
+
+function paintOverlayBadges(
+  ctx: CanvasRenderingContext2D,
+  wPx: number,
+  legHcm: number,
+  lines: OverlayBadgeLine[],
+) {
+  const px = (v: number) => v * PX_PER_CM;
+  const { h: frameBottomPx } = frameRectPx(wPx, legHcm);
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.font = "600 15px ui-monospace, monospace";
+  ctx.lineJoin = "round";
+  let y = frameBottomPx + px(OVERLAY_PAD_CM) + px(OVERLAY_LINE_CM) / 2;
+  const maxW = wPx - px(8);
+  for (const line of lines) {
+    ctx.strokeStyle = HALO;
+    ctx.lineWidth = 4;
+    ctx.strokeText(line.text, px(4), y, maxW);
+    ctx.fillStyle = line.color;
+    ctx.fillText(line.text, px(4), y, maxW);
+    y += px(OVERLAY_LINE_CM);
+  }
+  ctx.restore();
+}
+
 /**
  * Build one annotation plane per leg. Planes face OUTSIDE (local -z), the
  * side spec drawings read from; the canvas is painted in outside-view
@@ -345,25 +506,35 @@ function drawLabel(ctx: CanvasRenderingContext2D, l: LabelOp, paint: Paint) {
  */
 export function buildUnitAnnotations(
   config: UnitConfig,
-  o: { mark?: string | null; dims: boolean },
+  o: { mark?: string | null; dims: boolean; overlay?: OverlayState },
 ): THREE.Mesh[] {
   const paint = resolvePaint();
   const layouts = annotationLayout(config, o);
   const corner = cornerGeometryInfo(config);
   const depth = UNIT_GEOMETRY_DEFAULTS.depthMm * MM_TO_CM;
+  // Badges (blocked/loose/parts) need a strip below the frame; most units
+  // carry none of these, so `bandCm` is 0 and every line below collapses
+  // to exactly what shipped before overlays existed.
+  const badgeLines = o.overlay ? overlayBadgeLines(o.overlay, paint) : [];
+  const bandCm = overlayBandCm(badgeLines);
 
   return layouts.map((lay) => {
+    const showBadges = lay.leg === "main" && badgeLines.length > 0;
+    const legBandCm = showBadges ? bandCm : 0;
     const wPx = Math.min(2048, Math.round(lay.legWcm * PX_PER_CM));
     const hPx = Math.min(
       2048,
-      Math.round((lay.legHcm + CHIP_BAND_CM) * PX_PER_CM),
+      Math.round((lay.legHcm + CHIP_BAND_CM + legBandCm) * PX_PER_CM),
     );
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(8, wPx);
     canvas.height = Math.max(8, hPx);
     const ctx = canvas.getContext("2d")!;
+    if (o.overlay) paintOverlayBackdrop(ctx, wPx, lay.legHcm, o.overlay);
     for (const g of lay.glyphs) drawGlyph(ctx, g, paint);
     for (const l of lay.labels) drawLabel(ctx, l, paint);
+    if (o.overlay) paintOverlayFlashing(ctx, wPx, lay.legHcm, o.overlay);
+    if (showBadges) paintOverlayBadges(ctx, wPx, lay.legHcm, badgeLines);
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.anisotropy = 8;
@@ -373,13 +544,15 @@ export function buildUnitAnnotations(
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    const geo = new THREE.PlaneGeometry(lay.legWcm, lay.legHcm + CHIP_BAND_CM);
+    const geo = new THREE.PlaneGeometry(lay.legWcm, lay.legHcm + CHIP_BAND_CM + legBandCm);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.name = "unit-annotations";
     mesh.renderOrder = 5;
-    // Vertical centering: the plane spans H + chip band; shift up so the
-    // glass area aligns and the chip floats above the frame.
-    const yOff = CHIP_BAND_CM / 2;
+    // Vertical centering: the plane spans H + chip band (+ the badge band,
+    // when this leg carries one) — shift up so the glass area still
+    // aligns and the chip still floats above the frame exactly as before;
+    // the badge band (if any) hangs below, off the bottom of the frame.
+    const yOff = CHIP_BAND_CM / 2 - legBandCm / 2;
 
     if (lay.leg === "main" || !corner) {
       mesh.position.set(0, yOff, -(depth / 2 + 1));
