@@ -223,6 +223,39 @@ export async function listSupplies(): Promise<Supply[]> {
 }
 
 /**
+ * Lowest stock first. An uncounted supply (null on_hand) ranks as if it held
+ * the AVERAGE of the counted ones: "we don't know" is closer to a problem
+ * than "we have plenty," but a known-low shelf still outranks it. Born as the
+ * Warehouse overview's preview ranking; lives here so the search drawer and
+ * its tests share one definition.
+ */
+export function lowStockFirst(supplies: Supply[]): Supply[] {
+  const known = supplies
+    .map((s) => s.on_hand)
+    .filter((n): n is number => n != null);
+  const unknownRank = known.length
+    ? known.reduce((sum, n) => sum + n, 0) / known.length
+    : 0;
+  return [...supplies].sort(
+    (a, b) => (a.on_hand ?? unknownRank) - (b.on_hand ?? unknownRank),
+  );
+}
+
+/**
+ * Name search for the supply drawers: trims, ignores case, matches anywhere
+ * in the name, and preserves the caller's order. Empty query = everything,
+ * so a list can pipe through it unconditionally.
+ */
+export function filterSuppliesByName(
+  supplies: Supply[],
+  query: string,
+): Supply[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return supplies;
+  return supplies.filter((s) => s.name.toLowerCase().includes(q));
+}
+
+/**
  * "about 140 on hand · last counted Aug 3" — or "not counted yet". The
  * estimate NEVER appears without its date (the ticket's one hard rule): a
  * bare number would read as exact, and this number is deliberately not.
