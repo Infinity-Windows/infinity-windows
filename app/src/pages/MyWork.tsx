@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Plane, Truck } from "lucide-react";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { RoleMaps } from "../components/RoleMaps";
+import { LiveSummonsStrip } from "../components/install/LiveSummonsStrip";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
   findSpecsPlanset,
@@ -398,6 +399,7 @@ export function MyWork() {
           <h1>My work</h1>
         </div>
       </header>
+      <LiveSummonsStrip />
       <p className="muted">
         {me.data?.display_name ? `${me.data.display_name} — ` : ""}do the top
         window next; capture as you go.

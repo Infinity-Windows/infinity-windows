@@ -16,6 +16,9 @@ export interface Summon {
   created_at: string;
   closed_at: string | null;
   requester?: { display_name: string | null } | null;
+  /** Embedded for the landing strip — absent on older reads, so optional. */
+  project?: { job_code: string | null } | null;
+  opening?: { opening_code: string | null } | null;
 }
 
 export interface SummonHelper {
@@ -35,7 +38,7 @@ function isMissingTableError(e: { code?: string; message?: string } | null): boo
 }
 
 const SUMMON_SELECT =
-  "*, requester:profiles!summons_requested_by_fkey(display_name)";
+  "*, requester:profiles!summons_requested_by_fkey(display_name), project:projects(job_code), opening:project_openings(opening_code)";
 
 /** Live (open/covered) summons on a job — Dispatch indicator + the sheet. */
 export async function listLiveSummons(projectId: string): Promise<Summon[]> {
@@ -43,6 +46,23 @@ export async function listLiveSummons(projectId: string): Promise<Summon[]> {
     .from("summons")
     .select(SUMMON_SELECT)
     .eq("project_id", projectId)
+    .in("status", ["open", "covered"])
+    .order("created_at");
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return (data ?? []) as unknown as Summon[];
+}
+
+/**
+ * Every live summon on every job — the landing pages' call-for-hands strip
+ * (owner ask, 2026-08-18): a live summon should find helpers where they
+ * already are, My Work and Home, not only on the window's own sheet. One
+ * read, no filter beyond "live": a call for hands is never quietly hidden.
+ */
+export async function listAllLiveSummons(): Promise<Summon[]> {
+  const { data, error } = await supabase
+    .from("summons")
+    .select(SUMMON_SELECT)
     .in("status", ["open", "covered"])
     .order("created_at");
   if (isMissingTableError(error)) return [];
@@ -111,6 +131,30 @@ export function summonHelperMinutes(
     }
   }
   return total;
+}
+
+/**
+ * The landing strip's one-line story for a live summon: who needs hands, how
+ * many, where — in the crew's words. `mine` flips the voice ("You called
+ * for…") so your own summon reads as confirmation, not as somebody else's
+ * emergency.
+ */
+export function summonStripLine(
+  s: Pick<Summon, "needed" | "status" | "requester" | "project" | "opening">,
+  mine: boolean,
+): string {
+  const hands = `${s.needed} ${s.needed === 1 ? "hand" : "hands"}`;
+  const head = mine
+    ? `You called for ${hands}`
+    : `${s.requester?.display_name ?? "Someone"} needs ${hands}`;
+  const where = [
+    s.project?.job_code ?? null,
+    s.opening?.opening_code ? `#${s.opening.opening_code}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const base = where ? `${head} — ${where}` : head;
+  return s.status === "covered" ? `${base} (covered)` : base;
 }
 
 /**

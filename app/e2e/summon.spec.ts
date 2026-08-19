@@ -82,3 +82,42 @@ test("a live summon renders on the sheet and Answer fires the RPC", async ({
   await expect.poll(() => answered.length).toBe(1);
   expect(answered[0]).toBe(summonId);
 });
+
+test("a live summon rides My Work, so helpers see it without opening the job (owner ask, 2026-08-18)", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  const opening = openingsFor(BLACK22.projectId)[0];
+  const summonId = "00000000-0000-4000-8000-00000000d00e";
+
+  await page.route("**/rest/v1/summons**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "content-range": "0-0/1" },
+      body: JSON.stringify([
+        {
+          id: summonId,
+          project_id: BLACK22.projectId,
+          opening_id: opening.id,
+          requested_by: "00000000-0000-4000-8000-00000000aaaa",
+          needed: 3,
+          status: "open",
+          created_at: "2026-08-14T18:00:00Z",
+          closed_at: null,
+          requester: { display_name: "Marcus" },
+          project: { job_code: "BLACK22" },
+          opening: { opening_code: opening.opening_code },
+        },
+      ]),
+    }),
+  );
+
+  await page.goto("/");
+  const row = page.getByRole("link", { name: /Marcus needs 3 hands — BLACK22/ });
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await expect(row).toHaveAttribute(
+    "href",
+    `/projects/${BLACK22.projectId}/opening/${opening.id}`,
+  );
+});
