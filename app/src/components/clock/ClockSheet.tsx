@@ -106,6 +106,10 @@ export function ClockSheet({
   const [showFullList, setShowFullList] = useState(false);
   const [note, setNote] = useState("");
   const [injured, setInjured] = useState(false);
+  // "What happened?" — appears the moment the injured box is ticked (owner
+  // ask, 2026-08-19). The app is the record, never the emergency channel —
+  // the label says so in plain words.
+  const [injuryNote, setInjuryNote] = useState("");
   // The BusyBusy-style sign-off, inverted to keep clock-out one tap: leaving
   // this unchecked IS "yes, my time is correct" (time_confirmed = true), and
   // checking it flags the day for office review without ever blocking the
@@ -474,6 +478,7 @@ export function ClockSheet({
       try {
         await clockOut(shift!.id, {
           injured,
+          injuryNote,
           timeConfirmed: !timeWrong,
           breakSeconds,
           geo,
@@ -484,6 +489,7 @@ export function ClockSheet({
         await enqueueClockOut({
           shiftRef: shift!.id,
           injured,
+          injuryNote: injured ? injuryNote.trim() || null : null,
           timeConfirmed: !timeWrong,
           breakSeconds,
           lat: geo?.lat ?? null,
@@ -497,6 +503,7 @@ export function ClockSheet({
     onSuccess: (r) => {
       toastSuccess(r.queued ? "Clocked out — we'll sync it when you're back online" : "Clocked out");
       setInjured(false);
+      setInjuryNote("");
       setTimeWrong(false);
       if (!r.queued) refresh();
       onClose();
@@ -800,6 +807,24 @@ export function ClockSheet({
               />
               I was injured this shift
             </label>
+            {injured && (
+              <div style={{ margin: "6px 0 2px" }}>
+                <label className="field-label" htmlFor="injury-what-happened">
+                  What happened?{" "}
+                  <strong style={{ color: "var(--danger)" }}>
+                    (If this is an emergency immediately call 911)
+                  </strong>
+                </label>
+                <textarea
+                  id="injury-what-happened"
+                  rows={3}
+                  value={injuryNote}
+                  onChange={(e) => setInjuryNote(e.target.value)}
+                  placeholder="A sentence or two — what happened, and what part of you it got."
+                  style={{ width: "100%" }}
+                />
+              </div>
+            )}
 
             <label className="clock-injury">
               <input

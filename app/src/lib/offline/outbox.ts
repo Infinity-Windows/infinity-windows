@@ -230,6 +230,7 @@ export interface ClockOutInput {
   /** Real shift id, or an offline clock-in entry id (see pendingRefForShift). */
   shiftRef: string;
   injured: boolean;
+  injuryNote?: string | null;
   timeConfirmed: boolean;
   breakSeconds: number;
   lat?: number | null;
@@ -244,6 +245,7 @@ export function enqueueClockOut(input: ClockOutInput): Promise<string> {
     payload: {
       shiftRef: input.shiftRef,
       injured: input.injured,
+      injuryNote: input.injuryNote ?? null,
       timeConfirmed: input.timeConfirmed,
       breakSeconds: input.breakSeconds,
       lat: input.lat ?? null,
