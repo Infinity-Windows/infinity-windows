@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Plane, Truck } from "lucide-react";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
+import { RoleMaps } from "../components/RoleMaps";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
   findSpecsPlanset,
@@ -723,6 +724,8 @@ export function MyWork() {
           </ul>
         </>
       )}
+
+      <RoleMaps />
 
       {unsubmit && (
         <div

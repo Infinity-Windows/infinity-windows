@@ -3,8 +3,12 @@
 // This component holds no facts: every box, tie, coordinate and sentence
 // comes from lib/roleFlow.ts, which is test-pinned — including the one test
 // that matters most, that a map can never name a door its role cannot open.
-// Touch first, like PackageMap: tap pins, tap again releases; hover is a
-// desktop nicety on top.
+// Touch first, like PackageMap: tap pins, tap again releases. Hover only
+// repaints INSIDE the svg (highlight + dimming) — it must never mount or
+// unmount the detail card below, because the card changes the page's height,
+// which moves the cursor off the node, which removes the card, which moves
+// it back… an oscillation that visibly shakes the screen (owner-reported,
+// 2026-08-18). Only a tap may change what takes up space.
 
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -20,7 +24,7 @@ export function RoleMap({ flow }: { flow: RoleFlow }) {
   const [pinned, setPinned] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const active = pinned ?? hovered;
-  const detail = nodes.find((n) => n.id === active) ?? null;
+  const detail = nodes.find((n) => n.id === pinned) ?? null;
 
   return (
     <div className="pkgmap">
