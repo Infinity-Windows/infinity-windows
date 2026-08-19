@@ -25,8 +25,8 @@ All from `app/`:
 
 ```bash
 npm run dev      # vite dev server on :5173
-npm test         # vitest — ~2050 tests, ~4 seconds
-npm run lint     # oxlint — 8 known warnings, treat any increase as a regression
+npm test         # vitest — ~2800 tests, ~7 seconds
+npm run lint     # oxlint — 26 known warnings, treat any increase as a regression
 npm run build    # tsc -b && vite build
 npm run e2e      # playwright (needs `npx playwright install` first)
 ```
@@ -49,7 +49,7 @@ is the copy that covers what protection cannot: the machine, and this account.
 `npm run build` typechecks `e2e/` too, so it fails when `@playwright/test` isn't
 installed. To check only shipped code: `npx tsc --noEmit -p tsconfig.app.json`.
 
-**The test suite runs in about four seconds. Run it after every change.** It is
+**The test suite runs in about seven seconds. Run it after every change.** It is
 the reason edits here can be made confidently — use it rather than reasoning about
 whether something broke.
 
