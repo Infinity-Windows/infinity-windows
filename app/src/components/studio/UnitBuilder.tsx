@@ -7,6 +7,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "../../lib/errors";
+import { useUnitCohortEstimate } from "../../lib/estimate/liveEstimate";
 import { fmtFtIn, fmtInchesFromMm, parseFtIn } from "../../lib/modelstudio/dims";
 import {
   MECHANISM_LABELS,
@@ -61,6 +62,16 @@ export function UnitBuilder({
     initial?.config.cornerAfterPanel ?? null,
   );
   const [name, setName] = useState(initial?.name ?? "");
+  /** #23: null default ("not sure") — a SET value is what adds this unit
+   * to the inset/outset dimension; absent/null reproduces today's
+   * signature exactly (see UnitConfig.insetOutset). */
+  const [insetOutset, setInsetOutset] = useState<"inset" | "outset" | null>(
+    initial?.config.insetOutset ?? null,
+  );
+  /** #25: stored, never signed — see UnitConfig.weightLb. */
+  const [weightInput, setWeightInput] = useState(
+    initial?.config.weightLb != null ? String(initial.config.weightLb) : "",
+  );
 
   const heightMm = useMemo(() => {
     const cm = heightInput ? parseFtIn(heightInput) : null;
@@ -69,6 +80,11 @@ export function UnitBuilder({
     return kind === "door" ? 2032 : 1524; // 6'8" / 5'
   }, [heightInput, kind, initial]);
 
+  const weightLb = useMemo(() => {
+    const n = Number(weightInput);
+    return weightInput.trim() !== "" && Number.isFinite(n) && n > 0 ? n : null;
+  }, [weightInput]);
+
   const config: UnitConfig = useMemo(
     () => ({
       kind,
@@ -76,9 +92,15 @@ export function UnitBuilder({
       panels,
       cornerAfterPanel:
         cornerAfter != null && cornerAfter < panels.length - 1 ? cornerAfter : null,
+      insetOutset,
+      weightLb,
     }),
-    [kind, heightMm, panels, cornerAfter],
+    [kind, heightMm, panels, cornerAfter, insetOutset, weightLb],
   );
+
+  // #21: the same evidence + fallback ladder the foreman's estimating
+  // screen uses, for whatever's on the bench right now.
+  const estimate = useUnitCohortEstimate(config);
 
   const setPanelCount = (n: number) => {
     setPanels((prev) => {
@@ -147,6 +169,19 @@ export function UnitBuilder({
         <p className="muted" style={{ margin: "2px 0 8px", fontSize: 11.5, textAlign: "center" }}>
           {fmtFtIn(unitWidthMm(config) * MM_TO_CM)} wide × {fmtFtIn(heightMm * MM_TO_CM)} tall ·{" "}
           {panels.length} panel{panels.length === 1 ? "" : "s"}
+        </p>
+        {/* #21: live cohort line — same evidence + ladder as the
+            estimating screen, label always attached, "no estimate yet"
+            when the data's too thin (never a computed number dressed
+            as one). */}
+        <p className="muted" style={{ margin: "0 0 8px", fontSize: 11.5, textAlign: "center" }}>
+          {estimate.minutes != null ? (
+            <>
+              <strong>{estimate.minutes}m</strong> · {estimate.label}
+            </>
+          ) : (
+            estimate.label
+          )}
         </p>
 
         {stepName === "Type" && (
@@ -330,6 +365,40 @@ export function UnitBuilder({
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
+
+            <label className="field-label">
+              Inset or outset — a signature field, same as the specs
+            </label>
+            <div className="row-gap" style={{ flexWrap: "wrap" }}>
+              {(
+                [
+                  ["inset", "Inset"],
+                  ["outset", "Outset"],
+                  [null, "Not sure"],
+                ] as const
+              ).map(([v, label]) => (
+                <button
+                  key={label}
+                  className={insetOutset === v ? "button-like active-pill" : "button-like"}
+                  onClick={() => setInsetOutset(v)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <label className="field-label">
+              Weight (lb, from the Strata paperwork) — optional
+            </label>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              placeholder="e.g. 180"
+              value={weightInput}
+              onChange={(e) => setWeightInput(e.target.value)}
+            />
+
             {save.isError && <p className="error">{formatApiError(save.error)}</p>}
             {save.isSuccess && <p className="ok" style={{ fontSize: 12 }}>Saved to the catalog ✓</p>}
             <div className="row-gap" style={{ marginTop: 8, flexWrap: "wrap" }}>

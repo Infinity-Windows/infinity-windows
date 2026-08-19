@@ -97,6 +97,8 @@ import {
 } from "../../lib/modelstudio/units";
 import { fmtInchesFromMm } from "../../lib/modelstudio/dims";
 import { syncProjectSignatures } from "../../lib/estimate/signatureSync";
+import { estimateForUnitConfig, useCohortEvidence } from "../../lib/estimate/liveEstimate";
+import type { CohortEstimate } from "../../lib/estimate/cohorts";
 import { supabase } from "../../lib/supabase";
 import {
   Blueprint3d,
@@ -301,6 +303,10 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     { model: Record<string, unknown>; stats: PublishStats } | null
   >(null);
   const units = useQuery({ queryKey: ["studioUnits"], queryFn: listStudioUnits });
+  // #21/#26: the same evidence the estimating screen loads (identical
+  // query keys — lib/estimate/liveEstimate), shared by the builder's live
+  // line and this catalog's confidence badges below.
+  const cohortEvidence = useCohortEvidence();
   /** Standalone extras: the job list for linking, and the link action. */
   const allProjects = useQuery({
     queryKey: ["projects"],
@@ -2106,6 +2112,15 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     pushToast("Unit removed.");
   };
 
+  // #26: cohort strength per catalog unit, right now — the same
+  // computation the builder's live line uses (#21), one memo for the
+  // whole list rather than a hook per row (hooks can't run inside .map).
+  const unitEstimates = useMemo(() => {
+    const m = new Map<string, CohortEstimate>();
+    for (const u of units.data ?? []) m.set(u.id, estimateForUnitConfig(u.config, cohortEvidence));
+    return m;
+  }, [units.data, cohortEvidence]);
+
   const palette = (
     <div className={paletteOpen ? "studio-palette" : "studio-palette collapsed"}>
       <button
@@ -2779,49 +2794,69 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           >
             {importSpecs.isPending ? "Importing…" : "Import from job specs"}
           </button>
-          {(units.data ?? []).map((u) => (
-            <div
-              key={u.id}
-              className="studio-unit-row"
-              draggable
-              title="Drag onto the plan to place it on a wall"
-              onDragStart={(e) => {
-                e.dataTransfer.setData(
-                  "application/x-studio-unit",
-                  JSON.stringify({ config: u.config, name: u.name }),
-                );
-                e.dataTransfer.effectAllowed = "copy";
-              }}
-            >
-              <span
-                className="studio-unit-thumb"
-                dangerouslySetInnerHTML={{ __html: unitSvg(u.config, 64, 40) }}
-              />
-              <span
-                className="studio-unit-name"
-                title={`${u.name} — ${fmtFtIn(
-                  (u.config.panels.reduce((t, p) => t + p.widthMm, 0) / 10),
-                )} × ${fmtFtIn(u.config.heightMm / 10)} · ${u.config.panels.length} panel${
-                  u.config.panels.length === 1 ? "" : "s"
-                }`}
-              >
-                {u.name}
-              </span>
-              <button
-                className="button-like studio-mini"
-                title="Edit panels & dimensions"
-                onClick={() => setEditUnit(u)}
-              >
-                ✎
-              </button>
-              <button
-                className="button-like studio-mini"
-                onClick={() => insertUnit(u.config, u.name)}
-              >
-                Insert
-              </button>
-            </div>
-          ))}
+          {(units.data ?? []).map((u) => {
+            const est = unitEstimates.get(u.id);
+            return (
+              <div key={u.id} className="studio-unit-item">
+                <div
+                  className="studio-unit-row"
+                  draggable
+                  title="Drag onto the plan to place it on a wall"
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData(
+                      "application/x-studio-unit",
+                      JSON.stringify({ config: u.config, name: u.name }),
+                    );
+                    e.dataTransfer.effectAllowed = "copy";
+                  }}
+                >
+                  <span
+                    className="studio-unit-thumb"
+                    dangerouslySetInnerHTML={{ __html: unitSvg(u.config, 64, 40) }}
+                  />
+                  <span
+                    className="studio-unit-name"
+                    title={`${u.name} — ${fmtFtIn(
+                      (u.config.panels.reduce((t, p) => t + p.widthMm, 0) / 10),
+                    )} × ${fmtFtIn(u.config.heightMm / 10)} · ${u.config.panels.length} panel${
+                      u.config.panels.length === 1 ? "" : "s"
+                    }`}
+                  >
+                    {u.name}
+                  </span>
+                  <button
+                    className="button-like studio-mini"
+                    title="Edit panels & dimensions"
+                    onClick={() => setEditUnit(u)}
+                  >
+                    ✎
+                  </button>
+                  <button
+                    className="button-like studio-mini"
+                    onClick={() => insertUnit(u.config, u.name)}
+                  >
+                    Insert
+                  </button>
+                </div>
+                {/* #25/#26: weight when the paperwork gave one, and how
+                    much real install data backs this cohort's estimate —
+                    same rung-label helpers as the builder's live line. */}
+                <div className="studio-unit-meta">
+                  {u.config.weightLb != null && (
+                    <span className="muted">~{Math.round(u.config.weightLb)} lb</span>
+                  )}
+                  {est && (
+                    <span
+                      className={est.rung === "none" ? "muted" : "ok"}
+                      title="How much real install data backs this unit's estimate"
+                    >
+                      {est.label}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
           {(units.data ?? []).length === 0 && (
             <p className="muted" style={{ fontSize: 11, margin: 0 }}>
               No saved units yet — build one or import from specs.

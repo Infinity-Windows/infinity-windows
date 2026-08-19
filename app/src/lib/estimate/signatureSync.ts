@@ -34,7 +34,20 @@ export interface SignatureUpdate {
   sigKey: string;
 }
 
-function insetOutsetOf(spec: ProjectMarkSpec | null): UnitFacts["insetOutset"] {
+/**
+ * Catalog beats spec — same priority `config` selection above already
+ * uses. A hand-built unit's 3-way control (UnitConfig.insetOutset, #23)
+ * writes straight to the config-of-record, so it wins here too; a spec
+ * import never sets that field, so it falls straight through to
+ * `extra.inset_outset` exactly as before #23 existed.
+ */
+function insetOutsetOf(
+  spec: ProjectMarkSpec | null,
+  config: UnitConfig | null,
+): UnitFacts["insetOutset"] {
+  if (config?.insetOutset === "inset" || config?.insetOutset === "outset") {
+    return config.insetOutset;
+  }
   const v = (spec?.extra as { inset_outset?: unknown } | null)?.inset_outset;
   return v === "inset" || v === "outset" ? v : null;
 }
@@ -61,7 +74,7 @@ export function planSignatureUpdates(input: {
     if (!config) continue;
     const { signature, sigKey } = computeSignature(config, {
       story: input.storyByMark.get(mark) ?? null,
-      insetOutset: insetOutsetOf(spec),
+      insetOutset: insetOutsetOf(spec, config),
     });
     if (sigKey !== o.sig_key) {
       updates.push({ openingId: o.id, signature, sigKey });

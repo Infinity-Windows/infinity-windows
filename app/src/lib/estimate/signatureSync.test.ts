@@ -72,6 +72,43 @@ describe("planSignatureUpdates", () => {
     });
     expect(updates).toHaveLength(0);
   });
+
+  // #23: a hand-built catalog unit's 3-way control writes straight to
+  // UnitConfig.insetOutset. That's the config-of-record for its mark, so
+  // it should win over whatever the spec sheet says — same "catalog beats
+  // spec" priority the config selection itself already follows.
+  it("a catalog unit's own insetOutset wins over the spec's", () => {
+    const catalog: UnitConfig = {
+      kind: "window",
+      heightMm: 1200,
+      panels: [{ widthMm: 900, mechanism: "fixed" }],
+      insetOutset: "inset",
+    };
+    const updates = planSignatureUpdates({
+      openings: [{ id: "a", opening_code: "5", sig_key: null }],
+      specs: [spec("5", { extra: { inset_outset: "outset" } })],
+      catalogByMark: new Map([["5", catalog]]),
+      storyByMark: new Map(),
+    });
+    expect(updates).toHaveLength(1);
+    expect(updates[0].signature.insetOutset).toBe("inset");
+  });
+
+  it("falls to the spec's inset/outset when the catalog config doesn't set one", () => {
+    const catalog: UnitConfig = {
+      kind: "window",
+      heightMm: 1200,
+      panels: [{ widthMm: 900, mechanism: "fixed" }],
+      // insetOutset absent — every catalog unit before #23 shipped.
+    };
+    const updates = planSignatureUpdates({
+      openings: [{ id: "a", opening_code: "5", sig_key: null }],
+      specs: [spec("5", { extra: { inset_outset: "outset" } })],
+      catalogByMark: new Map([["5", catalog]]),
+      storyByMark: new Map(),
+    });
+    expect(updates[0].signature.insetOutset).toBe("outset");
+  });
 });
 
 describe("storyByMarkFrom", () => {
