@@ -7,9 +7,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   authErrorFromHash,
+  cooldownLabel,
   isRecoveryLanding,
   newPasswordProblem,
   passwordResetRedirectUrl,
+  resetEmailRefusal,
 } from "./passwordReset";
 
 describe("passwordResetRedirectUrl", () => {
@@ -98,5 +100,36 @@ describe("the call sites use the helpers", () => {
     expect(src).toContain("isRecoveryLanding(");
     expect(src).toContain("PASSWORD_RECOVERY");
     expect(src).toContain("SetNewPassword");
+  });
+});
+
+// The mailer's pace refusals (owner hit the cap after two tries, 2026-08-18):
+// plain words plus a rest matched to the refusal — the per-address gap is a
+// minute, the service-wide cap is the five minutes the owner asked for.
+describe("resetEmailRefusal", () => {
+  it("the service cap → five-minute rest, plain words", () => {
+    const r = resetEmailRefusal("Email rate limit exceeded");
+    expect(r?.waitSec).toBe(300);
+    expect(r?.line).toContain("Wait 5 minutes");
+  });
+
+  it("the per-address gap → one-minute rest", () => {
+    const r = resetEmailRefusal(
+      "For security purposes, you can only request this once every 60 seconds",
+    );
+    expect(r?.waitSec).toBe(60);
+    expect(r?.line).toContain("give it a minute");
+  });
+
+  it("anything else is not a pace refusal — caller shows it as-is", () => {
+    expect(resetEmailRefusal("Invalid email address")).toBeNull();
+  });
+});
+
+describe("cooldownLabel", () => {
+  it("minutes read as m:ss, seconds as Ns", () => {
+    expect(cooldownLabel(300)).toBe("5:00");
+    expect(cooldownLabel(90)).toBe("1:30");
+    expect(cooldownLabel(45)).toBe("45s");
   });
 });

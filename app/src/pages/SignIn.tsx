@@ -1,6 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatApiError } from "../lib/errors";
-import { passwordResetRedirectUrl } from "../lib/passwordReset";
+import {
+  cooldownLabel,
+  passwordResetRedirectUrl,
+  RESET_EMAIL_COOLDOWN_SEC,
+  resetEmailRefusal,
+} from "../lib/passwordReset";
 import { supabase, supabaseConfigured } from "../lib/supabase";
 import { submitAccessRequest } from "../lib/install/api";
 
@@ -58,6 +63,16 @@ export function SignIn({
     setBusy(false);
   };
 
+  // The Reset button rests after each send (and after a pace refusal), with
+  // a live countdown — tapping sooner only burns the mailer's quota. A
+  // timeout chain, not an interval: each tick schedules the next.
+  const [resetWait, setResetWait] = useState(0);
+  useEffect(() => {
+    if (resetWait <= 0) return;
+    const t = setTimeout(() => setResetWait((s) => Math.max(0, s - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [resetWait]);
+
   const resetPassword = async () => {
     setBusy(true);
     setError(null);
@@ -80,8 +95,20 @@ export function SignIn({
         ),
       },
     );
-    if (resetError) setError(resetError.message);
-    else setInfo("Password reset email sent — check your inbox, then Sign in.");
+    if (resetError) {
+      // Pace refusals get plain words and a rest matched to the refusal;
+      // real errors show as themselves.
+      const refusal = resetEmailRefusal(resetError.message);
+      if (refusal) {
+        setError(refusal.line);
+        setResetWait(refusal.waitSec);
+      } else {
+        setError(resetError.message);
+      }
+    } else {
+      setInfo("Password reset email sent — check your inbox, then Sign in.");
+      setResetWait(RESET_EMAIL_COOLDOWN_SEC);
+    }
     setBusy(false);
   };
 
@@ -227,8 +254,14 @@ export function SignIn({
               I was given a code
             </button>
           )}
-          <button className="link" onClick={resetPassword} disabled={busy}>
-            Reset password
+          <button
+            className="link"
+            onClick={resetPassword}
+            disabled={busy || resetWait > 0}
+          >
+            {resetWait > 0
+              ? `Reset password — wait ${cooldownLabel(resetWait)}`
+              : "Reset password"}
           </button>
           <button
             className="link"
