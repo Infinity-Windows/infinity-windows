@@ -2,7 +2,7 @@
 // two-man-lift rule that drives the declinable install-start prompt.
 
 import { describe, expect, it } from "vitest";
-import { sizeSuggestsSummon, summonHelperMinutes, summonStripLine } from "./summons";
+import { sizeSuggestsSummon, summonEtaLine, summonHelperMinutes, summonStripLine } from "./summons";
 
 describe("summonHelperMinutes", () => {
   const t0 = Date.parse("2026-08-14T10:00:00Z");
@@ -81,5 +81,62 @@ describe("summonStripLine", () => {
         false,
       ),
     ).toBe("Someone needs 2 hands");
+  });
+});
+
+// The ETA (owner ask, 2026-08-19): the caller names when hands are needed;
+// every viewer reads the same countdown, and it flips to "needed NOW" when
+// the time passes instead of counting negative.
+describe("summonEtaLine", () => {
+  const now = Date.parse("2026-08-19T13:00:00");
+
+  it("ahead of time: clock time plus minutes left", () => {
+    const line = summonEtaLine(new Date(now + 22 * 60_000).toISOString(), now);
+    // \s not a plain space: newer ICU puts a narrow no-break space before AM/PM.
+    expect(line).toMatch(/^by \d{1,2}:\d{2}\s?(AM|PM) · 22 min$/);
+  });
+
+  it("past due reads as needed NOW", () => {
+    expect(summonEtaLine(new Date(now - 60_000).toISOString(), now)).toBe("needed NOW");
+  });
+
+  it("untimed summons have no line at all", () => {
+    expect(summonEtaLine(null, now)).toBeNull();
+    expect(summonEtaLine(undefined, now)).toBeNull();
+  });
+});
+
+describe("summonStripLine with an ETA", () => {
+  it("the countdown rides the strip line", () => {
+    const now = Date.parse("2026-08-19T13:00:00");
+    const line = summonStripLine(
+      {
+        needed: 3,
+        status: "open",
+        requester: { display_name: "Marcus" },
+        project: { job_code: "BLACK22" },
+        opening: { opening_code: "14" },
+        needed_at: new Date(now + 30 * 60_000).toISOString(),
+      },
+      false,
+      now,
+    );
+    expect(line).toMatch(/^Marcus needs 3 hands — BLACK22 · #14 · by .* · 30 min$/);
+  });
+
+  it("untimed summons read exactly as before", () => {
+    expect(
+      summonStripLine(
+        {
+          needed: 3,
+          status: "open",
+          requester: { display_name: "Marcus" },
+          project: { job_code: "BLACK22" },
+          opening: { opening_code: "14" },
+          needed_at: null,
+        },
+        false,
+      ),
+    ).toBe("Marcus needs 3 hands — BLACK22 · #14");
   });
 });

@@ -15,6 +15,8 @@ export interface Summon {
   status: "open" | "covered" | "closed";
   created_at: string;
   closed_at: string | null;
+  /** When the hands are needed. Null = "now" (pre-ETA summons). */
+  needed_at?: string | null;
   requester?: { display_name: string | null } | null;
   /** Embedded for the landing strip — absent on older reads, so optional. */
   project?: { job_code: string | null } | null;
@@ -81,10 +83,15 @@ export async function listSummonHelpers(summonId: string): Promise<SummonHelper[
   return (data ?? []) as unknown as SummonHelper[];
 }
 
-export async function createSummon(openingId: string, needed: number): Promise<Summon> {
+export async function createSummon(
+  openingId: string,
+  needed: number,
+  leadMinutes?: number | null,
+): Promise<Summon> {
   const { data, error } = await supabase.rpc("create_summon", {
     p_opening_id: openingId,
     p_needed: needed,
+    p_lead_minutes: leadMinutes ?? null,
   });
   if (error) throw error;
   return data as Summon;
@@ -134,14 +141,36 @@ export function summonHelperMinutes(
 }
 
 /**
+ * The countdown every viewer reads on a timed summon: "by 1:05 PM · 22 min"
+ * while it's ahead, "needed NOW" once the time has passed, null for an
+ * untimed summon (the pre-ETA "come when you can").
+ */
+export function summonEtaLine(
+  neededAt: string | null | undefined,
+  now: number = Date.now(),
+): string | null {
+  if (!neededAt) return null;
+  const at = Date.parse(neededAt);
+  if (Number.isNaN(at)) return null;
+  const when = new Date(at).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const minsLeft = Math.round((at - now) / 60_000);
+  if (minsLeft <= 0) return "needed NOW";
+  return `by ${when} · ${minsLeft} min`;
+}
+
+/**
  * The landing strip's one-line story for a live summon: who needs hands, how
  * many, where — in the crew's words. `mine` flips the voice ("You called
  * for…") so your own summon reads as confirmation, not as somebody else's
  * emergency.
  */
 export function summonStripLine(
-  s: Pick<Summon, "needed" | "status" | "requester" | "project" | "opening">,
+  s: Pick<Summon, "needed" | "status" | "requester" | "project" | "opening" | "needed_at">,
   mine: boolean,
+  now: number = Date.now(),
 ): string {
   const hands = `${s.needed} ${s.needed === 1 ? "hand" : "hands"}`;
   const head = mine
@@ -153,7 +182,9 @@ export function summonStripLine(
   ]
     .filter(Boolean)
     .join(" · ");
-  const base = where ? `${head} — ${where}` : head;
+  let base = where ? `${head} — ${where}` : head;
+  const eta = summonEtaLine(s.needed_at, now);
+  if (eta) base = `${base} · ${eta}`;
   return s.status === "covered" ? `${base} (covered)` : base;
 }
 

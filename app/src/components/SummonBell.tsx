@@ -4,6 +4,7 @@
 // closed apps; this covers the open one.
 
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { supabase, supabaseConfigured } from "../lib/supabase";
 
@@ -16,6 +17,7 @@ interface RingRow {
 }
 
 export function SummonBell() {
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [ring, setRing] = useState<{
     row: RingRow;
@@ -36,6 +38,12 @@ export function SummonBell() {
         { event: "INSERT", schema: "public", table: "summons" },
         (payload) => {
           const row = payload.new as RingRow;
+          // A new summon should appear on the landing strips the moment it
+          // exists, not on their next poll (owner report, 2026-08-19).
+          void queryClient.invalidateQueries({ queryKey: ["liveSummonsAll"] });
+          if (row?.project_id) {
+            void queryClient.invalidateQueries({ queryKey: ["summons", row.project_id] });
+          }
           if (!row?.id || row.requested_by === meRef.current) return;
           void (async () => {
             const [{ data: opening }, { data: caller }] = await Promise.all([
