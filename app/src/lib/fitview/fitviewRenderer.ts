@@ -1235,10 +1235,10 @@ export function mountFitView(host, job, shim) {
         if (p.z < minz) minz = p.z; if (p.z > maxz) maxz = p.z;
       });
       var mw = Math.max(1, maxx - minx), mh = Math.max(1, maxz - minz);
-      var scale = 72 / Math.max(mw, mh);
-      var toX = function (x) { return ((x - minx) * scale + 6).toFixed(1); };
-      var toZ = function (z) { return ((z - minz) * scale + 6).toFixed(1); };
-      var svg = '<svg viewBox="0 0 84 84" width="84" height="84">';
+      var scale = 112 / Math.max(mw, mh);
+      var toX = function (x) { return ((x - minx) * scale + 8).toFixed(1); };
+      var toZ = function (z) { return ((z - minz) * scale + 8).toFixed(1); };
+      var svg = '<svg viewBox="0 0 128 128" width="128" height="128">';
       for (var i = 0; i < pts.length; i++) {
         var a = pts[i], b = pts[(i + 1) % pts.length];
         svg += '<line data-edge="' + i + '" x1="' + toX(a.x) + '" y1="' + toZ(a.z) +
@@ -1253,6 +1253,11 @@ export function mountFitView(host, job, shim) {
 
     // Which wall is under the middle of the screen right now?
     var syncCurrent = function () {
+      // Pin the minimap to the visible corner: absolute children ride along
+      // with the scrolled content, so walk it back by exactly the scroll
+      // (owner report, 2026-08-19: "the whole map goes out of frame — lock
+      // it into the corner so I can always see it").
+      map.style.transform = "translateX(" + stage.scrollLeft + "px)";
       var mid = stage.scrollLeft + stage.clientWidth / 2;
       var best = null, bestD = Infinity;
       row.querySelectorAll(".flat-wall").forEach(function (w, i) {
@@ -1268,11 +1273,30 @@ export function mountFitView(host, job, shim) {
       var label = map.querySelector(".flat-minimap-label");
       var entry = ELEVS.filter(function (e) { return e.key === best.key; })[0];
       if (label && entry) label.textContent = entry.name || best.key;
+      // The wall's own key names its footprint edge ("s3" = edge 3) — the
+      // wrapper index only agrees on single-story boxes, so parse the key
+      // and fall back to the index.
+      var km = /^s(\d+)$/.exec(best.key);
+      var edgeIdx = km ? parseInt(km[1], 10) : best.idx;
       map.querySelectorAll("line").forEach(function (ln, i) {
-        ln.classList.toggle("on", i === best.idx);
+        ln.classList.toggle("on", i === edgeIdx);
       });
     };
     stage.addEventListener("scroll", syncCurrent, { passive: true });
+    // Belt and braces for phones (owner report, 2026-08-19: the dot never
+    // moved while scrolling): watch scrollLeft every frame instead of
+    // trusting scroll events to arrive from whichever element the browser
+    // actually scrolls. One number compare per frame; self-terminates when
+    // the stage leaves the document.
+    var lastSL = -1;
+    (function watchScroll() {
+      if (!stage.isConnected) return;
+      if (stage.scrollLeft !== lastSL) {
+        lastSL = stage.scrollLeft;
+        syncCurrent();
+      }
+      requestAnimationFrame(watchScroll);
+    })();
     setTimeout(syncCurrent, 0);
 
     $("hint").innerHTML = "Scroll sideways — the walls run in walking order &middot; tap a unit for its spec";

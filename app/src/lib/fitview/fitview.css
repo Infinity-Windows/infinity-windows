@@ -1941,16 +1941,16 @@ a.tb-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
   .flat-minimap line {
     stroke: var(--ink, #fff);
     stroke-opacity: 0.45;
-    stroke-width: 2;
+    stroke-width: 2.5;
     stroke-linecap: round;
   }
   .flat-minimap line.on {
     stroke: var(--hot, #ff5a36);
     stroke-opacity: 1;
-    stroke-width: 3.5;
+    stroke-width: 5;
   }
   .flat-minimap-label {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
