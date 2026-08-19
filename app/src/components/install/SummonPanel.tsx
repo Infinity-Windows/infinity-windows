@@ -62,6 +62,9 @@ export function SummonPanel({
   // (owner ask, 2026-08-19). Answerers see the countdown and get a 5-minute
   // warning push from the server-side sweep.
   const [leadMin, setLeadMin] = useState<number | null>(null);
+  // Optional plain-words why — rides the summon and the crew push (owner
+  // ask, 2026-08-19).
+  const [note, setNote] = useState("");
   const [dismissedPrompt, setDismissedPrompt] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -112,7 +115,7 @@ export function SummonPanel({
 
   const call = useMutation({
     mutationFn: async () => {
-      const created = await createSummon(openingId, needed, leadMin);
+      const created = await createSummon(openingId, needed, leadMin, note);
       // Ring the job's crew (never the caller). Push failures never block
       // the summon — the in-app banner and this card still carry it.
       try {
@@ -126,7 +129,7 @@ export function SummonPanel({
             title: `🪟 Help needed — ${openingCode}`,
             body: `${myName ?? "An installer"} needs ${needed} for a heavy unit${
               leadMin ? ` in ${leadMin} min` : " now"
-            }. Answer to help (+10 pts).`,
+            }${note.trim() ? ` — ${note.trim().slice(0, 80)}` : ""}. Answer to help (+10 pts).`,
             tag: `summon-${created.id}`,
             url: `/projects/${projectId}/opening/${openingId}`,
             urgent: true,
@@ -288,6 +291,15 @@ export function SummonPanel({
               Answerers see the countdown and get a 5-minute warning.
             </p>
           )}
+          <input
+            type="text"
+            placeholder="Why? (optional) — e.g. second story, no elevator"
+            value={note}
+            maxLength={500}
+            onChange={(e) => setNote(e.target.value)}
+            style={{ width: "100%", marginTop: 8 }}
+            aria-label="Why is the summon needed (optional)"
+          />
           <button
             className="primary big"
             style={{ marginTop: 8 }}
@@ -327,6 +339,11 @@ export function SummonPanel({
               style={{ margin: "6px 0 0", fontSize: 13, fontWeight: 600 }}
             >
               ⏱ Hands needed {summonEtaLine(summon.needed_at)}
+            </p>
+          )}
+          {summon.note && (
+            <p className="muted" style={{ margin: "6px 0 0", fontSize: 12.5 }}>
+              &ldquo;{summon.note}&rdquo;
             </p>
           )}
           {/* Who's coming, by name — the caller AND every answerer see the

@@ -17,6 +17,8 @@ export interface Summon {
   closed_at: string | null;
   /** When the hands are needed. Null = "now" (pre-ETA summons). */
   needed_at?: string | null;
+  /** Optional plain-words why ("second story, no elevator"). */
+  note?: string | null;
   requester?: { display_name: string | null } | null;
   /** Embedded for the landing strip — absent on older reads, so optional. */
   project?: { job_code: string | null } | null;
@@ -90,11 +92,13 @@ export async function createSummon(
   openingId: string,
   needed: number,
   leadMinutes?: number | null,
+  note?: string | null,
 ): Promise<Summon> {
   const { data, error } = await supabase.rpc("create_summon", {
     p_opening_id: openingId,
     p_needed: needed,
     p_lead_minutes: leadMinutes ?? null,
+    p_note: note?.trim() || null,
   });
   if (error) throw error;
   return data as Summon;

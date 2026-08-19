@@ -77,6 +77,11 @@ export function PunchCard({ shift: s, isLead, isSup, canEdit, projects, costCode
             {needsFinishTime(s) ? "needs a finish time" : s.status}
           </span>
           {s.injured && <span className="tcx-chip bad">injury</span>}
+          {s.injured && s.injury_note && (
+            <span className="muted" style={{ fontSize: 12 }}>
+              &ldquo;{s.injury_note}&rdquo;
+            </span>
+          )}
           {/* The crew member answered "No" to "is your time correct?" at
               clock-out — the day is theirs to dispute; the office sees it here. */}
           {s.time_confirmed === false && (

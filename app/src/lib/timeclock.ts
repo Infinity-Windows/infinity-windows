@@ -47,6 +47,8 @@ export interface TimeShift {
   created_at: string;
   /** Optional free-text note the worker adds at clock-in, for the office. */
   note?: string | null;
+  /** "What happened?" when the injured box was ticked at clock-out. */
+  injury_note?: string | null;
   clock_in_lat?: number | null;
   clock_in_lng?: number | null;
   clock_out_lat?: number | null;
@@ -476,6 +478,7 @@ export async function clockOut(
   shiftId: string,
   opts: {
     injured: boolean;
+    injuryNote?: string | null;
     timeConfirmed: boolean;
     breakSeconds: number;
     geo?: GeoFix;
@@ -485,6 +488,7 @@ export async function clockOut(
     p_shift_id: shiftId,
     p_photo: null,
     p_injured: opts.injured,
+    p_injury_note: opts.injured ? (opts.injuryNote?.trim() || null) : null,
     p_time_confirmed: opts.timeConfirmed,
     p_break_seconds: opts.breakSeconds,
     p_lat: opts.geo?.lat ?? null,

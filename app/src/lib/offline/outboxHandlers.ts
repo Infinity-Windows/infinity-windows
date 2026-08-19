@@ -335,6 +335,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       p_shift_id: shiftId,
       p_photo: null,
       p_injured: p.injured === true,
+      p_injury_note: p.injured === true ? (str(p.injuryNote) ?? null) : null,
       p_time_confirmed: p.timeConfirmed !== false,
       p_break_seconds: num(p.breakSeconds),
       p_lat: num(p.lat),
