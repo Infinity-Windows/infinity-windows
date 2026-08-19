@@ -13,8 +13,9 @@ import { RoleMap } from "./RoleMap";
  * runs installers and a supervisor runs both. Every door a map names is
  * test-proven openable by that role (roleFlow.test.ts).
  *
- * Lives on whichever page a role lands on at "/" — Home for installers and
- * foremen, Heartbeat for supervisors and owners (see RoleLanding in App.tsx).
+ * Lives on whichever page a role lands on at "/" — My Work for installers,
+ * Home for foremen, Heartbeat for supervisors and owners (see RoleLanding in
+ * App.tsx). All three, or somebody's role never sees its map.
  */
 export function RoleMaps() {
   const { effectiveRole: role } = useEffectiveRole();

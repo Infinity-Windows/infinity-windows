@@ -112,14 +112,14 @@ const INSTALLER: RoleFlow = {
   role: "installer",
   title: "How an installer runs a day",
   lede:
-    "One loop, all day: clock in, take the window the app hands you, finish it, take the next. Everything else on this map serves that loop.",
+    "One loop, all day: clock in, take the unit the app hands you, finish it, take the next. Everything else on this map serves that loop.",
   rows: [
     [
       {
         id: "clockin",
         label: "Clock in",
-        lines: ["One tap. Lands on your", "recommended window."],
-        asks: "Nothing else up front — the window's own gates (the talk, the before photo, flashing) live on its sheet, where they make sense.",
+        lines: ["One tap. Lands on your", "recommended unit."],
+        asks: "Nothing else up front — the unit's own gates (the talk, the before photo, flashing) live on its sheet, where they make sense.",
         wrong: "Working off the clock makes the day invisible — the estimate data, your hours, all of it. One tap is the whole ask.",
         doors: ["/clock"],
       },
@@ -136,9 +136,9 @@ const INSTALLER: RoleFlow = {
     [
       {
         id: "window",
-        label: "Your window",
+        label: "Your unit",
         lines: ["Before photo, flashing check,", "the spec — then install."],
-        asks: "Finish hands the clock to the next window. Block says why and moves on — blocked minutes are counted apart ON PURPOSE, so a missing part never reads as slow work.",
+        asks: "Finish hands the clock to the next unit. Block says why and moves on — blocked minutes are counted apart ON PURPOSE, so a missing part never reads as slow work.",
         wrong: "Pressing Redo is never punished here: any installer can, reason required, and the foreman is told — friction belongs on hiding problems, not admitting them.",
         doors: ["/projects", "/my-schedule"],
       },
@@ -146,7 +146,7 @@ const INSTALLER: RoleFlow = {
         id: "summon",
         label: "Heavy lift? Summon",
         lines: ["Call hands. Answering", "starts the helper's clock."],
-        asks: "A four-man lift is real install cost — the helpers' minutes count toward the window, honestly.",
+        asks: "A four-man lift is real install cost — the helpers' minutes count toward the unit, honestly.",
         doors: ["/projects"],
         branch: true,
       },
