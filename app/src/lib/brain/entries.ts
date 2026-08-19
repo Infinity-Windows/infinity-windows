@@ -139,7 +139,7 @@ export const APP_TOUR_ENTRY: BrainEntry = {
   source: "App guide",
   body:
     "Home is your day: clock-in, term of the day, active install, points and your projects. " +
-    "Work is your assigned queue — the next ready window is up top. " +
+    "Work is your assigned queue — the next ready unit is up top. " +
     "Warehouse is find/scan/receive/slots and per-job pick lists. " +
     "Open a project to see its plan; tap a unit dot (blue = window, green = door) to open its sheet, then Assign to me & start. " +
     "After an install: record a voice memo, attach a video, take proof photos — points release after QC sign-off. " +

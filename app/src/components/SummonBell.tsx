@@ -52,7 +52,7 @@ export function SummonBell() {
             ]);
             setRing({
               row,
-              code: (opening as { opening_code?: string } | null)?.opening_code ?? "a window",
+              code: (opening as { opening_code?: string } | null)?.opening_code ?? "a unit",
               caller: (caller as { display_name?: string } | null)?.display_name ?? "an installer",
             });
             // As much noise as a browser allows without a prior gesture:

@@ -40,7 +40,7 @@ describe("roVerdicts (the numbers judge, against the window)", () => {
       roVerdicts({ ...base, widths: [23.5625], heights: [] })[1].measured,
     ).toBe("bad");
     expect(roVerdicts({ ...base, widths: [23.25], heights: [] })[1].detail).toMatch(
-      /smaller than the window/,
+      /smaller than the unit/,
     );
     // Too loose (3/4" over) fails the other way.
     expect(

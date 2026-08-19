@@ -322,9 +322,12 @@ describe("liveAnswer (offline grounding from the query cache)", () => {
       ],
     };
     const answer = liveAnswer("what's my next window?", data);
-    expect(answer).toContain("Your next window:");
+    expect(answer).toContain("Your next unit:");
     expect(answer).toContain("W3");
     expect(answer).toContain("1 more in your queue");
+    // The unit-wording sweep (owner ask, 2026-08-18): the answer speaks
+    // "unit", but the crew's old phrasing keeps routing — both words work.
+    expect(liveAnswer("my next unit", data)).toContain("Your next unit:");
   });
 
   it("surfaces an in-progress install as mid-install", () => {
@@ -354,7 +357,7 @@ describe("liveAnswer (offline grounding from the query cache)", () => {
       ],
     };
     const answer = liveAnswer("what's next?", data);
-    expect(answer).toContain("Your next window:");
+    expect(answer).toContain("Your next unit:");
     expect(answer).toContain("W3");
   });
 

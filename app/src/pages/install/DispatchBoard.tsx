@@ -368,7 +368,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
 
       <h2>Unassigned ({unassigned.length})</h2>
       <p className="muted opening-list-hint">
-        Tap a window or door to see its details. The dropdown assigns it.
+        Tap a unit to see its details. The dropdown assigns it.
       </p>
       <ul className="unit-list work-list">
         {unassigned.map(openingRow)}
@@ -390,7 +390,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
             </h2>
             <ul className="unit-list work-list">
               {list.map(openingRow)}
-              {list.length === 0 && <p className="muted">No windows assigned.</p>}
+              {list.length === 0 && <p className="muted">No units assigned.</p>}
             </ul>
           </div>
         );
@@ -526,7 +526,7 @@ function SummonStrip({
     <div className="detail-card" style={{ marginTop: 8 }}>
       {(live.data ?? []).map((s) => (
         <p key={s.id} style={{ margin: "2px 0" }}>
-          🔔 <strong>{openingCodeById.get(s.opening_id) ?? "window"}</strong>{" "}
+          🔔 <strong>{openingCodeById.get(s.opening_id) ?? "unit"}</strong>{" "}
           <span className="muted">
             — {s.requester?.display_name ?? "installer"} needs {s.needed}
             {s.status === "covered" ? " · covered" : " · ringing"}
@@ -563,13 +563,13 @@ function SessionStrips({
     <div className="detail-card" style={{ marginTop: 8 }}>
       {blocked.map((b) => (
         <p key={b.openingId} style={{ margin: "2px 0" }}>
-          🚫 <strong>{openingCodeById.get(b.openingId) ?? "window"}</strong>{" "}
+          🚫 <strong>{openingCodeById.get(b.openingId) ?? "unit"}</strong>{" "}
           <span className="muted">blocked — {b.reason ?? "no reason recorded"}</span>
         </p>
       ))}
       {(redos.data ?? []).map((r) => (
         <p key={r.id} style={{ margin: "2px 0" }}>
-          🔁 <strong>{openingCodeById.get(r.opening_id) ?? "window"}</strong>{" "}
+          🔁 <strong>{openingCodeById.get(r.opening_id) ?? "unit"}</strong>{" "}
           <span className="muted">
             redo — {r.presser?.display_name ?? "installer"}: {r.reason}
           </span>

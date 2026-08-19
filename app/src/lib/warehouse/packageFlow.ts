@@ -211,10 +211,10 @@ export const NODES: FlowNode[] = [
     h: 72,
     label: "Installed",
     lines: ["tracking ends here"],
-    who: "The installer finishing the window.",
+    who: "The installer finishing the unit.",
     asks: "Nothing extra — finishing the unit does it.",
     wrong:
-      "Tracking stops here. If that window comes back out as a Redo, that is the unit’s story, not the package’s.",
+      "Tracking stops here. If that unit comes back out as a Redo, that is the unit’s story, not the package’s.",
     related: ["site"],
     edges: ["site-installed"],
   },
@@ -284,7 +284,7 @@ export const NODES: FlowNode[] = [
     // for: `arrive_packages` stamps `created_by` from who is signed in.
     asks: "A note. It raises an issue, and the job sees it.",
     wrong:
-      "Held back on purpose, not lost. Somebody has to order a replacement before that window can be finished.",
+      "Held back on purpose, not lost. Somebody has to order a replacement before that unit can be finished.",
     related: ["stored"],
     edges: ["s-damaged"],
   },
