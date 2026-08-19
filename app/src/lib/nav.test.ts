@@ -269,6 +269,8 @@ describe("every NAV destination has a door", () => {
   const INTENTIONALLY_MENU_LESS = [
     "/clock", // lives as the clock ACTION in the menu + bottom bar, never a row
     "/warehouse/3d", // the 3D map viewer — reached from package sheets and container pages
+    "/projects/:projectId/model", // the job model viewer — the "Walk the 3D
+    // model" button on a job's Maps Interactive tab, never a menu row
     "/takeoffs", // reached from the warehouse page's Supplies section
     "/search", // header search icon in Layout
     // Horizon stubs / in-page destinations (profile via Account, toolbox

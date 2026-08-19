@@ -78,6 +78,34 @@ interface JobModelRow {
   savedAt: string | null;
 }
 
+/**
+ * The Studio model saved on a job's plan outline (features.modelstudio),
+ * read the same way for every consumer: ModelStudio.tsx (a job source),
+ * JobModelViewer.tsx (the phone-friendly read-only viewer) and the
+ * jobModelCache offline fallback. A lone `serialized` string is a
+ * one-floor building; `floors` carries multi-story saves (floor 0 mirrors
+ * `serialized` for old readers).
+ */
+export interface JobModel {
+  serialized?: string;
+  floors?: string[];
+  savedAt?: string | null;
+}
+
+/**
+ * Pull the Studio model off a plan-outline row's `features`, or null when
+ * the job has never had one saved. PURE — drives both what JobModelViewer
+ * loads and whether Maps Interactive shows the "Walk the 3D model" door.
+ */
+export function jobModelFromFeatures(features: unknown): JobModel | null {
+  if (!features || typeof features !== "object") return null;
+  const m = (features as { modelstudio?: unknown }).modelstudio;
+  if (!m || typeof m !== "object") return null;
+  const model = m as JobModel;
+  if (!model.serialized && !(model.floors && model.floors.length > 0)) return null;
+  return model;
+}
+
 /** Jobs whose outline carries a saved Studio model. */
 export async function listJobModelRows(): Promise<JobModelRow[]> {
   const { data, error } = await supabase

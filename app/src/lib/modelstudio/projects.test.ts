@@ -3,7 +3,7 @@
 // standalone row, which would otherwise read as two models.
 
 import { describe, expect, it } from "vitest";
-import { buildWorkspaces, type StudioProjectRow } from "./projects";
+import { buildWorkspaces, jobModelFromFeatures, type StudioProjectRow } from "./projects";
 
 const PROJECTS = new Map([
   ["p-black", { job_code: "BLACK22", name: "Black Desert" }],
@@ -60,5 +60,42 @@ describe("buildWorkspaces", () => {
     const ws = buildWorkspaces([], [{ project_id: "p-gone", savedAt: null }], PROJECTS);
     expect(ws[0].name).toBe("Job model");
     expect(ws[0].jobCode).toBeNull();
+  });
+});
+
+describe("jobModelFromFeatures (Studio 100x #27: model-presence detection)", () => {
+  it("reads a one-floor model's serialized string", () => {
+    const model = jobModelFromFeatures({
+      modelstudio: { serialized: '{"floorplan":{}}', savedAt: "2026-08-19T00:00:00Z" },
+    });
+    expect(model?.serialized).toBe('{"floorplan":{}}');
+    expect(model?.savedAt).toBe("2026-08-19T00:00:00Z");
+  });
+
+  it("reads a multi-story model's floors array", () => {
+    const model = jobModelFromFeatures({
+      modelstudio: { floors: ["floor0", "floor1"] },
+    });
+    expect(model?.floors).toEqual(["floor0", "floor1"]);
+  });
+
+  it("is null when the job has never had a Studio model saved", () => {
+    expect(jobModelFromFeatures(null)).toBeNull();
+    expect(jobModelFromFeatures(undefined)).toBeNull();
+    expect(jobModelFromFeatures({})).toBeNull();
+    // The fitview outline model is a DIFFERENT thing (features.fitview.model) —
+    // its presence must never read as a Studio model.
+    expect(jobModelFromFeatures({ fitview: { model: {} } })).toBeNull();
+  });
+
+  it("is null for an empty modelstudio object (no serialized, no floors)", () => {
+    expect(jobModelFromFeatures({ modelstudio: {} })).toBeNull();
+    expect(jobModelFromFeatures({ modelstudio: { floors: [] } })).toBeNull();
+  });
+
+  it("ignores junk shapes rather than throwing", () => {
+    expect(jobModelFromFeatures("a string")).toBeNull();
+    expect(jobModelFromFeatures(42)).toBeNull();
+    expect(jobModelFromFeatures({ modelstudio: "not an object" })).toBeNull();
   });
 });
