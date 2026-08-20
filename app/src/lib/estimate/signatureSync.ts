@@ -23,8 +23,8 @@ import {
   specForOpeningCode,
   type ProjectMarkSpec,
 } from "../install/specs";
-import { listStudioUnits, specToUnitConfig, type UnitConfig } from "../modelstudio/units";
-import { markKeyOf } from "../modelstudio/fromProject";
+import { listStudioUnits, type UnitConfig } from "../modelstudio/units";
+import { catalogByMarkFrom, resolveMarkConfig } from "../modelstudio/fromProject";
 import { supabase } from "../supabase";
 import { computeSignature, type UnitFacts } from "./signature";
 
@@ -75,9 +75,7 @@ export function planSignatureUpdates(input: {
   for (const o of input.openings) {
     const mark = normalizeMarkCode(o.opening_code);
     const spec = specForOpeningCode(specIndex, mark);
-    const config =
-      input.catalogByMark.get(markKeyOf(mark)) ??
-      (spec ? specToUnitConfig(spec) : null);
+    const config = resolveMarkConfig(mark, specIndex, input.catalogByMark);
     if (!config) continue;
     const { signature, sigKey } = computeSignature(config, {
       story: input.storyByMark.get(mark) ?? null,
@@ -140,11 +138,7 @@ export async function syncProjectSignatures(
       }
     }
 
-    const catalogByMark = new Map<string, UnitConfig>();
-    for (const u of units) {
-      const m = /^(?:Window|Door)\s+([^\s·]+)/.exec(u.name);
-      if (m) catalogByMark.set(m[1].toUpperCase(), u.config);
-    }
+    const catalogByMark = catalogByMarkFrom(units);
 
     const updates = planSignatureUpdates({
       openings,

@@ -1328,11 +1328,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     }
     // The refined catalog unit for a mark beats the raw spec (brings the
     // hand-split panels and corners of e.g. window 16 into the pull).
-    const catalogByMark = new Map<string, UnitConfig>();
-    for (const u of units.data ?? []) {
-      const m = /^(?:Window|Door)\s+([^\s·]+)/.exec(u.name);
-      if (m) catalogByMark.set(m[1].toUpperCase(), u.config);
-    }
+    const catalogByMark = catalogByMarkFrom(units.data ?? []);
     // The active floor's REAL walls: placements align to this frame and
     // snap onto these segments — the vendor re-centres saved plans and the
     // owner drags walls, so plan-absolute coordinates float otherwise.
