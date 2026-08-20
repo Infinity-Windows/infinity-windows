@@ -22,7 +22,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BackChip } from "../../components/BackChip";
 import { pushToast } from "../../lib/toast";
 import { formatApiError } from "../../lib/errors";
-import { listProjects } from "../../lib/api";
+import { listLocations, listProjects } from "../../lib/api";
 import {
   getMyProfile,
   listMarkSpecs,
@@ -34,9 +34,16 @@ import { isForemanPlus } from "../../lib/install/types";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { listOpeningPhases } from "../../lib/install/phases";
 import { listProjectSessions } from "../../lib/install/sessions";
+import {
+  listInstallMedia,
+  listOpeningInstallEvents,
+  listProjectPhotoCounts,
+} from "../../lib/install/record";
 import { listQcPassedOpeningIds } from "../../lib/ops";
-import { listActivePackages } from "../../lib/storage";
+import { listActivePackages, listContainers } from "../../lib/storage";
 import { listScheduledMarks } from "../../lib/warehouse/warehouseCards";
+import { toLocationsById } from "../../lib/warehouse/containment";
+import { unitPackageLine, unitParts } from "../../lib/warehouse/unitParts";
 import { buildLiveOverlay, type OverlayState } from "../../lib/modelstudio/liveOverlay";
 import {
   getStudioProject,
@@ -61,6 +68,7 @@ import {
   fitviewCalibration,
   fitviewModel,
   humanTraceModel,
+  normalizeMarkCode,
   preferModelOutline,
 } from "../../lib/fitview/adapter";
 import {
@@ -554,6 +562,21 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     queryFn: () => listQcPassedOpeningIds(projectId),
     enabled: Boolean(projectId),
   });
+  // Photo badge (#7): counts only, never signed — cheap enough to carry on
+  // every unit at once. Same query shape as qcPassed above (one call, keyed
+  // by projectId, the read itself resolves which openings belong to it).
+  const photoCounts = useQuery({
+    queryKey: ["openingPhotoCounts", projectId],
+    queryFn: () => listProjectPhotoCounts(projectId),
+    enabled: Boolean(projectId),
+  });
+  // Studio↔warehouse links (#15/#18): the SAME containers/locations queries
+  // the Warehouse hub and PackageSheet already run, under their own query
+  // keys — a visit to either page warms this one's cache too. Only spent
+  // building the "where do the parts sit" sentence for whichever ONE unit
+  // is actually selected (below), never for every unit on the model.
+  const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
+  const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
   /** One toggle, per the spec — overlays default ON. */
   const [showLiveOverlay, setShowLiveOverlay] = useState(true);
   const overlayMap = useMemo(
@@ -566,6 +589,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           sessions: sessions.data ?? [],
           phases: phases.data ?? [],
           qcPassedOpeningIds: qcPassed.data ?? [],
+          photoCounts: photoCounts.data ?? new Map(),
           viewerId: myProfile.data?.id ?? null,
           managerView: isForemanPlus(effectiveRole),
           projectId,
@@ -583,6 +607,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       sessions.data,
       phases.data,
       qcPassed.data,
+      photoCounts.data,
       myProfile.data?.id,
       effectiveRole,
       projectId,
@@ -2725,6 +2750,63 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     return m;
   }, [units.data, cohortEvidence]);
 
+  // Studio↔warehouse links (#15/#18): on demand, for the SELECTED unit
+  // only — never computed for every unit on the model the way the paint
+  // overlay's own partsLine is. containment.ts's piecesWhere does the
+  // actual "where do the parts sit" call; this just feeds it.
+  const selMark = selUnit?.metadata?.itemName?.trim() || null;
+  const selMarkKey = selMark ? markKeyOf(selMark) : null;
+  const selPartsReport = useMemo(
+    () => (selMarkKey ? unitParts(packages.data ?? [], projectId, selMarkKey) : null),
+    [selMarkKey, packages.data, projectId],
+  );
+  const containersById = useMemo(
+    () => new Map((containers.data ?? []).map((c) => [c.id, c])),
+    [containers.data],
+  );
+  const locationsById = useMemo(
+    () => toLocationsById(locations.data ?? []),
+    [locations.data],
+  );
+  const selPackageLine = useMemo(
+    () =>
+      selPartsReport ? unitPackageLine(selPartsReport, containersById, locationsById) : null,
+    [selPartsReport, containersById, locationsById],
+  );
+
+  // Photo pin (#7): the selected unit's own opening (twin-aware, the same
+  // match every other live signal uses), then its install record's media
+  // — fetched only once a unit is actually selected, signed lazily just
+  // like the Record card itself (UnitRecordCard.tsx), same query keys so
+  // a job already opened there is a cache hit here too.
+  const selOpeningId = useMemo(() => {
+    if (!selMark) return null;
+    const norm = normalizeMarkCode(selMark);
+    return (
+      (openings.data ?? []).find((o) => normalizeMarkCode(o.opening_code) === norm)?.id ?? null
+    );
+  }, [selMark, openings.data]);
+  const selEvents = useQuery({
+    queryKey: ["recordEvents", selOpeningId],
+    queryFn: () => listOpeningInstallEvents(selOpeningId!),
+    enabled: Boolean(selOpeningId),
+  });
+  const selMedia = useQuery({
+    queryKey: ["recordMedia", selOpeningId, (selEvents.data ?? []).length],
+    queryFn: () => listInstallMedia((selEvents.data ?? []).map((e) => e.id)),
+    enabled: Boolean(selOpeningId) && (selEvents.data?.length ?? 0) > 0,
+  });
+  // Most recent first is more useful than earliest — listInstallMedia
+  // orders ascending, so the last 3 are the newest 3.
+  const selPhotos = useMemo(
+    () =>
+      (selMedia.data ?? [])
+        .filter((m) => m.kind === "photo" && m.signedUrl)
+        .slice(-3)
+        .reverse(),
+    [selMedia.data],
+  );
+
   const palette = (
     <div className={paletteOpen ? "studio-palette" : "studio-palette collapsed"}>
       <button
@@ -3165,6 +3247,49 @@ export function ModelStudio({ source }: { source: StudioSource }) {
             <p className="muted" style={{ margin: 0, fontSize: 11.5 }}>
               {selUnit.metadata?.itemName ?? "Unit"}
             </p>
+            {/* Where's-my-glass tap-through (#15/#18): the mark's package
+                answer plus where the pieces sit, one plain sentence, and
+                a way straight to the warehouse Find for it. */}
+            {selPackageLine && (
+              <>
+                <p className="muted" style={{ margin: "2px 0 0", fontSize: 12.5 }}>
+                  {selPackageLine}
+                </p>
+                <Link
+                  className="button-like studio-mini"
+                  style={{ marginTop: 2 }}
+                  to={`/warehouse?q=${encodeURIComponent(selMarkKey ?? "")}`}
+                >
+                  Find it in the warehouse
+                </Link>
+              </>
+            )}
+            {/* Photo pins (#7): up to 3 thumbnails, signed lazily just
+                like the Unit Record — nothing signs until this unit is
+                actually selected. */}
+            {selPhotos.length > 0 && (
+              <div style={{ marginTop: 4 }}>
+                <div className="row-gap" style={{ flexWrap: "wrap" }}>
+                  {selPhotos.map((m) => (
+                    <a key={m.id} href={m.signedUrl!} target="_blank" rel="noreferrer">
+                      <img
+                        src={m.signedUrl!}
+                        alt="Install"
+                        style={{ height: 56, borderRadius: 6 }}
+                      />
+                    </a>
+                  ))}
+                </div>
+                {selOpeningId && (
+                  <Link
+                    to={`/projects/${projectId}/opening/${selOpeningId}`}
+                    style={{ fontSize: 12 }}
+                  >
+                    See all on the Unit Record
+                  </Link>
+                )}
+              </div>
+            )}
             <label className="field-label">Width</label>
             <input value={unitW} onChange={(e) => setUnitW(e.target.value)} />
             <label className="field-label">Height</label>

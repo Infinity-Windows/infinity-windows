@@ -66,6 +66,13 @@ export interface OverlayState {
    * not-yet-arrived placeholder never counts) tagged to this mark sits in
    * no container and no shelf slot: warehouseCards' "loose" pile. */
   loose?: boolean;
+  /** Count of photos on this opening's install record (Studio 100x #7 —
+   * record.ts's listProjectPhotoCounts). Void included: void never
+   * deletes, and a redo's before-photos are still evidence. Absent (not
+   * zero) when there are none — same "absent key" convention as every
+   * other field here, and cheap enough to carry on every unit at once
+   * because it is a count, never a signed URL. */
+  photoCount?: number;
 }
 
 export interface LiveOverlayInput {
@@ -87,6 +94,11 @@ export interface LiveOverlayInput {
   phases: OpeningPhase[];
   /** Opening ids whose qc_checks row says 'passed' (listQcPassedOpeningIds). */
   qcPassedOpeningIds: string[];
+  /** Opening id -> photo count on its install record
+   * (listProjectPhotoCounts). A plain count, never a signed URL — the
+   * whole point is that every unit can carry this at once with nothing
+   * signed until somebody actually taps one. */
+  photoCounts: Map<string, number>;
   /** The signed-in profile, for glowFor's "my windows" scoping. */
   viewerId: string | null;
   /** Foreman+ sees every installer's load; installers see only their own. */
@@ -151,6 +163,8 @@ export function buildLiveOverlay(
       if (blockedByOpeningId.has(opening.id)) {
         state.blockedReason = blockedByOpeningId.get(opening.id) ?? null;
       }
+      const photoCount = input.photoCounts.get(opening.id);
+      if (photoCount) state.photoCount = photoCount;
     }
 
     // Package signals: BASE mark — markKeyOf, exactly as fromProject's own

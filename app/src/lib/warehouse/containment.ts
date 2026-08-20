@@ -110,6 +110,39 @@ export function placeWhere(
 }
 
 /**
+ * One plain sentence for where MULTIPLE pieces of the same window sit
+ * (Studio 100x #18 — the container-chain line under a mark's parts
+ * headline, e.g. "2 of 3 here — in Conex 3"). Built straight from
+ * placeWhere/placeChain, never a grouping invented on top of them.
+ *
+ * Only rows physically at the warehouse right now (`received`/`stored` —
+ * the same predicate liveOverlay.ts calls `held`) get a say: a minted
+ * piece is "on the way", a checked-out one is already on a job, and
+ * neither has a warehouse chain worth naming here (partsHeadline already
+ * says "on the way" / the count says "here" — repeating it as a place
+ * would be the same fact twice, or a wrong one).
+ *
+ * When every held piece agrees, that ONE sentence is the answer — this is
+ * "the chain of the first", since with one distinct place the first IS
+ * every piece's place. When they don't agree, naming just one would send
+ * somebody to find only part of the window, so this counts places
+ * instead ("3 places") rather than inventing a breakdown of which piece
+ * is where. Null when nothing held has anywhere to report (nothing here
+ * yet, or here-but-loose is the one place already the message).
+ */
+export function piecesWhere(
+  rows: readonly Pick<StoragePackage, "status" | "container_id" | "location_id" | "area">[],
+  containersById: Map<string, StorageContainer>,
+  locationsById: Map<string, PlaceLocation>,
+): string | null {
+  const held = rows.filter((p) => p.status === "received" || p.status === "stored");
+  if (held.length === 0) return null;
+  const sentences = held.map((p) => placeWhere(p, containersById, locationsById));
+  const distinct = [...new Set(sentences)];
+  return distinct.length === 1 ? distinct[0] : `${distinct.length} places`;
+}
+
+/**
  * Would nesting `child` inside `parent` break the one-level rule? Mirrors the
  * database trigger so the picker can grey out illegal choices instead of
  * letting the server bounce them.

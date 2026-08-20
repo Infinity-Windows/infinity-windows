@@ -109,6 +109,7 @@ function baseInput(over: Partial<LiveOverlayInput> = {}): LiveOverlayInput {
     sessions: [],
     phases: [],
     qcPassedOpeningIds: [],
+    photoCounts: new Map(),
     viewerId: null,
     managerView: true,
     projectId: "job-1",
@@ -321,6 +322,64 @@ describe("buildLiveOverlay: flashing-owed (#5)", () => {
       ["1"],
     );
     expect(map.get("1")?.flashingOwed).toBeUndefined();
+  });
+});
+
+describe("buildLiveOverlay: photo badge (#7)", () => {
+  it("carries the opening's photo count", () => {
+    const map = buildLiveOverlay(
+      baseInput({
+        openings: [opening({ opening_code: "1" })],
+        photoCounts: new Map([["op-1", 3]]),
+      }),
+      ["1"],
+    );
+    expect(map.get("1")?.photoCount).toBe(3);
+  });
+
+  it("absent, not zero, when the count map has nothing for this opening", () => {
+    const map = buildLiveOverlay(
+      baseInput({ openings: [opening({ opening_code: "1" })], photoCounts: new Map() }),
+      ["1"],
+    );
+    expect(map.get("1")?.photoCount).toBeUndefined();
+  });
+
+  it("a zero entry in the map is treated the same as absent", () => {
+    const map = buildLiveOverlay(
+      baseInput({
+        openings: [opening({ opening_code: "1" })],
+        photoCounts: new Map([["op-1", 0]]),
+      }),
+      ["1"],
+    );
+    expect(map.get("1")?.photoCount).toBeUndefined();
+  });
+
+  it("twins keep their own counts, matched by opening id like every other signal", () => {
+    const map = buildLiveOverlay(
+      baseInput({
+        openings: [
+          opening({ opening_code: "13-1" }),
+          opening({ opening_code: "13B" }),
+        ],
+        photoCounts: new Map([
+          ["op-13-1", 1],
+          ["op-13B", 5],
+        ]),
+      }),
+      ["13-1", "13B"],
+    );
+    expect(map.get("13-1")?.photoCount).toBe(1);
+    expect(map.get("13B")?.photoCount).toBe(5);
+  });
+
+  it("no opening match means no photo count, even with data in the map", () => {
+    const map = buildLiveOverlay(
+      baseInput({ photoCounts: new Map([["op-1", 4]]) }),
+      ["1"],
+    );
+    expect(map.get("1")?.photoCount).toBeUndefined();
   });
 });
 

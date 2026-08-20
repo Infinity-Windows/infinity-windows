@@ -8,6 +8,7 @@ import { listLocations, listProjects } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
 import { BackChip } from "../../components/BackChip";
 import { downloadPdf, packageLabelsPdf } from "../../lib/labels";
+import { listJobModelRows } from "../../lib/modelstudio/projects";
 import { placeWhere, toLocationsById } from "../../lib/warehouse/containment";
 import { areaLabel, areaOptions } from "../../lib/warehouse/areas";
 import { bindLine } from "../../lib/warehouse/markPlan";
@@ -52,6 +53,10 @@ export function PackageSheet() {
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   // Racks and staging bays, so a package set aside for a job says so by name.
   const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
+  // Job-building glow's door (#16): does THIS package's job even have a
+  // Studio model to show it on? Same cheap all-jobs query StudioList.tsx
+  // already runs, under the same key.
+  const studioJobModels = useQuery({ queryKey: ["studioJobModels"], queryFn: listJobModelRows });
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
   const qc = useQueryClient();
@@ -284,6 +289,18 @@ export function PackageSheet() {
               to={`/warehouse/3d/${p.container_id}?pkg=${encodeURIComponent(p.serial)}`}
             >
               See it in 3D
+            </Link>
+          )}
+        {/* Job-building glow (#16): only when this package is tagged to a
+            window AND that job actually has a Studio model to show it on. */}
+        {p.project_id &&
+          (p.package_marks ?? []).length > 0 &&
+          (studioJobModels.data ?? []).some((m) => m.project_id === p.project_id) && (
+            <Link
+              className="button-like"
+              to={`/projects/${p.project_id}/model?pkg=${encodeURIComponent(p.serial)}`}
+            >
+              Show on the building
             </Link>
           )}
         {lead && p.status !== "blank" && p.project_id == null && (

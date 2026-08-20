@@ -7,6 +7,7 @@ import type { StorageContainer, StoragePackage } from "../storage";
 import type { Location } from "../types";
 import {
   canNest,
+  piecesWhere,
   placeChain,
   placeLabel,
   placeWhere,
@@ -277,5 +278,55 @@ describe("the area rides the place sentence (ticket 14)", () => {
     // lag — the sentence must not point inside a box the package is not in.
     const p = pkg({ container_id: null, location_id: null, area: "back" });
     expect(placeWhere(p, byId, new Map())).not.toContain("back");
+  });
+});
+
+describe("piecesWhere (Studio 100x #18: the container-chain line)", () => {
+  it("one held piece is just its own placeWhere sentence", () => {
+    const rows = [pkg({ status: "stored", container_id: "crate" })];
+    expect(piecesWhere(rows, byId, new Map())).toBe("Crate 7 — inside Conex 3");
+  });
+
+  it("several pieces agreeing on one place read as that one sentence — the chain of the first", () => {
+    const rows = [
+      pkg({ status: "stored", container_id: "conex" }),
+      pkg({ status: "received", container_id: "conex" }),
+    ];
+    expect(piecesWhere(rows, byId, new Map())).toBe("Conex 3");
+  });
+
+  it("pieces scattered across different places count instead of naming just one", () => {
+    const other = ctr({ id: "other", name: "Crate 9" });
+    const map = new Map([...byId, ["other", other]]);
+    const rows = [
+      pkg({ status: "stored", container_id: "conex" }),
+      pkg({ status: "stored", container_id: "other" }),
+    ];
+    expect(piecesWhere(rows, map, new Map())).toBe("2 places");
+  });
+
+  it("minted (on the way) and checked-out pieces never count as a place", () => {
+    const rows = [
+      pkg({ status: "minted", container_id: null, location_id: null }),
+      pkg({ status: "checked_out", container_id: "conex" }),
+    ];
+    expect(piecesWhere(rows, byId, new Map())).toBeNull();
+  });
+
+  it("a held piece that IS loose still reports it — the alarm is the sentence", () => {
+    const rows = [pkg({ status: "received", container_id: null, location_id: null })];
+    expect(piecesWhere(rows, byId, new Map())).toBe("loose — no container, no slot");
+  });
+
+  it("no rows at all is null, not an empty-string sentence", () => {
+    expect(piecesWhere([], byId, new Map())).toBeNull();
+  });
+
+  it("ignores minted/checked-out pieces when mixed with a held one that agrees with itself", () => {
+    const rows = [
+      pkg({ status: "minted", container_id: null, location_id: null }),
+      pkg({ status: "stored", container_id: "conex" }),
+    ];
+    expect(piecesWhere(rows, byId, new Map())).toBe("Conex 3");
   });
 });
