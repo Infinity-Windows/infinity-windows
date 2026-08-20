@@ -34,6 +34,22 @@ export const UNIT_GEOMETRY_DEFAULTS: Required<UnitGeometryOptions> = {
 };
 
 /**
+ * Frame + glass hex per color choice (Studio 100x #47). "white" is
+ * load-bearing: it's byte-for-byte the hardcoded hex this file used before
+ * frameColor existed, so an absent/undefined choice (every unit built
+ * before this field, and every catalog unit that never picks a color)
+ * renders pixel-identical to today.
+ */
+export const FRAME_COLOR_HEXES: Record<
+  NonNullable<UnitConfig["frameColor"]>,
+  { frame: number; glass: number }
+> = {
+  white: { frame: 0xf4f1ec, glass: 0x9fc4d4 },
+  bronze: { frame: 0x5c4630, glass: 0x8a7a5c },
+  black: { frame: 0x2a2a2a, glass: 0x6e7d82 },
+};
+
+/**
  * Geometry groups: material 0 = frame, 1 = glass. Origin at the unit's
  * centre (the item pipeline positions by centre), dimensions in cm to match
  * the blueprint world.
@@ -281,12 +297,13 @@ export function buildUnitGeometry(
     true,
   )!;
 
+  const hexes = FRAME_COLOR_HEXES[config.frameColor ?? "white"];
   const frameMat = new THREE.MeshLambertMaterial({
-    color: 0xf4f1ec,
+    color: hexes.frame,
     side: THREE.DoubleSide,
   });
   const glassMat = new THREE.MeshLambertMaterial({
-    color: 0x9fc4d4,
+    color: hexes.glass,
     transparent: true,
     opacity: 0.45,
     side: THREE.DoubleSide,

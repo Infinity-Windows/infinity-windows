@@ -20,6 +20,8 @@ import { BackChip } from "../../components/BackChip";
 import { Blueprint3d } from "../../lib/modelstudio/core";
 import { getStudioProject } from "../../lib/modelstudio/projects";
 import { buildShelfGeometry, normalizeShelfConfig } from "../../lib/modelstudio/shelfGeometry";
+import { parseFloorLite, parseRoof } from "../../lib/modelstudio/floors";
+import { buildRoof } from "../../lib/modelstudio/roofShell";
 import {
   containerKind,
   getPackageBySerial,
@@ -117,6 +119,7 @@ export function ContainerViewer() {
     if (m.floors?.length) return m.floors[0] ?? null;
     return m.serialized ?? null;
   }, [project.data]);
+  const roofStyle = parseRoof(project.data?.model);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -159,11 +162,20 @@ export function ContainerViewer() {
     });
 
     bp.model.loadSerialized(serialized);
+
+    // Studio 100x #49: same flat-parapet roof Studio draws over its top
+    // floor — this viewer only loads floor 0 too (see `serialized` above).
+    if (roofStyle === "flat") {
+      const { walls } = parseFloorLite(serialized);
+      const roof = buildRoof(walls, 0);
+      if (roof) bp.model.scene.getScene().add(roof);
+    }
+
     setBooted(true);
     return () => {
       bpRef.current = null;
     };
-  }, [serialized]);
+  }, [serialized, roofStyle]);
 
   // The glow: a translucent pillar over the package's zone.
   const area = glowPkg.data?.area ?? null;

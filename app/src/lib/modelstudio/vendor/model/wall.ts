@@ -5,9 +5,14 @@ import type { Item } from '../items/item'
 import type { Corner } from './corner'
 import type { HalfEdge } from './half_edge'
 
-/** The default wall texture. */
+/** The default wall texture.
+ * infinity: was a third-party CDN URL (cdn-images.lumenfeng.com) — same
+ * offline bug and independence violation as room.ts's defaultRoomTexture
+ * (Studio 100x #45). Points at the same local swatch the "White" finish
+ * button applies (Studio 100x #46), so an un-customized wall looks exactly
+ * like an explicit "White" choice. */
 const defaultWallTexture = {
-  url: 'https://cdn-images.lumenfeng.com/models-cover/wallmap.png',
+  url: '/modelstudio/textures/wall-white.png',
   stretch: true,
   scale: 0
 }

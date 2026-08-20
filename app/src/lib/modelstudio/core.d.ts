@@ -24,6 +24,17 @@ export interface StudioCorner {
   move(x: number, y: number): void;
 }
 
+/** A wall's material choice, one per face — the vendor's own persisted
+ * shape (see vendor/model/wall.ts, vendor/model/floorplan.ts's
+ * SavedFloorplan). `stretch: true, scale: 0` is a flat-color swatch tiled
+ * to fit; `stretch: false` repeats the texture every `scale` cm (Studio
+ * 100x #46 — see lib/modelstudio/finishes.ts). */
+export interface StudioTexture {
+  url: string;
+  stretch?: boolean;
+  scale: number;
+}
+
 export interface StudioWall {
   /** Per-wall height, cm — defaults to the building-wide config value. */
   height: number;
@@ -39,6 +50,18 @@ export interface StudioWall {
    * invisible pick plane's geometry doubles as the selection highlight. */
   frontEdge?: { plane?: THREE.Mesh } | null;
   backEdge?: { plane?: THREE.Mesh } | null;
+  /** Public vendor fields (Wall.frontTexture/backTexture) — set both to
+   * apply one "Finish" to a wall (Studio 100x #46), then call
+   * fireRedraw(). Persisted per-wall in SavedFloorplan already. */
+  frontTexture: StudioTexture;
+  backTexture: StudioTexture;
+}
+
+export interface StudioRoom {
+  /** Sets this room's floor material and redraws it (Studio 100x #46). The
+   * vendor keys floor textures by room UUID under the hood; this is the
+   * only entry point the app needs. */
+  setTexture(url: string, stretch: boolean, scale: number): void;
 }
 
 export interface StudioFloorplan {
@@ -48,6 +71,9 @@ export interface StudioFloorplan {
   getCorners(): { x: number; y: number }[];
   /** Every wall's invisible pick planes (monkey-patched with .edge). */
   wallEdgePlanes(): THREE.Mesh[];
+  /** Auto-detected enclosed floor areas — "Floor finish" (Studio 100x #46)
+   * applies to every one of them. */
+  getRooms(): StudioRoom[];
   update(): void;
 }
 

@@ -75,6 +75,12 @@ export interface UnitConfig {
    * version bump.
    */
   weightLb?: number | null;
+  /**
+   * Frame (and glass tint) color, per unit — Studio 100x #47. Absent/"white"
+   * are the same thing: unitGeometry's default IS today's exact hardcoded
+   * hex, so every unit built before this field existed renders unchanged.
+   */
+  frameColor?: "white" | "bronze" | "black";
 }
 
 /** Row heights top→bottom, cm — a missing/invalid grid is one full row. */
@@ -290,6 +296,21 @@ export async function retireStudioUnit(id: string): Promise<void> {
 // ------------------------------------------------------------- spec import
 
 /**
+ * Map a spec's free-text color/finish (e.g. "Black (Aluminum Profile
+ * Color)") onto the Studio's constrained frame-color choices (#47). Only a
+ * confident keyword match sets a value — a blank field, "white", or an
+ * unrecognized finish name all leave `frameColor` unset, which
+ * unitGeometry already renders as white (today's default). Better to say
+ * nothing than to guess wrong from a manufacturer's finish name.
+ */
+function frameColorFromSpecColor(color: string | null): UnitConfig["frameColor"] {
+  const c = (color ?? "").toLowerCase();
+  if (c.includes("black")) return "black";
+  if (c.includes("bronze")) return "bronze";
+  return undefined;
+}
+
+/**
  * Draft a unit config from a job-schedule spec row. Operation strings map
  * to panel layouts the trade way: viewed from outside, X = operable, O =
  * fixed — "XO" is a two-panel slider with the left panel moving.
@@ -302,6 +323,7 @@ export function specToUnitConfig(spec: ProjectMarkSpec): UnitConfig | null {
   const style = (spec.style ?? "").toLowerCase();
   const isDoor = /door|slider door|patio/.test(style);
   const kind: UnitKind = isDoor ? "door" : "window";
+  const frameColor = frameColorFromSpecColor(spec.color);
 
   // The extractor's drawing read wins: EXACT per-panel widths (window 16's
   // 30¼ | 88½ | 90 | 87¾ | 17) + per-panel ops + the 90° corner, straight
@@ -335,7 +357,7 @@ export function specToUnitConfig(spec: ProjectMarkSpec): UnitConfig | null {
     } else if (c?.side) {
       cornerAfterPanel = c.side === "left" ? 0 : panels.length - 2;
     }
-    return { kind, heightMm: h, panels, cornerAfterPanel };
+    return { kind, heightMm: h, panels, cornerAfterPanel, frameColor };
   }
 
   const xo = op.match(/^[XO]{2,4}$/);
@@ -356,7 +378,7 @@ export function specToUnitConfig(spec: ProjectMarkSpec): UnitConfig | null {
   } else {
     panels = [{ widthMm: w, mechanism: "fixed" }];
   }
-  return { kind, heightMm: h, panels };
+  return { kind, heightMm: h, panels, frameColor };
 }
 
 /**

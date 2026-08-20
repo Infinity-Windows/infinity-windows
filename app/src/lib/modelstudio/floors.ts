@@ -104,3 +104,17 @@ export function floorElevationsCm(floors: string[]): number[] {
 export function duplicateFloorSerialized(serialized: string): string {
   return serialized;
 }
+
+// --------------------------------------------------------------- roof (#49)
+
+export type RoofStyle = "none" | "flat";
+
+/**
+ * The building's roof choice — a sibling of `floors` in the saved model,
+ * not per-floor: one roof caps the whole building, laid on the TOP floor's
+ * walls (see roofShell.ts). Absent/unrecognized (old saves, a blank
+ * project) reads as "none" — today's shells, unchanged.
+ */
+export function parseRoof(saved: { roof?: string } | null | undefined): RoofStyle {
+  return saved?.roof === "flat" ? "flat" : "none";
+}

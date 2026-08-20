@@ -79,6 +79,30 @@ describe("specToUnitConfig with drawing-read panels", () => {
     expect(cfg.panels).toHaveLength(2);
     expect(cfg.panels[0].widthMm).toBeCloseTo(cfg.panels[1].widthMm, 6);
   });
+
+  // Studio 100x #47: a spec's free-text color/finish prefills frameColor —
+  // both the drawn-panels path and the operation-splitting fallback.
+  it("reads frameColor from the spec's color field on import", () => {
+    expect(specToUnitConfig({ ...base, color: "Black (Aluminum Profile Color)" })!.frameColor).toBe(
+      "black",
+    );
+    expect(specToUnitConfig({ ...base, color: "Dark Bronze" })!.frameColor).toBe("bronze");
+    expect(
+      specToUnitConfig({
+        ...base,
+        color: "Black (Aluminum Profile Color)",
+        operation: "XO",
+        width_in: 72,
+        height_in: 48,
+      })!.frameColor,
+    ).toBe("black");
+  });
+
+  it("leaves frameColor unset for white, blank, or an unrecognized finish", () => {
+    expect(specToUnitConfig({ ...base, color: "White" })!.frameColor).toBeUndefined();
+    expect(specToUnitConfig({ ...base, color: null })!.frameColor).toBeUndefined();
+    expect(specToUnitConfig({ ...base, color: "Anodized Silver" })!.frameColor).toBeUndefined();
+  });
 });
 
 describe("pane grid ops", () => {
