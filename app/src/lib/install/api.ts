@@ -2892,13 +2892,20 @@ export async function getTypeBrainStats(
 export async function aiExtractSchedule(
   pages: { pageNumber: number; text: string }[],
   catalog: { type_code: string; name: string }[],
-): Promise<ScheduleRowLike[]> {
+  // Page images flip the read to VISION (the RAC-OAK-5 lesson, 2026-08-20):
+  // cut-sheet plansets carry their truth as pictured cells with a QTY field,
+  // and only a vision read can honor "count exactly what is pictured".
+  images?: { pageNumber: number; dataUrl: string }[],
+): Promise<{ rows: ScheduleRowLike[]; failedPages: number[] }> {
   const { data, error } = await supabase.functions.invoke("extract-schedule", {
-    body: { pages, catalog },
+    body: { pages, catalog, images: images ?? [] },
   });
   if (error) throw error;
   if (data?.error) throw new Error(String(data.error));
-  return (data?.rows ?? []) as ScheduleRowLike[];
+  return {
+    rows: (data?.rows ?? []) as ScheduleRowLike[],
+    failedPages: (data?.failed_pages ?? []) as number[],
+  };
 }
 
 export interface ScheduleRowLike {
