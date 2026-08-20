@@ -76,6 +76,7 @@ function Bar({
  * LadderRung (not string) so a new rung fails the TS build instead of
  * rendering as a raw chip like "none 8". */
 const RUNG_LABELS: Record<LadderRung, string> = {
+  formula: "panel formula",
   exact: "exact look-alikes",
   "kind+panels": "same type & panel count",
   kind: "same type",
