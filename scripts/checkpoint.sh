@@ -47,7 +47,18 @@ if git rev-parse --verify --quiet "refs/heads/$default" >/dev/null; then
   if [ "$(git rev-parse "$default")" != "$(git rev-parse "origin/$default")" ]; then
     if git merge-base --is-ancestor "$default" "origin/$default"; then
       echo "==> fast-forwarding $default to origin/$default"
-      git fetch --quiet origin "$default:$default"
+      if [ "$(git rev-parse --abbrev-ref HEAD)" = "$default" ]; then
+        # `git fetch origin master:master` refuses to move the branch that
+        # is checked out — every post-merge run hits that here, because
+        # this repo sits on master and the merge happened on the server
+        # (first seen 2026-08-19). A fast-forward merge moves the branch
+        # and the working tree together, and still stops loudly if local
+        # edits collide with what came in — same stance as the divergence
+        # case below: a person looks, the script never papers over it.
+        git merge --ff-only --quiet "origin/$default"
+      else
+        git fetch --quiet origin "$default:$default"
+      fi
     else
       echo "!! local $default has commits origin does not — not touching it." >&2
       echo "   The checkpoint still captures both; sort the divergence out by hand." >&2
