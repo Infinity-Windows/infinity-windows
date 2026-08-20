@@ -505,6 +505,20 @@ button:disabled {
 
 .manual-entry input { margin-bottom: 0; }
 
+.bulk-remove-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+}
+
+.opening-review-row input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  align-self: flex-start;
+  margin: 0;
+}
+
 .unit-list {
   list-style: none;
   padding: 0;
