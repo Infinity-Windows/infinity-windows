@@ -225,7 +225,7 @@ assert_has "- plan-set reading"
 # Every writing feature runs on this one key now, so the headline names two of
 # them and counts the rest. A bare count ("7 app features") would leave the
 # owner unable to tell a small problem from a dead app.
-assert_first_line_has "Ask Infinity, reading delivery schedules and 5 other features need an API key"
+assert_first_line_has "Ask Infinity, reading delivery schedules and 6 other features need an API key"
 
 new_case "only ANTHROPIC_API_KEY missing: says where to click, not just a command"
 live_state
