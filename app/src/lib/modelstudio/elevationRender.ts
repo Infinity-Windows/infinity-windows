@@ -24,8 +24,8 @@ import {
   type LiteItem,
   type LiteWall,
 } from "./floors";
-import { Blueprint3d, type StudioItem } from "./core";
-import { buildUnitGeometry, cornerGeometryInfo, UNIT_GEOMETRY_DEFAULTS } from "./unitGeometry";
+import { Blueprint3d } from "./core";
+import { applyUnitGeometry } from "./unitGeometry";
 import type { JobModel } from "./projects";
 import type { UnitConfig } from "./units";
 
@@ -250,78 +250,6 @@ export function frameForWall(wall: WallSegment, margin = 0.1): ElevationFrame {
 }
 
 // ---------------------------------------------------------------- capture
-
-/**
- * Rebuild a window/door item's real parametric shape from its saved config
- * and cut its hole in the wall. Ported from JobModelViewer's own
- * `applyUnitGeometry` (itself trimmed from ModelStudio's) rather than
- * shared, matching how each read-only viewer already keeps its own copy —
- * this one is read-only too, and a shared extraction is a separate change.
- * Without this, every unit in the render is an identical blank placeholder
- * box (window.json) instead of the job's real geometry.
- */
-function applyUnitGeometry(item: StudioItem, config: UnitConfig): void {
-  const built = buildUnitGeometry(config, { mullionMm: UNIT_GEOMETRY_DEFAULTS.mullionMm });
-  item.geometry.dispose();
-  (item as { geometry: unknown }).geometry = built.geometry;
-  (item as { material: unknown }).material = built.materials;
-  item.scale.set(1, 1, 1);
-  built.geometry.computeBoundingBox?.();
-  const bb = (
-    built.geometry as {
-      boundingBox: {
-        max: { x: number; y: number; z: number };
-        min: { x: number; y: number; z: number };
-      } | null;
-    }
-  ).boundingBox;
-  const corner = cornerGeometryInfo(config);
-  if (bb && corner) {
-    bb.min.x = -corner.mainWcm / 2;
-    bb.max.x = corner.mainWcm / 2;
-    bb.min.z = -corner.depthCm / 2;
-    bb.max.z = corner.depthCm / 2;
-    built.geometry.computeBoundingSphere?.();
-    item.halfSize.set(corner.mainWcm / 2, (bb.max.y - bb.min.y) / 2, corner.depthCm / 2);
-  } else if (bb) {
-    item.halfSize.set(
-      (bb.max.x - bb.min.x) / 2,
-      (bb.max.y - bb.min.y) / 2,
-      (bb.max.z - bb.min.z) / 2,
-    );
-  }
-  const itemAny = item as unknown as {
-    rotation?: { y: number };
-    holeRects?: () => unknown[];
-  };
-  if (corner) {
-    itemAny.holeRects = () => {
-      const ry = itemAny.rotation?.y ?? 0;
-      const wx = Math.cos(ry);
-      const wz = -Math.sin(ry);
-      const nx = Math.sin(ry);
-      const nz = Math.cos(ry);
-      const halfH = config.heightMm / 20;
-      const cx = item.position.x + corner.sideSign * (corner.mainWcm / 2) * wx;
-      const cz = item.position.z + corner.sideSign * (corner.mainWcm / 2) * wz;
-      const wrapOff = corner.depthCm / 2 + corner.wrapWcm / 2;
-      return [
-        {
-          x: item.position.x, y: item.position.y, z: item.position.z,
-          halfW: corner.mainWcm / 2, halfH, dirX: wx, dirZ: wz,
-        },
-        {
-          x: cx + nx * wrapOff, y: item.position.y, z: cz + nz * wrapOff,
-          halfW: corner.wrapWcm / 2, halfH, dirX: nx, dirZ: nz,
-        },
-      ];
-    };
-  } else {
-    delete itemAny.holeRects;
-  }
-  if (item.metadata) item.metadata.unitConfig = config;
-  item.redrawWall?.();
-}
 
 /** Biggest side of the output PNG, px — plenty to identify a unit on a
  * phone screen without carrying a multi-megabyte image around. */

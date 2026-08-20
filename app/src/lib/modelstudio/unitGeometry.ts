@@ -7,6 +7,7 @@
 
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import type { StudioItem } from "./core";
 import {
   cornerLegs,
   panelsWidthMm,
@@ -395,4 +396,155 @@ export function buildUnitGeometry(
     side: THREE.DoubleSide,
   });
   return { geometry: merged, materials: [frameMat, glassMat], movers };
+}
+
+// ------------------------------------------------------------- mounting
+
+export interface ApplyUnitGeometryOptions {
+  /**
+   * Explicit mullion-gap override, mm — set only by the Studio editor's own
+   * gap control. Read-only viewers never pass this.
+   */
+  frameGapMm?: number;
+  /**
+   * When `frameGapMm` is not given, also fall back to the item's OWN stored
+   * override (`item.metadata.frameGapMm`) before the shop default. Only the
+   * editable Studio scene turns this on — a read-only viewer always shows
+   * the shop default gap, even for a unit someone customized in Studio.
+   */
+  allowStoredFrameGap?: boolean;
+  /**
+   * Rebuild moving-sash pivot groups from the freshly built `movers`. Only
+   * the editable Studio scene ever animates a sash (slide/swing/rise);
+   * read-only viewers skip this and never touch `built.movers`.
+   */
+  rebuildMovers?: boolean;
+  /**
+   * Runs once geometry, holes, and metadata are set, right before
+   * `redrawWall`. The Studio editor uses this to repaint its glyph/label
+   * overlay — that logic reads component-local refs/state and so can't live
+   * in this module.
+   */
+  onApplied?: (item: StudioItem) => void;
+}
+
+/**
+ * Swap an item's mesh for the parametric build of its config, at true
+ * scale, and re-cut its wall hole. halfSize is refreshed from the new
+ * geometry so the vendor's drag/bounds math stays honest.
+ *
+ * Shared by every place that mounts a unit's real geometry onto a
+ * placeholder item — the editable Studio scene (ModelStudio.tsx), the
+ * read-only job walk (JobModelViewer.tsx), and the offscreen elevation
+ * capture (elevationRender.ts) — which used to each carry their own copy of
+ * this function. They differ only in `options`: Studio is the one editable
+ * surface, so it's the only caller that allows a per-item gap override,
+ * rebuilds moving-sash rigs, and repaints an overlay; the read-only viewers
+ * take every default.
+ */
+export function applyUnitGeometry(
+  item: StudioItem,
+  config: UnitConfig,
+  options: ApplyUnitGeometryOptions = {},
+): void {
+  const { frameGapMm, allowStoredFrameGap = false, rebuildMovers = false, onApplied } = options;
+  const built = buildUnitGeometry(config, {
+    mullionMm:
+      frameGapMm ??
+      (allowStoredFrameGap ? item.metadata?.frameGapMm : undefined) ??
+      UNIT_GEOMETRY_DEFAULTS.mullionMm,
+  });
+  item.geometry.dispose();
+  (item as { geometry: unknown }).geometry = built.geometry;
+  (item as { material: unknown }).material = built.materials;
+  item.scale.set(1, 1, 1);
+  built.geometry.computeBoundingBox?.();
+  const bb = (
+    built.geometry as {
+      boundingBox: {
+        max: { x: number; y: number; z: number };
+        min: { x: number; y: number; z: number };
+      } | null;
+    }
+  ).boundingBox;
+  const corner = cornerGeometryInfo(config);
+  if (bb && corner) {
+    // The vendor derives its wall offset and drag bounds from the bounding
+    // BOX; a wrap leg extending in local z would shove the main leg half a
+    // leg-width out of its wall. Clamp the box to the MAIN leg — the wrap
+    // leg lives on the neighbouring wall and gets its hole via holeRects
+    // below. Culling stays correct: three.js culls by bounding SPHERE,
+    // which is left honest.
+    bb.min.x = -corner.mainWcm / 2;
+    bb.max.x = corner.mainWcm / 2;
+    bb.min.z = -corner.depthCm / 2;
+    bb.max.z = corner.depthCm / 2;
+    built.geometry.computeBoundingSphere?.();
+    item.halfSize.set(corner.mainWcm / 2, (bb.max.y - bb.min.y) / 2, corner.depthCm / 2);
+  } else if (bb) {
+    item.halfSize.set(
+      (bb.max.x - bb.min.x) / 2,
+      (bb.max.y - bb.min.y) / 2,
+      (bb.max.z - bb.min.z) / 2,
+    );
+  }
+  // Explicit world-space hole rects, one per leg, for the vendor's hole
+  // cutter (see Edge.makeWall) — the wrap leg's hole lands on a wall the
+  // item is NOT attached to.
+  const itemAny = item as unknown as {
+    rotation?: { y: number };
+    holeRects?: () => unknown[];
+  };
+  if (corner) {
+    itemAny.holeRects = () => {
+      const ry = itemAny.rotation?.y ?? 0;
+      const wx = Math.cos(ry);
+      const wz = -Math.sin(ry); // width axis (local +x) in plan coords
+      const nx = Math.sin(ry);
+      const nz = Math.cos(ry); // local +z (recedes from the outside viewer)
+      const halfH = config.heightMm / 20;
+      const cx = item.position.x + corner.sideSign * (corner.mainWcm / 2) * wx;
+      const cz = item.position.z + corner.sideSign * (corner.mainWcm / 2) * wz;
+      const wrapOff = corner.depthCm / 2 + corner.wrapWcm / 2;
+      return [
+        {
+          x: item.position.x, y: item.position.y, z: item.position.z,
+          halfW: corner.mainWcm / 2, halfH, dirX: wx, dirZ: wz,
+        },
+        {
+          x: cx + nx * wrapOff, y: item.position.y, z: cz + nz * wrapOff,
+          halfW: corner.wrapWcm / 2, halfH, dirX: nx, dirZ: nz,
+        },
+      ];
+    };
+  } else {
+    delete itemAny.holeRects;
+  }
+  if (item.metadata) {
+    item.metadata.unitConfig = config;
+    if (frameGapMm != null) item.metadata.frameGapMm = frameGapMm;
+  }
+  if (rebuildMovers) {
+    // Moving sashes become pivot-group children so they can animate
+    // (slider slides, casement swings on its hinge stile, hung rises).
+    const obj = item as unknown as THREE.Object3D;
+    for (const child of [...obj.children]) {
+      if (child.name !== "unit-mover") continue;
+      obj.remove(child);
+      child.traverse((n) => {
+        const mesh = n as THREE.Mesh;
+        if (mesh.geometry) mesh.geometry.dispose();
+      });
+    }
+    for (const mover of built.movers) {
+      const group = new THREE.Group();
+      group.name = "unit-mover";
+      group.position.set(mover.origin.x, mover.origin.y, mover.origin.z);
+      group.userData = { mover, baseX: mover.origin.x, baseY: mover.origin.y };
+      group.add(new THREE.Mesh(mover.geometry, built.materials));
+      obj.add(group);
+    }
+  }
+  onApplied?.(item);
+  item.redrawWall?.();
 }

@@ -10,6 +10,7 @@ import {
 } from "../lib/photo/stampPhoto";
 import { supabase } from "../lib/supabase";
 import { formatApiError } from "../lib/errors";
+import { pushToast } from "../lib/toast";
 
 export interface BeforeAfterValue {
   before: File | null;
@@ -175,6 +176,12 @@ function JobPhotoCapture({
       });
       setQueued((n) => n + 1);
       onQueued?.();
+    } catch (e) {
+      // Silent otherwise: a too-large photo (or a full offline store) would
+      // just vanish with the busy spinner and no trace, same failure the
+      // ticket-11 damage-photo flow (ArrivePackages) reports for the same
+      // enqueue call — same voice here.
+      pushToast(`Couldn't save that ${isReceipt ? "receipt" : "photo"} — ${formatApiError(e)}`, "error");
     } finally {
       setBusy(false);
     }
