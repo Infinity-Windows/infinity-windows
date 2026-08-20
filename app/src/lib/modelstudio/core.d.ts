@@ -94,6 +94,11 @@ export interface StudioItem {
   placeInRoom(): void;
   redrawWall?(): void;
   remove?(): void;
+  /** The wall edge this item is currently attached to — set by placeInRoom
+   * (vendor items/wall_item.ts). ModelStudio.tsx has long read this through
+   * an inline cast (snapIfCorner, growWallToFit); typed here too now that a
+   * second call site (FlatElevationsView) needs the same wall association. */
+  currentWallEdge?: { wall: StudioWall } | null;
 }
 
 export interface StudioScene {
