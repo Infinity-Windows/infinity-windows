@@ -48,8 +48,12 @@ import {
   MAX_FLOORS,
   parseFloorLite,
   parseFloors,
+  parseRoof,
+  type RoofStyle,
 } from "../../lib/modelstudio/floors";
 import { buildFloorShell } from "../../lib/modelstudio/floorShell";
+import { buildRoof, disposeRoof } from "../../lib/modelstudio/roofShell";
+import { FLOOR_FINISHES, WALL_FINISHES, finishForUrl, type Finish } from "../../lib/modelstudio/finishes";
 import {
   buildAuthoredJob,
   buildFitViewJob,
@@ -378,6 +382,13 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   const floorsRef = useRef<string[]>([]);
   const [floorInfo, setFloorInfo] = useState({ count: 1, active: 0 });
   const shellsRef = useRef<unknown[]>([]);
+  /** Building-wide roof choice (Studio 100x #49) + the mesh it builds. The
+   * ref mirrors the state for the same mount-time-closure reason
+   * selWallRef/selUnitRef do below — refreshRoofMesh runs from callbacks
+   * pinned once at boot (see the wallClicked/onWallHandleDrag wiring). */
+  const [roofStyle, setRoofStyle] = useState<RoofStyle>("none");
+  const roofStyleRef = useRef<RoofStyle>("none");
+  const roofRef = useRef<THREE.Group | null>(null);
   const [addingFloor, setAddingFloor] = useState(false);
   /** Full-screen the stage — editing needs the whole laptop screen. */
   const [fs, setFs] = useState(false);
@@ -655,9 +666,9 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   const savedModel =
     ((source.kind === "standalone" ? proj.data?.model : null) ??
       (outline?.features as {
-        modelstudio?: { serialized?: string; floors?: string[] };
+        modelstudio?: { serialized?: string; floors?: string[]; roof?: string };
       } | null)?.modelstudio ??
-      null) as { serialized?: string; floors?: string[] } | null;
+      null) as { serialized?: string; floors?: string[]; roof?: string } | null;
   const savedSerialized = savedModel?.floors?.[0] ?? savedModel?.serialized ?? null;
 
   // Job sources still need their outline chain before mounting (the seed);
@@ -703,6 +714,9 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     undoStacksRef.current = boot.floors.map(() => []);
     redoStacksRef.current = boot.floors.map(() => []);
     setFloorInfo({ count: boot.floors.length, active: 0 });
+    const bootRoof = parseRoof(savedModel);
+    roofStyleRef.current = bootRoof;
+    setRoofStyle(bootRoof);
     bp.model.loadSerialized(boot.floors[0]);
     rebuildFloorContext(boot.floors, 0);
 
@@ -947,6 +961,15 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measureOn]);
 
+  // Studio 100x #49: the Roof toggle is declarative state, but the roof
+  // itself is an imperative mesh — this effect is what bridges the two,
+  // the same way the measureOn effect above drives its own 3D visuals.
+  useEffect(() => {
+    roofStyleRef.current = roofStyle;
+    refreshRoofMesh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roofStyle]);
+
   useEffect(
     () => () => {
       roRef.current?.disconnect();
@@ -1041,6 +1064,8 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         serialized: floors[0],
         floors,
         savedAt: new Date().toISOString(),
+        // Studio 100x #49: building-wide, not per-floor — see floors.ts.
+        roof: roofStyle,
       };
       if (source.kind === "standalone") {
         if (!proj.data) throw new Error("Project not loaded yet");
@@ -1695,6 +1720,40 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         active > 0 ? parseFloorLite(floors[active - 1]).walls : null;
       fp.view.draw();
     }
+    refreshRoofMesh();
+  };
+
+  /**
+   * Rebuild the roof cap (Studio 100x #49) — cheap (touches only the top
+   * floor's walls), so it's safe to call after any structural change
+   * (rebuildFloorContext, above) or numeric edit (refreshModel, below),
+   * including a wall-height drag handle's "end" phase. Flushes the active
+   * floor's live vendor state into floorsRef first — the same
+   * sync-before-reading move switchFloor/addFloor already do — so the
+   * elevation math is right even mid-edit on a floor that isn't the top
+   * one. Reads roofStyleRef rather than the roofStyle closure because this
+   * can run from callbacks pinned once at boot (see wallClicked below).
+   */
+  const refreshRoofMesh = () => {
+    const bp = bpRef.current;
+    const scene = bp?.model.scene.getScene();
+    if (roofRef.current && scene) {
+      disposeRoof(roofRef.current);
+      scene.remove(roofRef.current as never);
+      roofRef.current = null;
+    }
+    if (!bp || !scene || roofStyleRef.current !== "flat") return;
+    floorsRef.current[activeFloorRef.current] = bp.model.exportSerialized();
+    const floors = floorsRef.current;
+    const top = floors.length - 1;
+    const { walls } = parseFloorLite(floors[top]);
+    if (walls.length < 3) return;
+    const elevs = floorElevationsCm(floors);
+    const baseY = elevs[top] - elevs[activeFloorRef.current];
+    const g = buildRoof(walls, baseY);
+    if (!g) return;
+    scene.add(g);
+    roofRef.current = g;
   };
 
   /** Orbit the WHOLE building into view — every floor's extent, not just
@@ -2191,9 +2250,16 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         features: {
           ...prev,
           // The Studio model rides along so re-editing resumes from here.
+          // infinity: pre-existing gap, not this change's to fix — this
+          // snapshot only ever carried the ACTIVE floor (no `floors`), so a
+          // multi-story building already lost its upper floors here on
+          // Publish (they survive in studio_projects/the outline only
+          // until the next Publish overwrites this key). `roof` is added
+          // here too so Publish at least doesn't ALSO drop the new field.
           modelstudio: {
             serialized: bp.model.exportSerialized(),
             savedAt: new Date().toISOString(),
+            roof: roofStyle,
           },
           // Previous map model kept for one-tap revert (owner decision).
           ...(prevFitview.model
@@ -2354,6 +2420,9 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     bp.model.floorplan.update();
     setSelTick((n) => n + 1);
     refreshHandles();
+    // A wall-height edit (numeric or a drag handle's "end" phase) can
+    // change where the roof sits — cheap enough to just always recheck.
+    refreshRoofMesh();
   };
 
   const applyWallLength = () => {
@@ -2388,6 +2457,34 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     // Existing walls captured the old default at construction — apply to all.
     for (const w of bp.model.floorplan.walls) w.height = cm;
     refreshModel();
+  };
+
+  /** Studio 100x #46: one "Finish" on the selected wall, both faces — the
+   * vendor's own frontTexture/backTexture fields, already persisted per
+   * wall in SavedFloorplan (see core.d.ts's StudioWall). */
+  const applyWallFinish = (finish: Finish) => {
+    if (!selWall) return;
+    pushUndo();
+    const tex = { url: finish.url, stretch: finish.stretch, scale: finish.scale };
+    selWall.frontTexture = tex;
+    selWall.backTexture = tex;
+    selWall.fireRedraw?.();
+    setSelTick((n) => n + 1);
+  };
+
+  /** Studio 100x #46: "Floor finish" applies to every detected room on the
+   * ACTIVE floor — same scope as "Wall height (all walls)" just above (all
+   * of THIS floor, not every floor in the building). Rooms are the
+   * vendor's own auto-detected enclosed areas; a plan with none yet (no
+   * closed loop traced) simply has nothing to paint. */
+  const applyFloorFinish = (finish: Finish) => {
+    const bp = bpRef.current;
+    if (!bp) return;
+    pushUndo();
+    for (const room of bp.model.floorplan.getRooms()) {
+      room.setTexture(finish.url, finish.stretch, finish.scale);
+    }
+    setSelTick((n) => n + 1);
   };
 
   const narrow = typeof window !== "undefined" && window.innerWidth < 900;
@@ -2907,6 +3004,37 @@ export function ModelStudio({ source }: { source: StudioSource }) {
             />
             <button className="button-like" onClick={applyBuildingHeight}>Apply</button>
           </div>
+          <label className="field-label">Floor finish (this floor)</label>
+          <div className="row-gap" style={{ flexWrap: "wrap" }}>
+            {FLOOR_FINISHES.map((f) => (
+              <button
+                key={f.id}
+                className="button-like studio-mini"
+                title={`Paint every room on this floor ${f.label.toLowerCase()}`}
+                onClick={() => applyFloorFinish(f)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <label className="field-label">Roof</label>
+          <div className="row-gap" style={{ flexWrap: "wrap" }}>
+            {(
+              [
+                ["none", "None"],
+                ["flat", "Flat parapet"],
+              ] as const
+            ).map(([v, label]) => (
+              <button
+                key={v}
+                className={roofStyle === v ? "button-like active-pill studio-mini" : "button-like studio-mini"}
+                aria-pressed={roofStyle === v}
+                onClick={() => setRoofStyle(v)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </details>
       {selWall ? (
@@ -2932,6 +3060,22 @@ export function ModelStudio({ source }: { source: StudioSource }) {
                 onKeyDown={(e) => e.key === "Enter" && applyWallHeight()}
               />
               <button className="button-like" onClick={applyWallHeight}>Set</button>
+            </div>
+            <label className="field-label">Finish</label>
+            <div className="row-gap" style={{ flexWrap: "wrap" }}>
+              {WALL_FINISHES.map((f) => {
+                const active = finishForUrl(WALL_FINISHES, selWall.frontTexture?.url)?.id === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    className={active ? "button-like active-pill studio-mini" : "button-like studio-mini"}
+                    aria-pressed={active}
+                    onClick={() => applyWallFinish(f)}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
             </div>
             <div className="row-gap" style={{ marginTop: 4 }}>
               <button
@@ -3295,6 +3439,30 @@ export function ModelStudio({ source }: { source: StudioSource }) {
                   {n}
                 </button>
               ))}
+            </div>
+            <label className="field-label">Frame color</label>
+            <div className="row-gap" style={{ flexWrap: "wrap" }}>
+              {(
+                [
+                  ["white", "White"],
+                  ["bronze", "Bronze"],
+                  ["black", "Black"],
+                ] as const
+              ).map(([c, label]) => {
+                const cfg = selUnit.metadata?.unitConfig as UnitConfig | undefined;
+                const active = (cfg?.frameColor ?? "white") === c;
+                return (
+                  <button
+                    key={c}
+                    className={active ? "button-like active-pill studio-mini" : "button-like studio-mini"}
+                    aria-pressed={active}
+                    disabled={!cfg}
+                    onClick={() => cfg && applyGridChange({ ...cfg, frameColor: c })}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
             </div>
             <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 4 }}>
               <button className="button-like active-pill" onClick={applyUnitEdits}>

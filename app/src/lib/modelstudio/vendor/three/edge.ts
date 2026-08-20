@@ -15,8 +15,6 @@ export class Edge {
   private basePlanes: THREE.Mesh[] = [] // always visible
   private texture: THREE.Texture | null = null
   private currentTextureUrl: string = ''
-  private readonly textureLoader = new THREE.TextureLoader()
-  private readonly lightMap: THREE.Texture
   // Brightened colors for Three.js r181
   private readonly fillerColor = 0xffffff
   private readonly sideColor = 0xeeeeee
@@ -40,8 +38,11 @@ export class Edge {
     this.floorplan = floorplan ?? null
     this.wall = edge.wall
     this.front = edge.front
-    this.lightMap = this.textureLoader.load('https://cdn-images.lumenfeng.com/models-cover/walllightmap.png')
-    this.lightMap.colorSpace = THREE.SRGBColorSpace
+    // infinity: this constructor used to eagerly fetch a wall lightmap from
+    // cdn-images.lumenfeng.com into a field (`lightMap`) that no material
+    // ever referenced — a dead cross-origin fetch on every wall, and an
+    // independence violation on top (Studio 100x #45). Removed outright
+    // rather than localized, since nothing consumed it.
 
     // Bind functions once and store references
     this.boundRedraw = this.redraw.bind(this)

@@ -12,9 +12,13 @@ var segseg = require('segseg')
 var Polygon = require('polygon')
 */
 
-/** Default texture to be used if nothing is provided. */
+/** Default texture to be used if nothing is provided.
+ * infinity: was a third-party CDN URL (cdn-images.lumenfeng.com) — an
+ * offline bug (the model wouldn't render without a network hop) and an
+ * independence violation (the app owns everything it renders, Studio 100x
+ * #45). Bundled locally instead; see app/public/modelstudio/textures. */
 const defaultRoomTexture = {
-  url: 'https://cdn-images.lumenfeng.com/models-cover/hardwood.png',
+  url: '/modelstudio/textures/wood.png',
   scale: 400
 }
 

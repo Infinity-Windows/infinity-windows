@@ -35,6 +35,16 @@
   --info: oklch(0.74 0.13 230);
   --ink: var(--primary-foreground);
 
+  /* Model Studio's 3D sky (Studio 100x #48) — a dusk gradient echoing this
+     sunset-coral dark theme, read by vendor/three/main.ts's
+     getSkyboxColors(). Plain hex on purpose: the scene code reads these
+     directly as colors, and the oklch() tokens above aren't something it
+     should have to parse. Update these if the sky should ever follow a
+     theme change; --studio-sky-bottom is the horizon, --studio-sky-top the
+     zenith. */
+  --studio-sky-top: #171a24;
+  --studio-sky-bottom: #3a2a22;
+
   --font-body: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-display: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
 

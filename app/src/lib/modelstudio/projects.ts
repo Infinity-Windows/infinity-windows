@@ -6,12 +6,13 @@
 
 import { supabase } from "../supabase";
 import { isMissingTable } from "../schemaErrors";
+import type { RoofStyle } from "./floors";
 
 export interface StudioProjectRow {
   id: string;
   name: string;
   project_id: string | null;
-  model: { serialized?: string; savedAt?: string; floors?: string[] } | null;
+  model: { serialized?: string; savedAt?: string; floors?: string[]; roof?: RoofStyle } | null;
   archived: boolean;
   created_by: string | null;
   created_at: string;
@@ -59,7 +60,7 @@ export async function saveStudioProject(input: {
   id?: string | null;
   name: string;
   projectId?: string | null;
-  model?: { serialized: string; savedAt: string; floors?: string[] } | null;
+  model?: { serialized: string; savedAt: string; floors?: string[]; roof?: RoofStyle } | null;
   archived?: boolean;
 }): Promise<StudioProjectRow> {
   const { data, error } = await supabase.rpc("save_studio_project", {
@@ -90,6 +91,10 @@ export interface JobModel {
   serialized?: string;
   floors?: string[];
   savedAt?: string | null;
+  /** Building-wide roof choice (Studio 100x #49) — see floors.ts's
+   * parseRoof for the "absent/unrecognized = none" fallback every reader
+   * should use rather than trusting this field raw. */
+  roof?: RoofStyle;
 }
 
 /**

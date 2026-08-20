@@ -151,89 +151,55 @@ export class Main {
   }
 
   /**
-   * Get skybox colors from CSS variables or use defaults
-   * Reads from --background CSS variable for bottom color (cream white)
-   * Uses pure white for top color
+   * infinity (Studio 100x #48): sky colors follow the app THEME instead of a
+   * hardcoded daylight blue. index.css defines --studio-sky-top/-bottom
+   * (plain hex, so no color-space parsing is needed — the app's other
+   * tokens are oklch(), which this scene has no business decoding). The app
+   * is presently one always-dark theme (index.css: "Always dark"), so this
+   * resolves to the same dusk palette today; reading the token — rather
+   * than inlining the color here — is what makes the sky follow the theme
+   * automatically if that ever changes, instead of drifting from it.
+   *
+   * Previously this read --muted and parsed it as a bare "H S% L%" triplet
+   * (the Tailwind HSL-var convention) — this app's tokens are oklch(...)
+   * strings, which never matched that pattern, so the read silently always
+   * fell through to the hardcoded default. Replaced rather than patched.
    */
   private getSkyboxColors(): { topColor: number; bottomColor: number } {
-    // Default colors (fallback if CSS variables are not available)
-    // Using subtle sky gradient for better wall contrast
-    const defaultTopColor = 0xE8F4F8 // Very light sky blue
-    const defaultBottomColor = 0xD5D5D0 // Light warm gray
+    // Dusk fallback (not the old daylight blue) for when CSS isn't reachable
+    // (SSR, tests) or the tokens are missing.
+    const defaultTopColor = 0x171a24
+    const defaultBottomColor = 0x3a2a22
 
-    // Try to read from CSS variables (browser environment only)
     if (typeof window === 'undefined' || typeof document === 'undefined') {
       return { topColor: defaultTopColor, bottomColor: defaultBottomColor }
     }
 
     try {
       const rootStyles = getComputedStyle(document.documentElement)
-
-      // Read --muted CSS variable for bottom (darker than background for better contrast)
-      const mutedHSL = rootStyles.getPropertyValue('--muted').trim()
-
-      if (mutedHSL) {
-        // Parse HSL string "30 25% 93%" to individual values
-        const hslMatch = mutedHSL.match(/(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%/)
-
-        if (hslMatch) {
-          const h = parseFloat(hslMatch[1])
-          const s = parseFloat(hslMatch[2]) / 100
-          const l = parseFloat(hslMatch[3]) / 100
-
-          // Darken slightly for more contrast (reduce lightness by 5%)
-          const darkenedL = Math.max(0, l - 0.05)
-
-          // Convert HSL to RGB
-          const rgb = this.hslToRgb(h, s, darkenedL)
-          const bottomColor = (rgb.r << 16) | (rgb.g << 8) | rgb.b
-
-          return { topColor: defaultTopColor, bottomColor }
-        }
+      const top = this.parseHexColor(rootStyles.getPropertyValue('--studio-sky-top'))
+      const bottom = this.parseHexColor(rootStyles.getPropertyValue('--studio-sky-bottom'))
+      return {
+        topColor: top ?? defaultTopColor,
+        bottomColor: bottom ?? defaultBottomColor
       }
     } catch (error) {
       console.warn('Failed to read CSS variables for skybox colors, using defaults:', error)
+      return { topColor: defaultTopColor, bottomColor: defaultBottomColor }
     }
-
-    return { topColor: defaultTopColor, bottomColor: defaultBottomColor }
   }
 
-  /**
-   * Convert HSL color to RGB
-   * @param h - Hue (0-360)
-   * @param s - Saturation (0-1)
-   * @param l - Lightness (0-1)
-   * @returns RGB object with r, g, b values (0-255)
-   */
-  private hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
-    h = h / 360 // Normalize hue to 0-1
-
-    const hue2rgb = (p: number, q: number, t: number): number => {
-      if (t < 0) t += 1
-      if (t > 1) t -= 1
-      if (t < 1 / 6) return p + (q - p) * 6 * t
-      if (t < 1 / 2) return q
-      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6
-      return p
+  /** Parse a "#rgb" or "#rrggbb" CSS color into a 0xRRGGBB number, or null
+   * for anything else (an oklch()/hsl()/named color, or an empty token —
+   * all left to the caller's default rather than mis-parsed). */
+  private parseHexColor(value: string): number | null {
+    const hex = value.trim().replace(/^#/, '')
+    if (/^[0-9a-fA-F]{6}$/.test(hex)) return parseInt(hex, 16)
+    if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+      const r = hex[0], g = hex[1], b = hex[2]
+      return parseInt(r + r + g + g + b + b, 16)
     }
-
-    let r: number, g: number, b: number
-
-    if (s === 0) {
-      r = g = b = l // Achromatic
-    } else {
-      const q = l < 0.5 ? l * (1 + s) : l + s - l * s
-      const p = 2 * l - q
-      r = hue2rgb(p, q, h + 1 / 3)
-      g = hue2rgb(p, q, h)
-      b = hue2rgb(p, q, h - 1 / 3)
-    }
-
-    return {
-      r: Math.round(r * 255),
-      g: Math.round(g * 255),
-      b: Math.round(b * 255)
-    }
+    return null
   }
 
   private spin(): void {

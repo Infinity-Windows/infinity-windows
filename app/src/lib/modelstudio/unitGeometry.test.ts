@@ -3,7 +3,8 @@
 // "main" leg), the short leg turns down the neighbouring wall.
 
 import { describe, expect, it } from "vitest";
-import { buildUnitGeometry, cornerGeometryInfo } from "./unitGeometry";
+import type * as THREE from "three";
+import { buildUnitGeometry, cornerGeometryInfo, FRAME_COLOR_HEXES } from "./unitGeometry";
 import { cornerLegs, unitSvg, type UnitConfig } from "./units";
 
 /** Window 16, exactly as the drawing dimensions it (mm). */
@@ -118,6 +119,34 @@ describe("pane grids (rows share mullion lines)", () => {
     expect((withRows.match(/<line/g) ?? []).length).toBeGreaterThan(
       (flat.match(/<line/g) ?? []).length,
     );
+  });
+});
+
+describe("frame color (Studio 100x #47)", () => {
+  const flat: UnitConfig = {
+    kind: "window",
+    heightMm: 1500,
+    panels: [{ widthMm: 1200, mechanism: "fixed" }],
+  };
+  const hexOf = (m: THREE.Material) => (m as THREE.MeshLambertMaterial).color.getHex();
+
+  it("defaults to white, byte-for-byte the old hardcoded hex", () => {
+    const { materials } = buildUnitGeometry(flat);
+    expect(hexOf(materials[0])).toBe(0xf4f1ec);
+    expect(hexOf(materials[1])).toBe(0x9fc4d4);
+    // Explicit "white" renders identically to leaving it unset.
+    const explicit = buildUnitGeometry({ ...flat, frameColor: "white" });
+    expect(hexOf(explicit.materials[0])).toBe(0xf4f1ec);
+  });
+
+  it("bronze and black each pick a distinct, non-default frame hex", () => {
+    const bronze = buildUnitGeometry({ ...flat, frameColor: "bronze" });
+    const black = buildUnitGeometry({ ...flat, frameColor: "black" });
+    expect(hexOf(bronze.materials[0])).toBe(FRAME_COLOR_HEXES.bronze.frame);
+    expect(hexOf(black.materials[0])).toBe(FRAME_COLOR_HEXES.black.frame);
+    expect(FRAME_COLOR_HEXES.bronze.frame).not.toBe(FRAME_COLOR_HEXES.white.frame);
+    expect(FRAME_COLOR_HEXES.black.frame).not.toBe(FRAME_COLOR_HEXES.white.frame);
+    expect(FRAME_COLOR_HEXES.bronze.frame).not.toBe(FRAME_COLOR_HEXES.black.frame);
   });
 });
 

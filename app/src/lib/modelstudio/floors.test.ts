@@ -9,6 +9,7 @@ import {
   floorHeightCm,
   parseFloorLite,
   parseFloors,
+  parseRoof,
 } from "./floors";
 import { buildFitviewModelFromStudio } from "./toFitview";
 
@@ -42,6 +43,20 @@ describe("parseFloors back-compat", () => {
   it("floors[] wins and clamps at ten", () => {
     const floors = Array.from({ length: 12 }, (_, i) => `f${i}`);
     expect(parseFloors({ floors }, BLANK).floors).toHaveLength(10);
+  });
+});
+
+describe("parseRoof round trip (Studio 100x #49)", () => {
+  it("reads back what was saved", () => {
+    expect(parseRoof({ roof: "flat" })).toBe("flat");
+    expect(parseRoof({ roof: "none" })).toBe("none");
+  });
+  it("defaults an old or blank save to none — today's shells, unchanged", () => {
+    // A pre-#49 save shape: has `serialized`, no `roof` key at all.
+    const oldSave: { serialized?: string; roof?: string } = { serialized: "X" };
+    expect(parseRoof(oldSave)).toBe("none");
+    expect(parseRoof(null)).toBe("none");
+    expect(parseRoof({ roof: "garbage" })).toBe("none"); // unrecognized value, not a crash
   });
 });
 

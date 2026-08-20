@@ -168,6 +168,14 @@ export interface PublishFloor {
   items: SceneItemLike[];
 }
 
+/**
+ * infinity (Studio 100x #49): PublishFloor deliberately carries no roof
+ * flag. The Studio building-wide Roof toggle (floors.ts's RoofStyle,
+ * rendered by roofShell.ts) is a Studio/viewer-only decoration — the
+ * interactive map draws its own roofs (fitviewRenderer.ts's "flatroof"),
+ * so a Publish here is expected to leave the map's roof exactly as it was,
+ * not import the Studio's choice.
+ */
 export function buildFitviewModelFromStudio(
   floors: PublishFloor[],
   sizeByName: Map<string, { wMm: number; hMm: number; type?: string }>,

@@ -72,6 +72,10 @@ export function UnitBuilder({
   const [weightInput, setWeightInput] = useState(
     initial?.config.weightLb != null ? String(initial.config.weightLb) : "",
   );
+  /** #47: absent and "white" are the same choice — see UnitConfig.frameColor. */
+  const [frameColor, setFrameColor] = useState<NonNullable<UnitConfig["frameColor"]>>(
+    initial?.config.frameColor ?? "white",
+  );
 
   const heightMm = useMemo(() => {
     const cm = heightInput ? parseFtIn(heightInput) : null;
@@ -94,8 +98,9 @@ export function UnitBuilder({
         cornerAfter != null && cornerAfter < panels.length - 1 ? cornerAfter : null,
       insetOutset,
       weightLb,
+      frameColor,
     }),
-    [kind, heightMm, panels, cornerAfter, insetOutset, weightLb],
+    [kind, heightMm, panels, cornerAfter, insetOutset, weightLb, frameColor],
   );
 
   // #21: the same evidence + fallback ladder the foreman's estimating
@@ -381,6 +386,25 @@ export function UnitBuilder({
                   key={label}
                   className={insetOutset === v ? "button-like active-pill" : "button-like"}
                   onClick={() => setInsetOutset(v)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <label className="field-label">Frame color</label>
+            <div className="row-gap" style={{ flexWrap: "wrap" }}>
+              {(
+                [
+                  ["white", "White"],
+                  ["bronze", "Bronze"],
+                  ["black", "Black"],
+                ] as const
+              ).map(([v, label]) => (
+                <button
+                  key={v}
+                  className={frameColor === v ? "button-like active-pill" : "button-like"}
+                  onClick={() => setFrameColor(v)}
                 >
                   {label}
                 </button>

@@ -32,6 +32,8 @@ import {
 import type { UnitConfig } from "../../lib/modelstudio/units";
 import { fmtInchesFromMm } from "../../lib/modelstudio/dims";
 import { jobModelFromFeatures } from "../../lib/modelstudio/projects";
+import { parseFloorLite, parseRoof } from "../../lib/modelstudio/floors";
+import { buildRoof } from "../../lib/modelstudio/roofShell";
 import { listPlanOutlines } from "../../lib/install/api";
 import { listProjects } from "../../lib/api";
 import { preferModelOutline } from "../../lib/fitview/adapter";
@@ -191,6 +193,9 @@ export function JobModelViewer() {
     cached,
   });
   const savedSerialized = resolved.model?.floors?.[0] ?? resolved.model?.serialized ?? null;
+  // A primitive (not `resolved.model` itself, a fresh object every render)
+  // so the boot effect's dependency array is stable.
+  const roofStyle = parseRoof(resolved.model);
   const stillWorking = !projectId || outlines.isLoading || !cacheChecked;
 
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -237,11 +242,22 @@ export function JobModelViewer() {
     });
 
     bp.model.loadSerialized(savedSerialized);
+
+    // Studio 100x #49: the same flat-parapet roof Studio can draw over the
+    // top floor — this viewer only ever loads floor 0 (see savedSerialized
+    // above, a pre-existing scope limit), so the roof caps whatever it
+    // loaded, same as it caps the top floor there.
+    if (roofStyle === "flat") {
+      const { walls } = parseFloorLite(savedSerialized);
+      const roof = buildRoof(walls, 0);
+      if (roof) bp.model.scene.getScene().add(roof);
+    }
+
     setBooted(true);
     return () => {
       bpRef.current = null;
     };
-  }, [savedSerialized]);
+  }, [savedSerialized, roofStyle]);
 
   // Tap-to-inspect: the vendor's own hover-based item selection never fires
   // on a touchscreen (there is no hover before a tap), so a plain raycast
