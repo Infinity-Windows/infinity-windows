@@ -3,7 +3,7 @@
 // live decoded-size preview; Confirm marks the spec trusted.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   confirmMarkSpec,
   confirmMarkSpecs,
@@ -18,12 +18,24 @@ import {
   resolveSpecSize,
   sizeMismatchRecord,
 } from "../../lib/install/printedSize";
-import { decodeSizeCode, formatSize, type ProjectMarkSpec } from "../../lib/install/specs";
+import {
+  decodeSizeCode,
+  formatSize,
+  indexSpecsByMark,
+  type ProjectMarkSpec,
+} from "../../lib/install/specs";
 import { MarkDrawing } from "./MarkDrawing";
 import { formatApiError } from "../../lib/install/errors";
 import { syncProjectSignatures } from "../../lib/estimate/signatureSync";
 import { setProjectNeedsFlashing } from "../../lib/install/phases";
-import type { ProjectOpening } from "../../lib/install/types";
+import { roMismatchWarning } from "../../lib/install/roMismatch";
+import { openingMarkCode, type ProjectOpening } from "../../lib/install/types";
+import { catalogByMarkFrom, resolveMarkConfig } from "../../lib/modelstudio/fromProject";
+import {
+  constructabilityProblems,
+  listStudioUnits,
+  type UnitConfig,
+} from "../../lib/modelstudio/units";
 import { SpecReconciliationReport } from "./SpecReconciliationReport";
 import { SpecSizeWarnings } from "./SpecSizeWarnings";
 
@@ -66,6 +78,14 @@ export function SpecReviewSection({ projectId }: Props) {
     queryKey: ["openings", projectId],
     queryFn: () => listOpenings(projectId),
   });
+
+  // Constructability preflight (#13) + RO-mismatch flags (#14): the SAME
+  // catalog-beats-spec resolution signatureSync uses, read-only here — this
+  // screen never writes a config, it only asks "what does this mark look
+  // like" to warn, never to block.
+  const units = useQuery({ queryKey: ["studioUnits"], queryFn: listStudioUnits });
+  const specIndex = useMemo(() => indexSpecsByMark(specs.data ?? []), [specs.data]);
+  const catalogByMark = useMemo(() => catalogByMarkFrom(units.data ?? []), [units.data]);
 
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["markSpecs", projectId] });
@@ -147,6 +167,8 @@ export function SpecReviewSection({ projectId }: Props) {
       key={s.id}
       spec={s}
       projectId={projectId}
+      config={resolveMarkConfig(s.mark_code, specIndex, catalogByMark)}
+      openings={openings.data ?? []}
       onText={(key, value) =>
         patch.mutate({ id: s.id, patch: { [key]: value || null } as SpecPatch })
       }
@@ -259,6 +281,8 @@ export function SpecReviewSection({ projectId }: Props) {
 function SpecRow({
   spec,
   projectId,
+  config,
+  openings,
   onText,
   onSizeCode,
   onFlag,
@@ -268,6 +292,12 @@ function SpecRow({
 }: {
   spec: ProjectMarkSpec;
   projectId: string;
+  /** The mark's resolved Studio config (catalog beats spec), or null when
+   * neither exists — feeds the #13/#14 warning lines below, never blocks. */
+  config: UnitConfig | null;
+  /** Every opening on the project — filtered to this mark's own (twins
+   * included) for the RO-mismatch check (#14). */
+  openings: ProjectOpening[];
   onText: (key: TextField, value: string) => void;
   onSizeCode: (sizeCode: string) => void;
   onFlag: (key: "tempered" | "egress", value: boolean) => void;
@@ -299,6 +329,24 @@ function SpecRow({
   // side when the code and the sheet disagree.
   const printed = readPrintedSize(spec.extra);
   const mismatch = checkSpecSize({ ...spec, size_code: sizeCode || null });
+
+  // Constructability preflight (#13) — never blocks; see constructabilityProblems.
+  const constructProblems = config ? constructabilityProblems(config) : [];
+  // RO-mismatch (#14): this mark's own openings (twins included), each
+  // checked against the SAME resolved config — reconciled with roCheck's
+  // gap math via roMismatchWarning, verbatim.
+  const markOpenings = openings.filter(
+    (o) => openingMarkCode(o.opening_code) === spec.mark_code.trim().toUpperCase(),
+  );
+  const roProblems = config
+    ? markOpenings
+        .map((o) => {
+          const msg = roMismatchWarning(o, config);
+          if (!msg) return null;
+          return markOpenings.length > 1 ? `${o.opening_code}: ${msg}` : msg;
+        })
+        .filter((m): m is string => m != null)
+    : [];
 
   return (
     <div className="detail-card" style={{ marginTop: 10 }}>
@@ -445,6 +493,19 @@ function SpecRow({
           </label>
         </div>
       </div>
+
+      {/* Constructability preflight (#13) and RO-mismatch (#14) — plain
+          warning text only, never a reason Confirm below is disabled. */}
+      {constructProblems.length > 0 && (
+        <p className="warn-text" style={{ margin: "8px 0 0", fontSize: 12.5 }}>
+          this configuration can&rsquo;t be built as drawn: {constructProblems.join("; ")}.
+        </p>
+      )}
+      {roProblems.length > 0 && (
+        <p className="warn-text" style={{ margin: "8px 0 0", fontSize: 12.5 }}>
+          the measured rough opening doesn&rsquo;t match this configuration: {roProblems.join("; ")}.
+        </p>
+      )}
 
       {!spec.confirmed && (
         <button className="action-btn" style={{ marginTop: 8 }} onClick={onConfirm}>

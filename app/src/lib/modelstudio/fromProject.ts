@@ -472,6 +472,42 @@ export function markKeyOf(idOrMark: string): string {
 }
 
 /**
+ * Catalog units keyed by BASE mark, read off each unit's own name ("Window
+ * 16", "Door 3 · JOB-2") — the same regex signatureSync and this file's own
+ * `buildStudioPull` already use to prefer a refined catalog unit over the
+ * raw spec. Shared here so every OTHER "what does this mark look like"
+ * feature (package-count suggestions, constructability warnings, RO-
+ * mismatch flags) builds the map the same way instead of re-deriving it.
+ */
+export function catalogByMarkFrom(
+  units: { name: string; config: UnitConfig }[],
+): Map<string, UnitConfig> {
+  const out = new Map<string, UnitConfig>();
+  for (const u of units) {
+    const m = /^(?:Window|Door)\s+([^\s·]+)/.exec(u.name);
+    if (m) out.set(m[1].toUpperCase(), u.config);
+  }
+  return out;
+}
+
+/**
+ * Resolve one mark's config the way `syncProjectSignatures` and
+ * `buildStudioPull` both already do: the company catalog's refined unit
+ * wins when one exists for the mark, the spec-derived draft otherwise, and
+ * no config at all when neither has one. One function so every caller
+ * agrees with the signature pipeline on what a mark IS, rather than
+ * re-deriving the same two-line priority a third or fourth time.
+ */
+export function resolveMarkConfig(
+  mark: string,
+  specIndex: Map<string, ProjectMarkSpec>,
+  catalogByMark: Map<string, UnitConfig>,
+): UnitConfig | null {
+  const spec = specForOpeningCode(specIndex, mark);
+  return catalogByMark.get(markKeyOf(mark)) ?? (spec ? specToUnitConfig(spec) : null);
+}
+
+/**
  * One story's rings → one studio floor plan. Corners are merged ACROSS
  * masses by coordinate (3 cm snap) and duplicate segments dropped:
  * adjacent masses trace the same boundary, and seeding it twice used to

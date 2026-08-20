@@ -12,6 +12,7 @@ import type { ProjectOpening } from "../install/types";
 import type { StoragePackage } from "../storage";
 import type { ScheduledMark } from "../warehouse/warehouseCards";
 import { buildLiveOverlay, type LiveOverlayInput } from "./liveOverlay";
+import type { UnitConfig } from "./units";
 
 function opening(over: Partial<ProjectOpening>): ProjectOpening {
   return {
@@ -380,6 +381,57 @@ describe("buildLiveOverlay: photo badge (#7)", () => {
       ["1"],
     );
     expect(map.get("1")?.photoCount).toBeUndefined();
+  });
+});
+
+describe("buildLiveOverlay: RO-mismatch warning (#14)", () => {
+  const flatCfg: UnitConfig = {
+    kind: "window",
+    heightMm: 72 * 25.4,
+    panels: [{ widthMm: 36 * 25.4, mechanism: "fixed" }],
+  };
+
+  it("flags a unit whose measured RO won't take its resolved config", () => {
+    const map = buildLiveOverlay(
+      baseInput({
+        openings: [opening({ opening_code: "1", ro_width_in: 35.5, ro_height_in: 72.25 })],
+        configByMark: new Map([["1", flatCfg]]),
+      }),
+      ["1"],
+    );
+    expect(map.get("1")?.roProblem).toMatch(/width/);
+  });
+
+  it("says nothing when the measured RO is within roCheck's range", () => {
+    const map = buildLiveOverlay(
+      baseInput({
+        openings: [opening({ opening_code: "1", ro_width_in: 36.25, ro_height_in: 72.25 })],
+        configByMark: new Map([["1", flatCfg]]),
+      }),
+      ["1"],
+    );
+    expect(map.get("1")?.roProblem).toBeUndefined();
+  });
+
+  it("says nothing without a resolved config for the mark — no input, no check", () => {
+    const map = buildLiveOverlay(
+      baseInput({
+        openings: [opening({ opening_code: "1", ro_width_in: 1, ro_height_in: 1 })],
+      }),
+      ["1"],
+    );
+    expect(map.get("1")?.roProblem).toBeUndefined();
+  });
+
+  it("matches configs by BASE mark — a twin opening resolves through markKeyOf", () => {
+    const map = buildLiveOverlay(
+      baseInput({
+        openings: [opening({ opening_code: "16-1", ro_width_in: 1, ro_height_in: 1 })],
+        configByMark: new Map([["16", flatCfg]]),
+      }),
+      ["16-1"],
+    );
+    expect(map.get("16-1")?.roProblem).toBeTruthy();
   });
 });
 

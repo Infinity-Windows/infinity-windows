@@ -9637,6 +9637,35 @@ body {
 }
 .studio-palette-toggle { font-size: 12px; padding: 4px 10px; white-space: nowrap; }
 
+/* Studio 100x #50: on wide screens the floating tools palette (still
+   .studio-palette — SAME sections, SAME order, SAME collapsed toggle)
+   docks to the right edge instead of floating over the canvas. The
+   .studio-dock class (added alongside .studio-palette, never replacing it)
+   is what this media query hangs off; below 1100px it has no rules at all,
+   so the floating layout is untouched. `.studio-view` gets nudged narrower
+   by the same amount the dock actually occupies, so the plan/3D canvas
+   genuinely gets that width back rather than rendering underneath an
+   opaque panel — ModelStudio.tsx already re-measures the vendor's canvas
+   whenever the palette toggles (the same "nudge" full-screen/view-swap
+   already needed), so this is a real resize, not just a repaint. */
+@media (min-width: 1100px) {
+  .studio-stage:has(> .studio-dock:not(.collapsed)) .studio-view { right: 300px; }
+  .studio-stage:has(> .studio-dock.collapsed) .studio-view { right: 160px; }
+  .studio-dock {
+    position: static;
+    margin-left: auto;
+    width: 300px;
+    max-height: none;
+    height: 100%;
+    border-radius: 12px 0 0 12px;
+  }
+  /* The 🛠 toggle collapses the panel to a rail: same full-height strip,
+     just narrow — the canvas offset above shrinks to match. */
+  .studio-dock.collapsed {
+    width: 160px;
+  }
+}
+
 .studio-builder { max-width: 380px; }
 .studio-unit-preview {
   display: flex; justify-content: center; padding: 8px 0 2px;

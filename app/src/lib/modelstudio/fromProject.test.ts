@@ -3,7 +3,15 @@
 // every window on the shared line ("window hiding behind the wall").
 
 import { describe, expect, it } from "vitest";
-import { buildStudioFloorsSeed, buildStudioPull, buildStudioSeed, markKeyOf } from "./fromProject";
+import {
+  buildStudioFloorsSeed,
+  buildStudioPull,
+  buildStudioSeed,
+  catalogByMarkFrom,
+  markKeyOf,
+  resolveMarkConfig,
+} from "./fromProject";
+import { indexSpecsByMark } from "../install/specs";
 import type { ProjectMarkSpec } from "../install/specs";
 import type { UnitConfig } from "./units";
 
@@ -383,5 +391,42 @@ describe("buildStudioFloorsSeed (every traced story → a studio floor)", () => 
     expect(
       (JSON.parse(floors[0]) as { floorplan: { walls: unknown[] } }).floorplan.walls,
     ).toHaveLength(4);
+  });
+});
+
+describe("catalogByMarkFrom", () => {
+  it("keys a unit by its BASE mark, read off the name", () => {
+    const flat: UnitConfig = { kind: "window", heightMm: 1500, panels: [{ widthMm: 900, mechanism: "fixed" }] };
+    const map = catalogByMarkFrom([
+      { name: "Window 16", config: flat },
+      { name: "Door 3 · BLACK22", config: { ...flat, kind: "door" } },
+    ]);
+    expect(map.get("16")).toBe(flat);
+    expect(map.get("3")?.kind).toBe("door");
+  });
+
+  it("skips a unit whose name doesn't start with Window/Door", () => {
+    const flat: UnitConfig = { kind: "window", heightMm: 1500, panels: [{ widthMm: 900, mechanism: "fixed" }] };
+    const map = catalogByMarkFrom([{ name: "Untitled unit", config: flat }]);
+    expect(map.size).toBe(0);
+  });
+});
+
+describe("resolveMarkConfig", () => {
+  it("prefers the catalog unit over the spec-derived draft", () => {
+    const catalogCfg: UnitConfig = { kind: "window", heightMm: 4559, panels: [{ widthMm: 8000, mechanism: "fixed" }] };
+    const catalogByMark = new Map([["16", catalogCfg]]);
+    const specIndex = indexSpecsByMark([spec("16", 72, 60, "XO")]);
+    expect(resolveMarkConfig("16", specIndex, catalogByMark)).toBe(catalogCfg);
+  });
+
+  it("falls back to the spec when the mark has no catalog unit", () => {
+    const specIndex = indexSpecsByMark([spec("3", 72, 60, "XO")]);
+    const config = resolveMarkConfig("3", specIndex, new Map());
+    expect(config?.panels).toHaveLength(2); // XO = slider + fixed
+  });
+
+  it("resolves to null when neither a catalog unit nor a usable spec exists", () => {
+    expect(resolveMarkConfig("99", new Map(), new Map())).toBeNull();
   });
 });

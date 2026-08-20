@@ -75,8 +75,11 @@ import {
   buildStudioFloorsSeed,
   buildStudioPull,
   buildStudioSeed,
+  catalogByMarkFrom,
   markKeyOf,
+  resolveMarkConfig,
 } from "../../lib/modelstudio/fromProject";
+import { indexSpecsByMark } from "../../lib/install/specs";
 import { UnitBuilder } from "../../components/studio/UnitBuilder";
 import { buildFitviewModelFromStudio, type PublishStats } from "../../lib/modelstudio/toFitview";
 import {
@@ -579,6 +582,26 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
   /** One toggle, per the spec — overlays default ON. */
   const [showLiveOverlay, setShowLiveOverlay] = useState(true);
+  // RO-mismatch overlay (#14): every mark's resolved config (catalog beats
+  // spec — resolveMarkConfig, same priority signatureSync uses), so
+  // buildLiveOverlay can flag a modeled unit whose site-measured RO and
+  // resolved shape disagree. A mark with neither a catalog unit nor a spec
+  // simply resolves to nothing, same as everywhere else this priority runs.
+  const specIndex = useMemo(() => indexSpecsByMark(specs.data ?? []), [specs.data]);
+  const catalogByMark = useMemo(
+    () => catalogByMarkFrom(units.data ?? []),
+    [units.data],
+  );
+  const configByMark = useMemo(() => {
+    const out = new Map<string, UnitConfig>();
+    for (const o of openings.data ?? []) {
+      const mark = markKeyOf(o.opening_code);
+      if (out.has(mark)) continue;
+      const config = resolveMarkConfig(mark, specIndex, catalogByMark);
+      if (config) out.set(mark, config);
+    }
+    return out;
+  }, [openings.data, specIndex, catalogByMark]);
   const overlayMap = useMemo(
     () =>
       buildLiveOverlay(
@@ -590,6 +613,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           phases: phases.data ?? [],
           qcPassedOpeningIds: qcPassed.data ?? [],
           photoCounts: photoCounts.data ?? new Map(),
+          configByMark,
           viewerId: myProfile.data?.id ?? null,
           managerView: isForemanPlus(effectiveRole),
           projectId,
@@ -608,6 +632,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       phases.data,
       qcPassed.data,
       photoCounts.data,
+      configByMark,
       myProfile.data?.id,
       effectiveRole,
       projectId,
@@ -967,6 +992,10 @@ export function ModelStudio({ source }: { source: StudioSource }) {
 
   // Re-fit whichever view is showing when the view or full screen changes —
   // a hidden canvas keeps its size, but the vendor needs a nudge on swap.
+  // Studio 100x #50: on a docked layout (>=1100px, see .studio-dock in
+  // index.css) toggling the tools palette resizes the stage exactly the
+  // same way — the SAME nudge applies. Below that width the palette floats
+  // over the canvas instead of resizing it, so this is a harmless no-op.
   useEffect(() => {
     requestAnimationFrame(() => {
       const bp = bpRef.current;
@@ -976,7 +1005,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       window.dispatchEvent(new Event("resize"));
       bp.three.updateWindowSize();
     });
-  }, [fs, view]);
+  }, [fs, view, paletteOpen]);
 
   // Toggling the tool (either direction) starts fresh — no stale point or
   // leftover line/label from a previous session (#39: "toggling off clears").
@@ -2808,7 +2837,13 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   );
 
   const palette = (
-    <div className={paletteOpen ? "studio-palette" : "studio-palette collapsed"}>
+    <div
+      className={
+        paletteOpen
+          ? "studio-palette studio-dock"
+          : "studio-palette studio-dock collapsed"
+      }
+    >
       <button
         type="button"
         className="button-like studio-palette-toggle"

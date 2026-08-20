@@ -189,6 +189,49 @@ export function cornerLegs(
   return { left: c.panels.slice(0, k + 1), right: c.panels.slice(k + 1) };
 }
 
+/**
+ * Studio 100x #13 — a constructability PREFLIGHT, run over a resolved
+ * config instead of only clamping silently at edit/render time. The
+ * builder's own controls (the corner picker, the slide ± buttons) can
+ * never CREATE one of these findings — they clamp as the operator goes —
+ * but a config can still arrive with one from OUTSIDE the builder: a
+ * hand-edited catalog row, an older extraction, or a spec drawing that
+ * asked for something the shop floor can't build.
+ *
+ * PURE, and reuses the EXACT rules the builder/geometry already enforce
+ * (`cornerLegs`, `slideCountOf`) rather than inventing new ones — a finding
+ * here can never disagree with what the Studio would actually build.
+ * Never blocks anything; callers show these as plain warning text only.
+ */
+export function constructabilityProblems(config: UnitConfig): string[] {
+  const problems: string[] = [];
+
+  // A corner was asked for, but cornerLegs (the SAME split the geometry and
+  // annotation layout both call) says it isn't a legal one — it silently
+  // renders flat instead of the corner the config claims.
+  if (config.cornerAfterPanel != null && cornerLegs(config) == null) {
+    const n = config.panels.length;
+    problems.push(
+      `the corner after panel ${config.cornerAfterPanel + 1} isn't a legal split for ${n} panel${n === 1 ? "" : "s"}`,
+    );
+  }
+
+  // A slider's stored slide count needed clamping to land in the buildable
+  // 1–8 range — slideCountOf already clamps it for rendering, so this is
+  // never visibly broken, but the STORED number promises something the
+  // shop floor can't build (or a spec drawing that lied about the count).
+  config.panels.forEach((p, i) => {
+    if (p.mechanism !== "slider" || p.slideCount == null) return;
+    if (slideCountOf(p) !== p.slideCount) {
+      problems.push(
+        `panel ${i + 1}'s slide count (${p.slideCount}) is outside the buildable 1-8 range`,
+      );
+    }
+  });
+
+  return problems;
+}
+
 export function panelsWidthMm(panels: UnitPanel[]): number {
   return panels.reduce((t, p) => t + p.widthMm, 0);
 }
