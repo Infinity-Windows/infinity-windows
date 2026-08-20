@@ -104,6 +104,7 @@ const VISION_SYSTEM =
   "(B) ELEVATION or FLOOR-PLAN pages: whole-building drawings sprinkled with mark-number labels. " +
   "Rules, in priority order: " +
   "1. Return one row per cut-sheet cell that has BOTH a drawing AND an explicit QTY value. A cell missing either is a plans-side error - skip it. " +
+  "A drawing means an actual technical illustration of the unit. A cell whose drawing area is blank, or crossed out with a diagonal slash, has NO drawing - skip it even if its QTY and style text are filled in (proven on Oak Valley Estates 5, where a slashed-out #18 cell still carried QTY 2). " +
   "2. qty comes ONLY from the QTY field. NEVER derive a quantity from how many times a number appears on any drawing, elevation, or page. " +
   "3. Elevation and floor-plan pages contribute NOTHING - no rows, ever. " +
   "4. Ignore handwritten or colored annotations anywhere; only printed fields count. " +
