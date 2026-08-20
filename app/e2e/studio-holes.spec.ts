@@ -1186,6 +1186,117 @@ test("a fresh seed never mints twin walls", async ({ page }) => {
   expect(wallCount).toBe(7);
 });
 
+/** A closed 4-wall rectangle from (0,0) to (w,d) cm, in the vendor's saved
+ * shape — the smallest plan the Studio boots and publishes. */
+function rectPlanCm(w: number, d: number): string {
+  const corners: Record<string, { x: number; y: number }> = {
+    a: { x: 0, y: 0 },
+    b: { x: w, y: 0 },
+    c: { x: w, y: d },
+    d: { x: 0, y: d },
+  };
+  const ids = Object.keys(corners);
+  return JSON.stringify({
+    floorplan: {
+      corners,
+      walls: ids.map((id, i) => ({ corner1: id, corner2: ids[(i + 1) % 4] })),
+      wallTextures: [],
+      floorTextures: {},
+      newFloorTextures: {},
+    },
+    items: [],
+  });
+}
+
+// Publish used to hand-roll the saved-model body with no `floors` and the
+// ACTIVE floor as the old-reader mirror — publishing a multi-story model
+// from floor 2 silently threw away floor 1. floors.test.ts pins the shared
+// builder both writers use now; this pins the WIRING: the mutation must
+// flush the live floor and send the whole set, from whichever floor you're
+// standing on.
+test("Publish from floor 2 keeps every floor — floor 1 stays the mirror", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  // A saved TWO-floor model, BLACK22-shaped: big ground rect, small upper
+  // rect — told apart below by their x-extent. The fitview model is what
+  // builds the job seed the boot gate waits for.
+  const floor1 = rectPlanCm(1000, 600);
+  const floor2 = rectPlanCm(500, 300);
+  const row = outlineRow({
+    fitview: { model: FITVIEW_MODEL },
+    modelstudio: {
+      serialized: floor1,
+      floors: [floor1, floor2],
+      savedAt: "2026-08-19T00:00:00Z",
+      roof: "none",
+    },
+  });
+  const patches: { features: Record<string, unknown> }[] = [];
+  await page.route("**/rest/v1/project_plan_outlines**", (route) => {
+    if (route.request().method() === "PATCH") {
+      const body = route.request().postDataJSON() as { features: Record<string, unknown> };
+      patches.push(body);
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ...row, features: body.features }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "content-range": "0-0/1" },
+      body: JSON.stringify([row]),
+    });
+  });
+  await openStudio(page);
+
+  // Stand ON floor 2 — the exact shape of the bug (the active floor became
+  // the mirror and every other floor vanished).
+  await page.getByRole("button", { name: /Tools/ }).click();
+  await page.getByText("Building", { exact: true }).click();
+  await page.getByRole("button", { name: "2", exact: true }).click();
+  await page.waitForFunction(() => {
+    const bp = (window as any).__studio;
+    const walls = bp?.model?.floorplan?.getWalls?.() ?? [];
+    return (
+      walls.length === 4 &&
+      walls.every((w: any) => w.getStartX() <= 500 && w.getEndX() <= 500)
+    );
+  });
+
+  await page.getByRole("button", { name: "Publish to map" }).click();
+  // The preview modal already counts BOTH stories…
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText(/2 stories/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Publish", exact: true }).click();
+  await expect(page.getByText("the interactive map now renders this model")).toBeVisible();
+
+  // …and the outline write carries the WHOLE studio model, not a floor-2 copy.
+  expect(patches).toHaveLength(1);
+  const features = patches[0].features as {
+    modelstudio: { serialized: string; floors: string[]; roof: string };
+    fitview: { model: { building: { stories: unknown[] } } };
+    fitview_backup?: { model: unknown };
+  };
+  const xs = (s: string) =>
+    Object.values(
+      (JSON.parse(s) as { floorplan: { corners: Record<string, { x: number }> } })
+        .floorplan.corners,
+    ).map((c) => c.x);
+  expect(features.modelstudio.floors).toHaveLength(2);
+  expect(Math.max(...xs(features.modelstudio.floors[0]))).toBe(1000); // floor 1 survived
+  expect(Math.max(...xs(features.modelstudio.floors[1]))).toBe(500); // the live floor rode along
+  // Old readers get floor 1 — NOT the floor that happened to be active.
+  expect(features.modelstudio.serialized).toBe(features.modelstudio.floors[0]);
+  expect(features.modelstudio.roof).toBe("none");
+  // The map side got both stories, and the previous map model is kept for
+  // the one-tap revert.
+  expect(features.fitview.model.building.stories).toHaveLength(2);
+  expect(features.fitview_backup?.model).toBeTruthy();
+});
+
 test("a HUMAN trace seeds every traced story as a studio floor", async ({
   page,
 }) => {
