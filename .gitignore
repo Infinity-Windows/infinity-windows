@@ -5,15 +5,25 @@ dist/
 supabase/.temp/
 .vapid-keys.local.json
 
-# Playwright run artefacts. The layout screenshots in app/e2e/__screenshots__ are
-# committed on purpose; the foreman ones are not, because they are pictures of
-# live customer-database state taken against a real login.
+# Playwright run artefacts. Nothing under app/e2e/__screenshots__ is a
+# visual-regression baseline (no spec does toHaveScreenshot/toMatchSnapshot) —
+# they are eyeballed, and their bytes churn on every run even when nothing
+# changed, so they are local-only. See app/e2e/__screenshots__/README.md.
 app/e2e/test-results/
 app/e2e/test-results-foreman/
 # Playwright also drops a run summary at the repo root when it is invoked
 # from app/ with a rootDir above it. Same throwaway output, different place.
 test-results/
 app/e2e/__screenshots__/foreman/
+app/e2e/__screenshots__/**/*.png
+# ...except the six docs/map-readability-2026-07-29.md embeds by path and
+# renders on GitHub, which stay committed on purpose.
+!app/e2e/__screenshots__/BLACK22-map-390.png
+!app/e2e/__screenshots__/BLACK22-sheet-390.png
+!app/e2e/__screenshots__/PECAN14-map-390.png
+!app/e2e/__screenshots__/PECAN14-sheet-390.png
+!app/e2e/__screenshots__/OAKRIDGE-map-390.png
+!app/e2e/__screenshots__/OAKRIDGE-sheet-390.png
 app/playwright-report/
 app/blob-report/
 app/.playwright/
