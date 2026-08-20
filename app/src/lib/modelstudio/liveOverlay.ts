@@ -24,6 +24,7 @@ import {
   type FitViewGlow,
   type FitViewViewContext,
 } from "../fitview/adapter";
+import { roMismatchWarning } from "../install/roMismatch";
 import type { OpeningPhase } from "../install/phases";
 import { blockedUnits, type UnitSession } from "../install/sessions";
 import type { ProjectOpening } from "../install/types";
@@ -31,6 +32,7 @@ import type { StoragePackage } from "../storage";
 import { partsHeadline, unitParts } from "../warehouse/unitParts";
 import { untaggedMarks, type ScheduledMark } from "../warehouse/warehouseCards";
 import { markKeyOf } from "./fromProject";
+import type { UnitConfig } from "./units";
 
 /**
  * Everything the Studio can paint onto one modeled unit. Every field is
@@ -73,6 +75,12 @@ export interface OverlayState {
    * other field here, and cheap enough to carry on every unit at once
    * because it is a count, never a signed URL. */
   photoCount?: number;
+  /** Studio 100x #14: plain-language warning when the opening's site-
+   * measured RO and the mark's resolved Studio config disagree on
+   * roCheck's own gap math (roMismatchWarning — no new tolerance). Absent
+   * when there's nothing to say: no RO recorded, no resolved config for
+   * the mark, or the numbers are fine. */
+  roProblem?: string;
 }
 
 export interface LiveOverlayInput {
@@ -99,6 +107,12 @@ export interface LiveOverlayInput {
    * whole point is that every unit can carry this at once with nothing
    * signed until somebody actually taps one. */
   photoCounts: Map<string, number>;
+  /** Mark (BASE — markKeyOf-keyed) -> resolved Studio config, when the
+   * caller has one (catalog-beats-spec — resolveMarkConfig, the same
+   * priority signatureSync uses). Optional and only feeds the RO-mismatch
+   * check (#14, `roProblem` above); a caller that doesn't pass this simply
+   * gets no roProblem anywhere, same as before this field existed. */
+  configByMark?: Map<string, UnitConfig>;
   /** The signed-in profile, for glowFor's "my windows" scoping. */
   viewerId: string | null;
   /** Foreman+ sees every installer's load; installers see only their own. */
@@ -165,6 +179,20 @@ export function buildLiveOverlay(
       }
       const photoCount = input.photoCounts.get(opening.id);
       if (photoCount) state.photoCount = photoCount;
+
+      // RO-mismatch (#14): only possible with BOTH a physical opening (to
+      // read ro_width_in/ro_height_in off) and a resolved config for its
+      // mark — roMismatchWarning does the actual gap math, verbatim.
+      if (input.configByMark) {
+        const config = input.configByMark.get(markKeyOf(code));
+        if (config) {
+          const problem = roMismatchWarning(
+            { ro_width_in: opening.ro_width_in, ro_height_in: opening.ro_height_in },
+            config,
+          );
+          if (problem) state.roProblem = problem;
+        }
+      }
     }
 
     // Package signals: BASE mark — markKeyOf, exactly as fromProject's own

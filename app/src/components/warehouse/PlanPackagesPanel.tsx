@@ -8,7 +8,7 @@
 // Lives on the job page's Warehouse tab, foreman+. The blank-roll path stays
 // on /storage for everything unplanned.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "../../lib/errors";
 import { pushToast } from "../../lib/toast";
@@ -22,6 +22,10 @@ import {
 import { downloadPdf, packageLabelsPdf } from "../../lib/labels";
 import { listScheduledMarks } from "../../lib/warehouse/warehouseCards";
 import { bindLine, markPlanRow } from "../../lib/warehouse/markPlan";
+import { listMarkSpecs } from "../../lib/install/api";
+import { indexSpecsByMark } from "../../lib/install/specs";
+import { listStudioUnits } from "../../lib/modelstudio/units";
+import { catalogByMarkFrom, resolveMarkConfig } from "../../lib/modelstudio/fromProject";
 
 export function PlanPackagesPanel({
   projectId,
@@ -36,6 +40,18 @@ export function PlanPackagesPanel({
     queryFn: () => listScheduledMarks([projectId]),
   });
   const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
+  // Package-count prefill (ticket 11): the SAME catalog-beats-spec
+  // resolution signatureSync uses, read-only here — nothing this panel does
+  // ever writes a config, it only asks "what does this mark look like" to
+  // suggest a starting "arrives as N" count.
+  const specs = useQuery({
+    queryKey: ["markSpecs", projectId],
+    queryFn: () => listMarkSpecs(projectId),
+    enabled: Boolean(projectId),
+  });
+  const units = useQuery({ queryKey: ["studioUnits"], queryFn: listStudioUnits });
+  const specIndex = useMemo(() => indexSpecsByMark(specs.data ?? []), [specs.data]);
+  const catalogByMark = useMemo(() => catalogByMarkFrom(units.data ?? []), [units.data]);
   const [counts, setCounts] = useState<Record<string, string>>({});
   // Burn mode (ticket 16): pick the labels that die, confirm once, loudly.
   const [burning, setBurning] = useState<Set<string>>(new Set());
@@ -90,7 +106,14 @@ export function PlanPackagesPanel({
   }
 
   const rows = (marks.data ?? [])
-    .map((m) => markPlanRow(packages.data ?? [], projectId, m.mark_code))
+    .map((m) =>
+      markPlanRow(
+        packages.data ?? [],
+        projectId,
+        m.mark_code,
+        resolveMarkConfig(m.mark_code, specIndex, catalogByMark),
+      ),
+    )
     .sort((a, b) => a.markCode.localeCompare(b.markCode, undefined, { numeric: true }));
 
   const mintedRows = (packages.data ?? []).filter(
@@ -189,9 +212,20 @@ export function PlanPackagesPanel({
 
       <div className="home-projects">
         {rows.map((r) => {
-          const typed = counts[r.markCode] ?? "";
+          // Prefilled from the model until the foreman actually types
+          // something — the moment they do (even clearing the box), the
+          // mark is "touched" and the suggestion note stops showing. No
+          // resolved config → suggestedCount is null → typed starts blank,
+          // today's behavior exactly.
+          const touched = r.markCode in counts;
+          const typed = touched
+            ? counts[r.markCode]
+            : r.suggestedCount != null
+              ? String(r.suggestedCount)
+              : "";
           const n = Number(typed);
           const valid = typed.trim() !== "" && Number.isInteger(n) && n >= 1 && n <= 20;
+          const showSuggestion = !touched && r.suggestedCount != null;
           return (
             <div key={r.markCode} className="project-card home-project">
               <div className="row-between" style={{ gap: 10, flexWrap: "wrap" }}>
@@ -207,16 +241,23 @@ export function PlanPackagesPanel({
                   </div>
                 </div>
                 <div className="row-gap" style={{ alignItems: "center" }}>
-                  <input
-                    inputMode="numeric"
-                    placeholder={r.declared != null ? String(r.declared) : "How many?"}
-                    value={typed}
-                    onChange={(e) =>
-                      setCounts({ ...counts, [r.markCode]: e.target.value })
-                    }
-                    style={{ width: 90 }}
-                    aria-label={`How many packages for window ${r.markCode}`}
-                  />
+                  <span style={{ display: "grid", gap: 2 }}>
+                    <input
+                      inputMode="numeric"
+                      placeholder={r.declared != null ? String(r.declared) : "How many?"}
+                      value={typed}
+                      onChange={(e) =>
+                        setCounts({ ...counts, [r.markCode]: e.target.value })
+                      }
+                      style={{ width: 90 }}
+                      aria-label={`How many packages for window ${r.markCode}`}
+                    />
+                    {showSuggestion && (
+                      <span className="muted" style={{ fontSize: 10.5 }}>
+                        (suggested from the model)
+                      </span>
+                    )}
+                  </span>
                   <button
                     className="button-like active-pill"
                     disabled={!valid || r.totalsDisagree || mint.isPending}

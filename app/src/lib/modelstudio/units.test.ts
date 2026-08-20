@@ -2,7 +2,7 @@
 // editing (see paneGrid.test.ts for splits/presets/spec-import).
 
 import { describe, expect, it } from "vitest";
-import { mirrorUnitConfig, type UnitConfig } from "./units";
+import { constructabilityProblems, mirrorUnitConfig, type UnitConfig } from "./units";
 
 describe("mirrorUnitConfig", () => {
   it("flips every panel's operable direction, left<->right", () => {
@@ -65,5 +65,69 @@ describe("mirrorUnitConfig", () => {
     expect(cfg.panels[0].direction).toBe("left"); // original untouched
     expect(twice.panels[0].direction).toBe("left"); // mirrored back
     expect(once).not.toBe(cfg);
+  });
+});
+
+describe("constructabilityProblems (Studio 100x #13)", () => {
+  it("a flat, in-range config has nothing to say", () => {
+    const cfg: UnitConfig = {
+      kind: "window",
+      heightMm: 1500,
+      panels: [{ widthMm: 900, mechanism: "slider", direction: "left", slideCount: 3 }],
+    };
+    expect(constructabilityProblems(cfg)).toEqual([]);
+  });
+
+  it("flags a corner marked past the last legal split", () => {
+    const cfg: UnitConfig = {
+      kind: "window",
+      heightMm: 1500,
+      panels: [{ widthMm: 900, mechanism: "fixed" }],
+      cornerAfterPanel: 0, // one panel — nothing left to wrap into
+    };
+    expect(constructabilityProblems(cfg)).toHaveLength(1);
+    expect(constructabilityProblems(cfg)[0]).toMatch(/corner/);
+  });
+
+  it("a legal corner (0 <= k <= panels.length - 2) raises nothing", () => {
+    const cfg: UnitConfig = {
+      kind: "window",
+      heightMm: 1500,
+      panels: [
+        { widthMm: 300, mechanism: "fixed" },
+        { widthMm: 900, mechanism: "fixed" },
+      ],
+      cornerAfterPanel: 0,
+    };
+    expect(constructabilityProblems(cfg)).toEqual([]);
+  });
+
+  it("flags a stored slide count outside 1-8, even though slideCountOf would clamp it", () => {
+    const cfg: UnitConfig = {
+      kind: "window",
+      heightMm: 1500,
+      panels: [{ widthMm: 900, mechanism: "slider", direction: "left", slideCount: 12 }],
+    };
+    expect(constructabilityProblems(cfg)).toHaveLength(1);
+    expect(constructabilityProblems(cfg)[0]).toMatch(/slide count/);
+  });
+
+  it("a non-slider panel's slideCount is never judged — ignored off sliders", () => {
+    const cfg: UnitConfig = {
+      kind: "window",
+      heightMm: 1500,
+      panels: [{ widthMm: 900, mechanism: "fixed", slideCount: 99 }],
+    };
+    expect(constructabilityProblems(cfg)).toEqual([]);
+  });
+
+  it("both kinds of problem can fire on the same config", () => {
+    const cfg: UnitConfig = {
+      kind: "window",
+      heightMm: 1500,
+      panels: [{ widthMm: 900, mechanism: "slider", direction: "left", slideCount: 0 }],
+      cornerAfterPanel: 5,
+    };
+    expect(constructabilityProblems(cfg)).toHaveLength(2);
   });
 });

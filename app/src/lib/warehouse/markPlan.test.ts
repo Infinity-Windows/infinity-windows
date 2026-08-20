@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { bindLine, markPlanRow } from "./markPlan";
+import { bindLine, markPlanRow, suggestedPackageCount } from "./markPlan";
 import type { StoragePackage } from "../storage";
+import type { UnitConfig } from "../modelstudio/units";
 
 let seq = 0;
 const pkg = (over: Partial<StoragePackage> & { marks?: string[] }): StoragePackage => {
@@ -35,7 +36,26 @@ describe("the plan row", () => {
       here: 0,
       onTheWay: 0,
       totalsDisagree: false,
+      suggestedCount: null,
     });
+  });
+
+  it("no config resolved for the mark → suggestedCount stays null (today's behavior)", () => {
+    const r = markPlanRow([], "job-1", "16", null);
+    expect(r.suggestedCount).toBeNull();
+  });
+
+  it("a resolved config's suggestion rides along on the row", () => {
+    const cfg: UnitConfig = {
+      kind: "window",
+      heightMm: 1500,
+      panels: [
+        { widthMm: 900, mechanism: "fixed" },
+        { widthMm: 900, mechanism: "slider", direction: "left" },
+      ],
+    };
+    const r = markPlanRow([], "job-1", "16", cfg);
+    expect(r.suggestedCount).toBe(suggestedPackageCount(cfg));
   });
 
   it("declared 4, none arrived: four labeled, four on the way, none here", () => {
@@ -65,6 +85,58 @@ describe("the plan row", () => {
       pkg({ part_index: 2, part_total: 3 }),
     ];
     expect(markPlanRow(rows, "job-1", "16").totalsDisagree).toBe(true);
+  });
+});
+
+describe("suggestedPackageCount (a starting heuristic, not a rule)", () => {
+  it("an all-fixed single panel: frame + 1 glass, no hardware piece", () => {
+    const cfg: UnitConfig = {
+      kind: "window",
+      heightMm: 1500,
+      panels: [{ widthMm: 1800, mechanism: "fixed" }],
+    };
+    expect(suggestedPackageCount(cfg)).toBe(2); // 1 frame + 1 glass
+  });
+
+  it("any operable panel adds one hardware piece for the whole unit", () => {
+    const cfg: UnitConfig = {
+      kind: "window",
+      heightMm: 1500,
+      panels: [
+        { widthMm: 900, mechanism: "fixed" },
+        { widthMm: 900, mechanism: "slider", direction: "left" },
+      ],
+    };
+    // 1 frame + 2 glass + 1 hardware (one panel moves)
+    expect(suggestedPackageCount(cfg)).toBe(4);
+  });
+
+  it("window 16's shape: five panels, one operable — 1 + 5 + 1", () => {
+    const cfg: UnitConfig = {
+      kind: "window",
+      heightMm: 4559,
+      panels: [768, 2248, 2286, 2229, 432].map((widthMm, i) => ({
+        widthMm,
+        mechanism: i === 0 ? ("slider" as const) : ("fixed" as const),
+      })),
+      cornerAfterPanel: 0,
+    };
+    expect(suggestedPackageCount(cfg)).toBe(7);
+  });
+
+  it("a hung or casement panel counts as operable too — not just sliders", () => {
+    const hung: UnitConfig = {
+      kind: "window",
+      heightMm: 1500,
+      panels: [{ widthMm: 900, mechanism: "hung" }],
+    };
+    const casement: UnitConfig = {
+      kind: "window",
+      heightMm: 1500,
+      panels: [{ widthMm: 900, mechanism: "casement", direction: "left" }],
+    };
+    expect(suggestedPackageCount(hung)).toBe(3); // 1 frame + 1 glass + 1 hardware
+    expect(suggestedPackageCount(casement)).toBe(3);
   });
 });
 

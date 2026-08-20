@@ -468,9 +468,10 @@ interface OverlayBadgeLine {
   color: string;
 }
 
-/** Blocked (#3), loose (#19) and the parts line (#4) — one line each, most
- * urgent first. Main leg only (same convention the mark chip already
- * uses): repeating them on the wrap leg would be the same fact twice. */
+/** Blocked (#3), loose (#19), RO-mismatch (#14) and the parts line (#4) —
+ * one line each, most urgent first. Main leg only (same convention the
+ * mark chip already uses): repeating them on the wrap leg would be the
+ * same fact twice. */
 function overlayBadgeLines(overlay: OverlayState, paint: Paint): OverlayBadgeLine[] {
   const lines: OverlayBadgeLine[] = [];
   if (overlay.blockedReason !== undefined) {
@@ -481,6 +482,9 @@ function overlayBadgeLines(overlay: OverlayState, paint: Paint): OverlayBadgeLin
   }
   if (overlay.loose) {
     lines.push({ text: "❓ Loose — no container, no slot", color: paint.warn });
+  }
+  if (overlay.roProblem) {
+    lines.push({ text: `📐 RO mismatch — ${overlay.roProblem}`, color: paint.warn });
   }
   if (overlay.partsLine) {
     lines.push({ text: overlay.partsLine, color: paint.ink });
