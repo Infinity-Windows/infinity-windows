@@ -291,6 +291,29 @@ export function normalizeMarkCode(code: string): string {
   return t;
 }
 
+/** Minimal opening shape mark resolution needs. */
+interface MarkableOpening {
+  id: string;
+  opening_code: string;
+}
+
+/**
+ * A tapped unit's raw mark, resolved to its real opening id — exact-match
+ * only (dialect-normalized, same rule the photo tap-through already used
+ * before this function existed to share it). Pure so tap-to-assign's pick
+ * logic is testable without a live 3D scene: a mark that matches nothing
+ * (blank name, or a seeded unit with no opening yet) resolves to null, the
+ * caller's signal to leave it un-pickable rather than pick a phantom.
+ */
+export function openingIdForMark(
+  openings: readonly MarkableOpening[],
+  mark: string | null,
+): string | null {
+  if (!mark) return null;
+  const norm = normalizeMarkCode(mark);
+  return openings.find((o) => normalizeMarkCode(o.opening_code) === norm)?.id ?? null;
+}
+
 /**
  * The authored model dressed with LIVE state: geometry and specs come from the
  * survey, install status comes from today's database rows so QC and the crew's

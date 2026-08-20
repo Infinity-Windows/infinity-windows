@@ -463,3 +463,51 @@ describe("applyUnitGeometry (shared mounting core)", () => {
     expect(order).toEqual(["applied", "redraw"]);
   });
 });
+
+// A unit whose EVERY panel moves is legal and common — a lone casement or
+// single-hung straight off specToUnitConfig, an "XX" operation string, the
+// owner's middle-pair preset on a two-panel unit. Every pane's glass then
+// rides its mover's own geometry, so the static merge has NO glass list —
+// which crashed three.js's mergeGeometries from #278 (the mover split)
+// until buildUnitGeometry learned to skip empty lists.
+describe("buildUnitGeometry — all panels moving (no static glass)", () => {
+  it("builds a single-slider unit instead of crashing, glass riding its mover", () => {
+    const { geometry, movers } = buildUnitGeometry({
+      kind: "window",
+      heightMm: 1500,
+      panels: [{ widthMm: 1200, mechanism: "slider", direction: "left" }],
+    });
+    // Static geometry is frame-only: one group, pointed at the frame
+    // material — not the two groups a unit with static glass carries.
+    expect(geometry.groups).toHaveLength(1);
+    expect(geometry.groups[0].materialIndex).toBe(0);
+    // The glass didn't vanish — it lives in the mover's own geometry.
+    expect(movers).toHaveLength(1);
+    expect(movers[0].geometry.groups.some((g) => g.materialIndex === 1)).toBe(true);
+  });
+
+  it("every solo moving mechanism a spec import can draft builds cleanly", () => {
+    for (const mechanism of ["slider", "casement", "bifold", "hung"] as const) {
+      const { movers } = buildUnitGeometry({
+        kind: "window",
+        heightMm: 1500,
+        panels: [{ widthMm: 1200, mechanism, direction: "left" }],
+      });
+      expect(movers).toHaveLength(1);
+    }
+  });
+
+  it("an XX pair — both panels sliding apart — builds with two movers", () => {
+    // What applyPanePreset("middle-pair") produces on a two-panel unit.
+    const { geometry, movers } = buildUnitGeometry({
+      kind: "window",
+      heightMm: 1500,
+      panels: [
+        { widthMm: 900, mechanism: "slider", direction: "left" },
+        { widthMm: 900, mechanism: "slider", direction: "right" },
+      ],
+    });
+    expect(movers).toHaveLength(2);
+    expect(geometry.groups).toHaveLength(1);
+  });
+});
