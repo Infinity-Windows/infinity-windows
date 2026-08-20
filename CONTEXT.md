@@ -14,7 +14,7 @@ Infinity Windows installs windows and doors. A project builder models every open
 
 **Panel** — one leaf of a unit. Has a width, a mechanism (fixed, slider, casement, hung, bifold), and for moving mechanisms a direction. The panel is the unit of evidence, not the unit — see Panel-level evidence.
 
-**Tier** — a horizontal row of panels within a unit, at one story. A 9-pane storefront across three floors is one unit with three tiers of three panels. Studio's current model is flat (one `heightMm`, one `panels[]` array) and cannot express this; fixing that is open work. Studio's `rows[]` are pane breaks — glass divisions *within* a tier — not tiers; don't conflate them.
+**Tier** — a horizontal row of panels within a unit, at one story. A 9-pane storefront across three floors is one unit with three tiers of three panels. `UnitConfig.tiers` (Studio 100x #22) is how Studio expresses this: absent or a single entry is the ordinary flat unit, byte-identical to before tiers existed; `unitTiers()` (`app/src/lib/modelstudio/units.ts`) is the one place that reads either shape uniformly, and every tier-aware reader (signature, 3D geometry, the panel-cost formula) goes through it. Studio's `rows[]` are pane breaks — glass divisions *within* a tier — not tiers; don't conflate them.
 
 **Story** — which floor a tier sits on. Ground level is story 1. Story lives on the tier; a single-tier unit (almost every unit) inherits its opening's story.
 

@@ -20,8 +20,8 @@
 // the two multipliers. NO new deps, matching the rest of this directory.
 
 import type { CohortEvidence } from "./cohorts";
-import { panelMixOf, type SignatureV1 } from "./signature";
-import type { UnitConfig } from "../modelstudio/units";
+import { panelMixOf, sumMixes, type SignatureV1 } from "./signature";
+import { unitTiers, type UnitConfig } from "../modelstudio/units";
 
 // ------------------------------------------------------------- the gate
 //
@@ -119,6 +119,16 @@ interface TrainingRow {
  * without a usable signature, a v1 mismatch, a non-positive minutes
  * figure, or an empty mix are not evidence and drop out silently, the
  * same discipline evidenceFromSessions already applies upstream.
+ *
+ * Multi-tier (Studio 100x #22): EVERY tier's panels are evidence, not
+ * just the base — CONTEXT.md's own worked example is a 9-pane storefront
+ * yielding nine panels of evidence across three stories, not three. A
+ * row's `mix` sums every tier via `unitTiers`/`sig.tiers`; its `storyCat`
+ * counts as "base" only when EVERY tier does (storyCategory's own "only a
+ * story CONFIRMED above 1 counts as upper," promoted from one tier to
+ * the whole unit) — one elevated tier means some of this row's panels
+ * really did cost the upper rate, so the row can't join the
+ * pure-baseline slice (stage 2 below) without confounding it.
  */
 function trainingRowsFrom(
   evidence: readonly CohortEvidence[],
@@ -133,18 +143,17 @@ function trainingRowsFrom(
     }
     const sig = e.signature;
     if (!sig || sig.v !== 1) continue; // versions never mix, same as the ladder
-    const tier = sig.tiers[0];
-    if (!tier) continue;
+    if (sig.tiers.length === 0) continue;
     if (!(e.minutes > 0)) continue;
     const config = e.unitId != null ? configsByUnit.get(e.unitId) : undefined;
-    const mix = config ? panelMixOf(config.panels) : tier.mix;
-    if (!mix || Object.keys(mix).length === 0) continue;
-    rows.push({
-      mix,
-      storyCat: storyCategory(tier.story),
-      io: sig.insetOutset,
-      minutes: e.minutes,
-    });
+    const mix = config
+      ? sumMixes(unitTiers(config).map((t) => panelMixOf(t.panels)))
+      : sumMixes(sig.tiers.map((t) => t.mix));
+    if (Object.keys(mix).length === 0) continue;
+    const storyCat: StoryCategory = sig.tiers.some((t) => storyCategory(t.story) === "upper")
+      ? "upper"
+      : "base";
+    rows.push({ mix, storyCat, io: sig.insetOutset, minutes: e.minutes });
   }
   return rows;
 }
@@ -366,16 +375,20 @@ export function fitPanelFormula(
 
 /** The formula itself (CONTEXT.md): setup + the story/inset-outset-scaled
  * panel-cost sum. Null when the mix needs a mechanism the fit never saw
- * — a per-target decline (the caller falls back a rung), not a broken fit. */
+ * — a per-target decline (the caller falls back a rung), not a broken
+ * fit. Takes the ALREADY-CATEGORIZED `storyCat` (not a raw story number)
+ * so a multi-tier caller can hand in the same "any tier upper" verdict
+ * trainingRowsFrom used while fitting — fitting and predicting must never
+ * disagree about what "upper" means for a mixed-story unit. */
 function estimateFromMix(
   mix: Record<string, number>,
-  story: number | null,
+  storyCat: StoryCategory,
   insetOutset: "inset" | "outset" | null,
   fit: PanelFormulaFit,
 ): number | null {
   const panelSum = predictPanelSum(mix, fit.mechanismMinPerPanel);
   if (panelSum == null) return null;
-  const storyMul = storyCategory(story) === "upper" ? fit.storyFactor : 1;
+  const storyMul = storyCat === "upper" ? fit.storyFactor : 1;
   const ioMul = insetOutset === "inset" ? fit.insetFactor : insetOutset === "outset" ? fit.outsetFactor : 1;
   return fit.setupMin + storyMul * ioMul * panelSum;
 }
@@ -384,24 +397,33 @@ function estimateFromMix(
  * #24: the panel formula for a drafted/catalog UnitConfig — no traced
  * opening, so story is honestly unknown, the same simplification
  * liveEstimate.estimateForUnitConfig already makes for every other rung
- * (story stays null until a job traces it). insetOutset comes off the
- * config exactly the way the rest of the ladder reads it.
+ * (story stays null/"base" until a job traces it — true for every tier
+ * of a multi-tier draft too, since none of them have a real opening
+ * yet). insetOutset comes off the config exactly the way the rest of the
+ * ladder reads it. Multi-tier (Studio 100x #22): sums every tier's
+ * panels via `unitTiers`, not just the base.
  */
 export function estimateViaFormula(config: UnitConfig, fit: PanelFormulaFit): number | null {
-  return estimateFromMix(panelMixOf(config.panels), null, config.insetOutset ?? null, fit);
+  const mix = sumMixes(unitTiers(config).map((t) => panelMixOf(t.panels)));
+  return estimateFromMix(mix, "base", config.insetOutset ?? null, fit);
 }
 
 /**
  * #24: the panel formula for a resolved signature — cohorts.ts's own
  * call, with the target's REAL story and inset/outset when a job has
  * traced them (unlike the config-level call above, which never has
- * them).
+ * them). Multi-tier (Studio 100x #22): sums every tier's mix, and counts
+ * as "upper" the moment ANY tier resolves above story 1 — the same rule
+ * trainingRowsFrom applies while fitting.
  */
 export function estimateForSignatureViaFormula(
   signature: SignatureV1,
   fit: PanelFormulaFit,
 ): number | null {
-  const tier = signature.tiers[0];
-  if (!tier) return null;
-  return estimateFromMix(tier.mix, tier.story, signature.insetOutset, fit);
+  if (signature.tiers.length === 0) return null;
+  const mix = sumMixes(signature.tiers.map((t) => t.mix));
+  const storyCat: StoryCategory = signature.tiers.some((t) => storyCategory(t.story) === "upper")
+    ? "upper"
+    : "base";
+  return estimateFromMix(mix, storyCat, signature.insetOutset, fit);
 }

@@ -10,8 +10,10 @@ import { formatApiError } from "../../lib/errors";
 import { useUnitCohortEstimate } from "../../lib/estimate/liveEstimate";
 import { fmtFtIn, fmtInchesFromMm, parseFtIn } from "../../lib/modelstudio/dims";
 import {
+  configFromTiers,
   MECHANISM_LABELS,
   saveStudioUnit,
+  unitTiers,
   updateStudioUnit,
   unitSvg,
   unitWidthMm,
@@ -20,6 +22,7 @@ import {
   type UnitConfig,
   type UnitKind,
   type UnitPanel,
+  type UnitTier,
 } from "../../lib/modelstudio/units";
 
 const MM_TO_CM = 0.1;
@@ -32,6 +35,67 @@ function defaultPanel(kind: UnitKind): UnitPanel {
     widthMm: kind === "door" ? 914 : 762, // 36" / 30"
     mechanism: "fixed",
   };
+}
+
+/**
+ * One TIER's bench state (Studio 100x #22 — "+ Tier above"). Mirrors the
+ * single flat state this wizard always had (panels/heightInput/cornerAfter/
+ * panelInputs/widthInput), one copy per tier, plus `story` and
+ * `originalHeightMm` (the height this tier had when the wizard opened —
+ * null for one added fresh this session, same "no explicit height yet"
+ * meaning tier 0 always had via the `initial` prop).
+ */
+interface TierDraft {
+  panels: UnitPanel[];
+  heightInput: string;
+  originalHeightMm: number | null;
+  cornerAfter: number | null;
+  panelInputs: Record<number, string>;
+  widthInput: string;
+  story: number;
+}
+
+function tierDraftFrom(tier: UnitTier): TierDraft {
+  return {
+    panels: tier.panels.map((p) => ({ ...p })),
+    heightInput: "",
+    originalHeightMm: tier.heightMm,
+    cornerAfter: tier.cornerAfterPanel ?? null,
+    panelInputs: {},
+    widthInput: "",
+    story: tier.story ?? 1,
+  };
+}
+
+function blankTierDraft(kind: UnitKind, story: number): TierDraft {
+  return {
+    panels: [defaultPanel(kind)],
+    heightInput: "",
+    originalHeightMm: null,
+    cornerAfter: null,
+    panelInputs: {},
+    widthInput: "",
+    story,
+  };
+}
+
+/**
+ * A tier's effective height: typed draft wins, else its ORIGINAL authored
+ * height when editing, else the same kind-based default tier 0 always
+ * fell back to — reactive to `kind`, so switching Window/Door still
+ * updates a blank height box live, exactly like before tiers existed.
+ */
+function tierHeightMm(draft: TierDraft, kind: UnitKind): number {
+  const cm = draft.heightInput ? parseFtIn(draft.heightInput) : null;
+  if (cm != null) return cm * 10;
+  if (draft.originalHeightMm != null) return draft.originalHeightMm;
+  return kind === "door" ? 2032 : 1524; // 6'8" / 5'
+}
+
+function cornerAfterPanelOf(draft: TierDraft): number | null {
+  return draft.cornerAfter != null && draft.cornerAfter < draft.panels.length - 1
+    ? draft.cornerAfter
+    : null;
 }
 
 export function UnitBuilder({
@@ -50,17 +114,16 @@ export function UnitBuilder({
   const qc = useQueryClient();
   const [step, setStep] = useState(1);
   const [kind, setKind] = useState<UnitKind>(initial?.config.kind ?? "window");
-  const [panels, setPanels] = useState<UnitPanel[]>(
-    initial ? initial.config.panels.map((p) => ({ ...p })) : [defaultPanel("window")],
+  /** One entry per tier, base (story 1) first — Studio 100x #22. A
+   * single-tier unit (almost every unit) never grows past one entry, so
+   * every step below reads/writes `tiers[activeTier]` and behaves
+   * exactly as the old single-state wizard always did. */
+  const [tiers, setTiers] = useState<TierDraft[]>(() =>
+    initial
+      ? unitTiers(initial.config).map(tierDraftFrom)
+      : [blankTierDraft("window", 1)],
   );
-  const [heightInput, setHeightInput] = useState("");
-  const [widthInput, setWidthInput] = useState("");
-  const [panelInputs, setPanelInputs] = useState<Record<number, string>>({});
-  /** 0-based last panel before the 90° turn, or null for a flat unit —
-   * window 16 wraps its building corner after panel 1 (index 0). */
-  const [cornerAfter, setCornerAfter] = useState<number | null>(
-    initial?.config.cornerAfterPanel ?? null,
-  );
+  const [activeTier, setActiveTier] = useState(0);
   const [name, setName] = useState(initial?.name ?? "");
   /** #23: null default ("not sure") — a SET value is what adds this unit
    * to the inset/outset dimension; absent/null reproduces today's
@@ -77,31 +140,123 @@ export function UnitBuilder({
     initial?.config.frameColor ?? "white",
   );
 
-  const heightMm = useMemo(() => {
-    const cm = heightInput ? parseFtIn(heightInput) : null;
-    if (cm != null) return cm * 10;
-    if (initial) return initial.config.heightMm;
-    return kind === "door" ? 2032 : 1524; // 6'8" / 5'
-  }, [heightInput, kind, initial]);
+  const activeDraft = tiers[activeTier] ?? tiers[0];
+  const panels = activeDraft.panels;
+  const cornerAfter = activeDraft.cornerAfter;
+  const heightInput = activeDraft.heightInput;
+  const widthInput = activeDraft.widthInput;
+  const panelInputs = activeDraft.panelInputs;
+
+  // Tier-scoped setters — same "value or updater" shape useState's own
+  // setter has, so every existing call site below (setPanelCount,
+  // patchPanel, applyTotalWidth…) needs no changes at all, only now
+  // writes into the ACTIVE tier instead of one flat piece of state.
+  const setPanels = (next: UnitPanel[] | ((prev: UnitPanel[]) => UnitPanel[])) => {
+    setTiers((prev) =>
+      prev.map((t, i) =>
+        i === activeTier ? { ...t, panels: typeof next === "function" ? next(t.panels) : next } : t,
+      ),
+    );
+  };
+  const setCornerAfter = (
+    next: number | null | ((prev: number | null) => number | null),
+  ) => {
+    setTiers((prev) =>
+      prev.map((t, i) =>
+        i === activeTier
+          ? {
+              ...t,
+              cornerAfter:
+                typeof next === "function"
+                  ? (next as (p: number | null) => number | null)(t.cornerAfter)
+                  : next,
+            }
+          : t,
+      ),
+    );
+  };
+  const setHeightInput = (v: string) =>
+    setTiers((prev) => prev.map((t, i) => (i === activeTier ? { ...t, heightInput: v } : t)));
+  const setWidthInput = (v: string) =>
+    setTiers((prev) => prev.map((t, i) => (i === activeTier ? { ...t, widthInput: v } : t)));
+  const setPanelInputs = (
+    next: Record<number, string> | ((prev: Record<number, string>) => Record<number, string>),
+  ) => {
+    setTiers((prev) =>
+      prev.map((t, i) =>
+        i === activeTier
+          ? { ...t, panelInputs: typeof next === "function" ? next(t.panelInputs) : next }
+          : t,
+      ),
+    );
+  };
+
+  /** "+ Tier above" (Studio 100x #22) — visible always, most units never
+   * touch it. Appends a fresh tier one floor above the last one and
+   * switches editing to it, jumping straight to the Panels step since
+   * Type doesn't apply per-tier. */
+  const addTierAbove = () => {
+    const story = (tiers[tiers.length - 1]?.story ?? 0) + 1;
+    setTiers((prev) => [...prev, blankTierDraft(kind, story)]);
+    setActiveTier(tiers.length);
+    setStep(2);
+  };
+
+  /** The base tier (index 0) can't be removed — a unit always has at
+   * least one tier. Falls back to editing the tier below the one removed. */
+  const removeTier = (index: number) => {
+    if (index === 0 || tiers.length <= 1) return;
+    setTiers((prev) => prev.filter((_, i) => i !== index));
+    setActiveTier((prev) => (prev === index ? index - 1 : prev > index ? prev - 1 : prev));
+  };
+
+  const heightMm = tierHeightMm(activeDraft, kind);
 
   const weightLb = useMemo(() => {
     const n = Number(weightInput);
     return weightInput.trim() !== "" && Number.isFinite(n) && n > 0 ? n : null;
   }, [weightInput]);
 
+  /** The WHOLE unit, every tier — what gets saved/inserted and what the
+   * live cohort estimate below is computed from. */
   const config: UnitConfig = useMemo(
+    () =>
+      configFromTiers(
+        { kind, insetOutset, weightLb, frameColor },
+        tiers.map((t) => ({
+          panels: t.panels,
+          heightMm: tierHeightMm(t, kind),
+          cornerAfterPanel: cornerAfterPanelOf(t),
+          story: t.story,
+        })),
+      ),
+    [kind, tiers, insetOutset, weightLb, frameColor],
+  );
+
+  /** Just the tier being edited right now, as a plain flat UnitConfig —
+   * what the live elevation drawing and the Dimensions step's width math
+   * both read, so they always show what's actually on screen instead of
+   * silently describing the base tier while a different one is active. */
+  const previewConfig: UnitConfig = useMemo(
     () => ({
       kind,
       heightMm,
       panels,
-      cornerAfterPanel:
-        cornerAfter != null && cornerAfter < panels.length - 1 ? cornerAfter : null,
+      cornerAfterPanel: cornerAfterPanelOf(activeDraft),
       insetOutset,
       weightLb,
       frameColor,
     }),
-    [kind, heightMm, panels, cornerAfter, insetOutset, weightLb, frameColor],
+    [kind, heightMm, panels, activeDraft, insetOutset, weightLb, frameColor],
   );
+
+  const totalPanels = tiers.reduce((sum, t) => sum + t.panels.length, 0);
+  /** Tier 0's own height — NEVER the active tier's, and never the total
+   * stacked height. Sill/height placement in the 3D scene anchors to the
+   * base tier alone (unitGeometry.ts's buildTier); onInsert below must
+   * match that, whichever tier happens to be active while the operator
+   * hits Insert. */
+  const baseHeightMm = tierHeightMm(tiers[0], kind);
 
   // #21: the same evidence + fallback ladder the foreman's estimating
   // screen uses, for whatever's on the bench right now.
@@ -120,12 +275,13 @@ export function UnitBuilder({
     setPanels((prev) => prev.map((p, j) => (j === i ? { ...p, ...patch } : p)));
   };
 
-  /** Total width typed → split across panels proportionally. */
+  /** Total width typed → split across panels proportionally, for the
+   * ACTIVE tier — previewConfig, never the whole multi-tier `config`. */
   const applyTotalWidth = () => {
     const cm = widthInput ? parseFtIn(widthInput) : null;
     if (cm == null) return;
     const targetMm = cm * 10;
-    const cur = unitWidthMm(config) || 1;
+    const cur = unitWidthMm(previewConfig) || 1;
     setPanels((prev) => prev.map((p) => ({ ...p, widthMm: (p.widthMm / cur) * targetMm })));
   };
 
@@ -165,15 +321,47 @@ export function UnitBuilder({
           </span>
         </div>
 
-        {/* Live elevation drawing — updates through every step. */}
+        {/* "+ Tier above" (Studio 100x #22) — visible on every step, not
+            its own step: most units are one tier and never touch this row
+            beyond glancing past it. Editing stays scoped to whichever
+            tier chip is active; the flow above is otherwise untouched. */}
+        <div className="row-gap" style={{ flexWrap: "wrap", margin: "6px 0" }}>
+          {tiers.map((t, i) => (
+            <span key={i} className="row-gap" style={{ gap: 2 }}>
+              <button
+                className={i === activeTier ? "button-like active-pill studio-mini" : "button-like studio-mini"}
+                onClick={() => setActiveTier(i)}
+              >
+                Tier {i + 1} · Story {t.story}
+              </button>
+              {i > 0 && (
+                <button
+                  className="button-like studio-mini"
+                  aria-label={`Remove tier ${i + 1}`}
+                  title={`Remove tier ${i + 1}`}
+                  onClick={() => removeTier(i)}
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          ))}
+          <button className="button-like studio-mini" onClick={addTierAbove}>
+            + Tier above
+          </button>
+        </div>
+
+        {/* Live elevation drawing — the tier being edited right now, not
+            necessarily the whole (possibly multi-tier) unit. */}
         <div
           className="studio-unit-preview"
           // The SVG is generated locally from typed config — never user HTML.
-          dangerouslySetInnerHTML={{ __html: unitSvg(config, 280, 150) }}
+          dangerouslySetInnerHTML={{ __html: unitSvg(previewConfig, 280, 150) }}
         />
         <p className="muted" style={{ margin: "2px 0 8px", fontSize: 11.5, textAlign: "center" }}>
-          {fmtFtIn(unitWidthMm(config) * MM_TO_CM)} wide × {fmtFtIn(heightMm * MM_TO_CM)} tall ·{" "}
+          {fmtFtIn(unitWidthMm(previewConfig) * MM_TO_CM)} wide × {fmtFtIn(heightMm * MM_TO_CM)} tall ·{" "}
           {panels.length} panel{panels.length === 1 ? "" : "s"}
+          {tiers.length > 1 ? ` · tier ${activeTier + 1} of ${tiers.length}` : ""}
         </p>
         {/* #21: live cohort line — same evidence + ladder as the
             estimating screen, label always attached, "no estimate yet"
@@ -198,7 +386,16 @@ export function UnitBuilder({
                 style={{ flex: 1 }}
                 onClick={() => {
                   setKind(k);
-                  setPanels((prev) => prev.map((p) => ({ ...p, mechanism: "fixed" as Mechanism })));
+                  // Kind is unit-wide — a door-only mechanism (bifold) or
+                  // window-only one (hung) left on some OTHER tier would
+                  // be invalid the moment kind flips, so every tier
+                  // resets, not just the active one.
+                  setTiers((prev) =>
+                    prev.map((t) => ({
+                      ...t,
+                      panels: t.panels.map((p) => ({ ...p, mechanism: "fixed" as Mechanism })),
+                    })),
+                  );
                 }}
               >
                 {k === "window" ? "Window" : "Door"}
@@ -311,7 +508,7 @@ export function UnitBuilder({
             <div className="row-gap">
               <input
                 style={{ flex: 1, minWidth: 0 }}
-                placeholder={fmtFtIn(unitWidthMm(config) * MM_TO_CM)}
+                placeholder={fmtFtIn(unitWidthMm(previewConfig) * MM_TO_CM)}
                 value={widthInput}
                 onChange={(e) => setWidthInput(e.target.value)}
                 onBlur={applyTotalWidth}
@@ -353,9 +550,9 @@ export function UnitBuilder({
                   ))}
                 </div>
                 <p className="muted" style={{ fontSize: 11, margin: "6px 0 0" }}>
-                  Total {fmtInchesFromMm(unitWidthMm(config))} ·{" "}
-                  {fmtFtIn(unitWidthMm(config) * MM_TO_CM)} — the total-width
-                  box above rescales all panels together.
+                  Total {fmtInchesFromMm(unitWidthMm(previewConfig))} ·{" "}
+                  {fmtFtIn(unitWidthMm(previewConfig) * MM_TO_CM)} — the
+                  total-width box above rescales all panels together.
                 </p>
               </>
             )}
@@ -366,7 +563,7 @@ export function UnitBuilder({
           <div>
             <label className="field-label">Name (for the catalog)</label>
             <input
-              placeholder={`${panels.length}-panel ${kind}`}
+              placeholder={`${totalPanels}-panel ${kind}`}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -442,9 +639,11 @@ export function UnitBuilder({
                 onClick={() => {
                   onInsert(
                     config,
-                    name.trim() || `${panels.length}-panel ${kind}`,
+                    name.trim() || `${totalPanels}-panel ${kind}`,
                     unitWidthMm(config) * MM_TO_CM,
-                    heightMm * MM_TO_CM,
+                    // Base tier's height, not the active tier's and not
+                    // the total stacked height — see baseHeightMm above.
+                    baseHeightMm * MM_TO_CM,
                   );
                   onClose();
                 }}

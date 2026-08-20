@@ -13,7 +13,7 @@ import {
   manualEstimate,
   type CohortEvidence,
 } from "./cohorts";
-import type { UnitConfig } from "../modelstudio/units";
+import { configFromTiers, type UnitConfig } from "../modelstudio/units";
 
 const fixedWindow = (panels: number): UnitConfig => ({
   kind: "window",
@@ -171,6 +171,47 @@ describe("describeSignature", () => {
     expect(describeSignature(signature)).toBe(
       "window · 2 panels (1 fixed + 1 sliderx2) · corner · story 2 · outset",
     );
+  });
+
+  // Studio 100x #22: the mix and panel count must fold EVERY tier, and
+  // the story bit becomes a range once the tiers span more than one.
+  it("folds every tier's mix and shows a story RANGE for a multi-tier unit", () => {
+    const { signature } = computeSignature(
+      configFromTiers(
+        { kind: "window" },
+        [
+          { panels: [{ widthMm: 900, mechanism: "fixed" }], heightMm: 1500, cornerAfterPanel: null, story: 1 },
+          {
+            panels: [{ widthMm: 900, mechanism: "slider", direction: "left" }],
+            heightMm: 1200,
+            cornerAfterPanel: null,
+            story: 2,
+          },
+          {
+            panels: [{ widthMm: 900, mechanism: "fixed" }],
+            heightMm: 1000,
+            cornerAfterPanel: null,
+            story: 3,
+          },
+        ],
+      ),
+      { story: 1, insetOutset: null },
+    );
+    expect(describeSignature(signature)).toBe("window · 3 panels (2 fixed + 1 slider) · stories 1-3");
+  });
+
+  it("a multi-tier unit whose tiers all resolve to the SAME real story shows a single story, not a range", () => {
+    const { signature } = computeSignature(
+      configFromTiers(
+        { kind: "window" },
+        [
+          { panels: [{ widthMm: 900, mechanism: "fixed" }], heightMm: 1200, cornerAfterPanel: null, story: 1 },
+          { panels: [{ widthMm: 900, mechanism: "hung" }], heightMm: 1200, cornerAfterPanel: null, story: 1 },
+        ],
+      ),
+      { story: 4, insetOutset: null },
+    );
+    expect(describeSignature(signature)).toBe("window · 2 panels (1 fixed + 1 hung) · story 4");
   });
 });
 

@@ -20,7 +20,7 @@ import {
   type PanelFormulaFit,
 } from "./panelFormula";
 import type { CohortEvidence } from "./cohorts";
-import type { UnitConfig } from "../modelstudio/units";
+import { configFromTiers, type UnitConfig } from "../modelstudio/units";
 
 // ------------------------------------------------------------- fixtures
 
@@ -189,6 +189,210 @@ describe("fitPanelFormula — configsByUnit", () => {
     expect(fit!.setupMin).toBeCloseTo(TRUTH.setupMin, 4);
     expect(fit!.mechanismMinPerPanel.slider).toBeCloseTo(TRUTH.mech.slider, 4);
     expect(fit!.mechanismMinPerPanel.casement).toBeCloseTo(TRUTH.mech.casement, 4);
+  });
+});
+
+// ------------------------------------------------- multi-tier (Studio 100x #22)
+//
+// SignatureV1.tiers holds one entry per tier now — trainingRowsFrom and
+// the two estimate functions must fold EVERY tier's panels, not just the
+// base (CONTEXT.md: a 9-pane storefront across three floors is nine
+// panels of evidence, not three).
+
+describe("fitPanelFormula — multi-tier training rows (Studio 100x #22)", () => {
+  /** The same panels unitConfig(mix) would build, split across TWO tiers
+   * at the SAME authored story (deliberately not "upper") — isolates the
+   * "does the per-panel walk see every tier" question from the separate
+   * "any tier upper" story-categorization rule below. */
+  function twoTierUnitConfig(tier1: Mix, tier2: Mix): UnitConfig {
+    return configFromTiers(
+      { kind: "window" },
+      [
+        { panels: unitConfig(tier1).panels, heightMm: 1500, cornerAfterPanel: null, story: 1 },
+        { panels: unitConfig(tier2).panels, heightMm: 1200, cornerAfterPanel: null, story: 1 },
+      ],
+    );
+  }
+
+  function mixSum(a: Mix, b: Mix): Mix {
+    return {
+      fixed: (a.fixed ?? 0) + (b.fixed ?? 0),
+      slider: (a.slider ?? 0) + (b.slider ?? 0),
+      casement: (a.casement ?? 0) + (b.casement ?? 0),
+    };
+  }
+
+  it("recovers exact setup + mechanism costs when the BASELINE rows are themselves multi-tier", () => {
+    idCounter = 0;
+    // Every "baseline" unit here is two tiers at story 1 — if the walk
+    // only ever saw tier 0, each row's mix would be missing tier 2's
+    // panels entirely and could not reproduce TRUTH from `minutes`, which
+    // was computed off the FULL combined mix.
+    const splitBaseline: CohortEvidence[] = BASELINE_MIXES.map((tier1, i) => {
+      const tier2 = MIX_TEMPLATES[i % MIX_TEMPLATES.length];
+      const combined = mixSum(tier1, tier2);
+      const { signature, sigKey } = computeSignature(twoTierUnitConfig(tier1, tier2), {
+        story: 1,
+        insetOutset: null,
+      });
+      return { sigKey, signature, minutes: trueMinutes(combined, 1, null), unitId: `mt${i}` };
+    });
+    const pool = [
+      ...splitBaseline, // 16, multi-tier
+      ...UPPER_MIXES.map((m) => evidenceRow(m, 2, null)), // 16, single-tier
+      ...INSET_MIXES.map((m) => evidenceRow(m, 1, "inset")), // 16
+      ...OUTSET_MIXES.map((m) => evidenceRow(m, 1, "outset")), // 16
+    ];
+    expect(pool.length).toBe(64);
+
+    const fit = fitPanelFormula(pool);
+    expect(fit).not.toBeNull();
+    expect(fit!.fittedFrom).toBe(64);
+    expect(fit!.setupMin).toBeCloseTo(TRUTH.setupMin, 4);
+    expect(fit!.mechanismMinPerPanel.fixed).toBeCloseTo(TRUTH.mech.fixed, 4);
+    expect(fit!.mechanismMinPerPanel.slider).toBeCloseTo(TRUTH.mech.slider, 4);
+    expect(fit!.mechanismMinPerPanel.casement).toBeCloseTo(TRUTH.mech.casement, 4);
+  });
+
+  it("a resolved config's tiers win over a stale stored signature — the configsByUnit path is tier-aware too", () => {
+    idCounter = 0;
+    const configsByUnit = new Map<string, UnitConfig>();
+    const pool: CohortEvidence[] = [];
+    const addRow = (tier1: Mix, tier2: Mix) => {
+      const combined = mixSum(tier1, tier2);
+      // Stored signature deliberately says "1 fixed panel" only, as if
+      // stale — same trick the single-tier configsByUnit test above
+      // uses. Only reading the RESOLVED config's tiers can recover truth.
+      const stale = computeSignature(unitConfig({ fixed: 1 }), { story: 1, insetOutset: null });
+      const unitId = `sc${pool.length}`;
+      configsByUnit.set(unitId, twoTierUnitConfig(tier1, tier2));
+      pool.push({
+        sigKey: stale.sigKey,
+        signature: stale.signature,
+        minutes: trueMinutes(combined, 1, null),
+        unitId,
+      });
+    };
+    BASELINE_MIXES.forEach((tier1, i) => addRow(tier1, MIX_TEMPLATES[i % MIX_TEMPLATES.length]));
+    UPPER_MIXES.forEach((m) => addRow(m, {}));
+    INSET_MIXES.forEach((m) => pool.push(evidenceRow(m, 1, "inset")));
+    OUTSET_MIXES.forEach((m) => pool.push(evidenceRow(m, 1, "outset")));
+
+    // Without configsByUnit every row's mix reads as the stale "1 fixed
+    // panel" — the ≥3-mechanism gate fails outright, same regression
+    // guard the single-tier configsByUnit test already proves.
+    expect(fitPanelFormula(pool)).toBeNull();
+
+    const fit = fitPanelFormula(pool, configsByUnit);
+    expect(fit).not.toBeNull();
+    expect(fit!.setupMin).toBeCloseTo(TRUTH.setupMin, 4);
+    expect(fit!.mechanismMinPerPanel.fixed).toBeCloseTo(TRUTH.mech.fixed, 4);
+  });
+
+  it("a row counts as 'upper' the moment ANY tier does, keeping it out of the pure-baseline slice", () => {
+    idCounter = 0;
+    // Tier 1 at story 1 (base), tier 2 authored one floor up (offset +1
+    // -> real story 2, "upper"). Minutes are TRUTHFUL (TRUTH.storyFactor
+    // applied to the combined mix) — an arbitrary constant here would
+    // imply an absurd story multiplier once these rows reach the
+    // split-fitting stage and trip the sanity-bound decline, which would
+    // test THIS fixture's realism, not the tier-walking behavior.
+    const upperMultiTier: CohortEvidence[] = BASELINE_MIXES.map((tier1, i) => {
+      const tier2 = MIX_TEMPLATES[i % MIX_TEMPLATES.length];
+      const cfg = configFromTiers(
+        { kind: "window" },
+        [
+          { panels: unitConfig(tier1).panels, heightMm: 1500, cornerAfterPanel: null, story: 1 },
+          { panels: unitConfig(tier2).panels, heightMm: 1200, cornerAfterPanel: null, story: 2 },
+        ],
+      );
+      const { signature, sigKey } = computeSignature(cfg, { story: 1, insetOutset: null });
+      expect(signature.tiers.map((t) => t.story)).toEqual([1, 2]); // sanity: really is upper
+      return { sigKey, signature, minutes: trueMinutes(mixSum(tier1, tier2), 2, null), unitId: `um${i}` };
+    });
+    const pool = [
+      ...BASELINE_MIXES.map((m) => evidenceRow(m, 1, null)), // 16, genuinely pure baseline
+      ...upperMultiTier, // 16, multi-tier "upper"
+      ...INSET_MIXES.map((m) => evidenceRow(m, 1, "inset")), // 16
+      ...OUTSET_MIXES.map((m) => evidenceRow(m, 1, "outset")), // 16
+    ];
+    expect(pool.length).toBe(64);
+
+    const fit = fitPanelFormula(pool);
+    expect(fit).not.toBeNull();
+    // The multi-tier "upper" rows count toward fittedFrom (they're still
+    // usable evidence) but never entered the baseline regression, so the
+    // pure single-tier baseline recovers TRUTH exactly, unpolluted by
+    // arbitrary (9999-minute) rows that could otherwise wreck it.
+    expect(fit!.fittedFrom).toBe(64);
+    expect(fit!.setupMin).toBeCloseTo(TRUTH.setupMin, 4);
+    expect(fit!.mechanismMinPerPanel.fixed).toBeCloseTo(TRUTH.mech.fixed, 4);
+  });
+});
+
+describe("estimateViaFormula / estimateForSignatureViaFormula — multi-tier (Studio 100x #22)", () => {
+  const fit: PanelFormulaFit = {
+    setupMin: 10,
+    mechanismMinPerPanel: { fixed: 5, slider: 12 },
+    storyFactor: 1.4,
+    insetFactor: 1.2,
+    outsetFactor: 0.8,
+    fittedFrom: 40,
+  };
+
+  function twoTierConfig(): UnitConfig {
+    return configFromTiers(
+      { kind: "window" },
+      [
+        { panels: [{ widthMm: 900, mechanism: "fixed" }], heightMm: 1500, cornerAfterPanel: null, story: 1 },
+        {
+          panels: [
+            { widthMm: 900, mechanism: "slider", direction: "left" },
+            { widthMm: 900, mechanism: "fixed" },
+          ],
+          heightMm: 1200,
+          cornerAfterPanel: null,
+          story: 2,
+        },
+      ],
+    );
+  }
+
+  it("estimateViaFormula sums panel cost across every tier — a drafted unit never applies storyFactor regardless of tier count", () => {
+    const config = twoTierConfig();
+    // tier1: 1 fixed (5). tier2: 1 slider (12) + 1 fixed (5). Sum = 22.
+    expect(estimateViaFormula(config, fit)).toBeCloseTo(10 + 5 + 12 + 5, 6); // 32
+  });
+
+  it("estimateForSignatureViaFormula sums every tier's mix and applies storyFactor once ANY tier resolves above story 1", () => {
+    const config = twoTierConfig();
+    const { signature } = computeSignature(config, { story: 1, insetOutset: null });
+    // Base story 1 -> tier 1 resolves to story 1, tier 2 (authored +1
+    // offset) resolves to story 2: the row is "upper."
+    expect(signature.tiers.map((t) => t.story)).toEqual([1, 2]);
+    const totalPanelCost = 5 + 12 + 5; // tier1 fixed + tier2 slider + tier2 fixed
+    expect(estimateForSignatureViaFormula(signature, fit)).toBeCloseTo(10 + 1.4 * totalPanelCost, 6);
+  });
+
+  it("an untraced multi-tier unit (story: null) never applies storyFactor — null beats tier count", () => {
+    const config = twoTierConfig();
+    const { signature } = computeSignature(config, { story: null, insetOutset: null });
+    expect(signature.tiers.map((t) => t.story)).toEqual([null, null]);
+    const totalPanelCost = 5 + 12 + 5;
+    expect(estimateForSignatureViaFormula(signature, fit)).toBeCloseTo(10 + totalPanelCost, 6); // ×1, not ×1.4
+  });
+
+  it("a multi-tier unit with every tier at story 1 (none elevated) never applies storyFactor", () => {
+    const config = configFromTiers(
+      { kind: "window" },
+      [
+        { panels: [{ widthMm: 900, mechanism: "fixed" }], heightMm: 1200, cornerAfterPanel: null, story: 1 },
+        { panels: [{ widthMm: 900, mechanism: "fixed" }], heightMm: 1200, cornerAfterPanel: null, story: 1 },
+      ],
+    );
+    const { signature } = computeSignature(config, { story: 1, insetOutset: null });
+    expect(signature.tiers.map((t) => t.story)).toEqual([1, 1]);
+    expect(estimateForSignatureViaFormula(signature, fit)).toBeCloseTo(10 + 5 + 5, 6); // ×1
   });
 });
 

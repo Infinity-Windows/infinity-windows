@@ -13,7 +13,7 @@
 // swaps the source without touching this ladder.
 
 import { supabase } from "../supabase";
-import type { SignatureV1 } from "./signature";
+import { sumMixes, type SignatureTierV1, type SignatureV1 } from "./signature";
 import { estimateForSignatureViaFormula, fitPanelFormula, type PanelFormulaFit } from "./panelFormula";
 
 export const MIN_COHORT_N = 5;
@@ -264,17 +264,29 @@ export function combineEvidence(
   return [...sessions, ...legacy.filter((e) => !e.unitId || !covered.has(e.unitId))];
 }
 
-/** Short human line for a signature — the estimating screen's row label. */
+/** "story 2" for one tier; "stories 1-3" across several — tiers are
+ * already in ascending story order (computeSignature). A single tier
+ * reproduces the exact pre-#22 label, byte for byte. */
+function storyLabel(tiers: readonly SignatureTierV1[]): string {
+  const first = tiers[0]?.story;
+  if (first == null) return "story ?"; // untraced propagates to every tier — see computeSignature
+  const last = tiers[tiers.length - 1]?.story;
+  return last != null && last !== first ? `stories ${first}-${last}` : `story ${first}`;
+}
+
+/** Short human line for a signature — the estimating screen's row label.
+ * Multi-tier (Studio 100x #22): the mix folds every tier's panels
+ * together (sumMixes) so it always matches `panelCount`'s own total, and
+ * the story bit becomes a range across the tiers' own ascending order. */
 export function describeSignature(sig: SignatureV1): string {
-  const tier = sig.tiers[0];
-  const mix = Object.entries(tier?.mix ?? {})
+  const mix = Object.entries(sumMixes(sig.tiers.map((t) => t.mix)))
     .map(([k, n]) => `${n} ${k}`)
     .join(" + ");
   const bits = [
     sig.kind,
     `${sig.panelCount} panel${sig.panelCount === 1 ? "" : "s"} (${mix})`,
     sig.corner === "corner" ? "corner" : null,
-    tier?.story != null ? `story ${tier.story}` : "story ?",
+    storyLabel(sig.tiers),
     sig.insetOutset ?? null,
   ].filter(Boolean);
   return bits.join(" · ");
