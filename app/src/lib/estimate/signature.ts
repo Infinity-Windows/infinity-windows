@@ -7,7 +7,7 @@
 // (The sibling file lib/estimate.ts is the older job-estimating
 // heuristics; this directory is the per-unit cohort model.)
 
-import { cornerLegs, slideCountOf, type UnitConfig } from "../modelstudio/units";
+import { cornerLegs, slideCountOf, type UnitConfig, type UnitPanel } from "../modelstudio/units";
 
 export interface SignatureTierV1 {
   /** Story the tier sits on; null when the job is untraced — null is its
@@ -66,6 +66,32 @@ export function canonicalJson(value: unknown): string {
 }
 
 /**
+ * The signature's own mechanism category for one panel: the mechanism,
+ * or `mechanismxN` for a multi-track slider (N ≥ 2, CONTEXT.md's "slide
+ * count"). Exported so panelFormula.ts's per-mechanism costs are always
+ * exactly the signature's own mix keys — one definition of "what
+ * mechanism category is this panel," never a second one that could
+ * drift from this one.
+ */
+export function panelMechanismKey(p: UnitPanel): string {
+  const count = slideCountOf(p);
+  return count > 1 ? `${p.mechanism}x${count}` : p.mechanism;
+}
+
+/** Unordered panel tally by mechanism category — the same shape as a
+ * SignatureTierV1's `mix`, built off the same key function
+ * computeSignature uses below, so the two can never disagree about what
+ * counts as a match. */
+export function panelMixOf(panels: readonly UnitPanel[]): Record<string, number> {
+  const mix: Record<string, number> = {};
+  for (const p of panels) {
+    const key = panelMechanismKey(p);
+    mix[key] = (mix[key] ?? 0) + 1;
+  }
+  return mix;
+}
+
+/**
  * PURE: a unit's signature from its UnitConfig-of-record plus the two
  * unit facts (story, inset/outset). Same widths, either corner side,
  * XO or OX — one cohort.
@@ -74,12 +100,9 @@ export function computeSignature(
   config: UnitConfig,
   facts: UnitFacts,
 ): { signature: SignatureV1; sigKey: string } {
-  const mix: Record<string, number> = {};
+  const mix = panelMixOf(config.panels);
   let movingCount = 0;
   for (const p of config.panels) {
-    const count = slideCountOf(p);
-    const key = count > 1 ? `${p.mechanism}x${count}` : p.mechanism;
-    mix[key] = (mix[key] ?? 0) + 1;
     if (p.mechanism !== "fixed") movingCount += 1;
   }
 

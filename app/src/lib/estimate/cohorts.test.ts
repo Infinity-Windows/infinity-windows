@@ -194,3 +194,146 @@ describe("estimateJobUnits (the foreman's job view)", () => {
     expect(job.rows[2].described).toBeNull();
   });
 });
+
+// Studio 100x #24 — the panel formula as the ladder's new TOP rung.
+// panelFormula.test.ts owns the fit's own math (exact recovery, gates,
+// degenerate declines, multiplier fallbacks); this block only proves the
+// LADDER wiring: the rung slots in above "exact", falls through cleanly
+// per-target when the fit can't price a mechanism, and — the explicit
+// regression guard the task asked for — every rung below is byte-for-byte
+// unchanged whenever the formula gate is closed, exactly as it was before
+// this rung existed.
+describe("estimateForSignature — the formula rung (Studio 100x #24)", () => {
+  type Mix = { fixed?: number; slider?: number; casement?: number };
+  const mixedWindow = (mix: Mix): UnitConfig => ({
+    kind: "window",
+    heightMm: 1500,
+    panels: [
+      ...Array.from({ length: mix.fixed ?? 0 }, () => ({ widthMm: 900, mechanism: "fixed" as const })),
+      ...Array.from({ length: mix.slider ?? 0 }, () => ({
+        widthMm: 900,
+        mechanism: "slider" as const,
+        direction: "left" as const,
+      })),
+      ...Array.from({ length: mix.casement ?? 0 }, () => ({
+        widthMm: 900,
+        mechanism: "casement" as const,
+        direction: "left" as const,
+      })),
+    ],
+  });
+
+  /** 32 units over 3 mechanisms — clears the formula's own gate
+   * (FORMULA_MIN_MECHANISMS / FORMULA_MIN_UNITS, panelFormula.ts).
+   * Minutes are a clean `10 + 8 × panelCount` — this suite only checks
+   * WHICH rung answers, never the fitted number's precision. */
+  function formulaPool(): CohortEvidence[] {
+    const baseline: Mix[] = [
+      { fixed: 3 },
+      { slider: 2 },
+      { casement: 1 },
+      { fixed: 1, slider: 1 },
+      { fixed: 1, casement: 1 },
+      { slider: 1, casement: 1 },
+      { fixed: 2, slider: 1, casement: 1 },
+      { fixed: 4 },
+      { slider: 3 },
+      { casement: 2 },
+      { fixed: 5 },
+      { fixed: 1, slider: 2 },
+      { fixed: 2, casement: 2 },
+      { fixed: 1, slider: 1, casement: 1 },
+    ];
+    const upper: Mix[] = [
+      { fixed: 3 },
+      { slider: 2 },
+      { casement: 1 },
+      { fixed: 1, slider: 1 },
+      { fixed: 2, casement: 1 },
+      { casement: 3 },
+    ];
+    const insetOutset: Mix[] = [
+      { fixed: 3 },
+      { slider: 2 },
+      { casement: 1 },
+      { fixed: 1, slider: 1 },
+      { fixed: 2, casement: 1 },
+      { fixed: 1, casement: 2 },
+    ];
+    let id = 0;
+    const row = (mix: Mix, story: number | null, io: "inset" | "outset" | null): CohortEvidence => {
+      const { signature, sigKey } = computeSignature(mixedWindow(mix), { story, insetOutset: io });
+      const panelCount = (mix.fixed ?? 0) + (mix.slider ?? 0) + (mix.casement ?? 0);
+      return { sigKey, signature, minutes: 10 + panelCount * 8, unitId: `f${id++}` };
+    };
+    return [
+      ...baseline.map((m) => row(m, 1, null)),
+      ...upper.map((m) => row(m, 2, null)),
+      ...insetOutset.map((m) => row(m, 1, "inset")),
+      ...insetOutset.map((m) => row(m, 1, "outset")),
+    ];
+  }
+
+  it("answers with the formula rung once its gate opens, honestly labelled", () => {
+    const pool = formulaPool();
+    expect(pool.length).toBe(32);
+    const t = computeSignature(mixedWindow({ fixed: 2, slider: 1 }), { story: 1, insetOutset: null });
+    const est = estimateForSignature(t, pool);
+    expect(est.rung).toBe("formula");
+    expect(est.n).toBe(32);
+    expect(est.label).toBe("formula fit from 32 units");
+    expect(est.minutes).not.toBeNull();
+  });
+
+  it("takes priority over an exact-signature match — the new TOP rung", () => {
+    const t = computeSignature(mixedWindow({ fixed: 3 }), { story: 1, insetOutset: null });
+    const pool = [
+      ...formulaPool(),
+      // Four MORE units at this exact signature, minutes consistent
+      // with formulaPool()'s own generator — "exact" would clear its
+      // own n≥5 (1 already in formulaPool's baseline + these 4) if the
+      // formula rung didn't outrank it.
+      ...[0, 1, 2, 3].map((i) => ({
+        sigKey: t.sigKey,
+        signature: t.signature,
+        minutes: 10 + 8 * 3,
+        unitId: `exact${i}`,
+      })),
+    ];
+    expect(estimateForSignature(t, pool).rung).toBe("formula");
+  });
+
+  it("falls through to the existing ladder per-target when the mix needs a mechanism the fit never saw", () => {
+    const pool = formulaPool(); // fixed / slider / casement only
+    // outset (not the null baseline) so these rows never enter the
+    // formula's own mechanism-cost fit — bifold genuinely stays unseen.
+    const bifoldTarget = computeSignature(
+      { kind: "window", heightMm: 1500, panels: [{ widthMm: 900, mechanism: "bifold", direction: "left" }] },
+      { story: 1, insetOutset: "outset" },
+    );
+    const bifoldEvidence = [30, 32, 34, 36, 38].map((m, i) => ({
+      sigKey: bifoldTarget.sigKey,
+      signature: bifoldTarget.signature,
+      minutes: m,
+      unitId: `bifold${i}`,
+    }));
+    const est = estimateForSignature(bifoldTarget, [...pool, ...bifoldEvidence]);
+    expect(est.rung).toBe("exact");
+    expect(est.n).toBe(5);
+    expect(est.minutes).toBe(34); // median of 30,32,34,36,38
+  });
+
+  it("REGRESSION PIN: every rung below is byte-for-byte unchanged when the formula gate is closed", () => {
+    // Identical to this file's very first test — n=5 is nowhere near
+    // the formula's own gate (FORMULA_MIN_UNITS=30), so it stays
+    // silently absent and the ladder must resolve exactly as it always
+    // has, down to the label string.
+    const pool = [30, 35, 40, 45, 50].map((m) => evidence(fixedWindow(3), m));
+    expect(estimateForSignature(target, pool)).toEqual({
+      rung: "exact",
+      n: 5,
+      minutes: 40,
+      label: "this exact unit · n=5",
+    });
+  });
+});

@@ -1,9 +1,11 @@
 // The FALLBACK LADDER (CONTEXT.md): when a cohort is thin, fall back a
-// rung — exact signature → same kind + panel count → same kind → global.
-// A rung shows at n ≥ 5; the rung and its sample count are ALWAYS part of
-// the answer ("same kind · n=23" — the label is the real safeguard, not
-// the threshold). Below the global rung: "no estimate yet", and a
-// clearly-labelled manual guess is the only number allowed.
+// rung — panel formula → exact signature → same kind + panel count →
+// same kind → global. A rung shows at n ≥ 5 (the formula rung has its
+// own, higher bar — see panelFormula.ts); the rung and its sample count
+// are ALWAYS part of the answer ("same kind · n=23" — the label is the
+// real safeguard, not the threshold). Below the global rung: "no
+// estimate yet", and a clearly-labelled manual guess is the only number
+// allowed.
 //
 // Foreman+ display only (standing decision: installer-vs-average is
 // never visible to installers). Evidence flows in behind EvidenceSource:
@@ -12,6 +14,7 @@
 
 import { supabase } from "../supabase";
 import type { SignatureV1 } from "./signature";
+import { estimateForSignatureViaFormula, fitPanelFormula, type PanelFormulaFit } from "./panelFormula";
 
 export const MIN_COHORT_N = 5;
 
@@ -24,7 +27,14 @@ export interface CohortEvidence {
   unitId?: string;
 }
 
-export type LadderRung = "exact" | "kind+panels" | "kind" | "global" | "none" | "manual";
+export type LadderRung =
+  | "formula"
+  | "exact"
+  | "kind+panels"
+  | "kind"
+  | "global"
+  | "none"
+  | "manual";
 
 export interface CohortEstimate {
   rung: LadderRung;
@@ -41,6 +51,21 @@ function median(values: number[]): number {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
+// Studio 100x #24: the panel formula, fit once per evidence pool and
+// cached on the array's own identity. Every estimateForSignature call in
+// one render (estimateJobUnits loops it once per opening) shares this,
+// so "on demand" never means "re-solve the regression per row." A fresh
+// evidence array (a new fetch) is a fresh cache entry; nothing here is
+// ever mutated.
+const formulaFitCache = new WeakMap<readonly CohortEvidence[], PanelFormulaFit | null>();
+
+function resolveFormulaFit(evidence: readonly CohortEvidence[]): PanelFormulaFit | null {
+  if (formulaFitCache.has(evidence)) return formulaFitCache.get(evidence) ?? null;
+  const fit = fitPanelFormula(evidence);
+  formulaFitCache.set(evidence, fit);
+  return fit;
+}
+
 /**
  * Resolve the ladder for one target signature. Rungs never cross a
  * signature VERSION (a v1 cohort and a v2 cohort are never mixed), and a
@@ -52,6 +77,25 @@ export function estimateForSignature(
   minN: number = MIN_COHORT_N,
 ): CohortEstimate {
   const t = target.signature;
+
+  // NEW TOP RUNG (CONTEXT.md's panel-level formula): tried before every
+  // other rung, "exact" included — see panelFormula.ts's own gate for
+  // why. Silently absent below its gate, and per-target absent again
+  // when this target's mix needs a mechanism the fit never saw; either
+  // way the ladder below falls through completely unchanged.
+  const formulaFit = resolveFormulaFit(evidence);
+  if (formulaFit) {
+    const minutes = estimateForSignatureViaFormula(t, formulaFit);
+    if (minutes != null) {
+      return {
+        rung: "formula",
+        n: formulaFit.fittedFrom,
+        minutes,
+        label: `formula fit from ${formulaFit.fittedFrom} units`,
+      };
+    }
+  }
+
   const sameV = evidence.filter((e) => e.signature?.v === t.v);
 
   const rungs: { rung: LadderRung; label: (n: number) => string; pick: CohortEvidence[] }[] = [
