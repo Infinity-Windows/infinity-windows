@@ -6,6 +6,7 @@ import {
   humanTraceModel,
   inferHardware,
   isDoorLike,
+  openingIdForMark,
   specDrivenScaleFactor,
   type AdapterInput,
 } from "./adapter";
@@ -195,6 +196,31 @@ describe("mark code dialects", () => {
     // A trailing letter is only a twin suffix after a digit — real marks like
     // "W3" or "A-101" pass through untouched.
     expect(normalizeMarkCode("W3")).toBe("W3");
+  });
+});
+
+describe("openingIdForMark (Studio 100x #8: tap-to-assign's mark → opening resolution)", () => {
+  const openings = [
+    { id: "op-1", opening_code: "10" },
+    { id: "op-2", opening_code: "13-1" },
+    { id: "op-3", opening_code: "22" },
+  ];
+
+  it("resolves an exact mark to its opening id", () => {
+    expect(openingIdForMark(openings, "10")).toBe("op-1");
+  });
+
+  it("normalizes survey-dialect marks before matching (13A -> 13-1)", () => {
+    expect(openingIdForMark(openings, "13A")).toBe("op-2");
+  });
+
+  it("returns null for a mark with no matching opening — nothing to pick", () => {
+    expect(openingIdForMark(openings, "99")).toBeNull();
+  });
+
+  it("returns null for a blank or missing mark", () => {
+    expect(openingIdForMark(openings, null)).toBeNull();
+    expect(openingIdForMark(openings, "")).toBeNull();
   });
 });
 

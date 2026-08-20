@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { openingIdForMark, unitTapInfo } from "./JobModelViewer";
+import { unitTapInfo } from "./JobModelViewer";
+import { openingIdForMark } from "../../lib/fitview/adapter";
 import { fmtInchesFromMm } from "../../lib/modelstudio/dims";
 import type { UnitConfig } from "../../lib/modelstudio/units";
 import { orderNumberMap, toggleSelection } from "../../lib/install/mapDispatch";
@@ -55,31 +56,6 @@ describe("unitTapInfo (Studio 100x #27: the tap info line)", () => {
       mark: "9",
       dims: '30¼" × 90"',
     });
-  });
-});
-
-describe("openingIdForMark (Studio 100x #8: tap-to-assign's mark → opening resolution)", () => {
-  const openings = [
-    { id: "op-1", opening_code: "10" },
-    { id: "op-2", opening_code: "13-1" },
-    { id: "op-3", opening_code: "22" },
-  ];
-
-  it("resolves an exact mark to its opening id", () => {
-    expect(openingIdForMark(openings, "10")).toBe("op-1");
-  });
-
-  it("normalizes survey-dialect marks before matching (13A -> 13-1)", () => {
-    expect(openingIdForMark(openings, "13A")).toBe("op-2");
-  });
-
-  it("returns null for a mark with no matching opening — nothing to pick", () => {
-    expect(openingIdForMark(openings, "99")).toBeNull();
-  });
-
-  it("returns null for a blank or missing mark", () => {
-    expect(openingIdForMark(openings, null)).toBeNull();
-    expect(openingIdForMark(openings, "")).toBeNull();
   });
 });
 
