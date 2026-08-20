@@ -11,7 +11,8 @@
 // Pure functions over already-fetched packages: the opening sheet reuses the
 // hub's package query, so this stays testable in Node and free of Supabase.
 
-import type { StoragePackage } from "../storage";
+import type { StorageContainer, StoragePackage } from "../storage";
+import { piecesWhere, type PlaceLocation } from "./containment";
 
 export interface UnitPartsReport {
   /** Every non-blank package tagged with this mark on this job, reading order:
@@ -169,4 +170,23 @@ export function partsHeadline(r: UnitPartsReport): { text: string; tone: PartsTo
       (r.onTheWayIndexes.length > 0 ? ` · ${r.onTheWayIndexes.length} on the way` : ""),
     tone: "warn",
   };
+}
+
+/**
+ * The Studio↔warehouse line (Studio 100x #15/#18): partsHeadline's own
+ * verdict, plus where the held pieces sit when piecesWhere has an answer —
+ * "2 of 3 here — in Conex 3". One function so the Selected-unit panel
+ * (ModelStudio.tsx) and the tap-info card (JobModelViewer.tsx) can never
+ * drift into saying it two different ways. Null exactly when partsLine
+ * itself would be — nothing tagged to this mark yet.
+ */
+export function unitPackageLine(
+  report: UnitPartsReport,
+  containersById: Map<string, StorageContainer>,
+  locationsById: Map<string, PlaceLocation>,
+): string | null {
+  if (report.rows.length === 0) return null;
+  const headline = partsHeadline(report).text;
+  const where = piecesWhere(report.rows, containersById, locationsById);
+  return where ? `${headline} — ${where}` : headline;
 }

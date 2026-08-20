@@ -3,8 +3,8 @@
 // yet", not "not arrived" — is in the copy the headline produces.
 
 import { describe, expect, it } from "vitest";
-import type { StoragePackage } from "../storage";
-import { partsHeadline, unitParts } from "./unitParts";
+import type { StorageContainer, StoragePackage } from "../storage";
+import { partsHeadline, unitParts, unitPackageLine } from "./unitParts";
 
 let seq = 0;
 function pkg(over: Partial<StoragePackage> & { marks?: string[] }): StoragePackage {
@@ -233,5 +233,47 @@ describe("the maker's label disagrees (ticket 20)", () => {
       "16",
     );
     expect(r.makerSays).toBe(null);
+  });
+});
+
+describe("unitPackageLine (Studio 100x #15/#18: the Studio↔warehouse line)", () => {
+  const conex: StorageContainer = {
+    id: "conex",
+    serial: "CTR-000001",
+    name: "Conex 3",
+    address: null,
+    access_code: null,
+    notes: null,
+    active: true,
+    created_at: "2026-08-17T00:00:00Z",
+    parent_container_id: null,
+    location_id: null,
+  };
+  const byId = new Map([["conex", conex]]);
+
+  it("null when nothing is tagged — same as partsLine itself", () => {
+    const r = unitParts([], "job-1", "16");
+    expect(unitPackageLine(r, byId, new Map())).toBeNull();
+  });
+
+  it("headline alone when nothing held has a place to report", () => {
+    const r = unitParts(
+      [pkg({ status: "minted", part_index: 1, part_total: 2, marks: ["16"] })],
+      "job-1",
+      "16",
+    );
+    expect(unitPackageLine(r, byId, new Map())).toBe(partsHeadline(r).text);
+  });
+
+  it("headline plus where, dash-joined, when a held piece has a place", () => {
+    const r = unitParts(
+      [
+        pkg({ status: "stored", container_id: "conex", part_index: 1, part_total: 2, marks: ["16"] }),
+        pkg({ status: "minted", part_index: 2, part_total: 2, marks: ["16"] }),
+      ],
+      "job-1",
+      "16",
+    );
+    expect(unitPackageLine(r, byId, new Map())).toBe(`${partsHeadline(r).text} — Conex 3`);
   });
 });

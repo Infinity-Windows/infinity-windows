@@ -19,7 +19,7 @@
 // instead of a mark's drawing.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import * as THREE from "three";
 import { useQuery } from "@tanstack/react-query";
 import { BackChip } from "../../components/BackChip";
@@ -32,11 +32,20 @@ import {
 import type { UnitConfig } from "../../lib/modelstudio/units";
 import { fmtInchesFromMm } from "../../lib/modelstudio/dims";
 import { jobModelFromFeatures } from "../../lib/modelstudio/projects";
+import { markKeyOf } from "../../lib/modelstudio/fromProject";
+import { markOfPackage, unitsForMark } from "../../lib/modelstudio/unitGlow";
 import { parseFloorLite, parseRoof } from "../../lib/modelstudio/floors";
 import { buildRoof } from "../../lib/modelstudio/roofShell";
-import { listPlanOutlines } from "../../lib/install/api";
-import { listProjects } from "../../lib/api";
-import { preferModelOutline } from "../../lib/fitview/adapter";
+import { listOpenings, listPlanOutlines } from "../../lib/install/api";
+import {
+  listInstallMedia,
+  listOpeningInstallEvents,
+} from "../../lib/install/record";
+import { listLocations, listProjects } from "../../lib/api";
+import { getPackageBySerial, listActivePackages, listContainers } from "../../lib/storage";
+import { toLocationsById } from "../../lib/warehouse/containment";
+import { unitPackageLine, unitParts } from "../../lib/warehouse/unitParts";
+import { normalizeMarkCode, preferModelOutline } from "../../lib/fitview/adapter";
 import {
   describeAge,
   readJobModel,
@@ -150,9 +159,45 @@ function applyUnitGeometry(item: StudioItem, config: UnitConfig): void {
 
 export function JobModelViewer() {
   const { projectId = "" } = useParams();
+  const [searchParams] = useSearchParams();
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const project = projects.data?.find((p) => p.id === projectId);
+
+  // Studio↔warehouse links (#15/#16/#18/#7): the SAME query keys ModelStudio
+  // and the Warehouse hub already use, so a visit to any of them warms this
+  // page's cache too. Job-scoped openings resolve a tapped mark to its
+  // physical opening (for photos); packages/containers/locations answer
+  // "where are the parts" on demand for whichever unit was tapped or the
+  // job-building glow points at.
+  const openings = useQuery({
+    queryKey: ["openings", projectId],
+    queryFn: () => listOpenings(projectId),
+    enabled: Boolean(projectId),
+  });
+  const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
+  const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
+  const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
+  const containersById = useMemo(
+    () => new Map((containers.data ?? []).map((c) => [c.id, c])),
+    [containers.data],
+  );
+  const locationsById = useMemo(
+    () => toLocationsById(locations.data ?? []),
+    [locations.data],
+  );
+
+  // Job-building glow (#16): ?mark=CODE directly, or ?pkg=SERIAL resolved
+  // to its tagged mark — same getPackageBySerial query ContainerViewer.tsx
+  // already runs for its own ?pkg= glow, same 0xff5a36 @ 0.28 box.
+  const markParam = searchParams.get("mark");
+  const pkgParam = searchParams.get("pkg");
+  const glowPkg = useQuery({
+    queryKey: ["storagePackage", pkgParam ?? ""],
+    queryFn: () => getPackageBySerial(pkgParam!),
+    enabled: Boolean(pkgParam),
+  });
+  const glowCode = markParam ?? markOfPackage(glowPkg.data);
 
   // Same query key ModelStudio.tsx and MapsInteractive.tsx use for this job
   // — arriving here from the Maps Interactive "Walk the 3D model" button
@@ -202,6 +247,69 @@ export function JobModelViewer() {
   const bpRef = useRef<Blueprint3d | null>(null);
   const [booted, setBooted] = useState(false);
   const [tap, setTap] = useState<{ mark: string; dims: string } | null>(null);
+  // The tapped item's RAW mark (not the display fallback "Unit"), for the
+  // package/photo lookups below — kept separate from `tap.mark` so an
+  // unnamed item never gets treated as a real mark code.
+  const [tapMark, setTapMark] = useState<string | null>(null);
+
+  // Job-building glow (#16): read inside the vendor's async item-load
+  // callback below, same stale-closure defense the rest of this app's
+  // imperative three.js listeners use (ModelStudio.tsx's overlayMapRef).
+  const glowCodeRef = useRef<string | null>(null);
+  const glowMeshesRef = useRef<{ parent: THREE.Object3D; mesh: THREE.Mesh }[]>([]);
+  /**
+   * Clears whatever is glowing and redraws for the CURRENT glow code.
+   * Called after every item load — the vendor's GLB items arrive async,
+   * one at a time (GLBLoader.ts), so the matching set is incomplete until
+   * the last one lands — and again whenever the code itself changes post
+   * boot. Added as a CHILD of the matched item so it inherits that item's
+   * position/rotation for free: a rotated side-wall unit's box turns with
+   * it instead of drawing axis-aligned over the wrong footprint.
+   */
+  const syncGlow = () => {
+    const bp = bpRef.current;
+    if (!bp) return;
+    for (const { parent, mesh } of glowMeshesRef.current) {
+      parent.remove(mesh);
+      mesh.geometry.dispose();
+      (mesh.material as THREE.MeshBasicMaterial).dispose();
+    }
+    glowMeshesRef.current = [];
+    const code = glowCodeRef.current;
+    if (!code) return;
+    const items = bp.model.scene.getItems();
+    const names = items
+      .map((it) => it.metadata?.itemName)
+      .filter((n): n is string => Boolean(n));
+    const targets = new Set(unitsForMark(names, code));
+    for (const it of items) {
+      const name = it.metadata?.itemName;
+      if (!name || !targets.has(name)) continue;
+      const geo = new THREE.BoxGeometry(
+        Math.max(it.halfSize.x * 2, 4),
+        Math.max(it.halfSize.y * 2, 4),
+        Math.max(it.halfSize.z * 2, 4),
+      );
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xff5a36,
+        transparent: true,
+        opacity: 0.28,
+        depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.name = "mark-glow";
+      const parent = it as unknown as THREE.Object3D;
+      parent.add(mesh);
+      glowMeshesRef.current.push({ parent, mesh });
+    }
+  };
+  useEffect(() => {
+    glowCodeRef.current = glowCode;
+    if (booted) syncGlow();
+    // syncGlow reads bpRef/glowCodeRef/glowMeshesRef fresh every call, so
+    // it never needs to be a dependency itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [glowCode, booted]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -239,6 +347,10 @@ export function JobModelViewer() {
       } catch {
         /* not an item that needs help */
       }
+      // Re-decide the glow every time one more item lands — items arrive
+      // one at a time, so the match set is only complete once the last
+      // one has loaded.
+      syncGlow();
     });
 
     bp.model.loadSerialized(savedSerialized);
@@ -295,6 +407,7 @@ export function JobModelViewer() {
         | { itemName?: string; unitConfig?: UnitConfig }
         | undefined;
       setTap(hit ? unitTapInfo(metadata ?? null, hit.getWidth(), hit.getHeight()) : null);
+      setTapMark(hit ? metadata?.itemName?.trim() || null : null);
     };
     el.addEventListener("pointerdown", onDown);
     el.addEventListener("pointerup", onUp);
@@ -304,6 +417,53 @@ export function JobModelViewer() {
     };
   }, [booted]);
 
+  // Where's-my-glass tap-through (#15/#18): on demand, for whichever unit
+  // was just tapped — the SAME unitPackageLine wording ModelStudio.tsx
+  // shows, so the two screens never say it differently.
+  const tapMarkKey = tapMark ? markKeyOf(tapMark) : null;
+  const tapPartsReport = useMemo(
+    () => (tapMarkKey ? unitParts(packages.data ?? [], projectId, tapMarkKey) : null),
+    [tapMarkKey, packages.data, projectId],
+  );
+  const tapPackageLine = useMemo(
+    () =>
+      tapPartsReport ? unitPackageLine(tapPartsReport, containersById, locationsById) : null,
+    [tapPartsReport, containersById, locationsById],
+  );
+
+  // Photo pins (#7): the tapped unit's own opening (twin-aware, same
+  // match every live signal uses), then its install record's media —
+  // fetched only once a unit is actually tapped, signed lazily just like
+  // the Record card itself, same query keys so a job already opened there
+  // is a cache hit here too.
+  const tapOpeningId = useMemo(() => {
+    if (!tapMark) return null;
+    const norm = normalizeMarkCode(tapMark);
+    return (
+      (openings.data ?? []).find((o) => normalizeMarkCode(o.opening_code) === norm)?.id ?? null
+    );
+  }, [tapMark, openings.data]);
+  const tapEvents = useQuery({
+    queryKey: ["recordEvents", tapOpeningId],
+    queryFn: () => listOpeningInstallEvents(tapOpeningId!),
+    enabled: Boolean(tapOpeningId),
+  });
+  const tapMedia = useQuery({
+    queryKey: ["recordMedia", tapOpeningId, (tapEvents.data ?? []).length],
+    queryFn: () => listInstallMedia((tapEvents.data ?? []).map((e) => e.id)),
+    enabled: Boolean(tapOpeningId) && (tapEvents.data?.length ?? 0) > 0,
+  });
+  // Most recent first — listInstallMedia orders ascending, so the last 3
+  // are the newest 3.
+  const tapPhotos = useMemo(
+    () =>
+      (tapMedia.data ?? [])
+        .filter((m) => m.kind === "photo" && m.signedUrl)
+        .slice(-3)
+        .reverse(),
+    [tapMedia.data],
+  );
+
   return (
     <div className="page" style={{ display: "flex", flexDirection: "column", minHeight: "100dvh" }}>
       <header className="page-header">
@@ -311,6 +471,11 @@ export function JobModelViewer() {
           <BackChip />
           <p className="home-greeting">{project?.job_code ?? "Job"}</p>
           <h1>{project?.name ?? "3D model"} in 3D</h1>
+          {glowCode && (
+            <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+              Window {glowCode} glows below
+            </p>
+          )}
         </div>
       </header>
 
@@ -338,9 +503,52 @@ export function JobModelViewer() {
             style={{ flex: 1, minHeight: 420, borderRadius: 12, overflow: "hidden" }}
           />
           {tap && (
-            <p className="muted" style={{ fontSize: 13, margin: "8px 0 0" }}>
-              {tap.mark} — {tap.dims}
-            </p>
+            <div style={{ margin: "8px 0 0" }}>
+              <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+                {tap.mark} — {tap.dims}
+              </p>
+              {/* Where's-my-glass tap-through (#15/#18). */}
+              {tapPackageLine && (
+                <>
+                  <p className="muted" style={{ fontSize: 12.5, margin: "2px 0 0" }}>
+                    {tapPackageLine}
+                  </p>
+                  <Link
+                    className="button-like studio-mini"
+                    style={{ marginTop: 4 }}
+                    to={`/warehouse?q=${encodeURIComponent(tapMarkKey ?? "")}`}
+                  >
+                    Find it in the warehouse
+                  </Link>
+                </>
+              )}
+              {/* Photo pins (#7): up to 3 thumbnails, signed lazily just
+                  like the Unit Record — nothing signs until this unit is
+                  actually tapped. */}
+              {tapPhotos.length > 0 && (
+                <div style={{ marginTop: 4 }}>
+                  <div className="row-gap" style={{ flexWrap: "wrap" }}>
+                    {tapPhotos.map((m) => (
+                      <a key={m.id} href={m.signedUrl!} target="_blank" rel="noreferrer">
+                        <img
+                          src={m.signedUrl!}
+                          alt="Install"
+                          style={{ height: 56, borderRadius: 6 }}
+                        />
+                      </a>
+                    ))}
+                  </div>
+                  {tapOpeningId && (
+                    <Link
+                      to={`/projects/${projectId}/opening/${tapOpeningId}`}
+                      style={{ fontSize: 12 }}
+                    >
+                      See all on the Unit Record
+                    </Link>
+                  )}
+                </div>
+              )}
+            </div>
           )}
           <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>
             Drag to orbit · pinch or scroll to zoom · tap a window or door for

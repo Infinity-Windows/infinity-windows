@@ -20,7 +20,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { listLocations, listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
 import { isForemanPlus } from "../lib/install/types";
@@ -28,6 +28,7 @@ import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { Explain } from "../components/ui/Explain";
 import { PackageMap } from "../components/warehouse/PackageMap";
 import { FindBar } from "../components/warehouse/FindBar";
+import { listJobModelRows } from "../lib/modelstudio/projects";
 import { listIssues } from "../lib/issues";
 import {
   agingDays,
@@ -80,6 +81,18 @@ export function Warehouse() {
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
   const { counts: outbox } = useOutbox();
+  // ?q= prefills Find (Studio 100x #15's door in) — read once; FindBar owns
+  // the input from here, the same way it already owns everything typed by
+  // hand or scanned.
+  const [searchParams] = useSearchParams();
+  const initialQuery = searchParams.get("q") ?? undefined;
+  // Job-building glow's door (#16): which jobs have a Studio model at all,
+  // so Find only offers "Show on the building" where there is one.
+  const studioJobModels = useQuery({ queryKey: ["studioJobModels"], queryFn: listJobModelRows });
+  const jobsWithModels = useMemo(
+    () => new Set((studioJobModels.data ?? []).map((m) => m.project_id)),
+    [studioJobModels.data],
+  );
 
   const waiting = outbox.warehouse;
 
@@ -164,6 +177,8 @@ export function Warehouse() {
         scheduledMarks={marks.data ?? []}
         supplies={supplies.data ?? []}
         locationsById={locsById}
+        initialQuery={initialQuery}
+        jobsWithModels={jobsWithModels}
       />
 
       {waiting > 0 && (

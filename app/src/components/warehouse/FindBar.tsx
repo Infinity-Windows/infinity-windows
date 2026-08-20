@@ -48,6 +48,8 @@ export function FindBar({
   scheduledMarks,
   supplies = [],
   locationsById,
+  initialQuery,
+  jobsWithModels,
 }: {
   packages: StoragePackage[];
   containers: StorageContainer[];
@@ -57,8 +59,16 @@ export function FindBar({
   /** Racks and staging bays, so a staged package names its job instead of
    * making somebody read a slot address. */
   locationsById: Map<string, PlaceLocation>;
+  /** Prefills the box — a deep link from Studio/JobModelViewer's "Find it
+   * in the warehouse" (#15) lands here already asking the right question,
+   * instead of making somebody retype the mark they just tapped. */
+  initialQuery?: string;
+  /** Job ids with a saved Studio model (Studio 100x #16's door): gates the
+   * "Show on the building" link on a window answer so it never points at
+   * a job with nothing to show. */
+  jobsWithModels?: Set<string>;
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery ?? "");
   const [scanning, setScanning] = useState(false);
   /** The job picked when one mark belonged to more than one job. */
   const [markChoice, setMarkChoice] = useState<string | null>(null);
@@ -129,7 +139,13 @@ export function FindBar({
         />
       )}
 
-      {answer && <Answer answer={answer} onPickMarkJob={setMarkChoice} />}
+      {answer && (
+        <Answer
+          answer={answer}
+          onPickMarkJob={setMarkChoice}
+          jobsWithModels={jobsWithModels}
+        />
+      )}
     </div>
   );
 }
@@ -155,9 +171,11 @@ function Rows({ hits }: { hits: PackageHit[] }) {
 function Answer({
   answer,
   onPickMarkJob,
+  jobsWithModels,
 }: {
   answer: FindAnswer;
   onPickMarkJob: (projectId: string) => void;
+  jobsWithModels?: Set<string>;
 }) {
   if (answer.kind === "miss") {
     return (
@@ -184,6 +202,17 @@ function Answer({
         </strong>
         <p style={{ margin: "2px 0 0", fontSize: 13 }}>{answer.headline}</p>
         <Rows hits={answer.hits} />
+        {/* Job-building glow (#16's door): only when this job actually has
+            a Studio model to show it on. */}
+        {jobsWithModels?.has(answer.projectId) && (
+          <Link
+            className="button-like"
+            style={{ marginTop: 8 }}
+            to={`/projects/${answer.projectId}/model?mark=${encodeURIComponent(answer.markCode)}`}
+          >
+            Show on the building
+          </Link>
+        )}
       </div>
     );
   }

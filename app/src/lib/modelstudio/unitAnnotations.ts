@@ -440,6 +440,29 @@ function paintOverlayFlashing(
   ctx.restore();
 }
 
+/** Photo pin (#7): a small 📷N pill in the chip band's top-right corner —
+ * the mark chip already owns the top-left (drawLabel's "mark" case), so
+ * this never crowds it. Count only, never a URL: the thumbnails themselves
+ * are signed lazily, only once somebody selects the unit. */
+function paintPhotoBadge(ctx: CanvasRenderingContext2D, wPx: number, count: number) {
+  const text = `📷 ${count}`;
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.font = "700 18px ui-monospace, monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const w = ctx.measureText(text).width + 18;
+  const y = (CHIP_BAND_CM / 2) * PX_PER_CM;
+  const cx = wPx - w / 2 - 6;
+  ctx.fillStyle = "rgba(20, 16, 13, 0.85)";
+  ctx.beginPath();
+  ctx.roundRect(cx - w / 2, y - 15, w, 30, 6);
+  ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(text, cx, y);
+  ctx.restore();
+}
+
 interface OverlayBadgeLine {
   text: string;
   color: string;
@@ -535,6 +558,11 @@ export function buildUnitAnnotations(
     for (const l of lay.labels) drawLabel(ctx, l, paint);
     if (o.overlay) paintOverlayFlashing(ctx, wPx, lay.legHcm, o.overlay);
     if (showBadges) paintOverlayBadges(ctx, wPx, lay.legHcm, badgeLines);
+    // Photo pin: main leg only, same convention the mark chip uses — a
+    // corner unit's photos belong to the whole physical opening.
+    if (lay.leg === "main" && o.overlay?.photoCount) {
+      paintPhotoBadge(ctx, wPx, o.overlay.photoCount);
+    }
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.anisotropy = 8;

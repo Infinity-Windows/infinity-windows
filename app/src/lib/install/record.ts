@@ -103,6 +103,54 @@ export async function listInstallMedia(
   );
 }
 
+/**
+ * Cheap per-opening photo counts for a WHOLE job (Studio 100x #7): id/kind
+ * only, nothing signed — so the model can paint a 📷 badge on every unit at
+ * once without paying to sign a single URL. Signing stays exactly where it
+ * already lives, listInstallMedia above, for the one unit somebody taps.
+ *
+ * Void never deletes (this file's own header): a voided round's photos
+ * still count, same as groupRounds still shows them on the Record.
+ *
+ * Two queries, not one nested embed, on purpose: both shapes already ship
+ * elsewhere in this file/api.ts (the project_openings!inner join
+ * mirrors listVoidedInstallOpeningIds; the install_event_id .in() filter
+ * mirrors listInstallMedia above) — proven shapes over a new untested one.
+ */
+export async function listProjectPhotoCounts(
+  projectId: string,
+): Promise<Map<string, number>> {
+  const { data: events, error: eventsError } = await supabase
+    .from("install_events")
+    .select(
+      "id, project_opening_id, project_openings:project_opening_id!inner(project_id)",
+    )
+    .eq("project_openings.project_id", projectId);
+  if (eventsError) throw eventsError;
+  const openingByEvent = new Map(
+    (events ?? []).map((e) => [e.id as string, e.project_opening_id as string]),
+  );
+  const eventIds = [...openingByEvent.keys()];
+  if (eventIds.length === 0) return new Map();
+
+  const { data: photos, error: photosError } = await supabase
+    .from("attachments")
+    .select("install_event_id")
+    .in("install_event_id", eventIds)
+    .eq("kind", "photo");
+  if (photosError) throw photosError;
+
+  const counts = new Map<string, number>();
+  for (const row of (photos ?? []) as { install_event_id: string | null }[]) {
+    const openingId = row.install_event_id
+      ? openingByEvent.get(row.install_event_id)
+      : undefined;
+    if (!openingId) continue;
+    counts.set(openingId, (counts.get(openingId) ?? 0) + 1);
+  }
+  return counts;
+}
+
 /** Every redo ever pressed on one opening, resolved ones included. */
 export async function listOpeningRedos(openingId: string): Promise<UnitRedo[]> {
   const { data, error } = await supabase
