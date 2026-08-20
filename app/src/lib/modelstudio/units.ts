@@ -187,6 +187,25 @@ export function panelsWidthMm(panels: UnitPanel[]): number {
   return panels.reduce((t, p) => t + p.widthMm, 0);
 }
 
+/**
+ * Mirror a unit's operable directions (Studio 100x #38's "Mirror" duplicate
+ * action): every panel that opens left now opens right and vice-versa.
+ * Sliders, bi-folds and casements all carry `direction`; fixed/hung panels
+ * have none and pass through untouched. A pure data flip only — panel order,
+ * widths, mechanisms and any corner stay exactly as they were, so this is
+ * safe to apply to any config without re-deriving geometry.
+ */
+export function mirrorUnitConfig(c: UnitConfig): UnitConfig {
+  return {
+    ...c,
+    panels: c.panels.map((p) =>
+      p.direction
+        ? { ...p, direction: p.direction === "left" ? "right" : "left" }
+        : { ...p },
+    ),
+  };
+}
+
 export interface StudioUnit {
   id: string;
   name: string;

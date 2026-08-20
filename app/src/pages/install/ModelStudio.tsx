@@ -82,6 +82,7 @@ import type { StudioItem } from "../../lib/modelstudio/core";
 import {
   applyPanePreset,
   listStudioUnits,
+  mirrorUnitConfig,
   saveStudioUnit,
   setColumnWidthMm,
   setRowHeightMm,
@@ -91,6 +92,7 @@ import {
   splitColumn,
   splitRow,
   unitSvg,
+  unitWidthMm,
   type StudioUnit,
   type UnitConfig,
   type UnitPanel,
@@ -100,6 +102,7 @@ import { syncProjectSignatures } from "../../lib/estimate/signatureSync";
 import { estimateForUnitConfig, useCohortEvidence } from "../../lib/estimate/liveEstimate";
 import type { CohortEstimate } from "../../lib/estimate/cohorts";
 import { supabase } from "../../lib/supabase";
+import { enqueueUpload } from "../../lib/offline/outbox";
 import {
   Blueprint3d,
   Configuration,
@@ -206,6 +209,136 @@ function zoomPlan(bp: Blueprint3d, factor: number) {
   fp.originX = cx * px - canvas.clientWidth / 2;
   fp.originY = cy * px - canvas.clientHeight / 2;
   fp.resizeView();
+}
+
+// ---- localStorage flags (Explain.tsx's try/catch style — private mode or
+// a full quota just means the flag doesn't stick, never a crash) ----------
+
+const TOUR_SEEN_KEY = "studio-tour-seen";
+
+/** Studio 100x #44: has this browser already stepped through the tour? */
+function readTourSeen(): boolean {
+  try {
+    return localStorage.getItem(TOUR_SEEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markTourSeen(): void {
+  try {
+    localStorage.setItem(TOUR_SEEN_KEY, "1");
+  } catch {
+    /* private mode / full quota — the tour just repeats next time */
+  }
+}
+
+/** Studio 100x #44: five real features, plain words, in the order a first
+ * build actually happens. Every step names something that works TODAY —
+ * draw walls (mode button), drag-or-Add-window placement, tap-to-edit
+ * panes, Save as catalog unit, and Publish to map are all live above. */
+const TOUR_STEPS: { title: string; body: string }[] = [
+  {
+    title: "Draw a wall",
+    body: "Open Tools, tap Draw walls, then click corner to corner on the 2D plan to trace the building.",
+  },
+  {
+    title: "Drop a window",
+    body: "Drag a unit from the catalog onto a wall — or tap + Add window and place it by hand.",
+  },
+  {
+    title: "Tap to edit panes",
+    body: "Tap a window in the 3D view to open it, then tap a pane to split it or set which way it opens.",
+  },
+  {
+    title: "Save to catalog",
+    body: "Get a unit's panels right once, then Save as catalog unit so it's ready to drag onto the next wall.",
+  },
+  {
+    title: "Publish to map",
+    body: "When the model's ready, Publish to map puts it on the crew's interactive map.",
+  },
+];
+
+type SnapInches = 1 | 6 | 12;
+const SNAP_KEY = "studio-snap-in";
+const DEFAULT_SNAP_IN: SnapInches = 6;
+
+/** Studio 100x #40: the corner-snap choice, persisted like a preference. */
+function readSnapIn(): SnapInches {
+  try {
+    const raw = localStorage.getItem(SNAP_KEY);
+    if (raw === "1" || raw === "6" || raw === "12") return Number(raw) as SnapInches;
+  } catch {
+    /* fall through to the default */
+  }
+  return DEFAULT_SNAP_IN;
+}
+
+function writeSnapIn(inches: SnapInches): void {
+  try {
+    localStorage.setItem(SNAP_KEY, String(inches));
+  } catch {
+    /* private mode / full quota — the choice just won't stick */
+  }
+}
+
+// ---- tape measure (Studio 100x #39) --------------------------------------
+// Spike-lean per the ask: exactly one Line and one canvas-texture Sprite
+// ever get created, reused (repositioned/repainted) for every measurement
+// rather than churning new three.js objects per tap.
+
+function makeMeasureLine(): THREE.Line {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(6), 3));
+  const mat = new THREE.LineBasicMaterial({ color: 0xffb020, depthTest: false });
+  const line = new THREE.Line(geo, mat);
+  line.name = "studio-measure-line";
+  line.renderOrder = 999;
+  line.frustumCulled = false;
+  line.visible = false;
+  return line;
+}
+
+function setMeasureLinePoints(line: THREE.Line, a: THREE.Vector3, b: THREE.Vector3): void {
+  const pos = line.geometry.getAttribute("position") as THREE.BufferAttribute;
+  pos.setXYZ(0, a.x, a.y, a.z);
+  pos.setXYZ(1, b.x, b.y, b.z);
+  pos.needsUpdate = true;
+  line.geometry.computeBoundingSphere();
+}
+
+function makeMeasureSprite(): THREE.Sprite {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 64;
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
+  const sprite = new THREE.Sprite(mat);
+  sprite.name = "studio-measure-label";
+  sprite.renderOrder = 1000;
+  sprite.visible = false;
+  sprite.userData.canvas = canvas;
+  sprite.scale.set(140, 35, 1); // plan-cm scale — reads clearly at typical zoom
+  return sprite;
+}
+
+/** Redraw the reused sprite's canvas with the current distance text. */
+function paintMeasureLabel(sprite: THREE.Sprite, text: string): void {
+  const canvas = sprite.userData.canvas as HTMLCanvasElement;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.font = "bold 30px sans-serif";
+  const textW = ctx.measureText(text).width;
+  const boxW = Math.min(canvas.width - 4, textW + 28);
+  ctx.fillStyle = "rgba(20, 20, 26, 0.88)";
+  ctx.fillRect((canvas.width - boxW) / 2, 10, boxW, canvas.height - 20);
+  ctx.fillStyle = "#ffb020";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  (sprite.material.map as THREE.CanvasTexture).needsUpdate = true;
 }
 
 /** Where a Studio session loads from and saves to (owner pick 2026-08-13:
@@ -334,9 +467,35 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
   });
-  /** Undo: serialized snapshots pushed BEFORE each mutating gesture. */
-  const undoStack = useRef<string[]>([]);
+  /**
+   * Undo/redo: serialized snapshot stacks, ONE PAIR PER FLOOR NUMBER
+   * (Studio 100x #37). Indexed by floor index — floorsRef.current[n]'s
+   * history lives at undoStacksRef.current[n]. This is load-bearing:
+   * switching floors must swap which pair is active rather than wipe
+   * either one, because a floor-3 snapshot must NEVER restore onto floor
+   * 2 (see switchFloor). pushUndo() records BEFORE each mutating gesture;
+   * any new gesture clears that floor's redo stack.
+   */
+  const undoStacksRef = useRef<string[][]>([[]]);
+  const redoStacksRef = useRef<string[][]>([[]]);
   const [undoDepth, setUndoDepth] = useState(0);
+  const [redoDepth, setRedoDepth] = useState(0);
+  /** Tape measure (#39): on/off plus the tapped points and the one reused
+   * Line + Sprite pair. The ref mirrors the state for the mount-time event
+   * listener, same stale-closure defense as overlayMapRef above. */
+  const [measureOn, setMeasureOn] = useState(false);
+  const measureOnRef = useRef(false);
+  const measurePtsRef = useRef<THREE.Vector3[]>([]);
+  const measureLineRef = useRef<THREE.Line | null>(null);
+  const measureSpriteRef = useRef<THREE.Sprite | null>(null);
+  /** Corner snap (#40): 1"/6"/12", persisted, written straight to the
+   * vendor's own gridSnapCm. The ref is the source of truth the mount
+   * effect applies once at construction; the setter also applies live. */
+  const snapInRef = useRef<SnapInches>(readSnapIn());
+  const [snapIn, setSnapInState] = useState<SnapInches>(() => snapInRef.current);
+  /** Shortcuts/help (#43) and the first-open tour (#44). */
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [tourStep, setTourStep] = useState<number | null>(() => (readTourSeen() ? null : 0));
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -527,6 +686,9 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     bpRef.current = bp;
     // Debug handle for the dev pane; harmless in prod.
     (window as { __studio?: unknown }).__studio = bp;
+    // #40: apply the persisted (or default 6") corner-snap choice — the
+    // vendor otherwise hardcodes gridSnapCm at construction.
+    if (bp.floorplanner) bp.floorplanner.gridSnapCm = snapInRef.current * 2.54;
 
     // Saved Studio model wins; then the traced-building seed (every traced
     // story becomes a floor); then blank.
@@ -537,6 +699,9 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         : parseFloors(savedModel, seed?.serialized ?? BLANK_SERIALIZED);
     floorsRef.current = boot.floors;
     activeFloorRef.current = 0;
+    // One undo/redo stack pair per floor (#37) — see undoStacksRef's doc.
+    undoStacksRef.current = boot.floors.map(() => []);
+    redoStacksRef.current = boot.floors.map(() => []);
     setFloorInfo({ count: boot.floors.length, active: 0 });
     bp.model.loadSerialized(boot.floors[0]);
     rebuildFloorContext(boot.floors, 0);
@@ -630,6 +795,21 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       });
       el.addEventListener("mouseup", (e) => {
         if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return;
+        // #39: while measuring, taps drive the tool exclusively — raycast
+        // to ANY mesh point (walls, floor, items), never fall through to
+        // normal item/wall selection below.
+        if (measureOnRef.current) {
+          const rect = el.getBoundingClientRect();
+          if (rect.width === 0 || rect.height === 0) return;
+          const ndc = new THREE.Vector2(
+            ((e.clientX - rect.left) / rect.width) * 2 - 1,
+            -((e.clientY - rect.top) / rect.height) * 2 + 1,
+          );
+          ray.setFromCamera(ndc, bp.three.camera);
+          const measureHit = ray.intersectObjects(bp.model.scene.getScene().children, true)[0];
+          if (measureHit) addMeasurePoint(measureHit.point);
+          return;
+        }
         let hit = pickAt(e.clientX, e.clientY);
         if (!hit) {
           for (const [dx, dy] of [
@@ -758,12 +938,31 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     });
   }, [fs, view]);
 
+  // Toggling the tool (either direction) starts fresh — no stale point or
+  // leftover line/label from a previous session (#39: "toggling off clears").
+  useEffect(() => {
+    measureOnRef.current = measureOn;
+    measurePtsRef.current = [];
+    clearMeasureVisual();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [measureOn]);
+
   useEffect(
     () => () => {
       roRef.current?.disconnect();
       roRef.current = null;
       handlesRef.current?.dispose();
       handlesRef.current = null;
+      if (measureLineRef.current) {
+        measureLineRef.current.geometry.dispose();
+        (measureLineRef.current.material as THREE.Material).dispose();
+        measureLineRef.current = null;
+      }
+      if (measureSpriteRef.current) {
+        (measureSpriteRef.current.material.map as THREE.Texture | null)?.dispose();
+        measureSpriteRef.current.material.dispose();
+        measureSpriteRef.current = null;
+      }
     },
     [],
   );
@@ -801,6 +1000,32 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   const setMode = (m: number) => {
     bpRef.current?.floorplanner?.setMode(m);
     setModeState(m);
+  };
+
+  /** #40: persist the snap choice and write it straight to the vendor. */
+  const setSnapIn = (inches: SnapInches) => {
+    snapInRef.current = inches;
+    setSnapInState(inches);
+    writeSnapIn(inches);
+    const fp = bpRef.current?.floorplanner;
+    if (fp) fp.gridSnapCm = inches * 2.54;
+  };
+
+  /** #44: "Dismiss forever on finish/skip" — both paths mark it seen. */
+  const closeTour = () => {
+    markTourSeen();
+    setTourStep(null);
+  };
+
+  const nextTourStep = () => {
+    setTourStep((s) => {
+      if (s == null) return null;
+      if (s + 1 >= TOUR_STEPS.length) {
+        markTourSeen();
+        return null;
+      }
+      return s + 1;
+    });
   };
 
   const save = async () => {
@@ -848,22 +1073,135 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     }
   };
 
+  /** Studio 100x #41: "Studio — {job or project name}" — the standalone
+   * page's own name when there is one (same logic as the <h1> above), or a
+   * one-off lookup for a job source (same ad hoc supabase read importSpecs
+   * uses below for job_code, just widened to also carry name). */
+  const snapshotLabel = async (): Promise<string> => {
+    if (source.kind === "standalone") {
+      return `Studio — ${proj.data?.name ?? "Studio project"}`;
+    }
+    try {
+      const { data } = await supabase
+        .from("projects")
+        .select("name, job_code")
+        .eq("id", projectId)
+        .single();
+      const row = data as { name?: string; job_code?: string } | null;
+      return `Studio — ${row?.name ?? row?.job_code ?? "Job"}`;
+    } catch {
+      return "Studio — Job";
+    }
+  };
+
+  /** Studio 100x #41: capture the 3D view, offer it as a download, and —
+   * when this session is job-linked — queue it to job photos through the
+   * SAME outbox op job photo capture uses (enqueueUpload/"photo_upload"),
+   * never a bespoke one. */
+  const takeSnapshot = async () => {
+    const bp = bpRef.current;
+    if (!bp) return;
+    let dataUrl: string;
+    try {
+      dataUrl = bp.three.dataUrl();
+    } catch {
+      pushToast("Couldn't capture the 3D view.", "error");
+      return;
+    }
+    try {
+      const blob = await (await fetch(dataUrl)).blob();
+      const label = await snapshotLabel();
+
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = `${label}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+
+      if (projectId) {
+        const createdBy = (await supabase.auth.getUser()).data.user?.email ?? null;
+        const stamp = Date.now();
+        const rand = Math.random().toString(16).slice(2, 8);
+        await enqueueUpload({
+          kind: "photo",
+          bucket: "install-media",
+          path: `${projectId}/feed/${stamp}-${rand}.png`,
+          contentType: "image/png",
+          projectId,
+          createdBy,
+          caption: label,
+          blob,
+        });
+        pushToast("Snapshot downloaded and queued to job photos.");
+      } else {
+        pushToast("Snapshot downloaded.");
+      }
+    } catch (e) {
+      pushToast(formatApiError(e), "error");
+    }
+  };
+
+  /** Make sure floor n has a stack pair before anyone reads/writes it. */
+  const ensureFloorStacks = (n: number) => {
+    while (undoStacksRef.current.length <= n) undoStacksRef.current.push([]);
+    while (redoStacksRef.current.length <= n) redoStacksRef.current.push([]);
+  };
+
   const pushUndo = () => {
     const bp = bpRef.current;
     if (!bp) return;
+    const floor = activeFloorRef.current;
+    ensureFloorStacks(floor);
     const snap = bp.model.exportSerialized();
-    const stack = undoStack.current;
+    const stack = undoStacksRef.current[floor];
     if (stack[stack.length - 1] === snap) return; // nothing changed since
     stack.push(snap);
     if (stack.length > 30) stack.shift();
     setUndoDepth(stack.length);
+    // A genuinely new gesture invalidates whatever future the user had
+    // undone away from (#37: "any NEW gesture clears it").
+    const redoStack = redoStacksRef.current[floor];
+    if (redoStack.length > 0) {
+      redoStack.length = 0;
+      setRedoDepth(0);
+    }
   };
 
   const undo = () => {
     const bp = bpRef.current;
-    const snap = undoStack.current.pop();
-    if (!bp || !snap) return;
-    setUndoDepth(undoStack.current.length);
+    const floor = activeFloorRef.current;
+    ensureFloorStacks(floor);
+    const stack = undoStacksRef.current[floor];
+    const snap = stack.pop();
+    if (!bp || snap == null) return;
+    const redoStack = redoStacksRef.current[floor];
+    redoStack.push(bp.model.exportSerialized());
+    if (redoStack.length > 30) redoStack.shift();
+    setUndoDepth(stack.length);
+    setRedoDepth(redoStack.length);
+    bp.model.loadSerialized(snap);
+    setSelWall(null);
+    requestAnimationFrame(() => {
+      bp.floorplanner?.resizeView();
+      fitPlan(bp);
+    });
+  };
+
+  const redo = () => {
+    const bp = bpRef.current;
+    const floor = activeFloorRef.current;
+    ensureFloorStacks(floor);
+    const redoStack = redoStacksRef.current[floor];
+    const snap = redoStack.pop();
+    if (!bp || snap == null) return;
+    const stack = undoStacksRef.current[floor];
+    stack.push(bp.model.exportSerialized());
+    if (stack.length > 30) stack.shift();
+    setUndoDepth(stack.length);
+    setRedoDepth(redoStack.length);
     bp.model.loadSerialized(snap);
     setSelWall(null);
     requestAnimationFrame(() => {
@@ -1057,12 +1395,25 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       "Throw away the Studio model and rebuild it from the traced building? " +
       "(Nothing is saved until you tap Save model.)",
     )) return;
-    pushUndo();
+    const prevFloor = activeFloorRef.current;
+    const prevSnap = bp.model.exportSerialized();
     // A human trace rebuilds EVERY floor it drew; the fallbacks are one.
     const floors =
       seedFloors && seedFloors.length > 1 ? seedFloors : [seed.serialized];
     floorsRef.current = floors;
     activeFloorRef.current = 0;
+    // Reseed replaces every floor's content wholesale, so old per-floor
+    // undo/redo history can no longer be trusted to describe the NEW
+    // floors — the same "a floor-3 snapshot must never restore onto floor
+    // 2" invariant switchFloor protects (#37). Fresh stacks for the new
+    // floor count; the one carve-out is floor 0 when that's the floor the
+    // user was already on — its pre-reseed state is still a legitimate
+    // "undo the reseed".
+    undoStacksRef.current = floors.map(() => []);
+    redoStacksRef.current = floors.map(() => []);
+    if (prevFloor === 0) undoStacksRef.current[0].push(prevSnap);
+    setUndoDepth(undoStacksRef.current[0].length);
+    setRedoDepth(0);
     setFloorInfo({ count: floors.length, active: 0 });
     rebuildFloorContext(floors, 0);
     bp.model.loadSerialized(floors[0]);
@@ -1269,6 +1620,51 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     item.redrawWall?.();
   };
 
+  // --------------------------------------------------------- tape measure
+
+  /** Hide the reused line/label without destroying them — "reused" per the
+   * spike-lean ask (#39). */
+  const clearMeasureVisual = () => {
+    if (measureLineRef.current) measureLineRef.current.visible = false;
+    if (measureSpriteRef.current) measureSpriteRef.current.visible = false;
+  };
+
+  /** One tapped point. The first tap of a pair just plants it; the second
+   * draws the line + distance label; a third starts fresh (per spec: "next
+   * tap starts fresh"). */
+  const addMeasurePoint = (p: THREE.Vector3) => {
+    const bp = bpRef.current;
+    if (!bp) return;
+    const pts = measurePtsRef.current;
+    if (pts.length >= 2) pts.length = 0;
+    pts.push(p.clone());
+    if (pts.length < 2) {
+      clearMeasureVisual();
+      return;
+    }
+    const scene = bp.model.scene.getScene();
+    if (!measureLineRef.current) {
+      measureLineRef.current = makeMeasureLine();
+      scene.add(measureLineRef.current);
+    }
+    if (!measureSpriteRef.current) {
+      measureSpriteRef.current = makeMeasureSprite();
+      scene.add(measureSpriteRef.current);
+    }
+    const [a, b] = pts;
+    setMeasureLinePoints(measureLineRef.current, a, b);
+    // Scene units are already centimetres (same as every dims.ts caller).
+    paintMeasureLabel(measureSpriteRef.current, fmtFtIn(a.distanceTo(b)));
+    measureSpriteRef.current.position.set(
+      (a.x + b.x) / 2,
+      (a.y + b.y) / 2 + 8,
+      (a.z + b.z) / 2,
+    );
+    measureLineRef.current.visible = true;
+    measureSpriteRef.current.visible = true;
+    bp.three.getController().needsUpdate = true;
+  };
+
   // ------------------------------------------------------- floors 2–10
 
   const activeFloorRef = useRef(0);
@@ -1349,10 +1745,12 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     if (n < 0 || n >= floorsRef.current.length) return;
     floorsRef.current[activeFloorRef.current] = bp.model.exportSerialized();
     bp.model.loadSerialized(floorsRef.current[n] ?? BLANK_SERIALIZED);
-    // Undo history is per-floor: a stack of floor-3 snapshots must never
-    // restore onto floor 2.
-    undoStack.current = [];
-    setUndoDepth(0);
+    // Undo/redo history is per FLOOR NUMBER: a stack of floor-3 snapshots
+    // must never restore onto floor 2 (load-bearing). Switching floors
+    // swaps which pair of stacks is active — neither stack is wiped (#37).
+    ensureFloorStacks(n);
+    setUndoDepth(undoStacksRef.current[n].length);
+    setRedoDepth(redoStacksRef.current[n].length);
     setSelWall(null);
     setSelUnit(null);
     activeFloorRef.current = n;
@@ -1390,6 +1788,9 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     }
     if (activeFloorRef.current === top) switchFloor(top - 1);
     floorsRef.current.pop();
+    // The deleted floor was always the last index — drop its stacks too.
+    undoStacksRef.current.pop();
+    redoStacksRef.current.pop();
     setFloorInfo({ count: floorsRef.current.length, active: activeFloorRef.current });
     rebuildFloorContext(floorsRef.current, activeFloorRef.current);
   };
@@ -2104,12 +2505,125 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     setUnitH(fmtFtIn(next.heightMm / 10));
   };
 
+  /**
+   * Studio 100x #38: place a copy of the selected unit on the SAME wall,
+   * one unit-width + 6" toward the wall's free side — reusing insertUnit's
+   * placement machinery (same async geometry-apply dance, same undo
+   * capture) rather than hand-cloning the three.js item. Mirror is the
+   * identical placement with the config's operable directions flipped.
+   */
+  const placeUnitCopy = (mirror: boolean) => {
+    const item = selUnit;
+    const bp = bpRef.current;
+    const cfg = item?.metadata?.unitConfig as UnitConfig | undefined;
+    if (!item || !bp || !cfg) return;
+    const wall = (item as unknown as { currentWallEdge?: { wall: StudioWall } })
+      .currentWallEdge?.wall;
+    if (!wall) {
+      pushToast("This unit isn't seated on a wall yet.", "error");
+      return;
+    }
+    const sx = wall.getStartX();
+    const sy = wall.getStartY();
+    const ex = wall.getEndX();
+    const ey = wall.getEndY();
+    const wallLen = Math.hypot(ex - sx, ey - sy) || 1;
+    const ux = (ex - sx) / wallLen;
+    const uy = (ey - sy) / wallLen;
+    const widthCm = unitWidthMm(cfg) / 10;
+    const halfW = widthCm / 2;
+    const gapCm = widthCm + 15.24; // one unit-width + 6"
+    const tCur = (item.position.x - sx) * ux + (item.position.z - sy) * uy;
+    const fits = (t: number) => t - halfW >= 0 && t + halfW <= wallLen;
+    // Prefer continuing forward along the wall; fall back to the other
+    // direction when only THAT side has room — "the wall's free side".
+    const forward = tCur + gapCm;
+    const backward = tCur - gapCm;
+    const t = fits(forward) ? forward : fits(backward) ? backward : null;
+    if (t == null) {
+      pushToast("No room on this wall for a duplicate.", "error");
+      return;
+    }
+    const nextCfg = mirror
+      ? mirrorUnitConfig(cfg)
+      : (JSON.parse(JSON.stringify(cfg)) as UnitConfig);
+    const baseName = `${(item.metadata?.itemName as string | undefined) ?? "Unit"}${mirror ? " mirror" : " copy"}`;
+    const existingNames = new Set(
+      bp.model.scene.getItems().map((it) => it.metadata?.itemName as string | undefined),
+    );
+    let name = baseName;
+    let dupeN = 2;
+    while (existingNames.has(name)) {
+      name = `${baseName} ${dupeN}`;
+      dupeN += 1;
+    }
+    insertUnit(nextCfg, name, { x: sx + ux * t, y: sy + uy * t });
+  };
+
+  const duplicateSelectedUnit = () => placeUnitCopy(false);
+  const mirrorSelectedUnit = () => placeUnitCopy(true);
+
   const deleteUnit = () => {
     if (!selUnit) return;
     pushUndo();
     bpRef.current?.model.scene.removeItem(selUnit);
     setSelUnit(null);
     pushToast("Unit removed.");
+  };
+
+  /** Studio 100x #43: Del/Backspace deletes whatever's selected — the same
+   * paths the Delete buttons already use. */
+  const deleteWall = () => {
+    if (!selWall) return;
+    pushUndo();
+    selWall.remove();
+    setSelWall(null);
+    refreshModel();
+  };
+
+  /**
+   * Studio 100x #37/#39/#43: Cmd/Ctrl+Z undo, Shift+Cmd/Ctrl+Z redo, M
+   * toggles the tape measure, Esc deselects (or closes the shortcuts
+   * dialog), Del/Backspace deletes the current selection — all ONLY while
+   * the stage has focus, and never while the user is typing into one of
+   * the palette's own text inputs (which live inside the same stage div).
+   */
+  const handleStageKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const tag = target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) {
+      return;
+    }
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && (e.key === "z" || e.key === "Z")) {
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if (e.key === "Escape") {
+      if (showShortcuts) {
+        setShowShortcuts(false);
+        return;
+      }
+      setSelUnit(null);
+      setSelWall(null);
+      setSelShelf(null);
+      return;
+    }
+    if (e.key === "Delete" || e.key === "Backspace") {
+      if (selUnit) {
+        e.preventDefault();
+        deleteUnit();
+      } else if (selWall) {
+        e.preventDefault();
+        deleteWall();
+      }
+      return;
+    }
+    if (e.key === "m" || e.key === "M") {
+      setMeasureOn((v) => !v);
+    }
   };
 
   // #26: cohort strength per catalog unit, right now — the same
@@ -2134,8 +2648,21 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       {paletteOpen && (
       <>
       <div className="row-gap" style={{ flexWrap: "wrap" }}>
-        <button className="button-like studio-mini" disabled={undoDepth === 0} onClick={undo}>
-          ↩ Undo{undoDepth > 0 ? ` (${undoDepth})` : ""}
+        <button
+          className="button-like studio-mini"
+          disabled={undoDepth === 0}
+          title="Undo (Cmd/Ctrl+Z)"
+          onClick={undo}
+        >
+          ↩︎ Undo{undoDepth > 0 ? ` (${undoDepth})` : ""}
+        </button>
+        <button
+          className="button-like studio-mini"
+          disabled={redoDepth === 0}
+          title="Redo (Shift+Cmd/Ctrl+Z)"
+          onClick={redo}
+        >
+          ↪︎ Redo{redoDepth > 0 ? ` (${redoDepth})` : ""}
         </button>
         <button className="button-like studio-mini" onClick={reseed}>Re-seed</button>
         {projectId && (
@@ -2277,6 +2804,41 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           >
             + Add shelf
           </button>
+          <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap", marginTop: 2 }}>
+            <button
+              type="button"
+              className={measureOn ? "button-like studio-mini active-pill" : "button-like studio-mini"}
+              aria-pressed={measureOn}
+              title="Tap two points in the 3D view to measure the distance between them"
+              onClick={() => setMeasureOn((v) => !v)}
+            >
+              📏 Measure
+            </button>
+            {measureOn && (
+              <span className="muted" style={{ fontSize: 11 }}>
+                tap two points in 3D
+              </span>
+            )}
+          </div>
+          <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+            <span className="muted" style={{ fontSize: 11 }}>Snap</span>
+            {([1, 6, 12] as const).map((inches) => (
+              <button
+                key={inches}
+                type="button"
+                className={
+                  snapIn === inches
+                    ? "button-like studio-mini active-pill"
+                    : "button-like studio-mini"
+                }
+                aria-pressed={snapIn === inches}
+                title={`Draw walls to the nearest ${inches}"`}
+                onClick={() => setSnapIn(inches)}
+              >
+                {inches}&quot;
+              </button>
+            ))}
+          </div>
         </div>
       </details>
       <details>
@@ -2375,12 +2937,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
               <button
                 className="button-like"
                 style={{ fontSize: 11.5, color: "var(--danger, #f87171)" }}
-                onClick={() => {
-                  pushUndo();
-                  selWall.remove();
-                  setSelWall(null);
-                  refreshModel();
-                }}
+                onClick={deleteWall}
               >
                 Delete wall
               </button>
@@ -2772,6 +3329,20 @@ export function ModelStudio({ source }: { source: StudioSource }) {
               </button>
               <button
                 className="button-like studio-mini"
+                title="Place a copy on this wall, one unit-width + 6&quot; over"
+                onClick={duplicateSelectedUnit}
+              >
+                Duplicate
+              </button>
+              <button
+                className="button-like studio-mini"
+                title="Duplicate with opens-left/right flipped — a matching pair"
+                onClick={mirrorSelectedUnit}
+              >
+                Mirror
+              </button>
+              <button
+                className="button-like studio-mini"
                 style={{ color: "var(--danger, #f87171)" }}
                 onClick={deleteUnit}
               >
@@ -2967,6 +3538,57 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         </div>
       )}
 
+      {showShortcuts && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Studio shortcuts and help"
+          onClick={() => setShowShortcuts(false)}
+        >
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <p style={{ margin: 0, fontWeight: 700 }}>Shortcuts &amp; help</p>
+            <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 13, lineHeight: 1.7 }}>
+              <li>Arrow keys — pan the 3D view</li>
+              <li>Cmd/Ctrl+Z — undo · Shift+Cmd/Ctrl+Z — redo</li>
+              <li>M — toggle the tape measure</li>
+              <li>Esc — deselect, or close this dialog</li>
+              <li>Delete/Backspace — delete the selected wall or unit</li>
+            </ul>
+            <div className="row-gap" style={{ marginTop: 10 }}>
+              <button className="button-like active-pill" onClick={() => setShowShortcuts(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* First-open coach (#44) — five real steps, Next/Skip, dismissed
+          forever either way. No backdrop-dismiss on purpose: a stray click
+          on this one-time overlay shouldn't silently burn it. */}
+      {tourStep != null && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Studio quick tour">
+          <div className="modal-card">
+            <p className="muted" style={{ margin: 0, fontSize: 11 }}>
+              Step {tourStep + 1} of {TOUR_STEPS.length}
+            </p>
+            <p style={{ margin: "4px 0 0", fontWeight: 700 }}>{TOUR_STEPS[tourStep].title}</p>
+            <p className="muted" style={{ margin: "6px 0 0", fontSize: 13 }}>
+              {TOUR_STEPS[tourStep].body}
+            </p>
+            <div className="row-gap" style={{ marginTop: 12 }}>
+              <button className="button-like active-pill" onClick={nextTourStep}>
+                {tourStep + 1 >= TOUR_STEPS.length ? "Done" : "Next"}
+              </button>
+              <button className="button-like" onClick={closeTour}>
+                Skip
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {(builderOpen || editUnit) && (
         <UnitBuilder
           initial={editUnit}
@@ -3003,13 +3625,22 @@ export function ModelStudio({ source }: { source: StudioSource }) {
               </>
             )}
             {view === "model" && (
-              <button
-                className="button-like studio-mini"
-                title="Frame the whole building"
-                onClick={() => frameBuilding()}
-              >
-                Recenter
-              </button>
+              <>
+                <button
+                  className="button-like studio-mini"
+                  title="Frame the whole building"
+                  onClick={() => frameBuilding()}
+                >
+                  Recenter
+                </button>
+                <button
+                  className="button-like studio-mini"
+                  title="Save a picture of this view"
+                  onClick={() => void takeSnapshot()}
+                >
+                  📸 Snapshot
+                </button>
+              </>
             )}
             <select
               className="studio-view-switch"
@@ -3026,10 +3657,21 @@ export function ModelStudio({ source }: { source: StudioSource }) {
             >
               {fs ? "Exit full screen" : "Full screen"}
             </button>
+            <button
+              type="button"
+              className="button-like studio-mini"
+              aria-label="Keyboard shortcuts and help"
+              title="Keyboard shortcuts and help"
+              onClick={() => setShowShortcuts(true)}
+            >
+              ?
+            </button>
           </span>
         </div>
         <div
           className="studio-stage"
+          tabIndex={0}
+          onKeyDown={handleStageKeyDown}
           onDragOver={(e) => {
             if (view === "plan" && e.dataTransfer.types.includes("application/x-studio-unit")) {
               e.preventDefault();

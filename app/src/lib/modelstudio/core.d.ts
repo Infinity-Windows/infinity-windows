@@ -131,6 +131,12 @@ export interface StudioThree {
   centerCamera(): void;
   getController(): { enabled: boolean; needsUpdate: boolean };
   stopSpin?: () => void;
+  /**
+   * A PNG data URL of the renderer's current frame (Studio 100x #41). The
+   * vendor's WebGLRenderer is constructed with `preserveDrawingBuffer: true`
+   * specifically so this works — see vendor/three/main.ts's `dataUrl()`.
+   */
+  dataUrl(): string;
   /** The 3D pane's container element (the renderer canvas lives inside). */
   element: HTMLElement;
   camera: THREE.PerspectiveCamera;
