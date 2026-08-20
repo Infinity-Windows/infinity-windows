@@ -265,6 +265,10 @@ export async function useSupabaseFixtures(
         "infinity:dismissed-tips",
         JSON.stringify(tipKeys),
       );
+      // Same reasoning as the wizard above: the Studio's first-open tour
+      // (Studio 100x #44) is a modal-backdrop overlay that would sit on
+      // top of the drawing on every fixture's first Studio visit.
+      window.localStorage.setItem("studio-tour-seen", "1");
     },
     { session: SESSION, tipKeys: DISMISSED_TIPS },
   );
