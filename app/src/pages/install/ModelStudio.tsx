@@ -82,6 +82,7 @@ import {
 import { indexSpecsByMark } from "../../lib/install/specs";
 import { UnitBuilder } from "../../components/studio/UnitBuilder";
 import { StudioAssistCard } from "../../components/studio/StudioAssistCard";
+import { FlatElevationsView } from "../../components/studio/FlatElevationsView";
 import { buildFitviewModelFromStudio, type PublishStats } from "../../lib/modelstudio/toFitview";
 import {
   applyUnitGeometry as applyUnitGeometryCore,
@@ -388,8 +389,9 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   const bpRef = useRef<Blueprint3d | null>(null);
   const roRef = useRef<ResizeObserver | null>(null);
   const [mode, setModeState] = useState<number>(0);
-  /** ONE view at a time (owner ask — no more split panes): 3D is home. */
-  const [view, setView] = useState<"model" | "plan">("model");
+  /** ONE view at a time (owner ask — no more split panes): 3D is home.
+   * "flat" is the unwrapped elevation editor (Studio 100x, 2026-08-20). */
+  const [view, setView] = useState<"model" | "plan" | "flat">("model");
   /** Floors: serialized plans per floor; only the active one is live in
    * the vendor, the rest render as shells. */
   const floorsRef = useRef<string[]>([]);
@@ -493,6 +495,41 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
   });
+  /** Inline rename (✎ next to the name, standalone projects only — a
+   * job-linked source's name is the job's, that page owns it). */
+  const [renaming, setRenaming] = useState(false);
+  const [renameInput, setRenameInput] = useState("");
+  const renameProject = useMutation({
+    mutationFn: async (newName: string) => {
+      if (!proj.data) throw new Error("Project not loaded yet");
+      // p_model null keeps the saved drawing (the RPC coalesces — see the
+      // migration's `model = coalesce(p_model, model)`). project_id is NOT
+      // coalesced there, so it has to be passed through explicitly or a
+      // rename would silently unlink the job (same trap linkToJob above
+      // already sidesteps by always stating every field it isn't changing).
+      return saveStudioProject({
+        id: proj.data.id,
+        name: newName,
+        projectId: proj.data.project_id,
+        model: null,
+      });
+    },
+    onSuccess: (row) => {
+      setRenaming(false);
+      pushToast(`Renamed to "${row.name}".`);
+      void qc.invalidateQueries({ queryKey: ["studioProject", standaloneId] });
+      void qc.invalidateQueries({ queryKey: ["studioProjects"] });
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
+  const commitRename = () => {
+    const trimmed = renameInput.trim();
+    if (!trimmed || trimmed === proj.data?.name) {
+      setRenaming(false);
+      return;
+    }
+    renameProject.mutate(trimmed);
+  };
   /**
    * Undo/redo: serialized snapshot stacks, ONE PAIR PER FLOOR NUMBER
    * (Studio 100x #37). Indexed by floor index — floorsRef.current[n]'s
@@ -2544,6 +2581,25 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     }
   };
 
+  /**
+   * The Flat view's drag commits here — SAME vendor placement path
+   * insertUnit and the 3D width-handle drag use: set the plan position,
+   * let the vendor re-attach to whichever wall is now closest
+   * (placeInRoom reads closestWallEdge() off the NEW position, so a drag
+   * that crosses a wall boundary re-homes the item with no remove/reinsert
+   * needed), then the same snap/grow/undo bookkeeping every other move
+   * gets. FlatElevationsView only ever computes WHERE — this is the one
+   * place that's allowed to touch the model.
+   */
+  const commitFlatMove = (item: StudioItem, xCm: number, zCm: number) => {
+    pushUndo();
+    item.position.set(xCm, item.position.y, zCm);
+    item.placeInRoom();
+    snapIfCorner(item);
+    growWallToFit(item);
+    refreshHandles();
+  };
+
   /** One path for every pane-grid change from the palette. */
   const applyGridChange = (next: UnitConfig) => {
     const item = selUnit;
@@ -3690,9 +3746,39 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         <div>
           <p className="home-greeting">Studio</p>
           <h1>
-            {source.kind === "standalone"
-              ? proj.data?.name ?? "Studio project"
-              : "Model Studio"}
+            {source.kind !== "standalone" ? (
+              "Model Studio"
+            ) : renaming ? (
+              <input
+                autoFocus
+                className="studio-rename-input"
+                aria-label="Project name"
+                value={renameInput}
+                disabled={renameProject.isPending}
+                onChange={(e) => setRenameInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitRename();
+                  if (e.key === "Escape") setRenaming(false);
+                }}
+                onBlur={commitRename}
+              />
+            ) : (
+              <span className="studio-rename-row">
+                {proj.data?.name ?? "Studio project"}
+                <button
+                  type="button"
+                  className="button-like studio-mini studio-rename-btn"
+                  aria-label="Rename project"
+                  title="Rename"
+                  onClick={() => {
+                    setRenameInput(proj.data?.name ?? "");
+                    setRenaming(true);
+                  }}
+                >
+                  ✎
+                </button>
+              </span>
+            )}
           </h1>
           {source.kind === "standalone" && jobCodeForLink && (
             <p className="muted" style={{ margin: 0, fontSize: 12 }}>
@@ -3859,12 +3945,14 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       <div className={fs ? "studio-pane single fs" : "studio-pane single"}>
         <div className="row-gap" style={{ alignItems: "baseline" }}>
           <p className="tcx-label" style={{ margin: "0 0 4px" }}>
-            {view === "model" ? "Model (3D)" : "Plan (2D)"}
+            {view === "model" ? "Model (3D)" : view === "plan" ? "Plan (2D)" : "Flat elevations"}
           </p>
           <span className="muted" style={{ fontSize: 11 }}>
             {view === "model"
               ? "drag to orbit · right-drag to pan · double-click to focus · tap to edit"
-              : "drag walls & corners · drag empty space to pan"}
+              : view === "plan"
+                ? "drag walls & corners · drag empty space to pan"
+                : "scroll to see every wall · drag a window or door to move it · tap to edit"}
           </span>
           <span className="row-gap" style={{ marginLeft: "auto" }}>
             {view === "plan" && (
@@ -3899,10 +3987,11 @@ export function ModelStudio({ source }: { source: StudioSource }) {
               className="studio-view-switch"
               aria-label="View"
               value={view}
-              onChange={(e) => setView(e.target.value as "model" | "plan")}
+              onChange={(e) => setView(e.target.value as "model" | "plan" | "flat")}
             >
               <option value="model">3D</option>
               <option value="plan">2D</option>
+              <option value="flat">Flat</option>
             </select>
             <button
               className="button-like studio-mini"
@@ -3942,6 +4031,20 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           <div className={view === "model" ? "studio-view" : "studio-view studio-view-hidden"}>
             <div id="studio-three" className="studio-three" />
           </div>
+          {/* Unlike the 2D/3D hosts above, Flat has nothing the vendor binds
+              to at construction — it's a plain React read of the same
+              model — so it mounts only while chosen instead of staying
+              hidden-but-live (no point measuring a stage nobody can see). */}
+          {view === "flat" && (
+            <div className="studio-view">
+              <FlatElevationsView
+                bp={bpRef.current}
+                selUnit={selUnit}
+                onSelectUnit={selectUnit}
+                onCommitMove={commitFlatMove}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

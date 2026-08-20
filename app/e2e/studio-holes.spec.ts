@@ -1336,3 +1336,46 @@ test("a HUMAN trace seeds every traced story as a studio floor", async ({
     return bp.model.floorplan.getWalls().length === 4;
   });
 });
+
+test("Flat view: entering it renders every wall as a panel and a placed unit as a rect", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useOutline(page, { fitview: { model: FITVIEW_MODEL } });
+  await openStudio(page);
+
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    bp.model.scene.addItem(
+      3,
+      "/modelstudio/models/window.json",
+      {
+        itemName: "E2E flat-view unit",
+        itemType: 3,
+        modelUrl: "/modelstudio/models/window.json",
+        unitConfig: {
+          kind: "window",
+          heightMm: 1500,
+          panels: [{ widthMm: 1200, mechanism: "fixed" }],
+        },
+      },
+      { x: 500, y: 120, z: 0 },
+      0,
+      undefined,
+      false,
+    );
+  });
+  await page.waitForFunction(() => {
+    const bp = (window as any).__studio;
+    const items = bp.model.scene.getItems();
+    return items.length === 1 && Boolean(items[0].currentWallEdge);
+  });
+
+  await page.getByLabel("View").selectOption("flat");
+  await expect(page.getByText("Flat elevations")).toBeVisible();
+
+  // MASS_A + MASS_B share a deduped boundary: 7 walls, one panel each.
+  await expect(page.locator(".studio-flat-wall")).toHaveCount(7);
+  await expect(page.locator(".studio-flat-item")).toHaveCount(1);
+  await expect(page.getByText("E2E flat-view unit")).toBeVisible();
+});
