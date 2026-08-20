@@ -29,6 +29,8 @@ export function OpeningReview() {
   const queryClient = useQueryClient();
   const [newCode, setNewCode] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const project = projects.data?.find((p) => p.id === projectId);
@@ -66,6 +68,56 @@ export function OpeningReview() {
     onSuccess: refresh,
     onError: (e) => setMessage(formatApiError(e)),
   });
+
+  // Bulk removal for extraction mistakes: N wrong marks go in one confirmed
+  // sweep instead of N taps. Same RPC, same guards, same Removed list — a
+  // mark that refuses (installed, holding a unit) is reported, not forced.
+  const bulkRemove = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const failed: { code: string; err: string }[] = [];
+      let done = 0;
+      for (const id of ids) {
+        const o = (openings.data ?? []).find((x) => x.id === id);
+        try {
+          await removeOpening(id, "removed in a sweep from the review screen");
+          done += 1;
+        } catch (e) {
+          failed.push({ code: o?.opening_code ?? id, err: formatApiError(e) });
+        }
+      }
+      return { done, failed };
+    },
+    onSuccess: (r) => {
+      refresh();
+      setSelecting(false);
+      setSelected(new Set());
+      setMessage(
+        r.failed.length === 0
+          ? `Removed ${r.done} opening${r.done === 1 ? "" : "s"}. They're under Removed below if you need them back.`
+          : `Removed ${r.done}. Couldn't remove ${r.failed
+              .map((f) => `#${f.code} — ${f.err}`)
+              .join("; ")}`,
+      );
+    },
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+
+  const toggleSelected = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const askThenBulkRemove = () => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    const ok = window.confirm(
+      `Remove ${ids.length} opening${ids.length === 1 ? "" : "s"} from this job? Nothing is deleted — they move to Removed below and can be put back.`,
+    );
+    if (ok) bulkRemove.mutate(ids);
+  };
 
   const putBack = useMutation({
     mutationFn: restoreOpening,
@@ -137,6 +189,14 @@ export function OpeningReview() {
 
   const row = (o: ProjectOpening) => (
     <li key={o.id} className="opening-review-row">
+      {selecting && o.status === "planned" && (
+        <input
+          type="checkbox"
+          checked={selected.has(o.id)}
+          onChange={() => toggleSelected(o.id)}
+          aria-label={`Select #${o.opening_code}`}
+        />
+      )}
       <input
         className="opening-code-input"
         defaultValue={o.opening_code}
@@ -190,6 +250,57 @@ export function OpeningReview() {
       </header>
 
       {message && <p className="error">{message}</p>}
+
+      {(openings.data ?? []).some((o) => o.status === "planned") && (
+        <div className="bulk-remove-bar">
+          {!selecting ? (
+            <button
+              className="link"
+              onClick={() => {
+                setSelecting(true);
+                setSelected(new Set());
+              }}
+            >
+              Remove several…
+            </button>
+          ) : (
+            <>
+              <button
+                className="link"
+                onClick={() =>
+                  setSelected(
+                    new Set(
+                      (openings.data ?? [])
+                        .filter((o) => o.status === "planned")
+                        .map((o) => o.id),
+                    ),
+                  )
+                }
+              >
+                Select all
+              </button>
+              <button
+                className="link"
+                onClick={() => {
+                  setSelecting(false);
+                  setSelected(new Set());
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="primary"
+                disabled={selected.size === 0 || bulkRemove.isPending}
+                onClick={askThenBulkRemove}
+              >
+                {bulkRemove.isPending
+                  ? "Removing…"
+                  : `Remove ${selected.size} selected`}
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {drafts.length > 0 && (
         <>

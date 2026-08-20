@@ -17,10 +17,10 @@ import {
   saveElevationViews,
   updatePlanset,
   uploadPlanset,
-  aiExtractSchedule,
+  downloadPlanset,
   type SpecExtractionOptions,
 } from "../../lib/install/api";
-import { renderSpecPageImages } from "../../lib/install/renderSpecImages";
+import { readScheduleFromDoc } from "../../lib/install/scheduleRead";
 import {
   describeSpecPages,
   failedSpecPages,
@@ -36,7 +36,6 @@ import {
 import { ExtractionProgress } from "../../components/install/ExtractionProgress";
 import {
   calloutsToDraftOpenings,
-  extractScheduleRows,
   rowsToDraftOpenings,
   summarizeDraftMarks,
   summarizeExtractOutcome,
@@ -247,57 +246,8 @@ export function PlansetUpload() {
         type_code: t.type_code,
         name: t.name,
       }));
-      const mapAiRows = (aiRows: Awaited<ReturnType<typeof aiExtractSchedule>>["rows"]) =>
-        aiRows.map((r) => ({
-          openingCode: r.openingCode,
-          typeText: r.typeText,
-          qty: r.qty,
-          label: r.label,
-          pageNumber: r.pageNumber,
-          widthIn: r.widthIn ?? null,
-          heightIn: r.heightIn ?? null,
-          color: r.color ?? null,
-          kind: r.kind ?? "window",
-        }));
-
-      // VISION FIRST (the RAC-OAK-5 lesson). The old order — deterministic
-      // text parse, AI-on-text only when the parse found nothing — read a
-      // cut-sheet planset's elevation labels as quantities: mark 9 appeared
-      // nine times across four elevations and became nine openings, while
-      // every mark whose pictured cell didn't survive PDF text extraction
-      // vanished (4-8, 10-12, 16, 17, 19 — including the job's biggest,
-      // #12 x8). On these sheets the truth is VISUAL: one bordered cell per
-      // mark with a drawing and a QTY field. So the vision read goes first
-      // and its rows win; the text paths remain the fallback for text-native
-      // schedule tables and for uploads where page rendering fails.
-      let rows: ReturnType<typeof mapAiRows> = [];
-      let source = "vision";
-      let unreadPages: number[] = [];
-      try {
-        const pageImages = await renderSpecPageImages(doc, { maxPages: 24 });
-        if (pageImages.length > 0) {
-          const vision = await aiExtractSchedule(pages, catalog, pageImages);
-          rows = mapAiRows(vision.rows);
-          unreadPages = vision.failedPages;
-        }
-      } catch {
-        // Rendering or the vision call failing must never cost the upload —
-        // the text paths below read what they can.
-      }
-      if (rows.length === 0) {
-        const textRead = await extractScheduleRows(pages, async (pgs) => {
-          try {
-            setProgress("No schedule table found — checking PDF details…");
-            return mapAiRows((await aiExtractSchedule(pgs, catalog)).rows);
-          } catch {
-            // A manufacturer detail PDF can be useful without containing a
-            // schedule table. Keep it available in the 2D source viewer.
-            return [];
-          }
-        });
-        rows = textRead.rows;
-        source = textRead.source;
-      }
+      const read = await readScheduleFromDoc(doc, pages, catalog, setProgress);
+      const { rows, source, unreadPages } = read;
 
       let drafts = rowsToDraftOpenings(rows, types.data ?? []);
       setProgress("Linking marks to types…");
@@ -525,6 +475,58 @@ export function PlansetUpload() {
     onError: (e) => setRetryNote(formatApiError(e)),
   });
 
+  // Re-read the window list from a planset that is ALREADY stored — the fix
+  // for "the extraction got it wrong" without hunting down the original file.
+  // Confirmed marks and marks with field work are never touched (the same
+  // supersede rules as an upload); everything else is replaced by the fresh
+  // vision-first read.
+  const rereadList = useMutation({
+    mutationFn: async (ps: Planset) => {
+      setSummary(null);
+      setProgress("Re-reading the window list from this planset…");
+      const { loadPdf, extractAllText } = await import("../../lib/install/pdf");
+      const doc = await loadPdf(await downloadPlanset(ps));
+      const pages = await extractAllText(doc);
+      const catalog = (types.data ?? []).map((t) => ({
+        type_code: t.type_code,
+        name: t.name,
+      }));
+      const read = await readScheduleFromDoc(doc, pages, catalog, setProgress);
+      let drafts = rowsToDraftOpenings(read.rows, types.data ?? []);
+      setProgress("Linking marks to types…");
+      drafts = await ensureTypesFromSpecs(drafts);
+      const linked = await linkSpecsToOpenings(projectId, drafts);
+      const result = await saveDraftOpenings(projectId, ps.id, drafts);
+      return {
+        inserted: result.inserted,
+        skipped: result.skipped,
+        linked: linked.linked,
+        unreadPages: read.unreadPages,
+        marks: summarizeDraftMarks(drafts),
+      };
+    },
+    onSuccess: (r) => {
+      setProgress(null);
+      queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["plansets", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
+      queryClient.invalidateQueries({ queryKey: ["markSpecs", projectId] });
+      const unread = r.unreadPages.length
+        ? ` Could not read page${r.unreadPages.length > 1 ? "s" : ""} ${r.unreadPages.join(", ")} — check ${r.unreadPages.length > 1 ? "those pages" : "that page"} by hand.`
+        : "";
+      setSummary(
+        `Window list re-read: ${r.inserted} draft opening(s) written${
+          r.skipped > 0 ? `, ${r.skipped} kept as they were (confirmed or has field work)` : ""
+        }.${unread} Review and confirm.`,
+      );
+      navigate(`/projects/${projectId}/review`);
+    },
+    onError: (e) => {
+      setProgress(null);
+      setSummary(formatApiError(e));
+    },
+  });
+
   const specPageNote = specPages
     ? specPages.visionFailed
       ? "We couldn't read the detailed specs off this sheet at all — only the basics were saved."
@@ -605,6 +607,18 @@ export function PlansetUpload() {
                 {plansetIsViewable(ps) ? "View ›" : "Download ›"}
               </span>
             </button>
+            {kind === "specs" && ps.status === "ready" && plansetIsViewable(ps) && (
+              <button
+                type="button"
+                className="link"
+                disabled={rereadList.isPending || upload.isPending}
+                onClick={() => rereadList.mutate(ps)}
+              >
+                {rereadList.isPending && rereadList.variables?.id === ps.id
+                  ? "Re-reading…"
+                  : "Re-read window list"}
+              </button>
+            )}
           </li>
         ))}
         {list.length === 0 && <p className="muted">Nothing in this slot yet.</p>}

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { Link, useParams } from "react-router-dom";
 import { listProjects, listWindowTypes } from "../../lib/api";
 import {
-  aiExtractSchedule,
   assignOpeningToInstaller,
   downloadPlanset,
   elevationAppearancesFromDoc,
@@ -41,6 +40,10 @@ import { useRealtimeOpenings } from "../../lib/useRealtimeOpenings";
 import { invalidateOpeningQueries } from "../../lib/install/openingQueryKeys";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import {
+  readScheduleFromDoc,
+  type ScheduleReadResult,
+} from "../../lib/install/scheduleRead";
+import {
   isForemanPlus,
   OPENING_KIND_COLORS,
   OPENING_STATUS_COLORS,
@@ -67,7 +70,6 @@ import {
   type PdfTextPage,
 } from "../../lib/install/planDetails";
 import {
-  extractScheduleRows,
   rowsToDraftOpenings,
   calloutsToDraftOpenings,
   summarizeDraftMarks,
@@ -443,9 +445,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         "../../lib/install/pdf"
       );
 
-      let rows: Awaited<ReturnType<typeof extractScheduleRows>>["rows"] = [];
-      let source: Awaited<ReturnType<typeof extractScheduleRows>>["source"] =
-        "none";
+      let rows: ScheduleReadResult["rows"] = [];
+      let source: ScheduleReadResult["source"] = "none";
+      let unreadPages: number[] = [];
       let pages: { pageNumber: number; text: string }[] = [];
 
       if (specsPdf) {
@@ -457,26 +459,10 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           name: t.name,
         }));
         setExtractNote("Extracting window/door marks…");
-        const extracted = await extractScheduleRows(pages, async (pgs) => {
-          try {
-            const aiRows = (await aiExtractSchedule(pgs, catalog)).rows;
-            return aiRows.map((r) => ({
-              openingCode: r.openingCode,
-              typeText: r.typeText,
-              qty: r.qty,
-              label: r.label,
-              pageNumber: r.pageNumber,
-              widthIn: r.widthIn ?? null,
-              heightIn: r.heightIn ?? null,
-              color: r.color ?? null,
-              kind: r.kind ?? "window",
-            }));
-          } catch {
-            return [];
-          }
-        });
-        rows = extracted.rows;
-        source = extracted.source;
+        const read = await readScheduleFromDoc(doc, pages, catalog, setExtractNote);
+        rows = read.rows;
+        source = read.source;
+        unreadPages = read.unreadPages;
         setSpecsText(pages);
         specsDocRef.current = doc;
         setSpecsPageCount(doc.numPages);
@@ -527,13 +513,18 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         marks: summarizeDraftMarks(drafts),
         repeatViewCallouts,
         elevationViews,
+        unreadPages,
       };
     },
-    onSuccess: ({ result, source, marks, repeatViewCallouts, elevationViews }) => {
+    onSuccess: ({ result, source, marks, repeatViewCallouts, elevationViews, unreadPages }) => {
       invalidateOpeningQueries(queryClient, projectId);
       queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
       queryClient.invalidateQueries({ queryKey: ["elevationViews", projectId] });
-      setExtractNote(null);
+      setExtractNote(
+        unreadPages.length > 0
+          ? `Could not read page${unreadPages.length > 1 ? "s" : ""} ${unreadPages.join(", ")} — check ${unreadPages.length > 1 ? "those pages" : "that page"} by hand.`
+          : null,
+      );
       setExtractSummary(
         summarizeExtractOutcome({
           marks,
