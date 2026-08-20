@@ -2,9 +2,16 @@
 // corner after the first 30¼" panel. The longer run stays on its wall (the
 // "main" leg), the short leg turns down the neighbouring wall.
 
-import { describe, expect, it } from "vitest";
-import type * as THREE from "three";
-import { buildUnitGeometry, cornerGeometryInfo, FRAME_COLOR_HEXES } from "./unitGeometry";
+import { describe, expect, it, vi } from "vitest";
+import * as THREE from "three";
+import type { StudioItem } from "./core";
+import {
+  applyUnitGeometry,
+  buildUnitGeometry,
+  cornerGeometryInfo,
+  FRAME_COLOR_HEXES,
+  UNIT_GEOMETRY_DEFAULTS,
+} from "./unitGeometry";
 import { configFromTiers, cornerLegs, unitSvg, type UnitConfig, type UnitTier } from "./units";
 
 /** Window 16, exactly as the drawing dimensions it (mm). */
@@ -320,5 +327,139 @@ describe("buildUnitGeometry — multi-tier stacking (Studio 100x #22)", () => {
     // Tier 0: 1 column × 2 rows = 2 cells. Tier 1 (no rows support yet):
     // 1 column × 1 row = 1 cell. 3 cells × 12 triangles/box (BoxGeometry).
     expect(glassTriangles).toBe(3 * 12);
+  });
+});
+
+// PRUNE pass: applyUnitGeometry used to be copy-pasted into ModelStudio.tsx,
+// JobModelViewer.tsx, and elevationRender.ts. These three viewers differ
+// only in which of `options` they set — Studio (the one editable scene)
+// allows a per-item gap override, rebuilds moving-sash rigs, and repaints
+// its overlay; the read-only viewers take every default. These tests pin
+// that every option actually changes what it claims to, and that the
+// defaults reproduce the two read-only viewers' old (unparameterized)
+// behavior byte-for-byte.
+describe("applyUnitGeometry (shared mounting core)", () => {
+  const FLAT: UnitConfig = {
+    kind: "window",
+    heightMm: 1500,
+    panels: [
+      { widthMm: 900, mechanism: "fixed" },
+      { widthMm: 900, mechanism: "fixed" },
+    ],
+  };
+  // A fixed panel alongside the slider — an all-moving unit leaves its
+  // tierGlass empty and trips an unrelated pre-existing crash in
+  // buildUnitGeometry's mergeGeometries call (see the prune-pass task spawned
+  // separately); not this cut's concern, so the fixture just avoids it.
+  const SLIDING: UnitConfig = {
+    kind: "window",
+    heightMm: 1500,
+    panels: [
+      { widthMm: 900, mechanism: "fixed" },
+      { widthMm: 900, mechanism: "slider", direction: "left" },
+    ],
+  };
+
+  function mockItem(metadata: { frameGapMm?: number } | null = {}): StudioItem {
+    const obj = new THREE.Object3D();
+    return Object.assign(obj, {
+      geometry: new THREE.BoxGeometry(1, 1, 1),
+      material: null,
+      halfSize: { x: 0, y: 0, z: 0, set: vi.fn() },
+      metadata: metadata === null ? undefined : { ...metadata },
+      redrawWall: vi.fn(),
+    }) as unknown as StudioItem;
+  }
+
+  const geometryOf = (item: StudioItem) => item.geometry as unknown as THREE.BufferGeometry;
+  const positionsOf = (geo: THREE.BufferGeometry) =>
+    Array.from(geo.getAttribute("position").array);
+
+  it("mounts the built geometry, refreshes halfSize, records the config, and redraws the wall", () => {
+    const item = mockItem();
+    applyUnitGeometry(item, FLAT);
+    expect(positionsOf(geometryOf(item))).toEqual(
+      positionsOf(buildUnitGeometry(FLAT, { mullionMm: UNIT_GEOMETRY_DEFAULTS.mullionMm }).geometry),
+    );
+    expect((item.halfSize as unknown as { set: ReturnType<typeof vi.fn> }).set).toHaveBeenCalled();
+    expect(item.metadata!.unitConfig).toBe(FLAT);
+    expect(item.redrawWall).toHaveBeenCalledTimes(1);
+  });
+
+  it("is a no-op on metadata when the item carries none — no crash on a bare item", () => {
+    const item = mockItem(null);
+    expect(() => applyUnitGeometry(item, FLAT)).not.toThrow();
+  });
+
+  it("with no options, always uses the shop default gap — even when the item has a stored override (JobModelViewer / elevationRender's old behavior)", () => {
+    const item = mockItem({ frameGapMm: 999 });
+    applyUnitGeometry(item, FLAT);
+    expect(positionsOf(geometryOf(item))).toEqual(
+      positionsOf(buildUnitGeometry(FLAT, { mullionMm: UNIT_GEOMETRY_DEFAULTS.mullionMm }).geometry),
+    );
+    expect(item.metadata!.frameGapMm).toBe(999); // left exactly as it was
+  });
+
+  it("allowStoredFrameGap reads the item's own override when no explicit frameGapMm is given", () => {
+    const item = mockItem({ frameGapMm: 15 });
+    applyUnitGeometry(item, FLAT, { allowStoredFrameGap: true });
+    expect(positionsOf(geometryOf(item))).toEqual(
+      positionsOf(buildUnitGeometry(FLAT, { mullionMm: 15 }).geometry),
+    );
+    expect(item.metadata!.frameGapMm).toBe(15); // read, not re-written
+  });
+
+  it("an explicit frameGapMm wins outright and is persisted back to metadata (ModelStudio's gap control)", () => {
+    const item = mockItem({ frameGapMm: 15 });
+    applyUnitGeometry(item, FLAT, { frameGapMm: 55, allowStoredFrameGap: true });
+    expect(positionsOf(geometryOf(item))).toEqual(
+      positionsOf(buildUnitGeometry(FLAT, { mullionMm: 55 }).geometry),
+    );
+    expect(item.metadata!.frameGapMm).toBe(55);
+  });
+
+  it("adds a two-rect holeRects reader for a corner unit, and clears it once the unit goes flat", () => {
+    const item = mockItem();
+    applyUnitGeometry(item, WINDOW_16);
+    const withHoles = item as unknown as { holeRects?: () => unknown[] };
+    expect(withHoles.holeRects).toBeInstanceOf(Function);
+    expect(withHoles.holeRects!()).toHaveLength(2);
+
+    applyUnitGeometry(item, { ...WINDOW_16, cornerAfterPanel: null });
+    expect(withHoles.holeRects).toBeUndefined();
+  });
+
+  it("rebuildMovers off (the default) never touches the item's children, even for a unit with a moving panel", () => {
+    const item = mockItem();
+    applyUnitGeometry(item, SLIDING);
+    const obj = item as unknown as THREE.Object3D;
+    expect(obj.children.filter((c) => c.name === "unit-mover")).toHaveLength(0);
+  });
+
+  it("rebuildMovers replaces stale pivot groups with one fresh group per mover", () => {
+    const item = mockItem();
+    const obj = item as unknown as THREE.Object3D;
+    const stale = new THREE.Group();
+    stale.name = "unit-mover";
+    obj.add(stale);
+
+    applyUnitGeometry(item, SLIDING, { rebuildMovers: true });
+
+    const movers = obj.children.filter((c) => c.name === "unit-mover");
+    expect(movers).toHaveLength(1);
+    expect(movers[0]).not.toBe(stale);
+  });
+
+  it("calls onApplied once metadata is set, and always before redrawWall", () => {
+    const order: string[] = [];
+    const item = mockItem();
+    (item as { redrawWall: () => void }).redrawWall = vi.fn(() => order.push("redraw"));
+    applyUnitGeometry(item, FLAT, {
+      onApplied: (it) => {
+        order.push("applied");
+        expect(it.metadata!.unitConfig).toBe(FLAT); // metadata already set by this point
+      },
+    });
+    expect(order).toEqual(["applied", "redraw"]);
   });
 });

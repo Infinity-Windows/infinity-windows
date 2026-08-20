@@ -24,11 +24,7 @@ import * as THREE from "three";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BackChip } from "../../components/BackChip";
 import { Blueprint3d, type StudioItem } from "../../lib/modelstudio/core";
-import {
-  buildUnitGeometry,
-  cornerGeometryInfo,
-  UNIT_GEOMETRY_DEFAULTS,
-} from "../../lib/modelstudio/unitGeometry";
+import { applyUnitGeometry } from "../../lib/modelstudio/unitGeometry";
 import type { UnitConfig } from "../../lib/modelstudio/units";
 import { fmtInchesFromMm } from "../../lib/modelstudio/dims";
 import { jobModelFromFeatures } from "../../lib/modelstudio/projects";
@@ -110,84 +106,6 @@ export function openingIdForMark(
   if (!mark) return null;
   const norm = normalizeMarkCode(mark);
   return openings.find((o) => normalizeMarkCode(o.opening_code) === norm)?.id ?? null;
-}
-
-/**
- * Rebuild a window/door item's real parametric shape from its saved config.
- * The serialized model stores a placeholder box (window.json) plus this
- * metadata; without this, every unit in the walk would render as an
- * identical blank box instead of the job's real geometry.
- *
- * Trimmed from ModelStudio's applyUnitGeometry: no moving-sash rig (nothing
- * here ever animates) and no per-item frame-gap override (view-only always
- * uses the shop default). Everything that decides what the unit LOOKS like
- * and how its wall hole cuts stays, corner units included.
- */
-function applyUnitGeometry(item: StudioItem, config: UnitConfig): void {
-  const built = buildUnitGeometry(config, { mullionMm: UNIT_GEOMETRY_DEFAULTS.mullionMm });
-  item.geometry.dispose();
-  (item as { geometry: unknown }).geometry = built.geometry;
-  (item as { material: unknown }).material = built.materials;
-  item.scale.set(1, 1, 1);
-  built.geometry.computeBoundingBox?.();
-  const bb = (
-    built.geometry as {
-      boundingBox: {
-        max: { x: number; y: number; z: number };
-        min: { x: number; y: number; z: number };
-      } | null;
-    }
-  ).boundingBox;
-  const corner = cornerGeometryInfo(config);
-  if (bb && corner) {
-    // Clamp the bounding box to the MAIN leg — the wrap leg lives on the
-    // neighbouring wall and gets its hole via holeRects below.
-    bb.min.x = -corner.mainWcm / 2;
-    bb.max.x = corner.mainWcm / 2;
-    bb.min.z = -corner.depthCm / 2;
-    bb.max.z = corner.depthCm / 2;
-    built.geometry.computeBoundingSphere?.();
-    item.halfSize.set(corner.mainWcm / 2, (bb.max.y - bb.min.y) / 2, corner.depthCm / 2);
-  } else if (bb) {
-    item.halfSize.set(
-      (bb.max.x - bb.min.x) / 2,
-      (bb.max.y - bb.min.y) / 2,
-      (bb.max.z - bb.min.z) / 2,
-    );
-  }
-  // Explicit world-space hole rects for the vendor's hole cutter — the wrap
-  // leg's hole lands on a wall the item is NOT attached to.
-  const itemAny = item as unknown as {
-    rotation?: { y: number };
-    holeRects?: () => unknown[];
-  };
-  if (corner) {
-    itemAny.holeRects = () => {
-      const ry = itemAny.rotation?.y ?? 0;
-      const wx = Math.cos(ry);
-      const wz = -Math.sin(ry);
-      const nx = Math.sin(ry);
-      const nz = Math.cos(ry);
-      const halfH = config.heightMm / 20;
-      const cx = item.position.x + corner.sideSign * (corner.mainWcm / 2) * wx;
-      const cz = item.position.z + corner.sideSign * (corner.mainWcm / 2) * wz;
-      const wrapOff = corner.depthCm / 2 + corner.wrapWcm / 2;
-      return [
-        {
-          x: item.position.x, y: item.position.y, z: item.position.z,
-          halfW: corner.mainWcm / 2, halfH, dirX: wx, dirZ: wz,
-        },
-        {
-          x: cx + nx * wrapOff, y: item.position.y, z: cz + nz * wrapOff,
-          halfW: corner.wrapWcm / 2, halfH, dirX: nx, dirZ: nz,
-        },
-      ];
-    };
-  } else {
-    delete itemAny.holeRects;
-  }
-  if (item.metadata) item.metadata.unitConfig = config;
-  item.redrawWall?.();
 }
 
 // --- Assign mode (Studio 100x #8): tap-order pick badges -------------------
