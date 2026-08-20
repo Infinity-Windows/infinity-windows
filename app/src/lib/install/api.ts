@@ -8,6 +8,7 @@ import { markBase, planDraftPersistence } from "./extract";
 import type { MarkSpecDraft, ProjectMarkSpec } from "./specs";
 import { mergeSpecsByMark, parseSpecRow } from "./specs";
 import { dropCropsForPlanset } from "./cropCache";
+import { buildSequenceAssignments, maxExistingSequence } from "./mapDispatch";
 import { extractSpecsDeterministic } from "./specsDeterministic";
 import { parseSpecPageStatuses, type SpecPageStatus } from "./specPageStatus";
 import { pendingPages, type StoredPageProgress } from "./extractionProgress";
@@ -332,6 +333,31 @@ export async function assignOpeningToInstaller(
   });
   if (error) throw error;
   return data as ProjectOpening;
+}
+
+/**
+ * The one sequenced-dispatch RPC path: append an ordered batch of openings
+ * to an installer's route (tap order becomes 1..N after whatever they
+ * already have), or clear them when `profileId` is null. Built on
+ * mapDispatch's pure sequencing helpers so every tap-to-assign surface —
+ * the fit-view map (MapsInteractive) and the 3D model viewer
+ * (JobModelViewer) alike — computes the exact same sequence for the same
+ * taps instead of maintaining two copies of this math that could drift.
+ */
+export async function assignOpeningsInOrder(
+  openings: readonly Pick<ProjectOpening, "id" | "assigned_to" | "sequence">[],
+  orderedIds: readonly string[],
+  profileId: string | null,
+): Promise<void> {
+  if (!profileId) {
+    for (const id of orderedIds) await unassignOpening(id);
+    return;
+  }
+  const startAfter = maxExistingSequence(openings, profileId, orderedIds);
+  const plan = buildSequenceAssignments(orderedIds, startAfter);
+  for (const { openingId, sequence } of plan) {
+    await assignOpeningToInstaller(openingId, profileId, sequence);
+  }
 }
 
 export async function unassignOpening(openingId: string): Promise<ProjectOpening> {
