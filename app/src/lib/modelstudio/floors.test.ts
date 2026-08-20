@@ -10,6 +10,7 @@ import {
   parseFloorLite,
   parseFloors,
   parseRoof,
+  modelBody,
 } from "./floors";
 import { buildFitviewModelFromStudio } from "./toFitview";
 
@@ -129,5 +130,24 @@ describe("multi-floor publish", () => {
     // sill = (120cm centre − 75cm half) floor-relative → 0.45 m above ITS floor.
     expect(wins[0].y).toBeCloseTo(0.45, 2);
     expect((out.stats as { skippedWindows: number }).skippedWindows).toBe(0);
+  });
+});
+
+// Publish used to drop every floor but the active one (and mirror the WRONG
+// floor for old readers). One shared body-builder ends the class.
+describe("modelBody", () => {
+  it("keeps every floor and mirrors floor 1 for old readers — whoever calls", () => {
+    const floors = ["floor-0", "floor-1", "floor-2"];
+    const body = modelBody(floors, "flat", "2026-08-20T00:00:00Z");
+    expect(body.floors).toEqual(["floor-0", "floor-1", "floor-2"]);
+    expect(body.serialized).toBe("floor-0");
+    expect(body.roof).toBe("flat");
+  });
+
+  it("copies the floors array — later ref mutations can't reach a saved body", () => {
+    const floors = ["a", "b"];
+    const body = modelBody(floors, "none");
+    floors[1] = "mutated";
+    expect(body.floors[1]).toBe("b");
   });
 });

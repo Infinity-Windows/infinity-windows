@@ -118,3 +118,23 @@ export type RoofStyle = "none" | "flat";
 export function parseRoof(saved: { roof?: string } | null | undefined): RoofStyle {
   return saved?.roof === "flat" ? "flat" : "none";
 }
+
+/**
+ * The ONE shape a saved Studio model takes, whoever is writing it. Save
+ * always used this; Publish hand-rolled its own copy with no `floors` and
+ * `serialized` set to whichever floor was ACTIVE — so publishing a
+ * multi-story building from floor 2 silently threw away every other floor
+ * AND wrote floor 2 where old readers expect floor 1 (found during the
+ * look-and-feel wave, 2026-08-20). Both writers call this now; the bug
+ * class is gone because there is nothing left to hand-roll.
+ *
+ * `floors` must already contain the flushed live floor — flushing touches
+ * the vendor model, which stays the caller's job so this stays pure.
+ */
+export function modelBody(
+  floors: string[],
+  roof: RoofStyle,
+  savedAt: string = new Date().toISOString(),
+): { serialized: string; floors: string[]; savedAt: string; roof: RoofStyle } {
+  return { serialized: floors[0], floors: [...floors], savedAt, roof };
+}
