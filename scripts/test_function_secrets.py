@@ -211,8 +211,9 @@ class FunctionSecretsTest(unittest.TestCase):
 
     def test_every_real_function_is_covered(self):
         names = fs.function_names()
-        self.assertEqual(len(names), 15)
+        self.assertEqual(len(names), 16)
         self.assertIn("ask", names)
+        self.assertIn("studio-assist", names)
         # Creates accounts on the service-role key, and needs no secret of its
         # own: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are platform-provided.
         self.assertIn("approve-access-request", names)
@@ -229,6 +230,16 @@ class FunctionSecretsTest(unittest.TestCase):
         # it, so a missing OpenAI key degrades Ask Infinity rather than breaking it.
         self.assertNotIn("OPENAI_API_KEY", r["required"])
         self.assertIn("OPENAI_API_KEY", r["optional"])
+
+    def test_studio_assist_needs_only_anthropic(self):
+        """It imports buildAnthropicMessages from knowledge.ts but not embed,
+
+        so — unlike ask — it never becomes dependent on OPENAI_API_KEY at
+        all: there's no RAG step here to guard.
+        """
+        r = fs.requirements_for("studio-assist")
+        self.assertEqual(r["required"], ["ANTHROPIC_API_KEY"])
+        self.assertEqual(r["optional"], [])
 
     def test_send_push_needs_the_vapid_pair_and_no_ai_key(self):
         r = fs.requirements_for("send-push")
@@ -355,7 +366,8 @@ class PlainEnglishNames(unittest.TestCase):
         self.assertEqual(
             got,
             "Ask Infinity|reading delivery schedules|plan-set reading|"
-            "how-to guides|toolbox talks|window-type tips|install voice memos",
+            "how-to guides|toolbox talks|the Model Studio AI assistant|"
+            "window-type tips|install voice memos",
         )
 
     def test_the_openai_headline_names_only_what_claude_cannot_do(self):

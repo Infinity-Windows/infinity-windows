@@ -81,6 +81,7 @@ import {
 } from "../../lib/modelstudio/fromProject";
 import { indexSpecsByMark } from "../../lib/install/specs";
 import { UnitBuilder } from "../../components/studio/UnitBuilder";
+import { StudioAssistCard } from "../../components/studio/StudioAssistCard";
 import { buildFitviewModelFromStudio, type PublishStats } from "../../lib/modelstudio/toFitview";
 import {
   buildUnitGeometry,
@@ -417,6 +418,8 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   /** Catalog unit being refined in the builder (spec imports arrive as one
    * fixed panel — the drawing's real panels get typed in here). */
   const [editUnit, setEditUnit] = useState<StudioUnit | null>(null);
+  /** Studio 100x #42: the "Ask about this model" chat card. */
+  const [aiAssistOpen, setAiAssistOpen] = useState(false);
   /** The 3D-tapped unit — Home-Design-3D-style numeric editing. */
   const [selUnit, setSelUnit] = useState<StudioItem | null>(null);
   /** 3D drag handles on the selection (grab a side to stretch). */
@@ -2897,6 +2900,14 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         <button className="button-like studio-mini active-pill" onClick={preparePublish}>
           Publish to map
         </button>
+        <button
+          type="button"
+          className="button-like studio-mini"
+          title="Ask about this floor's model, or propose adding a unit"
+          onClick={() => setAiAssistOpen(true)}
+        >
+          🤖 Ask about this model
+        </button>
         {hasBackup && (
           <button
             className="button-like studio-mini"
@@ -3918,6 +3929,15 @@ export function ModelStudio({ source }: { source: StudioSource }) {
             setBuilderOpen(false);
             setEditUnit(null);
           }}
+        />
+      )}
+
+      {aiAssistOpen && (
+        <StudioAssistCard
+          bp={bpRef.current}
+          units={units.data ?? []}
+          onInsert={(cfg, name, atCm) => insertUnit(cfg, name, atCm)}
+          onClose={() => setAiAssistOpen(false)}
         />
       )}
 

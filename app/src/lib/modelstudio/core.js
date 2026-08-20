@@ -6,3 +6,7 @@
 export { Blueprint3d } from "./vendor/blueprint3d";
 export { floorplannerModes } from "./vendor/floorplanner/floorplanner_view";
 export { Configuration, configWallHeight } from "./vendor/core/configuration";
+// Studio 100x #42: the vendored model-to-text serializer built for an LLM
+// feature that was never wired up — see aiAssist.ts for the app-facing
+// wrapper. Exposed here, not imported directly, same as everything else.
+export { simplifyCanvasData, toMinifiedJSON } from "./vendor/services/simplify-canvas-data";

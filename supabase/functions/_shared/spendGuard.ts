@@ -154,6 +154,17 @@ export const FUNCTION_SPEND: Record<string, FunctionSpend> = {
     model: "claude-sonnet-5",
     estimateMicros: 20_000,
   },
+  // A person tapping a button, same as `ask` — question-kind, so it shares
+  // Ask Infinity's per-user daily count rather than getting its own. The
+  // simplified model JSON is capped at ~8KB (~2k tokens) client-side; add the
+  // system prompt, catalog summary and question and call it 3k tokens in.
+  // Replies are short, occasionally with an add_unit JSON block: ~400 out.
+  "studio-assist": {
+    kind: "question",
+    provider: "anthropic",
+    model: "claude-sonnet-5",
+    estimateMicros: 10_000,
+  },
   // Embeddings only: $0.02 per million tokens. Effectively free, metered anyway
   // so the owner screen can never have a blind spot.
   "ingest-knowledge": {

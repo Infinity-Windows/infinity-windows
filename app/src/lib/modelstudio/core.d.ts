@@ -192,3 +192,96 @@ export const Configuration: {
   getNumericValue(key: string): number;
   setValue(key: string, value: string | number): void;
 };
+
+// ---------------------------------------------------------------------------
+// Studio 100x #42 — the model-to-text serializer behind "Ask about this
+// model". Turns a floorplan+items snapshot into something small enough to
+// hand an LLM (UUIDs → indices, coordinates rounded, materials dropped). The
+// vendor built and tested this for a Feng Shui feature that was never wired
+// up; we reuse it as-is. See lib/modelstudio/aiAssist.ts for the app-facing
+// wrapper — never call simplifyCanvasData directly from a page/component.
+// ---------------------------------------------------------------------------
+
+/** What `bp.model.exportSerialized()` parses to, typed just precisely enough
+ * to hand to simplifyCanvasData. Mirrors the vendor's own SavedFloorplan
+ * (vendor/model/floorplan.ts) — kept as a separate hand-written type rather
+ * than an `import type` from vendor, same reasoning as every other type in
+ * this file. */
+export interface StudioSavedFloorplan {
+  corners: Record<string, { x: number; y: number }>;
+  walls: Array<{
+    corner1: string;
+    corner2: string;
+    frontTexture?: { url: string; stretch?: boolean; scale: number };
+    backTexture?: { url: string; stretch?: boolean; scale: number };
+    height?: number;
+  }>;
+  wallTextures?: unknown[];
+  floorTextures?: Record<string, { url: string; scale: number }>;
+  newFloorTextures?: Record<string, { url: string; scale: number }>;
+}
+
+/** Mirrors the vendor's own SerializedItem (vendor/model/model.ts). */
+export interface StudioSerializedItem {
+  item_name: string;
+  item_type: number;
+  model_url: string;
+  xpos: number;
+  ypos: number;
+  zpos: number;
+  rotation: number;
+  scale_x: number;
+  scale_y: number;
+  scale_z: number;
+  fixed: boolean;
+  resizable?: boolean;
+  description?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface SimplifiedArea {
+  name: string;
+  /** Corner indices, in order, bounding this room/area. */
+  boundary: number[];
+}
+
+export interface SimplifiedWall {
+  /** [start corner index, end corner index] into SimplifiedCanvasData.corners
+   * — also this wall's own 0-based position in layout.walls, which is the
+   * only "id" a wall has anywhere in the Studio (see aiAssist.ts). */
+  corners: [number, number];
+}
+
+export interface SimplifiedItem {
+  /** Plan-space [x, y, z] cm — same coordinate system as StudioWall's
+   * getStartX/getStartY etc. and SimplifiedCanvasData.corners. */
+  pos: [number, number, number];
+  rot: number;
+  scale: [number, number, number];
+  fixed?: boolean;
+  resizable?: boolean;
+  /** The one human-readable label an item carries into the simplified
+   * payload — absent unless the caller populated SerializedItem.description
+   * first (see aiAssist.ts's item-name backfill). */
+  description?: string;
+}
+
+export interface SimplifiedCanvasData {
+  corners: [number, number][];
+  layout: {
+    walls: SimplifiedWall[];
+    areas: SimplifiedArea[];
+  };
+  items: SimplifiedItem[];
+}
+
+/** Compacts a floorplan+items snapshot for LLM consumption: UUIDs become
+ * indices, coordinates round to 2 decimals, materials and technical names
+ * drop out. Pure — the vendor's own tested implementation, unchanged. */
+export function simplifyCanvasData(data: {
+  floorplan: StudioSavedFloorplan;
+  items: StudioSerializedItem[];
+}): SimplifiedCanvasData;
+
+/** `JSON.stringify(data)` with no whitespace — the form to actually send. */
+export function toMinifiedJSON(data: SimplifiedCanvasData): string;
