@@ -56,6 +56,13 @@ function insetOutsetOf(
  * PURE: which openings need their stored signature replaced. Config
  * priority is the pull's exact rule — refined catalog unit for the mark,
  * else the spec row through specToUnitConfig; no config, no signature.
+ *
+ * `storyByMark` still resolves ONE story per mark — the opening's own
+ * base-tier story, exactly as before Studio 100x #22. A multi-tier
+ * config's OTHER tiers never need their own entry here: computeSignature
+ * resolves each of them as this same base story plus that tier's own
+ * authored offset (signature.ts), so per-tier story resolution happens
+ * there, not in this per-mark map.
  */
 export function planSignatureUpdates(input: {
   openings: { id: string; opening_code: string; sig_key?: string | null }[];

@@ -2,7 +2,14 @@
 // editing (see paneGrid.test.ts for splits/presets/spec-import).
 
 import { describe, expect, it } from "vitest";
-import { constructabilityProblems, mirrorUnitConfig, type UnitConfig } from "./units";
+import {
+  configFromTiers,
+  constructabilityProblems,
+  mirrorUnitConfig,
+  unitTiers,
+  type UnitConfig,
+  type UnitTier,
+} from "./units";
 
 describe("mirrorUnitConfig", () => {
   it("flips every panel's operable direction, left<->right", () => {
@@ -65,6 +72,100 @@ describe("mirrorUnitConfig", () => {
     expect(cfg.panels[0].direction).toBe("left"); // original untouched
     expect(twice.panels[0].direction).toBe("left"); // mirrored back
     expect(once).not.toBe(cfg);
+  });
+
+  // Studio 100x #22: a multi-tier unit must flip EVERY tier, not just the
+  // flat mirror — otherwise "Mirror" leaves tier 1 flipped and the tiers
+  // above it untouched, an inconsistent unit.
+  it("flips every tier's panels too, keeping the flat mirror in sync", () => {
+    const cfg: UnitConfig = configFromTiers(
+      { kind: "window" },
+      [
+        { panels: [{ widthMm: 900, mechanism: "slider", direction: "left" }], heightMm: 1200, story: 1 },
+        { panels: [{ widthMm: 900, mechanism: "casement", direction: "right" }], heightMm: 1200, story: 2 },
+      ],
+    );
+    const mirrored = mirrorUnitConfig(cfg);
+    expect(mirrored.tiers?.[0].panels[0].direction).toBe("right");
+    expect(mirrored.tiers?.[1].panels[0].direction).toBe("left");
+    // The flat fields still mirror tier 0 after the flip.
+    expect(mirrored.panels[0].direction).toBe(mirrored.tiers?.[0].panels[0].direction);
+  });
+});
+
+describe("unitTiers / configFromTiers (Studio 100x #22)", () => {
+  const flatCfg: UnitConfig = {
+    kind: "window",
+    heightMm: 1500,
+    panels: [{ widthMm: 900, mechanism: "fixed" }],
+    cornerAfterPanel: null,
+  };
+
+  it("a config with no tiers field synthesizes exactly one tier off the flat fields", () => {
+    const tiers = unitTiers(flatCfg);
+    expect(tiers).toHaveLength(1);
+    expect(tiers[0]).toEqual({
+      panels: flatCfg.panels,
+      heightMm: flatCfg.heightMm,
+      cornerAfterPanel: null,
+      story: 1,
+    });
+  });
+
+  it("an empty tiers array is treated the same as absent", () => {
+    expect(unitTiers({ ...flatCfg, tiers: [] })).toEqual(unitTiers(flatCfg));
+  });
+
+  it("a config WITH tiers returns them verbatim, ignoring the flat fields' own content", () => {
+    const tiers: UnitTier[] = [
+      { panels: [{ widthMm: 800, mechanism: "fixed" }], heightMm: 1000, story: 1 },
+      { panels: [{ widthMm: 800, mechanism: "hung" }], heightMm: 900, story: 2 },
+    ];
+    const cfg: UnitConfig = { ...flatCfg, tiers };
+    expect(unitTiers(cfg)).toBe(tiers);
+  });
+
+  it("configFromTiers collapses a single tier to the plain flat shape — no `tiers` key at all", () => {
+    const cfg = configFromTiers(
+      { kind: "door", insetOutset: "outset", weightLb: 42, frameColor: "black" },
+      [{ panels: [{ widthMm: 900, mechanism: "fixed" }], heightMm: 2000, cornerAfterPanel: null, story: 1 }],
+    );
+    expect("tiers" in cfg).toBe(false);
+    expect(cfg.panels).toEqual([{ widthMm: 900, mechanism: "fixed" }]);
+    expect(cfg.heightMm).toBe(2000);
+    expect(cfg.kind).toBe("door");
+    expect(cfg.insetOutset).toBe("outset");
+    expect(cfg.weightLb).toBe(42);
+    expect(cfg.frameColor).toBe("black");
+  });
+
+  it("configFromTiers with 2+ tiers sets `tiers` AND mirrors tier 0 onto the flat fields", () => {
+    const tiers: UnitTier[] = [
+      { panels: [{ widthMm: 900, mechanism: "fixed" }], heightMm: 1200, cornerAfterPanel: null, story: 1 },
+      { panels: [{ widthMm: 900, mechanism: "slider", direction: "left" }], heightMm: 1100, story: 2 },
+      { panels: [{ widthMm: 900, mechanism: "casement", direction: "right" }], heightMm: 1000, story: 3 },
+    ];
+    const cfg = configFromTiers({ kind: "window" }, tiers);
+    expect(cfg.tiers).toEqual(tiers);
+    expect(cfg.panels).toEqual(tiers[0].panels);
+    expect(cfg.heightMm).toBe(1200);
+    expect(cfg.cornerAfterPanel).toBeNull();
+  });
+
+  it("round-trips through unitTiers — what you build is what you read back, single or multi-tier", () => {
+    // cornerAfterPanel explicit (not absent) — configFromTiers's flat
+    // mirror always writes it, so unitTiers' synthesis always reads it
+    // back as an explicit value, not "absent."
+    const single: UnitTier[] = [
+      { panels: [{ widthMm: 700, mechanism: "hung" }], heightMm: 1400, cornerAfterPanel: null, story: 1 },
+    ];
+    expect(unitTiers(configFromTiers({ kind: "window" }, single))).toEqual(single);
+
+    const multi: UnitTier[] = [
+      { panels: [{ widthMm: 900, mechanism: "fixed" }], heightMm: 1200, story: 1 },
+      { panels: [{ widthMm: 900, mechanism: "fixed" }], heightMm: 1200, story: 2 },
+    ];
+    expect(unitTiers(configFromTiers({ kind: "window" }, multi))).toEqual(multi);
   });
 });
 

@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import type * as THREE from "three";
 import { buildUnitGeometry, cornerGeometryInfo, FRAME_COLOR_HEXES } from "./unitGeometry";
-import { cornerLegs, unitSvg, type UnitConfig } from "./units";
+import { configFromTiers, cornerLegs, unitSvg, type UnitConfig, type UnitTier } from "./units";
 
 /** Window 16, exactly as the drawing dimensions it (mm). */
 const WINDOW_16: UnitConfig = {
@@ -154,5 +154,171 @@ describe("unitSvg corner marker", () => {
   it("draws the 90° label the way the spec sheet does", () => {
     expect(unitSvg(WINDOW_16)).toContain("90°");
     expect(unitSvg({ ...WINDOW_16, cornerAfterPanel: null })).not.toContain("90°");
+  });
+});
+
+// Studio 100x #22: multi-tier units stack straight up through frozen floor
+// shells above (ACCEPTED v1 occlusion limit, documented at buildUnitGeometry's
+// buildTier). These tests cover the stacking math itself, not occlusion.
+describe("buildUnitGeometry — multi-tier stacking (Studio 100x #22)", () => {
+  const flatTier = (heightMm: number, widthMm = 1200): UnitConfig => ({
+    kind: "window",
+    heightMm,
+    panels: [{ widthMm, mechanism: "fixed" }],
+  });
+
+  it("stacks a tier directly on top of the one below it — no gap, no overlap", () => {
+    const h1 = 1500;
+    const h2 = 1000;
+    const multi = configFromTiers(
+      { kind: "window" },
+      [
+        { panels: [{ widthMm: 1200, mechanism: "fixed" }], heightMm: h1, cornerAfterPanel: null, story: 1 },
+        { panels: [{ widthMm: 1200, mechanism: "fixed" }], heightMm: h2, cornerAfterPanel: null, story: 2 },
+      ],
+    );
+    const { geometry } = buildUnitGeometry(multi);
+    geometry.computeBoundingBox();
+    const bb = geometry.boundingBox!;
+
+    const solo1 = buildUnitGeometry(flatTier(h1));
+    solo1.geometry.computeBoundingBox();
+    const bb1 = solo1.geometry.boundingBox!;
+    const solo2 = buildUnitGeometry(flatTier(h2));
+    solo2.geometry.computeBoundingBox();
+    const bb2 = solo2.geometry.boundingBox!;
+
+    // Tier 0 (the base) renders exactly where a flat unit of its own
+    // height always has — the base tier's sill/position never moves.
+    expect(bb.min.y).toBeCloseTo(bb1.min.y, 6);
+    // Tier 1 stacks directly on tier 0's top: the SAME local span a flat
+    // unit of its own height has, shifted up by tier 0's full height —
+    // not tier 0's half-height, not any gap or overlap.
+    expect(bb.max.y).toBeCloseTo(bb1.max.y + (bb2.max.y - bb2.min.y), 6);
+    expect(bb.max.y - bb1.max.y).toBeCloseTo(h2 / 10, 6); // tier 1's own height, in cm
+  });
+
+  it("three tiers stack in order — total height is the sum of all three", () => {
+    const heights = [1500, 1200, 1000];
+    const multi = configFromTiers(
+      { kind: "window" },
+      heights.map((heightMm, i) => ({
+        panels: [{ widthMm: 1200, mechanism: "fixed" as const }],
+        heightMm,
+        cornerAfterPanel: null,
+        story: i + 1,
+      })),
+    );
+    const { geometry } = buildUnitGeometry(multi);
+    geometry.computeBoundingBox();
+    const bb = geometry.boundingBox!;
+    const totalCm = heights.reduce((t, h) => t + h, 0) / 10;
+    expect(bb.max.y - bb.min.y).toBeCloseTo(totalCm, 6);
+  });
+
+  it("each tier judges its OWN corner — a corner on tier 2 alone still extends the wrap leg", () => {
+    const cornerPanels = [768, 2248, 2286, 2229, 432].map((widthMm) => ({
+      widthMm,
+      mechanism: "fixed" as const,
+    }));
+    const flatBase: UnitTier = { panels: cornerPanels, heightMm: 1500, cornerAfterPanel: null, story: 1 };
+    const cornerTop: UnitTier = { panels: cornerPanels, heightMm: 1500, cornerAfterPanel: 0, story: 2 };
+    const cfg = configFromTiers({ kind: "window" }, [flatBase, cornerTop]);
+    // The top-level flat mirror (tier 0) has NO corner — proves the wrap
+    // leg below comes from reading the TIER's own value, never the
+    // top-level config.cornerAfterPanel mirror.
+    expect(cfg.cornerAfterPanel).toBeNull();
+    const { geometry } = buildUnitGeometry(cfg);
+    geometry.computeBoundingBox();
+    expect(geometry.boundingBox!.max.z).toBeGreaterThan(70);
+  });
+
+  it("a corner on the BASE tier alone still wraps, even with a flat tier above it", () => {
+    const cornerPanels = [768, 2248, 2286, 2229, 432].map((widthMm) => ({
+      widthMm,
+      mechanism: "fixed" as const,
+    }));
+    const cornerBase: UnitTier = { panels: cornerPanels, heightMm: 1500, cornerAfterPanel: 0, story: 1 };
+    const flatTop: UnitTier = {
+      panels: [{ widthMm: 1200, mechanism: "fixed" }],
+      heightMm: 1200,
+      cornerAfterPanel: null,
+      story: 2,
+    };
+    const cfg = configFromTiers({ kind: "window" }, [cornerBase, flatTop]);
+    const { geometry } = buildUnitGeometry(cfg);
+    geometry.computeBoundingBox();
+    expect(geometry.boundingBox!.max.z).toBeGreaterThan(70);
+  });
+
+  it("neither tier has a corner — the whole stack stays flat", () => {
+    const cfg = configFromTiers(
+      { kind: "window" },
+      [
+        { panels: [{ widthMm: 1200, mechanism: "fixed" }], heightMm: 1200, cornerAfterPanel: null, story: 1 },
+        { panels: [{ widthMm: 1200, mechanism: "fixed" }], heightMm: 1200, cornerAfterPanel: null, story: 2 },
+      ],
+    );
+    const { geometry } = buildUnitGeometry(cfg);
+    geometry.computeBoundingBox();
+    expect(geometry.boundingBox!.max.z).toBeLessThan(10);
+  });
+
+  it("a mover on an upper tier carries that tier's index and is pivoted at its stacked centre", () => {
+    const h1 = 1500;
+    const h2 = 1000;
+    const cfg = configFromTiers(
+      { kind: "window" },
+      [
+        { panels: [{ widthMm: 1200, mechanism: "fixed" }], heightMm: h1, cornerAfterPanel: null, story: 1 },
+        {
+          panels: [{ widthMm: 1200, mechanism: "slider", direction: "left" }],
+          heightMm: h2,
+          cornerAfterPanel: null,
+          story: 2,
+        },
+      ],
+    );
+    const { movers } = buildUnitGeometry(cfg);
+    expect(movers).toHaveLength(1);
+    expect(movers[0].tierIndex).toBe(1);
+    // Pivoted at tier 1's own stacked CENTRE — half of tier 0's height
+    // plus half of tier 1's own (where tier 1's boxes are actually
+    // centred) — not at 0 (today's single-tier constant) and not at
+    // tier 0's full height.
+    expect(movers[0].origin.y).toBeCloseTo(h1 / 20 + h2 / 20, 6); // 75 + 50 = 125
+  });
+
+  it("a config with no tiers field builds identically to before — single-tier byte-for-byte", () => {
+    const flat = flatTier(1500);
+    const viaTiers = configFromTiers({ kind: "window" }, [
+      { panels: flat.panels, heightMm: flat.heightMm, cornerAfterPanel: null, story: 1 },
+    ]);
+    expect("tiers" in viaTiers).toBe(false); // collapsed by configFromTiers
+    const a = buildUnitGeometry(flat);
+    const b = buildUnitGeometry(viaTiers);
+    a.geometry.computeBoundingBox();
+    b.geometry.computeBoundingBox();
+    expect(b.geometry.boundingBox).toEqual(a.geometry.boundingBox);
+  });
+
+  it("only the base tier honors a pane grid — a tier above it is always one row in v1", () => {
+    const cfg = configFromTiers(
+      { kind: "window" },
+      [
+        { panels: [{ widthMm: 1000, mechanism: "fixed" }], heightMm: 2000, cornerAfterPanel: null, story: 1 },
+        { panels: [{ widthMm: 1000, mechanism: "fixed" }], heightMm: 2000, cornerAfterPanel: null, story: 2 },
+      ],
+    );
+    // configFromTiers carries no `rows` field yet — set it directly on
+    // the flat mirror, the way UnitConfig.rows already documents.
+    const withRows: UnitConfig = { ...cfg, rows: [{ heightMm: 1000 }, { heightMm: 1000 }] };
+    const { geometry } = buildUnitGeometry(withRows);
+    const glass = geometry.groups[1];
+    const index = geometry.getIndex()!;
+    const glassTriangles = (index.count - glass.start) / 3;
+    // Tier 0: 1 column × 2 rows = 2 cells. Tier 1 (no rows support yet):
+    // 1 column × 1 row = 1 cell. 3 cells × 12 triangles/box (BoxGeometry).
+    expect(glassTriangles).toBe(3 * 12);
   });
 });

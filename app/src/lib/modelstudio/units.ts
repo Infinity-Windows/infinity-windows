@@ -30,6 +30,40 @@ export function slideCountOf(p: UnitPanel): number {
   return Math.min(8, Math.max(1, Number.isFinite(n) ? n : 1));
 }
 
+/**
+ * The two fields a corner split needs — a structural subset both
+ * UnitConfig and UnitTier satisfy, so `cornerLegs`/`cornerGeometryInfo`
+ * apply the SAME rule whether they're reading the whole flat unit or one
+ * tier of a multi-tier one, with no cast at either call site.
+ */
+export interface CornerSource {
+  panels: UnitPanel[];
+  cornerAfterPanel?: number | null;
+}
+
+/**
+ * One TIER (CONTEXT.md): a horizontal row of panels within a unit, at
+ * one story. A 9-pane storefront across three floors is one unit with
+ * three tiers of three panels — Studio 100x #22.
+ *
+ * `story` is AUTHORED on the unit, not read off any real opening — it
+ * anchors tier order before a catalog unit is ever tied to a job. The
+ * base tier (index 0) conventionally starts at 1, same "ground level is
+ * story 1" convention CONTEXT.md uses everywhere; `computeSignature`
+ * (signature.ts) turns each tier's authored story into its REAL story by
+ * adding the resolved opening's own base story — base story + offset,
+ * where offset is this tier's authored story minus the base tier's.
+ *
+ * No `rows` here: a tier above the base has no pane-grid UI yet (the
+ * wizard's existing controls don't offer one), so it's always a single
+ * full-height row of panels in v1 — the same "absent rows = one row"
+ * default `rowHeightsCm` already applies to a flat unit.
+ */
+export interface UnitTier extends CornerSource {
+  heightMm: number;
+  story?: number | null;
+}
+
 export interface UnitConfig {
   kind: UnitKind;
   heightMm: number;
@@ -81,6 +115,71 @@ export interface UnitConfig {
    * hex, so every unit built before this field existed renders unchanged.
    */
   frameColor?: "white" | "bronze" | "black";
+  /**
+   * Tiers ABOVE and including the base — Studio 100x #22. Absent/empty =
+   * today's flat shape IS the single tier: every config ever saved reads
+   * exactly as it always has, unchanged, forever (most units never use
+   * "+ Tier above").
+   *
+   * When present, index 0 is the BASE tier, and it's ALWAYS mirrored onto
+   * this UnitConfig's own `panels`/`heightMm`/`cornerAfterPanel` above —
+   * same mirroring philosophy as floors.ts's `serialized` mirroring
+   * `floors[0]`: an OLD reader that only knows the flat shape (unitSvg,
+   * unitAnnotations, roMismatch, the docked in-canvas pane-grid palette,
+   * the sill/height drag handles) still sees a correct base tier and
+   * keeps working completely unchanged. `configFromTiers` below is the
+   * one place that writes `tiers` and keeps that mirror honest — building
+   * this object any other way (hand-editing `tiers` directly, or an old
+   * writer that only touches the flat fields) can desync the two; reading
+   * always goes through `unitTiers`, never `config.tiers` directly, for
+   * exactly that reason.
+   */
+  tiers?: UnitTier[] | null;
+}
+
+/**
+ * Every tier of a unit, base first. The ONE place "does this config have
+ * real tiers, or is the flat shape the whole story" gets decided — absent
+ * or empty `tiers` synthesizes a single tier off the flat fields, so a
+ * config that never sets it (the overwhelming majority, forever) is
+ * indistinguishable from a config with one authored tier. Every reader
+ * that needs to see EVERY panel of a unit — computeSignature,
+ * buildUnitGeometry, panelFormula.ts's per-panel walk — goes through
+ * this, never `config.panels` alone, or it would silently miss every
+ * tier above the base.
+ */
+export function unitTiers(c: UnitConfig): UnitTier[] {
+  if (c.tiers && c.tiers.length > 0) return c.tiers;
+  return [
+    { panels: c.panels, heightMm: c.heightMm, cornerAfterPanel: c.cornerAfterPanel, story: 1 },
+  ];
+}
+
+/**
+ * Build a UnitConfig from an ordered tier list (base first) — the write
+ * side of the mirror `unitTiers` reads back. A single tier collapses to
+ * today's plain flat shape: no `tiers` key at all (not even `null`), so a
+ * unit that never used "+ Tier above" is byte-for-byte what it always
+ * was. Two or more tiers set `tiers` AND mirror tier 0 onto the flat
+ * fields, so any old reader that only knows the flat shape still sees
+ * the base tier correctly.
+ */
+export function configFromTiers(
+  common: Pick<UnitConfig, "kind" | "insetOutset" | "weightLb" | "frameColor">,
+  tiers: readonly UnitTier[],
+): UnitConfig {
+  const base = tiers[0] ?? { panels: [], heightMm: 0, cornerAfterPanel: null, story: 1 };
+  const flat: UnitConfig = {
+    ...common,
+    panels: base.panels,
+    heightMm: base.heightMm,
+    cornerAfterPanel: base.cornerAfterPanel ?? null,
+  };
+  // No `tiers` KEY at all below this line, not even `undefined` — a
+  // single tier must reproduce today's plain flat shape exactly, and
+  // `"tiers" in config` is how signature.ts's own #23 precedent (see
+  // UnitConfig.insetOutset) already checks "does this field exist."
+  return tiers.length > 1 ? { ...flat, tiers: [...tiers] } : flat;
 }
 
 /** Row heights top→bottom, cm — a missing/invalid grid is one full row. */
@@ -180,9 +279,12 @@ export function applyPanePreset(
   };
 }
 
-/** Split a corner config into its two legs (outside view, left then right). */
+/** Split a corner config into its two legs (outside view, left then right).
+ * Takes a `CornerSource` (not the full `UnitConfig`) so the SAME rule
+ * applies to a lone tier of a multi-tier unit — every existing caller
+ * already passes a full UnitConfig, which satisfies it unchanged. */
 export function cornerLegs(
-  c: UnitConfig,
+  c: CornerSource,
 ): { left: UnitPanel[]; right: UnitPanel[] } | null {
   const k = c.cornerAfterPanel;
   if (k == null || k < 0 || k >= c.panels.length - 1) return null;
@@ -245,13 +347,20 @@ export function panelsWidthMm(panels: UnitPanel[]): number {
  * safe to apply to any config without re-deriving geometry.
  */
 export function mirrorUnitConfig(c: UnitConfig): UnitConfig {
-  return {
-    ...c,
-    panels: c.panels.map((p) =>
+  const flip = (panels: UnitPanel[]): UnitPanel[] =>
+    panels.map((p) =>
       p.direction
         ? { ...p, direction: p.direction === "left" ? "right" : "left" }
         : { ...p },
-    ),
+    );
+  return {
+    ...c,
+    panels: flip(c.panels),
+    // Tiers mirror on their OWN panels too, not just the flat fields —
+    // every reader past the base tier reads `tiers` (unitTiers), so a
+    // mirror that only flipped the flat mirror would leave a multi-tier
+    // unit inconsistent with itself: tier 1 flipped, tiers above it not.
+    ...(c.tiers ? { tiers: c.tiers.map((t) => ({ ...t, panels: flip(t.panels) })) } : {}),
   };
 }
 

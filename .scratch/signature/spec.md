@@ -13,7 +13,7 @@ The **signature** is a structured, computed key describing what kind of install 
 {
   "v": 1,                          // signature version — see Versioning
   "kind": "window",                // "window" | "door"
-  "tiers": [                        // v1: exactly ONE tier (Studio can't model more yet)
+  "tiers": [                        // one entry per tier — v1 always had exactly one until Studio 100x #22 (see Versioning)
     {
       "story": 2,                   // int ≥ 1, or null when untraced — null is its own honest value
       "mix": {                      // unordered tally of panels by mechanism(+slide count)
@@ -74,7 +74,9 @@ Field-by-field derivation from `UnitConfig`:
 
 ## Versioning
 
-`v` is part of the signature and the `sig_key`. Definition changes (e.g. tiers arriving when Studio can model them, grids graduating) bump `v` and recompute forward; old sessions keep their unit's current signature — cohorts never silently fracture across definition changes. A `v1` cohort and `v2` cohort are never mixed.
+`v` is part of the signature and the `sig_key`. Definition changes (e.g. grids graduating) bump `v` and recompute forward; old sessions keep their unit's current signature — cohorts never silently fracture across definition changes. A `v1` cohort and `v2` cohort are never mixed.
+
+**Multi-tier update (Studio 100x #22):** tiers arrived WITHOUT bumping `v`, unlike this doc originally expected. `tiers` was already an array in v1, always holding exactly one entry — the slot was reserved for this from the start — so a multi-tier unit (CONTEXT.md's Tier; a 9-pane storefront across three floors) just emits more than one entry now, same encoding, same version. Each tier's real story is the opening's own base-tier story plus that tier's authored offset; see `computeSignature`'s doc comment in `app/src/lib/estimate/signature.ts` for the exact rule, and `UnitConfig.tiers` in `app/src/lib/modelstudio/units.ts` for how a multi-tier config is shaped and mirrored back to the flat fields old readers still use.
 
 ## Fallback ladder mapping (read model)
 
