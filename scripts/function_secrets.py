@@ -87,6 +87,7 @@ FEATURE_NAMES = {
     'monday-sync': 'pulling upcoming jobs from Monday.com',
     'redeem-crew-invite': 'setting up a new crew login from a code',
     'send-push': 'push notifications',
+    'studio-assist': 'the Model Studio AI assistant',
     'summon-warning-sweep': 'summon 5-minute warnings',
     'synthesize-type-tips': 'window-type tips',
     'transcribe-install-memo': 'install voice memos',

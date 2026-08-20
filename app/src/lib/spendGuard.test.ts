@@ -61,7 +61,7 @@ describe("FUNCTION_SPEND", () => {
       .filter(([, v]) => v.kind === "question")
       .map(([k]) => k)
       .sort();
-    expect(questions).toEqual(["ask", "generate-toolbox-talk"]);
+    expect(questions).toEqual(["ask", "generate-toolbox-talk", "studio-assist"]);
   });
 
   it("estimates Ask at exactly the investigation's per-question cost", () => {

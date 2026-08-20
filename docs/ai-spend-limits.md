@@ -56,6 +56,7 @@ monthly ceiling applies.
 | --- | --- | --- | --- |
 | `ask` | Anthropic | 2.7¢ | The runaway in the investigation. Fully gated; degrades to the company brain. |
 | `generate-toolbox-talk` | OpenAI (+ images) | ~8¢ | Crew-triggered and the most expensive per tap, because of the diagrams. Skips rather than degrades — a safety talk is a document, not an answer. |
+| `studio-assist` | Anthropic | ~1¢ | Model Studio's "Ask about this model" button. Shares `ask`'s per-user daily count rather than a budget of its own — one "AI questions today" limit, not two. Degrades to a plain refusal note; the model view itself never depends on it. |
 
 **Content** — owner-triggered batch work against a planset or the knowledge
 base. No role floor (the people who run these are already senior, and a

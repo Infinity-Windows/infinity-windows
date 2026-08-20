@@ -28,6 +28,9 @@ verify_jwt = true
 [functions.ask]
 verify_jwt = true
 
+[functions.studio-assist]
+verify_jwt = true
+
 [functions.approve-access-request]
 verify_jwt = true
 
