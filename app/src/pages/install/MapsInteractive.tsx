@@ -2,21 +2,16 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  assignOpeningToInstaller,
+  assignOpeningsInOrder,
   getMyProfile,
   listMarkSpecs,
   listOpenings,
   listPlanOutlines,
   listProfiles,
-  unassignOpening,
 } from "../../lib/install/api";
 import type { Project } from "../../lib/types";
 import { pushToast } from "../../lib/toast";
 import { formatApiError } from "../../lib/install/errors";
-import {
-  buildSequenceAssignments,
-  maxExistingSequence,
-} from "../../lib/install/mapDispatch";
 import { listQcPassedOpeningIds } from "../../lib/ops";
 import { listOpeningPhases } from "../../lib/install/phases";
 import { isForemanPlus, isSupervisorPlus } from "../../lib/install/types";
@@ -274,15 +269,7 @@ export function MapsInteractive({ project }: { project: Project }) {
               }
               void (async () => {
                 try {
-                  if (!profileId) {
-                    for (const id of ids) await unassignOpening(id);
-                  } else {
-                    const start = maxExistingSequence(all, profileId, ids);
-                    const seq = buildSequenceAssignments(ids, start);
-                    for (const s of seq) {
-                      await assignOpeningToInstaller(s.openingId, profileId, s.sequence);
-                    }
-                  }
+                  await assignOpeningsInOrder(all, ids, profileId);
                   await queryClient.invalidateQueries({
                     queryKey: ["openings", projectId],
                   });

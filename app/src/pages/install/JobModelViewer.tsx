@@ -21,7 +21,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import * as THREE from "three";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BackChip } from "../../components/BackChip";
 import { Blueprint3d, type StudioItem } from "../../lib/modelstudio/core";
 import {
@@ -36,7 +36,12 @@ import { markKeyOf } from "../../lib/modelstudio/fromProject";
 import { markOfPackage, unitsForMark } from "../../lib/modelstudio/unitGlow";
 import { parseFloorLite, parseRoof } from "../../lib/modelstudio/floors";
 import { buildRoof } from "../../lib/modelstudio/roofShell";
-import { listOpenings, listPlanOutlines } from "../../lib/install/api";
+import {
+  assignOpeningsInOrder,
+  listOpenings,
+  listPlanOutlines,
+  listProfiles,
+} from "../../lib/install/api";
 import {
   listInstallMedia,
   listOpeningInstallEvents,
@@ -52,6 +57,11 @@ import {
   resolveJobModel,
   writeJobModel,
 } from "../../lib/install/jobModelCache";
+import { installerColorMap, orderNumberMap, toggleSelection } from "../../lib/install/mapDispatch";
+import { isForemanPlus } from "../../lib/install/types";
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
+import { pushToast } from "../../lib/toast";
+import { formatApiError } from "../../lib/install/errors";
 
 /**
  * Mark + size for the tap info line — pure, so it's testable without
@@ -77,6 +87,29 @@ export function unitTapInfo(
     mark,
     dims: `${fmtInchesFromMm(fallbackWidthCm * 10)} × ${fmtInchesFromMm(fallbackHeightCm * 10)}`,
   };
+}
+
+/** Minimal opening shape mark resolution needs. */
+interface MarkableOpening {
+  id: string;
+  opening_code: string;
+}
+
+/**
+ * A tapped unit's raw mark, resolved to its real opening id — exact-match
+ * only (dialect-normalized, same rule the photo tap-through already used
+ * before this function existed to share it). Pure so tap-to-assign's pick
+ * logic is testable without a live 3D scene: a mark that matches nothing
+ * (blank name, or a seeded unit with no opening yet) resolves to null, the
+ * caller's signal to leave it un-pickable rather than pick a phantom.
+ */
+export function openingIdForMark(
+  openings: readonly MarkableOpening[],
+  mark: string | null,
+): string | null {
+  if (!mark) return null;
+  const norm = normalizeMarkCode(mark);
+  return openings.find((o) => normalizeMarkCode(o.opening_code) === norm)?.id ?? null;
 }
 
 /**
@@ -157,6 +190,56 @@ function applyUnitGeometry(item: StudioItem, config: UnitConfig): void {
   item.redrawWall?.();
 }
 
+// --- Assign mode (Studio 100x #8): tap-order pick badges -------------------
+//
+// A small canvas-texture sprite per picked unit, same technique as
+// ModelStudio's own measurement label (a redrawable CanvasTexture on a
+// billboard Sprite) — kept local here rather than imported, since this
+// viewer never reaches into the Studio editor's internals. depthTest:false
+// so a badge always reads through the unit it's pinned to.
+
+/** A fresh, unpainted numbered badge — reused in place (paintBadge repaints
+ * its canvas) rather than recreated on every renumber. */
+function makeBadgeSprite(): THREE.Sprite {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
+  const sprite = new THREE.Sprite(mat);
+  sprite.name = "assign-pick-badge";
+  sprite.renderOrder = 1000;
+  sprite.userData.canvas = canvas;
+  sprite.scale.set(26, 26, 1); // cm — reads clearly without dwarfing the unit
+  return sprite;
+}
+
+/** Redraw a badge's canvas with its current 1..N tap-order number. */
+function paintBadge(sprite: THREE.Sprite, n: number): void {
+  const canvas = sprite.userData.canvas as HTMLCanvasElement;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.beginPath();
+  ctx.arc(32, 32, 29, 0, Math.PI * 2);
+  ctx.fillStyle = "#ff6a1a"; // theme accent — same coral as INSTALLER_PALETTE[0]
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#fff";
+  ctx.stroke();
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 30px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(String(n), 32, 34);
+  (sprite.material.map as THREE.CanvasTexture).needsUpdate = true;
+}
+
+function disposeBadgeSprite(sprite: THREE.Sprite): void {
+  (sprite.material.map as THREE.CanvasTexture | null)?.dispose();
+  (sprite.material as THREE.Material).dispose();
+}
+
 export function JobModelViewer() {
   const { projectId = "" } = useParams();
   const [searchParams] = useSearchParams();
@@ -175,6 +258,32 @@ export function JobModelViewer() {
     queryFn: () => listOpenings(projectId),
     enabled: Boolean(projectId),
   });
+
+  // Tap-to-assign in 3D (Studio 100x #8): port of the fit-view map's own
+  // Assign mode (MapsInteractive.tsx) onto this read-only viewer — same
+  // foreman+ gate, same crew roster, same sequenced RPC path
+  // (assignOpeningsInOrder), so a foreman never sees the two surfaces
+  // disagree about who's assigned what or in which order.
+  const queryClient = useQueryClient();
+  const { effectiveRole } = useEffectiveRole();
+  const canAssign = isForemanPlus(effectiveRole);
+  const profiles = useQuery({
+    queryKey: ["profiles"],
+    queryFn: listProfiles,
+    enabled: canAssign,
+  });
+  const activeCrew = useMemo(
+    () => (profiles.data ?? []).filter((p) => p.active),
+    [profiles.data],
+  );
+  // Stable installer -> color map, active-crew order — the SAME order
+  // ProjectMap.tsx and DispatchBoard.tsx key their own installerColorMap
+  // off, so an installer's glow color here never disagrees with the map's.
+  const crewColors = useMemo(
+    () => installerColorMap(activeCrew.map((c) => c.id)),
+    [activeCrew],
+  );
+
   const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
   const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
@@ -252,6 +361,31 @@ export function JobModelViewer() {
   // unnamed item never gets treated as a real mark code.
   const [tapMark, setTapMark] = useState<string | null>(null);
 
+  // Assign mode (Studio 100x #8): picked openings in tap order. The
+  // toggle/order semantics themselves are mapDispatch's own
+  // toggleSelection/orderNumberMap (already pure + tested for the map);
+  // reused as-is here rather than reimplemented.
+  const [assignMode, setAssignMode] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [selectedInstaller, setSelectedInstaller] = useState("");
+  const [assigning, setAssigning] = useState(false);
+
+  // Refs mirrored fresh every render so the tap-to-inspect/assign pointer
+  // listener (a stable closure — see that effect below) and the item-loaded
+  // callback (registered once at boot) always read the LATEST
+  // openings/crew-colors/assign-mode instead of whatever was current when
+  // they were created. Same stale-closure defense glowCodeRef uses just
+  // below, and MapsInteractive.tsx's openingsRef/profilesRef.
+  const openingsRef = useRef(openings.data);
+  openingsRef.current = openings.data;
+  const assignModeRef = useRef(false);
+  assignModeRef.current = assignMode;
+  const crewColorsRef = useRef<Map<string, string>>(new Map());
+  crewColorsRef.current = crewColors;
+  // Which live 3D item a picked opening id came from, so its number badge
+  // attaches to the exact tapped object with no re-search of the scene.
+  const pickedItemsRef = useRef<Map<string, StudioItem>>(new Map());
+
   // Job-building glow (#16): read inside the vendor's async item-load
   // callback below, same stale-closure defense the rest of this app's
   // imperative three.js listeners use (ModelStudio.tsx's overlayMapRef).
@@ -311,6 +445,84 @@ export function JobModelViewer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [glowCode, booted]);
 
+  // Installer color glow (Studio 100x #8): while assign mode is on, every
+  // ALREADY-assigned unit glows in its installer's color — same
+  // installerColorMap the map uses, so a foreman sees at a glance who has
+  // what before tapping the next batch. A different layer from the pick
+  // badges below: this reflects SAVED assignments (openings.data), not the
+  // in-progress selection.
+  const assignGlowMeshesRef = useRef<{ parent: THREE.Object3D; mesh: THREE.Mesh }[]>([]);
+  const syncAssignGlow = () => {
+    const bp = bpRef.current;
+    if (!bp) return;
+    for (const { parent, mesh } of assignGlowMeshesRef.current) {
+      parent.remove(mesh);
+      mesh.geometry.dispose();
+      (mesh.material as THREE.MeshBasicMaterial).dispose();
+    }
+    assignGlowMeshesRef.current = [];
+    if (!assignModeRef.current) return;
+    const allOpenings = openingsRef.current ?? [];
+    for (const it of bp.model.scene.getItems()) {
+      const mark = it.metadata?.itemName?.trim() || null;
+      const id = openingIdForMark(allOpenings, mark);
+      const installerId = id ? allOpenings.find((o) => o.id === id)?.assigned_to : null;
+      const color = installerId ? crewColorsRef.current.get(installerId) : undefined;
+      if (!color) continue;
+      const geo = new THREE.BoxGeometry(
+        Math.max(it.halfSize.x * 2, 4),
+        Math.max(it.halfSize.y * 2, 4),
+        Math.max(it.halfSize.z * 2, 4),
+      );
+      const mat = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.3,
+        depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.name = "assign-installer-glow";
+      const parent = it as unknown as THREE.Object3D;
+      parent.add(mesh);
+      assignGlowMeshesRef.current.push({ parent, mesh });
+    }
+  };
+  useEffect(() => {
+    if (booted) syncAssignGlow();
+    // syncAssignGlow reads every ref fresh, so none of them need to be
+    // dependencies themselves — only what should TRIGGER a re-sync.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignMode, openings.data, crewColors, booted]);
+
+  // Pick-order badges: a small numbered sprite per picked unit, renumbered
+  // together whenever the selection changes (mapDispatch.orderNumberMap) so
+  // un-picking #1 of 3 relabels the rest 1..2 exactly like the map's own
+  // tap-order renumbering.
+  const badgeSpritesRef = useRef<Map<string, THREE.Sprite>>(new Map());
+  useEffect(() => {
+    if (!booted) return;
+    for (const [id, sprite] of badgeSpritesRef.current) {
+      if (picked.includes(id)) continue;
+      sprite.parent?.remove(sprite);
+      disposeBadgeSprite(sprite);
+      badgeSpritesRef.current.delete(id);
+    }
+    const numbers = orderNumberMap(picked);
+    for (const id of picked) {
+      const item = pickedItemsRef.current.get(id);
+      const n = numbers.get(id);
+      if (!item || n == null) continue;
+      let sprite = badgeSpritesRef.current.get(id);
+      if (!sprite) {
+        sprite = makeBadgeSprite();
+        sprite.position.set(0, item.halfSize.y + 15, 0);
+        (item as unknown as THREE.Object3D).add(sprite);
+        badgeSpritesRef.current.set(id, sprite);
+      }
+      paintBadge(sprite, n);
+    }
+  }, [picked, booted]);
+
   useEffect(() => {
     const host = hostRef.current;
     if (!host || !savedSerialized || bpRef.current) return;
@@ -333,6 +545,8 @@ export function JobModelViewer() {
     });
     bp.three.getController().enabled = true;
     bpRef.current = bp;
+    // Debug/e2e handle, mirrors ModelStudio's __studio — harmless in prod.
+    (window as { __jobModelViewer?: unknown }).__jobModelViewer = bp;
 
     // Every wall-mounted unit rebuilds its real shape and re-attaches to
     // its wall (cutting the hole) — the serialized model only stores a
@@ -347,10 +561,11 @@ export function JobModelViewer() {
       } catch {
         /* not an item that needs help */
       }
-      // Re-decide the glow every time one more item lands — items arrive
+      // Re-decide the glows every time one more item lands — items arrive
       // one at a time, so the match set is only complete once the last
       // one has loaded.
       syncGlow();
+      syncAssignGlow();
     });
 
     bp.model.loadSerialized(savedSerialized);
@@ -403,6 +618,21 @@ export function JobModelViewer() {
     const onUp = (e: PointerEvent) => {
       if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return;
       const hit = pickAt(e.clientX, e.clientY);
+      // Assign mode (Studio 100x #8): a tap picks/un-picks the unit instead
+      // of opening the inspect line — same split fitviewRenderer's own
+      // togglePick-vs-select branch makes on the map. Only a unit that
+      // resolves to a real opening is pickable, same as the map's own
+      // pins (each already IS one opening).
+      if (assignModeRef.current) {
+        const mark = (hit?.metadata as { itemName?: string } | undefined)?.itemName?.trim() || null;
+        const id = openingIdForMark(openingsRef.current ?? [], mark);
+        if (id && hit) {
+          if (pickedItemsRef.current.has(id)) pickedItemsRef.current.delete(id);
+          else pickedItemsRef.current.set(id, hit);
+          setPicked((p) => toggleSelection(p, id));
+        }
+        return;
+      }
       const metadata = hit?.metadata as
         | { itemName?: string; unitConfig?: UnitConfig }
         | undefined;
@@ -436,13 +666,10 @@ export function JobModelViewer() {
   // fetched only once a unit is actually tapped, signed lazily just like
   // the Record card itself, same query keys so a job already opened there
   // is a cache hit here too.
-  const tapOpeningId = useMemo(() => {
-    if (!tapMark) return null;
-    const norm = normalizeMarkCode(tapMark);
-    return (
-      (openings.data ?? []).find((o) => normalizeMarkCode(o.opening_code) === norm)?.id ?? null
-    );
-  }, [tapMark, openings.data]);
+  const tapOpeningId = useMemo(
+    () => openingIdForMark(openings.data ?? [], tapMark),
+    [tapMark, openings.data],
+  );
   const tapEvents = useQuery({
     queryKey: ["recordEvents", tapOpeningId],
     queryFn: () => listOpeningInstallEvents(tapOpeningId!),
@@ -463,6 +690,44 @@ export function JobModelViewer() {
         .reverse(),
     [tapMedia.data],
   );
+
+  // Enter/exit assign mode — clears any in-progress pick either way, same
+  // as the map's enterAssign/exitAssign both resetting state.picked.
+  const toggleAssignMode = () => {
+    setAssignMode((on) => !on);
+    setPicked([]);
+    pickedItemsRef.current.clear();
+    setSelectedInstaller("");
+    setTap(null);
+    setTapMark(null);
+  };
+
+  // Assign: the same sequenced RPC path the map uses (assignOpeningsInOrder
+  // — mapDispatch's pure sequencing under a Supabase-calling orchestration
+  // both surfaces share), same "openings" invalidation so the Dispatch
+  // board reflects it immediately, same toast wording. Mode stays ON and
+  // only the picks/installer reset, so a foreman can assign the next batch
+  // without re-entering — unlike the map, which exits on every assign.
+  const handleAssign = () => {
+    if (picked.length === 0 || !selectedInstaller || assigning) return;
+    const ids = [...picked];
+    const n = ids.length;
+    setAssigning(true);
+    void (async () => {
+      try {
+        await assignOpeningsInOrder(openingsRef.current ?? [], ids, selectedInstaller);
+        await queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+        pushToast(`${n} unit${n === 1 ? "" : "s"} assigned.`);
+        setPicked([]);
+        pickedItemsRef.current.clear();
+        setSelectedInstaller("");
+      } catch (e) {
+        pushToast(formatApiError(e), "error");
+      } finally {
+        setAssigning(false);
+      }
+    })();
+  };
 
   return (
     <div className="page" style={{ display: "flex", flexDirection: "column", minHeight: "100dvh" }}>
@@ -498,10 +763,59 @@ export function JobModelViewer() {
               {cached ? `, from ${describeAge(cached.cachedAt)}` : ""}.
             </p>
           )}
+          {/* Tap-to-assign in 3D (Studio 100x #8) — foreman+ only, same
+              gate the fit-view map's own Assign button uses. */}
+          {canAssign && (
+            <button
+              type="button"
+              className={assignMode ? "button-like active-pill" : "button-like"}
+              aria-pressed={assignMode}
+              style={{ marginBottom: 8, alignSelf: "flex-start" }}
+              onClick={toggleAssignMode}
+            >
+              {assignMode ? "Assign: on" : "Assign"}
+            </button>
+          )}
           <div
             ref={hostRef}
             style={{ flex: 1, minHeight: 420, borderRadius: 12, overflow: "hidden" }}
           />
+          {assignMode && (
+            <div
+              style={{
+                margin: "8px 0 0",
+                padding: 10,
+                borderRadius: 12,
+                background: "var(--card-raised, rgba(255,255,255,0.06))",
+              }}
+            >
+              <b>{picked.length} picked</b>
+              <label style={{ display: "block", marginTop: 8 }}>
+                <span className="field-label">Installer</span>
+                <select
+                  value={selectedInstaller}
+                  onChange={(e) => setSelectedInstaller(e.target.value)}
+                >
+                  <option value="">Choose an installer…</option>
+                  {activeCrew.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.display_name}
+                      {c.role !== "installer" ? ` (${c.role})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="button-like button-like--primary"
+                style={{ marginTop: 8 }}
+                disabled={picked.length === 0 || !selectedInstaller || assigning}
+                onClick={handleAssign}
+              >
+                {assigning ? "Assigning…" : "Assign"}
+              </button>
+            </div>
+          )}
           {tap && (
             <div style={{ margin: "8px 0 0" }}>
               <p className="muted" style={{ fontSize: 13, margin: 0 }}>
@@ -551,9 +865,9 @@ export function JobModelViewer() {
             </div>
           )}
           <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>
-            Drag to orbit · pinch or scroll to zoom · tap a window or door for
-            its size. Nothing here can be moved — this is the map, not the
-            pen.
+            {assignMode
+              ? "Tap units to pick them, in order · then choose an installer and Assign."
+              : "Drag to orbit · pinch or scroll to zoom · tap a window or door for its size. Nothing here can be moved — this is the map, not the pen."}
           </p>
         </>
       )}
