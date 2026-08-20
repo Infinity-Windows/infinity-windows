@@ -50,6 +50,7 @@ import {
   parseFloors,
   parseRoof,
   type RoofStyle,
+  modelBody,
 } from "../../lib/modelstudio/floors";
 import { buildFloorShell } from "../../lib/modelstudio/floorShell";
 import { buildRoof, disposeRoof } from "../../lib/modelstudio/roofShell";
@@ -1059,21 +1060,15 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       // Flush the live floor into the set, then save ALL floors. The lone
       // `serialized` field mirrors floor 1 for old readers.
       floorsRef.current[activeFloorRef.current] = bp.model.exportSerialized();
-      const floors = [...floorsRef.current];
-      const modelBody = {
-        serialized: floors[0],
-        floors,
-        savedAt: new Date().toISOString(),
-        // Studio 100x #49: building-wide, not per-floor — see floors.ts.
-        roof: roofStyle,
-      };
+      // Studio 100x #49: roof is building-wide, not per-floor — see floors.ts.
+      const body = modelBody(floorsRef.current, roofStyle);
       if (source.kind === "standalone") {
         if (!proj.data) throw new Error("Project not loaded yet");
         await saveStudioProject({
           id: proj.data.id,
           name: proj.data.name,
           projectId: proj.data.project_id,
-          model: modelBody,
+          model: body,
         });
         void qc.invalidateQueries({ queryKey: ["studioProject", standaloneId] });
       } else {
@@ -1087,7 +1082,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           points: outline.points,
           pageAspect: outline.page_aspect,
           // Merge: the fitview model and 2D features must survive untouched.
-          features: { ...prev, modelstudio: modelBody },
+          features: { ...prev, modelstudio: body },
         });
       }
       pushToast("Studio model saved.");
@@ -2249,18 +2244,16 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         pageAspect: outline.page_aspect,
         features: {
           ...prev,
-          // The Studio model rides along so re-editing resumes from here.
-          // infinity: pre-existing gap, not this change's to fix — this
-          // snapshot only ever carried the ACTIVE floor (no `floors`), so a
-          // multi-story building already lost its upper floors here on
-          // Publish (they survive in studio_projects/the outline only
-          // until the next Publish overwrites this key). `roof` is added
-          // here too so Publish at least doesn't ALSO drop the new field.
-          modelstudio: {
-            serialized: bp.model.exportSerialized(),
-            savedAt: new Date().toISOString(),
-            roof: roofStyle,
-          },
+          // The Studio model rides along so re-editing resumes from here —
+          // the SAME body save() writes. Publish used to hand-roll a copy
+          // with no `floors` and the ACTIVE floor as the mirror, which
+          // silently threw away a multi-story building's other floors on
+          // every Publish (and wrote floor 2 where old readers expect
+          // floor 1). One builder now, no copy to drift.
+          modelstudio: (() => {
+            floorsRef.current[activeFloorRef.current] = bp.model.exportSerialized();
+            return modelBody(floorsRef.current, roofStyle);
+          })(),
           // Previous map model kept for one-tap revert (owner decision).
           ...(prevFitview.model
             ? { fitview_backup: { model: prevFitview.model, at: new Date().toISOString() } }
