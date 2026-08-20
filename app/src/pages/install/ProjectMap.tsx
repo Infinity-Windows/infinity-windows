@@ -459,7 +459,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         setExtractNote("Extracting window/door marks…");
         const extracted = await extractScheduleRows(pages, async (pgs) => {
           try {
-            const aiRows = await aiExtractSchedule(pgs, catalog);
+            const aiRows = (await aiExtractSchedule(pgs, catalog)).rows;
             return aiRows.map((r) => ({
               openingCode: r.openingCode,
               typeText: r.typeText,

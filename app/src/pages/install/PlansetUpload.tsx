@@ -20,6 +20,7 @@ import {
   aiExtractSchedule,
   type SpecExtractionOptions,
 } from "../../lib/install/api";
+import { renderSpecPageImages } from "../../lib/install/renderSpecImages";
 import {
   describeSpecPages,
   failedSpecPages,
@@ -246,27 +247,57 @@ export function PlansetUpload() {
         type_code: t.type_code,
         name: t.name,
       }));
-      const { rows, source } = await extractScheduleRows(pages, async (pgs) => {
-        try {
-          setProgress("No schedule table found — checking PDF details…");
-          const aiRows = await aiExtractSchedule(pgs, catalog);
-          return aiRows.map((r) => ({
-            openingCode: r.openingCode,
-            typeText: r.typeText,
-            qty: r.qty,
-            label: r.label,
-            pageNumber: r.pageNumber,
-            widthIn: r.widthIn ?? null,
-            heightIn: r.heightIn ?? null,
-            color: r.color ?? null,
-            kind: r.kind ?? "window",
-          }));
-        } catch {
-          // A manufacturer detail PDF can be useful without containing a
-          // schedule table. Keep it available in the 2D source viewer.
-          return [];
+      const mapAiRows = (aiRows: Awaited<ReturnType<typeof aiExtractSchedule>>["rows"]) =>
+        aiRows.map((r) => ({
+          openingCode: r.openingCode,
+          typeText: r.typeText,
+          qty: r.qty,
+          label: r.label,
+          pageNumber: r.pageNumber,
+          widthIn: r.widthIn ?? null,
+          heightIn: r.heightIn ?? null,
+          color: r.color ?? null,
+          kind: r.kind ?? "window",
+        }));
+
+      // VISION FIRST (the RAC-OAK-5 lesson). The old order — deterministic
+      // text parse, AI-on-text only when the parse found nothing — read a
+      // cut-sheet planset's elevation labels as quantities: mark 9 appeared
+      // nine times across four elevations and became nine openings, while
+      // every mark whose pictured cell didn't survive PDF text extraction
+      // vanished (4-8, 10-12, 16, 17, 19 — including the job's biggest,
+      // #12 x8). On these sheets the truth is VISUAL: one bordered cell per
+      // mark with a drawing and a QTY field. So the vision read goes first
+      // and its rows win; the text paths remain the fallback for text-native
+      // schedule tables and for uploads where page rendering fails.
+      let rows: ReturnType<typeof mapAiRows> = [];
+      let source = "vision";
+      let unreadPages: number[] = [];
+      try {
+        const pageImages = await renderSpecPageImages(doc, { maxPages: 24 });
+        if (pageImages.length > 0) {
+          const vision = await aiExtractSchedule(pages, catalog, pageImages);
+          rows = mapAiRows(vision.rows);
+          unreadPages = vision.failedPages;
         }
-      });
+      } catch {
+        // Rendering or the vision call failing must never cost the upload —
+        // the text paths below read what they can.
+      }
+      if (rows.length === 0) {
+        const textRead = await extractScheduleRows(pages, async (pgs) => {
+          try {
+            setProgress("No schedule table found — checking PDF details…");
+            return mapAiRows((await aiExtractSchedule(pgs, catalog)).rows);
+          } catch {
+            // A manufacturer detail PDF can be useful without containing a
+            // schedule table. Keep it available in the 2D source viewer.
+            return [];
+          }
+        });
+        rows = textRead.rows;
+        source = textRead.source;
+      }
 
       let drafts = rowsToDraftOpenings(rows, types.data ?? []);
       setProgress("Linking marks to types…");
@@ -317,6 +348,7 @@ export function PlansetUpload() {
         specsVisionFailed: specsResult.visionFailed,
         converted: true,
         source,
+        unreadPages,
         marks,
         detailSheets: detailSheets.size,
       };
@@ -389,16 +421,23 @@ export function PlansetUpload() {
               }).headline
             : null;
         const sourceNote =
-          "source" in result && result.source === "details"
-            ? "Pulled from manufacturer detail sheets."
-            : "source" in result && result.source === "merged"
-              ? "Merged schedule table with detail-sheet marks."
-              : null;
+          "source" in result && result.source === "vision"
+            ? "Counted the pictured cut-sheet cells with a QTY value."
+            : "source" in result && result.source === "details"
+              ? "Pulled from manufacturer detail sheets."
+              : "source" in result && result.source === "merged"
+                ? "Merged schedule table with detail-sheet marks."
+                : null;
+        const unreadNote =
+          "unreadPages" in result && result.unreadPages?.length
+            ? `Could not read page${result.unreadPages.length > 1 ? "s" : ""} ${result.unreadPages.join(", ")} — check ${result.unreadPages.length > 1 ? "those pages" : "that page"} by hand.`
+            : null;
         const specsSaved = "specs" in result ? (result.specs ?? 0) : 0;
         setSummary(
           [
             markLine,
             sourceNote,
+            unreadNote,
             result.drafts > 0 ? `${result.drafts} draft openings.` : null,
             result.linked > 0 ? `Linked types on ${result.linked} existing openings.` : null,
             specsSaved > 0 ? `Read detailed specs for ${specsSaved} mark(s).` : null,
