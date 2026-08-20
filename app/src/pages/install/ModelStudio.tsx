@@ -303,10 +303,10 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     { model: Record<string, unknown>; stats: PublishStats } | null
   >(null);
   const units = useQuery({ queryKey: ["studioUnits"], queryFn: listStudioUnits });
-  // #21/#26: the same evidence the estimating screen loads (identical
-  // query keys — lib/estimate/liveEstimate), shared by the builder's live
-  // line and this catalog's confidence badges below.
-  const cohortEvidence = useCohortEvidence();
+  // #21/#26: the same evidence the estimating screen loads (one shared
+  // fetch — lib/estimate/liveEstimate owns the query keys), used by the
+  // builder's live line and this catalog's confidence badges below.
+  const { evidence: cohortEvidence } = useCohortEvidence();
   /** Standalone extras: the job list for linking, and the link action. */
   const allProjects = useQuery({
     queryKey: ["projects"],

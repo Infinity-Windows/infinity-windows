@@ -34,12 +34,8 @@ import {
   topUnitsByLabor,
   weeklyTrend,
 } from "../lib/data/insights";
-import {
-  combineEvidence,
-  estimateJobUnits,
-  installEventsEvidence,
-  sessionsEvidence,
-} from "../lib/estimate/cohorts";
+import { estimateJobUnits } from "../lib/estimate/cohorts";
+import { useCohortEvidence } from "../lib/estimate/liveEstimate";
 import type { ProjectOpening } from "../lib/install/types";
 import type { ProjectMarkSpec } from "../lib/install/specs";
 import type { SignatureV1 } from "../lib/estimate/signature";
@@ -174,16 +170,7 @@ export function DataHub() {
       ),
   });
 
-  const sessionsEv = useQuery({
-    queryKey: ["cohortEvidence", "sessions"],
-    queryFn: sessionsEvidence,
-    staleTime: 60_000,
-  });
-  const legacyEv = useQuery({
-    queryKey: ["cohortEvidence", "legacy"],
-    queryFn: installEventsEvidence,
-    staleTime: 60_000,
-  });
+  const { evidence, sessions: sessionsEv, legacy: legacyEv } = useCohortEvidence();
 
   const all = bundles.data ?? [];
   const allSessions = useMemo(() => all.flatMap((b) => b.sessions), [all]);
@@ -222,10 +209,6 @@ export function DataHub() {
   const trendMax = Math.max(1, ...trend.map((w) => Math.max(w.laborMin, w.lostMin)));
   const trendHasData = trend.some((w) => w.laborMin > 0 || w.lostMin > 0);
 
-  const evidence = useMemo(
-    () => combineEvidence(sessionsEv.data ?? [], legacyEv.data ?? []),
-    [sessionsEv.data, legacyEv.data],
-  );
   const estimating = useMemo(() => {
     let signed = 0;
     let unsigned = 0;
@@ -233,7 +216,7 @@ export function DataHub() {
     const rungs = new Map<LadderRung, number>();
     // Actual recorded minutes per unit (automatic timing only).
     const actualBy = new Map<string, number>();
-    for (const ev of sessionsEv.data ?? []) {
+    for (const ev of sessionsEv) {
       if (ev.unitId) actualBy.set(ev.unitId, ev.minutes);
     }
     const pairs: { estimateMin: number; actualMin: number }[] = [];
@@ -268,7 +251,7 @@ export function DataHub() {
       accuracy: estimateVsActual(pairs),
       finishedPairs: pairs.length,
     };
-  }, [all, evidence, sessionsEv.data]);
+  }, [all, evidence, sessionsEv]);
   const signedPct =
     estimating.signed + estimating.unsigned > 0
       ? (estimating.signed / (estimating.signed + estimating.unsigned)) * 100
@@ -580,8 +563,8 @@ export function DataHub() {
           )}
         </p>
         <p className="muted" style={{ margin: "8px 0 0", fontSize: 12 }}>
-          Timing data: {(sessionsEv.data ?? []).length} window(s) timed the new
-          automatic way, {(legacyEv.data ?? []).length} from the old hand-typed
+          Timing data: {sessionsEv.length} window(s) timed the new
+          automatic way, {legacyEv.length} from the old hand-typed
           era. The old share fades out on its own as new installs happen.
         </p>
       </div>
