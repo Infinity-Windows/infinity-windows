@@ -4,6 +4,12 @@
 // When the caller supplies a projectId and the extractor located the mark's
 // elevation drawing on the specs planset, the card leads with that picture
 // (white line-work on black) above the text.
+//
+// The FULL card also shows a second, independent picture when one's
+// available: where the mark sits on the OUTSIDE of the building (Studio
+// 100x #36 — see MarkElevationCrop's own header for why that's a different
+// "elevation" from the spec drawing above). Skipped in compact form — a
+// dense list is no place to mount a 3D render.
 
 import {
   checkSpecSize,
@@ -12,6 +18,7 @@ import {
 import type { MarkSpec } from "../../lib/install/specs";
 import { formatSize } from "../../lib/install/specs";
 import { MarkDrawing } from "./MarkDrawing";
+import { MarkElevationCrop } from "./MarkElevationCrop";
 
 interface SpecCardProps {
   spec: MarkSpec;
@@ -144,6 +151,7 @@ export function SpecCard({
       </div>
 
       {hasDrawing && <MarkDrawing spec={spec} projectId={projectId} />}
+      {projectId && <MarkElevationCrop markCode={spec.mark_code} projectId={projectId} />}
 
       <Field label="Style" value={spec.style} />
       <Field label="Glass" value={spec.glass} />

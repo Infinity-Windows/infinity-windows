@@ -26,6 +26,7 @@ import {
   inkMaskFromPixels,
   type InkMask,
 } from "./drawingRegion";
+import { calloutRingCircle } from "./elevationViews";
 import { bboxToPixelRect, invertLineArt, padBbox, type Bbox } from "./markDrawing";
 import type { Planset } from "./types";
 
@@ -305,5 +306,101 @@ export async function hasCachedCrop(req: CropRequest): Promise<boolean> {
   });
   if (cropCache.has(key)) return true;
   return (await readCrop(key)) != null;
+}
+
+// -------------------------------------------------- elevation reference (OCR)
+
+/** Bumped whenever the elevation-reference crop's geometry or drawing
+ * changes — same reasoning as SPEC_VARIANT, its own counter because this is
+ * a DIFFERENT picture from the plain spec drawing even when it shares a
+ * planset, page and box (cropCache's own `variant` field exists for exactly
+ * this pair — see its doc comment). */
+const ELEVATION_VARIANT = "ring1";
+
+/** Ring stroke color: bright enough to read against both the white line
+ * work and the black background this crop is inverted to. */
+const RING_COLOR = "#FFB020";
+
+export interface ElevationReferenceRequest {
+  /** BUILDING planset the coordinates were measured against — see
+   * MarkElevationView.planset_id, NOT the specs planset markDrawingDataUrl
+   * reads from. */
+  planset: Planset;
+  pageNumber: number;
+  /** Already padded (elevationViews.ts's regionCropBbox) — sliced as-is,
+   * no ink-mask rescue: unlike a raw per-mark label box, this was computed
+   * to include the whole drawing on purpose. */
+  cropBbox: Bbox;
+  pin: { x: number; y: number };
+  label: { w: number | null; h: number | null };
+  markCode: string;
+}
+
+/**
+ * A mark's OCR-read elevation reference: the sheet's own drawing as the
+ * supplier drew it, cropped to `cropBbox` and ringed at the mark's own
+ * callout — "this number, here, on this elevation" (see
+ * elevationViews.ts's calloutRingCircle). Null when the page has nothing to
+ * crop; throws only when the drawing can't be produced at all, same
+ * contract as markDrawingDataUrl.
+ */
+export async function elevationReferenceDataUrl({
+  planset,
+  pageNumber,
+  cropBbox,
+  pin,
+  label,
+  markCode,
+}: ElevationReferenceRequest): Promise<string | null> {
+  const key = cropCacheKey({
+    plansetId: planset.id,
+    markCode,
+    bbox: cropBbox,
+    scale: PAGE_RENDER_WIDTH,
+    variant: ELEVATION_VARIANT,
+  });
+
+  const inMemory = cropCache.get(key);
+  if (inMemory) return inMemory;
+
+  const persisted = await readCrop(key);
+  if (persisted) {
+    cropCache.set(key, persisted);
+    evict(cropCache, MAX_CACHED_CROPS);
+    return persisted;
+  }
+
+  const page = await getPageCanvas(planset, pageNumber);
+  const rect = bboxToPixelRect(cropBbox, page.width, page.height);
+  if (rect.width <= 0 || rect.height <= 0) return null;
+
+  const out = document.createElement("canvas");
+  out.width = rect.width;
+  out.height = rect.height;
+  const ctx = out.getContext("2d");
+  if (!ctx) throw new Error("2d canvas unavailable");
+  ctx.drawImage(page, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
+  const pixels = ctx.getImageData(0, 0, rect.width, rect.height);
+  invertLineArt(pixels.data);
+  ctx.putImageData(pixels, 0, 0);
+
+  const ring = calloutRingCircle({
+    pin,
+    label,
+    bbox: cropBbox,
+    pageWidth: page.width,
+    pageHeight: page.height,
+  });
+  ctx.beginPath();
+  ctx.arc(ring.cx, ring.cy, ring.r, 0, Math.PI * 2);
+  ctx.strokeStyle = RING_COLOR;
+  ctx.lineWidth = ring.lineWidth;
+  ctx.stroke();
+
+  const url = out.toDataURL("image/png");
+  cropCache.set(key, url);
+  evict(cropCache, MAX_CACHED_CROPS);
+  void writeCrop(key, url, planset.id);
+  return url;
 }
 

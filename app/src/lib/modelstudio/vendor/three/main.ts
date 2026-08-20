@@ -56,6 +56,11 @@ export class Main {
   private saved3DPosition: THREE.Vector3 | null = null
   // @ts-ignore - saved3DRotation is declared but not used, keeping for future use
   private saved3DRotation: { theta: number; phi: number } | null = null
+  // infinity (Studio 100x #36): dispose()/animate() need the SAME bound
+  // function reference addEventListener was given, or removeEventListener
+  // silently no-ops on a freshly-bound copy.
+  private disposed = false
+  private readonly boundUpdateWindowSize = this.updateWindowSize.bind(this)
 
   constructor(
     model: Model,
@@ -122,7 +127,7 @@ export class Main {
     // handle window resizing
     this.updateWindowSize()
     if (this.options.resize) {
-      window.addEventListener('resize', this.updateWindowSize.bind(this))
+      window.addEventListener('resize', this.boundUpdateWindowSize)
     }
 
     // setup camera nicely
@@ -218,6 +223,17 @@ export class Main {
     return dataUrl
   }
 
+  // infinity (Studio 100x #36): stop the animate() loop and free the GPU
+  // context. See the `disposed`/`boundUpdateWindowSize` fields above — this
+  // is what a throwaway offscreen capture calls when it's done with its one
+  // frame; the page's own long-lived instance never calls it.
+  public dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
+    window.removeEventListener('resize', this.boundUpdateWindowSize)
+    this.renderer.dispose()
+  }
+
   public stopSpin(): void {
     this.hasClicked = true
   }
@@ -276,6 +292,7 @@ export class Main {
   }
 
   private animate(): void {
+    if (this.disposed) return
     requestAnimationFrame(this.animate.bind(this))
     this.render()
   }
