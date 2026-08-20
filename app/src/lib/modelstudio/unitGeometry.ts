@@ -367,13 +367,21 @@ export function buildUnitGeometry(
     prevHalfH = halfH;
   });
 
-  const merged = mergeGeometries(
-    [
-      mergeGeometries(frameGeos, false)!,
-      mergeGeometries(glassGeos, false)!,
-    ],
-    true,
-  )!;
+  // A unit whose EVERY panel moves — a lone casement or single-hung off a
+  // spec import, an "XX" slider, the middle-pair preset — has no static
+  // glass at all: it all rides the mover geometries. three.js's
+  // mergeGeometries throws on an empty list rather than returning an
+  // empty geometry, so merge only the lists that have parts (same shape
+  // as the mover merge above), and re-point the lone group at the glass
+  // material when frame is the empty side.
+  const parts: THREE.BufferGeometry[] = [];
+  if (frameGeos.length > 0) parts.push(mergeGeometries(frameGeos, false)!);
+  if (glassGeos.length > 0) parts.push(mergeGeometries(glassGeos, false)!);
+  const merged =
+    parts.length > 0 ? mergeGeometries(parts, true)! : new THREE.BufferGeometry();
+  if (parts.length === 1 && glassGeos.length > 0 && merged.groups[0]) {
+    merged.groups[0].materialIndex = 1;
+  }
 
   const hexes = FRAME_COLOR_HEXES[config.frameColor ?? "white"];
   const frameMat = new THREE.MeshLambertMaterial({
