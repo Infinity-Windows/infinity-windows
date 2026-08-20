@@ -17,12 +17,15 @@
 //     engine on a hidden offscreen element, points a camera per the plan
 //     above, and reads back a PNG. Not unit-testable; covered by Playwright.
 
+import * as THREE from "three";
 import {
   parseFloorLite,
   parseFloors,
   type LiteItem,
   type LiteWall,
 } from "./floors";
+import { Blueprint3d, type StudioItem } from "./core";
+import { buildUnitGeometry, cornerGeometryInfo, UNIT_GEOMETRY_DEFAULTS } from "./unitGeometry";
 import type { JobModel } from "./projects";
 import type { UnitConfig } from "./units";
 
@@ -244,4 +247,204 @@ export function frameForWall(wall: WallSegment, margin = 0.1): ElevationFrame {
     near: 1,
     far: standoff * 2 + wall.heightCm,
   };
+}
+
+// ---------------------------------------------------------------- capture
+
+/**
+ * Rebuild a window/door item's real parametric shape from its saved config
+ * and cut its hole in the wall. Ported from JobModelViewer's own
+ * `applyUnitGeometry` (itself trimmed from ModelStudio's) rather than
+ * shared, matching how each read-only viewer already keeps its own copy —
+ * this one is read-only too, and a shared extraction is a separate change.
+ * Without this, every unit in the render is an identical blank placeholder
+ * box (window.json) instead of the job's real geometry.
+ */
+function applyUnitGeometry(item: StudioItem, config: UnitConfig): void {
+  const built = buildUnitGeometry(config, { mullionMm: UNIT_GEOMETRY_DEFAULTS.mullionMm });
+  item.geometry.dispose();
+  (item as { geometry: unknown }).geometry = built.geometry;
+  (item as { material: unknown }).material = built.materials;
+  item.scale.set(1, 1, 1);
+  built.geometry.computeBoundingBox?.();
+  const bb = (
+    built.geometry as {
+      boundingBox: {
+        max: { x: number; y: number; z: number };
+        min: { x: number; y: number; z: number };
+      } | null;
+    }
+  ).boundingBox;
+  const corner = cornerGeometryInfo(config);
+  if (bb && corner) {
+    bb.min.x = -corner.mainWcm / 2;
+    bb.max.x = corner.mainWcm / 2;
+    bb.min.z = -corner.depthCm / 2;
+    bb.max.z = corner.depthCm / 2;
+    built.geometry.computeBoundingSphere?.();
+    item.halfSize.set(corner.mainWcm / 2, (bb.max.y - bb.min.y) / 2, corner.depthCm / 2);
+  } else if (bb) {
+    item.halfSize.set(
+      (bb.max.x - bb.min.x) / 2,
+      (bb.max.y - bb.min.y) / 2,
+      (bb.max.z - bb.min.z) / 2,
+    );
+  }
+  const itemAny = item as unknown as {
+    rotation?: { y: number };
+    holeRects?: () => unknown[];
+  };
+  if (corner) {
+    itemAny.holeRects = () => {
+      const ry = itemAny.rotation?.y ?? 0;
+      const wx = Math.cos(ry);
+      const wz = -Math.sin(ry);
+      const nx = Math.sin(ry);
+      const nz = Math.cos(ry);
+      const halfH = config.heightMm / 20;
+      const cx = item.position.x + corner.sideSign * (corner.mainWcm / 2) * wx;
+      const cz = item.position.z + corner.sideSign * (corner.mainWcm / 2) * wz;
+      const wrapOff = corner.depthCm / 2 + corner.wrapWcm / 2;
+      return [
+        {
+          x: item.position.x, y: item.position.y, z: item.position.z,
+          halfW: corner.mainWcm / 2, halfH, dirX: wx, dirZ: wz,
+        },
+        {
+          x: cx + nx * wrapOff, y: item.position.y, z: cz + nz * wrapOff,
+          halfW: corner.wrapWcm / 2, halfH, dirX: nx, dirZ: nz,
+        },
+      ];
+    };
+  } else {
+    delete itemAny.holeRects;
+  }
+  if (item.metadata) item.metadata.unitConfig = config;
+  item.redrawWall?.();
+}
+
+/** Biggest side of the output PNG, px — plenty to identify a unit on a
+ * phone screen without carrying a multi-megabyte image around. */
+const CAPTURE_MAX_PX = 900;
+/** However long item assets take to land, a card waiting on a picture that
+ * doesn't exist has to give up and fall back eventually. */
+const CAPTURE_TIMEOUT_MS = 4000;
+
+/**
+ * Render a mark's wall from a saved Studio model as a PNG blob, or null on
+ * ANY failure — no model, the mark isn't built into it, the wall couldn't
+ * be framed, no WebGL, an item asset that never loads. Never throws;
+ * callers fall back to the OCR crop exactly as they would with no Studio
+ * model at all.
+ *
+ * Mounts a throwaway, fully offscreen Blueprint3d instance — the same
+ * vendor engine ContainerViewer/JobModelViewer use to let a crew member
+ * LOOK at a model, here used only to render one frame of it — points a
+ * THREE.OrthographicCamera square at the wall per {@link frameForWall},
+ * renders once, reads back a PNG, and disposes the instance. Not
+ * unit-testable — needs a real WebGL context, same as every other Studio
+ * render — covered by Playwright instead.
+ */
+export async function renderWallElevation(
+  model: JobModel,
+  markCode: string,
+): Promise<Blob | null> {
+  const location = findMarkWall(model, markCode);
+  if (!location) return null;
+  const { floors } = parseFloors(model, "");
+  const serialized = floors[location.floorIndex];
+  if (!serialized) return null;
+
+  let itemCount = 0;
+  try {
+    itemCount = (JSON.parse(serialized) as { items?: unknown[] }).items?.length ?? 0;
+  } catch {
+    return null;
+  }
+
+  const frame = frameForWall(location.wall);
+
+  const host = document.createElement("div");
+  host.id = `synthetic-elevation-${Math.random().toString(36).slice(2)}`;
+  host.style.position = "fixed";
+  host.style.left = "-9999px";
+  host.style.top = "0";
+  host.style.width = "800px";
+  host.style.height = "600px";
+  document.body.appendChild(host);
+
+  let bp: Blueprint3d | null = null;
+  try {
+    bp = new Blueprint3d({
+      widget: true,
+      threeElement: `#${host.id}`,
+      textureDir: "/modelstudio/",
+      enableWheelZoom: false,
+      alwaysSpin: false,
+    });
+    bp.three.getController().enabled = false;
+
+    const itemsReady = new Promise<void>((resolve) => {
+      if (itemCount === 0) {
+        resolve();
+        return;
+      }
+      let loaded = 0;
+      bp!.model.scene.itemLoadedCallbacks.add((it) => {
+        try {
+          const cfg = it.metadata?.unitConfig as UnitConfig | undefined;
+          if (cfg?.panels?.length) applyUnitGeometry(it, cfg);
+          it.placeInRoom();
+        } catch {
+          // Not an item that needs help — still counts toward "loaded" so
+          // one odd item can't hang the whole capture.
+        }
+        loaded += 1;
+        if (loaded >= itemCount) resolve();
+      });
+    });
+
+    bp.model.loadSerialized(serialized);
+    await Promise.race([
+      itemsReady,
+      new Promise<void>((resolve) => setTimeout(resolve, CAPTURE_TIMEOUT_MS)),
+    ]);
+
+    const camera = new THREE.OrthographicCamera(
+      frame.left,
+      frame.right,
+      frame.top,
+      frame.bottom,
+      frame.near,
+      frame.far,
+    );
+    camera.position.set(frame.position.x, frame.position.y, frame.position.z);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(frame.lookAt.x, frame.lookAt.y, frame.lookAt.z);
+    camera.updateProjectionMatrix();
+
+    const worldW = frame.right - frame.left;
+    const worldH = frame.top - frame.bottom;
+    const aspect = worldW / worldH || 1;
+    const pixelW = aspect >= 1 ? CAPTURE_MAX_PX : Math.max(1, Math.round(CAPTURE_MAX_PX * aspect));
+    const pixelH = aspect >= 1 ? Math.max(1, Math.round(CAPTURE_MAX_PX / aspect)) : CAPTURE_MAX_PX;
+
+    // Own frustum, own pixel size: updateWindowSize() ties the vendor's
+    // default canvas height to window.innerHeight (fine for the page's own
+    // full-screen viewer, meaningless for a detached offscreen div), so
+    // this capture sets both explicitly rather than inheriting it.
+    const { renderer } = bp.three;
+    renderer.setSize(pixelW, pixelH);
+    renderer.clear();
+    renderer.render(bp.model.scene.getScene(), camera);
+
+    return await new Promise<Blob | null>((resolve) => {
+      renderer.domElement.toBlob((blob) => resolve(blob), "image/png");
+    });
+  } catch {
+    return null;
+  } finally {
+    bp?.three.dispose();
+    host.remove();
+  }
 }

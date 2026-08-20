@@ -166,6 +166,24 @@ export interface StudioThree {
   /** The 3D pane's container element (the renderer canvas lives inside). */
   element: HTMLElement;
   camera: THREE.PerspectiveCamera;
+  /**
+   * The vendor's own WebGLRenderer (Studio 100x #36) — exposed so an
+   * offscreen capture can render one frame through a camera OTHER than the
+   * live `camera` above (see lib/modelstudio/elevationRender.ts) without
+   * fighting the vendor's own per-frame render loop for control of it.
+   * `renderer.domElement` is the actual canvas.
+   */
+  renderer: THREE.WebGLRenderer;
+  /**
+   * Stop the vendor's animation loop and free the renderer's GPU resources
+   * (Studio 100x #36). Every Blueprint3d starts its `requestAnimationFrame`
+   * loop in its constructor with no way to stop it — harmless for the one
+   * instance ModelStudio/JobModelViewer mount for the page's own lifetime,
+   * but a THROWAWAY instance (an offscreen capture, one per render) would
+   * otherwise leak a live WebGL context and a forever-running render loop
+   * per call. Idempotent; safe to call more than once.
+   */
+  dispose(): void;
   /** Orbit controls — `enabled = false` freezes orbit during a handle drag. */
   controls: {
     enabled: boolean;
