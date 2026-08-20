@@ -12,7 +12,10 @@ import {
 // The sweep only offers planned marks (installed ones refuse server-side
 // anyway), so pick a fixture job that has at least two to select.
 const job = jobFixtures().find(
-  (j) => openingsFor(j.projectId).filter((o) => o.status === "planned").length >= 2,
+  (j) =>
+    openingsFor(j.projectId).filter(
+      (o) => (o as { status?: string }).status === "planned",
+    ).length >= 2,
 )!;
 
 test("a foreman removes several openings in one confirmed sweep", async ({
