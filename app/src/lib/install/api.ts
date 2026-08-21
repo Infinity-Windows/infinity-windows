@@ -1162,8 +1162,10 @@ export async function saveDraftOpenings(
   projectId: string,
   plansetId: string,
   drafts: DraftOpening[],
-): Promise<{ inserted: number; skipped: number }> {
-  if (drafts.length === 0) return { inserted: 0, skipped: 0 };
+  opts?: { specsAuthoritative?: boolean },
+): Promise<{ inserted: number; skipped: number; unmatchedPlanMarks: string[] }> {
+  if (drafts.length === 0)
+    return { inserted: 0, skipped: 0, unmatchedPlanMarks: [] };
 
   const [{ data: plansets, error: psErr }, { data: existing, error: exErr }] =
     await Promise.all([
@@ -1211,7 +1213,12 @@ export async function saveDraftOpenings(
     referenced: referenced.has(o.id),
   }));
 
-  const plan = planDraftPersistence(existingLite, drafts, incomingKind);
+  const plan = planDraftPersistence(
+    existingLite,
+    drafts,
+    incomingKind,
+    opts?.specsAuthoritative ?? false,
+  );
 
   if (plan.deleteIds.length > 0) {
     const { error: delErr } = await supabase
@@ -1221,7 +1228,12 @@ export async function saveDraftOpenings(
     if (delErr) throw refusalOrError(delErr);
   }
 
-  if (plan.inserts.length === 0) return { inserted: 0, skipped: plan.skipped };
+  if (plan.inserts.length === 0)
+    return {
+      inserted: 0,
+      skipped: plan.skipped,
+      unmatchedPlanMarks: plan.unmatchedPlanMarks,
+    };
 
   const { error } = await supabase.from("project_openings").insert(
     plan.inserts.map((d) => ({
@@ -1240,7 +1252,11 @@ export async function saveDraftOpenings(
     })),
   );
   if (error) throw refusalOrError(error);
-  return { inserted: plan.inserts.length, skipped: plan.skipped };
+  return {
+    inserted: plan.inserts.length,
+    skipped: plan.skipped,
+    unmatchedPlanMarks: plan.unmatchedPlanMarks,
+  };
 }
 
 /**

@@ -4,6 +4,7 @@
 // individual openings for install tracking (14-1, 14-2, …).
 
 import {
+  isElevationSheet,
   mergeScheduleWithDetailRows,
   parseCadDetailScheduleRows,
 } from "./planDetails";
@@ -139,8 +140,15 @@ export async function extractScheduleRows(
   rows: ScheduleRow[];
   source: "deterministic" | "ai" | "details" | "merged" | "none";
 }> {
-  const deterministic = await deterministicExtract(pages);
-  const detailRows = parseCadDetailScheduleRows(pages);
+  // Elevation sheets re-label the same windows the schedule already counts
+  // (the RAC-OAK-5 and ESH-18 lesson): their text is quantity NOISE, never
+  // quantity truth, so the deterministic and detail parses skip them. The
+  // classifier only flags sheets with positive elevation evidence, so real
+  // schedule-table pages are never dropped. The AI fallback still sees every
+  // page — its prompt carries the same rule.
+  const readable = pages.filter((p) => !isElevationSheet(p.text));
+  const deterministic = await deterministicExtract(readable);
+  const detailRows = parseCadDetailScheduleRows(readable);
   const merged = mergeScheduleWithDetailRows(deterministic, detailRows);
 
   const baseSource: "deterministic" | "details" | "merged" =
@@ -726,6 +734,10 @@ export interface DraftPersistencePlan {
   inserts: DraftOpening[];
   /** How many incoming drafts were skipped (protected or owned elsewhere). */
   skipped: number;
+  /** Building-plan marks with no CAD window behind them (only set when a specs
+   *  planset owns the job): surfaced so a plans-side label mismatch is SAID,
+   *  never silently dropped. */
+  unmatchedPlanMarks: string[];
 }
 
 /**
@@ -738,8 +750,13 @@ export interface DraftPersistencePlan {
  *
  *  1. Replaces only unconfirmed drafts from a planset of the SAME kind (each
  *     upload creates a new planset row, so we scope by kind, not planset id).
- *  2. Treats the building plan as authoritative for openings: saving a building
- *     plan supersedes unconfirmed specs-only openings that share its marks.
+ *  2. CAD WINS (owner rule, settled 2026-08-21, proven on ESH-18): the signed
+ *     CAD/specs planset owns unit counts. A specs save supersedes unconfirmed
+ *     building-callout openings that share its marks, never the reverse — and
+ *     while any specs-kind opening exists, a building plan creates NOTHING
+ *     (its callouts are placement hints; labels with no CAD mark are returned
+ *     in unmatchedPlanMarks for the person to see). On a plans-only job the
+ *     building plan keeps its old authority: callout counting stands.
  *  3. Never creates a second opening for a mark that already exists in the
  *     other slot, and never touches confirmed / in-progress openings.
  *  4. Preserves manually placed pins across a same-kind re-extract.
@@ -749,6 +766,10 @@ export function planDraftPersistence(
   existing: ExistingOpeningLite[],
   drafts: DraftOpening[],
   incomingKind: PlansetKindLike,
+  // True only when the specs read carried EXPLICIT quantities (the vision
+  // cut-sheet read, or a real schedule table). A weak detail-page read with
+  // guessed qty=1 rows must never supersede building counts.
+  specsAuthoritative = false,
 ): DraftPersistencePlan {
   const isProtected = (o: ExistingOpeningLite) =>
     o.confirmed || o.status !== "planned" || hasFieldWork(o);
@@ -758,12 +779,15 @@ export function planDraftPersistence(
   );
 
   const incomingMarks = new Set(drafts.map((d) => markBase(d.opening_code)));
+  // ESH-18 went 31 -> 79 openings because this arrow used to point the other
+  // way: hand-labeled plan callouts deleted the signed CAD's correct counts
+  // and replaced them with appearance counting. CAD wins now.
   const superseded =
-    incomingKind === "building"
+    incomingKind === "specs" && specsAuthoritative
       ? existing.filter(
           (o) =>
             !isProtected(o) &&
-            o.planset_kind !== "building" &&
+            o.planset_kind === "building" &&
             incomingMarks.has(markBase(o.opening_code)),
         )
       : [];
@@ -798,9 +822,21 @@ export function planDraftPersistence(
       .map((o) => markBase(o.opening_code)),
   );
 
+  const specsOwnsJob =
+    incomingKind === "building" &&
+    survivors.some((o) => o.planset_kind === "specs");
+
   const inserts: DraftOpening[] = [];
+  const unmatchedPlanMarks: string[] = [];
   let skipped = 0;
   for (const d of drafts) {
+    if (specsOwnsJob) {
+      // The CAD sheet decides what exists. A callout matching a CAD mark is
+      // already counted; one matching nothing is a plans-side label to check.
+      if (otherKindMarks.has(markBase(d.opening_code))) skipped += 1;
+      else unmatchedPlanMarks.push(markBase(d.opening_code));
+      continue;
+    }
     if (
       protectedCodes.has(d.opening_code) ||
       otherKindMarks.has(markBase(d.opening_code))
@@ -819,5 +855,10 @@ export function planDraftPersistence(
     });
   }
 
-  return { deleteIds: [...deleteSet], inserts, skipped };
+  return {
+    deleteIds: [...deleteSet],
+    inserts,
+    skipped,
+    unmatchedPlanMarks: [...new Set(unmatchedPlanMarks)],
+  };
 }

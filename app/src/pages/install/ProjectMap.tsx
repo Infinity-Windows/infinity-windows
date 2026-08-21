@@ -506,7 +506,9 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       drafts = await ensureTypesFromSpecs(drafts);
       await linkSpecsToOpenings(projectId, drafts);
       const plansetId = specsPdf?.id ?? buildingPdf!.id;
-      const result = await saveDraftOpenings(projectId, plansetId, drafts);
+      const result = await saveDraftOpenings(projectId, plansetId, drafts, {
+        specsAuthoritative: ["vision", "deterministic", "ai"].includes(source),
+      });
       return {
         result,
         source,
@@ -520,10 +522,18 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       invalidateOpeningQueries(queryClient, projectId);
       queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
       queryClient.invalidateQueries({ queryKey: ["elevationViews", projectId] });
+      const unmatched = result.unmatchedPlanMarks ?? [];
       setExtractNote(
-        unreadPages.length > 0
-          ? `Could not read page${unreadPages.length > 1 ? "s" : ""} ${unreadPages.join(", ")} — check ${unreadPages.length > 1 ? "those pages" : "that page"} by hand.`
-          : null,
+        [
+          unreadPages.length > 0
+            ? `Could not read page${unreadPages.length > 1 ? "s" : ""} ${unreadPages.join(", ")} — check ${unreadPages.length > 1 ? "those pages" : "that page"} by hand.`
+            : null,
+          unmatched.length > 0
+            ? `Plan label${unmatched.length > 1 ? "s" : ""} with no CAD window behind ${unmatched.length > 1 ? "them" : "it"}: ${unmatched.map((m) => `#${m}`).join(", ")} — nothing was created for ${unmatched.length > 1 ? "these" : "it"}; check the plans against the signed CADs.`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" ") || null,
       );
       setExtractSummary(
         summarizeExtractOutcome({

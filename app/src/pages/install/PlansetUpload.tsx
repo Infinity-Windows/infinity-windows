@@ -235,6 +235,7 @@ export function PlansetUpload() {
           converted: true,
           source: "details" as const,
           marks,
+          unmatchedPlanMarks: result.unmatchedPlanMarks,
           repeatViewCallouts: repeatViewCallouts.length,
           elevationViews: elevationViews.saved,
         };
@@ -253,7 +254,7 @@ export function PlansetUpload() {
       setProgress("Linking marks to types…");
       drafts = await ensureTypesFromSpecs(drafts);
       const linked = await linkSpecsToOpenings(projectId, drafts);
-      const result = await saveDraftOpenings(projectId, planset.id, drafts);
+      const result = await saveDraftOpenings(projectId, planset.id, drafts, { specsAuthoritative: ["vision", "deterministic", "ai"].includes(source) });
 
       // Pull the FULL per-mark line-item specs (style/glass/color/…) via Claude
       // VISION off the rendered page images — manufacturer shop drawings draw
@@ -340,10 +341,18 @@ export function PlansetUpload() {
               "elevationViews" in result ? (result.elevationViews ?? 0) : 0,
             source: "none",
           });
+          const unmatched =
+            "unmatchedPlanMarks" in result ? (result.unmatchedPlanMarks ?? []) : [];
           setSummary(
-            [`Building plan ready. ${outcome.headline}`, ...outcome.notes].join(
-              " ",
-            ),
+            [
+              `Building plan ready. ${outcome.headline}`,
+              ...outcome.notes,
+              unmatched.length > 0
+                ? `Plan label${unmatched.length > 1 ? "s" : ""} with no CAD window behind ${unmatched.length > 1 ? "them" : "it"}: ${unmatched.map((m) => `#${m}`).join(", ")} — nothing was created for ${unmatched.length > 1 ? "these" : "it"}; check the plans against the signed CADs.`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" "),
           );
           return;
         }
@@ -496,7 +505,9 @@ export function PlansetUpload() {
       setProgress("Linking marks to types…");
       drafts = await ensureTypesFromSpecs(drafts);
       const linked = await linkSpecsToOpenings(projectId, drafts);
-      const result = await saveDraftOpenings(projectId, ps.id, drafts);
+      const result = await saveDraftOpenings(projectId, ps.id, drafts, {
+        specsAuthoritative: ["vision", "deterministic", "ai"].includes(read.source),
+      });
       return {
         inserted: result.inserted,
         skipped: result.skipped,

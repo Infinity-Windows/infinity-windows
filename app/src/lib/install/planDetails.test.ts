@@ -551,7 +551,7 @@ describe("mergeScheduleWithDetailRows", () => {
     expect(merged.find((r) => r.openingCode === "W1")?.qty).toBe(2);
   });
 
-  it("keeps the larger quantity when schedule and detail disagree", () => {
+  it("a weak bare-number schedule row defers to detail sheets entirely", () => {
     const merged = mergeScheduleWithDetailRows(
       [
         {
@@ -582,5 +582,40 @@ describe("mergeScheduleWithDetailRows", () => {
     );
     expect(merged).toHaveLength(1);
     expect(merged[0].qty).toBe(12);
+  });
+
+  it("an explicit schedule QTY stands even when detail pages count higher (ESH-18 lesson)", () => {
+    // Elevation/detail noise counted mark W2 nine times; the schedule table
+    // says 3. The explicit QTY field is authoritative — noise never wins.
+    const merged = mergeScheduleWithDetailRows(
+      [
+        {
+          openingCode: "W2",
+          typeText: "DH2846",
+          qty: 3,
+          label: null,
+          pageNumber: 1,
+          widthIn: 32,
+          heightIn: 54,
+          color: null,
+          kind: "window",
+        },
+      ],
+      [
+        {
+          openingCode: "W2",
+          typeText: "DH2846",
+          qty: 9,
+          label: null,
+          pageNumber: 4,
+          widthIn: null,
+          heightIn: null,
+          color: null,
+          kind: "window",
+        },
+      ],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0].qty).toBe(3);
   });
 });
