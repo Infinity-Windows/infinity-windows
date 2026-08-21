@@ -40,24 +40,33 @@ import "../../lib/fitview/fitview.css";
 export function MapsInteractive({ project }: { project: Project }) {
   const projectId = project.id;
   const navigate = useNavigate();
-  // Merged tab (owner call, 2026-08-13): 3D is the showpiece, Sheets is the
-  // old 2D plan map (pins, dispatch, planset pages) — one tab, two views.
-  // First open lands on 3D; after that the tab remembers the last view.
-  // ?mapview=sheets (the ?tab=map redirect) forces Sheets for deep links.
+  // Merged tab (owner call, 2026-08-13): the model view is the showpiece,
+  // Sheets is the old 2D plan map (pins, dispatch, planset pages) — one tab,
+  // two views. ?mapview=sheets (the ?tab=map redirect) forces Sheets for
+  // deep links.
   const [searchParams] = useSearchParams();
-  // Flat is the default (owner design, 2026-08-19): walls in walking order,
-  // no 3D — which is also what ends the iOS crash class. 3D stays as a beta
-  // tab; an explicit earlier choice of 3d/sheets is respected.
-  const [mapView, setMapViewState] = useState<"flat" | "3d" | "sheets">(() => {
+  // Flat is the ONLY model view now (owner decision, 2026-08-21): the old
+  // "3D (beta)" toggle is cut — it was the iOS crash class flat replaced as
+  // the default on 2026-08-19, and a beta nobody could turn back off wasn't
+  // worth keeping around. A device that had earlier stored "3d" is
+  // sanitized back to flat below, on read, so it can never silently reopen
+  // a view that no longer exists.
+  const [mapView, setMapViewState] = useState<"flat" | "sheets">(() => {
     if (searchParams.get("mapview") === "sheets") return "sheets";
     try {
       const stored = localStorage.getItem("infinity.mapsView");
-      return stored === "sheets" || stored === "3d" ? stored : "flat";
+      if (stored === "3d") {
+        // Overwrite too, not just sanitize-on-read — otherwise this same
+        // dead value keeps surfacing on every future load.
+        localStorage.setItem("infinity.mapsView", "flat");
+        return "flat";
+      }
+      return stored === "sheets" ? "sheets" : "flat";
     } catch {
       return "flat";
     }
   });
-  const setMapView = (v: "flat" | "3d" | "sheets") => {
+  const setMapView = (v: "flat" | "sheets") => {
     setMapViewState(v);
     try {
       localStorage.setItem("infinity.mapsView", v);
@@ -194,100 +203,121 @@ export function MapsInteractive({ project }: { project: Project }) {
   // visible until the warehouse pre-load started running at sign-in (D9) and
   // reliably won the race the profile fetch used to win.
   const builtForRole = useRef<string | null | undefined>(null);
-  // Same story for the view: flipping Map <-> 3D rebuilds the renderer,
-  // since flat is decided at mount.
+  // Used to guard against rebuilding for the same view a live host was
+  // already built for. No real transition exercises the "different view,
+  // same live host" branch now that flat is the only model view (that used
+  // to be flat<->3D), but the check is still correct — always true, once a
+  // host is live — so it stays rather than being one more thing to re-prove
+  // safe to touch.
   const builtForView = useRef<string | null>(null);
+  // A renderer crash used to bubble all the way to the app-wide error
+  // boundary (main.tsx) and white-screen the whole page over a single bad
+  // map. Caught locally instead (owner decision, 2026-08-21) so only the map
+  // area goes dark, with a way back in that doesn't need a reload.
+  const [mountFailed, setMountFailed] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
+  const retryMount = () => {
+    setMountFailed(false);
+    setRetryNonce((n) => n + 1);
+  };
 
   // Mount once, refresh in place on data changes — refresh keeps the camera
   // where the user left it, a remount would snap it back to the default.
   useEffect(() => {
     const host = hostRef.current;
     if (!host || !job) return;
-    if (viewRef.current) {
-      if (host.childElementCount > 0 && builtForRole.current === effectiveRole && builtForView.current === mapView) {
-        // Same live host, same role — refresh in place, keep the camera.
-        viewRef.current.refresh(job);
-        return;
+    try {
+      if (viewRef.current) {
+        if (host.childElementCount > 0 && builtForRole.current === effectiveRole && builtForView.current === mapView) {
+          // Same live host, same role — refresh in place, keep the camera.
+          viewRef.current.refresh(job);
+          return;
+        }
+        // Two ways to land here. The Sheets toggle unmounted the old host, so
+        // the renderer is stranded on a detached node (black 3D view — owner
+        // report, 2026-08-13). Or the role finally arrived and the live map was
+        // built for a different one, which is the only way to get the Assign
+        // button back. Either way: tear it down and mount fresh.
+        viewRef.current.destroy();
+        viewRef.current = null;
       }
-      // Two ways to land here. The Sheets toggle unmounted the old host, so
-      // the renderer is stranded on a detached node (black 3D view — owner
-      // report, 2026-08-13). Or the role finally arrived and the live map was
-      // built for a different one, which is the only way to get the Assign
-      // button back. Either way: tear it down and mount fresh.
-      viewRef.current.destroy();
-      viewRef.current = null;
-    }
-    builtForRole.current = effectiveRole;
-    builtForView.current = mapView;
-    viewRef.current = mountFitView(host, job, {
-      toast: pushToast,
-      flatView: mapView === "flat",
-      openOpening: (code: string) => {
-        // Codes come in two dialects (survey "13A" vs extraction "13-1");
-        // normalize both sides so the deep link finds its opening.
-        const want = normalizeMarkCode(code);
-        const match = openingsRef.current?.find(
-          (o) => normalizeMarkCode(o.opening_code) === want,
-        );
-        if (!match) return;
-        // Navigate only after the click dispatch has fully finished. React 19
-        // re-renders discrete events synchronously, so navigating mid-click
-        // swaps this DOM for the opening sheet and the tail of the SAME click
-        // lands on its back-to-map link — bouncing the user straight past the
-        // page they asked for. Deferring one tick makes the tap stick. The
-        // timer is tracked so unmounting can cancel it — a navigation firing
-        // after this tab is gone yanks the user off whatever page they're on.
-        navTimerRef.current = window.setTimeout(() => {
-          navTimerRef.current = null;
-          navigate(`/projects/${projectId}/opening/${match.id}`);
-        }, 0);
-      },
-      // Assign mode (owner, 2026-08-14: "click on an installer, then multi
-      // select windows... while i'm on the map interactive"): foreman+
-      // only. Picks arrive as mark codes in tap order; they append to the
-      // installer's existing sequence, same as the Sheets view.
-      ...(isForemanPlus(effectiveRole)
-        ? {
-            crew: (profilesRef.current ?? [])
-              .filter((p) => p.active)
-              .map((p) => ({
-                id: p.id,
-                name: p.display_name ?? p.id.slice(0, 8),
-                role: p.role,
-              })),
-            onAssign: (codes: string[], profileId: string | null) => {
-              const all = openingsRef.current ?? [];
-              const ids = codes
-                .map((c) => {
-                  const want = normalizeMarkCode(c);
-                  return all.find((o) => normalizeMarkCode(o.opening_code) === want)?.id;
-                })
-                .filter((id): id is string => Boolean(id));
-              if (ids.length === 0) {
-                pushToast("Those units have no openings yet.", "error");
-                return;
-              }
-              void (async () => {
-                try {
-                  await assignOpeningsInOrder(all, ids, profileId);
-                  await queryClient.invalidateQueries({
-                    queryKey: ["openings", projectId],
-                  });
-                  pushToast(
-                    profileId
-                      ? `${ids.length} unit${ids.length === 1 ? "" : "s"} assigned.`
-                      : `${ids.length} unit${ids.length === 1 ? "" : "s"} unassigned.`,
-                  );
-                } catch (e) {
-                  pushToast(formatApiError(e), "error");
+      builtForRole.current = effectiveRole;
+      builtForView.current = mapView;
+      viewRef.current = mountFitView(host, job, {
+        toast: pushToast,
+        flatView: mapView === "flat",
+        openOpening: (code: string) => {
+          // Codes come in two dialects (survey "13A" vs extraction "13-1");
+          // normalize both sides so the deep link finds its opening.
+          const want = normalizeMarkCode(code);
+          const match = openingsRef.current?.find(
+            (o) => normalizeMarkCode(o.opening_code) === want,
+          );
+          if (!match) return;
+          // Navigate only after the click dispatch has fully finished. React 19
+          // re-renders discrete events synchronously, so navigating mid-click
+          // swaps this DOM for the opening sheet and the tail of the SAME click
+          // lands on its back-to-map link — bouncing the user straight past the
+          // page they asked for. Deferring one tick makes the tap stick. The
+          // timer is tracked so unmounting can cancel it — a navigation firing
+          // after this tab is gone yanks the user off whatever page they're on.
+          navTimerRef.current = window.setTimeout(() => {
+            navTimerRef.current = null;
+            navigate(`/projects/${projectId}/opening/${match.id}`);
+          }, 0);
+        },
+        // Assign mode (owner, 2026-08-14: "click on an installer, then multi
+        // select windows... while i'm on the map interactive"): foreman+
+        // only. Picks arrive as mark codes in tap order; they append to the
+        // installer's existing sequence, same as the Sheets view.
+        ...(isForemanPlus(effectiveRole)
+          ? {
+              crew: (profilesRef.current ?? [])
+                .filter((p) => p.active)
+                .map((p) => ({
+                  id: p.id,
+                  name: p.display_name ?? p.id.slice(0, 8),
+                  role: p.role,
+                })),
+              onAssign: (codes: string[], profileId: string | null) => {
+                const all = openingsRef.current ?? [];
+                const ids = codes
+                  .map((c) => {
+                    const want = normalizeMarkCode(c);
+                    return all.find((o) => normalizeMarkCode(o.opening_code) === want)?.id;
+                  })
+                  .filter((id): id is string => Boolean(id));
+                if (ids.length === 0) {
+                  pushToast("Those units have no openings yet.", "error");
+                  return;
                 }
-              })();
-            },
-          }
-        : {}),
-    });
+                void (async () => {
+                  try {
+                    await assignOpeningsInOrder(all, ids, profileId);
+                    await queryClient.invalidateQueries({
+                      queryKey: ["openings", projectId],
+                    });
+                    pushToast(
+                      profileId
+                        ? `${ids.length} unit${ids.length === 1 ? "" : "s"} assigned.`
+                        : `${ids.length} unit${ids.length === 1 ? "" : "s"} unassigned.`,
+                    );
+                  } catch (e) {
+                    pushToast(formatApiError(e), "error");
+                  }
+                })();
+              },
+            }
+          : {}),
+      });
+      setMountFailed(false);
+    } catch (e) {
+      console.error("Maps Interactive failed to mount", e);
+      viewRef.current = null;
+      setMountFailed(true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [job, mapView, effectiveRole]);
+  }, [job, mapView, effectiveRole, retryNonce]);
 
   // Unmount-only teardown: the renderer owns global listeners until then,
   // and a still-pending deferred navigation must die with the tab.
@@ -309,13 +339,6 @@ export function MapsInteractive({ project }: { project: Project }) {
         onClick={() => setMapView("flat")}
       >
         Map
-      </button>
-      <button
-        className={mapView === "3d" ? "button-like active-pill" : "button-like"}
-        aria-pressed={mapView === "3d"}
-        onClick={() => setMapView("3d")}
-      >
-        3D (beta)
       </button>
       <button
         className={mapView === "sheets" ? "button-like active-pill" : "button-like"}
@@ -392,33 +415,49 @@ export function MapsInteractive({ project }: { project: Project }) {
         )}
       </div>
       <div className={fullscreen ? "fitview-shell fitview-fullscreen" : "fitview-shell"}>
-      <div className="fitview-toolbar">
-        {job && job.windows.length === 0 && (
-          <p className="muted" style={{ margin: 0, flex: 1 }}>
-            The outline is traced, but no openings are pinned on sheet{" "}
-            {outline.page_number} yet — the model will populate as pins land.
-          </p>
-        )}
-        {canEditModel && !fullscreen && (
-          <Link
+        <div className="fitview-toolbar">
+          {!mountFailed && job && job.windows.length === 0 && (
+            <p className="muted" style={{ margin: 0, flex: 1 }}>
+              The outline is traced, but no openings are pinned on sheet{" "}
+              {outline.page_number} yet — the model will populate as pins land.
+            </p>
+          )}
+          {canEditModel && !fullscreen && (
+            <Link
+              className="button-like"
+              style={{ marginLeft: "auto" }}
+              to={`/projects/${projectId}/trace-model`}
+            >
+              Trace 3D model
+            </Link>
+          )}
+          <button
+            type="button"
             className="button-like"
-            style={{ marginLeft: "auto" }}
-            to={`/projects/${projectId}/trace-model`}
+            style={canEditModel && !fullscreen ? undefined : { marginLeft: "auto" }}
+            aria-pressed={fullscreen}
+            onClick={() => toggleFullscreen(!fullscreen)}
           >
-            Trace 3D model
-          </Link>
+            {fullscreen ? "Exit full screen" : "Full screen"}
+          </button>
+        </div>
+        {/* Scoped failure (owner decision, 2026-08-21): in place of the map
+            only, never the whole page. The host div below stays mounted
+            (just hidden) so its ref is still valid when the retry re-runs
+            the mount effect. */}
+        {mountFailed && (
+          <div className="empty-state" role="alert">
+            <p className="muted">The map couldn&rsquo;t load.</p>
+            <button type="button" className="button-like" onClick={retryMount}>
+              Tap to try again
+            </button>
+          </div>
         )}
-        <button
-          type="button"
-          className="button-like"
-          style={canEditModel && !fullscreen ? undefined : { marginLeft: "auto" }}
-          aria-pressed={fullscreen}
-          onClick={() => toggleFullscreen(!fullscreen)}
-        >
-          {fullscreen ? "Exit full screen" : "Full screen"}
-        </button>
-      </div>
-        <div className="fitview-app" ref={hostRef} />
+        <div
+          className="fitview-app"
+          ref={hostRef}
+          style={mountFailed ? { display: "none" } : undefined}
+        />
       </div>
     </div>
   );
