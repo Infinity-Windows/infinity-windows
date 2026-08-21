@@ -917,6 +917,35 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     }
   };
 
+  const setPackageNote: OpHandler = async (entry) => {
+    const packageId = str(entry.payload.packageId);
+    // null is a legal value here — it clears the note — so only a missing
+    // package id makes the entry unsendable.
+    if (!packageId) {
+      throw tagPermanent(new Error("This note is missing its package"));
+    }
+    const note = str(entry.payload.note);
+    const { error } = await supabase.rpc("set_package_note", {
+      p_package: packageId,
+      p_note: note,
+    });
+    if (error) {
+      // "that sticker is not on a package yet": the sticker was still blank
+      // when this queued and no resend changes that — say so once instead
+      // of burning retries on a write that will never land.
+      const msg = String((error as { message?: unknown }).message ?? "");
+      if (/not on a package yet/.test(msg)) {
+        throw tagPermanent(
+          new Error(
+            "This note didn't stick — nothing was tagged to that sticker " +
+              "yet when it went up. If it still matters, add it again.",
+          ),
+        );
+      }
+      throw missingGuard(error, "note");
+    }
+  };
+
   const moveContainer: OpHandler = async (entry) => {
     const containerId = str(entry.payload.containerId);
     if (!containerId) {
@@ -974,6 +1003,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     take_supply: takeSupply,
     bind_package: bindPackage,
     set_package_area: setPackageArea,
+    set_package_note: setPackageNote,
     receive_minted: receiveMinted,
     pickup_takeoff: pickupTakeoff,
     stage_packages: stagePackages,

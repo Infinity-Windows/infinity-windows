@@ -11,6 +11,17 @@ import { containerKind, type StorageContainer } from "../storage";
 /** Options for a box that travels: door-relative, park it any way you like. */
 export const MOVABLE_AREAS = ["front", "middle", "back"] as const;
 
+/** Finer zones inside a box that travels (owner call): each door-relative
+ * third also splits left/right. Optional precision layered on top of
+ * MOVABLE_AREAS, never a replacement for it — a foreman can always stop at
+ * the plain three. The building doesn't get these; it already has the full
+ * compass and never moves, so there's nothing rough about its answer. */
+export const MOVABLE_ZONE_AREAS = [
+  "front-left", "front-right",
+  "middle-left", "middle-right",
+  "back-left", "back-right",
+] as const;
+
 /** Options inside the building, which never moves — the compass holds. */
 export const BUILDING_AREAS = [
   "north", "northeast", "east", "southeast",
@@ -21,6 +32,12 @@ const LABELS: Record<string, string> = {
   front: "Front (door end)",
   middle: "Middle",
   back: "Back",
+  "front-left": "Front Left",
+  "front-right": "Front Right",
+  "middle-left": "Middle Left",
+  "middle-right": "Middle Right",
+  "back-left": "Back Left",
+  "back-right": "Back Right",
   north: "North",
   northeast: "NorthEast",
   east: "East",
@@ -37,6 +54,16 @@ export function areaOptions(
 ): readonly string[] {
   if (!container) return [];
   return containerKind(container) === "building" ? BUILDING_AREAS : MOVABLE_AREAS;
+}
+
+/** The optional finer zones for a box that travels — empty for the building,
+ * which keeps only its compass (owner call: the extra precision is a
+ * container thing, never forced on anyone). */
+export function areaZoneOptions(
+  container: Pick<StorageContainer, "kind"> | null | undefined,
+): readonly string[] {
+  if (!container) return [];
+  return containerKind(container) === "building" ? [] : MOVABLE_ZONE_AREAS;
 }
 
 /** "front" -> "Front (door end)". Unknown values pass through rather than

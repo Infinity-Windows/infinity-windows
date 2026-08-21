@@ -527,6 +527,18 @@ export function enqueueSetPackageArea(input: {
   });
 }
 
+/** Queue "here's a note on this piece". Setting the same text twice lands on
+ * the same value, so a resend is harmless. */
+export function enqueueSetPackageNote(input: {
+  packageId: string;
+  note: string | null;
+}): Promise<string> {
+  return enqueue({
+    op: "set_package_note",
+    payload: { packageId: input.packageId, note: input.note },
+  });
+}
+
 /**
  * Queue a damage report's photo (ticket 11). The issue itself is written by
  * the direct arrivePackages() call in lib/storage.ts, which already knows

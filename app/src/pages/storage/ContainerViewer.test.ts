@@ -23,6 +23,21 @@ describe("the viewer's zone math (ticket 22, slice 3)", () => {
     expect(zoneRect(bounds, "northeast", "conex")).toBeNull();
   });
 
+  it("a six-zone area splits its door-relative third across y (owner call)", () => {
+    expect(zoneRect(bounds, "front-left", "conex")).toEqual({
+      x0: 400, x1: 600, y0: 0, y1: 120,
+    });
+    expect(zoneRect(bounds, "front-right", "conex")).toEqual({
+      x0: 400, x1: 600, y0: 120, y1: 240,
+    });
+    expect(zoneRect(bounds, "back-left", "conex")).toEqual({
+      x0: 0, x1: 200, y0: 0, y1: 120,
+    });
+    expect(zoneRect(bounds, "middle-right", "conex")).toEqual({
+      x0: 200, x1: 400, y0: 120, y1: 240,
+    });
+  });
+
   it("the building gets the 3×3 grid, north at -y", () => {
     expect(zoneRect(bounds, "northwest", "building")).toEqual({
       x0: 0, x1: 200, y0: 0, y1: 80,

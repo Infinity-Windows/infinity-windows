@@ -547,6 +547,21 @@ export async function setPackageArea(
   return data as StoragePackage;
 }
 
+/** A custom note on any tagged piece — any signed-in crew, same as
+ * report_maker_count. Null clears it. Capped at 1000 characters server-side;
+ * the RPC raises a plain-English error before the check constraint would. */
+export async function setPackageNote(
+  packageId: string,
+  note: string | null,
+): Promise<StoragePackage> {
+  const { data, error } = await supabase.rpc("set_package_note", {
+    p_package: packageId,
+    p_note: note,
+  });
+  if (error) throw error;
+  return normalizePackage(data as Record<string, unknown>);
+}
+
 export async function listCheckoutReasons(): Promise<CheckoutReason[]> {
   const { data, error } = await supabase
     .from("checkout_reasons")

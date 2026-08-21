@@ -10,11 +10,11 @@ import { BackChip } from "../../components/BackChip";
 import { downloadPdf, packageLabelsPdf } from "../../lib/labels";
 import { listJobModelRows } from "../../lib/modelstudio/projects";
 import { placeWhere, toLocationsById } from "../../lib/warehouse/containment";
-import { areaLabel, areaOptions } from "../../lib/warehouse/areas";
+import { areaLabel, areaOptions, areaZoneOptions } from "../../lib/warehouse/areas";
 import { bindLine } from "../../lib/warehouse/markPlan";
 import { listScheduledMarks } from "../../lib/warehouse/warehouseCards";
 // setPackageWindow rides the storage import below
-import { setPackageAreaOffline } from "../../lib/warehouse/offlineWrites";
+import { setPackageAreaOffline, setPackageNoteOffline } from "../../lib/warehouse/offlineWrites";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isForemanPlus } from "../../lib/install/types";
 import { pushToast } from "../../lib/toast";
@@ -70,6 +70,24 @@ export function PackageSheet() {
       if (r.queued) {
         pushToast("Saved on this phone — goes up when you have signal.");
       }
+      void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+      void qc.invalidateQueries({ queryKey: ["storagePackage", serial] });
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
+
+  // A custom note on the piece (owner ask). Any signed-in crew, same as the
+  // maker-count flag below — offline-first for the same reason area is: it
+  // gets written standing in the box.
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const noteMutation = useMutation({
+    mutationFn: (note: string | null) => setPackageNoteOffline(pkg.data?.id ?? "", note),
+    onSuccess: (r) => {
+      if (r.queued) {
+        pushToast("Saved on this phone — goes up when you have signal.");
+      }
+      setEditingNote(false);
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
       void qc.invalidateQueries({ queryKey: ["storagePackage", serial] });
     },
@@ -271,11 +289,59 @@ export function PackageSheet() {
               Marks inside: {(p.package_marks ?? []).map((m) => m.mark_code).join(", ")}
             </p>
           )}
-          {p.note && (
-            <p className="muted" style={{ margin: 0, fontSize: 12 }}>{p.note}</p>
-          )}
         </div>
       </header>
+
+      {/* A custom note on this piece (owner ask) — shown prominently rather
+          than as a muted aside, because it exists to flag something out of
+          the ordinary. Any signed-in crew can add or change it. */}
+      {p.status !== "blank" && (
+        <div className="detail-card" style={{ marginTop: 8, padding: "10px 14px" }}>
+          {editingNote ? (
+            <>
+              <textarea
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                maxLength={1000}
+                rows={3}
+                style={{ width: "100%", resize: "vertical" }}
+                placeholder="Anything out of the ordinary about this piece"
+                aria-label="Note on this package"
+              />
+              <div className="row-gap" style={{ marginTop: 6 }}>
+                <button
+                  className="button-like active-pill"
+                  disabled={noteMutation.isPending}
+                  onClick={() =>
+                    noteMutation.mutate(noteText.trim() === "" ? null : noteText.trim())
+                  }
+                >
+                  {noteMutation.isPending ? "Saving…" : "Save note"}
+                </button>
+                <button className="button-like" onClick={() => setEditingNote(false)}>
+                  Cancel
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p style={{ margin: 0, fontSize: 13.5 }}>
+                {p.note ?? <span className="muted">No note on this piece.</span>}
+              </p>
+              <button
+                className="button-like"
+                style={{ marginTop: 6 }}
+                onClick={() => {
+                  setNoteText(p.note ?? "");
+                  setEditingNote(true);
+                }}
+              >
+                {p.note ? "Edit note" : "Add a note"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="row-gap" style={{ flexWrap: "wrap" }}>
         <button className="button-like" onClick={() => reprint.mutate()}>
@@ -525,6 +591,32 @@ export function PackageSheet() {
               </button>
             ))}
           </div>
+          {/* Six zones (owner call): optional extra precision on a box that
+              travels, never forced — the plain three above are always
+              enough on their own. Empty for the building, so this whole
+              block is silent there. */}
+          {areaZoneOptions(containersById.get(p.container_id)).length > 0 && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: 6,
+                marginTop: 6,
+              }}
+            >
+              {areaZoneOptions(containersById.get(p.container_id)).map((a) => (
+                <button
+                  key={a}
+                  className={p.area === a ? "button-like active-pill" : "button-like"}
+                  disabled={setArea.isPending}
+                  style={{ fontSize: 12.5, padding: "6px 4px" }}
+                  onClick={() => setArea.mutate(p.area === a ? null : a)}
+                >
+                  {areaLabel(a)}
+                </button>
+              ))}
+            </div>
+          )}
           <p className="muted" style={{ margin: "4px 0 0", fontSize: 12 }}>
             A rough pointer, not a slot — it clears on its own the moment the
             package moves. Tap again to unset.

@@ -57,8 +57,9 @@ export function modelBounds(serialized: string): {
 
 /**
  * The zone an area names, as a plan-rectangle inside the bounds. Movable
- * boxes: thirds along x, front = the +x (door) end. The building: a 3×3
- * compass grid, north = -y.
+ * boxes: thirds along x, front = the +x (door) end — and the six finer zones
+ * (owner call) split each of those same thirds left/right across y, left
+ * being the -y half. The building: a 3×3 compass grid, north = -y.
  */
 export function zoneRect(
   bounds: { minX: number; maxX: number; minY: number; maxY: number },
@@ -69,13 +70,23 @@ export function zoneRect(
   const D = bounds.maxY - bounds.minY;
   if (kind !== "building") {
     const third = W / 3;
-    if (area === "front")
-      return { x0: bounds.maxX - third, x1: bounds.maxX, y0: bounds.minY, y1: bounds.maxY };
-    if (area === "middle")
-      return { x0: bounds.minX + third, x1: bounds.maxX - third, y0: bounds.minY, y1: bounds.maxY };
-    if (area === "back")
-      return { x0: bounds.minX, x1: bounds.minX + third, y0: bounds.minY, y1: bounds.maxY };
-    return null;
+    const X_RANGE: Record<string, [number, number]> = {
+      front: [bounds.maxX - third, bounds.maxX],
+      middle: [bounds.minX + third, bounds.maxX - third],
+      back: [bounds.minX, bounds.minX + third],
+    };
+    const zoned = /^(front|middle|back)-(left|right)$/.exec(area);
+    if (zoned) {
+      const [x0, x1] = X_RANGE[zoned[1]];
+      const half = D / 2;
+      const [y0, y1] =
+        zoned[2] === "left"
+          ? [bounds.minY, bounds.minY + half]
+          : [bounds.minY + half, bounds.maxY];
+      return { x0, x1, y0, y1 };
+    }
+    const plain = X_RANGE[area];
+    return plain ? { x0: plain[0], x1: plain[1], y0: bounds.minY, y1: bounds.maxY } : null;
   }
   const col = (i: number) => bounds.minX + (W / 3) * i;
   const row = (i: number) => bounds.minY + (D / 3) * i;
