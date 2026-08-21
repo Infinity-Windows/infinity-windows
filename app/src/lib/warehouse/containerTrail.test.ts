@@ -11,7 +11,10 @@ const row = (over: Partial<ContainerMovementRow>): ContainerMovementRow => ({
   from_location_id: null,
   to_location_id: null,
   reason: null,
-  actor: "someone",
+  // No actor by default so the sentence-shape tests below stay about their
+  // own topic; the "who did it" tests set both explicitly.
+  actor: null,
+  actor_name: null,
   created_at: "2026-08-18T12:00:00Z",
   ...over,
 });
@@ -59,5 +62,35 @@ describe("a container's trail reads as sentences", () => {
     // The raw-word history entries the audit flagged (F9) are the failure this
     // file exists to not repeat: no shape of row may surface as bare data.
     expect(text(row({}))).toBe("moved");
+  });
+});
+
+describe("who did it (owner ask)", () => {
+  it("names the resolved actor on a plain move", () => {
+    expect(
+      text(row({ to_container_id: "conex-9", actor: "u1", actor_name: "Marco" })),
+    ).toBe("moved into Conex 9 by Marco");
+  });
+
+  it("names the resolved actor on a reasoned line too — the reason is still the sentence, plus who", () => {
+    expect(
+      text(
+        row({
+          reason: "address changed: Yard A → BLACK22",
+          actor: "u1",
+          actor_name: "Marco",
+        }),
+      ),
+    ).toBe("address changed: Yard A → BLACK22 by Marco");
+  });
+
+  it("falls back to the raw actor id when the name can't be resolved — never silently drops who", () => {
+    expect(
+      text(row({ to_container_id: "conex-9", actor: "u1", actor_name: null })),
+    ).toBe("moved into Conex 9 by u1");
+  });
+
+  it("says nothing extra when there is no actor at all", () => {
+    expect(text(row({ to_container_id: "conex-9", actor: null }))).toBe("moved into Conex 9");
   });
 });

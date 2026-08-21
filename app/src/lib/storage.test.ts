@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   agingDays,
   damagePhotoPath,
+  daysInStorage,
   defaultDeliveryLabel,
   groupByJob,
   hasPartNumber,
@@ -12,6 +13,7 @@ import {
   movementToPackageEvent,
   normalizeMarks,
   partLabel,
+  type PackageEvent,
 } from "./storage";
 
 const pkg = (project_id: string | null) => ({ project_id });
@@ -42,6 +44,44 @@ describe("agingDays", () => {
   });
   it("never goes negative on clock skew", () => {
     expect(agingDays("2026-08-15T00:00:00Z", now)).toBe(0);
+  });
+});
+
+describe("daysInStorage", () => {
+  const now = new Date("2026-08-14T18:00:00Z");
+  const ev = (event: PackageEvent["event"], created_at: string) => ({ event, created_at });
+
+  it("counts from the most recent 'stored' movement, not the others", () => {
+    const events = [
+      ev("checked_out", "2026-08-13T00:00:00Z"),
+      ev("stored", "2026-08-10T00:00:00Z"),
+      ev("bound", "2026-08-01T00:00:00Z"),
+    ];
+    expect(daysInStorage(events, now)).toBe(4);
+  });
+
+  it("uses the LATEST store when a package has been stored more than once", () => {
+    // Checked out, came back, stored again — the older 'stored' row must not
+    // win just because it's still in the history.
+    const events = [
+      ev("stored", "2026-08-12T00:00:00Z"),
+      ev("checked_out", "2026-08-05T00:00:00Z"),
+      ev("stored", "2026-08-01T00:00:00Z"),
+    ];
+    expect(daysInStorage(events, now)).toBe(2);
+  });
+
+  it("doesn't assume the events arrive newest-first", () => {
+    const events = [
+      ev("stored", "2026-08-01T00:00:00Z"),
+      ev("stored", "2026-08-12T00:00:00Z"),
+    ];
+    expect(daysInStorage(events, now)).toBe(2);
+  });
+
+  it("is null when the package has never been stored", () => {
+    expect(daysInStorage([ev("bound", "2026-08-01T00:00:00Z")], now)).toBeNull();
+    expect(daysInStorage([], now)).toBeNull();
   });
 });
 

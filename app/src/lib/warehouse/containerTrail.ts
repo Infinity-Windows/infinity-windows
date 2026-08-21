@@ -27,15 +27,23 @@ export function containerTrailLine(
     id ? (containersById.get(id)?.name ?? "another container") : null;
   const slot = (id: string | null) =>
     id ? (locationsById.get(id)?.address ?? "a slot") : null;
+  // Who did it (owner ask): falls back to the raw actor value when the name
+  // can't be resolved, same as Supplies.tsx's own actor_name fallback —
+  // never silently drop the "who" just because a profile lookup missed.
+  const by = m.actor ? ` by ${m.actor_name ?? m.actor}` : "";
 
   // The writer already said it in words — an address change, or any future
   // reasoned move. The reason IS the sentence.
-  if (m.reason) return { id: m.id, when: m.created_at, text: m.reason };
+  if (m.reason) return { id: m.id, when: m.created_at, text: m.reason + by };
 
   const to = name(m.to_container_id) ?? slot(m.to_location_id);
   const from = name(m.from_container_id) ?? slot(m.from_location_id);
-  if (to && from) return { id: m.id, when: m.created_at, text: `moved from ${from} to ${to}` };
-  if (to) return { id: m.id, when: m.created_at, text: `moved into ${to}` };
-  if (from) return { id: m.id, when: m.created_at, text: `taken out of ${from}, on its own now` };
-  return { id: m.id, when: m.created_at, text: "moved" };
+  if (to && from) {
+    return { id: m.id, when: m.created_at, text: `moved from ${from} to ${to}${by}` };
+  }
+  if (to) return { id: m.id, when: m.created_at, text: `moved into ${to}${by}` };
+  if (from) {
+    return { id: m.id, when: m.created_at, text: `taken out of ${from}, on its own now${by}` };
+  }
+  return { id: m.id, when: m.created_at, text: `moved${by}` };
 }
