@@ -5,9 +5,18 @@ export interface CatalogCsvRow {
   width_in: number | null;
   height_in: number | null;
   difficulty_rating: number | null;
+  required_capability: string | null;
   tutorial_url: string | null;
   notes: string | null;
 }
+
+const CAPABILITY_VALUES = new Set([
+  "nail_fin",
+  "retrofit",
+  "doors",
+  "wet_glazing",
+  "curtain_wall",
+]);
 
 const HEADER_ALIASES: Record<string, keyof CatalogCsvRow> = {
   type_code: "type_code",
@@ -21,6 +30,8 @@ const HEADER_ALIASES: Record<string, keyof CatalogCsvRow> = {
   height: "height_in",
   difficulty_rating: "difficulty_rating",
   difficulty: "difficulty_rating",
+  required_capability: "required_capability",
+  needs: "required_capability",
   tutorial_url: "tutorial_url",
   tutorial: "tutorial_url",
   notes: "notes",
@@ -113,6 +124,17 @@ export function parseCatalogCsv(text: string): {
       difficulty = Math.min(5, Math.max(1, Math.round(difficulty)));
     }
 
+    const capRaw = (raw.required_capability ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_");
+    if (capRaw && !CAPABILITY_VALUES.has(capRaw)) {
+      errors.push(
+        `Line ${i + 1}: "${(raw.required_capability ?? "").trim()}" is not a badge (use nail_fin, retrofit, doors, wet_glazing, or curtain_wall)`,
+      );
+      continue;
+    }
+
     rows.push({
       type_code,
       name,
@@ -120,6 +142,7 @@ export function parseCatalogCsv(text: string): {
       width_in: parseNumber(raw.width_in ?? ""),
       height_in: parseNumber(raw.height_in ?? ""),
       difficulty_rating: difficulty,
+      required_capability: capRaw || null,
       tutorial_url: (raw.tutorial_url ?? "").trim() || null,
       notes: (raw.notes ?? "").trim() || null,
     });

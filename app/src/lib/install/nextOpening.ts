@@ -19,6 +19,7 @@ export function toDispatchOpening(o: ProjectOpening): DispatchOpening {
     id: o.id,
     opening_code: o.opening_code,
     window_type_id: o.window_type_id,
+    required_capability: o.window_types?.required_capability ?? null,
     difficulty:
       o.window_types?.learned_difficulty ??
       o.window_types?.outcome_difficulty ??

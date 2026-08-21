@@ -24,16 +24,37 @@ export interface InstallerTypePerf {
 /** Types an installer is explicitly cleared to install (training path). */
 export type ClearanceSet = Set<string>; // `${installer_id}:${window_type_id}`
 
+/** The five badges (owner decision 2026-08-21): what somebody MAY touch. */
+export const CAPABILITIES = [
+  "nail_fin",
+  "retrofit",
+  "doors",
+  "wet_glazing",
+  "curtain_wall",
+] as const;
+export type Capability = (typeof CAPABILITIES)[number];
+export const CAPABILITY_LABELS: Record<Capability, string> = {
+  nail_fin: "Nail fin",
+  retrofit: "Retrofit",
+  doors: "Doors",
+  wet_glazing: "Wet glazing",
+  curtain_wall: "Curtain wall",
+};
+
 export interface DispatchContext {
   /** perf[installerId][windowTypeId] -> proven stats */
   perf?: Record<string, Record<string, InstallerTypePerf>>;
   cleared?: ClearanceSet;
+  /** "installerId:capability" pairs the installer holds. */
+  badges?: Set<string>;
 }
 
 export interface DispatchOpening {
   id: string;
   opening_code: string;
   window_type_id: string | null;
+  /** Badge this type demands, or null when open to any eligible installer. */
+  required_capability?: string | null;
   /** Outcome/catalog difficulty 1-5; null treated as 2. */
   difficulty: number | null;
   /** Grouping key (e.g. page number or room) to cut walking. */
@@ -85,6 +106,15 @@ function eligible(
 ): boolean {
   if (!crew.active) return false;
   if (crew.role !== "installer") return true; // any lead-level takes anything
+  // A required badge is a hard family gate: skill, history, and per-type
+  // clearance say how GOOD you are; the badge says whether this family of
+  // work is yours at all (wet glazing, curtain wall...).
+  if (
+    o.required_capability &&
+    !ctx?.badges?.has(`${crew.id}:${o.required_capability}`)
+  ) {
+    return false;
+  }
   const perf = perfOf(ctx, crew.id, o.window_type_id);
   if (perf && perf.n > 0 && (perf.fail_rate ?? 0) < 0.5) return true;
   if (isCleared(ctx, crew.id, o.window_type_id)) return true;

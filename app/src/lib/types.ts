@@ -16,6 +16,8 @@ export interface WindowType {
   width_in: number | null;
   height_in: number | null;
   difficulty_rating: number | null;
+  /** Badge an installer must hold before dispatch offers this type. */
+  required_capability?: string | null;
   tutorial_url: string | null;
   notes: string | null;
   /** true = created ad hoc from a job spec extract, not part of the closed catalog. */

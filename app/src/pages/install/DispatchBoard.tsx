@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import {
   assignOpeningToInstaller,
   buildPerfIndex,
+  listCapabilityBadges,
   listClearances,
   listInstallerTypeStats,
   listJobNotes,
@@ -15,6 +16,8 @@ import { formatApiError } from "../../lib/install/errors";
 import { openingReadiness } from "../../lib/install/fit";
 import { isInstallInProgress } from "../../lib/install/installTimer";
 import {
+  CAPABILITY_LABELS,
+  type Capability,
   autoDistribute,
   type DispatchContext,
   type DispatchCrew,
@@ -69,6 +72,17 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
     queryKey: ["clearances"],
     queryFn: listClearances,
   });
+  const badges = useQuery({
+    queryKey: ["capabilityBadges"],
+    queryFn: listCapabilityBadges,
+  });
+  const badgeSet = useMemo(
+    () =>
+      new Set(
+        (badges.data ?? []).map((b) => `${b.installer_id}:${b.capability}`),
+      ),
+    [badges.data],
+  );
   const jobNotes = useQuery({
     queryKey: ["jobNotes", projectId],
     queryFn: () => listJobNotes(projectId),
@@ -136,6 +150,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
         cleared: new Set(
           (clearances.data ?? []).map((c) => `${c.installer_id}:${c.window_type_id}`),
         ),
+        badges: badgeSet,
       };
       const suggestions = autoDistribute(dispatchOpenings, dispatchCrew, ctx);
       for (const s of suggestions) {
@@ -201,24 +216,37 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
   const nameOf = (id: string) =>
     (crew.data ?? []).find((c) => c.id === id)?.display_name ?? "unknown";
 
-  const assignPicker = (o: ProjectOpening) => (
-    <select
-      value={o.assigned_to ?? ""}
-      onChange={(e) => {
-        const v = e.target.value;
-        if (!v) unassign.mutate(o.id);
-        else assign.mutate({ openingId: o.id, profileId: v });
-      }}
-    >
-      <option value="">— unassigned —</option>
-      {activeCrew.map((c) => (
-        <option key={c.id} value={c.id}>
-          {c.display_name} (skill {c.skill_level}
-          {c.role !== "installer" ? `, ${c.role}` : ""})
-        </option>
-      ))}
-    </select>
-  );
+  const assignPicker = (o: ProjectOpening) => {
+    const need = o.window_types?.required_capability ?? null;
+    const needLabel = need
+      ? (CAPABILITY_LABELS[need as Capability] ?? need)
+      : null;
+    return (
+      <select
+        value={o.assigned_to ?? ""}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (!v) unassign.mutate(o.id);
+          else assign.mutate({ openingId: o.id, profileId: v });
+        }}
+      >
+        <option value="">— unassigned —</option>
+        {activeCrew.map((c) => {
+          const missing =
+            need !== null &&
+            c.role === "installer" &&
+            !badgeSet.has(`${c.id}:${need}`);
+          return (
+            <option key={c.id} value={c.id} disabled={missing}>
+              {c.display_name} (skill {c.skill_level}
+              {c.role !== "installer" ? `, ${c.role}` : ""})
+              {missing ? ` — needs the ${needLabel} badge` : ""}
+            </option>
+          );
+        })}
+      </select>
+    );
+  };
 
   const openingRow = (o: ProjectOpening) => {
     const r = openingReadiness(o);
@@ -240,6 +268,9 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
               {o.window_types?.type_code ?? "type?"}
               {o.window_types?.difficulty_rating
                 ? ` · ${"★".repeat(o.window_types.outcome_difficulty ?? o.window_types.difficulty_rating)}`
+                : ""}
+              {o.window_types?.required_capability
+                ? ` · ${CAPABILITY_LABELS[o.window_types.required_capability as Capability] ?? o.window_types.required_capability}`
                 : ""}
             </span>
             <div className="muted" style={{ fontSize: 12 }}>

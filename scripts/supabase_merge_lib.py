@@ -457,6 +457,8 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- Child rows identified by their parent plus a position or code.
     "project_windows": ("project_id", "window_type_id"),
     "installer_clearance": ("installer_id", "window_type_id"),
+    # One badge per installer per capability; a re-import upserts on the pair.
+    "capability_badges": ("installer_id", "capability"),
     "window_id_counters": ("window_type_id",),
     "project_openings": ("project_id", "opening_code"),
     # One phase of one kind per opening (UNIQUE in the migration), so the

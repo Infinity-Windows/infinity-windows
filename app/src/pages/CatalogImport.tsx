@@ -6,9 +6,10 @@ import { useWindowTypes } from "../components/WindowTypePicker";
 import { parseCatalogCsv, type CatalogCsvRow } from "../lib/catalogCsv";
 import { formatApiError } from "../lib/errors";
 
-const TEMPLATE = `type_code,name,category,width_in,height_in,difficulty_rating,tutorial_url,notes
-CAS3050,Casement 30x50,casement,30,50,3,,
-DH2846,Double Hung 28x46,double-hung,28,46,2,,
+const TEMPLATE = `type_code,name,category,width_in,height_in,difficulty_rating,required_capability,tutorial_url,notes
+CAS3050,Casement 30x50,casement,30,50,3,,,
+DH2846,Double Hung 28x46,double-hung,28,46,2,,,
+CW1290,Curtain Wall 12x90,curtain-wall,144,90,5,curtain_wall,,
 `;
 
 export function CatalogImport() {
