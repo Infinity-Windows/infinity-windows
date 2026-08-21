@@ -121,3 +121,105 @@ test("a live summon rides My Work, so helpers see it without opening the job (ow
     `/projects/${BLACK22.projectId}/opening/${opening.id}`,
   );
 });
+
+test("Can't help fires the decline RPC and the name shows in the can't-come line", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  const opening = openingsFor(BLACK22.projectId)[0];
+  const summonId = "00000000-0000-4000-8000-00000000d00f";
+
+  // Same fixture-router workaround as the first test above: serve the
+  // by-id opening fetch ourselves.
+  await page.route(
+    (url) =>
+      url.pathname.includes("/rest/v1/project_openings") &&
+      (url.searchParams.get("id") ?? "").startsWith("eq."),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        headers: { "content-range": "0-0/1" },
+        body: JSON.stringify([opening]),
+      }),
+  );
+
+  await page.route("**/rest/v1/summons**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "content-range": "0-0/1" },
+      body: JSON.stringify([
+        {
+          id: summonId,
+          project_id: BLACK22.projectId,
+          opening_id: opening.id,
+          requested_by: "00000000-0000-4000-8000-00000000aaaa",
+          needed: 3,
+          status: "open",
+          created_at: "2026-08-21T18:00:00Z",
+          closed_at: null,
+          requester: { display_name: "Marcus" },
+        },
+      ]),
+    }),
+  );
+  await page.route("**/rest/v1/summon_helpers**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "content-range": "*/0" },
+      body: "[]",
+    }),
+  );
+
+  // The declines list starts empty and flips once the RPC below fires — the
+  // panel refetches on its own (same invalidate-then-refetch pattern the
+  // answer flow uses), so returning the decline row here is enough to prove
+  // the live update, without touching the panel's realtime channel.
+  let declined = false;
+  await page.route("**/rest/v1/summon_declines**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "content-range": declined ? "0-0/1" : "*/0" },
+      body: declined
+        ? JSON.stringify([
+            {
+              summon_id: summonId,
+              profile_id: "00000000-0000-4000-8000-00000000cccc",
+              created_at: "2026-08-21T18:05:00Z",
+              decliner: { display_name: "Chris" },
+            },
+          ])
+        : "[]",
+    }),
+  );
+
+  const declines: string[] = [];
+  await page.route("**/rest/v1/rpc/decline_summon", async (route) => {
+    const body = route.request().postDataJSON() as { p_summon_id: string };
+    declines.push(body.p_summon_id);
+    declined = true;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        summon_id: body.p_summon_id,
+        profile_id: "00000000-0000-4000-8000-00000000cccc",
+        created_at: "2026-08-21T18:05:00Z",
+      }),
+    });
+  });
+
+  await page.goto(`/projects/${BLACK22.projectId}/opening/${opening.id}`);
+  await expect(page.getByText(/Summon — 0\/3/)).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: "Can't help", exact: true }).click();
+  await expect.poll(() => declines.length).toBe(1);
+  expect(declines[0]).toBe(summonId);
+
+  // "Can't come" uses a curly apostrophe in the source (&rsquo;) — match
+  // around it rather than assuming which glyph renders.
+  await expect(page.getByText(/Can.t come: Chris/)).toBeVisible();
+});

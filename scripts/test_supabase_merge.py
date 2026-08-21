@@ -111,8 +111,9 @@ class TestSchemaParsing(unittest.TestCase):
         # declared — and its orphan reconciled — by 20260822000000, so the
         # migrations and production agree on the name at last. Plus
         # `opening_notes` (20260923000000), the per-opening notes thread,
-        # and `capability_badges` (20260923010000), the skill-tree badges.
-        self.assertEqual(len(SCHEMA.tables), 101)
+        # `capability_badges` (20260923010000), the skill-tree badges, and
+        # `summon_declines` (20260923020000), the can't-help record.
+        self.assertEqual(len(SCHEMA.tables), 102)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

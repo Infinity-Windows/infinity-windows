@@ -3,6 +3,11 @@
 // platform allows); answering clocks the helper on and pays 10 points
 // instantly; Complete stamps their minutes; the window's true cost shows
 // lead + helper time. Windows over 4040 get a declinable prompt.
+//
+// "Can't help" (owner decision, 2026-08-21): summons stay penalty-free, but
+// anyone who can't come can say so with one tap, so the caller sees who's
+// out instead of wondering. No points, no seat effect — answering later
+// just clears it.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -12,7 +17,9 @@ import {
   closeSummon,
   completeSummonHelp,
   createSummon,
+  declineSummon,
   listLiveSummons,
+  listSummonDeclines,
   listSummonHelpers,
   sizeSuggestsSummon,
   summonEtaLine,
@@ -81,11 +88,18 @@ export function SummonPanel({
     enabled: Boolean(summon),
     refetchInterval: 20_000,
   });
+  const declines = useQuery({
+    queryKey: ["summonDeclines", summon?.id],
+    queryFn: () => listSummonDeclines(summon!.id),
+    enabled: Boolean(summon),
+    refetchInterval: 20_000,
+  });
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["summons", projectId] });
     if (summon) {
       void queryClient.invalidateQueries({ queryKey: ["summonHelpers", summon.id] });
+      void queryClient.invalidateQueries({ queryKey: ["summonDeclines", summon.id] });
     }
   };
 
@@ -99,6 +113,11 @@ export function SummonPanel({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "summon_helpers", filter: `summon_id=eq.${summon.id}` },
+        () => refresh(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "summon_declines", filter: `summon_id=eq.${summon.id}` },
         () => refresh(),
       )
       .on(
@@ -207,10 +226,19 @@ export function SummonPanel({
     onSuccess: refresh,
     onError: (e) => setErr(formatApiError(e)),
   });
+  // "Can't help" — informational, not a penalty. Answering later clears it
+  // server-side (answer_summon deletes the row), so this mutation never
+  // needs to undo itself.
+  const decline = useMutation({
+    mutationFn: () => declineSummon(summon!.id),
+    onSuccess: refresh,
+    onError: (e) => setErr(formatApiError(e)),
+  });
 
   const myHelp = (helpers.data ?? []).find(
     (h) => h.profile_id === myProfileId && !h.completed_at && !h.canceled_at,
   );
+  const myDecline = (declines.data ?? []).find((d) => d.profile_id === myProfileId);
   const iAmCaller = summon?.requested_by === myProfileId;
   const helperCount = (helpers.data ?? []).filter((h) => !h.canceled_at).length;
   const manMinutes = summonHelperMinutes(helpers.data ?? []);
@@ -371,15 +399,43 @@ export function SummonPanel({
               )}
             </ul>
           )}
+          {/* Who's out, by name — same visibility as who's coming: the
+              caller and every helper see it, so silence stops looking like
+              busy (owner decision, 2026-08-21). No penalty rides with this. */}
+          {(declines.data ?? []).length > 0 && (
+            <p className="muted" style={{ margin: "6px 0 0", fontSize: 12.5 }}>
+              Can&rsquo;t come:{" "}
+              {(declines.data ?? [])
+                .map((d) => d.decliner?.display_name ?? "Someone")
+                .join(", ")}
+            </p>
+          )}
           {!actionsLocked && !iAmCaller && !myHelp && summon.status === "open" && (
-            <button
-              className="primary big"
-              style={{ marginTop: 8 }}
-              disabled={answer.isPending}
-              onClick={() => answer.mutate()}
-            >
-              {answer.isPending ? "Joining…" : "Answer — help carry (+10 pts)"}
-            </button>
+            <>
+              <button
+                className="primary big"
+                style={{ marginTop: 8 }}
+                disabled={answer.isPending}
+                onClick={() => answer.mutate()}
+              >
+                {answer.isPending ? "Joining…" : "Answer — help carry (+10 pts)"}
+              </button>
+              {/* Quiet, next to Answer — declining changes nothing but what
+                  the caller sees; answering (above) is how you change your
+                  mind, which clears this server-side. */}
+              <button
+                className="link"
+                style={{ marginTop: 6, fontSize: 12.5 }}
+                disabled={decline.isPending || Boolean(myDecline)}
+                onClick={() => decline.mutate()}
+              >
+                {myDecline
+                  ? "Can't help — noted"
+                  : decline.isPending
+                    ? "Saying so…"
+                    : "Can't help"}
+              </button>
+            </>
           )}
           {!actionsLocked && myHelp && (
             <>
