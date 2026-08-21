@@ -38,6 +38,14 @@ export interface SummonHelper {
   helper?: { display_name: string | null } | null;
 }
 
+/** Said "can't help" — informational only, no points, no seat effects. */
+export interface SummonDecline {
+  summon_id: string;
+  profile_id: string;
+  created_at: string;
+  decliner?: { display_name: string | null } | null;
+}
+
 function isMissingTableError(e: { code?: string; message?: string } | null): boolean {
   return Boolean(
     e && (e.code === "42P01" || /relation .* does not exist/i.test(e.message ?? "")),
@@ -88,6 +96,18 @@ export async function listSummonHelpers(summonId: string): Promise<SummonHelper[
   return (data ?? []) as unknown as SummonHelper[];
 }
 
+/** Who can't come — the muted line the caller and every helper see. */
+export async function listSummonDeclines(summonId: string): Promise<SummonDecline[]> {
+  const { data, error } = await supabase
+    .from("summon_declines")
+    .select("*, decliner:profiles!summon_declines_profile_id_fkey(display_name)")
+    .eq("summon_id", summonId)
+    .order("created_at");
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return (data ?? []) as unknown as SummonDecline[];
+}
+
 export async function createSummon(
   openingId: string,
   needed: number,
@@ -127,6 +147,18 @@ export async function cancelSummonHelp(summonId: string): Promise<SummonHelper> 
   });
   if (error) throw error;
   return data as SummonHelper;
+}
+
+/**
+ * Say you can't come. No points, no seat change — answering later retracts
+ * this automatically (server-side). Idempotent: safe to tap more than once.
+ */
+export async function declineSummon(summonId: string): Promise<SummonDecline> {
+  const { data, error } = await supabase.rpc("decline_summon", {
+    p_summon_id: summonId,
+  });
+  if (error) throw error;
+  return data as SummonDecline;
 }
 
 export async function closeSummon(summonId: string): Promise<Summon> {

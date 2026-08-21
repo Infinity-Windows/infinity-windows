@@ -483,6 +483,9 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # two records, never duplicates.
     "summons": None,
     "summon_helpers": ("summon_id", "profile_id"),
+    # Same shape as summon_helpers: the composite primary key IS the natural
+    # key (one decline per person per summon).
+    "summon_declines": ("summon_id", "profile_id"),
     # Sessions and redos are time-stamped events — append-only, never deduped.
     "unit_sessions": None,
     "unit_redos": None,
