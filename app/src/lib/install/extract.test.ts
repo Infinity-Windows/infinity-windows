@@ -392,19 +392,54 @@ describe("planDraftPersistence (per-slot re-extract, root-cause fix)", () => {
     ...over,
   });
 
-  it("uploading specs does NOT wipe building-plan openings (105 stays 105)", () => {
-    // 105 building openings already exist; the specs sheet lists 6 detail marks.
+  it("a WEAK specs read does NOT wipe building-plan openings (105 stays 105)", () => {
+    // 105 building openings already exist; a detail-page read with guessed
+    // quantities lists 3 marks. Without explicit QTY authority it changes
+    // nothing — the old protection stands.
     const building = ["14-1", "14-2", "6-1", "4A", "18B-1", "13A-1"].map((c) =>
       existing(c, "building"),
     );
     const specsDrafts = ["4A", "18B", "13A"].map((c) => draft(c));
 
     const plan = planDraftPersistence(building, specsDrafts, "specs");
-    // Nothing building is deleted.
     expect(plan.deleteIds).toHaveLength(0);
-    // Specs marks already owned by the building plan are not duplicated.
     expect(plan.inserts).toHaveLength(0);
     expect(plan.skipped).toBe(3);
+  });
+
+  it("an AUTHORITATIVE specs read supersedes building counts for its marks (CAD wins)", () => {
+    // The signed CAD says 4A x1 and 18B x1; hand-labeled plans had created
+    // 4A and 18B-1/18B-2 by appearance counting. CAD reclaims those marks;
+    // building marks the CAD doesn't list survive untouched.
+    const building = ["14-1", "14-2", "4A", "18B-1", "18B-2"].map((c) =>
+      existing(c, "building"),
+    );
+    const specsDrafts = ["4A", "18B"].map((c) => draft(c));
+
+    const plan = planDraftPersistence(building, specsDrafts, "specs", true);
+    expect(plan.deleteIds.sort()).toEqual(
+      ["building:18B-1", "building:18B-2", "building:4A"].sort(),
+    );
+    expect(plan.inserts.map((d) => d.opening_code).sort()).toEqual(["18B", "4A"]);
+    // 14-1 / 14-2 are not on the CAD sheet: untouched, not deleted.
+    expect(plan.deleteIds).not.toContain("building:14-1");
+  });
+
+  it("an authoritative specs read never touches confirmed or in-progress building rows", () => {
+    const building = [
+      existing("4A", "building", { confirmed: true }),
+      existing("18B-1", "building", { status: "assigned" }),
+    ];
+    const plan = planDraftPersistence(
+      building,
+      [draft("4A"), draft("18B")],
+      "specs",
+      true,
+    );
+    expect(plan.deleteIds).toHaveLength(0);
+    // 4A is protected by code; 18B's mark is owned by a protected survivor.
+    expect(plan.inserts).toHaveLength(0);
+    expect(plan.skipped).toBe(2);
   });
 
   it("re-uploading the SAME kind replaces its own unconfirmed drafts", () => {
@@ -426,13 +461,29 @@ describe("planDraftPersistence (per-slot re-extract, root-cause fix)", () => {
     expect(plan.inserts.map((d) => d.opening_code)).toEqual(["7-1"]);
   });
 
-  it("building plan supersedes unconfirmed specs-only openings for its marks", () => {
+  it("a building plan NEVER supersedes specs openings (the ESH-18 79-opening lesson)", () => {
+    // Signed-CAD openings exist. Hand-labeled plans arrive with a callout for
+    // a CAD mark (already counted -> skipped) and callouts for marks the CAD
+    // never listed (returned as unmatched, created as nothing).
     const prior = [existing("4A", "specs"), existing("99", "specs")];
-    const plan = planDraftPersistence(prior, [draft("4A"), draft("14-1")], "building");
-    // The specs 4A is superseded by the authoritative building plan.
-    expect(plan.deleteIds).toContain("specs:4A");
-    expect(plan.deleteIds).not.toContain("specs:99");
-    expect(plan.inserts.map((d) => d.opening_code).sort()).toEqual(["14-1", "4A"]);
+    const plan = planDraftPersistence(
+      prior,
+      [draft("4A"), draft("14-1"), draft("14-2"), draft("30")],
+      "building",
+    );
+    expect(plan.deleteIds).toHaveLength(0);
+    expect(plan.inserts).toHaveLength(0);
+    expect(plan.skipped).toBe(1);
+    expect(plan.unmatchedPlanMarks.sort()).toEqual(["14", "30"]);
+  });
+
+  it("on a plans-only job the building plan keeps full authority", () => {
+    // No specs planset ever touched this job: callout counting stands.
+    const prior = [existing("7-1", "building")];
+    const plan = planDraftPersistence(prior, [draft("7-1"), draft("8-1")], "building");
+    expect(plan.deleteIds).toEqual(["building:7-1"]);
+    expect(plan.inserts.map((d) => d.opening_code).sort()).toEqual(["7-1", "8-1"]);
+    expect(plan.unmatchedPlanMarks).toHaveLength(0);
   });
 
   it("preserves manual pins across a same-kind re-extract", () => {

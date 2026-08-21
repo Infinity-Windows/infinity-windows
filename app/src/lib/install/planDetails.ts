@@ -485,8 +485,11 @@ export function parseCadDetailScheduleRows(
  * so manufacturer PDFs without a formal schedule still populate openings.
  * Weak numeric schedule hits (bare "2"/"3" with no product code) are dropped
  * when real detail-sheet marks exist — they are almost always sheet noise.
- * When both sources list the same mark, keep the larger quantity (detail
- * sheets often carry the true building count).
+ * When both sources list the same mark, the SCHEDULE row's quantity stands
+ * (the RAC-OAK-5 / ESH-18 lesson: an explicit QTY field is authoritative;
+ * "how often a number appears on other pages" is noise, and letting the
+ * larger number win re-imported exactly that noise). Detail rows only ADD
+ * marks the schedule doesn't list.
  */
 export function mergeScheduleWithDetailRows(
   scheduleRows: ScheduleRow[],
@@ -508,9 +511,7 @@ export function mergeScheduleWithDetailRows(
       byMark.set(key, row);
       continue;
     }
-    if (row.qty > existing.qty) {
-      byMark.set(key, { ...existing, qty: row.qty });
-    }
+    // Schedule QTY stands — see the header comment.
   }
   return [...byMark.values()].sort((a, b) =>
     a.openingCode.localeCompare(b.openingCode, undefined, { numeric: true }),
