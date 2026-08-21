@@ -13,6 +13,7 @@ import {
 import {
   confirmOpening,
   addJobNote,
+  addOpeningNote,
   assignWindowToOpening,
   flagOpening,
   getMyProfile,
@@ -20,6 +21,7 @@ import {
   getTypeBrainStats,
   listMarkSpecs,
   listMyOpeningsAllJobs,
+  listOpeningNotes,
   listUndoneInstalls,
   setOpeningCondition,
   setRoughOpening,
@@ -33,6 +35,7 @@ import {
   rankAssignCandidates,
 } from "../../lib/install/assignRank";
 import { pickNextOpening } from "../../lib/install/nextOpening";
+import { movedAgoLabel } from "../../lib/install/pinHistory";
 import { submitBlockersLine } from "../../lib/install/submitGate";
 import {
   flashingOutstanding,
@@ -59,6 +62,7 @@ import { UnitRecordCard } from "../../components/install/UnitRecordCard";
 import { checkFit, isInstallReadyStatus, readyToInstall, smallest } from "../../lib/install/fit";
 import {
   framingIssueNote,
+  requiredMidHeightCount,
   roFailures,
   roVerdicts,
   type RoCheckId,
@@ -165,6 +169,20 @@ function RoDiagram({ kind }: { kind: RoCheckId }) {
   );
 }
 
+/**
+ * Placeholder for one height input slot. `roH` is `[left, ...mids, right]`
+ * (roCheck.ts) - length tells us how many mid points are showing, position
+ * tells us which one this is. A 2-slot array (every saved check before this
+ * feature, and every narrow opening since) reads exactly as it always did.
+ */
+function heightLabel(index: number, length: number): string {
+  if (length <= 2) return index === 0 ? "left" : "right";
+  if (index === 0) return "left";
+  if (index === length - 1) return "right";
+  if (length === 3) return "mid";
+  return index === 1 ? "mid-left" : "mid-right";
+}
+
 const READY_LABEL: Record<string, string> = {
   ready: "READY TO INSTALL",
   blocked: "DO NOT INSTALL",
@@ -229,6 +247,7 @@ export function OpeningSheet() {
   const [flagText, setFlagText] = useState("");
   const [jobNoteText, setJobNoteText] = useState("");
   const [complicationText, setComplicationText] = useState("");
+  const [noteText, setNoteText] = useState("");
 
   // Everything captured on this screen lives in the state above and NOWHERE
   // else until submit hands it to the outbox, which is the point it becomes
@@ -248,6 +267,7 @@ export function OpeningSheet() {
     flagText.trim() !== "" ||
     jobNoteText.trim() !== "" ||
     complicationText.trim() !== "" ||
+    noteText.trim() !== "" ||
     roW.some((v) => v.trim() !== "") ||
     roH.some((v) => v.trim() !== "");
 
@@ -293,7 +313,10 @@ export function OpeningSheet() {
       });
     setRoDiag(strs(saved.diagonals, 2));
     setRoW(strs(saved.widths, 3));
-    setRoH(strs(saved.heights, 2));
+    // However many height points this check was saved with - 2 for every
+    // check before the mid-span rule, maybe more since. The grow-to-fit
+    // effect below adds any further slot a wide opening now requires.
+    setRoH(strs(saved.heights, Math.max(2, saved.heights?.length ?? 2)));
     setRoJudge({
       square: saved.judgments?.square ?? null,
       width: saved.judgments?.width ?? null,
@@ -427,6 +450,13 @@ export function OpeningSheet() {
     queryKey: ["undoneInstalls", openingId],
     queryFn: () => listUndoneInstalls(openingId),
   });
+  // Notes: visible on every stage, so loaded unconditionally like the
+  // history above. The point (owner ask, 2026-08-21) is explaining why one
+  // window took much longer than expected - worth reading at any status.
+  const openingNotes = useQuery({
+    queryKey: ["openingNotes", openingId],
+    queryFn: () => listOpeningNotes(openingId),
+  });
   const undo = useMutation({
     mutationFn: () => undoInstall(openingId, undoReason.trim()),
     onSuccess: () => {
@@ -520,6 +550,36 @@ export function OpeningSheet() {
     [markSpecs.data, opening.data?.opening_code],
   );
 
+  // The nominal size this opening's window is supposed to be - catalog type
+  // first, spec sheet as fallback (same sizes the crew reads elsewhere).
+  // unitWidthIn also decides whether a wide opening needs the extra
+  // mid-span height point(s) (owner rule, 2026-08-21) - it's knowable before
+  // a single measurement is taken, which is the point.
+  const nominalWidthIn = useMemo(
+    () => opening.data?.window_types?.width_in ?? openingSpec?.width_in ?? null,
+    [opening.data?.window_types, openingSpec],
+  );
+  const nominalHeightIn = useMemo(
+    () => opening.data?.window_types?.height_in ?? openingSpec?.height_in ?? null,
+    [opening.data?.window_types, openingSpec],
+  );
+  const requiredMids = requiredMidHeightCount(nominalWidthIn);
+
+  // Grow the height row to match as soon as the nominal width is known.
+  // Never shrinks and never touches an existing value - a narrower
+  // reassignment keeps whatever was already typed rather than discarding it.
+  useEffect(() => {
+    const need = 2 + requiredMids;
+    setRoH((cur) => {
+      if (cur.length >= need) return cur;
+      const left = cur[0] ?? "";
+      const right = cur[cur.length - 1] ?? "";
+      const mids = cur.slice(1, -1);
+      while (mids.length < need - 2) mids.push("");
+      return [left, ...mids, right];
+    });
+  }, [requiredMids]);
+
   // The checklist's referee: numbers judged live against the unit's size
   // (catalog type first, spec sheet as fallback - same sizes the crew reads).
   const roChecklist = useMemo(() => {
@@ -531,12 +591,10 @@ export function OpeningSheet() {
       diagonals: roDiag.map(num),
       widths: roW.map(num),
       heights: roH.map(num),
-      unitWidthIn:
-        opening.data?.window_types?.width_in ?? openingSpec?.width_in ?? null,
-      unitHeightIn:
-        opening.data?.window_types?.height_in ?? openingSpec?.height_in ?? null,
+      unitWidthIn: nominalWidthIn,
+      unitHeightIn: nominalHeightIn,
     });
-  }, [roDiag, roW, roH, opening.data?.window_types, openingSpec]);
+  }, [roDiag, roW, roH, nominalWidthIn, nominalHeightIn]);
 
   const searchResults = useQuery({
     queryKey: ["unitSearch", search],
@@ -776,6 +834,15 @@ export function OpeningSheet() {
     onSuccess: () => {
       setMessage("Site note sent to the lead.");
       setJobNoteText("");
+    },
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+
+  const addNote = useMutation({
+    mutationFn: (body: string) => addOpeningNote(openingId, body),
+    onSuccess: () => {
+      setNoteText("");
+      void queryClient.invalidateQueries({ queryKey: ["openingNotes", openingId] });
     },
     onError: (e) => setMessage(formatApiError(e)),
   });
@@ -1393,6 +1460,44 @@ export function OpeningSheet() {
         </div>
       )}
 
+      {/* Notes: a free-form record on this opening (owner ask, settled
+          2026-08-21) - the point is explaining why one window took much
+          longer than expected than the estimate. Visible on every stage;
+          like the Record above, nothing here is ever edited or removed
+          once posted. */}
+      <div className="detail-card">
+        <h2>Notes</h2>
+        {(openingNotes.data?.length ?? 0) > 0 ? (
+          <ul className="unit-list" style={{ marginTop: 4 }}>
+            {(openingNotes.data ?? []).map((n) => (
+              <li key={n.id} style={{ fontSize: 13 }}>
+                <strong>{n.author_profile?.display_name ?? "Unknown"}</strong>{" "}
+                <span className="muted">{movedAgoLabel(n.created_at, now)}</span>
+                <div>{n.body}</div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted" style={{ margin: "2px 0 8px" }}>
+            No notes yet.
+          </p>
+        )}
+        <textarea
+          rows={3}
+          maxLength={2000}
+          value={noteText}
+          onChange={(e) => setNoteText(e.target.value)}
+          placeholder="Out of the ordinary? Say what happened — why this one took the time it took."
+        />
+        <button
+          className="action-btn"
+          disabled={!noteText.trim() || addNote.isPending}
+          onClick={() => addNote.mutate(noteText.trim())}
+        >
+          {addNote.isPending ? "Adding…" : "Add note"}
+        </button>
+      </div>
+
       {/* --- READY-TO-INSTALL GATE (always visible while working) --- */}
       {!installed && (
         <div className={`ready-banner ready-${ready.status}`}>
@@ -1644,7 +1749,10 @@ export function OpeningSheet() {
             {
               id: "height" as RoCheckId,
               title: "Height?",
-              how: "Down the left and right sides — smallest wins.",
+              how:
+                requiredMids > 0
+                  ? `Down the left and right sides, plus ${requiredMids === 1 ? "mid-span" : "both third-points"} — smallest wins. Wide opening — that catches a bowed header.`
+                  : "Down the left and right sides — smallest wins.",
               inputs: (
                 <div className="ro-row">
                   {roH.map((v, i) => (
@@ -1654,7 +1762,7 @@ export function OpeningSheet() {
                       inputMode="decimal"
                       step="0.0625"
                       value={v}
-                      placeholder={["left", "right"][i]}
+                      placeholder={heightLabel(i, roH.length)}
                       onChange={(e) => {
                         const next = [...roH];
                         next[i] = e.target.value;
