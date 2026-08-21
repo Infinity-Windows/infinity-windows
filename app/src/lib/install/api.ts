@@ -416,6 +416,60 @@ export async function listJobNotes(projectId: string): Promise<JobNote[]> {
   return (data ?? []) as JobNote[];
 }
 
+// --- Opening notes: a free-form record on one opening ---
+//
+// The point (owner ask, settled 2026-08-21): explain why a window took much
+// longer than expected than the estimate. Unlike job_notes, there is no RPC
+// - RLS alone gates the write (author must be the caller; see
+// 20260923000000_opening_notes.sql), so this reads and writes the table
+// directly, the same way project_messages does.
+
+/** True when the table hasn't been migrated yet on this database. */
+function isMissingOpeningNotesTable(error: unknown): boolean {
+  return isMissingTable(error, "opening_notes");
+}
+
+const OPENING_NOTE_SELECT =
+  "id, opening_id, author, body, created_at, author_profile:author(id, display_name)";
+
+export interface OpeningNote {
+  id: string;
+  opening_id: string;
+  author: string | null;
+  body: string;
+  created_at: string;
+  /** Joined the way `assignee` is on OPENING_SELECT - never `select("*")` on profiles. */
+  author_profile?: Pick<Profile, "id" | "display_name"> | null;
+}
+
+/** Every note on this opening, newest first. Best-effort: [] pre-migration. */
+export async function listOpeningNotes(openingId: string): Promise<OpeningNote[]> {
+  const { data, error } = await supabase
+    .from("opening_notes")
+    .select(OPENING_NOTE_SELECT)
+    .eq("opening_id", openingId)
+    .order("created_at", { ascending: false });
+  if (error) {
+    if (isMissingOpeningNotesTable(error)) return [];
+    throw error;
+  }
+  return (data ?? []) as unknown as OpeningNote[];
+}
+
+/**
+ * Post a note as the signed-in user. RLS requires `author = auth.uid()`, so
+ * there is no "post as someone else" to guard here - the server refuses it.
+ */
+export async function addOpeningNote(openingId: string, body: string): Promise<OpeningNote> {
+  const { data, error } = await supabase
+    .from("opening_notes")
+    .insert({ opening_id: openingId, author: await actorId(), body })
+    .select(OPENING_NOTE_SELECT)
+    .single();
+  if (error) throw error;
+  return data as unknown as OpeningNote;
+}
+
 export async function setOpeningsSequence(openingIds: string[]): Promise<void> {
   const { error } = await supabase.rpc("set_openings_sequence", {
     p_opening_ids: openingIds,

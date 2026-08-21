@@ -548,6 +548,9 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "job_notes": None,
     "lodging": None,
     "movements": None,
+    # A free-form note, like job_notes and project_messages: two notes that
+    # happen to read alike are two notes, never a duplicate.
+    "opening_notes": None,
     # Same shape as movements: append-only package history — every touch is a
     # real event, so lookalike rows are two touches, never a duplicate.
     "package_events": None,

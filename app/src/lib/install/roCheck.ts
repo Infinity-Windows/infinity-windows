@@ -29,7 +29,17 @@ export interface RoCheckInput {
   diagonals: (number | null)[];
   /** Width points (top/mid/bot), inches. Smallest binds. */
   widths: (number | null)[];
-  /** Height points (left/right), inches. Smallest binds. */
+  /**
+   * Height points, inches. Smallest of everything present binds.
+   *
+   * `[left, right]` normally. A wide opening needs the header checked for
+   * bow mid-span, so extra points insert BETWEEN left and right, in
+   * left-to-right order: `[left, mid, right]` past 60" nominal width,
+   * `[left, midLeft, midRight, right]` past 120" (owner rule, 2026-08-21).
+   * First and last are always left/right; whatever sits between them (0, 1,
+   * or 2 entries) is the mid points — this is what keeps an old saved
+   * `[left, right]` pair reading correctly with no migration.
+   */
   heights: (number | null)[];
   /** The unit's nominal size, when known. */
   unitWidthIn: number | null;
@@ -103,6 +113,48 @@ function gapVerdict(
   return { measured: "good", detail: `${inFrac(gap)} over the unit — within range` };
 }
 
+/**
+ * How many extra height points a wide opening requires, beyond left/right
+ * (owner standard, 2026-08-21): a header bows across a wide span, and that
+ * shows up as the height shrinking mid-span — not at the jambs where it's
+ * easy to catch. Gated on the unit's NOMINAL width (the same value the width
+ * check judges against), not the measured RO width: it is knowable before a
+ * single measurement is taken, which is the point — the installer should see
+ * the requirement before they start.
+ *
+ * No nominal on file means no requirement: never gate on a number we don't
+ * have.
+ */
+export function requiredMidHeightCount(nominalWidthIn: number | null): 0 | 1 | 2 {
+  if (nominalWidthIn == null) return 0;
+  if (nominalWidthIn > 120) return 2;
+  if (nominalWidthIn > 60) return 1;
+  return 0;
+}
+
+/**
+ * Are the mid-span point(s) a wide opening requires actually entered?
+ * `heights` is `[left, ...mids, right]` (see RoCheckInput) so the mids are
+ * always the slice between the first and last entries, however many slots
+ * are currently offered. Null when satisfied — the ordinary gap verdict
+ * takes over from there; otherwise "not finished" outranks good or bad,
+ * because a Good tap has to mean the header was actually checked for bow.
+ */
+function heightGate(
+  heights: (number | null)[],
+  requiredMids: number,
+): Pick<RoVerdict, "measured" | "detail"> | null {
+  const midsEntered = present(heights.slice(1, -1)).length;
+  if (midsEntered >= requiredMids) return null;
+  return {
+    measured: null,
+    detail:
+      requiredMids === 1
+        ? "mid-span height not entered yet — required on a wide opening to catch a bowed header"
+        : "both third-point heights not entered yet — required on a wide opening to catch a bowed header",
+  };
+}
+
 /** All three verdicts, in checking order. */
 export function roVerdicts(input: RoCheckInput): RoVerdict[] {
   const out: RoVerdict[] = [];
@@ -129,9 +181,11 @@ export function roVerdicts(input: RoCheckInput): RoVerdict[] {
   });
 
   const h = present(input.heights);
+  const requiredMids = requiredMidHeightCount(input.unitWidthIn);
   out.push({
     check: "height",
-    ...gapVerdict(h.length ? Math.min(...h) : null, input.unitHeightIn),
+    ...(heightGate(input.heights, requiredMids) ??
+      gapVerdict(h.length ? Math.min(...h) : null, input.unitHeightIn)),
   });
 
   return out;

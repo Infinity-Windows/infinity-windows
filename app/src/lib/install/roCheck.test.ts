@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   framingIssueNote,
+  requiredMidHeightCount,
   roFailures,
   roVerdicts,
   type RoJudgment,
@@ -69,6 +70,68 @@ describe("roVerdicts (the numbers judge, against the window)", () => {
     });
     expect(v[1].measured).toBeNull();
     expect(v[1].detail).toMatch(/no unit size/);
+  });
+});
+
+describe("mid-span height requirement on wide openings (owner rule, 2026-08-21)", () => {
+  it("requiredMidHeightCount: 60 and under need none, past 60 need one, past 120 need two", () => {
+    expect(requiredMidHeightCount(null)).toBe(0);
+    expect(requiredMidHeightCount(59)).toBe(0);
+    expect(requiredMidHeightCount(60)).toBe(0); // exactly 60 is not OVER 60
+    expect(requiredMidHeightCount(61)).toBe(1);
+    expect(requiredMidHeightCount(120)).toBe(1); // exactly 120 is not OVER 120
+    expect(requiredMidHeightCount(121)).toBe(2);
+  });
+
+  // unitHeightIn fixed at 89.5 throughout; only unitWidthIn (the nominal
+  // that gates the requirement) and the height points vary.
+  const heightVerdict = (unitWidthIn: number | null, heights: (number | null)[]) =>
+    roVerdicts({
+      diagonals: [],
+      widths: [],
+      heights,
+      unitWidthIn,
+      unitHeightIn: 89.5,
+    })[2];
+
+  it("59in nominal: no mid required — [left, right] judges exactly as before", () => {
+    const v = heightVerdict(59, [89.75, 89.8]);
+    expect(v.measured).toBe("good");
+  });
+
+  it("61in nominal: one mid required — missing reads as not finished", () => {
+    const v = heightVerdict(61, [89.75, 89.8]);
+    expect(v.measured).toBeNull();
+    expect(v.detail).toMatch(/mid-span height not entered yet/);
+    expect(v.detail).toMatch(/wide opening/);
+  });
+
+  it("61in nominal, mid present: smallest of all three wins, even when the ends alone would pass", () => {
+    // Left and right alone would both read comfortably (1/4" and 3/16"
+    // over) - it's the mid-span reading, low from a bowed header, that
+    // fails the check.
+    const v = heightVerdict(61, [89.75, 89.55, 89.8]);
+    expect(v.measured).toBe("bad");
+    expect(v.detail).not.toMatch(/not entered/);
+    expect(v.detail).toMatch(/needs.*minimum to shim/);
+  });
+
+  it("121in nominal: both third-points required — one alone still isn't finished", () => {
+    const none = heightVerdict(121, [89.75, 89.8]);
+    expect(none.measured).toBeNull();
+    expect(none.detail).toMatch(/both third-point heights not entered yet/);
+
+    const oneOfTwo = heightVerdict(121, [89.75, 89.7, 89.8]);
+    expect(oneOfTwo.measured).toBeNull();
+    expect(oneOfTwo.detail).toMatch(/both third-point heights not entered yet/);
+
+    const both = heightVerdict(121, [89.75, 89.7, 89.72, 89.8]);
+    expect(both.measured).toBe("good");
+  });
+
+  it("no nominal width on file: never gate on a number we don't have", () => {
+    const v = heightVerdict(null, [89.75, 89.8]);
+    expect(v.measured).toBe("good");
   });
 });
 
