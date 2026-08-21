@@ -1,6 +1,17 @@
 import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getMyProfile, listProfiles, updateProfile } from "../lib/install/api";
+import {
+  getMyProfile,
+  listCapabilityBadges,
+  listProfiles,
+  setCapabilityBadge,
+  updateProfile,
+} from "../lib/install/api";
+import {
+  CAPABILITIES,
+  CAPABILITY_LABELS,
+  type Capability,
+} from "../lib/dispatch";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { PinSetter } from "../components/PinGate";
 import {
@@ -25,6 +36,19 @@ export function Crew() {
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const crew = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
+  const badges = useQuery({
+    queryKey: ["capabilityBadges"],
+    queryFn: listCapabilityBadges,
+  });
+  const badgeSet = new Set(
+    (badges.data ?? []).map((b) => `${b.installer_id}:${b.capability}`),
+  );
+  const toggleBadge = useMutation({
+    mutationFn: (args: { id: string; capability: Capability; granted: boolean }) =>
+      setCapabilityBadge(args.id, args.capability, args.granted),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["capabilityBadges"] }),
+  });
 
   const patch = useMutation({
     mutationFn: (args: { id: string; patch: Partial<Profile> }) =>
@@ -89,6 +113,11 @@ export function Crew() {
                   {p.role !== "installer"
                     ? ROLE_LABELS[p.role as CrewRole] ?? p.role
                     : SKILL_LABELS[p.skill_level]}
+                  {p.role === "installer"
+                    ? CAPABILITIES.filter((c) => badgeSet.has(`${p.id}:${c}`))
+                        .map((c) => ` · ${CAPABILITY_LABELS[c]}`)
+                        .join("")
+                    : ""}
                   {!p.active ? " · off today" : ""}
                 </span>
               </div>
@@ -106,6 +135,34 @@ export function Crew() {
                       </button>
                     ))}
                   </div>
+                  {p.role === "installer" && (
+                    <>
+                      <label className="field-label">
+                        Badges — what they may take on
+                      </label>
+                      <div className="row-gap" style={{ flexWrap: "wrap" }}>
+                        {CAPABILITIES.map((c) => {
+                          const held = badgeSet.has(`${p.id}:${c}`);
+                          return (
+                            <button
+                              key={c}
+                              className={held ? "button-like active-pill" : "button-like"}
+                              disabled={toggleBadge.isPending}
+                              onClick={() =>
+                                toggleBadge.mutate({
+                                  id: p.id,
+                                  capability: c,
+                                  granted: !held,
+                                })
+                              }
+                            >
+                              {CAPABILITY_LABELS[c]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                   {canSetRoles && (
                     <>
                       <label className="field-label">Role</label>

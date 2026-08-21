@@ -129,6 +129,66 @@ describe("autoDistribute", () => {
     expect(s.map((x) => x.profileId)).toEqual(["app"]);
   });
 
+  it("a required badge is a hard gate an installer's number cannot jump", () => {
+    const openings = [
+      opening({
+        id: "cw",
+        opening_code: "CW1",
+        difficulty: 3,
+        window_type_id: "CW",
+        required_capability: "curtain_wall",
+      }),
+    ];
+    const senior = [
+      { id: "sr", skill_level: 5, role: "installer" as const, active: true },
+    ];
+    // Skill 5, no badge: never offered.
+    expect(autoDistribute(openings, senior)).toHaveLength(0);
+    // Even proven history and per-type clearance don't open the family.
+    expect(
+      autoDistribute(openings, senior, {
+        cleared: new Set(["sr:CW"]),
+        perf: {
+          sr: {
+            CW: { installer_id: "sr", window_type_id: "CW", n: 5, median_minutes: 40, avg_grade: 5, fail_rate: 0 },
+          },
+        },
+      }),
+    ).toHaveLength(0);
+    // With the badge, the normal ladder applies again.
+    const s = autoDistribute(openings, senior, {
+      badges: new Set(["sr:curtain_wall"]),
+    });
+    expect(s.map((x) => x.profileId)).toEqual(["sr"]);
+  });
+
+  it("badges gate installers only — leads still take anything", () => {
+    const openings = [
+      opening({
+        id: "cw",
+        opening_code: "CW1",
+        difficulty: 3,
+        window_type_id: "CW",
+        required_capability: "wet_glazing",
+      }),
+    ];
+    const foreman = [
+      { id: "f", skill_level: 3, role: "foreman" as const, active: true },
+    ];
+    const s = autoDistribute(openings, foreman);
+    expect(s.map((x) => x.profileId)).toEqual(["f"]);
+  });
+
+  it("no required badge means nothing changes for anyone", () => {
+    const openings = [
+      opening({ id: "o", opening_code: "O", difficulty: 2, window_type_id: "T" }),
+    ];
+    const crew = [
+      { id: "a", skill_level: 2, role: "installer" as const, active: true },
+    ];
+    expect(autoDistribute(openings, crew).length).toBe(1);
+  });
+
   it("proven history on a type qualifies even below skill tier", () => {
     const openings = [
       opening({ id: "o", opening_code: "O", difficulty: 4, window_type_id: "T" }),

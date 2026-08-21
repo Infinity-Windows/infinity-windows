@@ -691,6 +691,33 @@ export async function listClearances(): Promise<Clearance[]> {
   return (data ?? []) as Clearance[];
 }
 
+export interface CapabilityBadge {
+  installer_id: string;
+  capability: string;
+  granted_at: string;
+}
+
+export async function listCapabilityBadges(): Promise<CapabilityBadge[]> {
+  const { data, error } = await supabase
+    .from("capability_badges")
+    .select("installer_id, capability, granted_at");
+  if (error) throw error;
+  return (data ?? []) as CapabilityBadge[];
+}
+
+export async function setCapabilityBadge(
+  installerId: string,
+  capability: string,
+  granted: boolean,
+): Promise<void> {
+  const { error } = await supabase.rpc("set_capability_badge", {
+    p_installer_id: installerId,
+    p_capability: capability,
+    p_granted: granted,
+  });
+  if (error) throw refusalOrError(error);
+}
+
 export async function setClearance(
   installerId: string,
   windowTypeId: string,

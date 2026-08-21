@@ -110,8 +110,9 @@ class TestSchemaParsing(unittest.TestCase):
         # undeclared extra (`project_marks`, an empty orphan) is finally
         # declared — and its orphan reconciled — by 20260822000000, so the
         # migrations and production agree on the name at last. Plus
-        # `opening_notes` (20260923000000), the per-opening notes thread.
-        self.assertEqual(len(SCHEMA.tables), 100)
+        # `opening_notes` (20260923000000), the per-opening notes thread,
+        # and `capability_badges` (20260923010000), the skill-tree badges.
+        self.assertEqual(len(SCHEMA.tables), 101)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
