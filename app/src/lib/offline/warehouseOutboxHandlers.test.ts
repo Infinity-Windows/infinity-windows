@@ -725,6 +725,46 @@ describe("a queued area note (ticket 14)", () => {
   });
 });
 
+describe("a queued note", () => {
+  it("sends the package and the text", async () => {
+    rpc.mockResolvedValue({ data: { id: "pkg-1" }, error: null });
+    await send("set_package_note", { packageId: "pkg-1", note: "cracked corner" });
+    expect(rpc).toHaveBeenCalledWith("set_package_note", {
+      p_package: "pkg-1",
+      p_note: "cracked corner",
+    });
+  });
+
+  it("clearing is a legal value, not a missing one", async () => {
+    rpc.mockResolvedValue({ data: { id: "pkg-1" }, error: null });
+    await send("set_package_note", { packageId: "pkg-1", note: null });
+    expect(rpc).toHaveBeenCalledWith("set_package_note", {
+      p_package: "pkg-1",
+      p_note: null,
+    });
+  });
+
+  it("a sticker that was never tagged stops once, in plain words", async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { message: "that sticker is not on a package yet" },
+    });
+    const err = await send("set_package_note", {
+      packageId: "pkg-1",
+      note: "cracked corner",
+    }).catch((e: unknown) => e);
+    expect(isRetryableError(err)).toBe(false);
+    expect(String(err)).toContain("add it again");
+  });
+
+  it("refuses an entry with no package", async () => {
+    await expect(send("set_package_note", { note: "cracked corner" })).rejects.toThrow(
+      "missing its package",
+    );
+    expect(rpc).not.toHaveBeenCalled();
+  });
+});
+
 describe("a queued delivery confirmation (ticket 15)", () => {
   it("sends the packages that came off the truck", async () => {
     rpc.mockResolvedValue({ data: 2, error: null });

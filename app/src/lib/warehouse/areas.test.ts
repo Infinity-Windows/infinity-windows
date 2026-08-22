@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { areaLabel, areaOptions, areaSuffix, BUILDING_AREAS, MOVABLE_AREAS } from "./areas";
+import {
+  areaLabel,
+  areaOptions,
+  areaSuffix,
+  areaZoneOptions,
+  BUILDING_AREAS,
+  MOVABLE_AREAS,
+  MOVABLE_ZONE_AREAS,
+} from "./areas";
 import type { StorageContainer } from "../storage";
 
 const box = (kind?: string) => ({ kind }) as StorageContainer;
@@ -24,9 +32,30 @@ describe("areaOptions follows the kind of the box", () => {
   });
 });
 
+describe("areaZoneOptions offers the six finer zones only where they fit (owner call)", () => {
+  it("anything that moves gets the six zones, on top of the plain three", () => {
+    for (const kind of ["conex", "crate", "truck"]) {
+      expect(areaZoneOptions(box(kind))).toEqual(MOVABLE_ZONE_AREAS);
+    }
+  });
+
+  it("the building keeps only its compass — no finer zones", () => {
+    expect(areaZoneOptions(box("building"))).toEqual([]);
+  });
+
+  it("no box, no zones", () => {
+    expect(areaZoneOptions(null)).toEqual([]);
+  });
+});
+
 describe("areas read as words", () => {
   it("the front names the door, because that is how you find it", () => {
     expect(areaLabel("front")).toBe("Front (door end)");
+  });
+
+  it("a six-zone value reads as two plain words", () => {
+    expect(areaLabel("front-left")).toBe("Front Left");
+    expect(areaLabel("back-right")).toBe("Back Right");
   });
 
   it("suffixes stay short: the sentence is 'Conex 7 — front'", () => {

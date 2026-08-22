@@ -43,6 +43,9 @@ export type OutboxOp =
   // signal. Setting a pointer twice lands on the same pointer, so a resend is
   // harmless by nature.
   | "set_package_area"
+  // A note gets added standing in the same box an area does, for the same
+  // reason. Setting the same text twice lands on the same value.
+  | "set_package_note"
   // Ticket 15: confirming pre-labeled packages off the truck. The yard is the
   // signal dead zone; the server counts an already-received package without
   // writing a second history line, so a resend is not a second truck.
@@ -371,6 +374,7 @@ export function countsByOp(entries: OutboxEntry[]): OpCounts {
       case "stage_packages":
       case "move_container":
       case "set_package_area":
+      case "set_package_note":
       case "receive_minted":
       case "pickup_takeoff":
         c.warehouse += 1;
@@ -511,6 +515,7 @@ const OP_REGISTRY = {
   stage_packages: true,
   move_container: true,
   set_package_area: true,
+  set_package_note: true,
   receive_minted: true,
   pickup_takeoff: true,
   issue_photo_upload: true,

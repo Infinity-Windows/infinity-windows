@@ -23,6 +23,7 @@ import {
   enqueuePickupTakeoff,
   enqueueReceiveMinted,
   enqueueSetPackageArea,
+  enqueueSetPackageNote,
   enqueueStorePackages,
   enqueueTakeSupply,
 } from "../offline/outbox";
@@ -32,6 +33,7 @@ import {
   moveContainer,
   receiveMintedPackages,
   setPackageArea,
+  setPackageNote,
   stagePackages,
   storePackages,
   type StoragePackage,
@@ -138,6 +140,19 @@ export function setPackageAreaOffline(
   return attempt(
     () => setPackageArea(packageId, area).then(() => 1),
     () => enqueueSetPackageArea({ packageId, area }),
+    1,
+  );
+}
+
+/** Note a piece up while standing in the same box; queues when there is no
+ * signal. A resend lands on the same text, so twice is once. */
+export function setPackageNoteOffline(
+  packageId: string,
+  note: string | null,
+): Promise<WriteResult> {
+  return attempt(
+    () => setPackageNote(packageId, note).then(() => 1),
+    () => enqueueSetPackageNote({ packageId, note }),
     1,
   );
 }

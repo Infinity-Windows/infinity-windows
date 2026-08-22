@@ -450,6 +450,7 @@ describe("every op survives the disk round-trip", () => {
       "bind_package",
       "stage_packages",
       "move_container",
+      "set_package_note",
     ] as const;
     for (const op of warehouseOps) {
       const c = countsByOp([makeEntry({ op, payload: {} }, `id-${op}`, 0)]);
