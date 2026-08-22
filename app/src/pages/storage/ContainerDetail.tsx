@@ -31,6 +31,7 @@ import {
   containerKind,
 } from "../../lib/storage";
 import { canNest, ridesAlong } from "../../lib/warehouse/containment";
+import { splitLinesOnStore } from "../../lib/warehouse/splitUnits";
 import {
   moveContainerOffline,
   storePackagesOffline,
@@ -181,6 +182,16 @@ export function ContainerDetail() {
     for (const p of projects.data ?? []) m.set(p.id, p.job_code);
     return m;
   }, [projects.data]);
+  // Shared by the trail below and the store-time split warning — one build,
+  // not two copies of the same lookup drifting apart.
+  const containersById = useMemo(
+    () => new Map((containers.data ?? []).map((c) => [c.id, c])),
+    [containers.data],
+  );
+  const locationsById = useMemo(
+    () => new Map((locations.data ?? []).map((l) => [l.id, l])),
+    [locations.data],
+  );
 
   const stored = (packages.data ?? []).filter(
     (p) => p.status === "stored" && p.container_id === id,
@@ -192,6 +203,12 @@ export function ContainerDetail() {
       (p.status === "received" && !p.container_id) ||
       (p.status === "stored" && p.container_id !== id) ||
       (p.status === "checked_out"),
+  );
+  // The store-time half of ticket 19 (owner call): warn, never block, the
+  // same way checkout already does — just read from the other direction.
+  const storeSplits = useMemo(
+    () => splitLinesOnStore(picked, packages.data ?? [], id, containersById, locationsById),
+    [picked, packages.data, id, containersById, locationsById],
   );
 
   const store = useMutation({
@@ -463,6 +480,22 @@ export function ContainerDetail() {
               );
             })}
           </div>
+          {/* Store-time half of the split warning (ticket 19, owner call):
+              same heads-up checkout gives, read the other direction. Shown
+              while the picks can still change, never blocking the button
+              below — splitting a unit is sometimes the job. */}
+          {storeSplits.length > 0 && (
+            <div className="detail-card" style={{ marginTop: 8, padding: "10px 14px" }}>
+              {storeSplits.map((line) => (
+                <p key={line} style={{ margin: "4px 0", fontSize: 13.5 }}>
+                  {line}
+                </p>
+              ))}
+              <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
+                Sometimes that&rsquo;s the job — this is a heads-up, not a stop.
+              </p>
+            </div>
+          )}
           <button
             className="button-like active-pill"
             disabled={picked.size === 0 || store.isPending}
@@ -586,11 +619,7 @@ export function ContainerDetail() {
           </Explain>
           <div className="detail-card" style={{ padding: "6px 14px" }}>
             {trail.data.slice(0, 10).map((m) => {
-              const line = containerTrailLine(
-                m,
-                new Map((containers.data ?? []).map((c) => [c.id, c])),
-                new Map((locations.data ?? []).map((l) => [l.id, l])),
-              );
+              const line = containerTrailLine(m, containersById, locationsById);
               return (
                 <p key={line.id} style={{ margin: "8px 0", fontSize: 13.5 }}>
                   <span className="muted" style={{ fontSize: 12 }}>

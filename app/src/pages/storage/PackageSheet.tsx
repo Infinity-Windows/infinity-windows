@@ -21,6 +21,7 @@ import { pushToast } from "../../lib/toast";
 import {
   agingDays,
   assignPackageToJob,
+  daysInStorage,
   reportMakerCount,
   setPackageWindow,
   burnPackages,
@@ -240,6 +241,11 @@ export function PackageSheet() {
 
   const p = pkg.data;
   const days = agingDays(p.bound_at, new Date());
+  // Separate from "tagged Nd ago": a package can be bound for months while
+  // passing through two or three containers, so this answers how long it's
+  // sat where it is NOW, off the most recent 'stored' movement.
+  const storedDays =
+    p.status === "stored" ? daysInStorage(events.data ?? [], new Date()) : null;
   // The same "where is it" sentence the Find bar gives, from the same
   // function. This used to be hand-rolled here and only knew about
   // containers, so a package staged on a job's bay — no container, a bay for
@@ -274,6 +280,7 @@ export function PackageSheet() {
                 : ""}
             {p.category ? ` · ${CATEGORY_LABELS[p.category]}` : ""}
             {days != null ? ` · tagged ${days}d ago` : ""}
+            {storedDays != null ? ` · stored ${storedDays}d` : ""}
           </p>
           {p.status !== "blank" && (
             <p className="muted" style={{ margin: 0, fontSize: 12 }}>
@@ -633,6 +640,10 @@ export function PackageSheet() {
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 600 }}>
                   {EVENT_LABELS[e.event] ?? e.event}
+                  {/* Who did it (owner ask) — falls back to the raw actor id
+                      when the name can't be resolved, same rule Supplies.tsx
+                      follows, so "who" is never silently dropped. */}
+                  {e.actor ? ` by ${e.actor_name ?? e.actor}` : ""}
                   {e.container_id && ` — ${containerName(e.container_id) ?? "container"}`}
                   {e.event === "checked_out" && e.project_id
                     ? ` → ${jobCode.get(e.project_id) ?? "?"}`

@@ -182,6 +182,12 @@ export interface PackageEvent {
   project_id: string | null;
   reason: string | null;
   actor: string | null;
+  /** `actor` resolved to a display name — a second lookup by id, the same
+   * pattern ops.ts's listSupplyTakes uses, since movements.actor is plain
+   * text (auth.uid()) with no declared FK for PostgREST to embed. Null when
+   * the id can't be resolved (deleted profile); listPackageEvents fills this
+   * in after the fact, so movementToPackageEvent itself never sets it. */
+  actor_name: string | null;
   created_at: string;
 }
 
@@ -213,6 +219,9 @@ export function movementToPackageEvent(m: MovementRow): PackageEvent {
     project_id: m.project_id,
     reason: m.reason,
     actor: m.actor,
+    // Filled in by listPackageEvents, which has the batch profile lookup
+    // this bare mapper doesn't — and shouldn't, it stays a pure row shape.
+    actor_name: null,
     created_at: m.created_at,
   };
 }
@@ -338,6 +347,27 @@ export async function getContainerBySerial(serial: string): Promise<StorageConta
   return (data as StorageContainer) ?? null;
 }
 
+/**
+ * Batch-resolve actor ids to display names — the same two-query pattern
+ * ops.ts's listSupplyTakes uses. movements.actor is plain text (auth.uid()),
+ * not a declared FK to profiles.id, so PostgREST has no join to embed and a
+ * second query does the lookup instead. An id that can't be resolved (a
+ * deleted profile) is simply absent from the map; callers fall back to the
+ * raw actor value, same as Supplies.tsx does.
+ */
+async function resolveActorNames(actorIds: (string | null)[]): Promise<Map<string, string>> {
+  const ids = [...new Set(actorIds.filter((a): a is string => Boolean(a)))];
+  const nameById = new Map<string, string>();
+  if (ids.length === 0) return nameById;
+  const { data, error } = await supabase.from("profiles").select("id, display_name").in("id", ids);
+  if (!error) {
+    for (const p of (data ?? []) as { id: string; display_name: string }[]) {
+      nameById.set(p.id, p.display_name);
+    }
+  }
+  return nameById;
+}
+
 export async function listPackageEvents(packageId: string): Promise<PackageEvent[]> {
   // One log now: the package's timeline is its movements rows (ticket 05).
   const modern = await supabase
@@ -346,7 +376,9 @@ export async function listPackageEvents(packageId: string): Promise<PackageEvent
     .eq("package_id", packageId)
     .order("created_at", { ascending: false });
   if (!modern.error) {
-    return ((modern.data ?? []) as MovementRow[]).map(movementToPackageEvent);
+    const rows = ((modern.data ?? []) as MovementRow[]).map(movementToPackageEvent);
+    const nameById = await resolveActorNames(rows.map((r) => r.actor));
+    return rows.map((r) => ({ ...r, actor_name: r.actor ? (nameById.get(r.actor) ?? null) : null }));
   }
   // Deploy window: a database that predates the fold-in has no package_id on
   // movements — the old table is still there, so read it as before.
@@ -362,7 +394,9 @@ export async function listPackageEvents(packageId: string): Promise<PackageEvent
     .eq("package_id", packageId)
     .order("created_at", { ascending: false });
   if (legacy.error) throw legacy.error;
-  return (legacy.data ?? []) as PackageEvent[];
+  const rows = (legacy.data ?? []) as PackageEvent[];
+  const nameById = await resolveActorNames(rows.map((r) => r.actor));
+  return rows.map((r) => ({ ...r, actor_name: r.actor ? (nameById.get(r.actor) ?? null) : null }));
 }
 
 /** A movements row as the container trail needs it (ticket 13). */
@@ -375,6 +409,9 @@ export interface ContainerMovementRow {
   to_location_id: string | null;
   reason: string | null;
   actor: string | null;
+  /** `actor` resolved to a display name, filled in by listContainerMovements —
+   * same pattern as PackageEvent.actor_name. */
+  actor_name: string | null;
   created_at: string;
 }
 
@@ -402,7 +439,9 @@ export async function listContainerMovements(
     }
     throw error;
   }
-  return (data ?? []) as ContainerMovementRow[];
+  const rows = (data ?? []) as ContainerMovementRow[];
+  const nameById = await resolveActorNames(rows.map((r) => r.actor));
+  return rows.map((r) => ({ ...r, actor_name: r.actor ? (nameById.get(r.actor) ?? null) : null }));
 }
 
 /**
@@ -804,6 +843,26 @@ export function agingDays(boundAt: string | null | undefined, now: Date): number
   const t = Date.parse(boundAt);
   if (!Number.isFinite(t)) return null;
   return Math.max(0, Math.floor((now.getTime() - t) / 86_400_000));
+}
+
+/**
+ * Whole days since the package's most recent 'stored' movement — separate
+ * from agingDays, which measures since it was first bound. A package can be
+ * bound for months while passing through two or three containers along the
+ * way; this answers "how long has it sat where it is now," not "how old is
+ * the tag." Null when it has never been stored (nothing in the history says
+ * so) or the timestamp doesn't parse.
+ */
+export function daysInStorage(
+  events: Pick<PackageEvent, "event" | "created_at">[],
+  now: Date,
+): number | null {
+  let latest: string | null = null;
+  for (const e of events) {
+    if (e.event !== "stored") continue;
+    if (latest === null || Date.parse(e.created_at) > Date.parse(latest)) latest = e.created_at;
+  }
+  return agingDays(latest, now);
 }
 
 /**
