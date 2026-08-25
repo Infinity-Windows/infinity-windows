@@ -201,6 +201,9 @@ export function Warehouse() {
         <Link className="button-like active-pill" to="/storage/deliveries">
           Deliveries — check trucks in
         </Link>
+        <Link className="button-like" to="/warehouse/materials">
+          Job materials
+        </Link>
         {lead && (
           <Link className="button-like" to="/storage/log-delivery">
             Log a delivery (truck)

@@ -30,8 +30,8 @@ export interface SlotRow {
   expectedIds: string[];
   /** Ids arrived but not yet put away (crate rows put away on arrival). */
   looseIds: string[];
-  /** For crate rows: the crate the pieces ride in — receiving stores them
-   *  straight into it. */
+  /** Legacy only: pool rows created before crates became sealed packages
+   *  may still point at an old crate container. New pool rows never do. */
   crateContainerId: string | null;
   /** Ids whose arrival can be UNDONE: received-and-loose, plus crate
    *  pieces (their arrive tap auto-stored them into the crate). */
@@ -62,11 +62,18 @@ const slotKey = (p: DeliveryPackageLite): string =>
     p.part_type ?? "",
   ].join("|");
 
+const titleCase = (s: string): string =>
+  s.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+
 const slotLabel = (p: DeliveryPackageLite, jobTitle: string | null): string => {
   const prefix = jobTitle ? `${jobTitle} · ` : "";
+  // A sealed crate: its "mark" is its name.
+  if (p.part_type === "crate") {
+    return `${prefix}${titleCase(p.mfr_mark ?? "Crate")} — sealed crate`;
+  }
   const mark = p.mfr_mark ? `#${p.mfr_mark}` : "no mark";
   if (p.piece_count != null) {
-    return `${prefix}${mark} — ${p.piece_count} piece${p.piece_count === 1 ? "" : "s"} of ${p.part_type ?? "glass"} (crate)`;
+    return `${prefix}${mark} — ${p.piece_count} piece${p.piece_count === 1 ? "" : "s"} of ${p.part_type ?? "glass"} (in the crates)`;
   }
   const slot =
     p.part_index != null && p.part_total != null

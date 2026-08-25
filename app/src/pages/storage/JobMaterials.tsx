@@ -1,0 +1,246 @@
+// The per-job materials ledger (owner-confirmed Q4, 2026-08-25): pick a
+// job, see every mark's material split by stage — Expected · Arrived ·
+// Stored · On site — with the crate count up top, adjustable to match
+// whatever reality showed up. "Installed" is deliberately absent: that is
+// the install loop's truth and lives on the job's own pages.
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { BackChip } from "../../components/BackChip";
+import { listProjects } from "../../lib/api";
+import { formatApiError } from "../../lib/errors";
+import {
+  addJobCrate,
+  deletePackages,
+  listActivePackages,
+  type StoragePackage,
+} from "../../lib/storage";
+
+type Stage = "all" | "minted" | "received" | "stored" | "checked_out";
+const STAGE_LABELS: Record<Exclude<Stage, "all">, string> = {
+  minted: "Expected",
+  received: "Arrived",
+  stored: "Stored",
+  checked_out: "On site",
+};
+
+export function JobMaterials() {
+  const qc = useQueryClient();
+  const [params, setParams] = useSearchParams();
+  const projectId = params.get("job") ?? "";
+  const [stage, setStage] = useState<Stage>("all");
+  const [message, setMessage] = useState<string | null>(null);
+
+  const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  const packages = useQuery({
+    queryKey: ["storagePackages"],
+    queryFn: listActivePackages,
+  });
+
+  const mine = useMemo(
+    () => (packages.data ?? []).filter((p) => p.project_id === projectId),
+    [packages.data, projectId],
+  );
+  const crates = mine.filter((p) => p.part_type === "crate");
+  const pool = mine.filter((p) => p.piece_count != null);
+  const poolTotal = pool.reduce((s, p) => s + (p.piece_count ?? 0), 0);
+  const boxes = mine.filter(
+    (p) => p.part_type !== "crate" && p.piece_count == null,
+  );
+
+  const markOf = (p: StoragePackage): string =>
+    ((p.package_marks ?? [])[0] as { mark_code?: string } | undefined)?.mark_code ??
+    p.mfr_mark ??
+    "?";
+
+  const byMark = useMemo(() => {
+    const m = new Map<
+      string,
+      { counts: Record<string, number>; poolPieces: number; total: number }
+    >();
+    for (const p of boxes) {
+      const mark = markOf(p);
+      const row = m.get(mark) ?? { counts: {}, poolPieces: 0, total: 0 };
+      row.counts[p.status] = (row.counts[p.status] ?? 0) + 1;
+      row.total += 1;
+      m.set(mark, row);
+    }
+    for (const p of pool) {
+      const mark = markOf(p);
+      const row = m.get(mark) ?? { counts: {}, poolPieces: 0, total: 0 };
+      row.poolPieces += p.piece_count ?? 0;
+      m.set(mark, row);
+    }
+    return [...m.entries()].sort((a, b) =>
+      a[0].localeCompare(b[0], undefined, { numeric: true }),
+    );
+  }, [boxes, pool]);
+
+  const addCrate = useMutation({
+    mutationFn: () => addJobCrate(projectId),
+    onSuccess: () => {
+      setMessage("One more crate on the job.");
+      void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+    },
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+
+  const removeCrate = useMutation({
+    mutationFn: async () => {
+      // Newest loose crate goes first; a stored crate is deleted from its
+      // own screen, where its location is in front of you.
+      const loose = crates.filter((c) => c.status === "received");
+      if (loose.length === 0) {
+        throw new Error(
+          "Every crate here is stored or out — break one up from its own screen.",
+        );
+      }
+      const r = await deletePackages([loose[loose.length - 1].id]);
+      if (r.refused.length > 0) throw new Error(r.refused[0].reason);
+    },
+    onSuccess: () => {
+      setMessage("Crate removed.");
+      void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+    },
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+
+  const job = projects.data?.find((p) => p.id === projectId);
+
+  const stageCount = (counts: Record<string, number>, s: Exclude<Stage, "all">) =>
+    counts[s] ?? 0;
+
+  return (
+    <div className="page">
+      <header className="page-header">
+        <div>
+          <p className="home-greeting">Warehouse</p>
+          <h1>Job materials</h1>
+        </div>
+        <BackChip fallback="/warehouse" label="Warehouse" />
+      </header>
+
+      <select
+        value={projectId}
+        onChange={(e) => setParams(e.target.value ? { job: e.target.value } : {})}
+        aria-label="Which job"
+        style={{ maxWidth: 360 }}
+      >
+        <option value="">— pick a job —</option>
+        {(projects.data ?? []).map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.job_code ?? p.name}
+          </option>
+        ))}
+      </select>
+
+      {message && <p className="scanner-hint">{message}</p>}
+
+      {projectId && (
+        <>
+          <div className="detail-card" style={{ margin: "10px 0" }}>
+            <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+              <strong>
+                {crates.length} crate{crates.length === 1 ? "" : "s"}
+              </strong>
+              <span className="muted">
+                — between them {poolTotal} piece{poolTotal === 1 ? "" : "s"} of
+                crate glass
+              </span>
+              <button
+                className="button-like"
+                disabled={addCrate.isPending}
+                onClick={() => addCrate.mutate()}
+              >
+                + crate
+              </button>
+              <button
+                className="button-like"
+                disabled={removeCrate.isPending || crates.length === 0}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "Remove one crate from this job? The pool numbers stay until you edit them.",
+                    )
+                  ) {
+                    removeCrate.mutate();
+                  }
+                }}
+              >
+                − crate
+              </button>
+            </div>
+            {crates.length > 0 && (
+              <p className="muted" style={{ margin: "4px 0 0", fontSize: 12 }}>
+                {crates.map((c, i) => (
+                  <span key={c.id}>
+                    {i > 0 ? " · " : ""}
+                    <Link to={`/pkg/${c.serial}`} className="link">
+                      {(c.mfr_mark ?? "Crate").toLowerCase().replace(/(^|\s)\S/g, (ch) => ch.toUpperCase())}
+                    </Link>
+                  </span>
+                ))}
+              </p>
+            )}
+          </div>
+
+          <div className="row-gap" style={{ flexWrap: "wrap", marginBottom: 8 }}>
+            <button
+              className={stage === "all" ? "button-like active-pill" : "button-like"}
+              onClick={() => setStage("all")}
+            >
+              Everything
+            </button>
+            {(Object.keys(STAGE_LABELS) as Exclude<Stage, "all">[]).map((s) => (
+              <button
+                key={s}
+                className={stage === s ? "button-like active-pill" : "button-like"}
+                onClick={() => setStage(s)}
+              >
+                {STAGE_LABELS[s]}
+              </button>
+            ))}
+          </div>
+
+          <ul className="unit-list">
+            {byMark
+              .filter(
+                ([, row]) =>
+                  stage === "all" || stageCount(row.counts, stage as Exclude<Stage, "all">) > 0,
+              )
+              .map(([mark, row]) => (
+                <li key={mark} className="opening-review-row">
+                  <strong>
+                    {job?.job_code ?? ""} #{mark}
+                  </strong>
+                  <span className="muted">
+                    {(Object.keys(STAGE_LABELS) as Exclude<Stage, "all">[])
+                      .map((s) =>
+                        stageCount(row.counts, s) > 0
+                          ? `${STAGE_LABELS[s]} ${stageCount(row.counts, s)}`
+                          : null,
+                      )
+                      .filter(Boolean)
+                      .join(" · ") || "nothing yet"}
+                    {row.poolPieces > 0
+                      ? ` · ${row.poolPieces} glass in the crates`
+                      : ""}
+                  </span>
+                </li>
+              ))}
+          </ul>
+          {byMark.length === 0 && (
+            <p className="muted">No material logged for this job yet.</p>
+          )}
+          <p className="muted" style={{ fontSize: 12 }}>
+            Installed lives on the job&rsquo;s own pages —{" "}
+            <Link to={`/projects/${projectId}?tab=map`} className="link">
+              open the map
+            </Link>
+            .
+          </p>
+        </>
+      )}
+    </div>
+  );
+}

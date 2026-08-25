@@ -38,7 +38,7 @@ describe("groupDelivery", () => {
     expect(labels).toEqual([
       "Sunset Ridge 4 · #5050 — 1/3 ×2",
       "Sunset Ridge 4 · #5050 — 2/3 ×1",
-      "Sunset Ridge 4 · #5050 — 4 pieces of glass (crate) ×1",
+      "Sunset Ridge 4 · #5050 — 4 pieces of glass (in the crates) ×1",
     ]);
     expect(groups[0].pendingJobName).toBe("Sunset Ridge 4");
     expect(groups[0].unfiledIds).toHaveLength(4);
