@@ -33,6 +33,10 @@ export interface SlotRow {
   /** For crate rows: the crate the pieces ride in — receiving stores them
    *  straight into it. */
   crateContainerId: string | null;
+  /** Ids whose arrival can be UNDONE: received-and-loose, plus crate
+   *  pieces (their arrive tap auto-stored them into the crate). A real
+   *  put-away in a conex is not undoable from here. */
+  undoableIds: string[];
 }
 
 export interface JobGroup {
@@ -63,8 +67,8 @@ const slotLabel = (p: DeliveryPackageLite): string => {
   }
   const slot =
     p.part_index != null && p.part_total != null
-      ? `box ${p.part_index} of ${p.part_total}`
-      : "box";
+      ? `piece ${p.part_index} of ${p.part_total}`
+      : "piece";
   return `${mark} — ${slot}${p.part_type ? ` · ${p.part_type}` : ""}`;
 };
 
@@ -100,6 +104,7 @@ export function groupDelivery(packages: DeliveryPackageLite[]): JobGroup[] {
         expectedIds: [],
         looseIds: [],
         crateContainerId: p.piece_count != null ? p.container_id : null,
+        undoableIds: [],
       };
       job.rows.push(row);
     }
@@ -109,9 +114,13 @@ export function groupDelivery(packages: DeliveryPackageLite[]): JobGroup[] {
     } else if (p.status === "received") {
       row.received += 1;
       row.looseIds.push(p.id);
+      row.undoableIds.push(p.id);
     } else if (p.status === "stored" || p.status === "checked_out") {
       row.received += 1;
       row.stored += 1;
+      if (p.piece_count != null && p.status === "stored") {
+        row.undoableIds.push(p.id);
+      }
     }
   }
   for (const job of jobs.values()) {
@@ -127,6 +136,13 @@ export function groupDelivery(packages: DeliveryPackageLite[]): JobGroup[] {
 /** "n of these arrived" -> which ids flip. Any n will do: they're twins. */
 export function pickToReceive(row: SlotRow, n: number): string[] {
   return row.expectedIds.slice(0, Math.max(0, Math.min(n, row.expectedIds.length)));
+}
+
+/** Undo the most recent arrival taps first — a thumb slip is always the
+ *  last thing that happened. */
+export function pickToUndo(row: SlotRow, n: number): string[] {
+  const take = Math.max(0, Math.min(n, row.undoableIds.length));
+  return row.undoableIds.slice(row.undoableIds.length - take);
 }
 
 /** "store n into that conex" -> arrived-and-loose first. */
