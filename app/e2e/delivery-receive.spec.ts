@@ -139,3 +139,87 @@ test("arrive and split identical twins across conexes by count", async ({
   expect(stored[1].ids).toHaveLength(2);
   expect(new Set([...stored[0].ids, ...stored[1].ids]).size).toBe(6);
 });
+
+test("search filters, and a cross-job bundle stores with one I-Understand", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  const rows = [
+    { ...twin("j1a", "received"), pending_job_name: "Sunset Ridge 4" },
+    { ...twin("j1b", "received"), pending_job_name: "Sunset Ridge 4" },
+    {
+      ...twin("j2a", "received"),
+      pending_job_name: "Mad Moose",
+      mfr_mark: "7",
+      part_index: 2,
+      part_total: 5,
+    },
+  ];
+  await page.route(
+    (url) =>
+      url.pathname.includes("/rest/v1/packages") &&
+      (url.searchParams.get("delivery_id") ?? "").startsWith("eq."),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(rows),
+      }),
+  );
+  await page.route("**/rest/v1/storage_containers**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        { id: "00000000-0000-4000-8000-00000000c001", name: "Conex 1", kind: "conex", active: true },
+      ]),
+    }),
+  );
+  await page.route("**/rest/v1/package_deliveries**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{ id: D, label: "Mixed truck", arrived_on: "2026-08-25" }]),
+    }),
+  );
+  const stored: Array<{ ids: string[]; container: string }> = [];
+  await page.route("**/rest/v1/rpc/store_packages", async (route) => {
+    const body = route.request().postDataJSON() as {
+      p_packages: string[];
+      p_container: string;
+    };
+    stored.push({ ids: body.p_packages, container: body.p_container });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: String(body.p_packages.length),
+    });
+  });
+
+  await page.goto(`/storage/d/${D}`);
+
+  // Search narrows to one job's rows.
+  await page.getByLabel("Search this delivery").fill("mad moose");
+  await expect(page.getByText("Mad Moose · #7 — 2/5", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Sunset Ridge 4 · #5050 — 1/3", { exact: true }),
+  ).toBeHidden();
+  await page.getByLabel("Search this delivery").fill("");
+
+  // Bundle two rows from two different jobs into one conex.
+  await page.getByRole("button", { name: /Select several/ }).click();
+  await page.getByLabel("Select Sunset Ridge 4 · #5050 — 1/3").check();
+  await page.getByLabel("Select Mad Moose · #7 — 2/5").check();
+  await expect(page.getByText("3 pieces from 2 jobs selected")).toBeVisible();
+  await page
+    .getByLabel("Where to store the selected pieces")
+    .selectOption("00000000-0000-4000-8000-00000000c001");
+  await page.getByRole("button", { name: /Store 3 together/ }).click();
+
+  // The quick warning, then through.
+  await expect(page.getByText(/2 different jobs/)).toBeVisible();
+  expect(stored).toHaveLength(0);
+  await page.getByRole("button", { name: /I Understand — store them/ }).click();
+  await expect(page.getByText("Stored 3 together.")).toBeVisible();
+  expect(stored[0].ids.sort()).toEqual(["j1a", "j1b", "j2a"]);
+});
