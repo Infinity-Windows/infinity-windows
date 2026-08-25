@@ -111,6 +111,8 @@ export function containerKind(c: Pick<StorageContainer, "kind"> | null | undefin
 export interface StoragePackage {
   /** Crate contents: pieces riding inside for this mark (null on 1-of-N packages). */
   piece_count?: number | null;
+  /** Job name typed at the truck when the job isn't built in the app yet. */
+  pending_job_name?: string | null;
   /** Where inside its current box: front/middle/back, or a compass point in
    * the building. Cleared by the database the moment the package changes
    * places — a pointer, not a place (ADR-0006). */
@@ -746,13 +748,71 @@ export interface DeliveryEntryPayload {
 export async function createManualDelivery(
   label: string,
   entries: unknown[],
-): Promise<{ delivery_id: string; created: number; pending: number }> {
+): Promise<{ delivery_id: string; created: number; unfiled: number; pending: number }> {
   const { data, error } = await supabase.rpc("create_manual_delivery", {
     p_label: label,
     p_entries: entries,
   });
   if (error) throw error;
-  return data as { delivery_id: string; created: number; pending: number };
+  return data as {
+    delivery_id: string;
+    created: number;
+    unfiled: number;
+    pending: number;
+  };
+}
+
+export interface DeliveryRow {
+  id: string;
+  label: string | null;
+  arrived_on: string | null;
+  created_at?: string | null;
+}
+
+export async function listDeliveries(): Promise<DeliveryRow[]> {
+  const { data, error } = await supabase
+    .from("package_deliveries")
+    .select("id, label, arrived_on")
+    .order("arrived_on", { ascending: false })
+    .limit(20);
+  if (error) throw error;
+  return (data ?? []) as DeliveryRow[];
+}
+
+export async function listDeliveryPackages(
+  deliveryId: string,
+): Promise<StoragePackage[]> {
+  const { data, error } = await withMarkJoin((select) =>
+    supabase
+      .from("packages")
+      .select(select)
+      .eq("delivery_id", deliveryId)
+      .order("bound_at"),
+  );
+  if (error) throw error;
+  return (data ?? []) as unknown as StoragePackage[];
+}
+
+/** The arrival checkbox: expected (minted) flips to received. Idempotent. */
+export async function receivePackages(packageIds: string[]): Promise<number> {
+  const { data, error } = await supabase.rpc("receive_minted_packages", {
+    p_packages: packageIds,
+  });
+  if (error) throw error;
+  return (data as number) ?? 0;
+}
+
+/** File no-job material onto its freshly built job. Foreman+. */
+export async function filePendingPackages(
+  packageIds: string[],
+  projectId: string,
+): Promise<number> {
+  const { data, error } = await supabase.rpc("file_pending_packages", {
+    p_package_ids: packageIds,
+    p_project: projectId,
+  });
+  if (error) throw error;
+  return (data as number) ?? 0;
 }
 
 /** Permanent. The server refuses checked-out packages and names them. */

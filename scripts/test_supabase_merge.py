@@ -114,7 +114,8 @@ class TestSchemaParsing(unittest.TestCase):
         # `capability_badges` (20260923010000), the skill-tree badges, and
         # `summon_declines` (20260923020000), the can't-help record.
         # +2: part_type_options + pending_delivery_sets (manual deliveries,
-        # 20260924000000).
+        # 20260924000000). The pending table is DROPPED by 20260926000000 —
+        # the parser counts declarations, so it still appears here.
         self.assertEqual(len(SCHEMA.tables), 104)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
@@ -174,7 +175,8 @@ class TestDependencyOrder(unittest.TestCase):
 
     def test_the_schema_really_does_have_a_cycle(self):
         cycles = dependency_cycles(SCHEMA)
-        self.assertEqual(len(cycles), 1)
+        # window_types<->install_events, and issues<->packages (20260926).
+        self.assertEqual(len(cycles), 2)
         self.assertEqual(
             cycles[0], ["install_events", "project_openings", "window_types", "windows"]
         )

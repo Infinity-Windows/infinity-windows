@@ -126,6 +126,9 @@ export function StorageHub() {
             <Link className="button-like active-pill" to="/storage/log-delivery">
               Log a delivery (truck)
             </Link>
+            <Link className="button-like" to="/storage/deliveries">
+              Deliveries — check trucks in
+            </Link>
             <Link className="button-like" to="/storage/out">
               Check out
             </Link>

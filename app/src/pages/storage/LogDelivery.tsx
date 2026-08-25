@@ -40,9 +40,11 @@ export function LogDelivery() {
   const [stage, setStage] = useState<Stage>("mode");
   const [label, setLabel] = useState("");
   const [entries, setEntries] = useState<WizardEntry[]>([emptyEntry()]);
-  const [result, setResult] = useState<{ created: number; pending: number } | null>(
-    null,
-  );
+  const [result, setResult] = useState<{
+    created: number;
+    unfiled: number;
+    delivery_id: string;
+  } | null>(null);
   const [restoredFrom, setRestoredFrom] = useState<string | null>(null);
 
   // The checkpoint (owner ask): every change autosaves on the device, a
@@ -86,7 +88,11 @@ export function LogDelivery() {
     onSuccess: (r) => {
       localStorage.removeItem(DRAFT_KEY);
       setRestoredFrom(null);
-      setResult({ created: r.created, pending: r.pending });
+      setResult({
+        created: r.created,
+        unfiled: r.unfiled ?? 0,
+        delivery_id: r.delivery_id,
+      });
       setStage("done");
     },
   });
@@ -112,11 +118,12 @@ export function LogDelivery() {
             With QR stickers — scan and tag at the tailgate
           </button>
           <button className="button-like big" onClick={() => setStage("jobs")}>
-            Without stickers — enter it by hand
+            Without stickers — prepare the list, check the truck against it
           </button>
           <p className="muted">
-            Entering by hand still creates every package with its own ID — you
-            can print their labels whenever the printer shows up.
+            Entering by hand builds a standby list of expected packages, each
+            with its own ID. At the truck you check material off against the
+            list; labels print whenever the printer shows up.
           </p>
         </div>
       </div>
@@ -134,18 +141,23 @@ export function LogDelivery() {
           <BackChip fallback="/warehouse" label="Warehouse" />
         </header>
         <p>
-          {result?.created ?? 0} package{(result?.created ?? 0) === 1 ? "" : "s"}{" "}
-          created.
-          {result?.pending
-            ? ` ${result.pending} set${result.pending === 1 ? "" : "s"} are waiting on jobs that aren't built yet — a supervisor has it on the Issues list.`
+          The standby list is saved — {result?.created ?? 0} expected package
+          {(result?.created ?? 0) === 1 ? "" : "s"}.
+          {result?.unfiled
+            ? ` ${result.unfiled} belong to jobs that aren't built yet — they still check in and store like everything else, and a supervisor has the job on the Issues list.`
             : ""}
         </p>
         <p className="muted">
-          Part labels (frame, glass, hardware…) get assigned on each package's
-          screen once you can see how the boxes are actually marked. Labels
-          print from each package or container screen when the printer arrives.
+          When the truck shows up, open the delivery and check the material
+          off against this list — what arrived, what's missing, and where
+          each box went.
         </p>
         <div className="row-gap">
+          {result?.delivery_id && (
+            <Link className="primary big" to={`/storage/d/${result.delivery_id}`}>
+              Open the delivery — check the truck against it
+            </Link>
+          )}
           <Link className="button-like" to="/warehouse">
             Back to the warehouse
           </Link>

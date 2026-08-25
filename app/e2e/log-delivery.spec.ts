@@ -16,7 +16,7 @@ test("hand-logging a delivery sends the skeleton in one call", async ({
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ delivery_id: "d-1", created: 4, pending: 0 }),
+      body: JSON.stringify({ delivery_id: "d-1", created: 4, unfiled: 0, pending: 0 }),
     });
   });
 
@@ -44,7 +44,12 @@ test("hand-logging a delivery sends the skeleton in one call", async ({
     ),
   ).toBeVisible();
   await page.getByRole("button", { name: /Save the delivery/ }).click();
-  await expect(page.getByText("4 packages created.")).toBeVisible();
+  await expect(
+    page.getByText(/standby list is saved — 4 expected packages/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Open the delivery/ }),
+  ).toBeVisible();
 
   expect(payload).not.toBeNull();
   expect(payload!.p_label).toBe("Test truck");
@@ -67,7 +72,7 @@ test("a job that isn't built yet types through without blocking", async ({
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ delivery_id: "d-2", created: 0, pending: 1 }),
+      body: JSON.stringify({ delivery_id: "d-2", created: 1, unfiled: 1, pending: 0 }),
     });
   });
 
@@ -79,7 +84,9 @@ test("a job that isn't built yet types through without blocking", async ({
   await page.getByRole("button", { name: /Next: review/ }).click();
   await expect(page.getByText(/job not built yet/)).toBeVisible();
   await page.getByRole("button", { name: /Save the delivery/ }).click();
-  await expect(page.getByText(/waiting on jobs that aren't built yet/)).toBeVisible();
+  await expect(
+    page.getByText(/belong to jobs that aren't built yet/),
+  ).toBeVisible();
   const entry = payload!.p_entries[0] as { project_id: null; job_name: string };
   expect(entry.project_id).toBeNull();
   expect(entry.job_name).toBe("Sunset Ridge 4");
