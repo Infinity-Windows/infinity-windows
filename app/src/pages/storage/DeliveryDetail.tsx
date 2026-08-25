@@ -12,12 +12,18 @@ import { listProjects } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
 import {
   filePendingPackages,
+  labelPackages,
   listContainers,
   listDeliveries,
   listDeliveryPackages,
+  listPartTypeOptions,
   receivePackages,
   storePackages,
   unreceivePackages,
+  unstorePackages,
+  PART_TYPES,
+  PART_LABELS,
+  type PartType,
 } from "../../lib/storage";
 import {
   groupDelivery,
@@ -25,6 +31,7 @@ import {
   pickToReceive,
   pickToStore,
   pickToUndo,
+  pickToUnstore,
   type DeliveryPackageLite,
   type JobGroup,
   type SlotRow,
@@ -46,6 +53,17 @@ export function DeliveryDetail() {
   const [bundle, setBundle] = useState<Set<string>>(new Set());
   const [bundleTarget, setBundleTarget] = useState("");
   const [confirmMix, setConfirmMix] = useState(false);
+  const [rowLabels, setRowLabels] = useState<Record<string, string>>({});
+  const partOptions = useQuery({
+    queryKey: ["partTypeOptions"],
+    queryFn: listPartTypeOptions,
+  });
+  const partChoices = [
+    ...PART_TYPES,
+    ...(partOptions.data ?? []).filter(
+      (t) => !PART_TYPES.includes(t as PartType),
+    ),
+  ];
 
   const deliveries = useQuery({ queryKey: ["deliveries"], queryFn: listDeliveries });
   const delivery = deliveries.data?.find((d) => d.id === id);
@@ -66,6 +84,12 @@ export function DeliveryDetail() {
     mutationFn: async (args: { row: SlotRow; n: number }) => {
       const ids = pickToReceive(args.row, args.n);
       await receivePackages(ids);
+      // "What is it?" answered right here: the boxes are finally being
+      // read, so the picked label rides the same tap onto every twin.
+      const label = rowLabels[args.row.key];
+      if (label && !args.row.isCrate) {
+        await labelPackages(ids, label);
+      }
       // Crate pieces were logged riding in their crate: arriving puts them
       // straight back into it, one tap, one truth.
       if (args.row.isCrate && args.row.crateContainerId) {
@@ -75,6 +99,15 @@ export function DeliveryDetail() {
     },
     onSuccess: (n) => {
       setMessage(`${n} box${n === 1 ? "" : "es"} checked in.`);
+      refresh();
+    },
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+
+  const unputaway = useMutation({
+    mutationFn: async (row: SlotRow) => unstorePackages(pickToUnstore(row, 1)),
+    onSuccess: (n) => {
+      setMessage(n > 0 ? "Put-away undone — back to loose." : "Nothing to pull back.");
       refresh();
     },
     onError: (e) => setMessage(formatApiError(e)),
@@ -184,6 +217,22 @@ export function DeliveryDetail() {
           {row.received} of {row.expected} arrived
           {row.stored > 0 ? ` · ${row.stored} put away` : ""}
         </span>
+        {missing > 0 && !row.isCrate && (
+          <select
+            value={rowLabels[row.key] ?? ""}
+            onChange={(e) =>
+              setRowLabels((prev) => ({ ...prev, [row.key]: e.target.value }))
+            }
+            aria-label={`What is ${row.label}`}
+          >
+            <option value="">— what is it? —</option>
+            {partChoices.map((t) => (
+              <option key={t} value={t}>
+                {PART_LABELS[t as PartType] ?? t}
+              </option>
+            ))}
+          </select>
+        )}
         {missing > 0 && (
           <>
             <button
@@ -203,6 +252,16 @@ export function DeliveryDetail() {
               </button>
             )}
           </>
+        )}
+        {row.storedIds.length > 0 && (
+          <button
+            className="link"
+            disabled={unputaway.isPending}
+            onClick={() => unputaway.mutate(row)}
+            aria-label={`Un-put-away one of ${row.label}`}
+          >
+            un-put-away
+          </button>
         )}
         {row.undoableIds.length > 0 && (
           <button
