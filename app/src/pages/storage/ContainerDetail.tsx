@@ -122,6 +122,7 @@ export function ContainerDetail() {
     projectId: "",
     mark: "",
     partType: "",
+    otherText: "",
     newLabel: "",
     note: "",
     count: 1,
@@ -149,7 +150,10 @@ export function ContainerDetail() {
         containerId: id,
         projectId: customForm.projectId || null,
         mark: customForm.mark.trim() || null,
-        partType: customForm.partType || null,
+        partType:
+          customForm.partType === "other" && customForm.otherText.trim()
+            ? customForm.otherText.trim()
+            : customForm.partType || null,
         note: customForm.note.trim() || null,
         count: customForm.count,
       }),
@@ -158,7 +162,7 @@ export function ContainerDetail() {
         `Checked ${n} in${customForm.mark.trim() ? ` on set #${customForm.mark.trim().replace(/^#/, "").toUpperCase()}` : ""}.`,
       );
       setCheckinOpen(false);
-      setCustomForm({ projectId: "", mark: "", partType: "", newLabel: "", note: "", count: 1 });
+      setCustomForm({ projectId: "", mark: "", partType: "", otherText: "", newLabel: "", note: "", count: 1 });
       void qc.invalidateQueries({ queryKey: ["storageContainers"] });
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
     },
@@ -677,6 +681,17 @@ export function ContainerDetail() {
                 </option>
               ))}
             </select>
+            {customForm.partType === "other" && (
+              <input
+                value={customForm.otherText}
+                onChange={(e) =>
+                  setCustomForm((prev) => ({ ...prev, otherText: e.target.value }))
+                }
+                placeholder="Type what it is"
+                aria-label="Describe what it is"
+                style={{ width: 180 }}
+              />
+            )}
             <input
               value={customForm.newLabel}
               onChange={(e) =>
