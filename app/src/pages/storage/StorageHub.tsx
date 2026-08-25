@@ -37,6 +37,7 @@ import {
   WAREHOUSE_CARDS,
   type CardId,
 } from "../../lib/warehouse/warehouseCards";
+import { partitionTestPackages, testProjectIds } from "../../lib/warehouse/testPartition";
 import { normalizeMarkCode } from "../../lib/fitview/adapter";
 import { PackageRowText } from "../../components/warehouse/PackageRowText";
 
@@ -65,16 +66,29 @@ export function StorageHub() {
     return m;
   }, [projects.data]);
 
+  // Testing projects' packages never count as real inventory (owner call,
+  // 2026-08-25) — the container tiles and the card drill-down both read
+  // `realPackages`, so they keep agreeing with the Warehouse page's cards,
+  // which read the same rule. "Find a package" is the deliberate exception:
+  // it answers "where is this SPECIFIC thing", and a testing package is a
+  // real physical object somebody may need to locate, so search still
+  // reads every package.
+  const testIds = useMemo(() => testProjectIds(projects.data ?? []), [projects.data]);
+  const realPackages = useMemo(
+    () => partitionTestPackages(packages.data ?? [], testIds).real,
+    [packages.data, testIds],
+  );
+
   const byContainer = useMemo(() => {
     const m = new Map<string, typeof packages.data & object>();
-    for (const p of packages.data ?? []) {
+    for (const p of realPackages) {
       if (p.status !== "stored" || !p.container_id) continue;
       const list = m.get(p.container_id) ?? [];
       list.push(p);
       m.set(p.container_id, list);
     }
     return m;
-  }, [packages.data]);
+  }, [realPackages]);
 
   const query = search.trim().toUpperCase();
   const hits = useMemo(() => {
@@ -152,7 +166,7 @@ export function StorageHub() {
       {card && (
         <CardList
           card={card}
-          packages={packages.data ?? []}
+          packages={realPackages}
           containers={containers.data ?? []}
           jobCode={jobCode}
         />
@@ -274,8 +288,11 @@ function CardList({
 }) {
   const def = WAREHOUSE_CARDS.find((c) => c.id === card)!;
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  // Excludes testing projects, same reason as the Warehouse page: otherwise
+  // a testing job's scheduled marks never find a match among `packages`
+  // (already real-only, passed in from the parent) and pile up here forever.
   const activeIds = useMemo(
-    () => (projects.data ?? []).map((p) => p.id),
+    () => (projects.data ?? []).filter((p) => !p.is_test).map((p) => p.id),
     [projects.data],
   );
   const marks = useQuery({

@@ -6,11 +6,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
+  deleteTestProject,
   ensureStagingBays,
   getProjectWindows,
   listLocations,
   listProjects,
   listReorderNeeds,
+  setProjectTest,
   updateProject,
 } from "../lib/api";
 import { totalReorder } from "../lib/loadout";
@@ -40,7 +42,7 @@ import { type Project } from "../lib/types";
 import { listActivePackages, type StoragePackage } from "../lib/storage";
 import { normalizeMarkCode } from "../lib/fitview/adapter";
 import { unitParts } from "../lib/warehouse/unitParts";
-import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
+import { isForemanPlus, isOwner, isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { listProjectAssignments } from "../lib/schedule/api";
 import { listVehicleLinksForProject } from "../lib/vehicles/api";
@@ -271,6 +273,8 @@ export function ProjectDetail() {
           estimate={jobEstimate}
           isLead={isLead}
           canStudio={isSupervisorPlus(effectiveRole)}
+          canFlagTesting={isSupervisorPlus(effectiveRole)}
+          canDeleteTesting={isOwner(effectiveRole)}
           project={project}
         />
       )}
@@ -378,6 +382,8 @@ function OverviewTab({
   estimate,
   isLead,
   canStudio,
+  canFlagTesting,
+  canDeleteTesting,
   project,
 }: {
   projectId: string;
@@ -392,6 +398,8 @@ function OverviewTab({
   estimate: { est: JobEstimate; crew: CrewRecommendation } | null;
   isLead: boolean;
   canStudio: boolean;
+  canFlagTesting: boolean;
+  canDeleteTesting: boolean;
   project?: Project;
 }) {
   const queryClient = useQueryClient();
@@ -408,6 +416,19 @@ function OverviewTab({
   return (
     <>
       {project && <JobDetailsPanel project={project} isLead={isLead} />}
+
+      {/* effectiveRole-gated, not project.is_test — "view as installer" must
+          stay faithful even when the real signed-in user is a supervisor
+          previewing a testing project (CLAUDE.md: use effectiveRole for what
+          the UI shows, realRole for identity). */}
+      {project && canFlagTesting && (
+        <TestingProjectPanel
+          project={project}
+          canDelete={canDeleteTesting}
+          openingsCount={openingsTotal}
+          packagesCount={packages.length}
+        />
+      )}
 
       <ScheduledCrewPanel projectId={projectId} isLead={isLead} />
 
@@ -1033,6 +1054,114 @@ function JobDetailsPanel({
   );
 }
 
+/**
+ * Testing projects are fake data for practice or QA (owner call,
+ * 2026-08-25): flagging one hides it below supervisor (RLS, this file
+ * doesn't enforce that — it just reflects it) and pulls its packages out of
+ * every warehouse inventory figure client-side. Only rendered for
+ * supervisor+ (see the call site) — this toggle is the write path, since
+ * `projects.is_test` itself is not writable directly from any client role.
+ *
+ * Delete is owner-only and only appears once a job is already flagged
+ * testing, so there is no path from "real job" straight to "gone" — a job
+ * has to be marked fake first, a separate and reversible step, before the
+ * irreversible one becomes available at all.
+ */
+function TestingProjectPanel({
+  project,
+  canDelete,
+  openingsCount,
+  packagesCount,
+}: {
+  project: Project;
+  canDelete: boolean;
+  openingsCount: number;
+  packagesCount: number;
+}) {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  const flag = useMutation({
+    mutationFn: (isTest: boolean) => setProjectTest(project.id, isTest),
+    onSuccess: (_result, isTest) => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      pushToast(
+        isTest ? "Flagged as a testing project." : "No longer a testing project.",
+        "info",
+      );
+    },
+    onError: (e) => toastError(e),
+  });
+
+  const remove = useMutation({
+    mutationFn: () => deleteTestProject(project.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      pushToast(`${project.job_code} permanently deleted.`, "info");
+      navigate("/projects");
+    },
+    onError: (e) => toastError(e),
+  });
+
+  const confirmDelete = () => {
+    const sure = window.confirm(
+      `Permanently delete ${project.job_code}? This deletes its ${openingsCount} ` +
+        `opening${openingsCount === 1 ? "" : "s"} and ${packagesCount} ` +
+        `package${packagesCount === 1 ? "" : "s"}, and every install record, ` +
+        `photo and note against them. This cannot be undone.`,
+    );
+    if (sure) remove.mutate();
+  };
+
+  return (
+    <section className="detail-card" style={{ marginBottom: 16 }}>
+      <h2 style={{ margin: 0 }}>Testing</h2>
+      <label
+        style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 10 }}
+      >
+        <input
+          type="checkbox"
+          checked={project.is_test ?? false}
+          disabled={flag.isPending}
+          onChange={(e) => flag.mutate(e.target.checked)}
+        />
+        <span>
+          <strong>Testing project</strong>
+          <br />
+          <span className="muted" style={{ fontSize: 13 }}>
+            Fake data for practice. Hidden from installers and foremen; its
+            material never counts as real inventory.
+          </span>
+        </span>
+      </label>
+      {flag.isError && <p className="error">{formatApiError(flag.error)}</p>}
+
+      {canDelete && project.is_test && (
+        <div
+          style={{
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: "1px solid var(--border)",
+          }}
+        >
+          <button
+            type="button"
+            className="action-btn danger-outline"
+            disabled={remove.isPending}
+            onClick={confirmDelete}
+          >
+            {remove.isPending ? "Deleting…" : "Delete this testing project…"}
+          </button>
+          <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+            Permanent. Only possible because this job is flagged testing —
+            there is no way to do this to a real job.
+          </p>
+          {remove.isError && <p className="error">{formatApiError(remove.error)}</p>}
+        </div>
+      )}
+    </section>
+  );
+}
 
 /**
  * The job's two staging bays — the shelves that keep this job's windows

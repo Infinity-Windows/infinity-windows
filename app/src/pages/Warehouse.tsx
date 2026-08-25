@@ -23,7 +23,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { listLocations, listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
-import { isForemanPlus } from "../lib/install/types";
+import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { Explain } from "../components/ui/Explain";
 import { PackageMap } from "../components/warehouse/PackageMap";
@@ -37,6 +37,7 @@ import {
   listContainers,
   containerKind,
 } from "../lib/storage";
+import { partitionTestPackages, testProjectIds } from "../lib/warehouse/testPartition";
 import {
   filterSuppliesByName,
   listSupplies,
@@ -80,6 +81,10 @@ const SECTIONS: Section[] = [
 export function Warehouse() {
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
+  // Testing projects (owner-confirmed 2026-08-25) are invisible below
+  // supervisor by RLS, so an installer/foreman's `projects` list never has
+  // one in it — this is supervisor+ in its own right, not shorthand for lead.
+  const supervisor = isSupervisorPlus(effectiveRole);
   const { counts: outbox } = useOutbox();
   // ?q= prefills Find (Studio 100x #15's door in) — read once; FindBar owns
   // the input from here, the same way it already owns everything typed by
@@ -123,7 +128,16 @@ export function Warehouse() {
   const SUPPLY_ROWS_SHOWN = 12;
   const supplyPreview = supplyMatches.slice(0, SUPPLY_ROWS_SHOWN);
 
-  const activeIds = useMemo(() => (projects.data ?? []).map((p) => p.id), [projects.data]);
+  // Testing projects' marks are excluded here too, not just their packages:
+  // without this, a testing job's scheduled marks would never find a match
+  // in `real` (its packages all sort into `testing`) and would sit on the
+  // foreman-visible "not tagged" card forever, for a job a foreman can't
+  // even see to understand why.
+  const testIds = testProjectIds(projects.data ?? []);
+  const activeIds = useMemo(
+    () => (projects.data ?? []).filter((p) => !testIds.has(p.id)).map((p) => p.id),
+    [projects.data, testIds],
+  );
   const marks = useQuery({
     queryKey: ["scheduledMarks", activeIds],
     queryFn: () => listScheduledMarks(activeIds),
@@ -146,17 +160,24 @@ export function Warehouse() {
   const openDamage = (issues.data ?? []).filter(
     (i) => i.kind === "damage" && i.status === "open",
   );
-  const counts = warehouseCounts(rows, boxes, marks.data ?? [], openDamage.length);
+  // Testing projects' packages never count as real inventory (owner call,
+  // 2026-08-25) — every card, count and warning below reads `real`, never
+  // `rows`. FindBar is the one deliberate exception: it answers "where is
+  // it" for a SPECIFIC scanned or typed thing, and a testing package is a
+  // real physical object somebody may need to find, so it keeps `rows`.
+  const { real, testing } = partitionTestPackages(rows, testIds);
+  const counts = warehouseCounts(real, boxes, marks.data ?? [], openDamage.length);
   const ready = packages.isSuccess && containers.isSuccess;
 
   // Coming in: tagged today but not put away anywhere yet.
-  const needsPutaway = rows.filter(
+  const needsPutaway = real.filter(
     (p) => p.status === "received" && placeChain(p, byId).loose,
   );
-  const untagged = untaggedMarks(rows, marks.data ?? []);
+  const untagged = untaggedMarks(real, marks.data ?? []);
   // Windows the warehouse holds in more than one place right now (ticket 19).
-  const split = splitUnits(rows, byId, locsById);
-  const goingOut = rows.filter((p) => p.status === "checked_out");
+  const split = splitUnits(real, byId, locsById);
+  const goingOut = real.filter((p) => p.status === "checked_out");
+  const testingByJob = groupByJob(testing);
 
   const visible = SECTIONS.filter((s) => lead || s.everyone);
 
@@ -458,6 +479,42 @@ export function Warehouse() {
           )}
         </section>
       ))}
+
+      {/* Supervisor+ only — an installer or foreman's `projects` list never
+          has a testing project in it (RLS), so this section would always be
+          empty for them; showing it anyway would just be confusing clutter. */}
+      {supervisor && (
+        <section id="testing">
+          <h2>Testing</h2>
+          <Explain id="wh-testing">
+            Fake data for practice or QA. Flag a job as testing from its Job
+            details panel — its material shows up here instead of in the
+            counts above, and never counts as real inventory.
+          </Explain>
+          {testingByJob.length > 0 ? (
+            <div className="home-projects">
+              {testingByJob.map((g) => (
+                <div key={g.projectId ?? "none"} className="project-card home-project">
+                  <div className="home-project-head">
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 600 }}>
+                        {jobCode.get(g.projectId ?? "") ?? "Testing"}
+                      </div>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        {`${g.packages.length} package${
+                          g.packages.length === 1 ? "" : "s"
+                        } — practice material, never counted as inventory`}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">No testing packages right now.</p>
+          )}
+        </section>
+      )}
 
       {lead && <Operations />}
     </div>
