@@ -12,7 +12,7 @@ import {
 const entry = (over: Partial<WizardEntry> = {}): WizardEntry => ({
   project_id: "p-1",
   job_name: "",
-  sets: [{ mark: "16", kind: "window", package_count: 3, crate: null }],
+  sets: [{ mark: "16", kind: "window", package_count: 3, quantity: 1, crate: null }],
   ...over,
 });
 
@@ -34,9 +34,9 @@ describe("wizardProblems", () => {
     const problems = wizardProblems([
       entry({
         sets: [
-          { mark: "", kind: "window", package_count: 0, crate: null },
-          { mark: "#16", kind: "door", package_count: 3, crate: null },
-          { mark: "16", kind: "window", package_count: 21, crate: null },
+          { mark: "", kind: "window", package_count: 0, quantity: 1, crate: null },
+          { mark: "#16", kind: "door", package_count: 3, quantity: 1, crate: null },
+          { mark: "16", kind: "window", package_count: 21, quantity: 1, crate: null },
         ],
       }),
     ]);
@@ -53,6 +53,7 @@ describe("wizardProblems", () => {
             mark: "14",
             kind: "window",
             package_count: 3,
+            quantity: 1,
             crate: { name: " ", pieces: 0, part_type: "glass" },
           },
         ],
@@ -60,6 +61,21 @@ describe("wizardProblems", () => {
     ]);
     expect(problems.some((p) => p.includes("name the crate"))).toBe(true);
     expect(problems.some((p) => p.includes("crate pieces"))).toBe(true);
+  });
+
+  it("clone quantity is capped at 20 and rides the payload", () => {
+    const tooMany = entry({
+      sets: [{ mark: "5050", kind: "window", package_count: 3, quantity: 21, crate: null }],
+    });
+    expect(
+      wizardProblems([tooMany]).some((p) => p.includes("1 to 20 at a time")),
+    ).toBe(true);
+    const payload = buildDeliveryPayload([
+      entry({
+        sets: [{ mark: "5050", kind: "window", package_count: 3, quantity: 6, crate: null }],
+      }),
+    ]) as Array<{ sets: Array<Record<string, unknown>> }>;
+    expect(payload[0].sets[0]).toMatchObject({ mark: "5050", quantity: 6 });
   });
 
   it("caps jobs at 17 and sets at 50", () => {
@@ -70,6 +86,7 @@ describe("wizardProblems", () => {
         mark: String(i + 1),
         kind: "window" as const,
         package_count: 1,
+        quantity: 1,
         crate: null,
       })),
     });
@@ -86,6 +103,7 @@ describe("buildDeliveryPayload", () => {
             mark: " #16 ",
             kind: "window",
             package_count: 3,
+            quantity: 1,
             crate: { name: " Crate 1 ", pieces: 4, part_type: " " },
           },
         ],
@@ -107,9 +125,21 @@ describe("describeSet + helpers", () => {
         mark: "16",
         kind: "window",
         package_count: 3,
+        quantity: 1,
         crate: { name: "Crate 1", pieces: 4, part_type: "glass" },
       }),
     ).toBe("#16 · Window · 3 packages + 4 pieces of glass in Crate 1");
+    expect(
+      describeSet({
+        mark: "5050",
+        kind: "window",
+        package_count: 3,
+        quantity: 6,
+        crate: { name: "Crate 1", pieces: 4, part_type: "glass" },
+      }),
+    ).toBe(
+      "#5050 · Window · ×6 identical · 3 packages each + 4 pieces of glass each in Crate 1",
+    );
   });
 
   it("normalizeMark strips the hash and uppercases", () => {

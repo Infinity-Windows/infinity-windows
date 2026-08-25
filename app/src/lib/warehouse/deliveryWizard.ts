@@ -22,6 +22,10 @@ export interface WizardSet {
   mark: string;
   kind: "window" | "door";
   package_count: number;
+  /** Clone mode: how many IDENTICAL units this set covers (6 matching
+   *  5050s = one mark, quantity 6). Each unit gets the same packages and
+   *  the same crate pieces. */
+  quantity: number;
   crate: WizardCrate | null;
 }
 
@@ -37,9 +41,10 @@ export const MAX_PROJECTS = 17;
 export const MAX_SETS = 50;
 export const MAX_PACKAGES = 20;
 export const MAX_CRATE_PIECES = 99;
+export const MAX_CLONES = 20;
 
 export function emptySet(): WizardSet {
-  return { mark: "", kind: "window", package_count: 1, crate: null };
+  return { mark: "", kind: "window", package_count: 1, quantity: 1, crate: null };
 }
 
 export function emptyEntry(): WizardEntry {
@@ -82,6 +87,11 @@ export function wizardProblems(entries: WizardEntry[]): string[] {
       } else {
         seen.add(mark);
       }
+      if (set.quantity < 1 || set.quantity > MAX_CLONES) {
+        problems.push(
+          `${label}, #${mark || si + 1}: identical clones go 1 to ${MAX_CLONES} at a time.`,
+        );
+      }
       if (set.package_count < 1 || set.package_count > MAX_PACKAGES) {
         problems.push(
           `${label}, #${mark || si + 1}: a set arrives as 1 to ${MAX_PACKAGES} packages.`,
@@ -111,6 +121,7 @@ export function buildDeliveryPayload(entries: WizardEntry[]): unknown[] {
       mark: normalizeMark(set.mark),
       kind: set.kind,
       package_count: set.package_count,
+      quantity: set.quantity,
       crate: set.crate
         ? {
             name: set.crate.name.trim(),
@@ -125,7 +136,59 @@ export function buildDeliveryPayload(entries: WizardEntry[]): unknown[] {
 /** One line the review screen shows per set. */
 export function describeSet(set: WizardSet): string {
   const mark = normalizeMark(set.mark) || "?";
-  const base = `#${mark} · ${set.kind === "door" ? "Door" : "Window"} · ${set.package_count} package${set.package_count === 1 ? "" : "s"}`;
+  const clones = set.quantity > 1 ? ` · ×${set.quantity} identical` : "";
+  const each = set.quantity > 1 ? " each" : "";
+  const base = `#${mark} · ${set.kind === "door" ? "Door" : "Window"}${clones} · ${set.package_count} package${set.package_count === 1 ? "" : "s"}${each}`;
   if (!set.crate) return base;
-  return `${base} + ${set.crate.pieces} piece${set.crate.pieces === 1 ? "" : "s"} of ${set.crate.part_type || "glass"} in ${set.crate.name.trim() || "a crate"}`;
+  return `${base} + ${set.crate.pieces} piece${set.crate.pieces === 1 ? "" : "s"} of ${set.crate.part_type || "glass"}${each} in ${set.crate.name.trim() || "a crate"}`;
+}
+
+// ---------------------------------------------------------------- drafts
+// The checkpoint (owner ask): a refresh mid-list must not lose the truck.
+// Every change autosaves to the device; a fresh open offers to pick the
+// draft back up; a successful save clears it.
+
+export const DRAFT_KEY = "infinity.deliveryDraft";
+
+export interface DeliveryDraft {
+  v: 1;
+  label: string;
+  entries: WizardEntry[];
+  savedAt: string;
+}
+
+export function serializeDraft(label: string, entries: WizardEntry[], savedAt: string): string {
+  return JSON.stringify({ v: 1, label, entries, savedAt } satisfies DeliveryDraft);
+}
+
+/** Null when missing, corrupt, or from a different shape version. */
+export function parseDraft(raw: string | null): DeliveryDraft | null {
+  if (!raw) return null;
+  try {
+    const d = JSON.parse(raw) as DeliveryDraft;
+    if (d?.v !== 1 || !Array.isArray(d.entries) || typeof d.label !== "string") {
+      return null;
+    }
+    // Older drafts may predate a field; fill what validation expects.
+    d.entries = d.entries.map((e) => ({
+      project_id: e.project_id ?? null,
+      job_name: e.job_name ?? "",
+      sets: (e.sets ?? []).map((s) => ({
+        mark: s.mark ?? "",
+        kind: s.kind === "door" ? "door" : "window",
+        package_count: s.package_count ?? 1,
+        quantity: s.quantity ?? 1,
+        crate: s.crate
+          ? {
+              name: s.crate.name ?? "",
+              pieces: s.crate.pieces ?? 1,
+              part_type: s.crate.part_type ?? "glass",
+            }
+          : null,
+      })),
+    }));
+    return d;
+  } catch {
+    return null;
+  }
 }
