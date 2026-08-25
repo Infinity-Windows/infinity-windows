@@ -90,11 +90,8 @@ export function DeliveryDetail() {
       if (label && !args.row.isCrate) {
         await labelPackages(ids, label);
       }
-      // Crate pieces were logged riding in their crate: arriving puts them
-      // straight back into it, one tap, one truth.
-      if (args.row.isCrate && args.row.crateContainerId) {
-        await storePackages(ids, args.row.crateContainerId);
-      }
+      // Pool pieces ride in the job's sealed crates — arriving is all
+      // there is; the crates themselves store like any other box.
       return ids.length;
     },
     onSuccess: (n) => {

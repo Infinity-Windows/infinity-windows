@@ -48,6 +48,7 @@ import { TagPackages } from "./pages/storage/TagPackages";
 import { LogDelivery } from "./pages/storage/LogDelivery";
 import { DeliveryDetail } from "./pages/storage/DeliveryDetail";
 import { DeliveriesList } from "./pages/storage/DeliveriesList";
+import { JobMaterials } from "./pages/storage/JobMaterials";
 import { CheckoutPackages } from "./pages/storage/CheckoutPackages";
 import { StuckWrites } from "./pages/StuckWrites";
 import { Suggestions } from "./pages/Suggestions";
@@ -412,6 +413,7 @@ export default function App() {
             <Route path="/storage/log-delivery" element={<LogDelivery />} />
             <Route path="/storage/d/:id" element={<DeliveryDetail />} />
             <Route path="/storage/deliveries" element={<DeliveriesList />} />
+            <Route path="/warehouse/materials" element={<JobMaterials />} />
             <Route path="/storage/tag" element={<TagPackages />} />
             <Route path="/storage/out" element={<CheckoutPackages />} />
             <Route path="/storage/arrive" element={<ArrivePackages />} />

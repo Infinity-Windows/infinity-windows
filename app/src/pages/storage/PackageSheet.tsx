@@ -20,6 +20,7 @@ import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isForemanPlus } from "../../lib/install/types";
 import { pushToast } from "../../lib/toast";
 import {
+  setPieceCount,
   type PartType,
   addPartTypeOption,
   deletePackages,
@@ -74,6 +75,56 @@ export function PackageSheet() {
   const [partWarn, setPartWarn] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [spreadOffer, setSpreadOffer] = useState<{ count: number; type: string } | null>(null);
+  const [poolPieces, setPoolPieces] = useState("");
+  const cratePool = useQuery({
+    queryKey: ["cratePool", pkg.data?.project_id ?? pkg.data?.pending_job_name ?? ""],
+    enabled: pkg.data?.part_type === "crate",
+    queryFn: async () => {
+      let q = supabase
+        .from("packages")
+        .select("id, piece_count, part_type, mfr_mark")
+        .not("piece_count", "is", null)
+        .neq("status", "blank");
+      q = pkg.data?.project_id
+        ? q.eq("project_id", pkg.data.project_id)
+        : q.eq("pending_job_name", pkg.data?.pending_job_name ?? "");
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data ?? []).map((r) => ({
+        id: r.id as string,
+        piece_count: r.piece_count as number,
+        part_type: r.part_type as string | null,
+        mark: (r.mfr_mark as string | null) ?? null,
+      }));
+    },
+  });
+  const crateCountQ = useQuery({
+    queryKey: ["crateCount", pkg.data?.project_id ?? pkg.data?.pending_job_name ?? ""],
+    enabled: pkg.data?.part_type === "crate",
+    queryFn: async () => {
+      let q = supabase
+        .from("packages")
+        .select("id", { count: "exact", head: true })
+        .eq("part_type", "crate")
+        .neq("status", "blank");
+      q = pkg.data?.project_id
+        ? q.eq("project_id", pkg.data.project_id)
+        : q.eq("pending_job_name", pkg.data?.pending_job_name ?? "");
+      const { count, error } = await q;
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+  const crateCount = crateCountQ.data ?? 1;
+  const poolTotal = (cratePool.data ?? []).reduce((s, r) => s + r.piece_count, 0);
+  const pieceEdit = useMutation({
+    mutationFn: (n: number) => setPieceCount(pkg.data?.id ?? "", n),
+    onSuccess: () => {
+      setPartWarn(null);
+      void qc.invalidateQueries({ queryKey: ["storagePackage", serial] });
+    },
+    onError: (e) => setPartWarn(formatApiError(e)),
+  });
   const spread = useMutation({
     mutationFn: (args: { type: string }) =>
       setPackagePart(
@@ -647,7 +698,36 @@ export function PackageSheet() {
         </div>
       )}
 
-      {p.status !== "blank" && (
+      {p.status !== "blank" && p.piece_count != null && (
+        <div className="detail-card" style={{ marginTop: 8 }}>
+          <label className="field-label" htmlFor="pool-pieces">
+            Pieces of {p.part_type ?? "glass"} still in the crates for this set
+          </label>
+          <div className="row-gap" style={{ alignItems: "center" }}>
+            <input
+              id="pool-pieces"
+              type="number"
+              min={1}
+              max={99}
+              value={poolPieces || String(p.piece_count ?? "")}
+              onChange={(e) => setPoolPieces(e.target.value)}
+              style={{ width: 90 }}
+            />
+            <button
+              className="button-like"
+              disabled={pieceEdit.isPending || !poolPieces.trim()}
+              onClick={() => pieceEdit.mutate(Number(poolPieces))}
+            >
+              {pieceEdit.isPending ? "Saving…" : "Save"}
+            </button>
+            <span className="muted" style={{ fontSize: 12 }}>
+              Edit down as the glass gets used. All used up? Delete this row.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {p.status !== "blank" && p.part_type !== "crate" && p.piece_count == null && (
         <details style={{ marginTop: 8 }}>
           <summary className="muted" style={{ cursor: "pointer", fontSize: 13 }}>
             Fix the part number or label
@@ -748,6 +828,34 @@ export function PackageSheet() {
         </details>
       )}
 
+      {p.part_type === "crate" && (
+        <div className="detail-card" style={{ marginTop: 8 }}>
+          <h2 style={{ marginTop: 0, fontSize: 16 }}>
+            Sealed crate — nothing goes in or out
+          </h2>
+          {cratePool.isLoading ? (
+            <p className="muted">Reading the job&rsquo;s crate pool…</p>
+          ) : (cratePool.data ?? []).length === 0 ? (
+            <p className="muted">No crate glass listed for this job.</p>
+          ) : (
+            <>
+              <p className="muted" style={{ margin: "0 0 4px", fontSize: 13 }}>
+                Between this job&rsquo;s {crateCount} crate{crateCount === 1 ? "" : "s"}:{" "}
+                {poolTotal} piece{poolTotal === 1 ? "" : "s"} in all. Which piece
+                rides in which crate isn&rsquo;t tracked — the crates share one pool.
+              </p>
+              <ul className="unit-list">
+                {(cratePool.data ?? []).map((r) => (
+                  <li key={r.id}>
+                    #{r.mark ?? "?"} — {r.piece_count} {r.part_type ?? "glass"}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+
       {lead && p.status !== "blank" && !confirmDelete && (
         <button
           className="link"
@@ -763,6 +871,9 @@ export function PackageSheet() {
           style={{ borderLeft: "3px solid #c0392b", marginTop: 8 }}
         >
           <p style={{ margin: 0, fontSize: 14 }}>
+            {p.part_type === "crate"
+              ? "Breaking up this crate throws it away for good — it stops existing. The job's pool numbers stay until you edit or delete them as the glass gets used. "
+              : ""}
             Permanently delete <strong>{p.serial}</strong>
             {(p.package_marks ?? [])[0]
               ? ` (${(p.package_marks ?? [])[0].mark_code})`

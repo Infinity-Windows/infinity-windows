@@ -133,7 +133,7 @@ export interface StoragePackage {
   part_index?: number | null;
   /** "#16 2/3" → 3 — how many pieces the whole unit ships as. */
   part_total?: number | null;
-  part_type?: PartType | null;
+  part_type?: string | null;
   /** The manufacturer's own mark, only when it differs from the plan mark. */
   mfr_mark?: string | null;
   note: string | null;
@@ -834,6 +834,30 @@ export async function unreceivePackages(packageIds: string[]): Promise<number> {
   return (data as number) ?? 0;
 }
 
+/** Edit a crate-pool row's piece count as glass gets used (1-99). */
+export async function setPieceCount(
+  packageId: string,
+  count: number,
+): Promise<void> {
+  const { error } = await supabase.rpc("set_piece_count", {
+    p_package: packageId,
+    p_count: count,
+  });
+  if (error) throw error;
+}
+
+/** One more sealed crate than the list said — add it to match reality. */
+export async function addJobCrate(
+  projectId: string,
+  name?: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("add_job_crate", {
+    p_project: projectId,
+    p_name: name ?? null,
+  });
+  if (error) throw error;
+}
+
 /** Un-put-away: stored flips back to arrived-and-loose, container cleared. */
 export async function unstorePackages(packageIds: string[]): Promise<number> {
   const { data, error } = await supabase.rpc("unstore_packages", {
@@ -1105,7 +1129,7 @@ export function defaultDeliveryLabel(now: Date): string {
 export interface PartLike {
   part_index?: number | null;
   part_total?: number | null;
-  part_type?: PartType | null;
+  part_type?: string | null;
 }
 
 /**
@@ -1139,14 +1163,18 @@ export function pieceLine(
     p.part_index != null && p.part_total != null
       ? `${p.part_index}/${p.part_total}`
       : null;
-  const kind = p.part_type ? PART_LABELS[p.part_type] : null;
+  const kind = p.part_type
+    ? (PART_LABELS[p.part_type as PartType] ?? p.part_type)
+    : null;
   const where = marks && frac ? `${marks} ${frac}` : marks || frac;
   return [where, kind].filter(Boolean).join(" · ") || null;
 }
 
 export function partLabel(p: PartLike): string | null {
   const num = hasPartNumber(p) ? `Part ${p.part_index} of ${p.part_total}` : null;
-  const kind = p.part_type ? PART_LABELS[p.part_type] : null;
+  const kind = p.part_type
+    ? (PART_LABELS[p.part_type as PartType] ?? p.part_type)
+    : null;
   if (num && kind) return `${num} · ${kind}`;
   return num ?? kind;
 }
