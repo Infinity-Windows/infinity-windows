@@ -5,6 +5,7 @@ import {
   pickToReceive,
   pickToStore,
   pickToUndo,
+  pickToUnstore,
   type DeliveryPackageLite,
 } from "./deliveryReceiving";
 
@@ -97,6 +98,20 @@ describe("pickToUndo", () => {
     expect(pickToUndo(boxRow, 9)).toEqual(["a", "b"]);
     const crateRow = groups[0].rows.find((r) => r.isCrate)!;
     expect(pickToUndo(crateRow, 1)).toEqual(["k"]);
+  });
+});
+
+describe("pickToUnstore", () => {
+  it("pulls the most recent non-crate put-aways back", () => {
+    const groups = groupDelivery([
+      pkg({ id: "s1", status: "stored" }),
+      pkg({ id: "s2", status: "stored" }),
+      pkg({ id: "r1", status: "received" }),
+    ]);
+    const row = groups[0].rows[0];
+    expect(row.storedIds).toEqual(["s1", "s2"]);
+    expect(pickToUnstore(row, 1)).toEqual(["s2"]);
+    expect(pickToUnstore(row, 9)).toEqual(["s1", "s2"]);
   });
 });
 

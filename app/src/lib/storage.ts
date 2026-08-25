@@ -834,6 +834,28 @@ export async function unreceivePackages(packageIds: string[]): Promise<number> {
   return (data as number) ?? 0;
 }
 
+/** Un-put-away: stored flips back to arrived-and-loose, container cleared. */
+export async function unstorePackages(packageIds: string[]): Promise<number> {
+  const { data, error } = await supabase.rpc("unstore_packages", {
+    p_packages: packageIds,
+  });
+  if (error) throw error;
+  return (data as number) ?? 0;
+}
+
+/** Label every id at once — "what is it?" answered at the tailgate. */
+export async function labelPackages(
+  packageIds: string[],
+  partType: string,
+): Promise<number> {
+  const { data, error } = await supabase.rpc("label_packages", {
+    p_packages: packageIds,
+    p_part_type: partType,
+  });
+  if (error) throw error;
+  return (data as number) ?? 0;
+}
+
 /** File no-job material onto its freshly built job. Foreman+. */
 export async function filePendingPackages(
   packageIds: string[],

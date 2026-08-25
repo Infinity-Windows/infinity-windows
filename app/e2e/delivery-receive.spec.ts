@@ -90,6 +90,21 @@ test("arrive and split identical twins across conexes by count", async ({
     });
   });
 
+  const labeled: Array<{ ids: string[]; type: string }> = [];
+  await page.route("**/rest/v1/rpc/label_packages", async (route) => {
+    const body = route.request().postDataJSON() as {
+      p_packages: string[];
+      p_part_type: string;
+    };
+    labeled.push({ ids: body.p_packages, type: body.p_part_type });
+    for (const r of rows) if (body.p_packages.includes(r.id)) r.part_type = body.p_part_type;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: String(body.p_packages.length),
+    });
+  });
+
   await page.goto(`/storage/d/${D}`);
   await expect(
     page.getByText("Sunset Ridge 4 · #5050 — 1/3", { exact: true }),
@@ -97,10 +112,15 @@ test("arrive and split identical twins across conexes by count", async ({
   await expect(page.getByText("0 of 6 arrived")).toBeVisible();
   await expect(page.getByText(/Job not built yet/)).toBeVisible();
 
-  // All six come off the truck in one tap.
+  // "What is it?" answered on the same tap: pick frame, then arrive all six.
+  await page
+    .getByLabel("What is Sunset Ridge 4 · #5050 — 1/3")
+    .selectOption("frame");
   await page.getByRole("button", { name: /✓ all 6/ }).click();
   await expect(page.getByText("6 of 6 arrived")).toBeVisible();
   expect(received[0]).toHaveLength(6);
+  expect(labeled[0]).toMatchObject({ type: "frame" });
+  expect(labeled[0].ids).toHaveLength(6);
 
   // A thumb slip: undo one arrival, then bring it back in.
   const undone: string[][] = [];
@@ -114,7 +134,7 @@ test("arrive and split identical twins across conexes by count", async ({
       body: String(body.p_packages.length),
     });
   });
-  await page.getByRole("button", { name: /Undo an arrival of Sunset Ridge 4/ }).click();
+  await page.getByRole("button", { name: /Undo an arrival of Sunset Ridge 4 · #5050 — 1\/3 · frame/ }).click();
   await expect(page.getByText("5 of 6 arrived")).toBeVisible();
   expect(undone[0]).toHaveLength(1);
   await page.getByRole("button", { name: /✓ 1 arrived/ }).click();
@@ -122,9 +142,11 @@ test("arrive and split identical twins across conexes by count", async ({
 
   // Rapid split: 4 into the first conex…
   await page
-    .getByLabel("How many of Sunset Ridge 4 · #5050 — 1/3 to store")
+    .getByLabel("How many of Sunset Ridge 4 · #5050 — 1/3 · frame to store")
     .selectOption("4");
-  const where = page.getByLabel("Where to store Sunset Ridge 4 · #5050 — 1/3");
+  const where = page.getByLabel(
+    "Where to store Sunset Ridge 4 · #5050 — 1/3 · frame",
+  );
   const first = await where.locator("option").nth(1).getAttribute("value");
   await where.selectOption(first!);
   await page.getByRole("button", { name: "Store 4" }).click();
@@ -132,12 +154,32 @@ test("arrive and split identical twins across conexes by count", async ({
 
   // …and the remaining 2 into another. Which twins went where never mattered.
   await expect(page.getByText("6 of 6 arrived", { exact: false }).first()).toBeVisible();
-  const where2 = page.getByLabel("Where to store Sunset Ridge 4 · #5050 — 1/3");
+  const where2 = page.getByLabel(
+    "Where to store Sunset Ridge 4 · #5050 — 1/3 · frame",
+  );
   const second = await where2.locator("option").nth(2).getAttribute("value");
   await where2.selectOption(second!);
   await page.getByRole("button", { name: /Store 2/ }).click();
   expect(stored[1].ids).toHaveLength(2);
   expect(new Set([...stored[0].ids, ...stored[1].ids]).size).toBe(6);
+
+  // Un-put-away: the most recent store comes back to loose.
+  const unstored: string[][] = [];
+  await page.route("**/rest/v1/rpc/unstore_packages", async (route) => {
+    const body = route.request().postDataJSON() as { p_packages: string[] };
+    unstored.push(body.p_packages);
+    for (const r of rows) if (body.p_packages.includes(r.id)) r.status = "received";
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: String(body.p_packages.length),
+    });
+  });
+  await page
+    .getByRole("button", { name: /Un-put-away one of Sunset Ridge 4 · #5050 — 1\/3 · frame/ })
+    .click();
+  await expect(page.getByText("Put-away undone — back to loose.")).toBeVisible();
+  expect(unstored[0]).toHaveLength(1);
 });
 
 test("search filters, and a cross-job bundle stores with one I-Understand", async ({

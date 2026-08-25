@@ -353,9 +353,28 @@ export function PackageSheet() {
         <div>
           <BackChip />
           <p className="home-greeting">{p.short_code ?? "Package"}</p>
-          <h1>{p.serial}</h1>
+          {/* The name the crew saved, not the serial (owner, 2026-08-25):
+              "Don Timpson Res #1: 1/2". The serial stays on the line below —
+              it is still the scannable identity. */}
+          <h1>
+            {(() => {
+              const jobLine = p.project_id
+                ? (jobCode.get(p.project_id) ?? null)
+                : (p.pending_job_name ?? null);
+              const mark =
+                (p.package_marks ?? [])[0]?.mark_code ?? p.mfr_mark ?? null;
+              if (!mark) return p.serial;
+              const part =
+                p.piece_count != null
+                  ? `${p.piece_count} pc ${p.part_type ?? "glass"}`
+                  : p.part_index != null && p.part_total != null
+                    ? `${p.part_index}/${p.part_total}`
+                    : null;
+              return `${jobLine ? `${jobLine} ` : ""}#${mark}${part ? `: ${part}` : ""}`;
+            })()}
+          </h1>
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-            {statusLine}
+            {p.serial} · {statusLine}
             {/* Boneyard = tagged company stock, project null ON PURPOSE
                 (ticket 17). A finished job's packages keep their job — the
                 two must never blur (audit F9). A blank sticker is neither. */}

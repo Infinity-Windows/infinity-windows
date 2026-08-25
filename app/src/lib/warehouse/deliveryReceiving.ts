@@ -34,9 +34,11 @@ export interface SlotRow {
    *  straight into it. */
   crateContainerId: string | null;
   /** Ids whose arrival can be UNDONE: received-and-loose, plus crate
-   *  pieces (their arrive tap auto-stored them into the crate). A real
-   *  put-away in a conex is not undoable from here. */
+   *  pieces (their arrive tap auto-stored them into the crate). */
   undoableIds: string[];
+  /** Non-crate ids currently stored — un-put-away pulls them back to
+   *  loose, most recent first. */
+  storedIds: string[];
 }
 
 export interface JobGroup {
@@ -114,6 +116,7 @@ export function groupDelivery(
         looseIds: [],
         crateContainerId: p.piece_count != null ? p.container_id : null,
         undoableIds: [],
+        storedIds: [],
       };
       job.rows.push(row);
     }
@@ -129,6 +132,8 @@ export function groupDelivery(
       row.stored += 1;
       if (p.piece_count != null && p.status === "stored") {
         row.undoableIds.push(p.id);
+      } else if (p.status === "stored") {
+        row.storedIds.push(p.id);
       }
     }
   }
@@ -152,6 +157,12 @@ export function pickToReceive(row: SlotRow, n: number): string[] {
 export function pickToUndo(row: SlotRow, n: number): string[] {
   const take = Math.max(0, Math.min(n, row.undoableIds.length));
   return row.undoableIds.slice(row.undoableIds.length - take);
+}
+
+/** Un-put-away the most recent stores first. */
+export function pickToUnstore(row: SlotRow, n: number): string[] {
+  const take = Math.max(0, Math.min(n, row.storedIds.length));
+  return row.storedIds.slice(row.storedIds.length - take);
 }
 
 /** "store n into that conex" -> arrived-and-loose first. */
