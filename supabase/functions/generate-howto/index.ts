@@ -124,36 +124,66 @@ Deno.serve(async (req) => {
     }
 
     let usage: { inputTokens: number | null; outputTokens: number | null } | null = null;
-    const result = await anthropicChatJson<HowtoResult>({
-      system:
-        `You write a concise, field-ready how-to for installing window type ${type.type_code} (${type.name}), aimed at a newer installer. Ground every step in the reference install and tips below. 5-9 steps, each a short imperative title + 1-2 sentence detail. Include the known watch-outs where relevant. No fluff.`,
-      user:
-        `Tips: ${JSON.stringify(type.tips_json ?? [])}\nWatch-outs: ${JSON.stringify(type.watch_outs_json ?? [])}\nReference install: ${JSON.stringify(golden)}`,
-      schemaHint: `Schema: { "steps": [ { "title": string, "detail": string } ] }`,
-      schema: HOWTO_SCHEMA,
-      onUsage: (u) => {
-        usage = u;
-      },
-    }).catch(async (err) => {
-      await releaseAiSpend(supabase, gate.reservationId, "provider_failed", false);
-      throw err;
-    });
-    await settleAiSpend(supabase, gate.reservationId, usage, ANTHROPIC_MODEL);
 
     // A step that arrives as a plain sentence instead of a title-and-detail pair
     // is still a step. Dropping it because it is the wrong shape is how a guide
     // ends up empty, which is the failure this migration has to stop.
-    const steps = (Array.isArray(result.steps) ? result.steps : [])
-      .map((s) =>
-        typeof s === "string"
-          ? { title: s.trim(), detail: "" }
-          : {
-            title: String(s?.title ?? "").trim(),
-            detail: String(s?.detail ?? "").trim(),
-          },
-      )
-      .filter((s) => s.title)
-      .slice(0, 9);
+    const readSteps = (result: HowtoResult) =>
+      (Array.isArray(result.steps) ? result.steps : [])
+        .map((s) =>
+          typeof s === "string"
+            ? { title: s.trim(), detail: "" }
+            : {
+              title: String(s?.title ?? "").trim(),
+              detail: String(s?.detail ?? "").trim(),
+            },
+        )
+        .filter((s) => s.title)
+        .slice(0, 9);
+
+    const generate = (extra: string) => {
+      // What the earlier attempt cost. The totals onUsage reports are per call,
+      // so a retry has to add to them, not replace them.
+      const spent = usage;
+      return anthropicChatJson<HowtoResult>({
+        system:
+          `You write a concise, field-ready how-to for installing window type ${type.type_code} (${type.name}), aimed at a newer installer. Ground every step in the reference install and tips below. 5-9 steps, each a short imperative title + 1-2 sentence detail. Include the known watch-outs where relevant. No fluff.${extra}`,
+        user:
+          `Tips: ${JSON.stringify(type.tips_json ?? [])}\nWatch-outs: ${JSON.stringify(type.watch_outs_json ?? [])}\nReference install: ${JSON.stringify(golden)}`,
+        schemaHint: `Schema: { "steps": [ { "title": string, "detail": string } ] }`,
+        schema: HOWTO_SCHEMA,
+        onUsage: (u) => {
+          usage = {
+            inputTokens: (spent?.inputTokens ?? 0) + (u.inputTokens ?? 0),
+            outputTokens: (spent?.outputTokens ?? 0) + (u.outputTokens ?? 0),
+          };
+        },
+      }).catch(async (err) => {
+        await releaseAiSpend(supabase, gate.reservationId, "provider_failed", false);
+        throw err;
+      });
+    };
+
+    let steps = readSteps(await generate(""));
+
+    // One firmer retry before refusing. The deploy smoke went red on both
+    // attempts of the same run (2026-08-24): the one window type with a golden
+    // install has a reference row that is null in every narrative field, and
+    // the model kept answering "ground every step in the reference install"
+    // with steps: [] — schema-valid, so the save guard below was the first
+    // thing to object. Naming the emptiness costs $0.0009 more; a red deploy
+    // costs a morning. Once only, the same rule as the repair pass in
+    // anthropicChatJson: a model that will not answer twice will not answer
+    // five times either.
+    if (steps.length === 0) {
+      steps = readSteps(
+        await generate(
+          " IMPORTANT: a previous attempt at this request returned an empty steps array, which is never a valid answer. Reply with the steps array only; at least 3 steps, each with a non-empty title and detail. If the reference install is thin, ground the steps in the tips and watch-outs below instead.",
+        ),
+      );
+    }
+
+    await settleAiSpend(supabase, gate.reservationId, usage, ANTHROPIC_MODEL);
 
     // Never write a guide with nothing in it. `howto_json` is replaced outright,
     // so an answer that arrives with no steps would blank an existing guide and
