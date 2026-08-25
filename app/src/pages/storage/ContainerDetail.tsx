@@ -20,6 +20,12 @@ import { BackChip } from "../../components/BackChip";
 import { containerPostersPdf, downloadPdf } from "../../lib/labels";
 import { ContainerForm } from "./StorageHub";
 import {
+  addPartTypeOption,
+  customCheckin,
+  listPartTypeOptions,
+  PART_TYPES,
+  PART_LABELS,
+  type PartType,
   deletePackages,
   agingDays,
   groupByJob,
@@ -111,6 +117,53 @@ export function ContainerDetail() {
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
   const [sweeping, setSweeping] = useState(false);
+  const [checkinOpen, setCheckinOpen] = useState(false);
+  const [customForm, setCustomForm] = useState({
+    projectId: "",
+    mark: "",
+    partType: "",
+    newLabel: "",
+    note: "",
+    count: 1,
+  });
+  const partOptions = useQuery({
+    queryKey: ["partTypeOptions"],
+    queryFn: listPartTypeOptions,
+  });
+  const partChoices = [
+    ...PART_TYPES,
+    ...(partOptions.data ?? []).filter(
+      (t) => !PART_TYPES.includes(t as PartType),
+    ),
+  ];
+  const addLabel = useMutation({
+    mutationFn: (name: string) => addPartTypeOption(name),
+    onSuccess: (name) => {
+      setCustomForm((prev) => ({ ...prev, partType: name, newLabel: "" }));
+      void qc.invalidateQueries({ queryKey: ["partTypeOptions"] });
+    },
+  });
+  const doCheckin = useMutation({
+    mutationFn: () =>
+      customCheckin({
+        containerId: id,
+        projectId: customForm.projectId || null,
+        mark: customForm.mark.trim() || null,
+        partType: customForm.partType || null,
+        note: customForm.note.trim() || null,
+        count: customForm.count,
+      }),
+    onSuccess: (n) => {
+      setSweepReport(
+        `Checked ${n} in${customForm.mark.trim() ? ` on set #${customForm.mark.trim().replace(/^#/, "").toUpperCase()}` : ""}.`,
+      );
+      setCheckinOpen(false);
+      setCustomForm({ projectId: "", mark: "", partType: "", newLabel: "", note: "", count: 1 });
+      void qc.invalidateQueries({ queryKey: ["storageContainers"] });
+      void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+    },
+    onError: (e) => setSweepReport(formatApiError(e)),
+  });
   const [swept, setSwept] = useState<Set<string>>(new Set());
   const [sweepReport, setSweepReport] = useState<string | null>(null);
   const sweepDelete = useMutation({
@@ -529,6 +582,9 @@ export function ContainerDetail() {
 
       <div className="row-between" style={{ alignItems: "center" }}>
         <h2 style={{ marginBottom: 0 }}>Inside now ({stored.length})</h2>
+        <button className="link" onClick={() => setCheckinOpen((v) => !v)}>
+          {checkinOpen ? "Close check-in" : "Custom check-in…"}
+        </button>
         {lead && stored.length > 0 && (
           <button
             className="link"
@@ -563,6 +619,97 @@ export function ContainerDetail() {
           >
             {sweepDelete.isPending ? "Deleting…" : `Delete ${swept.size} selected`}
           </button>
+        </div>
+      )}
+      {checkinOpen && (
+        <div className="detail-card" style={{ margin: "6px 0" }}>
+          <p className="muted" style={{ margin: "0 0 6px", fontSize: 13 }}>
+            Something in hand that no list predicted? Check it in right here —
+            job optional, any label, and a mark attaches it to a set wherever
+            that set&rsquo;s other pieces sit.
+          </p>
+          <div className="row-gap" style={{ flexWrap: "wrap", alignItems: "center" }}>
+            <select
+              value={customForm.count}
+              onChange={(e) =>
+                setCustomForm((prev) => ({ ...prev, count: Number(e.target.value) }))
+              }
+              aria-label="How many to check in"
+            >
+              {Array.from({ length: 20 }, (_, n) => (
+                <option key={n + 1} value={n + 1}>
+                  {n + 1}
+                </option>
+              ))}
+            </select>
+            <select
+              value={customForm.projectId}
+              onChange={(e) =>
+                setCustomForm((prev) => ({ ...prev, projectId: e.target.value }))
+              }
+              aria-label="Which job"
+            >
+              <option value="">No job</option>
+              {(projects.data ?? []).map((pr) => (
+                <option key={pr.id} value={pr.id}>
+                  {pr.job_code ?? pr.name}
+                </option>
+              ))}
+            </select>
+            <input
+              value={customForm.mark}
+              onChange={(e) => setCustomForm((prev) => ({ ...prev, mark: e.target.value }))}
+              placeholder="Set mark, e.g. 16 (optional)"
+              aria-label="Attach to set"
+              style={{ width: 180 }}
+            />
+            <select
+              value={customForm.partType}
+              onChange={(e) =>
+                setCustomForm((prev) => ({ ...prev, partType: e.target.value }))
+              }
+              aria-label="What is it"
+            >
+              <option value="">— what is it? —</option>
+              {partChoices.map((t) => (
+                <option key={t} value={t}>
+                  {PART_LABELS[t as PartType] ?? t}
+                </option>
+              ))}
+            </select>
+            <input
+              value={customForm.newLabel}
+              onChange={(e) =>
+                setCustomForm((prev) => ({ ...prev, newLabel: e.target.value }))
+              }
+              placeholder="Add a label…"
+              aria-label="Add a label"
+              style={{ width: 130 }}
+            />
+            <button
+              className="button-like"
+              disabled={!customForm.newLabel.trim() || addLabel.isPending}
+              onClick={() => addLabel.mutate(customForm.newLabel.trim())}
+            >
+              Add
+            </button>
+            <input
+              value={customForm.note}
+              onChange={(e) => setCustomForm((prev) => ({ ...prev, note: e.target.value }))}
+              placeholder="Note (optional)"
+              aria-label="Check-in note"
+              style={{ width: 200 }}
+            />
+            <button
+              className="primary"
+              disabled={doCheckin.isPending}
+              onClick={() => doCheckin.mutate()}
+            >
+              {doCheckin.isPending
+                ? "Checking in…"
+                : `Check ${customForm.count} in here`}
+            </button>
+          </div>
         </div>
       )}
       {sweepReport && <p className="error">{sweepReport}</p>}
