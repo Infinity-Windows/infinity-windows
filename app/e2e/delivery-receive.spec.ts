@@ -13,7 +13,7 @@ const twin = (id: string, status: string) => ({
   mfr_mark: "5050",
   part_index: 1,
   part_total: 3,
-  part_type: null,
+  part_type: null as string | null,
   piece_count: null,
   container_id: null,
   delivery_id: D,
