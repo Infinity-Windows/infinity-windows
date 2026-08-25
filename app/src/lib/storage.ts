@@ -802,6 +802,28 @@ export async function receivePackages(packageIds: string[]): Promise<number> {
   return (data as number) ?? 0;
 }
 
+/** Check something in on the spot — no delivery list, job optional,
+ *  any label, optionally attached to a set by mark. */
+export async function customCheckin(input: {
+  containerId: string;
+  projectId: string | null;
+  mark: string | null;
+  partType: string | null;
+  note: string | null;
+  count: number;
+}): Promise<number> {
+  const { data, error } = await supabase.rpc("custom_checkin", {
+    p_container: input.containerId,
+    p_project: input.projectId,
+    p_mark: input.mark,
+    p_part_type: input.partType,
+    p_note: input.note,
+    p_count: input.count,
+  });
+  if (error) throw error;
+  return (data as number) ?? 0;
+}
+
 /** Undo an arrival tap: received flips back to expected. Idempotent-ish —
  *  the server skips anything a person actually put away. */
 export async function unreceivePackages(packageIds: string[]): Promise<number> {
