@@ -20,6 +20,7 @@ import { BackChip } from "../../components/BackChip";
 import { containerPostersPdf, downloadPdf } from "../../lib/labels";
 import { ContainerForm } from "./StorageHub";
 import {
+  deletePackages,
   agingDays,
   groupByJob,
   listActivePackages,
@@ -109,6 +110,26 @@ export function ContainerDetail() {
   const qc = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
+  const [sweeping, setSweeping] = useState(false);
+  const [swept, setSwept] = useState<Set<string>>(new Set());
+  const [sweepReport, setSweepReport] = useState<string | null>(null);
+  const sweepDelete = useMutation({
+    mutationFn: (ids: string[]) => deletePackages(ids),
+    onSuccess: (r) => {
+      setSweeping(false);
+      setSwept(new Set());
+      setSweepReport(
+        r.refused.length === 0
+          ? `Deleted ${r.deleted} package${r.deleted === 1 ? "" : "s"} for good.`
+          : `Deleted ${r.deleted}. Couldn't delete ${r.refused
+              .map((x) => `${x.serial} (${x.reason})`)
+              .join("; ")}`,
+      );
+      void qc.invalidateQueries({ queryKey: ["storageContainers"] });
+      void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+    },
+    onError: (e) => setSweepReport(formatApiError(e)),
+  });
   const canModel = isSupervisorPlus(effectiveRole);
   // The 3D shell (ticket 22, first slice): dims form state, prefilled from
   // the row or the standard box the moment the panel opens.
@@ -506,7 +527,45 @@ export function ContainerDetail() {
         </>
       )}
 
-      <h2>Inside now ({stored.length})</h2>
+      <div className="row-between" style={{ alignItems: "center" }}>
+        <h2 style={{ marginBottom: 0 }}>Inside now ({stored.length})</h2>
+        {lead && stored.length > 0 && (
+          <button
+            className="link"
+            onClick={() => {
+              setSweeping((v) => !v);
+              setSwept(new Set());
+              setSweepReport(null);
+            }}
+          >
+            {sweeping ? "Cancel" : "Delete several…"}
+          </button>
+        )}
+      </div>
+      {sweeping && (
+        <div className="row-gap" style={{ margin: "6px 0" }}>
+          <button
+            className="link"
+            onClick={() => setSwept(new Set(stored.map((p) => p.id)))}
+          >
+            Select all
+          </button>
+          <button
+            className="button-like"
+            style={{ background: "#c0392b", color: "white" }}
+            disabled={swept.size === 0 || sweepDelete.isPending}
+            onClick={() => {
+              const ok = window.confirm(
+                `Permanently delete ${swept.size} package${swept.size === 1 ? "" : "s"} from ${container.name}? Their history goes with them. This can't be undone.`,
+              );
+              if (ok) sweepDelete.mutate([...swept]);
+            }}
+          >
+            {sweepDelete.isPending ? "Deleting…" : `Delete ${swept.size} selected`}
+          </button>
+        </div>
+      )}
+      {sweepReport && <p className="error">{sweepReport}</p>}
       {groupByJob(stored).map((g) => (
         <div key={g.projectId ?? "none"} style={{ marginBottom: 10 }}>
           <p className="tcx-label" style={{ margin: "6px 0 4px" }}>
@@ -515,6 +574,32 @@ export function ContainerDetail() {
           <div className="home-projects">
             {g.packages.map((p) => {
               const days = agingDays(p.bound_at, new Date());
+              if (sweeping) {
+                return (
+                  <label
+                    key={p.id}
+                    className="project-card home-project"
+                    style={{ display: "flex", gap: 8, alignItems: "center" }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={swept.has(p.id)}
+                      onChange={() =>
+                        setSwept((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(p.id)) next.delete(p.id);
+                          else next.add(p.id);
+                          return next;
+                        })
+                      }
+                      aria-label={`Select ${p.serial}`}
+                    />
+                    <div className="home-project-head" style={{ flex: 1 }}>
+                      {row(p, days != null ? `${days}d in storage` : undefined)}
+                    </div>
+                  </label>
+                );
+              }
               return (
                 <Link key={p.id} to={`/pkg/${p.serial}`} className="project-card home-project">
                   <div className="home-project-head">

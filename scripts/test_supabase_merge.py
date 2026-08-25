@@ -113,7 +113,9 @@ class TestSchemaParsing(unittest.TestCase):
         # `opening_notes` (20260923000000), the per-opening notes thread,
         # `capability_badges` (20260923010000), the skill-tree badges, and
         # `summon_declines` (20260923020000), the can't-help record.
-        self.assertEqual(len(SCHEMA.tables), 102)
+        # +2: part_type_options + pending_delivery_sets (manual deliveries,
+        # 20260924000000).
+        self.assertEqual(len(SCHEMA.tables), 104)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

@@ -152,6 +152,7 @@ export async function getHeartbeat(): Promise<HeartbeatSnapshot> {
     const issues = await listIssues();
     for (const i of issues) {
       if (i.status !== "open") continue;
+      if (!i.project_id) continue; // missing_job issues have no job yet
       openIssuesByProject.set(
         i.project_id,
         (openIssuesByProject.get(i.project_id) ?? 0) + 1,

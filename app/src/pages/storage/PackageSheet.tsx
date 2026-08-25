@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listLocations, listProjects } from "../../lib/api";
+import { supabase } from "../../lib/supabase";
 import { formatApiError } from "../../lib/errors";
 import { BackChip } from "../../components/BackChip";
 import { downloadPdf, packageLabelsPdf } from "../../lib/labels";
@@ -19,6 +20,13 @@ import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isForemanPlus } from "../../lib/install/types";
 import { pushToast } from "../../lib/toast";
 import {
+  type PartType,
+  addPartTypeOption,
+  deletePackages,
+  listPartTypeOptions,
+  setPackagePart,
+  PART_TYPES,
+  PART_LABELS,
   agingDays,
   assignPackageToJob,
   daysInStorage,
@@ -59,9 +67,64 @@ export function PackageSheet() {
   // already runs, under the same key.
   const studioJobModels = useQuery({ queryKey: ["studioJobModels"], queryFn: listJobModelRows });
   const { effectiveRole } = useEffectiveRole();
-  const lead = isForemanPlus(effectiveRole);
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const lead = isForemanPlus(effectiveRole);
+  const [newPartType, setNewPartType] = useState("");
+  const [partWarn, setPartWarn] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteWarn, setDeleteWarn] = useState<string | null>(null);
+  const partOptions = useQuery({
+    queryKey: ["partTypeOptions"],
+    queryFn: listPartTypeOptions,
+  });
+  const partChoices = [
+    ...PART_TYPES,
+    ...(partOptions.data ?? []).filter((t) => !PART_TYPES.includes(t as PartType)),
+  ];
+  const addType = useMutation({
+    mutationFn: (name: string) => addPartTypeOption(name),
+    onSuccess: () => {
+      setNewPartType("");
+      void qc.invalidateQueries({ queryKey: ["partTypeOptions"] });
+    },
+  });
+  const partEdit = useMutation({
+    mutationFn: (args: { index: number | null; total: number | null; type: string | null }) =>
+      setPackagePart(pkg.data?.id ?? "", args.index, args.total, args.type),
+    onSuccess: async (_res, args) => {
+      void qc.invalidateQueries({ queryKey: ["storagePackage", serial] });
+      setPartWarn(null);
+      // Soft heads-up, never a block: two boxes claiming the same slot.
+      const mark = (pkg.data?.package_marks ?? [])[0]?.mark_code;
+      if (mark && args.index != null && pkg.data?.project_id) {
+        const { data: twins } = await supabase
+          .from("packages")
+          .select("id, package_marks!inner(mark_code)")
+          .eq("project_id", pkg.data.project_id)
+          .eq("part_index", args.index)
+          .eq("package_marks.mark_code", mark)
+          .neq("id", pkg.data?.id ?? "");
+        if ((twins ?? []).length > 0) {
+          setPartWarn(
+            `Heads up — #${mark} now has two boxes labeled ${args.index} of ${args.total}. Fix whichever one is wrong.`,
+          );
+        }
+      }
+    },
+    onError: (e) => setPartWarn(formatApiError(e)),
+  });
+  const deleteOne = useMutation({
+    mutationFn: () => deletePackages([pkg.data?.id ?? ""]),
+    onSuccess: (r) => {
+      if (r.refused.length > 0) {
+        setDeleteWarn(r.refused[0].reason);
+        return;
+      }
+      navigate("/warehouse");
+    },
+    onError: (e) => setDeleteWarn(formatApiError(e)),
+  });
   const setArea = useMutation({
     // Offline-first like every warehouse write: pointing at a package happens
     // standing inside the box, which is exactly where the bars are not.
@@ -279,6 +342,9 @@ export function PackageSheet() {
                 ? " · Boneyard"
                 : ""}
             {p.category ? ` · ${CATEGORY_LABELS[p.category]}` : ""}
+            {p.piece_count != null
+              ? ` · ${p.piece_count} piece${p.piece_count === 1 ? "" : "s"} inside`
+              : ""}
             {days != null ? ` · tagged ${days}d ago` : ""}
             {storedDays != null ? ` · stored ${storedDays}d` : ""}
           </p>
@@ -534,6 +600,128 @@ export function PackageSheet() {
               Keep it
             </button>
           </div>
+        </div>
+      )}
+
+      {p.status !== "blank" && (
+        <details style={{ marginTop: 8 }}>
+          <summary className="muted" style={{ cursor: "pointer", fontSize: 13 }}>
+            Fix the part number or label
+          </summary>
+          <div className="detail-card" style={{ marginTop: 6 }}>
+            <p className="muted" style={{ margin: "0 0 6px", fontSize: 12 }}>
+              The boxes&rsquo; own printed labels decide the order — set this
+              one to match what&rsquo;s written on it.
+            </p>
+            <div className="row-gap" style={{ flexWrap: "wrap", alignItems: "center" }}>
+              {p.piece_count == null && (
+                <>
+                  <label className="field-label" style={{ margin: 0 }}>Part</label>
+                  <select
+                    value={p.part_index ?? ""}
+                    onChange={(e) =>
+                      partEdit.mutate({
+                        index: e.target.value ? Number(e.target.value) : null,
+                        total: e.target.value ? (p.part_total ?? Number(e.target.value)) : null,
+                        type: p.part_type ?? null,
+                      })
+                    }
+                  >
+                    <option value="">—</option>
+                    {Array.from({ length: 20 }, (_, n) => (
+                      <option key={n + 1} value={n + 1}>{n + 1}</option>
+                    ))}
+                  </select>
+                  <span className="muted">of</span>
+                  <select
+                    value={p.part_total ?? ""}
+                    onChange={(e) =>
+                      partEdit.mutate({
+                        index: e.target.value ? (p.part_index ?? 1) : null,
+                        total: e.target.value ? Number(e.target.value) : null,
+                        type: p.part_type ?? null,
+                      })
+                    }
+                  >
+                    <option value="">—</option>
+                    {Array.from({ length: 20 }, (_, n) => (
+                      <option key={n + 1} value={n + 1}>{n + 1}</option>
+                    ))}
+                  </select>
+                </>
+              )}
+              <label className="field-label" style={{ margin: 0 }}>Label</label>
+              <select
+                value={p.part_type ?? ""}
+                onChange={(e) =>
+                  partEdit.mutate({
+                    index: p.part_index ?? null,
+                    total: p.part_total ?? null,
+                    type: e.target.value || null,
+                  })
+                }
+              >
+                <option value="">—</option>
+                {partChoices.map((t) => (
+                  <option key={t} value={t}>
+                    {PART_LABELS[t as PartType] ?? t}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={newPartType}
+                onChange={(e) => setNewPartType(e.target.value)}
+                placeholder="Add a label, e.g. door handle"
+                style={{ width: 180 }}
+              />
+              <button
+                className="button-like"
+                disabled={!newPartType.trim() || addType.isPending}
+                onClick={() => addType.mutate(newPartType.trim())}
+              >
+                Add
+              </button>
+            </div>
+            {partWarn && <p className="warn-text" style={{ fontSize: 12 }}>{partWarn}</p>}
+          </div>
+        </details>
+      )}
+
+      {lead && p.status !== "blank" && !confirmDelete && (
+        <button
+          className="link"
+          style={{ color: "#c0392b", marginTop: 8 }}
+          onClick={() => setConfirmDelete(true)}
+        >
+          Delete this package…
+        </button>
+      )}
+      {confirmDelete && (
+        <div
+          className="detail-card"
+          style={{ borderLeft: "3px solid #c0392b", marginTop: 8 }}
+        >
+          <p style={{ margin: 0, fontSize: 14 }}>
+            Permanently delete <strong>{p.serial}</strong>
+            {(p.package_marks ?? [])[0]
+              ? ` (${(p.package_marks ?? [])[0].mark_code})`
+              : ""}
+            ? Its whole history goes with it. This can&rsquo;t be undone.
+          </p>
+          <div className="row-gap" style={{ marginTop: 8 }}>
+            <button
+              className="button-like"
+              style={{ background: "#c0392b", color: "white" }}
+              disabled={deleteOne.isPending}
+              onClick={() => deleteOne.mutate()}
+            >
+              {deleteOne.isPending ? "Deleting…" : "Delete it — no way back"}
+            </button>
+            <button className="button-like" onClick={() => setConfirmDelete(false)}>
+              Keep it
+            </button>
+          </div>
+          {deleteWarn && <p className="error">{deleteWarn}</p>}
         </div>
       )}
 

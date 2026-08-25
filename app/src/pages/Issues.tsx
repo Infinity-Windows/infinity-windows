@@ -189,7 +189,7 @@ export function Issues() {
       if (p.status === "active") byId.set(p.id, p);
     }
     for (const i of all) {
-      if (!byId.has(i.project_id)) {
+      if (i.project_id && !byId.has(i.project_id)) {
         const p = projectById.get(i.project_id);
         if (p) byId.set(p.id, p);
       }
@@ -227,7 +227,7 @@ export function Issues() {
   const photoUrlById = photosQ.data ?? new Map<string, string | null>();
 
   const row = (i: Issue) => {
-    const project = projectById.get(i.project_id);
+    const project = i.project_id ? projectById.get(i.project_id) : undefined;
     const opening = i.opening_id ? openingById.get(i.opening_id) : null;
     const mark = URGENCY_MARK[i.urgency];
     const who = i.created_by ? (nameById.get(i.created_by) ?? "someone") : "system";
@@ -237,7 +237,7 @@ export function Issues() {
     // Which opening the problem is about, coloured blue (window) / green (door).
     const isDoor = Boolean(
       opening &&
-        (unitKindByProject.get(i.project_id) ?? openingUnitKind)(opening) ===
+        ((i.project_id ? unitKindByProject.get(i.project_id) : undefined) ?? openingUnitKind)(opening) ===
           "door",
     );
     const unitColor = isDoor ? "var(--ok)" : "var(--info)";
@@ -264,7 +264,7 @@ export function Issues() {
               {KIND_LABELS[i.kind]}
             </span>
             <span className="issue-job" title={project?.name ?? undefined}>
-              {project?.job_code ?? "job?"}
+              {project?.job_code ?? (i.kind === "missing_job" ? "New job" : "job?")}
               {project?.name ? ` · ${project.name}` : ""}
             </span>
             {opening && (
@@ -485,7 +485,8 @@ export function Issues() {
             <div className="photo-viewer-info">
               <p className="photo-viewer-caption">
                 {KIND_LABELS[viewerIssue.kind]}
-                {projectById.get(viewerIssue.project_id)?.job_code
+                {viewerIssue.project_id &&
+                projectById.get(viewerIssue.project_id)?.job_code
                   ? ` · ${projectById.get(viewerIssue.project_id)!.job_code}`
                   : ""}
               </p>

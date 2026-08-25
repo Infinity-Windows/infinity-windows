@@ -109,6 +109,8 @@ export function containerKind(c: Pick<StorageContainer, "kind"> | null | undefin
 }
 
 export interface StoragePackage {
+  /** Crate contents: pieces riding inside for this mark (null on 1-of-N packages). */
+  piece_count?: number | null;
   /** Where inside its current box: front/middle/back, or a compass point in
    * the building. Cleared by the database the moment the package changes
    * places — a pointer, not a place (ADR-0006). */
@@ -713,6 +715,105 @@ export async function bindPackage(input: {
     return legacy.data as StoragePackage;
   }
   throw error;
+}
+
+/** Fix a bound package's part number/label after the fact — the boxes'
+ *  own printed order decides, so the crew re-labels with the box in hand. */
+export async function setPackagePart(
+  packageId: string,
+  partIndex: number | null,
+  partTotal: number | null,
+  partType: string | null,
+): Promise<void> {
+  const { error } = await supabase.rpc("set_package_part", {
+    p_package: packageId,
+    p_part_index: partIndex,
+    p_part_total: partTotal,
+    p_part_type: partType,
+  });
+  if (error) throw error;
+}
+
+export interface DeliveryEntryPayload {
+  project_id: string | null;
+  job_name: string | null;
+  sets: unknown[];
+}
+
+/** The QR-less wizard's save: everything lands in one call, or nothing does. */
+export async function createManualDelivery(
+  label: string,
+  entries: unknown[],
+): Promise<{ delivery_id: string; created: number; pending: number }> {
+  const { data, error } = await supabase.rpc("create_manual_delivery", {
+    p_label: label,
+    p_entries: entries,
+  });
+  if (error) throw error;
+  return data as { delivery_id: string; created: number; pending: number };
+}
+
+/** Permanent. The server refuses checked-out packages and names them. */
+export async function deletePackages(
+  packageIds: string[],
+): Promise<{ deleted: number; refused: { serial: string; reason: string }[] }> {
+  const { data, error } = await supabase.rpc("delete_packages", {
+    p_package_ids: packageIds,
+  });
+  if (error) throw error;
+  return data as { deleted: number; refused: { serial: string; reason: string }[] };
+}
+
+export async function listPartTypeOptions(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("part_type_options")
+    .select("name")
+    .order("name");
+  if (error) throw error;
+  return (data ?? []).map((r) => r.name as string);
+}
+
+export async function addPartTypeOption(name: string): Promise<string> {
+  const { data, error } = await supabase.rpc("add_part_type_option", {
+    p_name: name,
+  });
+  if (error) throw error;
+  return (data as { name: string }).name;
+}
+
+export interface PendingDeliverySet {
+  id: string;
+  delivery_id: string;
+  job_name: string;
+  mark_code: string;
+  kind: string;
+  package_count: number;
+  crate_name: string | null;
+  crate_pieces: number | null;
+  materialized_at: string | null;
+}
+
+export async function listPendingDeliverySets(): Promise<PendingDeliverySet[]> {
+  const { data, error } = await supabase
+    .from("pending_delivery_sets")
+    .select(
+      "id, delivery_id, job_name, mark_code, kind, package_count, crate_name, crate_pieces, materialized_at",
+    )
+    .is("materialized_at", null)
+    .order("created_at");
+  if (error) throw error;
+  return (data ?? []) as PendingDeliverySet[];
+}
+
+export async function materializePendingSet(
+  setId: string,
+  projectId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("materialize_pending_set", {
+    p_set: setId,
+    p_project: projectId,
+  });
+  if (error) throw error;
 }
 
 export async function storePackages(packageIds: string[], containerId: string): Promise<number> {

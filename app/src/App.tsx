@@ -45,6 +45,7 @@ import { Scan } from "./pages/Scan";
 import { StorageHub } from "./pages/storage/StorageHub";
 import { ContainerDetail } from "./pages/storage/ContainerDetail";
 import { TagPackages } from "./pages/storage/TagPackages";
+import { LogDelivery } from "./pages/storage/LogDelivery";
 import { CheckoutPackages } from "./pages/storage/CheckoutPackages";
 import { StuckWrites } from "./pages/StuckWrites";
 import { ArrivePackages } from "./pages/storage/ArrivePackages";
@@ -404,6 +405,7 @@ export default function App() {
               path="/storage"
               element={<RequireRole path="/storage"><StorageHub /></RequireRole>}
             />
+            <Route path="/storage/log-delivery" element={<LogDelivery />} />
             <Route path="/storage/tag" element={<TagPackages />} />
             <Route path="/storage/out" element={<CheckoutPackages />} />
             <Route path="/storage/arrive" element={<ArrivePackages />} />
