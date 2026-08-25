@@ -766,13 +766,14 @@ export interface DeliveryRow {
   id: string;
   label: string | null;
   arrived_on: string | null;
+  expected_at?: string | null;
   created_at?: string | null;
 }
 
 export async function listDeliveries(): Promise<DeliveryRow[]> {
   const { data, error } = await supabase
     .from("package_deliveries")
-    .select("id, label, arrived_on")
+    .select("id, label, arrived_on, expected_at")
     .order("arrived_on", { ascending: false })
     .limit(20);
   if (error) throw error;
@@ -832,6 +833,45 @@ export async function unreceivePackages(packageIds: string[]): Promise<number> {
   });
   if (error) throw error;
   return (data as number) ?? 0;
+}
+
+/** Rename a delivery / set when the truck is expected. Foreman+. */
+export async function updateDelivery(
+  deliveryId: string,
+  patch: { label?: string; expectedAt?: string },
+): Promise<void> {
+  const { error } = await supabase.rpc("update_delivery", {
+    p_delivery: deliveryId,
+    p_label: patch.label ?? null,
+    p_expected_at: patch.expectedAt ?? null,
+  });
+  if (error) throw error;
+}
+
+/** Delete a delivery: expected pieces die with the list; arrived material
+ *  survives and just loses its truck reference. Foreman+. */
+export async function deleteDelivery(
+  deliveryId: string,
+): Promise<{ killed: number; kept: number }> {
+  const { data, error } = await supabase.rpc("delete_delivery", {
+    p_delivery: deliveryId,
+  });
+  if (error) throw error;
+  return data as { killed: number; kept: number };
+}
+
+/** Put the truck on the schedule: date+time + who meets it. Supervisor+. */
+export async function scheduleDelivery(
+  deliveryId: string,
+  whenISO: string,
+  memberIds: string[],
+): Promise<void> {
+  const { error } = await supabase.rpc("schedule_delivery", {
+    p_delivery: deliveryId,
+    p_when: whenISO,
+    p_member_ids: memberIds,
+  });
+  if (error) throw error;
 }
 
 /** Edit a crate-pool row's piece count as glass gets used (1-99). */

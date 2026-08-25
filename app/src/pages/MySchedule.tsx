@@ -119,12 +119,20 @@ export function MySchedule() {
                 return (
                   <Fragment key={`${a.id}-${entry.day}`}>
                   <Link
-                    to={`/projects/${a.project_id}?tab=map`}
+                    to={
+                      a.kind === "delivery"
+                        ? `/storage/d/${a.delivery_id}`
+                        : `/projects/${a.project_id}?tab=map`
+                    }
                     className="sched-agenda-card"
                     style={{ borderLeftColor: assignmentColor(a) }}
                   >
                     <div className="sched-agenda-main">
-                      <strong>{a.project?.name ?? a.project?.job_code ?? "Job"}</strong>
+                      <strong>
+                        {a.kind === "delivery"
+                          ? `Meet the truck — ${a.delivery?.label ?? "delivery"}`
+                          : (a.project?.name ?? a.project?.job_code ?? "Job")}
+                      </strong>
                       {a.project?.address && (
                         <span className="sched-agenda-addr">
                           <MapPin size={13} aria-hidden /> {a.project.address}
@@ -146,7 +154,7 @@ export function MySchedule() {
                           <Truck size={13} aria-hidden /> {vehicleByAssignment.get(a.id)}
                         </span>
                       )}
-                      {tripByProject.get(a.project_id) && (
+                      {a.project_id && tripByProject.get(a.project_id) && (
                         <span className="sched-agenda-crew">
                           <Plane size={13} aria-hidden /> Travel: {tripByProject.get(a.project_id)!.label}
                         </span>

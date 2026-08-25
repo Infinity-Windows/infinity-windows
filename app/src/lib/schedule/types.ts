@@ -21,7 +21,13 @@ export interface AssignmentMember {
 /** The schedulable unit: a crew on a project for a day range. */
 export interface ScheduleAssignment {
   id: string;
-  project_id: string;
+  /** Null on kind='delivery' — a truck can carry many jobs. */
+  project_id: string | null;
+  /** 'install' is the ordinary crew block; 'delivery' is meeting a truck. */
+  kind: "install" | "delivery";
+  delivery_id: string | null;
+  /** Joined delivery for labels (best-effort). */
+  delivery?: { id: string; label: string | null } | null;
   start_date: string;
   end_date: string;
   start_time: string | null;

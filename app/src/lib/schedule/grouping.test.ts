@@ -11,6 +11,8 @@ function mk(partial: Partial<ScheduleAssignment> & { id: string }): ScheduleAssi
   return {
     id: partial.id,
     project_id: partial.project_id ?? "proj-1",
+    kind: partial.kind ?? "install",
+    delivery_id: partial.delivery_id ?? null,
     start_date: partial.start_date ?? "2026-07-21",
     end_date: partial.end_date ?? "2026-07-21",
     start_time: partial.start_time ?? null,

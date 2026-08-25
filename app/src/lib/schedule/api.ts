@@ -72,6 +72,8 @@ const localStore = {
     const row: ScheduleAssignment = {
       id: newId(),
       project_id: input.project_id,
+      kind: "install",
+      delivery_id: null,
       start_date: input.start_date,
       end_date: input.end_date,
       start_time: input.start_time ?? null,
@@ -132,7 +134,10 @@ interface RawMemberRow {
 
 interface RawAssignmentRow {
   id: string;
-  project_id: string;
+  project_id: string | null;
+  kind?: string | null;
+  delivery_id?: string | null;
+  package_deliveries?: { id: string; label: string | null } | null;
   start_date: string;
   end_date: string;
   start_time: string | null;
@@ -154,7 +159,7 @@ interface RawAssignmentRow {
 
 const SELECT =
   "*, schedule_assignment_members(profile_id, role, profiles(display_name)), " +
-  "projects(id, job_code, name, address)";
+  "projects(id, job_code, name, address), package_deliveries(id, label)";
 
 function mapRow(row: RawAssignmentRow): ScheduleAssignment {
   const members: AssignmentMember[] = (row.schedule_assignment_members ?? []).map(
@@ -179,6 +184,9 @@ function mapRow(row: RawAssignmentRow): ScheduleAssignment {
     updated_at: row.updated_at,
     members,
     project: row.projects ?? null,
+    kind: row.kind === "delivery" ? "delivery" : "install",
+    delivery_id: row.delivery_id ?? null,
+    delivery: row.package_deliveries ?? null,
   };
 }
 

@@ -469,7 +469,7 @@ function answerSchedule(data: AskLiveData): string | null {
       lines.push(`• ${bits.join(" · ")}${withLine}`);
       const truck = trucks.get(a.id);
       if (truck) lines.push(`   Truck: ${truck}`);
-      const trip = trips.get(a.project_id);
+      const trip = a.project_id ? trips.get(a.project_id) : undefined;
       if (trip) lines.push(`   Travel: ${trip.label}`);
     }
   }
