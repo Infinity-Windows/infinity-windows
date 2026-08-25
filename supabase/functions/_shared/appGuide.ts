@@ -235,6 +235,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "Work this phone saved but could not send — a clock punch, a photo, packages checked out. Normally empty. When something is here you can try it again or throw it away. It only ever shows this device's own stuck items.",
   },
   {
+    path: "/suggestions",
+    label: "Suggestions",
+    minRole: "installer",
+    blurb:
+      "Your direct line about the app itself. Something broken, or something it should do — say it here and it lands on the owners' list. You keep your own reports and can watch them get resolved.",
+  },
+  {
     path: "/settings",
     label: "Settings",
     minRole: "installer",

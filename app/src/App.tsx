@@ -50,6 +50,7 @@ import { DeliveryDetail } from "./pages/storage/DeliveryDetail";
 import { DeliveriesList } from "./pages/storage/DeliveriesList";
 import { CheckoutPackages } from "./pages/storage/CheckoutPackages";
 import { StuckWrites } from "./pages/StuckWrites";
+import { Suggestions } from "./pages/Suggestions";
 import { ArrivePackages } from "./pages/storage/ArrivePackages";
 import { PackageSheet } from "./pages/storage/PackageSheet";
 import { Settings } from "./pages/Settings";
@@ -369,6 +370,7 @@ export default function App() {
             />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/stuck" element={<StuckWrites />} />
+            <Route path="/suggestions" element={<Suggestions />} />
             <Route path="/settings" element={<Settings />} />
             <Route
               path="/team"

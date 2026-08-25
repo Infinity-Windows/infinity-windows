@@ -463,6 +463,8 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- Child rows identified by their parent plus a position or code.
     "project_windows": ("project_id", "window_type_id"),
     "installer_clearance": ("installer_id", "window_type_id"),
+    # One report per row; nothing merges them.
+    "app_feedback": ("id",),
     # Dropped by 20260926000000 (expected packages replaced it); the parser
     # tracks declarations, so it still needs a decision. Harmless: the table
     # never exists at restore time.
