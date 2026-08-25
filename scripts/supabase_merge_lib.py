@@ -459,6 +459,10 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "installer_clearance": ("installer_id", "window_type_id"),
     # One badge per installer per capability; a re-import upserts on the pair.
     "capability_badges": ("installer_id", "capability"),
+    # Custom part labels are keyed by their lowercased name.
+    "part_type_options": ("name",),
+    # A pending set is one wizard row; no natural key beyond its id.
+    "pending_delivery_sets": ("id",),
     "window_id_counters": ("window_type_id",),
     "project_openings": ("project_id", "opening_code"),
     # One phase of one kind per opening (UNIQUE in the migration), so the

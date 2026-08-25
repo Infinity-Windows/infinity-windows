@@ -561,7 +561,9 @@ function answerIssues(q: string, data: AskLiveData): string | null {
   const lines = [header];
   for (const i of sorted) {
     const mark = URGENCY_MARK[i.urgency] ? `${URGENCY_MARK[i.urgency]} ` : "";
-    const jobPrefix = project ? "" : `${codeById.get(i.project_id) ?? "Job"} · `;
+    const jobPrefix = project
+      ? ""
+      : `${(i.project_id ? codeById.get(i.project_id) : null) ?? "New job"} · `;
     const note = i.note ? ` — ${i.note}` : "";
     lines.push(`• ${mark}${jobPrefix}${KIND_LABELS[i.kind]}${note}`);
   }

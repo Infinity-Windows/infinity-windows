@@ -9,6 +9,7 @@ import { signedMedia } from "./photos";
  */
 
 export type IssueKind =
+  | "missing_job"
   | "failed_install"
   | "flag"
   | "damage"
@@ -34,7 +35,8 @@ export type IssueStatus = "open" | "resolved";
 
 export interface Issue {
   id: string;
-  project_id: string;
+  /** Null on missing_job — the whole point is the job does not exist yet. */
+  project_id: string | null;
   opening_id: string | null;
   /** Physical unit this issue is about (damage/missing), if unit-level. */
   window_id: string | null;
@@ -89,6 +91,7 @@ export const KIND_LABELS: Record<IssueKind, string> = {
   complication: "Complication",
   missing: "Missing delivery",
   spec_gap: "Spec sheet gap",
+  missing_job: "Job not built yet",
 };
 
 /**
@@ -108,6 +111,7 @@ const KIND_ORDER_RANK: Record<IssueKind, number> = {
   blocker: 5,
   complication: 6,
   spec_gap: 7,
+  missing_job: 8,
 };
 
 /** All issue kinds, in display order, derived from KIND_ORDER_RANK above. */

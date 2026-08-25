@@ -123,8 +123,8 @@ export function StorageHub() {
       <div className="row-gap" style={{ flexWrap: "wrap" }}>
         {lead && (
           <>
-            <Link className="button-like active-pill" to="/storage/tag">
-              Tag packages (truck)
+            <Link className="button-like active-pill" to="/storage/log-delivery">
+              Log a delivery (truck)
             </Link>
             <Link className="button-like" to="/storage/out">
               Check out
