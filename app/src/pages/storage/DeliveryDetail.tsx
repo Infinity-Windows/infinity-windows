@@ -109,11 +109,12 @@ export function DeliveryDetail() {
     onError: (e) => setMessage(formatApiError(e)),
   });
 
+  const jobCode = new Map((projects.data ?? []).map((p) => [p.id, p.job_code ?? p.name]));
   const groups = groupDelivery(
     (packages.data ?? []) as unknown as DeliveryPackageLite[],
+    (projectId) => jobCode.get(projectId) ?? null,
   );
   const summary = missingSummary(groups);
-  const jobCode = new Map((projects.data ?? []).map((p) => [p.id, p.job_code ?? p.name]));
   const storables = (containers.data ?? []).filter((c) => c.active !== false);
 
   const rowControls = (row: SlotRow) => {
