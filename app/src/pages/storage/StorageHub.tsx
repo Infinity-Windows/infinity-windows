@@ -121,13 +121,13 @@ export function StorageHub() {
           which is what keeps this page's lock from taking tagging away from
           the person standing at the truck. */}
       <div className="row-gap" style={{ flexWrap: "wrap" }}>
+        <Link className="button-like" to="/storage/deliveries">
+          Deliveries — check trucks in
+        </Link>
         {lead && (
           <>
             <Link className="button-like active-pill" to="/storage/log-delivery">
               Log a delivery (truck)
-            </Link>
-            <Link className="button-like" to="/storage/deliveries">
-              Deliveries — check trucks in
             </Link>
             <Link className="button-like" to="/storage/out">
               Check out
