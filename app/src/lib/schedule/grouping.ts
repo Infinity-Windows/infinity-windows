@@ -105,7 +105,9 @@ export function unassignedProjects<
 ): P[] {
   const scheduled = new Set<string>();
   for (const a of assignments) {
-    if (daysBetween(todayISO, a.end_date) >= 0) scheduled.add(a.project_id);
+    if (a.project_id && daysBetween(todayISO, a.end_date) >= 0) {
+      scheduled.add(a.project_id);
+    }
   }
   return projects.filter((p) => !scheduled.has(p.id));
 }

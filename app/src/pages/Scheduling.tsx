@@ -1,7 +1,7 @@
 import { BackChip } from "../components/BackChip";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Plus, Send } from "lucide-react";
 import { listProjects } from "../lib/api";
 import { getMyProfile, listProfiles } from "../lib/install/api";
@@ -552,6 +552,7 @@ export function Scheduling() {
   );
 
   function openTravelDraft(a: ScheduleAssignment) {
+    if (!a.project_id) return; // deliveries don't plan travel
     const project = projectById.get(a.project_id) ?? null;
     const label = project?.name || project?.job_code || a.project?.name || "Job";
     setEditor(null);
@@ -573,6 +574,7 @@ export function Scheduling() {
   const canPlanTravel =
     editingAssignment != null &&
     editingAssignment.status === "published" &&
+    editingAssignment.project_id != null &&
     isOutOfTown(projectById.get(editingAssignment.project_id)?.site_state);
 
   return (
@@ -702,6 +704,34 @@ export function Scheduling() {
           <ChevronRight size={18} />
         </button>
       </div>
+
+      {(() => {
+        const trucks = (assignments.data ?? []).filter(
+          (a) => a.kind === "delivery",
+        );
+        if (trucks.length === 0) return null;
+        return (
+          <div className="detail-card" style={{ margin: "8px 0" }}>
+            <strong>Trucks this week</strong>
+            <ul className="unit-list" style={{ marginTop: 4 }}>
+              {trucks.map((a) => (
+                <li key={a.id}>
+                  <Link to={`/storage/d/${a.delivery_id}`} className="link">
+                    {a.start_date}
+                    {a.start_time ? ` · ${a.start_time.slice(0, 5)}` : ""} —{" "}
+                    {a.delivery?.label ?? "Delivery"}
+                  </Link>{" "}
+                  <span className="muted">
+                    {a.members.length > 0
+                      ? a.members.map((m) => m.display_name ?? "?").join(", ")
+                      : "nobody assigned yet"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })()}
 
       {tray.length > 0 && (
         <div className="sched-tray">

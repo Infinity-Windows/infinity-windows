@@ -71,6 +71,8 @@ export function boardChips(
     if (!rangesOverlap(a.start_date, a.end_date, first, last)) continue;
     for (const day of enumerateDays(a.start_date, a.end_date)) {
       if (day < first || day > last) continue;
+      // Delivery entries render on their own strip, never in the job pivot.
+      if (a.kind === "delivery" || !a.project_id) continue;
       for (const m of a.members) {
         chips.push({
           assignmentId: a.id,
@@ -187,6 +189,7 @@ export function outsideWindowEntries(
   const byId = new Map(jobs.map((j) => [j.id, j]));
   const out: OutsideWindowEntry[] = [];
   for (const a of assignments) {
+    if (!a.project_id) continue; // deliveries have no job window
     const j = byId.get(a.project_id);
     // No window on the job is normal here — say nothing.
     if (!j?.start_date) continue;
@@ -304,6 +307,7 @@ export function dedupeProposals(
       have.add(seedKey(e as BoardChip));
     } else {
       const a = e as ScheduleAssignment;
+      if (!a.project_id) continue;
       for (const day of enumerateDays(a.start_date, a.end_date)) {
         for (const m of a.members) {
           have.add(seedKey({ personId: m.profile_id, projectId: a.project_id, day }));

@@ -6,6 +6,8 @@ function make(over: Partial<ScheduleAssignment>): ScheduleAssignment {
   return {
     id: "a",
     project_id: "p",
+    kind: "install" as const,
+    delivery_id: null,
     start_date: "2026-01-10",
     end_date: "2026-01-12",
     start_time: null,

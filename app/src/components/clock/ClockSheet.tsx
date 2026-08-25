@@ -188,6 +188,7 @@ export function ClockSheet({
     const r = recents.data?.[0];
     if (scheduled) {
       primedRef.current = true;
+      if (!scheduled.project_id) return;
       setPickProjectId(scheduled.project_id);
       const match = recents.data?.find((j) => j.projectId === scheduled.project_id);
       const costCodeId = match?.costCodeId ?? r?.costCodeId;
@@ -957,7 +958,10 @@ export function ClockSheet({
                             ? "clock-chip current"
                             : "clock-chip"
                         }
-                        onClick={() => setPickProjectId(scheduled.project_id)}
+                        onClick={() =>
+                          scheduled.project_id &&
+                          setPickProjectId(scheduled.project_id)
+                        }
                       >
                         {scheduled.project?.job_code ??
                           scheduled.project?.name ??
