@@ -92,7 +92,7 @@ test("arrive and split identical twins across conexes by count", async ({
 
   await page.goto(`/storage/d/${D}`);
   await expect(
-    page.getByText("#5050 — piece 1 of 3", { exact: true }),
+    page.getByText("Sunset Ridge 4 · #5050 — 1/3", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("0 of 6 arrived")).toBeVisible();
   await expect(page.getByText(/Job not built yet/)).toBeVisible();
@@ -114,7 +114,7 @@ test("arrive and split identical twins across conexes by count", async ({
       body: String(body.p_packages.length),
     });
   });
-  await page.getByRole("button", { name: /Undo an arrival of #5050/ }).click();
+  await page.getByRole("button", { name: /Undo an arrival of Sunset Ridge 4/ }).click();
   await expect(page.getByText("5 of 6 arrived")).toBeVisible();
   expect(undone[0]).toHaveLength(1);
   await page.getByRole("button", { name: /✓ 1 arrived/ }).click();
@@ -122,9 +122,9 @@ test("arrive and split identical twins across conexes by count", async ({
 
   // Rapid split: 4 into the first conex…
   await page
-    .getByLabel("How many of #5050 — piece 1 of 3 to store")
+    .getByLabel("How many of Sunset Ridge 4 · #5050 — 1/3 to store")
     .selectOption("4");
-  const where = page.getByLabel("Where to store #5050 — piece 1 of 3");
+  const where = page.getByLabel("Where to store Sunset Ridge 4 · #5050 — 1/3");
   const first = await where.locator("option").nth(1).getAttribute("value");
   await where.selectOption(first!);
   await page.getByRole("button", { name: "Store 4" }).click();
@@ -132,7 +132,7 @@ test("arrive and split identical twins across conexes by count", async ({
 
   // …and the remaining 2 into another. Which twins went where never mattered.
   await expect(page.getByText("6 of 6 arrived", { exact: false }).first()).toBeVisible();
-  const where2 = page.getByLabel("Where to store #5050 — piece 1 of 3");
+  const where2 = page.getByLabel("Where to store Sunset Ridge 4 · #5050 — 1/3");
   const second = await where2.locator("option").nth(2).getAttribute("value");
   await where2.selectOption(second!);
   await page.getByRole("button", { name: /Store 2/ }).click();

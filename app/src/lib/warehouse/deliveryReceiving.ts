@@ -60,20 +60,26 @@ const slotKey = (p: DeliveryPackageLite): string =>
     p.part_type ?? "",
   ].join("|");
 
-const slotLabel = (p: DeliveryPackageLite): string => {
+const slotLabel = (p: DeliveryPackageLite, jobTitle: string | null): string => {
+  const prefix = jobTitle ? `${jobTitle} · ` : "";
   const mark = p.mfr_mark ? `#${p.mfr_mark}` : "no mark";
   if (p.piece_count != null) {
-    return `${mark} — ${p.piece_count} piece${p.piece_count === 1 ? "" : "s"} of ${p.part_type ?? "glass"} (crate)`;
+    return `${prefix}${mark} — ${p.piece_count} piece${p.piece_count === 1 ? "" : "s"} of ${p.part_type ?? "glass"} (crate)`;
   }
   const slot =
     p.part_index != null && p.part_total != null
-      ? `piece ${p.part_index} of ${p.part_total}`
-      : "piece";
-  return `${mark} — ${slot}${p.part_type ? ` · ${p.part_type}` : ""}`;
+      ? ` — ${p.part_index}/${p.part_total}`
+      : "";
+  return `${prefix}${mark}${slot}${p.part_type ? ` · ${p.part_type}` : ""}`;
 };
 
-/** Group a delivery's packages: job entry -> identical-slot rows. */
-export function groupDelivery(packages: DeliveryPackageLite[]): JobGroup[] {
+/** Group a delivery's packages: job entry -> identical-slot rows. Row
+ *  titles carry the job (owner ask: scrolling rows must say whose they
+ *  are) — real jobs resolve through jobTitle, typed names ride as-is. */
+export function groupDelivery(
+  packages: DeliveryPackageLite[],
+  jobTitle?: (projectId: string) => string | null,
+): JobGroup[] {
   const jobs = new Map<string, JobGroup>();
   for (const p of packages) {
     const jobKey = p.project_id ?? `pending:${p.pending_job_name ?? "?"}`;
@@ -93,9 +99,12 @@ export function groupDelivery(packages: DeliveryPackageLite[]): JobGroup[] {
     const key = slotKey(p);
     let row = job.rows.find((r) => r.key === key);
     if (!row) {
+      const title = p.project_id
+        ? (jobTitle?.(p.project_id) ?? null)
+        : (p.pending_job_name ?? null);
       row = {
         key,
-        label: slotLabel(p),
+        label: slotLabel(p, title),
         mark: p.mfr_mark ?? "?",
         isCrate: p.piece_count != null,
         expected: 0,

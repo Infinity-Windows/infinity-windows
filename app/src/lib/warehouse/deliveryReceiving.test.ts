@@ -35,23 +35,27 @@ describe("groupDelivery", () => {
     expect(groups).toHaveLength(1);
     const labels = groups[0].rows.map((r) => `${r.label} ×${r.expected}`);
     expect(labels).toEqual([
-      "#5050 — 4 pieces of glass (crate) ×1",
-      "#5050 — piece 1 of 3 ×2",
-      "#5050 — piece 2 of 3 ×1",
+      "Sunset Ridge 4 · #5050 — 1/3 ×2",
+      "Sunset Ridge 4 · #5050 — 2/3 ×1",
+      "Sunset Ridge 4 · #5050 — 4 pieces of glass (crate) ×1",
     ]);
     expect(groups[0].pendingJobName).toBe("Sunset Ridge 4");
     expect(groups[0].unfiledIds).toHaveLength(4);
   });
 
-  it("splits real jobs from pending names and counts states", () => {
-    const groups = groupDelivery([
-      pkg({ project_id: "job-1", pending_job_name: null, status: "received" }),
-      pkg({ project_id: "job-1", pending_job_name: null, status: "stored" }),
-      pkg({ status: "minted" }),
-    ]);
+  it("splits real jobs from pending names, resolves titles, counts states", () => {
+    const groups = groupDelivery(
+      [
+        pkg({ project_id: "job-1", pending_job_name: null, status: "received" }),
+        pkg({ project_id: "job-1", pending_job_name: null, status: "stored" }),
+        pkg({ status: "minted" }),
+      ],
+      (id) => (id === "job-1" ? "ESH-18" : null),
+    );
     expect(groups).toHaveLength(2);
     const real = groups.find((g) => g.projectId === "job-1")!;
     expect(real.rows[0]).toMatchObject({ expected: 2, received: 2, stored: 1 });
+    expect(real.rows[0].label).toBe("ESH-18 · #5050 — 1/3");
     expect(real.unfiledIds).toHaveLength(0);
   });
 });
@@ -106,6 +110,6 @@ describe("missingSummary", () => {
     ]);
     const s = missingSummary(groups);
     expect(s).toMatchObject({ expected: 4, received: 2, missing: 2 });
-    expect(s.lines).toEqual(["#5050 — piece 1 of 3: 2 of 3 still missing"]);
+    expect(s.lines).toEqual(["Sunset Ridge 4 · #5050 — 1/3: 2 of 3 still missing"]);
   });
 });
