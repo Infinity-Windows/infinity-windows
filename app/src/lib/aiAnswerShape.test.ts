@@ -96,6 +96,17 @@ describe("how-to guides: asked for what the type card renders", () => {
     expect(fn).toContain("steps.length === 0");
     expect(fn).toContain("nothing was saved");
   });
+
+  it("asks once more, firmer, before refusing a stepless answer", () => {
+    // Live, twice on the same night (2026-08-24): the only window type with a
+    // golden install has a reference row that is null in every narrative field,
+    // and the model answered the prompt with steps: [] — schema-valid, since an
+    // empty list is a true answer elsewhere, so only the save guard objected.
+    // The guard's job is to refuse, not to fix; the fix is one retry that names
+    // the emptiness and points at the tips as grounding.
+    expect(fn).toContain("Reply with the steps array only");
+    expect(fn).toContain("at least 3 steps");
+  });
 });
 
 describe("window-type tips: asked for what the catalog stores", () => {
