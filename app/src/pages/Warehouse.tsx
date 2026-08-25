@@ -193,6 +193,21 @@ export function Warehouse() {
         <PackageMap />
       </Explain>
 
+      {/* The truck doors, on the page everyone's nav opens. Checking trucks
+          in belongs to whoever is standing at the tailgate — no role gate.
+          Logging a new one is foreman+ (the server refuses below that
+          anyway, this just hides a button that would only error). */}
+      <div className="row-gap" style={{ flexWrap: "wrap" }}>
+        <Link className="button-like active-pill" to="/storage/deliveries">
+          Deliveries — check trucks in
+        </Link>
+        {lead && (
+          <Link className="button-like" to="/storage/log-delivery">
+            Log a delivery (truck)
+          </Link>
+        )}
+      </div>
+
       {lead && (
         <>
           <div className="stat-grid">
@@ -237,7 +252,10 @@ export function Warehouse() {
                 where it is. Then check it into a conex.
               </Explain>
               <div className="row-gap" style={{ flexWrap: "wrap" }}>
-                <Link className="button-like active-pill" to="/storage/tag">
+                <Link className="button-like active-pill" to="/storage/deliveries">
+                  Deliveries — check trucks in
+                </Link>
+                <Link className="button-like" to="/storage/tag">
                   Tag packages (truck)
                 </Link>
                 {/* Foreman+ on the server as well as here (D6). "Receive
