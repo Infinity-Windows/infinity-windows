@@ -295,7 +295,13 @@ def parse_migrations(directory: Path | str = MIGRATIONS_DIR) -> Schema:
 #: a genuine cycle in the schema, so no insert order exists that satisfies every
 #: constraint in one pass. Breaking this one nullable edge makes the rest of the
 #: graph acyclic.
-DEFERRED_FK_EDGES: list[tuple[str, str]] = [("window_types", "golden_install_event_id")]
+DEFERRED_FK_EDGES: list[tuple[str, str]] = [
+    ("window_types", "golden_install_event_id"),
+    # packages -> issues (pending_issue_id) closes a loop with
+    # issues -> ... -> packages. Nullable + ON DELETE SET NULL, so it is the
+    # edge to defer: insert packages without it, patch it after issues land.
+    ("packages", "pending_issue_id"),
+]
 
 _DEFERRED_BY_TABLE: dict[str, set[str]] = {
     table: {c for t, c in DEFERRED_FK_EDGES if t == table}
@@ -457,12 +463,15 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- Child rows identified by their parent plus a position or code.
     "project_windows": ("project_id", "window_type_id"),
     "installer_clearance": ("installer_id", "window_type_id"),
+    # Dropped by 20260926000000 (expected packages replaced it); the parser
+    # tracks declarations, so it still needs a decision. Harmless: the table
+    # never exists at restore time.
+    "pending_delivery_sets": ("id",),
     # One badge per installer per capability; a re-import upserts on the pair.
     "capability_badges": ("installer_id", "capability"),
     # Custom part labels are keyed by their lowercased name.
     "part_type_options": ("name",),
-    # A pending set is one wizard row; no natural key beyond its id.
-    "pending_delivery_sets": ("id",),
+
     "window_id_counters": ("window_type_id",),
     "project_openings": ("project_id", "opening_code"),
     # One phase of one kind per opening (UNIQUE in the migration), so the
