@@ -116,7 +116,8 @@ class TestSchemaParsing(unittest.TestCase):
         # +2: part_type_options + pending_delivery_sets (manual deliveries,
         # 20260924000000). The pending table is DROPPED by 20260926000000 —
         # the parser counts declarations, so it still appears here.
-        self.assertEqual(len(SCHEMA.tables), 104)
+        # +1: app_feedback (suggestions to the owners, 20260931000000).
+        self.assertEqual(len(SCHEMA.tables), 105)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

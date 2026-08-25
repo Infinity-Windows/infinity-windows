@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import {
   Activity,
   AlertTriangle,
+  Lightbulb,
   BarChart3,
   Bell,
   BookOpen,
@@ -101,6 +102,7 @@ export type RoutePath =
   | "/contacts"
   | "/profile"
   | "/stuck"
+  | "/suggestions"
   | "/settings"
   | "/public-site";
 
@@ -169,6 +171,7 @@ export const NAV: NavDest[] = [
   // invisible and unfixable on the one device it exists on, which is the
   // exact failure the screen was built to end.
   { id: "stuck", to: "/stuck", label: "Stuck writes", icon: "⚠", minRole: "installer" },
+  { id: "suggestions", to: "/suggestions", label: "Suggestions", icon: "💡", minRole: "installer" },
   { id: "search", to: "/search", label: "Search", icon: "⌕", minRole: "installer" },
   { id: "review", to: "/review", label: "Memo review", icon: "✍", minRole: "installer" },
   { id: "my-schedule", to: "/my-schedule", label: "My Schedule", icon: "◷", minRole: "installer" },
@@ -449,6 +452,7 @@ const MENU_DEF: MenuSection[] = [
     title: "Account",
     items: [
       { to: "/notifications", label: "Notifications", Icon: Bell },
+      { to: "/suggestions", label: "Suggestions", Icon: Lightbulb },
       { to: "/stuck", label: "Stuck writes", Icon: AlertTriangle },
       { to: "/settings", label: "Settings", Icon: SlidersHorizontal },
       // Importing window types is data admin, not warehouse work (ticket 08).
