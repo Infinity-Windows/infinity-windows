@@ -17,12 +17,14 @@ import {
   listDeliveryPackages,
   receivePackages,
   storePackages,
+  unreceivePackages,
 } from "../../lib/storage";
 import {
   groupDelivery,
   missingSummary,
   pickToReceive,
   pickToStore,
+  pickToUndo,
   type DeliveryPackageLite,
   type JobGroup,
   type SlotRow,
@@ -68,6 +70,15 @@ export function DeliveryDetail() {
     },
     onSuccess: (n) => {
       setMessage(`${n} box${n === 1 ? "" : "es"} checked in.`);
+      refresh();
+    },
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+
+  const undoArrive = useMutation({
+    mutationFn: async (row: SlotRow) => unreceivePackages(pickToUndo(row, 1)),
+    onSuccess: (n) => {
+      setMessage(n > 0 ? "Arrival undone — back to expected." : "Nothing to undo.");
       refresh();
     },
     onError: (e) => setMessage(formatApiError(e)),
@@ -135,6 +146,16 @@ export function DeliveryDetail() {
               </button>
             )}
           </>
+        )}
+        {row.undoableIds.length > 0 && (
+          <button
+            className="link"
+            disabled={undoArrive.isPending}
+            onClick={() => undoArrive.mutate(row)}
+            aria-label={`Undo an arrival of ${row.label}`}
+          >
+            undo
+          </button>
         )}
         {!row.isCrate && row.looseIds.length > 0 && (
           <>

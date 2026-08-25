@@ -802,6 +802,16 @@ export async function receivePackages(packageIds: string[]): Promise<number> {
   return (data as number) ?? 0;
 }
 
+/** Undo an arrival tap: received flips back to expected. Idempotent-ish —
+ *  the server skips anything a person actually put away. */
+export async function unreceivePackages(packageIds: string[]): Promise<number> {
+  const { data, error } = await supabase.rpc("unreceive_packages", {
+    p_packages: packageIds,
+  });
+  if (error) throw error;
+  return (data as number) ?? 0;
+}
+
 /** File no-job material onto its freshly built job. Foreman+. */
 export async function filePendingPackages(
   packageIds: string[],

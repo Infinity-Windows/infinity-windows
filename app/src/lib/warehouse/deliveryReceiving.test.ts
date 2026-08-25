@@ -4,6 +4,7 @@ import {
   missingSummary,
   pickToReceive,
   pickToStore,
+  pickToUndo,
   type DeliveryPackageLite,
 } from "./deliveryReceiving";
 
@@ -35,8 +36,8 @@ describe("groupDelivery", () => {
     const labels = groups[0].rows.map((r) => `${r.label} ×${r.expected}`);
     expect(labels).toEqual([
       "#5050 — 4 pieces of glass (crate) ×1",
-      "#5050 — box 1 of 3 ×2",
-      "#5050 — box 2 of 3 ×1",
+      "#5050 — piece 1 of 3 ×2",
+      "#5050 — piece 2 of 3 ×1",
     ]);
     expect(groups[0].pendingJobName).toBe("Sunset Ridge 4");
     expect(groups[0].unfiledIds).toHaveLength(4);
@@ -71,6 +72,30 @@ describe("pickers", () => {
   });
 });
 
+describe("pickToUndo", () => {
+  it("undoes the most recent arrivals: loose received, and crate pieces that auto-stored", () => {
+    const groups = groupDelivery([
+      pkg({ id: "a", status: "received" }),
+      pkg({ id: "b", status: "received" }),
+      pkg({ id: "c", status: "stored" }), // stored in a conex: NOT undoable
+      pkg({
+        id: "k",
+        status: "stored",
+        piece_count: 4,
+        part_index: null,
+        part_total: null,
+        part_type: "glass",
+        container_id: "crate-1",
+      }),
+    ]);
+    const boxRow = groups[0].rows.find((r) => !r.isCrate)!;
+    expect(pickToUndo(boxRow, 1)).toEqual(["b"]);
+    expect(pickToUndo(boxRow, 9)).toEqual(["a", "b"]);
+    const crateRow = groups[0].rows.find((r) => r.isCrate)!;
+    expect(pickToUndo(crateRow, 1)).toEqual(["k"]);
+  });
+});
+
 describe("missingSummary", () => {
   it("says exactly what never came off the truck", () => {
     const groups = groupDelivery([
@@ -81,6 +106,6 @@ describe("missingSummary", () => {
     ]);
     const s = missingSummary(groups);
     expect(s).toMatchObject({ expected: 4, received: 2, missing: 2 });
-    expect(s.lines).toEqual(["#5050 — box 1 of 3: 2 of 3 still missing"]);
+    expect(s.lines).toEqual(["#5050 — piece 1 of 3: 2 of 3 still missing"]);
   });
 });
