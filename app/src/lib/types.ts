@@ -64,6 +64,13 @@ export interface Project {
   name: string;
   address: string | null;
   status: "active" | "completed" | "cancelled";
+  /** Fake data for practice or QA — never a real job. Invisible below
+   * supervisor (RLS); its packages never count as real inventory (client
+   * partition, lib/warehouse/testPartition.ts). Optional like the other
+   * fields added after this interface's first fixtures, so existing test
+   * data doesn't need to be touched; a real fetch always has it (not null
+   * default false). */
+  is_test?: boolean;
   customer_name?: string | null;
   contact_phone?: string | null;
   contact_email?: string | null;

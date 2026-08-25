@@ -169,6 +169,35 @@ export async function updateProject(
   return data as Project;
 }
 
+/**
+ * Flag or unflag a job as fake practice/QA data. Supervisor+ — the database
+ * checks this too and refuses below that rank. The only legal way to change
+ * `projects.is_test`: writing the column directly is revoked from every
+ * client role (20260933000000_testing_projects.sql).
+ */
+export async function setProjectTest(
+  projectId: string,
+  isTest: boolean,
+): Promise<void> {
+  const { error } = await supabase.rpc("set_project_test", {
+    p_project: projectId,
+    p_is_test: isTest,
+  });
+  if (error) throw error;
+}
+
+/**
+ * Permanently deletes a job — owner-only, and only when it is already
+ * flagged as a testing project. There is no undo; the confirm dialog on the
+ * button that calls this is the only safety net.
+ */
+export async function deleteTestProject(projectId: string): Promise<void> {
+  const { error } = await supabase.rpc("delete_test_project", {
+    p_project: projectId,
+  });
+  if (error) throw error;
+}
+
 export async function getProjectWindows(
   projectId: string,
 ): Promise<ProjectWindow[]> {
