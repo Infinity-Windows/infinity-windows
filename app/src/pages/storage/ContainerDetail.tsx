@@ -731,7 +731,21 @@ export function ContainerDetail() {
       {groupByJob(stored).map((g) => (
         <div key={g.projectId ?? "none"} style={{ marginBottom: 10 }}>
           <p className="tcx-label" style={{ margin: "6px 0 4px" }}>
-            {jobCode.get(g.projectId ?? "") ?? "No job"} · {g.packages.length}
+            {g.projectId
+              ? (jobCode.get(g.projectId) ?? "Job")
+              : (() => {
+                  const waiting = [
+                    ...new Set(
+                      g.packages
+                        .map((p) => p.pending_job_name)
+                        .filter((n): n is string => !!n),
+                    ),
+                  ];
+                  return waiting.length > 0
+                    ? `Waiting for ${waiting.join(", ")}`
+                    : "No job";
+                })()}{" "}
+            · {g.packages.length}
           </p>
           <div className="home-projects">
             {g.packages.map((p) => {

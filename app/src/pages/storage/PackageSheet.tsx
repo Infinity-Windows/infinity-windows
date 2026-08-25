@@ -361,9 +361,11 @@ export function PackageSheet() {
                 two must never blur (audit F9). A blank sticker is neither. */}
             {p.project_id
               ? ` · ${jobCode.get(p.project_id) ?? "?"}`
-              : p.status !== "blank"
-                ? " · Boneyard"
-                : ""}
+              : p.pending_job_name
+                ? ` · waiting for “${p.pending_job_name}”`
+                : p.status !== "blank"
+                  ? " · Boneyard"
+                  : ""}
             {p.category ? ` · ${CATEGORY_LABELS[p.category]}` : ""}
             {p.piece_count != null
               ? ` · ${p.piece_count} piece${p.piece_count === 1 ? "" : "s"} inside`
