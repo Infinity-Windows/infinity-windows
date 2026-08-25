@@ -9,12 +9,14 @@
 // package can be printed later from here (their own serials — never
 // recycled blank stickers).
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { BackChip } from "../../components/BackChip";
 import { listProjects } from "../../lib/api";
 import { createManualDelivery } from "../../lib/storage";
 import {
+  DRAFT_KEY,
+  MAX_CLONES,
   MAX_PACKAGES,
   MAX_PROJECTS,
   MAX_SETS,
@@ -22,6 +24,8 @@ import {
   describeSet,
   emptyEntry,
   emptySet,
+  parseDraft,
+  serializeDraft,
   wizardProblems,
   type WizardEntry,
   type WizardSet,
@@ -39,6 +43,28 @@ export function LogDelivery() {
   const [result, setResult] = useState<{ created: number; pending: number } | null>(
     null,
   );
+  const [restoredFrom, setRestoredFrom] = useState<string | null>(null);
+
+  // The checkpoint (owner ask): every change autosaves on the device, a
+  // refresh picks the list right back up, and a real save clears it.
+  useEffect(() => {
+    const draft = parseDraft(localStorage.getItem(DRAFT_KEY));
+    if (draft) {
+      setLabel(draft.label);
+      setEntries(draft.entries);
+      setStage("jobs");
+      setRestoredFrom(draft.savedAt);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (stage === "jobs" || stage === "sets" || stage === "review") {
+      localStorage.setItem(
+        DRAFT_KEY,
+        serializeDraft(label, entries, new Date().toISOString()),
+      );
+    }
+  }, [label, entries, stage]);
 
   const patchEntry = (ei: number, patch: Partial<WizardEntry>) =>
     setEntries((prev) => prev.map((e, i) => (i === ei ? { ...e, ...patch } : e)));
@@ -58,6 +84,8 @@ export function LogDelivery() {
       return createManualDelivery(label, buildDeliveryPayload(entries));
     },
     onSuccess: (r) => {
+      localStorage.removeItem(DRAFT_KEY);
+      setRestoredFrom(null);
       setResult({ created: r.created, pending: r.pending });
       setStage("done");
     },
@@ -192,6 +220,28 @@ export function LogDelivery() {
           </div>
           <BackChip fallback="/warehouse" label="Warehouse" />
         </header>
+        {restoredFrom && (
+          <p className="scanner-hint">
+            Picked your unsaved delivery back up (from{" "}
+            {new Date(restoredFrom).toLocaleTimeString([], {
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+            ) — keep going, or{" "}
+            <button
+              className="link"
+              onClick={() => {
+                localStorage.removeItem(DRAFT_KEY);
+                setRestoredFrom(null);
+                setEntries([emptyEntry()]);
+                setLabel("");
+              }}
+            >
+              start fresh
+            </button>
+            .
+          </p>
+        )}
         <label className="field-label" htmlFor="delivery-label">
           Delivery name (optional)
         </label>
@@ -271,8 +321,10 @@ export function LogDelivery() {
       <p className="muted">
         A set is everything for one window or door — its frame, glass,
         hardware. Count its packages; if some pieces ride in a crate, say how
-        many and name the crate. Which box is which part gets labeled later,
-        when you can read the boxes.
+        many and name the crate. Six identical windows? Turn on Clones and
+        say how many — every unit gets the same packages and crate pieces.
+        Which box is which part gets labeled later, when you can read the
+        boxes.
       </p>
       {entries.map((entry, ei) => {
         const job = projects.data?.find((p) => p.id === entry.project_id);
@@ -317,6 +369,39 @@ export function LogDelivery() {
                     </option>
                   ))}
                 </select>
+                {set.quantity > 1 ? (
+                  <>
+                    <label className="field-label" style={{ margin: 0 }}>
+                      Identical
+                    </label>
+                    <select
+                      value={set.quantity}
+                      onChange={(e) =>
+                        patchSet(ei, si, { quantity: Number(e.target.value) })
+                      }
+                      aria-label="How many identical"
+                    >
+                      {Array.from({ length: MAX_CLONES - 1 }, (_, n) => (
+                        <option key={n + 2} value={n + 2}>
+                          ×{n + 2}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="link"
+                      onClick={() => patchSet(ei, si, { quantity: 1 })}
+                    >
+                      Clones off
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="link"
+                    onClick={() => patchSet(ei, si, { quantity: 2 })}
+                  >
+                    + Clones (identical units)
+                  </button>
+                )}
                 {set.crate ? (
                   <>
                     <input

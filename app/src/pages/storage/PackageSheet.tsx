@@ -73,6 +73,23 @@ export function PackageSheet() {
   const [newPartType, setNewPartType] = useState("");
   const [partWarn, setPartWarn] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [spreadOffer, setSpreadOffer] = useState<{ count: number; type: string } | null>(null);
+  const spread = useMutation({
+    mutationFn: (args: { type: string }) =>
+      setPackagePart(
+        pkg.data?.id ?? "",
+        pkg.data?.part_index ?? null,
+        pkg.data?.part_total ?? null,
+        args.type,
+        true,
+      ),
+    onSuccess: () => {
+      setSpreadOffer(null);
+      setPartWarn(null);
+      void qc.invalidateQueries({ queryKey: ["storagePackage", serial] });
+    },
+    onError: (e) => setPartWarn(formatApiError(e)),
+  });
   const [deleteWarn, setDeleteWarn] = useState<string | null>(null);
   const partOptions = useQuery({
     queryKey: ["partTypeOptions"],
@@ -95,19 +112,25 @@ export function PackageSheet() {
     onSuccess: async (_res, args) => {
       void qc.invalidateQueries({ queryKey: ["storagePackage", serial] });
       setPartWarn(null);
-      // Soft heads-up, never a block: two boxes claiming the same slot.
+      // Identical siblings (clone sets): same mark, same slot. Offer to
+      // spread the label; warn about the slot-clash only when NOT spreading.
+      setSpreadOffer(null);
       const mark = (pkg.data?.package_marks ?? [])[0]?.mark_code;
       if (mark && args.index != null && pkg.data?.project_id) {
         const { data: twins } = await supabase
           .from("packages")
-          .select("id, package_marks!inner(mark_code)")
+          .select("id, part_type, package_marks!inner(mark_code)")
           .eq("project_id", pkg.data.project_id)
           .eq("part_index", args.index)
           .eq("package_marks.mark_code", mark)
           .neq("id", pkg.data?.id ?? "");
-        if ((twins ?? []).length > 0) {
+        const n = (twins ?? []).length;
+        if (n > 0 && args.type) {
+          setSpreadOffer({ count: n, type: args.type });
+          setPartWarn(null);
+        } else if (n > 0) {
           setPartWarn(
-            `Heads up — #${mark} now has two boxes labeled ${args.index} of ${args.total}. Fix whichever one is wrong.`,
+            `Heads up — #${mark} has ${n + 1} boxes labeled ${args.index} of ${args.total}. Identical clones? Fine. A mislabel? Fix the wrong one.`,
           );
         }
       }
@@ -682,6 +705,23 @@ export function PackageSheet() {
                 Add
               </button>
             </div>
+            {spreadOffer && (
+              <div className="row-gap" style={{ marginTop: 6, alignItems: "center" }}>
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {spreadOffer.count} other identical box
+                  {spreadOffer.count === 1 ? "" : "es"} sit in this same slot.
+                </span>
+                <button
+                  className="button-like"
+                  disabled={spread.isPending}
+                  onClick={() => spread.mutate({ type: spreadOffer.type })}
+                >
+                  {spread.isPending
+                    ? "Applying…"
+                    : `Label ${spreadOffer.count === 1 ? "it" : "them all"} "${spreadOffer.type}" too`}
+                </button>
+              </div>
+            )}
             {partWarn && <p className="warn-text" style={{ fontSize: 12 }}>{partWarn}</p>}
           </div>
         </details>

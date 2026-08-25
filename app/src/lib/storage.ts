@@ -724,12 +724,14 @@ export async function setPackagePart(
   partIndex: number | null,
   partTotal: number | null,
   partType: string | null,
+  applyToSiblings = false,
 ): Promise<void> {
   const { error } = await supabase.rpc("set_package_part", {
     p_package: packageId,
     p_part_index: partIndex,
     p_part_total: partTotal,
     p_part_type: partType,
+    p_apply_to_siblings: applyToSiblings,
   });
   if (error) throw error;
 }
