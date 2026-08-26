@@ -1,38 +1,38 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap");
 
 :root {
   /* Infinity Windows — Horizon sunset-coral dark theme (oklch tokens, ported
      verbatim from the Horizon design system). Always dark. */
-  --background: oklch(0.11 0.014 35);
-  --foreground: oklch(0.94 0.005 40);
-  --primary: oklch(0.68 0.24 30); /* coral / sunset orange ≈ #f15b00 */
-  --primary-foreground: oklch(0.12 0.01 30);
-  --secondary: oklch(0.22 0.016 35);
-  --muted-foreground: oklch(0.72 0.02 40);
-  --ring: oklch(0.68 0.24 30);
+  --background: oklch(0.965 0.01 60);
+  --foreground: oklch(0.23 0.015 35);
+  --primary: oklch(0.56 0.21 32); /* coral / sunset orange ≈ #f15b00 */
+  --primary-foreground: oklch(0.99 0.005 60);
+  --secondary: oklch(0.92 0.012 55);
+  --muted-foreground: oklch(0.45 0.02 40);
+  --ring: oklch(0.56 0.21 32);
   --gradient-sunset: linear-gradient(135deg, oklch(0.72 0.23 32), oklch(0.52 0.22 22));
 
   /* Legacy variable names remapped onto the new palette so every existing
      component (pages, plan editor, clock sheet, etc.) reskins automatically.
      Original semantic meanings are preserved. */
   --bg: var(--background);
-  --surface: oklch(0.14 0.016 35);
-  --card: oklch(0.15 0.016 35);
-  --card-raised: oklch(0.185 0.018 35);
-  --card-hot: oklch(0.23 0.02 35);
-  --border: oklch(0.28 0.018 35);
+  --surface: oklch(0.985 0.006 65);
+  --card: oklch(1 0 0);
+  --card-raised: oklch(0.975 0.008 60);
+  --card-hot: oklch(0.94 0.014 55);
+  --border: oklch(0.88 0.012 55);
   --text: var(--foreground);
-  --text-secondary: oklch(0.86 0.01 40);
+  --text-secondary: oklch(0.34 0.015 38);
   --muted: var(--muted-foreground);
-  --faint: oklch(0.55 0.02 40);
+  --faint: oklch(0.62 0.015 40);
   --accent: var(--primary);
-  --accent-hover: oklch(0.75 0.21 34);
-  --accent-bg: oklch(0.24 0.09 32);
-  --ok: oklch(0.72 0.17 155);
-  --ok-bg: oklch(0.26 0.06 155);
-  --warn: oklch(0.8 0.16 75);
-  --danger: oklch(0.58 0.22 25);
-  --info: oklch(0.74 0.13 230);
+  --accent-hover: oklch(0.50 0.21 32);
+  --accent-bg: oklch(0.93 0.05 45);
+  --ok: oklch(0.52 0.15 155);
+  --ok-bg: oklch(0.93 0.05 155);
+  --warn: oklch(0.55 0.13 80);
+  --danger: oklch(0.50 0.20 27);
+  --info: oklch(0.50 0.12 235);
   --ink: var(--primary-foreground);
 
   /* Model Studio's 3D sky (Studio 100x #48) — a dusk gradient echoing this
@@ -46,20 +46,34 @@
   --studio-sky-bottom: #3a2a22;
 
   --font-body: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-display: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Barlow Condensed", "Arial Narrow", "Inter", ui-sans-serif, system-ui, sans-serif;
 
   --radius: 0.5rem;
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
-  --shadow-soft: 0 8px 24px oklch(0 0 0 / 0.5);
-  --shadow-glow: 0 4px 18px -8px oklch(0.68 0.24 30 / 0.25);
+  --shadow-soft: 0 8px 24px oklch(0.3 0.02 40 / 0.14);
+  --shadow-glow: 0 4px 18px -8px oklch(0.56 0.21 32 / 0.25);
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   /* Horizon-style left sidebar tokens */
   --nav-width: 256px;
-  --accent-soft: oklch(0.68 0.24 30 / 0.12);
-  --accent-line: oklch(0.68 0.24 30 / 0.5);
+  --accent-soft: oklch(0.56 0.21 32 / 0.10);
+  --accent-line: oklch(0.56 0.21 32 / 0.45);
+
+
+  /* ---- Scale (owner pick 13): a 4-point spacing grid and one type ramp.
+     New styles reach for these; old literals get aligned as screens are
+     touched. */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-7: 32px; --space-8: 40px;
+  --text-xs: 12px; --text-sm: 14px; --text-md: 16px; --text-lg: 20px;
+  --text-xl: 27px; --text-2xl: 34px;
+
+  /* ---- Motion policy (owner pick 16): motion confirms, never performs.
+     One duration, one ease, color/opacity/shadow/transform only — and a
+     hover must NEVER move layout (the maps-hover shake taught us). */
+  --motion: 150ms var(--ease-out);
 
   /* ---- Safe areas -------------------------------------------------------
      Installed to a home screen, this app draws edge to edge: index.html asks
@@ -94,12 +108,106 @@
   --sheet-max-h-above-tabbar: calc(var(--sheet-max-h) - var(--above-tabbar));
   --dialog-max-h: calc(100dvh - (2 * var(--safe-top)) - (2 * var(--overlay-gap)));
 
+  color-scheme: light;
+}
+
+
+/* ---- The two worlds (owner pick 11, 2026-08-25) --------------------------
+   LIGHT is the bare default: this app is used outdoors at 6 AM and at noon
+   on white stucco, and a permanently dark screen loses to the sun. DARK is
+   the original Horizon sunset-coral theme, byte-identical to what shipped —
+   the system setting decides, and Settings > Appearance can pin either.
+   Every component styles through the tokens above, so nothing below this
+   block should ever name a raw color for something these tokens cover. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: oklch(0.11 0.014 35);
+    --foreground: oklch(0.94 0.005 40);
+    --primary: oklch(0.68 0.24 30);
+    --primary-foreground: oklch(0.12 0.01 30);
+    --secondary: oklch(0.22 0.016 35);
+    --muted-foreground: oklch(0.72 0.02 40);
+    --ring: oklch(0.68 0.24 30);
+    --surface: oklch(0.14 0.016 35);
+    --card: oklch(0.15 0.016 35);
+    --card-raised: oklch(0.185 0.018 35);
+    --card-hot: oklch(0.23 0.02 35);
+    --border: oklch(0.28 0.018 35);
+    --text-secondary: oklch(0.86 0.01 40);
+    --faint: oklch(0.55 0.02 40);
+    --accent-hover: oklch(0.75 0.21 34);
+    --accent-bg: oklch(0.24 0.09 32);
+    --ok: oklch(0.72 0.17 155);
+    --ok-bg: oklch(0.26 0.06 155);
+    --warn: oklch(0.8 0.16 75);
+    --danger: oklch(0.58 0.22 25);
+    --info: oklch(0.74 0.13 230);
+    --ink: var(--primary-foreground);
+    --shadow-soft: 0 8px 24px oklch(0 0 0 / 0.5);
+    --shadow-glow: 0 4px 18px -8px oklch(0.68 0.24 30 / 0.25);
+    --accent-soft: oklch(0.68 0.24 30 / 0.12);
+    --accent-line: oklch(0.68 0.24 30 / 0.5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --background: oklch(0.11 0.014 35);
+  --foreground: oklch(0.94 0.005 40);
+  --primary: oklch(0.68 0.24 30);
+  --primary-foreground: oklch(0.12 0.01 30);
+  --secondary: oklch(0.22 0.016 35);
+  --muted-foreground: oklch(0.72 0.02 40);
+  --ring: oklch(0.68 0.24 30);
+  --surface: oklch(0.14 0.016 35);
+  --card: oklch(0.15 0.016 35);
+  --card-raised: oklch(0.185 0.018 35);
+  --card-hot: oklch(0.23 0.02 35);
+  --border: oklch(0.28 0.018 35);
+  --text-secondary: oklch(0.86 0.01 40);
+  --faint: oklch(0.55 0.02 40);
+  --accent-hover: oklch(0.75 0.21 34);
+  --accent-bg: oklch(0.24 0.09 32);
+  --ok: oklch(0.72 0.17 155);
+  --ok-bg: oklch(0.26 0.06 155);
+  --warn: oklch(0.8 0.16 75);
+  --danger: oklch(0.58 0.22 25);
+  --info: oklch(0.74 0.13 230);
+  --ink: var(--primary-foreground);
+  --shadow-soft: 0 8px 24px oklch(0 0 0 / 0.5);
+  --shadow-glow: 0 4px 18px -8px oklch(0.68 0.24 30 / 0.25);
+  --accent-soft: oklch(0.68 0.24 30 / 0.12);
+  --accent-line: oklch(0.68 0.24 30 / 0.5);
   color-scheme: dark;
 }
 
 .dark {
   color-scheme: dark;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---- Section auras (owner picks 8 + 15): a faint hue names the half of
+   the app you're in before a word is read. The App shell stamps
+   data-section on <html> from the route. Warehouse runs cool steel against
+   the install world's sunset coral; office goes a quiet violet; Learn goes
+   green. The tint is a ceiling glow, never a repaint. */
+:root { --section-glow: transparent; }
+:root[data-section="warehouse"] { --section-glow: oklch(0.6 0.06 240 / 0.09); }
+:root[data-section="install"] { --section-glow: oklch(0.68 0.16 32 / 0.08); }
+:root[data-section="office"] { --section-glow: oklch(0.55 0.08 300 / 0.08); }
+:root[data-section="learn"] { --section-glow: oklch(0.6 0.1 155 / 0.08); }
+body {
+  background-image: radial-gradient(120% 220px at 50% 0,
+    var(--section-glow), transparent 70%);
+  background-repeat: no-repeat;
+}
+
 
 @keyframes infPulse {
   0% { box-shadow: 0 0 0 0 rgba(255, 106, 26, 0.55); }
@@ -2875,7 +2983,7 @@ button:disabled {
 }
 
 .toast-error {
-  background: #c0392b;
+  background: var(--danger);
 }
 
 .toast-success {
@@ -8576,7 +8684,7 @@ body {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #f15b00;
+  background: var(--accent);
   animation: vehDotPulse 1.6s ease-out infinite;
 }
 .veh-drivelog-live-clock { margin-left: auto; font-variant-numeric: tabular-nums; }
@@ -8691,7 +8799,7 @@ body {
   box-sizing: border-box;
 }
 .veh-map-dot-live {
-  background: #f15b00;
+  background: var(--accent);
   animation: vehDotPulse 1.6s ease-out infinite;
 }
 .veh-map-dot-recent { background: #e0a100; opacity: 0.85; }
