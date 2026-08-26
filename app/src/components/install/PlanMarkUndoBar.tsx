@@ -98,7 +98,10 @@ export function PlanMarkUndoBar({ projectId, jobName, openings }: Props) {
   if (movedCount === 0) {
     return (
       <p className="muted mark-undo__clear">
-        {describeMovedSummary(0)} Drag one and an Undo button appears here.
+        {/* The five-second toast owns single-move undo now (pick 11) — this
+            sentence must not promise a button that lives here. */}
+        {describeMovedSummary(0)} Drag one and a five-second Undo pops up;
+        &ldquo;Put every mark back&rdquo; shows here once something moved.
       </p>
     );
   }
