@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { listProjects } from "../../lib/api";
 import { WindowTypePicker } from "../../components/WindowTypePicker";
 import { SpecReviewSection } from "../../components/install/SpecReviewSection";
+import { ConfirmDanger } from "../../components/ConfirmDanger";
 import {
   addOpening,
   confirmOpenings,
@@ -31,6 +32,15 @@ export function OpeningReview() {
   const [message, setMessage] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Pick 10: one danger-confirm pattern app-wide. A single remove needs an
+  // async "is this referenced elsewhere" check before the confirm card can
+  // even say what will happen, so the card's text is computed once (while
+  // "Checking…" shows) and held here rather than recomputed per render.
+  const [confirmRemove, setConfirmRemove] = useState<{ id: string; text: string } | null>(
+    null,
+  );
+  const [checkingRemoveId, setCheckingRemoveId] = useState<string | null>(null);
+  const [confirmBulk, setConfirmBulk] = useState(false);
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const project = projects.data?.find((p) => p.id === projectId);
@@ -65,7 +75,10 @@ export function OpeningReview() {
 
   const remove = useMutation({
     mutationFn: (id: string) => removeOpening(id),
-    onSuccess: refresh,
+    onSuccess: () => {
+      setConfirmRemove(null);
+      refresh();
+    },
     onError: (e) => setMessage(formatApiError(e)),
   });
 
@@ -91,6 +104,7 @@ export function OpeningReview() {
       refresh();
       setSelecting(false);
       setSelected(new Set());
+      setConfirmBulk(false);
       setMessage(
         r.failed.length === 0
           ? `Removed ${r.done} opening${r.done === 1 ? "" : "s"}. They're under Removed below if you need them back.`
@@ -110,13 +124,11 @@ export function OpeningReview() {
       return next;
     });
 
+  // Pick 10: the trigger button only opens the confirm card now — the sweep
+  // itself fires from ConfirmDanger's own confirm button, below.
   const askThenBulkRemove = () => {
-    const ids = [...selected];
-    if (ids.length === 0) return;
-    const ok = window.confirm(
-      `Remove ${ids.length} opening${ids.length === 1 ? "" : "s"} from this job? Nothing is deleted — they move to Removed below and can be put back.`,
-    );
-    if (ok) bulkRemove.mutate(ids);
+    if (selected.size === 0) return;
+    setConfirmBulk(true);
   };
 
   const putBack = useMutation({
@@ -132,6 +144,7 @@ export function OpeningReview() {
   // worked on are the same two taps.
   const askThenRemove = async (o: ProjectOpening) => {
     setMessage(null);
+    setCheckingRemoveId(o.id);
     let referenced = false;
     try {
       referenced = (await openingsReferencedElsewhere([o.id])).has(o.id);
@@ -140,14 +153,15 @@ export function OpeningReview() {
       // quietly promising the mark is safe to drop.
       referenced = o.status !== "planned";
     }
-    const ok = window.confirm(
-      describeOpeningDeletion({
+    setCheckingRemoveId(null);
+    setConfirmRemove({
+      id: o.id,
+      text: describeOpeningDeletion({
         opening: o,
         referencedElsewhere: referenced,
         jobLabel: project?.job_code ?? null,
       }),
-    );
-    if (ok) remove.mutate(o.id);
+    });
   };
 
   const add = useMutation({
@@ -227,14 +241,24 @@ export function OpeningReview() {
           }
         }}
       />
-      {o.status === "planned" && (
+      {o.status === "planned" && confirmRemove?.id !== o.id && (
         <button
           className="link"
-          disabled={remove.isPending}
+          disabled={checkingRemoveId === o.id}
           onClick={() => void askThenRemove(o)}
         >
-          Remove
+          {checkingRemoveId === o.id ? "Checking…" : "Remove"}
         </button>
+      )}
+      {confirmRemove?.id === o.id && (
+        <ConfirmDanger
+          confirmText={remove.isPending ? "Removing…" : "Remove"}
+          disabled={remove.isPending}
+          onConfirm={() => remove.mutate(o.id)}
+          onCancel={() => setConfirmRemove(null)}
+        >
+          {confirmRemove.text}
+        </ConfirmDanger>
       )}
     </li>
   );
@@ -263,6 +287,19 @@ export function OpeningReview() {
             >
               Remove several…
             </button>
+          ) : confirmBulk ? (
+            <div style={{ flex: "1 1 100%" }}>
+              <ConfirmDanger
+                confirmText={bulkRemove.isPending ? "Removing…" : "Remove"}
+                disabled={bulkRemove.isPending}
+                onConfirm={() => bulkRemove.mutate([...selected])}
+                onCancel={() => setConfirmBulk(false)}
+              >
+                Remove {selected.size} opening{selected.size === 1 ? "" : "s"} from
+                this job? Nothing is deleted — they move to Removed below and can be
+                put back.
+              </ConfirmDanger>
+            </div>
           ) : (
             <>
               <button
@@ -290,12 +327,10 @@ export function OpeningReview() {
               </button>
               <button
                 className="primary"
-                disabled={selected.size === 0 || bulkRemove.isPending}
+                disabled={selected.size === 0}
                 onClick={askThenBulkRemove}
               >
-                {bulkRemove.isPending
-                  ? "Removing…"
-                  : `Remove ${selected.size} selected`}
+                {`Remove ${selected.size} selected`}
               </button>
             </>
           )}

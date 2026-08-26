@@ -28,6 +28,7 @@ import {
   enqueuePinUndo,
 } from "../../lib/offline/outbox";
 import { pushToast, toastError, toastSuccess } from "../../lib/toast";
+import { ConfirmDanger } from "../ConfirmDanger";
 
 interface Props {
   projectId: string;
@@ -58,6 +59,9 @@ export function PlanMarkUndoBar({
 }: Props) {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
+  // Pick 10: the one danger-confirm pattern app-wide — an in-page card
+  // instead of window.confirm.
+  const [confirmResetAll, setConfirmResetAll] = useState(false);
 
   const moves = useQuery({
     queryKey: ["pinMoves", projectId],
@@ -160,6 +164,7 @@ export function PlanMarkUndoBar({
           : `${movedCount} marks are back where the plan put them.`,
       );
     },
+    onSuccess: () => setConfirmResetAll(false),
   });
 
   // "Control Z", as asked for. Laptop only — a phone has no keyboard, which is
@@ -242,20 +247,26 @@ export function PlanMarkUndoBar({
         )}
       </div>
 
-      {movedCount > 0 && (
+      {movedCount > 0 && !confirmResetAll && (
         <button
           type="button"
           className="mark-undo__all"
           disabled={busy}
-          onClick={() => {
-            if (window.confirm(describeResetAll(movedCount, jobName))) {
-              resetAll.mutate();
-            }
-          }}
+          onClick={() => setConfirmResetAll(true)}
         >
           Put every mark back where the plan put it
           {movedCount === 1 ? " (1 mark)" : ` (${movedCount} marks)`}
         </button>
+      )}
+      {movedCount > 0 && confirmResetAll && (
+        <ConfirmDanger
+          confirmText={busy ? "Putting back…" : "Put them back"}
+          disabled={busy}
+          onConfirm={() => resetAll.mutate()}
+          onCancel={() => setConfirmResetAll(false)}
+        >
+          {describeResetAll(movedCount, jobName)}
+        </ConfirmDanger>
       )}
     </div>
   );

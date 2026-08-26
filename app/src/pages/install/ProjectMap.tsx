@@ -29,6 +29,7 @@ import {
   OpeningDetailCard,
   VOIDED_RING_COLOR,
 } from "../../components/install/OpeningDetailCard";
+import { ConfirmDanger } from "../../components/ConfirmDanger";
 import { OpeningRowButton } from "../../components/install/OpeningRowButton";
 import { InstallChip } from "../../components/install/InstallChip";
 import {
@@ -413,6 +414,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     mutationFn: (args: { openingId: string; reason: string }) =>
       undoInstall(args.openingId, args.reason),
     onSuccess: () => {
+      setConfirmUndoId(null);
+      setUndoReason("");
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
       queryClient.invalidateQueries({ queryKey: ["voidedOpenings", projectId] });
       queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
@@ -421,19 +424,15 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     onError: (e) => setMapError(formatApiError(e)),
   });
 
+  // Pick 10: the one danger-confirm pattern app-wide — an inline card with a
+  // required reason field, in ConfirmDanger's visual family, instead of a
+  // browser prompt. The full form lives on the opening sheet; this stays as
+  // the map's quick path.
+  const [confirmUndoId, setConfirmUndoId] = useState<string | null>(null);
+  const [undoReason, setUndoReason] = useState("");
   const handleUndo = (o: ProjectOpening) => {
-    // The reason is required — it becomes the void record AND the
-    // failed-install issue's note. The full form lives on the opening sheet;
-    // this stays as the map's quick path.
-    const reason = window.prompt(
-      `Undo the install on ${o.opening_code}? Every record is kept.\n\nWhy is it coming back off the wall? (required):`,
-    );
-    if (reason === null) return; // cancelled
-    if (reason.trim() === "") {
-      setMapError("A reason is required to undo an install.");
-      return;
-    }
-    undo.mutate({ openingId: o.id, reason: reason.trim() });
+    setConfirmUndoId(o.id);
+    setUndoReason("");
   };
 
   const reextractSpecs = useMutation({
@@ -2323,7 +2322,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               </span>
             </OpeningRowButton>
             {o.status === "installed" ? (
-              isLead && (
+              isLead &&
+              confirmUndoId !== o.id && (
                 <button
                   className="link map-row-action"
                   style={{ marginLeft: 8 }}
@@ -2341,6 +2341,36 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               >
                 {o.status === "planned" ? "Claim" : "Open"}
               </Link>
+            )}
+            {confirmUndoId === o.id && (
+              <div className="opening-row-panel">
+                <ConfirmDanger
+                  confirmText={undo.isPending ? "Undoing…" : "Undo install"}
+                  disabled={undo.isPending || undoReason.trim() === ""}
+                  onConfirm={() =>
+                    undo.mutate({ openingId: o.id, reason: undoReason.trim() })
+                  }
+                  onCancel={() => {
+                    setConfirmUndoId(null);
+                    setUndoReason("");
+                  }}
+                >
+                  <>
+                    Undo the install on <strong>{o.opening_code}</strong>? Every
+                    record is kept.
+                    <label style={{ display: "block", marginTop: 8 }}>
+                      Why is it coming back off the wall? (required)
+                      <input
+                        style={{ display: "block", width: "100%", marginTop: 4 }}
+                        value={undoReason}
+                        onChange={(e) => setUndoReason(e.target.value)}
+                        aria-label={`Why ${o.opening_code} is coming back off the wall`}
+                        required
+                      />
+                    </label>
+                  </>
+                </ConfirmDanger>
+              </div>
             )}
             {expanded && (
               <div className="opening-row-panel">
