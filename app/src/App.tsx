@@ -43,7 +43,6 @@ import { ProjectDetail } from "./pages/ProjectDetail";
 import { Projects } from "./pages/Projects";
 import { Receive } from "./pages/Receive";
 import { Scan } from "./pages/Scan";
-import { StorageHub } from "./pages/storage/StorageHub";
 import { ContainerDetail } from "./pages/storage/ContainerDetail";
 import { TagPackages } from "./pages/storage/TagPackages";
 import { LogDelivery } from "./pages/storage/LogDelivery";
@@ -414,26 +413,25 @@ export default function App() {
               element={<RequireRole path="/heartbeat"><Heartbeat /></RequireRole>}
             />
             <Route path="/scan" element={<Scan />} />
-            {/* The container hub is foreman+ (D6). The registry floor alone
-                does not lock a route — this wrapper does — and /storage was
-                open to anyone who typed the address while the warehouse page
-                kept the same tools to leads.
+            {/* The Storage hub merged into /warehouse (ticket 18) — its
+                container tiles, minting, new-container and posters tools all
+                live there now, still lead-gated exactly as they were here.
+                This address just forwards old links/bookmarks, same bare
+                pattern as /search below: no RequireRole, because a redirect
+                has nothing of its own left to guard.
 
                 Everything else here stays open on purpose. Installers tag,
                 check out and check arrivals themselves — from the warehouse
                 page's "Coming in" and "Going out" sections, both of which stay
-                open to everyone precisely so this lock does not take tagging
-                away from whoever is at the truck (S3). And ONE container's
-                page is the far end of "where is it": the Find bar on the
-                warehouse page hands an installer an "Open Conex 7" button, and
+                open to everyone precisely so no lock takes tagging away from
+                whoever is at the truck (S3). And ONE container's page is the
+                far end of "where is it": the Find bar on the warehouse page
+                hands an installer an "Open Conex 7" button, and
                 store_packages / move_container ask only that you are signed
                 in. The lead-only actions on that page (Edit, Archive) are
                 gated inside it, which is the same line save_storage_container
                 draws server-side. */}
-            <Route
-              path="/storage"
-              element={<RequireRole path="/storage"><StorageHub /></RequireRole>}
-            />
+            <Route path="/storage" element={<Navigate to="/warehouse" replace />} />
             <Route path="/storage/log-delivery" element={<LogDelivery />} />
             <Route path="/storage/d/:id" element={<DeliveryDetail />} />
             <Route path="/storage/deliveries" element={<DeliveriesList />} />

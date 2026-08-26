@@ -154,7 +154,7 @@ export function CheckoutPackages() {
         writeToast(r, `${r.count} package${r.count === 1 ? "" : "s"} checked out.`),
       );
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
-      navigate("/storage");
+      navigate("/warehouse");
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
   });

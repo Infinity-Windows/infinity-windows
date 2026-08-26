@@ -19,8 +19,8 @@
 // reachable and working from the Operations section.
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Link, useSearchParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { listLocations, listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
 import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
@@ -28,6 +28,10 @@ import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { Explain } from "../components/ui/Explain";
 import { PackageMap } from "../components/warehouse/PackageMap";
 import { FindBar } from "../components/warehouse/FindBar";
+import { CardList } from "../components/warehouse/CardList";
+import { ContainerForm } from "../components/warehouse/ContainerForm";
+import { MintForm } from "../components/warehouse/MintForm";
+import { containerPostersPdf, downloadPdf } from "../lib/labels";
 import { listJobModelRows } from "../lib/modelstudio/projects";
 import { listIssues } from "../lib/issues";
 import {
@@ -36,6 +40,7 @@ import {
   listActivePackages,
   listContainers,
   containerKind,
+  type StorageContainer,
 } from "../lib/storage";
 import { partitionTestPackages, testProjectIds } from "../lib/warehouse/testPartition";
 import {
@@ -51,6 +56,7 @@ import {
   untaggedMarks,
   WAREHOUSE_CARDS,
   warehouseCounts,
+  type CardId,
 } from "../lib/warehouse/warehouseCards";
 import { placeChain, toLocationsById } from "../lib/warehouse/containment";
 import { splitUnits } from "../lib/warehouse/splitUnits";
@@ -70,8 +76,9 @@ const SECTIONS: Section[] = [
   // installer's first job of the day — whoever is at the truck does it (S3).
   // Locking the whole section to leads (D6) left an installer with no way to
   // reach /storage/tag at all: the other door, the Storage hub, went foreman+
-  // in the same change. The foreman-only tools INSIDE the section are gated
-  // one at a time below, which is the pattern the rest of the page uses.
+  // in the same change (and later merged into this page entirely — ticket
+  // 18). The foreman-only tools INSIDE the section are gated one at a time
+  // below, which is the pattern the rest of the page uses.
   { id: "coming-in", title: "Coming in", everyone: true },
   { id: "in-storage", title: "In storage" },
   { id: "going-out", title: "Going out", everyone: true },
@@ -83,6 +90,8 @@ export function Warehouse() {
   // Pick 30: a desk-mounted hardware scanner routes straight to the package
   // or container it reads, same as the camera flow.
   useScanWedge();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
   // Testing projects (owner-confirmed 2026-08-25) are invisible below
@@ -95,6 +104,14 @@ export function Warehouse() {
   // hand or scanned.
   const [searchParams] = useSearchParams();
   const initialQuery = searchParams.get("q") ?? undefined;
+  // ?card= arrives from a tapped stat card (ticket 06) — absorbed from the
+  // Storage hub along with the containers below (ticket 18).
+  const cardParam = searchParams.get("card");
+  const card = WAREHOUSE_CARDS.some((c) => c.id === cardParam)
+    ? (cardParam as CardId)
+    : null;
+  const [newContainer, setNewContainer] = useState(false);
+  const [minting, setMinting] = useState(false);
   // Job-building glow's door (#16): which jobs have a Studio model at all,
   // so Find only offers "Show on the building" where there is one.
   const studioJobModels = useQuery({ queryKey: ["studioJobModels"], queryFn: listJobModelRows });
@@ -183,6 +200,15 @@ export function Warehouse() {
   const goingOut = real.filter((p) => p.status === "checked_out");
   const testingByJob = groupByJob(testing);
 
+  // Absorbed from the Storage hub (ticket 18): print every container's door
+  // poster in one PDF.
+  const posters = useMutation({
+    mutationFn: async (rows: StorageContainer[]) => {
+      const pdf = await containerPostersPdf(rows);
+      downloadPdf(pdf, "container-posters.pdf");
+    },
+  });
+
   const visible = SECTIONS.filter((s) => lead || s.everyone);
 
   return (
@@ -219,9 +245,13 @@ export function Warehouse() {
       </Explain>
 
       {/* The truck doors, on the page everyone's nav opens. Checking trucks
-          in belongs to whoever is standing at the tailgate — no role gate.
-          Logging a new one is foreman+ (the server refuses below that
-          anyway, this just hides a button that would only error). */}
+          in and logging one both belong to whoever's at the tailgate (S3) —
+          Log a delivery's own first choice ("with QR stickers") sends
+          straight to /storage/tag, the same door installers always had. It
+          keeps the foreman+ hand-entry wizard gated INSIDE itself (the
+          server still refuses that RPC below foreman), so this button is
+          safe open to everyone, and — since ticket 20 retired the standalone
+          Tag button — it is now the only front door tagging has. */}
       <div className="row-gap" style={{ flexWrap: "wrap" }}>
         <Link className="button-like active-pill" to="/storage/deliveries">
           Deliveries — check trucks in
@@ -229,11 +259,9 @@ export function Warehouse() {
         <Link className="button-like" to="/warehouse/materials">
           Job materials
         </Link>
-        {lead && (
-          <Link className="button-like" to="/storage/log-delivery">
-            Log a delivery (truck)
-          </Link>
-        )}
+        <Link className="button-like" to="/storage/log-delivery">
+          Log a delivery (truck)
+        </Link>
       </div>
 
       {lead && (
@@ -266,6 +294,12 @@ export function Warehouse() {
           </Explain>
         </>
       )}
+      {/* A tapped stat card drills in right here (ticket 06/18) — same rule
+          as the cards above: lead-only, since a non-lead never sees a card
+          to tap in the first place. */}
+      {lead && card && (
+        <CardList card={card} packages={real} containers={boxes} jobCode={jobCode} />
+      )}
       {packages.isError && <p className="error">{formatApiError(packages.error)}</p>}
 
       {visible.map((s) => (
@@ -283,16 +317,18 @@ export function Warehouse() {
                 <Link className="button-like active-pill" to="/storage/deliveries">
                   Deliveries — check trucks in
                 </Link>
-                <Link className="button-like" to="/storage/tag">
-                  Tag packages (truck)
+                {/* Ticket 20: one front door for trucks. Log a delivery's
+                    "with QR stickers" choice IS the tag flow — the standalone
+                    Tag button retired, and "Check in" (-> the old Storage
+                    hub) retired with it, since New container / posters /
+                    minting all live right below now, in "In storage". */}
+                <Link className="button-like" to="/storage/log-delivery">
+                  Log a delivery (truck)
                 </Link>
-                {/* Foreman+ on the server as well as here (D6). "Receive
-                    units" stood beside this until the unit chain retired
-                    (ticket 21) — receiving IS tagging now. */}
                 {lead && (
-                  <Link className="button-like" to="/storage">
-                    Check in
-                  </Link>
+                  <button className="button-like" onClick={() => setMinting(true)}>
+                    Print blank stickers
+                  </button>
                 )}
               </div>
               {lead && needsPutaway.length > 0 && (
@@ -331,14 +367,34 @@ export function Warehouse() {
                 container moves everything inside it in one action — you never
                 re-scan the contents.
               </Explain>
+              {/* Absorbed from the Storage hub (ticket 18). */}
+              {lead && (
+                <div className="row-gap" style={{ flexWrap: "wrap", marginBottom: 8 }}>
+                  <button className="button-like" onClick={() => setNewContainer(true)}>
+                    New container
+                  </button>
+                  <button
+                    className="button-like"
+                    disabled={posters.isPending || boxes.length === 0}
+                    onClick={() => posters.mutate(boxes)}
+                  >
+                    All posters
+                  </button>
+                </div>
+              )}
               <div className="warehouse-grid">
                 {boxes
                   .filter((c) => !c.parent_container_id)
                   .map((c) => {
-                    const inside = rows.filter(
+                    // `real`, not `rows`: testing packages never count as
+                    // inventory anywhere on this page, and a tile that
+                    // counted them while its job breakdown (below) didn't
+                    // would just disagree with itself.
+                    const inside = real.filter(
                       (p) => p.status === "stored" && p.container_id === c.id,
                     );
                     const nested = boxes.filter((n) => n.parent_container_id === c.id);
+                    const jobs = groupByJob(inside);
                     const oldest = inside.reduce(
                       (worst, p) => Math.max(worst, agingDays(p.bound_at, new Date()) ?? 0),
                       0,
@@ -355,6 +411,14 @@ export function Warehouse() {
                         </strong>
                         <span className="muted">
                           {inside.length} package{inside.length === 1 ? "" : "s"}
+                          {inside.length > 0 &&
+                            ` · ${jobs
+                              .map(
+                                (g) =>
+                                  `${jobCode.get(g.projectId ?? "") ?? "?"} ×${g.packages.length}`,
+                              )
+                              .slice(0, 3)
+                              .join(", ")}`}
                           {nested.length > 0 && ` · holding ${nested.length} crate${nested.length === 1 ? "" : "s"}`}
                           {oldest > 0 ? ` · oldest ${oldest}d` : ""}
                         </span>
@@ -362,7 +426,9 @@ export function Warehouse() {
                     );
                   })}
                 {boxes.length === 0 && (
-                  <p className="muted">No containers yet — add one from Storage.</p>
+                  <p className="muted">
+                    {lead ? "No containers yet — add one above." : "No containers yet."}
+                  </p>
                 )}
               </div>
             </>
@@ -524,6 +590,29 @@ export function Warehouse() {
       )}
 
       {lead && <Operations />}
+
+      {/* Absorbed from the Storage hub (ticket 18). Both open only from
+          lead-gated buttons above, but the check is repeated here too. */}
+      {lead && newContainer && (
+        <ContainerForm
+          onClose={() => setNewContainer(false)}
+          onSaved={(c) => {
+            setNewContainer(false);
+            void qc.invalidateQueries({ queryKey: ["storageContainers"] });
+            navigate(`/storage/c/${c.id}`);
+          }}
+        />
+      )}
+      {lead && minting && (
+        <MintForm
+          onClose={() => setMinting(false)}
+          onMinted={() => {
+            setMinting(false);
+            void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+            void qc.invalidateQueries({ queryKey: ["storageBlanks"] });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -555,10 +644,6 @@ function Operations() {
           <Link to="/labels" className="warehouse-tile">
             <strong>Slot labels</strong>
             <span className="muted">Print rack/slot QR labels</span>
-          </Link>
-          <Link to="/storage" className="warehouse-tile">
-            <strong>Storage hub</strong>
-            <span className="muted">Containers, stickers, posters</span>
           </Link>
         </div>
       )}

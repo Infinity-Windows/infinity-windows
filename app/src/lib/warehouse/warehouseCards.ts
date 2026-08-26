@@ -212,12 +212,13 @@ export function cardPackages(
 /**
  * Where a card's number goes when tapped.
  *
- * Package-backed cards open on the storage hub, not the old /warehouse/:view
- * list — that screen reads the UNIT system, and these numbers no longer do.
- * Damage reports live on Issues.
+ * Package-backed cards open right on the warehouse page itself (the Storage
+ * hub merged into it — ticket 18), not the old /warehouse/:view list — that
+ * screen reads the UNIT system, and these numbers no longer do. Damage
+ * reports live on Issues.
  */
 export function cardLink(card: CardId): string {
-  return card === "damaged" ? "/issues" : `/storage?card=${card}`;
+  return card === "damaged" ? "/issues" : `/warehouse?card=${card}`;
 }
 
 /** Scheduled marks with nothing tagged against them — the rows behind the

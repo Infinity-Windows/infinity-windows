@@ -140,12 +140,14 @@ describe("damaged", () => {
     expect(cardLink("damaged")).toBe("/issues");
   });
 
-  it("package cards open on storage, never the old unit list", () => {
+  it("package cards open on the warehouse page, never the old unit list", () => {
     // /warehouse/:view reads the UNIT system; these numbers no longer do.
+    // The Storage hub merged into /warehouse (ticket 18), so a card number
+    // opens right back where it was tapped, with ?card= filtering the page.
     for (const c of WAREHOUSE_CARDS) {
       if (c.id === "damaged") continue;
       expect(cardLink(c.id), `${c.id} points at the old unit list`).toBe(
-        `/storage?card=${c.id}`,
+        `/warehouse?card=${c.id}`,
       );
     }
   });
