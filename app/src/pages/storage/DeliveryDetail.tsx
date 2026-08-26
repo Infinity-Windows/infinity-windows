@@ -212,14 +212,22 @@ export function DeliveryDetail() {
   });
 
   const bundleStore = useMutation({
-    mutationFn: async (args: { ids: string[]; container: string }) => {
+    mutationFn: async (args: { ids: string[]; container: string; dropped: number }) => {
       await storePackages(args.ids, args.container);
       return args.ids.length;
     },
     onSuccess: (n, vars) => {
       const message = `Stored ${n} together.`;
-      // Same reasoning again: the toast is the one place this line shows.
-      setMessage(null);
+      // The toast carries the success line; the page line is reserved for
+      // the one thing worth keeping on screen — ticks that drifted out from
+      // under the selection (a box stored by someone else, an undone
+      // arrival, a relabel). Never skipped silently (owner report,
+      // 2026-08-26).
+      setMessage(
+        vars.dropped > 0
+          ? `${vars.dropped} ticked piece${vars.dropped === 1 ? "" : "s"} changed since you picked ${vars.dropped === 1 ? "it" : "them"} — stored the other ${n}. Check the list for the rest.`
+          : null,
+      );
       setBundle(new Set());
       setBundleMode(false);
       setConfirmMix(false);
@@ -265,22 +273,28 @@ export function DeliveryDetail() {
         .filter((g) => g.rows.length > 0)
     : groups;
 
-  // The bundle: rows ticked across ANY jobs — they came on the same truck.
-  const allRows = new Map(groups.flatMap((g) => g.rows.map((r) => [r.key, r])));
-  const rowJob = new Map(
-    groups.flatMap((g) => g.rows.map((r) => [r.key, g.key])),
+  // The bundle: PACKAGE IDS, not row keys (owner report, 2026-08-26: rows
+  // re-key when a box gets labeled — its part_type is part of the slot key —
+  // so ticks pinned to keys silently died and selected boxes got skipped).
+  // Ids survive relabeling; a tick means those physical boxes, whatever
+  // slot they show under by the time the button is pressed.
+  const looseNow = new Map(
+    groups.flatMap((g) => g.rows.flatMap((r) => r.looseIds.map((pid) => [pid, g.key] as const))),
   );
-  const bundleRows = [...bundle]
-    .map((k) => allRows.get(k))
-    .filter((r): r is SlotRow => !!r && r.looseIds.length > 0);
-  const bundleIds = bundleRows.flatMap((r) => r.looseIds);
-  const bundleJobs = new Set(bundleRows.map((r) => rowJob.get(r.key)));
+  const bundleIds = [...bundle].filter((pid) => looseNow.has(pid));
+  /** Ticked but no longer loose — stored by someone else, un-arrived, or
+   *  re-labeled out from under the tick. Said out loud, never skipped
+   *  silently. */
+  const bundleDropped = bundle.size - bundleIds.length;
+  const bundleJobs = new Set(bundleIds.map((pid) => looseNow.get(pid)));
   const bundleTargetContainer = storables.find((c) => c.id === bundleTarget) ?? null;
-  const toggleBundle = (key: string) =>
+  const rowTicked = (r: SlotRow) =>
+    r.looseIds.length > 0 && r.looseIds.every((pid) => bundle.has(pid));
+  const toggleBundle = (r: SlotRow) =>
     setBundle((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (rowTicked(r)) for (const pid of r.looseIds) next.delete(pid);
+      else for (const pid of r.looseIds) next.add(pid);
       return next;
     });
   const fireBundle = () => {
@@ -288,7 +302,11 @@ export function DeliveryDetail() {
       setConfirmMix(true);
       return;
     }
-    bundleStore.mutate({ ids: bundleIds, container: bundleTarget });
+    bundleStore.mutate({
+      ids: bundleIds,
+      container: bundleTarget,
+      dropped: bundleDropped,
+    });
   };
 
   const refreshPackages = () => refresh();
@@ -657,9 +675,9 @@ export function DeliveryDetail() {
                   {bundleMode && (
                     <input
                       type="checkbox"
-                      checked={bundle.has(row.key)}
+                      checked={rowTicked(row)}
                       disabled={row.looseIds.length === 0}
-                      onChange={() => toggleBundle(row.key)}
+                      onChange={() => toggleBundle(row)}
                       aria-label={`Select ${row.label}`}
                     />
                   )}

@@ -434,18 +434,26 @@ export function ContainerDetail() {
     // check-in that waits out a dead conex cannot land on top of something
     // newer (warehouse audit F2). Picked ids with no row left are dropped
     // rather than sent noteless — the list they came from is the same query.
-    mutationFn: () =>
-      storePackagesOffline(
-        candidates.filter((p) => picked.has(p.id)),
-        id,
-      ),
-    onSuccess: (r) => {
+    mutationFn: async () => {
+      const rows = candidates.filter((p) => picked.has(p.id));
+      // Ticks whose package left the candidate list between picking and
+      // pressing — stored by someone else, checked back out, whatever moved
+      // under us. Dropped from the write (their note would be stale), but
+      // SAID, never skipped silently (owner report, 2026-08-26).
+      const dropped = picked.size - rows.length;
+      return { r: await storePackagesOffline(rows, id), rows, dropped };
+    },
+    onSuccess: ({ r, rows, dropped }) => {
       playSuccessTone();
-      // Pick 25: the ids this tap picked, read before the clear below —
-      // same rows the write itself just used.
-      const ids = candidates.filter((p) => picked.has(p.id)).map((p) => p.id);
+      // Pick 25: the ids this tap picked — same rows the write itself used.
+      const ids = rows.map((p) => p.id);
       setPicked(new Set());
       setCheckin(false);
+      setSweepReport(
+        dropped > 0
+          ? `${dropped} tick${dropped === 1 ? "" : "s"} changed since you picked ${dropped === 1 ? "it" : "them"} — checked in the other ${r.count}. Look the list over again.`
+          : null,
+      );
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
       // A queued write hasn't reached the server yet — there is nothing
       // there for unstore to undo until it does, so it keeps the plain

@@ -46,13 +46,22 @@ export function unitParts(
   packages: StoragePackage[],
   projectId: string,
   markCode: string,
+  /** A job that exists only as typed text (owner report, 2026-08-26: the
+   *  find bar was blind to waiting-job material). When set, projectId is
+   *  ignored and rows match on pending_job_name + the manufacturer mark —
+   *  waiting packages have no package_marks to match on. Existing callers
+   *  never pass this; project-mode matching is byte-for-byte unchanged. */
+  pendingName?: string,
 ): UnitPartsReport {
   const mark = markCode.trim().toUpperCase();
   const rows = packages
-    .filter(
-      (p) =>
-        p.project_id === projectId &&
-        (p.package_marks ?? []).some((m) => m.mark_code === mark),
+    .filter((p) =>
+      pendingName != null
+        ? p.project_id == null &&
+          p.pending_job_name === pendingName &&
+          (p.mfr_mark ?? "").toUpperCase() === mark
+        : p.project_id === projectId &&
+          (p.package_marks ?? []).some((m) => m.mark_code === mark),
     )
     .sort((a, b) => {
       const ai = a.part_index ?? Number.MAX_SAFE_INTEGER;

@@ -325,3 +325,60 @@ describe("a supply answers with its home box (owner ask, 2026-08-18)", () => {
     expect(a.home).toBe("no home spot yet");
   });
 });
+
+// The three field reports of 2026-08-26: job names answered nothing, a
+// colliding manufacturer mark showed one package when two jobs had one,
+// and waiting-job material was invisible to every path.
+describe("finding by a piece of the job's name", () => {
+  it("'sand hollow' finds the job through its NAME, not just its code", () => {
+    const p = pkg({ project_id: "esh", marks: ["4"] });
+    const a = findInWarehouse("sand hollow", base({
+      packages: [p],
+      projects: [{ id: "esh", job_code: "ESH-18", name: "Estates at Sand Hollow 18" }],
+    }));
+    expect(a).toMatchObject({ kind: "job", jobCode: "ESH-18" });
+    expect((a as { hits: unknown[] }).hits).toHaveLength(1);
+  });
+
+  it("a typed waiting-job name answers with its material", () => {
+    const p = pkg({ project_id: null, pending_job_name: "Mad Moose", mfr_mark: "7", marks: [] });
+    const a = findInWarehouse("mad moose", base({ packages: [p], projects: [] }));
+    expect(a).toMatchObject({ kind: "pending-job", name: "Mad Moose" });
+    expect(answerHeadline(a!)).toContain("Mad Moose");
+  });
+
+  it("a bare number never detours into name matching", () => {
+    const a = findInWarehouse("505", base({
+      projects: [{ id: "x", job_code: "505-RIDGE", name: null }],
+    }));
+    expect(a?.kind).toBe("miss");
+  });
+});
+
+describe("colliding manufacturer marks", () => {
+  it("one mfr match still answers instantly as the package", () => {
+    const crated = pkg({ project_id: null, pending_job_name: "Mad Moose", mfr_mark: "CRATE 1", marks: [] });
+    const a = findInWarehouse("CRATE 1", base({ packages: [crated], projects: [] }));
+    expect(a?.kind).toBe("package");
+  });
+
+  it("two jobs each holding a #12 asks which job — waiting jobs included", () => {
+    const bound = pkg({ project_id: "job-1", mfr_mark: "12", marks: ["12"] });
+    const waiting = pkg({ project_id: null, pending_job_name: "Don Timpson Res", mfr_mark: "12", marks: [] });
+    const a = findInWarehouse("#12", base({ packages: [bound, waiting] }));
+    expect(a?.kind).toBe("mark-choices");
+    const choices = (a as { choices: { jobCode: string; pendingName: string | null }[] }).choices;
+    expect(choices).toHaveLength(2);
+    expect(choices.map((c) => c.jobCode).sort()).toEqual(["BLACK22", "Don Timpson Res"]);
+  });
+
+  it("picking the waiting job answers with that job's window", () => {
+    const bound = pkg({ project_id: "job-1", mfr_mark: "12", marks: ["12"] });
+    const waiting = pkg({ project_id: null, pending_job_name: "Don Timpson Res", mfr_mark: "12", marks: [] });
+    const a = findInWarehouse("12", base({ packages: [bound, waiting] }), {
+      markPendingName: "Don Timpson Res",
+    });
+    expect(a).toMatchObject({ kind: "unit", projectId: null, jobCode: "Don Timpson Res" });
+    expect((a as { hits: unknown[] }).hits).toHaveLength(1);
+  });
+});

@@ -60,7 +60,9 @@ export type FindAnswer =
   | {
       kind: "unit";
       markCode: string;
-      projectId: string;
+      /** Null when the job exists only as typed text on waiting material —
+       *  jobCode then carries that name (owner report, 2026-08-26). */
+      projectId: string | null;
       jobCode: string;
       report: UnitPartsReport;
       headline: string;
@@ -78,7 +80,9 @@ export type FindAnswer =
       kind: "mark-choices";
       markCode: string;
       choices: {
-        projectId: string;
+        projectId: string | null;
+        /** Set when the choice is a waiting job that exists only as text. */
+        pendingName: string | null;
         jobCode: string;
         /** The completeness verdict for that job's copy — "2 of 3 here". */
         headline: string;
@@ -88,6 +92,8 @@ export type FindAnswer =
     }
   /** A whole job. */
   | { kind: "job"; projectId: string; jobCode: string; hits: PackageHit[] }
+  /** A waiting job — material tagged to a typed name, no built job yet. */
+  | { kind: "pending-job"; name: string; hits: PackageHit[] }
   /** One physical unit from the older system, and the slot it sits on. */
   /** A rack slot, and what is on it. */
   | { kind: "slot"; address: string; hits: PackageHit[] }
@@ -116,8 +122,9 @@ export function findInWarehouse(
   raw: string,
   inputs: FindInputs,
   /** A job already picked from the mark pick-list, so the second look-up
-   * lands straight on that job's window. */
-  opts?: { markProjectId?: string },
+   * lands straight on that job's window. A waiting job is picked by its
+   * typed name instead of an id. */
+  opts?: { markProjectId?: string; markPendingName?: string },
 ): FindAnswer | null {
   // "#16" and "16" are the same question — the sticker prints the number
   // with the hash, so people type it that way (owner ask, 2026-08-18).
@@ -135,14 +142,24 @@ export function findInWarehouse(
   const byId = new Map(containers.map((c) => [c.id, c]));
   const jobCodeOf = new Map(projects.map((p) => [p.id, p.job_code]));
 
-  // 1. A package sticker — serial, short code, or the manufacturer's number.
+  // 1. A package sticker — serial or short code. Globally unique, so the
+  //    first match IS the answer. The manufacturer's number only answers
+  //    here when it matches EXACTLY ONE package (owner report, 2026-08-26:
+  //    "#12" showed one package while two jobs each had a 12 — a colliding
+  //    mfr number falls through to the mark flow below, which knows how to
+  //    ask which job).
   const pkg = packages.find(
     (p) =>
       p.serial.toUpperCase() === query ||
-      (p.short_code ?? "").toUpperCase() === query ||
-      (p.mfr_mark ?? "").toUpperCase() === query,
+      (p.short_code ?? "").toUpperCase() === query,
   );
   if (pkg) return { kind: "package", hit: describe(pkg, byId, locationsById) };
+  const mfrMatches = packages.filter(
+    (p) => (p.mfr_mark ?? "").toUpperCase() === query,
+  );
+  if (mfrMatches.length === 1) {
+    return { kind: "package", hit: describe(mfrMatches[0], byId, locationsById) };
+  }
 
   // 2. A container, by serial or by name ("conex 3").
   const container = containers.find(
@@ -174,13 +191,43 @@ export function findInWarehouse(
     };
   }
 
-  // 3. A job code.
+  // 3. A job code, exactly.
   const project = projects.find((p) => p.job_code.toUpperCase() === query);
   if (project) {
     const hits = packages
       .filter((p) => p.project_id === project.id)
       .map((p) => describe(p, byId, locationsById));
     return { kind: "job", projectId: project.id, jobCode: project.job_code, hits };
+  }
+
+  // 3b. A job by a PIECE of its name or code (owner report, 2026-08-26:
+  //     "sand hollow" answered nothing while a conex full of Estates at Sand
+  //     Hollow glass sat right there). Three letters minimum so a mark like
+  //     "16" never detours here. Waiting jobs — material tagged to a typed
+  //     name with no built job yet — count the same as real ones.
+  if (query.length >= 3 && !/^\d+[A-Z]?$/.test(query)) {
+    const named = projects.find(
+      (p) =>
+        p.job_code.toUpperCase().includes(query) ||
+        (p.name ?? "").toUpperCase().includes(query),
+    );
+    if (named) {
+      const hits = packages
+        .filter((p) => p.project_id === named.id)
+        .map((p) => describe(p, byId, locationsById));
+      return { kind: "job", projectId: named.id, jobCode: named.job_code, hits };
+    }
+    const pendingName = packages.find(
+      (p) =>
+        p.project_id == null &&
+        (p.pending_job_name ?? "").toUpperCase().includes(query),
+    )?.pending_job_name;
+    if (pendingName) {
+      const hits = packages
+        .filter((p) => p.project_id == null && p.pending_job_name === pendingName)
+        .map((p) => describe(p, byId, locationsById));
+      return { kind: "pending-job", name: pendingName, hits };
+    }
   }
 
   // 4. A window mark. Tagged packages first, then the schedule — so "17"
@@ -203,44 +250,90 @@ export function findInWarehouse(
     .filter((m) => m.mark_code.trim().toUpperCase() === query)
     .map((m) => m.project_id);
   const markProjectIds = new Set([...taggedProjectIds, ...scheduledProjectIds]);
+  // Waiting jobs own marks too (owner report, 2026-08-26: the second "#12"
+  // the find bar could not see was on a typed-name job). Their marks live in
+  // mfr_mark — waiting material has no package_marks to carry them.
+  const pendingOwners = new Set(
+    packages
+      .filter(
+        (p) =>
+          p.project_id == null &&
+          p.pending_job_name != null &&
+          (p.mfr_mark ?? "").toUpperCase() === query,
+      )
+      .map((p) => p.pending_job_name as string),
+  );
 
   // Once somebody has picked a job off the list, that pick wins outright —
   // that is the "no second question" half of the promise.
   if (opts?.markProjectId && markProjectIds.has(opts.markProjectId)) {
     markProjectIds.clear();
     markProjectIds.add(opts.markProjectId);
+    pendingOwners.clear();
+  } else if (opts?.markPendingName && pendingOwners.has(opts.markPendingName)) {
+    pendingOwners.clear();
+    pendingOwners.add(opts.markPendingName);
+    markProjectIds.clear();
   }
 
-  if (markProjectIds.size === 1) {
-    const [markProject] = markProjectIds;
-    const report = unitParts(packages, markProject, query);
+  const ownerCount = markProjectIds.size + pendingOwners.size;
+  if (ownerCount === 1) {
+    if (markProjectIds.size === 1) {
+      const [markProject] = markProjectIds;
+      const report = unitParts(packages, markProject, query);
+      return {
+        kind: "unit",
+        markCode: query,
+        projectId: markProject,
+        jobCode: jobCodeOf.get(markProject) ?? "?",
+        report,
+        headline: partsHeadline(report).text,
+        hits: report.rows.map((p) => describe(p, byId, locationsById)),
+      };
+    }
+    const [pendingName] = pendingOwners;
+    const report = unitParts(packages, "", query, pendingName);
     return {
       kind: "unit",
       markCode: query,
-      projectId: markProject,
-      jobCode: jobCodeOf.get(markProject) ?? "?",
+      projectId: null,
+      jobCode: pendingName,
       report,
       headline: partsHeadline(report).text,
       hits: report.rows.map((p) => describe(p, byId, locationsById)),
     };
   }
-  if (markProjectIds.size > 1) {
+  if (ownerCount > 1) {
     // Job code first: it is the one word that tells an installer which of the
     // two windows is theirs. Then what is here, then where it sits.
-    const choices = [...markProjectIds]
-      .map((projectId) => {
+    const choices = [
+      ...[...markProjectIds].map((projectId) => {
         const report = unitParts(packages, projectId, query);
         const first = report.rows[0]
           ? describe(report.rows[0], byId, locationsById)
           : null;
         return {
-          projectId,
+          projectId: projectId as string | null,
+          pendingName: null as string | null,
           jobCode: jobCodeOf.get(projectId) ?? "?",
           headline: partsHeadline(report).text,
           where: first?.where ?? null,
         };
-      })
-      .sort((a, b) => a.jobCode.localeCompare(b.jobCode));
+      }),
+      ...[...pendingOwners].map((pendingName) => {
+        const report = unitParts(packages, "", query, pendingName);
+        const first = report.rows[0]
+          ? describe(report.rows[0], byId, locationsById)
+          : null;
+        return {
+          projectId: null as string | null,
+          pendingName: pendingName as string | null,
+          jobCode: pendingName,
+          headline: partsHeadline(report).text,
+          where: first?.where ?? null,
+        };
+      }),
+    ].sort((a, b) => a.jobCode.localeCompare(b.jobCode));
     return { kind: "mark-choices", markCode: query, choices };
   }
 
@@ -293,6 +386,8 @@ export function answerHeadline(a: FindAnswer): string {
       return `${a.container.name} — ${a.hits.length} package${a.hits.length === 1 ? "" : "s"} inside`;
     case "job":
       return `${a.jobCode} — ${a.hits.length} package${a.hits.length === 1 ? "" : "s"} tagged`;
+    case "pending-job":
+      return `“${a.name}” (job not built yet) — ${a.hits.length} package${a.hits.length === 1 ? "" : "s"} tagged`;
     case "slot":
       return `${a.address} — ${a.hits.length} package${a.hits.length === 1 ? "" : "s"}`;
     case "supply":
