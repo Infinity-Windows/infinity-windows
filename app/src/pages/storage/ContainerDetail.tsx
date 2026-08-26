@@ -38,8 +38,10 @@ import {
   listContainers,
   listContainerMovements,
   posterAutoOpenPath,
+  renamePackage,
   saveContainer,
   setContainerModel,
+  setPackagePart,
   type StoragePackage,
   containerKind,
   unstorePackages,
@@ -138,6 +140,19 @@ export function ContainerDetail() {
     note: "",
     count: 1,
   });
+  // The pencil on a contents row (owner, 2026-08-26): the row's headline is
+  // the package's real name now, and the crew fixes a wrong one right here —
+  // waiting-job text, mark, piece numbers, what-is-it — without leaving the
+  // container. Empty strings mean "clear it"; the form opens pre-filled.
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameForm, setRenameForm] = useState({
+    pending: "",
+    mark: "",
+    partIndex: "",
+    partTotal: "",
+    partType: "",
+    otherText: "",
+  });
   const partOptions = useQuery({
     queryKey: ["partTypeOptions"],
     queryFn: listPartTypeOptions,
@@ -153,6 +168,76 @@ export function ContainerDetail() {
     onSuccess: (name) => {
       setCustomForm((prev) => ({ ...prev, partType: name, newLabel: "" }));
       void qc.invalidateQueries({ queryKey: ["partTypeOptions"] });
+    },
+  });
+
+  const openRename = (p: StoragePackage) => {
+    setRenaming(p.id);
+    setRenameForm({
+      pending: p.pending_job_name ?? "",
+      mark: ((p.package_marks ?? [])[0]?.mark_code ?? p.mfr_mark) ?? "",
+      partIndex: p.part_index != null ? String(p.part_index) : "",
+      partTotal: p.part_total != null ? String(p.part_total) : "",
+      partType: p.part_type ?? "",
+      otherText: "",
+    });
+  };
+
+  const saveRename = useMutation({
+    mutationFn: async (p: StoragePackage) => {
+      const boundMarks = (p.package_marks ?? []).length > 0;
+      const prior = {
+        pending: p.pending_job_name ?? null,
+        mark: p.mfr_mark ?? null,
+        partIndex: p.part_index ?? null,
+        partTotal: p.part_total ?? null,
+        partType: p.part_type ?? null,
+      };
+      const nextPending = p.project_id != null ? null : renameForm.pending.trim() || null;
+      const nextMark = boundMarks ? (p.mfr_mark ?? null) : renameForm.mark.trim() || null;
+      const idx = renameForm.partIndex.trim() === "" ? null : Number(renameForm.partIndex);
+      const total = renameForm.partTotal.trim() === "" ? null : Number(renameForm.partTotal);
+      const nextType =
+        renameForm.partType === "other" && renameForm.otherText.trim()
+          ? renameForm.otherText.trim().toLowerCase()
+          : renameForm.partType || null;
+
+      const nameChanged = nextPending !== prior.pending || nextMark !== prior.mark;
+      // Pool rows keep their piece editor on the sheet — the fraction fields
+      // are hidden for them, so parts only change on ordinary boxes.
+      const partChanged =
+        p.piece_count == null &&
+        (idx !== prior.partIndex || total !== prior.partTotal || nextType !== prior.partType);
+
+      if (nameChanged) await renamePackage(p.id, nextPending, nextMark);
+      if (partChanged) {
+        if (nextType && !partChoices.includes(nextType)) {
+          // Teach the dropdown the new word, same as custom check-in does.
+          await addPartTypeOption(nextType).catch(() => undefined);
+        }
+        await setPackagePart(p.id, idx, total, nextType, false);
+      }
+      return { p, prior, nameChanged, partChanged };
+    },
+    onSuccess: ({ p, prior, nameChanged, partChanged }) => {
+      setRenaming(null);
+      void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+      void qc.invalidateQueries({ queryKey: ["partTypeOptions"] });
+      if (!nameChanged && !partChanged) return;
+      showUndoToast({
+        message: "Renamed.",
+        undo: async () => {
+          if (nameChanged) await renamePackage(p.id, prior.pending, prior.mark);
+          if (partChanged) {
+            await setPackagePart(p.id, prior.partIndex, prior.partTotal, prior.partType, false);
+          }
+          void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+        },
+      });
+    },
+    onError: (e) => {
+      playErrorTone();
+      pushToast(formatApiError(e), "error");
     },
   });
   const doCheckin = useMutation({
@@ -854,10 +939,132 @@ export function ContainerDetail() {
                   </label>
                 );
               }
+              if (renaming === p.id) {
+                const boundMarks = (p.package_marks ?? []).length > 0;
+                return (
+                  <div key={p.id} className="detail-card">
+                    <div className="wh-row">
+                      {p.project_id == null ? (
+                        <input
+                          value={renameForm.pending}
+                          onChange={(e) =>
+                            setRenameForm((prev) => ({ ...prev, pending: e.target.value }))
+                          }
+                          placeholder="Waiting-job name (blank = Boneyard)"
+                          aria-label="Waiting-job name"
+                          maxLength={120}
+                          style={{ flex: 1, minWidth: 200 }}
+                        />
+                      ) : (
+                        <span className="muted">{jobCode.get(p.project_id) ?? "?"}</span>
+                      )}
+                      <input
+                        value={renameForm.mark}
+                        onChange={(e) =>
+                          setRenameForm((prev) => ({ ...prev, mark: e.target.value }))
+                        }
+                        placeholder="Mark"
+                        aria-label="Mark"
+                        maxLength={40}
+                        disabled={boundMarks}
+                        title={
+                          boundMarks
+                            ? "Tied to a real window — reassign instead of renaming"
+                            : undefined
+                        }
+                        style={{ width: 110 }}
+                      />
+                    </div>
+                    {boundMarks && (
+                      <p className="muted" style={{ margin: "2px 0 0", fontSize: 12 }}>
+                        The mark comes from the window this piece is tied to.
+                      </p>
+                    )}
+                    {p.piece_count == null && (
+                      <div className="wh-row" style={{ marginTop: 6 }}>
+                        <input
+                          type="number"
+                          min={1}
+                          max={99}
+                          value={renameForm.partIndex}
+                          onChange={(e) =>
+                            setRenameForm((prev) => ({ ...prev, partIndex: e.target.value }))
+                          }
+                          aria-label="Piece number"
+                          placeholder="1"
+                          style={{ width: 70 }}
+                        />
+                        <span className="muted">of</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={99}
+                          value={renameForm.partTotal}
+                          onChange={(e) =>
+                            setRenameForm((prev) => ({ ...prev, partTotal: e.target.value }))
+                          }
+                          aria-label="Piece total"
+                          placeholder="2"
+                          style={{ width: 70 }}
+                        />
+                        <select
+                          value={renameForm.partType}
+                          onChange={(e) =>
+                            setRenameForm((prev) => ({ ...prev, partType: e.target.value }))
+                          }
+                          aria-label="What is it"
+                          style={{ width: 150 }}
+                        >
+                          <option value="">— what is it? —</option>
+                          {partChoices.map((t) => (
+                            <option key={t} value={t}>
+                              {PART_LABELS[t as PartType] ?? t}
+                            </option>
+                          ))}
+                        </select>
+                        {renameForm.partType === "other" && (
+                          <input
+                            value={renameForm.otherText}
+                            onChange={(e) =>
+                              setRenameForm((prev) => ({ ...prev, otherText: e.target.value }))
+                            }
+                            placeholder="Type what it is"
+                            aria-label="Describe what it is"
+                            style={{ width: 160 }}
+                          />
+                        )}
+                      </div>
+                    )}
+                    <div className="wh-row" style={{ marginTop: 6 }}>
+                      <button
+                        className="primary"
+                        disabled={saveRename.isPending}
+                        onClick={() => saveRename.mutate(p)}
+                      >
+                        {saveRename.isPending ? "Saving…" : "Save name"}
+                      </button>
+                      <button className="button-like" onClick={() => setRenaming(null)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
               return (
                 <Link key={p.id} to={`/pkg/${p.serial}`} className="project-card home-project">
                   <div className="home-project-head">
                     {row(p, days != null ? `${days}d in storage` : undefined)}
+                    <button
+                      className="button-like"
+                      aria-label={`Rename ${p.serial}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openRename(p);
+                      }}
+                    >
+                      ✎
+                    </button>
                     <span className="muted">›</span>
                   </div>
                 </Link>

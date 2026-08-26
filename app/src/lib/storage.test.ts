@@ -12,14 +12,112 @@ import {
   hasPartNumber,
   mismatchedPackages,
   movementToPackageEvent,
+  jobLabel,
   normalizeMarks,
   packagePhotoPath,
+  packageTitle,
   partLabel,
   posterAutoOpenPath,
   type PackageEvent,
+  type StoragePackage,
 } from "./storage";
 
 const pkg = (project_id: string | null) => ({ project_id });
+
+// The one-voice name (owner, 2026-08-26): the sheet's H1 rule, shared with
+// every list row. These pin the exact strings the crew reads.
+describe("packageTitle", () => {
+  const jobs = new Map([["j1", "BLACK22"]]);
+  const base = {
+    project_id: null,
+    pending_job_name: null,
+    mfr_mark: null,
+    part_index: null,
+    part_total: null,
+    part_type: null,
+    piece_count: null,
+    serial: "PKG-000311",
+  } as Pick<
+    StoragePackage,
+    | "project_id"
+    | "pending_job_name"
+    | "mfr_mark"
+    | "part_index"
+    | "part_total"
+    | "part_type"
+    | "piece_count"
+    | "serial"
+  > & { package_marks?: { mark_code: string }[] };
+
+  it("bound job + bound mark + fraction", () => {
+    expect(
+      packageTitle(
+        {
+          ...base,
+          project_id: "j1",
+          package_marks: [{ mark_code: "16" }],
+          part_index: 1,
+          part_total: 4,
+        },
+        jobs,
+      ),
+    ).toBe("BLACK22 #16: 1/4");
+  });
+
+  it("waiting job + manufacturer mark — the screenshot case", () => {
+    expect(
+      packageTitle(
+        {
+          ...base,
+          pending_job_name: "Hyer Res_Old Mill Estates Lot 47",
+          mfr_mark: "33",
+          part_index: 1,
+          part_total: 1,
+        },
+        jobs,
+      ),
+    ).toBe("Hyer Res_Old Mill Estates Lot 47 #33: 1/1");
+  });
+
+  it("crate pool speaks in pieces", () => {
+    expect(
+      packageTitle(
+        { ...base, pending_job_name: "Mad Moose", mfr_mark: "CRATE 1", piece_count: 5 },
+        jobs,
+      ),
+    ).toBe("Mad Moose #CRATE 1: 5 pc glass");
+  });
+
+  it("no mark: the waiting-job name alone beats the serial", () => {
+    expect(packageTitle({ ...base, pending_job_name: "Mad Moose" }, jobs)).toBe("Mad Moose");
+  });
+
+  it("true boneyard with no mark falls back to the serial", () => {
+    expect(packageTitle(base, jobs)).toBe("PKG-000311");
+  });
+});
+
+describe("jobLabel", () => {
+  const jobs = new Map([["j1", "BLACK22"]]);
+  const jp = (over: Partial<Parameters<typeof jobLabel>[0]>) =>
+    jobLabel(
+      { project_id: null, status: "stored", pending_job_name: null, ...over },
+      jobs,
+    );
+
+  it("waiting material is not Boneyard", () => {
+    expect(jp({ pending_job_name: "Mad Moose" })).toBe("waiting on job");
+  });
+
+  it("unbound with no waiting name stays Boneyard", () => {
+    expect(jp({})).toBe("Boneyard");
+  });
+
+  it("bound reads its job code; blank says nothing", () => {
+    expect(jp({ project_id: "j1" })).toBe("BLACK22");
+    expect(jp({ status: "blank" })).toBe("");
+  });
+});
 
 describe("groupByJob", () => {
   it("groups by job, biggest first, unbound last", () => {

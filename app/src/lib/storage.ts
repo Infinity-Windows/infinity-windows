@@ -96,12 +96,54 @@ export interface StorageContainer {
  * being adopted by the Boneyard — audit F9 is one rename away otherwise.
  */
 export function jobLabel(
-  p: Pick<StoragePackage, "project_id" | "status">,
+  p: Pick<StoragePackage, "project_id" | "status" | "pending_job_name">,
   jobCodeById: Map<string, string>,
 ): string {
   if (p.status === "blank") return "";
-  if (p.project_id == null) return "Boneyard";
+  if (p.project_id == null) {
+    // A package waiting on a job that isn't built yet is NOT company stock —
+    // the owner saw "Boneyard" on waiting glass and read it as ownerless
+    // (2026-08-26). Its job name is the headline (packageTitle); this word
+    // is the small honest tag beside it.
+    return p.pending_job_name ? "waiting on job" : "Boneyard";
+  }
   return jobCodeById.get(p.project_id) ?? "job not listed";
+}
+
+/**
+ * THE name of a package, one voice everywhere (owner, 2026-08-26): the same
+ * line the package's own sheet has always shown as its H1 — job (or
+ * waiting-job) name, mark, piece — now shared with every list row, so a
+ * container's contents and the sheet behind a tap never disagree.
+ * "Hyer Res_Old Mill Estates Lot 47 #33: 1/1". Falls back to the serial
+ * when there is no mark to hang a name on.
+ */
+export function packageTitle(
+  p: Pick<
+    StoragePackage,
+    | "project_id"
+    | "pending_job_name"
+    | "mfr_mark"
+    | "part_index"
+    | "part_total"
+    | "part_type"
+    | "piece_count"
+    | "serial"
+  > & { package_marks?: { mark_code: string }[] },
+  jobCodeById: Map<string, string>,
+): string {
+  const jobLine = p.project_id
+    ? (jobCodeById.get(p.project_id) ?? null)
+    : (p.pending_job_name ?? null);
+  const mark = (p.package_marks ?? [])[0]?.mark_code ?? p.mfr_mark ?? null;
+  if (!mark) return jobLine ?? p.serial;
+  const part =
+    p.piece_count != null
+      ? `${p.piece_count} pc ${p.part_type ?? "glass"}`
+      : p.part_index != null && p.part_total != null
+        ? `${p.part_index}/${p.part_total}`
+        : null;
+  return `${jobLine ? `${jobLine} ` : ""}#${mark}${part ? `: ${part}` : ""}`;
 }
 
 /** The kind of a container, defaulting missing/unknown rows to conex. */
@@ -984,6 +1026,25 @@ export async function labelPackages(
   });
   if (error) throw error;
   return (data as number) ?? 0;
+}
+
+/**
+ * Rename a package's headline (owner, 2026-08-26): the waiting-job text and
+ * the manufacturer mark — the two halves of packageTitle no other editor
+ * covered. Piece numbers and the what-is-it label keep going through
+ * setPackagePart. Always sends BOTH values; pass the current one unchanged.
+ */
+export async function renamePackage(
+  packageId: string,
+  pendingJobName: string | null,
+  mark: string | null,
+): Promise<void> {
+  const { error } = await supabase.rpc("rename_package", {
+    p_package: packageId,
+    p_pending_job_name: pendingJobName,
+    p_mark: mark,
+  });
+  if (error) throw error;
 }
 
 /** File no-job material onto its freshly built job. Foreman+. */
