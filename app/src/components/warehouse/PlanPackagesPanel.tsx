@@ -152,7 +152,7 @@ export function PlanPackagesPanel({
       {burnMode && (
         <div
           className="detail-card"
-          style={{ borderLeft: "3px solid #c0392b", margin: "10px 0" }}
+          style={{ borderLeft: "3px solid var(--danger)", margin: "10px 0" }}
         >
           <p style={{ margin: 0, fontWeight: 600 }}>
             Burning kills a label for good.
@@ -191,7 +191,7 @@ export function PlanPackagesPanel({
           {burning.size > 0 && (
             <button
               className="button-like"
-              style={{ marginTop: 8, background: "#c0392b", color: "white" }}
+              style={{ marginTop: 8, background: "var(--danger)", color: "var(--ink)" }}
               disabled={burn.isPending}
               onClick={() => burn.mutate()}
             >

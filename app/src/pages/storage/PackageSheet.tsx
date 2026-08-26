@@ -667,7 +667,7 @@ export function PackageSheet() {
       {confirmBurn && p.status === "minted" && (
         <div
           className="detail-card"
-          style={{ borderLeft: "3px solid #c0392b", marginTop: 8 }}
+          style={{ borderLeft: "3px solid var(--danger)", marginTop: 8 }}
         >
           <p style={{ margin: 0, fontSize: 14 }}>
             This throws away label{" "}
@@ -685,7 +685,7 @@ export function PackageSheet() {
           <div className="row-gap" style={{ marginTop: 8 }}>
             <button
               className="button-like"
-              style={{ background: "#c0392b", color: "white" }}
+              style={{ background: "var(--danger)", color: "var(--ink)" }}
               disabled={burn.isPending}
               onClick={() => burn.mutate()}
             >
@@ -859,7 +859,7 @@ export function PackageSheet() {
       {lead && p.status !== "blank" && !confirmDelete && (
         <button
           className="link"
-          style={{ color: "#c0392b", marginTop: 8 }}
+          style={{ color: "var(--danger)", marginTop: 8 }}
           onClick={() => setConfirmDelete(true)}
         >
           Delete this package…
@@ -868,7 +868,7 @@ export function PackageSheet() {
       {confirmDelete && (
         <div
           className="detail-card"
-          style={{ borderLeft: "3px solid #c0392b", marginTop: 8 }}
+          style={{ borderLeft: "3px solid var(--danger)", marginTop: 8 }}
         >
           <p style={{ margin: 0, fontSize: 14 }}>
             {p.part_type === "crate"
@@ -883,7 +883,7 @@ export function PackageSheet() {
           <div className="row-gap" style={{ marginTop: 8 }}>
             <button
               className="button-like"
-              style={{ background: "#c0392b", color: "white" }}
+              style={{ background: "var(--danger)", color: "var(--ink)" }}
               disabled={deleteOne.isPending}
               onClick={() => deleteOne.mutate()}
             >
