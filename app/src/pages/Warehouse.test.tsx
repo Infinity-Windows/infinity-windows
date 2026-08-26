@@ -250,9 +250,12 @@ describe("Other tools after the unit chain retired (ticket 21)", () => {
   }
 
   it("keeps the living tools", () => {
+    // "/storage" left this fold when the Storage hub merged into this very
+    // page (ticket 18) — a tile pointing back at the page you're already on
+    // would just be a dead loop.
     const el = mount({ packages: [], locations: [bay] });
     const hrefs = openOtherTools(el);
-    for (const to of ["/scan", "/labels", "/storage"]) {
+    for (const to of ["/scan", "/labels"]) {
       expect(hrefs).toContain(to);
     }
   });
@@ -274,32 +277,68 @@ describe("what an installer can still reach", () => {
   // on screen takes them there.
   //
   // The rule this protects is S3: whoever is at the truck tags. An installer
-  // is usually who that is.
-  it("puts a tagging link in front of an installer", () => {
+  // is usually who that is. Ticket 20 retired the standalone Tag button in
+  // favor of ONE front door — Log a delivery, whose own first choice ("with
+  // QR stickers") goes straight to /storage/tag — so the door installers need
+  // moved, but it did not close.
+  it("puts a delivery-logging link in front of an installer", () => {
     const el = mount({ packages: [], locations: [], role: "installer" });
-    const tag = [...el.querySelectorAll("a")].find(
-      (a) => a.getAttribute("href") === "/storage/tag",
+    const logDelivery = [...el.querySelectorAll("a")].find(
+      (a) => a.getAttribute("href") === "/storage/log-delivery",
     );
-    expect(tag, "an installer has no way to reach /storage/tag").toBeTruthy();
-    expect(tag!.textContent).toContain("Tag packages");
+    expect(
+      logDelivery,
+      "an installer has no way to log a delivery, so no way to tag",
+    ).toBeTruthy();
+    expect(logDelivery!.textContent).toContain("Log a delivery");
   });
 
   it("does not dangle the foreman-only doors in front of them", () => {
-    // The other two links in that section are foreman+ on the server as well,
-    // so showing them only buys an installer a locked door.
     const el = mount({ packages: [], locations: [], role: "installer" });
     const hrefs = [...el.querySelectorAll("a")].map((a) => a.getAttribute("href"));
     expect(hrefs).not.toContain("/receive");
     expect(hrefs).not.toContain("/storage");
   });
 
-  it("still gives a foreman the tag door and the container hub", () => {
+  it("still gives a foreman the delivery-logging door", () => {
     // "/receive" left this list when the unit chain retired (ticket 21):
     // receiving IS tagging now, and the old address is a thin door elsewhere.
+    // "/storage" retired with the hub merge (ticket 18) — its tools live
+    // right here now, not behind a separate link.
     const el = mount({ packages: [], locations: [], role: "foreman" });
     const hrefs = [...el.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toContain("/storage/tag");
+    expect(hrefs).toContain("/storage/log-delivery");
     expect(hrefs).not.toContain("/receive");
-    expect(hrefs).toContain("/storage");
+    expect(hrefs).not.toContain("/storage");
+  });
+});
+
+describe("container tools absorbed from the Storage hub (ticket 18)", () => {
+  it("hides New container / Print blank stickers / All posters from an installer", () => {
+    const el = mount({ packages: [], locations: [], role: "installer" });
+    for (const label of ["New container", "Print blank stickers", "All posters"]) {
+      const hit = [...el.querySelectorAll("button")].find((b) =>
+        b.textContent?.includes(label),
+      );
+      expect(hit, `an installer should not see "${label}"`).toBeFalsy();
+    }
+  });
+
+  it("gives a foreman all three, in the sections they now belong to", () => {
+    const el = mount({ packages: [], locations: [], role: "foreman" });
+    for (const label of ["New container", "Print blank stickers", "All posters"]) {
+      const hit = [...el.querySelectorAll("button")].find((b) =>
+        b.textContent?.includes(label),
+      );
+      expect(hit, `a foreman should see "${label}"`).toBeTruthy();
+    }
+  });
+
+  it("names each job holding stock in a container tile, not just a count", () => {
+    // The Storage hub's job breakdown ("BLACK22 ×1") — the one thing its own
+    // container tiles said that this page's didn't, before the merge.
+    const p = packageRow({ status: "stored", container_id: "conex", project_id: "job-1" });
+    const el = mount({ packages: [p], locations: [], role: "foreman" });
+    expect(el.textContent).toContain("1 package · BLACK22 ×1");
   });
 });

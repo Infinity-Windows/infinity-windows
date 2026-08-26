@@ -20,7 +20,7 @@ import { playErrorTone, playSuccessTone } from "../../lib/sound";
 import { useScanWedge } from "../../lib/warehouse/scanWedge";
 import { BackChip } from "../../components/BackChip";
 import { containerPostersPdf, downloadPdf } from "../../lib/labels";
-import { ContainerForm } from "./StorageHub";
+import { ContainerForm } from "../../components/warehouse/ContainerForm";
 import {
   addPartTypeOption,
   customCheckin,
@@ -400,7 +400,7 @@ export function ContainerDetail() {
       void qc.invalidateQueries({ queryKey: ["storageContainers"] });
       // The list only reads active containers, so this page has nothing left
       // to show — staying here would flash "Container not found."
-      navigate("/storage");
+      navigate("/warehouse");
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
   });

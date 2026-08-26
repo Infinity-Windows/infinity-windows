@@ -192,11 +192,11 @@ export const NAV: NavDest[] = [
   { id: "analytics", to: "/analytics", label: "Analytics", icon: "◲", minRole: "foreman" },
   { id: "crew", to: "/crew", label: "Roster", icon: "☰", minRole: "foreman" },
   { id: "receive", to: "/receive", label: "Receive", icon: "⬇", minRole: "foreman" },
-  // The container hub: every conex and crate, blank stickers, posters, adding
-  // and archiving containers. Foreman+ because the warehouse page already kept
-  // "Coming in" and "In storage" to leads, and /storage is the same room by
-  // another door — the installer floor here was drift, not a decision (D6).
-  // Tagging at the truck and checking out stay open, above.
+  // /storage used to be the container hub's own foreman+ address (D6); it
+  // merged into /warehouse (ticket 18) and the route is now a bare redirect,
+  // same as /search below. Kept in the registry (unchanged minRole) so old
+  // links/bookmarks still resolve to a real entry instead of an unknown path,
+  // and so this floor stays test-pinned the way it always was.
   { id: "storage", to: "/storage", label: "Storage", icon: "▧", minRole: "foreman" },
   { id: "labels", to: "/labels", label: "Slot labels", icon: "❏", minRole: "foreman" },
   { id: "catalog", to: "/catalog", label: "Catalog", icon: "❒", minRole: "foreman" },

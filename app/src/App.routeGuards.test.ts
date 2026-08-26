@@ -66,8 +66,11 @@ describe("App.tsx route guards", () => {
     }
   });
 
-  it("gates the storage hub itself (D6)", () => {
-    expect(blocks.get("/storage")).toContain("RequireRole");
+  it("leaves /storage a bare redirect, same as /search (ticket 18)", () => {
+    // The container hub merged into /warehouse; this address just forwards
+    // old links now, so there is nothing left here for RequireRole to guard.
+    expect(blocks.get("/storage")).not.toContain("RequireRole");
+    expect(blocks.get("/storage")).toContain("Navigate");
   });
 
   it("leaves the truck-side flows open — installers tag and check out (D6)", () => {

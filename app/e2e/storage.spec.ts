@@ -1,6 +1,7 @@
 // Storage tracking flows, driven through the real UI with fixture data:
-// the hub shows every conex with its contents; check-in is the owner's
-// no-camera multi-select (pick the container once, tick packages, one
+// the warehouse page's "In storage" section shows every conex with its
+// contents (the Storage hub merged into it — ticket 18); check-in is the
+// owner's no-camera multi-select (pick the container once, tick packages, one
 // submit); checkout demands a reason + destination job and flags packages
 // bound to a DIFFERENT job before they leave under the wrong one. The
 // asserts capture the actual RPC payloads the buttons send.
@@ -113,42 +114,46 @@ async function useStorageFixtures(page: Page) {
 
 test.use({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 
-test("hub shows each container with its contents and aging", async ({ page }) => {
-  // A foreman, not an installer. The container hub went foreman+ (D6): it had
-  // been listed as installer-reachable while nothing in the app ever took an
-  // installer there, and it showed Tag and Check out to every role while the
-  // warehouse page kept the same tools to leads. Two doors to one set of tools
-  // with two different rules is the drift that got closed.
+test("warehouse's In storage section shows each container with its contents and aging", async ({
+  page,
+}) => {
+  // The Storage hub merged into /warehouse (ticket 18) — its container tiles,
+  // with the per-job breakdown they always had, are the "In storage" section
+  // now, still foreman+ (D6's rule carried over, not just its address).
   await useSupabaseFixtures(page, { role: "foreman" });
   await useStorageFixtures(page);
-  await page.goto("/storage");
+  await page.goto("/warehouse");
 
   await expect(page.getByText("Conex 7")).toBeVisible();
   await expect(page.getByText("Main warehouse")).toBeVisible();
   // Conex 7 holds the one stored PECAN14 package.
   await expect(page.getByText(/1 package · PECAN14 ×1/)).toBeVisible();
 
-  // Search finds a package by the MARK riding inside it.
-  await page.getByPlaceholder(/PKG-000123/).fill("16");
-  await expect(page.getByText("PKG-000001 · AB1CDE")).toBeVisible();
+  // The pinned Find bar answers "where is it" for a mark, same as it always
+  // did — this page never had a second, separate search box.
+  await page.getByPlaceholder(/Find:/).fill("16");
+  await expect(page.getByText("Window 16 · BLACK22")).toBeVisible();
+  await expect(page.getByText(/AB1CDE/).first()).toBeVisible();
 
   mkdirSync(SHOTS, { recursive: true });
   await page.screenshot({ path: join(SHOTS, "hub.png"), fullPage: true });
 });
 
-test("an installer is turned away from the container hub", async ({ page }) => {
-  // The other half of D6, and the half a registry cannot prove: the floor in
-  // the route registry says who MAY open a path, and the app still has to
-  // actually stop them. Tagging and checking out are unaffected — those belong
-  // to whoever is at the truck (S3) and they are reached from the warehouse
-  // page, which is why locking this hub does not cost an installer anything.
+test("an installer visiting the old storage address lands on the warehouse, container list hidden", async ({
+  page,
+}) => {
+  // /storage used to be its own foreman+ hub (D6); it merged into /warehouse
+  // (ticket 18) and the address is now a bare redirect. An installer landing
+  // here from an old bookmark gets the warehouse page they already have full
+  // access to — the container tiles stay foreman+, gated inside the page
+  // itself, same as every other lead-only tool on it. Tagging and checking
+  // out are unaffected either way — those belong to whoever is at the truck
+  // (S3) and always lived on the warehouse page.
   await useSupabaseFixtures(page, { role: "installer" });
   await useStorageFixtures(page);
   await page.goto("/storage");
 
-  await expect(
-    page.getByRole("heading", { name: "Not available for your role" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Where is it" })).toBeVisible();
   await expect(page.getByText("Conex 7")).toHaveCount(0);
 });
 
