@@ -79,6 +79,22 @@ export const ROLE_LABELS: Record<CrewRole, string> = {
 };
 
 /**
+ * The role WORD one person is allowed to see on another (owner ask,
+ * 2026-08-26): owners are visible as owners only to other owners — everyone
+ * below sees "supervisor" instead. Display-layer disguise; the server-side
+ * half (only owners CHANGE owners) lives in set_profile_role and the
+ * profiles role trigger. A viewer's own-role greeting never routes through
+ * this — you always know what you are.
+ */
+export function visibleRole<T extends CrewRole | string | null | undefined>(
+  target: T,
+  viewer: CrewRole | string | null | undefined,
+): T | "supervisor" {
+  if (target === "owner" && !isOwner(viewer)) return "supervisor";
+  return target;
+}
+
+/**
  * ONE role-rank source of truth. Rank roles so access is a single `>=`
  * comparison. Unknown/null defaults to installer-min (0) so a missing/legacy
  * profile can never over-expose. Legacy names are mapped: lead -> foreman(1),

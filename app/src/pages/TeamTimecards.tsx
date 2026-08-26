@@ -13,7 +13,7 @@ import { listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
 import { SkeletonList } from "../components/ui/States";
 import { listProfiles } from "../lib/install/api";
-import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
+import { isForemanPlus, isSupervisorPlus, visibleRole } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import {
   closeShiftAsNoWork,
@@ -425,7 +425,8 @@ export function TeamTimecards() {
               <span className="tcx-row-main">
                 <span className="tcx-row-name">
                   {r.name}
-                  <span className="tcx-role">{r.role}</span>
+                  {/* Owners read as supervisors to everyone below owner. */}
+                  <span className="tcx-role">{visibleRole(r.role, effectiveRole)}</span>
                 </span>
                 <span className="tcx-row-sub">
                   {live ? (

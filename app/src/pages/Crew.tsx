@@ -15,9 +15,11 @@ import {
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { PinSetter } from "../components/PinGate";
 import {
+  isOwner,
   isSupervisorPlus,
   isForemanPlus,
   ROLE_LABELS,
+  visibleRole,
   type CrewRole,
   type Profile,
 } from "../lib/install/types";
@@ -110,8 +112,12 @@ export function Crew() {
                   }}
                 />
                 <span className="muted">
+                  {/* Owners wear "Supervisor" to everyone below owner (owner
+                      ask, 2026-08-26) — the disguise, everywhere this word
+                      shows. */}
                   {p.role !== "installer"
-                    ? ROLE_LABELS[p.role as CrewRole] ?? p.role
+                    ? ROLE_LABELS[visibleRole(p.role, effectiveRole) as CrewRole] ??
+                      visibleRole(p.role, effectiveRole)
                     : SKILL_LABELS[p.skill_level]}
                   {p.role === "installer"
                     ? CAPABILITIES.filter((c) => badgeSet.has(`${p.id}:${c}`))
@@ -163,11 +169,19 @@ export function Crew() {
                       </div>
                     </>
                   )}
-                  {canSetRoles && (
+                  {/* Only owners manage owners (owner ask, 2026-08-26): a
+                      disguised owner's row offers no role controls at all —
+                      a supervisor "correcting" the Supervisor pill would
+                      really be demoting the owner — and non-owners never get
+                      the Owner button. The server refuses both anyway; the
+                      UI just doesn't offer the refused tap. */}
+                  {canSetRoles && (isOwner(effectiveRole) || p.role !== "owner") && (
                     <>
                       <label className="field-label">Role</label>
                       <div className="row-gap" style={{ flexWrap: "wrap" }}>
-                        {ROLE_ORDER.map((r) => (
+                        {ROLE_ORDER.filter(
+                          (r) => isOwner(effectiveRole) || r !== "owner",
+                        ).map((r) => (
                           <button
                             key={r}
                             className={p.role === r ? "button-like active-pill" : "button-like"}
