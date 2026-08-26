@@ -8,6 +8,7 @@ import {
   shouldPersistQuery,
 } from "./lib/queryClient";
 import {
+  useLocation,
   BrowserRouter,
   Link,
   Navigate,
@@ -207,6 +208,28 @@ function ClockRoute() {
 // password-reset email (type=recovery) or from an expired link (error_code).
 const LANDING_HASH = typeof window !== "undefined" ? window.location.hash : "";
 
+
+/** Stamps data-section on <html> from the route, driving the section auras
+ *  (owner picks 8 + 15): warehouse steel, install coral, office violet,
+ *  learn green. Wayfinding by hue — the tint, not a repaint. */
+function SectionAura() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const section = /^\/(warehouse|storage|pkg)/.test(pathname)
+      ? "warehouse"
+      : /^\/(projects|install|studio|summon)/.test(pathname)
+        ? "install"
+        : /^\/(scheduling|my-schedule|timecards|heartbeat|team|admin|issues|travel)/.test(pathname)
+          ? "office"
+          : /^\/(learn|points|toolbox|safety)/.test(pathname)
+            ? "learn"
+            : null;
+    if (section) document.documentElement.dataset.section = section;
+    else delete document.documentElement.dataset.section;
+  }, [pathname]);
+  return null;
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   // Password recovery: true when this load came from a reset email, or when
@@ -346,6 +369,7 @@ export default function App() {
       <ViewAsRoleProvider>
       <BrowserRouter basename={routerBasename(import.meta.env.BASE_URL)}>
         <ClockProvider>
+        <SectionAura />
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<RoleLanding />} />

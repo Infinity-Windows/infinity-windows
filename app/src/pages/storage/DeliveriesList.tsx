@@ -167,7 +167,7 @@ export function DeliveriesList() {
                     </button>
                     <button
                       className="button-like"
-                      style={{ color: "#c0392b" }}
+                      style={{ color: "var(--danger)" }}
                       disabled={remove.isPending}
                       onClick={() => {
                         const exp = c ? c.expected - c.arrived : 0;

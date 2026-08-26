@@ -612,7 +612,7 @@ export function ContainerDetail() {
           </button>
           <button
             className="button-like"
-            style={{ background: "#c0392b", color: "white" }}
+            style={{ background: "var(--danger)", color: "var(--ink)" }}
             disabled={swept.size === 0 || sweepDelete.isPending}
             onClick={() => {
               const ok = window.confirm(

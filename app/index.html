@@ -6,7 +6,23 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
     />
-    <meta name="theme-color" content="#1a1512" />
+    <meta name="theme-color" content="#f6f1ea" />
+    <script>
+      // Theme before first paint (owner pick 11): System / Light / Dark.
+      // Kept inline so the page never flashes the wrong world.
+      try {
+        var t = localStorage.getItem("infinity.theme");
+        if (t === "light" || t === "dark") {
+          document.documentElement.dataset.theme = t;
+        }
+        var dark =
+          t === "dark" ||
+          (t !== "light" &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute("content", dark ? "#1a1512" : "#f6f1ea");
+      } catch (e) {}
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Infinity" />
