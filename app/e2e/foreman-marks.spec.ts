@@ -6,11 +6,18 @@ import { join } from "node:path";
  * The foreman-only mark controls, exercised for real.
  *
  * Signs in as the foreman test login, opens the automation sandbox job, and does
- * the four things that had never been seen working: drags a mark, reads the Undo
- * button (including who moved it and when), puts one mark back, and puts every
- * mark back. Screenshots at each step, because "it works" from an agent is worth
- * nothing without a picture — a previous run cited screenshots that did not
- * exist.
+ * the three things that had never been seen working: drags a mark and undoes
+ * THAT move from the toast it joins (pick 11 — Ctrl+Z walks the same history
+ * back but has no keyboard on the mobile-sized viewport this suite drives, so
+ * it isn't exercised here), and puts every mark back. Screenshots at each
+ * step, because "it works" from an agent is worth nothing without a picture —
+ * a previous run cited screenshots that did not exist.
+ *
+ * Pick 11 retired the bar's own per-step Undo button (with who-moved-it
+ * attribution) and its per-mark "put this one back" button — a single drag's
+ * undo lives on the toast now, and the bar keeps only "put every mark back".
+ * This test used to exercise both of those; it no longer can, because they no
+ * longer exist.
  *
  * WHY THIS IS SAFE. Two independent reasons, and it relies on both:
  *
@@ -197,7 +204,7 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
     mkdirSync(SHOTS, { recursive: true });
   });
 
-  test("drag, undo with attribution, put one back, put every one back", async ({
+  test("drag, undo from the toast, put every mark back", async ({
     page,
   }) => {
     await calmFirstRun(page);
@@ -255,75 +262,39 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
       });
     }
 
-    // ---- 3. The undo bar, and who moved it --------------------------------
-    const undoButton = page.getByRole("button", { name: /^Undo moving mark / });
-    await expect(undoButton).toBeVisible();
-    const attribution = ((await undoButton.textContent()) ?? "").trim();
-    // "Undo moving mark 5 — you, just now". The name and the time are the whole
-    // point: the next thing on the stack may be a correction somebody made on
-    // purpose out on site, and that has to be readable before pressing, not
-    // after.
-    expect(attribution).toMatch(/^Undo moving mark \S+ — you, just now$/);
-    expect(attribution).toContain(mark.label);
-    // The depth of the stack, not the count of moved marks. The count is read
-    // from the saved rows and lags the drag by a refetch, so asserting on it
-    // here would be asserting on network timing; the ring above is the same
-    // claim, made from what is on the screen.
-    await expect(undoBar).toContainText("1 step to go back through");
-    await undoBar.screenshot({ path: join(SHOTS, "04-undo-bar-attribution.png") });
+    // ---- 3. The move joins the app-wide undo toast (pick 11) --------------
+    // No more attributed per-step button in the bar — a single drag's undo
+    // lives on the toast that fires right where the drag happens.
+    const moveToast = page.locator(".undo-toast").filter({ hasText: "Mark moved." });
+    await expect(moveToast).toBeVisible({ timeout: 60_000 });
+    await moveToast.screenshot({ path: join(SHOTS, "04-move-toast.png") });
+    // Same status line as before, just without the per-step "N steps to go
+    // back through" — that tracked the old history list, which is gone.
+    await expect(undoBar).toContainText("1 mark has been moved off the plan.");
 
-    // ---- 4. Undo it -------------------------------------------------------
-    await undoButton.click();
-    // What it says it did, in the words the crew see.
-    const undoneToast = page.locator(".toast").filter({ hasText: /back where it was/ });
-    await expect(undoneToast).toBeVisible({ timeout: 60_000 });
-    await undoneToast.screenshot({ path: join(SHOTS, "05-undo-confirmation.png") });
+    // ---- 4. Undo it, from the toast ----------------------------------------
+    await moveToast.getByRole("button", { name: "Undo" }).click();
+    await expect(moveToast).toHaveCount(0, { timeout: 60_000 });
     await expect(rings).toHaveCount(0, { timeout: 60_000 });
     await expect(undoBar).toContainText("Every mark is where the plan put it");
-    await expect(page.getByRole("button", { name: /^Undo moving mark / })).toHaveCount(0);
     await shootPlan(page, "06-plan-after-undo.png");
 
-    // ---- 5. Put one mark back ---------------------------------------------
-    // A different button doing a different thing: Undo walks back one step,
-    // this goes straight to where the plan put that one mark.
-    const again = await gripMark(page, marksOn(page).first());
-    await dragTowardMiddle(page, again.locator);
-    await expect(rings).toHaveCount(1, { timeout: 60_000 });
-    await rings.first().click();
-
-    const putOneBack = page.getByRole("button", {
-      name: /^Put mark \S+ back on the plan$/,
-    });
-    await expect(putOneBack).toBeVisible();
-    await undoBar.screenshot({ path: join(SHOTS, "07-put-one-mark-back-button.png") });
-    await putOneBack.click();
-    const resetOneToast = page
-      .locator(".toast")
-      .filter({ hasText: /back where the plan put it/ });
-    await expect(resetOneToast).toBeVisible({ timeout: 60_000 });
-    await resetOneToast.screenshot({ path: join(SHOTS, "08-put-one-mark-back-done.png") });
-    await expect(rings).toHaveCount(0, { timeout: 60_000 });
-
-    // Tapping the mark opened its details, which sits above the plan and moves
-    // everything below it. Closed so the next drags measure the real drawing.
-    const closeDetails = page.getByRole("button", { name: /^Close details for / });
-    if (await closeDetails.first().isVisible().catch(() => false)) {
-      await closeDetails.first().click();
-    }
-
-    // ---- 6. Put every mark back -------------------------------------------
+    // ---- 5. Put every mark back --------------------------------------------
     // Two marks this time, so the bar has to count both and the confirmation has
     // to warn about more than one.
     const a = await gripMark(page, marksOn(page).first());
     await dragTowardMiddle(page, a.locator);
     await expect(rings).toHaveCount(1, { timeout: 60_000 });
+    // Let this drag's own undo toast clear before the next drag — otherwise
+    // it can sit over the drawing right where the next mark needs gripping.
+    await expect(page.locator(".undo-toast")).toHaveCount(0, { timeout: 10_000 });
     // Explicitly one that has NOT been moved yet. The mark just dragged is no
     // longer where it was in the drawing's order, so "the second one" could pick
     // it up again and move the same mark twice.
     const b = await gripMark(page, unmovedMarksOn(page).first());
     await dragTowardMiddle(page, b.locator, 0.3);
     await expect(rings).toHaveCount(2, { timeout: 60_000 });
-    await expect(undoBar).toContainText("2 steps to go back through");
+    await expect(undoBar).toContainText("2 marks have been moved off the plan.");
     await shootPlan(page, "09-two-marks-moved.png");
     await undoBar.screenshot({ path: join(SHOTS, "10-undo-bar-two-moved.png") });
 
@@ -351,10 +322,13 @@ test.describe("foreman mark controls, on the sandbox job only", () => {
  * Let the confirmation messages clear before photographing the plan.
  *
  * They stack in the middle of a phone screen and sit on top of the very bar the
- * picture is of, which made one shot unreadable.
+ * picture is of, which made one shot unreadable. Two toast systems now: the
+ * plain confirmation toast (reset-all still uses it) and the undo toast a
+ * single drag joins (pick 11) — both have to be gone.
  */
 async function toastsGone(page: Page) {
   await expect(page.locator(".toast")).toHaveCount(0, { timeout: 30_000 });
+  await expect(page.locator(".undo-toast")).toHaveCount(0, { timeout: 30_000 });
 }
 
 /**
@@ -408,25 +382,25 @@ async function gripMark(
 }
 
 /**
- * Press "put every mark back", accept the confirmation, and return what the
- * confirmation actually said. Returns "" when there was nothing to put back.
+ * Press "put every mark back", confirm the in-app danger card (pick 10 —
+ * this used to be a window.confirm dialog), and return what the card
+ * actually said. Returns "" when there was nothing to put back.
  */
 async function putEveryMarkBack(
   page: Page,
   opts: { allowNothingToDo?: boolean } = {},
 ): Promise<string> {
-  const all = page.locator(".mark-undo__all");
-  if ((await all.count()) === 0) {
+  const trigger = page.locator(".mark-undo__all");
+  if ((await trigger.count()) === 0) {
     if (opts.allowNothingToDo) return "";
     throw new Error("expected a put-every-mark-back button and found none");
   }
 
-  let said = "";
-  page.once("dialog", (dialog) => {
-    said = dialog.message();
-    void dialog.accept();
-  });
-  await all.first().click();
-  await expect(all).toHaveCount(0, { timeout: 60_000 });
+  await trigger.first().click();
+  const card = page.locator(".mark-undo .detail-card");
+  await expect(card).toBeVisible();
+  const said = ((await card.textContent()) ?? "").trim();
+  await card.getByRole("button", { name: "Put them back", exact: true }).click();
+  await expect(trigger).toHaveCount(0, { timeout: 60_000 });
   return said;
 }

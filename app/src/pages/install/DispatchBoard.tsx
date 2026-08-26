@@ -53,6 +53,7 @@ import {
   listOpenRedos,
   listProjectSessions,
 } from "../../lib/install/sessions";
+import { showUndoToast } from "../../lib/undoToast";
 
 export function DispatchBoard({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
@@ -121,16 +122,61 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
 
+  // Pick 12: a real inverse already exists for both directions of this one
+  // (assign_opening_to_installer / unassign_opening), so the prior assignee
+  // — captured here, before the write, from the still-unrefreshed row — is
+  // what undo replays. An opening that was unassigned before goes back to
+  // unassigned; one that was on someone else's list goes back to THEM, at
+  // their old sequence number, not just "off the new person's list".
   const assign = useMutation({
-    mutationFn: (args: { openingId: string; profileId: string }) =>
-      assignOpeningToInstaller(args.openingId, args.profileId),
-    onSuccess: refresh,
+    mutationFn: (args: {
+      openingId: string;
+      profileId: string;
+      openingCode: string;
+      priorProfileId: string | null;
+      priorSequence: number | null;
+    }) => assignOpeningToInstaller(args.openingId, args.profileId),
+    onSuccess: (_data, args) => {
+      refresh();
+      showUndoToast({
+        message: `#${args.openingCode} assigned to ${nameOf(args.profileId)}.`,
+        undo: async () => {
+          if (args.priorProfileId) {
+            await assignOpeningToInstaller(
+              args.openingId,
+              args.priorProfileId,
+              args.priorSequence,
+            );
+          } else {
+            await unassignOpening(args.openingId);
+          }
+          refresh();
+        },
+      });
+    },
     onError: (e) => setMessage(formatApiError(e)),
   });
 
   const unassign = useMutation({
-    mutationFn: (openingId: string) => unassignOpening(openingId),
-    onSuccess: refresh,
+    mutationFn: (args: {
+      openingId: string;
+      openingCode: string;
+      priorProfileId: string | null;
+      priorSequence: number | null;
+    }) => unassignOpening(args.openingId),
+    onSuccess: (_data, args) => {
+      refresh();
+      if (!args.priorProfileId) return;
+      const priorProfileId = args.priorProfileId;
+      const priorSequence = args.priorSequence;
+      showUndoToast({
+        message: `#${args.openingCode} unassigned.`,
+        undo: async () => {
+          await assignOpeningToInstaller(args.openingId, priorProfileId, priorSequence);
+          refresh();
+        },
+      });
+    },
     onError: (e) => setMessage(formatApiError(e)),
   });
 
@@ -228,8 +274,13 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
         value={o.assigned_to ?? ""}
         onChange={(e) => {
           const v = e.target.value;
-          if (!v) unassign.mutate(o.id);
-          else assign.mutate({ openingId: o.id, profileId: v });
+          const prior = {
+            openingCode: o.opening_code,
+            priorProfileId: o.assigned_to,
+            priorSequence: o.sequence,
+          };
+          if (!v) unassign.mutate({ openingId: o.id, ...prior });
+          else assign.mutate({ openingId: o.id, profileId: v, ...prior });
         }}
       >
         <option value="">— unassigned —</option>
@@ -459,14 +510,39 @@ function FlashRunCard({
   });
   const refresh = () =>
     void queryClient.invalidateQueries({ queryKey: ["flashRunners", projectId] });
+  // Pick 12: a real inverse pair already exists (assign_flash_runner /
+  // unassign_flash_runner) — set membership, so there's no prior state to
+  // capture beyond who it was.
   const add = useMutation({
     mutationFn: (profileId: string) => assignFlashRunner(projectId, profileId),
-    onSuccess: refresh,
+    onSuccess: (_data, profileId) => {
+      refresh();
+      const name = addable.find((c) => c.id === profileId)?.display_name ?? "Runner";
+      showUndoToast({
+        message: `${name} added to the flash run.`,
+        undo: async () => {
+          await unassignFlashRunner(projectId, profileId);
+          refresh();
+        },
+      });
+    },
     onError: (e) => setErr(formatApiError(e)),
   });
   const remove = useMutation({
     mutationFn: (profileId: string) => unassignFlashRunner(projectId, profileId),
-    onSuccess: refresh,
+    onSuccess: (_data, profileId) => {
+      refresh();
+      const name =
+        (runners.data ?? []).find((r) => r.profile_id === profileId)?.profile
+          ?.display_name ?? "Runner";
+      showUndoToast({
+        message: `${name} taken off the flash run.`,
+        undo: async () => {
+          await assignFlashRunner(projectId, profileId);
+          refresh();
+        },
+      });
+    },
     onError: (e) => setErr(formatApiError(e)),
   });
 

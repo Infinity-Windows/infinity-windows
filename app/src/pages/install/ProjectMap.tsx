@@ -13,6 +13,7 @@ import {
   listElevationViews,
   listMarkSpecs,
   listOpenings,
+  listPinMoves,
   listPlanOutlines,
   listPlansets,
   listProfiles,
@@ -23,12 +24,14 @@ import {
   setOpeningsSequence,
   unassignOpening,
   undoInstall,
+  undoPinMove,
   updateOpening,
 } from "../../lib/install/api";
 import {
   OpeningDetailCard,
   VOIDED_RING_COLOR,
 } from "../../components/install/OpeningDetailCard";
+import { ConfirmDanger } from "../../components/ConfirmDanger";
 import { OpeningRowButton } from "../../components/install/OpeningRowButton";
 import { InstallChip } from "../../components/install/InstallChip";
 import {
@@ -103,11 +106,15 @@ import {
 import { dispatchNudge, dispatchNudgeText } from "../../lib/install/dispatchNudge";
 import { MapPinLayer } from "./MapPinLayer";
 import { MapWallLayer } from "./MapWallLayer";
-import { movedMarkIds } from "../../lib/install/pinHistory";
+import { movedMarkIds, nextUndoableMove } from "../../lib/install/pinHistory";
 import { PlanMarkUndoBar } from "../../components/install/PlanMarkUndoBar";
 import { OutlineFeatureLayer } from "./OutlineFeatureLayer";
 import { PlanModelEditor } from "./PlanModelEditor";
 import { PlansPanel } from "./PlansPanel";
+import { showUndoToast } from "../../lib/undoToast";
+import { pushToast, toastError, toastSuccess } from "../../lib/toast";
+import { enqueuePinUndo } from "../../lib/offline/outbox";
+import { isNetworkError } from "../../lib/offline/outbox-core";
 
 function isUsablePdf(ps: Planset): boolean {
   return ps.source_format === "pdf" || !!ps.converted_pdf_path;
@@ -413,6 +420,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     mutationFn: (args: { openingId: string; reason: string }) =>
       undoInstall(args.openingId, args.reason),
     onSuccess: () => {
+      setConfirmUndoId(null);
+      setUndoReason("");
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
       queryClient.invalidateQueries({ queryKey: ["voidedOpenings", projectId] });
       queryClient.invalidateQueries({ queryKey: ["projectUnits", projectId] });
@@ -421,19 +430,15 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
     onError: (e) => setMapError(formatApiError(e)),
   });
 
+  // Pick 10: the one danger-confirm pattern app-wide — an inline card with a
+  // required reason field, in ConfirmDanger's visual family, instead of a
+  // browser prompt. The full form lives on the opening sheet; this stays as
+  // the map's quick path.
+  const [confirmUndoId, setConfirmUndoId] = useState<string | null>(null);
+  const [undoReason, setUndoReason] = useState("");
   const handleUndo = (o: ProjectOpening) => {
-    // The reason is required — it becomes the void record AND the
-    // failed-install issue's note. The full form lives on the opening sheet;
-    // this stays as the map's quick path.
-    const reason = window.prompt(
-      `Undo the install on ${o.opening_code}? Every record is kept.\n\nWhy is it coming back off the wall? (required):`,
-    );
-    if (reason === null) return; // cancelled
-    if (reason.trim() === "") {
-      setMapError("A reason is required to undo an install.");
-      return;
-    }
-    undo.mutate({ openingId: o.id, reason: reason.trim() });
+    setConfirmUndoId(o.id);
+    setUndoReason("");
   };
 
   const reextractSpecs = useMutation({
@@ -730,8 +735,29 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         pin_y: Math.round(args.y * 1000) / 1000,
         page_number: page,
       }),
-    onSuccess: () => {
+    onSuccess: async (_data, args) => {
       queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["pinMoves", projectId] });
+      // Pick 11: the drag joins the app-wide undo toast. The move history row
+      // is written by a database trigger in the same transaction as the pin
+      // update above, so it's already there to read back — the toast's undo
+      // walks back exactly the move this drag just made, never "whatever is
+      // newest" by the time someone taps it.
+      if (!canMoveMarks) return;
+      try {
+        const moves = await listPinMoves(projectId);
+        const newest = nextUndoableMove(
+          moves.filter((m) => m.opening_id === args.id),
+        );
+        if (!newest) return;
+        showUndoToast({
+          message: "Mark moved.",
+          undo: () => undoSingleMove(newest.id),
+        });
+      } catch {
+        // Best-effort: the drag itself already saved either way — a toast
+        // we can't set up is not a reason to treat the move as failed.
+      }
     },
     onError: (e, args) => {
       // Put the dot back where it was. Without this the optimistic position
@@ -745,6 +771,74 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       setMapError(formatApiError(e));
     },
   });
+
+  // Pick 11: a single pin drag joins the app-wide undo toast, and Ctrl+Z
+  // walks the SAME move history back one step — one undo mechanism, not the
+  // bar's old separate one. Foreman+ only: a lower role's drag is refused
+  // server-side before placePin's onSuccess ever runs, and there's nothing
+  // for Ctrl+Z to reach either.
+  const pinMoves = useQuery({
+    queryKey: ["pinMoves", projectId],
+    queryFn: () => listPinMoves(projectId),
+    enabled: canMoveMarks && !!projectId,
+  });
+  const pinMoveHead = nextUndoableMove(pinMoves.data ?? []);
+
+  /**
+   * Walk one pin move back. Silent on success (the caller decides whether
+   * that's worth announcing — the toast's own "Undo" button needs nothing
+   * more; Ctrl+Z, with no toast already on screen, adds its own toastSuccess
+   * afterward). Offline-aware like every other mark-history write: the move
+   * id already names exactly what to undo, so it queues unchanged.
+   */
+  const undoSingleMove = async (moveId: string): Promise<void> => {
+    const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+    try {
+      if (offline) {
+        await enqueuePinUndo(moveId);
+        pushToast("No signal — saved. It will apply when you're back online.");
+      } else {
+        await undoPinMove(moveId);
+      }
+    } catch (err) {
+      if (isNetworkError(err)) {
+        await enqueuePinUndo(moveId);
+        pushToast("No signal — saved. It will apply when you're back online.");
+      } else {
+        throw err;
+      }
+    } finally {
+      queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["pinMoves", projectId] });
+    }
+  };
+
+  // "Control Z", as asked for (moved here from the bar, pick 11 — same
+  // history, same guard). Laptop only; a phone has no keyboard.
+  useEffect(() => {
+    if (!canMoveMarks || !pinMoveHead) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "z" || !(e.metaKey || e.ctrlKey) || e.shiftKey) {
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) {
+        return;
+      }
+      e.preventDefault();
+      const opening = (openings.data ?? []).find(
+        (o) => o.id === pinMoveHead.opening_id,
+      );
+      const label = opening ? openingMarkCode(opening.opening_code) : "the mark";
+      void undoSingleMove(pinMoveHead.id)
+        .then(() => toastSuccess(`Mark ${label} is back where it was.`))
+        .catch((err) => toastError(err, formatApiError(err)));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canMoveMarks, pinMoveHead, openings.data, queryClient, projectId]);
 
   // Commit the ordered selection: assign each opening to the installer in tap
   // order. We pass the sequence per call so the new work APPENDS after the
@@ -1167,12 +1261,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   // the job, so putting them back is a lead's call, and the database says so
   // too (the reset/undo functions check is_foreman_plus).
   const undoBar = isLead && project && (
-    <PlanMarkUndoBar
-      projectId={projectId}
-      jobName={project.name}
-      openings={all}
-      selectedOpening={selectedOpening}
-    />
+    <PlanMarkUndoBar projectId={projectId} jobName={project.name} openings={all} />
   );
 
   const installerExistingCount = dispatchInstaller
@@ -2323,7 +2412,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               </span>
             </OpeningRowButton>
             {o.status === "installed" ? (
-              isLead && (
+              isLead &&
+              confirmUndoId !== o.id && (
                 <button
                   className="link map-row-action"
                   style={{ marginLeft: 8 }}
@@ -2341,6 +2431,36 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               >
                 {o.status === "planned" ? "Claim" : "Open"}
               </Link>
+            )}
+            {confirmUndoId === o.id && (
+              <div className="opening-row-panel">
+                <ConfirmDanger
+                  confirmText={undo.isPending ? "Undoing…" : "Undo install"}
+                  disabled={undo.isPending || undoReason.trim() === ""}
+                  onConfirm={() =>
+                    undo.mutate({ openingId: o.id, reason: undoReason.trim() })
+                  }
+                  onCancel={() => {
+                    setConfirmUndoId(null);
+                    setUndoReason("");
+                  }}
+                >
+                  <>
+                    Undo the install on <strong>{o.opening_code}</strong>? Every
+                    record is kept.
+                    <label style={{ display: "block", marginTop: 8 }}>
+                      Why is it coming back off the wall? (required)
+                      <input
+                        style={{ display: "block", width: "100%", marginTop: 4 }}
+                        value={undoReason}
+                        onChange={(e) => setUndoReason(e.target.value)}
+                        aria-label={`Why ${o.opening_code} is coming back off the wall`}
+                        required
+                      />
+                    </label>
+                  </>
+                </ConfirmDanger>
+              </div>
             )}
             {expanded && (
               <div className="opening-row-panel">

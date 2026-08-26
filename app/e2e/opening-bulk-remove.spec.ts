@@ -37,7 +37,6 @@ test("a foreman removes several openings in one confirmed sweep", async ({
   await page.route("**/rest/v1/rpc/list_removed_openings", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
   );
-  page.on("dialog", (d) => void d.accept());
 
   await page.goto(`/projects/${job.projectId}/review`);
   await page.getByRole("button", { name: "Remove several…" }).click();
@@ -47,17 +46,23 @@ test("a foreman removes several openings in one confirmed sweep", async ({
   await boxes.nth(1).check();
   await page.getByRole("button", { name: "Remove 2 selected" }).click();
 
+  // Pick 10: the tap above only opens the in-app danger confirm now — no
+  // browser dialog anywhere in this flow. Its own confirm button fires the
+  // sweep.
+  const bulkBar = page.locator(".bulk-remove-bar");
+  await expect(bulkBar).toContainText("Nothing is deleted");
+  await bulkBar.getByRole("button", { name: "Remove", exact: true }).click();
+
   // One sweep, two RPC calls, and the outcome said in plain words.
   await expect(page.locator(".error")).toContainText("Removed 2 openings");
   expect(removedIds).toHaveLength(2);
   expect(new Set(removedIds).size).toBe(2);
 });
 
-// SINGLE-opening remove (OpeningReview.tsx:143's askThenRemove): the
-// day-to-day path for one wrong mark, as opposed to the sweep above. The
-// screen still uses window.confirm here today — pick 10 changes that later,
-// and this test only needs its one line of dialog handling touched when it
-// does.
+// SINGLE-opening remove (OpeningReview.tsx's askThenRemove): the day-to-day
+// path for one wrong mark, as opposed to the sweep above. Pick 10 replaced
+// window.confirm with the in-app ConfirmDanger card — same RPC payload
+// assertion, the dialog handling swapped for a second tap on the card.
 test("a foreman removes a single opening, and the row leaves the list", async ({
   page,
 }) => {
@@ -103,12 +108,17 @@ test("a foreman removes a single opening, and the row leaves the list", async ({
       body: "{}",
     });
   });
-  page.on("dialog", (d) => void d.accept());
 
   await page.goto(`/projects/${job.projectId}/review`);
   const row = page.locator(".opening-review-row").filter({
     has: page.locator(`input.opening-code-input[value="${target.opening_code}"]`),
   });
+  // First tap opens the ConfirmDanger card (with the plain-words consequence);
+  // the second is its own confirm button — same accessible name, same row,
+  // Playwright's actionability wait carries it across the async
+  // "referenced elsewhere" check in between.
+  await row.getByRole("button", { name: "Remove" }).click();
+  await expect(row.locator(".detail-card")).toBeVisible();
   await row.getByRole("button", { name: "Remove" }).click();
 
   await expect.poll(() => removed.length).toBe(1);
