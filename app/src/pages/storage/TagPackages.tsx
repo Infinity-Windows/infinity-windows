@@ -389,6 +389,10 @@ export function TagPackages() {
       return done;
     },
     onSuccess: (done) => {
+      // Pick 25 looked for an undo toast here (tagging a blank is exactly
+      // the kind of tap it targets) and stopped: bind_package has no
+      // inverse RPC, and this wave adds no migrations. Skipped on purpose —
+      // see the pick 25 PR body.
       localStorage.setItem(LAST_JOB_KEY, projectId);
       const queued = done.filter((d) => d.queued).length;
       const mark = markCode.trim();

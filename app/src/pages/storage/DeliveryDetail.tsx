@@ -13,6 +13,7 @@ import { ContainerBadge } from "../../components/warehouse/ContainerBadge";
 import { StageChip } from "../../components/warehouse/StageChip";
 import { listProjects } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
+import { showUndoToast } from "../../lib/undoToast";
 import {
   filePendingPackages,
   labelPackages,
@@ -21,6 +22,7 @@ import {
   listDeliveryPackages,
   listPartTypeOptions,
   receivePackages,
+  setPackagePart,
   storePackages,
   unreceivePackages,
   unstorePackages,
@@ -101,9 +103,49 @@ export function DeliveryDetail() {
       // there is; the crates themselves store like any other box.
       return ids.length;
     },
-    onSuccess: (n) => {
-      setMessage(`${n} box${n === 1 ? "" : "es"} checked in.`);
+    onSuccess: (n, vars) => {
+      const message = `${n} box${n === 1 ? "" : "es"} checked in.`;
+      setMessage(message);
       refresh();
+      // Pick 25: undo re-flips to expected and, if a label rode along on
+      // this same tap, puts back exactly what each package carried before —
+      // captured from the still-unrefreshed cache, not re-typed here.
+      const ids = pickToReceive(vars.row, vars.n);
+      const label = rowLabels[vars.row.key];
+      const applied = label && !vars.row.isCrate ? label : null;
+      const priorById = new Map(
+        ids.map((pid) => {
+          const p = (packages.data ?? []).find((x) => x.id === pid);
+          return [
+            pid,
+            {
+              partIndex: p?.part_index ?? null,
+              partTotal: p?.part_total ?? null,
+              partType: p?.part_type ?? null,
+            },
+          ] as const;
+        }),
+      );
+      showUndoToast({
+        message,
+        undo: async () => {
+          await unreceivePackages(ids);
+          if (applied) {
+            await Promise.all(
+              ids.map((pid) => {
+                const prior = priorById.get(pid);
+                return setPackagePart(
+                  pid,
+                  prior?.partIndex ?? null,
+                  prior?.partTotal ?? null,
+                  prior?.partType ?? null,
+                );
+              }),
+            );
+          }
+          refresh();
+        },
+      });
     },
     onError: (e) => setMessage(formatApiError(e)),
   });
@@ -133,9 +175,18 @@ export function DeliveryDetail() {
       await storePackages(ids, args.container);
       return ids.length;
     },
-    onSuccess: (n) => {
-      setMessage(`Stored ${n}.`);
+    onSuccess: (n, vars) => {
+      const message = `Stored ${n}.`;
+      setMessage(message);
       refresh();
+      const ids = pickToStore(vars.row, vars.n);
+      showUndoToast({
+        message,
+        undo: async () => {
+          await unstorePackages(ids);
+          refresh();
+        },
+      });
     },
     onError: (e) => setMessage(formatApiError(e)),
   });
@@ -145,13 +196,21 @@ export function DeliveryDetail() {
       await storePackages(args.ids, args.container);
       return args.ids.length;
     },
-    onSuccess: (n) => {
-      setMessage(`Stored ${n} together.`);
+    onSuccess: (n, vars) => {
+      const message = `Stored ${n} together.`;
+      setMessage(message);
       setBundle(new Set());
       setBundleMode(false);
       setConfirmMix(false);
       setBundleTarget("");
       refresh();
+      showUndoToast({
+        message,
+        undo: async () => {
+          await unstorePackages(vars.ids);
+          refresh();
+        },
+      });
     },
     onError: (e) => setMessage(formatApiError(e)),
   });
