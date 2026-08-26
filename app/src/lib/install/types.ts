@@ -61,10 +61,16 @@ export interface MarkElevationView {
   crop_bbox: unknown;
 }
 
-/** Map pin identity color: window vs door (status is a separate ring/badge). */
+/**
+ * Map pin identity color: window vs door (status is a separate ring/badge).
+ * Reads index.css's --kind-window/--kind-door (wave I-1, pick 2) — every
+ * consumer sets these as a DOM style/custom-property value (MapPinLayer,
+ * OpeningDetailCard, ProjectMap, PlanModelEditor; none paints to canvas), so
+ * a CSS variable string works everywhere a literal hex used to.
+ */
 export const OPENING_KIND_COLORS = {
-  window: "#4A9DFF",
-  door: "#3ECF6E",
+  window: "var(--kind-window)",
+  door: "var(--kind-door)",
 } as const;
 
 export type OpeningStatus = "planned" | "assigned" | "installed";
@@ -277,10 +283,12 @@ export const MEMO_TOPICS: { key: keyof MemoTopics; prompt: string }[] = [
   { key: "do_again", prompt: "What we'd do again next time" },
 ];
 
+/** Reads index.css's --st-planned/--st-assigned/--st-installed (wave I-1,
+ * pick 2) — same DOM-style-only consumers as OPENING_KIND_COLORS above. */
 export const OPENING_STATUS_COLORS: Record<OpeningStatus, string> = {
-  planned: "#fbbf24",
-  assigned: "#94a3b8",
-  installed: "#34d399",
+  planned: "var(--st-planned)",
+  assigned: "var(--st-assigned)",
+  installed: "var(--st-installed)",
 };
 
 /** Base mark for display: W1-2 → W1, #14-1 → 14. */

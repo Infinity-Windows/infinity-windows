@@ -2287,7 +2287,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 aria-hidden
                 style={{
                   background:
-                    unitKind(o) === "door" ? "var(--ok)" : "var(--info)",
+                    OPENING_KIND_COLORS[unitKind(o) === "door" ? "door" : "window"],
                 }}
               />
               <strong>{o.opening_code}</strong>
