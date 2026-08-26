@@ -1029,6 +1029,38 @@ export async function labelPackages(
 }
 
 /**
+ * Add one set (a mark) to a delivery that already exists — the truck brought
+ * something the manifest never listed (owner, 2026-08-26). Foreman+, same
+ * line the other manifest edits hold. Pieces arrive unlabeled on purpose:
+ * skeleton-first, the boxes decide at the tailgate.
+ */
+export async function addDeliverySet(args: {
+  deliveryId: string;
+  projectId: string | null;
+  jobName: string | null;
+  mark: string;
+  kind: "window" | "door";
+  packageCount: number;
+  crateName?: string | null;
+  cratePieces?: number | null;
+  cratePartType?: string | null;
+}): Promise<number> {
+  const { data, error } = await supabase.rpc("add_delivery_set", {
+    p_delivery: args.deliveryId,
+    p_project: args.projectId,
+    p_job_name: args.jobName,
+    p_mark: args.mark,
+    p_kind: args.kind,
+    p_package_count: args.packageCount,
+    p_crate_name: args.crateName ?? null,
+    p_crate_pieces: args.cratePieces ?? null,
+    p_crate_part_type: args.cratePartType ?? null,
+  });
+  if (error) throw error;
+  return (data as number) ?? 0;
+}
+
+/**
  * Rename a package's headline (owner, 2026-08-26): the waiting-job text and
  * the manufacturer mark — the two halves of packageTitle no other editor
  * covered. Piece numbers and the what-is-it label keep going through

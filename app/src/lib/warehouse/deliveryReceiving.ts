@@ -39,6 +39,33 @@ export interface SlotRow {
   /** Non-crate ids currently stored — un-put-away pulls them back to
    *  loose, most recent first. */
   storedIds: string[];
+  /** EVERY package id that fed this slot, whatever its state — checked-out
+   *  ones included, which none of the action lists above carry. The set
+   *  editor renames and deletes through this so no straggler keeps the old
+   *  name. */
+  allIds: string[];
+}
+
+/** One mark's whole story inside a job group — what the set editor shows. */
+export interface DeliverySet {
+  mark: string;
+  slots: SlotRow[];
+  allIds: string[];
+  expected: number;
+  arrived: number;
+  stored: number;
+}
+
+export function setForMark(group: JobGroup, mark: string): DeliverySet {
+  const slots = group.rows.filter((r) => r.mark === mark);
+  return {
+    mark,
+    slots,
+    allIds: slots.flatMap((r) => r.allIds),
+    expected: slots.reduce((s, r) => s + r.expected, 0),
+    arrived: slots.reduce((s, r) => s + r.received, 0),
+    stored: slots.reduce((s, r) => s + r.stored, 0),
+  };
 }
 
 export interface JobGroup {
@@ -124,10 +151,12 @@ export function groupDelivery(
         crateContainerId: p.piece_count != null ? p.container_id : null,
         undoableIds: [],
         storedIds: [],
+        allIds: [],
       };
       job.rows.push(row);
     }
     row.expected += 1;
+    row.allIds.push(p.id);
     if (p.status === "minted") {
       row.expectedIds.push(p.id);
     } else if (p.status === "received") {

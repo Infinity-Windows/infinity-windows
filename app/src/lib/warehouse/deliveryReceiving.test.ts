@@ -6,6 +6,7 @@ import {
   pickToStore,
   pickToUndo,
   pickToUnstore,
+  setForMark,
   type DeliveryPackageLite,
 } from "./deliveryReceiving";
 
@@ -126,5 +127,33 @@ describe("missingSummary", () => {
     const s = missingSummary(groups);
     expect(s).toMatchObject({ expected: 4, received: 2, missing: 2 });
     expect(s.lines).toEqual(["Sunset Ridge 4 · #5050 — 1/3: 2 of 3 still missing"]);
+  });
+});
+
+describe("setForMark", () => {
+  it("gathers every slot and every id of one mark, whatever the state", () => {
+    const packages = [
+      pkg({ id: "a", mfr_mark: "4", part_index: 1, part_total: 7 }),
+      pkg({ id: "b", mfr_mark: "4", part_index: 2, part_total: 7, status: "received" }),
+      pkg({ id: "c", mfr_mark: "4", part_index: 3, part_total: 7, status: "stored" }),
+      // Checked out: in none of the action id lists, but the set editor
+      // still renames and deletes through it.
+      pkg({ id: "d", mfr_mark: "4", part_index: 4, part_total: 7, status: "checked_out" }),
+      pkg({ id: "e", mfr_mark: "1" }),
+    ];
+    const g = groupDelivery(packages)[0];
+    const set = setForMark(g, "4");
+    expect(set.slots).toHaveLength(4);
+    expect([...set.allIds].sort()).toEqual(["a", "b", "c", "d"]);
+    expect(set.expected).toBe(4);
+    expect(set.arrived).toBe(3);
+    expect(set.stored).toBe(2);
+  });
+
+  it("an unknown mark comes back empty, not a crash", () => {
+    const g = groupDelivery([pkg({})])[0];
+    const set = setForMark(g, "999");
+    expect(set.slots).toEqual([]);
+    expect(set.allIds).toEqual([]);
   });
 });
