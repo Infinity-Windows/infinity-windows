@@ -48,6 +48,7 @@ import {
 } from "../lib/storage";
 import { DayRecapCard } from "../components/warehouse/DayRecapCard";
 import { dayRecap, localMidnightIso } from "../lib/warehouse/dayRecap";
+import { jobTallies, tallyLine } from "../lib/warehouse/jobTally";
 import { partitionTestPackages, testProjectIds } from "../lib/warehouse/testPartition";
 import {
   filterSuppliesByName,
@@ -332,6 +333,42 @@ export function Warehouse() {
       {packages.isSuccess && movementsToday.isSuccess && deliveries.isSuccess && (
         <DayRecapCard recap={recap} />
       )}
+
+      {/* Per-job unit tallies (owner ask, 2026-08-26): "Mad Moose 20/22 ·
+          2 remaining" — units are windows/doors, not boxes. Tapping a job
+          opens its materials ledger. */}
+      {packages.isSuccess &&
+        (() => {
+          const tallies = jobTallies(real, jobCode);
+          if (tallies.length === 0) return null;
+          return (
+            <div className="detail-card wh-card">
+              <h2 style={{ margin: "0 0 4px", fontSize: 15 }}>Jobs with material</h2>
+              <ul className="unit-list" style={{ margin: 0 }}>
+                {tallies.map((t) => (
+                  <li key={t.projectId ?? `pending:${t.label}`} className="wh-row">
+                    {t.projectId ? (
+                      <Link
+                        to={`/warehouse/materials?job=${t.projectId}`}
+                        className="link wh-row-title"
+                      >
+                        {t.label}
+                      </Link>
+                    ) : (
+                      <span className="wh-row-title">“{t.label}”</span>
+                    )}
+                    <span
+                      className={t.remainingUnits === 0 ? "ok" : "warn-text"}
+                      style={{ fontVariantNumeric: "tabular-nums" }}
+                    >
+                      {tallyLine(t)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })()}
 
       {packages.isError && <p className="error">{formatApiError(packages.error)}</p>}
 
