@@ -13,8 +13,9 @@ import {
   addJobCrate,
   deletePackages,
   listActivePackages,
-  type StoragePackage,
+  setPieceCount,
 } from "../../lib/storage";
+import { groupPackagesByMark, truckLabel } from "../../lib/warehouse/jobMaterials";
 
 type Stage = "all" | "minted" | "received" | "stored" | "checked_out";
 const STAGE_LABELS: Record<Exclude<Stage, "all">, string> = {
@@ -48,33 +49,7 @@ export function JobMaterials() {
     (p) => p.part_type !== "crate" && p.piece_count == null,
   );
 
-  const markOf = (p: StoragePackage): string =>
-    ((p.package_marks ?? [])[0] as { mark_code?: string } | undefined)?.mark_code ??
-    p.mfr_mark ??
-    "?";
-
-  const byMark = useMemo(() => {
-    const m = new Map<
-      string,
-      { counts: Record<string, number>; poolPieces: number; total: number }
-    >();
-    for (const p of boxes) {
-      const mark = markOf(p);
-      const row = m.get(mark) ?? { counts: {}, poolPieces: 0, total: 0 };
-      row.counts[p.status] = (row.counts[p.status] ?? 0) + 1;
-      row.total += 1;
-      m.set(mark, row);
-    }
-    for (const p of pool) {
-      const mark = markOf(p);
-      const row = m.get(mark) ?? { counts: {}, poolPieces: 0, total: 0 };
-      row.poolPieces += p.piece_count ?? 0;
-      m.set(mark, row);
-    }
-    return [...m.entries()].sort((a, b) =>
-      a[0].localeCompare(b[0], undefined, { numeric: true }),
-    );
-  }, [boxes, pool]);
+  const byMark = useMemo(() => groupPackagesByMark(boxes, pool), [boxes, pool]);
 
   const addCrate = useMutation({
     mutationFn: () => addJobCrate(projectId),
@@ -222,10 +197,25 @@ export function JobMaterials() {
                       )
                       .filter(Boolean)
                       .join(" · ") || "nothing yet"}
-                    {row.poolPieces > 0
-                      ? ` · ${row.poolPieces} glass in the crates`
-                      : ""}
                   </span>
+                  {row.poolRows.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {row.poolRows.map((pr) => (
+                        <PoolRowEditor
+                          key={pr.id}
+                          packageId={pr.id}
+                          pieceCount={pr.pieceCount}
+                          // One row needs no qualifier; more than one — say
+                          // which truck's worth this line is, so editing the
+                          // right one doesn't mean guessing.
+                          label={row.poolRows.length > 1 ? truckLabel(pr.boundAt) : null}
+                          onSaved={() =>
+                            void qc.invalidateQueries({ queryKey: ["storagePackages"] })
+                          }
+                        />
+                      ))}
+                    </div>
+                  )}
                 </li>
               ))}
           </ul>
@@ -240,6 +230,63 @@ export function JobMaterials() {
             .
           </p>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One pool row, editable inline (ticket 23) — same small-input-plus-Save
+ * shape as the package screen's own pool editor (PackageSheet.tsx), which
+ * stays as the backup path for editing one specific package directly.
+ */
+function PoolRowEditor({
+  packageId,
+  pieceCount,
+  label,
+  onSaved,
+}: {
+  packageId: string;
+  pieceCount: number;
+  label: string | null;
+  onSaved: () => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const save = useMutation({
+    mutationFn: (n: number) => setPieceCount(packageId, n),
+    onSuccess: () => {
+      setDraft("");
+      onSaved();
+    },
+  });
+  const shown = draft || String(pieceCount);
+  const n = Number(shown);
+  const invalid = shown.trim() === "" || !Number.isFinite(n) || n < 1;
+  return (
+    <div className="row-gap" style={{ alignItems: "center" }}>
+      <input
+        type="number"
+        min={1}
+        max={99}
+        value={shown}
+        onChange={(e) => setDraft(e.target.value)}
+        style={{ width: 70 }}
+        aria-label={label ? `Glass count, ${label}` : "Glass count"}
+      />
+      <span className="muted" style={{ fontSize: 12.5 }}>
+        glass{label ? ` (${label})` : ""}
+      </span>
+      <button
+        className="button-like"
+        disabled={invalid || save.isPending}
+        onClick={() => save.mutate(n)}
+      >
+        {save.isPending ? "Saving…" : "Save"}
+      </button>
+      {save.isError && (
+        <span className="error" style={{ fontSize: 12 }}>
+          {formatApiError(save.error)}
+        </span>
       )}
     </div>
   );

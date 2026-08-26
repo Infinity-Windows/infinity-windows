@@ -1,13 +1,14 @@
 // One package: what it is, where it sits, and every touch it ever had —
 // the license plate's full life. Scanning a sticker lands here.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listLocations, listProjects } from "../../lib/api";
 import { supabase } from "../../lib/supabase";
 import { formatApiError } from "../../lib/errors";
 import { BackChip } from "../../components/BackChip";
+import { ConfirmDanger } from "../../components/ConfirmDanger";
 import { downloadPdf, packageLabelsPdf } from "../../lib/labels";
 import { listJobModelRows } from "../../lib/modelstudio/projects";
 import { placeWhere, toLocationsById } from "../../lib/warehouse/containment";
@@ -519,57 +520,6 @@ export function PackageSheet() {
         </div>
       </header>
 
-      {/* A custom note on this piece (owner ask) — shown prominently rather
-          than as a muted aside, because it exists to flag something out of
-          the ordinary. Any signed-in crew can add or change it. */}
-      {p.status !== "blank" && (
-        <div className="detail-card" style={{ marginTop: 8, padding: "10px 14px" }}>
-          {editingNote ? (
-            <>
-              <textarea
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                maxLength={1000}
-                rows={3}
-                style={{ width: "100%", resize: "vertical" }}
-                placeholder="Anything out of the ordinary about this piece"
-                aria-label="Note on this package"
-              />
-              <div className="row-gap" style={{ marginTop: 6 }}>
-                <button
-                  className="button-like active-pill"
-                  disabled={noteMutation.isPending}
-                  onClick={() =>
-                    noteMutation.mutate(noteText.trim() === "" ? null : noteText.trim())
-                  }
-                >
-                  {noteMutation.isPending ? "Saving…" : "Save note"}
-                </button>
-                <button className="button-like" onClick={() => setEditingNote(false)}>
-                  Cancel
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <p style={{ margin: 0, fontSize: 13.5 }}>
-                {p.note ?? <span className="muted">No note on this piece.</span>}
-              </p>
-              <button
-                className="button-like"
-                style={{ marginTop: 6 }}
-                onClick={() => {
-                  setNoteText(p.note ?? "");
-                  setEditingNote(true);
-                }}
-              >
-                {p.note ? "Edit note" : "Add a note"}
-              </button>
-            </>
-          )}
-        </div>
-      )}
-
       {/* Photos (pick 28): condition on arrival, where it sits, anything
           worth a picture. A blank sticker has no life yet, so no photos. */}
       {p.status !== "blank" && (
@@ -620,6 +570,547 @@ export function PackageSheet() {
         </div>
       )}
 
+      <PackageGroup id="what" title="What it is" defaultOpen>
+        {p.status !== "blank" && (
+          <div className="detail-card" style={{ marginTop: 8, padding: "10px 14px" }}>
+            {editingNote ? (
+              <>
+                <textarea
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                  maxLength={1000}
+                  rows={3}
+                  style={{ width: "100%", resize: "vertical" }}
+                  placeholder="Anything out of the ordinary about this piece"
+                  aria-label="Note on this package"
+                />
+                <div className="row-gap" style={{ marginTop: 6 }}>
+                  <button
+                    className="button-like active-pill"
+                    disabled={noteMutation.isPending}
+                    onClick={() =>
+                      noteMutation.mutate(noteText.trim() === "" ? null : noteText.trim())
+                    }
+                  >
+                    {noteMutation.isPending ? "Saving…" : "Save note"}
+                  </button>
+                  <button className="button-like" onClick={() => setEditingNote(false)}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p style={{ margin: 0, fontSize: 13.5 }}>
+                  {p.note ?? <span className="muted">No note on this piece.</span>}
+                </p>
+                <button
+                  className="button-like"
+                  style={{ marginTop: 6 }}
+                  onClick={() => {
+                    setNoteText(p.note ?? "");
+                    setEditingNote(true);
+                  }}
+                >
+                  {p.note ? "Edit note" : "Add a note"}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {p.status !== "blank" && p.piece_count != null && (
+          <div className="detail-card" style={{ marginTop: 8 }}>
+            <label className="field-label" htmlFor="pool-pieces">
+              Pieces of {p.part_type ?? "glass"} still in the crates for this set
+            </label>
+            <div className="row-gap" style={{ alignItems: "center" }}>
+              <input
+                id="pool-pieces"
+                type="number"
+                min={1}
+                max={99}
+                value={poolPieces || String(p.piece_count ?? "")}
+                onChange={(e) => setPoolPieces(e.target.value)}
+                style={{ width: 90 }}
+              />
+              <button
+                className="button-like"
+                disabled={pieceEdit.isPending || !poolPieces.trim()}
+                onClick={() => pieceEdit.mutate(Number(poolPieces))}
+              >
+                {pieceEdit.isPending ? "Saving…" : "Save"}
+              </button>
+              <span className="muted" style={{ fontSize: 12 }}>
+                Edit down as the glass gets used. All used up? Delete this row.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {p.part_type === "crate" && (
+          <div className="detail-card" style={{ marginTop: 8 }}>
+            <h2 style={{ marginTop: 0, fontSize: 16 }}>
+              Sealed crate — nothing goes in or out
+            </h2>
+            {cratePool.isLoading ? (
+              <p className="muted">Reading the job&rsquo;s crate pool…</p>
+            ) : (cratePool.data ?? []).length === 0 ? (
+              <p className="muted">No crate glass listed for this job.</p>
+            ) : (
+              <>
+                <p className="muted" style={{ margin: "0 0 4px", fontSize: 13 }}>
+                  Between this job&rsquo;s {crateCount} crate{crateCount === 1 ? "" : "s"}:{" "}
+                  {poolTotal} piece{poolTotal === 1 ? "" : "s"} in all. Which piece
+                  rides in which crate isn&rsquo;t tracked — the crates share one pool.
+                </p>
+                <ul className="unit-list">
+                  {(cratePool.data ?? []).map((r) => (
+                    <li key={r.id}>
+                      #{r.mark ?? "?"} — {r.piece_count} {r.part_type ?? "glass"}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        )}
+      </PackageGroup>
+
+      <PackageGroup id="where" title="Where it is" defaultOpen>
+        <div className="row-gap" style={{ flexWrap: "wrap" }}>
+          {/* The map (ticket 22): only when the box it sits in HAS a shell. */}
+          {p.container_id &&
+            containersById.get(p.container_id)?.studio_project_id && (
+              <Link
+                className="button-like"
+                to={`/warehouse/3d/${p.container_id}?pkg=${encodeURIComponent(p.serial)}`}
+              >
+                See it in 3D
+              </Link>
+            )}
+          {/* Job-building glow (#16): only when this package is tagged to a
+              window AND that job actually has a Studio model to show it on. */}
+          {p.project_id &&
+            (p.package_marks ?? []).length > 0 &&
+            (studioJobModels.data ?? []).some((m) => m.project_id === p.project_id) && (
+              <Link
+                className="button-like"
+                to={`/projects/${p.project_id}/model?pkg=${encodeURIComponent(p.serial)}`}
+              >
+                Show on the building
+              </Link>
+            )}
+        </div>
+
+        {/* Where in the box (ticket 14, ADR-0006). Foreman+, and only while the
+            package is actually IN a box — the options come from what kind of box
+            it is, so a re-parkable conex never offers a compass. */}
+        {lead && p.status === "stored" && p.container_id && (
+          <div style={{ marginTop: 10 }}>
+            <label className="field-label">
+              Where in {containersById.get(p.container_id)?.name ?? "the box"}
+            </label>
+            <div className="row-gap" style={{ flexWrap: "wrap" }}>
+              {areaOptions(containersById.get(p.container_id)).map((a) => (
+                <button
+                  key={a}
+                  className={p.area === a ? "button-like active-pill" : "button-like"}
+                  disabled={setArea.isPending}
+                  onClick={() => setArea.mutate(p.area === a ? null : a)}
+                >
+                  {areaLabel(a)}
+                </button>
+              ))}
+            </div>
+            {/* Six zones (owner call): optional extra precision on a box that
+                travels, never forced — the plain three above are always
+                enough on their own. Empty for the building, so this whole
+                block is silent there. */}
+            {areaZoneOptions(containersById.get(p.container_id)).length > 0 && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: 6,
+                  marginTop: 6,
+                }}
+              >
+                {areaZoneOptions(containersById.get(p.container_id)).map((a) => (
+                  <button
+                    key={a}
+                    className={p.area === a ? "button-like active-pill" : "button-like"}
+                    disabled={setArea.isPending}
+                    style={{ fontSize: 12.5, padding: "6px 4px" }}
+                    onClick={() => setArea.mutate(p.area === a ? null : a)}
+                  >
+                    {areaLabel(a)}
+                  </button>
+                ))}
+              </div>
+            )}
+            <p className="muted" style={{ margin: "4px 0 0", fontSize: 12 }}>
+              A rough pointer, not a slot — it clears on its own the moment the
+              package moves. Tap again to unset.
+            </p>
+          </div>
+        )}
+      </PackageGroup>
+
+      <PackageGroup id="fix" title="Fix things" defaultOpen={false}>
+        <div className="row-gap" style={{ flexWrap: "wrap" }}>
+          <button className="button-like" onClick={() => reprint.mutate()}>
+            Reprint sticker
+          </button>
+          {lead && p.status !== "blank" && p.project_id == null && (
+            <button className="button-like" onClick={() => setAssigning((v) => !v)}>
+              {assigning ? "Cancel assign" : "Assign to job…"}
+            </button>
+          )}
+          {lead &&
+            p.status !== "blank" &&
+            p.project_id != null &&
+            (p.package_marks ?? []).length <= 1 && (
+              <button className="button-like" onClick={() => setSettingWindow((v) => !v)}>
+                {settingWindow
+                  ? "Cancel"
+                  : (p.package_marks ?? []).length === 0
+                    ? "Set the window…"
+                    : "Change the window…"}
+              </button>
+            )}
+        </div>
+        {settingWindow && p.project_id != null && (
+          <div className="detail-card" style={{ marginTop: 8 }}>
+            <p style={{ margin: 0, fontWeight: 600 }}>
+              {(p.package_marks ?? []).length === 0
+                ? "Which window is this part of?"
+                : `Move it off #${(p.package_marks ?? [])[0]?.mark_code}?`}
+            </p>
+            <p className="muted" style={{ margin: "4px 0 8px", fontSize: 13 }}>
+              The part fields stay as they are — only the window link moves, and
+              the history says so. The number has to be on this job&rsquo;s
+              schedule; the tag screen can add one that isn&rsquo;t.
+            </p>
+            <div className="row-gap" style={{ alignItems: "center" }}>
+              <input
+                placeholder="e.g. 6"
+                value={windowPick}
+                onChange={(e) => setWindowPick(e.target.value)}
+                list="sheet-window-options"
+                style={{ width: 110, marginBottom: 0 }}
+                aria-label="Which window"
+              />
+              <datalist id="sheet-window-options">
+                {(jobMarks.data ?? [])
+                  .map((m) => m.mark_code)
+                  .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+                  .map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+              </datalist>
+              <button
+                className="button-like active-pill"
+                disabled={windowPick.trim() === "" || setWindow.isPending}
+                onClick={() => setWindow.mutate()}
+              >
+                {setWindow.isPending ? "Saving…" : "Set it"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {assigning && p.project_id == null && (
+          <div className="detail-card" style={{ marginTop: 8 }}>
+            <p style={{ margin: 0, fontWeight: 600 }}>Out of the Boneyard</p>
+            <p className="muted" style={{ margin: "4px 0 8px", fontSize: 13 }}>
+              Putting this on a job changes what that job expects. The sticker
+              keeps scanning — printing a fresh label after is offered, never
+              required.
+            </p>
+            <label className="field-label">Job</label>
+            <select
+              value={assignJob}
+              onChange={(e) => {
+                setAssignJob(e.target.value);
+                setAssignMark("");
+              }}
+            >
+              <option value="">Pick the job…</option>
+              {(projects.data ?? []).map((j) => (
+                <option key={j.id} value={j.id}>
+                  {j.job_code} — {j.name}
+                </option>
+              ))}
+            </select>
+            {assignJob && (
+              <>
+                <label className="field-label">Which window</label>
+                <select value={assignMark} onChange={(e) => setAssignMark(e.target.value)}>
+                  <option value="">Pick the window…</option>
+                  {(assignMarks.data ?? [])
+                    .map((m) => m.mark_code)
+                    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+                    .map((m) => (
+                      <option key={m} value={m}>
+                        Window {m}
+                      </option>
+                    ))}
+                </select>
+                {assignMarks.isSuccess && (assignMarks.data ?? []).length === 0 && (
+                  <p className="muted" style={{ fontSize: 12.5 }}>
+                    That job has no windows on its schedule yet — they come from
+                    the plans at spec review.
+                  </p>
+                )}
+              </>
+            )}
+            <div className="row-gap" style={{ marginTop: 8 }}>
+              <button
+                className="button-like active-pill"
+                disabled={!assignJob || !assignMark || assign.isPending}
+                onClick={() => assign.mutate()}
+              >
+                {assign.isPending ? "Assigning…" : "Assign"}
+              </button>
+              {pkg.data && (
+                <button className="button-like" onClick={() => reprint.mutate()}>
+                  Print updated label
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {p.status !== "blank" && p.part_type !== "crate" && p.piece_count == null && (
+          <details style={{ marginTop: 8 }}>
+            <summary className="muted" style={{ cursor: "pointer", fontSize: 13 }}>
+              Fix the part number or label
+            </summary>
+            <div className="detail-card" style={{ marginTop: 6 }}>
+              <p className="muted" style={{ margin: "0 0 6px", fontSize: 12 }}>
+                The boxes&rsquo; own printed labels decide the order — set this
+                one to match what&rsquo;s written on it.
+              </p>
+              <div className="row-gap" style={{ flexWrap: "wrap", alignItems: "center" }}>
+                {p.piece_count == null && (
+                  <>
+                    <label className="field-label" style={{ margin: 0 }}>Part</label>
+                    <select
+                      value={p.part_index ?? ""}
+                      onChange={(e) =>
+                        partEdit.mutate({
+                          index: e.target.value ? Number(e.target.value) : null,
+                          total: e.target.value ? (p.part_total ?? Number(e.target.value)) : null,
+                          type: p.part_type ?? null,
+                        })
+                      }
+                    >
+                      <option value="">—</option>
+                      {Array.from({ length: 20 }, (_, n) => (
+                        <option key={n + 1} value={n + 1}>{n + 1}</option>
+                      ))}
+                    </select>
+                    <span className="muted">of</span>
+                    <select
+                      value={p.part_total ?? ""}
+                      onChange={(e) =>
+                        partEdit.mutate({
+                          index: e.target.value ? (p.part_index ?? 1) : null,
+                          total: e.target.value ? Number(e.target.value) : null,
+                          type: p.part_type ?? null,
+                        })
+                      }
+                    >
+                      <option value="">—</option>
+                      {Array.from({ length: 20 }, (_, n) => (
+                        <option key={n + 1} value={n + 1}>{n + 1}</option>
+                      ))}
+                    </select>
+                  </>
+                )}
+                <label className="field-label" style={{ margin: 0 }}>Label</label>
+                <select
+                  value={p.part_type ?? ""}
+                  onChange={(e) =>
+                    partEdit.mutate({
+                      index: p.part_index ?? null,
+                      total: p.part_total ?? null,
+                      type: e.target.value || null,
+                    })
+                  }
+                >
+                  <option value="">—</option>
+                  {partChoices.map((t) => (
+                    <option key={t} value={t}>
+                      {PART_LABELS[t as PartType] ?? t}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={newPartType}
+                  onChange={(e) => setNewPartType(e.target.value)}
+                  placeholder="Add a label, e.g. door handle"
+                  style={{ width: 180 }}
+                />
+                <button
+                  className="button-like"
+                  disabled={!newPartType.trim() || addType.isPending}
+                  onClick={() => addType.mutate(newPartType.trim())}
+                >
+                  Add
+                </button>
+              </div>
+              {spreadOffer && (
+                <div className="row-gap" style={{ marginTop: 6, alignItems: "center" }}>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {spreadOffer.count} other identical box
+                    {spreadOffer.count === 1 ? "" : "es"} sit in this same slot.
+                  </span>
+                  <button
+                    className="button-like"
+                    disabled={spread.isPending}
+                    onClick={() => spread.mutate({ type: spreadOffer.type })}
+                  >
+                    {spread.isPending
+                      ? "Applying…"
+                      : `Label ${spreadOffer.count === 1 ? "it" : "them all"} "${spreadOffer.type}" too`}
+                  </button>
+                </div>
+              )}
+              {partWarn && <p className="warn-text" style={{ fontSize: 12 }}>{partWarn}</p>}
+            </div>
+          </details>
+        )}
+
+        {p.status !== "blank" && (
+          <details style={{ marginTop: 8 }}>
+            <summary className="muted" style={{ cursor: "pointer", fontSize: 13 }}>
+              The maker&rsquo;s label disagrees?
+            </summary>
+            <div className="row-gap" style={{ marginTop: 6, alignItems: "center" }}>
+              <label className="field-label" style={{ margin: 0 }}>
+                Their label says this window ships as
+              </label>
+              <input
+                inputMode="numeric"
+                style={{ width: 70 }}
+                placeholder={p.mfr_part_total != null ? String(p.mfr_part_total) : "how many?"}
+                value={makerCount}
+                onChange={(e) => setMakerCount(e.target.value)}
+                aria-label="What the maker's label says"
+              />
+              <button
+                className="button-like"
+                disabled={maker.isPending || makerCount.trim() === ""}
+                onClick={() => maker.mutate(Number(makerCount))}
+              >
+                Record it
+              </button>
+              {p.mfr_part_total != null && (
+                <button
+                  className="button-like"
+                  disabled={maker.isPending}
+                  onClick={() => maker.mutate(null)}
+                >
+                  Clear — misread
+                </button>
+              )}
+            </div>
+            <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+              The maker wins the argument. A foreman burns the wrong labels and
+              mints the right count; recording it here is what raises the flag.
+            </p>
+          </details>
+        )}
+      </PackageGroup>
+
+      <PackageGroup id="danger" title="Danger" defaultOpen={false}>
+        {/* Burn: minted only — the server refuses anything with a life behind
+            it, and this button does not even offer. Foreman+, two taps. */}
+        {lead && p.status === "minted" && !confirmBurn && (
+          <button className="button-like" onClick={() => setConfirmBurn(true)}>
+            Burn this label…
+          </button>
+        )}
+        {confirmBurn && p.status === "minted" && (
+          <ConfirmDanger
+            confirmText={burn.isPending ? "Burning…" : "Delete forever"}
+            disabled={burn.isPending}
+            onConfirm={() => burn.mutate()}
+            onCancel={() => setConfirmBurn(false)}
+          >
+            This burns away label{" "}
+            <strong>
+              {p.part_index != null && p.part_total != null
+                ? `${p.part_index} of ${p.part_total}`
+                : p.serial}
+            </strong>
+            {(p.package_marks ?? [])[0]
+              ? ` for window ${(p.package_marks ?? [])[0].mark_code}`
+              : ""}
+            . The serial dies and the part slot reopens. Destroy the paper —
+            anything still wearing it will scan as nothing.
+          </ConfirmDanger>
+        )}
+
+        {lead && p.status !== "blank" && !confirmDelete && (
+          <button
+            className="link"
+            style={{ color: "var(--danger)", marginTop: 8 }}
+            onClick={() => setConfirmDelete(true)}
+          >
+            Delete this package…
+          </button>
+        )}
+        {confirmDelete && (
+          <ConfirmDanger
+            confirmText={deleteOne.isPending ? "Deleting…" : "Delete forever"}
+            disabled={deleteOne.isPending}
+            onConfirm={() => deleteOne.mutate()}
+            onCancel={() => setConfirmDelete(false)}
+            footer={deleteWarn && <p className="error">{deleteWarn}</p>}
+          >
+            {p.part_type === "crate"
+              ? "Breaking up this crate throws it away for good — it stops existing. The job's pool numbers stay until you edit or delete them as the glass gets used. "
+              : ""}
+            Permanently delete <strong>{p.serial}</strong>
+            {(p.package_marks ?? [])[0]
+              ? ` (${(p.package_marks ?? [])[0].mark_code})`
+              : ""}
+            ? Its whole history goes with it. This can&rsquo;t be undone.
+          </ConfirmDanger>
+        )}
+      </PackageGroup>
+
+      <h2>History</h2>
+      {events.isError && <p className="error">{formatApiError(events.error)}</p>}
+      <div className="home-projects">
+        {(events.data ?? []).map((e) => (
+          <div key={e.id} className="project-card home-project">
+            <div className="home-project-head">
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 600 }}>
+                  {EVENT_LABELS[e.event] ?? e.event}
+                  {/* Who did it (owner ask) — falls back to the raw actor id
+                      when the name can't be resolved, same rule Supplies.tsx
+                      follows, so "who" is never silently dropped. */}
+                  {e.actor ? ` by ${e.actor_name ?? e.actor}` : ""}
+                  {e.container_id && ` — ${containerName(e.container_id) ?? "container"}`}
+                  {e.event === "checked_out" && e.project_id
+                    ? ` → ${jobCode.get(e.project_id) ?? "?"}`
+                    : ""}
+                </div>
+                <div className="muted" style={{ fontSize: 12 }}>
+                  {new Date(e.created_at).toLocaleString()}
+                  {e.reason ? ` · ${e.reason}` : ""}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+        {(events.data ?? []).length === 0 && <p className="muted">No history yet.</p>}
+      </div>
       {viewerPhoto && (
         <div
           className="photo-viewer-backdrop overlay-enter"
@@ -652,514 +1143,59 @@ export function PackageSheet() {
         </div>
       )}
 
-      <div className="row-gap" style={{ flexWrap: "wrap" }}>
-        <button className="button-like" onClick={() => reprint.mutate()}>
-          Reprint sticker
-        </button>
-        {/* The map (ticket 22): only when the box it sits in HAS a shell. */}
-        {p.container_id &&
-          containersById.get(p.container_id)?.studio_project_id && (
-            <Link
-              className="button-like"
-              to={`/warehouse/3d/${p.container_id}?pkg=${encodeURIComponent(p.serial)}`}
-            >
-              See it in 3D
-            </Link>
-          )}
-        {/* Job-building glow (#16): only when this package is tagged to a
-            window AND that job actually has a Studio model to show it on. */}
-        {p.project_id &&
-          (p.package_marks ?? []).length > 0 &&
-          (studioJobModels.data ?? []).some((m) => m.project_id === p.project_id) && (
-            <Link
-              className="button-like"
-              to={`/projects/${p.project_id}/model?pkg=${encodeURIComponent(p.serial)}`}
-            >
-              Show on the building
-            </Link>
-          )}
-        {lead && p.status !== "blank" && p.project_id == null && (
-          <button className="button-like" onClick={() => setAssigning((v) => !v)}>
-            {assigning ? "Cancel assign" : "Assign to job…"}
-          </button>
-        )}
-        {lead &&
-          p.status !== "blank" &&
-          p.project_id != null &&
-          (p.package_marks ?? []).length <= 1 && (
-            <button className="button-like" onClick={() => setSettingWindow((v) => !v)}>
-              {settingWindow
-                ? "Cancel"
-                : (p.package_marks ?? []).length === 0
-                  ? "Set the window…"
-                  : "Change the window…"}
-            </button>
-          )}
-        {/* Burn: minted only — the server refuses anything with a life behind
-            it, and this button does not even offer. Foreman+, two taps. */}
-        {lead && p.status === "minted" && !confirmBurn && (
-          <button className="button-like" onClick={() => setConfirmBurn(true)}>
-            Burn this label…
-          </button>
-        )}
-      </div>
-      {settingWindow && p.project_id != null && (
-        <div className="detail-card" style={{ marginTop: 8 }}>
-          <p style={{ margin: 0, fontWeight: 600 }}>
-            {(p.package_marks ?? []).length === 0
-              ? "Which window is this part of?"
-              : `Move it off #${(p.package_marks ?? [])[0]?.mark_code}?`}
-          </p>
-          <p className="muted" style={{ margin: "4px 0 8px", fontSize: 13 }}>
-            The part fields stay as they are — only the window link moves, and
-            the history says so. The number has to be on this job&rsquo;s
-            schedule; the tag screen can add one that isn&rsquo;t.
-          </p>
-          <div className="row-gap" style={{ alignItems: "center" }}>
-            <input
-              placeholder="e.g. 6"
-              value={windowPick}
-              onChange={(e) => setWindowPick(e.target.value)}
-              list="sheet-window-options"
-              style={{ width: 110, marginBottom: 0 }}
-              aria-label="Which window"
-            />
-            <datalist id="sheet-window-options">
-              {(jobMarks.data ?? [])
-                .map((m) => m.mark_code)
-                .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-                .map((m) => (
-                  <option key={m} value={m} />
-                ))}
-            </datalist>
-            <button
-              className="button-like active-pill"
-              disabled={windowPick.trim() === "" || setWindow.isPending}
-              onClick={() => setWindow.mutate()}
-            >
-              {setWindow.isPending ? "Saving…" : "Set it"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {assigning && p.project_id == null && (
-        <div className="detail-card" style={{ marginTop: 8 }}>
-          <p style={{ margin: 0, fontWeight: 600 }}>Out of the Boneyard</p>
-          <p className="muted" style={{ margin: "4px 0 8px", fontSize: 13 }}>
-            Putting this on a job changes what that job expects. The sticker
-            keeps scanning — printing a fresh label after is offered, never
-            required.
-          </p>
-          <label className="field-label">Job</label>
-          <select
-            value={assignJob}
-            onChange={(e) => {
-              setAssignJob(e.target.value);
-              setAssignMark("");
-            }}
-          >
-            <option value="">Pick the job…</option>
-            {(projects.data ?? []).map((j) => (
-              <option key={j.id} value={j.id}>
-                {j.job_code} — {j.name}
-              </option>
-            ))}
-          </select>
-          {assignJob && (
-            <>
-              <label className="field-label">Which window</label>
-              <select value={assignMark} onChange={(e) => setAssignMark(e.target.value)}>
-                <option value="">Pick the window…</option>
-                {(assignMarks.data ?? [])
-                  .map((m) => m.mark_code)
-                  .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-                  .map((m) => (
-                    <option key={m} value={m}>
-                      Window {m}
-                    </option>
-                  ))}
-              </select>
-              {assignMarks.isSuccess && (assignMarks.data ?? []).length === 0 && (
-                <p className="muted" style={{ fontSize: 12.5 }}>
-                  That job has no windows on its schedule yet — they come from
-                  the plans at spec review.
-                </p>
-              )}
-            </>
-          )}
-          <div className="row-gap" style={{ marginTop: 8 }}>
-            <button
-              className="button-like active-pill"
-              disabled={!assignJob || !assignMark || assign.isPending}
-              onClick={() => assign.mutate()}
-            >
-              {assign.isPending ? "Assigning…" : "Assign"}
-            </button>
-            {pkg.data && (
-              <button className="button-like" onClick={() => reprint.mutate()}>
-                Print updated label
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {confirmBurn && p.status === "minted" && (
-        <div
-          className="detail-card"
-          style={{ borderLeft: "3px solid var(--danger)", marginTop: 8 }}
-        >
-          <p style={{ margin: 0, fontSize: 14 }}>
-            This throws away label{" "}
-            <strong>
-              {p.part_index != null && p.part_total != null
-                ? `${p.part_index} of ${p.part_total}`
-                : p.serial}
-            </strong>
-            {(p.package_marks ?? [])[0]
-              ? ` for window ${(p.package_marks ?? [])[0].mark_code}`
-              : ""}
-            . The serial dies and the part slot reopens. Destroy the paper —
-            anything still wearing it will scan as nothing.
-          </p>
-          <div className="row-gap" style={{ marginTop: 8 }}>
-            <button
-              className="button-like"
-              style={{ background: "var(--danger)", color: "var(--ink)" }}
-              disabled={burn.isPending}
-              onClick={() => burn.mutate()}
-            >
-              {burn.isPending ? "Burning…" : "Burn it — no way back"}
-            </button>
-            <button className="button-like" onClick={() => setConfirmBurn(false)}>
-              Keep it
-            </button>
-          </div>
-        </div>
-      )}
-
-      {p.status !== "blank" && p.piece_count != null && (
-        <div className="detail-card" style={{ marginTop: 8 }}>
-          <label className="field-label" htmlFor="pool-pieces">
-            Pieces of {p.part_type ?? "glass"} still in the crates for this set
-          </label>
-          <div className="row-gap" style={{ alignItems: "center" }}>
-            <input
-              id="pool-pieces"
-              type="number"
-              min={1}
-              max={99}
-              value={poolPieces || String(p.piece_count ?? "")}
-              onChange={(e) => setPoolPieces(e.target.value)}
-              style={{ width: 90 }}
-            />
-            <button
-              className="button-like"
-              disabled={pieceEdit.isPending || !poolPieces.trim()}
-              onClick={() => pieceEdit.mutate(Number(poolPieces))}
-            >
-              {pieceEdit.isPending ? "Saving…" : "Save"}
-            </button>
-            <span className="muted" style={{ fontSize: 12 }}>
-              Edit down as the glass gets used. All used up? Delete this row.
-            </span>
-          </div>
-        </div>
-      )}
-
-      {p.status !== "blank" && p.part_type !== "crate" && p.piece_count == null && (
-        <details style={{ marginTop: 8 }}>
-          <summary className="muted" style={{ cursor: "pointer", fontSize: 13 }}>
-            Fix the part number or label
-          </summary>
-          <div className="detail-card" style={{ marginTop: 6 }}>
-            <p className="muted" style={{ margin: "0 0 6px", fontSize: 12 }}>
-              The boxes&rsquo; own printed labels decide the order — set this
-              one to match what&rsquo;s written on it.
-            </p>
-            <div className="row-gap" style={{ flexWrap: "wrap", alignItems: "center" }}>
-              {p.piece_count == null && (
-                <>
-                  <label className="field-label" style={{ margin: 0 }}>Part</label>
-                  <select
-                    value={p.part_index ?? ""}
-                    onChange={(e) =>
-                      partEdit.mutate({
-                        index: e.target.value ? Number(e.target.value) : null,
-                        total: e.target.value ? (p.part_total ?? Number(e.target.value)) : null,
-                        type: p.part_type ?? null,
-                      })
-                    }
-                  >
-                    <option value="">—</option>
-                    {Array.from({ length: 20 }, (_, n) => (
-                      <option key={n + 1} value={n + 1}>{n + 1}</option>
-                    ))}
-                  </select>
-                  <span className="muted">of</span>
-                  <select
-                    value={p.part_total ?? ""}
-                    onChange={(e) =>
-                      partEdit.mutate({
-                        index: e.target.value ? (p.part_index ?? 1) : null,
-                        total: e.target.value ? Number(e.target.value) : null,
-                        type: p.part_type ?? null,
-                      })
-                    }
-                  >
-                    <option value="">—</option>
-                    {Array.from({ length: 20 }, (_, n) => (
-                      <option key={n + 1} value={n + 1}>{n + 1}</option>
-                    ))}
-                  </select>
-                </>
-              )}
-              <label className="field-label" style={{ margin: 0 }}>Label</label>
-              <select
-                value={p.part_type ?? ""}
-                onChange={(e) =>
-                  partEdit.mutate({
-                    index: p.part_index ?? null,
-                    total: p.part_total ?? null,
-                    type: e.target.value || null,
-                  })
-                }
-              >
-                <option value="">—</option>
-                {partChoices.map((t) => (
-                  <option key={t} value={t}>
-                    {PART_LABELS[t as PartType] ?? t}
-                  </option>
-                ))}
-              </select>
-              <input
-                value={newPartType}
-                onChange={(e) => setNewPartType(e.target.value)}
-                placeholder="Add a label, e.g. door handle"
-                style={{ width: 180 }}
-              />
-              <button
-                className="button-like"
-                disabled={!newPartType.trim() || addType.isPending}
-                onClick={() => addType.mutate(newPartType.trim())}
-              >
-                Add
-              </button>
-            </div>
-            {spreadOffer && (
-              <div className="row-gap" style={{ marginTop: 6, alignItems: "center" }}>
-                <span className="muted" style={{ fontSize: 12 }}>
-                  {spreadOffer.count} other identical box
-                  {spreadOffer.count === 1 ? "" : "es"} sit in this same slot.
-                </span>
-                <button
-                  className="button-like"
-                  disabled={spread.isPending}
-                  onClick={() => spread.mutate({ type: spreadOffer.type })}
-                >
-                  {spread.isPending
-                    ? "Applying…"
-                    : `Label ${spreadOffer.count === 1 ? "it" : "them all"} "${spreadOffer.type}" too`}
-                </button>
-              </div>
-            )}
-            {partWarn && <p className="warn-text" style={{ fontSize: 12 }}>{partWarn}</p>}
-          </div>
-        </details>
-      )}
-
-      {p.part_type === "crate" && (
-        <div className="detail-card" style={{ marginTop: 8 }}>
-          <h2 style={{ marginTop: 0, fontSize: 16 }}>
-            Sealed crate — nothing goes in or out
-          </h2>
-          {cratePool.isLoading ? (
-            <p className="muted">Reading the job&rsquo;s crate pool…</p>
-          ) : (cratePool.data ?? []).length === 0 ? (
-            <p className="muted">No crate glass listed for this job.</p>
-          ) : (
-            <>
-              <p className="muted" style={{ margin: "0 0 4px", fontSize: 13 }}>
-                Between this job&rsquo;s {crateCount} crate{crateCount === 1 ? "" : "s"}:{" "}
-                {poolTotal} piece{poolTotal === 1 ? "" : "s"} in all. Which piece
-                rides in which crate isn&rsquo;t tracked — the crates share one pool.
-              </p>
-              <ul className="unit-list">
-                {(cratePool.data ?? []).map((r) => (
-                  <li key={r.id}>
-                    #{r.mark ?? "?"} — {r.piece_count} {r.part_type ?? "glass"}
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </div>
-      )}
-
-      {lead && p.status !== "blank" && !confirmDelete && (
-        <button
-          className="link"
-          style={{ color: "var(--danger)", marginTop: 8 }}
-          onClick={() => setConfirmDelete(true)}
-        >
-          Delete this package…
-        </button>
-      )}
-      {confirmDelete && (
-        <div
-          className="detail-card"
-          style={{ borderLeft: "3px solid var(--danger)", marginTop: 8 }}
-        >
-          <p style={{ margin: 0, fontSize: 14 }}>
-            {p.part_type === "crate"
-              ? "Breaking up this crate throws it away for good — it stops existing. The job's pool numbers stay until you edit or delete them as the glass gets used. "
-              : ""}
-            Permanently delete <strong>{p.serial}</strong>
-            {(p.package_marks ?? [])[0]
-              ? ` (${(p.package_marks ?? [])[0].mark_code})`
-              : ""}
-            ? Its whole history goes with it. This can&rsquo;t be undone.
-          </p>
-          <div className="row-gap" style={{ marginTop: 8 }}>
-            <button
-              className="button-like"
-              style={{ background: "var(--danger)", color: "var(--ink)" }}
-              disabled={deleteOne.isPending}
-              onClick={() => deleteOne.mutate()}
-            >
-              {deleteOne.isPending ? "Deleting…" : "Delete it — no way back"}
-            </button>
-            <button className="button-like" onClick={() => setConfirmDelete(false)}>
-              Keep it
-            </button>
-          </div>
-          {deleteWarn && <p className="error">{deleteWarn}</p>}
-        </div>
-      )}
-
-      {p.status !== "blank" && (
-        <details style={{ marginTop: 8 }}>
-          <summary className="muted" style={{ cursor: "pointer", fontSize: 13 }}>
-            The maker&rsquo;s label disagrees?
-          </summary>
-          <div className="row-gap" style={{ marginTop: 6, alignItems: "center" }}>
-            <label className="field-label" style={{ margin: 0 }}>
-              Their label says this window ships as
-            </label>
-            <input
-              inputMode="numeric"
-              style={{ width: 70 }}
-              placeholder={p.mfr_part_total != null ? String(p.mfr_part_total) : "how many?"}
-              value={makerCount}
-              onChange={(e) => setMakerCount(e.target.value)}
-              aria-label="What the maker's label says"
-            />
-            <button
-              className="button-like"
-              disabled={maker.isPending || makerCount.trim() === ""}
-              onClick={() => maker.mutate(Number(makerCount))}
-            >
-              Record it
-            </button>
-            {p.mfr_part_total != null && (
-              <button
-                className="button-like"
-                disabled={maker.isPending}
-                onClick={() => maker.mutate(null)}
-              >
-                Clear — misread
-              </button>
-            )}
-          </div>
-          <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
-            The maker wins the argument. A foreman burns the wrong labels and
-            mints the right count; recording it here is what raises the flag.
-          </p>
-        </details>
-      )}
-
-      {/* Where in the box (ticket 14, ADR-0006). Foreman+, and only while the
-          package is actually IN a box — the options come from what kind of box
-          it is, so a re-parkable conex never offers a compass. */}
-      {lead && p.status === "stored" && p.container_id && (
-        <div style={{ marginTop: 10 }}>
-          <label className="field-label">
-            Where in {containersById.get(p.container_id)?.name ?? "the box"}
-          </label>
-          <div className="row-gap" style={{ flexWrap: "wrap" }}>
-            {areaOptions(containersById.get(p.container_id)).map((a) => (
-              <button
-                key={a}
-                className={p.area === a ? "button-like active-pill" : "button-like"}
-                disabled={setArea.isPending}
-                onClick={() => setArea.mutate(p.area === a ? null : a)}
-              >
-                {areaLabel(a)}
-              </button>
-            ))}
-          </div>
-          {/* Six zones (owner call): optional extra precision on a box that
-              travels, never forced — the plain three above are always
-              enough on their own. Empty for the building, so this whole
-              block is silent there. */}
-          {areaZoneOptions(containersById.get(p.container_id)).length > 0 && (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(3, 1fr)",
-                gap: 6,
-                marginTop: 6,
-              }}
-            >
-              {areaZoneOptions(containersById.get(p.container_id)).map((a) => (
-                <button
-                  key={a}
-                  className={p.area === a ? "button-like active-pill" : "button-like"}
-                  disabled={setArea.isPending}
-                  style={{ fontSize: 12.5, padding: "6px 4px" }}
-                  onClick={() => setArea.mutate(p.area === a ? null : a)}
-                >
-                  {areaLabel(a)}
-                </button>
-              ))}
-            </div>
-          )}
-          <p className="muted" style={{ margin: "4px 0 0", fontSize: 12 }}>
-            A rough pointer, not a slot — it clears on its own the moment the
-            package moves. Tap again to unset.
-          </p>
-        </div>
-      )}
-
-      <h2>History</h2>
-      {events.isError && <p className="error">{formatApiError(events.error)}</p>}
-      <div className="home-projects">
-        {(events.data ?? []).map((e) => (
-          <div key={e.id} className="project-card home-project">
-            <div className="home-project-head">
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 600 }}>
-                  {EVENT_LABELS[e.event] ?? e.event}
-                  {/* Who did it (owner ask) — falls back to the raw actor id
-                      when the name can't be resolved, same rule Supplies.tsx
-                      follows, so "who" is never silently dropped. */}
-                  {e.actor ? ` by ${e.actor_name ?? e.actor}` : ""}
-                  {e.container_id && ` — ${containerName(e.container_id) ?? "container"}`}
-                  {e.event === "checked_out" && e.project_id
-                    ? ` → ${jobCode.get(e.project_id) ?? "?"}`
-                    : ""}
-                </div>
-                <div className="muted" style={{ fontSize: 12 }}>
-                  {new Date(e.created_at).toLocaleString()}
-                  {e.reason ? ` · ${e.reason}` : ""}
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
-        {(events.data ?? []).length === 0 && <p className="muted">No history yet.</p>}
-      </div>
     </div>
+  );
+}
+
+const GROUP_KEY_PREFIX = "pkg-sheet-group:";
+
+/** Same safe-localStorage shape as Explain's readOpen (components/ui/Explain.tsx)
+ * — a private-mode/storage-disabled phone still gets a working fold, it just
+ * won't remember which way you left it. */
+function readGroupOpen(id: string, fallback: boolean): boolean {
+  try {
+    const raw = localStorage.getItem(GROUP_KEY_PREFIX + id);
+    return raw === null ? fallback : raw === "1";
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * One of the sheet's four rooms (ticket 21 — "~8 stacked sections" folded
+ * into What it is / Where it is / Fix things / Danger). Existing JSX moved
+ * into these bodies unchanged; nothing about a control's logic, test id, or
+ * aria-label changed, only which room it stands in.
+ */
+function PackageGroup({
+  id,
+  title,
+  defaultOpen,
+  children,
+}: {
+  id: string;
+  title: string;
+  defaultOpen: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(() => readGroupOpen(id, defaultOpen));
+  return (
+    <details
+      className="pkg-sheet-group"
+      open={open}
+      onToggle={(e) => {
+        const next = e.currentTarget.open;
+        setOpen(next);
+        try {
+          localStorage.setItem(GROUP_KEY_PREFIX + id, next ? "1" : "0");
+        } catch {
+          // Private mode / storage disabled — the room still works, it just
+          // won't be remembered next visit.
+        }
+      }}
+    >
+      <summary>{title}</summary>
+      <div className="pkg-sheet-group-body">{children}</div>
+    </details>
   );
 }

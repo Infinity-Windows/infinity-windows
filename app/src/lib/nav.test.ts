@@ -118,15 +118,12 @@ describe("canAccess", () => {
     expect(canAccess("installer", "/projects/xyz/map")).toBe(true);
   });
 
-  it("gates the new Horizon-menu stub destinations by role", () => {
-    // Installer-floor stubs everyone can reach.
-    for (const p of ["/photos", "/completed-installs", "/milestones", "/first-pane", "/toolbox-history", "/profile", "/public-site"] as const) {
+  it("opens the two real Horizon-menu destinations to installers", () => {
+    // Their eight stub siblings (daily logs, completed installs, milestones,
+    // First Pane, conditions, contacts, profile, public site) rendered a
+    // "Coming soon" placeholder and nothing else — cut as dead ends, ticket 24.
+    for (const p of ["/photos", "/toolbox-history"] as const) {
       expect(canAccess("installer", p)).toBe(true);
-    }
-    // Foreman-floor stubs blocked for installers.
-    for (const p of ["/daily-logs", "/conditions", "/contacts"] as const) {
-      expect(canAccess("installer", p)).toBe(false);
-      expect(canAccess("foreman", p)).toBe(true);
     }
   });
 });
@@ -273,17 +270,12 @@ describe("every NAV destination has a door", () => {
     // model" button on a job's Maps Interactive tab, never a menu row
     "/takeoffs", // reached from the warehouse page's Supplies section
     "/search", // header search icon in Layout
-    // Horizon stubs / in-page destinations (profile via Account, toolbox
-    // history via the clock sheet, the rest "Coming soon" or project-scoped).
-    "/daily-logs",
-    "/completed-installs",
-    "/milestones",
-    "/first-pane",
+    // Toolbox history is reached from the clock sheet, not a menu row. Its
+    // eight former stub siblings (daily logs, completed installs, milestones,
+    // First Pane, conditions, contacts, profile, public site) never had a
+    // menu row either — they were "Coming soon" placeholders, cut entirely
+    // as dead ends (ticket 24), so they no longer appear in NAV at all.
     "/toolbox-history",
-    "/conditions",
-    "/contacts",
-    "/profile",
-    "/public-site",
     // Warehouse ticket 08: the eight warehouse rows collapsed to one page.
     // These are NOT orphans — /warehouse links every one of them from the
     // section it belongs to (tagging and receiving under "Coming in", the

@@ -54,9 +54,9 @@ const ACTIONS: CaptureAction[] = [
     to: (p) =>
       p ? `/photos?project=${p}&kind=receipt&capture=1` : "/photos?kind=receipt&capture=1",
   },
-  // "New daily log" is hidden until /daily-logs ships — it currently lands on a
-  // Coming-soon stub, so a primary capture action would dead-end. Re-add this
-  // entry once the daily-log page exists:
+  // "New daily log" is hidden until /daily-logs ships — the stub route was cut
+  // as a dead end (ticket 24), so there is no page to land on at all right
+  // now. Re-add this entry once the daily-log page exists for real:
   // {
   //   key: "daily-log",
   //   label: "New daily log",
