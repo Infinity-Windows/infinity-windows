@@ -28,7 +28,11 @@ export function truckLabel(boundAt: string | null): string | null {
   return `from ${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} truck`;
 }
 
-function markOf(p: StoragePackage): string {
+/** Which mark a package belongs to, for grouping — the join's mark_code when
+ *  there is one, else the maker's own mark, else "?". Exported so other
+ *  modules that group packages by mark (the load list, pick 27) use the same
+ *  definition of "mark" this one does, rather than a second one drifting. */
+export function markOf(p: StoragePackage): string {
   return (
     ((p.package_marks ?? [])[0] as { mark_code?: string } | undefined)?.mark_code ??
     p.mfr_mark ??

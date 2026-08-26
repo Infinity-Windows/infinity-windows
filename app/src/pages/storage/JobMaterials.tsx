@@ -4,20 +4,27 @@
 // whatever reality showed up. "Installed" is deliberately absent: that is
 // the install loop's truth and lives on the job's own pages.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { BackChip } from "../../components/BackChip";
 import { EmptyState } from "../../components/ui/States";
 import { StageChip } from "../../components/warehouse/StageChip";
+import { LoadList } from "../../components/warehouse/LoadList";
 import { listProjects } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
 import {
   addJobCrate,
   deletePackages,
   listActivePackages,
+  listContainers,
   setPieceCount,
 } from "../../lib/storage";
 import { groupPackagesByMark, truckLabel } from "../../lib/warehouse/jobMaterials";
+import {
+  loadListStorageKey,
+  parseTicked,
+  serializeTicked,
+} from "../../lib/warehouse/loadList";
 
 type Stage = "all" | "minted" | "received" | "stored" | "checked_out";
 const STAGE_LABELS: Record<Exclude<Stage, "all">, string> = {
@@ -31,14 +38,45 @@ export function JobMaterials() {
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
   const projectId = params.get("job") ?? "";
+  // Pick 27: same route, `?list=1` — a refresh or the back button while
+  // standing at a truck keeps the page in load-list mode instead of
+  // bouncing back to the ledger.
+  const listMode = params.get("list") === "1";
   const [stage, setStage] = useState<Stage>("all");
   const [message, setMessage] = useState<string | null>(null);
+  const [ticked, setTicked] = useState<Set<string>>(() =>
+    projectId ? parseTicked(localStorage.getItem(loadListStorageKey(projectId))) : new Set(),
+  );
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const packages = useQuery({
     queryKey: ["storagePackages"],
     queryFn: listActivePackages,
   });
+  const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
+
+  // A different job's load list can open without this component ever
+  // unmounting (same route, only ?job= changes) — re-read that job's own
+  // ticks rather than carrying the previous job's along.
+  useEffect(() => {
+    setTicked(projectId ? parseTicked(localStorage.getItem(loadListStorageKey(projectId))) : new Set());
+  }, [projectId]);
+
+  const toggleTick = (packageId: string) => {
+    if (!projectId) return;
+    setTicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(packageId)) next.delete(packageId);
+      else next.add(packageId);
+      localStorage.setItem(loadListStorageKey(projectId), serializeTicked(next));
+      return next;
+    });
+  };
+  const clearTicks = () => {
+    if (!projectId) return;
+    setTicked(new Set());
+    localStorage.removeItem(loadListStorageKey(projectId));
+  };
 
   const mine = useMemo(
     () => (packages.data ?? []).filter((p) => p.project_id === projectId),
@@ -83,6 +121,13 @@ export function JobMaterials() {
   });
 
   const job = projects.data?.find((p) => p.id === projectId);
+  // The load list is always one job at a time, so this only ever needs the
+  // one entry — PackageRowText takes a map because every OTHER screen that
+  // uses it shows several jobs at once.
+  const jobCodeMap = useMemo(
+    () => new Map(job ? [[projectId, job.job_code ?? job.name]] : []),
+    [job, projectId],
+  );
 
   const stageCount = (counts: Record<string, number>, s: Exclude<Stage, "all">) =>
     counts[s] ?? 0;
@@ -114,6 +159,31 @@ export function JobMaterials() {
       {message && <p className="scanner-hint">{message}</p>}
 
       {projectId && (
+        <div className="wh-row" style={{ margin: "10px 0 0" }}>
+          <button
+            type="button"
+            className="button-like active-pill"
+            onClick={() =>
+              setParams(listMode ? { job: projectId } : { job: projectId, list: "1" })
+            }
+          >
+            {listMode ? "Back to materials" : "Make the load list"}
+          </button>
+        </div>
+      )}
+
+      {projectId && listMode && (
+        <LoadList
+          packages={mine}
+          containers={containers.data ?? []}
+          jobCode={jobCodeMap}
+          ticked={ticked}
+          onToggle={toggleTick}
+          onClear={clearTicks}
+        />
+      )}
+
+      {projectId && !listMode && (
         <>
           <div className="detail-card" style={{ margin: "10px 0" }}>
             <div className="wh-row">
