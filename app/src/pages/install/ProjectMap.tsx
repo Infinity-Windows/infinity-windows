@@ -50,6 +50,7 @@ import {
   OPENING_STATUS_COLORS,
   openingMarkCode,
   openingMarkLabel,
+  openingStatusLabel,
   type Planset,
   type ProjectOpening,
 } from "../../lib/install/types";
@@ -2317,7 +2318,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 {isVoided ? (
                   "redo needed"
                 ) : (
-                  <InstallChip state={o.status}>{o.status}</InstallChip>
+                  <InstallChip state={o.status}>{openingStatusLabel(o.status)}</InstallChip>
                 )}
               </span>
             </OpeningRowButton>

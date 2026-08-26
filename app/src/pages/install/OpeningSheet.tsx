@@ -100,7 +100,12 @@ import {
   pendingUploadCount,
   retryTranscriptions,
 } from "../../lib/install/queue";
-import { MEMO_TOPICS, isForemanPlus, type MemoTopics } from "../../lib/install/types";
+import {
+  MEMO_TOPICS,
+  isForemanPlus,
+  openingStatusLabel,
+  type MemoTopics,
+} from "../../lib/install/types";
 import { claimUnsavedWork } from "../../lib/pwa/unsavedWork";
 import { indexSpecsByMark, specForOpeningCode } from "../../lib/install/specs";
 import { SpecCard } from "../../components/install/SpecCard";
@@ -1228,7 +1233,10 @@ export function OpeningSheet() {
         </p>
         {o.label && <p className="muted">{o.label}</p>}
         <p>
-          Status: <span className={installed ? "ok" : "warn-text"}>{o.status}</span>
+          Status:{" "}
+          <span className={installed ? "ok" : "warn-text"}>
+            {openingStatusLabel(o.status)}
+          </span>
         </p>
         {pending > 0 && (
           <p className="warn-text">{pending} upload(s) waiting for signal.</p>

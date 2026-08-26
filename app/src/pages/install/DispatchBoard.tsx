@@ -32,7 +32,7 @@ import { OpeningRowButton } from "../../components/install/OpeningRowButton";
 import { InstallChip } from "../../components/install/InstallChip";
 import { installerColorMap } from "../../lib/install/mapDispatch";
 import { toggleExpandedOpening } from "../../lib/install/openingRowAction";
-import type { ProjectOpening } from "../../lib/install/types";
+import { readyStatusLabel, type ProjectOpening } from "../../lib/install/types";
 import {
   compareIssues,
   KIND_LABELS,
@@ -277,7 +277,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
             <div className="muted" style={{ fontSize: 12 }}>
               {areaKey(o)} ·{" "}
               <InstallChip state={r.status}>
-                {isInstallInProgress(o) ? "in progress" : r.status}
+                {isInstallInProgress(o) ? "in progress" : readyStatusLabel(r.status)}
               </InstallChip>
             </div>
           </div>

@@ -291,6 +291,37 @@ export const OPENING_STATUS_COLORS: Record<OpeningStatus, string> = {
   installed: "var(--st-installed)",
 };
 
+/**
+ * One label layer for an opening's status (wave I-1, pick 4): every place
+ * that used to print the raw enum (`o.status`) reads this instead, so a
+ * database value change never leaks straight to a screen. `status` takes a
+ * plain `string` rather than `OpeningStatus` on purpose — a legacy/unknown
+ * value falls back to itself (never `undefined`) instead of refusing to
+ * compile or blanking the word out.
+ */
+export function openingStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    planned: "Planned",
+    assigned: "Assigned",
+    installed: "Installed",
+  };
+  return labels[status] ?? status;
+}
+
+/**
+ * Same idea for a ready-to-install verdict (lib/install/fit.ts's
+ * ReadyStatus) — "Not ready yet" is what used to leak as the raw
+ * "incomplete" on a dispatch row.
+ */
+export function readyStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    ready: "Ready",
+    blocked: "Blocked",
+    incomplete: "Not ready yet",
+  };
+  return labels[status] ?? status;
+}
+
 /** Base mark for display: W1-2 → W1, #14-1 → 14. */
 export function openingMarkCode(openingCode: string): string {
   const raw = openingCode.trim().replace(/^#/, "").toUpperCase();

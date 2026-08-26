@@ -21,6 +21,7 @@ import {
   OPENING_KIND_COLORS,
   OPENING_STATUS_COLORS,
   openingMarkCode,
+  openingStatusLabel,
   type ProjectOpening,
 } from "../../lib/install/types";
 
@@ -125,7 +126,7 @@ export function OpeningDetailCard({
               color: voided ? VOIDED_RING_COLOR : OPENING_STATUS_COLORS[o.status],
             }}
           >
-            {voided ? "install undone — redo needed" : o.status}
+            {voided ? "install undone — redo needed" : openingStatusLabel(o.status)}
           </dd>
         </div>
         {o.label && (
@@ -147,7 +148,7 @@ export function OpeningDetailCard({
               </span>
               {o.assignee.display_name}
               {o.sequence != null && ` · #${o.sequence}`}
-              {` · ${o.status}`}
+              {` · ${openingStatusLabel(o.status)}`}
             </dd>
           </div>
         )}
