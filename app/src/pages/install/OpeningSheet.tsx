@@ -59,6 +59,7 @@ import {
 } from "../../lib/install/sessions";
 import { SummonPanel } from "../../components/install/SummonPanel";
 import { UnitRecordCard } from "../../components/install/UnitRecordCard";
+import { InstallChip } from "../../components/install/InstallChip";
 import { checkFit, isInstallReadyStatus, readyToInstall, smallest } from "../../lib/install/fit";
 import {
   framingIssueNote,
@@ -99,7 +100,12 @@ import {
   pendingUploadCount,
   retryTranscriptions,
 } from "../../lib/install/queue";
-import { MEMO_TOPICS, isForemanPlus, type MemoTopics } from "../../lib/install/types";
+import {
+  MEMO_TOPICS,
+  isForemanPlus,
+  openingStatusLabel,
+  type MemoTopics,
+} from "../../lib/install/types";
 import { claimUnsavedWork } from "../../lib/pwa/unsavedWork";
 import { indexSpecsByMark, specForOpeningCode } from "../../lib/install/specs";
 import { SpecCard } from "../../components/install/SpecCard";
@@ -189,6 +195,16 @@ const READY_LABEL: Record<string, string> = {
   incomplete: "CHECKS INCOMPLETE",
 };
 
+/**
+ * A status line for the user, carrying its own tone instead of one guessed
+ * from its first word. That guess (a regex against the message text, below)
+ * is the bug this replaces: "Redo filed" and "Marked damaged" both matched no
+ * recognized prefix and rendered in the error class, so an installer reading
+ * a red confirmation for something that had just succeeded tapped again.
+ * `null` clears the line.
+ */
+type SheetMessage = { text: string; tone: "ok" | "error" } | null;
+
 export function OpeningSheet() {
   const { projectId = "", openingId = "" } = useParams();
   const navigate = useNavigate();
@@ -203,7 +219,7 @@ export function OpeningSheet() {
   const [scanOpen, setScanOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [codeInput, setCodeInput] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<SheetMessage>(null);
   // Post-install "spam-through" modal (installers) + start-of-task gate error.
   const [doneModal, setDoneModal] = useState(false);
   const [startGateError, setStartGateError] = useState<string | null>(null);
@@ -462,11 +478,14 @@ export function OpeningSheet() {
     onSuccess: () => {
       setUndoOpen(false);
       setUndoReason("");
-      setMessage("Install undone - every record kept. The unit is back on the list.");
+      setMessage({
+        text: "Install undone - every record kept. The unit is back on the list.",
+        tone: "ok",
+      });
       refresh();
       void queryClient.invalidateQueries({ queryKey: ["undoneInstalls", openingId] });
     },
-    onError: (e) => setMessage(formatApiError(e)),
+    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
   // The unit's true cost line (CONTEXT.md labor-minutes): sessions +
@@ -489,7 +508,7 @@ export function OpeningSheet() {
     onSuccess: async () => {
       setRedoSheetOpen(false);
       setRedoReason("");
-      setMessage("Redo filed — the unit is back on the list.");
+      setMessage({ text: "Redo filed — the unit is back on the list.", tone: "ok" });
       refresh();
       // Foreman notified, never asked (owner rule). Best-effort.
       try {
@@ -509,13 +528,13 @@ export function OpeningSheet() {
         /* push is best-effort */
       }
     },
-    onError: (e) => setMessage(formatApiError(e)),
+    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
   const toggleNeedsFlashing = useMutation({
     mutationFn: (needs: boolean) => setOpeningNeedsFlashing(openingId, needs),
     onSuccess: () => refresh(),
-    onError: (e) => setMessage(formatApiError(e)),
+    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
   // Re-read the clock only while something is actually being timed. The
@@ -646,7 +665,7 @@ export function OpeningSheet() {
       if (isClockGateError(e)) {
         setStartGateError("Clock in and sign today's toolbox talk to start this task.");
       } else {
-        setMessage(formatApiError(e));
+        setMessage({ text: formatApiError(e), tone: "error" });
       }
     },
   });
@@ -696,7 +715,7 @@ export function OpeningSheet() {
         });
       }
     },
-    onError: (e) => setMessage(formatApiError(e)),
+    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
   // BLOCK: the first-class exit (spec .scratch/sessions) — reason sheet,
@@ -716,19 +735,19 @@ export function OpeningSheet() {
       refresh();
       goToNext(nextOpening ? new Date().toISOString() : null);
     },
-    onError: (e) => setMessage(formatApiError(e)),
+    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
   const assign = useMutation({
     mutationFn: async (windowUuid: string) =>
       assignWindowToOpening(openingId, windowUuid),
     onSuccess: () => {
-      setMessage("Unit assigned.");
+      setMessage({ text: "Unit assigned.", tone: "ok" });
       setScanOpen(false);
       setSearch("");
       refresh();
     },
-    onError: (e) => setMessage(formatApiError(e)),
+    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
   // Any scanned label (window id / short code / serial) resolves to one unit,
@@ -739,12 +758,12 @@ export function OpeningSheet() {
       if (res.status === "ok") {
         assign.mutate(res.unit.id);
       } else if (res.status === "not-found") {
-        setMessage(`No unit found for "${res.query}".`);
+        setMessage({ text: `No unit found for "${res.query}".`, tone: "error" });
       } else {
-        setMessage("That's a slot label — scan a unit label.");
+        setMessage({ text: "That's a slot label — scan a unit label.", tone: "error" });
       }
     } catch (e) {
-      setMessage(formatApiError(e));
+      setMessage({ text: formatApiError(e), tone: "error" });
     }
   };
 
@@ -796,46 +815,50 @@ export function OpeningSheet() {
       return { filed: openFraming.length === 0, resolved: false };
     },
     onSuccess: (r) => {
-      setMessage(
-        r.filed
+      setMessage({
+        text: r.filed
           ? "Rough opening saved — framing issue filed for this unit."
           : r.resolved
             ? "Rough opening saved — all good, framing issue resolved."
             : "Rough opening saved.",
-      );
+        tone: "ok",
+      });
       refresh();
       void queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
     },
-    onError: (e) => setMessage(formatApiError(e)),
+    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
   const saveCondition = useMutation({
     mutationFn: (condition: "ok" | "damaged") =>
       setOpeningCondition(openingId, condition, conditionNote || null),
     onSuccess: (_data, condition) => {
-      setMessage(condition === "damaged" ? "Marked damaged — office flagged." : "Condition OK.");
+      setMessage({
+        text: condition === "damaged" ? "Marked damaged — office flagged." : "Condition OK.",
+        tone: "ok",
+      });
       refresh();
     },
-    onError: (e) => setMessage(formatApiError(e)),
+    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
   const flag = useMutation({
     mutationFn: (note: string | null) => flagOpening(openingId, note),
     onSuccess: (_d, note) => {
-      setMessage(note ? "Flagged to your lead." : "Flag cleared.");
+      setMessage({ text: note ? "Flagged to your lead." : "Flag cleared.", tone: "ok" });
       setFlagText("");
       refresh();
     },
-    onError: (e) => setMessage(formatApiError(e)),
+    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
   const postJobNote = useMutation({
     mutationFn: (note: string) => addJobNote(projectId, note),
     onSuccess: () => {
-      setMessage("Site note sent to the lead.");
+      setMessage({ text: "Site note sent to the lead.", tone: "ok" });
       setJobNoteText("");
     },
-    onError: (e) => setMessage(formatApiError(e)),
+    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
   const addNote = useMutation({
@@ -844,7 +867,7 @@ export function OpeningSheet() {
       setNoteText("");
       void queryClient.invalidateQueries({ queryKey: ["openingNotes", openingId] });
     },
-    onError: (e) => setMessage(formatApiError(e)),
+    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
   // Escalate a complication straight to the foreman as an urgent issue.
@@ -858,12 +881,12 @@ export function OpeningSheet() {
         note: note || null,
       }),
     onSuccess: () => {
-      setMessage("Complication sent to your foreman.");
+      setMessage({ text: "Complication sent to your foreman.", tone: "ok" });
       setComplicationText("");
       queryClient.invalidateQueries({ queryKey: ["projectIssues", projectId] });
       queryClient.invalidateQueries({ queryKey: ["issues"] });
     },
-    onError: (e) => setMessage(formatApiError(e)),
+    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
   // Damaged unit blocks install: ensure the foreman has an issue, then let the
@@ -890,7 +913,7 @@ export function OpeningSheet() {
       // ready window (same wiring as the post-install "Next one" button).
       goToNext();
     },
-    onError: (e) => setMessage(formatApiError(e)),
+    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
   const startRecording = async () => {
@@ -910,7 +933,7 @@ export function OpeningSheet() {
       recorderRef.current = rec;
       setRecording(true);
     } catch (e) {
-      setMessage(`Mic unavailable: ${formatApiError(e)}`);
+      setMessage({ text: `Mic unavailable: ${formatApiError(e)}`, tone: "error" });
     }
   };
 
@@ -1055,11 +1078,12 @@ export function OpeningSheet() {
         result.remainingInstalls + result.remainingUploads;
       setPending(pending);
       if (result.queued || result.remainingUploads > 0) {
-        setMessage(
-          result.queued
+        setMessage({
+          text: result.queued
             ? "Install saved on this device — will sync when you're back in signal."
             : `Install recorded. ${result.remainingUploads} file(s) queued — they'll upload when you're back in signal.`,
-        );
+          tone: "ok",
+        });
       }
       // Installers get the fast spam-through modal (Next / Lunch / Break);
       // leads return to the job map.
@@ -1069,7 +1093,7 @@ export function OpeningSheet() {
         navigate(`/projects/${projectId}?tab=map`);
       }
     },
-    onError: (e) => setMessage(formatApiError(e)),
+    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
   // Lunch/Break: start a shift break (so shift-time and task-time reconcile),
@@ -1081,11 +1105,11 @@ export function OpeningSheet() {
   const confirmSpecs = useMutation({
     mutationFn: () => confirmOpening(openingId),
     onSuccess: () => {
-      setMessage("Unit checked — thanks, that clears it for everyone.");
+      setMessage({ text: "Unit checked — thanks, that clears it for everyone.", tone: "ok" });
       void queryClient.invalidateQueries({ queryKey: ["opening", openingId] });
       void queryClient.invalidateQueries({ queryKey: ["myOpenings"] });
     },
-    onError: (e) => setMessage(formatApiError(e)),
+    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
   const takeBreak = useMutation({
@@ -1209,7 +1233,10 @@ export function OpeningSheet() {
         </p>
         {o.label && <p className="muted">{o.label}</p>}
         <p>
-          Status: <span className={installed ? "ok" : "warn-text"}>{o.status}</span>
+          Status:{" "}
+          <span className={installed ? "ok" : "warn-text"}>
+            {openingStatusLabel(o.status)}
+          </span>
         </p>
         {pending > 0 && (
           <p className="warn-text">{pending} upload(s) waiting for signal.</p>
@@ -1262,16 +1289,12 @@ export function OpeningSheet() {
           (warehouse ticket 03). */}
       <PartsPanel projectId={projectId} openingCode={opening.data?.opening_code} />
 
-      {/* Guessing tone from the first word breaks every time somebody adds a
-          message: "Redo filed" and "Marked damaged" both rendered RED like
-          failures, and an installer who reads a red confirmation taps again —
-          filing a second redo. Patched here; the real fix is to carry the tone
-          with the message (see the audit's proposal list). */}
-      {message && (
-        <p className={/^(Unit|Install|Rough|Condition|Flag|Flagged|Site|Complication|Redo|Marked)/.test(message) ? "ok" : "error"}>
-          {message}
-        </p>
-      )}
+      {/* The tone travels WITH the message now (SheetMessage, above) instead
+          of being guessed from its first word — that guess broke every time
+          somebody added a message: "Redo filed" and "Marked damaged" both
+          rendered RED like failures, and an installer who reads a red
+          confirmation taps again, filing a second redo. */}
+      {message && <p className={message.tone === "ok" ? "ok" : "error"}>{message.text}</p>}
 
       {/* Start-of-task gate: you can't be "on a task" unless you're clocked in
           and have signed today's toolbox talk. Shown up front rather than after
@@ -1501,7 +1524,7 @@ export function OpeningSheet() {
       {/* --- READY-TO-INSTALL GATE (always visible while working) --- */}
       {!installed && (
         <div className={`ready-banner ready-${ready.status}`}>
-          <strong>{READY_LABEL[ready.status]}</strong>
+          <InstallChip state={ready.status}>{READY_LABEL[ready.status]}</InstallChip>
           <ul>
             {ready.reasons.map((r) => (
               <li key={r}>{r}</li>
@@ -1925,7 +1948,7 @@ export function OpeningSheet() {
                     {flashing.minutes != null && ` · ${flashing.minutes}m`}
                   </span>
                 ) : flashing ? (
-                  <span style={{ fontSize: 12.5, color: "var(--warn, #e8c14a)", fontVariantNumeric: "tabular-nums" }}>
+                  <span className="warn-text" style={{ fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
                     {flashing.paused_at ? "paused" : "flashing"} ·{" "}
                     {formatPhaseClock(phaseElapsedSeconds(flashing, now))}
                     {flashing.starter?.display_name && ` · ${flashing.starter.display_name}`}

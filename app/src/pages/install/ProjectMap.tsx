@@ -30,6 +30,7 @@ import {
   VOIDED_RING_COLOR,
 } from "../../components/install/OpeningDetailCard";
 import { OpeningRowButton } from "../../components/install/OpeningRowButton";
+import { InstallChip } from "../../components/install/InstallChip";
 import {
   showsVoidedInstall,
   toggleExpandedOpening,
@@ -49,6 +50,7 @@ import {
   OPENING_STATUS_COLORS,
   openingMarkCode,
   openingMarkLabel,
+  openingStatusLabel,
   type Planset,
   type ProjectOpening,
 } from "../../lib/install/types";
@@ -2286,7 +2288,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 aria-hidden
                 style={{
                   background:
-                    unitKind(o) === "door" ? "var(--ok)" : "var(--info)",
+                    OPENING_KIND_COLORS[unitKind(o) === "door" ? "door" : "window"],
                 }}
               />
               <strong>{o.opening_code}</strong>
@@ -2311,9 +2313,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               )}
               <span
                 className="big-address"
-                style={{ color: isVoided ? VOIDED_RING_COLOR : OPENING_STATUS_COLORS[o.status] }}
+                style={isVoided ? { color: VOIDED_RING_COLOR } : undefined}
               >
-                {isVoided ? "redo needed" : o.status}
+                {isVoided ? (
+                  "redo needed"
+                ) : (
+                  <InstallChip state={o.status}>{openingStatusLabel(o.status)}</InstallChip>
+                )}
               </span>
             </OpeningRowButton>
             {o.status === "installed" ? (

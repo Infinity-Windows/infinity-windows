@@ -35,7 +35,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   buildingPlansetFor,
   jobFixtures,
@@ -85,15 +85,48 @@ interface PinVoice {
   door: boolean;
 }
 
-/** From lib/install/types — the two colours a pin may be filled with. */
+/**
+ * From lib/install/types — the two colours a pin may be filled with.
+ * index.css's --kind-window/--kind-door tokens (wave I-1, pick 2) are pinned
+ * byte-identical to these literals in light mode on purpose — see the
+ * comment on those tokens — so this one stays a plain literal.
+ */
 const KIND_FILL = { window: "rgb(74, 157, 255)", door: "rgb(62, 207, 110)" };
-/** …and the rings, per install status. */
-const STATUS_RINGS = [
-  "rgb(251, 191, 36)", // planned
-  "rgb(148, 163, 184)", // assigned
-  "rgb(52, 211, 153)", // installed
-  "rgb(248, 113, 113)", // install undone
-];
+
+/**
+ * …and the rings, per install status. These three used to be literals too,
+ * until wave I-1 (pick 2) turned OPENING_STATUS_COLORS into references to
+ * --st-planned/--st-assigned/--st-installed — tokens with no promise of
+ * matching any particular rgb() forever. Resolving them from the page's own
+ * computed style at runtime (statusRingsFor, below) means this test pins
+ * "the ring matches its token", never a color literal that can quietly
+ * drift out of step with index.css.
+ */
+async function resolveColorToken(page: Page, token: string): Promise<string> {
+  return page.evaluate((varName) => {
+    const probe = document.createElement("div");
+    probe.style.position = "absolute";
+    probe.style.visibility = "hidden";
+    probe.style.borderTopColor = `var(${varName})`;
+    document.body.appendChild(probe);
+    const resolved = getComputedStyle(probe).borderTopColor;
+    probe.remove();
+    return resolved;
+  }, token);
+}
+
+/** The four ring colours a pin may wear, read live off the page under test. */
+async function statusRingsFor(page: Page): Promise<string[]> {
+  return [
+    await resolveColorToken(page, "--st-planned"),
+    await resolveColorToken(page, "--st-assigned"),
+    await resolveColorToken(page, "--st-installed"),
+    // Install-undone (VOIDED_RING_COLOR) stays a literal: none of these three
+    // fixture jobs carries a voided install, so no pin here ever wears it —
+    // there is nothing for a live lookup to protect against drifting.
+    "rgb(248, 113, 113)",
+  ];
+}
 
 async function pinVoices(pins: Locator): Promise<PinVoice[]> {
   return pins.evaluateAll((nodes) =>
@@ -113,8 +146,15 @@ async function pinVoices(pins: Locator): Promise<PinVoice[]> {
 /**
  * Every mark on this view carries its number and is coloured window-or-door,
  * ringed in a real status. `where` names the view so a failure says which one.
+ * `statusRings` is this page's own live token values (statusRingsFor) — never
+ * a literal, so a re-tuned --st-* stays in step with what this asserts.
  */
-async function expectPinsSpeak(pins: Locator, where: string, expected: number) {
+async function expectPinsSpeak(
+  pins: Locator,
+  where: string,
+  expected: number,
+  statusRings: string[],
+) {
   const voices = await pinVoices(pins);
   expect(voices, `${where}: expected ${expected} pins`).toHaveLength(expected);
 
@@ -136,7 +176,7 @@ async function expectPinsSpeak(pins: Locator, where: string, expected: number) {
       `vs door has to be readable without tapping anything.`,
   ).toBe(0);
 
-  const wrongRing = voices.filter((v) => !STATUS_RINGS.includes(v.ring));
+  const wrongRing = voices.filter((v) => !statusRings.includes(v.ring));
   expect(
     wrongRing.length,
     `${where}: ${wrongRing.length} pins have no install-status ring ` +
@@ -421,6 +461,7 @@ for (const job of jobFixtures()) {
     page.on("pageerror", (e) => pageErrors.push(String(e)));
 
     await page.goto(`/projects/${job.projectId}/map`);
+    const statusRings = await statusRingsFor(page);
 
     /*
      * The map opens on the real architectural sheet. That is the drawing the
@@ -438,6 +479,7 @@ for (const job of jobFixtures()) {
       planPins,
       `${job.jobCode} original plan`,
       planCount,
+      statusRings,
     );
     const planAt100 = measureOverlap(await pinBoxes(planPins));
     const zoomed = await zoomUntilCountable(
@@ -612,7 +654,12 @@ for (const job of jobFixtures()) {
     ).toBeDefined();
 
     const overlap = measureOverlap(await pinBoxes(pins));
-    const kinds = await expectPinsSpeak(pins, `${job.jobCode} ${view}`, rendered);
+    const kinds = await expectPinsSpeak(
+      pins,
+      `${job.jobCode} ${view}`,
+      rendered,
+      statusRings,
+    );
     measured[job.jobCode] = {
       ...overlap,
       snapped: 0,

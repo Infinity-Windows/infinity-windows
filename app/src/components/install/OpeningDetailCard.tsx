@@ -21,11 +21,15 @@ import {
   OPENING_KIND_COLORS,
   OPENING_STATUS_COLORS,
   openingMarkCode,
+  openingStatusLabel,
   type ProjectOpening,
 } from "../../lib/install/types";
 
-/** Distinct ring/text for an opening whose install was undone (foreman+ only). */
-export const VOIDED_RING_COLOR = "#ef4444";
+/** Distinct ring/text for an opening whose install was undone (foreman+
+ * only). A danger signal, not the REDO chip's violet (InstallChip's "redo"
+ * state) — undoing an install and pressing redo are different events; see
+ * app/src/components/install/InstallChip.tsx. */
+export const VOIDED_RING_COLOR = "var(--danger)";
 
 /** Extra facts read off the supplier's specs PDF, where that PDF is loaded. */
 export interface OpeningSpecDetail {
@@ -122,7 +126,7 @@ export function OpeningDetailCard({
               color: voided ? VOIDED_RING_COLOR : OPENING_STATUS_COLORS[o.status],
             }}
           >
-            {voided ? "install undone — redo needed" : o.status}
+            {voided ? "install undone — redo needed" : openingStatusLabel(o.status)}
           </dd>
         </div>
         {o.label && (
@@ -144,7 +148,7 @@ export function OpeningDetailCard({
               </span>
               {o.assignee.display_name}
               {o.sequence != null && ` · #${o.sequence}`}
-              {` · ${o.status}`}
+              {` · ${openingStatusLabel(o.status)}`}
             </dd>
           </div>
         )}
