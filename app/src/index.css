@@ -1667,14 +1667,6 @@ button:disabled {
   flex: none;
 }
 
-.map-detail-card__cat {
-  font-size: 10.5px;
-  letter-spacing: 1px;
-  color: #a39c92;
-  text-transform: uppercase;
-  flex: none;
-}
-
 .map-detail-card__close {
   flex: none;
   width: 28px;

@@ -11,10 +11,7 @@ import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { listMarkSpecs } from "../../lib/install/api";
 import { openingFullSheetPath } from "../../lib/install/openingRowAction";
-import {
-  openingUnitKind,
-  openingUnitKindResolver,
-} from "../../lib/install/unitKind";
+import { openingUnitKindResolver } from "../../lib/install/unitKind";
 import { rememberOpening } from "../../lib/install/staleOpening";
 import { installerInitials } from "../../lib/install/mapDispatch";
 import {
@@ -73,12 +70,6 @@ export function OpeningDetailCard({
   });
   const kind = openingUnitKindResolver(markSpecs.data ?? [])(o);
   const wt = o.window_types;
-  // The supplier's category is worth showing — "double-hung" says more than
-  // "window" — but not when it contradicts the sheet. Black Desert's mark #2 is
-  // filed as a door and described as a fixed window; printing "door" beside a
-  // window-blue dot is the same confusion in words.
-  const categoryLabel =
-    openingUnitKind(o) === kind ? wt?.category ?? kind : kind;
 
   // "Open full sheet" below is a link by id, and reloading the plans replaces
   // every opening with a new id. Note the code this id stood for while we have
@@ -100,7 +91,6 @@ export function OpeningDetailCard({
           #{openingMarkCode(o.opening_code)}
           {wt ? ` · ${wt.name || wt.type_code}` : ""}
         </strong>
-        <span className="map-detail-card__cat">{categoryLabel}</span>
         <button
           type="button"
           className="map-detail-card__close"
