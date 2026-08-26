@@ -3,8 +3,8 @@
 // no-camera multi-select the owner asked for: pick this container once,
 // then tick packages as they're carried in.
 
-import { useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listLocations, listProjects } from "../../lib/api";
 import { Explain } from "../../components/ui/Explain";
@@ -16,6 +16,8 @@ import { formatApiError } from "../../lib/errors";
 import { isForemanPlus, isSupervisorPlus } from "../../lib/install/types";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { pushToast } from "../../lib/toast";
+import { playErrorTone, playSuccessTone } from "../../lib/sound";
+import { useScanWedge } from "../../lib/warehouse/scanWedge";
 import { BackChip } from "../../components/BackChip";
 import { containerPostersPdf, downloadPdf } from "../../lib/labels";
 import { ContainerForm } from "./StorageHub";
@@ -32,6 +34,7 @@ import {
   listActivePackages,
   listContainers,
   listContainerMovements,
+  posterAutoOpenPath,
   saveContainer,
   setContainerModel,
   type StoragePackage,
@@ -111,8 +114,12 @@ export function movedMessage(
 }
 
 export function ContainerDetail() {
+  // Pick 30: a desk-mounted hardware scanner routes straight to the package
+  // or container it reads, same as the camera flow.
+  useScanWedge();
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const qc = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
@@ -255,6 +262,17 @@ export function ContainerDetail() {
   const [archiving, setArchiving] = useState(false);
 
   const container = (containers.data ?? []).find((c) => c.id === id) ?? null;
+
+  // Pick 31: a poster scan (Scan.tsx tags the landing `?from=poster`) skips
+  // straight to the 3D shell once the container is in hand, when it has one.
+  // Runs once per landing, not on every container edit — a shell created
+  // mid-visit should not yank a foreman out of the page they are looking at.
+  useEffect(() => {
+    const path = posterAutoOpenPath(container, searchParams.get("from"));
+    if (path) navigate(path, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [container?.id, container?.studio_project_id]);
+
   const jobCode = useMemo(() => {
     const m = new Map<string, string>();
     for (const p of projects.data ?? []) m.set(p.id, p.job_code);
@@ -301,6 +319,7 @@ export function ContainerDetail() {
         id,
       ),
     onSuccess: (r) => {
+      playSuccessTone();
       pushToast(
         writeToast(r, `${r.count} package${r.count === 1 ? "" : "s"} checked in`),
       );
@@ -308,7 +327,10 @@ export function ContainerDetail() {
       setCheckin(false);
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
     },
-    onError: (e) => pushToast(formatApiError(e), "error"),
+    onError: (e) => {
+      playErrorTone();
+      pushToast(formatApiError(e), "error");
+    },
   });
 
   const poster = useMutation({

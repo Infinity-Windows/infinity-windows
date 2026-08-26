@@ -13,6 +13,7 @@ import {
   movementToPackageEvent,
   normalizeMarks,
   partLabel,
+  posterAutoOpenPath,
   type PackageEvent,
 } from "./storage";
 
@@ -206,5 +207,35 @@ describe("movementToPackageEvent", () => {
 
   it("no context at all maps to null, not undefined", () => {
     expect(movementToPackageEvent({ ...base, event: "bound" }).container_id).toBeNull();
+  });
+});
+
+/**
+ * Pick 31: a poster scan should skip straight to the living 3D shell when
+ * one exists, and otherwise leave the visit alone — reaching ContainerDetail
+ * any other way (the grid, Find, a package's own link back to its
+ * container) means the manifest is what was actually asked for.
+ */
+describe("posterAutoOpenPath", () => {
+  it("routes into the 3D shell when the poster landed here and one exists", () => {
+    expect(
+      posterAutoOpenPath({ id: "ctr-1", studio_project_id: "studio-1" }, "poster"),
+    ).toBe("/warehouse/3d/ctr-1");
+  });
+
+  it("stays put when there is no shell yet, even from a poster", () => {
+    expect(
+      posterAutoOpenPath({ id: "ctr-1", studio_project_id: null }, "poster"),
+    ).toBeNull();
+  });
+
+  it("stays put for an ordinary visit, even with a shell", () => {
+    expect(
+      posterAutoOpenPath({ id: "ctr-1", studio_project_id: "studio-1" }, null),
+    ).toBeNull();
+  });
+
+  it("stays put while the container hasn't loaded yet", () => {
+    expect(posterAutoOpenPath(null, "poster")).toBeNull();
   });
 });

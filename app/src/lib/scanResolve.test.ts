@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   resolveLocationFromScan,
+  resolveStorageFromScan,
   resolveWindowFromScan,
   type LocationScanLookups,
+  type StorageScanLookups,
   type WindowScanLookups,
 } from "./scanResolve";
 import type { Location, WindowUnit } from "./types";
@@ -28,6 +30,16 @@ function locationLookups(
   return {
     getLocationByAddress: vi.fn(async () => null),
     getLocationBySerial: vi.fn(async () => null),
+    ...overrides,
+  };
+}
+
+function storageLookups(
+  overrides: Partial<StorageScanLookups> = {},
+): StorageScanLookups {
+  return {
+    getContainerBySerial: vi.fn(async () => null),
+    getPackageBySerial: vi.fn(async () => null),
     ...overrides,
   };
 }
@@ -130,5 +142,53 @@ describe("resolveLocationFromScan", () => {
       locationLookups(),
     );
     expect(res).toEqual({ status: "not-a-location" });
+  });
+});
+
+describe("resolveStorageFromScan", () => {
+  it("resolves a container poster to its 3D-eligible landing path", async () => {
+    // ?from=poster rides along unconditionally — a containerSerial payload
+    // only ever comes off a container's own printed poster/sticker, camera
+    // or hardware wedge alike (see ContainerDetail's posterAutoOpenPath).
+    const lookups = storageLookups({
+      getContainerBySerial: vi.fn(async () => ({ id: "ctr-1" })),
+    });
+    const res = await resolveStorageFromScan(
+      { kind: "containerSerial", serial: "CTR-000007" },
+      lookups,
+    );
+    expect(res).toEqual({ status: "ok", kind: "container", path: "/storage/c/ctr-1?from=poster" });
+    expect(lookups.getContainerBySerial).toHaveBeenCalledWith("CTR-000007");
+  });
+
+  it("resolves a package sticker to its sheet", async () => {
+    const lookups = storageLookups({
+      getPackageBySerial: vi.fn(async () => ({ serial: "PKG-000123" })),
+    });
+    const res = await resolveStorageFromScan(
+      { kind: "packageSerial", serial: "PKG-000123" },
+      lookups,
+    );
+    expect(res).toEqual({ status: "ok", kind: "package", path: "/pkg/PKG-000123" });
+  });
+
+  it("reports not-found with the query that missed, for either label", async () => {
+    const lookups = storageLookups();
+    expect(
+      await resolveStorageFromScan({ kind: "containerSerial", serial: "CTR-000999" }, lookups),
+    ).toEqual({ status: "not-found", query: "CTR-000999" });
+    expect(
+      await resolveStorageFromScan({ kind: "packageSerial", serial: "PKG-000999" }, lookups),
+    ).toEqual({ status: "not-found", query: "PKG-000999" });
+  });
+
+  it("flags a window or slot label scanned where a storage label was expected", async () => {
+    const lookups = storageLookups();
+    expect(
+      await resolveStorageFromScan({ kind: "window", windowId: "W-CAS3050-0042" }, lookups),
+    ).toEqual({ status: "not-a-storage-label" });
+    expect(
+      await resolveStorageFromScan({ kind: "location", address: "S-03-B" }, lookups),
+    ).toEqual({ status: "not-a-storage-label" });
   });
 });

@@ -38,8 +38,12 @@ import {
 } from "../../lib/warehouse/deliveryReceiving";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isForemanPlus } from "../../lib/install/types";
+import { useScanWedge } from "../../lib/warehouse/scanWedge";
 
 export function DeliveryDetail() {
+  // Pick 30: a desk-mounted hardware scanner routes straight to the package
+  // or container it reads, same as the camera flow.
+  useScanWedge();
   const { id = "" } = useParams();
   const qc = useQueryClient();
   const { effectiveRole } = useEffectiveRole();

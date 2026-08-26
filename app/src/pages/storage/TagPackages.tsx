@@ -22,6 +22,7 @@ import { Explain } from "../../components/ui/Explain";
 import { addProjectMark, listScheduledMarks } from "../../lib/warehouse/warehouseCards";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isForemanPlus } from "../../lib/install/types";
+import { useScanWedge } from "../../lib/warehouse/scanWedge";
 import {
   CATEGORY_LABELS,
   defaultDeliveryLabel,
@@ -133,6 +134,10 @@ function waitingLine(n: number): string {
 }
 
 export function TagPackages() {
+  // Pick 30: a desk-mounted hardware scanner routes straight to the package
+  // or container it reads, same as the camera flow — a second input path
+  // alongside the camera Scanner already on this page, not a replacement.
+  useScanWedge();
   const qc = useQueryClient();
   const blanks = useQuery({ queryKey: ["storageBlanks"], queryFn: listBlankPackages });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });

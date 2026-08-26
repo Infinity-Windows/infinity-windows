@@ -2,6 +2,7 @@ import { useState } from "react";
 import { BackChip } from "../components/BackChip";
 import { BuildIdentityCard } from "../components/BuildIdentityCard";
 import { PermissionsSettings } from "../components/permissions/PermissionsSettings";
+import { playSuccessTone, setSoundsEnabled, soundsEnabled } from "../lib/sound";
 
 type ThemeChoice = "system" | "light" | "dark";
 
@@ -39,6 +40,7 @@ function applyTheme(t: ThemeChoice) {
 /** Settings hub. For now it hosts the Notifications & location controls (p1-10). */
 export function Settings() {
   const [theme, setTheme] = useState<ThemeChoice>(readTheme);
+  const [sounds, setSounds] = useState<boolean>(soundsEnabled);
 
   return (
     <div className="page">
@@ -70,6 +72,28 @@ export function Settings() {
             </button>
           ))}
         </div>
+      </section>
+
+      <section className="detail-card" style={{ marginBottom: 12 }}>
+        <h2 style={{ marginTop: 0, fontSize: 18 }}>Warehouse sounds</h2>
+        <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+          A soft tick on a scan or check-in that goes through, a buzz on one
+          that doesn't. Off by default.
+        </p>
+        <button
+          className={sounds ? "button-like active-pill" : "button-like"}
+          onClick={() => {
+            const next = !sounds;
+            setSounds(next);
+            setSoundsEnabled(next);
+            // The click that turns it on IS the user gesture the browser
+            // wants before it will play anything — the same tap doubles as
+            // proof the phone's audio actually works.
+            if (next) playSuccessTone();
+          }}
+        >
+          {sounds ? "On" : "Off"}
+        </button>
       </section>
 
       <PermissionsSettings />
