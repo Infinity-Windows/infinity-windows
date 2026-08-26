@@ -1565,13 +1565,31 @@ export function OpeningSheet() {
                   </strong>
                   target
                 </span>
-                <span title="9 out of 10 installs of this type finish faster than this">
+                <span>
                   <strong>
                     {brain.data?.p90Minutes != null
                       ? `${Math.round(brain.data.p90Minutes)}m`
                       : "—"}
                   </strong>
                   slow case
+                  {/* Pick 8 (wave I-2): this used to live only in this
+                      span's title= tooltip — invisible on a phone with no
+                      hover. wh-row-sub is the app's small-muted-line style;
+                      the resets undo what .briefing-stats span imposes on
+                      every span in it (10px uppercase, tracked out), which
+                      would otherwise apply here too since it's a plain
+                      descendant selector. */}
+                  <span
+                    className="wh-row-sub"
+                    style={{
+                      display: "block",
+                      textTransform: "none",
+                      letterSpacing: "normal",
+                      fontWeight: 400,
+                    }}
+                  >
+                    9 out of 10 installs of this type finish faster than this
+                  </span>
                 </span>
                 <span>
                   <strong>
