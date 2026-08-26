@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Ban, RotateCcw } from "lucide-react";
 import {
   assignOpeningToInstaller,
   buildPerfIndex,
@@ -591,14 +592,24 @@ function SessionStrips({
     <div className="detail-card" style={{ marginTop: 8 }}>
       {blocked.map((b) => (
         <p key={b.openingId} style={{ margin: "2px 0" }}>
-          🚫 <strong>{openingCodeById.get(b.openingId) ?? "unit"}</strong>{" "}
+          <Ban
+            size={15}
+            aria-hidden
+            style={{ verticalAlign: "middle", marginRight: 4 }}
+          />
+          <strong>{openingCodeById.get(b.openingId) ?? "unit"}</strong>{" "}
           <InstallChip state="blocked">blocked</InstallChip>{" "}
           <span className="muted">— {b.reason ?? "no reason recorded"}</span>
         </p>
       ))}
       {(redos.data ?? []).map((r) => (
         <p key={r.id} style={{ margin: "2px 0" }}>
-          🔁 <strong>{openingCodeById.get(r.opening_id) ?? "unit"}</strong>{" "}
+          <RotateCcw
+            size={15}
+            aria-hidden
+            style={{ verticalAlign: "middle", marginRight: 4 }}
+          />
+          <strong>{openingCodeById.get(r.opening_id) ?? "unit"}</strong>{" "}
           <InstallChip state="redo">redo</InstallChip>{" "}
           <span className="muted">
             — {r.presser?.display_name ?? "installer"}: {r.reason}

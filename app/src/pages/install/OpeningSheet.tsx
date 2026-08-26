@@ -2,6 +2,7 @@ import { BackChip } from "../../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Ban, Link2, RotateCcw } from "lucide-react";
 import { PhotoCaptureSheet, type BeforeAfterValue } from "../../components/PhotoCaptureSheet";
 import { Scanner } from "../../components/Scanner";
 import {
@@ -1162,7 +1163,7 @@ export function OpeningSheet() {
           role="status"
           style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 10 }}
         >
-          <span aria-hidden>⛓️</span>
+          <Link2 size={15} aria-hidden />
           <span style={{ flex: 1 }}>
             Clock's on <strong>{opening.data?.opening_code ?? "this unit"}</strong>
             <span className="muted" style={{ fontSize: 12 }}>
@@ -1418,7 +1419,12 @@ export function OpeningSheet() {
         <div className="detail-card">
           {!redoSheetOpen ? (
             <button className="button-like" onClick={() => setRedoSheetOpen(true)}>
-              🔁 Redo this window — it needs doing again
+              <RotateCcw
+                size={15}
+                aria-hidden
+                style={{ verticalAlign: "middle", marginRight: 6 }}
+              />
+              Redo this window — it needs doing again
             </button>
           ) : (
             <>
@@ -2174,7 +2180,12 @@ export function OpeningSheet() {
                 style={{ marginTop: 8 }}
                 onClick={() => setBlockOpen((v) => !v)}
               >
-                🚫 Blocked — can't continue
+                <Ban
+                  size={15}
+                  aria-hidden
+                  style={{ verticalAlign: "middle", marginRight: 6 }}
+                />
+                Blocked — can't continue
               </button>
               {blockOpen && (
                 <div className="detail-card" style={{ marginTop: 8, textAlign: "left" }}>

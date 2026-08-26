@@ -10593,11 +10593,12 @@ button.stage-chip {
 }
 
 /* Pick 3: gloved hands need a bigger target than a bare thumb — scoped to
-   the warehouse section only (the install and office worlds keep their
-   existing sizes). `input, select` are already 52px tall globally, so they
-   are not repeated here — repeating them at 48px would only shrink them,
-   since a more specific selector replaces a rule rather than widening it.
-   min-height never moves anything on :hover, so this cannot trip the
+   the warehouse section only (the office world keeps its existing sizes;
+   install gets its own version of this below — pick 9, wave I-2).
+   `input, select` are already 52px tall globally, so they are not repeated
+   here — repeating them at 48px would only shrink them, since a more
+   specific selector replaces a rule rather than widening it. min-height
+   never moves anything on :hover, so this cannot trip the
    hover-must-never-move-layout rule. */
 :root[data-section="warehouse"] .button-like,
 :root[data-section="warehouse"] .action-btn,
@@ -10617,6 +10618,37 @@ button.stage-chip {
 :root[data-section="warehouse"] .opening-review-row input[type="checkbox"] {
   padding: 12px;
   margin: -12px;
+}
+
+/* Pick 9 (wave I-2): the same glove-target treatment pick 3 gave the
+   warehouse, scoped to the install section this time — a foreman on a
+   ladder needs the same 48px targets a warehouse crew got. .ro-pill ships
+   its own min-height: 38px above; this wins on specificity (an
+   attribute-qualified :root beats a bare class) without shrinking anything,
+   same reasoning as the `input, select` note on pick 3. The vendored
+   fitview renderer's own DOM (button.win, #assignBtn, and the rest of Maps
+   Interactive's markup) is deliberately left out here — that subtree is
+   pinned byte-for-byte by e2e and off limits regardless of what section
+   aura is active over it. */
+:root[data-section="install"] .button-like,
+:root[data-section="install"] .action-btn,
+:root[data-section="install"] button.primary,
+:root[data-section="install"] .grade-btn,
+:root[data-section="install"] .ro-pill {
+  min-height: 48px;
+}
+/* The map list's Claim/Open/Undo-install control (ProjectMap.tsx): a plain
+   link/button styled with the generic .link class, which has no min-height
+   of its own to override (button.link and .unit-list a style other things
+   about it — colour, underline — not size), so it gets its own marker
+   class rather than joining the family above. It's already a flex item of
+   .find-row, so min-height sizes its real box; the flex + centering here
+   just centres that box's own text the way a real <button> does for free
+   and this <a> would not otherwise. */
+:root[data-section="install"] .map-row-action {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
 }
 
 /* ============================================================================
