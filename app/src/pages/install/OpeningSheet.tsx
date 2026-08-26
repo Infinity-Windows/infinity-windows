@@ -59,6 +59,7 @@ import {
 } from "../../lib/install/sessions";
 import { SummonPanel } from "../../components/install/SummonPanel";
 import { UnitRecordCard } from "../../components/install/UnitRecordCard";
+import { InstallChip } from "../../components/install/InstallChip";
 import { checkFit, isInstallReadyStatus, readyToInstall, smallest } from "../../lib/install/fit";
 import {
   framingIssueNote,
@@ -1501,7 +1502,7 @@ export function OpeningSheet() {
       {/* --- READY-TO-INSTALL GATE (always visible while working) --- */}
       {!installed && (
         <div className={`ready-banner ready-${ready.status}`}>
-          <strong>{READY_LABEL[ready.status]}</strong>
+          <InstallChip state={ready.status}>{READY_LABEL[ready.status]}</InstallChip>
           <ul>
             {ready.reasons.map((r) => (
               <li key={r}>{r}</li>
@@ -1925,7 +1926,7 @@ export function OpeningSheet() {
                     {flashing.minutes != null && ` · ${flashing.minutes}m`}
                   </span>
                 ) : flashing ? (
-                  <span style={{ fontSize: 12.5, color: "var(--warn, #e8c14a)", fontVariantNumeric: "tabular-nums" }}>
+                  <span className="warn-text" style={{ fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
                     {flashing.paused_at ? "paused" : "flashing"} ·{" "}
                     {formatPhaseClock(phaseElapsedSeconds(flashing, now))}
                     {flashing.starter?.display_name && ` · ${flashing.starter.display_name}`}

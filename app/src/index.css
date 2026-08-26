@@ -9340,19 +9340,23 @@ body {
   min-height: 38px;
   transition: border-color 100ms ease, color 100ms ease, background-color 100ms ease;
 }
+/* One language of state (wave I-1, pick 1): these were a one-off hex pair
+   before this wave — same green/red a dozen other spots meant by eye, never
+   written down. Now they read the same --ok/--danger tokens every other
+   good/bad signal in the app does. */
 .ro-pill.good.on {
-  color: #35b98d;
-  border-color: rgba(53, 185, 141, 0.7);
-  background: rgba(53, 185, 141, 0.12);
+  color: var(--ok);
+  border-color: color-mix(in oklch, var(--ok), transparent 30%);
+  background: color-mix(in oklab, var(--ok) 12%, transparent);
 }
 .ro-pill.bad.on {
-  color: #e4655c;
-  border-color: rgba(228, 101, 92, 0.7);
-  background: rgba(228, 101, 92, 0.12);
+  color: var(--danger);
+  border-color: color-mix(in oklch, var(--danger), transparent 30%);
+  background: color-mix(in oklab, var(--danger) 12%, transparent);
 }
 .ro-check .ro-row { margin-top: 8px; }
-.ro-verdict { margin: 6px 0 0; font-size: 12.5px; color: #35b98d; }
-.ro-verdict.bad { color: #e4655c; }
+.ro-verdict { margin: 6px 0 0; font-size: 12.5px; color: var(--ok); }
+.ro-verdict.bad { color: var(--danger); }
 
 /* ==========================================================================
    Issue cards: a company punch list, not a stack trace. An urgency stripe
@@ -10586,3 +10590,97 @@ button.stage-chip {
   padding: 12px;
   margin: -12px;
 }
+
+/* ============================================================================
+   One language of state for the install loop (wave I-1, picks 1-2, 2026-08-26)
+   ========================================================================= */
+
+:root {
+  /* ---- Pick 1: one hue per install state, used everywhere a state is named
+     (InstallChip, components/install/InstallChip.tsx). -soft is the chip's
+     background; the solid color is its text — same pairing StageChip's
+     tokens use above. Defined by reference to existing semantics where one
+     fits (--st-installed is just --ok, spelled for this domain); literal
+     oklch only where nothing already means this (assigned's slate, redo's
+     violet — reusing the stage tokens' already-contrast-checked violet
+     formula since nothing else in the app is that hue yet).
+     ready/blocked/incomplete/damaged/flashing are NOT minted here — the chip
+     CSS below maps those states straight to --ok/--danger/--warn. */
+  --st-planned: oklch(0.48 0.15 80);
+  --st-planned-soft: oklch(0.93 0.05 80);
+  --st-assigned: oklch(0.50 0.02 240);
+  --st-assigned-soft: oklch(0.92 0.01 240);
+  --st-installed: var(--ok);
+  --st-installed-soft: var(--ok-bg);
+  --st-redo: oklch(0.5 0.16 300);
+  --st-redo-soft: oklch(0.93 0.045 300);
+
+  /* ---- Pick 2: window vs door pin fill, promoted from a hardcoded hex pair
+     in lib/install/types.ts to real tokens. Light values are byte-identical
+     to the hex this wave inherited — job-map.spec.ts's KIND_FILL literal and
+     MapPinLayer.test.tsx both still expect them, so these stay plain hex on
+     purpose rather than an oklch approximation (same reasoning as the Model
+     Studio sky tokens above: the exact value is load-bearing). */
+  --kind-window: #4A9DFF;
+  --kind-door: #3ECF6E;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --st-planned: oklch(0.82 0.17 80);
+    --st-planned-soft: oklch(0.26 0.07 80);
+    --st-assigned: oklch(0.75 0.02 240);
+    --st-assigned-soft: oklch(0.28 0.014 240);
+    --st-installed: var(--ok);
+    --st-installed-soft: var(--ok-bg);
+    --st-redo: oklch(0.78 0.16 300);
+    --st-redo-soft: oklch(0.27 0.07 300);
+
+    /* Door stays green, but shifted teal-ward off hue 155 (--ok's dark hue,
+       where --ok gets much lighter/brighter than in light mode) so a door
+       pin that is also installed never reads as one solid green blob — the
+       fill and the ring have to stay two different greens. */
+    --kind-window: #4A9DFF;
+    --kind-door: oklch(0.72 0.15 190);
+  }
+}
+:root[data-theme="dark"] {
+  --st-planned: oklch(0.82 0.17 80);
+  --st-planned-soft: oklch(0.26 0.07 80);
+  --st-assigned: oklch(0.75 0.02 240);
+  --st-assigned-soft: oklch(0.28 0.014 240);
+  --st-installed: var(--ok);
+  --st-installed-soft: var(--ok-bg);
+  --st-redo: oklch(0.78 0.16 300);
+  --st-redo-soft: oklch(0.27 0.07 300);
+  --kind-window: #4A9DFF;
+  --kind-door: oklch(0.72 0.15 190);
+}
+
+/* Pick 1: one pill, nine states. Always a plain <span> (never a toggle), so
+   unlike .stage-chip there is only one look per state — no aria-pressed
+   invert to carry. */
+.install-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 650;
+  line-height: 1.5;
+  white-space: nowrap;
+  font-family: var(--font-body);
+}
+.install-chip[data-state="planned"] { background: var(--st-planned-soft); color: var(--st-planned); }
+.install-chip[data-state="assigned"] { background: var(--st-assigned-soft); color: var(--st-assigned); }
+.install-chip[data-state="installed"] { background: var(--st-installed-soft); color: var(--st-installed); }
+.install-chip[data-state="redo"] { background: var(--st-redo-soft); color: var(--st-redo); }
+/* These five reuse the app's existing ok/warn/danger tokens directly rather
+   than minting a duplicate — the soft background is derived from the same
+   token with color-mix, the same technique .veh-status-* already uses. */
+.install-chip[data-state="ready"] { background: var(--ok-bg); color: var(--ok); }
+.install-chip[data-state="blocked"] { background: color-mix(in oklab, var(--danger) 16%, transparent); color: var(--danger); }
+.install-chip[data-state="damaged"] { background: color-mix(in oklab, var(--danger) 16%, transparent); color: var(--danger); }
+.install-chip[data-state="incomplete"] { background: color-mix(in oklab, var(--warn) 16%, transparent); color: var(--warn); }
+.install-chip[data-state="flashing"] { background: color-mix(in oklab, var(--warn) 16%, transparent); color: var(--warn); }

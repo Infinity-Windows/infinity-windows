@@ -30,6 +30,7 @@ import {
   VOIDED_RING_COLOR,
 } from "../../components/install/OpeningDetailCard";
 import { OpeningRowButton } from "../../components/install/OpeningRowButton";
+import { InstallChip } from "../../components/install/InstallChip";
 import {
   showsVoidedInstall,
   toggleExpandedOpening,
@@ -2311,9 +2312,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               )}
               <span
                 className="big-address"
-                style={{ color: isVoided ? VOIDED_RING_COLOR : OPENING_STATUS_COLORS[o.status] }}
+                style={isVoided ? { color: VOIDED_RING_COLOR } : undefined}
               >
-                {isVoided ? "redo needed" : o.status}
+                {isVoided ? (
+                  "redo needed"
+                ) : (
+                  <InstallChip state={o.status}>{o.status}</InstallChip>
+                )}
               </span>
             </OpeningRowButton>
             {o.status === "installed" ? (

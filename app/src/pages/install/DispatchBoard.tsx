@@ -29,6 +29,7 @@ import {
 } from "../../lib/install/nextOpening";
 import { OpeningDetailCard } from "../../components/install/OpeningDetailCard";
 import { OpeningRowButton } from "../../components/install/OpeningRowButton";
+import { InstallChip } from "../../components/install/InstallChip";
 import { installerColorMap } from "../../lib/install/mapDispatch";
 import { toggleExpandedOpening } from "../../lib/install/openingRowAction";
 import type { ProjectOpening } from "../../lib/install/types";
@@ -275,13 +276,9 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
             </span>
             <div className="muted" style={{ fontSize: 12 }}>
               {areaKey(o)} ·{" "}
-              <span
-                className={
-                  r.status === "ready" ? "ok" : r.status === "blocked" ? "error" : "warn-text"
-                }
-              >
+              <InstallChip state={r.status}>
                 {isInstallInProgress(o) ? "in progress" : r.status}
-              </span>
+              </InstallChip>
             </div>
           </div>
         </OpeningRowButton>
@@ -595,14 +592,16 @@ function SessionStrips({
       {blocked.map((b) => (
         <p key={b.openingId} style={{ margin: "2px 0" }}>
           🚫 <strong>{openingCodeById.get(b.openingId) ?? "unit"}</strong>{" "}
-          <span className="muted">blocked — {b.reason ?? "no reason recorded"}</span>
+          <InstallChip state="blocked">blocked</InstallChip>{" "}
+          <span className="muted">— {b.reason ?? "no reason recorded"}</span>
         </p>
       ))}
       {(redos.data ?? []).map((r) => (
         <p key={r.id} style={{ margin: "2px 0" }}>
           🔁 <strong>{openingCodeById.get(r.opening_id) ?? "unit"}</strong>{" "}
+          <InstallChip state="redo">redo</InstallChip>{" "}
           <span className="muted">
-            redo — {r.presser?.display_name ?? "installer"}: {r.reason}
+            — {r.presser?.display_name ?? "installer"}: {r.reason}
           </span>
         </p>
       ))}
