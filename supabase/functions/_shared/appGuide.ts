@@ -149,6 +149,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "The job list. Open a job to see its plan and map; tap a unit dot (blue = window, green = door) to open its sheet, then assign it to yourself and start.",
   },
   {
+    path: "/jobs/history",
+    label: "Job history",
+    minRole: "supervisor",
+    blurb:
+      "Finished and cancelled jobs, with everything they ever tracked. Open one to read it, reopen it if the site calls back; nothing about a finished job is deleted.",
+  },
+  {
     path: "/ask",
     label: "Ask",
     minRole: "installer",

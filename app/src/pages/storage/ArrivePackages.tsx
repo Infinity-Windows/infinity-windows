@@ -15,7 +15,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { listProjects } from "../../lib/api";
+import { listProjects, listProjectsAnyStatus } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
 import { pushToast } from "../../lib/toast";
 import { BackChip } from "../../components/BackChip";
@@ -40,6 +40,9 @@ export function ArrivePackages() {
   const [params] = useSearchParams();
   const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  // Finished jobs keep naming their material (owner ask, 2026-08-26): the
+  // NAME map reads every job; any picker on this page stays active-only.
+  const projectsAll = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
   const [projectId, setProjectId] = useState(params.get("job") ?? "");
   const [verdicts, setVerdicts] = useState<Map<string, Verdict>>(new Map());
   const [note, setNote] = useState("");
@@ -51,9 +54,9 @@ export function ArrivePackages() {
 
   const jobCode = useMemo(() => {
     const m = new Map<string, string>();
-    for (const p of projects.data ?? []) m.set(p.id, p.job_code);
+    for (const p of projectsAll.data ?? []) m.set(p.id, p.job_code);
     return m;
-  }, [projects.data]);
+  }, [projectsAll.data]);
 
   // Only what actually left for this job can arrive at it.
   const outForJob = useMemo(

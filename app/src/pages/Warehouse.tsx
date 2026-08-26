@@ -21,7 +21,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { listLocations, listProjects } from "../lib/api";
+import { listLocations, listProjects, listProjectsAnyStatus } from "../lib/api";
 import { formatApiError } from "../lib/errors";
 import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
@@ -130,6 +130,9 @@ export function Warehouse() {
   const waiting = outbox.warehouse;
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  // Finished jobs keep naming their material (owner ask, 2026-08-26): name
+  // maps and Find read every job; anything that TAGS stays active-only.
+  const projectsAll = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
   const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
   // Racks and staging bays. Find needs these to say "staged for BLACK22"
@@ -191,9 +194,9 @@ export function Warehouse() {
   );
   const jobCode = useMemo(() => {
     const m = new Map<string, string>();
-    for (const p of projects.data ?? []) m.set(p.id, p.job_code);
+    for (const p of projectsAll.data ?? []) m.set(p.id, p.job_code);
     return m;
-  }, [projects.data]);
+  }, [projectsAll.data]);
 
   const openDamage = (issues.data ?? []).filter(
     (i) => i.kind === "damage" && i.status === "open",

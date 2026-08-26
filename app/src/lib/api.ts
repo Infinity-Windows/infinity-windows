@@ -58,6 +58,38 @@ export async function listProjects(): Promise<Project[]> {
   return data;
 }
 
+/**
+ * Every job whatever its life stage (owner ask, 2026-08-26). Two callers
+ * only: the job-history screen, and the warehouse's job-NAME maps — a
+ * finished job's leftover conex material must keep naming its job instead
+ * of decaying to "job not listed". Pickers stay on listProjects: nobody
+ * tags new material to a finished job by accident.
+ */
+export async function listProjectsAnyStatus(): Promise<Project[]> {
+  const { data, error } = await supabase.from("projects").select("*").order("name");
+  if (error) throw error;
+  return data;
+}
+
+/** Finish, cancel, or reopen a job (supervisor+). Reversible on purpose. */
+export async function setProjectStatus(
+  projectId: string,
+  status: "active" | "completed" | "cancelled",
+): Promise<void> {
+  const { error } = await supabase.rpc("set_project_status", {
+    p_project: projectId,
+    p_status: status,
+  });
+  if (error) throw error;
+}
+
+/** Owner-only, empty shells only — a job with material, plans, or hours
+ * refuses with a sentence pointing at complete/cancel. */
+export async function deleteProject(projectId: string): Promise<void> {
+  const { error } = await supabase.rpc("delete_project", { p_project: projectId });
+  if (error) throw error;
+}
+
 /** Fields captured on the Horizon-style add/edit project form. */
 export interface ProjectDetailsInput {
   address?: string | null;

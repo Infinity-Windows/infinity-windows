@@ -41,6 +41,7 @@ import { ContainerViewer } from "./pages/storage/ContainerViewer";
 import { Takeoffs } from "./pages/Takeoffs";
 import { ProjectDetail } from "./pages/ProjectDetail";
 import { Projects } from "./pages/Projects";
+import { JobHistory } from "./pages/JobHistory";
 import { Receive } from "./pages/Receive";
 import { Scan } from "./pages/Scan";
 import { ContainerDetail } from "./pages/storage/ContainerDetail";
@@ -450,6 +451,7 @@ export default function App() {
             />
             <Route path="/search" element={<Navigate to="/warehouse" replace />} />
             <Route path="/projects" element={<Projects />} />
+            <Route path="/jobs/history" element={<JobHistory />} />
             <Route path="/projects/:projectId" element={<ProjectDetail />} />
             <Route
               path="/projects/:projectId/map"

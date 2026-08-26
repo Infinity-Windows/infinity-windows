@@ -49,6 +49,7 @@ export type RoutePath =
   | "/"
   | "/my-work"
   | "/projects"
+  | "/jobs/history"
   | "/warehouse"
   | "/clock"
   | "/learn"
@@ -155,6 +156,8 @@ export const NAV: NavDest[] = [
   { id: "takeoffs", to: "/takeoffs", label: "Takeoffs", icon: "▤", minRole: "installer" },
   { id: "warehouse", to: "/warehouse", label: "Warehouse", icon: "▦", minRole: "installer" },
   { id: "projects", to: "/projects", label: "Jobs", icon: "▤", minRole: "installer" },
+  // Finished/cancelled jobs with everything they tracked (owner, 2026-08-26).
+  { id: "job-history", to: "/jobs/history", label: "Job history", icon: "▤", minRole: "supervisor" },
   { id: "studio", to: "/studio", label: "Studio", icon: "◧", minRole: "supervisor" },
   // The company's ledger of where time goes (grilled 2026-08-17):
   // supervisor+ ONLY — on-tool and per-person time live here.
@@ -353,6 +356,8 @@ const MENU_DEF: MenuSection[] = [
       { to: "/", label: "Home", Icon: LayoutGrid },
       { to: "/my-work", label: "My Work", Icon: ListChecks },
       { to: "/projects", label: "Jobs", Icon: LayoutGrid },
+      // canAccess gates this to supervisor+ (owner ask, 2026-08-26).
+      { to: "/jobs/history", label: "Job history", Icon: LayoutGrid },
       { to: "/studio", label: "Studio", Icon: PenTool },
       { to: "/data", label: "Data", Icon: Database },
       { to: "/photos", label: "Photos & receipts", Icon: Camera },

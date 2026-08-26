@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { listLocations, listProjects } from "../../lib/api";
+import { listLocations, listProjects, listProjectsAnyStatus } from "../../lib/api";
 import { supabase } from "../../lib/supabase";
 import { formatApiError } from "../../lib/errors";
 import { BackChip } from "../../components/BackChip";
@@ -74,6 +74,9 @@ export function PackageSheet() {
   });
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  // Finished jobs keep naming their material (owner ask, 2026-08-26): the
+  // sheet's title map reads every job; the assign picker stays active-only.
+  const projectsAll = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
   // Racks and staging bays, so a package set aside for a job says so by name.
   const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
   // Job-building glow's door (#16): does THIS package's job even have a
@@ -306,9 +309,9 @@ export function PackageSheet() {
 
   const jobCode = useMemo(() => {
     const m = new Map<string, string>();
-    for (const p of projects.data ?? []) m.set(p.id, p.job_code);
+    for (const p of projectsAll.data ?? []) m.set(p.id, p.job_code);
     return m;
-  }, [projects.data]);
+  }, [projectsAll.data]);
   const containerName = (id: string | null) =>
     (containers.data ?? []).find((c) => c.id === id)?.name ?? null;
 

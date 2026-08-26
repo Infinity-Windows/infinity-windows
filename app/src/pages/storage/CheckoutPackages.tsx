@@ -13,7 +13,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { listLocations, listProjects } from "../../lib/api";
+import { listLocations, listProjects, listProjectsAnyStatus } from "../../lib/api";
 import { splitLines } from "../../lib/warehouse/splitUnits";
 import { PackageRowText } from "../../components/warehouse/PackageRowText";
 import { toLocationsById } from "../../lib/warehouse/containment";
@@ -57,6 +57,9 @@ export function CheckoutPackages() {
   // Racks and bays, so a split line can say "staged for BLACK22" by name.
   const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  // Finished jobs keep naming their material (owner ask, 2026-08-26): the
+  // NAME map reads every job; any picker on this page stays active-only.
+  const projectsAll = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
   const reasons = useQuery({ queryKey: ["checkoutReasons"], queryFn: listCheckoutReasons });
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [reason, setReason] = useState("");
@@ -67,9 +70,9 @@ export function CheckoutPackages() {
 
   const jobCode = useMemo(() => {
     const m = new Map<string, string>();
-    for (const p of projects.data ?? []) m.set(p.id, p.job_code);
+    for (const p of projectsAll.data ?? []) m.set(p.id, p.job_code);
     return m;
-  }, [projects.data]);
+  }, [projectsAll.data]);
 
   const available = useMemo(
     () =>

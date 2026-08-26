@@ -102,6 +102,15 @@ export function Projects() {
         </div>
         <BackChip fallback="/" label="Home" />
       </header>
+      {/* Supervisors wrap jobs up from the job's own page; this is where
+          they land afterwards (owner ask, 2026-08-26). */}
+      {canAdd && (
+        <p style={{ margin: "0 0 4px" }}>
+          <Link to="/jobs/history" className="link">
+            Job history →
+          </Link>
+        </p>
+      )}
       <p className="muted">
         One hub per job — warehouse pick list, opening map, and type brain.
       </p>

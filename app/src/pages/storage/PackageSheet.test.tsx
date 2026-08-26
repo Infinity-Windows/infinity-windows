@@ -77,6 +77,11 @@ function render(seed: { pkg: StoragePackage; locations?: Location[] }): string {
   qc.setQueryData(["projects"], [
     { id: "job-1", job_code: "BLACK22", name: "Black Desert" },
   ]);
+  // The sheet's title map reads every job whatever its status (job
+  // lifecycle, 2026-08-26) — same fixture list, no finished jobs here.
+  qc.setQueryData(["projectsAll"], [
+    { id: "job-1", job_code: "BLACK22", name: "Black Desert" },
+  ]);
   if (seed.locations) qc.setQueryData(["locations"], seed.locations);
 
   return renderToStaticMarkup(

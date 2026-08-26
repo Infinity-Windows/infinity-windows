@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { listLocations, listProjects } from "../../lib/api";
+import { listLocations, listProjects, listProjectsAnyStatus } from "../../lib/api";
 import { Explain } from "../../components/ui/Explain";
 import { EmptyState } from "../../components/ui/States";
 import { containerTrailLine } from "../../lib/warehouse/containerTrail";
@@ -369,6 +369,9 @@ export function ContainerDetail() {
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
   const packages = useQuery({ queryKey: ["storagePackages"], queryFn: listActivePackages });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  // Finished jobs keep naming their material (owner ask, 2026-08-26): the
+  // NAME map reads every job; the custom check-in picker stays active-only.
+  const projectsAll = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
   // Where this box has been (ticket 13). Its own key per container, so opening
   // Conex 7 never shows Conex 3's travels out of a shared cache entry.
   const trail = useQuery({
@@ -396,9 +399,9 @@ export function ContainerDetail() {
 
   const jobCode = useMemo(() => {
     const m = new Map<string, string>();
-    for (const p of projects.data ?? []) m.set(p.id, p.job_code);
+    for (const p of projectsAll.data ?? []) m.set(p.id, p.job_code);
     return m;
-  }, [projects.data]);
+  }, [projectsAll.data]);
   // Shared by the trail below and the store-time split warning — one build,
   // not two copies of the same lookup drifting apart.
   const containersById = useMemo(
