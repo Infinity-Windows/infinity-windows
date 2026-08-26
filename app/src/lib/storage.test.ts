@@ -12,6 +12,7 @@ import {
   mismatchedPackages,
   movementToPackageEvent,
   normalizeMarks,
+  packagePhotoPath,
   partLabel,
   type PackageEvent,
 } from "./storage";
@@ -162,6 +163,28 @@ describe("damagePhotoPath", () => {
   it("never collides two jobs' packages that happen to share an id and a moment", () => {
     expect(damagePhotoPath("job-1", "pkg-1", 1000)).not.toBe(
       damagePhotoPath("job-2", "pkg-1", 1000),
+    );
+  });
+});
+
+describe("packagePhotoPath", () => {
+  it("is deterministic for the same package, moment and suffix", () => {
+    expect(packagePhotoPath("pkg-1", 1000, "ab12cd")).toBe(
+      "packages/pkg-1/1000-ab12cd.jpg",
+    );
+  });
+
+  it("never collides two photos of the same package in the same instant", () => {
+    // Unlike damagePhotoPath (one report, one photo), "Add a photo" can queue
+    // several shots at once — the random suffix is what keeps them apart.
+    expect(packagePhotoPath("pkg-1", 1000, "aaaaaa")).not.toBe(
+      packagePhotoPath("pkg-1", 1000, "bbbbbb"),
+    );
+  });
+
+  it("never collides two packages photographed in the same instant", () => {
+    expect(packagePhotoPath("pkg-1", 1000, "ab12cd")).not.toBe(
+      packagePhotoPath("pkg-2", 1000, "ab12cd"),
     );
   });
 });
