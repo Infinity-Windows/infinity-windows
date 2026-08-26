@@ -9,6 +9,8 @@ import { supabase } from "../../lib/supabase";
 import { formatApiError } from "../../lib/errors";
 import { BackChip } from "../../components/BackChip";
 import { ConfirmDanger } from "../../components/ConfirmDanger";
+import { ContainerBadge } from "../../components/warehouse/ContainerBadge";
+import { StageChip } from "../../components/warehouse/StageChip";
 import { downloadPdf, packageLabelsPdf } from "../../lib/labels";
 import { listJobModelRows } from "../../lib/modelstudio/projects";
 import { placeWhere, toLocationsById } from "../../lib/warehouse/containment";
@@ -485,7 +487,14 @@ export function PackageSheet() {
             })()}
           </h1>
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-            {p.serial} · {statusLine}
+            {p.serial} ·{" "}
+            {/* Pick 1: the "on the way" line gets the Expected color — same
+                words, no other status line names a literal stage word. */}
+            {p.status === "minted" ? (
+              <StageChip stage="minted">{statusLine}</StageChip>
+            ) : (
+              statusLine
+            )}
             {/* Boneyard = tagged company stock, project null ON PURPOSE
                 (ticket 17). A finished job's packages keep their job — the
                 two must never blur (audit F9). A blank sticker is neither. */}
@@ -523,8 +532,8 @@ export function PackageSheet() {
       {/* Photos (pick 28): condition on arrival, where it sits, anything
           worth a picture. A blank sticker has no life yet, so no photos. */}
       {p.status !== "blank" && (
-        <div className="detail-card" style={{ marginTop: 8, padding: "10px 14px" }}>
-          <div className="row-gap" style={{ alignItems: "center", justifyContent: "space-between" }}>
+        <div className="detail-card wh-card">
+          <div className="wh-row" style={{ justifyContent: "space-between" }}>
             <h2 style={{ margin: 0, fontSize: 15 }}>Photos</h2>
             <label className="action-btn primary photos-add" style={{ cursor: "pointer" }}>
               {photoBusy ? "Saving…" : "Add a photo"}
@@ -572,7 +581,7 @@ export function PackageSheet() {
 
       <PackageGroup id="what" title="What it is" defaultOpen>
         {p.status !== "blank" && (
-          <div className="detail-card" style={{ marginTop: 8, padding: "10px 14px" }}>
+          <div className="detail-card wh-card">
             {editingNote ? (
               <>
                 <textarea
@@ -584,7 +593,7 @@ export function PackageSheet() {
                   placeholder="Anything out of the ordinary about this piece"
                   aria-label="Note on this package"
                 />
-                <div className="row-gap" style={{ marginTop: 6 }}>
+                <div className="wh-row" style={{ marginTop: 6 }}>
                   <button
                     className="button-like active-pill"
                     disabled={noteMutation.isPending}
@@ -620,11 +629,11 @@ export function PackageSheet() {
         )}
 
         {p.status !== "blank" && p.piece_count != null && (
-          <div className="detail-card" style={{ marginTop: 8 }}>
+          <div className="detail-card wh-card">
             <label className="field-label" htmlFor="pool-pieces">
               Pieces of {p.part_type ?? "glass"} still in the crates for this set
             </label>
-            <div className="row-gap" style={{ alignItems: "center" }}>
+            <div className="wh-row">
               <input
                 id="pool-pieces"
                 type="number"
@@ -641,7 +650,7 @@ export function PackageSheet() {
               >
                 {pieceEdit.isPending ? "Saving…" : "Save"}
               </button>
-              <span className="muted" style={{ fontSize: 12 }}>
+              <span className="wh-row-sub">
                 Edit down as the glass gets used. All used up? Delete this row.
               </span>
             </div>
@@ -649,7 +658,7 @@ export function PackageSheet() {
         )}
 
         {p.part_type === "crate" && (
-          <div className="detail-card" style={{ marginTop: 8 }}>
+          <div className="detail-card wh-card">
             <h2 style={{ marginTop: 0, fontSize: 16 }}>
               Sealed crate — nothing goes in or out
             </h2>
@@ -678,7 +687,7 @@ export function PackageSheet() {
       </PackageGroup>
 
       <PackageGroup id="where" title="Where it is" defaultOpen>
-        <div className="row-gap" style={{ flexWrap: "wrap" }}>
+        <div className="row-gap">
           {/* The map (ticket 22): only when the box it sits in HAS a shell. */}
           {p.container_id &&
             containersById.get(p.container_id)?.studio_project_id && (
@@ -708,10 +717,19 @@ export function PackageSheet() {
             it is, so a re-parkable conex never offers a compass. */}
         {lead && p.status === "stored" && p.container_id && (
           <div style={{ marginTop: 10 }}>
-            <label className="field-label">
+            <label className="field-label row-gap" style={{ alignItems: "center" }}>
+              {/* Pick 5: the container's own badge, not a new lookup — same
+                  color this container wears on the hub tile and its own
+                  header. */}
+              {containersById.get(p.container_id) && (
+                <ContainerBadge
+                  name={containersById.get(p.container_id)!.name}
+                  serial={containersById.get(p.container_id)!.serial}
+                />
+              )}
               Where in {containersById.get(p.container_id)?.name ?? "the box"}
             </label>
-            <div className="row-gap" style={{ flexWrap: "wrap" }}>
+            <div className="row-gap">
               {areaOptions(containersById.get(p.container_id)).map((a) => (
                 <button
                   key={a}
@@ -758,7 +776,7 @@ export function PackageSheet() {
       </PackageGroup>
 
       <PackageGroup id="fix" title="Fix things" defaultOpen={false}>
-        <div className="row-gap" style={{ flexWrap: "wrap" }}>
+        <div className="row-gap">
           <button className="button-like" onClick={() => reprint.mutate()}>
             Reprint sticker
           </button>
@@ -781,7 +799,7 @@ export function PackageSheet() {
             )}
         </div>
         {settingWindow && p.project_id != null && (
-          <div className="detail-card" style={{ marginTop: 8 }}>
+          <div className="detail-card wh-card">
             <p style={{ margin: 0, fontWeight: 600 }}>
               {(p.package_marks ?? []).length === 0
                 ? "Which window is this part of?"
@@ -792,7 +810,7 @@ export function PackageSheet() {
               the history says so. The number has to be on this job&rsquo;s
               schedule; the tag screen can add one that isn&rsquo;t.
             </p>
-            <div className="row-gap" style={{ alignItems: "center" }}>
+            <div className="wh-row">
               <input
                 placeholder="e.g. 6"
                 value={windowPick}
@@ -821,7 +839,7 @@ export function PackageSheet() {
         )}
 
         {assigning && p.project_id == null && (
-          <div className="detail-card" style={{ marginTop: 8 }}>
+          <div className="detail-card wh-card">
             <p style={{ margin: 0, fontWeight: 600 }}>Out of the Boneyard</p>
             <p className="muted" style={{ margin: "4px 0 8px", fontSize: 13 }}>
               Putting this on a job changes what that job expects. The sticker
@@ -858,14 +876,14 @@ export function PackageSheet() {
                     ))}
                 </select>
                 {assignMarks.isSuccess && (assignMarks.data ?? []).length === 0 && (
-                  <p className="muted" style={{ fontSize: 12.5 }}>
+                  <p className="wh-row-sub">
                     That job has no windows on its schedule yet — they come from
                     the plans at spec review.
                   </p>
                 )}
               </>
             )}
-            <div className="row-gap" style={{ marginTop: 8 }}>
+            <div className="wh-row" style={{ marginTop: 8 }}>
               <button
                 className="button-like active-pill"
                 disabled={!assignJob || !assignMark || assign.isPending}
@@ -887,12 +905,12 @@ export function PackageSheet() {
             <summary className="muted" style={{ cursor: "pointer", fontSize: 13 }}>
               Fix the part number or label
             </summary>
-            <div className="detail-card" style={{ marginTop: 6 }}>
+            <div className="detail-card wh-card">
               <p className="muted" style={{ margin: "0 0 6px", fontSize: 12 }}>
                 The boxes&rsquo; own printed labels decide the order — set this
                 one to match what&rsquo;s written on it.
               </p>
-              <div className="row-gap" style={{ flexWrap: "wrap", alignItems: "center" }}>
+              <div className="wh-row">
                 {p.piece_count == null && (
                   <>
                     <label className="field-label" style={{ margin: 0 }}>Part</label>
@@ -962,8 +980,8 @@ export function PackageSheet() {
                 </button>
               </div>
               {spreadOffer && (
-                <div className="row-gap" style={{ marginTop: 6, alignItems: "center" }}>
-                  <span className="muted" style={{ fontSize: 12 }}>
+                <div className="wh-row" style={{ marginTop: 6 }}>
+                  <span className="wh-row-sub">
                     {spreadOffer.count} other identical box
                     {spreadOffer.count === 1 ? "" : "es"} sit in this same slot.
                   </span>
@@ -988,7 +1006,7 @@ export function PackageSheet() {
             <summary className="muted" style={{ cursor: "pointer", fontSize: 13 }}>
               The maker&rsquo;s label disagrees?
             </summary>
-            <div className="row-gap" style={{ marginTop: 6, alignItems: "center" }}>
+            <div className="wh-row" style={{ marginTop: 6 }}>
               <label className="field-label" style={{ margin: 0 }}>
                 Their label says this window ships as
               </label>
@@ -1089,8 +1107,8 @@ export function PackageSheet() {
         {(events.data ?? []).map((e) => (
           <div key={e.id} className="project-card home-project">
             <div className="home-project-head">
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 600 }}>
+              <div className="wh-row-main">
+                <div className="wh-row-title">
                   {EVENT_LABELS[e.event] ?? e.event}
                   {/* Who did it (owner ask) — falls back to the raw actor id
                       when the name can't be resolved, same rule Supplies.tsx
@@ -1101,7 +1119,7 @@ export function PackageSheet() {
                     ? ` → ${jobCode.get(e.project_id) ?? "?"}`
                     : ""}
                 </div>
-                <div className="muted" style={{ fontSize: 12 }}>
+                <div className="wh-row-sub">
                   {new Date(e.created_at).toLocaleString()}
                   {e.reason ? ` · ${e.reason}` : ""}
                 </div>

@@ -8,9 +8,11 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listLocations, listProjects } from "../../lib/api";
 import { Explain } from "../../components/ui/Explain";
+import { EmptyState } from "../../components/ui/States";
 import { containerTrailLine } from "../../lib/warehouse/containerTrail";
 import { buildShellSerialized, shellDims, shellName } from "../../lib/modelstudio/shell";
 import { saveStudioProject } from "../../lib/modelstudio/projects";
+import { ContainerBadge } from "../../components/warehouse/ContainerBadge";
 import { PackageRowText } from "../../components/warehouse/PackageRowText";
 import { formatApiError } from "../../lib/errors";
 import { isForemanPlus, isSupervisorPlus } from "../../lib/install/types";
@@ -426,7 +428,10 @@ export function ContainerDetail() {
         <div>
           <BackChip />
           <p className="home-greeting">{container.serial}</p>
-          <h1>{container.name}</h1>
+          <h1 className="row-gap" style={{ alignItems: "center" }}>
+            <ContainerBadge name={container.name} serial={container.serial} />
+            {container.name}
+          </h1>
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>
             {container.address ?? "no address on file"}
             {container.access_code ? ` · code ${container.access_code}` : ""}
@@ -443,7 +448,7 @@ export function ContainerDetail() {
         </div>
       </header>
 
-      <div className="row-gap" style={{ flexWrap: "wrap" }}>
+      <div className="row-gap">
         <button
           className={checkin ? "button-like" : "button-like active-pill"}
           onClick={() => setCheckin((v) => !v)}
@@ -511,7 +516,7 @@ export function ContainerDetail() {
             crate rides in a conex or on a truck, a conex only rides on a truck,
             and nothing goes inside a crate.
           </p>
-          <div className="row-gap" style={{ flexWrap: "wrap" }}>
+          <div className="row-gap">
             {nestTargets.map((c) => (
               <button
                 key={c.id}
@@ -532,7 +537,7 @@ export function ContainerDetail() {
               </button>
             )}
             {nestTargets.length === 0 && !parent && (
-              <p className="muted" style={{ fontSize: 12 }}>
+              <p className="wh-row-sub">
                 Nowhere to move it — every other container is nested or holds
                 containers of its own.
               </p>
@@ -585,7 +590,7 @@ export function ContainerDetail() {
               while the picks can still change, never blocking the button
               below — splitting a unit is sometimes the job. */}
           {storeSplits.length > 0 && (
-            <div className="detail-card" style={{ marginTop: 8, padding: "10px 14px" }}>
+            <div className="detail-card wh-card">
               {storeSplits.map((line) => (
                 <p key={line} style={{ margin: "4px 0", fontSize: 13.5 }}>
                   {line}
@@ -606,7 +611,7 @@ export function ContainerDetail() {
         </>
       )}
 
-      <div className="row-between" style={{ alignItems: "center" }}>
+      <div className="row-between">
         <h2 style={{ marginBottom: 0 }}>Inside now ({stored.length})</h2>
         <button className="link" onClick={() => setCheckinOpen((v) => !v)}>
           {checkinOpen ? "Close check-in" : "Custom check-in…"}
@@ -625,7 +630,7 @@ export function ContainerDetail() {
         )}
       </div>
       {sweeping && (
-        <div className="row-gap" style={{ margin: "6px 0" }}>
+        <div className="wh-row" style={{ margin: "6px 0" }}>
           <button
             className="link"
             onClick={() => setSwept(new Set(stored.map((p) => p.id)))}
@@ -654,7 +659,7 @@ export function ContainerDetail() {
             job optional, any label, and a mark attaches it to a set wherever
             that set&rsquo;s other pieces sit.
           </p>
-          <div className="row-gap" style={{ flexWrap: "wrap", alignItems: "center" }}>
+          <div className="wh-row">
             <select
               value={customForm.count}
               onChange={(e) =>
@@ -776,8 +781,7 @@ export function ContainerDetail() {
                 return (
                   <label
                     key={p.id}
-                    className="project-card home-project"
-                    style={{ display: "flex", gap: 8, alignItems: "center" }}
+                    className="project-card home-project wh-row"
                   >
                     <input
                       type="checkbox"
@@ -810,7 +814,16 @@ export function ContainerDetail() {
           </div>
         </div>
       ))}
-      {stored.length === 0 && <p className="muted">Empty.</p>}
+      {stored.length === 0 && (
+        <EmptyState
+          title="Empty."
+          action={
+            <button className="button-like active-pill" onClick={() => setCheckin(true)}>
+              Check material in
+            </button>
+          }
+        />
+      )}
 
       {canModel && (
         <div className="detail-card" style={{ marginTop: 12 }}>
@@ -905,7 +918,7 @@ export function ContainerDetail() {
               const line = containerTrailLine(m, containersById, locationsById);
               return (
                 <p key={line.id} style={{ margin: "8px 0", fontSize: 13.5 }}>
-                  <span className="muted" style={{ fontSize: 12 }}>
+                  <span className="wh-row-sub">
                     {new Date(line.when).toLocaleDateString()} ·{" "}
                   </span>
                   {line.text}

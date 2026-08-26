@@ -485,7 +485,7 @@ export function TagPackages() {
               tell a foreman so the wrong stickers get burned and the count
               fixed. Nothing here blocks the truck.
             </Explain>
-            <div className="row-gap" style={{ flexWrap: "wrap" }}>
+            <div className="row-gap">
               {expected.slice(0, 30).map((p) => {
                 const on = arriving.has(p.id);
                 return (
@@ -534,7 +534,7 @@ export function TagPackages() {
         ))}
       </select>
       <label className="field-label">Category — holds for every piece below</label>
-      <div className="row-gap" style={{ flexWrap: "wrap" }}>
+      <div className="row-gap">
         {(Object.keys(CATEGORY_LABELS) as PackageCategory[]).map((c) => (
           <button
             key={c}
@@ -582,7 +582,7 @@ export function TagPackages() {
           )}
         </>
       )}
-      <div className="row-gap" style={{ alignItems: "center", marginTop: 6 }}>
+      <div className="wh-row" style={{ marginTop: 6 }}>
         <label className="field-label" style={{ margin: 0 }}>
           How many pieces?
         </label>
@@ -633,13 +633,13 @@ export function TagPackages() {
               }}
             >
               <div className="row-between" style={{ gap: 8 }}>
-                <div style={{ minWidth: 0 }}>
+                <div className="wh-row-main">
                   <strong>{lineLabel(boneyard ? "" : markCode, line.partIndex, partTotal)}</strong>
-                  <span className="muted" style={{ fontSize: 12.5 }}>
+                  <span className="wh-row-sub">
                     {" "}· {line.partType ? PART_LABELS[line.partType as PartType] : "which piece? — tap to set"}
                   </span>
                 </div>
-                <div className="row-gap" style={{ alignItems: "center" }}>
+                <div className="wh-row">
                   <span className="muted" style={{ fontFamily: "monospace", fontSize: 12.5 }}>
                     {line.sticker
                       ? (line.sticker.short_code ?? line.sticker.serial)
@@ -671,7 +671,7 @@ export function TagPackages() {
           <label className="field-label">
             Which piece is {lineLabel(boneyard ? "" : markCode, selected.partIndex, partTotal)}?
           </label>
-          <div className="row-gap" style={{ flexWrap: "wrap" }}>
+          <div className="row-gap">
             {PART_TYPES.map((t) => (
               <button
                 key={t}
@@ -698,7 +698,7 @@ export function TagPackages() {
         </div>
       )}
 
-      <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 8 }}>
+      <div className="wh-row" style={{ marginTop: 8 }}>
         <button className="button-like" onClick={() => setScanning((v) => !v)}>
           {scanning ? "Stop scanning" : "Scan a sticker onto the glowing line"}
         </button>
@@ -711,7 +711,7 @@ export function TagPackages() {
           <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
             Off the roll for good — a sticker only ever belongs to one package.
           </p>
-          <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 6 }}>
+          <div className="row-gap" style={{ marginTop: 6 }}>
             {waiting.slice(0, 12).map((s) => (
               <button
                 key={s.id}

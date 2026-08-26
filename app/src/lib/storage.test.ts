@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
   agingDays,
+  containerHue,
   damagePhotoPath,
   daysInStorage,
   defaultDeliveryLabel,
@@ -260,5 +261,51 @@ describe("posterAutoOpenPath", () => {
 
   it("stays put while the container hasn't loaded yet", () => {
     expect(posterAutoOpenPath(null, "poster")).toBeNull();
+  });
+});
+
+/**
+ * Pick 5, W2: a container's badge color is derived from its serial, never
+ * stored — the same serial has to land on the same one of 6 hues every time,
+ * everywhere it's shown, and the 6 buckets have to actually get used rather
+ * than collapsing onto one or two.
+ */
+describe("containerHue", () => {
+  it("is stable for the same serial", () => {
+    expect(containerHue("CTR-000007")).toBe(containerHue("CTR-000007"));
+  });
+
+  it("gives two different-looking serials no guaranteed relationship, but is still a pure function of the string", () => {
+    const a = containerHue("CTR-000001");
+    const b = containerHue("CTR-000001");
+    const c = containerHue("Main warehouse");
+    expect(a).toBe(b);
+    expect(typeof c).toBe("number");
+  });
+
+  it("only ever returns one of the 6 evenly spaced hues", () => {
+    const allowed = new Set([0, 60, 120, 180, 240, 300]);
+    for (let i = 0; i < 60; i++) {
+      expect(allowed.has(containerHue(`CTR-${String(i).padStart(6, "0")}`))).toBe(true);
+    }
+  });
+
+  it("spreads a batch of ordinary container serials across all 6 buckets", () => {
+    const hues = new Set(
+      Array.from({ length: 60 }, (_, i) =>
+        containerHue(`CTR-${String(i).padStart(6, "0")}`),
+      ),
+    );
+    expect(hues.size).toBe(6);
+  });
+
+  // A container row from a database that predates the serial column, or a
+  // test fixture that never set one, must still render a badge, not crash
+  // the page it's decorating (caught live: an e2e fixture with no `serial`
+  // took the whole DeliveryDetail screen down before this guard existed).
+  it("never throws on a missing or non-string serial", () => {
+    expect(() => containerHue(undefined as unknown as string)).not.toThrow();
+    expect(() => containerHue(null as unknown as string)).not.toThrow();
+    expect(typeof containerHue(undefined as unknown as string)).toBe("number");
   });
 });

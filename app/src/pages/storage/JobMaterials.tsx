@@ -7,6 +7,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { BackChip } from "../../components/BackChip";
+import { EmptyState } from "../../components/ui/States";
+import { StageChip } from "../../components/warehouse/StageChip";
 import { listProjects } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
 import {
@@ -114,10 +116,11 @@ export function JobMaterials() {
       {projectId && (
         <>
           <div className="detail-card" style={{ margin: "10px 0" }}>
-            <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
-              <strong>
-                {crates.length} crate{crates.length === 1 ? "" : "s"}
-              </strong>
+            <div className="wh-row">
+              <span className="wh-count">{crates.length}</span>{" "}
+              <span className="wh-count-label">
+                crate{crates.length === 1 ? "" : "s"}
+              </span>
               <span className="muted">
                 — between them {poolTotal} piece{poolTotal === 1 ? "" : "s"} of
                 crate glass
@@ -159,7 +162,7 @@ export function JobMaterials() {
             )}
           </div>
 
-          <div className="row-gap" style={{ flexWrap: "wrap", marginBottom: 8 }}>
+          <div className="wh-row" style={{ marginBottom: 8 }}>
             <button
               className={stage === "all" ? "button-like active-pill" : "button-like"}
               onClick={() => setStage("all")}
@@ -169,7 +172,10 @@ export function JobMaterials() {
             {(Object.keys(STAGE_LABELS) as Exclude<Stage, "all">[]).map((s) => (
               <button
                 key={s}
-                className={stage === s ? "button-like active-pill" : "button-like"}
+                role="button"
+                aria-pressed={stage === s}
+                data-stage={s}
+                className="stage-chip"
                 onClick={() => setStage(s)}
               >
                 {STAGE_LABELS[s]}
@@ -188,16 +194,20 @@ export function JobMaterials() {
                   <strong>
                     {job?.job_code ?? ""} #{mark}
                   </strong>
-                  <span className="muted">
+                  <div className="row-gap">
                     {(Object.keys(STAGE_LABELS) as Exclude<Stage, "all">[])
-                      .map((s) =>
-                        stageCount(row.counts, s) > 0
-                          ? `${STAGE_LABELS[s]} ${stageCount(row.counts, s)}`
-                          : null,
-                      )
-                      .filter(Boolean)
-                      .join(" · ") || "nothing yet"}
-                  </span>
+                      .filter((s) => stageCount(row.counts, s) > 0)
+                      .map((s) => (
+                        // Count first, stage after (pick 2 + pick 1) — "3
+                        // Expected" rather than "Expected 3".
+                        <StageChip key={s} stage={s}>
+                          {stageCount(row.counts, s)} {STAGE_LABELS[s]}
+                        </StageChip>
+                      ))}
+                    {(Object.keys(STAGE_LABELS) as Exclude<Stage, "all">[]).every(
+                      (s) => stageCount(row.counts, s) === 0,
+                    ) && <span className="muted">nothing yet</span>}
+                  </div>
                   {row.poolRows.length > 0 && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       {row.poolRows.map((pr) => (
@@ -220,9 +230,16 @@ export function JobMaterials() {
               ))}
           </ul>
           {byMark.length === 0 && (
-            <p className="muted">No material logged for this job yet.</p>
+            <EmptyState
+              title="No material logged for this job yet."
+              action={
+                <Link className="button-like active-pill" to="/storage/log-delivery">
+                  Log a delivery for this job
+                </Link>
+              }
+            />
           )}
-          <p className="muted" style={{ fontSize: 12 }}>
+          <p className="wh-row-sub">
             Installed lives on the job&rsquo;s own pages —{" "}
             <Link to={`/projects/${projectId}?tab=map`} className="link">
               open the map
@@ -263,7 +280,7 @@ function PoolRowEditor({
   const n = Number(shown);
   const invalid = shown.trim() === "" || !Number.isFinite(n) || n < 1;
   return (
-    <div className="row-gap" style={{ alignItems: "center" }}>
+    <div className="wh-row">
       <input
         type="number"
         min={1}
@@ -273,7 +290,7 @@ function PoolRowEditor({
         style={{ width: 70 }}
         aria-label={label ? `Glass count, ${label}` : "Glass count"}
       />
-      <span className="muted" style={{ fontSize: 12.5 }}>
+      <span className="wh-row-sub">
         glass{label ? ` (${label})` : ""}
       </span>
       <button

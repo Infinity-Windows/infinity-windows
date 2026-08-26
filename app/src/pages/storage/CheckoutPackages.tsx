@@ -169,7 +169,7 @@ export function CheckoutPackages() {
         </div>
       </header>
 
-      <div className="row-gap" style={{ flexWrap: "wrap" }}>
+      <div className="row-gap">
         <button
           className={mode === "stage" ? "button-like active-pill" : "button-like"}
           onClick={() => setMode("stage")}
@@ -232,7 +232,7 @@ export function CheckoutPackages() {
       {mode === "out" && (
         <>
       <h2>2 · Why</h2>
-      <div className="row-gap" style={{ flexWrap: "wrap" }}>
+      <div className="row-gap">
         {(reasons.data ?? []).map((r) => (
           <button
             key={r.id}
@@ -290,7 +290,7 @@ export function CheckoutPackages() {
       )}
 
       {splits.length > 0 && (
-        <div className="detail-card" style={{ marginTop: 8, padding: "10px 14px" }}>
+        <div className="detail-card wh-card">
           {splits.map((line) => (
             <p key={line} style={{ margin: "4px 0", fontSize: 13.5 }}>
               {line}

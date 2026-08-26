@@ -28,12 +28,12 @@ export function PackageRowText({
     pieceLine(p) ?? (p.category ? CATEGORY_LABELS[p.category] : null);
   const head = [owner, piece].filter(Boolean).join(" · ");
   return (
-    <div style={{ minWidth: 0 }}>
-      <div style={{ fontWeight: 600 }}>
+    <div className="wh-row-main">
+      <div className="wh-row-title">
         {/* A blank sticker has no story yet — its code IS the headline. */}
         {head || (p.short_code ?? p.serial)}
       </div>
-      <div className="muted" style={{ fontSize: 12 }}>
+      <div className="wh-row-sub">
         {p.serial}
         {p.short_code ? ` · ${p.short_code}` : ""}
         {extra ? ` · ${extra}` : ""}

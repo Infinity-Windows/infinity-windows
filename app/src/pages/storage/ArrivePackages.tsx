@@ -177,11 +177,11 @@ export function ArrivePackages() {
               return (
                 <div key={p.id} className="project-card home-project">
                   <div className="home-project-head">
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 600 }}>
+                    <div className="wh-row-main">
+                      <div className="wh-row-title">
                         {p.short_code ?? p.serial}
                       </div>
-                      <div className="muted" style={{ fontSize: 12 }}>
+                      <div className="wh-row-sub">
                         {partLabel(p) ?? "no part number"}
                         {p.category ? ` · ${CATEGORY_LABELS[p.category]}` : ""}
                         {(p.package_marks ?? []).length > 0 &&
