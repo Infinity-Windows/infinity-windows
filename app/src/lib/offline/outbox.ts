@@ -280,6 +280,9 @@ export interface UploadInput {
   createdBy?: string | null;
   /** Job this media belongs to (feed + per-job filtering). */
   projectId?: string | null;
+  /** A package this photo hangs off (pick 28) — attachments.package_id,
+   * widened onto attachments_target by 20260936000000_package_photos. */
+  packageId?: string | null;
   lat?: number | null;
   lng?: number | null;
   accuracyM?: number | null;
@@ -304,6 +307,7 @@ export function enqueueUpload(input: UploadInput): Promise<string> {
         installEventId: input.installEventId ?? null,
         createdBy: input.createdBy ?? null,
         projectId: input.projectId ?? null,
+        packageId: input.packageId ?? null,
         lat: input.lat ?? null,
         lng: input.lng ?? null,
         accuracyM: input.accuracyM ?? null,

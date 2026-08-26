@@ -13,6 +13,7 @@
 
 import { supabase } from "./supabase";
 import { isMissingColumn, isMissingFunction, isMissingTable } from "./schemaErrors";
+import { signedMedia } from "./photos";
 
 // minted: a pre-bound label for material that has not arrived (ticket 15).
 // It can be found, printed and burned — and nothing else. Every door that
@@ -1234,4 +1235,68 @@ export const ISSUE_PHOTOS_BUCKET = "issue-photos";
  */
 export function damagePhotoPath(projectId: string, packageId: string, now: number): string {
   return `${projectId}/${packageId}-${now}.jpg`;
+}
+
+// -------------------------------------------------------- package photos (28)
+//
+// See 20260936000000_package_photos.sql for why this reuses `attachments`
+// (kind='photo', package_id) and the install-media bucket rather than a new
+// table/bucket. Uploads go through the generic photo_upload outbox op
+// (lib/offline/outbox.ts's enqueueUpload) — the same queue-then-drain path
+// job photos use — because "Add a photo" has no already-happening online RPC
+// call to ride along with the way arrive_packages does for damage photos
+// (ticket 11); both the row and the bytes need to survive a dead conex wall.
+
+export interface PackagePhoto {
+  id: string;
+  storagePath: string;
+  signedUrl: string | null;
+  createdAt: string;
+  createdBy: string | null;
+}
+
+/**
+ * Every photo hung off one package, oldest first — a simple filmstrip, so a
+ * shot just taken lands at the end where the person who took it is looking.
+ * Degrades to empty on a database that predates package_id (deploy window)
+ * or lacks `attachments` entirely, same as every other read in this file.
+ */
+export async function listPackagePhotos(packageId: string): Promise<PackagePhoto[]> {
+  const { data, error } = await supabase
+    .from("attachments")
+    .select("id, storage_path, created_at, created_by")
+    .eq("package_id", packageId)
+    .eq("kind", "photo")
+    .order("created_at", { ascending: true });
+  if (error) {
+    if (isMissingColumn(error, "package_id") || isMissingTable(error, "attachments")) return [];
+    throw error;
+  }
+  const rows = (data ?? []) as {
+    id: string;
+    storage_path: string;
+    created_at: string;
+    created_by: string | null;
+  }[];
+  return Promise.all(
+    rows.map(async (r) => ({
+      id: r.id,
+      storagePath: r.storage_path,
+      signedUrl: await signedMedia(r.storage_path),
+      createdAt: r.created_at,
+      createdBy: r.created_by,
+    })),
+  );
+}
+
+/**
+ * Bucket-relative path for a package photo. Unlike damagePhotoPath (one
+ * report, one photo, one instant) "Add a photo" can queue several shots at
+ * once — a multi-select file picker, or two fast taps — so a random suffix
+ * rides along with the millisecond timestamp to keep same-tick shots apart.
+ * Exported for tests; the caller (PackageSheet) mints `rand` itself so the
+ * function stays pure.
+ */
+export function packagePhotoPath(packageId: string, now: number, rand: string): string {
+  return `packages/${packageId}/${now}-${rand}.jpg`;
 }

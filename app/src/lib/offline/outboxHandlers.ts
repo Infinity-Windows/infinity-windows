@@ -382,11 +382,14 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       storage_path: `${bucket}/${path}`,
       created_by: str(p.createdBy),
     };
-    // Additive geo/feed columns (20260721002000). Applied opportunistically —
-    // any of these can be absent pre-migration, so we peel them back in tiers.
+    // Additive geo/feed columns (20260721002000), plus package_id (pick 28,
+    // 20260936000000) — all applied opportunistically, same reasoning as
+    // project_id below: any of these can be absent pre-migration, so we peel
+    // them back in tiers rather than fail the whole write.
     const geoRow = {
       ...row,
       project_id: str(p.projectId),
+      package_id: str(p.packageId),
       lat: num(p.lat),
       lng: num(p.lng),
       accuracy_m: num(p.accuracyM),

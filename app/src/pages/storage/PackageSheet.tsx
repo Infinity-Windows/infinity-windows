@@ -1,7 +1,7 @@
 // One package: what it is, where it sits, and every touch it ever had —
 // the license plate's full life. Scanning a sticker lands here.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listLocations, listProjects } from "../../lib/api";
@@ -19,12 +19,15 @@ import { setPackageAreaOffline, setPackageNoteOffline } from "../../lib/warehous
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isForemanPlus } from "../../lib/install/types";
 import { pushToast } from "../../lib/toast";
+import { enqueueUpload, subscribeSynced } from "../../lib/offline/outbox";
 import {
   setPieceCount,
   type PartType,
   addPartTypeOption,
   deletePackages,
+  listPackagePhotos,
   listPartTypeOptions,
+  packagePhotoPath,
   setPackagePart,
   PART_TYPES,
   PART_LABELS,
@@ -57,6 +60,12 @@ export function PackageSheet() {
   const events = useQuery({
     queryKey: ["packageEvents", pkg.data?.id],
     queryFn: () => listPackageEvents(pkg.data!.id),
+    enabled: Boolean(pkg.data?.id),
+  });
+  // Photos (pick 28): snapped at check-in or any time from here on out.
+  const photos = useQuery({
+    queryKey: ["packagePhotos", pkg.data?.id],
+    queryFn: () => listPackagePhotos(pkg.data!.id),
     enabled: Boolean(pkg.data?.id),
   });
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
@@ -231,6 +240,56 @@ export function PackageSheet() {
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
   });
+
+  // Photos (pick 28): queued through the same outbox op job photos use
+  // (photo_upload) — "Add a photo" has no already-happening online call to
+  // ride along with, so both the row and the bytes need to survive a dead
+  // conex wall together. See lib/storage.ts's package-photos section.
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [viewerPhoto, setViewerPhoto] = useState<{ signedUrl: string | null; createdAt: string } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    return subscribeSynced(() => {
+      void qc.invalidateQueries({ queryKey: ["packagePhotos"] });
+    });
+  }, [qc]);
+
+  const addPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []).filter((f) => f.type.startsWith("image/"));
+    e.target.value = "";
+    const packageId = pkg.data?.id;
+    if (files.length === 0 || !packageId) return;
+    setPhotoBusy(true);
+    setPhotoError(null);
+    try {
+      const createdBy = (await supabase.auth.getUser()).data.user?.email ?? null;
+      for (const file of files) {
+        const rand = Math.random().toString(16).slice(2, 8);
+        await enqueueUpload({
+          kind: "photo",
+          bucket: "install-media",
+          path: packagePhotoPath(packageId, Date.now(), rand),
+          contentType: file.type || "image/jpeg",
+          packageId,
+          createdBy,
+          blob: file,
+        });
+      }
+      pushToast(
+        `${files.length} photo${files.length === 1 ? "" : "s"} saved — syncing in the background.`,
+      );
+      void qc.invalidateQueries({ queryKey: ["packagePhotos", packageId] });
+    } catch (err) {
+      // Same voice as the ticket-11 damage photo path: a failed enqueue
+      // (storage quota, a file too large) says so rather than vanishing.
+      setPhotoError(formatApiError(err));
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
 
   const containersById = useMemo(
     () => new Map((containers.data ?? []).map((c) => [c.id, c])),
@@ -508,6 +567,88 @@ export function PackageSheet() {
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {/* Photos (pick 28): condition on arrival, where it sits, anything
+          worth a picture. A blank sticker has no life yet, so no photos. */}
+      {p.status !== "blank" && (
+        <div className="detail-card" style={{ marginTop: 8, padding: "10px 14px" }}>
+          <div className="row-gap" style={{ alignItems: "center", justifyContent: "space-between" }}>
+            <h2 style={{ margin: 0, fontSize: 15 }}>Photos</h2>
+            <label className="action-btn primary photos-add" style={{ cursor: "pointer" }}>
+              {photoBusy ? "Saving…" : "Add a photo"}
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                multiple
+                disabled={photoBusy}
+                style={{ display: "none" }}
+                onChange={(e) => void addPhotos(e)}
+              />
+            </label>
+          </div>
+          {photoError && <p className="error" style={{ fontSize: 12.5 }}>{photoError}</p>}
+          {(photos.data ?? []).length === 0 ? (
+            <p className="muted" style={{ fontSize: 12.5, marginBottom: 0 }}>
+              No photos on this piece yet.
+            </p>
+          ) : (
+            <div className="photos-grid" style={{ marginTop: 6 }}>
+              {(photos.data ?? []).map((ph) => (
+                <button
+                  key={ph.id}
+                  type="button"
+                  className="photo-card"
+                  onClick={() => setViewerPhoto({ signedUrl: ph.signedUrl, createdAt: ph.createdAt })}
+                >
+                  {ph.signedUrl ? (
+                    <img src={ph.signedUrl} alt="Package photo" loading="lazy" />
+                  ) : (
+                    <div className="photo-card-missing muted">Unavailable offline</div>
+                  )}
+                  <span className="photo-card-meta">
+                    <span className="photo-card-time">
+                      {new Date(ph.createdAt).toLocaleDateString()}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {viewerPhoto && (
+        <div
+          className="photo-viewer-backdrop overlay-enter"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setViewerPhoto(null)}
+        >
+          <div className="photo-viewer" onClick={(e) => e.stopPropagation()}>
+            {viewerPhoto.signedUrl ? (
+              <img src={viewerPhoto.signedUrl} alt="Package photo, full size" />
+            ) : (
+              <div className="photo-card-missing muted">Image unavailable offline.</div>
+            )}
+            <div className="photo-viewer-info">
+              <p className="muted">
+                {new Intl.DateTimeFormat(undefined, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                }).format(new Date(viewerPhoto.createdAt))}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="action-btn photo-viewer-close"
+              onClick={() => setViewerPhoto(null)}
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
 
