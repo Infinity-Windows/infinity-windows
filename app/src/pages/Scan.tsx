@@ -3,12 +3,13 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Scanner } from "../components/Scanner";
 import { getLocationByAddress, getLocationBySerial } from "../lib/api";
-import { resolveLocationFromScan } from "../lib/scanResolve";
+import { resolveLocationFromScan, resolveStorageFromScan } from "../lib/scanResolve";
 import type { QrPayload } from "../lib/qr";
 import { getContainerBySerial, getPackageBySerial } from "../lib/storage";
 import { formatApiError } from "../lib/errors";
 
 const locationLookups = { getLocationByAddress, getLocationBySerial };
+const storageLookups = { getContainerBySerial, getPackageBySerial };
 
 export function Scan() {
   const navigate = useNavigate();
@@ -29,18 +30,20 @@ export function Scan() {
         }
         return;
       }
-      // Storage labels: a conex door poster opens the container, a package
-      // sticker opens the package's sheet.
-      if (payload.kind === "containerSerial") {
-        const c = await getContainerBySerial(payload.serial);
-        if (c) navigate(`/storage/c/${c.id}`);
-        else setMessage(`No container found for "${payload.serial}".`);
-        return;
-      }
-      if (payload.kind === "packageSerial") {
-        const p = await getPackageBySerial(payload.serial);
-        if (p) navigate(`/pkg/${p.serial}`);
-        else setMessage(`No package found for "${payload.serial}".`);
+      // Storage labels: a conex door poster opens the container (with
+      // ?from=poster, pick 31, so it can skip straight to its 3D shell when
+      // one exists — see posterAutoOpenPath in lib/storage.ts), a package
+      // sticker opens the package's sheet. Same resolver the hardware
+      // scanner wedge uses (pick 30), so a label lands the same place no
+      // matter which one read it.
+      if (payload.kind === "containerSerial" || payload.kind === "packageSerial") {
+        const res = await resolveStorageFromScan(payload, storageLookups);
+        if (res.status === "ok") navigate(res.path);
+        else if (res.status === "not-found") {
+          setMessage(
+            `No ${payload.kind === "containerSerial" ? "container" : "package"} found for "${res.query}".`,
+          );
+        }
         return;
       }
       // Old-chain window labels (WIN- serials, W- ids) stopped resolving when

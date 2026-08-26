@@ -109,6 +109,26 @@ export function containerKind(c: Pick<StorageContainer, "kind"> | null | undefin
   return c?.kind ?? "conex";
 }
 
+/**
+ * Where a poster scan should land once ContainerDetail has the container in
+ * hand (pick 31, "poster QR opens the living container"): straight into the
+ * 3D shell when one exists — a shell IS the living container — or null to
+ * stay right there on the plain manifest, which already shows contents on
+ * its own.
+ *
+ * Gated on `from === "poster"` rather than firing for every visit: reaching
+ * the page any other way (the warehouse grid, Find, a package's "back to
+ * its container") means somebody picked this container on purpose and the
+ * manifest is what they asked to see, not a bounce straight past it.
+ */
+export function posterAutoOpenPath(
+  container: Pick<StorageContainer, "id" | "studio_project_id"> | null,
+  from: string | null,
+): string | null {
+  if (from !== "poster" || !container?.studio_project_id) return null;
+  return `/warehouse/3d/${container.id}`;
+}
+
 export interface StoragePackage {
   /** Crate contents: pieces riding inside for this mark (null on 1-of-N packages). */
   piece_count?: number | null;

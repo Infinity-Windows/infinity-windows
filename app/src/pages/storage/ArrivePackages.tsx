@@ -22,6 +22,7 @@ import { BackChip } from "../../components/BackChip";
 import { Explain } from "../../components/ui/Explain";
 import { PhotoCaptureSheet } from "../../components/PhotoCaptureSheet";
 import { enqueueIssuePhoto } from "../../lib/offline/outbox";
+import { playErrorTone, playSuccessTone } from "../../lib/sound";
 import {
   arrivePackages,
   CATEGORY_LABELS,
@@ -113,6 +114,7 @@ export function ArrivePackages() {
       return { photoFailures };
     },
     onSuccess: ({ photoFailures }) => {
+      playSuccessTone();
       pushToast(
         damaged.length > 0
           ? `Arrival logged — ${damaged.length} flagged damaged, ${damaged.length === 1 ? "an issue is" : "issues are"} open.`
@@ -131,7 +133,10 @@ export function ArrivePackages() {
       void qc.invalidateQueries({ queryKey: ["issues"] });
       navigate("/warehouse");
     },
-    onError: (e) => pushToast(formatApiError(e), "error"),
+    onError: (e) => {
+      playErrorTone();
+      pushToast(formatApiError(e), "error");
+    },
   });
 
   return (

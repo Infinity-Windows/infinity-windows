@@ -55,6 +55,7 @@ import {
 import { placeChain, toLocationsById } from "../lib/warehouse/containment";
 import { splitUnits } from "../lib/warehouse/splitUnits";
 import { useOutbox } from "../lib/offline/useOutbox";
+import { useScanWedge } from "../lib/warehouse/scanWedge";
 
 /** Sections run in the order the physical day runs. */
 interface Section {
@@ -79,6 +80,9 @@ const SECTIONS: Section[] = [
 ];
 
 export function Warehouse() {
+  // Pick 30: a desk-mounted hardware scanner routes straight to the package
+  // or container it reads, same as the camera flow.
+  useScanWedge();
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
   // Testing projects (owner-confirmed 2026-08-25) are invisible below

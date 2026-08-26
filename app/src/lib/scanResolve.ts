@@ -90,3 +90,47 @@ export async function resolveLocationFromScan(
       return { status: "not-a-location" };
   }
 }
+
+export interface StorageScanLookups {
+  getContainerBySerial: (serial: string) => Promise<{ id: string } | null>;
+  getPackageBySerial: (serial: string) => Promise<{ serial: string } | null>;
+}
+
+export type StorageScanResult =
+  | { status: "ok"; kind: "container" | "package"; path: string }
+  | { status: "not-found"; query: string }
+  | { status: "not-a-storage-label" };
+
+/**
+ * Resolve a scanned payload to where its storage label opens: a conex door
+ * poster to its container screen, a package sticker to its package sheet.
+ * Shared by Scan.tsx (camera) and the hardware scanner wedge (picks 30/31) so
+ * a poster or sticker lands the same place no matter which one read it.
+ *
+ * The container path always carries `?from=poster` — a containerSerial
+ * payload only ever comes from a container's own printed poster/sticker, so
+ * ContainerDetail's posterAutoOpenPath can skip straight to the 3D shell
+ * when one exists, the same way whether the poster was read by camera or by
+ * a desk-mounted hardware scanner.
+ */
+export async function resolveStorageFromScan(
+  payload: QrPayload,
+  lookups: StorageScanLookups,
+): Promise<StorageScanResult> {
+  switch (payload.kind) {
+    case "containerSerial": {
+      const c = await lookups.getContainerBySerial(payload.serial);
+      return c
+        ? { status: "ok", kind: "container", path: `/storage/c/${c.id}?from=poster` }
+        : { status: "not-found", query: payload.serial };
+    }
+    case "packageSerial": {
+      const p = await lookups.getPackageBySerial(payload.serial);
+      return p
+        ? { status: "ok", kind: "package", path: `/pkg/${p.serial}` }
+        : { status: "not-found", query: payload.serial };
+    }
+    default:
+      return { status: "not-a-storage-label" };
+  }
+}
