@@ -517,7 +517,7 @@ export function Warehouse() {
                     <li key={s2.id} className="find-row">
                       <div style={{ minWidth: 0 }}>
                         <strong>{s2.name}</strong>{" "}
-                        <span className="muted" style={{ fontSize: 12 }}>
+                        <span className="wh-row-sub">
                           {onHandLabel(s2)}
                         </span>
                       </div>

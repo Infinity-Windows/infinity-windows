@@ -650,7 +650,7 @@ export function PackageSheet() {
               >
                 {pieceEdit.isPending ? "Saving…" : "Save"}
               </button>
-              <span className="muted" style={{ fontSize: 12 }}>
+              <span className="wh-row-sub">
                 Edit down as the glass gets used. All used up? Delete this row.
               </span>
             </div>
@@ -876,7 +876,7 @@ export function PackageSheet() {
                     ))}
                 </select>
                 {assignMarks.isSuccess && (assignMarks.data ?? []).length === 0 && (
-                  <p className="muted" style={{ fontSize: 12.5 }}>
+                  <p className="wh-row-sub">
                     That job has no windows on its schedule yet — they come from
                     the plans at spec review.
                   </p>
@@ -981,7 +981,7 @@ export function PackageSheet() {
               </div>
               {spreadOffer && (
                 <div className="wh-row" style={{ marginTop: 6 }}>
-                  <span className="muted" style={{ fontSize: 12 }}>
+                  <span className="wh-row-sub">
                     {spreadOffer.count} other identical box
                     {spreadOffer.count === 1 ? "" : "es"} sit in this same slot.
                   </span>

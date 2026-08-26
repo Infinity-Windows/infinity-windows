@@ -432,7 +432,7 @@ export function DeliveryDetail() {
           </h2>
           {!g.projectId && (
             <div className="wh-row" style={{ marginBottom: 6 }}>
-              <span className="muted" style={{ fontSize: 13 }}>
+              <span className="wh-row-sub">
                 Job not built yet — everything still works; file it once it exists.
               </span>
               {lead && g.unfiledIds.length > 0 && (

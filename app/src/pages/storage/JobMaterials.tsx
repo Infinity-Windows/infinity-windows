@@ -239,7 +239,7 @@ export function JobMaterials() {
               }
             />
           )}
-          <p className="muted" style={{ fontSize: 12 }}>
+          <p className="wh-row-sub">
             Installed lives on the job&rsquo;s own pages —{" "}
             <Link to={`/projects/${projectId}?tab=map`} className="link">
               open the map
@@ -290,7 +290,7 @@ function PoolRowEditor({
         style={{ width: 70 }}
         aria-label={label ? `Glass count, ${label}` : "Glass count"}
       />
-      <span className="muted" style={{ fontSize: 12.5 }}>
+      <span className="wh-row-sub">
         glass{label ? ` (${label})` : ""}
       </span>
       <button

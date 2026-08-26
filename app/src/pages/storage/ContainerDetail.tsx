@@ -537,7 +537,7 @@ export function ContainerDetail() {
               </button>
             )}
             {nestTargets.length === 0 && !parent && (
-              <p className="muted" style={{ fontSize: 12 }}>
+              <p className="wh-row-sub">
                 Nowhere to move it — every other container is nested or holds
                 containers of its own.
               </p>
@@ -630,7 +630,7 @@ export function ContainerDetail() {
         )}
       </div>
       {sweeping && (
-        <div className="row-gap" style={{ margin: "6px 0" }}>
+        <div className="wh-row" style={{ margin: "6px 0" }}>
           <button
             className="link"
             onClick={() => setSwept(new Set(stored.map((p) => p.id)))}
@@ -918,7 +918,7 @@ export function ContainerDetail() {
               const line = containerTrailLine(m, containersById, locationsById);
               return (
                 <p key={line.id} style={{ margin: "8px 0", fontSize: 13.5 }}>
-                  <span className="muted" style={{ fontSize: 12 }}>
+                  <span className="wh-row-sub">
                     {new Date(line.when).toLocaleDateString()} ·{" "}
                   </span>
                   {line.text}
