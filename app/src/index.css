@@ -268,7 +268,16 @@ a:hover {
      side of the phone, and — worse — defeated every `overflow-x: auto` inside
      it, because a scroll container that is allowed to grow never scrolls. */
   min-width: 0;
-  padding-bottom: calc(72px + var(--safe-bottom));
+  /*
+   * Pick 6 (wave I-2): 72px clears the bottom nav. The floating Ask button
+   * (.ask-fab) floats above THAT — bottom: 3rem + 14px, min-height 44px — so
+   * its own top edge sits 34px past where the nav clearance stops. Without
+   * the extra 34px here, the last thing on a page (e.g. the map detail
+   * card's Location row) scrolled up to the nav's clearance and stopped
+   * right under the button instead of clearing it. --overlay-gap is the
+   * same breathing room every other overlay in this file gets.
+   */
+  padding-bottom: calc(72px + 34px + var(--overlay-gap) + var(--safe-bottom));
 }
 
 .page {
@@ -5200,7 +5209,15 @@ button.clock-out {
 
   .page {
     max-width: 1080px;
-    padding: 28px 32px 48px;
+    /*
+     * Pick 6 (wave I-2): same reason as .app-main's padding-bottom rule
+     * (top of the file) — just the desktop half of the mechanism. Here the
+     * bottom clearance lives directly on .page, since this media query
+     * zeroes out .app-main's own padding-bottom just above (no bottom nav
+     * on desktop). The corner-anchored .ask-fab sits at bottom: 28px,
+     * min-height 44px, so its top edge is 72px up; 48px wasn't clearing it.
+     */
+    padding: 28px 32px calc(48px + 24px + var(--overlay-gap));
   }
 
   /* Share any spare width evenly, but NEVER shrink a tab below its label —
