@@ -177,9 +177,7 @@ export function ContainerDetail() {
       return { n, before };
     },
     onSuccess: async ({ n, before }) => {
-      setSweepReport(
-        `Checked ${n} in${customForm.mark.trim() ? ` on set #${customForm.mark.trim().replace(/^#/, "").toUpperCase()}` : ""}.`,
-      );
+      const doneMessage = `Checked ${n} in${customForm.mark.trim() ? ` on set #${customForm.mark.trim().replace(/^#/, "").toUpperCase()}` : ""}.`;
       setCheckinOpen(false);
       setCustomForm({ projectId: "", mark: "", partType: "", otherText: "", newLabel: "", note: "", count: 1 });
       void qc.invalidateQueries({ queryKey: ["storageContainers"] });
@@ -189,8 +187,11 @@ export function ContainerDetail() {
         .filter((p) => p.container_id === id && !before.has(p.id))
         .map((p) => p.id);
       if (createdIds.length > 0) {
+        // The toast carries the confirmation AND the undo — a second, plain
+        // copy of the same sentence sitting on the page behind it would just
+        // be the scattered pattern pick 25 exists to replace.
         showUndoToast({
-          message: `Checked ${n} in.`,
+          message: doneMessage,
           undo: async () => {
             const r = await deletePackages(createdIds);
             void qc.invalidateQueries({ queryKey: ["storageContainers"] });
@@ -201,6 +202,11 @@ export function ContainerDetail() {
             pushToast("Check-in undone.");
           },
         });
+      } else {
+        // No ids to undo (a genuine edge case — see the comment above on
+        // `before`) — fall back to the plain confirmation so the tap still
+        // says something.
+        setSweepReport(doneMessage);
       }
     },
     onError: (e) => setSweepReport(formatApiError(e)),
@@ -350,9 +356,6 @@ export function ContainerDetail() {
       ),
     onSuccess: (r) => {
       playSuccessTone();
-      pushToast(
-        writeToast(r, `${r.count} package${r.count === 1 ? "" : "s"} checked in`),
-      );
       // Pick 25: the ids this tap picked, read before the clear below —
       // same rows the write itself just used.
       const ids = candidates.filter((p) => picked.has(p.id)).map((p) => p.id);
@@ -360,16 +363,23 @@ export function ContainerDetail() {
       setCheckin(false);
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
       // A queued write hasn't reached the server yet — there is nothing
-      // there for unstore to undo until it does.
-      if (!r.queued) {
-        showUndoToast({
-          message: `${r.count} package${r.count === 1 ? "" : "s"} checked in`,
-          undo: async () => {
-            await unstorePackages(ids);
-            void qc.invalidateQueries({ queryKey: ["storagePackages"] });
-          },
-        });
+      // there for unstore to undo until it does, so it keeps the plain
+      // toast; the toast below carries BOTH the confirmation and the undo
+      // for the ordinary online case, rather than showing the same line
+      // twice.
+      if (r.queued) {
+        pushToast(
+          writeToast(r, `${r.count} package${r.count === 1 ? "" : "s"} checked in`),
+        );
+        return;
       }
+      showUndoToast({
+        message: `${r.count} package${r.count === 1 ? "" : "s"} checked in`,
+        undo: async () => {
+          await unstorePackages(ids);
+          void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+        },
+      });
     },
     onError: (e) => {
       playErrorTone();

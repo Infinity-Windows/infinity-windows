@@ -2997,7 +2997,14 @@ button:disabled {
 /* Pick 25: one undo toast at a time, app-wide. Same "clears the bottom bar"
    math as .toast-host, on its own layer above it (z-index) since the two
    are independent one-at-a-time systems that could in principle both be up
-   at once. */
+   at once.
+
+   A five-second overlay that BLOCKS the page under it is its own bug — a
+   real one, caught live: it sat over a row's own "Store 2" button and ate
+   every tap meant for it. So the card itself takes no pointer events at
+   all; only the Undo button opts back in. Hovering/focusing the button
+   still reaches the outer element (CSS pointer-events only changes hit
+   testing, never event bubbling), which is what pauses the countdown. */
 .undo-toast {
   position: fixed;
   left: 50%;
@@ -3014,6 +3021,7 @@ button:disabled {
   border: 1px solid var(--border);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
   overflow: hidden;
+  pointer-events: none;
 }
 .undo-toast-message {
   flex: 1;
@@ -3033,6 +3041,7 @@ button:disabled {
   font-family: var(--font-display);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  pointer-events: auto;
 }
 /* The countdown affordance: a bar that drains left to right. `transform`
    only, never `width` — a hover that resized anything would trip the

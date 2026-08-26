@@ -1,6 +1,13 @@
 // Host for lib/undoToast.ts (owner pick 25). Mounted once in Layout, same
 // as ToastHost — a screen never renders its own copy, it just calls
 // showUndoToast().
+//
+// The outer element takes no pointer events (see index.css) — only the
+// Undo button opts back in — so a toast sitting over a row's own button for
+// five seconds cannot eat that tap. The hover/focus handlers still work:
+// CSS pointer-events changes which element a click or hover lands ON, not
+// how the resulting event bubbles, so entering/focusing the button still
+// reaches this element and pauses the countdown.
 import {
   fireUndo,
   pauseUndoToast,

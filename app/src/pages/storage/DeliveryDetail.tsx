@@ -105,7 +105,10 @@ export function DeliveryDetail() {
     },
     onSuccess: (n, vars) => {
       const message = `${n} box${n === 1 ? "" : "es"} checked in.`;
-      setMessage(message);
+      // The undo toast below carries this line now — showing it twice (here
+      // and in the toast) is exactly the "scattered" pattern pick 25 exists
+      // to replace, and left a stale hint sitting behind a live toast.
+      setMessage(null);
       refresh();
       // Pick 25: undo re-flips to expected and, if a label rode along on
       // this same tap, puts back exactly what each package carried before —
@@ -177,7 +180,9 @@ export function DeliveryDetail() {
     },
     onSuccess: (n, vars) => {
       const message = `Stored ${n}.`;
-      setMessage(message);
+      // Same reasoning as arrive's onSuccess above: the toast carries this
+      // line now, not a second copy sitting on the page behind it.
+      setMessage(null);
       refresh();
       const ids = pickToStore(vars.row, vars.n);
       showUndoToast({
@@ -198,7 +203,8 @@ export function DeliveryDetail() {
     },
     onSuccess: (n, vars) => {
       const message = `Stored ${n} together.`;
-      setMessage(message);
+      // Same reasoning again: the toast is the one place this line shows.
+      setMessage(null);
       setBundle(new Set());
       setBundleMode(false);
       setConfirmMix(false);

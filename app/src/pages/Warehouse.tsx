@@ -326,8 +326,12 @@ export function Warehouse() {
 
       {/* Pick 26: visible to every role — movements, packages and
           deliveries are all open reads to any signed-in crew member, same
-          as the hub counts above are to a lead. */}
-      <DayRecapCard recap={recap} />
+          as the hub counts above are to a lead. Waits on all three reads so
+          a still-loading page never flashes "Quiet so far" a moment before
+          the real counts land. */}
+      {packages.isSuccess && movementsToday.isSuccess && deliveries.isSuccess && (
+        <DayRecapCard recap={recap} />
+      )}
 
       {packages.isError && <p className="error">{formatApiError(packages.error)}</p>}
 
