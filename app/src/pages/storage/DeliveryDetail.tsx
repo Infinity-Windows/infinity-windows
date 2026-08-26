@@ -11,7 +11,7 @@ import { ScanLine } from "lucide-react";
 import { BackChip } from "../../components/BackChip";
 import { ContainerBadge } from "../../components/warehouse/ContainerBadge";
 import { StageChip } from "../../components/warehouse/StageChip";
-import { listProjects } from "../../lib/api";
+import { listProjects, listProjectsAnyStatus } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
 import { showUndoToast } from "../../lib/undoToast";
 import {
@@ -98,6 +98,9 @@ export function DeliveryDetail() {
   });
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  // Finished jobs keep naming their material (owner ask, 2026-08-26): group
+  // titles read every job; the file-onto-job picker stays active-only.
+  const projectsAll = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["deliveryPackages", id] });
@@ -255,7 +258,7 @@ export function DeliveryDetail() {
     onError: (e) => setMessage(formatApiError(e)),
   });
 
-  const jobCode = new Map((projects.data ?? []).map((p) => [p.id, p.job_code ?? p.name]));
+  const jobCode = new Map((projectsAll.data ?? []).map((p) => [p.id, p.job_code ?? p.name]));
   const groups = groupDelivery(
     (packages.data ?? []) as unknown as DeliveryPackageLite[],
     (projectId) => jobCode.get(projectId) ?? null,

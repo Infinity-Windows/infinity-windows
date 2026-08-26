@@ -10,10 +10,11 @@ import {
   ensureStagingBays,
   getProjectWindows,
   listLocations,
-  listProjects,
   listReorderNeeds,
   setProjectTest,
   updateProject,
+  listProjectsAnyStatus,
+  setProjectStatus,
 } from "../lib/api";
 import { totalReorder } from "../lib/loadout";
 import { missingStagingSlots, stagingBaysFor } from "../lib/staging";
@@ -138,7 +139,9 @@ export function ProjectDetail() {
     }
   };
 
-  const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  // Any-status on purpose (owner ask, 2026-08-26): job history links here,
+  // and a finished job's page must keep opening with everything it tracked.
+  const projects = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
   const project = projects.data?.find((p) => p.id === projectId);
 
   const needs = useQuery({
@@ -428,6 +431,13 @@ function OverviewTab({
           openingsCount={openingsTotal}
           packagesCount={packages.length}
         />
+      )}
+
+      {/* The job's end of life (owner ask, 2026-08-26): finish or cancel
+          moves it off every active screen into Job history — reversible,
+          nothing deleted. Supervisor+, same gate the server holds. */}
+      {project && canFlagTesting && (
+        <JobLifecyclePanel project={project} heldCount={heldCount} />
       )}
 
       <ScheduledCrewPanel projectId={projectId} isLead={isLead} />
@@ -1421,6 +1431,108 @@ function ExceptionsTab({ projectId }: { projectId: string }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Finish, cancel, or reopen the job (owner ask, 2026-08-26). Reversible on
+ * purpose — the job moves to Job history with everything it ever tracked
+ * and comes back with one tap. Deleting is a different, owner-only door on
+ * the history page, and only for empty shells.
+ */
+function JobLifecyclePanel({
+  project,
+  heldCount,
+}: {
+  project: Project;
+  /** Packages of this job still received/stored in the warehouse — the
+   *  finish confirm names them (warn, never block — house rule). */
+  heldCount: number;
+}) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const lifecycle = useMutation({
+    mutationFn: (status: "active" | "completed" | "cancelled") =>
+      setProjectStatus(project.id, status),
+    onSuccess: (_r, status) => {
+      void qc.invalidateQueries({ queryKey: ["projects"] });
+      void qc.invalidateQueries({ queryKey: ["projectsAll"] });
+      if (status === "active") {
+        pushToast("Reopened — back on every active list.");
+      } else {
+        pushToast(
+          status === "completed"
+            ? "Job finished — moved to Job history with everything it tracked."
+            : "Job cancelled — moved to Job history with everything it tracked.",
+        );
+        navigate("/projects");
+      }
+    },
+    onError: (e) => toastError(e, formatApiError(e)),
+  });
+
+  return (
+    <div className="detail-card" style={{ marginTop: 8 }}>
+      <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+        <strong>
+          {project.status === "active"
+            ? "Wrap this job up"
+            : project.status === "completed"
+              ? "This job is finished"
+              : "This job is cancelled"}
+        </strong>
+        {project.status === "active" ? (
+          <>
+            <button
+              className="button-like"
+              disabled={lifecycle.isPending}
+              onClick={() => {
+                const held =
+                  heldCount > 0
+                    ? ` ${heldCount} package${heldCount === 1 ? " is" : "s are"} still in the warehouse — they stay findable under Job history.`
+                    : "";
+                if (
+                  window.confirm(
+                    `Finish ${project.job_code}? It leaves every active list and moves to Job history — nothing is deleted, and a supervisor can reopen it any time.${held}`,
+                  )
+                ) {
+                  lifecycle.mutate("completed");
+                }
+              }}
+            >
+              Finish this job…
+            </button>
+            <button
+              className="button-like"
+              disabled={lifecycle.isPending}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Cancel ${project.job_code}? For jobs that fell through — it moves to Job history with everything it tracked. Reopen any time.`,
+                  )
+                ) {
+                  lifecycle.mutate("cancelled");
+                }
+              }}
+            >
+              Cancel this job…
+            </button>
+          </>
+        ) : (
+          <button
+            className="button-like"
+            disabled={lifecycle.isPending}
+            onClick={() => lifecycle.mutate("active")}
+          >
+            Reopen this job
+          </button>
+        )}
+      </div>
+      <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
+        Finished and cancelled jobs live in Job history — nothing about them
+        is deleted.
+      </p>
     </div>
   );
 }

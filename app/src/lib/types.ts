@@ -64,6 +64,10 @@ export interface Project {
   name: string;
   address: string | null;
   status: "active" | "completed" | "cancelled";
+  /** When status last moved (set_project_status stamps it) — what lets the
+   * job-history list say WHEN a job finished. Optional: rows written before
+   * the lifecycle migration are null until first touched. */
+  status_changed_at?: string | null;
   /** Fake data for practice or QA — never a real job. Invisible below
    * supervisor (RLS); its packages never count as real inventory (client
    * partition, lib/warehouse/testPartition.ts). Optional like the other

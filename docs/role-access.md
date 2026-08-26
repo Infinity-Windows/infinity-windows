@@ -59,6 +59,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 **Blocked:**
 
+- Job history (`/jobs/history`)
 - Studio (`/studio`)
 - Data (`/data`)
 - Team (`/team`)
@@ -165,6 +166,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 **Blocked:**
 
+- Job history (`/jobs/history`)
 - Studio (`/studio`)
 - Data (`/data`)
 - AI Knowledge (`/knowledge`)
@@ -191,6 +193,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Home (`/`)
 - My Work (`/my-work`)
 - Jobs (`/projects`)
+- Job history (`/jobs/history`)
 - Studio (`/studio`)
 - Data (`/data`)
 - Photos & receipts (`/photos`)
@@ -224,7 +227,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 46 allowed destinations):**
+**Can reach (all 47 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -240,6 +243,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Takeoffs (`/takeoffs`)
 - Warehouse (`/warehouse`)
 - Jobs (`/projects`)
+- Job history (`/jobs/history`)
 - Studio (`/studio`)
 - Data (`/data`)
 - Ask (`/ask`)
@@ -293,6 +297,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Home (`/`)
 - My Work (`/my-work`)
 - Jobs (`/projects`)
+- Job history (`/jobs/history`)
 - Studio (`/studio`)
 - Data (`/data`)
 - Photos & receipts (`/photos`)
@@ -328,7 +333,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Catalog (`/catalog`)
 - Admin (`/admin`)
 
-**Can reach (all 48 allowed destinations):**
+**Can reach (all 49 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -344,6 +349,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Takeoffs (`/takeoffs`)
 - Warehouse (`/warehouse`)
 - Jobs (`/projects`)
+- Job history (`/jobs/history`)
 - Studio (`/studio`)
 - Data (`/data`)
 - Ask (`/ask`)

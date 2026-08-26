@@ -124,6 +124,9 @@ function mount(seed: Seed): HTMLElement {
   // seeding a lead renders the whole page, so nothing is hidden by a role gate.
   qc.setQueryData(["myRealProfile"], { id: "me", role: seed.role ?? "foreman" });
   qc.setQueryData(["projects"], JOBS);
+  // The name map reads every job whatever its status (job lifecycle,
+  // 2026-08-26) — same fixture list here, no finished jobs in these tests.
+  qc.setQueryData(["projectsAll"], JOBS);
   qc.setQueryData(["storagePackages"], seed.packages);
   qc.setQueryData(["storageContainers"], [conex]);
   qc.setQueryData(["issues"], []);
