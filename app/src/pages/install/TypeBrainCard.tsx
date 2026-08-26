@@ -94,14 +94,15 @@ export function TypeBrainCard() {
           </span>
           <span>median time</span>
         </div>
-        <div
-          className="stat-card"
-          title="9 out of 10 installs of this type finish faster than this"
-        >
+        <div className="stat-card">
           <span className="stat-num">
             {s.p90Minutes !== null ? `${Math.round(s.p90Minutes)}m` : "—"}
           </span>
           <span>slow-case time</span>
+          {/* Pick 8 (wave I-2): was title= only, invisible with no hover. */}
+          <span className="wh-row-sub" style={{ display: "block" }}>
+            9 out of 10 installs of this type finish faster than this
+          </span>
         </div>
         <div className="stat-card">
           <span className="stat-num">

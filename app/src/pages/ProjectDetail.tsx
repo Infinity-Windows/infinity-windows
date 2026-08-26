@@ -466,8 +466,12 @@ function OverviewTab({
             <span>
               <strong>~{estimate.crew.recommendedCrew}</strong> installer(s) to finish today
             </span>
-            <span title="9 out of 10 jobs like this finish faster than this">
+            <span>
               <strong>{formatHours(estimate.est.p90Minutes)}</strong> slow-case
+              {/* Pick 8 (wave I-2): was title= only, invisible with no hover. */}
+              <span className="wh-row-sub" style={{ display: "block" }}>
+                9 out of 10 jobs like this finish faster than this
+              </span>
             </span>
           </div>
           {estimate.est.unknownTypes > 0 && (

@@ -2325,7 +2325,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             {o.status === "installed" ? (
               isLead && (
                 <button
-                  className="link"
+                  className="link map-row-action"
                   style={{ marginLeft: 8 }}
                   disabled={undo.isPending}
                   onClick={() => handleUndo(o)}
@@ -2336,7 +2336,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
             ) : (
               <Link
                 to={`/projects/${projectId}/opening/${o.id}`}
-                className="link"
+                className="link map-row-action"
                 style={{ marginLeft: 8 }}
               >
                 {o.status === "planned" ? "Claim" : "Open"}

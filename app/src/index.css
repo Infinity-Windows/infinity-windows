@@ -268,7 +268,16 @@ a:hover {
      side of the phone, and — worse — defeated every `overflow-x: auto` inside
      it, because a scroll container that is allowed to grow never scrolls. */
   min-width: 0;
-  padding-bottom: calc(72px + var(--safe-bottom));
+  /*
+   * Pick 6 (wave I-2): 72px clears the bottom nav. The floating Ask button
+   * (.ask-fab) floats above THAT — bottom: 3rem + 14px, min-height 44px — so
+   * its own top edge sits 34px past where the nav clearance stops. Without
+   * the extra 34px here, the last thing on a page (e.g. the map detail
+   * card's Location row) scrolled up to the nav's clearance and stopped
+   * right under the button instead of clearing it. --overlay-gap is the
+   * same breathing room every other overlay in this file gets.
+   */
+  padding-bottom: calc(72px + 34px + var(--overlay-gap) + var(--safe-bottom));
 }
 
 .page {
@@ -1398,6 +1407,25 @@ button:disabled {
   touch-action: none;
 }
 
+/*
+ * Pick 5 (wave I-2): a bare thumb can find a 30px dot; a gloved one on a
+ * ladder needs more. This never grows the dot itself — it only extends an
+ * invisible tap target around it, so it can't nudge a neighbour's centre,
+ * can't change which pin a test finds by its computed position, and can't
+ * flip which of two overlapping pins is topmost (that's still DOM order,
+ * untouched here — a bigger invisible target quietly overlapping a
+ * neighbour's is fine; a finger already hit whichever pin was on top). The
+ * padding itself is set per-pin in MapPinLayer (--pin-tap-pad), because a
+ * plan that has shrunk this dot below 30px (openingMarkerScale's zoom-out
+ * floor is 18px) needs a bigger pad than a full-size one to still clear
+ * 44px total.
+ */
+.plan-dot::after {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--pin-tap-pad, 8px));
+}
+
 /* Doors are square. The one difference you need without reading anything. */
 .plan-dot--door {
   border-radius: 4px;
@@ -1636,14 +1664,6 @@ button:disabled {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  flex: none;
-}
-
-.map-detail-card__cat {
-  font-size: 10.5px;
-  letter-spacing: 1px;
-  color: #a39c92;
-  text-transform: uppercase;
   flex: none;
 }
 
@@ -5181,7 +5201,15 @@ button.clock-out {
 
   .page {
     max-width: 1080px;
-    padding: 28px 32px 48px;
+    /*
+     * Pick 6 (wave I-2): same reason as .app-main's padding-bottom rule
+     * (top of the file) — just the desktop half of the mechanism. Here the
+     * bottom clearance lives directly on .page, since this media query
+     * zeroes out .app-main's own padding-bottom just above (no bottom nav
+     * on desktop). The corner-anchored .ask-fab sits at bottom: 28px,
+     * min-height 44px, so its top edge is 72px up; 48px wasn't clearing it.
+     */
+    padding: 28px 32px calc(48px + 24px + var(--overlay-gap));
   }
 
   /* Share any spare width evenly, but NEVER shrink a tab below its label —
@@ -10565,11 +10593,12 @@ button.stage-chip {
 }
 
 /* Pick 3: gloved hands need a bigger target than a bare thumb — scoped to
-   the warehouse section only (the install and office worlds keep their
-   existing sizes). `input, select` are already 52px tall globally, so they
-   are not repeated here — repeating them at 48px would only shrink them,
-   since a more specific selector replaces a rule rather than widening it.
-   min-height never moves anything on :hover, so this cannot trip the
+   the warehouse section only (the office world keeps its existing sizes;
+   install gets its own version of this below — pick 9, wave I-2).
+   `input, select` are already 52px tall globally, so they are not repeated
+   here — repeating them at 48px would only shrink them, since a more
+   specific selector replaces a rule rather than widening it. min-height
+   never moves anything on :hover, so this cannot trip the
    hover-must-never-move-layout rule. */
 :root[data-section="warehouse"] .button-like,
 :root[data-section="warehouse"] .action-btn,
@@ -10589,6 +10618,37 @@ button.stage-chip {
 :root[data-section="warehouse"] .opening-review-row input[type="checkbox"] {
   padding: 12px;
   margin: -12px;
+}
+
+/* Pick 9 (wave I-2): the same glove-target treatment pick 3 gave the
+   warehouse, scoped to the install section this time — a foreman on a
+   ladder needs the same 48px targets a warehouse crew got. .ro-pill ships
+   its own min-height: 38px above; this wins on specificity (an
+   attribute-qualified :root beats a bare class) without shrinking anything,
+   same reasoning as the `input, select` note on pick 3. The vendored
+   fitview renderer's own DOM (button.win, #assignBtn, and the rest of Maps
+   Interactive's markup) is deliberately left out here — that subtree is
+   pinned byte-for-byte by e2e and off limits regardless of what section
+   aura is active over it. */
+:root[data-section="install"] .button-like,
+:root[data-section="install"] .action-btn,
+:root[data-section="install"] button.primary,
+:root[data-section="install"] .grade-btn,
+:root[data-section="install"] .ro-pill {
+  min-height: 48px;
+}
+/* The map list's Claim/Open/Undo-install control (ProjectMap.tsx): a plain
+   link/button styled with the generic .link class, which has no min-height
+   of its own to override (button.link and .unit-list a style other things
+   about it — colour, underline — not size), so it gets its own marker
+   class rather than joining the family above. It's already a flex item of
+   .find-row, so min-height sizes its real box; the flex + centering here
+   just centres that box's own text the way a real <button> does for free
+   and this <a> would not otherwise. */
+:root[data-section="install"] .map-row-action {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
 }
 
 /* ============================================================================

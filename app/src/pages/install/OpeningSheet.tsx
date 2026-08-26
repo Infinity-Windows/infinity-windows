@@ -2,6 +2,7 @@ import { BackChip } from "../../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Ban, Link2, RotateCcw } from "lucide-react";
 import { PhotoCaptureSheet, type BeforeAfterValue } from "../../components/PhotoCaptureSheet";
 import { Scanner } from "../../components/Scanner";
 import {
@@ -1162,7 +1163,7 @@ export function OpeningSheet() {
           role="status"
           style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 10 }}
         >
-          <span aria-hidden>⛓️</span>
+          <Link2 size={15} aria-hidden />
           <span style={{ flex: 1 }}>
             Clock's on <strong>{opening.data?.opening_code ?? "this unit"}</strong>
             <span className="muted" style={{ fontSize: 12 }}>
@@ -1418,7 +1419,12 @@ export function OpeningSheet() {
         <div className="detail-card">
           {!redoSheetOpen ? (
             <button className="button-like" onClick={() => setRedoSheetOpen(true)}>
-              🔁 Redo this window — it needs doing again
+              <RotateCcw
+                size={15}
+                aria-hidden
+                style={{ verticalAlign: "middle", marginRight: 6 }}
+              />
+              Redo this window — it needs doing again
             </button>
           ) : (
             <>
@@ -1565,13 +1571,31 @@ export function OpeningSheet() {
                   </strong>
                   target
                 </span>
-                <span title="9 out of 10 installs of this type finish faster than this">
+                <span>
                   <strong>
                     {brain.data?.p90Minutes != null
                       ? `${Math.round(brain.data.p90Minutes)}m`
                       : "—"}
                   </strong>
                   slow case
+                  {/* Pick 8 (wave I-2): this used to live only in this
+                      span's title= tooltip — invisible on a phone with no
+                      hover. wh-row-sub is the app's small-muted-line style;
+                      the resets undo what .briefing-stats span imposes on
+                      every span in it (10px uppercase, tracked out), which
+                      would otherwise apply here too since it's a plain
+                      descendant selector. */}
+                  <span
+                    className="wh-row-sub"
+                    style={{
+                      display: "block",
+                      textTransform: "none",
+                      letterSpacing: "normal",
+                      fontWeight: 400,
+                    }}
+                  >
+                    9 out of 10 installs of this type finish faster than this
+                  </span>
                 </span>
                 <span>
                   <strong>
@@ -2156,7 +2180,12 @@ export function OpeningSheet() {
                 style={{ marginTop: 8 }}
                 onClick={() => setBlockOpen((v) => !v)}
               >
-                🚫 Blocked — can't continue
+                <Ban
+                  size={15}
+                  aria-hidden
+                  style={{ verticalAlign: "middle", marginRight: 6 }}
+                />
+                Blocked — can't continue
               </button>
               {blockOpen && (
                 <div className="detail-card" style={{ marginTop: 8, textAlign: "left" }}>

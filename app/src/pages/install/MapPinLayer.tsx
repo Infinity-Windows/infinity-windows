@@ -126,6 +126,15 @@ export function MapPinLayer({
         // pin always shows it even when the page is too crowded for the rest.
         const showLabel = showMarkNumbers || isSelected;
         const { fontSize, ...box } = openingMarkerStyle(o.id);
+        /*
+         * Pick 5 (wave I-2): the dot stays box.width visually — a gloved tap
+         * needs more than that, so index.css grows an invisible ::after
+         * around it instead of growing the dot itself. 8px is the floor (a
+         * normal 30px dot only needs that much to clear 44px); a plan quieted
+         * down to openingMarkerScale's 0.6 floor (18px) needs more, so this
+         * scales the pad with whatever the dot actually rendered at.
+         */
+        const tapPad = Math.max(8, (44 - box.width) / 2);
         return (
           <button
             key={o.id}
@@ -163,6 +172,7 @@ export function MapPinLayer({
                 top: `${pos.y * 100}%`,
                 ...box,
                 fontSize,
+                "--pin-tap-pad": `${tapPad}px`,
                 "--pin-fill": OPENING_KIND_COLORS[isDoor ? "door" : "window"],
                 "--pin-ring": isVoided
                   ? VOIDED_RING_COLOR
