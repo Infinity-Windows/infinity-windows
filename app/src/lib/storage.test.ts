@@ -298,4 +298,14 @@ describe("containerHue", () => {
     );
     expect(hues.size).toBe(6);
   });
+
+  // A container row from a database that predates the serial column, or a
+  // test fixture that never set one, must still render a badge, not crash
+  // the page it's decorating (caught live: an e2e fixture with no `serial`
+  // took the whole DeliveryDetail screen down before this guard existed).
+  it("never throws on a missing or non-string serial", () => {
+    expect(() => containerHue(undefined as unknown as string)).not.toThrow();
+    expect(() => containerHue(null as unknown as string)).not.toThrow();
+    expect(typeof containerHue(undefined as unknown as string)).toBe("number");
+  });
 });
