@@ -493,6 +493,28 @@ export async function listContainerMovements(
 }
 
 /**
+ * Every PACKAGE movement since `iso` (the warehouse day recap, pick 26) —
+ * neither ContainerDetail's nor PackageSheet's movements read fits, since
+ * both scope to one subject rather than "today, everything." No lead gate:
+ * "movements crew read" is `for select to authenticated using (true)`, so
+ * this is exactly as open as the packages and deliveries the same card
+ * reads alongside it.
+ */
+export async function listMovementsSince(iso: string): Promise<MovementRow[]> {
+  const { data, error } = await supabase
+    .from("movements")
+    .select("id, package_id, event, from_container_id, to_container_id, project_id, reason, actor, created_at")
+    .not("package_id", "is", null)
+    .gte("created_at", iso)
+    .order("created_at", { ascending: false });
+  if (error) {
+    if (isMissingTable(error, "movements") || isMissingColumn(error, "package_id")) return [];
+    throw error;
+  }
+  return (data ?? []) as MovementRow[];
+}
+
+/**
  * Declare "this window arrives as N packages" and mint the missing labels,
  * pre-bound to job + window + part i of N (ticket 15, ADR-0005). Foreman+.
  * Returns only the rows minted NOW — declaring 4 when 1 and 3 exist returns
