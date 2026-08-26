@@ -44,6 +44,7 @@ import {
   getPackageBySerial,
   listContainers,
   listPackageEvents,
+  packageTitle,
   partLabel,
 } from "../../lib/storage";
 
@@ -469,23 +470,7 @@ export function PackageSheet() {
           {/* The name the crew saved, not the serial (owner, 2026-08-25):
               "Don Timpson Res #1: 1/2". The serial stays on the line below —
               it is still the scannable identity. */}
-          <h1>
-            {(() => {
-              const jobLine = p.project_id
-                ? (jobCode.get(p.project_id) ?? null)
-                : (p.pending_job_name ?? null);
-              const mark =
-                (p.package_marks ?? [])[0]?.mark_code ?? p.mfr_mark ?? null;
-              if (!mark) return p.serial;
-              const part =
-                p.piece_count != null
-                  ? `${p.piece_count} pc ${p.part_type ?? "glass"}`
-                  : p.part_index != null && p.part_total != null
-                    ? `${p.part_index}/${p.part_total}`
-                    : null;
-              return `${jobLine ? `${jobLine} ` : ""}#${mark}${part ? `: ${part}` : ""}`;
-            })()}
-          </h1>
+          <h1>{packageTitle(p, jobCode)}</h1>
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>
             {p.serial} ·{" "}
             {/* Pick 1: the "on the way" line gets the Expected color — same
