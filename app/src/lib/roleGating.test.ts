@@ -4,6 +4,7 @@ import {
   isOwner,
   isSupervisorPlus,
   roleRank,
+  visibleRole,
 } from "./install/types";
 import { minRoleForPath } from "./nav";
 
@@ -104,5 +105,28 @@ describe("minRoleForPath matches page-level gating", () => {
     expect(minRoleForPath("/admin")).toBe("supervisor");
     expect(minRoleForPath("/heartbeat")).toBe("supervisor");
     expect(minRoleForPath("/costing")).toBe("owner");
+  });
+});
+
+describe("visibleRole", () => {
+  // Owners are visible as owners only to other owners (owner ask,
+  // 2026-08-26); everyone below sees "supervisor". Non-owner roles pass
+  // through untouched for everyone.
+  it("disguises an owner from everyone below owner", () => {
+    expect(visibleRole("owner", "supervisor")).toBe("supervisor");
+    expect(visibleRole("owner", "foreman")).toBe("supervisor");
+    expect(visibleRole("owner", "installer")).toBe("supervisor");
+    expect(visibleRole("owner", null)).toBe("supervisor");
+  });
+
+  it("shows an owner to an owner", () => {
+    expect(visibleRole("owner", "owner")).toBe("owner");
+  });
+
+  it("never touches non-owner roles", () => {
+    expect(visibleRole("supervisor", "installer")).toBe("supervisor");
+    expect(visibleRole("foreman", "supervisor")).toBe("foreman");
+    expect(visibleRole("installer", "owner")).toBe("installer");
+    expect(visibleRole(null, "installer")).toBeNull();
   });
 });
