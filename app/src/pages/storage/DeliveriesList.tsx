@@ -7,6 +7,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { BackChip } from "../../components/BackChip";
+import { EmptyState } from "../../components/ui/States";
+import { StageChip } from "../../components/warehouse/StageChip";
 import { supabase } from "../../lib/supabase";
 import { formatApiError } from "../../lib/errors";
 import {
@@ -108,15 +110,18 @@ export function DeliveriesList() {
       <ul className="unit-list">
         {(deliveries.data ?? []).map((d) => {
           const c = counts.data?.get(d.id);
-          const line = c
+          // Same words as before ("3 of 12 arrived" / "all 3 arrived") — just
+          // the leading count styled big/tabular and "arrived" in its stage
+          // color (picks 1 + 2), instead of one plain string.
+          const countText = c
             ? c.arrived >= c.expected
-              ? `all ${c.expected} arrived`
-              : `${c.arrived} of ${c.expected} arrived`
-            : "…";
+              ? `all ${c.expected}`
+              : `${c.arrived} of ${c.expected}`
+            : null;
           const open = editing === d.id;
           return (
             <li key={d.id} className="opening-review-row">
-              <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+              <div className="wh-row">
                 <Link to={`/storage/d/${d.id}`} className="link">
                   <strong>{d.label ?? "Delivery"}</strong>
                 </Link>
@@ -129,7 +134,15 @@ export function DeliveriesList() {
                         minute: "2-digit",
                       })}`
                     : (d.arrived_on ?? "")}{" "}
-                  · {line}
+                  ·{" "}
+                  {countText ? (
+                    <>
+                      <span className="wh-count">{countText}</span>{" "}
+                      <StageChip stage="received">arrived</StageChip>
+                    </>
+                  ) : (
+                    "…"
+                  )}
                 </span>
                 {lead && (
                   <button
@@ -148,8 +161,8 @@ export function DeliveriesList() {
                 )}
               </div>
               {open && (
-                <div className="detail-card" style={{ marginTop: 6 }}>
-                  <div className="row-gap" style={{ flexWrap: "wrap", alignItems: "center" }}>
+                <div className="detail-card wh-card">
+                  <div className="wh-row">
                     <input
                       value={nameDraft}
                       onChange={(e) => setNameDraft(e.target.value)}
@@ -188,7 +201,7 @@ export function DeliveriesList() {
                       <label className="field-label" htmlFor={`when-${d.id}`}>
                         When does the truck come?
                       </label>
-                      <div className="row-gap" style={{ flexWrap: "wrap", alignItems: "center" }}>
+                      <div className="wh-row">
                         <input
                           id={`when-${d.id}`}
                           type="datetime-local"
@@ -212,7 +225,7 @@ export function DeliveriesList() {
                       <p className="muted" style={{ margin: "6px 0 2px", fontSize: 12 }}>
                         Who meets it?
                       </p>
-                      <div className="row-gap" style={{ flexWrap: "wrap" }}>
+                      <div className="row-gap">
                         {(profiles.data ?? [])
                           .filter((p) => p.active)
                           .map((p) => (
@@ -238,10 +251,15 @@ export function DeliveriesList() {
         })}
       </ul>
       {(deliveries.data ?? []).length === 0 && (
-        <p className="muted">
-          No deliveries yet. Log one from the warehouse page before the truck
-          comes.
-        </p>
+        <EmptyState
+          title="No deliveries yet."
+          message="Log one from the warehouse page before the truck comes."
+          action={
+            <Link className="button-like active-pill" to="/storage/log-delivery">
+              Log a delivery
+            </Link>
+          }
+        />
       )}
     </div>
   );

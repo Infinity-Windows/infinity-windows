@@ -26,9 +26,11 @@ import { formatApiError } from "../lib/errors";
 import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { Explain } from "../components/ui/Explain";
+import { EmptyState } from "../components/ui/States";
 import { PackageMap } from "../components/warehouse/PackageMap";
 import { FindBar } from "../components/warehouse/FindBar";
 import { CardList } from "../components/warehouse/CardList";
+import { ContainerBadge } from "../components/warehouse/ContainerBadge";
 import { ContainerForm } from "../components/warehouse/ContainerForm";
 import { MintForm } from "../components/warehouse/MintForm";
 import { containerPostersPdf, downloadPdf } from "../lib/labels";
@@ -252,7 +254,7 @@ export function Warehouse() {
           server still refuses that RPC below foreman), so this button is
           safe open to everyone, and — since ticket 20 retired the standalone
           Tag button — it is now the only front door tagging has. */}
-      <div className="row-gap" style={{ flexWrap: "wrap" }}>
+      <div className="row-gap">
         <Link className="button-like active-pill" to="/storage/deliveries">
           Deliveries — check trucks in
         </Link>
@@ -313,7 +315,7 @@ export function Warehouse() {
                 which window it belongs to — until you do, nobody can be told
                 where it is. Then check it into a conex.
               </Explain>
-              <div className="row-gap" style={{ flexWrap: "wrap" }}>
+              <div className="row-gap">
                 <Link className="button-like active-pill" to="/storage/deliveries">
                   Deliveries — check trucks in
                 </Link>
@@ -369,7 +371,7 @@ export function Warehouse() {
               </Explain>
               {/* Absorbed from the Storage hub (ticket 18). */}
               {lead && (
-                <div className="row-gap" style={{ flexWrap: "wrap", marginBottom: 8 }}>
+                <div className="row-gap" style={{ marginBottom: 8 }}>
                   <button className="button-like" onClick={() => setNewContainer(true)}>
                     New container
                   </button>
@@ -401,16 +403,22 @@ export function Warehouse() {
                     );
                     return (
                       <Link key={c.id} to={`/storage/c/${c.id}`} className="warehouse-tile">
-                        <strong>
-                          {c.name}
-                          {containerKind(c) !== "conex" && (
-                            <span className="muted" style={{ fontWeight: 400 }}>
-                              {" "}· {containerKind(c)}
-                            </span>
-                          )}
-                        </strong>
+                        <span className="row-gap" style={{ alignItems: "center" }}>
+                          <ContainerBadge name={c.name} serial={c.serial} />
+                          <strong>
+                            {c.name}
+                            {containerKind(c) !== "conex" && (
+                              <span className="muted" style={{ fontWeight: 400 }}>
+                                {" "}· {containerKind(c)}
+                              </span>
+                            )}
+                          </strong>
+                        </span>
                         <span className="muted">
-                          {inside.length} package{inside.length === 1 ? "" : "s"}
+                          <span className="wh-count">{inside.length}</span>{" "}
+                          <span className="wh-count-label">
+                            package{inside.length === 1 ? "" : "s"}
+                          </span>
                           {inside.length > 0 &&
                             ` · ${jobs
                               .map(
@@ -426,9 +434,9 @@ export function Warehouse() {
                     );
                   })}
                 {boxes.length === 0 && (
-                  <p className="muted">
-                    {lead ? "No containers yet — add one above." : "No containers yet."}
-                  </p>
+                  <EmptyState
+                    title={lead ? "No containers yet — add one above." : "No containers yet."}
+                  />
                 )}
               </div>
             </>
@@ -445,7 +453,7 @@ export function Warehouse() {
                 broken, the <strong>arrival check</strong> raises an issue that names
                 the package.
               </Explain>
-              <div className="row-gap" style={{ flexWrap: "wrap" }}>
+              <div className="row-gap">
                 <Link className="button-like active-pill" to="/storage/out">
                   Set aside / check out
                 </Link>
@@ -463,11 +471,11 @@ export function Warehouse() {
                   {groupByJob(goingOut).slice(0, 40).map((g) => (
                     <div key={g.projectId ?? "none"} className="project-card home-project">
                       <div className="home-project-head">
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 600 }}>
+                        <div className="wh-row-main">
+                          <div className="wh-row-title">
                             {jobCode.get(g.projectId ?? "") ?? "No job"}
                           </div>
-                          <div className="muted" style={{ fontSize: 12 }}>
+                          <div className="wh-row-sub">
                             {g.packages.length} package
                             {g.packages.length === 1 ? "" : "s"} out
                           </div>
@@ -487,7 +495,7 @@ export function Warehouse() {
                 where to go, and the count is an estimate that only means
                 something with its last count date beside it.
               </Explain>
-              <div className="row-gap" style={{ flexWrap: "wrap", marginBottom: 6 }}>
+              <div className="row-gap" style={{ marginBottom: 6 }}>
                 <Link className="button-like active-pill" to="/takeoffs">
                   Takeoffs{openTakeoffs > 0 ? ` · ${openTakeoffs} open` : ""}
                 </Link>
@@ -540,7 +548,7 @@ export function Warehouse() {
                 replacement, and packages that are tagged but have no place, so
                 the app cannot tell anyone where they are.
               </Explain>
-              <div className="row-gap" style={{ flexWrap: "wrap" }}>
+              <div className="row-gap">
                 <Link className="button-like" to="/issues">
                   Damage reports ({openDamage.length})
                 </Link>
@@ -569,11 +577,11 @@ export function Warehouse() {
               {testingByJob.map((g) => (
                 <div key={g.projectId ?? "none"} className="project-card home-project">
                   <div className="home-project-head">
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 600 }}>
+                    <div className="wh-row-main">
+                      <div className="wh-row-title">
                         {jobCode.get(g.projectId ?? "") ?? "Testing"}
                       </div>
-                      <div className="muted" style={{ fontSize: 12 }}>
+                      <div className="wh-row-sub">
                         {`${g.packages.length} package${
                           g.packages.length === 1 ? "" : "s"
                         } — practice material, never counted as inventory`}

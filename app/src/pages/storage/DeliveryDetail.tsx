@@ -6,8 +6,11 @@
 // fully receivable and storable; a foreman files it onto the job later.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
+import { ScanLine } from "lucide-react";
 import { BackChip } from "../../components/BackChip";
+import { ContainerBadge } from "../../components/warehouse/ContainerBadge";
+import { StageChip } from "../../components/warehouse/StageChip";
 import { listProjects } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
 import {
@@ -192,6 +195,7 @@ export function DeliveryDetail() {
     .filter((r): r is SlotRow => !!r && r.looseIds.length > 0);
   const bundleIds = bundleRows.flatMap((r) => r.looseIds);
   const bundleJobs = new Set(bundleRows.map((r) => rowJob.get(r.key)));
+  const bundleTargetContainer = storables.find((c) => c.id === bundleTarget) ?? null;
   const toggleBundle = (key: string) =>
     setBundle((prev) => {
       const next = new Set(prev);
@@ -212,10 +216,14 @@ export function DeliveryDetail() {
     const loose = Math.max(row.looseIds.length, 1);
     const count = Math.min(storeCounts[row.key] ?? loose, loose);
     const target = storeTargets[row.key] ?? "";
+    const targetContainer = storables.find((c) => c.id === target) ?? null;
     return (
-      <div className="row-gap" style={{ flexWrap: "wrap", alignItems: "center" }}>
+      <div className="wh-row">
         <span className={missing === 0 ? "ok" : "warn-text"}>
-          {row.received} of {row.expected} arrived
+          <span className="wh-count">
+            {row.received} of {row.expected}
+          </span>{" "}
+          <StageChip stage="received">arrived</StageChip>
           {row.stored > 0 ? ` · ${row.stored} put away` : ""}
         </span>
         {missing > 0 && !row.isCrate && (
@@ -303,6 +311,12 @@ export function DeliveryDetail() {
                 </option>
               ))}
             </select>
+            {/* Pick 5: a native <select> can't color its own options, so the
+                badge for the chosen container shows just outside it — same
+                color everywhere that container's name appears. */}
+            {target && targetContainer && (
+              <ContainerBadge name={targetContainer.name} serial={targetContainer.serial} />
+            )}
             <button
               className="button-like"
               disabled={!target || store.isPending}
@@ -332,14 +346,21 @@ export function DeliveryDetail() {
 
       {message && <p className="scanner-hint">{message}</p>}
 
-      <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search marks or jobs…"
-          aria-label="Search this delivery"
-          style={{ maxWidth: 260 }}
-        />
+      <div className="wh-row">
+        {/* Pick 10: a phone-camera scan sits inside the field's own frame —
+            the keyboard-wedge path (pick 30) already works anywhere on the
+            page via useScanWedge, this is the door in for a bare camera. */}
+        <div className="locate-search" style={{ marginBottom: 0, flex: "1 1 220px" }}>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search marks or jobs…"
+            aria-label="Search this delivery"
+          />
+          <Link to="/scan" className="locate-go" aria-label="Scan a sticker">
+            <ScanLine size={20} />
+          </Link>
+        </div>
         <button
           className={bundleMode ? "button-like active-pill" : "button-like"}
           onClick={() => {
@@ -353,7 +374,7 @@ export function DeliveryDetail() {
       </div>
 
       {bundleMode && (
-        <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap", margin: "8px 0" }}>
+        <div className="wh-row" style={{ margin: "8px 0" }}>
           <span className="muted">
             {bundleIds.length} piece{bundleIds.length === 1 ? "" : "s"} from{" "}
             {bundleJobs.size} job{bundleJobs.size === 1 ? "" : "s"} selected
@@ -373,6 +394,12 @@ export function DeliveryDetail() {
               </option>
             ))}
           </select>
+          {bundleTarget && bundleTargetContainer && (
+            <ContainerBadge
+              name={bundleTargetContainer.name}
+              serial={bundleTargetContainer.serial}
+            />
+          )}
           <button
             className="primary"
             disabled={bundleIds.length === 0 || !bundleTarget || bundleStore.isPending}
@@ -383,7 +410,7 @@ export function DeliveryDetail() {
               : `Store ${bundleIds.length} together`}
           </button>
           {confirmMix && (
-            <span className="row-gap" style={{ alignItems: "center" }}>
+            <span className="wh-row">
               <span className="warn-text">
                 These pieces belong to {bundleJobs.size} different jobs — they'll
                 share one container.
@@ -404,7 +431,7 @@ export function DeliveryDetail() {
               : `“${g.pendingJobName}”`}
           </h2>
           {!g.projectId && (
-            <div className="row-gap" style={{ alignItems: "center", marginBottom: 6 }}>
+            <div className="wh-row" style={{ marginBottom: 6 }}>
               <span className="muted" style={{ fontSize: 13 }}>
                 Job not built yet — everything still works; file it once it exists.
               </span>
@@ -440,7 +467,7 @@ export function DeliveryDetail() {
           <ul className="unit-list">
             {g.rows.map((row) => (
               <li key={row.key} className="opening-review-row">
-                <div className="row-gap" style={{ alignItems: "center" }}>
+                <div className="wh-row">
                   {bundleMode && (
                     <input
                       type="checkbox"
