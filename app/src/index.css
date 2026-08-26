@@ -10312,3 +10312,199 @@ body {
   border-left: 3px solid var(--warn);
   border-radius: var(--radius-md);
 }
+
+/* ============================================================================
+   Warehouse look (owner picks 1, 2, 3, 4, 5, 9, 10 — W2, 2026-08-25)
+   ========================================================================= */
+
+:root {
+  /* ---- Pick 1: one hue per package stage (STAGE_LABELS in JobMaterials.tsx),
+     used everywhere a stage is named. -soft is the chip's own background;
+     the solid color is its text (and the chip's background once selected).
+     Values chosen and checked for ~5:1 text-on-soft-ground both palettes —
+     see the PR body's contrast table. */
+  --stage-expected: oklch(0.48 0.15 80);
+  --stage-expected-soft: oklch(0.93 0.05 80);
+  --stage-arrived: oklch(0.47 0.16 235);
+  --stage-arrived-soft: oklch(0.93 0.045 235);
+  --stage-stored: oklch(0.47 0.15 155);
+  --stage-stored-soft: oklch(0.93 0.05 155);
+  --stage-out: oklch(0.5 0.16 300);
+  --stage-out-soft: oklch(0.93 0.045 300);
+
+  /* ---- Pick 5: container badges. Hue comes from containerHue() (lib/
+     storage.ts) per instance, via the --badge-hue custom property — L/C stay
+     fixed per theme here so any hue reads consistently. */
+  --badge-bg-l: 0.9;
+  --badge-bg-c: 0.06;
+  --badge-text-l: 0.4;
+  --badge-text-c: 0.14;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --stage-expected: oklch(0.82 0.17 80);
+    --stage-expected-soft: oklch(0.26 0.07 80);
+    --stage-arrived: oklch(0.74 0.14 235);
+    --stage-arrived-soft: oklch(0.26 0.07 235);
+    --stage-stored: oklch(0.72 0.17 155);
+    --stage-stored-soft: oklch(0.26 0.06 155);
+    --stage-out: oklch(0.78 0.16 300);
+    --stage-out-soft: oklch(0.27 0.07 300);
+
+    --badge-bg-l: 0.28;
+    --badge-bg-c: 0.08;
+    --badge-text-l: 0.8;
+    --badge-text-c: 0.16;
+  }
+}
+:root[data-theme="dark"] {
+  --stage-expected: oklch(0.82 0.17 80);
+  --stage-expected-soft: oklch(0.26 0.07 80);
+  --stage-arrived: oklch(0.74 0.14 235);
+  --stage-arrived-soft: oklch(0.26 0.07 235);
+  --stage-stored: oklch(0.72 0.17 155);
+  --stage-stored-soft: oklch(0.26 0.06 155);
+  --stage-out: oklch(0.78 0.16 300);
+  --stage-out-soft: oklch(0.27 0.07 300);
+
+  --badge-bg-l: 0.28;
+  --badge-bg-c: 0.08;
+  --badge-text-l: 0.8;
+  --badge-text-c: 0.16;
+}
+
+/* Pick 1: one pill component, four stages. A stage-chip used as a real
+   control (JobMaterials' filter row) carries role="button" so it can share
+   this class with the plain read-only chips (per-mark counts, a status
+   line) without either one fighting the other's size. */
+.stage-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  white-space: nowrap;
+  border: none;
+  font-family: var(--font-body);
+}
+button.stage-chip {
+  cursor: pointer;
+}
+.stage-chip[data-stage="minted"] { background: var(--stage-expected-soft); color: var(--stage-expected); }
+.stage-chip[data-stage="received"] { background: var(--stage-arrived-soft); color: var(--stage-arrived); }
+.stage-chip[data-stage="stored"] { background: var(--stage-stored-soft); color: var(--stage-stored); }
+.stage-chip[data-stage="checked_out"] { background: var(--stage-out-soft); color: var(--stage-out); }
+/* Selected filter pill: invert to the stage's solid color, same pair of
+   tokens the resting state uses, roles swapped — contrast holds either way. */
+.stage-chip[aria-pressed="true"][data-stage="minted"] { background: var(--stage-expected); color: var(--stage-expected-soft); }
+.stage-chip[aria-pressed="true"][data-stage="received"] { background: var(--stage-arrived); color: var(--stage-arrived-soft); }
+.stage-chip[aria-pressed="true"][data-stage="stored"] { background: var(--stage-stored); color: var(--stage-stored-soft); }
+.stage-chip[aria-pressed="true"][data-stage="checked_out"] { background: var(--stage-out); color: var(--stage-out-soft); }
+
+/* Pick 2: a row's headline number — big, tabular, the label trailing after
+   it in a quieter weight. Only where the row already had a count to show. */
+.wh-count {
+  font-size: 20px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.wh-count-label {
+  color: var(--muted);
+  font-size: 13px;
+  margin-left: 3px;
+}
+
+/* Pick 4: one row system for the storage/warehouse pages, replacing the
+   inline style props repeated across them (PackageSheet, ContainerDetail,
+   TagPackages, Warehouse, LogDelivery, CheckoutPackages, JobMaterials,
+   DeliveryDetail, DeliveriesList, ContainerViewer, ArrivePackages). A
+   one-off value (a specific maxWidth, `width: 90` on a number input) stays
+   inline — only the repeated shapes moved here. */
+.wh-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  min-height: 48px;
+}
+.wh-row-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wh-row-title {
+  font-weight: 600;
+}
+.wh-row-sub {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.wh-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+/* The detail-card spacing variant used everywhere one sits inside a row
+   instead of at the top of a page: less top margin, tighter padding. */
+.wh-card {
+  margin-top: 8px;
+  padding: 10px 14px;
+}
+
+/* Pick 5: a container's stable color-badge, derived from its serial
+   (containerHue() in lib/storage.ts) — no zone/color column exists on
+   storage_containers, so this is computed on the fly, never stored. Same
+   serial reads as the same color everywhere, both themes, because the hue
+   is the one thing that travels with the badge — only the theme's L/C
+   changes underneath it. */
+.container-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  background: oklch(var(--badge-bg-l) var(--badge-bg-c) var(--badge-hue, 0));
+  color: oklch(var(--badge-text-l) var(--badge-text-c) var(--badge-hue, 0));
+}
+
+/* Pick 3: gloved hands need a bigger target than a bare thumb — scoped to
+   the warehouse section only (the install and office worlds keep their
+   existing sizes). `input, select` are already 52px tall globally, so they
+   are not repeated here — repeating them at 48px would only shrink them,
+   since a more specific selector replaces a rule rather than widening it.
+   min-height never moves anything on :hover, so this cannot trip the
+   hover-must-never-move-layout rule. */
+:root[data-section="warehouse"] .button-like,
+:root[data-section="warehouse"] .action-btn,
+:root[data-section="warehouse"] button.primary,
+:root[data-section="warehouse"] .stage-chip[role="button"] {
+  min-height: 48px;
+}
+:root[data-section="warehouse"] .opening-review-row,
+:root[data-section="warehouse"] .unit-list li,
+:root[data-section="warehouse"] .find-row {
+  min-height: 48px;
+}
+/* The checkbox glyph stays the 20px it already is everywhere else — the
+   padding below only grows the invisible tap area around it, and the
+   matching negative margin cancels it back out so nothing in the row
+   shifts to make room. */
+:root[data-section="warehouse"] .opening-review-row input[type="checkbox"] {
+  padding: 12px;
+  margin: -12px;
+}

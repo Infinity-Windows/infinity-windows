@@ -110,6 +110,23 @@ export function containerKind(c: Pick<StorageContainer, "kind"> | null | undefin
 }
 
 /**
+ * A container's color-badge hue (pick 5, W2): no zone/color column exists on
+ * storage_containers, and this wave adds none — the badge is derived from the
+ * serial instead, on the fly, every time it is shown. A plain char-code hash
+ * into one of 6 evenly spaced oklch hues, so the same serial always lands on
+ * the same badge everywhere it appears, in both themes (the CSS token pair
+ * this feeds carries the theme; the hue itself never changes).
+ */
+export function containerHue(serial: string): number {
+  let hash = 0;
+  for (let i = 0; i < serial.length; i++) {
+    hash = (hash * 31 + serial.charCodeAt(i)) | 0;
+  }
+  const HUES = [0, 60, 120, 180, 240, 300];
+  return HUES[Math.abs(hash) % HUES.length];
+}
+
+/**
  * Where a poster scan should land once ContainerDetail has the container in
  * hand (pick 31, "poster QR opens the living container"): straight into the
  * 3D shell when one exists — a shell IS the living container — or null to
