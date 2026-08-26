@@ -18,6 +18,7 @@ import { formatApiError } from "../../lib/errors";
 import { isForemanPlus, isSupervisorPlus } from "../../lib/install/types";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { pushToast } from "../../lib/toast";
+import { showUndoToast } from "../../lib/undoToast";
 import { playErrorTone, playSuccessTone } from "../../lib/sound";
 import { useScanWedge } from "../../lib/warehouse/scanWedge";
 import { BackChip } from "../../components/BackChip";
@@ -41,6 +42,7 @@ import {
   setContainerModel,
   type StoragePackage,
   containerKind,
+  unstorePackages,
 } from "../../lib/storage";
 import { canNest, ridesAlong } from "../../lib/warehouse/containment";
 import { splitLinesOnStore } from "../../lib/warehouse/splitUnits";
@@ -154,8 +156,14 @@ export function ContainerDetail() {
     },
   });
   const doCheckin = useMutation({
-    mutationFn: () =>
-      customCheckin({
+    mutationFn: async () => {
+      // Pick 25: custom_checkin returns only a count, never the rows it made
+      // (no migration this wave may touch that). A before/after read of the
+      // one thing that DOES carry ids stands in — a fresh read, not the
+      // cache, so a package someone else stored here a moment ago is never
+      // mistaken for one this tap just created.
+      const before = new Set((await listActivePackages()).map((p) => p.id));
+      const n = await customCheckin({
         containerId: id,
         projectId: customForm.projectId || null,
         mark: customForm.mark.trim() || null,
@@ -165,15 +173,41 @@ export function ContainerDetail() {
             : customForm.partType || null,
         note: customForm.note.trim() || null,
         count: customForm.count,
-      }),
-    onSuccess: (n) => {
-      setSweepReport(
-        `Checked ${n} in${customForm.mark.trim() ? ` on set #${customForm.mark.trim().replace(/^#/, "").toUpperCase()}` : ""}.`,
-      );
+      });
+      return { n, before };
+    },
+    onSuccess: async ({ n, before }) => {
+      const doneMessage = `Checked ${n} in${customForm.mark.trim() ? ` on set #${customForm.mark.trim().replace(/^#/, "").toUpperCase()}` : ""}.`;
       setCheckinOpen(false);
       setCustomForm({ projectId: "", mark: "", partType: "", otherText: "", newLabel: "", note: "", count: 1 });
       void qc.invalidateQueries({ queryKey: ["storageContainers"] });
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+      const after = await listActivePackages();
+      const createdIds = after
+        .filter((p) => p.container_id === id && !before.has(p.id))
+        .map((p) => p.id);
+      if (createdIds.length > 0) {
+        // The toast carries the confirmation AND the undo — a second, plain
+        // copy of the same sentence sitting on the page behind it would just
+        // be the scattered pattern pick 25 exists to replace.
+        showUndoToast({
+          message: doneMessage,
+          undo: async () => {
+            const r = await deletePackages(createdIds);
+            void qc.invalidateQueries({ queryKey: ["storageContainers"] });
+            void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+            if (r.refused.length > 0) {
+              throw new Error(r.refused.map((x) => `${x.serial} (${x.reason})`).join("; "));
+            }
+            pushToast("Check-in undone.");
+          },
+        });
+      } else {
+        // No ids to undo (a genuine edge case — see the comment above on
+        // `before`) — fall back to the plain confirmation so the tap still
+        // says something.
+        setSweepReport(doneMessage);
+      }
     },
     onError: (e) => setSweepReport(formatApiError(e)),
   });
@@ -322,12 +356,30 @@ export function ContainerDetail() {
       ),
     onSuccess: (r) => {
       playSuccessTone();
-      pushToast(
-        writeToast(r, `${r.count} package${r.count === 1 ? "" : "s"} checked in`),
-      );
+      // Pick 25: the ids this tap picked, read before the clear below —
+      // same rows the write itself just used.
+      const ids = candidates.filter((p) => picked.has(p.id)).map((p) => p.id);
       setPicked(new Set());
       setCheckin(false);
       void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+      // A queued write hasn't reached the server yet — there is nothing
+      // there for unstore to undo until it does, so it keeps the plain
+      // toast; the toast below carries BOTH the confirmation and the undo
+      // for the ordinary online case, rather than showing the same line
+      // twice.
+      if (r.queued) {
+        pushToast(
+          writeToast(r, `${r.count} package${r.count === 1 ? "" : "s"} checked in`),
+        );
+        return;
+      }
+      showUndoToast({
+        message: `${r.count} package${r.count === 1 ? "" : "s"} checked in`,
+        undo: async () => {
+          await unstorePackages(ids);
+          void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+        },
+      });
     },
     onError: (e) => {
       playErrorTone();

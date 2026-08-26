@@ -23,6 +23,7 @@ import { effectiveRole, useViewAsRole } from "../lib/viewAsRoleContext";
 import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
 import { supabase } from "../lib/supabase";
 import { ToastHost } from "./ToastHost";
+import { UndoToast } from "./UndoToast";
 import { SummonBell } from "./SummonBell";
 import { InfinityLogo } from "./brand/InfinityLogo";
 import { AppMenu } from "./nav/AppMenu";
@@ -172,6 +173,7 @@ export function Layout() {
     return (
       <div className="app-shell">
         <ToastHost />
+        <UndoToast />
         <div className="app-frame">
           <aside className="app-rail" aria-label="Primary">
             <span className="rail-brand" aria-label="Infinity Windows home">
@@ -267,6 +269,7 @@ export function Layout() {
   return (
     <div className="app-shell">
       <ToastHost />
+      <UndoToast />
       <SummonBell />
       <div className="app-frame">
         <aside className="app-rail" aria-label="Primary">

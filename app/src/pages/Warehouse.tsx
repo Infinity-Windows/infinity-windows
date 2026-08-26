@@ -41,9 +41,13 @@ import {
   groupByJob,
   listActivePackages,
   listContainers,
+  listDeliveries,
+  listMovementsSince,
   containerKind,
   type StorageContainer,
 } from "../lib/storage";
+import { DayRecapCard } from "../components/warehouse/DayRecapCard";
+import { dayRecap, localMidnightIso } from "../lib/warehouse/dayRecap";
 import { partitionTestPackages, testProjectIds } from "../lib/warehouse/testPartition";
 import {
   filterSuppliesByName,
@@ -133,6 +137,16 @@ export function Warehouse() {
   // cache hit more often than a fetch.
   const locations = useQuery({ queryKey: ["locations"], queryFn: listLocations });
   const issues = useQuery({ queryKey: ["issues"], queryFn: listIssues });
+  // Day recap (pick 26): "today" is local midnight, recomputed every render
+  // but only actually changing value once a day — so the query key is
+  // naturally stable within a day and just as naturally refetches the one
+  // time it rolls over while the tab stays open.
+  const todayIso = localMidnightIso(new Date());
+  const movementsToday = useQuery({
+    queryKey: ["movementsSince", todayIso],
+    queryFn: () => listMovementsSince(todayIso),
+  });
+  const deliveries = useQuery({ queryKey: ["deliveries"], queryFn: listDeliveries });
   const supplies = useQuery({ queryKey: ["supplies"], queryFn: listSupplies });
   const takeoffs = useQuery({ queryKey: ["takeoffs"], queryFn: listTakeoffs });
   const openTakeoffs = (takeoffs.data ?? []).filter(
@@ -191,6 +205,13 @@ export function Warehouse() {
   const { real, testing } = partitionTestPackages(rows, testIds);
   const counts = warehouseCounts(real, boxes, marks.data ?? [], openDamage.length);
   const ready = packages.isSuccess && containers.isSuccess;
+  // `real`, not `rows`, for the same reason every other count on this page
+  // does: a testing job's material is practice, never inventory.
+  const recap = dayRecap(
+    movementsToday.data ?? [],
+    real,
+    (deliveries.data ?? []).map((d) => ({ id: d.id, label: d.label ?? "a delivery" })),
+  );
 
   // Coming in: tagged today but not put away anywhere yet.
   const needsPutaway = real.filter(
@@ -302,6 +323,16 @@ export function Warehouse() {
       {lead && card && (
         <CardList card={card} packages={real} containers={boxes} jobCode={jobCode} />
       )}
+
+      {/* Pick 26: visible to every role — movements, packages and
+          deliveries are all open reads to any signed-in crew member, same
+          as the hub counts above are to a lead. Waits on all three reads so
+          a still-loading page never flashes "Quiet so far" a moment before
+          the real counts land. */}
+      {packages.isSuccess && movementsToday.isSuccess && deliveries.isSuccess && (
+        <DayRecapCard recap={recap} />
+      )}
+
       {packages.isError && <p className="error">{formatApiError(packages.error)}</p>}
 
       {visible.map((s) => (

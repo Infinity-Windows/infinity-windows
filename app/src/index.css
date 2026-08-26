@@ -2994,6 +2994,84 @@ button:disabled {
   background: #333;
 }
 
+/* Pick 25: one undo toast at a time, app-wide. Same "clears the bottom bar"
+   math as .toast-host, on its own layer above it (z-index) since the two
+   are independent one-at-a-time systems that could in principle both be up
+   at once.
+
+   A five-second overlay that BLOCKS the page under it is its own bug — a
+   real one, caught live: it sat over a row's own "Store 2" button and ate
+   every tap meant for it. So the card itself takes no pointer events at
+   all; only the Undo button opts back in. Hovering/focusing the button
+   still reaches the outer element (CSS pointer-events only changes hit
+   testing, never event bubbling), which is what pauses the countdown. */
+.undo-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(84px + var(--safe-bottom));
+  transform: translateX(-50%);
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(92vw, 420px);
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--card-hot);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  pointer-events: none;
+}
+.undo-toast-message {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+.undo-toast-btn {
+  flex: none;
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid var(--accent-line);
+  background: transparent;
+  color: var(--accent);
+  font-weight: 700;
+  font-family: var(--font-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  pointer-events: auto;
+}
+/* The countdown affordance: a bar that drains left to right. `transform`
+   only, never `width` — a hover that resized anything would trip the
+   hover-must-never-move-layout rule, and this one only pauses/resumes. */
+.undo-toast-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: transparent;
+}
+.undo-toast-bar-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: var(--accent);
+  transform-origin: left;
+  animation-name: undo-toast-drain;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+@keyframes undo-toast-drain {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .undo-toast-bar-fill { animation: none; width: 0; }
+}
+
 /* --- Loading skeletons / empty / error states --- */
 .skeleton-list {
   display: flex;
