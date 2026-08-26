@@ -1398,6 +1398,25 @@ button:disabled {
   touch-action: none;
 }
 
+/*
+ * Pick 5 (wave I-2): a bare thumb can find a 30px dot; a gloved one on a
+ * ladder needs more. This never grows the dot itself — it only extends an
+ * invisible tap target around it, so it can't nudge a neighbour's centre,
+ * can't change which pin a test finds by its computed position, and can't
+ * flip which of two overlapping pins is topmost (that's still DOM order,
+ * untouched here — a bigger invisible target quietly overlapping a
+ * neighbour's is fine; a finger already hit whichever pin was on top). The
+ * padding itself is set per-pin in MapPinLayer (--pin-tap-pad), because a
+ * plan that has shrunk this dot below 30px (openingMarkerScale's zoom-out
+ * floor is 18px) needs a bigger pad than a full-size one to still clear
+ * 44px total.
+ */
+.plan-dot::after {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--pin-tap-pad, 8px));
+}
+
 /* Doors are square. The one difference you need without reading anything. */
 .plan-dot--door {
   border-radius: 4px;
