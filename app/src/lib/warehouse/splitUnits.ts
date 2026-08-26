@@ -163,14 +163,23 @@ export function splitLinesOnStore(
       (p.project_id ?? "boneyard") === (unit.projectId ?? "boneyard") &&
       (p.package_marks ?? []).some((m) => m.mark_code === unit.mark);
 
-    // Already on hand somewhere else, and not itself part of this store —
-    // the whole reason this store would leave the window split.
+    // Already COMMITTED somewhere else, and not itself part of this store —
+    // the whole reason this store would leave the window split. Two
+    // non-splits the field caught (owner report, 2026-08-26):
+    //   * a LOOSE arrived sibling is at the door waiting its turn, not
+    //     living in another unit — warning about it made every multi-part
+    //     check-in cry wolf;
+    //   * glass riding in the job's own CRATE belongs there by design
+    //     (crates are sealed packages; the crate itself gets stored) — a
+    //     frame going into a conex is not "split from" its crate glass.
     const elsewhere = packages.filter(
       (p) =>
         sameUnit(p) &&
         ON_HAND.has(p.status) &&
         !incomingIds.has(p.id) &&
-        p.container_id !== destContainerId,
+        p.container_id !== destContainerId &&
+        (p.container_id != null || p.location_id != null) &&
+        containersById.get(p.container_id ?? "")?.kind !== "crate",
     );
     if (elsewhere.length === 0) continue;
 

@@ -70,15 +70,22 @@ export function FindBar({
 }) {
   const [query, setQuery] = useState(initialQuery ?? "");
   const [scanning, setScanning] = useState(false);
-  /** The job picked when one mark belonged to more than one job. */
-  const [markChoice, setMarkChoice] = useState<string | null>(null);
+  /** The job picked when one mark belonged to more than one job — a real
+   * job by id, or a waiting job by its typed name. */
+  const [markChoice, setMarkChoice] = useState<{
+    projectId: string | null;
+    pendingName: string | null;
+  } | null>(null);
 
   const answer = useMemo(
     () =>
       findInWarehouse(
         query,
         { packages, containers, projects, scheduledMarks, supplies, locationsById },
-        { markProjectId: markChoice ?? undefined },
+        {
+          markProjectId: markChoice?.projectId ?? undefined,
+          markPendingName: markChoice?.pendingName ?? undefined,
+        },
       ),
     [
       query,
@@ -174,7 +181,7 @@ function Answer({
   jobsWithModels,
 }: {
   answer: FindAnswer;
-  onPickMarkJob: (projectId: string) => void;
+  onPickMarkJob: (pick: { projectId: string | null; pendingName: string | null }) => void;
   jobsWithModels?: Set<string>;
 }) {
   if (answer.kind === "miss") {
@@ -203,8 +210,8 @@ function Answer({
         <p style={{ margin: "2px 0 0", fontSize: 13 }}>{answer.headline}</p>
         <Rows hits={answer.hits} />
         {/* Job-building glow (#16's door): only when this job actually has
-            a Studio model to show it on. */}
-        {jobsWithModels?.has(answer.projectId) && (
+            a Studio model to show it on — a waiting job never does. */}
+        {answer.projectId != null && jobsWithModels?.has(answer.projectId) && (
           <Link
             className="button-like"
             style={{ marginTop: 8 }}
@@ -227,14 +234,22 @@ function Answer({
         </p>
         <ul className="unit-list" style={{ margin: "6px 0 0" }}>
           {answer.choices.map((c) => (
-            <li key={c.projectId} className="find-row">
+            <li key={c.projectId ?? `pending:${c.pendingName}`} className="find-row">
               <button
                 type="button"
                 className="link"
                 style={{ font: "inherit", textAlign: "left", minWidth: 0 }}
-                onClick={() => onPickMarkJob(c.projectId)}
+                onClick={() =>
+                  onPickMarkJob({ projectId: c.projectId, pendingName: c.pendingName })
+                }
               >
-                <strong>{c.jobCode}</strong>{" "}
+                <strong>{c.jobCode}</strong>
+                {c.pendingName ? (
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {" "}
+                    (job not built yet)
+                  </span>
+                ) : null}{" "}
                 <span className="muted" style={{ fontSize: 12 }}>
                   {c.headline}
                   {c.where ? ` · ${c.where}` : ""}
@@ -296,7 +311,11 @@ function Answer({
   }
 
   const title =
-    answer.kind === "container" ? answer.container.name : answer.jobCode;
+    answer.kind === "container"
+      ? answer.container.name
+      : answer.kind === "pending-job"
+        ? `“${answer.name}”`
+        : answer.jobCode;
   const sub =
     answer.kind === "container"
       ? // "— at BLACK22" is the address field, which ticket 13 made an honest
@@ -304,7 +323,9 @@ function Answer({
         // no longer repeats a silent edit as fact.
         `${answer.hits.length} package${answer.hits.length === 1 ? "" : "s"} inside` +
         (answer.container.address ? ` — at ${answer.container.address}` : "")
-      : `${answer.hits.length} package${answer.hits.length === 1 ? "" : "s"} tagged for this job`;
+      : answer.kind === "pending-job"
+        ? `${answer.hits.length} package${answer.hits.length === 1 ? "" : "s"} waiting — job not built in the app yet`
+        : `${answer.hits.length} package${answer.hits.length === 1 ? "" : "s"} tagged for this job`;
   return (
     <div className="wh-answer">
       <strong>{title}</strong>
