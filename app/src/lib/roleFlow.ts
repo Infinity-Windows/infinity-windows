@@ -261,9 +261,9 @@ const FOREMAN: RoleFlow = {
       {
         id: "numbers",
         label: "The numbers",
-        lines: ["Analytics and", "daily logs."],
-        asks: "Install evidence, on-tool time and the day's logs — the comparing kind of numbers stay at your level and above.",
-        doors: ["/analytics", "/daily-logs"],
+        lines: ["Install evidence,", "on-tool time."],
+        asks: "The comparing kind of numbers stay at your level and above.",
+        doors: ["/analytics"],
         branch: true,
       },
     ],

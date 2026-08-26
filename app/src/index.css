@@ -10060,6 +10060,27 @@ body {
   padding-left: 10px;
 }
 
+/* The package sheet's four rooms (ticket 21) — a section heading that also
+   folds, remembering open/closed per room the same safe way Explain does. */
+.pkg-sheet-group {
+  margin: 14px 0 0;
+}
+
+.pkg-sheet-group summary {
+  cursor: pointer;
+  user-select: none;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.pkg-sheet-group summary:hover { color: var(--ink); }
+
+.pkg-sheet-group-body { margin-top: 8px; }
+
 /* ============================================================================
    Package map — "How does tracking work?" on the Warehouse page.
    Drawn from lib/warehouse/packageFlow.ts; see that file for the model.

@@ -91,20 +91,16 @@ export type RoutePath =
   | "/access"
   | "/cost-codes"
   | "/costing"
-  // Horizon-menu stub destinations (no feature yet → "Coming soon" page).
+  // Real Horizon-menu destinations. Eight sibling stubs that never got a menu
+  // row (daily logs, completed installs, milestones, First Pane, conditions,
+  // contacts, profile, public site) rendered nothing but a "Coming soon"
+  // placeholder and were cut as dead ends (ticket 24) — re-add a path here
+  // if one of them ever ships for real.
   | "/photos"
-  | "/daily-logs"
-  | "/completed-installs"
-  | "/milestones"
-  | "/first-pane"
   | "/toolbox-history"
-  | "/conditions"
-  | "/contacts"
-  | "/profile"
   | "/stuck"
   | "/suggestions"
-  | "/settings"
-  | "/public-site";
+  | "/settings";
 
 /**
  * Rollout flag. Flip to `false` to instantly revert to the previous flat nav
@@ -226,18 +222,13 @@ export const NAV: NavDest[] = [
   { id: "costing", to: "/costing", label: "Cost", icon: "$", minRole: "owner" },
   { id: "ai-spend", to: "/ai-spend", label: "AI spend", icon: "◍", minRole: "owner" },
 
-  // ---- Horizon-menu stub destinations (render a shared "Coming soon" page) ----
-  // Access still flows through this registry so role-gating never drifts.
+  // Two real Horizon-menu destinations. Access still flows through this
+  // registry so role-gating never drifts. Eight sibling stub entries (daily
+  // logs, completed installs, milestones, First Pane, conditions, contacts,
+  // profile, public site) were cut as dead ends — see the RoutePath comment
+  // above (ticket 24).
   { id: "photos", to: "/photos", label: "Photos & receipts", icon: "▨", minRole: "installer" },
-  { id: "daily-logs", to: "/daily-logs", label: "Daily logs", icon: "❐", minRole: "foreman" },
-  { id: "completed-installs", to: "/completed-installs", label: "Completed installs", icon: "✔", minRole: "installer" },
-  { id: "milestones", to: "/milestones", label: "Milestones", icon: "★", minRole: "installer" },
-  { id: "first-pane", to: "/first-pane", label: "First Pane", icon: "☀", minRole: "installer" },
   { id: "toolbox-history", to: "/toolbox-history", label: "Toolbox talk history", icon: "⛑", minRole: "installer" },
-  { id: "conditions", to: "/conditions", label: "Conditions", icon: "❑", minRole: "foreman" },
-  { id: "contacts", to: "/contacts", label: "Contacts", icon: "☏", minRole: "foreman" },
-  { id: "profile", to: "/profile", label: "Profile", icon: "◉", minRole: "installer" },
-  { id: "public-site", to: "/public-site", label: "View public site", icon: "◎", minRole: "installer" },
 ];
 
 const NAV_BY_PATH = new Map(NAV.map((d) => [d.to, d]));

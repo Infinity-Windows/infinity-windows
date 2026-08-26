@@ -198,34 +198,10 @@ export const APP_GUIDE: AppGuideEntry[] = [
       "Job photos and receipts. Attach proof photos to an install or upload a receipt against a job.",
   },
   {
-    path: "/completed-installs",
-    label: "Completed installs",
-    minRole: "installer",
-    blurb: "A history of installs you've finished. Look back at what's done.",
-  },
-  {
-    path: "/milestones",
-    label: "Milestones",
-    minRole: "installer",
-    blurb: "Job progress milestones — see how far along a job is.",
-  },
-  {
-    path: "/first-pane",
-    label: "First Pane",
-    minRole: "installer",
-    blurb: "Onboarding / getting-started guidance for new crew.",
-  },
-  {
     path: "/toolbox-history",
     label: "Toolbox talk history",
     minRole: "installer",
     blurb: "Past safety toolbox talks and who acknowledged them.",
-  },
-  {
-    path: "/profile",
-    label: "Profile",
-    minRole: "installer",
-    blurb: "Your profile — name, skill level and account details.",
   },
   {
     path: "/stuck",
@@ -247,13 +223,6 @@ export const APP_GUIDE: AppGuideEntry[] = [
     minRole: "installer",
     blurb: "App settings and preferences for your account and device.",
   },
-  {
-    path: "/public-site",
-    label: "View public site",
-    minRole: "installer",
-    blurb: "Opens the company's public website.",
-  },
-
   // ---- Foreman+ (managers): coordination, warehouse ops, quality ----------
   {
     path: "/team",
@@ -381,25 +350,6 @@ export const APP_GUIDE: AppGuideEntry[] = [
     blurb:
       "Consumable supplies (tape, shims, sealant). Each one has a home spot so you know where to go, and a rough count shown with the date it was last counted. Take what you need — how many and which job — in three taps. Foremen can also request material for a job ahead of time.",
   },
-  {
-    path: "/daily-logs",
-    label: "Daily logs",
-    minRole: "foreman",
-    blurb: "Daily job logs — a running record of what happened on site each day.",
-  },
-  {
-    path: "/conditions",
-    label: "Conditions",
-    minRole: "foreman",
-    blurb: "Site/opening condition reports — flag and track field conditions.",
-  },
-  {
-    path: "/contacts",
-    label: "Contacts",
-    minRole: "foreman",
-    blurb: "Job and vendor contacts — phone numbers and points of contact.",
-  },
-
   // ---- Supervisor+ --------------------------------------------------------
   {
     path: "/knowledge",
