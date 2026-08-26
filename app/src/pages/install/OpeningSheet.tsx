@@ -121,6 +121,7 @@ import { resolveWindowFromScan } from "../../lib/scanResolve";
 import { supabase } from "../../lib/supabase";
 import { formatApiError } from "../../lib/install/errors";
 import { pushToast } from "../../lib/toast";
+import { showUndoToast } from "../../lib/undoToast";
 import { sendPush } from "../../lib/permissions/pushServer";
 
 const windowLookups = { getWindowByWindowId, findWindowByCode, findWindowBySerial };
@@ -830,15 +831,26 @@ export function OpeningSheet() {
     onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
+  // Pick 12: setOpeningCondition is its own inverse — a real setter, so
+  // "undo" is simply calling it again with whatever condition and note it
+  // carried before this tap (captured here, before the write). The toast
+  // replaces the inline confirmation line (one voice).
   const saveCondition = useMutation({
-    mutationFn: (condition: "ok" | "damaged") =>
-      setOpeningCondition(openingId, condition, conditionNote || null),
-    onSuccess: (_data, condition) => {
-      setMessage({
-        text: condition === "damaged" ? "Marked damaged — office flagged." : "Condition OK.",
-        tone: "ok",
-      });
+    mutationFn: (args: {
+      condition: "ok" | "damaged";
+      priorCondition: "unknown" | "ok" | "damaged";
+      priorNote: string | null;
+    }) => setOpeningCondition(openingId, args.condition, conditionNote || null),
+    onSuccess: (_data, args) => {
       refresh();
+      showUndoToast({
+        message:
+          args.condition === "damaged" ? "Marked damaged — office flagged." : "Condition OK.",
+        undo: async () => {
+          await setOpeningCondition(openingId, args.priorCondition, args.priorNote);
+          refresh();
+        },
+      });
     },
     onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
@@ -1903,14 +1915,26 @@ export function OpeningSheet() {
           <div className="grade-row">
             <button
               className={o.condition === "ok" ? "grade-btn selected" : "grade-btn"}
-              onClick={() => saveCondition.mutate("ok")}
+              onClick={() =>
+                saveCondition.mutate({
+                  condition: "ok",
+                  priorCondition: o.condition,
+                  priorNote: o.condition_note,
+                })
+              }
               disabled={saveCondition.isPending}
             >
               OK
             </button>
             <button
               className={o.condition === "damaged" ? "grade-btn selected danger" : "grade-btn"}
-              onClick={() => saveCondition.mutate("damaged")}
+              onClick={() =>
+                saveCondition.mutate({
+                  condition: "damaged",
+                  priorCondition: o.condition,
+                  priorNote: o.condition_note,
+                })
+              }
               disabled={saveCondition.isPending}
             >
               Damaged
