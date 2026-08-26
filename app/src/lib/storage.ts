@@ -1006,6 +1006,26 @@ export async function addJobCrate(
   if (error) throw error;
 }
 
+/**
+ * Log a supply riding in the job's crates (owner ask, 2026-08-26): caulk
+ * thrown in with the glass becomes a pool row — "6 pieces of caulk (in the
+ * crates)" — counted down as it gets used, deleted when it is gone.
+ */
+export async function addCrateSupplies(args: {
+  projectId: string | null;
+  jobName: string | null;
+  partType: string;
+  pieces: number;
+}): Promise<void> {
+  const { error } = await supabase.rpc("add_crate_supplies", {
+    p_project: args.projectId,
+    p_job_name: args.jobName,
+    p_part_type: args.partType,
+    p_pieces: args.pieces,
+  });
+  if (error) throw error;
+}
+
 /** Un-put-away: stored flips back to arrived-and-loose, container cleared. */
 export async function unstorePackages(packageIds: string[]): Promise<number> {
   const { data, error } = await supabase.rpc("unstore_packages", {

@@ -9,10 +9,12 @@ import { Link, useSearchParams } from "react-router-dom";
 import { BackChip } from "../../components/BackChip";
 import { EmptyState } from "../../components/ui/States";
 import { StageChip } from "../../components/warehouse/StageChip";
+import { jobTallies, tallyLine } from "../../lib/warehouse/jobTally";
 import { LoadList } from "../../components/warehouse/LoadList";
 import { listProjects } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
 import {
+  addCrateSupplies,
   addJobCrate,
   deletePackages,
   listActivePackages,
@@ -90,6 +92,27 @@ export function JobMaterials() {
   );
 
   const byMark = useMemo(() => groupPackagesByMark(boxes, pool), [boxes, pool]);
+
+  const [supplyOpen, setSupplyOpen] = useState(false);
+  const [supplyForm, setSupplyForm] = useState({ name: "", pieces: "1" });
+  const addSupply = useMutation({
+    mutationFn: (args: { partType: string; pieces: number }) =>
+      addCrateSupplies({
+        projectId,
+        jobName: null,
+        partType: args.partType,
+        pieces: args.pieces,
+      }),
+    onSuccess: (_r, args) => {
+      setMessage(
+        `${args.pieces} × ${args.partType} logged into the crates.`,
+      );
+      setSupplyForm({ name: "", pieces: "1" });
+      setSupplyOpen(false);
+      void qc.invalidateQueries({ queryKey: ["storagePackages"] });
+    },
+    onError: (e) => setMessage(formatApiError(e)),
+  });
 
   const addCrate = useMutation({
     mutationFn: () => addJobCrate(projectId),
@@ -185,6 +208,19 @@ export function JobMaterials() {
 
       {projectId && !listMode && (
         <>
+          {/* The owner's exact ask (2026-08-26): "mad moose 20/22, 2
+              remaining" — units logged vs the manifest, for THIS job. */}
+          {(() => {
+            const t = jobTallies(mine, new Map([[projectId, job?.job_code ?? ""]]))[0];
+            return t ? (
+              <p style={{ margin: "6px 0 0" }}>
+                <span className="wh-count">{tallyLine(t)}</span>{" "}
+                <span className="wh-count-label">
+                  unit{t.totalUnits === 1 ? "" : "s"} logged
+                </span>
+              </p>
+            ) : null;
+          })()}
           <div className="detail-card" style={{ margin: "10px 0" }}>
             <div className="wh-row">
               <span className="wh-count">{crates.length}</span>{" "}
@@ -217,7 +253,57 @@ export function JobMaterials() {
               >
                 − crate
               </button>
+              <button
+                className="button-like"
+                onClick={() => setSupplyOpen((v) => !v)}
+              >
+                {supplyOpen ? "Close" : "Log supplies…"}
+              </button>
             </div>
+            {/* Supplies thrown in with the glass (owner ask, 2026-08-26):
+                caulk in a crate becomes a pool row — "(in the crates)" —
+                counted down as it gets used, deleted when gone. */}
+            {supplyOpen && (
+              <div className="wh-row" style={{ marginTop: 6 }}>
+                <input
+                  value={supplyForm.name}
+                  onChange={(e) =>
+                    setSupplyForm((prev) => ({ ...prev, name: e.target.value }))
+                  }
+                  placeholder="What is it? (caulk, foam…)"
+                  aria-label="What supply rides in the crates"
+                  maxLength={40}
+                  style={{ width: 190 }}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={supplyForm.pieces}
+                  onChange={(e) =>
+                    setSupplyForm((prev) => ({ ...prev, pieces: e.target.value }))
+                  }
+                  aria-label="How many pieces"
+                  style={{ width: 70 }}
+                />
+                <button
+                  className="primary"
+                  disabled={
+                    addSupply.isPending ||
+                    !supplyForm.name.trim() ||
+                    !supplyForm.pieces.trim()
+                  }
+                  onClick={() =>
+                    addSupply.mutate({
+                      partType: supplyForm.name.trim().toLowerCase(),
+                      pieces: Number(supplyForm.pieces),
+                    })
+                  }
+                >
+                  {addSupply.isPending ? "Logging…" : "Add to the crates"}
+                </button>
+              </div>
+            )}
             {crates.length > 0 && (
               <p className="muted" style={{ margin: "4px 0 0", fontSize: 12 }}>
                 {crates.map((c, i) => (
