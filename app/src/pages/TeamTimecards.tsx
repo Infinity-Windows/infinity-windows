@@ -37,6 +37,8 @@ import {
   flaggedShifts,
   needsFinishTime,
   shiftGuard,
+  suspectReason,
+  suspectShifts,
 } from "../lib/shiftGuard";
 import { TimecardPanel } from "../components/timecard/TimecardPanel";
 import { ShiftEditor } from "../components/timecard/ShiftEditor";
@@ -130,6 +132,16 @@ export function TeamTimecards() {
   const runaways = useMemo(
     () => flaggedShifts(unfinished.data ?? [], Date.now()),
     [unfinished.data],
+  );
+  // T6: a data-sanity check on this week's already-closed punches, not a
+  // pay calculation — negative or >24h spans are almost always a typo or a
+  // bad edit. Scoped to the same week the rest of this page already loads
+  // (teamShifts), unlike the runaway list above, which deliberately ignores
+  // week boundaries because a shift with no clock_out_at yet has no stable
+  // week of its own to be found in.
+  const suspects = useMemo(
+    () => suspectShifts(teamShifts.data ?? []),
+    [teamShifts.data],
   );
   const weekSummary = useMemo(
     () => summarizeTeamWeek(teamShifts.data ?? []),
@@ -271,6 +283,34 @@ export function TeamTimecards() {
           </span>
         )}
       </div>
+
+      {suspects.length > 0 && (
+        <section className="detail-card" style={{ marginTop: 12 }}>
+          <h2 style={{ margin: 0, fontSize: 15 }}>
+            Suspect punches this week ({suspects.length})
+          </h2>
+          <p className="muted" style={{ margin: "2px 0 8px", fontSize: 12 }}>
+            Clock-out before clock-in, or a span over 24 hours — almost
+            always a typo or a bad edit, worth a second look before payroll.
+          </p>
+          <ul className="unit-list">
+            {suspects.map((s) => (
+              <li key={s.id} className="find-row">
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <strong>{s.profiles?.display_name ?? "Crew"}</strong>
+                  <div className="muted" style={{ fontSize: 11.5 }}>
+                    {s.projects?.job_code ?? "—"} · {fmtTime(s.clock_in_at)} –{" "}
+                    {fmtTime(s.clock_out_at)}
+                  </div>
+                </div>
+                <span className="tcx-chip bad">
+                  {suspectReason(s) === "negative" ? "negative duration" : "over 24h"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {runaways.length > 0 && (
         <section className="detail-card runaway-shifts" style={{ marginTop: 12 }}>
