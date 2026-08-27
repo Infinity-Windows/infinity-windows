@@ -14,6 +14,7 @@ import { isOwner, ROLE_LABELS, type CrewRole } from "../lib/install/types";
 import { roleRank } from "../lib/nav";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { RoleMaps } from "../components/RoleMaps";
+import { LogTodayChip } from "../components/dailyLogs/LogTodayChip";
 import { LiveSummonsStrip } from "../components/install/LiveSummonsStrip";
 import { TERMS } from "../lib/glossary";
 import { listMyProgress } from "../lib/learn";
@@ -261,6 +262,8 @@ export function Home() {
       <LiveSummonsStrip />
 
       <ToolboxTalkNagBanner profileId={profileId} clockedIn={isOnTheClock(openShift.data)} />
+
+      <LogTodayChip />
 
       {/* Nobody flashing while windows wait = installs stalled at the source. */}
       {(flashAlarms.data ?? []).map((a) => (

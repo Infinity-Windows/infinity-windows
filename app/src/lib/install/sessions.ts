@@ -26,6 +26,9 @@ export interface UnitSession {
   block_reason: string | null;
   block_issue_id: string | null;
   created_at: string;
+  /** The mark, joined in only by listProjectSessions (daily logs, L2) — every
+   * other reader here already has the opening in hand and has no use for it. */
+  opening?: { project_id: string; opening_code: string } | null;
 }
 
 function isMissingTableError(e: { code?: string; message?: string } | null): boolean {
@@ -93,11 +96,16 @@ export async function getMyOpenSession(profileId: string): Promise<UnitSession |
   return (data as UnitSession) ?? null;
 }
 
-/** A project's sessions (Dispatch's blocked strip and live cards). */
+/**
+ * A project's sessions (Dispatch's blocked strip and live cards, and the
+ * daily log draft's finished/still-open marks — L2). opening_code rides
+ * along in the join so a caller than needs the mark (not just the
+ * project-scoping filter) doesn't need a second query.
+ */
 export async function listProjectSessions(projectId: string): Promise<UnitSession[]> {
   const { data, error } = await supabase
     .from("unit_sessions")
-    .select("*, opening:project_openings!inner(project_id)")
+    .select("*, opening:project_openings!inner(project_id, opening_code)")
     .eq("opening.project_id", projectId)
     .order("started_at", { ascending: false })
     .limit(500);
@@ -165,6 +173,8 @@ export interface UnitRedo {
   pressed_at: string;
   resolved_at: string | null;
   presser?: { display_name: string | null } | null;
+  /** The mark — joined in only by listProjectRedosAll (daily logs, L2). */
+  opening?: { project_id: string; opening_code: string } | null;
 }
 
 /** The Redo button (CONTEXT.md): any installer, reason required, foreman
@@ -187,6 +197,25 @@ export async function listOpenRedos(projectId: string): Promise<UnitRedo[]> {
     )
     .eq("opening.project_id", projectId)
     .is("resolved_at", null);
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return (data ?? []) as unknown as UnitRedo[];
+}
+
+/**
+ * EVERY redo ever pressed on a project, resolved or not (the daily log
+ * draft's "redos filed that day" needs a redo pressed and fixed inside the
+ * same day just as much as one still open — listOpenRedos would drop it).
+ */
+export async function listProjectRedosAll(projectId: string): Promise<UnitRedo[]> {
+  const { data, error } = await supabase
+    .from("unit_redos")
+    .select(
+      "*, presser:profiles!unit_redos_pressed_by_fkey(display_name), opening:project_openings!inner(project_id, opening_code)",
+    )
+    .eq("opening.project_id", projectId)
+    .order("pressed_at", { ascending: false })
+    .limit(500);
   if (isMissingTableError(error)) return [];
   if (error) throw error;
   return (data ?? []) as unknown as UnitRedo[];

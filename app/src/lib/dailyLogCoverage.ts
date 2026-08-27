@@ -1,0 +1,83 @@
+// Wave L, L5: coverage for owners. Pure — the caller decides the time
+// window (this week for today's Heartbeat line, whatever range wave S's
+// later 70% gate needs) by pre-filtering what it hands in; this file only
+// does the ratio, so it stays reusable for both without becoming a second
+// place that knows what "this week" means.
+
+/** One job, one local day. A worked job-day is any shift/session on that
+ * job, that local day (spec's own definition) — the caller already reduced
+ * raw shifts/sessions down to this shape before calling coverage(). */
+export interface JobDay {
+  projectId: string;
+  logDate: string;
+}
+
+export interface JobCoverage {
+  projectId: string;
+  workedDays: number;
+  loggedDays: number;
+  /** logged over worked. 1 (fully covered) when there were no worked days
+   * at all — nothing to log is not the same as nothing logged. */
+  ratio: number;
+}
+
+export interface CoverageSummary {
+  workedDays: number;
+  loggedDays: number;
+  ratio: number;
+  perJob: JobCoverage[];
+}
+
+const KEY_SEP = "::";
+
+function dayKey(d: JobDay): string {
+  return d.projectId + KEY_SEP + d.logDate;
+}
+
+/**
+ * coverage(workedJobDays, logs) = logged job-days over worked job-days,
+ * overall and per job (spec). Both lists may repeat the same job-day (a
+ * job worked by three people that day is still ONE worked job-day) —
+ * de-duplication happens here so no caller has to get that right twice.
+ */
+export function coverage(workedJobDays: readonly JobDay[], logs: readonly JobDay[]): CoverageSummary {
+  const workedKeys = new Map<string, JobDay>();
+  for (const d of workedJobDays) workedKeys.set(dayKey(d), d);
+  const loggedKeys = new Set(logs.map(dayKey));
+
+  const perJobCounts = new Map<string, { worked: number; logged: number }>();
+  let loggedTotal = 0;
+  for (const [key, d] of workedKeys) {
+    const entry = perJobCounts.get(d.projectId) ?? { worked: 0, logged: 0 };
+    entry.worked += 1;
+    if (loggedKeys.has(key)) {
+      entry.logged += 1;
+      loggedTotal += 1;
+    }
+    perJobCounts.set(d.projectId, entry);
+  }
+
+  const workedTotal = workedKeys.size;
+  const perJob = [...perJobCounts.entries()]
+    .map(([projectId, { worked, logged }]) => ({
+      projectId,
+      workedDays: worked,
+      loggedDays: logged,
+      ratio: worked === 0 ? 1 : logged / worked,
+    }))
+    .sort((a, b) => a.projectId.localeCompare(b.projectId));
+
+  return {
+    workedDays: workedTotal,
+    loggedDays: loggedTotal,
+    ratio: workedTotal === 0 ? 1 : loggedTotal / workedTotal,
+    perJob,
+  };
+}
+
+/** "Logs: 4 of 6 worked days logged this week" — the count-first line the
+ * spec names verbatim. `period` names the window the caller pre-filtered
+ * to (today's Heartbeat surface always passes "this week"). */
+export function coverageLine(summary: Pick<CoverageSummary, "loggedDays" | "workedDays">, period = "this week"): string {
+  return "Logs: " + summary.loggedDays + " of " + summary.workedDays + " worked days logged " + period;
+}

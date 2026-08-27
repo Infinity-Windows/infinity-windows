@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, Plane, Truck } from "lucide-react";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { RoleMaps } from "../components/RoleMaps";
 import { LiveSummonsStrip } from "../components/install/LiveSummonsStrip";
+import { LogTodayChip } from "../components/dailyLogs/LogTodayChip";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
   findSpecsPlanset,
@@ -400,6 +401,7 @@ export function MyWork() {
         </div>
       </header>
       <LiveSummonsStrip />
+      <LogTodayChip />
       <p className="muted">
         {me.data?.display_name ? `${me.data.display_name} — ` : ""}do the top
         unit next; capture as you go.

@@ -58,6 +58,7 @@ import { SignatureEstimates } from "../components/install/SignatureEstimates";
 import { ScrollTabs } from "../components/nav/ScrollTabs";
 import { PhotoFeed } from "../components/photos/PhotoFeed";
 import { JobChat } from "../components/chat/JobChat";
+import { DailyLogsTab } from "../components/dailyLogs/DailyLogsTab";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
 import { formatApiError } from "../lib/errors";
 
@@ -73,7 +74,8 @@ type HubTab =
   | "dispatch"
   | "exceptions"
   | "photos"
-  | "chat";
+  | "chat"
+  | "logs";
 
 export function ProjectDetail() {
   const { projectId = "" } = useParams();
@@ -92,7 +94,7 @@ export function ProjectDetail() {
     // already hidden from non-leads, but a shared or bookmarked link went
     // straight through — the tab opened and its lead-gated content rendered
     // nothing, so the page was a header and empty space with no message.
-    (isLead && (tabParam === "dispatch" || tabParam === "exceptions")) ||
+    (isLead && (tabParam === "dispatch" || tabParam === "exceptions" || tabParam === "logs")) ||
     tabParam === "photos" ||
     tabParam === "chat"
       ? tabParam
@@ -119,6 +121,7 @@ export function ProjectDetail() {
   const TABS: { id: HubTab; label: string }[] = [
     { id: "overview", label: "Overview" },
     ...(isLead ? [{ id: "dispatch" as HubTab, label: "Dispatch" }] : []),
+    ...(isLead ? [{ id: "logs" as HubTab, label: "Logs" }] : []),
     { id: "warehouse", label: "Warehouse" },
     { id: "chat", label: "Chat" },
     { id: "photos", label: "Photos" },
@@ -307,6 +310,13 @@ export function ProjectDetail() {
       )}
 
       {tab === "dispatch" && isLead && <DispatchBoard projectId={projectId} />}
+
+      {tab === "logs" && isLead && (
+        <DailyLogsTab
+          projectId={projectId}
+          jobLabel={project?.job_code ?? project?.name ?? "this job"}
+        />
+      )}
 
       {tab === "photos" && (
         <PhotoFeed projectId={projectId} selectedJobCode={project?.job_code ?? null} />

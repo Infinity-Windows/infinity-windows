@@ -2625,6 +2625,24 @@ button:disabled {
   border-color: var(--danger);
 }
 
+/* The day-flow picker's middle option (Fine) — same idea as .selected.danger
+   above, warn instead of danger (wave L, L3). */
+.grade-btn.selected.warn {
+  background: var(--warn);
+  border-color: var(--warn);
+}
+
+/* Day-flow buttons (wave L) need their 48px glove target on every page the
+   "Log today" chip can open the filing dialog from — Home/My Work/
+   Heartbeat, none of which carry data-section="install" the way
+   ProjectDetail's own Logs tab does (that one already gets 48px for free
+   from the pick-9 rule below). Scoped to .grade-row so it changes nothing
+   for any other .grade-btn (every other user of this class today already
+   lives inside the install section anyway). */
+.grade-row .grade-btn {
+  min-height: 48px;
+}
+
 /* --- Before/after capture --- */
 
 .ba-grid {
@@ -10772,4 +10790,46 @@ button.stage-chip {
 .core-values-faded { opacity: 0; }
 @media (prefers-reduced-motion: reduce) {
   .core-values-inner { transition: none; }
+}
+
+/* A daily log's day-flow (wave L, L3): smooth=ok, fine=warn, stuck=danger —
+   same shape as .install-chip above, its own class because a day's
+   temperature is not an install state. */
+.dayflow-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 650;
+  line-height: 1.5;
+  white-space: nowrap;
+  font-family: var(--font-body);
+}
+.dayflow-chip[data-flow="smooth"] { background: var(--ok-bg); color: var(--ok); }
+.dayflow-chip[data-flow="fine"] { background: color-mix(in oklab, var(--warn) 16%, transparent); color: var(--warn); }
+.dayflow-chip[data-flow="stuck"] { background: color-mix(in oklab, var(--danger) 16%, transparent); color: var(--danger); }
+
+/* The "Log today · N" reminder (wave L, L4) — amber (--warn), same reuse-
+   the-tokens technique as the chips above. A real <button>, not a link:
+   tapping it opens a dialog over the page, never a navigation. min-height
+   only (no layout change on :hover — the RoleMap hover-oscillation lesson). */
+.log-today-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--warn) 45%, transparent);
+  background: color-mix(in oklab, var(--warn) 16%, transparent);
+  color: var(--warn);
+  font-weight: 700;
+  font-size: 13.5px;
+  font-family: var(--font-body);
+  cursor: pointer;
+  margin: 8px 0;
+}
+.log-today-chip:hover {
+  background: color-mix(in oklab, var(--warn) 24%, transparent);
 }
