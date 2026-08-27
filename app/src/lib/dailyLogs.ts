@@ -62,6 +62,25 @@ export async function listDailyLogs(projectId: string): Promise<DailyLog[]> {
   return (data ?? []) as unknown as DailyLog[];
 }
 
+/**
+ * Every job's logs whose log_date falls in [fromDate, toDate] inclusive —
+ * wave C's calendar day panel needs one date across every job, not one
+ * job's whole history (listDailyLogs above) or just which project ids
+ * logged today (listLoggedProjectIdsToday below). Fetched once per visible
+ * month and re-sliced per day by dayMemory.ts's own log_date filter.
+ * Foreman+ only see rows at all (RLS, Q7) — same as every other read here.
+ */
+export async function listDailyLogsForRange(fromDate: string, toDate: string): Promise<DailyLog[]> {
+  const { data, error } = await supabase
+    .from("daily_logs")
+    .select(LOG_SELECT)
+    .gte("log_date", fromDate)
+    .lte("log_date", toDate);
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return (data ?? []) as unknown as DailyLog[];
+}
+
 /** One job-day's log, or null if nobody has filed it yet. */
 export async function getDailyLog(projectId: string, logDate: string): Promise<DailyLog | null> {
   const { data, error } = await supabase

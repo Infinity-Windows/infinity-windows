@@ -377,7 +377,7 @@ export function AssignmentEditor({
             className={`sched-swatch${color === "" ? " is-picked" : ""}`}
             style={{ background: "var(--card-hot)" }}
             onClick={() => setColor("")}
-            aria-label="Auto color by crew"
+            aria-label="Auto color by job"
           >
             auto
           </button>

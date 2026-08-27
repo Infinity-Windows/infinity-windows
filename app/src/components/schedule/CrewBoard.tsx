@@ -22,7 +22,7 @@ import {
   type BoardChip,
   type BoardLane,
 } from "../../lib/schedule/board";
-import { assignmentColor } from "../../lib/schedule/color";
+import { calendarColorStyle } from "../../lib/schedule/jobHue";
 
 export interface ChipMove {
   chip: BoardChip;
@@ -120,7 +120,7 @@ export function CrewBoard({
           conflictIds.has(c.assignmentId) ? "conflict" : "",
           movable ? "movable" : "",
         ].join(" ")}
-        style={a ? { background: assignmentColor(a) } : undefined}
+        style={a ? calendarColorStyle(a) : undefined}
         title={
           movable
             ? "Tap to move · drag on desktop"
