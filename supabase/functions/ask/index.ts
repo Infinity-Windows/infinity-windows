@@ -10,9 +10,10 @@ import {
   ANTHROPIC_API_KEY,
   ANTHROPIC_MODEL,
   anthropicChat,
+  anthropicToolChat,
   type AnthropicUsage,
 } from "../_shared/anthropic.ts";
-import { verifyCaller } from "../_shared/auth.ts";
+import { callerSupabaseClient, verifyCaller } from "../_shared/auth.ts";
 import {
   notifyOwnersOfSpend,
   releaseAiSpend,
@@ -34,6 +35,40 @@ import {
   issuesScopeForRole,
   renderAppGuide,
 } from "../_shared/appGuide.ts";
+import { estimateJob, recommendCrew, type EstimateOpening, type TypeStat } from "../_shared/estimate.ts";
+import {
+  parseDateRangeInput,
+  parseDraftEntriesInput,
+  SCHEDULING_SYSTEM_PROMPT,
+  SCHEDULING_TOOLS,
+  schedulingRefusal,
+  type DraftEntry,
+} from "../_shared/schedulingTools.ts";
+
+// Wave A2: SCHEDULING_TOOLS is offered on EVERY ask call, to every caller — a
+// below-rank caller gets the same clean tool refusal a human trying a hidden
+// button would get, rather than the tools quietly not existing for them
+// (PERMISSION MIRROR).
+const SYSTEM_PROMPT = ASK_SYSTEM_PROMPT + SCHEDULING_SYSTEM_PROMPT;
+
+/** Plain progress lines for the doors (A4): what the Ask page shows while the
+ * model works, built from the tool calls it actually made. */
+function toolActivityLine(name: string, input: unknown): string {
+  switch (name) {
+    case "get_scheduling_picture":
+      return "Reading the week…";
+    case "draft_assignments": {
+      const n = Array.isArray((input as { entries?: unknown })?.entries)
+        ? ((input as { entries: unknown[] }).entries.length)
+        : 0;
+      return `Drafting ${n} assignment${n === 1 ? "" : "s"}…`;
+    }
+    case "clear_ai_drafts":
+      return "Clearing earlier AI drafts…";
+    default:
+      return "Working…";
+  }
+}
 
 interface HistoryTurn {
   role: string;
@@ -548,6 +583,529 @@ async function loadLiveContext(
   return live;
 }
 
+// ---------------------------------------------------------------------------
+// Wave A2: the scheduling toolset. Tool DEFINITIONS, the permission gate, and
+// pure input validation live in _shared/schedulingTools.ts (unit-tested).
+// What's here is the impure half — the actual queries and writes — kept in
+// this file for the same reason loadLiveContext above is: it needs a live
+// Supabase client, so it can't be pure-extracted, same split this file
+// already draws.
+//
+// Every query below runs on a client scoped to the CALLER's own JWT
+// (callerSupabaseClient), never the service-role key: RLS on
+// schedule_assignments/project_openings/projects/profiles/capability_badges
+// is "authenticated full access" (the trusted-crew pattern those tables all
+// share), so the my_role_rank() >= 2 check inside schedulingRefusal — run
+// against THIS caller's own auth.uid() — is the only thing actually gating
+// who can read or write through these tools. PERMISSION MIRROR: the AI holds
+// exactly the caller's own power, never more.
+// ---------------------------------------------------------------------------
+
+type SupabaseLike = ReturnType<typeof createClient>;
+
+/** The caller's own role_rank() (owner 3 / supervisor 2 / foreman 1 /
+ * installer 0), queried on the caller-scoped client so `auth.uid()` resolves
+ * to them. Degrades to 0 (installer floor) on any failure — never over-grant. */
+async function callerRank(client: SupabaseLike): Promise<number> {
+  try {
+    const { data, error } = await client.rpc("my_role_rank");
+    if (error || typeof data !== "number") return 0;
+    return data;
+  } catch (_e) {
+    return 0;
+  }
+}
+
+/** The board's own "foreman or installer" split for a schedule_assignment
+ * member (mirrors Scheduling.tsx's roleOf()) — a board role, not the
+ * organizational role_rank ladder. */
+function crewMemberRole(profileRole: string | null | undefined): "foreman" | "installer" {
+  switch (profileRole) {
+    case "foreman":
+    case "lead":
+    case "supervisor":
+    case "admin":
+    case "owner":
+    case "big_boss":
+      return "foreman";
+    default:
+      return "installer";
+  }
+}
+
+/** blue=window, green=door — mirrors loadLiveContext's own isDoor check
+ * above, kept as its own small copy rather than a shared extraction so this
+ * block stays self-contained (see the header note on scope). */
+function isDoorOpening(category: string | null | undefined, code: string | null | undefined): boolean {
+  return (category ?? "").toLowerCase().includes("door") || /^D\d/i.test(code ?? "");
+}
+
+interface OpeningForEstimate {
+  opening_code: string | null;
+  status: string | null;
+  window_type_id: string | null;
+  window_types: {
+    category?: string | null;
+    median_minutes?: number | null;
+    p90_minutes?: number | null;
+    difficulty_rating?: number | null;
+    learned_difficulty?: number | null;
+  } | null;
+}
+
+/**
+ * get_scheduling_picture's read: active jobs (remaining units by kind + the
+ * app's OWN day/crew estimate via lib/estimate.ts's estimateJob/
+ * recommendCrew — "the math the AI must surface, not reinvent"), the crew
+ * roster with capabilities/booked dates, saved crews, and this assistant's
+ * own existing drafts in range. Every block degrades to empty on its own
+ * failure, same style as loadLiveContext.
+ */
+async function buildSchedulingPicture(
+  client: SupabaseLike,
+  from: string,
+  to: string,
+): Promise<Record<string, unknown>> {
+  const picture: Record<string, unknown> = { range: { from, to } };
+
+  // -- Active jobs: remaining window/door counts + the app's own estimate.
+  try {
+    const { data: projectRows } = await client
+      .from("projects")
+      .select("id, job_code, name, address")
+      .eq("status", "active")
+      .order("job_code")
+      .limit(40);
+    const projects = (projectRows ?? []) as Array<{
+      id: string;
+      job_code: string;
+      name: string;
+      address: string | null;
+    }>;
+    const projectIds = projects.map((p) => p.id);
+
+    const openingsByProject = new Map<string, OpeningForEstimate[]>();
+    if (projectIds.length > 0) {
+      const { data: openingRows } = await client
+        .from("project_openings")
+        .select(
+          "project_id, opening_code, status, window_type_id, window_types(category, median_minutes, p90_minutes, difficulty_rating, learned_difficulty)",
+        )
+        .in("project_id", projectIds)
+        .is("removed_at", null)
+        .limit(5000);
+      for (const row of (openingRows ?? []) as Array<OpeningForEstimate & { project_id: string }>) {
+        const list = openingsByProject.get(row.project_id) ?? [];
+        list.push(row);
+        openingsByProject.set(row.project_id, list);
+      }
+    }
+
+    picture.active_jobs = projects.map((p) => {
+      const openings = openingsByProject.get(p.id) ?? [];
+      let windowCount = 0;
+      let doorCount = 0;
+      const statsByType = new Map<string, TypeStat>();
+      const estimateOpenings: EstimateOpening[] = [];
+      for (const o of openings) {
+        const installed = o.status === "installed";
+        if (!installed) {
+          if (isDoorOpening(o.window_types?.category, o.opening_code)) doorCount++;
+          else windowCount++;
+        }
+        estimateOpenings.push({ window_type_id: o.window_type_id, installed });
+        if (o.window_type_id && !statsByType.has(o.window_type_id)) {
+          statsByType.set(o.window_type_id, {
+            window_type_id: o.window_type_id,
+            median_minutes: o.window_types?.median_minutes ?? null,
+            p90_minutes: o.window_types?.p90_minutes ?? null,
+            difficulty: o.window_types?.learned_difficulty ?? o.window_types?.difficulty_rating ?? null,
+          });
+        }
+      }
+      const est = estimateJob(estimateOpenings, [...statsByType.values()]);
+      const crew = recommendCrew(est);
+      return {
+        id: p.id,
+        code: p.job_code,
+        name: p.name,
+        address: p.address,
+        remaining: { window: windowCount, door: doorCount },
+        estimate: {
+          remaining_openings: est.remaining,
+          expected_minutes: est.expectedMinutes,
+          p90_minutes: est.p90Minutes,
+          unknown_types: est.unknownTypes,
+          recommended_crew: crew.recommendedCrew,
+          crew_hours: crew.crewHours,
+          hours_to_finish: crew.hoursToFinish,
+        },
+      };
+    });
+  } catch (_e) {
+    picture.active_jobs = [];
+  }
+
+  // -- Crew roster: skill/role/active + capabilities + who's already booked.
+  try {
+    const { data: profileRows } = await client
+      .from("profiles")
+      .select("id, display_name, skill_level, role, active")
+      .order("display_name")
+      .limit(300);
+    const profiles = (profileRows ?? []) as Array<{
+      id: string;
+      display_name: string;
+      skill_level: number;
+      role: string;
+      active: boolean;
+    }>;
+
+    const capsByProfile = new Map<string, string[]>();
+    try {
+      const { data: badgeRows } = await client
+        .from("capability_badges")
+        .select("installer_id, capability")
+        .limit(2000);
+      for (const b of (badgeRows ?? []) as Array<{ installer_id: string; capability: string }>) {
+        const list = capsByProfile.get(b.installer_id) ?? [];
+        list.push(b.capability);
+        capsByProfile.set(b.installer_id, list);
+      }
+    } catch (_e) {
+      // no-op: capabilities unavailable
+    }
+
+    // Any non-canceled assignment overlapping the range counts as "booked" —
+    // draft or published alike, matching lib/schedule/conflicts.ts's own
+    // "everything currently in play" philosophy for double-booking.
+    const bookedByProfile = new Map<
+      string,
+      Array<{ job: string | null; start_date: string; end_date: string; status: string }>
+    >();
+    try {
+      const { data: assignmentRows } = await client
+        .from("schedule_assignments")
+        .select("id, start_date, end_date, status, projects(job_code), schedule_assignment_members(profile_id)")
+        .lte("start_date", to)
+        .gte("end_date", from)
+        .neq("status", "canceled")
+        .limit(2000);
+      for (const a of (assignmentRows ?? []) as Array<{
+        start_date: string;
+        end_date: string;
+        status: string;
+        projects: { job_code?: string } | null;
+        schedule_assignment_members: Array<{ profile_id: string }> | null;
+      }>) {
+        for (const m of a.schedule_assignment_members ?? []) {
+          const list = bookedByProfile.get(m.profile_id) ?? [];
+          list.push({
+            job: a.projects?.job_code ?? null,
+            start_date: a.start_date,
+            end_date: a.end_date,
+            status: a.status,
+          });
+          bookedByProfile.set(m.profile_id, list);
+        }
+      }
+    } catch (_e) {
+      // no-op: booked dates unavailable — the model reasons without them
+    }
+
+    picture.crew = profiles.map((p) => ({
+      id: p.id,
+      name: p.display_name,
+      skill_level: p.skill_level,
+      role: p.role,
+      active: p.active,
+      capabilities: capsByProfile.get(p.id) ?? [],
+      booked: bookedByProfile.get(p.id) ?? [],
+    }));
+  } catch (_e) {
+    picture.crew = [];
+  }
+
+  // -- Saved crews (wave A1): the AI's soft law is to keep these together.
+  try {
+    const { data } = await client
+      .from("saved_crews")
+      .select("id, name, member_ids, note")
+      .order("name")
+      .limit(100);
+    picture.saved_crews = data ?? [];
+  } catch (_e) {
+    picture.saved_crews = [];
+  }
+
+  // -- This assistant's own existing drafts in range (wave A3's created_via
+  // marker) — so a follow-up turn can see what it already proposed.
+  try {
+    const { data } = await client
+      .from("schedule_assignments")
+      .select("id, start_date, end_date, projects(job_code), schedule_assignment_members(profile_id)")
+      .eq("status", "draft")
+      .eq("created_via", "ai")
+      .lte("start_date", to)
+      .gte("end_date", from)
+      .limit(300);
+    picture.existing_ai_drafts = ((data ?? []) as Array<{
+      id: string;
+      start_date: string;
+      end_date: string;
+      projects: { job_code?: string } | null;
+      schedule_assignment_members: Array<{ profile_id: string }> | null;
+    }>).map((a) => ({
+      id: a.id,
+      job: a.projects?.job_code ?? null,
+      start_date: a.start_date,
+      end_date: a.end_date,
+      profile_ids: (a.schedule_assignment_members ?? []).map((m) => m.profile_id),
+    }));
+  } catch (_e) {
+    picture.existing_ai_drafts = [];
+  }
+
+  return picture;
+}
+
+/** One {start,end,project_id} span a profile is already committed to, from
+ * either the database or earlier in the SAME draft_assignments call. */
+interface BookedSpan {
+  start: string;
+  end: string;
+  project_id: string;
+}
+
+/**
+ * draft_assignments' write: one schedule_assignments row per entry — the
+ * board's own single-day/single-member draft unit (Scheduling.tsx's own
+ * createDayDraft makes the identical shape) — tagged created_via='ai'.
+ * Never publishes: status is always 'draft'.
+ */
+async function executeDraftAssignments(
+  client: SupabaseLike,
+  callerUid: string,
+  rawInput: unknown,
+): Promise<{ content: string; is_error?: boolean }> {
+  const parsed = parseDraftEntriesInput(rawInput);
+  if (parsed.formatError) return { content: parsed.formatError, is_error: true };
+
+  const results: Array<Record<string, unknown>> = parsed.errors.map((e) => ({
+    index: e.index,
+    ok: false,
+    reason: "invalid_entry",
+    detail: e.reason,
+  }));
+
+  if (parsed.entries.length === 0) {
+    return { content: JSON.stringify({ results, drafted: 0, refused: results.length }) };
+  }
+
+  const projectIds = [...new Set(parsed.entries.map((e: DraftEntry) => e.project_id))];
+  const profileIds = [...new Set(parsed.entries.map((e: DraftEntry) => e.profile_id))];
+
+  const { data: projectRows } = await client.from("projects").select("id").in("id", projectIds);
+  const knownProjects = new Set(((projectRows ?? []) as Array<{ id: string }>).map((p) => p.id));
+
+  const { data: profileRows } = await client
+    .from("profiles")
+    .select("id, role, active")
+    .in("id", profileIds);
+  const profileById = new Map(
+    ((profileRows ?? []) as Array<{ id: string; role: string; active: boolean }>).map((p) => [p.id, p]),
+  );
+
+  // Every non-canceled assignment that could touch this batch's dates.
+  const dates = parsed.entries.map((e) => e.date).sort();
+  const { data: existingRows } = await client
+    .from("schedule_assignments")
+    .select("id, project_id, start_date, end_date, schedule_assignment_members(profile_id)")
+    .lte("start_date", dates[dates.length - 1])
+    .gte("end_date", dates[0])
+    .neq("status", "canceled")
+    .limit(2000);
+  const bookedByProfile = new Map<string, BookedSpan[]>();
+  for (const a of (existingRows ?? []) as Array<{
+    project_id: string | null;
+    start_date: string;
+    end_date: string;
+    schedule_assignment_members: Array<{ profile_id: string }> | null;
+  }>) {
+    if (!a.project_id) continue;
+    for (const m of a.schedule_assignment_members ?? []) {
+      const list = bookedByProfile.get(m.profile_id) ?? [];
+      list.push({ start: a.start_date, end: a.end_date, project_id: a.project_id });
+      bookedByProfile.set(m.profile_id, list);
+    }
+  }
+  // Claims made earlier IN THIS SAME CALL — a batch must not double-book
+  // itself either.
+  const claimedThisCall = new Map<string, BookedSpan[]>();
+
+  let drafted = 0;
+  for (const entry of parsed.entries) {
+    if (!knownProjects.has(entry.project_id)) {
+      results.push({ ...entry, ok: false, reason: "unknown_project" });
+      continue;
+    }
+    const profile = profileById.get(entry.profile_id);
+    if (!profile || !profile.active) {
+      results.push({ ...entry, ok: false, reason: "unknown_profile" });
+      continue;
+    }
+
+    const spans = [...(bookedByProfile.get(entry.profile_id) ?? []), ...(claimedThisCall.get(entry.profile_id) ?? [])];
+    const covering = spans.find((s) => entry.date >= s.start && entry.date <= s.end);
+    if (covering && covering.project_id !== entry.project_id) {
+      results.push({ ...entry, ok: false, reason: "double_booked" });
+      continue;
+    }
+    if (covering) {
+      // Already scheduled on this exact job/day — idempotent, not a second
+      // stacked chip.
+      results.push({ ...entry, ok: true, note: "already scheduled" });
+      drafted++;
+      continue;
+    }
+
+    const { data: created, error: insertError } = await client
+      .from("schedule_assignments")
+      .insert({
+        project_id: entry.project_id,
+        start_date: entry.date,
+        end_date: entry.date,
+        status: "draft",
+        created_by: callerUid,
+        created_via: "ai",
+      })
+      .select("id")
+      .single();
+    if (insertError || !created) {
+      results.push({
+        ...entry,
+        ok: false,
+        reason: "write_failed",
+        detail: String((insertError as { message?: string } | null)?.message ?? "unknown error"),
+      });
+      continue;
+    }
+    const assignmentId = (created as { id: string }).id;
+    const { error: memberError } = await client.from("schedule_assignment_members").insert({
+      assignment_id: assignmentId,
+      profile_id: entry.profile_id,
+      role: crewMemberRole(profile.role),
+    });
+    if (memberError) {
+      // A memberless assignment renders nothing on the board either way;
+      // clean it up so it doesn't linger as an empty row.
+      await client.from("schedule_assignments").delete().eq("id", assignmentId);
+      results.push({
+        ...entry,
+        ok: false,
+        reason: "write_failed",
+        detail: String((memberError as { message?: string }).message ?? "unknown error"),
+      });
+      continue;
+    }
+    try {
+      await client
+        .from("schedule_events")
+        .insert({ assignment_id: assignmentId, actor: callerUid, kind: "created", payload: { ai: true } });
+    } catch (_e) {
+      // audit is optional, matches lib/schedule/api.ts's own logEvent
+    }
+
+    drafted++;
+    results.push({ ...entry, ok: true });
+    const claimed = claimedThisCall.get(entry.profile_id) ?? [];
+    claimed.push({ start: entry.date, end: entry.date, project_id: entry.project_id });
+    claimedThisCall.set(entry.profile_id, claimed);
+  }
+
+  return { content: JSON.stringify({ results, drafted, refused: results.length - drafted }) };
+}
+
+/** clear_ai_drafts' write: deletes ONLY status='draft' AND created_via='ai'
+ * rows in range — published rows and a human's own drafts are never even
+ * selected, let alone touched. Members cascade off the delete
+ * (schedule_assignment_members' own FK, unchanged since 20260721010000). */
+async function executeClearAiDrafts(
+  client: SupabaseLike,
+  callerUid: string,
+  from: string,
+  to: string,
+  projectId: string | null,
+): Promise<{ content: string; is_error?: boolean }> {
+  let query = client
+    .from("schedule_assignments")
+    .select("id")
+    .eq("status", "draft")
+    .eq("created_via", "ai")
+    .lte("start_date", to)
+    .gte("end_date", from);
+  if (projectId) query = query.eq("project_id", projectId);
+
+  const { data: rows, error } = await query;
+  if (error) return { content: "Couldn't read the existing drafts — try again.", is_error: true };
+
+  const ids = ((rows ?? []) as Array<{ id: string }>).map((r) => r.id);
+  if (ids.length === 0) return { content: JSON.stringify({ removed: 0 }) };
+
+  const { error: deleteError } = await client.from("schedule_assignments").delete().in("id", ids);
+  if (deleteError) return { content: "Couldn't clear the drafts — try again.", is_error: true };
+
+  for (const id of ids) {
+    try {
+      await client
+        .from("schedule_events")
+        .insert({ assignment_id: id, actor: callerUid, kind: "removed", payload: { ai: true } });
+    } catch (_e) {
+      // audit is optional
+    }
+  }
+
+  return { content: JSON.stringify({ removed: ids.length }) };
+}
+
+/** The executeTool dispatcher anthropicToolChat calls. One rank check up
+ * front covers all three tools (PERMISSION MIRROR); a tool that throws is
+ * caught here so a DB hiccup degrades to a plain retry line instead of
+ * taking the whole ask() request down. */
+function buildSchedulingExecutor(
+  client: SupabaseLike,
+  callerUid: string,
+  rank: number,
+): (name: string, input: unknown) => Promise<{ content: string; is_error?: boolean }> {
+  return async (name, input) => {
+    const refusal = schedulingRefusal(rank);
+    if (refusal) return { content: refusal };
+
+    try {
+      switch (name) {
+        case "get_scheduling_picture": {
+          const parsed = parseDateRangeInput(input);
+          if (parsed.formatError) return { content: parsed.formatError, is_error: true };
+          const picture = await buildSchedulingPicture(client, parsed.from, parsed.to);
+          return { content: JSON.stringify(picture) };
+        }
+        case "draft_assignments":
+          return await executeDraftAssignments(client, callerUid, input);
+        case "clear_ai_drafts": {
+          const parsed = parseDateRangeInput(input);
+          if (parsed.formatError) return { content: parsed.formatError, is_error: true };
+          return await executeClearAiDrafts(client, callerUid, parsed.from, parsed.to, parsed.projectId);
+        }
+        default:
+          return { content: `Unknown tool: ${name}`, is_error: true };
+      }
+    } catch (e) {
+      console.error("scheduling tool failed", name, e);
+      return { content: "Something went wrong reading or writing the schedule — try again.", is_error: true };
+    }
+  };
+}
+
 Deno.serve(async (req) => {
   const cors = corsHeaders(req);
   if (req.method === "OPTIONS") {
@@ -650,22 +1208,53 @@ Deno.serve(async (req) => {
       live = await loadLiveContext(supabase, userId);
     }
 
-    // (d) ground Claude with the assembled context.
+    // (d) ground Claude with the assembled context. Wave A2: the scheduling
+    // toolset is offered whenever the caller has a real JWT to scope a
+    // client to (never for a service_role/unconfigured caller, which keeps
+    // today's plain-chat behavior exactly). See the header comment above
+    // buildSchedulingExecutor for why THAT client, not the service-role one
+    // used above, is what makes the supervisor-rank gate real.
     const contextBlock = buildContextBlock(chunks, live);
     const messages = buildAnthropicMessages(
       history,
       buildAskUserMessage(question, contextBlock),
     );
+    const schedulingCallerId = userId && userId !== "service_role" ? userId : null;
+    const scopedClient = schedulingCallerId ? callerSupabaseClient(req) : null;
+
     let usage: AnthropicUsage | null = null;
     let answer: string;
+    let toolActivity: string[] = [];
     try {
-      answer = await anthropicChat({
-        system: ASK_SYSTEM_PROMPT,
-        messages,
-        onUsage: (u) => {
-          usage = u;
-        },
-      });
+      if (scopedClient && schedulingCallerId) {
+        const rank = await callerRank(scopedClient);
+        const result = await anthropicToolChat({
+          system: SYSTEM_PROMPT,
+          messages,
+          tools: SCHEDULING_TOOLS,
+          executeTool: buildSchedulingExecutor(scopedClient, schedulingCallerId, rank),
+        });
+        answer = result.text;
+        usage = result.usage;
+        toolActivity = result.toolCalls.map((c) => toolActivityLine(c.name, c.input));
+        if (!answer && result.truncated) {
+          // The round-trip ceiling hit mid-tool-use. Whatever draft_assignments
+          // already committed is real (each call writes as it goes) — it just
+          // never got narrated, so say that rather than hand back silence.
+          answer =
+            "I got partway through that plan and ran out of room to finish " +
+            "explaining it. Check Scheduling for what's drafted so far — " +
+            "nothing has published.";
+        }
+      } else {
+        answer = await anthropicChat({
+          system: ASK_SYSTEM_PROMPT,
+          messages,
+          onUsage: (u) => {
+            usage = u;
+          },
+        });
+      }
     } catch (e) {
       // Refund the money, keep the call count: a client stuck in a retry loop is
       // the runaway this guards against, and it must still run out of quota.
@@ -675,7 +1264,11 @@ Deno.serve(async (req) => {
     await settleAiSpend(meter, gate.reservationId, usage, ANTHROPIC_MODEL);
 
     return jsonResponse(
-      { answer, sources: dedupeSources(chunks) },
+      {
+        answer,
+        sources: dedupeSources(chunks),
+        ...(toolActivity.length > 0 ? { toolActivity } : {}),
+      },
       200,
       cors,
     );

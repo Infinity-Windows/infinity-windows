@@ -95,3 +95,29 @@ export async function requireCaller(
   }
   return null;
 }
+
+/**
+ * A Supabase client scoped to the CALLER's own JWT — never the service-role
+ * key — built exactly the way `verifyCaller` above builds its own internal
+ * client. `auth.uid()` inside any query/RPC made with this client resolves to
+ * the real caller, so role-gated RPCs like `my_role_rank()` and RLS policies
+ * apply natively instead of seeing nobody (which is what the service-role
+ * client's `auth.uid()` would resolve to).
+ *
+ * Introduced for wave A's scheduling tools (ask/index.ts): PERMISSION MIRROR
+ * means the AI must hold exactly the caller's own power, and the only way to
+ * ask the database "does THIS caller outrank a foreman" is to query as them.
+ *
+ * Returns null when unconfigured or there is no Authorization header to scope
+ * to — callers must treat null as "cannot act as this user", never fall back
+ * to an elevated client.
+ */
+export function callerSupabaseClient(req: Request): ReturnType<typeof createClient> | null {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  const authHeader = req.headers.get("Authorization") ?? "";
+  if (!authHeader) return null;
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
