@@ -870,7 +870,7 @@ export function Scheduling() {
       )}
       {assignments.isLoading ? (
         <SkeletonList rows={4} />
-      ) : loaded.length === 0 && view !== "timeline" && view !== "board" ? (
+      ) : loaded.length === 0 && view !== "timeline" && view !== "board" && view !== "month" ? (
         <EmptyState
           icon={<CalendarDays size={22} />}
           title="Nothing scheduled here yet"
