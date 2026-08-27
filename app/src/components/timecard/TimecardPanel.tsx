@@ -38,6 +38,7 @@ import {
 import { buildTimecardCsv, buildTimecardTsv } from "../../lib/timecardExport";
 import { PunchCard } from "./PunchCard";
 import { ShiftEditor, type CostOpt, type ProjectOpt } from "./ShiftEditor";
+import { PeriodSignOffStrip } from "./SignOffCard";
 import { fmtHours, fmtTime } from "./format";
 import { printTimesheet } from "./printTimesheet";
 import { sendPush } from "../../lib/permissions/pushServer";
@@ -406,6 +407,12 @@ export function TimecardPanel({
           </div>
         )}
       </div>
+
+      {/* T8: nothing shows until the worker signs, then a status line plus
+          a Countersign button for supervisors. */}
+      {mode === "pay" && (
+        <PeriodSignOffStrip periodStartIso={range.startIso} profileId={personId} isSup={isSup} />
+      )}
 
       {/* Entries strip */}
       <div className="tcx-entries-strip">

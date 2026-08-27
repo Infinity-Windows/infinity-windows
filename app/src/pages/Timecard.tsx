@@ -8,6 +8,7 @@ import { getMyProfile } from "../lib/install/api";
 import { getOpenShift, listCostCodes } from "../lib/timeclock";
 import { listProjects } from "../lib/api";
 import { TimecardPanel } from "../components/timecard/TimecardPanel";
+import { SignMyTimecardCard } from "../components/timecard/SignOffCard";
 
 export function Timecard() {
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
@@ -29,6 +30,7 @@ export function Timecard() {
         </div>
         <BackChip fallback="/" label="Home" />
       </header>
+      {me.data?.id && <SignMyTimecardCard profileId={me.data.id} />}
       {me.data?.id && (
         <TimecardPanel
           personId={me.data.id}

@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  addDays,
   breakTypeLabel,
   currentBreakSeconds,
   elapsedWorkSeconds,
   formatClock,
+  previousPayPeriod,
   punchDay,
   shiftHours,
   shiftsToExportRows,
   startOfWeekIso,
+  timecardRange,
   type TimeShift,
 } from "./timeclock";
 
@@ -124,6 +127,23 @@ describe("shiftsToExportRows (T7: one shared export mapping)", () => {
   it("defaults the fallback name to Crew when none is given", () => {
     const [row] = shiftsToExportRows([shift({})]);
     expect(row.employee).toBe("Crew");
+  });
+});
+
+describe("previousPayPeriod (T8 sign-off)", () => {
+  it("returns exactly the 14 days before the current period, never the running one", () => {
+    const anchor = new Date(2026, 0, 20); // inside the pay period starting Jan 19
+    const current = timecardRange("pay", anchor);
+    const prev = previousPayPeriod(anchor);
+    expect(prev.start.getTime()).toBeLessThan(current.start.getTime());
+    expect(addDays(prev.start, 14).getTime()).toBe(current.start.getTime());
+  });
+
+  it("agrees with timecardRange('pay', ...) for a date inside that prior period", () => {
+    const anchor = new Date(2026, 0, 20);
+    const prev = previousPayPeriod(anchor);
+    const recomputed = timecardRange("pay", addDays(prev.start, 3));
+    expect(recomputed.startIso).toBe(prev.startIso);
   });
 });
 

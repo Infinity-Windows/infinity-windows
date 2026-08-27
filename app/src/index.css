@@ -9633,6 +9633,9 @@ body {
 .tcx-chip.bad { border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.1); color: #f87171; }
 .tcx-chip.link { cursor: pointer; font: inherit; font-size: 10px; }
 
+/* T8: pay-period sign-off strip (TimecardPanel, pay mode) */
+.tcx-signoff { margin: 10px 0; }
+
 /* Hero (on the clock now) */
 .tcx-hero {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;

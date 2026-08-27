@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import type { GeoFix } from "./geo";
 import { sendPush } from "./permissions/pushServer";
+import { isMissingTable } from "./schemaErrors";
 import { isMissingClockInOverload, normalizeNote } from "./timeclockNote";
 import type { TimecardExportShift } from "./timecardExport";
 
@@ -795,6 +796,18 @@ export function timecardRange(mode: TimecardRangeMode, anchor: Date): WeekRange 
   return weekRange(anchor);
 }
 
+/**
+ * The most recently ENDED pay period relative to `anchor` — never the one
+ * still running. This is what the worker's "Sign my timecard" card offers:
+ * a period that is over has nothing left to add to it, so it is safe to
+ * attest to. `sign_my_timecard` also refuses server-side if a client ever
+ * sent an in-progress period anyway.
+ */
+export function previousPayPeriod(anchor: Date = new Date()): WeekRange {
+  const current = timecardRange("pay", anchor);
+  return timecardRange("pay", addDays(current.start, -1));
+}
+
 /** Days a timecard range covers, as local punch-day keys (YYYY-MM-DD). */
 export function rangeDays(range: WeekRange): string[] {
   const out: string[] = [];
@@ -809,4 +822,62 @@ export function punchDay(iso: string): string {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// ---------------------------------------------------------------------------
+// Pay-period sign-off (Wave T8) — layered on top of per-punch approval (Q5):
+// the worker signs their own two-Monday-week card once it has ended, a
+// supervisor countersigns afterward. `period_start` is always whatever this
+// module's own `timecardRange("pay", anchor).startIso` produced — see the
+// migration's comment for why the server never re-derives that grid itself.
+
+export interface TimecardPeriod {
+  id: string;
+  profile_id: string;
+  period_start: string;
+  employee_signed_at: string | null;
+  supervisor_signed_at: string | null;
+  supervisor_signed_by: string | null;
+  supervisor?: { display_name: string } | null;
+}
+
+/** One person's sign-off row for one period, or null if nobody has signed yet. */
+export async function getTimecardPeriod(
+  profileId: string,
+  periodStartIso: string,
+): Promise<TimecardPeriod | null> {
+  const { data, error } = await supabase
+    .from("timecard_periods")
+    .select(
+      "id, profile_id, period_start, employee_signed_at, supervisor_signed_at, supervisor_signed_by, supervisor:profiles!supervisor_signed_by(display_name)",
+    )
+    .eq("profile_id", profileId)
+    .eq("period_start", periodStartIso)
+    .maybeSingle();
+  // Not migrated in yet — no sign-off is the honest answer, not an error.
+  if (isMissingTable(error, "timecard_periods")) return null;
+  if (error) throw error;
+  return data as unknown as TimecardPeriod | null;
+}
+
+/** The worker's own attestation. Self-service — no reason, no lead gate. */
+export async function signMyTimecard(periodStartIso: string): Promise<TimecardPeriod> {
+  const { data, error } = await supabase.rpc("sign_my_timecard", {
+    p_period_start: periodStartIso,
+  });
+  if (error) throw error;
+  return data as TimecardPeriod;
+}
+
+/** Supervisor+ countersigns a period the crew member already signed. */
+export async function countersignTimecard(
+  profileId: string,
+  periodStartIso: string,
+): Promise<TimecardPeriod> {
+  const { data, error } = await supabase.rpc("countersign_timecard", {
+    p_profile_id: profileId,
+    p_period_start: periodStartIso,
+  });
+  if (error) throw error;
+  return data as TimecardPeriod;
 }
