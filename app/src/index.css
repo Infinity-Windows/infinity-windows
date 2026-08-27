@@ -10752,17 +10752,18 @@ button.stage-chip {
    2026-08-27). One slim line; existing tokens only, so both themes come
    free. The fade is opacity-only — nothing moves, nothing reflows. */
 .core-values-strip {
-  padding: 4px 16px 0;
-  font-size: 12.5px;
-  line-height: 1.4;
-  min-height: 22px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Bigger at the owner's ask (2026-08-27) — a value worth rotating is
+     worth reading across a tailgate. Wraps instead of clipping: no value
+     ever loses its second half to an ellipsis on a narrow phone. */
+  padding: 6px 16px 0;
+  font-size: 16px;
+  line-height: 1.35;
+  min-height: 28px;
 }
 .core-values-strip strong {
   color: var(--accent);
   font-family: var(--font-display);
+  font-size: 18px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
