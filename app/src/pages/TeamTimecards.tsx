@@ -328,15 +328,22 @@ export function TeamTimecards() {
                     className="row-gap"
                     style={{ flexBasis: "100%", flexWrap: "wrap", marginTop: 6 }}
                   >
-                    <button
-                      className="button-like active-pill"
-                      onClick={() => {
-                        setFinishingId(finishingId === s.id ? null : s.id);
-                        setZeroingId(null);
-                      }}
-                    >
-                      {finishingId === s.id ? "Close" : "Set finish time"}
-                    </button>
+                    {/* Q3: this reuses the full edit sheet (edit_shift), now
+                        supervisor+ only — a foreman keeps "No work was done"
+                        (close_shift_as_no_work, untouched) but no longer sees
+                        the edit-sheet path, so nobody hits a permission error
+                        clicking a button the page still showed them. */}
+                    {isSup && (
+                      <button
+                        className="button-like active-pill"
+                        onClick={() => {
+                          setFinishingId(finishingId === s.id ? null : s.id);
+                          setZeroingId(null);
+                        }}
+                      >
+                        {finishingId === s.id ? "Close" : "Set finish time"}
+                      </button>
+                    )}
                     <button
                       className="button-like"
                       onClick={() => {
@@ -348,7 +355,7 @@ export function TeamTimecards() {
                       {zeroingId === s.id ? "Cancel" : "No work was done"}
                     </button>
                   </div>
-                  {finishingId === s.id && (
+                  {finishingId === s.id && isSup && (
                     <div style={{ flexBasis: "100%" }}>
                       <ShiftEditor
                         mode="edit"

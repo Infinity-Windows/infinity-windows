@@ -573,7 +573,6 @@ export function TimecardPanel({
                       shift={s}
                       isLead={isLead}
                       isSup={isSup}
-                      canEdit={canEdit}
                       projects={projects}
                       costCodes={costCodes}
                       reject={{ ...reject, error: reject.error }}

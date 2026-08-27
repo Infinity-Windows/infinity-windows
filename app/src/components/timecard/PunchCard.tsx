@@ -20,13 +20,12 @@ interface PunchCardProps {
   shift: TimeShift;
   isLead: boolean;
   isSup: boolean;
-  canEdit: boolean;
   projects: ProjectOpt[];
   costCodes: CostOpt[];
   reject: { isPending: boolean; mutate: (args: { id: string; reason: string }) => void; error?: unknown };
 }
 
-export function PunchCard({ shift: s, isLead, isSup, canEdit, projects, costCodes, reject }: PunchCardProps) {
+export function PunchCard({ shift: s, isLead, isSup, projects, costCodes, reject }: PunchCardProps) {
   const [editing, setEditing] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -87,16 +86,23 @@ export function PunchCard({ shift: s, isLead, isSup, canEdit, projects, costCode
           {s.time_confirmed === false && (
             <span className="tcx-chip bad">time flagged by crew</span>
           )}
+          {/* Q3/T2: "edited by <name>" on the row itself, muted — not just a
+              generic "adjusted" flag. Supervisors get the same line as a
+              button that opens the full per-field history. */}
           {s.edited_by &&
             (isSup ? (
               <button
                 className="tcx-chip link"
                 onClick={() => setHistoryOpen((v) => !v)}
               >
-                adjusted · history
+                edited by {s.editor?.display_name ?? "someone"} · history
               </button>
             ) : (
-              <span className="tcx-chip">adjusted</span>
+              // .tcx-chip is muted-colored by default (index.css) — exactly
+              // the "edited by <name>" muted line T2 asked for.
+              <span className="tcx-chip">
+                edited by {s.editor?.display_name ?? "someone"}
+              </span>
             ))}
         </div>
         {historyOpen && isSup && <ShiftHistory shiftId={s.id} />}
@@ -132,10 +138,11 @@ export function PunchCard({ shift: s, isLead, isSup, canEdit, projects, costCode
 
         {/* Approval is WEEKLY (owner call, 2026-08-11) — the Approve-week
             button lives on the panel's total card. Reject stays per punch:
-            a bad punch is a specific punch. */}
-        {isLead && !voided && (
+            a bad punch is a specific punch. Edit is supervisor+ only (Q3) —
+            a plain foreman can still Reject, but not open the edit sheet. */}
+        {(isLead || isSup) && !voided && (
           <div className="row-gap tcx-punch-actions">
-            {s.status !== "rejected" && (
+            {isLead && s.status !== "rejected" && (
               <button
                 className="button-like"
                 onClick={() => {
@@ -146,12 +153,14 @@ export function PunchCard({ shift: s, isLead, isSup, canEdit, projects, costCode
                 Reject
               </button>
             )}
-            <button
-              className="button-like"
-              onClick={() => setEditing((v) => !v)}
-            >
-              {editing ? "Close" : "Edit"}
-            </button>
+            {isSup && (
+              <button
+                className="button-like"
+                onClick={() => setEditing((v) => !v)}
+              >
+                {editing ? "Close" : "Edit"}
+              </button>
+            )}
           </div>
         )}
         {rejecting && (
@@ -178,7 +187,7 @@ export function PunchCard({ shift: s, isLead, isSup, canEdit, projects, costCode
         {reject.error != null && (
           <p className="error">{formatApiError(reject.error)}</p>
         )}
-        {editing && canEdit && (
+        {editing && isSup && (
           <ShiftEditor
             mode="edit"
             shift={s}

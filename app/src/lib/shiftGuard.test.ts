@@ -5,6 +5,7 @@ import {
   checkFinishTime,
   describeDuration,
   describeFlaggedShift,
+  endFromDuration,
   finishTimeBounds,
   flaggedShifts,
   isUnfinished,
@@ -216,5 +217,29 @@ describe("finishTimeBounds", () => {
     const b = finishTimeBounds(shift, NOW);
     expect(b.min).toBe(toLocalInputValue(shift.clock_in_at));
     expect(b.max).toBe(toLocalInputValue(NOW));
+  });
+});
+
+describe("endFromDuration (T2 edit-sheet duration mode)", () => {
+  const clockIn = "2026-08-20T07:00:00.000Z";
+
+  it("adds the worked hours to the clock-in instant", () => {
+    expect(endFromDuration(clockIn, 8)).toBe("2026-08-20T15:00:00.000Z");
+  });
+
+  it("handles fractional hours down to the minute", () => {
+    expect(endFromDuration(clockIn, 8.25)).toBe("2026-08-20T15:15:00.000Z");
+  });
+
+  it("a zero duration ends exactly at the clock-in", () => {
+    expect(endFromDuration(clockIn, 0)).toBe(clockIn);
+  });
+
+  it("clamps a negative duration to zero rather than going backwards", () => {
+    expect(endFromDuration(clockIn, -3)).toBe(clockIn);
+  });
+
+  it("treats NaN as zero so a half-typed field never throws", () => {
+    expect(endFromDuration(clockIn, Number.NaN)).toBe(clockIn);
   });
 });

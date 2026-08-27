@@ -239,6 +239,24 @@ export function finishTimeBounds(
   return { min: toLocalInputValue(shift.clock_in_at), max: toLocalInputValue(now) };
 }
 
+/**
+ * Wave T2's edit-sheet "duration" mode: pick a clock-in and how many hours
+ * were worked, rather than a literal clock-out time, and let the sheet
+ * compute the finish time. Pure so it is unit-testable without a page
+ * render; the sheet is the only caller, but this has nothing to do with
+ * rendering, so it lives with the rest of the shift-time math.
+ *
+ * Negative durations clamp to zero rather than erroring — the input is a
+ * plain number field, and a momentarily-negative value while someone is
+ * still typing (e.g. "-" before "1.5" is corrected) should never crash a
+ * live preview.
+ */
+export function endFromDuration(clockInIso: string, durationHours: number): string {
+  const start = new Date(clockInIso).getTime();
+  const hours = Number.isFinite(durationHours) ? Math.max(0, durationHours) : 0;
+  return new Date(start + hours * 3600_000).toISOString();
+}
+
 /** ISO or epoch → the `YYYY-MM-DDTHH:MM` a datetime-local input wants. */
 export function toLocalInputValue(at: string | number): string {
   const d = new Date(at);

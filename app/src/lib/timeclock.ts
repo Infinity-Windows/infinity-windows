@@ -64,6 +64,8 @@ export interface TimeShift {
   projects?: { job_code: string; name: string } | null;
   cost_codes?: { code: string; label: string } | null;
   profiles?: { display_name: string } | null;
+  /** Who last edited this punch (Wave T2) — "edited by <name>" on the row. */
+  editor?: { display_name: string } | null;
 }
 
 /** A crew member's rolled-up week, for the team roster on the timecard page. */
@@ -91,9 +93,11 @@ export interface RecentJob {
 // points at four different people — whose shift it is, plus who approved,
 // edited and rejected it. Asking for a bare `profiles(...)` is ambiguous, and
 // PostgREST answers a 300 rather than guessing, which took the clock and the
-// whole timecard down until the hint was added.
+// whole timecard down until the hint was added. `editor` (via `edited_by`)
+// is the second of those four to get its own join, for the row-level
+// "edited by <name>" line (Wave T2).
 const SHIFT_SELECT =
-  "*, projects(job_code, name), cost_codes(code, label), profiles!profile_id(display_name)";
+  "*, projects(job_code, name), cost_codes(code, label), profiles!profile_id(display_name), editor:profiles!edited_by(display_name)";
 
 export async function listCostCodes(): Promise<CostCode[]> {
   const { data, error } = await supabase
@@ -328,12 +332,18 @@ export interface LeadShiftPatch {
   note?: string | null;
 }
 
-/** Lead adjusts an existing punch. Only the provided fields change. */
-export async function leadEditShift(
+/**
+ * Supervisor+ adjusts an existing punch (Q3: edit narrowed from foreman+ to
+ * supervisor+). Only the provided fields change. Editing an approved shift
+ * resets the approval, and re-approves it in the same save when the editor
+ * could have approved it themselves (Q4) — both server-enforced by
+ * `edit_shift`, not this wrapper.
+ */
+export async function editShift(
   shiftId: string,
   patch: LeadShiftPatch,
 ): Promise<TimeShift> {
-  const { data, error } = await supabase.rpc("lead_edit_shift", {
+  const { data, error } = await supabase.rpc("edit_shift", {
     p_shift_id: shiftId,
     p_project_id: patch.projectId ?? null,
     p_cost_code_id: patch.costCodeId ?? null,
