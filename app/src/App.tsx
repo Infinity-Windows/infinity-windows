@@ -109,6 +109,7 @@ import "./index.css";
 import { DataHub } from "./pages/DataHub";
 import { StgApp } from "./pages/stg/StgApp";
 import { useIsPartnerUser } from "./lib/stg";
+import { AccountBuilders } from "./pages/AccountBuilders";
 
 /**
  * Role-aware landing: installers land on My Work, foremen on the Infinity day
@@ -417,6 +418,10 @@ export default function App() {
             <Route
               path="/ai-spend"
               element={<RequireRole path="/ai-spend"><AiSpend /></RequireRole>}
+            />
+            <Route
+              path="/account/builders"
+              element={<RequireRole path="/account/builders"><AccountBuilders /></RequireRole>}
             />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/stuck" element={<StuckWrites />} />

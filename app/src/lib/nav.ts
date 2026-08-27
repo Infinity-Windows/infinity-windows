@@ -101,7 +101,9 @@ export type RoutePath =
   | "/toolbox-history"
   | "/stuck"
   | "/suggestions"
-  | "/settings";
+  | "/settings"
+  // Wave S: owner-only builder-login management (invite, grant/revoke jobs).
+  | "/account/builders";
 
 /**
  * Rollout flag. Flip to `false` to instantly revert to the previous flat nav
@@ -224,6 +226,10 @@ export const NAV: NavDest[] = [
   // Owner only.
   { id: "costing", to: "/costing", label: "Cost", icon: "$", minRole: "owner" },
   { id: "ai-spend", to: "/ai-spend", label: "AI spend", icon: "◍", minRole: "owner" },
+  // Wave S: inviting a builder login and granting jobs is the same kind of
+  // power as handing out a crew login (set_profile_role) — but a step
+  // further, since the person is outside the company. Owner-only (Q13).
+  { id: "account-builders", to: "/account/builders", label: "Builder logins", icon: "◈", minRole: "owner" },
 
   // Two real Horizon-menu destinations. Access still flows through this
   // registry so role-gating never drifts. Eight sibling stub entries (daily
@@ -472,6 +478,7 @@ const MENU_DEF: MenuSection[] = [
       // Importing window types is data admin, not warehouse work (ticket 08).
       { to: "/catalog", label: "Catalog", Icon: BookOpen },
       { to: "/admin", label: "Admin", Icon: ShieldCheck },
+      { to: "/account/builders", label: "Builder logins", Icon: KeyRound },
     ],
   },
 ];

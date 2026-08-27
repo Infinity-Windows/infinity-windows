@@ -82,6 +82,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Cost codes (`/cost-codes`)
 - Cost (`/costing`)
 - AI spend (`/ai-spend`)
+- Builder logins (`/account/builders`)
 
 ## Foreman
 
@@ -177,6 +178,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Cost codes (`/cost-codes`)
 - Cost (`/costing`)
 - AI spend (`/ai-spend`)
+- Builder logins (`/account/builders`)
 
 ## Supervisor
 
@@ -281,6 +283,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 
 - Cost (`/costing`)
 - AI spend (`/ai-spend`)
+- Builder logins (`/account/builders`)
 
 ## Owner
 
@@ -332,8 +335,9 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Settings (`/settings`)
 - Catalog (`/catalog`)
 - Admin (`/admin`)
+- Builder logins (`/account/builders`)
 
-**Can reach (all 49 allowed destinations):**
+**Can reach (all 50 allowed destinations):**
 
 - Home (`/`)
 - Time (`/clock`)
@@ -382,6 +386,7 @@ _Auto-generated from `app/src/lib/nav.ts`. Do not edit by hand — run `npx tsx 
 - Cost codes (`/cost-codes`)
 - Cost (`/costing`)
 - AI spend (`/ai-spend`)
+- Builder logins (`/account/builders`)
 - Photos & receipts (`/photos`)
 - Toolbox talk history (`/toolbox-history`)
 
