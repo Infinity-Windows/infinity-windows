@@ -138,6 +138,30 @@ Rationale: cohorts at the unit level are too sparse to trust. We may install thr
 - Splitting a unit's packages warns and is counted, never blocked — a frame on site while its glass waits is sometimes the job.
 - Burn is for labels that never lived; Reprint is for packages that did. One action covering both would eat history.
 
+## The daily log
+
+Settled 2026-08-26, wave L. One log tells one job's one day.
+
+**Daily Log** — one per job per day, filed by a foreman, upsertable by any
+foreman on that job (Q6: ONE shared log, not one per foreman — the row
+remembers who touched it last). The day's story: what got done, how the
+day flowed, anything worth words. Readable by foreman and up only;
+installers never see it — by RLS (Q7), not just a hidden tab. Starts as a
+draft that writes itself (headline, notes) from the job-day's shifts,
+sessions, and redos, fully editable before it's ever saved.
+
+**Day-flow** — Smooth / Fine / Stuck, the three-tap temperature of a day.
+Picking Fine or Stuck opens four optional one-line reflections (what went
+well, what went poorly, what would have helped, what's worth doing again);
+Smooth clears them at save. Never a second required field — notes is the
+Daily Log's only hard gate.
+
+**Log coverage** — logged worked-days ÷ all worked-days, overall or per
+job (a worked job-day is any shift or session on that job, that local
+day). Surfaced today as one line for owners on Heartbeat; wave S's later
+reviewer flow reads the same ratio at a 70% bar before it lets an outsider
+read anything a Daily Log says.
+
 ## Open questions
 
 None right now — the next ones come from building.
