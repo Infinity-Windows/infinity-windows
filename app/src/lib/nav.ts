@@ -404,6 +404,9 @@ const MENU_DEF: MenuSection[] = [
   },
   {
     title: "Problems & quality",
+    pill: true,
+    collapsible: true,
+    Icon: AlertTriangle,
     items: [
       { to: "/issues", label: "Issues", Icon: AlertTriangle },
       { to: "/service", label: "Service", Icon: Wrench },
@@ -412,6 +415,9 @@ const MENU_DEF: MenuSection[] = [
   },
   {
     title: "Fleet",
+    pill: true,
+    collapsible: true,
+    Icon: Truck,
     items: [
       { to: "/scheduling", label: "Scheduling", Icon: CalendarDays },
       { to: "/vehicles", label: "Vehicles", Icon: Truck },
@@ -421,6 +427,9 @@ const MENU_DEF: MenuSection[] = [
   },
   {
     title: "People",
+    pill: true,
+    collapsible: true,
+    Icon: Users,
     items: [
       { to: "/team", label: "Team", Icon: Users },
       { to: "/crew", label: "Roster", Icon: Users },
@@ -429,6 +438,9 @@ const MENU_DEF: MenuSection[] = [
   },
   {
     title: "Learning",
+    pill: true,
+    collapsible: true,
+    Icon: BookOpen,
     items: [
       { to: "/learn", label: "Learn", Icon: BookOpen },
       { to: "/points", label: "Points", Icon: Trophy },
@@ -438,6 +450,9 @@ const MENU_DEF: MenuSection[] = [
   },
   {
     title: "AI",
+    pill: true,
+    collapsible: true,
+    Icon: Sparkles,
     items: [
       { to: "/ask", label: "Ask", Icon: Sparkles },
       { to: "/knowledge", label: "AI Knowledge", Icon: BrainCircuit },
@@ -446,6 +461,9 @@ const MENU_DEF: MenuSection[] = [
   },
   {
     title: "Account",
+    pill: true,
+    collapsible: true,
+    Icon: SlidersHorizontal,
     items: [
       { to: "/notifications", label: "Notifications", Icon: Bell },
       { to: "/suggestions", label: "Suggestions", Icon: Lightbulb },
