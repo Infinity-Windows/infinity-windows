@@ -10970,6 +10970,45 @@ button.stage-chip {
 }
 .share-chip[data-shared="true"] { background: var(--ok-bg); color: var(--ok); }
 
+/* Wave S, S4: the STG "Calendar" tab's own simple month grid — deliberately
+   not a reuse of the crew Scheduling board's CSS, per the spec. */
+.stg-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.stg-cal-weekday {
+  text-align: center;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--muted-foreground);
+  padding: 4px 0;
+}
+.stg-cal-cell {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  font-family: var(--font-body);
+  cursor: pointer;
+  padding: 2px;
+}
+.stg-cal-cell[data-in-month="false"] { opacity: 0.4; }
+.stg-cal-cell[data-today="true"] { border-color: var(--accent); border-width: 2px; }
+.stg-cal-daynum { font-size: 12.5px; }
+.stg-cal-dots { display: flex; gap: 2px; }
+.stg-cal-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
 /* The "Log today · N" reminder (wave L, L4) — amber (--warn), same reuse-
    the-tokens technique as the chips above. A real <button>, not a link:
    tapping it opens a dialog over the page, never a navigation. min-height

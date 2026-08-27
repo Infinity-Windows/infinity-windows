@@ -90,4 +90,32 @@ describe("App.tsx route guards", () => {
     // Gating the route would dead-end the installer's core loop.
     expect(blocks.get("/storage/c/:id")).not.toContain("RequireRole");
   });
+
+  describe("wave S: the partner wall's frontend half (THE WALL #5)", () => {
+    it("mounts /stg/* outside the crew Layout entirely", () => {
+      // A partner's whole app has to render with zero chance of the crew
+      // Layout (nav, bottom bar, values strip) mounting first — which means
+      // this route cannot live as a child of the Layout route the way every
+      // crew screen does. It must be its own top-level <Route>.
+      expect(blocks.has("/stg/*")).toBe(true);
+      expect(blocks.get("/stg/*")).not.toContain("RequirePartnerElsewhere");
+      expect(blocks.get("/stg/*")).not.toContain("<Layout");
+    });
+
+    it("wraps the crew Layout route in RequirePartnerElsewhere", () => {
+      // The one path-less route (asserted above) is <Route element={...}>,
+      // where every crew screen lives as a child. Read straight from the
+      // full file rather than `blocks` (which only ever captured PATHED
+      // routes): the Layout route's own element prop is what has to carry
+      // the guard, or a partner's session mounts crew nav before anything
+      // gets a chance to redirect it away.
+      const src = readFileSync(APP_PATH, "utf8");
+      const layoutRouteMatch = /<Route element=\{<RequirePartnerElsewhere>[\s\S]*?<Layout\s*\/>[\s\S]*?<\/RequirePartnerElsewhere>\}>/;
+      expect(
+        layoutRouteMatch.test(src),
+        "expected <Route element={<RequirePartnerElsewhere><Layout /></RequirePartnerElsewhere>}> — " +
+          "found the pathless Layout route not wrapped in the partner guard",
+      ).toBe(true);
+    });
+  });
 });
