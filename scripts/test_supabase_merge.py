@@ -126,7 +126,10 @@ class TestSchemaParsing(unittest.TestCase):
         # DEDUP_KEYS. Verified by running this suite before and after adding
         # that migration.
         # +1: daily_logs (Wave L, L1 foreman daily logs, 20260949000000).
-        self.assertEqual(len(SCHEMA.tables), 107)
+        # +2: partner_job_grants + partner_invites (Wave S, S1 the partner
+        # wall, 20260950000000). The 20260949900000 delivery-set bugfix in
+        # between is a `create or replace function` only — no table.
+        self.assertEqual(len(SCHEMA.tables), 109)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
