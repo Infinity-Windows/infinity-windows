@@ -183,6 +183,11 @@ export function AccountBuilders() {
                       checked={granted}
                       disabled={toggleGrant.isPending}
                       onChange={() => toggleGrant.mutate({ partnerId: login.id, projectId: job.id, granted })}
+                      // Explicit accent-color, same reasoning as .tcx-removed-
+                      // toggle's own checkbox: without one, an unchecked box
+                      // renders filled-dark under this app's dark theme
+                      // instead of a plain outline.
+                      style={{ width: 16, height: 16, accentColor: "var(--accent)" }}
                     />
                     {job.name} <span className="muted">({job.job_code})</span>
                   </label>

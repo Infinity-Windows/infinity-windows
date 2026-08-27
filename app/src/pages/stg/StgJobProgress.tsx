@@ -42,7 +42,12 @@ export function StgJobProgress() {
 
   if (jobs.isLoading) return <SkeletonList rows={3} />;
   if (jobs.isError) return <QueryError error={jobs.error} onRetry={() => jobs.refetch()} />;
-  if (jobs.isSuccess && jobs.data.length === 0) {
+
+  // `?? []` rather than trusting isSuccess/a non-null assertion: a screen
+  // that briefly has no data to show should render empty, never crash the
+  // whole /stg shell (CLAUDE.md's own house rule — degrade, don't white-screen).
+  const list = jobs.data ?? [];
+  if (list.length === 0) {
     return (
       <EmptyState
         title="No jobs yet"
@@ -53,7 +58,7 @@ export function StgJobProgress() {
 
   return (
     <div className="unit-list work-list" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {jobs.data!.map((job) => (
+      {list.map((job) => (
         <JobCard key={job.id} job={job} />
       ))}
     </div>
