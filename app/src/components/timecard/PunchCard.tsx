@@ -5,10 +5,12 @@
 // the per-punch Approve / Reject / Edit actions live at the bottom edge.
 
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Coffee } from "lucide-react";
 import { formatApiError } from "../../lib/errors";
 import {
   elapsedWorkSeconds,
+  restoreShift,
   shiftHours,
   type TimeShift,
 } from "../../lib/timeclock";
@@ -26,10 +28,23 @@ interface PunchCardProps {
 }
 
 export function PunchCard({ shift: s, isLead, isSup, projects, costCodes, reject }: PunchCardProps) {
+  const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
+
+  // T3: the persistent restore path for the "Show removed" list, once the
+  // five-second Undo toast on the delete itself has already expired.
+  const restore = useMutation({
+    mutationFn: () => restoreShift(s.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["teamShifts"] });
+      qc.invalidateQueries({ queryKey: ["timecardMine"] });
+      qc.invalidateQueries({ queryKey: ["timecardPanel"] });
+      qc.invalidateQueries({ queryKey: ["unfinishedShifts"] });
+    },
+  });
 
   const voided = s.status === "voided";
   const open = !s.clock_out_at;
@@ -106,9 +121,28 @@ export function PunchCard({ shift: s, isLead, isSup, projects, costCodes, reject
             ))}
         </div>
         {historyOpen && isSup && <ShiftHistory shiftId={s.id} />}
-        {voided && s.edited_note && (
-          <div className="muted" style={{ fontSize: 11.5, fontStyle: "italic" }}>
-            Removed: “{s.edited_note}”
+        {voided && (
+          <div className="muted" style={{ fontSize: 11.5 }}>
+            <span style={{ fontStyle: "italic" }}>
+              Removed{s.voider?.display_name ? ` by ${s.voider.display_name}` : ""}
+              {(s.voided_reason ?? s.edited_note) &&
+                `: “${s.voided_reason ?? s.edited_note}”`}
+            </span>
+            {isSup && (
+              <button
+                className="button-like"
+                style={{ marginLeft: 8, fontSize: 11, padding: "1px 8px" }}
+                disabled={restore.isPending}
+                onClick={() => restore.mutate()}
+              >
+                {restore.isPending ? "Restoring…" : "Restore"}
+              </button>
+            )}
+            {restore.isError && (
+              <p className="error" style={{ margin: "2px 0 0" }}>
+                {formatApiError(restore.error)}
+              </p>
+            )}
           </div>
         )}
         {!voided && guard.flagged && (

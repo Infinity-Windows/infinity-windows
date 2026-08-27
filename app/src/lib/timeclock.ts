@@ -61,11 +61,22 @@ export interface TimeShift {
   rejected_by?: string | null;
   rejected_at?: string | null;
   reject_reason?: string | null;
+  /**
+   * Void (Wave T3): its own columns, deliberately separate from the
+   * edited_by/edited_at/edited_note trio above — a voided-and-later-edited
+   * (or edited-and-later-voided) punch must never leave only one note field
+   * to say which reason belongs to which action.
+   */
+  voided_at?: string | null;
+  voided_by?: string | null;
+  voided_reason?: string | null;
   projects?: { job_code: string; name: string } | null;
   cost_codes?: { code: string; label: string } | null;
   profiles?: { display_name: string } | null;
   /** Who last edited this punch (Wave T2) — "edited by <name>" on the row. */
   editor?: { display_name: string } | null;
+  /** Who voided this punch (Wave T3) — "voided by <name>" on the row. */
+  voider?: { display_name: string } | null;
 }
 
 /** A crew member's rolled-up week, for the team roster on the timecard page. */
@@ -94,10 +105,11 @@ export interface RecentJob {
 // edited and rejected it. Asking for a bare `profiles(...)` is ambiguous, and
 // PostgREST answers a 300 rather than guessing, which took the clock and the
 // whole timecard down until the hint was added. `editor` (via `edited_by`)
-// is the second of those four to get its own join, for the row-level
-// "edited by <name>" line (Wave T2).
+// and `voider` (via `voided_by`) are the second and third of those four to
+// get their own joins, for the row-level "edited by <name>" (T2) and
+// "voided by <name>" (T3) lines.
 const SHIFT_SELECT =
-  "*, projects(job_code, name), cost_codes(code, label), profiles!profile_id(display_name), editor:profiles!edited_by(display_name)";
+  "*, projects(job_code, name), cost_codes(code, label), profiles!profile_id(display_name), editor:profiles!edited_by(display_name), voider:profiles!voided_by(display_name)";
 
 export async function listCostCodes(): Promise<CostCode[]> {
   const { data, error } = await supabase
@@ -357,11 +369,6 @@ export async function editShift(
 }
 
 /**
- * Lead deletes a punch. Server-side this VOIDS, never erases: the shift
- * drops out of every list and total (status 'voided'), while the row and a
- * permanent audit entry with the required reason stay behind.
- */
-/**
  * Supervisor+ takes an approval back — reason required, hours untouched.
  * The punch returns to 'submitted' for normal re-approval.
  */
@@ -377,13 +384,34 @@ export async function unapproveShift(
   return data as TimeShift;
 }
 
-export async function leadVoidShift(
+/**
+ * Supervisor+ deletes a punch (Q3: void narrowed from foreman+, same as
+ * edit). Server-side this VOIDS, never erases: the shift drops out of every
+ * list and total (status 'voided'), while the row, its own voided_at/by/
+ * reason columns, and a permanent time_shift_edits entry stay behind — see
+ * migration 20260944000000.
+ */
+export async function voidShift(
   shiftId: string,
-  note: string,
+  reason: string,
 ): Promise<TimeShift> {
-  const { data, error } = await supabase.rpc("lead_void_shift", {
+  const { data, error } = await supabase.rpc("void_shift", {
     p_shift_id: shiftId,
-    p_note: note,
+    p_reason: reason,
+  });
+  if (error) throw error;
+  return data as TimeShift;
+}
+
+/**
+ * Undo for `voidShift` (Wave T3) — the five-second toast's inverse, and
+ * what the "Show removed" list's Restore button calls too. Never resurrects
+ * the old approval (see the migration's comment): a closed shift comes back
+ * 'submitted', an open one comes back 'open'.
+ */
+export async function restoreShift(shiftId: string): Promise<TimeShift> {
+  const { data, error } = await supabase.rpc("restore_shift", {
+    p_shift_id: shiftId,
   });
   if (error) throw error;
   return data as TimeShift;

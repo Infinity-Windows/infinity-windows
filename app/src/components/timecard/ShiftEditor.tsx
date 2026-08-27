@@ -7,11 +7,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "../../lib/errors";
 import { sendPush } from "../../lib/permissions/pushServer";
 import { endFromDuration } from "../../lib/shiftGuard";
+import { showUndoToast } from "../../lib/undoToast";
 import {
   editShift,
   leadAddShift,
-  leadVoidShift,
   listShiftEdits,
+  restoreShift,
+  voidShift,
   type TimeShift,
 } from "../../lib/timeclock";
 
@@ -135,8 +137,10 @@ export function ShiftEditor({
 
   // Delete = void, never erase: the punch leaves timecards and payroll, the
   // row and the reason stay in the audit log. Same required note as an edit.
+  // T3: the app-wide five-second Undo toast fires restoreShift — the same
+  // RPC the "Show removed" list's own Restore button calls later.
   const del = useMutation({
-    mutationFn: () => leadVoidShift(shift!.id, note.trim()),
+    mutationFn: () => voidShift(shift!.id, note.trim()),
     onSuccess: () => {
       // The crew member should hear it from the app, not from a short check.
       void sendPush({
@@ -148,6 +152,13 @@ export function ShiftEditor({
       });
       refresh();
       onDone();
+      showUndoToast({
+        message: "Punch deleted.",
+        undo: async () => {
+          await restoreShift(shift!.id);
+          refresh();
+        },
+      });
     },
   });
 
