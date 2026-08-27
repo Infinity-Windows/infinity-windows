@@ -5055,6 +5055,19 @@ button.clock-out {
   max-width: 82%;
 }
 
+/* Wave A4: the scheduling AI's plain progress trace ("Reading the week…"),
+   shown above the bubble it belongs to — same footprint as .ask-sources
+   below one, mirrored to the other side. */
+.ask-progress {
+  margin: 0 0 2px;
+  padding: 0 4px;
+  font-size: 11.5px;
+  max-width: 82%;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
 /* The other two answers the brain found. A keyword search is sometimes wrong,
    so the installer gets to pick rather than being handed one answer as gospel. */
 .ask-alternates {
@@ -7734,6 +7747,10 @@ body {
   box-shadow: var(--shadow-glow);
 }
 .sched-new { margin-left: auto; white-space: nowrap; }
+/* A4: "Plan with AI" sits next to New — same footprint, grouped with it on
+   the toolbar's right side rather than .sched-new's auto-margin leaving it
+   stranded on the left with the view tabs. */
+.sched-plan-ai { white-space: nowrap; }
 .sched-navrow { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
 
 .sched-tray {

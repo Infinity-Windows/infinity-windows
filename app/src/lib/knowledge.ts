@@ -75,6 +75,13 @@ export interface AskResult {
    */
   limited?: boolean;
   note?: string;
+  /**
+   * Wave A4: plain progress lines for any scheduling tools the model called
+   * along the way ("Reading the week…", "Drafting 6 assignments…") — built
+   * server-side from the tool calls it actually made. Absent when it called
+   * none, which is most questions.
+   */
+  toolActivity?: string[];
 }
 
 /** Ask the cloud `ask` function for a real, grounded answer. Throws on any
@@ -88,11 +95,15 @@ export async function askInfinity(
   });
   if (error) throw error;
   if (data?.error) throw new Error(String(data.error));
+  const toolActivity = Array.isArray(data?.toolActivity)
+    ? (data.toolActivity as unknown[]).filter((l): l is string => typeof l === "string")
+    : [];
   return {
     answer: String(data?.answer ?? "").trim(),
     sources: Array.isArray(data?.sources) ? (data.sources as KnowledgeSource[]) : [],
     ...(data?.limited ? { limited: true } : {}),
     ...(typeof data?.note === "string" && data.note ? { note: data.note } : {}),
+    ...(toolActivity.length > 0 ? { toolActivity } : {}),
   };
 }
 

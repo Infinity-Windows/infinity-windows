@@ -1,5 +1,6 @@
 import { BackChip } from "../components/BackChip";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Sparkles } from "lucide-react";
 import { supabaseConfigured } from "../lib/supabase";
 import { queryClient } from "../lib/queryClient";
@@ -23,6 +24,9 @@ interface ChatMsg {
   sources?: KnowledgeSource[];
   /** Answers from the local brain, each with where it came from. */
   hits?: BrainHit[];
+  /** Wave A4: plain progress lines for any scheduling tools the model called
+   * ("Reading the week…", "Drafting 6 assignments…"), shown above the answer. */
+  toolActivity?: string[];
 }
 
 /**
@@ -127,6 +131,17 @@ export function AskInfinity() {
   const [thinking, setThinking] = useState(false);
   const profile = queryClient.getQueryData<Profile>(["myProfile"]);
   const threadEnd = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+
+  // Wave A4: Scheduling's "Plan with AI" button seeds this page with a
+  // prompt naming the visible week — a PLACEHOLDER the owner edits before
+  // sending, never auto-sent on arrival. Runs once per navigation (a fresh
+  // `state` object each time React Router delivers one), so re-rendering
+  // this page for any other reason never stomps on something typed since.
+  useEffect(() => {
+    const seed = (location.state as { seed?: string } | null)?.seed;
+    if (typeof seed === "string" && seed) setInput(seed);
+  }, [location.state]);
 
   // Freshen the bundled catalog whenever there is signal. The brain answers
   // fine without this ever succeeding.
@@ -198,8 +213,8 @@ export function AskInfinity() {
       let limitNote: string | undefined;
       if (shouldUseLLM({ online, supabaseConfigured }) && isForemanPlus(profile?.role)) {
         try {
-          const { answer, sources, note } = await askInfinity(q, history);
-          if (answer) return { who: "infinity", text: answer, sources };
+          const { answer, sources, note, toolActivity } = await askInfinity(q, history);
+          if (answer) return { who: "infinity", text: answer, sources, toolActivity };
           limitNote = note;
         } catch {
           // Cloud unavailable — the honest local message below stands.
@@ -234,6 +249,17 @@ export function AskInfinity() {
       <div className="ask-thread">
         {messages.map((m, i) => (
           <div key={i} className={m.who === "me" ? "ask-msg mine" : "ask-msg"}>
+            {/* Wave A4: plain progress lines while the model worked (tool
+                calls already finished by the time this renders — the
+                request isn't streamed — but the trace still reads as "here's
+                what it did" ahead of the summary). */}
+            {m.toolActivity && m.toolActivity.length > 0 && (
+              <div className="ask-progress muted" aria-live="polite">
+                {m.toolActivity.map((line, idx) => (
+                  <div key={idx}>{line}</div>
+                ))}
+              </div>
+            )}
             <div
               className={m.who === "me" ? "ask-bubble mine" : "ask-bubble"}
               style={{ whiteSpace: "pre-line" }}
