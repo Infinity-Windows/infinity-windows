@@ -1,5 +1,6 @@
 import { BackChip } from "../components/BackChip";
 import { RoleMaps } from "../components/RoleMaps";
+import { LogTodayChip } from "../components/dailyLogs/LogTodayChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -107,6 +108,8 @@ export function Heartbeat() {
         </div>
         <BackChip fallback="/projects" label="Back" />
       </header>
+
+      <LogTodayChip />
 
       <p className="muted">
         Every active job at a glance — who's on what right now, how long, jobs

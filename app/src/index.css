@@ -10810,3 +10810,26 @@ button.stage-chip {
 .dayflow-chip[data-flow="smooth"] { background: var(--ok-bg); color: var(--ok); }
 .dayflow-chip[data-flow="fine"] { background: color-mix(in oklab, var(--warn) 16%, transparent); color: var(--warn); }
 .dayflow-chip[data-flow="stuck"] { background: color-mix(in oklab, var(--danger) 16%, transparent); color: var(--danger); }
+
+/* The "Log today · N" reminder (wave L, L4) — amber (--warn), same reuse-
+   the-tokens technique as the chips above. A real <button>, not a link:
+   tapping it opens a dialog over the page, never a navigation. min-height
+   only (no layout change on :hover — the RoleMap hover-oscillation lesson). */
+.log-today-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--warn) 45%, transparent);
+  background: color-mix(in oklab, var(--warn) 16%, transparent);
+  color: var(--warn);
+  font-weight: 700;
+  font-size: 13.5px;
+  font-family: var(--font-body);
+  cursor: pointer;
+  margin: 8px 0;
+}
+.log-today-chip:hover {
+  background: color-mix(in oklab, var(--warn) 24%, transparent);
+}

@@ -33,3 +33,26 @@ export function formatLogDateLabel(logDate: string): string {
     year: "numeric",
   });
 }
+
+/**
+ * The "Log today · N" chip's count, and which job(s) tapping it opens
+ * (L4): jobs worked today with no daily_logs row yet for today. Pure set
+ * difference — the caller (dailyLogs.ts's jobsNeedingLogToday) already
+ * bucketed both lists to today by local day before calling this.
+ * Order-preserving and de-duplicated, so a job with both a shift and a
+ * session today appears once, in the order it was first seen.
+ */
+export function jobsNeedingLog(
+  workedProjectIds: readonly string[],
+  loggedProjectIds: readonly string[],
+): string[] {
+  const logged = new Set(loggedProjectIds);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of workedProjectIds) {
+    if (logged.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}

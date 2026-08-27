@@ -4,9 +4,11 @@
 // to bypass its validation.
 
 import { supabase } from "./supabase";
-import { punchDay } from "./timeclock";
+import { listProjects } from "./api";
+import { listTeamShifts, punchDay } from "./timeclock";
 import { listProjectRedosAll, listProjectSessions } from "./install/sessions";
 import { buildDailyLogDraft, type DailyLogDraft } from "./dailyLogDraft";
+import { jobsNeedingLog, localDateISO } from "./dailyLogDay";
 
 export interface DailyLogReflection {
   went_well?: string;
@@ -170,4 +172,71 @@ export async function buildDraftForJobDay(projectId: string, logDate: string): P
         reason: r.reason,
       })),
   });
+}
+
+// ------------------------------------------------------ L4: the today chip
+
+export interface JobNeedingLog {
+  projectId: string;
+  jobCode: string;
+  name: string;
+}
+
+/** Every project with a unit_sessions row today, project-wide (the chip has
+ * to see every job, not one) — minimal columns, just enough to bucket by
+ * project and by local day. */
+async function listSessionProjectIdsToday(startIso: string, endIso: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("unit_sessions")
+    .select("opening:project_openings!inner(project_id)")
+    .gte("started_at", startIso)
+    .lt("started_at", endIso);
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return ((data ?? []) as unknown as { opening: { project_id: string } | null }[])
+    .map((r) => r.opening?.project_id)
+    .filter((id): id is string => Boolean(id));
+}
+
+async function listLoggedProjectIdsToday(logDate: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("daily_logs")
+    .select("project_id")
+    .eq("log_date", logDate);
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return ((data ?? []) as { project_id: string }[]).map((r) => r.project_id);
+}
+
+/**
+ * The "Log today · N" chip's data (L4): active jobs worked today (any
+ * shift or session, by anyone — Q6's ONE shared log per job means the chip
+ * is not scoped to "installers who report to me", a hierarchy this app has
+ * no table for) with no daily_logs row yet for today. Foreman+ only surface
+ * — the caller (LogTodayChip) gates rendering on role; the underlying
+ * shift/session reads are already open to any authenticated role (same as
+ * every other crew-wide time read in this app), so there is nothing here
+ * for RLS to block the way daily_logs' own SELECT policy blocks reading
+ * logs themselves.
+ */
+export async function jobsNeedingLogToday(): Promise<JobNeedingLog[]> {
+  const logDate = localDateISO();
+  const { startIso, endIso } = localDayBounds(logDate);
+
+  const [active, teamShifts, sessionProjectIds, loggedProjectIds] = await Promise.all([
+    listProjects(),
+    listTeamShifts(startIso, endIso),
+    listSessionProjectIdsToday(startIso, endIso),
+    listLoggedProjectIdsToday(logDate),
+  ]);
+
+  const workedProjectIds = [
+    ...teamShifts.map((s) => s.project_id).filter((id): id is string => Boolean(id)),
+    ...sessionProjectIds,
+  ];
+  const needIds = new Set(jobsNeedingLog(workedProjectIds, loggedProjectIds));
+
+  return active
+    .filter((p) => needIds.has(p.id))
+    .map((p) => ({ projectId: p.id, jobCode: p.job_code, name: p.name }));
 }
