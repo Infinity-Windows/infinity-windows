@@ -619,6 +619,10 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # Email IS the primary key — an invite is identified by the address it
     # was sent to (Wave S, S1, 20260950000000).
     "partner_invites": ("email",),
+    # token IS the primary key — an opaque bearer credential, not a natural
+    # key in the usual sense, but UNIQUE by construction and the only handle
+    # anything has on one row (Wave S, S6 stretch, 20260953000000).
+    "calendar_feed_tokens": ("token",),
 }
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.

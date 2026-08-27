@@ -129,7 +129,10 @@ class TestSchemaParsing(unittest.TestCase):
         # +2: partner_job_grants + partner_invites (Wave S, S1 the partner
         # wall, 20260950000000). The 20260949900000 delivery-set bugfix in
         # between is a `create or replace function` only — no table.
-        self.assertEqual(len(SCHEMA.tables), 109)
+        # +1: calendar_feed_tokens (Wave S, S6 stretch, shipped partial —
+        # table + self-service RPCs only, no edge function yet;
+        # 20260953000000).
+        self.assertEqual(len(SCHEMA.tables), 110)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

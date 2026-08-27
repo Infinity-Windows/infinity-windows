@@ -12,6 +12,7 @@ import { stgCalendar, stgJobList, type StgCalendarEntry } from "../../lib/stg";
 import { localDateISO } from "../../lib/dailyLogDay";
 import { jobHue } from "./jobHue";
 import { StgDayPanel } from "./StgDayPanel";
+import { StgSubscribeCard } from "./StgSubscribeCard";
 
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
 
@@ -162,6 +163,8 @@ export function StgCalendarTab() {
           })}
         </div>
       )}
+
+      <StgSubscribeCard />
 
       {chooserDate && (
         <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={() => setChooserDate(null)}>
