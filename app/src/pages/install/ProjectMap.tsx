@@ -32,6 +32,7 @@ import {
   VOIDED_RING_COLOR,
 } from "../../components/install/OpeningDetailCard";
 import { ConfirmDanger } from "../../components/ConfirmDanger";
+import { EmptyState } from "../../components/ui/States";
 import { OpeningRowButton } from "../../components/install/OpeningRowButton";
 import { InstallChip } from "../../components/install/InstallChip";
 import {
@@ -2474,7 +2475,18 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           );
         })}
         {filtered.length === 0 && all.length > 0 && (
-          <p className="muted">No openings match this filter.</p>
+          <EmptyState
+            title="No openings match this filter."
+            action={
+              <button
+                type="button"
+                className="button-like active-pill"
+                onClick={() => setFilter("all")}
+              >
+                Clear filter
+              </button>
+            }
+          />
         )}
         {all.length === 0 && (
           <p className="muted">

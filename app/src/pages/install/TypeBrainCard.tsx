@@ -11,6 +11,7 @@ import {
 import { formatApiError } from "../../lib/install/errors";
 import { MEMO_TOPICS, isForemanPlus } from "../../lib/install/types";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
+import { EmptyState } from "../../components/ui/States";
 import type { HowtoStep } from "../../lib/types";
 
 export function TypeBrainCard() {
@@ -293,10 +294,16 @@ export function TypeBrainCard() {
 
       <h2>Recent install notes</h2>
       {s.recent.length === 0 && (
-        <p className="muted">
-          No installs captured yet for this type. Every memo the crew records
-          lands here.
-        </p>
+        // Style-only (pick 15): this card is type-scoped, not job-scoped —
+        // window_types and its install_events span every job that has ever
+        // used the type, and the route carries no projectId at all. There is
+        // no single "this job's openings of that type" to link to, and no
+        // project to filter a map by, so neither suggested action is
+        // cheaply available here.
+        <EmptyState
+          title="No installs captured yet for this type."
+          message="Every memo the crew records lands here."
+        />
       )}
       <ul className="unit-list">
         {s.recent.map((e) => (

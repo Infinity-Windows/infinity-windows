@@ -85,3 +85,21 @@ test('a stored "3d" preference lands on flat, and the toggle never offers 3D', a
     .poll(() => page.evaluate(() => localStorage.getItem("infinity.mapsView")))
     .toBe("flat");
 });
+
+test("the old bare /map bookmark lands on the merged Maps tab (pick 13)", async ({
+  page,
+}) => {
+  // /projects/:id/map used to render the map page directly; it is a bare
+  // redirect now, into the same ?tab=map legacy deep link the other 8 links
+  // to the 2D map already use (ProjectDetail's own shim carries it the rest
+  // of the way to ?tab=maps-interactive&mapview=sheets).
+  await useSupabaseFixtures(page, { role: "foreman" });
+
+  await page.goto(`/projects/${BLACK22.projectId}/map`);
+
+  await expect(page.getByRole("button", { name: "Maps Interactive" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(page).toHaveURL(/tab=maps-interactive/);
+});

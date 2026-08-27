@@ -72,7 +72,6 @@ const StudioProjectRoute = lazy(() =>
 import { FlashRun } from "./pages/install/FlashRun";
 import { JobModelViewer } from "./pages/install/JobModelViewer";
 import { PlansetUpload } from "./pages/install/PlansetUpload";
-import { ProjectMap } from "./pages/install/ProjectMap";
 import { TypeBrainCard } from "./pages/install/TypeBrainCard";
 import { CatalogImport } from "./pages/CatalogImport";
 import { Crew } from "./pages/Crew";
@@ -453,9 +452,13 @@ export default function App() {
             <Route path="/projects" element={<Projects />} />
             <Route path="/jobs/history" element={<JobHistory />} />
             <Route path="/projects/:projectId" element={<ProjectDetail />} />
+            {/* Bare /map bookmarks and links → the merged Maps tab. Same
+                machinery as the /install/:projectId legacy redirects below:
+                ?tab=map is the address ProjectDetail already treats as a
+                legacy deep link, landing on the merged tab's Sheets view. */}
             <Route
               path="/projects/:projectId/map"
-              element={<ProjectMap />}
+              element={<LegacyInstallRedirect suffix="?tab=map" />}
             />
             <Route
               path="/projects/:projectId/upload"
