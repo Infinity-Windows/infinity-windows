@@ -1,10 +1,18 @@
 // Wave C: the calendar that remembers. Pins the day panel's render from
 // mocked routes — no live Supabase, same idiom as daily-logs.spec.ts.
-// useSupabaseFixtures covers auth/profiles' shared defaults; schedule_
-// assignments/time_shifts/unit_sessions/daily_logs are overridden here
-// since the shared router has no opinion about scheduling data.
+// useSupabaseFixtures covers auth's shared defaults; profiles/projects/
+// schedule_assignments/time_shifts/unit_sessions/daily_logs are overridden
+// here since the shared router either has no opinion about scheduling data,
+// or (profiles) needs a roster wider than its own canned fixture file.
+//
+// The foreman-vs-installer role gate (canSeeHours) is NOT exercised here on
+// purpose: /scheduling's route guard is minRole "foreman" (lib/nav.ts), and
+// RequireRole gates on the EFFECTIVE (preview-aware) role too — so neither a
+// real installer login nor a supervisor previewing as installer can ever
+// reach this page. There is nothing for an e2e spec to drive; see
+// DayPanel.test.tsx for the canSeeHours prop itself, pinned directly.
 import { expect, test, type Page, type Route } from "@playwright/test";
-import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
+import { jobFixtures, TEST_USER, useSupabaseFixtures } from "./support/supabaseFixtures";
 
 const BLACK22 = jobFixtures().find((j) => j.jobCode === "BLACK22")!;
 const OAKRIDGE = jobFixtures().find((j) => j.jobCode === "OAKRIDGE")!;
@@ -12,6 +20,12 @@ const OAKRIDGE = jobFixtures().find((j) => j.jobCode === "OAKRIDGE")!;
 const PROJECTS = [
   { id: BLACK22.projectId, job_code: "BLACK22", name: "Black Desert", address: null, status: "active" },
   { id: OAKRIDGE.projectId, job_code: "OAKRIDGE", name: "Oak Ridge", address: null, status: "active" },
+];
+
+const CREW = [
+  { id: "e2e-ammon", display_name: "Ammon", skill_level: 3, role: "installer", active: true },
+  { id: "e2e-jess", display_name: "Jess", skill_level: 3, role: "installer", active: true },
+  { id: "e2e-taylor", display_name: "Taylor", skill_level: 3, role: "installer", active: true },
 ];
 
 /** "N days ago" as a local YYYY-MM-DD, built the same way Scheduling.tsx's
@@ -48,7 +62,45 @@ function jsonRoute(route: Route, body: unknown, rows = 0) {
   });
 }
 
-async function useCalendarFixtures(page: Page) {
+/** `?id=eq.<uuid>` → "<uuid>" — mirrors supabaseFixtures.ts's own private
+ * helper (not exported), needed again here to override `profiles`. */
+function eqParam(url: URL, key: string): string | null {
+  const raw = url.searchParams.get(key);
+  if (!raw) return null;
+  return raw.startsWith("eq.") ? raw.slice(3) : raw;
+}
+
+function wantsSingleObject(route: Route): boolean {
+  const accept = route.request().headers()["accept"] ?? "";
+  return accept.includes("pgrst.object");
+}
+
+async function useCalendarFixtures(page: Page, role: "foreman" | "supervisor" | "owner") {
+  // The shared fixture router's own `profiles` case only ever serves the
+  // canned profiles.json roster plus the signed-in test user — it has no
+  // way to know about Ammon/Jess/Taylor, so getMyProfile/listProfiles both
+  // need this override (same id-filter / single-object shape as the
+  // default case, just with a wider roster).
+  const me = {
+    id: TEST_USER.id,
+    display_name: "E2E Fixture",
+    skill_level: 3,
+    role,
+    active: true,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+  await page.route("**/rest/v1/profiles**", (route) => {
+    const url = new URL(route.request().url());
+    const all = [me, ...CREW];
+    const id = eqParam(url, "id");
+    const rows = id ? all.filter((p) => p.id === id) : all;
+    if (wantsSingleObject(route)) {
+      return jsonRoute(route, rows[0] ?? null, rows.length ? 1 : 0);
+    }
+    return jsonRoute(route, rows, rows.length);
+  });
+
   await page.route("**/rest/v1/projects**", (r) => jsonRoute(r, PROJECTS, PROJECTS.length));
 
   const assignments = [
@@ -188,7 +240,7 @@ async function openMonthDay(page: Page, dateISO: string) {
 
 test("a foreman taps a past day and sees the honest diff plus the filed log", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "foreman" });
-  await useCalendarFixtures(page);
+  await useCalendarFixtures(page, "foreman");
 
   await page.goto("/scheduling");
   await openMonthDay(page, TEST_DATE);
@@ -203,8 +255,11 @@ test("a foreman taps a past day and sees the honest diff plus the filed log", as
   await expect(dialog.getByText("Ammon — 8h")).toBeVisible();
   await expect(dialog.getByText("Taylor — 4h")).toBeVisible();
 
-  // The filed log's own block, not the auto fallback line.
-  await expect(dialog.getByText("Smooth")).toBeVisible();
+  // The filed log's own block, not the auto fallback line. Exact match on
+  // the day-flow chip — Playwright's text matching is case-insensitive by
+  // default, and "Smooth" is otherwise a substring of the headline below
+  // ("...smooth day").
+  await expect(dialog.getByText("Smooth", { exact: true })).toBeVisible();
   await expect(dialog.getByText("2 units in, smooth day")).toBeVisible();
   await expect(dialog.getByText("Crew moved fast, no issues.")).toBeVisible();
   await expect(dialog.getByText("Assigned, but no crew punched in.")).toHaveCount(0);
@@ -215,7 +270,7 @@ test("a foreman taps a past day and sees the honest diff plus the filed log", as
 
 test("a foreman taps a day where crew was assigned but nobody punched in", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "foreman" });
-  await useCalendarFixtures(page);
+  await useCalendarFixtures(page, "foreman");
 
   await page.goto("/scheduling");
   await openMonthDay(page, FALLBACK_DATE);
@@ -225,17 +280,4 @@ test("a foreman taps a day where crew was assigned but nobody punched in", async
   await expect(dialog.getByText("Taylor", { exact: true })).toBeVisible();
   await expect(dialog.getByText("Nobody punched in")).toBeVisible();
   await expect(dialog.getByText("Assigned, but no crew punched in.")).toBeVisible();
-});
-
-test("an installer sees names only — no hours, no Logs tab-through", async ({ page }) => {
-  await useSupabaseFixtures(page, { role: "installer" });
-  await useCalendarFixtures(page);
-
-  await page.goto("/scheduling");
-  await openMonthDay(page, TEST_DATE);
-
-  const dialog = page.getByRole("dialog");
-  await expect(dialog.getByText("Ammon", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("Ammon — 8h")).toHaveCount(0);
-  await expect(dialog.getByRole("link", { name: "Open the Logs tab" })).toHaveCount(0);
 });
