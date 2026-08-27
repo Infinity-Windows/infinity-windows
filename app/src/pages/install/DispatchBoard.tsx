@@ -31,6 +31,7 @@ import {
 import { OpeningDetailCard } from "../../components/install/OpeningDetailCard";
 import { OpeningRowButton } from "../../components/install/OpeningRowButton";
 import { InstallChip } from "../../components/install/InstallChip";
+import { EmptyState } from "../../components/ui/States";
 import { installerColorMap } from "../../lib/install/mapDispatch";
 import { toggleExpandedOpening } from "../../lib/install/openingRowAction";
 import { readyStatusLabel, type ProjectOpening } from "../../lib/install/types";
@@ -445,14 +446,14 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
         </>
       )}
 
-      <h2>Unassigned ({unassigned.length})</h2>
+      <h2 id="unassigned-openings">Unassigned ({unassigned.length})</h2>
       <p className="muted opening-list-hint">
         Tap a unit to see its details. The dropdown assigns it.
       </p>
       <ul className="unit-list work-list">
         {unassigned.map(openingRow)}
         {unassigned.length === 0 && (
-          <p className="muted">Everything ready is assigned.</p>
+          <EmptyState title="Everything ready is assigned." />
         )}
       </ul>
 
@@ -469,7 +470,16 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
             </h2>
             <ul className="unit-list work-list">
               {list.map(openingRow)}
-              {list.length === 0 && <p className="muted">No units assigned.</p>}
+              {list.length === 0 && (
+                <EmptyState
+                  title="No units assigned."
+                  action={
+                    <a className="button-like active-pill" href="#unassigned-openings">
+                      Jump to unassigned
+                    </a>
+                  }
+                />
+              )}
             </ul>
           </div>
         );
