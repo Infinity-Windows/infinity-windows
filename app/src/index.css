@@ -7861,7 +7861,12 @@ body {
   gap: 4px;
 }
 .sched-month-cell {
-  aspect-ratio: 1 / 1;
+  /* No aspect-ratio: a busy day's cell grows taller (dots wrap, worked-
+     chips stack) rather than clipping or truncating behind a "+N more" —
+     "a hidden job costs a missed crew day" (Horizon). min-height keeps an
+     empty day from looking clipped-small next to a full one in the same
+     grid row. */
+  min-height: 52px;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -7870,7 +7875,6 @@ body {
   flex-direction: column;
   gap: 4px;
   cursor: pointer;
-  min-height: 52px;
 }
 .sched-month-cell.is-dim { opacity: 0.45; }
 .sched-month-cell.is-today { border-color: var(--accent); }
@@ -7887,7 +7891,6 @@ body {
 /* Ringed = delivery (color law, jobHue.ts) — a hollow ring, no job hue. */
 .sched-dot.is-delivery { background: transparent; border: 2px solid var(--muted); }
 .sched-dot.is-conflict { box-shadow: 0 0 0 2px var(--danger); }
-.sched-month-more { font-size: 10px; color: var(--muted); }
 /* Tinted = crew actually worked (color law, jobHue.ts) — a past day's
    cell earns one of these per job with punches, on top of whatever
    assignment dots already show. */

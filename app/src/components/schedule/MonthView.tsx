@@ -67,7 +67,10 @@ export function MonthView({
             >
               <span className="sched-month-daynum">{Number(day.slice(-2))}</span>
               <span className="sched-month-dots">
-                {dayItems.slice(0, 4).map((a) => (
+                {/* Never truncated — "a hidden job costs a missed crew
+                    day" (Horizon). A busy cell grows instead of a "+N
+                    more" nobody taps through on a phone. */}
+                {dayItems.map((a) => (
                   <span
                     key={a.id}
                     className={`sched-dot${a.status === "draft" ? " is-draft" : ""}${
@@ -78,9 +81,6 @@ export function MonthView({
                     style={calendarColorStyle(a)}
                   />
                 ))}
-                {dayItems.length > 4 && (
-                  <span className="sched-month-more">+{dayItems.length - 4}</span>
-                )}
               </span>
               {workedJobs.length > 0 && (
                 <span className="sched-month-worked">
