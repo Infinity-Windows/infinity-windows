@@ -85,6 +85,14 @@ export function PunchCard({ shift: s, isLead, isSup, projects, costCodes, reject
             {fmtHours(s.break_seconds / 3600)} on breaks (excluded)
           </div>
         )}
+        {/* T4: the server closed this one on its own, not the person. */}
+        {!voided && s.closed_reason && (
+          <div className="muted" style={{ fontSize: 11.5, fontStyle: "italic" }}>
+            {s.closed_reason === "auto-closed by next clock-in"
+              ? "Auto-closed when the next shift started"
+              : s.closed_reason}
+          </div>
+        )}
 
         <div className="tcx-punch-status" style={{ fontSize: 11.5 }}>
           <span className={`tcx-status ${s.status}`}>

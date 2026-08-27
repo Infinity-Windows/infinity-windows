@@ -70,6 +70,12 @@ export interface TimeShift {
   voided_at?: string | null;
   voided_by?: string | null;
   voided_reason?: string | null;
+  /**
+   * Set only when `clock_in` auto-closed THIS shift because a new one
+   * started before it was closed out (Wave T4) — null for a shift the
+   * person (or a supervisor) actually closed.
+   */
+  closed_reason?: string | null;
   projects?: { job_code: string; name: string } | null;
   cost_codes?: { code: string; label: string } | null;
   profiles?: { display_name: string } | null;
