@@ -130,7 +130,11 @@ export function DailyLogDialog({
         ) : (
           <>
             <label className="field-label">Headline</label>
-            <input value={headline} onChange={(e) => setHeadline(e.target.value)} />
+            <input
+              aria-label="Headline"
+              value={headline}
+              onChange={(e) => setHeadline(e.target.value)}
+            />
             {crewLine && (
               <p className="muted" style={{ margin: "2px 0 8px", fontSize: 12 }}>
                 {crewLine}
@@ -160,6 +164,7 @@ export function DailyLogDialog({
                 <Fragment key={key}>
                   <label className="field-label">{label}</label>
                   <input
+                    aria-label={label}
                     value={reflection[key] ?? ""}
                     onChange={(e) =>
                       setReflection((cur) => ({ ...cur, [key]: e.target.value }))
@@ -170,6 +175,7 @@ export function DailyLogDialog({
 
             <label className="field-label">Notes — what did the crew get done today?</label>
             <textarea
+              aria-label="Notes"
               rows={5}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -178,6 +184,7 @@ export function DailyLogDialog({
 
             <label className="field-label">Weather (optional)</label>
             <input
+              aria-label="Weather"
               value={weather}
               onChange={(e) => setWeather(e.target.value)}
               placeholder="Clear, 88°, breezy"
