@@ -10945,6 +10945,31 @@ button.stage-chip {
 .dayflow-chip[data-flow="fine"] { background: color-mix(in oklab, var(--warn) 16%, transparent); color: var(--warn); }
 .dayflow-chip[data-flow="stuck"] { background: color-mix(in oklab, var(--danger) 16%, transparent); color: var(--danger); }
 
+/* Wave S, S2: the supervisor-only "Share with builder" toggle on a Logs tab
+   row. Same pill shape as .dayflow-chip, but a real <button> — clickable,
+   not a status label — so shared=ok tokens, not-shared=neutral outline. */
+.share-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 650;
+  line-height: 1.5;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.share-chip:disabled { cursor: default; opacity: 0.6; }
+.share-chip[data-shared="false"] {
+  background: transparent;
+  color: var(--muted-foreground);
+  border-color: var(--border);
+}
+.share-chip[data-shared="true"] { background: var(--ok-bg); color: var(--ok); }
+
 /* The "Log today · N" reminder (wave L, L4) — amber (--warn), same reuse-
    the-tokens technique as the chips above. A real <button>, not a link:
    tapping it opens a dialog over the page, never a navigation. min-height

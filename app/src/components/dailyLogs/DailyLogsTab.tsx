@@ -8,7 +8,10 @@ import { useQuery } from "@tanstack/react-query";
 import { QueryError, SkeletonList } from "../ui/States";
 import { listDailyLogs, type DailyLog } from "../../lib/dailyLogs";
 import { localDateISO, formatLogDateLabel } from "../../lib/dailyLogDay";
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
+import { isSupervisorPlus } from "../../lib/install/types";
 import { DayFlowChip } from "./DayFlowChip";
+import { ShareWithBuilderChip } from "./ShareWithBuilderChip";
 import { DailyLogDialog } from "./DailyLogDialog";
 
 export function DailyLogsTab({
@@ -23,6 +26,8 @@ export function DailyLogsTab({
     queryFn: () => listDailyLogs(projectId),
   });
   const [openFor, setOpenFor] = useState<string | null>(null);
+  const { effectiveRole } = useEffectiveRole();
+  const canShare = isSupervisorPlus(effectiveRole);
 
   return (
     <div className="daily-logs-tab">
@@ -67,7 +72,16 @@ export function DailyLogsTab({
                   </p>
                 )}
               </div>
-              {log.day_flow && <DayFlowChip flow={log.day_flow} />}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                {log.day_flow && <DayFlowChip flow={log.day_flow} />}
+                {canShare && (
+                  <ShareWithBuilderChip
+                    logId={log.id}
+                    visible={log.customer_visible}
+                    onChanged={() => logs.refetch()}
+                  />
+                )}
+              </div>
             </li>
           ))}
         </ul>
