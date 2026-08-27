@@ -11,13 +11,16 @@ import { CrewBoard, type ChipMove } from "../components/schedule/CrewBoard";
 import { MonthView } from "../components/schedule/MonthView";
 import { TimelineView } from "../components/schedule/TimelineView";
 import { AssignmentEditor, type EditorResult } from "../components/schedule/AssignmentEditor";
+import { DayPanel } from "../components/schedule/DayPanel";
 import {
   addDaysISO,
   clashRangeLabel,
+  enumerateDays,
   monthGridRange,
   startOfMonthISO,
   startOfWeekISO,
 } from "../lib/schedule/dates";
+import { buildDayMemory, type DayMemory } from "../lib/schedule/dayMemory";
 import {
   conflictBannerEntries,
   conflictingAssignmentIds,
@@ -36,9 +39,11 @@ import {
   type BoardChip,
   type SeedProposal,
 } from "../lib/schedule/board";
-import { isSupervisorPlus } from "../lib/install/types";
+import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { listTeamShifts } from "../lib/timeclock";
+import { listSessionsInRange } from "../lib/install/sessions";
+import { listDailyLogsForRange } from "../lib/dailyLogs";
 import {
   affectedByEdit,
   buildPublishDigests,
@@ -109,6 +114,8 @@ export function Scheduling() {
   const [publishing, setPublishing] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [travelDraft, setTravelDraft] = useState<NewTripInput | null>(null);
+  /** The day the calendar's memory panel is open for (C3) — Month view only. */
+  const [dayPanelDate, setDayPanelDate] = useState<string | null>(null);
 
   const range = useMemo(() => {
     if (view === "week" || view === "board") {
@@ -149,6 +156,108 @@ export function Scheduling() {
 
   const loaded = useMemo(() => assignments.data ?? [], [assignments.data]);
   const conflictIds = useMemo(() => conflictingAssignmentIds(loaded), [loaded]);
+
+  // ---- Calendar memory (C2/C3): Month view's worked-chips + day panel ---
+  // Month-only, gated on `view` so Board/Week/Timeline never pay for data
+  // they don't render. `range` already equals this exact grid when
+  // view==="month" (see above), which is also what `loaded` was fetched
+  // for — one more read (shifts, sessions, logs) each, at the same width.
+  const monthGrid = useMemo(
+    () => (view === "month" ? monthGridRange(startOfMonthISO(anchor)) : null),
+    [view, anchor],
+  );
+  const memoryShifts = useQuery({
+    queryKey: ["dayMemoryShifts", monthGrid?.from, monthGrid?.to],
+    queryFn: () =>
+      listTeamShifts(
+        new Date(`${monthGrid!.from}T00:00:00`).toISOString(),
+        new Date(`${addDaysISO(monthGrid!.to, 1)}T00:00:00`).toISOString(),
+      ),
+    enabled: monthGrid != null,
+  });
+  const memorySessions = useQuery({
+    queryKey: ["dayMemorySessions", monthGrid?.from, monthGrid?.to],
+    queryFn: () =>
+      listSessionsInRange(
+        new Date(`${monthGrid!.from}T00:00:00`).toISOString(),
+        new Date(`${addDaysISO(monthGrid!.to, 1)}T00:00:00`).toISOString(),
+      ),
+    enabled: monthGrid != null,
+  });
+  const memoryLogs = useQuery({
+    queryKey: ["dayMemoryLogs", monthGrid?.from, monthGrid?.to],
+    queryFn: () => listDailyLogsForRange(monthGrid!.from, monthGrid!.to),
+    enabled: monthGrid != null,
+  });
+  const memoryLoading =
+    monthGrid != null &&
+    (memoryShifts.isLoading || memorySessions.isLoading || memoryLogs.isLoading);
+
+  /** One buildDayMemory() call per grid day, all sharing the same
+   * month-wide reads — dayMemory.ts is pure, so this is cheap to redo
+   * whenever any input changes. */
+  const dayMemoryByDate = useMemo(() => {
+    const map = new Map<string, DayMemory>();
+    if (!monthGrid) return map;
+    const assignmentsInput = loaded.map((a) => ({
+      id: a.id,
+      kind: a.kind,
+      project_id: a.project_id,
+      start_date: a.start_date,
+      end_date: a.end_date,
+      status: a.status,
+      members: a.members.map((m) => ({ profile_id: m.profile_id })),
+      delivery: a.delivery ?? null,
+    }));
+    const shiftsInput = (memoryShifts.data ?? []).map((s) => ({
+      profile_id: s.profile_id,
+      project_id: s.project_id,
+      clock_in_at: s.clock_in_at,
+      clock_out_at: s.clock_out_at,
+      break_seconds: s.break_seconds,
+      status: s.status,
+    }));
+    const logsInput = (memoryLogs.data ?? []).map((l) => ({
+      project_id: l.project_id,
+      log_date: l.log_date,
+      headline: l.headline,
+      notes: l.notes,
+      day_flow: l.day_flow,
+    }));
+    const profilesInput = (crew.data ?? []).map((p) => ({ id: p.id, display_name: p.display_name }));
+    const projectsInput = (projects.data ?? []).map((p) => ({
+      id: p.id,
+      job_code: p.job_code,
+      name: p.name,
+    }));
+    for (const day of enumerateDays(monthGrid.from, monthGrid.to)) {
+      map.set(
+        day,
+        buildDayMemory(day, {
+          assignments: assignmentsInput,
+          shifts: shiftsInput,
+          sessions: memorySessions.data ?? [],
+          logs: logsInput,
+          profiles: profilesInput,
+          projects: projectsInput,
+        }),
+      );
+    }
+    return map;
+  }, [monthGrid, loaded, memoryShifts.data, memorySessions.data, memoryLogs.data, crew.data, projects.data]);
+
+  /** The install assignment behind one job entry in the open day panel, if
+   * any — "Edit crew" opens the real editor on it. */
+  const assignmentForDayPanel = useMemo(() => {
+    const map = new Map<string, ScheduleAssignment>();
+    if (!dayPanelDate) return map;
+    for (const a of loaded) {
+      if (a.kind !== "install" || !a.project_id) continue;
+      if (a.start_date > dayPanelDate || a.end_date < dayPanelDate) continue;
+      map.set(a.project_id, a);
+    }
+    return map;
+  }, [loaded, dayPanelDate]);
 
   // ---- Crew board wiring ------------------------------------------------
   const weekDays = useMemo(() => boardWeek(anchor), [anchor]);
@@ -826,8 +935,8 @@ export function Scheduling() {
           todayISO={today}
           assignments={loaded}
           conflictIds={conflictIds}
-          onOpen={(a) => setEditor({ assignment: a })}
-          onCreate={(day) => setEditor({ assignment: null, defaults: { start_date: day } })}
+          dayMemoryByDate={dayMemoryByDate}
+          onOpenDay={(day) => setDayPanelDate(day)}
         />
       ) : (
         <TimelineView
@@ -954,6 +1063,26 @@ export function Scheduling() {
             </div>
           </div>
         </div>
+      )}
+
+      {dayPanelDate && (
+        <DayPanel
+          date={dayPanelDate}
+          memory={dayMemoryByDate.get(dayPanelDate) ?? null}
+          loading={memoryLoading}
+          canSeeHours={isForemanPlus(effectiveRole)}
+          assignmentFor={(projectId) => assignmentForDayPanel.get(projectId) ?? null}
+          onEditAssignment={(a) => {
+            setDayPanelDate(null);
+            setEditor({ assignment: a });
+          }}
+          onScheduleCrew={() => {
+            const startDate = dayPanelDate;
+            setDayPanelDate(null);
+            setEditor({ assignment: null, defaults: { start_date: startDate } });
+          }}
+          onClose={() => setDayPanelDate(null)}
+        />
       )}
 
       {editor && (

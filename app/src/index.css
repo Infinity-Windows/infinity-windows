@@ -7888,6 +7888,28 @@ body {
 .sched-dot.is-delivery { background: transparent; border: 2px solid var(--muted); }
 .sched-dot.is-conflict { box-shadow: 0 0 0 2px var(--danger); }
 .sched-month-more { font-size: 10px; color: var(--muted); }
+/* Tinted = crew actually worked (color law, jobHue.ts) — a past day's
+   cell earns one of these per job with punches, on top of whatever
+   assignment dots already show. */
+.sched-month-worked {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.sched-worked-chip {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: oklch(var(--job-tint-l) var(--job-tint-c) var(--job-hue, 260));
+  color: oklch(var(--job-bar-l) var(--job-bar-c) var(--job-hue, 260));
+}
 
 /* ---- Calendar (vertical, month-stacked day rows) ---- */
 .sched-cal {
@@ -7975,6 +7997,59 @@ body {
 .sched-cal-entry.is-conflict { outline: 2px solid var(--danger); outline-offset: -1px; }
 .sched-cal-entry-title { font-size: 12.5px; font-weight: 600; }
 .sched-cal-entry-sub { font-size: 11px; color: var(--muted); }
+
+/* ---- Day panel (wave C, C3): tap any day to see its memory ---- */
+.day-memory-sheet { max-width: 640px; }
+.day-memory-date { margin: 0 0 8px; font-size: 12.5px; color: var(--muted); }
+.day-memory-card {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--sched-color, var(--accent));
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.day-memory-jobname { font-size: 14px; }
+.day-memory-diff {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 8px 0;
+}
+.day-memory-diff-label {
+  margin: 0 0 3px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.day-memory-namelist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.day-memory-log {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+.day-memory-log-headline { margin: 0; font-weight: 650; font-size: 13.5px; }
+.day-memory-log-notes { margin: 0; font-size: 13px; color: var(--text-secondary); white-space: pre-wrap; }
+.day-memory-fallback {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+.day-memory-deliveries { margin-top: 4px; }
 
 /* ---- Actionable double-booking banner ---- */
 .sched-conflict-banner {

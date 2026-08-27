@@ -114,6 +114,47 @@ export async function listProjectSessions(projectId: string): Promise<UnitSessio
   return (data ?? []) as unknown as UnitSession[];
 }
 
+/** One unit_sessions row, scoped by time instead of by project — just
+ * enough for wave C's calendar day panel to tally units finished per job,
+ * per day (dayMemory.ts's DayMemorySession). */
+export interface RangeSession {
+  project_id: string;
+  opening_id: string;
+  started_at: string;
+  end_reason: UnitSession["end_reason"];
+}
+
+/**
+ * Every session across every job whose started_at falls in [fromIso,
+ * toIso) — unlike listProjectSessions (one job, newest 500) this scopes by
+ * time, since the day panel needs one date across every job at once.
+ * Fetched once per visible month, the same "one range read beats one read
+ * per cell" shape dailyLogs.ts's listSessionProjectDaysInRange already
+ * uses for the coverage line.
+ */
+export async function listSessionsInRange(fromIso: string, toIso: string): Promise<RangeSession[]> {
+  const { data, error } = await supabase
+    .from("unit_sessions")
+    .select("opening_id, started_at, end_reason, opening:project_openings!inner(project_id)")
+    .gte("started_at", fromIso)
+    .lt("started_at", toIso);
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return ((data ?? []) as unknown as {
+    opening_id: string;
+    started_at: string;
+    end_reason: UnitSession["end_reason"];
+    opening: { project_id: string } | null;
+  }[])
+    .filter((r) => r.opening?.project_id)
+    .map((r) => ({
+      project_id: r.opening!.project_id,
+      opening_id: r.opening_id,
+      started_at: r.started_at,
+      end_reason: r.end_reason,
+    }));
+}
+
 // ------------------------------------------------------------- pure bits
 
 /** Minutes of one session, live against `now` when open, 480-capped —

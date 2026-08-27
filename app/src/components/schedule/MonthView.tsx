@@ -3,7 +3,8 @@ import {
   monthGridRange,
   startOfMonthISO,
 } from "../../lib/schedule/dates";
-import { calendarColorStyle } from "../../lib/schedule/jobHue";
+import { calendarColorStyle, jobHue } from "../../lib/schedule/jobHue";
+import type { DayMemory } from "../../lib/schedule/dayMemory";
 import type { ScheduleAssignment } from "../../lib/schedule/types";
 
 interface Props {
@@ -12,8 +13,14 @@ interface Props {
   todayISO: string;
   assignments: ScheduleAssignment[];
   conflictIds: Set<string>;
-  onOpen: (a: ScheduleAssignment) => void;
-  onCreate: (day: string) => void;
+  /** This month's day-by-day memory (C2) — undefined/empty while it's
+   * still loading; worked-chips simply don't render yet, same as any other
+   * still-loading calendar data. */
+  dayMemoryByDate: Map<string, DayMemory>;
+  /** Tapping ANY day, past included, opens the day panel (C3) — the panel
+   * itself offers "Edit crew" / "Schedule crew" for anything this used to
+   * do by opening the editor directly. */
+  onOpenDay: (day: string) => void;
 }
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -23,8 +30,8 @@ export function MonthView({
   todayISO,
   assignments,
   conflictIds,
-  onOpen,
-  onCreate,
+  dayMemoryByDate,
+  onOpenDay,
 }: Props) {
   const monthISO = startOfMonthISO(monthAnchor);
   const { from, to } = monthGridRange(monthISO);
@@ -45,11 +52,18 @@ export function MonthView({
           );
           const inMonth = day.slice(0, 7) === currentMonth;
           const isToday = day === todayISO;
+          // Worked-chips (tinted, jobHue) are a PAST day's cell earning
+          // proof of who actually showed — a live/future day has no
+          // punches to be honest about yet.
+          const isPast = day < todayISO;
+          const workedJobs = isPast
+            ? (dayMemoryByDate.get(day)?.jobs.filter((j) => j.worked.length > 0) ?? [])
+            : [];
           return (
             <button
               key={day}
               className={`sched-month-cell${inMonth ? "" : " is-dim"}${isToday ? " is-today" : ""}`}
-              onClick={() => (dayItems[0] ? onOpen(dayItems[0]) : onCreate(day))}
+              onClick={() => onOpenDay(day)}
             >
               <span className="sched-month-daynum">{Number(day.slice(-2))}</span>
               <span className="sched-month-dots">
@@ -68,6 +82,19 @@ export function MonthView({
                   <span className="sched-month-more">+{dayItems.length - 4}</span>
                 )}
               </span>
+              {workedJobs.length > 0 && (
+                <span className="sched-month-worked">
+                  {workedJobs.map((j) => (
+                    <span
+                      key={j.projectId}
+                      className="sched-worked-chip"
+                      style={{ "--job-hue": jobHue(j.projectId) } as React.CSSProperties}
+                    >
+                      {j.jobCode}
+                    </span>
+                  ))}
+                </span>
+              )}
             </button>
           );
         })}
