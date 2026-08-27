@@ -8003,7 +8003,6 @@ body {
 
 /* ---- Day panel (wave C, C3): tap any day to see its memory ---- */
 .day-memory-sheet { max-width: 640px; }
-.day-memory-date { margin: 0 0 8px; font-size: 12.5px; color: var(--muted); }
 .day-memory-card {
   border: 1px solid var(--border);
   border-left: 4px solid var(--sched-color, var(--accent));
