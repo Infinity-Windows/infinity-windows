@@ -10747,3 +10747,28 @@ button.stage-chip {
 .install-chip[data-state="damaged"] { background: color-mix(in oklab, var(--danger) 16%, transparent); color: var(--danger); }
 .install-chip[data-state="incomplete"] { background: color-mix(in oklab, var(--warn) 16%, transparent); color: var(--warn); }
 .install-chip[data-state="flashing"] { background: color-mix(in oklab, var(--warn) 16%, transparent); color: var(--warn); }
+
+/* The core values, rotating across the top of every screen (owner ask,
+   2026-08-27). One slim line; existing tokens only, so both themes come
+   free. The fade is opacity-only — nothing moves, nothing reflows. */
+.core-values-strip {
+  padding: 4px 16px 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  min-height: 22px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.core-values-strip strong {
+  color: var(--accent);
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.core-values-line { color: var(--muted); }
+.core-values-inner { transition: opacity 300ms ease; }
+.core-values-faded { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .core-values-inner { transition: none; }
+}

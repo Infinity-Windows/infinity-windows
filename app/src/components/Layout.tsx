@@ -15,6 +15,7 @@ import {
 import { getMyProfile, getRealProfile, listMyOpeningsAllJobs, listProfiles } from "../lib/install/api";
 import { openingReadiness } from "../lib/install/fit";
 import { ROLE_LABELS, type CrewRole } from "../lib/install/types";
+import { CoreValuesStrip } from "./CoreValuesStrip";
 import { bottomBarForRole, menuForRole, roleRank, type MenuAction } from "../lib/nav";
 import { useClock } from "../lib/clockContext";
 import { formatClock } from "../lib/timeclock";
@@ -181,6 +182,7 @@ export function Layout() {
             </span>
           </aside>
           <main className="app-main">
+            <CoreValuesStrip pathname={location.pathname} />
             <Outlet />
           </main>
         </div>
@@ -291,6 +293,7 @@ export function Layout() {
         </aside>
 
         <main className="app-main">
+          <CoreValuesStrip pathname={location.pathname} />
           {/* Phones only (hidden from 860px up, where the rail carries it).
               In the page flow rather than floating over it, so it can never
               land on top of a job title. */}
