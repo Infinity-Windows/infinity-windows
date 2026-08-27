@@ -182,6 +182,20 @@ router's redirect to /stg is manners, the RLS sweep is the wall.
 there is no builder-orgs table in v1, so two people at the same GC each
 need their own login and their own grants. Owner-only to create or revoke
 (Q13), same floor as handing out a crew login.
+## Crew scheduling and the AI assistant
+
+Settled 2026-08-27, wave A (grilled across two rounds — cite, never
+re-decide). The AI helper gets hands here for the first time: it can write
+real draft crew assignments, but only drafts, and only at the caller's own
+permission level (PERMISSION MIRROR — the scheduling tools refuse below
+supervisor rank with a plain sentence; no new power enters through the chat
+door).
+
+**Saved crew** — a named team (2-6 people) a supervisor built on the Roster
+because it works together. A SOFT law for the scheduling AI: it keeps a
+saved crew together to the best of its ability, and when it can't, it must
+say so plainly in its answer ("I split Team 1 — Sam covers Sand Hollow
+alone") rather than splitting one silently.
 
 ## Open questions
 

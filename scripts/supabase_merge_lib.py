@@ -623,6 +623,12 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # key in the usual sense, but UNIQUE by construction and the only handle
     # anything has on one row (Wave S, S6 stretch, 20260953000000).
     "calendar_feed_tokens": ("token",),
+    # A supervisor-chosen name, but not UNIQUE in the migration (like
+    # studio_projects/learning_videos above) — two crews independently named
+    # "Crew 1" across two merged projects are two real teams, not a
+    # duplicate, so there is no natural key to dedup on (Wave A, A1,
+    # 20260955000000).
+    "saved_crews": None,
 }
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.
