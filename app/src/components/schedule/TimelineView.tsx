@@ -6,7 +6,7 @@ import {
   mapItemsToDays,
   weekdayISO,
 } from "../../lib/schedule/dates";
-import { assignmentColor } from "../../lib/schedule/color";
+import { calendarColorStyle } from "../../lib/schedule/jobHue";
 import type { ScheduleAssignment } from "../../lib/schedule/types";
 
 interface Props {
@@ -28,6 +28,9 @@ function weekdayShort(iso: string): string {
 function entryClass(a: ScheduleAssignment, conflictIds: Set<string>): string {
   const parts = ["sched-cal-entry"];
   parts.push(a.status === "draft" ? "is-draft" : "is-published");
+  // Shape carries what color no longer does for a delivery — it has no
+  // single job to be colored by (jobHue.ts's color law).
+  if (a.kind === "delivery") parts.push("is-delivery");
   if (conflictIds.has(a.id)) parts.push("is-conflict");
   return parts.join(" ");
 }
@@ -75,9 +78,7 @@ export function TimelineView({
                       <button
                         key={a.id}
                         className={entryClass(a, conflictIds)}
-                        style={
-                          { "--sched-color": assignmentColor(a) } as React.CSSProperties
-                        }
+                        style={calendarColorStyle(a)}
                         onClick={() => onOpen(a)}
                       >
                         <span className="sched-cal-entry-title">

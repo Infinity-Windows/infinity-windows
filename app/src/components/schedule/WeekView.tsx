@@ -5,7 +5,7 @@ import {
   enumerateDays,
   formatStartTime,
 } from "../../lib/schedule/dates";
-import { assignmentColor } from "../../lib/schedule/color";
+import { calendarColorStyle } from "../../lib/schedule/jobHue";
 import type { ScheduleAssignment } from "../../lib/schedule/types";
 
 interface Props {
@@ -88,10 +88,13 @@ export function WeekView({
 function blockClass(a: ScheduleAssignment, conflictIds: Set<string>): string {
   const parts = ["sched-block"];
   parts.push(a.status === "draft" ? "is-draft" : "is-published");
+  // Shape carries what color no longer does for a delivery — it has no
+  // single job to be colored by (jobHue.ts's color law).
+  if (a.kind === "delivery") parts.push("is-delivery");
   if (conflictIds.has(a.id)) parts.push("is-conflict");
   return parts.join(" ");
 }
 
 function blockStyle(a: ScheduleAssignment): React.CSSProperties {
-  return { "--sched-color": assignmentColor(a) } as React.CSSProperties;
+  return calendarColorStyle(a);
 }

@@ -3,7 +3,7 @@ import {
   monthGridRange,
   startOfMonthISO,
 } from "../../lib/schedule/dates";
-import { assignmentColor } from "../../lib/schedule/color";
+import { calendarColorStyle } from "../../lib/schedule/jobHue";
 import type { ScheduleAssignment } from "../../lib/schedule/types";
 
 interface Props {
@@ -57,9 +57,11 @@ export function MonthView({
                   <span
                     key={a.id}
                     className={`sched-dot${a.status === "draft" ? " is-draft" : ""}${
-                      conflictIds.has(a.id) ? " is-conflict" : ""
-                    }`}
-                    style={{ background: assignmentColor(a) }}
+                      // Shape carries what color no longer does for a
+                      // delivery — it has no single job to be colored by.
+                      a.kind === "delivery" ? " is-delivery" : ""
+                    }${conflictIds.has(a.id) ? " is-conflict" : ""}`}
+                    style={calendarColorStyle(a)}
                   />
                 ))}
                 {dayItems.length > 4 && (
