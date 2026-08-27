@@ -460,7 +460,9 @@ for (const job of jobFixtures()) {
     const pageErrors: string[] = [];
     page.on("pageerror", (e) => pageErrors.push(String(e)));
 
-    await page.goto(`/projects/${job.projectId}/map`);
+    // The bare /map route is a redirect now (picks 13); go straight to the
+    // tab address it lands on rather than testing that hop here too.
+    await page.goto(`/projects/${job.projectId}?tab=map`);
     const statusRings = await statusRingsFor(page);
 
     /*

@@ -99,7 +99,7 @@ export function OpeningMoved({
             Open {recovery.opening.opening_code}
           </button>
         )}
-        <Link className="action-btn" to={`/projects/${jobId}/map`}>
+        <Link className="action-btn" to={`/projects/${jobId}?tab=map`}>
           All openings on this job
         </Link>
         <Link className="action-btn" to="/my-work">
