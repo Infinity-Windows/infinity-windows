@@ -1178,7 +1178,7 @@ export function OpeningSheet() {
           <Link2 size={15} aria-hidden />
           <span style={{ flex: 1 }}>
             Clock's on <strong>{opening.data?.opening_code ?? "this unit"}</strong>
-            <span className="muted" style={{ fontSize: 12 }}>
+            <span className="wh-row-sub">
               {" "}· redirectable {Math.ceil(chainGraceLeft / 60000)}m
             </span>
           </span>
@@ -1359,7 +1359,7 @@ export function OpeningSheet() {
         <div className="detail-card">
           <p className="ok" style={{ margin: 0, fontWeight: 700 }}>Installed ✓</p>
           {crewTime && crewTime.totalMin > 0 && (
-            <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
+            <p className="wh-row-sub" style={{ margin: "4px 0 0" }}>
               Crew time: {crewTime.installMin}m install
               {crewTime.helperMin > 0 ? ` · ${crewTime.helperMin}m helpers` : ""}
               {crewTime.flashMin > 0 ? ` · ${crewTime.flashMin}m flashing` : ""}
@@ -1367,7 +1367,7 @@ export function OpeningSheet() {
               {" — "}{crewTime.totalMin}m total
             </p>
           )}
-          <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
+          <p className="wh-row-sub" style={{ margin: "4px 0 0" }}>
             Forgot something, or need a fix? Undoing keeps every record — the
             memo, photos, grade and minutes stay on file — and puts this unit
             back on the install list with a required note saying why.
@@ -1416,7 +1416,7 @@ export function OpeningSheet() {
               </>
             )
           ) : (
-            <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
+            <p className="wh-row-sub" style={{ margin: "6px 0 0" }}>
               Ask your foreman to send it back — undoing an install is their call.
             </p>
           )}
@@ -1487,7 +1487,7 @@ export function OpeningSheet() {
           <span className="field-label">Previously sent back</span>
           <ul className="unit-list" style={{ marginTop: 4 }}>
             {(undoHistory.data ?? []).map((u) => (
-              <li key={u.id} className="muted" style={{ fontSize: 12.5 }}>
+              <li key={u.id} className="wh-row-sub">
                 {u.voided_at &&
                   new Date(u.voided_at).toLocaleDateString(undefined, {
                     month: "short",
@@ -1723,14 +1723,13 @@ export function OpeningSheet() {
                   <div>
                     <strong>{u.window_id}</strong>{" "}
                     <span className="muted">{u.window_types?.type_code}</span>
-                    <div className="muted" style={{ fontSize: 13 }}>
+                    <div className="wh-row-sub">
                       {formatAssignMeta(u)}
                       {u.project_id === projectId ? " · this job" : ""}
                     </div>
                   </div>
                   <button
-                    className="link"
-                    style={{ marginLeft: "auto" }}
+                    className="link wh-actions"
                     onClick={() => assign.mutate(u.id)}
                   >
                     Assign
@@ -1987,7 +1986,7 @@ export function OpeningSheet() {
               sheet only reports status — the clock, photo and submit live
               on the dispatched run. The install gate below still holds. */}
           {o.needs_flashing === true && (
-            <div className="detail-card" style={{ marginTop: 8 }}>
+            <div className="detail-card wh-card">
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span className="field-label" style={{ margin: 0 }}>Flashing</span>
                 {flashing?.status === "submitted" ? (
@@ -2002,12 +2001,12 @@ export function OpeningSheet() {
                     {flashing.starter?.display_name && ` · ${flashing.starter.display_name}`}
                   </span>
                 ) : (
-                  <span className="muted" style={{ fontSize: 12.5 }}>required before install</span>
+                  <span className="wh-row-sub">required before install</span>
                 )}
                 {isForemanPlus(effectiveRole) && flashing?.status !== "submitted" && (
                   <button
-                    className="link"
-                    style={{ marginLeft: "auto", fontSize: 12 }}
+                    className="link wh-actions"
+                    style={{ fontSize: 12 }}
                     disabled={toggleNeedsFlashing.isPending}
                     onClick={() => toggleNeedsFlashing.mutate(false)}
                   >
@@ -2016,14 +2015,14 @@ export function OpeningSheet() {
                 )}
               </div>
               {!flashing && (
-                <p className="muted" style={{ margin: "8px 0 0", fontSize: 12 }}>
+                <p className="wh-row-sub" style={{ margin: "8px 0 0" }}>
                   Flashing happens on the flash run — your foreman dispatches it.
                 </p>
               )}
             </div>
           )}
           {o.needs_flashing === false && isForemanPlus(effectiveRole) && (
-            <p className="muted" style={{ fontSize: 12 }}>
+            <p className="wh-row-sub">
               No flashing required here.{" "}
               <button className="link" onClick={() => toggleNeedsFlashing.mutate(true)}>
                 Require it
@@ -2212,7 +2211,7 @@ export function OpeningSheet() {
                 Blocked — can't continue
               </button>
               {blockOpen && (
-                <div className="detail-card" style={{ marginTop: 8, textAlign: "left" }}>
+                <div className="detail-card wh-card" style={{ textAlign: "left" }}>
                   <span className="field-label">What's stopping you?</span>
                   <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 6 }}>
                     {BLOCK_REASONS.map((r) => (
@@ -2242,7 +2241,7 @@ export function OpeningSheet() {
                     </button>
                   </div>
                   {nextOpening && (
-                    <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
+                    <p className="wh-row-sub" style={{ margin: "6px 0 0" }}>
                       The clock hands off to {nextOpening.opening_code} — same as
                       finishing.
                     </p>
@@ -2354,7 +2353,7 @@ export function OpeningSheet() {
           {/* The hand-typed era is over (spec .scratch/sessions): minutes
               are derived server-side from this window's sessions — breaks
               and lunches never count, and nobody argues with a stopwatch. */}
-          <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
+          <p className="wh-row-sub" style={{ margin: "4px 0 0" }}>
             Time records itself from your sessions
             {timer.minutes != null ? ` — about ${timer.minutes} min so far` : ""}.
             Breaks never count.
@@ -2417,7 +2416,7 @@ export function OpeningSheet() {
                 : "That's your last assigned window — nice work."}
             </p>
             {pending > 0 && (
-              <p className="muted" style={{ margin: "8px 0 0", fontSize: 13 }}>
+              <p className="wh-row-sub" style={{ margin: "8px 0 0" }}>
                 {pending} file(s) uploading in the background.
               </p>
             )}

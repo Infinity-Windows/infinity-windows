@@ -326,7 +326,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
                 ? ` · ${CAPABILITY_LABELS[o.window_types.required_capability as Capability] ?? o.window_types.required_capability}`
                 : ""}
             </span>
-            <div className="muted" style={{ fontSize: 12 }}>
+            <div className="wh-row-sub">
               {areaKey(o)} ·{" "}
               <InstallChip state={r.status}>
                 {isInstallInProgress(o) ? "in progress" : readyStatusLabel(r.status)}
@@ -334,7 +334,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
             </div>
           </div>
         </OpeningRowButton>
-        <div style={{ marginLeft: "auto" }}>{assignPicker(o)}</div>
+        <div className="wh-actions">{assignPicker(o)}</div>
         {expanded && (
           <div className="opening-row-panel">
             <OpeningDetailCard
@@ -399,8 +399,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
                     </div>
                   </div>
                   <button
-                    className="link"
-                    style={{ marginLeft: "auto" }}
+                    className="link wh-actions"
                     disabled={resolveIssueM.isPending}
                     onClick={() => resolveIssueM.mutate(i.id)}
                   >
@@ -436,7 +435,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
           <ul className="unit-list">
             {jobNotes.data!.map((n) => (
               <li key={n.id} className="site-note-card">
-                <span className="muted" style={{ fontSize: 12 }}>
+                <span className="wh-row-sub">
                   {n.created_at.slice(0, 10)} · {n.author_name ?? "crew"}
                 </span>
                 <div>{n.note}</div>
@@ -475,7 +474,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
           </div>
         );
       })}
-      <p className="muted" style={{ fontSize: 12 }}>
+      <p className="wh-row-sub">
         {activeCrew.length === 0 ? "Add crew on the Crew screen to assign work." : ""}
       </p>
     </div>
@@ -560,7 +559,7 @@ function FlashRunCard({
   if (total === 0) return null;
 
   return (
-    <div className="detail-card" style={{ marginTop: 8 }}>
+    <div className="detail-card wh-card">
       <div className="row-between">
         <span className="field-label" style={{ margin: 0 }}>
           Flash run — flash ahead of the crew
@@ -572,7 +571,7 @@ function FlashRunCard({
       <p className="muted" style={{ margin: "4px 0 8px" }}>
         {done}/{total} flashed · {total - done} to go
       </p>
-      <div className="row-gap" style={{ flexWrap: "wrap", alignItems: "center" }}>
+      <div className="wh-row">
         {(runners.data ?? []).map((r) => (
           <span key={r.id} className="button-like studio-mini" style={{ cursor: "default" }}>
             {r.profile?.display_name ?? "runner"}{" "}
@@ -587,7 +586,7 @@ function FlashRunCard({
           </span>
         ))}
         {(runners.data ?? []).length === 0 && (
-          <span className="muted" style={{ fontSize: 12.5 }}>No runners yet.</span>
+          <span className="wh-row-sub">No runners yet.</span>
         )}
         {addable.length > 0 && (
           <select
@@ -628,7 +627,7 @@ function SummonStrip({
   });
   if ((live.data ?? []).length === 0) return null;
   return (
-    <div className="detail-card" style={{ marginTop: 8 }}>
+    <div className="detail-card wh-card">
       {(live.data ?? []).map((s) => (
         <p key={s.id} style={{ margin: "2px 0" }}>
           🔔 <strong>{openingCodeById.get(s.opening_id) ?? "unit"}</strong>{" "}
@@ -665,7 +664,7 @@ function SessionStrips({
   const blocked = blockedUnits(sessions.data ?? []);
   if (blocked.length === 0 && (redos.data ?? []).length === 0) return null;
   return (
-    <div className="detail-card" style={{ marginTop: 8 }}>
+    <div className="detail-card wh-card">
       {blocked.map((b) => (
         <p key={b.openingId} style={{ margin: "2px 0" }}>
           <Ban

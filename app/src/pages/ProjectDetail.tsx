@@ -235,7 +235,7 @@ export function ProjectDetail() {
           <BackChip fallback="/projects" label="Back to jobs" />
           <div style={{ minWidth: 0 }}>
             <h1 style={{ fontSize: 26 }}>{project?.job_code ?? "Job"}</h1>
-            <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+            <p className="wh-row-sub" style={{ margin: 0 }}>
               {project?.name}
               {project?.address ? ` — ${project.address}` : ""}
             </p>
@@ -485,13 +485,13 @@ function OverviewTab({
             </span>
           </div>
           {estimate.est.unknownTypes > 0 && (
-            <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>
+            <p className="wh-row-sub" style={{ margin: "6px 0 0" }}>
               {estimate.est.unknownTypes} opening(s) use a fallback estimate (no
               install history yet).
             </p>
           )}
           {project?.estimated_minutes != null && (
-            <p className="muted" style={{ fontSize: 12, margin: "6px 0 0" }}>
+            <p className="wh-row-sub" style={{ margin: "6px 0 0" }}>
               Bid estimate on file: {formatHours(project.estimated_minutes)} /{" "}
               {project.estimated_crew} crew.
             </p>
@@ -581,10 +581,10 @@ function OverviewTab({
               <div>
                 <strong>{n.window_types?.type_code}</strong> {n.window_types?.name}
               </div>
-              <span className={have >= n.quantity ? "ok" : "warn-text"} style={{ marginLeft: "auto" }}>
+              <span className={`${have >= n.quantity ? "ok" : "warn-text"} wh-actions`}>
                 {have}/{n.quantity}
                 {onTheWay > 0 && (
-                  <span className="muted" style={{ fontSize: 12, marginLeft: 6 }}>
+                  <span className="wh-row-sub" style={{ marginLeft: 6 }}>
                     · {onTheWay} on the way
                   </span>
                 )}
@@ -658,7 +658,7 @@ function ScheduledCrewPanel({
           </Link>
         )}
       </div>
-      <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+      <p className="wh-row-sub" style={{ margin: "4px 0 0" }}>
         The dates &amp; crew that actually work this job, from the published
         schedule (not the bid / target window). Edit them on the Scheduling board.
       </p>
@@ -677,11 +677,11 @@ function ScheduledCrewPanel({
                 <div>
                   <strong>{dateRange(a.start_date, a.end_date)}</strong>
                 </div>
-                <div className="muted" style={{ fontSize: 13 }}>
+                <div className="wh-row-sub">
                   <Users size={13} aria-hidden /> {crew || "No crew"}
                 </div>
                 {vehicle && (
-                  <div className="muted" style={{ fontSize: 13 }}>
+                  <div className="wh-row-sub">
                     <Truck size={13} aria-hidden /> {vehicle}
                   </div>
                 )}
@@ -776,7 +776,7 @@ function WhoOnJobPanel({ projectId }: { projectId: string }) {
           <Users size={16} aria-hidden /> Who&apos;s on this job?
         </h2>
       </div>
-      <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+      <p className="wh-row-sub" style={{ margin: "4px 0 0" }}>
         Everyone attached to this job — from the schedule, dispatched openings,
         and the job chat.
       </p>
@@ -789,7 +789,7 @@ function WhoOnJobPanel({ projectId }: { projectId: string }) {
                 <strong>{p.name}</strong>
                 {p.role && <span className="muted"> · {p.role}</span>}
               </div>
-              <span className="muted" style={{ marginLeft: "auto", fontSize: 12 }}>
+              <span className="wh-row-sub wh-actions">
                 {p.sources.map((s) => SOURCE_LABELS[s]).join(" · ")}
               </span>
             </li>
@@ -933,7 +933,7 @@ function JobDetailsPanel({
               </p>
             )}
             {hasTargetDates && (
-              <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+              <p className="wh-row-sub" style={{ marginTop: 8 }}>
                 Your bid / target window. The dates crew actually work are the
                 published crew dates on the schedule (shown above).
               </p>
@@ -1142,7 +1142,7 @@ function TestingProjectPanel({
         <span>
           <strong>Testing project</strong>
           <br />
-          <span className="muted" style={{ fontSize: 13 }}>
+          <span className="wh-row-sub">
             Fake data for practice. Hidden from installers and foremen; its
             material never counts as real inventory.
           </span>
@@ -1166,7 +1166,7 @@ function TestingProjectPanel({
           >
             {remove.isPending ? "Deleting…" : "Delete this testing project…"}
           </button>
-          <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+          <p className="wh-row-sub" style={{ marginTop: 6 }}>
             Permanent. Only possible because this job is flagged testing —
             there is no way to do this to a real job.
           </p>
@@ -1397,8 +1397,7 @@ function ExceptionsTab({ projectId }: { projectId: string }) {
         {i.note ?? KIND_LABELS[i.kind]}
       </span>
       <button
-        className="link"
-        style={{ marginLeft: "auto" }}
+        className="link wh-actions"
         disabled={resolve.isPending}
         onClick={() => resolve.mutate(i.id)}
       >
@@ -1473,8 +1472,8 @@ function JobLifecyclePanel({
   });
 
   return (
-    <div className="detail-card" style={{ marginTop: 8 }}>
-      <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+    <div className="detail-card wh-card">
+      <div className="wh-row">
         <strong>
           {project.status === "active"
             ? "Wrap this job up"
@@ -1529,7 +1528,7 @@ function JobLifecyclePanel({
           </button>
         )}
       </div>
-      <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
+      <p className="wh-row-sub" style={{ margin: "4px 0 0" }}>
         Finished and cancelled jobs live in Job history — nothing about them
         is deleted.
       </p>
