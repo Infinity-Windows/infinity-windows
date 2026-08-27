@@ -23,6 +23,7 @@ import {
   type BoardLane,
 } from "../../lib/schedule/board";
 import { calendarColorStyle } from "../../lib/schedule/jobHue";
+import { AiProposedChip } from "./AiProposedChip";
 
 export interface ChipMove {
   chip: BoardChip;
@@ -128,6 +129,10 @@ export function CrewBoard({
         }
       >
         {label}
+        {/* A3: badged only while the draft is still a draft — created_via
+            itself is never cleared at publish (the audit trail outlives
+            the chip), so "still draft" is what gates showing it here. */}
+        {c.status === "draft" && c.createdVia === "ai" && <AiProposedChip />}
       </button>
     );
   };

@@ -9669,11 +9669,28 @@ body {
      enough that the chip's own dark text (#16100c above) always reads. */
   --sched-color: oklch(0.72 0.15 var(--job-hue, 260));
   background: var(--sched-color);
+  /* Positioning context for the AI-proposed badge below — harmless on its
+     own; every chip without a badge looks exactly as before. */
+  position: relative;
 }
 .cb-chip.draft { border-style: dashed; border-color: rgba(0, 0, 0, 0.45); opacity: 0.92; }
 .cb-chip.conflict { outline: 2px dashed #e4655c; outline-offset: 1px; }
 .cb-chip.movable { cursor: grab; }
 .cb-chip.movable:active { cursor: grabbing; }
+/* The "AI proposed" badge (wave A3) floats in the chip's corner rather than
+   inline with the label: .cb-chip's label truncates with an ellipsis at
+   11.5px, and squeezing a second pill into that single line of nowrap text
+   would just get clipped off jobs with longer codes. Absolute + a fixed
+   background/border of its own means it reads over any job-hue color and
+   never fights the label for the same line. */
+.cb-chip .ai-proposed-chip {
+  position: absolute;
+  top: -5px;
+  right: -4px;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
 .cb-plus {
   display: block; width: 100%; text-align: center;
   color: var(--muted, #b3a498); opacity: 0; border: 0; background: transparent;
@@ -11007,6 +11024,24 @@ button.stage-chip {
   width: 6px;
   height: 6px;
   border-radius: 50%;
+/* "AI proposed" (wave A3): same shape as .install-chip/.dayflow-chip above,
+   its own class because this badges WHO drafted a schedule assignment, not
+   an install state or a day's temperature. Accent tone specifically
+   (a1-ai-scheduler-spec.md, A3: "InstallChip tones, accent") — a source, not
+   a status, so it deliberately does not reach for ok/warn/danger. */
+.ai-proposed-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 /* The "Log today · N" reminder (wave L, L4) — amber (--warn), same reuse-

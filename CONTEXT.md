@@ -197,6 +197,13 @@ saved crew together to the best of its ability, and when it can't, it must
 say so plainly in its answer ("I split Team 1 — Sam covers Sand Hollow
 alone") rather than splitting one silently.
 
+**AI-proposed** — a draft the assistant wrote (`schedule_assignments.
+created_via = 'ai'`), badged on the crew board until published; the publish
+records that a human approved an AI plan. The flag itself is permanent —
+publishing never clears it, so the audit trail outlives the badge — only the
+CHIP's visibility is draft-scoped. `draft_assignments` (the AI's one write
+tool) can never publish anything itself; a human always does that step.
+
 ## Open questions
 
 None right now — the next ones come from building.
