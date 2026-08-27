@@ -1898,7 +1898,7 @@ export function OpeningSheet() {
           <div className={`fit-verdict fit-${fit.verdict}`}>
             {o.ro_width_in != null && o.ro_height_in != null ? (
               <>
-                <strong>RO {o.ro_width_in}×{o.ro_height_in}"</strong> — {fit.message}
+                <strong>Rough opening {o.ro_width_in}×{o.ro_height_in}"</strong> — {fit.message}
               </>
             ) : (
               <span className="muted">{fit.message}</span>
