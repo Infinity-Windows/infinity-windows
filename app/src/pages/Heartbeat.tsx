@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { SkeletonList } from "../components/ui/States";
-import { isSupervisorPlus } from "../lib/install/types";
+import { isOwner, isSupervisorPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import {
   getHeartbeat,
@@ -13,6 +13,8 @@ import {
   setProjectGreenLight,
   type HeartbeatTask,
 } from "../lib/heartbeat";
+import { weeklyLogCoverage } from "../lib/dailyLogs";
+import { coverageLine } from "../lib/dailyLogCoverage";
 import { formatApiError } from "../lib/errors";
 import { describeDuration } from "../lib/shiftGuard";
 import { useRealtimeAllOpenings } from "../lib/useRealtimeOpenings";
@@ -55,6 +57,15 @@ export function Heartbeat() {
 
   const hb = useQuery({ queryKey: ["heartbeat"], queryFn: getHeartbeat });
   useRealtimeAllOpenings(true);
+
+  // Owners only (L5 spec) — the trust number wave S's later reviewer gate
+  // will read at a 70% bar; foremen and supervisors don't see it here.
+  const canSeeCoverage = isOwner(role);
+  const weeklyCoverage = useQuery({
+    queryKey: ["weeklyLogCoverage"],
+    queryFn: weeklyLogCoverage,
+    enabled: canSeeCoverage,
+  });
 
   // Tick once a second so elapsed timers count up live.
   const [tick, setTick] = useState(() => Date.now());
@@ -118,6 +129,12 @@ export function Heartbeat() {
         {anomalyCount > 0 ? ` · ${anomalyCount} running long` : ""}
         {staleCount > 0 ? ` · ${staleCount} never finished` : ""}.
       </p>
+
+      {canSeeCoverage && weeklyCoverage.data && (
+        <p className="muted" style={{ fontWeight: 650 }}>
+          {coverageLine(weeklyCoverage.data)}
+        </p>
+      )}
 
       {greenLight.isError && <p className="error">{formatApiError(greenLight.error)}</p>}
       {hb.isLoading && <SkeletonList rows={4} />}

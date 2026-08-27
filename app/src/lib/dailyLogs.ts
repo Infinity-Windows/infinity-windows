@@ -5,10 +5,11 @@
 
 import { supabase } from "./supabase";
 import { listProjects } from "./api";
-import { listTeamShifts, punchDay } from "./timeclock";
+import { listTeamShifts, punchDay, weekRange } from "./timeclock";
 import { listProjectRedosAll, listProjectSessions } from "./install/sessions";
 import { buildDailyLogDraft, type DailyLogDraft } from "./dailyLogDraft";
 import { jobsNeedingLog, localDateISO } from "./dailyLogDay";
+import { coverage, type CoverageSummary, type JobDay } from "./dailyLogCoverage";
 
 export interface DailyLogReflection {
   went_well?: string;
@@ -182,20 +183,25 @@ export interface JobNeedingLog {
   name: string;
 }
 
-/** Every project with a unit_sessions row today, project-wide (the chip has
- * to see every job, not one) — minimal columns, just enough to bucket by
- * project and by local day. */
-async function listSessionProjectIdsToday(startIso: string, endIso: string): Promise<string[]> {
+/** Every unit_sessions row in range, project-wide (the chip and the
+ * coverage line both need every job, not one), reduced to just enough to
+ * bucket by project and by local day — shared by jobsNeedingLogToday
+ * (which only cares about the project) and weeklyLogCoverage (which needs
+ * the day too, since its range spans more than one). */
+async function listSessionProjectDaysInRange(
+  startIso: string,
+  endIso: string,
+): Promise<{ projectId: string; logDate: string }[]> {
   const { data, error } = await supabase
     .from("unit_sessions")
-    .select("opening:project_openings!inner(project_id)")
+    .select("started_at, opening:project_openings!inner(project_id)")
     .gte("started_at", startIso)
     .lt("started_at", endIso);
   if (isMissingTableError(error)) return [];
   if (error) throw error;
-  return ((data ?? []) as unknown as { opening: { project_id: string } | null }[])
-    .map((r) => r.opening?.project_id)
-    .filter((id): id is string => Boolean(id));
+  return ((data ?? []) as unknown as { started_at: string; opening: { project_id: string } | null }[])
+    .filter((r) => r.opening?.project_id)
+    .map((r) => ({ projectId: r.opening!.project_id, logDate: punchDay(r.started_at) }));
 }
 
 async function listLoggedProjectIdsToday(logDate: string): Promise<string[]> {
@@ -223,20 +229,64 @@ export async function jobsNeedingLogToday(): Promise<JobNeedingLog[]> {
   const logDate = localDateISO();
   const { startIso, endIso } = localDayBounds(logDate);
 
-  const [active, teamShifts, sessionProjectIds, loggedProjectIds] = await Promise.all([
+  const [active, teamShifts, sessionDays, loggedProjectIds] = await Promise.all([
     listProjects(),
     listTeamShifts(startIso, endIso),
-    listSessionProjectIdsToday(startIso, endIso),
+    listSessionProjectDaysInRange(startIso, endIso),
     listLoggedProjectIdsToday(logDate),
   ]);
 
   const workedProjectIds = [
     ...teamShifts.map((s) => s.project_id).filter((id): id is string => Boolean(id)),
-    ...sessionProjectIds,
+    ...sessionDays.map((d) => d.projectId),
   ];
   const needIds = new Set(jobsNeedingLog(workedProjectIds, loggedProjectIds));
 
   return active
     .filter((p) => needIds.has(p.id))
     .map((p) => ({ projectId: p.id, jobCode: p.job_code, name: p.name }));
+}
+
+// --------------------------------------------------- L5: coverage for owners
+
+/**
+ * This week's log coverage across every active job (Heartbeat's owner-only
+ * line — spec's own example: "Logs: 4 of 6 worked days logged this week").
+ * weekRange() is the SAME Monday-based week the payroll grid already uses
+ * (timeclock.ts) — one more place this wave reuses an existing day/week
+ * convention instead of minting a second one.
+ */
+export async function weeklyLogCoverage(): Promise<CoverageSummary> {
+  const week = weekRange();
+  const weekStartDate = localDateISO(week.start);
+  const weekEndDate = localDateISO(week.end);
+
+  const [active, teamShifts, sessionDays, logRows] = await Promise.all([
+    listProjects(),
+    listTeamShifts(week.startIso, week.endIso),
+    listSessionProjectDaysInRange(week.startIso, week.endIso),
+    supabase
+      .from("daily_logs")
+      .select("project_id, log_date")
+      .gte("log_date", weekStartDate)
+      .lt("log_date", weekEndDate)
+      .then(({ data, error }) => {
+        if (isMissingTableError(error)) return [] as { project_id: string; log_date: string }[];
+        if (error) throw error;
+        return (data ?? []) as { project_id: string; log_date: string }[];
+      }),
+  ]);
+
+  const activeIds = new Set(active.map((p) => p.id));
+  const workedDays: JobDay[] = [
+    ...teamShifts
+      .filter((s): s is typeof s & { project_id: string } => Boolean(s.project_id))
+      .map((s) => ({ projectId: s.project_id, logDate: punchDay(s.clock_in_at) })),
+    ...sessionDays.map((d) => ({ projectId: d.projectId, logDate: d.logDate })),
+  ].filter((d) => activeIds.has(d.projectId));
+  const loggedDays: JobDay[] = logRows
+    .map((r) => ({ projectId: r.project_id, logDate: r.log_date }))
+    .filter((d) => activeIds.has(d.projectId));
+
+  return coverage(workedDays, loggedDays);
 }
