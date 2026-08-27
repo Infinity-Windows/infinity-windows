@@ -150,6 +150,7 @@ export function SavedCrewsSection({ profiles, canEdit }: Props) {
 
             <label className="field-label">Name</label>
             <input
+              aria-label="Name"
               value={draft.name}
               maxLength={MAX_NAME}
               placeholder="Team 1"
@@ -182,6 +183,7 @@ export function SavedCrewsSection({ profiles, canEdit }: Props) {
 
             <label className="field-label">Note (optional)</label>
             <textarea
+              aria-label="Note"
               value={draft.note}
               rows={2}
               placeholder="What this crew is good at, or why it works"

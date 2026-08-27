@@ -32,7 +32,11 @@ alter table saved_crews enable row level security;
 drop policy if exists "saved_crews_select_foreman_plus" on saved_crews;
 create policy "saved_crews_select_foreman_plus" on saved_crews
   for select to authenticated
-  using (public.my_role_rank() >= 1);
+  using (
+    -- THE WALL (wave S): partners never read crew tables, even ones their
+    -- rank-0 role check would already exclude — defense in depth, enforced
+    -- by scripts/test_partner_wall.py replaying every migration.
+    not public.is_partner_user() and public.my_role_rank() >= 1);
 -- No insert/update/delete policy — save_crew/delete_crew are the only writers.
 
 -- Create (p_id null) or rename/reshuffle (p_id set) a saved crew in one call.

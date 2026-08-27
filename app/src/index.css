@@ -11041,6 +11041,31 @@ button.stage-chip {
   width: 6px;
   height: 6px;
   border-radius: 50%;
+}
+
+/* The "Log today · N" reminder (wave L, L4) — amber (--warn), same reuse-
+   the-tokens technique as the chips above. A real <button>, not a link:
+   tapping it opens a dialog over the page, never a navigation. min-height
+   only (no layout change on :hover — the RoleMap hover-oscillation lesson). */
+.log-today-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--warn) 45%, transparent);
+  background: color-mix(in oklab, var(--warn) 16%, transparent);
+  color: var(--warn);
+  font-weight: 700;
+  font-size: 13.5px;
+  font-family: var(--font-body);
+  cursor: pointer;
+  margin: 8px 0;
+}
+.log-today-chip:hover {
+  background: color-mix(in oklab, var(--warn) 24%, transparent);
+}
+
 /* "AI proposed" (wave A3): same shape as .install-chip/.dayflow-chip above,
    its own class because this badges WHO drafted a schedule assignment, not
    an install state or a day's temperature. Accent tone specifically
