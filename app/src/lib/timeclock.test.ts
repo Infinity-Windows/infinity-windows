@@ -4,7 +4,9 @@ import {
   currentBreakSeconds,
   elapsedWorkSeconds,
   formatClock,
+  punchDay,
   shiftHours,
+  shiftsToExportRows,
   startOfWeekIso,
   type TimeShift,
 } from "./timeclock";
@@ -81,6 +83,47 @@ describe("breakTypeLabel", () => {
     expect(breakTypeLabel("lunch")).toBe("Lunch");
     expect(breakTypeLabel("rest")).toBe("Rest");
     expect(breakTypeLabel(null)).toBe("Break");
+  });
+});
+
+describe("shiftsToExportRows (T7: one shared export mapping)", () => {
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+  it("maps a closed shift's fields, including every joined table", () => {
+    const s = shift({
+      clock_out_at: "2026-01-05T16:00:00Z",
+      profiles: { display_name: "Alex Rivera" },
+      projects: { job_code: "W-1001", name: "Job" },
+      cost_codes: { code: "100", label: "Install" },
+      status: "approved",
+    });
+    const [row] = shiftsToExportRows([s]);
+    expect(row.employee).toBe("Alex Rivera");
+    expect(row.day).toBe(punchDay(s.clock_in_at));
+    expect(row.start).toBe(fmt(s.clock_in_at));
+    expect(row.end).toBe(fmt(s.clock_out_at!));
+    expect(row.hours).toBe(shiftHours(s));
+    expect(row.job).toBe("W-1001");
+    expect(row.costCode).toBe("100 - Install");
+    expect(row.status).toBe("approved");
+  });
+
+  it("leaves end blank for a still-open shift, rather than formatting null", () => {
+    const [row] = shiftsToExportRows([shift({})]);
+    expect(row.end).toBe("");
+  });
+
+  it("falls back to the given name and a dash/em-dash when joins are missing", () => {
+    const [row] = shiftsToExportRows([shift({ project_id: null })], "Fallback Name");
+    expect(row.employee).toBe("Fallback Name");
+    expect(row.job).toBe("—");
+    expect(row.costCode).toBe("-");
+  });
+
+  it("defaults the fallback name to Crew when none is given", () => {
+    const [row] = shiftsToExportRows([shift({})]);
+    expect(row.employee).toBe("Crew");
   });
 });
 

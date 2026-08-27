@@ -21,17 +21,11 @@ import {
   listCostCodes,
   listTeamShifts,
   listUnfinishedShifts,
-  punchDay,
-  shiftHours,
+  shiftsToExportRows,
   summarizeTeamWeek,
   weekRange,
-  type TimeShift,
 } from "../lib/timeclock";
-import {
-  buildTimecardCsv,
-  buildTimecardTsv,
-  type TimecardExportShift,
-} from "../lib/timecardExport";
+import { buildTimecardCsv, buildTimecardTsv } from "../lib/timecardExport";
 import {
   describeDuration,
   flaggedShifts,
@@ -177,21 +171,11 @@ export function TeamTimecards() {
   const pendingCount = weekSummary.reduce((t, r) => t + r.submittedCount, 0);
 
   // ---- Team-wide export (the roster's "Export all") ----
-  function exportShifts(source: TimeShift[]): TimecardExportShift[] {
-    return source.map((s) => ({
-      employee: s.profiles?.display_name ?? "Crew",
-      day: punchDay(s.clock_in_at),
-      start: fmtTime(s.clock_in_at),
-      end: s.clock_out_at ? fmtTime(s.clock_out_at) : "",
-      hours: shiftHours(s),
-      job: s.projects?.job_code ?? "—",
-      costCode: s.cost_codes ? `${s.cost_codes.code} - ${s.cost_codes.label}` : "-",
-      status: s.status,
-    }));
-  }
+  // T7: shiftsToExportRows (lib/timeclock.ts) is the one shared mapping —
+  // see its comment for why it lives there instead of timecardExport.ts.
   const teamPayload = () => ({
     periodLabel: week.label,
-    shifts: exportShifts(teamShifts.data ?? []),
+    shifts: shiftsToExportRows(teamShifts.data ?? []),
     overtime: [],
   });
 

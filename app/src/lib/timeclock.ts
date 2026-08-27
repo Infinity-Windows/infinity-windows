@@ -2,6 +2,7 @@ import { supabase } from "./supabase";
 import type { GeoFix } from "./geo";
 import { sendPush } from "./permissions/pushServer";
 import { isMissingClockInOverload, normalizeNote } from "./timeclockNote";
+import type { TimecardExportShift } from "./timecardExport";
 
 export { isMissingClockInOverload, normalizeNote } from "./timeclockNote";
 
@@ -693,6 +694,33 @@ export function shiftHours(s: TimeShift): number {
   if (!s.clock_out_at) return 0;
   const ms = new Date(s.clock_out_at).getTime() - new Date(s.clock_in_at).getTime();
   return Math.max(0, ms / 3600000 - s.break_seconds / 3600);
+}
+
+/**
+ * Wave T7: the one place a TimeShift[] becomes export rows. CSV, TSV/copy-
+ * for-Sheets, and the print/PDF view all trace back to this — previously
+ * TeamTimecards.tsx and TimecardPanel.tsx each had their own copy of this
+ * exact mapping. Lives here rather than in timecardExport.ts so that module
+ * can stay framework-free (no TimeShift/supabase import) per its own header
+ * comment. `fallbackName` covers a shift whose `profiles` join hasn't
+ * loaded yet.
+ */
+export function shiftsToExportRows(
+  shifts: TimeShift[],
+  fallbackName = "Crew",
+): TimecardExportShift[] {
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return shifts.map((s) => ({
+    employee: s.profiles?.display_name ?? fallbackName,
+    day: punchDay(s.clock_in_at),
+    start: fmt(s.clock_in_at),
+    end: s.clock_out_at ? fmt(s.clock_out_at) : "",
+    hours: shiftHours(s),
+    job: s.projects?.job_code ?? "—",
+    costCode: s.cost_codes ? `${s.cost_codes.code} - ${s.cost_codes.label}` : "-",
+    status: s.status,
+  }));
 }
 
 export function startOfWeekIso(): string {
