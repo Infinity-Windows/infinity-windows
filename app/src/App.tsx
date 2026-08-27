@@ -107,6 +107,9 @@ import { PinGate } from "./components/PinGate";
 import { ensureMyProfile } from "./lib/install/api";
 import "./index.css";
 import { DataHub } from "./pages/DataHub";
+import { StgApp } from "./pages/stg/StgApp";
+import { useIsPartnerUser } from "./lib/stg";
+import { AccountBuilders } from "./pages/AccountBuilders";
 
 /**
  * Role-aware landing: installers land on My Work, foremen on the Infinity day
@@ -164,6 +167,25 @@ function RequireRole({
       <Link to="/" className="button-like">Back to home</Link>
     </div>
   );
+}
+
+/**
+ * THE WALL #5 (20260950000000_partner_wall.sql): a partner (builder/GC
+ * login) redirects to /stg for every OTHER path. Server-side RLS is the
+ * real wall — every crew table is unreadable to a partner regardless of
+ * what renders here — this is manners: it stops the crew shell (Layout,
+ * its nav, its bottom bar) from ever mounting for a partner at all, rather
+ * than mounting it and having every query inside it come back empty.
+ * Wraps the Layout ROUTE itself (not something inside it), so the redirect
+ * fires before Layout — and the nav it draws — ever renders.
+ */
+function RequirePartnerElsewhere({ children }: { children: ReactNode }) {
+  const isPartner = useIsPartnerUser();
+  if (isPartner.isLoading) {
+    return <div className="page"><p className="muted">Loading…</p></div>;
+  }
+  if (isPartner.data) return <Navigate to="/stg" replace />;
+  return <>{children}</>;
 }
 
 /** Legacy /install/:projectId/* bookmarks → unified /projects/:id hub. */
@@ -369,7 +391,13 @@ export default function App() {
         <ClockProvider>
         <SectionAura />
         <Routes>
-          <Route element={<Layout />}>
+          {/* A partner's whole app — outside the crew Layout entirely, so no
+              crew chrome (nav, bottom bar, values strip) can ever mount for
+              a builder login. Reachable by crew too (nothing forbids it),
+              but every read inside it is a partner-only projection RPC that
+              rejects a non-partner caller server-side (S3). */}
+          <Route path="/stg/*" element={<StgApp />} />
+          <Route element={<RequirePartnerElsewhere><Layout /></RequirePartnerElsewhere>}>
             <Route path="/" element={<RoleLanding />} />
             <Route path="/warehouse" element={<Warehouse />} />
             {/* One list per hub number: /warehouse/on-hand, /putaway, /staged,
@@ -390,6 +418,10 @@ export default function App() {
             <Route
               path="/ai-spend"
               element={<RequireRole path="/ai-spend"><AiSpend /></RequireRole>}
+            />
+            <Route
+              path="/account/builders"
+              element={<RequireRole path="/account/builders"><AccountBuilders /></RequireRole>}
             />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/stuck" element={<StuckWrites />} />

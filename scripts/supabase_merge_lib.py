@@ -613,6 +613,16 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # One shared log per job per day (Q6) — the UNIQUE constraint IS the
     # natural key (Wave L, L1, 20260949000000).
     "daily_logs": ("project_id", "log_date"),
+    # One grant per (partner, job) — the UNIQUE constraint IS the natural
+    # key (Wave S, S1 the partner wall, 20260950000000).
+    "partner_job_grants": ("partner_profile_id", "project_id"),
+    # Email IS the primary key — an invite is identified by the address it
+    # was sent to (Wave S, S1, 20260950000000).
+    "partner_invites": ("email",),
+    # token IS the primary key — an opaque bearer credential, not a natural
+    # key in the usual sense, but UNIQUE by construction and the only handle
+    # anything has on one row (Wave S, S6 stretch, 20260953000000).
+    "calendar_feed_tokens": ("token",),
 }
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.

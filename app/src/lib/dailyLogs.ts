@@ -30,6 +30,7 @@ export interface DailyLog {
   reflection: DailyLogReflection | null;
   weather: string | null;
   customer_visible: boolean;
+  customer_visible_at: string | null;
   filed_by: string;
   updated_by: string | null;
   created_at: string;
@@ -113,6 +114,20 @@ export async function fileDailyLog(input: FileDailyLogInput): Promise<DailyLog> 
     p_day_flow: input.dayFlow,
     p_reflection: input.reflection,
     p_weather: input.weather,
+  });
+  if (error) throw error;
+  return data as DailyLog;
+}
+
+/** Wave S, S2: supervisor+ shares (or un-shares) one day's log with the
+ * builder login granted that job (Q14). Server-enforced (RLS has no direct
+ * write path to daily_logs at all — set_log_customer_visible is SECURITY
+ * DEFINER and the only writer); this call fails outright for anyone below
+ * supervisor rather than silently no-op. */
+export async function setLogCustomerVisible(logId: string, visible: boolean): Promise<DailyLog> {
+  const { data, error } = await supabase.rpc("set_log_customer_visible", {
+    p_log: logId,
+    p_visible: visible,
   });
   if (error) throw error;
   return data as DailyLog;

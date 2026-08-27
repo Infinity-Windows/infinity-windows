@@ -423,6 +423,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
     blurb:
       "What the AI assistant costs, and the limits that stop it running away — spend so far this month, who is using it, the per-person daily allowance and the company ceiling. Owner-editable.",
   },
+  {
+    path: "/account/builders",
+    label: "Builder logins",
+    minRole: "owner",
+    blurb:
+      "Invite a builder or GC to their own STG Windows & Doors login, and grant them the specific jobs they may see (job progress and calendar only — never a crew screen). Also where you revoke a not-yet-claimed invite. Owner-only.",
+  },
 ];
 
 /**

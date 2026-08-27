@@ -162,6 +162,27 @@ day). Surfaced today as one line for owners on Heartbeat; wave S's later
 reviewer flow reads the same ratio at a 70% bar before it lets an outsider
 read anything a Daily Log says.
 
+## The partner wall
+
+Settled 2026-08-26/27, wave S. A builder or GC gets a login too — outside
+the crew entirely.
+
+**Partner** — a builder's login (branded STG Windows & Doors, the owner's
+outward brand — see Q9). Sees only the STG view (job progress, calendar,
+tap-a-day) and only the jobs granted to it; never a crew screen, never a
+crew table directly, under any role or rank. `profiles.is_partner` is the
+flag; a partner's `role` reads 'installer' (the rank floor), but rank
+stops being what decides anything the moment `is_partner` is true —
+`is_partner_user()` walls off every crew table ahead of any rank check
+(THE WALL, 20260950000000). Server-enforced, not just hidden nav: the
+router's redirect to /stg is manners, the RLS sweep is the wall.
+
+**Grant** — the owner handing one job to one partner login
+(`partner_job_grants`, one row per pair). Explicit and per-login (Q12) —
+there is no builder-orgs table in v1, so two people at the same GC each
+need their own login and their own grants. Owner-only to create or revoke
+(Q13), same floor as handing out a crew login.
+
 ## Open questions
 
 None right now — the next ones come from building.
