@@ -125,7 +125,8 @@ class TestSchemaParsing(unittest.TestCase):
         # in SCHEMA.tables at all, so they need no entry here or in
         # DEDUP_KEYS. Verified by running this suite before and after adding
         # that migration.
-        self.assertEqual(len(SCHEMA.tables), 106)
+        # +1: daily_logs (Wave L, L1 foreman daily logs, 20260949000000).
+        self.assertEqual(len(SCHEMA.tables), 107)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
