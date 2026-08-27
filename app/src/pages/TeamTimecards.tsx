@@ -21,22 +21,18 @@ import {
   listCostCodes,
   listTeamShifts,
   listUnfinishedShifts,
-  punchDay,
-  shiftHours,
+  shiftsToExportRows,
   summarizeTeamWeek,
   weekRange,
-  type TimeShift,
 } from "../lib/timeclock";
-import {
-  buildTimecardCsv,
-  buildTimecardTsv,
-  type TimecardExportShift,
-} from "../lib/timecardExport";
+import { buildTimecardCsv, buildTimecardTsv } from "../lib/timecardExport";
 import {
   describeDuration,
   flaggedShifts,
   needsFinishTime,
   shiftGuard,
+  suspectReason,
+  suspectShifts,
 } from "../lib/shiftGuard";
 import { TimecardPanel } from "../components/timecard/TimecardPanel";
 import { ShiftEditor } from "../components/timecard/ShiftEditor";
@@ -131,6 +127,16 @@ export function TeamTimecards() {
     () => flaggedShifts(unfinished.data ?? [], Date.now()),
     [unfinished.data],
   );
+  // T6: a data-sanity check on this week's already-closed punches, not a
+  // pay calculation — negative or >24h spans are almost always a typo or a
+  // bad edit. Scoped to the same week the rest of this page already loads
+  // (teamShifts), unlike the runaway list above, which deliberately ignores
+  // week boundaries because a shift with no clock_out_at yet has no stable
+  // week of its own to be found in.
+  const suspects = useMemo(
+    () => suspectShifts(teamShifts.data ?? []),
+    [teamShifts.data],
+  );
   const weekSummary = useMemo(
     () => summarizeTeamWeek(teamShifts.data ?? []),
     [teamShifts.data],
@@ -165,21 +171,11 @@ export function TeamTimecards() {
   const pendingCount = weekSummary.reduce((t, r) => t + r.submittedCount, 0);
 
   // ---- Team-wide export (the roster's "Export all") ----
-  function exportShifts(source: TimeShift[]): TimecardExportShift[] {
-    return source.map((s) => ({
-      employee: s.profiles?.display_name ?? "Crew",
-      day: punchDay(s.clock_in_at),
-      start: fmtTime(s.clock_in_at),
-      end: s.clock_out_at ? fmtTime(s.clock_out_at) : "",
-      hours: shiftHours(s),
-      job: s.projects?.job_code ?? "—",
-      costCode: s.cost_codes ? `${s.cost_codes.code} - ${s.cost_codes.label}` : "-",
-      status: s.status,
-    }));
-  }
+  // T7: shiftsToExportRows (lib/timeclock.ts) is the one shared mapping —
+  // see its comment for why it lives there instead of timecardExport.ts.
   const teamPayload = () => ({
     periodLabel: week.label,
-    shifts: exportShifts(teamShifts.data ?? []),
+    shifts: shiftsToExportRows(teamShifts.data ?? []),
     overtime: [],
   });
 
@@ -272,6 +268,34 @@ export function TeamTimecards() {
         )}
       </div>
 
+      {suspects.length > 0 && (
+        <section className="detail-card" style={{ marginTop: 12 }}>
+          <h2 style={{ margin: 0, fontSize: 15 }}>
+            Suspect punches this week ({suspects.length})
+          </h2>
+          <p className="muted" style={{ margin: "2px 0 8px", fontSize: 12 }}>
+            Clock-out before clock-in, or a span over 24 hours — almost
+            always a typo or a bad edit, worth a second look before payroll.
+          </p>
+          <ul className="unit-list">
+            {suspects.map((s) => (
+              <li key={s.id} className="find-row">
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <strong>{s.profiles?.display_name ?? "Crew"}</strong>
+                  <div className="muted" style={{ fontSize: 11.5 }}>
+                    {s.projects?.job_code ?? "—"} · {fmtTime(s.clock_in_at)} –{" "}
+                    {fmtTime(s.clock_out_at)}
+                  </div>
+                </div>
+                <span className="tcx-chip bad">
+                  {suspectReason(s) === "negative" ? "negative duration" : "over 24h"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {runaways.length > 0 && (
         <section className="detail-card runaway-shifts" style={{ marginTop: 12 }}>
           <h2 style={{ margin: 0, fontSize: 15 }}>
@@ -328,15 +352,22 @@ export function TeamTimecards() {
                     className="row-gap"
                     style={{ flexBasis: "100%", flexWrap: "wrap", marginTop: 6 }}
                   >
-                    <button
-                      className="button-like active-pill"
-                      onClick={() => {
-                        setFinishingId(finishingId === s.id ? null : s.id);
-                        setZeroingId(null);
-                      }}
-                    >
-                      {finishingId === s.id ? "Close" : "Set finish time"}
-                    </button>
+                    {/* Q3: this reuses the full edit sheet (edit_shift), now
+                        supervisor+ only — a foreman keeps "No work was done"
+                        (close_shift_as_no_work, untouched) but no longer sees
+                        the edit-sheet path, so nobody hits a permission error
+                        clicking a button the page still showed them. */}
+                    {isSup && (
+                      <button
+                        className="button-like active-pill"
+                        onClick={() => {
+                          setFinishingId(finishingId === s.id ? null : s.id);
+                          setZeroingId(null);
+                        }}
+                      >
+                        {finishingId === s.id ? "Close" : "Set finish time"}
+                      </button>
+                    )}
                     <button
                       className="button-like"
                       onClick={() => {
@@ -348,7 +379,7 @@ export function TeamTimecards() {
                       {zeroingId === s.id ? "Cancel" : "No work was done"}
                     </button>
                   </div>
-                  {finishingId === s.id && (
+                  {finishingId === s.id && isSup && (
                     <div style={{ flexBasis: "100%" }}>
                       <ShiftEditor
                         mode="edit"

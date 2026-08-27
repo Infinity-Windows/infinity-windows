@@ -146,6 +146,32 @@ export function flaggedShifts(shifts: TimeShift[], now = Date.now()): TimeShift[
 }
 
 /**
+ * Wave T6: closed shifts whose raw timestamps cannot be right — a clock-out
+ * before the clock-in (almost always a date/timezone typo on a hand-entered
+ * time), or a span over 24 hours (almost always a bad edit, since a real
+ * runaway shift is caught by `shiftGuard`/`flaggedShifts` long before it
+ * gets a clock_out_at this large). Deliberately the RAW clock_out_at minus
+ * clock_in_at, not `shiftHours()` (which nets out breaks): this is a sanity
+ * check on the timestamps themselves, not a pay calculation, so a shift
+ * with a huge break that nets to a normal number of paid hours is still
+ * worth a lead's second look. A voided shift already left every total, so
+ * flagging it here would just be noise.
+ */
+export function suspectShifts(shifts: TimeShift[]): TimeShift[] {
+  return shifts.filter((s) => {
+    if (s.status === "voided" || !s.clock_out_at) return false;
+    const ms = new Date(s.clock_out_at).getTime() - new Date(s.clock_in_at).getTime();
+    return ms < 0 || ms > 24 * 3600_000;
+  });
+}
+
+/** Why one shift was flagged by `suspectShifts` — for the warn chip's label. */
+export function suspectReason(shift: Pick<TimeShift, "clock_in_at" | "clock_out_at">): "negative" | "over-24h" {
+  const ms = new Date(shift.clock_out_at!).getTime() - new Date(shift.clock_in_at).getTime();
+  return ms < 0 ? "negative" : "over-24h";
+}
+
+/**
  * "12 days", "1 day 3 hours", "13 hours", "45 minutes" — how long it has been,
  * in words a non-technical reader can act on. H:MM:SS is unreadable past a day.
  */
@@ -237,6 +263,24 @@ export function finishTimeBounds(
   now = Date.now(),
 ): { min: string; max: string } {
   return { min: toLocalInputValue(shift.clock_in_at), max: toLocalInputValue(now) };
+}
+
+/**
+ * Wave T2's edit-sheet "duration" mode: pick a clock-in and how many hours
+ * were worked, rather than a literal clock-out time, and let the sheet
+ * compute the finish time. Pure so it is unit-testable without a page
+ * render; the sheet is the only caller, but this has nothing to do with
+ * rendering, so it lives with the rest of the shift-time math.
+ *
+ * Negative durations clamp to zero rather than erroring — the input is a
+ * plain number field, and a momentarily-negative value while someone is
+ * still typing (e.g. "-" before "1.5" is corrected) should never crash a
+ * live preview.
+ */
+export function endFromDuration(clockInIso: string, durationHours: number): string {
+  const start = new Date(clockInIso).getTime();
+  const hours = Number.isFinite(durationHours) ? Math.max(0, durationHours) : 0;
+  return new Date(start + hours * 3600_000).toISOString();
 }
 
 /** ISO or epoch → the `YYYY-MM-DDTHH:MM` a datetime-local input wants. */

@@ -6,11 +6,14 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "../../lib/errors";
 import { sendPush } from "../../lib/permissions/pushServer";
+import { endFromDuration } from "../../lib/shiftGuard";
+import { showUndoToast } from "../../lib/undoToast";
 import {
+  editShift,
   leadAddShift,
-  leadEditShift,
-  leadVoidShift,
   listShiftEdits,
+  restoreShift,
+  voidShift,
   type TimeShift,
 } from "../../lib/timeclock";
 
@@ -57,6 +60,13 @@ export function ShiftEditor({
     toLocalInput(shift?.clock_in_at ?? defaultInAt ?? new Date().toISOString()),
   );
   const [outAt, setOutAt] = useState(toLocalInput(shift?.clock_out_at ?? null));
+  // T2: "date + start + duration-hours mode computing the end" — an
+  // alternative to picking a literal clock-out time. Defaults to the
+  // existing picker so nothing changes for anyone who doesn't touch it.
+  const [endMode, setEndMode] = useState<"clockOut" | "duration">("clockOut");
+  const [durationHours, setDurationHours] = useState("");
+  const durationValue = Number(durationHours);
+  const durationValid = durationHours.trim() !== "" && Number.isFinite(durationValue) && durationValue >= 0;
   const [breakMin, setBreakMin] = useState(
     String(Math.round((shift?.break_seconds ?? 0) / 60)),
   );
@@ -73,25 +83,36 @@ export function ShiftEditor({
     qc.invalidateQueries({ queryKey: ["unfinishedShifts"] });
   };
 
+  // Duration mode computes the finish time from the clock-in instead of
+  // reading it from a picker — same result fed to the same RPC either way,
+  // so the server never knows which mode was used.
+  function resolvedClockOutAt(): string | null {
+    if (endMode === "clockOut") return fromLocalInput(outAt);
+    if (!durationValid) return null;
+    const clockInIso = fromLocalInput(inAt);
+    return clockInIso ? endFromDuration(clockInIso, durationValue) : null;
+  }
+
   const save = useMutation({
     mutationFn: () => {
       const breakSeconds = Math.max(0, Math.round(Number(breakMin) || 0) * 60);
+      const clockOutAt = resolvedClockOutAt();
       if (mode === "add") {
         return leadAddShift({
           profileId,
           projectId: projectId || null,
           costCodeId: codeId || null,
           clockInAt: fromLocalInput(inAt)!,
-          clockOutAt: fromLocalInput(outAt),
+          clockOutAt,
           breakSeconds,
           note: note.trim() || null,
         });
       }
-      return leadEditShift(shift!.id, {
+      return editShift(shift!.id, {
         projectId: projectId || null,
         costCodeId: codeId || null,
         clockInAt: fromLocalInput(inAt),
-        clockOutAt: fromLocalInput(outAt),
+        clockOutAt,
         breakSeconds,
         note: note.trim(),
       });
@@ -116,8 +137,10 @@ export function ShiftEditor({
 
   // Delete = void, never erase: the punch leaves timecards and payroll, the
   // row and the reason stay in the audit log. Same required note as an edit.
+  // T3: the app-wide five-second Undo toast fires restoreShift — the same
+  // RPC the "Show removed" list's own Restore button calls later.
   const del = useMutation({
-    mutationFn: () => leadVoidShift(shift!.id, note.trim()),
+    mutationFn: () => voidShift(shift!.id, note.trim()),
     onSuccess: () => {
       // The crew member should hear it from the app, not from a short check.
       void sendPush({
@@ -129,6 +152,13 @@ export function ShiftEditor({
       });
       refresh();
       onDone();
+      showUndoToast({
+        message: "Punch deleted.",
+        undo: async () => {
+          await restoreShift(shift!.id);
+          refresh();
+        },
+      });
     },
   });
 
@@ -159,11 +189,54 @@ export function ShiftEditor({
         onChange={(e) => setInAt(e.target.value)}
       />
       <label className="field-label">Clock out</label>
-      <input
-        type="datetime-local"
-        value={outAt}
-        onChange={(e) => setOutAt(e.target.value)}
-      />
+      <div className="seg" role="tablist" aria-label="How to set the finish time">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={endMode === "clockOut"}
+          className={endMode === "clockOut" ? "active-pill button-like" : "button-like"}
+          onClick={() => setEndMode("clockOut")}
+        >
+          Pick a time
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={endMode === "duration"}
+          className={endMode === "duration" ? "active-pill button-like" : "button-like"}
+          onClick={() => setEndMode("duration")}
+        >
+          Hours worked
+        </button>
+      </div>
+      {endMode === "clockOut" ? (
+        <input
+          type="datetime-local"
+          value={outAt}
+          onChange={(e) => setOutAt(e.target.value)}
+        />
+      ) : (
+        <>
+          <input
+            type="number"
+            min={0}
+            step={0.25}
+            placeholder="e.g. 8.5"
+            value={durationHours}
+            onChange={(e) => setDurationHours(e.target.value)}
+          />
+          <p className="muted" style={{ fontSize: 11.5, margin: "4px 0 0" }}>
+            {durationValid
+              ? `Ends ${new Date(resolvedClockOutAt()!).toLocaleString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}`
+              : "Enter the hours worked — the finish time is computed from the clock-in."}
+          </p>
+        </>
+      )}
       <label className="field-label">Break (minutes)</label>
       <input
         type="number"
@@ -185,7 +258,12 @@ export function ShiftEditor({
       <div className="row-gap" style={{ marginTop: 10 }}>
         <button
           className="button-like active-pill"
-          disabled={save.isPending || !inAt || (mode === "edit" && note.trim() === "")}
+          disabled={
+            save.isPending ||
+            !inAt ||
+            (mode === "edit" && note.trim() === "") ||
+            (endMode === "duration" && !durationValid)
+          }
           onClick={() => save.mutate()}
         >
           {save.isPending ? "Saving…" : mode === "add" ? "Add punch" : "Save changes"}

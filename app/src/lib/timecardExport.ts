@@ -2,6 +2,21 @@
 // of worked shifts into payroll-friendly rows: a detail block, per-person totals,
 // and per-cost-code totals. Serialized to CSV (Excel) or TSV (paste into Sheets).
 // No Supabase / React types here so the shaping stays unit-testable.
+//
+// Wave T7 ("Exports: PDF, XLSX, CSV, copy-for-Sheets") deviation, written
+// down here on purpose: this repo has no XLSX-writing library (no exceljs,
+// no xlsx/sheetjs — only pdf-lib and pdfjs-dist, neither of which write
+// spreadsheets), and the spec is explicit that adding a heavy dependency for
+// this needs asking first rather than doing. CSV already carries a UTF-8 BOM
+// specifically so Excel decodes it correctly (see buildTimecardCsv below),
+// so "opens correctly in Excel" is already served; there is no distinct
+// .xlsx (multi-sheet, formatted-cell) output. PDF is served by
+// components/timecard/printTimesheet.ts — a print-styled HTML window
+// (window.print → Save as PDF), which the spec names as the acceptable v1
+// for exactly this situation. Both were already built before this wave;
+// what T7 actually added is shiftsToExportRows (lib/timeclock.ts), the one
+// shared shift-to-row mapping that used to be copy-pasted in
+// TeamTimecards.tsx and TimecardPanel.tsx.
 
 export interface TimecardExportShift {
   employee: string;

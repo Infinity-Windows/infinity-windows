@@ -5,10 +5,12 @@
 // the per-punch Approve / Reject / Edit actions live at the bottom edge.
 
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Coffee } from "lucide-react";
 import { formatApiError } from "../../lib/errors";
 import {
   elapsedWorkSeconds,
+  restoreShift,
   shiftHours,
   type TimeShift,
 } from "../../lib/timeclock";
@@ -20,17 +22,29 @@ interface PunchCardProps {
   shift: TimeShift;
   isLead: boolean;
   isSup: boolean;
-  canEdit: boolean;
   projects: ProjectOpt[];
   costCodes: CostOpt[];
   reject: { isPending: boolean; mutate: (args: { id: string; reason: string }) => void; error?: unknown };
 }
 
-export function PunchCard({ shift: s, isLead, isSup, canEdit, projects, costCodes, reject }: PunchCardProps) {
+export function PunchCard({ shift: s, isLead, isSup, projects, costCodes, reject }: PunchCardProps) {
+  const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
+
+  // T3: the persistent restore path for the "Show removed" list, once the
+  // five-second Undo toast on the delete itself has already expired.
+  const restore = useMutation({
+    mutationFn: () => restoreShift(s.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["teamShifts"] });
+      qc.invalidateQueries({ queryKey: ["timecardMine"] });
+      qc.invalidateQueries({ queryKey: ["timecardPanel"] });
+      qc.invalidateQueries({ queryKey: ["unfinishedShifts"] });
+    },
+  });
 
   const voided = s.status === "voided";
   const open = !s.clock_out_at;
@@ -71,6 +85,14 @@ export function PunchCard({ shift: s, isLead, isSup, canEdit, projects, costCode
             {fmtHours(s.break_seconds / 3600)} on breaks (excluded)
           </div>
         )}
+        {/* T4: the server closed this one on its own, not the person. */}
+        {!voided && s.closed_reason && (
+          <div className="muted" style={{ fontSize: 11.5, fontStyle: "italic" }}>
+            {s.closed_reason === "auto-closed by next clock-in"
+              ? "Auto-closed when the next shift started"
+              : s.closed_reason}
+          </div>
+        )}
 
         <div className="tcx-punch-status" style={{ fontSize: 11.5 }}>
           <span className={`tcx-status ${s.status}`}>
@@ -87,22 +109,48 @@ export function PunchCard({ shift: s, isLead, isSup, canEdit, projects, costCode
           {s.time_confirmed === false && (
             <span className="tcx-chip bad">time flagged by crew</span>
           )}
+          {/* Q3/T2: "edited by <name>" on the row itself, muted — not just a
+              generic "adjusted" flag. Supervisors get the same line as a
+              button that opens the full per-field history. */}
           {s.edited_by &&
             (isSup ? (
               <button
                 className="tcx-chip link"
                 onClick={() => setHistoryOpen((v) => !v)}
               >
-                adjusted · history
+                edited by {s.editor?.display_name ?? "someone"} · history
               </button>
             ) : (
-              <span className="tcx-chip">adjusted</span>
+              // .tcx-chip is muted-colored by default (index.css) — exactly
+              // the "edited by <name>" muted line T2 asked for.
+              <span className="tcx-chip">
+                edited by {s.editor?.display_name ?? "someone"}
+              </span>
             ))}
         </div>
         {historyOpen && isSup && <ShiftHistory shiftId={s.id} />}
-        {voided && s.edited_note && (
-          <div className="muted" style={{ fontSize: 11.5, fontStyle: "italic" }}>
-            Removed: “{s.edited_note}”
+        {voided && (
+          <div className="muted" style={{ fontSize: 11.5 }}>
+            <span style={{ fontStyle: "italic" }}>
+              Removed{s.voider?.display_name ? ` by ${s.voider.display_name}` : ""}
+              {(s.voided_reason ?? s.edited_note) &&
+                `: “${s.voided_reason ?? s.edited_note}”`}
+            </span>
+            {isSup && (
+              <button
+                className="button-like"
+                style={{ marginLeft: 8, fontSize: 11, padding: "1px 8px" }}
+                disabled={restore.isPending}
+                onClick={() => restore.mutate()}
+              >
+                {restore.isPending ? "Restoring…" : "Restore"}
+              </button>
+            )}
+            {restore.isError && (
+              <p className="error" style={{ margin: "2px 0 0" }}>
+                {formatApiError(restore.error)}
+              </p>
+            )}
           </div>
         )}
         {!voided && guard.flagged && (
@@ -132,10 +180,11 @@ export function PunchCard({ shift: s, isLead, isSup, canEdit, projects, costCode
 
         {/* Approval is WEEKLY (owner call, 2026-08-11) — the Approve-week
             button lives on the panel's total card. Reject stays per punch:
-            a bad punch is a specific punch. */}
-        {isLead && !voided && (
+            a bad punch is a specific punch. Edit is supervisor+ only (Q3) —
+            a plain foreman can still Reject, but not open the edit sheet. */}
+        {(isLead || isSup) && !voided && (
           <div className="row-gap tcx-punch-actions">
-            {s.status !== "rejected" && (
+            {isLead && s.status !== "rejected" && (
               <button
                 className="button-like"
                 onClick={() => {
@@ -146,12 +195,14 @@ export function PunchCard({ shift: s, isLead, isSup, canEdit, projects, costCode
                 Reject
               </button>
             )}
-            <button
-              className="button-like"
-              onClick={() => setEditing((v) => !v)}
-            >
-              {editing ? "Close" : "Edit"}
-            </button>
+            {isSup && (
+              <button
+                className="button-like"
+                onClick={() => setEditing((v) => !v)}
+              >
+                {editing ? "Close" : "Edit"}
+              </button>
+            )}
           </div>
         )}
         {rejecting && (
@@ -178,7 +229,7 @@ export function PunchCard({ shift: s, isLead, isSup, canEdit, projects, costCode
         {reject.error != null && (
           <p className="error">{formatApiError(reject.error)}</p>
         )}
-        {editing && canEdit && (
+        {editing && isSup && (
           <ShiftEditor
             mode="edit"
             shift={s}

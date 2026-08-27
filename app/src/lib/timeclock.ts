@@ -1,7 +1,9 @@
 import { supabase } from "./supabase";
 import type { GeoFix } from "./geo";
 import { sendPush } from "./permissions/pushServer";
+import { isMissingTable } from "./schemaErrors";
 import { isMissingClockInOverload, normalizeNote } from "./timeclockNote";
+import type { TimecardExportShift } from "./timecardExport";
 
 export { isMissingClockInOverload, normalizeNote } from "./timeclockNote";
 
@@ -61,9 +63,28 @@ export interface TimeShift {
   rejected_by?: string | null;
   rejected_at?: string | null;
   reject_reason?: string | null;
+  /**
+   * Void (Wave T3): its own columns, deliberately separate from the
+   * edited_by/edited_at/edited_note trio above — a voided-and-later-edited
+   * (or edited-and-later-voided) punch must never leave only one note field
+   * to say which reason belongs to which action.
+   */
+  voided_at?: string | null;
+  voided_by?: string | null;
+  voided_reason?: string | null;
+  /**
+   * Set only when `clock_in` auto-closed THIS shift because a new one
+   * started before it was closed out (Wave T4) — null for a shift the
+   * person (or a supervisor) actually closed.
+   */
+  closed_reason?: string | null;
   projects?: { job_code: string; name: string } | null;
   cost_codes?: { code: string; label: string } | null;
   profiles?: { display_name: string } | null;
+  /** Who last edited this punch (Wave T2) — "edited by <name>" on the row. */
+  editor?: { display_name: string } | null;
+  /** Who voided this punch (Wave T3) — "voided by <name>" on the row. */
+  voider?: { display_name: string } | null;
 }
 
 /** A crew member's rolled-up week, for the team roster on the timecard page. */
@@ -91,9 +112,12 @@ export interface RecentJob {
 // points at four different people — whose shift it is, plus who approved,
 // edited and rejected it. Asking for a bare `profiles(...)` is ambiguous, and
 // PostgREST answers a 300 rather than guessing, which took the clock and the
-// whole timecard down until the hint was added.
+// whole timecard down until the hint was added. `editor` (via `edited_by`)
+// and `voider` (via `voided_by`) are the second and third of those four to
+// get their own joins, for the row-level "edited by <name>" (T2) and
+// "voided by <name>" (T3) lines.
 const SHIFT_SELECT =
-  "*, projects(job_code, name), cost_codes(code, label), profiles!profile_id(display_name)";
+  "*, projects(job_code, name), cost_codes(code, label), profiles!profile_id(display_name), editor:profiles!edited_by(display_name), voider:profiles!voided_by(display_name)";
 
 export async function listCostCodes(): Promise<CostCode[]> {
   const { data, error } = await supabase
@@ -328,12 +352,18 @@ export interface LeadShiftPatch {
   note?: string | null;
 }
 
-/** Lead adjusts an existing punch. Only the provided fields change. */
-export async function leadEditShift(
+/**
+ * Supervisor+ adjusts an existing punch (Q3: edit narrowed from foreman+ to
+ * supervisor+). Only the provided fields change. Editing an approved shift
+ * resets the approval, and re-approves it in the same save when the editor
+ * could have approved it themselves (Q4) — both server-enforced by
+ * `edit_shift`, not this wrapper.
+ */
+export async function editShift(
   shiftId: string,
   patch: LeadShiftPatch,
 ): Promise<TimeShift> {
-  const { data, error } = await supabase.rpc("lead_edit_shift", {
+  const { data, error } = await supabase.rpc("edit_shift", {
     p_shift_id: shiftId,
     p_project_id: patch.projectId ?? null,
     p_cost_code_id: patch.costCodeId ?? null,
@@ -346,11 +376,6 @@ export async function leadEditShift(
   return data as TimeShift;
 }
 
-/**
- * Lead deletes a punch. Server-side this VOIDS, never erases: the shift
- * drops out of every list and total (status 'voided'), while the row and a
- * permanent audit entry with the required reason stay behind.
- */
 /**
  * Supervisor+ takes an approval back — reason required, hours untouched.
  * The punch returns to 'submitted' for normal re-approval.
@@ -367,13 +392,34 @@ export async function unapproveShift(
   return data as TimeShift;
 }
 
-export async function leadVoidShift(
+/**
+ * Supervisor+ deletes a punch (Q3: void narrowed from foreman+, same as
+ * edit). Server-side this VOIDS, never erases: the shift drops out of every
+ * list and total (status 'voided'), while the row, its own voided_at/by/
+ * reason columns, and a permanent time_shift_edits entry stay behind — see
+ * migration 20260944000000.
+ */
+export async function voidShift(
   shiftId: string,
-  note: string,
+  reason: string,
 ): Promise<TimeShift> {
-  const { data, error } = await supabase.rpc("lead_void_shift", {
+  const { data, error } = await supabase.rpc("void_shift", {
     p_shift_id: shiftId,
-    p_note: note,
+    p_reason: reason,
+  });
+  if (error) throw error;
+  return data as TimeShift;
+}
+
+/**
+ * Undo for `voidShift` (Wave T3) — the five-second toast's inverse, and
+ * what the "Show removed" list's Restore button calls too. Never resurrects
+ * the old approval (see the migration's comment): a closed shift comes back
+ * 'submitted', an open one comes back 'open'.
+ */
+export async function restoreShift(shiftId: string): Promise<TimeShift> {
+  const { data, error } = await supabase.rpc("restore_shift", {
+    p_shift_id: shiftId,
   });
   if (error) throw error;
   return data as TimeShift;
@@ -651,6 +697,33 @@ export function shiftHours(s: TimeShift): number {
   return Math.max(0, ms / 3600000 - s.break_seconds / 3600);
 }
 
+/**
+ * Wave T7: the one place a TimeShift[] becomes export rows. CSV, TSV/copy-
+ * for-Sheets, and the print/PDF view all trace back to this — previously
+ * TeamTimecards.tsx and TimecardPanel.tsx each had their own copy of this
+ * exact mapping. Lives here rather than in timecardExport.ts so that module
+ * can stay framework-free (no TimeShift/supabase import) per its own header
+ * comment. `fallbackName` covers a shift whose `profiles` join hasn't
+ * loaded yet.
+ */
+export function shiftsToExportRows(
+  shifts: TimeShift[],
+  fallbackName = "Crew",
+): TimecardExportShift[] {
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return shifts.map((s) => ({
+    employee: s.profiles?.display_name ?? fallbackName,
+    day: punchDay(s.clock_in_at),
+    start: fmt(s.clock_in_at),
+    end: s.clock_out_at ? fmt(s.clock_out_at) : "",
+    hours: shiftHours(s),
+    job: s.projects?.job_code ?? "—",
+    costCode: s.cost_codes ? `${s.cost_codes.code} - ${s.cost_codes.label}` : "-",
+    status: s.status,
+  }));
+}
+
 export function startOfWeekIso(): string {
   return weekRange().startIso;
 }
@@ -723,6 +796,18 @@ export function timecardRange(mode: TimecardRangeMode, anchor: Date): WeekRange 
   return weekRange(anchor);
 }
 
+/**
+ * The most recently ENDED pay period relative to `anchor` — never the one
+ * still running. This is what the worker's "Sign my timecard" card offers:
+ * a period that is over has nothing left to add to it, so it is safe to
+ * attest to. `sign_my_timecard` also refuses server-side if a client ever
+ * sent an in-progress period anyway.
+ */
+export function previousPayPeriod(anchor: Date = new Date()): WeekRange {
+  const current = timecardRange("pay", anchor);
+  return timecardRange("pay", addDays(current.start, -1));
+}
+
 /** Days a timecard range covers, as local punch-day keys (YYYY-MM-DD). */
 export function rangeDays(range: WeekRange): string[] {
   const out: string[] = [];
@@ -737,4 +822,62 @@ export function punchDay(iso: string): string {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// ---------------------------------------------------------------------------
+// Pay-period sign-off (Wave T8) — layered on top of per-punch approval (Q5):
+// the worker signs their own two-Monday-week card once it has ended, a
+// supervisor countersigns afterward. `period_start` is always whatever this
+// module's own `timecardRange("pay", anchor).startIso` produced — see the
+// migration's comment for why the server never re-derives that grid itself.
+
+export interface TimecardPeriod {
+  id: string;
+  profile_id: string;
+  period_start: string;
+  employee_signed_at: string | null;
+  supervisor_signed_at: string | null;
+  supervisor_signed_by: string | null;
+  supervisor?: { display_name: string } | null;
+}
+
+/** One person's sign-off row for one period, or null if nobody has signed yet. */
+export async function getTimecardPeriod(
+  profileId: string,
+  periodStartIso: string,
+): Promise<TimecardPeriod | null> {
+  const { data, error } = await supabase
+    .from("timecard_periods")
+    .select(
+      "id, profile_id, period_start, employee_signed_at, supervisor_signed_at, supervisor_signed_by, supervisor:profiles!supervisor_signed_by(display_name)",
+    )
+    .eq("profile_id", profileId)
+    .eq("period_start", periodStartIso)
+    .maybeSingle();
+  // Not migrated in yet — no sign-off is the honest answer, not an error.
+  if (isMissingTable(error, "timecard_periods")) return null;
+  if (error) throw error;
+  return data as unknown as TimecardPeriod | null;
+}
+
+/** The worker's own attestation. Self-service — no reason, no lead gate. */
+export async function signMyTimecard(periodStartIso: string): Promise<TimecardPeriod> {
+  const { data, error } = await supabase.rpc("sign_my_timecard", {
+    p_period_start: periodStartIso,
+  });
+  if (error) throw error;
+  return data as TimecardPeriod;
+}
+
+/** Supervisor+ countersigns a period the crew member already signed. */
+export async function countersignTimecard(
+  profileId: string,
+  periodStartIso: string,
+): Promise<TimecardPeriod> {
+  const { data, error } = await supabase.rpc("countersign_timecard", {
+    p_profile_id: profileId,
+    p_period_start: periodStartIso,
+  });
+  if (error) throw error;
+  return data as TimecardPeriod;
 }

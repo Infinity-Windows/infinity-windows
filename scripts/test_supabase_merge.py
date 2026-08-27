@@ -117,7 +117,15 @@ class TestSchemaParsing(unittest.TestCase):
         # 20260924000000). The pending table is DROPPED by 20260926000000 —
         # the parser counts declarations, so it still appears here.
         # +1: app_feedback (suggestions to the owners, 20260931000000).
-        self.assertEqual(len(SCHEMA.tables), 105)
+        # +1: timecard_periods (Wave T, T8 pay-period sign-off,
+        # 20260947000000). Wave T's other new tables (time_shifts_graveyard,
+        # time_shift_edits_graveyard, unit_sessions_graveyard, 20260942000000)
+        # are `create table ... as select ...`, which _CREATE_TABLE's regex
+        # (a parenthesized column list) never matches — they do not appear
+        # in SCHEMA.tables at all, so they need no entry here or in
+        # DEDUP_KEYS. Verified by running this suite before and after adding
+        # that migration.
+        self.assertEqual(len(SCHEMA.tables), 106)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

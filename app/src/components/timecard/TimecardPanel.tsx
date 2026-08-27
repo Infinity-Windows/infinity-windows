@@ -23,6 +23,7 @@ import {
   rangeDays,
   rejectShift,
   shiftHours,
+  shiftsToExportRows,
   timecardRange,
   weekRange,
   type TimecardRangeMode,
@@ -34,13 +35,10 @@ import {
   pickOvertimeRule,
   splitOvertime,
 } from "../../lib/overtime";
-import {
-  buildTimecardCsv,
-  buildTimecardTsv,
-  type TimecardExportShift,
-} from "../../lib/timecardExport";
+import { buildTimecardCsv, buildTimecardTsv } from "../../lib/timecardExport";
 import { PunchCard } from "./PunchCard";
 import { ShiftEditor, type CostOpt, type ProjectOpt } from "./ShiftEditor";
+import { PeriodSignOffStrip } from "./SignOffCard";
 import { fmtHours, fmtTime } from "./format";
 import { printTimesheet } from "./printTimesheet";
 import { sendPush } from "../../lib/permissions/pushServer";
@@ -238,21 +236,11 @@ export function TimecardPanel({
   const totalLabel =
     mode === "day" ? "Total today" : mode === "pay" ? "Total this pay period" : "Total this week";
 
-  function exportRows(): TimecardExportShift[] {
-    return paidRows.map((s) => ({
-      employee: s.profiles?.display_name ?? personName,
-      day: punchDay(s.clock_in_at),
-      start: fmtTime(s.clock_in_at),
-      end: s.clock_out_at ? fmtTime(s.clock_out_at) : "",
-      hours: shiftHours(s),
-      job: s.projects?.job_code ?? "—",
-      costCode: s.cost_codes ? `${s.cost_codes.code} - ${s.cost_codes.label}` : "-",
-      status: s.status,
-    }));
-  }
+  // T7: shiftsToExportRows (lib/timeclock.ts) is the one shared mapping —
+  // see its comment for why it lives there instead of timecardExport.ts.
   const exportPayload = () => ({
     periodLabel: `${personName} · ${range.label}`,
-    shifts: exportRows(),
+    shifts: shiftsToExportRows(paidRows, personName),
     overtime: [{ employee: personName, ...split }],
   });
 
@@ -420,6 +408,12 @@ export function TimecardPanel({
         )}
       </div>
 
+      {/* T8: nothing shows until the worker signs, then a status line plus
+          a Countersign button for supervisors. */}
+      {mode === "pay" && (
+        <PeriodSignOffStrip periodStartIso={range.startIso} profileId={personId} isSup={isSup} />
+      )}
+
       {/* Entries strip */}
       <div className="tcx-entries-strip">
         <span className="tcx-label">Entries</span>
@@ -573,7 +567,6 @@ export function TimecardPanel({
                       shift={s}
                       isLead={isLead}
                       isSup={isSup}
-                      canEdit={canEdit}
                       projects={projects}
                       costCodes={costCodes}
                       reject={{ ...reject, error: reject.error }}

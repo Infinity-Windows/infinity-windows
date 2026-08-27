@@ -607,6 +607,9 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "vehicle_locations_history": None,
     "vehicle_project_assignments": None,
     "vehicle_service_records": None,
+    # One sign-off row per person per pay period — the UNIQUE index IS the
+    # natural key (Wave T8, 20260947000000).
+    "timecard_periods": ("profile_id", "period_start"),
 }
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.

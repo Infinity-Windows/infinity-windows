@@ -26,6 +26,7 @@ import {
   pendingRefForShift,
 } from "../../lib/offline/outbox";
 import { ToolboxTalkNagBanner } from "../time/ToolboxTalkNagBanner";
+import { WrongClockBanner } from "../time/WrongClockBanner";
 import { ToolboxSignCard } from "./ToolboxSignCard";
 import { myTodayCompletion } from "../../lib/toolbox";
 import { getTodayTalk } from "../../lib/ops";
@@ -620,6 +621,7 @@ export function ClockSheet({
         {/* ---- ON THE CLOCK ---- */}
         {mode === "main" && shift && (
           <div className="clock-sheet-body">
+            <WrongClockBanner />
             <ToolboxTalkNagBanner
               profileId={profileId}
               clockedIn={isOnTheClock(shift)}
@@ -939,6 +941,7 @@ export function ClockSheet({
           <div className="clock-sheet-body">
             {
               <>
+                {mode === "pick" && <WrongClockBanner />}
                 {mode === "switch" && shift && (
                   <p className="muted clock-switch-note">
                     Currently on <strong>{shift.projects?.job_code ?? "a job"}</strong> — no gap, the
