@@ -49,6 +49,7 @@ import {
 import { DayRecapCard } from "../components/warehouse/DayRecapCard";
 import { dayRecap, localMidnightIso } from "../lib/warehouse/dayRecap";
 import { jobTallies, tallyLine } from "../lib/warehouse/jobTally";
+import { scopeHref } from "../lib/warehouse/materialsScope";
 import { partitionTestPackages, testProjectIds } from "../lib/warehouse/testPartition";
 import {
   filterSuppliesByName,
@@ -350,15 +351,23 @@ export function Warehouse() {
               <ul className="unit-list" style={{ margin: 0 }}>
                 {tallies.map((t) => (
                   <li key={t.projectId ?? `pending:${t.label}`} className="wh-row">
+                    {/* Wave M: EVERY row links now, waiting jobs included —
+                        the owner's whole live inventory is waiting-job
+                        material, and it used to render as a dead end here. */}
                     {t.projectId ? (
                       <Link
-                        to={`/warehouse/materials?job=${t.projectId}`}
+                        to={scopeHref({ projectId: t.projectId, pendingName: null })}
                         className="link wh-row-title"
                       >
                         {t.label}
                       </Link>
                     ) : (
-                      <span className="wh-row-title">“{t.label}”</span>
+                      <Link
+                        to={scopeHref({ projectId: null, pendingName: t.label })}
+                        className="link wh-row-title"
+                      >
+                        “{t.label}”
+                      </Link>
                     )}
                     <span
                       className={t.remainingUnits === 0 ? "ok" : "warn-text"}
