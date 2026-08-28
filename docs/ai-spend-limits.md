@@ -66,6 +66,7 @@ monthly ceiling still stops it.
 | Function | Provider | ~Per run | Treatment |
 | --- | --- | --- | --- |
 | `extract-specs` | Anthropic vision | ~5¢/planset | Metered; ceiling only. Runs once per planset, not per curiosity. |
+| `extract-receipt` | Anthropic vision | ~0.8¢/receipt | Metered; ceiling only. Fires once right after ANY crew member (no role floor — Wave P) snaps a receipt, and skips the AI call entirely (no reservation booked) when the receipt is already fully read and the caller didn't ask for a rescan. |
 | `extract-schedule` | OpenAI | ~5¢/planset | Metered per batch, so a 12-batch planset books 12 reservations. |
 | `transcribe-install-memo` | Whisper + vision | ~2¢/memo | Metered; whisper priced by audio minute, vision by tokens. |
 | `synthesize-type-tips` | OpenAI | $0.0009/type | Metered per window type inside the loop, so a 100-type run cannot slip past mid-way. |

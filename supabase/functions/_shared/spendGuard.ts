@@ -173,6 +173,17 @@ export const FUNCTION_SPEND: Record<string, FunctionSpend> = {
     model: "text-embedding-3-small",
     estimateMicros: 500,
   },
+  // One small compressed receipt photo (1280px/0.82 JPEG) + a short JSON
+  // reply — one image, one call, nowhere near extract-specs' multi-page
+  // planset. Content-kind like extract-specs: any signed-in crew member can
+  // trigger it (Q, wave P) by snapping a receipt, so it carries no role
+  // floor, only the metered ceiling.
+  "extract-receipt": {
+    kind: "content",
+    provider: "anthropic",
+    model: "claude-sonnet-5",
+    estimateMicros: 8_000,
+  },
 };
 
 // ---------------------------------------------------------------------------
