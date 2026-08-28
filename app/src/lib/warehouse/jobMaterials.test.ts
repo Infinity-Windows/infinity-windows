@@ -72,6 +72,26 @@ describe("groupPackagesByMark", () => {
     );
     expect(rows.map(([mark]) => mark).sort()).toEqual(["?", "A7"]);
   });
+
+  it("collects the distinct deliveries a mark still has minted pieces on (wave M, 'N still coming')", () => {
+    const rows = groupPackagesByMark(
+      [
+        pkg({ status: "minted", delivery_id: "d1" }),
+        pkg({ status: "minted", delivery_id: "d1" }),
+        pkg({ status: "minted", delivery_id: "d2" }),
+        pkg({ status: "stored", delivery_id: "d3" }),
+      ],
+      [],
+    );
+    const [, row] = rows[0];
+    expect(row.mintedDeliveryIds).toEqual(["d1", "d2"]);
+  });
+
+  it("is empty once nothing is minted for a mark", () => {
+    const rows = groupPackagesByMark([pkg({ status: "stored", delivery_id: "d1" })], []);
+    const [, row] = rows[0];
+    expect(row.mintedDeliveryIds).toEqual([]);
+  });
 });
 
 describe("truckLabel", () => {

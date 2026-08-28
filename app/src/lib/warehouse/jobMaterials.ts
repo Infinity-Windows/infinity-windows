@@ -17,6 +17,10 @@ export interface MarkRow {
   counts: Record<string, number>;
   poolRows: PoolRow[];
   total: number;
+  /** Distinct deliveries this mark still has minted (not-yet-arrived) pieces
+   *  on — wave M's "N still coming" story, so the ledger can link straight
+   *  to each one's own tailgate instead of just naming a count. */
+  mintedDeliveryIds: string[];
 }
 
 /** "from Aug 25 truck" — null when there's nothing to date it by. Only shown
@@ -50,17 +54,21 @@ export function groupPackagesByMark(
   boxes: StoragePackage[],
   pool: StoragePackage[],
 ): [string, MarkRow][] {
+  const newRow = (): MarkRow => ({ counts: {}, poolRows: [], total: 0, mintedDeliveryIds: [] });
   const m = new Map<string, MarkRow>();
   for (const p of boxes) {
     const mark = markOf(p);
-    const row = m.get(mark) ?? { counts: {}, poolRows: [], total: 0 };
+    const row = m.get(mark) ?? newRow();
     row.counts[p.status] = (row.counts[p.status] ?? 0) + 1;
     row.total += 1;
+    if (p.status === "minted" && p.delivery_id && !row.mintedDeliveryIds.includes(p.delivery_id)) {
+      row.mintedDeliveryIds.push(p.delivery_id);
+    }
     m.set(mark, row);
   }
   for (const p of pool) {
     const mark = markOf(p);
-    const row = m.get(mark) ?? { counts: {}, poolRows: [], total: 0 };
+    const row = m.get(mark) ?? newRow();
     row.poolRows.push({ id: p.id, pieceCount: p.piece_count ?? 0, boundAt: p.bound_at });
     m.set(mark, row);
   }

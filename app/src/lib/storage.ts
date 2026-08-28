@@ -1084,17 +1084,24 @@ export async function addDeliverySet(args: {
  * Rename a package's headline (owner, 2026-08-26): the waiting-job text and
  * the manufacturer mark — the two halves of packageTitle no other editor
  * covered. Piece numbers and the what-is-it label keep going through
- * setPackagePart. Always sends BOTH values; pass the current one unchanged.
+ * setPackagePart. Always sends BOTH pending/mark values; pass the current
+ * one unchanged.
+ *
+ * `category` (wave M, owner rec-4) is different: it defaults to undefined,
+ * which the RPC reads as "leave it alone" — the SetEditor's Window/Door
+ * toggle is the only caller that ever passes one.
  */
 export async function renamePackage(
   packageId: string,
   pendingJobName: string | null,
   mark: string | null,
+  category?: "windows" | "doors" | null,
 ): Promise<void> {
   const { error } = await supabase.rpc("rename_package", {
     p_package: packageId,
     p_pending_job_name: pendingJobName,
     p_mark: mark,
+    p_category: category ?? null,
   });
   if (error) throw error;
 }
