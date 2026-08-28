@@ -25,6 +25,7 @@ import {
   writeToast,
 } from "../../lib/warehouse/offlineWrites";
 import { BackChip } from "../../components/BackChip";
+import { StationChip } from "../../components/warehouse/StationChip";
 import {
   listActivePackages,
   listCheckoutReasons,
@@ -32,6 +33,7 @@ import {
   mismatchedPackages,
 } from "../../lib/storage";
 import { isMissingStagingBayError } from "../../lib/staging";
+import { STATION_OUT_DOOR } from "../../lib/warehouse/stations";
 
 /**
  * The mismatch warning, per mode — because the two modes do different things
@@ -171,6 +173,7 @@ export function CheckoutPackages() {
           <h1>{mode === "stage" ? "Set aside for a job" : "Check out"}</h1>
         </div>
       </header>
+      <StationChip station={STATION_OUT_DOOR} />
 
       <div className="row-gap">
         <button

@@ -6678,6 +6678,25 @@ body {
   }
 }
 
+/* --- Station chip (wave F): "① Coming in" on a chipped destination page --- */
+.station-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.station-chip:hover {
+  filter: brightness(1.08);
+}
+
 /* --- Directions chip --- */
 .directions-chip {
   display: inline-flex;

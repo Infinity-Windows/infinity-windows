@@ -11,6 +11,7 @@ import { ScanLine } from "lucide-react";
 import { BackChip } from "../../components/BackChip";
 import { ContainerBadge } from "../../components/warehouse/ContainerBadge";
 import { StageChip } from "../../components/warehouse/StageChip";
+import { StationChip } from "../../components/warehouse/StationChip";
 import { SetEditor, type AddPieceStrategy } from "../../components/warehouse/SetEditor";
 import { listProjects, listProjectsAnyStatus } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
@@ -48,6 +49,7 @@ import { scopeHref } from "../../lib/warehouse/materialsScope";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isForemanPlus } from "../../lib/install/types";
 import { useScanWedge } from "../../lib/warehouse/scanWedge";
+import { STATION_COMING_IN } from "../../lib/warehouse/stations";
 
 export function DeliveryDetail() {
   // Pick 30: a desk-mounted hardware scanner routes straight to the package
@@ -488,6 +490,7 @@ export function DeliveryDetail() {
         </div>
         <BackChip fallback="/warehouse" label="Warehouse" />
       </header>
+      <StationChip station={STATION_COMING_IN} />
 
       {message && <p className="scanner-hint">{message}</p>}
 

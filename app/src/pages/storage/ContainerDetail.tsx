@@ -13,6 +13,7 @@ import { containerTrailLine } from "../../lib/warehouse/containerTrail";
 import { buildShellSerialized, shellDims, shellName } from "../../lib/modelstudio/shell";
 import { saveStudioProject } from "../../lib/modelstudio/projects";
 import { ContainerBadge } from "../../components/warehouse/ContainerBadge";
+import { StationChip } from "../../components/warehouse/StationChip";
 import { PackageRowText } from "../../components/warehouse/PackageRowText";
 import { formatApiError } from "../../lib/errors";
 import { isForemanPlus, isSupervisorPlus } from "../../lib/install/types";
@@ -48,6 +49,7 @@ import {
 } from "../../lib/storage";
 import { canNest, ridesAlong } from "../../lib/warehouse/containment";
 import { splitLinesOnStore } from "../../lib/warehouse/splitUnits";
+import { STATION_PUT_AWAY } from "../../lib/warehouse/stations";
 import {
   moveContainerOffline,
   storePackagesOffline,
@@ -595,6 +597,7 @@ export function ContainerDetail() {
           )}
         </div>
       </header>
+      <StationChip station={STATION_PUT_AWAY} />
 
       <div className="row-gap">
         <button

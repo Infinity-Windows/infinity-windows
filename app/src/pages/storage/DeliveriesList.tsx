@@ -9,6 +9,7 @@ import { Link } from "react-router-dom";
 import { BackChip } from "../../components/BackChip";
 import { EmptyState } from "../../components/ui/States";
 import { StageChip } from "../../components/warehouse/StageChip";
+import { StationChip } from "../../components/warehouse/StationChip";
 import { supabase } from "../../lib/supabase";
 import { formatApiError } from "../../lib/errors";
 import {
@@ -20,6 +21,7 @@ import {
 import { listProfiles } from "../../lib/install/api";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isForemanPlus, isSupervisorPlus } from "../../lib/install/types";
+import { STATION_COMING_IN } from "../../lib/warehouse/stations";
 
 export function DeliveriesList() {
   const qc = useQueryClient();
@@ -106,6 +108,7 @@ export function DeliveriesList() {
         </div>
         <BackChip fallback="/warehouse" label="Warehouse" />
       </header>
+      <StationChip station={STATION_COMING_IN} />
       {message && <p className="scanner-hint">{message}</p>}
       <ul className="unit-list">
         {(deliveries.data ?? []).map((d) => {

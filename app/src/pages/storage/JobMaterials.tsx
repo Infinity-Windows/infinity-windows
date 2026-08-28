@@ -16,6 +16,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { BackChip } from "../../components/BackChip";
 import { EmptyState } from "../../components/ui/States";
 import { StageChip } from "../../components/warehouse/StageChip";
+import { StationChip } from "../../components/warehouse/StationChip";
 import { SetEditor, type AddPieceStrategy } from "../../components/warehouse/SetEditor";
 import { jobTallies, tallyLine } from "../../lib/warehouse/jobTally";
 import { LoadList } from "../../components/warehouse/LoadList";
@@ -53,6 +54,7 @@ import {
 } from "../../lib/warehouse/loadList";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isForemanPlus } from "../../lib/install/types";
+import { STATION_FIX_MISTAKE } from "../../lib/warehouse/stations";
 
 type Stage = "all" | "minted" | "received" | "stored" | "checked_out";
 const STAGE_LABELS: Record<Exclude<Stage, "all">, string> = {
@@ -246,6 +248,7 @@ export function JobMaterials() {
         </div>
         <BackChip fallback="/warehouse" label="Warehouse" />
       </header>
+      <StationChip station={STATION_FIX_MISTAKE} />
 
       {/* One picker, two groups (wave M): a built job by id, or a waiting
           job by the name it was typed at the truck. */}
