@@ -132,7 +132,7 @@ class TestSchemaParsing(unittest.TestCase):
         # +1: calendar_feed_tokens (Wave S, S6 stretch, shipped partial —
         # table + self-service RPCs only, no edge function yet;
         # 20260953000000).
-        # +1: receipts (Wave P, P1, 20260960000000).
+        # +1: receipts (Wave P, P1, 20260957000000).
         self.assertEqual(len(SCHEMA.tables), 112)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)

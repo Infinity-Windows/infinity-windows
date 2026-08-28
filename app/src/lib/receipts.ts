@@ -6,7 +6,7 @@
 // or edits a receipt once it exists: the office table (P4), the upload
 // flow's job-suggestion chips and passthrough question (P3), and the
 // extract-receipt call (P2). RPC names/shapes mirror
-// supabase/migrations/20260960000000_receipts.sql exactly — read that
+// supabase/migrations/20260957000000_receipts.sql exactly — read that
 // migration's comments for the authorization and fill-missing-only rules
 // this file is just a thin client for.
 

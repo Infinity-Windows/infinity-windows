@@ -7,7 +7,7 @@
  * app side.
  *
  * THE LAW — and the ONLY place it is actually enforced — lives in
- * apply_receipt_extraction (supabase/migrations/20260960000000_receipts.sql):
+ * apply_receipt_extraction (supabase/migrations/20260957000000_receipts.sql):
  * a null column takes the machine's value; a column that already holds
  * something, human-typed or a prior machine fill, is left exactly as it is.
  * This module mirrors that SQL function's semantics field-for-field so a

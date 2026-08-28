@@ -590,7 +590,7 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # A snapped receipt, like job_notes/opening_notes above: two receipts
     # with the same vendor/amount/date can be two real purchases (gas twice
     # in a week at the same station), so there is no natural key to dedup
-    # on (Wave P, P1, 20260960000000).
+    # on (Wave P, P1, 20260957000000).
     "receipts": None,
     "schedule_assignments": None,
     "schedule_events": None,

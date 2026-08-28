@@ -7,7 +7,7 @@
 //
 // This function is READ-ONLY against the database: it never writes a
 // receipts row itself. It returns the raw reading, and the CLIENT calls
-// apply_receipt_extraction (20260960000000_receipts.sql) with its own
+// apply_receipt_extraction (20260957000000_receipts.sql) with its own
 // session to persist it — the same "edge function computes, client writes"
 // split extract-specs uses (see that file's own header comment: "the client
 // does the deterministic decode and final normalization/merge"). Two
