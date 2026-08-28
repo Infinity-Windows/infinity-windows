@@ -17,6 +17,12 @@ import {
   missingRequiredKeys,
   readJsonFromContent,
 } from "./anthropicJson.ts";
+import {
+  type AnthropicToolDef,
+  runToolLoop,
+  type ToolLoopMessage,
+  type ToolLoopResponse,
+} from "./anthropicTools.ts";
 
 export const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 
@@ -320,4 +326,85 @@ export async function anthropicChat(opts: AnthropicChatOptions): Promise<string>
     .map((b) => b.text ?? "")
     .join("")
     .trim();
+}
+
+export interface AnthropicToolResult {
+  /** The model's final prose — empty when the round-trip ceiling truncated it. */
+  text: string;
+  /** Every tool the model called, in order — enough to build "Reading the
+   * week…" style progress lines without re-parsing the transcript. */
+  toolCalls: Array<{ name: string; input: unknown }>;
+  /** True when the model still wanted a tool at the round-trip ceiling. */
+  truncated: boolean;
+  usage: AnthropicUsage;
+}
+
+interface AnthropicToolChatOptions {
+  system: string;
+  /** Same shape anthropicChat takes — plain user/assistant string turns. The
+   * loop itself pushes richer (content-block) turns internally as tools run. */
+  messages: AnthropicMessage[];
+  tools: AnthropicToolDef[];
+  /** Runs one tool call server-side and reports what to tell the model back.
+   * Never throws by contract (see runToolLoop's own doc) — a failing tool
+   * returns `is_error: true` instead. */
+  executeTool: (name: string, input: unknown) => Promise<{ content: string; is_error?: boolean }>;
+  model?: string;
+  maxTokens?: number;
+  /** Defaults to MAX_TOOL_ROUNDS (6) inside runToolLoop. */
+  maxRounds?: number;
+}
+
+/**
+ * Tool-calling chat: give Claude a toolset and let it call zero or more of
+ * them, bounded to a small number of round trips (runToolLoop, in
+ * anthropicTools.ts — the pure, unit-tested half of this). This function is
+ * the one impure seam: it turns runToolLoop's injected `send` into a real
+ * POST to the Messages API, with `tools` on every request in the loop.
+ *
+ * As with `anthropicChat`, `temperature` is never sent — claude-sonnet-5
+ * rejects it outright.
+ */
+export async function anthropicToolChat(
+  opts: AnthropicToolChatOptions,
+): Promise<AnthropicToolResult> {
+  const key = requireAnthropic();
+
+  const send = async (messages: ToolLoopMessage[]): Promise<ToolLoopResponse> => {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: opts.model ?? ANTHROPIC_MODEL,
+        max_tokens: opts.maxTokens ?? 2048,
+        system: opts.system,
+        messages,
+        tools: opts.tools,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Anthropic tool chat failed: ${res.status} ${text}`);
+    }
+    const data = await res.json();
+    return { content: data.content, stop_reason: data.stop_reason, usage: readUsage(data) };
+  };
+
+  const result = await runToolLoop({
+    initialMessages: opts.messages,
+    send,
+    executeTool: opts.executeTool,
+    maxRounds: opts.maxRounds,
+  });
+
+  return {
+    text: result.text,
+    toolCalls: result.toolCalls,
+    truncated: result.truncated,
+    usage: result.usage,
+  };
 }

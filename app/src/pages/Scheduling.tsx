@@ -2,7 +2,7 @@ import { BackChip } from "../components/BackChip";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
-import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Plus, Send } from "lucide-react";
+import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Plus, Send, Sparkles } from "lucide-react";
 import { listProjects } from "../lib/api";
 import { getMyProfile, listProfiles } from "../lib/install/api";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
@@ -800,6 +800,20 @@ export function Scheduling() {
         >
           <Plus size={16} aria-hidden /> New
         </button>
+        {canEdit && (
+          <button
+            className="button-like sched-plan-ai"
+            onClick={() =>
+              navigate("/ask", {
+                state: {
+                  seed: `Plan the week of ${weekOfLabel(range.from)} — here's what I want: `,
+                },
+              })
+            }
+          >
+            <Sparkles size={16} aria-hidden /> Plan with AI
+          </button>
+        )}
       </div>
 
       <div className="sched-navrow">
@@ -1186,4 +1200,12 @@ function monthLabel(iso: string): string {
     year: "numeric",
     timeZone: "UTC",
   });
+}
+
+/** "the week of Sep 1" — A4's Plan-with-AI seed prompt names the visible
+ * week the same way rangeLabel above already formats a date, just for one
+ * day rather than a span. */
+function weekOfLabel(fromISO: string): string {
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", timeZone: "UTC" };
+  return new Date(`${fromISO}T00:00:00Z`).toLocaleDateString(undefined, opts);
 }

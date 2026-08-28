@@ -41,6 +41,11 @@ export interface ScheduleAssignment {
   members: AssignmentMember[];
   /** Joined project for board/agenda labels (best-effort). */
   project?: Pick<Project, "id" | "job_code" | "name" | "address"> | null;
+  /** 'ai' when wave A2's draft_assignments tool wrote this row; null for a
+   * human-created one. Permanent — publishing never clears it (CONTEXT.md:
+   * AI-proposed). Optional only because rows fetched before this column
+   * existed predate it in a stale cache; treat missing the same as null. */
+  created_via?: "ai" | null;
 }
 
 export type ScheduleEventKind =

@@ -14,6 +14,7 @@ import {
 } from "../lib/dispatch";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { PinSetter } from "../components/PinGate";
+import { SavedCrewsSection } from "../components/schedule/SavedCrewsSection";
 import {
   isOwner,
   isSupervisorPlus,
@@ -210,6 +211,10 @@ export function Crew() {
           <p className="muted">No crew yet — sign-ins create profiles automatically.</p>
         )}
       </ul>
+
+      {/* Foreman+ visibility (crew visibility norm, matches saved_crews' own
+          RLS floor); only supervisor+ get create/edit/delete. */}
+      {isLead && <SavedCrewsSection profiles={crew.data ?? []} canEdit={canSetRoles} />}
     </div>
   );
 }

@@ -144,6 +144,33 @@ describe("a refused question still gets answered", () => {
     expect(result.note).toBeUndefined();
   });
 
+  // Wave A4: the doors. toolActivity is the plain progress lines
+  // ("Reading the week…") wave A2's tool loop reports back — this just
+  // proves the client threads it through untouched, same as sources/note.
+  it("carries toolActivity through when the server reports scheduling tool calls", async () => {
+    invoke.mockResolvedValue({
+      data: {
+        answer: "Drafted 6 assignments. Review on Scheduling — nothing reaches the crew until you publish.",
+        sources: [],
+        toolActivity: ["Reading the week…", "Drafting 6 assignments…"],
+      },
+      error: null,
+    });
+    const { askInfinity } = await import("./knowledge");
+    const result = await askInfinity("Plan the week of Sep 1");
+    expect(result.toolActivity).toEqual(["Reading the week…", "Drafting 6 assignments…"]);
+  });
+
+  it("omits toolActivity entirely for an ordinary question with no tool calls", async () => {
+    invoke.mockResolvedValue({
+      data: { answer: "Caulk the flanges, never the bottom.", sources: [] },
+      error: null,
+    });
+    const { askInfinity } = await import("./knowledge");
+    const result = await askInfinity("do I caulk the bottom");
+    expect(result.toolActivity).toBeUndefined();
+  });
+
   it("treats a missing Anthropic key as a silent fall-through, not a refusal", async () => {
     // The edge function returns this when it has no key: an empty answer and no
     // note, because nothing was metered and there is nothing to explain.

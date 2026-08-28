@@ -20,6 +20,9 @@ export interface BoardChip {
   day: string;
   personId: string;
   status: ScheduleAssignment["status"];
+  /** 'ai' when wave A2's draft_assignments tool wrote the underlying row —
+   * drives the "AI proposed" chip (A3, CONTEXT.md: AI-proposed). */
+  createdVia: ScheduleAssignment["created_via"];
 }
 
 export interface BoardLane {
@@ -80,6 +83,7 @@ export function boardChips(
           day,
           personId: m.profile_id,
           status: a.status,
+          createdVia: a.created_via ?? null,
         });
       }
     }

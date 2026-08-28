@@ -145,6 +145,7 @@ interface RawAssignmentRow {
   color: string | null;
   note: string | null;
   created_by: string | null;
+  created_via?: string | null;
   published_at: string | null;
   created_at: string;
   updated_at: string;
@@ -179,6 +180,7 @@ function mapRow(row: RawAssignmentRow): ScheduleAssignment {
     color: row.color,
     note: row.note,
     created_by: row.created_by,
+    created_via: row.created_via === "ai" ? "ai" : null,
     published_at: row.published_at,
     created_at: row.created_at,
     updated_at: row.updated_at,

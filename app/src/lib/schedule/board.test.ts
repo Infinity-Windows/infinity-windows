@@ -77,6 +77,17 @@ describe("boardChips (blocks -> person-days)", () => {
     );
     expect(chips).toHaveLength(0);
   });
+
+  // Wave A3: the "AI proposed" chip reads createdVia straight off the chip —
+  // this is the only place that field is populated from the assignment.
+  it("carries created_via through as createdVia, for the AI-proposed chip", () => {
+    const week = boardWeek("2026-08-10");
+    const aiChips = boardChips([asg({ created_via: "ai" })], week);
+    expect(aiChips.every((c) => c.createdVia === "ai")).toBe(true);
+
+    const humanChips = boardChips([asg({})], week);
+    expect(humanChips.every((c) => c.createdVia === null)).toBe(true);
+  });
 });
 
 describe("coverageReport", () => {
