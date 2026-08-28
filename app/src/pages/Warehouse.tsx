@@ -70,6 +70,13 @@ import { placeChain, toLocationsById } from "../lib/warehouse/containment";
 import { splitUnits } from "../lib/warehouse/splitUnits";
 import { useOutbox } from "../lib/offline/useOutbox";
 import { useScanWedge } from "../lib/warehouse/scanWedge";
+import {
+  STATION_COMING_IN,
+  STATION_FIX_MISTAKE,
+  STATION_OFF_TRUCK,
+  STATION_OUT_DOOR,
+  STATION_PUT_AWAY,
+} from "../lib/warehouse/stations";
 
 /** Sections run in the order the physical day runs. */
 interface Section {
@@ -272,24 +279,111 @@ export function Warehouse() {
         <PackageMap />
       </Explain>
 
-      {/* The truck doors, on the page everyone's nav opens. Checking trucks
-          in and logging one both belong to whoever's at the tailgate (S3) —
-          Log a delivery's own first choice ("with QR stickers") sends
-          straight to /storage/tag, the same door installers always had. It
-          keeps the foreman+ hand-entry wizard gated INSIDE itself (the
-          server still refuses that RPC below foreman), so this button is
-          safe open to everyone, and — since ticket 20 retired the standalone
-          Tag button — it is now the only front door tagging has. */}
-      <div className="row-gap">
-        <Link className="button-like active-pill" to="/storage/deliveries">
-          Deliveries — check trucks in
-        </Link>
-        <Link className="button-like" to="/warehouse/materials">
-          Job materials
-        </Link>
-        <Link className="button-like" to="/storage/log-delivery">
-          Log a delivery (truck)
-        </Link>
+      {/* The warehouse funnel (wave F, grill Q5/Q6): five numbered stations,
+          in the order material actually moves — coming in, off the truck,
+          put away, out the door, fix a mistake. Replaces the old quick-link
+          row above AND the "Coming in" section's own nav links below (both
+          retire here), which is also where the "Deliveries — check trucks
+          in" link that used to sit in both places at once loses its
+          duplicate. Every button keeps the exact role condition it had
+          before the redesign — the strip only changes the geometry, never
+          who can tap what (see each card). Numbers and names come from
+          lib/warehouse/stations.ts, the same module every chipped
+          destination page reads, so the hub and the chips can't disagree.
+          Mobile-first per the spec: stacks vertically by default (the phone
+          in an installer's hand); .station-strip in index.css only lays
+          cards out horizontally at desktop widths. */}
+      <div className="station-strip">
+        <div className="station-card">
+          <div className="station-card-head">
+            <span className="station-num">{STATION_COMING_IN.number}</span>
+            <strong className="station-name">{STATION_COMING_IN.name}</strong>
+          </div>
+          <p className="muted station-when">{STATION_COMING_IN.when}</p>
+          {/* Checking trucks in and logging one both belong to whoever's at
+              the tailgate (S3) — open to everyone, same as before. */}
+          <div className="row-gap station-actions">
+            <Link className="button-like active-pill" to="/storage/deliveries">
+              Deliveries — check trucks in
+            </Link>
+            <Link className="button-like" to="/storage/log-delivery">
+              Log a delivery (truck)
+            </Link>
+          </div>
+        </div>
+        <span className="station-connector" aria-hidden="true">→</span>
+
+        <div className="station-card">
+          <div className="station-card-head">
+            <span className="station-num">{STATION_OFF_TRUCK.number}</span>
+            <strong className="station-name">{STATION_OFF_TRUCK.name}</strong>
+          </div>
+          <p className="muted station-when">{STATION_OFF_TRUCK.when}</p>
+          {/* Tag packages had no direct door on this hub before — Log a
+              delivery's "with QR stickers" choice was the only way in. A
+              direct link matches /storage/tag's own registry floor
+              (installer, nav.ts) and the S3 rule this page has followed
+              since ticket 08: whoever's at the tailgate tags, so it's open
+              to everyone, same as Arrival check already was. */}
+          <div className="row-gap station-actions">
+            <Link className="button-like active-pill" to="/storage/tag">
+              Tag packages
+            </Link>
+            <Link className="button-like" to="/storage/arrive">
+              Arrival check
+            </Link>
+          </div>
+        </div>
+        <span className="station-connector" aria-hidden="true">→</span>
+
+        <div className="station-card">
+          <div className="station-card-head">
+            <span className="station-num">{STATION_PUT_AWAY.number}</span>
+            <strong className="station-name">{STATION_PUT_AWAY.name}</strong>
+          </div>
+          <p className="muted station-when">{STATION_PUT_AWAY.when}</p>
+          {/* No new destination — "In storage" is already a section on this
+              page, below the strip. It's lead-only there (D6, carried over
+              in ticket 18), so the button here matches: only a lead has
+              anywhere to land. */}
+          {lead && (
+            <div className="row-gap station-actions">
+              <a className="button-like" href="#in-storage">
+                See containers
+              </a>
+            </div>
+          )}
+        </div>
+        <span className="station-connector" aria-hidden="true">→</span>
+
+        <div className="station-card">
+          <div className="station-card-head">
+            <span className="station-num">{STATION_OUT_DOOR.number}</span>
+            <strong className="station-name">{STATION_OUT_DOOR.name}</strong>
+          </div>
+          <p className="muted station-when">{STATION_OUT_DOOR.when}</p>
+          <div className="row-gap station-actions">
+            <Link className="button-like active-pill" to="/storage/out">
+              Set aside / check out
+            </Link>
+          </div>
+        </div>
+        <span className="station-connector" aria-hidden="true">→</span>
+
+        <div className="station-card">
+          <div className="station-card-head">
+            <span className="station-num">{STATION_FIX_MISTAKE.number}</span>
+            <strong className="station-name">{STATION_FIX_MISTAKE.name}</strong>
+          </div>
+          <p className="muted station-when">{STATION_FIX_MISTAKE.when}</p>
+          <div className="row-gap station-actions">
+            <Link className="button-like" to="/warehouse/materials">
+              Job materials
+            </Link>
+            {/* "Rewrite a set" joins this card once wave R lands on master —
+                do not link it before then; the route doesn't exist yet. */}
+          </div>
+        </div>
       </div>
 
       {lead && (
@@ -395,24 +489,20 @@ export function Warehouse() {
                 which window it belongs to — until you do, nobody can be told
                 where it is. Then check it into a conex.
               </Explain>
-              <div className="row-gap">
-                <Link className="button-like active-pill" to="/storage/deliveries">
-                  Deliveries — check trucks in
-                </Link>
-                {/* Ticket 20: one front door for trucks. Log a delivery's
-                    "with QR stickers" choice IS the tag flow — the standalone
-                    Tag button retired, and "Check in" (-> the old Storage
-                    hub) retired with it, since New container / posters /
-                    minting all live right below now, in "In storage". */}
-                <Link className="button-like" to="/storage/log-delivery">
-                  Log a delivery (truck)
-                </Link>
-                {lead && (
+              {/* Ticket 20: one front door for trucks. Log a delivery's
+                  "with QR stickers" choice IS the tag flow — the standalone
+                  Tag button retired, and "Check in" (-> the old Storage hub)
+                  retired with it, since New container / posters / minting
+                  all live right below now, in "In storage". Both nav links
+                  that used to live in this row moved into station 1 of the
+                  strip above (wave F) — minting stays here, untouched. */}
+              {lead && (
+                <div className="row-gap">
                   <button className="button-like" onClick={() => setMinting(true)}>
                     Print blank stickers
                   </button>
-                )}
-              </div>
+                </div>
+              )}
               {lead && needsPutaway.length > 0 && (
                 <p className="muted" style={{ marginTop: 8, fontSize: 13 }}>
                   <strong>{needsPutaway.length}</strong> tagged package
