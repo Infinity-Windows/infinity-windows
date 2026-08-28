@@ -60,6 +60,8 @@ Settled 2026-08-17. The warehouse answers one question — *where is it* — and
 
 **On hand** — how much of a supply we believe we have. Always an estimate, always shown with when it was last counted, because it is decremented by what installers say they took and corrected only by counting.
 
+**Warehouse stations** — the five-stage funnel the hub's top reads as, in the order material actually moves: Coming in, Off the truck, Put away, Out the door, Fix a mistake (wave F, grill Q5/Q6, 2026-08-28). The five names are vocabulary now — every destination page wears a chip naming which one it belongs to, both read from the one list in `lib/warehouse/stations.ts`.
+
 ## Time and measurement
 
 **Session** — the atomic time record: one installer, one unit, a start, a stop. Sessions are what the app stores. Everything else is derived from them. A session stops at Finish, Block, Break, or Clock Out; only Finish closes the unit — the session follows the human, the unit waits.
