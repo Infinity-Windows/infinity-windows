@@ -204,6 +204,36 @@ publishing never clears it, so the audit trail outlives the badge — only the
 CHIP's visibility is draft-scoped. `draft_assignments` (the AI's one write
 tool) can never publish anything itself; a human always does that step.
 
+## Receipts that read themselves
+
+Settled 2026-08-28, wave P (grilled, cited in the spec's opening block —
+never re-decided). A Horizon port: OCR fills a receipt, a human confirms it.
+
+**Receipt** — a snapped purchase photo plus what the machine or a human
+could tell about it: amount, vendor, purchase date, category, whether it
+bills to the customer. ANYONE signed in may file one; the job is optional
+(gas is often jobless) — a receipt uses the same waiting-job convention
+packages.pending_job_name already established: a real job, a typed name for
+one not built in the app yet, or neither.
+
+**Fill-missing-only** — THE LAW this wave exists to enforce: the machine
+never overwrites a human's typing, full stop, no exception. A null field
+takes a machine reading; anything already set — by a human or by an
+earlier machine pass — stays exactly as it is. Enforced in exactly one
+place, atomically, in SQL (`apply_receipt_extraction`) — never
+client-computed-then-written, because a read-then-write from anywhere else
+can race a concurrent human edit.
+
+**category_by** — the one field with a provenance lock: `ai` (a machine
+guess) or `manual` (a human typed or flipped it — locked forever after,
+immune to every future rescan). Every other extracted field (amount,
+vendor, date) has no such lock; fill-missing-only protects them by never
+overwriting a non-null value in the first place, machine-set or not.
+
+**Passthrough** — the upload flow's one skippable question, "bill this to
+the customer?" Answered at snap time or left null forever; the office can
+flip it later. Not an OCR field — always a human's own yes/no.
+
 ## Open questions
 
 None right now — the next ones come from building.
