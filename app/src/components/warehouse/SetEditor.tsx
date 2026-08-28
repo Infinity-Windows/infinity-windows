@@ -3,7 +3,8 @@
 // unit, how many parts, what type of set it is, etcetera"). Extracted out
 // of DeliveryDetail (#433) so the materials ledger can mount the exact same
 // editor JobMaterials.tsx now does — one mark's every piece in one place:
-// rename the set, retype a piece, add one, or delete one or the whole set.
+// rename the set, retype a piece, add one, delete one or the whole set, and
+// (wave M, owner rec-4) flip the whole set between windows and doors.
 //
 // Rename, piece-edit, and delete are IDENTICAL for both callers — same RPCs,
 // same confirm sentences — and live here. Only "add one more piece" differs:
@@ -82,6 +83,8 @@ export function SetEditor({
   // job's own window, and rename_package refuses it by design — so no field
   // is offered at all.
   const boundMarks = scope.projectId != null;
+  const first = packagesById.get(set.allIds[0] ?? "");
+  const kindOf: "windows" | "doors" = first?.category === "doors" ? "doors" : "windows";
   const missing = set.expected - set.arrived;
 
   const [setName, setSetName] = useState(() => ({
@@ -118,6 +121,24 @@ export function SetEditor({
         },
       });
     },
+    onError: (e) => onMessage(formatApiError(e)),
+  });
+
+  // The kind of a set (owner rec-4): a Window/Door toggle for the whole run
+  // of packages, the same per-id loop rename already uses. Fires on tap —
+  // no draft, no Save button — and leaves the current pending/mark alone.
+  const saveCategory = useMutation({
+    mutationFn: async (category: "windows" | "doors") => {
+      for (const pid of set.allIds) {
+        await renamePackage(
+          pid,
+          boundMarks ? null : (scope.pendingName ?? null),
+          set.mark,
+          category,
+        );
+      }
+    },
+    onSuccess: () => onChanged(),
     onError: (e) => onMessage(formatApiError(e)),
   });
 
@@ -195,6 +216,29 @@ export function SetEditor({
           This set is tied to a built job — its mark comes from the job&rsquo;s
           own window, so only the pieces are editable here.
         </p>
+      )}
+      {lead && (
+        <div className="wh-row" style={{ marginTop: 6 }}>
+          <span className="wh-row-sub">Kind</span>
+          <button
+            type="button"
+            className={kindOf === "windows" ? "button-like active-pill" : "button-like"}
+            aria-pressed={kindOf === "windows"}
+            disabled={saveCategory.isPending}
+            onClick={() => saveCategory.mutate("windows")}
+          >
+            Window
+          </button>
+          <button
+            type="button"
+            className={kindOf === "doors" ? "button-like active-pill" : "button-like"}
+            aria-pressed={kindOf === "doors"}
+            disabled={saveCategory.isPending}
+            onClick={() => saveCategory.mutate("doors")}
+          >
+            Door
+          </button>
+        </div>
       )}
       <ul className="unit-list" style={{ marginTop: 6 }}>
         {set.slots.map((row) => {
