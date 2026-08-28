@@ -8,9 +8,11 @@ import { Link } from "react-router-dom";
 import { STATION_HUB_ROUTE, stationNumeral, type Station } from "../../lib/warehouse/stations";
 
 export function StationChip({ station }: { station: Station }) {
+  // No aria-hidden on the numeral: a screen reader user should hear the same
+  // station number a sighted user sees, not just the name.
   return (
     <Link to={STATION_HUB_ROUTE} className="station-chip">
-      <span aria-hidden="true">{stationNumeral(station.number)}</span> {station.name}
+      {stationNumeral(station.number)} {station.name}
     </Link>
   );
 }
