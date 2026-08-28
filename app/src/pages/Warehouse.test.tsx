@@ -345,3 +345,48 @@ describe("container tools absorbed from the Storage hub (ticket 18)", () => {
     expect(el.textContent).toContain("1 package · BLACK22 ×1");
   });
 });
+
+describe("the station strip (wave F)", () => {
+  it("shows all five stations, in the order material moves", () => {
+    const el = mount({ packages: [], locations: [], role: "foreman" });
+    const names = [...el.querySelectorAll(".station-name")].map((n) => n.textContent);
+    expect(names).toEqual([
+      "Coming in",
+      "Off the truck",
+      "Put away",
+      "Out the door",
+      "Fix a mistake",
+    ]);
+  });
+
+  it("lists 'Deliveries — check trucks in' exactly once — the old duplicate is gone", () => {
+    const el = mount({ packages: [], locations: [], role: "foreman" });
+    const hits = [...el.querySelectorAll("a")].filter(
+      (a) => a.textContent?.trim() === "Deliveries — check trucks in",
+    );
+    expect(hits).toHaveLength(1);
+  });
+
+  it("keeps station 1's buttons open to an installer, same as before the redesign", () => {
+    const el = mount({ packages: [], locations: [], role: "installer" });
+    const hrefs = [...el.querySelectorAll("a")].map((a) => a.getAttribute("href"));
+    expect(hrefs).toContain("/storage/deliveries");
+    expect(hrefs).toContain("/storage/log-delivery");
+    expect(hrefs).toContain("/storage/tag");
+    expect(hrefs).toContain("/storage/arrive");
+    expect(hrefs).toContain("/storage/out");
+    expect(hrefs).toContain("/warehouse/materials");
+  });
+
+  it("keeps station 3's container link lead-only, same as 'In storage' always was", () => {
+    const installerEl = mount({ packages: [], locations: [], role: "installer" });
+    expect(
+      [...installerEl.querySelectorAll("a")].some((a) => a.textContent === "See containers"),
+    ).toBe(false);
+
+    const foremanEl = mount({ packages: [], locations: [], role: "foreman" });
+    expect(
+      [...foremanEl.querySelectorAll("a")].some((a) => a.textContent === "See containers"),
+    ).toBe(true);
+  });
+});

@@ -10,8 +10,7 @@ import { STATION_HUB_ROUTE, stationNumeral, type Station } from "../../lib/wareh
 export function StationChip({ station }: { station: Station }) {
   return (
     <Link to={STATION_HUB_ROUTE} className="station-chip">
-      <span aria-hidden="true">{stationNumeral(station.number)}</span>
-      {station.name}
+      <span aria-hidden="true">{stationNumeral(station.number)}</span> {station.name}
     </Link>
   );
 }
