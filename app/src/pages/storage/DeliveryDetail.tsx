@@ -43,6 +43,7 @@ import {
   type JobGroup,
   type SlotRow,
 } from "../../lib/warehouse/deliveryReceiving";
+import { scopeHref } from "../../lib/warehouse/materialsScope";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isForemanPlus } from "../../lib/install/types";
 import { useScanWedge } from "../../lib/warehouse/scanWedge";
@@ -568,11 +569,22 @@ export function DeliveryDetail() {
 
       {visibleGroups.map((g) => (
         <section key={g.key} style={{ marginBottom: 16 }}>
-          <h2 style={{ marginBottom: 4 }}>
-            {g.projectId
-              ? (jobCode.get(g.projectId) ?? "Job")
-              : `“${g.pendingJobName}”`}
-          </h2>
+          <div className="wh-row" style={{ marginBottom: 4, alignItems: "baseline" }}>
+            <h2 style={{ margin: 0 }}>
+              {g.projectId
+                ? (jobCode.get(g.projectId) ?? "Job")
+                : `“${g.pendingJobName}”`}
+            </h2>
+            {/* Wave M: the ledger and the log cross-link both directions now
+                — this group's own material, filtered to just this job. */}
+            <Link
+              to={scopeHref({ projectId: g.projectId, pendingName: g.pendingJobName })}
+              className="link"
+              style={{ fontSize: 13 }}
+            >
+              ledger
+            </Link>
+          </div>
           {!g.projectId && (
             <div className="wh-row" style={{ marginBottom: 6 }}>
               <span className="wh-row-sub">
