@@ -407,6 +407,13 @@ export const APP_GUIDE: AppGuideEntry[] = [
     blurb:
       "The cost-code library that time and costs are booked against. Manage the codes crews clock into.",
   },
+  {
+    path: "/receipts",
+    label: "Receipts",
+    minRole: "supervisor",
+    blurb:
+      "Every receipt the crew has snapped, machine-read then human-confirmed. Filter by month, job, or category, flip the bill-to-customer flag or the category, mark one reviewed, and export the filtered list as CSV plus a zip of the images.",
+  },
 
   // ---- Owner only ---------------------------------------------------------
   {

@@ -60,7 +60,20 @@ export type OutboxOp =
   // handed to arrive_packages BEFORE this is ever queued, so the issue row
   // and the object this eventually uploads always agree on where the photo
   // is, with no second round trip needed once the upload lands.
-  | "issue_photo_upload";
+  | "issue_photo_upload"
+  // Wave P: a snapped receipt. Unlike photo_upload/receipt_upload (which
+  // write straight to `attachments`), this uploads the photo AND files the
+  // receipts row in one handler — the id is minted client-side
+  // (crypto.randomUUID()) before either the upload or file_receipt exists on
+  // the server, exactly like issue_photo_upload's path-first pattern above,
+  // so a resend after a lost reply lands on the same row (file_receipt is
+  // idempotent on id).
+  | "receipt_capture"
+  // The upload flow's one skippable question (bill-to-customer + a job
+  // picked AFTER the photo was already snapped) — see enqueueReceiptAnswer.
+  // Always `dependsOn` its receipt_capture entry: asking the server to
+  // update a receipt that has not been filed yet would fail every time.
+  | "receipt_answer";
 
 /**
  * queued   — waiting to be sent (respecting nextAttemptAt backoff)
@@ -519,6 +532,8 @@ const OP_REGISTRY = {
   receive_minted: true,
   pickup_takeoff: true,
   issue_photo_upload: true,
+  receipt_capture: true,
+  receipt_answer: true,
 } as const satisfies Record<OutboxOp, true>;
 
 /** Every op the queue can carry — the single list tests enumerate. */

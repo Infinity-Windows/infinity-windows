@@ -105,7 +105,7 @@ see [`SYNC.md`](SYNC.md#database-changes-supabase--the-agents-job-never-yours).
    bundles all prototype migrations in order and is safe to re-run if a database
    ever needs rebuilding from scratch.
 2. Deploy **every** Edge Function in `supabase/functions/`:
-   `ask`, `extract-schedule`, `extract-specs`, `generate-howto`,
+   `ask`, `extract-receipt`, `extract-schedule`, `extract-specs`, `generate-howto`,
    `generate-toolbox-talk`, `ingest-knowledge`, `send-push`,
    `synthesize-type-tips`, `transcribe-install-memo`, `vault-config`.
 
@@ -143,7 +143,7 @@ rebuilt. Prefer GitHub.
 
 | Secret | Needed by | What breaks without it |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | `ask`, `extract-schedule`, `extract-specs`, `generate-howto`, `generate-toolbox-talk`, `synthesize-type-tips`, `transcribe-install-memo` | Everything the app writes stops: Ask Infinity answers nothing, plansets and delivery schedules cannot be read, no how-tos, no toolbox talks, no window-type tips, and voice memos are transcribed but never sorted into fields. |
+| `ANTHROPIC_API_KEY` | `ask`, `extract-receipt`, `extract-schedule`, `extract-specs`, `generate-howto`, `generate-toolbox-talk`, `synthesize-type-tips`, `transcribe-install-memo` | Everything the app writes stops: Ask Infinity answers nothing, receipts/plansets/delivery schedules cannot be read, no how-tos, no toolbox talks, no window-type tips, and voice memos are transcribed but never sorted into fields. |
 | `OPENAI_API_KEY` | `ingest-knowledge`, `transcribe-install-memo` | Nothing new can be added to the brain, and voice memos are never transcribed. Also degrades two things rather than breaking them: Ask Infinity stops searching documents and answers from live data only, and toolbox talks ship with described placeholders instead of diagrams. |
 | `VAPID_PRIVATE_KEY` | `send-push` | Push notifications silently stop. The public half also goes in the app as `VITE_VAPID_PUBLIC_KEY`. |
 | `VAPID_PUBLIC_KEY` | `send-push` | Same. |

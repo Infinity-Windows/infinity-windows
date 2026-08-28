@@ -211,7 +211,7 @@ class FunctionSecretsTest(unittest.TestCase):
 
     def test_every_real_function_is_covered(self):
         names = fs.function_names()
-        self.assertEqual(len(names), 16)
+        self.assertEqual(len(names), 17)
         self.assertIn("ask", names)
         self.assertIn("studio-assist", names)
         # Creates accounts on the service-role key, and needs no secret of its
@@ -365,9 +365,9 @@ class PlainEnglishNames(unittest.TestCase):
         got = fs.features_needing(fs.all_requirements(), "ANTHROPIC_API_KEY")
         self.assertEqual(
             got,
-            "Ask Infinity|reading delivery schedules|plan-set reading|"
-            "how-to guides|toolbox talks|the Model Studio AI assistant|"
-            "window-type tips|install voice memos",
+            "Ask Infinity|reading receipts|reading delivery schedules|"
+            "plan-set reading|how-to guides|toolbox talks|"
+            "the Model Studio AI assistant|window-type tips|install voice memos",
         )
 
     def test_the_openai_headline_names_only_what_claude_cannot_do(self):

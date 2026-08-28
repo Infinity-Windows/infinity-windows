@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Camera, ImageIcon, MapPin } from "lucide-react";
+import { Camera, CheckCircle2, ImageIcon, MapPin, Receipt as ReceiptIcon } from "lucide-react";
 import { groupPhotosByDay, listPhotos, photoTime, type FeedPhoto } from "../../lib/photos";
+import { formatCents } from "../../lib/aiSpend";
+import { listReceipts, type Receipt } from "../../lib/receipts";
 import { subscribeSynced } from "../../lib/offline/outbox";
 import { EmptyState, QueryError, SkeletonCard } from "../ui/States";
 import { PhotoCaptureSheet } from "../PhotoCaptureSheet";
@@ -24,12 +26,50 @@ function mapsUrl(lat: number, lng: number): string {
   return `https://www.google.com/maps?q=${lat},${lng}`;
 }
 
+/** Shaped to fit groupPhotosByDay's generic Pick<takenAt|createdAt>, so the
+ * same day-grouping the photo grid uses groups receipts too. */
+interface FeedReceipt {
+  id: string;
+  takenAt: string | null;
+  createdAt: string;
+  signedUrl: string | null;
+  vendor: string | null;
+  amountCents: number | null;
+  jobCode: string | null;
+  pendingJobName: string | null;
+  reviewed: boolean;
+}
+
+function toFeedReceipt(r: Receipt): FeedReceipt {
+  return {
+    id: r.id,
+    // purchasedOn (a bare date) when the machine or a human has it; falls
+    // back to the server insert time, same convention photoTime() uses.
+    takenAt: r.purchasedOn,
+    createdAt: r.createdAt,
+    signedUrl: r.signedUrl,
+    vendor: r.vendor,
+    amountCents: r.amountCents,
+    jobCode: r.jobCode,
+    pendingJobName: r.pendingJobName,
+    reviewed: r.reviewedAt != null,
+  };
+}
+
 /**
  * The photo/receipt feed body — day-grouped grid, capture flow and lightbox —
  * scoped to a single project (or all jobs when `projectId` is null). Shared by
  * the standalone Photos page and the project hub's Photos tab so the feed logic
  * lives in one place. Page-specific chrome (the job filter) is passed via
  * `toolbarExtra`.
+ *
+ * kind="receipt" reads from the `receipts` table (Wave P) rather than
+ * `attachments` — a receipt is a structured row (amount/vendor/category/
+ * review), not a bare photo, and RLS already scopes what comes back
+ * (foreman+ sees every receipt on the job; an installer sees only their own
+ * uploads) so no extra filtering is needed here. The office's full
+ * filterable table with CSV/zip export lives at /receipts (P4); this is
+ * just "what I've snapped," the same quick-glance role the photo grid plays.
  */
 export function PhotoFeed({
   projectId,
@@ -44,6 +84,7 @@ export function PhotoFeed({
   initialCapture?: boolean;
   toolbarExtra?: ReactNode;
 }) {
+  const isReceipt = kind === "receipt";
   const queryClient = useQueryClient();
   const [capturing, setCapturing] = useState(initialCapture);
   const [viewer, setViewer] = useState<FeedPhoto | null>(null);
@@ -51,11 +92,18 @@ export function PhotoFeed({
   const photos = useQuery({
     queryKey: ["photos", projectId ?? "all"],
     queryFn: () => listPhotos(projectId),
+    enabled: !isReceipt,
+  });
+  const receipts = useQuery({
+    queryKey: ["receipts-feed", projectId ?? "all"],
+    queryFn: () => listReceipts({ projectId }),
+    enabled: isReceipt,
   });
 
   useEffect(() => {
     return subscribeSynced(() => {
       void queryClient.invalidateQueries({ queryKey: ["photos"] });
+      void queryClient.invalidateQueries({ queryKey: ["receipts-feed"] });
     });
   }, [queryClient]);
 
@@ -63,6 +111,14 @@ export function PhotoFeed({
     () => groupPhotosByDay(photos.data ?? []),
     [photos.data],
   );
+  const receiptGroups = useMemo(
+    () => groupPhotosByDay((receipts.data ?? []).map(toFeedReceipt)),
+    [receipts.data],
+  );
+
+  const isLoading = isReceipt ? receipts.isLoading : photos.isLoading;
+  const isError = isReceipt ? receipts.isError : photos.isError;
+  const isEmpty = isReceipt ? receiptGroups.length === 0 : groups.length === 0;
 
   return (
     <>
@@ -73,43 +129,53 @@ export function PhotoFeed({
           className="action-btn primary photos-add"
           onClick={() => setCapturing(true)}
         >
-          <Camera size={16} aria-hidden /> Add photo
+          {isReceipt ? <ReceiptIcon size={16} aria-hidden /> : <Camera size={16} aria-hidden />}{" "}
+          {isReceipt ? "Add receipt" : "Add photo"}
         </button>
       </div>
 
-      {photos.isLoading && (
+      {isLoading && (
         <div className="photos-grid">
           {Array.from({ length: 6 }).map((_, i) => (
             <SkeletonCard key={i} height={120} />
           ))}
         </div>
       )}
-      {photos.isError && (
+      {isError && (
         <QueryError
-          error={photos.error}
-          onRetry={() => void photos.refetch()}
-          label="Couldn't load photos"
+          error={isReceipt ? receipts.error : photos.error}
+          onRetry={() => void (isReceipt ? receipts.refetch() : photos.refetch())}
+          label={isReceipt ? "Couldn't load receipts" : "Couldn't load photos"}
         />
       )}
-      {!photos.isLoading && !photos.isError && groups.length === 0 && (
+      {!isLoading && !isError && isEmpty && (
         <EmptyState
-          icon={<ImageIcon size={22} />}
-          title="No photos yet"
+          icon={isReceipt ? <ReceiptIcon size={22} /> : <ImageIcon size={22} />}
+          title={isReceipt ? "No receipts yet" : "No photos yet"}
           message={
-            selectedJobCode
-              ? "Snap the first progress or install photo for this job."
-              : "Photos from every job show up here as the crew captures them."
+            isReceipt
+              ? "Snap a gas or materials receipt — the job is optional, everything else is skippable."
+              : selectedJobCode
+                ? "Snap the first progress or install photo for this job."
+                : "Photos from every job show up here as the crew captures them."
           }
           action={
             <button type="button" className="action-btn primary" onClick={() => setCapturing(true)}>
-              <Camera size={16} aria-hidden /> Add a photo
+              {isReceipt ? (
+                <>
+                  <ReceiptIcon size={16} aria-hidden /> Add a receipt
+                </>
+              ) : (
+                <>
+                  <Camera size={16} aria-hidden /> Add a photo
+                </>
+              )}
             </button>
           }
         />
       )}
 
-      {!photos.isLoading &&
-        !photos.isError &&
+      {!isLoading && !isError && !isReceipt &&
         groups.map((group) => (
           <section key={group.key} className="photos-day">
             <h2 className="photos-day-label">{group.label}</h2>
@@ -143,6 +209,37 @@ export function PhotoFeed({
           </section>
         ))}
 
+      {!isLoading && !isError && isReceipt &&
+        receiptGroups.map((group) => (
+          <section key={group.key} className="photos-day">
+            <h2 className="photos-day-label">{group.label}</h2>
+            <div className="photos-grid">
+              {group.photos.map((r) => (
+                <div key={r.id} className="photo-card receipt-card">
+                  {r.signedUrl ? (
+                    <img src={r.signedUrl} alt={r.vendor ?? "Receipt"} loading="lazy" />
+                  ) : (
+                    <div className="photo-card-missing muted">
+                      <ReceiptIcon size={20} aria-hidden />
+                    </div>
+                  )}
+                  <span className="photo-card-meta">
+                    <span className="photo-card-who">{r.vendor ?? "Receipt"}</span>
+                    <span className="photo-card-time">
+                      {r.amountCents != null ? formatCents(r.amountCents) : "—"}
+                    </span>
+                  </span>
+                  {r.reviewed && (
+                    <span className="photo-gps-chip">
+                      <CheckCircle2 size={11} aria-hidden /> Reviewed
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+
       {capturing && (
         <PhotoCaptureSheet
           mode="job"
@@ -150,7 +247,10 @@ export function PhotoFeed({
           label={selectedJobCode}
           kind={kind}
           onClose={() => setCapturing(false)}
-          onQueued={() => void photos.refetch()}
+          onQueued={() => {
+            void photos.refetch();
+            void receipts.refetch();
+          }}
         />
       )}
 
