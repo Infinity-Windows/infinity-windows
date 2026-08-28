@@ -148,6 +148,18 @@ export function JobMaterials() {
 
   const byMark = useMemo(() => groupPackagesByMark(boxes, pool), [boxes, pool]);
 
+  const job = scope.projectId ? projects.data?.find((p) => p.id === scope.projectId) : undefined;
+  // The load list is always one job at a time, so this only ever needs the
+  // one entry — PackageRowText takes a map because every OTHER screen that
+  // uses it shows several jobs at once. Empty for a waiting job: its
+  // packages carry no project_id, so PackageRowText reads pending_job_name
+  // directly rather than through this map.
+  const jobCodeMap = useMemo(
+    () => new Map(scope.projectId && job ? [[scope.projectId, job.job_code ?? job.name]] : []),
+    [job, scope.projectId],
+  );
+  const scopeLabel = job?.job_code ?? (scope.pendingName ? `“${scope.pendingName}”` : "");
+
   // The same grouping DeliveryDetail's tailgate uses (setForMark-shaped),
   // reused rather than reinvented — the set editor mounts identically on
   // both screens off the same pure logic. jobCodeMap only ever has an entry
@@ -221,18 +233,6 @@ export function JobMaterials() {
     },
     onError: (e) => setMessage(formatApiError(e)),
   });
-
-  const job = scope.projectId ? projects.data?.find((p) => p.id === scope.projectId) : undefined;
-  // The load list is always one job at a time, so this only ever needs the
-  // one entry — PackageRowText takes a map because every OTHER screen that
-  // uses it shows several jobs at once. Empty for a waiting job: its
-  // packages carry no project_id, so PackageRowText reads pending_job_name
-  // directly rather than through this map.
-  const jobCodeMap = useMemo(
-    () => new Map(scope.projectId && job ? [[scope.projectId, job.job_code ?? job.name]] : []),
-    [job, scope.projectId],
-  );
-  const scopeLabel = job?.job_code ?? (scope.pendingName ? `“${scope.pendingName}”` : "");
 
   const stageCount = (counts: Record<string, number>, s: Exclude<Stage, "all">) =>
     counts[s] ?? 0;
