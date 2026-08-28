@@ -24,6 +24,7 @@ import {
   listDeliveryPackages,
   listPartTypeOptions,
   receivePackages,
+  setPackagePart,
   storePackages,
   unreceivePackages,
   unstorePackages,

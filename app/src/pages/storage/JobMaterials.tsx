@@ -69,7 +69,7 @@ export function JobMaterials() {
   // job by its typed name (?pending=), never both.
   const scope = scopeFromParams(params);
   const scoped = hasScope(scope);
-  const scopeParams = scope.projectId
+  const scopeParams: Record<string, string> = scope.projectId
     ? { job: scope.projectId }
     : scope.pendingName
       ? { pending: scope.pendingName }
