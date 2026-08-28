@@ -7553,6 +7553,26 @@ body {
 .receipt-card {
   cursor: default;
 }
+/* The office table's row thumbnail (P4) — same shape as .issue-photo-thumb,
+   sized down slightly since it sits in a dense list, not a detail card. */
+.receipt-row-thumb {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--card);
+}
+.receipt-row-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 .photo-gps-chip {
   position: absolute;
   top: 5px;

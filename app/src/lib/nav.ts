@@ -22,6 +22,7 @@ import {
   MoreHorizontal,
   PenTool,
   Plane,
+  Receipt as ReceiptIcon,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
@@ -92,6 +93,9 @@ export type RoutePath =
   | "/access"
   | "/cost-codes"
   | "/costing"
+  // Wave P: the office receipts table (P4) — supervisor+ review of every
+  // snapped receipt.
+  | "/receipts"
   // Real Horizon-menu destinations. Eight sibling stubs that never got a menu
   // row (daily logs, completed installs, milestones, First Pane, conditions,
   // contacts, profile, public site) rendered nothing but a "Coming soon"
@@ -222,6 +226,8 @@ export const NAV: NavDest[] = [
   // to foreman are the same power, so they must not have different doors.
   { id: "access", to: "/access", label: "Crew access", icon: "⚿", minRole: "supervisor" },
   { id: "cost-codes", to: "/cost-codes", label: "Cost codes", icon: "☷", minRole: "supervisor" },
+  // Wave P: the office receipts table — supervisor+ review (spec, settled).
+  { id: "receipts", to: "/receipts", label: "Receipts", icon: "🧾", minRole: "supervisor" },
 
   // Owner only.
   { id: "costing", to: "/costing", label: "Cost", icon: "$", minRole: "owner" },
@@ -390,6 +396,9 @@ const MENU_DEF: MenuSection[] = [
       { to: "/costing", label: "Cost", Icon: DollarSign },
       { to: "/analytics", label: "Analytics", Icon: BarChart3 },
       { to: "/heartbeat", label: "Heartbeat", Icon: Activity },
+      // Wave P: receipts that read themselves — Business reads best here,
+      // alongside Cost and Analytics, not buried in Account.
+      { to: "/receipts", label: "Receipts", Icon: ReceiptIcon },
     ],
   },
   // ONE row (warehouse ticket 08). The eight that lived here were the visible

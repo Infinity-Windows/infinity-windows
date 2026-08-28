@@ -96,6 +96,7 @@ import { VehicleDetail } from "./pages/VehicleDetail";
 import { FleetMap } from "./pages/FleetMap";
 import { CostCodes } from "./pages/CostCodes";
 import { Costing } from "./pages/Costing";
+import { Receipts } from "./pages/Receipts";
 import { Education } from "./pages/Education";
 import { Photos } from "./pages/Photos";
 import { Points } from "./pages/Points";
@@ -646,6 +647,10 @@ export default function App() {
             <Route
               path="/costing"
               element={<RequireRole path="/costing"><Costing /></RequireRole>}
+            />
+            <Route
+              path="/receipts"
+              element={<RequireRole path="/receipts"><Receipts /></RequireRole>}
             />
             <Route path="/learn" element={<Education />} />
             <Route path="/points" element={<Points />} />
