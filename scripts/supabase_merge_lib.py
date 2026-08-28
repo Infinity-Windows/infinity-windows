@@ -587,6 +587,11 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # undo history, so two rows that look alike are two moves, not a duplicate.
     "project_opening_pin_moves": None,
     "project_plan_outlines": None,
+    # A snapped receipt, like job_notes/opening_notes above: two receipts
+    # with the same vendor/amount/date can be two real purchases (gas twice
+    # in a week at the same station), so there is no natural key to dedup
+    # on (Wave P, P1, 20260960000000).
+    "receipts": None,
     "schedule_assignments": None,
     "schedule_events": None,
     "service_cases": None,
