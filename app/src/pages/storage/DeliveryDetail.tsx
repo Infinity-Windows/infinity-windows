@@ -11,12 +11,12 @@ import { ScanLine } from "lucide-react";
 import { BackChip } from "../../components/BackChip";
 import { ContainerBadge } from "../../components/warehouse/ContainerBadge";
 import { StageChip } from "../../components/warehouse/StageChip";
+import { SetEditor, type AddPieceStrategy } from "../../components/warehouse/SetEditor";
 import { listProjects, listProjectsAnyStatus } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
 import { showUndoToast } from "../../lib/undoToast";
 import {
   addDeliverySet,
-  deletePackages,
   filePendingPackages,
   labelPackages,
   listContainers,
@@ -24,8 +24,6 @@ import {
   listDeliveryPackages,
   listPartTypeOptions,
   receivePackages,
-  renamePackage,
-  setPackagePart,
   storePackages,
   unreceivePackages,
   unstorePackages,
@@ -67,14 +65,12 @@ export function DeliveryDetail() {
   const [bundleTarget, setBundleTarget] = useState("");
   const [confirmMix, setConfirmMix] = useState(false);
   const [rowLabels, setRowLabels] = useState<Record<string, string>>({});
-  // The set editor (owner, 2026-08-26): one mark's every piece in one place —
-  // rename the set, fix a piece, add one, or delete. Keyed by group so two
-  // jobs' identical marks never share an editor.
+  // The set editor (owner, 2026-08-26; shared component wave M): one mark's
+  // every piece in one place — rename the set, fix a piece, add one, or
+  // delete. Keyed by group so two jobs' identical marks never share an
+  // editor. The editor's own draft state (rename fields, piece drafts) lives
+  // inside SetEditor now — this page only tracks which one is open.
   const [editSet, setEditSet] = useState<{ groupKey: string; mark: string } | null>(null);
-  const [setName, setSetName] = useState({ pending: "", mark: "" });
-  const [pieceDraft, setPieceDraft] = useState<
-    Record<string, { index: string; total: string; type: string }>
-  >({});
   const [addDraft, setAddDraft] = useState<
     Record<string, { mark: string; count: string; kind: "window" | "door" }>
   >({});
@@ -316,67 +312,7 @@ export function DeliveryDetail() {
 
   const openSetEditor = (g: JobGroup, mark: string) => {
     setEditSet({ groupKey: g.key, mark });
-    setSetName({ pending: g.pendingJobName ?? "", mark });
-    setPieceDraft({});
   };
-
-  // Rename the whole set: every piece, whatever its state, or the old name
-  // survives on stragglers. Metadata only; the undo toast puts it all back.
-  const saveSetName = useMutation({
-    mutationFn: async (args: { g: JobGroup; mark: string }) => {
-      const set = setForMark(args.g, args.mark);
-      const prior = { pending: args.g.pendingJobName, mark: args.mark };
-      const nextPending =
-        args.g.projectId != null ? null : setName.pending.trim() || null;
-      const nextMark = setName.mark.trim();
-      if (!nextMark) throw new Error("Every set needs a mark, like 16 or 13A.");
-      for (const pid of set.allIds) {
-        await renamePackage(pid, nextPending, nextMark);
-      }
-      return { ids: set.allIds, prior };
-    },
-    onSuccess: ({ ids, prior }) => {
-      setEditSet(null);
-      refreshPackages();
-      showUndoToast({
-        message: "Set renamed.",
-        undo: async () => {
-          for (const pid of ids) {
-            await renamePackage(pid, prior.pending, prior.mark);
-          }
-          refreshPackages();
-        },
-      });
-    },
-    onError: (e) => setMessage(formatApiError(e)),
-  });
-
-  const savePiece = useMutation({
-    mutationFn: async (args: { row: SlotRow; index: number | null; total: number | null; type: string | null }) => {
-      for (const pid of args.row.allIds) {
-        await setPackagePart(pid, args.index, args.total, args.type);
-      }
-    },
-    onSuccess: () => {
-      setMessage("Piece updated.");
-      refreshPackages();
-    },
-    onError: (e) => setMessage(formatApiError(e)),
-  });
-
-  const deletePieces = useMutation({
-    mutationFn: async (ids: string[]) => deletePackages(ids),
-    onSuccess: (r) => {
-      setMessage(
-        r.refused.length > 0
-          ? `Deleted ${r.deleted}. Refused: ${r.refused.map((x) => `${x.serial} (${x.reason})`).join("; ")}`
-          : `Deleted ${r.deleted}.`,
-      );
-      setEditSet(null);
-      refreshPackages();
-    },
-    onError: (e) => setMessage(formatApiError(e)),
-  });
 
   const addSet = useMutation({
     mutationFn: (args: {
@@ -704,174 +640,24 @@ export function DeliveryDetail() {
               const byId = new Map((packages.data ?? []).map((p) => [p.id, p]));
               const kindOf: "window" | "door" =
                 byId.get(set.allIds[0] ?? "")?.category === "doors" ? "door" : "window";
-              const boundMarks = g.projectId != null;
-              const missing = set.expected - set.arrived;
+              const addPieceStrategy: AddPieceStrategy = {
+                kind: "delivery",
+                run: () => addPiece.mutate({ g, mark: set.mark, kind: kindOf }),
+                pending: addPiece.isPending,
+              };
               return (
-                <div className="detail-card" style={{ marginBottom: 8 }}>
-                  <div className="wh-row">
-                    <strong>Edit #{set.mark}</strong>
-                    <span className="wh-row-sub">
-                      {set.expected} expected · {set.arrived} arrived · {set.stored} put away
-                    </span>
-                    <button className="button-like" onClick={() => setEditSet(null)}>
-                      Close
-                    </button>
-                  </div>
-                  {/* Renaming is for unbound sets only: a bound set's mark
-                      comes from the job's own window, and rename_package
-                      refuses it by design — so no field is offered at all. */}
-                  {!boundMarks && (
-                    <div className="wh-row" style={{ marginTop: 6 }}>
-                      <input
-                        value={setName.pending}
-                        onChange={(e) =>
-                          setSetName((prev) => ({ ...prev, pending: e.target.value }))
-                        }
-                        placeholder="Waiting-job name"
-                        aria-label="Waiting-job name"
-                        maxLength={120}
-                        style={{ flex: 1, minWidth: 180 }}
-                      />
-                      <input
-                        value={setName.mark}
-                        onChange={(e) =>
-                          setSetName((prev) => ({ ...prev, mark: e.target.value }))
-                        }
-                        aria-label="Mark"
-                        maxLength={40}
-                        style={{ width: 100 }}
-                      />
-                      <button
-                        className="primary"
-                        disabled={saveSetName.isPending}
-                        onClick={() => saveSetName.mutate({ g, mark: set.mark })}
-                      >
-                        {saveSetName.isPending ? "Saving…" : "Save name"}
-                      </button>
-                    </div>
-                  )}
-                  {boundMarks && (
-                    <p className="muted" style={{ margin: "4px 0 0", fontSize: 12 }}>
-                      This set is tied to a built job — its mark comes from the job&rsquo;s
-                      own window, so only the pieces are editable here.
-                    </p>
-                  )}
-                  <ul className="unit-list" style={{ marginTop: 6 }}>
-                    {set.slots.map((row) => {
-                      const first = byId.get(row.allIds[0] ?? "");
-                      const d = pieceDraft[row.key] ?? {
-                        index: first?.part_index != null ? String(first.part_index) : "",
-                        total: first?.part_total != null ? String(first.part_total) : "",
-                        type: first?.part_type ?? "",
-                      };
-                      const setD = (patch: Partial<typeof d>) =>
-                        setPieceDraft((prev) => ({ ...prev, [row.key]: { ...d, ...patch } }));
-                      return (
-                        <li key={row.key} className="opening-review-row">
-                          <div className="wh-row">
-                            <span className="wh-row-sub" style={{ flex: 1, minWidth: 140 }}>
-                              {row.label}
-                            </span>
-                            {!row.isCrate && (
-                              <>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  max={99}
-                                  value={d.index}
-                                  onChange={(e) => setD({ index: e.target.value })}
-                                  aria-label={`Piece number for ${row.label}`}
-                                  style={{ width: 64 }}
-                                />
-                                <span className="muted">of</span>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  max={99}
-                                  value={d.total}
-                                  onChange={(e) => setD({ total: e.target.value })}
-                                  aria-label={`Piece total for ${row.label}`}
-                                  style={{ width: 64 }}
-                                />
-                                <select
-                                  value={d.type}
-                                  onChange={(e) => setD({ type: e.target.value })}
-                                  aria-label={`What is ${row.label}`}
-                                >
-                                  <option value="">— what is it? —</option>
-                                  {partChoices.map((t) => (
-                                    <option key={t} value={t}>
-                                      {PART_LABELS[t as PartType] ?? t}
-                                    </option>
-                                  ))}
-                                </select>
-                                <button
-                                  className="button-like"
-                                  disabled={savePiece.isPending}
-                                  onClick={() =>
-                                    savePiece.mutate({
-                                      row,
-                                      index: d.index.trim() === "" ? null : Number(d.index),
-                                      total: d.total.trim() === "" ? null : Number(d.total),
-                                      type: d.type || null,
-                                    })
-                                  }
-                                >
-                                  Save
-                                </button>
-                              </>
-                            )}
-                            {lead && (
-                              <button
-                                className="link"
-                                style={{ color: "var(--danger)" }}
-                                disabled={deletePieces.isPending}
-                                onClick={() => {
-                                  if (
-                                    window.confirm(
-                                      `Delete ${row.label}? ${row.received} of its ${row.expected} already arrived — arrived pieces are real material. This can't be undone.`,
-                                    )
-                                  ) {
-                                    deletePieces.mutate(row.allIds);
-                                  }
-                                }}
-                              >
-                                delete
-                              </button>
-                            )}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  {lead && (
-                    <div className="wh-row" style={{ marginTop: 6 }}>
-                      <button
-                        className="button-like"
-                        disabled={addPiece.isPending}
-                        onClick={() => addPiece.mutate({ g, mark: set.mark, kind: kindOf })}
-                      >
-                        + one more piece
-                      </button>
-                      <button
-                        className="button-like"
-                        style={{ color: "var(--danger)" }}
-                        disabled={deletePieces.isPending}
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              `Delete ALL of #${set.mark} from this delivery? ${missing} still-expected die with it, and ${set.arrived} arrived piece${set.arrived === 1 ? "" : "s"} — real material — get deleted too. This can't be undone.`,
-                            )
-                          ) {
-                            deletePieces.mutate(set.allIds);
-                          }
-                        }}
-                      >
-                        Delete this set…
-                      </button>
-                    </div>
-                  )}
-                </div>
+                <SetEditor
+                  scope={{ projectId: g.projectId, pendingName: g.pendingJobName }}
+                  set={set}
+                  packagesById={byId}
+                  partChoices={partChoices}
+                  lead={lead}
+                  onClose={() => setEditSet(null)}
+                  onChanged={refreshPackages}
+                  onMessage={setMessage}
+                  addPieceStrategy={addPieceStrategy}
+                  deleteScopeLabel="this delivery"
+                />
               );
             })()}
           {lead && (
