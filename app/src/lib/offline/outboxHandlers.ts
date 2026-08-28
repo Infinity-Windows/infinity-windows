@@ -412,6 +412,91 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     if (res.error) throw res.error;
   };
 
+  // --- Wave P: a snapped receipt --------------------------------------
+  //
+  // receiptCapture mirrors `upload` above (storage upload, then a database
+  // write) but writes `receipts` via file_receipt instead of `attachments`.
+  // file_receipt is idempotent on id (insert ... on conflict (id) do
+  // nothing, then hand back the existing row), so a resend after a lost
+  // reply — the whole reason this rides the outbox — lands on the same row
+  // rather than erroring or duplicating.
+  const receiptCapture: OpHandler = async (entry, ctx) => {
+    const p = entry.payload;
+    const id = str(p.id);
+    const bucket = str(p.bucket) ?? "install-media";
+    const path = str(p.path);
+    const contentType = str(p.contentType) ?? "image/jpeg";
+    if (!id) throw tagPermanent(new Error("This receipt is missing its id"));
+    if (!path) throw tagPermanent(new Error("This receipt is missing where its photo goes"));
+    const blob = await ctx.getBlob();
+    if (!blob) throw tagPermanent(new Error("This receipt is missing its photo"));
+
+    const { error: upErr } = await supabase.storage
+      .from(bucket)
+      .upload(path, blob, { contentType, upsert: true });
+    if (upErr) throw upErr;
+
+    const { error } = await supabase.rpc("file_receipt", {
+      p_id: id,
+      p_photo_path: `${bucket}/${path}`,
+      p_project_id: str(p.projectId),
+      p_pending_job_name: str(p.pendingJobName),
+      p_note: str(p.note),
+    });
+    if (error) throw missingGuard(error, "receipt");
+  };
+
+  // receiptAnswer sets ONLY what the upload flow's one question actually
+  // answered (which job, bill-to-customer). It reads the row's OTHER
+  // fields fresh (not from the payload, which was minted before extraction
+  // ever ran) and resends them unchanged through update_receipt's full-
+  // record contract — so an answer given the instant a photo is snapped
+  // can never race ahead of extract-receipt filling amount/vendor/date a
+  // moment later. See update_receipt's own comment in the migration for
+  // why the RPC itself takes the full record rather than a sparse patch.
+  const receiptAnswer: OpHandler = async (entry) => {
+    const p = entry.payload;
+    const receiptId = str(p.receiptId);
+    if (!receiptId) {
+      throw tagPermanent(new Error("This answer is missing which receipt it was for"));
+    }
+
+    const { data, error: readErr } = await supabase
+      .from("receipts")
+      .select("amount_cents, vendor, purchased_on, category, note")
+      .eq("id", receiptId)
+      .maybeSingle();
+    if (readErr) throw readErr;
+    if (!data) {
+      // dependsOn should make this unreachable in the ordinary case; kept
+      // retryable (not tagPermanent) for the same reason resolveShift's
+      // "waiting for clock-in to sync" is — a reload can strand the
+      // dependency edge, and the fix is simply to try again once the
+      // capture entry has actually landed.
+      throw new Error("Waiting for the receipt to finish uploading");
+    }
+    const row = data as {
+      amount_cents: number | null;
+      vendor: string | null;
+      purchased_on: string | null;
+      category: string | null;
+      note: string | null;
+    };
+
+    const { error } = await supabase.rpc("update_receipt", {
+      p_id: receiptId,
+      p_project_id: str(p.projectId),
+      p_pending_job_name: str(p.pendingJobName),
+      p_amount_cents: row.amount_cents,
+      p_vendor: row.vendor,
+      p_purchased_on: row.purchased_on,
+      p_category: row.category,
+      p_is_passthrough: typeof p.isPassthrough === "boolean" ? p.isPassthrough : null,
+      p_note: row.note,
+    });
+    if (error) throw missingGuard(error, "receipt answer");
+  };
+
   const dailyLog: OpHandler = async (entry) => {
     const p = entry.payload;
     const row = {
@@ -997,6 +1082,8 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     break_stop: breakStop,
     photo_upload: upload,
     receipt_upload: upload,
+    receipt_capture: receiptCapture,
+    receipt_answer: receiptAnswer,
     daily_log: dailyLog,
     pin_undo: pinUndo,
     pin_reset_project: pinResetProject,

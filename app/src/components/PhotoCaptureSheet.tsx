@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Camera, ImagePlus, RefreshCw, X } from "lucide-react";
-import { enqueueUpload } from "../lib/offline/outbox";
+import {
+  enqueueReceiptAnswer,
+  enqueueReceiptCapture,
+  enqueueUpload,
+  subscribeSynced,
+} from "../lib/offline/outbox";
 import {
   capturePhotoMeta,
   stampPhoto,
@@ -11,6 +17,14 @@ import {
 import { supabase } from "../lib/supabase";
 import { formatApiError } from "../lib/errors";
 import { pushToast } from "../lib/toast";
+import { useClock } from "../lib/clockContext";
+import { listProjects } from "../lib/api";
+import {
+  extractReceipt,
+  listThisWeekJobSuggestions,
+  receiptPhotoPath,
+  type JobSuggestion,
+} from "../lib/receipts";
 
 export interface BeforeAfterValue {
   before: File | null;
@@ -131,6 +145,254 @@ function grabFrame(video: HTMLVideoElement): Promise<Blob | null> {
   });
 }
 
+/** What the upload flow's one skippable question (P3) has settled on so far.
+ * Both halves start unanswered — "everything skippable, a bare photo is a
+ * valid receipt" (spec) — and Close always works regardless of what, if
+ * anything, got picked. */
+interface ReceiptAnswer {
+  passthrough: boolean | null;
+  projectId: string | null;
+  pendingJobName: string | null;
+}
+
+/**
+ * The upload flow's one question, shown right after a receipt photo is
+ * queued (P3): "Bill this to the customer?" plus the job it's for — recent-
+ * this-week chips with a visible reason (the Horizon suggestion mechanism
+ * the spec calls out to port), a searchable picker for anything else, and a
+ * free-text fallback for a job that isn't built in the app yet (the same
+ * waiting-job convention packages.pending_job_name already uses). Answering
+ * either half queues ONE enqueueReceiptAnswer, dependent on the capture
+ * entry so it can never race ahead of the row actually being filed.
+ */
+function ReceiptFollowUp({
+  receiptId,
+  entryId,
+  presetProjectId,
+  presetJobLabel,
+  onClose,
+}: {
+  receiptId: string;
+  entryId: string;
+  /** Already known (the page's own job filter) — skips the job question. */
+  presetProjectId: string | null;
+  presetJobLabel: string | null;
+  onClose: () => void;
+}) {
+  const { profileId } = useClock();
+  const [answer, setAnswer] = useState<ReceiptAnswer>({
+    passthrough: null,
+    projectId: presetProjectId,
+    pendingJobName: null,
+  });
+  const [pickingJob, setPickingJob] = useState(false);
+  const [search, setSearch] = useState("");
+  const [waitingName, setWaitingName] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const suggestions = useQuery({
+    queryKey: ["receiptJobSuggestions", profileId],
+    queryFn: () => listThisWeekJobSuggestions(profileId!),
+    enabled: !presetProjectId && Boolean(profileId),
+  });
+  const projects = useQuery({
+    queryKey: ["projects"],
+    queryFn: listProjects,
+    enabled: pickingJob,
+  });
+
+  // Fire-and-forget: the row updates when it lands (P3). The FIRST attempt
+  // can beat the offline outbox's own drain — enqueueReceiptCapture returns
+  // as soon as the write is durably queued, not once it has actually
+  // reached the server — so extract-receipt's "no such receipt" (the row
+  // isn't filed yet) is retried on every subsequent successful drain
+  // (subscribeSynced) rather than treated as a real failure. Never blocks
+  // the question UI and never surfaces an error to the user either way — a
+  // receipt that never gets read automatically is still a valid receipt,
+  // recoverable later from the office table's Re-scan.
+  useEffect(() => {
+    let cancelled = false;
+    let done = false;
+    const attempt = () => {
+      if (cancelled || done) return;
+      extractReceipt(receiptId)
+        .then(() => {
+          done = true;
+        })
+        .catch(() => {
+          /* retried on the next sync signal */
+        });
+    };
+    attempt();
+    const unsubscribe = subscribeSynced(attempt);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [receiptId]);
+
+  const filteredProjects = (projects.data ?? []).filter((p) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return `${p.job_code} ${p.name}`.toLowerCase().includes(q);
+  });
+
+  const pickSuggestion = (s: JobSuggestion) => {
+    setAnswer((a) => ({ ...a, projectId: s.projectId, pendingJobName: null }));
+    setPickingJob(false);
+    setWaitingName("");
+  };
+  const pickProject = (id: string) => {
+    setAnswer((a) => ({ ...a, projectId: id, pendingJobName: null }));
+    setPickingJob(false);
+  };
+  const applyWaitingName = () => {
+    const trimmed = waitingName.trim();
+    setAnswer((a) => ({ ...a, projectId: null, pendingJobName: trimmed || null }));
+    setPickingJob(false);
+  };
+
+  const jobLabel = () => {
+    if (presetProjectId) return presetJobLabel ?? "this job";
+    if (answer.pendingJobName) return `“${answer.pendingJobName}” (waiting job)`;
+    if (answer.projectId) {
+      const s = (suggestions.data ?? []).find((x) => x.projectId === answer.projectId);
+      if (s) return `${s.jobCode} — ${s.name}`;
+      const p = (projects.data ?? []).find((x) => x.id === answer.projectId);
+      return p ? `${p.job_code} — ${p.name}` : "that job";
+    }
+    return null;
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await enqueueReceiptAnswer({
+        receiptId,
+        dependsOn: entryId,
+        projectId: answer.projectId,
+        pendingJobName: answer.pendingJobName,
+        isPassthrough: answer.passthrough,
+      });
+      setSaved(true);
+    } catch (e) {
+      pushToast(`Couldn't save that answer — ${formatApiError(e)}`, "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const answeredSomething =
+    answer.passthrough !== null || answer.projectId !== presetProjectId || answer.pendingJobName !== null;
+
+  return (
+    <div className="jobphoto-followup">
+      <p className="ok jobphoto-count">Receipt saved — syncing in the background.</p>
+
+      <p className="field-label">Bill this to the customer?</p>
+      <div className="row-gap">
+        <button
+          type="button"
+          className={answer.passthrough === true ? "primary" : ""}
+          onClick={() => setAnswer((a) => ({ ...a, passthrough: true }))}
+        >
+          Yes
+        </button>
+        <button
+          type="button"
+          className={answer.passthrough === false ? "primary" : ""}
+          onClick={() => setAnswer((a) => ({ ...a, passthrough: false }))}
+        >
+          No
+        </button>
+      </div>
+
+      {!presetProjectId && (
+        <>
+          <p className="field-label">Which job?</p>
+          {jobLabel() && <p className="muted">Filed to {jobLabel()}.</p>}
+          {(suggestions.data ?? []).length > 0 && (
+            <div className="capture-chip-row">
+              {(suggestions.data ?? []).map((s) => (
+                <button
+                  key={s.projectId}
+                  type="button"
+                  className="capture-chip"
+                  title={s.reason}
+                  onClick={() => pickSuggestion(s)}
+                >
+                  {s.jobCode || s.name}
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            className="capture-list-toggle"
+            onClick={() => setPickingJob((v) => !v)}
+          >
+            {pickingJob ? "Hide job list" : "Find a job, or type one that isn't in the app yet"}
+          </button>
+          {pickingJob && (
+            <div className="capture-picker">
+              <input
+                className="capture-search"
+                placeholder="Search jobs…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search jobs"
+              />
+              <div className="capture-project-list">
+                {filteredProjects.slice(0, 20).map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className="capture-project-item"
+                    onClick={() => pickProject(p.id)}
+                  >
+                    <span className="capture-project-code">{p.job_code}</span>
+                    <span className="capture-project-name">{p.name}</span>
+                  </button>
+                ))}
+              </div>
+              <label className="field-label">Not built in the app yet?</label>
+              <div className="row-gap">
+                <input
+                  value={waitingName}
+                  onChange={(e) => setWaitingName(e.target.value)}
+                  placeholder="Type the job name"
+                  aria-label="Job name"
+                />
+                <button type="button" disabled={!waitingName.trim()} onClick={applyWaitingName}>
+                  Use this name
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {saved ? (
+        <button type="button" className="primary big" onClick={onClose}>
+          Done
+        </button>
+      ) : (
+        <div className="row-gap">
+          <button type="button" className="primary big" disabled={saving} onClick={() => void save()}>
+            {saving ? "Saving…" : answeredSomething ? "Save" : "Skip"}
+          </button>
+          {answeredSomething && (
+            <button type="button" className="big" onClick={onClose}>
+              Skip
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function JobPhotoCapture({
   projectId,
   label,
@@ -144,6 +406,7 @@ function JobPhotoCapture({
   const [busy, setBusy] = useState(false);
   const [caption, setCaption] = useState("");
   const [queued, setQueued] = useState(0);
+  const [filedReceipt, setFiledReceipt] = useState<{ id: string; entryId: string } | null>(null);
 
   const videoRef = useCameraStream(cameraOn, (message) => {
     setCameraError(message);
@@ -154,6 +417,29 @@ function JobPhotoCapture({
     setBusy(true);
     try {
       const meta = await capturePhotoMeta(label ?? null, 8000);
+
+      if (isReceipt) {
+        // Phone-side compression per the spec (1280px longest edge, JPEG
+        // 0.82) — tighter than a job photo's default, since a receipt only
+        // needs to be legible to Claude vision and to a human zooming in on
+        // a line item, not print-quality. stampPhoto falls back to the
+        // original blob on any decode failure, so this never blocks a snap.
+        const stamped = await stampPhoto(raw, meta, { maxDimension: 1280, quality: 0.82 });
+        const id = crypto.randomUUID();
+        const path = receiptPhotoPath(id);
+        const entryId = await enqueueReceiptCapture({
+          id,
+          path,
+          contentType: "image/jpeg",
+          projectId,
+          note: caption.trim() || null,
+          blob: stamped,
+        });
+        setFiledReceipt({ id, entryId });
+        onQueued?.();
+        return;
+      }
+
       const stamped = await stampPhoto(raw, meta);
       const fields = toPhotoMetaFields(meta);
       const createdBy = (await supabase.auth.getUser()).data.user?.email ?? null;
@@ -204,6 +490,35 @@ function JobPhotoCapture({
   };
 
   const title = isReceipt ? "Add a receipt" : "Add job photos";
+
+  if (filedReceipt) {
+    return (
+      <>
+        <div className="capture-backdrop overlay-enter" onClick={onClose} aria-hidden />
+        <div
+          className="jobphoto-sheet sheet-enter"
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+        >
+          <div className="capture-grip" aria-hidden />
+          <div className="capture-head">
+            <h2 className="capture-title">{title}</h2>
+            <button type="button" className="capture-close" aria-label="Close" onClick={onClose}>
+              <X size={20} />
+            </button>
+          </div>
+          <ReceiptFollowUp
+            receiptId={filedReceipt.id}
+            entryId={filedReceipt.entryId}
+            presetProjectId={projectId}
+            presetJobLabel={label ?? null}
+            onClose={onClose}
+          />
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -277,8 +592,7 @@ function JobPhotoCapture({
         {busy && !cameraOn && <p className="muted">Stamping GPS &amp; time…</p>}
         {queued > 0 && (
           <p className="ok jobphoto-count">
-            {queued} {isReceipt ? "receipt" : "photo"}
-            {queued === 1 ? "" : "s"} queued — syncing in the background.
+            {queued} photo{queued === 1 ? "" : "s"} queued — syncing in the background.
           </p>
         )}
       </div>

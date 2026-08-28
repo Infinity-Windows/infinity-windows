@@ -7547,6 +7547,12 @@ body {
   flex: none;
   opacity: 0.85;
 }
+/* Wave P: the receipt feed's cards are a plain <div> (no lightbox — the
+   full detail lives on the office /receipts table, P4), so the pointer
+   cursor .photo-card sets for its <button> cards would be misleading. */
+.receipt-card {
+  cursor: default;
+}
 .photo-gps-chip {
   position: absolute;
   top: 5px;
@@ -7620,6 +7626,23 @@ body {
 }
 .jobphoto-count {
   margin: 12px 0 0;
+}
+/* Wave P: the upload flow's one question, shown right after a receipt
+   photo lands (P3) — same vertical rhythm as the sheet's own fields. */
+.jobphoto-followup .field-label {
+  margin-top: 16px;
+}
+.jobphoto-followup .row-gap {
+  margin-top: 8px;
+}
+.jobphoto-followup .capture-chip-row {
+  margin-top: 8px;
+}
+.jobphoto-followup .capture-list-toggle {
+  margin-top: 10px;
+}
+.jobphoto-followup > .row-gap:last-child {
+  margin-top: 20px;
 }
 
 .photo-viewer-backdrop {

@@ -319,6 +319,68 @@ export function enqueueUpload(input: UploadInput): Promise<string> {
   );
 }
 
+export interface ReceiptCaptureInput {
+  /** Client-minted (crypto.randomUUID()) — see receiptPhotoPath. */
+  id: string;
+  bucket?: string;
+  path: string;
+  contentType: string;
+  projectId?: string | null;
+  pendingJobName?: string | null;
+  note?: string | null;
+  blob: Blob;
+}
+
+/**
+ * Queue a snapped receipt: uploads the photo AND files the receipts row in
+ * one entry (mirrors enqueueUpload's upload-then-write shape, but writes
+ * `receipts` via file_receipt rather than `attachments`). Returns the
+ * outbox entry's own id, for a follow-up enqueueReceiptAnswer's `dependsOn`.
+ */
+export function enqueueReceiptCapture(input: ReceiptCaptureInput): Promise<string> {
+  return enqueue(
+    {
+      op: "receipt_capture",
+      hasBlob: true,
+      payload: {
+        id: input.id,
+        bucket: input.bucket ?? "install-media",
+        path: input.path,
+        contentType: input.contentType,
+        projectId: input.projectId ?? null,
+        pendingJobName: input.pendingJobName ?? null,
+        note: input.note ?? null,
+      },
+    },
+    input.blob,
+  );
+}
+
+/**
+ * Queue the upload flow's one skippable question — a job picked (or typed
+ * as a waiting-job name) and/or the bill-to-customer answer, made AFTER the
+ * photo was already snapped. `dependsOn` the enqueueReceiptCapture entry's
+ * id, so this never asks the server to update a row that has not landed.
+ */
+export function enqueueReceiptAnswer(input: {
+  receiptId: string;
+  dependsOn: string;
+  projectId?: string | null;
+  pendingJobName?: string | null;
+  isPassthrough?: boolean | null;
+}): Promise<string> {
+  return enqueue({
+    op: "receipt_answer",
+    dependsOn: input.dependsOn,
+    payload: {
+      receiptId: input.receiptId,
+      projectId: input.projectId ?? null,
+      pendingJobName: input.pendingJobName ?? null,
+      isPassthrough: input.isPassthrough ?? null,
+    },
+  });
+}
+
 export interface DailyLogInput {
   projectId: string | null;
   profileId: string | null;

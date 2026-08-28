@@ -55,6 +55,8 @@ const OP_LABELS: Record<OutboxOp, string> = {
   receive_minted: "Delivery confirmed",
   pickup_takeoff: "Takeoff picked up",
   issue_photo_upload: "Damage photo",
+  receipt_capture: "Receipt",
+  receipt_answer: "Receipt details",
 };
 
 /**
