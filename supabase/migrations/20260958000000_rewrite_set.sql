@@ -89,6 +89,7 @@ declare
   v_release int;
   v_minted int := 0;
   v_deleted int := 0;
+  v_delivery uuid;
 begin
   if not public.is_foreman_plus(auth.uid()) then
     raise exception 'Only a foreman or above can rewrite a set.'
@@ -205,6 +206,27 @@ begin
   if v_existing_category is not null then
     v_category := v_existing_category;
   end if;
+
+  -- The tailgate lists a delivery's packages by delivery_id, and the whole
+  -- point of this screen is fixing a set WHILE unloading — so replacements
+  -- minted here inherit the delivery the set's existing packages rode in on
+  -- (latest first when a set somehow spans two trucks). Captured BEFORE the
+  -- apply loop deletes anything. Declaring from scratch has no truck to
+  -- inherit; those mint delivery-less, same as the ledger's own additions.
+  select p.delivery_id into v_delivery from packages p
+  where p.delivery_id is not null
+    and coalesce(p.part_type, '') <> 'crate'
+    and (
+      (p_project_id is not null and p.project_id = p_project_id and exists (
+        select 1 from package_marks pm join project_marks pmk on pmk.id = pm.mark_id
+        where pm.package_id = p.id and pmk.mark_code = v_mark
+      ))
+      or
+      (v_pending is not null and p.project_id is null
+         and p.pending_job_name = v_pending and p.mfr_mark = v_mark)
+    )
+  order by p.bound_at desc nulls last
+  limit 1;
 
   -- --------------------------------------- ambiguity / re-fit resolution
   -- A "removed" line: an old group with arrived material whose (type,
@@ -343,11 +365,11 @@ begin
           for v_mint_i in 1..v_mint loop
             insert into packages
               (status, project_id, category, part_type, pending_job_name,
-               short_code, bound_at, bound_by, mfr_mark)
+               short_code, bound_at, bound_by, mfr_mark, delivery_id)
             values
               ('minted', p_project_id, v_category, nullif(v_key_type, ''),
                case when p_project_id is null then v_pending end,
-               issue_package_short_code(), now(), auth.uid()::text, v_mark)
+               issue_package_short_code(), now(), auth.uid()::text, v_mark, v_delivery)
             returning id into v_id;
             v_new_minted_ids := v_new_minted_ids || v_id;
             if p_project_id is not null then
@@ -383,11 +405,11 @@ begin
         if v_target_expected > 0 then
           insert into packages
             (status, project_id, category, part_type, piece_count, mfr_mark,
-             pending_job_name, short_code, bound_at, bound_by)
+             pending_job_name, short_code, bound_at, bound_by, delivery_id)
           values
             ('minted', p_project_id, v_category, nullif(v_key_type, ''), v_target_expected, v_mark,
              case when p_project_id is null then v_pending end,
-             issue_package_short_code(), now(), auth.uid()::text)
+             issue_package_short_code(), now(), auth.uid()::text, v_delivery)
           returning id into v_id;
           if p_project_id is not null then
             insert into package_marks (package_id, mark_id)
