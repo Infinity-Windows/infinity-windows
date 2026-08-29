@@ -305,17 +305,12 @@ export function Projects() {
           const pctColor =
             c.pct >= 80 ? "var(--ok)" : c.pct >= 40 ? "var(--accent)" : "var(--warn)";
           return (
-            <div key={p.id} className="project-card home-project" style={{ position: "relative" }}>
-              {/* Stretched-link pattern: the whole card navigates, but the
-                  Delete button (rendered after, on top) needs to sit OUTSIDE
-                  an anchor's own clickable subtree — nesting a button inside
-                  a Link means clicking it also navigates. */}
-              <Link
-                to={`/projects/${p.id}`}
-                aria-label={p.name || p.job_code}
-                style={{ position: "absolute", inset: 0, zIndex: 0 }}
-              />
-              <div className="home-project-head" style={{ position: "relative", zIndex: 1, pointerEvents: "none" }}>
+            // Keeps the exact tag and className `a.project-card` other e2e
+            // specs already select (foreman-marks.spec.ts) — the Delete
+            // button nests inside and stops its own click from bubbling up
+            // to the Link's navigation, rather than restructuring the card.
+            <Link key={p.id} to={`/projects/${p.id}`} className="project-card home-project">
+              <div className="home-project-head">
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: 16, display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -346,7 +341,7 @@ export function Projects() {
                 </span>
               </div>
               {c.total > 0 && (
-                <div className="points-tier-bar" aria-hidden style={{ position: "relative", zIndex: 1, pointerEvents: "none" }}>
+                <div className="points-tier-bar" aria-hidden>
                   <div
                     className="points-tier-fill"
                     style={{ width: `${c.pct}%`, background: pctColor }}
@@ -355,7 +350,7 @@ export function Projects() {
               )}
               <div
                 className="home-project-meta"
-                style={{ position: "relative", zIndex: 1, pointerEvents: "none", display: "flex", alignItems: "center", justifyContent: "space-between" }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
               >
                 <span>
                   <span>
@@ -369,15 +364,19 @@ export function Projects() {
                   <button
                     type="button"
                     className="link"
-                    style={{ color: "var(--danger)", pointerEvents: "auto" }}
+                    style={{ color: "var(--danger)" }}
                     disabled={deletingId === p.id}
-                    onClick={() => void handleDeleteClick(p)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void handleDeleteClick(p);
+                    }}
                   >
                     {deletingId === p.id ? "Checking…" : "Delete…"}
                   </button>
                 )}
               </div>
-            </div>
+            </Link>
           );
         })}
         {!projects.isLoading && !projects.isError && projects.data?.length === 0 && (
