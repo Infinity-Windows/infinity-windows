@@ -245,10 +245,11 @@ export async function ensureStagingBays(projectId: string): Promise<Location[]> 
 
 export interface UpdateProjectInput extends ProjectDetailsInput {
   name?: string;
-  status?: Project["status"];
 }
 
-/** Edit an existing job's Horizon-style details (foreman+ from the hub). */
+/** Edit an existing job's Horizon-style details (foreman+ from the hub).
+ * Status is NOT accepted here: projects.status is column-locked (wave D's
+ * grant restructure) and changes only through set_project_status(). */
 export async function updateProject(
   projectId: string,
   input: UpdateProjectInput,
@@ -259,7 +260,6 @@ export async function updateProject(
     if (!name) throw new Error("Project name is required.");
     patch.name = name;
   }
-  if (input.status !== undefined) patch.status = input.status;
 
   const { data, error } = await supabase
     .from("projects")

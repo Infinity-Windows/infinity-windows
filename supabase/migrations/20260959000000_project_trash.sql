@@ -48,12 +48,30 @@ alter table projects
 comment on column projects.deleted_at is
   'Set by trash_project(), cleared by restore_project() within 30 days, then purge_project() erases the row for good (owner-only sweep, purge_expired_projects via pg_cron). Non-owners never see a non-null row (RLS). RPC-only — see the column revoke below.';
 
--- Column-level lock, the is_test / status precedent (20260933000000 /
--- 20260941000000): the table carries a permissive "authenticated full
--- access"-style write grant elsewhere, so without this a plain PATCH naming
--- deleted_at would let anybody flip it.
-revoke insert (deleted_at, deleted_by), update (deleted_at, deleted_by)
-  on table projects from anon, authenticated;
+-- Column-level lock — done STRUCTURALLY, because the is_test / status
+-- precedent (20260933000000 / 20260941000000) never actually held: Postgres
+-- privileges are additive, so a bare `revoke update (col)` does nothing
+-- while the table-level UPDATE grant stands. Proved against production
+-- 2026-08-28: an installer login's zero-row PATCH naming `status` returned
+-- 200, not 42501. So this migration revokes the TABLE-level write grants
+-- and grants back exactly the columns the app writes directly
+-- (createProject / updateProject in lib/api.ts, setBidAndMargin in
+-- lib/costing.ts, the estimate write in lib/install/api.ts). Everything
+-- else — is_test, status, status_changed_at, green_light*, deleted_at,
+-- deleted_by — is now writable only through its SECURITY DEFINER RPC,
+-- which is what those migrations' comments always claimed.
+-- LAW for future migrations: a new app-writable projects column must be
+-- added to the grant lists below, or direct writes to it will 42501.
+revoke insert, update on table projects from anon, authenticated;
+grant insert (job_code, name, address, customer_name, contact_phone,
+              contact_email, site_state, unit_number, start_date, end_date,
+              notes)
+  on projects to authenticated;
+grant update (name, address, customer_name, contact_phone, contact_email,
+              site_state, unit_number, start_date, end_date, notes,
+              bid_amount, target_margin_pct,
+              estimated_minutes, estimated_crew, estimated_at)
+  on projects to authenticated;
 
 -- SELECT: hidden means hidden, via RLS, once — not a filter repeated at every
 -- read site (the soft-delete-openings lesson). Wraps the CURRENT policy
