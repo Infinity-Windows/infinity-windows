@@ -5,6 +5,7 @@
 // in install/api.ts — so the board is usable pre-migration and nothing crashes.
 
 import { supabase } from "../supabase";
+import { filterToLiveProjects } from "../liveProjects";
 import { isMissingTable } from "../schemaErrors";
 import { addDaysISO } from "./dates";
 import { filterMyPublished } from "./myPublished";
@@ -233,7 +234,11 @@ export async function listAssignments(
     if (isMissingScheduleTable(error)) return localStore.list(fromISO, toISO);
     throw error;
   }
-  return ((data ?? []) as unknown as RawAssignmentRow[]).map(mapRow);
+  // Wave D: the crew board reads this table directly by date range, which
+  // isn't covered by the projects RLS hide — see liveProjects.ts. The local
+  // fallback store above is a pre-migration offline cache, not a live read;
+  // left unfiltered on purpose.
+  return filterToLiveProjects(((data ?? []) as unknown as RawAssignmentRow[]).map(mapRow));
 }
 
 /** All still-draft assignments (drives the unpublished-changes bar). */
@@ -311,7 +316,7 @@ export async function listProjectAssignments(
     }
     throw error;
   }
-  return ((data ?? []) as unknown as RawAssignmentRow[]).map(mapRow);
+  return filterToLiveProjects(((data ?? []) as unknown as RawAssignmentRow[]).map(mapRow));
 }
 
 export async function createAssignment(

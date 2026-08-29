@@ -63,6 +63,7 @@ export async function listGrantableJobs(): Promise<GrantableJob[]> {
     .from("projects")
     .select("id, name, job_code, status")
     .in("status", ["active", "completed"])
+    .is("deleted_at", null)
     .order("name");
   if (error) throw error;
   return (data ?? []) as GrantableJob[];

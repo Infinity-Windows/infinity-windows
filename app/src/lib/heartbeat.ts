@@ -127,6 +127,7 @@ export async function getHeartbeat(): Promise<HeartbeatSnapshot> {
     .from("projects")
     .select("id, job_code, name, green_light, green_light_note")
     .eq("status", "active")
+    .is("deleted_at", null)
     .order("job_code");
   if (projRes.error) throw projRes.error;
   const projects = (projRes.data ?? []) as ProjectRow[];

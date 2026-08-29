@@ -75,6 +75,24 @@ interface HistoryTurn {
   content: string;
 }
 
+/** Wave D: every job currently in the trash, service-role read (this whole
+ * file runs on the service-role key, which bypasses the RLS predicate that
+ * hides a trashed job's row everywhere else — so it has to be checked by
+ * hand here, same reasoning as the `.is("removed_at", null)` calls below).
+ * One query, reused across loadMyProjectIds and loadLiveContext rather than
+ * re-fetched per caller. Best-effort — degrades to "nothing is trashed"
+ * rather than breaking the answer. */
+async function loadTrashedProjectIds(
+  supabase: ReturnType<typeof createClient>,
+): Promise<Set<string>> {
+  try {
+    const { data } = await supabase.from("projects").select("id").not("deleted_at", "is", null);
+    return new Set((data ?? []).map((r) => r.id as string));
+  } catch (_e) {
+    return new Set<string>();
+  }
+}
+
 /** The set of project ids the asking user is on: the crews they're scheduled on
  * plus any openings assigned to them. Mirrors the `can_access_project_chat`
  * membership test and is reused to scope BOTH an installer's issues and their
@@ -82,6 +100,7 @@ interface HistoryTurn {
 async function loadMyProjectIds(
   supabase: ReturnType<typeof createClient>,
   userId: string,
+  trashedIds: Set<string>,
 ): Promise<Set<string>> {
   const projectIds = new Set<string>();
   try {
@@ -112,6 +131,10 @@ async function loadMyProjectIds(
   } catch (_e) {
     // no-op: assigned openings unavailable
   }
+  // Wave D: strip out anything currently trashed — a deleted job's crew
+  // membership must never re-open its issues/chat to an installer just
+  // because RLS can't be relied on in this service-role function.
+  for (const id of trashedIds) projectIds.delete(id);
   return projectIds;
 }
 
@@ -123,6 +146,9 @@ async function loadLiveContext(
 ): Promise<LiveContext> {
   const live: LiveContext = {};
   const today = new Date().toISOString().slice(0, 10);
+  // Wave D: fetched once, reused everywhere below a trashed job could
+  // otherwise leak through this service-role function.
+  const trashedIds = await loadTrashedProjectIds(supabase);
 
   // The asking user's role is the single gate for everything below. Fetched on
   // the service-role key (which bypasses RLS), so role-based access control MUST
@@ -159,6 +185,7 @@ async function loadLiveContext(
       .from("projects")
       .select("name, job_code, status")
       .eq("status", "active")
+      .is("deleted_at", null)
       .order("name")
       .limit(25);
     if (data) live.projects = data as LiveContext["projects"];
@@ -188,22 +215,27 @@ async function loadLiveContext(
       if (ids.length > 0) {
         const { data: assignments } = await supabase
           .from("schedule_assignments")
-          .select("start_date, end_date, start_time, status, projects(name, job_code)")
+          .select("project_id, start_date, end_date, start_time, status, projects(name, job_code)")
           .in("id", ids)
           .eq("status", "published")
           .gte("end_date", today)
           .order("start_date")
           .limit(15);
-        live.schedule = (assignments ?? []).map((a) => {
-          const proj = a.projects as { name?: string; job_code?: string } | null;
-          return {
-            project:
-              [proj?.job_code, proj?.name].filter(Boolean).join(" ").trim() || "job",
-            start_date: a.start_date as string,
-            end_date: a.end_date as string,
-            start_time: (a.start_time as string | null) ?? null,
-          };
-        });
+        // Wave D: a deleted job's schedule row survives untouched for the
+        // whole 30-day trash window (trash never rewrites project_id) —
+        // filter it out here by hand, same reasoning as trashedIds above.
+        live.schedule = (assignments ?? [])
+          .filter((a) => !a.project_id || !trashedIds.has(a.project_id as string))
+          .map((a) => {
+            const proj = a.projects as { name?: string; job_code?: string } | null;
+            return {
+              project:
+                [proj?.job_code, proj?.name].filter(Boolean).join(" ").trim() || "job",
+              start_date: a.start_date as string,
+              end_date: a.end_date as string,
+              start_time: (a.start_time as string | null) ?? null,
+            };
+          });
       }
     } catch (_e) {
       // no-op: schedule unavailable
@@ -223,15 +255,20 @@ async function loadLiveContext(
       const { data } = await supabase
         .from("project_openings")
         .select(
-          "opening_code, label, status, window_types(category), windows(window_id, status, locations(address)), projects(name, job_code)",
+          "project_id, opening_code, label, status, window_types(category), windows(window_id, status, locations(address)), projects(name, job_code)",
         )
         .eq("assigned_to", userId)
         .is("removed_at", null)
         .order("sequence", { nullsFirst: false })
         .order("opening_code", { nullsFirst: false })
         .limit(50);
-      if (data && data.length > 0) {
-        live.assignments = data.map((o) => {
+      // Wave D: same trashed-job filter as (A) above — an installer's "what
+      // am I installing" list must not keep naming a job that was deleted.
+      const liveData = (data ?? []).filter(
+        (o) => !o.project_id || !trashedIds.has(o.project_id as string),
+      );
+      if (liveData.length > 0) {
+        live.assignments = liveData.map((o) => {
           const wt = o.window_types as { category?: string } | null;
           const unit = o.windows as
             | { window_id?: string; status?: string; locations?: { address?: string } | null }
@@ -271,7 +308,7 @@ async function loadLiveContext(
   // Project-id set the asking user is on — computed once and reused to scope an
   // installer's issues and their job chat (mirrors can_access_project_chat).
   const myProjects = userId
-    ? await loadMyProjectIds(supabase, userId)
+    ? await loadMyProjectIds(supabase, userId, trashedIds)
     : new Set<string>();
 
   // Open issues. In-app the Issues feature is foreman+ (list_issues/assign_issue
@@ -287,15 +324,22 @@ async function loadLiveContext(
       // methods live on the filter builder). Foreman+ ("company") skip it.
       let filter = supabase
         .from("issues")
-        .select("kind, urgency, note, created_at, projects(name, job_code)")
+        .select("project_id, kind, urgency, note, created_at, projects(name, job_code)")
         .eq("status", "open");
       if (scope === "own-jobs") {
+        // myProjects is already trashed-filtered (loadMyProjectIds).
         filter = filter.in("project_id", [...myProjects]);
       }
-      const { data } = await filter
+      const { data: rawIssues } = await filter
         .order("created_at", { ascending: false })
         .limit(20);
-      if (data) {
+      // Wave D: the company-wide branch has no per-project filter at all, so
+      // it needs its own trashedIds check — the own-jobs branch above is
+      // already covered via myProjects.
+      const data = (rawIssues ?? []).filter(
+        (i) => !i.project_id || !trashedIds.has(i.project_id as string),
+      );
+      if (data.length > 0) {
         live.issues = data.map((r) => {
           const proj = r.projects as { name?: string; job_code?: string } | null;
           const created = r.created_at ? new Date(r.created_at as string) : null;
@@ -475,6 +519,7 @@ async function loadLiveContext(
         .from("projects")
         .select("id, name, job_code, bid_amount, target_margin_pct")
         .eq("status", "active")
+        .is("deleted_at", null)
         .not("bid_amount", "is", null)
         .order("bid_amount", { ascending: false })
         .limit(15);
@@ -674,6 +719,7 @@ async function buildSchedulingPicture(
       .from("projects")
       .select("id, job_code, name, address")
       .eq("status", "active")
+      .is("deleted_at", null)
       .order("job_code")
       .limit(40);
     const projects = (projectRows ?? []) as Array<{
@@ -905,7 +951,15 @@ async function executeDraftAssignments(
   const projectIds = [...new Set(parsed.entries.map((e: DraftEntry) => e.project_id))];
   const profileIds = [...new Set(parsed.entries.map((e: DraftEntry) => e.profile_id))];
 
-  const { data: projectRows } = await client.from("projects").select("id").in("id", projectIds);
+  // Wave D: an owner can still see their own trashed job's row (RLS lets
+  // them), so this is an explicit belt-and-suspenders check, not just RLS —
+  // PERMISSION MIRROR means the AI can't schedule against a job the owner's
+  // own UI no longer offers to schedule against either.
+  const { data: projectRows } = await client
+    .from("projects")
+    .select("id")
+    .in("id", projectIds)
+    .is("deleted_at", null);
   const knownProjects = new Set(((projectRows ?? []) as Array<{ id: string }>).map((p) => p.id));
 
   const { data: profileRows } = await client

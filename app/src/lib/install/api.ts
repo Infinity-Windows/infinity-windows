@@ -1,5 +1,6 @@
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import { supabase } from "../supabase";
+import { filterToLiveProjects } from "../liveProjects";
 import { isOwner } from "./types";
 import { isMissingColumn, isMissingFunction as isMissingSchemaFunction, isMissingTable } from "../schemaErrors";
 import type { WindowType } from "../types";
@@ -744,7 +745,10 @@ export async function listMyOpenings(
     .order("sequence", { ascending: true, nullsFirst: false })
     .order("opening_code");
   if (error) throw error;
-  return data as ProjectOpening[];
+  // Wave D: a trashed job's own row is hidden by RLS, but this table isn't
+  // — its openings keep reading live for the whole 30-day trash window
+  // otherwise (see liveProjects.ts).
+  return filterToLiveProjects(data as ProjectOpening[]);
 }
 
 /** Every opening this installer is assigned across all active jobs. */
@@ -758,7 +762,7 @@ export async function listMyOpeningsAllJobs(
     .order("sequence", { ascending: true, nullsFirst: false })
     .order("opening_code");
   if (error) throw error;
-  return data as ProjectOpening[];
+  return filterToLiveProjects(data as ProjectOpening[]);
 }
 
 /** Count of this installer's assigned, not-yet-installed openings (nav badge). */
@@ -1158,7 +1162,10 @@ export async function listOpenings(
     .eq("project_id", projectId)
     .order("opening_code");
   if (error) throw error;
-  return data;
+  // Wave D: the dispatch board / install lists read this directly by
+  // project_id, which isn't covered by the projects RLS hide — see
+  // liveProjects.ts.
+  return filterToLiveProjects(data as ProjectOpening[]);
 }
 
 export async function getOpening(id: string): Promise<ProjectOpening | null> {

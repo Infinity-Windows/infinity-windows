@@ -53,6 +53,7 @@ export async function listProjects(): Promise<Project[]> {
     .from("projects")
     .select("*")
     .eq("status", "active")
+    .is("deleted_at", null)
     .order("name");
   if (error) throw error;
   return data;
