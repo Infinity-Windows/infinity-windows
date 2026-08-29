@@ -9,6 +9,7 @@ import {
   distinctPendingJobNames,
   hasScope,
   matchesScope,
+  rewriteSetHref,
   scopeFromParams,
   scopeHref,
   scopeKey,
@@ -114,6 +115,20 @@ describe("scopeKey / scopeHref", () => {
     const scope: MaterialsScope = { projectId: null, pendingName: "Sunset Ridge 4" };
     expect(scopeKey(scope)).toBe("pending:Sunset Ridge 4");
     expect(scopeHref(scope)).toBe("/warehouse/materials?pending=Sunset%20Ridge%204");
+  });
+});
+
+describe("rewriteSetHref", () => {
+  it("a real job's set links by job id + mark", () => {
+    expect(rewriteSetHref({ projectId: "job-1", pendingName: null }, "8")).toBe(
+      "/storage/rewrite-set?job=job-1&mark=8",
+    );
+  });
+
+  it("a waiting job's set links by its encoded name + mark", () => {
+    expect(
+      rewriteSetHref({ projectId: null, pendingName: "Mad Moose" }, "8A"),
+    ).toBe("/storage/rewrite-set?pending=Mad%20Moose&mark=8A");
   });
 });
 

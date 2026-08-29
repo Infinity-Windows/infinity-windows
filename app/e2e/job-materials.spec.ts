@@ -3,9 +3,13 @@
 // job (pending_job_name, no project row yet) could never be shown at all —
 // even though the owner's whole live inventory is waiting-job material.
 // This covers the two things that changed: the ledger now shows a waiting
-// job's material with the same set editor DeliveryDetail's tailgate uses
-// (#433) mounted inline, and the hub's tally card links a waiting-job row
-// out to it.
+// job's material, and the hub's tally card links a waiting-job row out to
+// it.
+//
+// Wave R: the set-level "Edit…" used to open the shared set editor inline
+// (#433) — it now navigates to /storage/rewrite-set instead (one editor,
+// reachable from both doors). That flow's own coverage lives in
+// rewrite-set.spec.ts; this file only asserts the navigation itself.
 import { expect, test, type Route } from "@playwright/test";
 import { useSupabaseFixtures } from "./support/supabaseFixtures";
 
@@ -45,7 +49,7 @@ function json(route: Route, body: unknown, rows = 0) {
   });
 }
 
-test("the ledger shows a waiting job's material with the shared editor open, and renames the set", async ({
+test("the ledger shows a waiting job's material, and set-level Edit… navigates to Rewrite this set", async ({
   page,
 }) => {
   await useSupabaseFixtures(page, { role: "foreman" });
@@ -68,18 +72,6 @@ test("the ledger shows a waiting job's material with the shared editor open, and
   );
   await page.route("**/rest/v1/storage_containers**", (route) => json(route, [], 0));
 
-  const renamed: Array<{
-    p_package: string;
-    p_pending_job_name: string | null;
-    p_mark: string | null;
-    p_category: string | null;
-  }> = [];
-  await page.route("**/rest/v1/rpc/rename_package", async (route) => {
-    const body = route.request().postDataJSON();
-    renamed.push(body);
-    await json(route, body);
-  });
-
   await page.goto(`/warehouse/materials?pending=${encodeURIComponent(JOB_NAME)}`);
 
   // The waiting job's material renders under its quoted name — the picker
@@ -91,28 +83,12 @@ test("the ledger shows a waiting job's material with the shared editor open, and
     `/storage/d/${D}`,
   );
 
-  // Open the shared set editor inline — the exact component DeliveryDetail's
-  // tailgate mounts, on a job with no project row at all.
-  await page.getByRole("button", { name: "Edit set #5050" }).click();
-  await expect(page.getByText("2 expected · 1 arrived · 0 put away")).toBeVisible();
-  await expect(page.getByLabel("Waiting-job name")).toHaveValue(JOB_NAME);
-  await expect(page.getByLabel("Mark")).toHaveValue("5050");
-
-  // Rename the set — same rename_package RPC DeliveryDetail's editor uses,
-  // one call per piece, category left untouched.
-  await page.getByLabel("Waiting-job name").fill("Sunset Ridge 5");
-  await page.getByLabel("Mark").fill("6060");
-  await page.getByRole("button", { name: "Save name" }).click();
-
-  await expect.poll(() => renamed.length).toBe(2);
-  for (const call of renamed) {
-    expect(call).toMatchObject({
-      p_pending_job_name: "Sunset Ridge 5",
-      p_mark: "6060",
-      p_category: null,
-    });
-  }
-  expect(new Set(renamed.map((r) => r.p_package))).toEqual(new Set(["p1", "p2"]));
+  // Wave R: set-level Edit… navigates to Rewrite this set — one editor,
+  // reachable from both doors — instead of opening an inline editor here.
+  await expect(page.getByRole("link", { name: "Edit set #5050" })).toHaveAttribute(
+    "href",
+    `/storage/rewrite-set?pending=${encodeURIComponent(JOB_NAME)}&mark=5050`,
+  );
 });
 
 test("the hub's tally card links a waiting job's row to ?pending=", async ({ page }) => {

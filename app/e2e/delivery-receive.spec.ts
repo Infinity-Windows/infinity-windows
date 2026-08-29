@@ -265,3 +265,89 @@ test("search filters, and a cross-job bundle stores with one I-Understand", asyn
   await expect(page.getByText("Stored 3 together.")).toBeVisible();
   expect(stored[0].ids.sort()).toEqual(["j1a", "j1b", "j2a"]);
 });
+
+// Wave R, ticket R3: the fifteen-card wall — a mark declared as N
+// individually numbered packages used to render as N separate slot cards,
+// one per part_index, because groupDelivery's row key includes the index.
+// Same mark + same part type now collapses into one row.
+test("collapses many identically-typed expected slots into one grouped row, and Arrive all works", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+
+  const rows = Array.from({ length: 5 }, (_, i) => ({
+    id: `w${i + 1}`,
+    status: "minted",
+    project_id: null,
+    pending_job_name: "Wall Job",
+    mfr_mark: "9",
+    part_index: i + 1,
+    part_total: 5,
+    part_type: "glass",
+    piece_count: null,
+    container_id: null,
+    delivery_id: D,
+    serial: `PKG-w${i + 1}`,
+    short_code: `w${i + 1}`,
+    bound_at: "2026-08-25T12:00:00Z",
+    package_marks: [],
+  }));
+  await page.route(
+    (url) =>
+      url.pathname.includes("/rest/v1/packages") &&
+      (url.searchParams.get("delivery_id") ?? "").startsWith("eq."),
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(rows),
+      }),
+  );
+  await page.route("**/rest/v1/storage_containers**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
+  );
+  await page.route("**/rest/v1/package_deliveries**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{ id: D, label: "Wall truck", arrived_on: "2026-08-25" }]),
+    }),
+  );
+
+  const received: string[][] = [];
+  await page.route("**/rest/v1/rpc/receive_minted_packages", async (route) => {
+    const body = route.request().postDataJSON() as { p_packages: string[] };
+    received.push(body.p_packages);
+    for (const r of rows) if (body.p_packages.includes(r.id)) r.status = "received";
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: String(body.p_packages.length),
+    });
+  });
+
+  await page.goto(`/storage/d/${D}`);
+
+  // Collapsed: one grouped row for the whole type, not five individual
+  // slot cards — the wall is gone.
+  await expect(page.getByText("#9 — glass")).toBeVisible();
+  await expect(page.getByText("5 still coming")).toBeVisible();
+  await expect(page.getByText("Wall Job · #9 — 1/5 · glass", { exact: true })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Arrive all 5" })).toBeVisible();
+
+  // Arrive 1 takes the lowest-index slot first — same rule the ungrouped
+  // single-slot flow always used.
+  await page.getByRole("button", { name: "Arrive 1" }).click();
+  await expect.poll(() => received[0]).toEqual(["w1"]);
+  await expect(page.getByText("4 still coming")).toBeVisible();
+  await expect(page.getByText("1 arrived")).toBeVisible();
+
+  // Arrive all brings in every remaining expected slot in the group, one tap.
+  await page.getByRole("button", { name: "Arrive all 4" }).click();
+  await expect.poll(() => received[1]?.length).toBe(4);
+  await expect(page.getByText("5 arrived")).toBeVisible();
+
+  // Expand to reach one specific slot — nothing was removed, only grouped.
+  await page.getByRole("button", { name: "Show 5 individually" }).click();
+  await expect(page.getByText("Wall Job · #9 — 1/5 · glass", { exact: true })).toBeVisible();
+});
