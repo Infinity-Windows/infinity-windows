@@ -64,13 +64,31 @@ const TOPICS = [
   ["do_again", "What we'd do again next time"],
 ];
 
-const { data: events, error } = await supabase
+// Wave D: this script runs on the service-role key, which bypasses the RLS
+// that hides a trashed job everywhere else — fetched once, not per event.
+const { data: trashedRows, error: trashedError } = await supabase
+  .from("projects")
+  .select("id")
+  .not("deleted_at", "is", null);
+if (trashedError) fail(trashedError.message);
+const trashedProjectIds = new Set((trashedRows ?? []).map((r) => r.id));
+
+const { data: allEvents, error } = await supabase
   .from("install_events")
   .select(
-    "*, window_types!install_events_window_type_id_fkey(type_code, name), project_openings(opening_code, label, projects(job_code, name)), windows(window_id)",
+    "*, window_types!install_events_window_type_id_fkey(type_code, name), project_openings(opening_code, label, project_id, projects(job_code, name)), windows(window_id)",
   )
   .order("created_at", { ascending: true });
 if (error) fail(error.message);
+
+// Excludes a trashed job's install memos from the mirror (owner ask, Wave D)
+// — vault-sync's own "NEVER overwritten" rule for a written file means this
+// only affects memos not yet written; once restored within the 30-day
+// window, the next run picks them back up.
+const events = allEvents.filter((e) => {
+  const projectId = e.project_openings?.project_id;
+  return !projectId || !trashedProjectIds.has(projectId);
+});
 
 let written = 0;
 for (const e of events) {

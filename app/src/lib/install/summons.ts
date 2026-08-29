@@ -5,6 +5,7 @@
 // write goes through a security-definer RPC.
 
 import { supabase } from "../supabase";
+import { filterToLiveProjects } from "../liveProjects";
 
 export interface Summon {
   id: string;
@@ -65,14 +66,17 @@ export async function listLiveSummons(projectId: string): Promise<Summon[]> {
     .order("created_at");
   if (isMissingTableError(error)) return [];
   if (error) throw error;
-  return (data ?? []) as unknown as Summon[];
+  return filterToLiveProjects((data ?? []) as unknown as Summon[]);
 }
 
 /**
  * Every live summon on every job — the landing pages' call-for-hands strip
  * (owner ask, 2026-08-18): a live summon should find helpers where they
  * already are, My Work and Home, not only on the window's own sheet. One
- * read, no filter beyond "live": a call for hands is never quietly hidden.
+ * read, no filter beyond "live": a call for hands is never quietly hidden —
+ * except for a job the owner just deleted (Wave D): nobody should keep
+ * getting summoned onto a job that no longer exists, so a trashed project's
+ * summons are filtered out here the same as everywhere else.
  */
 export async function listAllLiveSummons(): Promise<Summon[]> {
   const { data, error } = await supabase
@@ -82,7 +86,7 @@ export async function listAllLiveSummons(): Promise<Summon[]> {
     .order("created_at");
   if (isMissingTableError(error)) return [];
   if (error) throw error;
-  return (data ?? []) as unknown as Summon[];
+  return filterToLiveProjects((data ?? []) as unknown as Summon[]);
 }
 
 export async function listSummonHelpers(summonId: string): Promise<SummonHelper[]> {

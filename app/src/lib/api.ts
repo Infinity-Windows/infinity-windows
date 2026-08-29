@@ -53,6 +53,7 @@ export async function listProjects(): Promise<Project[]> {
     .from("projects")
     .select("*")
     .eq("status", "active")
+    .is("deleted_at", null)
     .order("name");
   if (error) throw error;
   return data;
@@ -64,11 +65,80 @@ export async function listProjects(): Promise<Project[]> {
  * finished job's leftover conex material must keep naming its job instead
  * of decaying to "job not listed". Pickers stay on listProjects: nobody
  * tags new material to a finished job by accident.
+ *
+ * Wave D: the RLS predicate on `projects` already hides a trashed job from
+ * every non-owner caller, so `.is("deleted_at", null)` here is belt and
+ * suspenders for everyone else — but it matters for the OWNER, who is the
+ * one caller RLS lets see a trashed row at all. Without this filter an
+ * owner's own job-history "Finished / Cancelled" list (which reads
+ * `status !== "active"`) would start showing trashed jobs mixed in with
+ * cancelled ones. JobHistory.tsx's own Deleted section is the one place
+ * that deliberately reads a trashed row, and it does so separately.
  */
 export async function listProjectsAnyStatus(): Promise<Project[]> {
-  const { data, error } = await supabase.from("projects").select("*").order("name");
+  const { data, error } = await supabase
+    .from("projects")
+    .select("*")
+    .is("deleted_at", null)
+    .order("name");
   if (error) throw error;
   return data;
+}
+
+/**
+ * Wave D: every job in the owner's trash, newest-deleted first. Owner-only
+ * in practice — RLS hides every trashed row from anyone else, so a
+ * non-owner simply gets an empty list back rather than an error.
+ */
+export async function listTrashedProjects(): Promise<Project[]> {
+  const { data, error } = await supabase
+    .from("projects")
+    .select("*")
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+/** Owner-only. Moves a job to the 30-day trash — see projectTrash.ts for the
+ * days-left math and the confirm-dialog copy. */
+export async function trashProject(projectId: string): Promise<void> {
+  const { error } = await supabase.rpc("trash_project", { p_project_id: projectId });
+  if (error) throw error;
+}
+
+/** Owner-only. Undoes a trash within the 30-day window. */
+export async function restoreProject(projectId: string): Promise<void> {
+  const { error } = await supabase.rpc("restore_project", { p_project_id: projectId });
+  if (error) throw error;
+}
+
+/**
+ * The confirm dialog's real numbers (owner ask: state the cost before the
+ * tap). Three cheap head-count queries — no rows, just counts — rather than
+ * a dedicated RPC, since every table involved is already readable to the
+ * caller under its own RLS.
+ */
+export interface ProjectDeleteCounts {
+  openings: number;
+  packages: number;
+  photos: number;
+}
+
+export async function getProjectDeleteCounts(projectId: string): Promise<ProjectDeleteCounts> {
+  const [openings, packages, photos] = await Promise.all([
+    supabase.from("project_openings").select("id", { count: "exact", head: true }).eq("project_id", projectId),
+    supabase.from("packages").select("id", { count: "exact", head: true }).eq("project_id", projectId),
+    supabase.from("attachments").select("id", { count: "exact", head: true }).eq("project_id", projectId),
+  ]);
+  if (openings.error) throw openings.error;
+  if (packages.error) throw packages.error;
+  if (photos.error) throw photos.error;
+  return {
+    openings: openings.count ?? 0,
+    packages: packages.count ?? 0,
+    photos: photos.count ?? 0,
+  };
 }
 
 /** Finish, cancel, or reopen a job (supervisor+). Reversible on purpose. */
@@ -175,10 +245,11 @@ export async function ensureStagingBays(projectId: string): Promise<Location[]> 
 
 export interface UpdateProjectInput extends ProjectDetailsInput {
   name?: string;
-  status?: Project["status"];
 }
 
-/** Edit an existing job's Horizon-style details (foreman+ from the hub). */
+/** Edit an existing job's Horizon-style details (foreman+ from the hub).
+ * Status is NOT accepted here: projects.status is column-locked (wave D's
+ * grant restructure) and changes only through set_project_status(). */
 export async function updateProject(
   projectId: string,
   input: UpdateProjectInput,
@@ -189,7 +260,6 @@ export async function updateProject(
     if (!name) throw new Error("Project name is required.");
     patch.name = name;
   }
-  if (input.status !== undefined) patch.status = input.status;
 
   const { data, error } = await supabase
     .from("projects")

@@ -248,6 +248,32 @@ immune to every future rescan). Every other extracted field (amount,
 vendor, date) has no such lock; fill-missing-only protects them by never
 overwriting a non-null value in the first place, machine-set or not.
 
+## Trash and the 30 days
+
+Settled 2026-08-28, wave D. Deleting a job is owner-only, and it is never
+instant: `trash_project` sets `deleted_at`/`deleted_by`; `restore_project`
+undoes it within 30 days; `purge_project` is the permanent erase, run by the
+owner directly or by the nightly sweep (`purge_expired_projects`, pg_cron)
+once the window has actually closed. A trashed job's own row is invisible to
+everyone but the owner (RLS) — that invisibility *is* the trash list.
+
+**Detach** — the purge's other verb besides delete. A handful of tables
+carry legal-retention weight a 30-day undo can't waive: `time_shifts`
+(payroll — an installer must be able to dispute a paycheck years after the
+job that earned it is gone), `receipts`, `job_costs`, and `change_orders`
+(money records, tax audits), `incidents` (OSHA-style safety retention), and
+`daily_logs` (a foreman's day-by-day account, dispute and insurance
+evidence). These rows are never deleted — the purge nulls their `project_id`
+and copies the job's name into a `job_name` (or `pending_job_name`) text
+column first, so "worked on PECAN14" still reads that way after PECAN14
+itself is gone. Physical-thing tables detach the same way for a different
+reason: `windows`, `packages`, `movements`, `service_cases`, and a photo
+anchored to a surviving window/package/service case — the glass, the box,
+the scan history, and the warranty case are real objects a deleted job row
+can't make disappear. Everything else — openings, plans, marks, chat,
+schedule slots, summons — purges outright; the 30-day window is the only
+undo it ever gets.
+
 **Passthrough** — the upload flow's one skippable question, "bill this to
 the customer?" Answered at snap time or left null forever; the office can
 flip it later. Not an OCR field — always a human's own yes/no.

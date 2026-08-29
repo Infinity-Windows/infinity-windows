@@ -2,16 +2,23 @@
 // my screen — we can create a job history list." Finished and cancelled
 // jobs land here with WHEN, keep every scrap of their information (the job
 // page stays fully readable), and can be reopened by a supervisor if the
-// site calls back. Owner-only Delete exists for empty shells; the server
-// refuses anything carrying material, plans, or hours.
+// site calls back.
+//
+// Wave D adds the Deleted section (owner-only): a job trashed from Active
+// projects lives here for 30 days with an Undo, then it's gone for good
+// (purge_expired_projects, nightly). Days-left is computed against the
+// SERVER's clock (server_now), never the phone's own — a wrong device clock
+// must never make the countdown lie about how much time is actually left.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { BackChip } from "../components/BackChip";
 import { EmptyState } from "../components/ui/States";
-import { deleteProject, listProjectsAnyStatus, setProjectStatus } from "../lib/api";
+import { listProjectsAnyStatus, listTrashedProjects, restoreProject, setProjectStatus, trashProject } from "../lib/api";
+import { fetchServerNowMs } from "../lib/clockSkew";
 import { formatApiError } from "../lib/errors";
 import { isOwner, isSupervisorPlus } from "../lib/install/types";
+import { trashStatusLine } from "../lib/projectTrash";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 
 const STATUS_WORDS: Record<string, string> = {
@@ -32,9 +39,22 @@ export function JobHistory() {
   });
   const done = (projects.data ?? []).filter((p) => p.status !== "active");
 
+  const trashed = useQuery({
+    queryKey: ["projectsTrashed"],
+    queryFn: listTrashedProjects,
+    enabled: owner,
+  });
+  const serverNow = useQuery({
+    queryKey: ["serverNowMs"],
+    queryFn: fetchServerNowMs,
+    enabled: owner,
+    staleTime: 60_000,
+  });
+
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["projectsAll"] });
     void qc.invalidateQueries({ queryKey: ["projects"] });
+    void qc.invalidateQueries({ queryKey: ["projectsTrashed"] });
   };
 
   const reopen = useMutation({
@@ -47,9 +67,18 @@ export function JobHistory() {
   });
 
   const remove = useMutation({
-    mutationFn: (id: string) => deleteProject(id),
+    mutationFn: (id: string) => trashProject(id),
     onSuccess: () => {
-      setMessage("Deleted.");
+      setMessage("Deleted — it disappears everywhere. Undo for 30 days, right here.");
+      refresh();
+    },
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+
+  const undo = useMutation({
+    mutationFn: (id: string) => restoreProject(id),
+    onSuccess: () => {
+      setMessage("Restored — it's back everywhere, exactly as it was.");
       refresh();
     },
     onError: (e) => setMessage(formatApiError(e)),
@@ -107,7 +136,7 @@ export function JobHistory() {
                   onClick={() => {
                     if (
                       window.confirm(
-                        `Delete ${p.job_code} for good? Only an empty job can go — anything with material, plans, or hours will refuse. This can't be undone.`,
+                        `Delete ${p.job_code}? It disappears everywhere, and you have 30 days to undo right here.`,
                       )
                     ) {
                       remove.mutate(p.id);
@@ -126,6 +155,53 @@ export function JobHistory() {
           title="No finished jobs yet."
           message="When a supervisor completes a job from its page, it moves here with everything it ever tracked."
         />
+      )}
+
+      {owner && (
+        <>
+          <h2 style={{ marginTop: 28 }}>Deleted</h2>
+          <p className="muted">
+            30 days to undo, then it's gone for good — including its warehouse material, which
+            keeps its job name until then.
+          </p>
+          <ul className="unit-list">
+            {(trashed.data ?? []).map((p) => {
+              const line =
+                serverNow.data != null && p.deleted_at
+                  ? trashStatusLine(p.deleted_at, serverNow.data)
+                  : null;
+              const beingErased = line === "being erased";
+              return (
+                <li key={p.id} className="opening-review-row">
+                  <div className="wh-row">
+                    <div className="wh-row-main">
+                      <span className="wh-row-title">{p.job_code}</span>
+                      <div className="wh-row-sub">
+                        {p.name}
+                        {line ? ` · ${line}` : ""}
+                      </div>
+                    </div>
+                    {!beingErased && (
+                      <button
+                        className="button-like"
+                        disabled={undo.isPending}
+                        onClick={() => undo.mutate(p.id)}
+                      >
+                        {undo.isPending ? "Restoring…" : "Undo"}
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          {trashed.data?.length === 0 && (
+            <EmptyState
+              title="Nothing in the trash."
+              message="Delete a job from Active projects and it lands here for 30 days before it's gone for good."
+            />
+          )}
+        </>
       )}
     </div>
   );

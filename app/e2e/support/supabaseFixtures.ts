@@ -301,6 +301,18 @@ export async function useSupabaseFixtures(
       // No device PIN on this fixture device — the only honest way past a lock
       // whose secret is verified server-side.
       if (fn === "my_pin_status") return jsonRoute(route, false);
+      // Wave D: echoes back whatever ids it was asked about — "nothing is
+      // trashed" is the correct default for every fixture spec that isn't
+      // specifically testing the trash flow (those override this route
+      // themselves, see project-delete.spec.ts). Answering `null` here
+      // (the generic unmatched-RPC fallback below) would make every list
+      // this powers — an installer's cross-job openings, live summons, the
+      // crew schedule board — silently filter down to empty for EVERY
+      // fixture spec that reads them, not just the ones about trash.
+      if (fn === "live_project_ids") {
+        const body = route.request().postDataJSON() as { p_ids?: string[] } | null;
+        return jsonRoute(route, body?.p_ids ?? []);
+      }
       unmatched.push(`rpc/${fn}`);
       return jsonRoute(route, null);
     }

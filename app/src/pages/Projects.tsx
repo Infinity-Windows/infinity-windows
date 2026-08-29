@@ -3,15 +3,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { LayoutGrid } from "lucide-react";
-import { createProject, listProjects } from "../lib/api";
+import { createProject, getProjectDeleteCounts, listProjects, trashProject } from "../lib/api";
 import { formatApiError } from "../lib/errors";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { getMyProfile } from "../lib/install/api";
-import { isForemanPlus } from "../lib/install/types";
+import { isForemanPlus, isOwner } from "../lib/install/types";
 import { supabase } from "../lib/supabase";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
+import { buildDeleteConfirmMessage } from "../lib/projectTrash";
 import { IncomingMondayJobs } from "../components/projects/IncomingMondayJobs";
 import { MessagesSquare } from "lucide-react";
+import type { Project } from "../lib/types";
 
 interface OpeningCountRow {
   project_id: string;
@@ -33,10 +36,14 @@ export function Projects() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [notes, setNotes] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const unread = useUnreadCounts();
   const profile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const canAdd = isForemanPlus(profile.data?.role);
+  const { effectiveRole } = useEffectiveRole();
+  const canDelete = isOwner(effectiveRole);
   const counts = useQuery({
     queryKey: ["openingCounts"],
     // NOTE: this pulls every opening row for every job with no limit or
@@ -91,6 +98,33 @@ export function Projects() {
     const installed = rows.filter((r) => r.status === "installed").length;
     const pct = total > 0 ? Math.round((installed / total) * 100) : 0;
     return { total, installed, pct };
+  };
+
+  const trash = useMutation({
+    mutationFn: (id: string) => trashProject(id),
+    onSuccess: () => {
+      setMessage("Deleted — it disappears everywhere. Undo for 30 days from Job history.");
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+      void queryClient.invalidateQueries({ queryKey: ["projectsAll"] });
+    },
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+
+  // Async on purpose: the confirm dialog states the real cost in numbers
+  // (owner ask), which means fetching cheap head-counts BEFORE window.confirm
+  // can show them, not after.
+  const handleDeleteClick = async (p: Project) => {
+    setMessage(null);
+    setDeletingId(p.id);
+    try {
+      const counts = await getProjectDeleteCounts(p.id);
+      const proceed = window.confirm(buildDeleteConfirmMessage(p.job_code, counts));
+      if (proceed) trash.mutate(p.id);
+    } catch (e) {
+      setMessage(formatApiError(e));
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -244,6 +278,7 @@ export function Projects() {
           )}
         </div>
       )}
+      {message && <p className="scanner-hint">{message}</p>}
       <div className="home-projects">
         {projects.isLoading && <SkeletonList rows={4} />}
         {projects.isError && (
@@ -270,6 +305,10 @@ export function Projects() {
           const pctColor =
             c.pct >= 80 ? "var(--ok)" : c.pct >= 40 ? "var(--accent)" : "var(--warn)";
           return (
+            // Keeps the exact tag and className `a.project-card` other e2e
+            // specs already select (foreman-marks.spec.ts) — the Delete
+            // button nests inside and stops its own click from bubbling up
+            // to the Link's navigation, rather than restructuring the card.
             <Link key={p.id} to={`/projects/${p.id}`} className="project-card home-project">
               <div className="home-project-head">
                 <div style={{ minWidth: 0 }}>
@@ -309,13 +348,33 @@ export function Projects() {
                   />
                 </div>
               )}
-              <div className="home-project-meta">
+              <div
+                className="home-project-meta"
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+              >
                 <span>
-                  <i className="dot-info" /> {c.total} openings
+                  <span>
+                    <i className="dot-info" /> {c.total} openings
+                  </span>{" "}
+                  <span>
+                    <i className="dot-ok" /> {c.installed} done
+                  </span>
                 </span>
-                <span>
-                  <i className="dot-ok" /> {c.installed} done
-                </span>
+                {canDelete && (
+                  <button
+                    type="button"
+                    className="link"
+                    style={{ color: "var(--danger)" }}
+                    disabled={deletingId === p.id}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void handleDeleteClick(p);
+                    }}
+                  >
+                    {deletingId === p.id ? "Checking…" : "Delete…"}
+                  </button>
+                )}
               </div>
             </Link>
           );

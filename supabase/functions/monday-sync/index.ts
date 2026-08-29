@@ -187,10 +187,20 @@ Deno.serve(async (req) => {
     .from("monday_jobs")
     .select("monday_item_id, project_id, start_date, end_date")
     .not("project_id", "is", null);
+  // Wave D: this whole function writes on the service-role key, which
+  // bypasses the RLS that would otherwise refuse an UPDATE on a trashed
+  // project row — so Monday must never quietly keep steering the dates of a
+  // job the company just deleted. Fetched once, not per row.
+  const { data: trashedRows } = await db
+    .from("projects")
+    .select("id")
+    .not("deleted_at", "is", null);
+  const trashedIds = new Set((trashedRows ?? []).map((r) => r.id as string));
   let updatedProjects = 0;
   for (const l of linked ?? []) {
     const fresh = rows.find((r) => r.monday_item_id === l.monday_item_id);
     if (!fresh || !fresh.start_date) continue;
+    if (trashedIds.has(l.project_id as string)) continue; // deleted — Monday stops steering it
     const { data: started } = await db
       .from("project_openings")
       .select("id")
