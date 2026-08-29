@@ -1130,6 +1130,42 @@ export async function deletePackages(
   return data as { deleted: number; refused: { serial: string; reason: string }[] };
 }
 
+/**
+ * Wave R — "Make it match": diff a mark's declared set against reality and
+ * apply it atomically. The RPC re-derives and re-checks everything itself
+ * (never trusts `lib/warehouse/rewriteSet.ts`'s client-side plan); this is
+ * only the wire call. `kind` is the from-scratch category fallback — see
+ * the migration's own comment — and is ignored once any package for this
+ * scope+mark already carries one.
+ */
+export interface RewriteSetLine {
+  partType: string | null;
+  packaging: "package" | "crate_pool";
+  count: number;
+}
+
+export async function rewriteSet(args: {
+  projectId: string | null;
+  pendingJobName: string | null;
+  mark: string;
+  lines: RewriteSetLine[];
+  kind?: "window" | "door";
+}): Promise<{ minted: number; deleted: number }> {
+  const { data, error } = await supabase.rpc("rewrite_set", {
+    p_project_id: args.projectId,
+    p_pending_job_name: args.pendingJobName,
+    p_mark: args.mark,
+    p_lines: args.lines.map((l) => ({
+      part_type: l.partType,
+      packaging: l.packaging,
+      count: l.count,
+    })),
+    p_kind: args.kind ?? "window",
+  });
+  if (error) throw error;
+  return data as { minted: number; deleted: number };
+}
+
 export async function listPartTypeOptions(): Promise<string[]> {
   const { data, error } = await supabase
     .from("part_type_options")

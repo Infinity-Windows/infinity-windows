@@ -48,6 +48,7 @@ import { ContainerDetail } from "./pages/storage/ContainerDetail";
 import { TagPackages } from "./pages/storage/TagPackages";
 import { LogDelivery } from "./pages/storage/LogDelivery";
 import { DeliveryDetail } from "./pages/storage/DeliveryDetail";
+import { RewriteSet } from "./pages/storage/RewriteSet";
 import { DeliveriesList } from "./pages/storage/DeliveriesList";
 import { JobMaterials } from "./pages/storage/JobMaterials";
 import { CheckoutPackages } from "./pages/storage/CheckoutPackages";
@@ -466,6 +467,11 @@ export default function App() {
             <Route path="/storage" element={<Navigate to="/warehouse" replace />} />
             <Route path="/storage/log-delivery" element={<LogDelivery />} />
             <Route path="/storage/d/:id" element={<DeliveryDetail />} />
+            {/* Wave R: the one "Rewrite this set" editor, reachable from
+                both doors (the ledger's set-level edit and the tailgate's
+                "Edit set…") — no RequireRole, same as its siblings above:
+                the view stays open, rewrite_set gates the write server-side. */}
+            <Route path="/storage/rewrite-set" element={<RewriteSet />} />
             <Route path="/storage/deliveries" element={<DeliveriesList />} />
             <Route path="/warehouse/materials" element={<JobMaterials />} />
             <Route path="/storage/tag" element={<TagPackages />} />

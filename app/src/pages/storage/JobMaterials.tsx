@@ -17,7 +17,6 @@ import { BackChip } from "../../components/BackChip";
 import { EmptyState } from "../../components/ui/States";
 import { StageChip } from "../../components/warehouse/StageChip";
 import { StationChip } from "../../components/warehouse/StationChip";
-import { SetEditor, type AddPieceStrategy } from "../../components/warehouse/SetEditor";
 import { jobTallies, tallyLine } from "../../lib/warehouse/jobTally";
 import { LoadList } from "../../components/warehouse/LoadList";
 import { listProjects } from "../../lib/api";
@@ -29,21 +28,14 @@ import {
   listActivePackages,
   listContainers,
   listDeliveries,
-  listPartTypeOptions,
   setPieceCount,
-  PART_TYPES,
-  type PartType,
 } from "../../lib/storage";
 import { groupPackagesByMark, truckLabel } from "../../lib/warehouse/jobMaterials";
-import {
-  groupDelivery,
-  setForMark,
-  type DeliveryPackageLite,
-} from "../../lib/warehouse/deliveryReceiving";
 import {
   distinctPendingJobNames,
   hasScope,
   matchesScope,
+  rewriteSetHref,
   scopeFromParams,
   scopeKey,
 } from "../../lib/warehouse/materialsScope";
@@ -52,8 +44,6 @@ import {
   parseTicked,
   serializeTicked,
 } from "../../lib/warehouse/loadList";
-import { useEffectiveRole } from "../../lib/useEffectiveRole";
-import { isForemanPlus } from "../../lib/install/types";
 import { STATION_FIX_MISTAKE } from "../../lib/warehouse/stations";
 
 type Stage = "all" | "minted" | "received" | "stored" | "checked_out";
@@ -82,13 +72,9 @@ export function JobMaterials() {
   const listMode = params.get("list") === "1";
   const [stage, setStage] = useState<Stage>("all");
   const [message, setMessage] = useState<string | null>(null);
-  const [editMark, setEditMark] = useState<string | null>(null);
   const [ticked, setTicked] = useState<Set<string>>(() =>
     scoped ? parseTicked(localStorage.getItem(loadListStorageKey(scopeKey(scope)))) : new Set(),
   );
-
-  const { effectiveRole } = useEffectiveRole();
-  const lead = isForemanPlus(effectiveRole);
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const packages = useQuery({
@@ -97,14 +83,6 @@ export function JobMaterials() {
   });
   const containers = useQuery({ queryKey: ["storageContainers"], queryFn: listContainers });
   const deliveries = useQuery({ queryKey: ["deliveries"], queryFn: listDeliveries });
-  const partOptions = useQuery({
-    queryKey: ["partTypeOptions"],
-    queryFn: listPartTypeOptions,
-  });
-  const partChoices = [
-    ...PART_TYPES,
-    ...(partOptions.data ?? []).filter((t) => !PART_TYPES.includes(t as PartType)),
-  ];
 
   const pendingJobNames = useMemo(
     () => distinctPendingJobNames(packages.data ?? []),
@@ -162,20 +140,6 @@ export function JobMaterials() {
   );
   const scopeLabel = job?.job_code ?? (scope.pendingName ? `“${scope.pendingName}”` : "");
 
-  // The same grouping DeliveryDetail's tailgate uses (setForMark-shaped),
-  // reused rather than reinvented — the set editor mounts identically on
-  // both screens off the same pure logic. jobCodeMap only ever has an entry
-  // for a real job's own id, so a waiting scope's rows fall through to
-  // their own pending_job_name, same as groupDelivery always does.
-  const deliveryGroup = useMemo(
-    () =>
-      groupDelivery(
-        mine as unknown as DeliveryPackageLite[],
-        (pid) => jobCodeMap.get(pid) ?? null,
-      )[0] ?? null,
-    [mine, jobCodeMap],
-  );
-  const packagesById = useMemo(() => new Map(mine.map((p) => [p.id, p])), [mine]);
   const deliveryLabel = (deliveryId: string) =>
     deliveries.data?.find((d) => d.id === deliveryId)?.label ?? "a delivery";
 
@@ -463,16 +427,15 @@ export function JobMaterials() {
                     <strong>
                       {scopeLabel} #{mark}
                     </strong>
-                    {/* Wave M: full access to editing every set, right on
-                        the ledger — same editor DeliveryDetail's tailgate
-                        uses. */}
-                    <button
+                    {/* Wave R: set-level edit navigates to the Rewrite
+                        view — one editor reachable from both doors. */}
+                    <Link
+                      to={rewriteSetHref(scope, mark)}
                       className="link"
-                      onClick={() => setEditMark(mark)}
                       aria-label={`Edit set #${mark}`}
                     >
                       Edit…
-                    </button>
+                    </Link>
                   </div>
                   <div className="row-gap">
                     {(Object.keys(STAGE_LABELS) as Exclude<Stage, "all">[])
@@ -522,44 +485,6 @@ export function JobMaterials() {
                       ))}
                     </div>
                   )}
-                  {editMark === mark &&
-                    deliveryGroup &&
-                    (() => {
-                      const set = setForMark(deliveryGroup, mark);
-                      if (set.slots.length === 0) return null;
-                      const addPieceStrategy: AddPieceStrategy = {
-                        kind: "unavailable",
-                        message: (
-                          <>
-                            Add pieces from a truck (
-                            <Link to="/storage/log-delivery" className="link">
-                              log a delivery
-                            </Link>
-                            ) or a conex check-in (pick a container in{" "}
-                            <Link to="/warehouse#in-storage" className="link">
-                              the warehouse
-                            </Link>
-                            ).
-                          </>
-                        ),
-                      };
-                      return (
-                        <SetEditor
-                          scope={scope}
-                          set={set}
-                          packagesById={packagesById}
-                          partChoices={partChoices}
-                          lead={lead}
-                          onClose={() => setEditMark(null)}
-                          onChanged={() =>
-                            void qc.invalidateQueries({ queryKey: ["storagePackages"] })
-                          }
-                          onMessage={setMessage}
-                          addPieceStrategy={addPieceStrategy}
-                          deleteScopeLabel="this job's material"
-                        />
-                      );
-                    })()}
                 </li>
               ))}
           </ul>
