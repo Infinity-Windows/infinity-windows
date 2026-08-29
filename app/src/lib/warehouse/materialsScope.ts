@@ -60,6 +60,20 @@ export function scopeHref(scope: MaterialsScope): string {
   return "/warehouse/materials";
 }
 
+/** The Rewrite-this-set view's link for one mark inside a scope (wave R) —
+ *  the single entry point both doors (the ledger's set-level edit and the
+ *  tailgate's "Edit set…") now navigate to, instead of each opening its own
+ *  inline editor. */
+export function rewriteSetHref(scope: MaterialsScope, mark: string): string {
+  const base =
+    scope.projectId != null
+      ? `job=${encodeURIComponent(scope.projectId)}`
+      : scope.pendingName != null
+        ? `pending=${encodeURIComponent(scope.pendingName)}`
+        : "";
+  return `/storage/rewrite-set?${base}&mark=${encodeURIComponent(mark)}`;
+}
+
 /** Every distinct waiting-job name with unfiled material — the picker's
  *  second option group. Sorted for a stable, scannable list. */
 export function distinctPendingJobNames(packages: StoragePackage[]): string[] {

@@ -12,7 +12,6 @@ import { BackChip } from "../../components/BackChip";
 import { ContainerBadge } from "../../components/warehouse/ContainerBadge";
 import { StageChip } from "../../components/warehouse/StageChip";
 import { StationChip } from "../../components/warehouse/StationChip";
-import { SetEditor, type AddPieceStrategy } from "../../components/warehouse/SetEditor";
 import { listProjects, listProjectsAnyStatus } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
 import { showUndoToast } from "../../lib/undoToast";
@@ -35,17 +34,19 @@ import {
 } from "../../lib/storage";
 import {
   groupDelivery,
+  groupRowsByType,
   missingSummary,
   pickToReceive,
+  pickToReceiveGroup,
   pickToStore,
   pickToUndo,
   pickToUnstore,
-  setForMark,
   type DeliveryPackageLite,
   type JobGroup,
   type SlotRow,
+  type TypeGroup,
 } from "../../lib/warehouse/deliveryReceiving";
-import { scopeHref } from "../../lib/warehouse/materialsScope";
+import { rewriteSetHref, scopeHref } from "../../lib/warehouse/materialsScope";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isForemanPlus } from "../../lib/install/types";
 import { useScanWedge } from "../../lib/warehouse/scanWedge";
@@ -69,12 +70,22 @@ export function DeliveryDetail() {
   const [bundleTarget, setBundleTarget] = useState("");
   const [confirmMix, setConfirmMix] = useState(false);
   const [rowLabels, setRowLabels] = useState<Record<string, string>>({});
-  // The set editor (owner, 2026-08-26; shared component wave M): one mark's
-  // every piece in one place — rename the set, fix a piece, add one, or
-  // delete. Keyed by group so two jobs' identical marks never share an
-  // editor. The editor's own draft state (rename fields, piece drafts) lives
-  // inside SetEditor now — this page only tracks which one is open.
-  const [editSet, setEditSet] = useState<{ groupKey: string; mark: string } | null>(null);
+  // Wave R: "Edit set…" navigates to the Rewrite view now — one editor
+  // reachable from both doors — instead of opening an inline editor here.
+  // Wave R, ticket R3: which collapsed type-groups are expanded to their
+  // individual slots. Keyed by TypeGroup.key, which already carries the
+  // job group's mark/isCrate/type — no group-key prefix needed since a
+  // group's key is unique across the whole delivery already (mark is
+  // per-job-unique in practice, and colliding on it costs nothing worse
+  // than one extra row staying expanded).
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const toggleExpand = (key: string) =>
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   const [addDraft, setAddDraft] = useState<
     Record<string, { mark: string; count: string; kind: "window" | "door" }>
   >({});
@@ -167,6 +178,27 @@ export function DeliveryDetail() {
           refresh();
         },
       });
+    },
+    onError: (e) => setMessage(formatApiError(e)),
+  });
+
+  // Wave R, ticket R3: the collapsed row's own Arrive 1 / Arrive all — same
+  // shape as `arrive` above, over every member row's expected ids at once
+  // instead of one row's. Individual per-slot undo stays reachable by
+  // expanding the group; this one keeps the tap itself to one round trip.
+  const arriveGroup = useMutation({
+    mutationFn: async (args: { group: TypeGroup; n: number }) => {
+      const ids = pickToReceiveGroup(args.group, args.n);
+      await receivePackages(ids);
+      const label = rowLabels[args.group.key];
+      if (label && !args.group.isCrate) {
+        await labelPackages(ids, label);
+      }
+      return ids.length;
+    },
+    onSuccess: (n) => {
+      setMessage(`${n} box${n === 1 ? "" : "es"} checked in.`);
+      refresh();
     },
     onError: (e) => setMessage(formatApiError(e)),
   });
@@ -314,10 +346,6 @@ export function DeliveryDetail() {
 
   const refreshPackages = () => refresh();
 
-  const openSetEditor = (g: JobGroup, mark: string) => {
-    setEditSet({ groupKey: g.key, mark });
-  };
-
   const addSet = useMutation({
     mutationFn: (args: {
       g: JobGroup;
@@ -336,23 +364,6 @@ export function DeliveryDetail() {
     onSuccess: (n, args) => {
       setMessage(`Added #${args.mark.toUpperCase()} — ${n} expected piece${n === 1 ? "" : "s"}.`);
       setAddDraft((prev) => ({ ...prev, [args.g.key]: { mark: "", count: "2", kind: args.kind } }));
-      refreshPackages();
-    },
-    onError: (e) => setMessage(formatApiError(e)),
-  });
-
-  const addPiece = useMutation({
-    mutationFn: (args: { g: JobGroup; mark: string; kind: "window" | "door" }) =>
-      addDeliverySet({
-        deliveryId: id,
-        projectId: args.g.projectId,
-        jobName: args.g.pendingJobName,
-        mark: args.mark,
-        kind: args.kind,
-        packageCount: 1,
-      }),
-    onSuccess: () => {
-      setMessage("One more expected piece on the set — label it when it shows.");
       refreshPackages();
     },
     onError: (e) => setMessage(formatApiError(e)),
@@ -624,58 +635,136 @@ export function DeliveryDetail() {
             </div>
           )}
           <ul className="unit-list">
-            {g.rows.map((row) => (
-              <li key={row.key} className="opening-review-row">
-                <div className="wh-row">
-                  {bundleMode && (
-                    <input
-                      type="checkbox"
-                      checked={rowTicked(row)}
-                      disabled={row.looseIds.length === 0}
-                      onChange={() => toggleBundle(row)}
-                      aria-label={`Select ${row.label}`}
-                    />
-                  )}
-                  <strong>{row.label}</strong>
-                  <button
-                    className="link"
-                    onClick={() => openSetEditor(g, row.mark)}
-                    aria-label={`Edit set #${row.mark}`}
-                  >
-                    Edit set…
-                  </button>
-                </div>
-                {rowControls(row)}
-              </li>
-            ))}
-          </ul>
-          {editSet?.groupKey === g.key &&
-            (() => {
-              const set = setForMark(g, editSet.mark);
-              if (set.slots.length === 0) return null;
-              const byId = new Map((packages.data ?? []).map((p) => [p.id, p]));
-              const kindOf: "window" | "door" =
-                byId.get(set.allIds[0] ?? "")?.category === "doors" ? "door" : "window";
-              const addPieceStrategy: AddPieceStrategy = {
-                kind: "delivery",
-                run: () => addPiece.mutate({ g, mark: set.mark, kind: kindOf }),
-                pending: addPiece.isPending,
-              };
+            {groupRowsByType(g.rows).map((group) => {
+              // Wave R, ticket R3: a mark with only one slot has nothing to
+              // collapse — render it exactly as before rather than wrap one
+              // row in summary chrome.
+              if (group.rows.length === 1) {
+                const row = group.rows[0];
+                return (
+                  <li key={row.key} className="opening-review-row">
+                    <div className="wh-row">
+                      {bundleMode && (
+                        <input
+                          type="checkbox"
+                          checked={rowTicked(row)}
+                          disabled={row.looseIds.length === 0}
+                          onChange={() => toggleBundle(row)}
+                          aria-label={`Select ${row.label}`}
+                        />
+                      )}
+                      <strong>{row.label}</strong>
+                      <Link
+                        to={rewriteSetHref(
+                          { projectId: g.projectId, pendingName: g.pendingJobName },
+                          row.mark,
+                        )}
+                        className="link"
+                        aria-label={`Edit set #${row.mark}`}
+                      >
+                        Edit set…
+                      </Link>
+                    </div>
+                    {rowControls(row)}
+                  </li>
+                );
+              }
+              const open = expandedGroups.has(group.key);
+              const label = rowLabels[group.key] ?? "";
               return (
-                <SetEditor
-                  scope={{ projectId: g.projectId, pendingName: g.pendingJobName }}
-                  set={set}
-                  packagesById={byId}
-                  partChoices={partChoices}
-                  lead={lead}
-                  onClose={() => setEditSet(null)}
-                  onChanged={refreshPackages}
-                  onMessage={setMessage}
-                  addPieceStrategy={addPieceStrategy}
-                  deleteScopeLabel="this delivery"
-                />
+                <li key={group.key} className="opening-review-row">
+                  <div className="wh-row">
+                    <strong>{group.label}</strong>
+                    <Link
+                      to={rewriteSetHref(
+                        { projectId: g.projectId, pendingName: g.pendingJobName },
+                        group.mark,
+                      )}
+                      className="link"
+                      aria-label={`Edit set #${group.mark}`}
+                    >
+                      Edit set…
+                    </Link>
+                  </div>
+                  <div className="wh-row">
+                    {group.missing > 0 && (
+                      <span className="warn-text">
+                        <span className="wh-count">{group.missing}</span> still coming
+                      </span>
+                    )}
+                    {group.received > 0 && (
+                      <span className="ok">
+                        <span className="wh-count">{group.received}</span> arrived
+                      </span>
+                    )}
+                    {group.missing > 0 && group.partType === null && (
+                      <select
+                        value={label}
+                        onChange={(e) =>
+                          setRowLabels((prev) => ({ ...prev, [group.key]: e.target.value }))
+                        }
+                        aria-label={`What is ${group.label}`}
+                      >
+                        <option value="">— what is it? —</option>
+                        {partChoices.map((t) => (
+                          <option key={t} value={t}>
+                            {PART_LABELS[t as PartType] ?? t}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {group.missing > 0 && (
+                      <>
+                        <button
+                          className="button-like"
+                          disabled={arriveGroup.isPending}
+                          onClick={() => arriveGroup.mutate({ group, n: 1 })}
+                        >
+                          Arrive 1
+                        </button>
+                        <button
+                          className="button-like"
+                          disabled={arriveGroup.isPending}
+                          onClick={() => arriveGroup.mutate({ group, n: group.missing })}
+                        >
+                          Arrive all {group.missing}
+                        </button>
+                      </>
+                    )}
+                    <button className="link" onClick={() => toggleExpand(group.key)}>
+                      {open ? "Hide individual slots" : `Show ${group.rows.length} individually`}
+                    </button>
+                  </div>
+                  {/* Slot-level actions stay reachable — nothing removed,
+                      only grouped (R3). Bound marks/serials or differing
+                      details are never in a multi-row group in the first
+                      place; a tap here is always "I need one specific
+                      slot," never a workaround for something hidden. */}
+                  {open && (
+                    <ul className="unit-list" style={{ marginTop: 4 }}>
+                      {group.rows.map((row) => (
+                        <li key={row.key} className="opening-review-row">
+                          <div className="wh-row">
+                            {bundleMode && (
+                              <input
+                                type="checkbox"
+                                checked={rowTicked(row)}
+                                disabled={row.looseIds.length === 0}
+                                onChange={() => toggleBundle(row)}
+                                aria-label={`Select ${row.label}`}
+                              />
+                            )}
+                            <strong>{row.label}</strong>
+                          </div>
+                          {rowControls(row)}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
               );
-            })()}
+            })}
+          </ul>
           {lead && (
             <div className="wh-row" style={{ marginTop: 4 }}>
               <input

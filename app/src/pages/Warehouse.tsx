@@ -380,8 +380,11 @@ export function Warehouse() {
             <Link className="button-like" to="/warehouse/materials">
               Job materials
             </Link>
-            {/* "Rewrite a set" joins this card once wave R lands on master —
-                do not link it before then; the route doesn't exist yet. */}
+            {/* Rewrite this set (wave R) is deliberately NOT a button here:
+                its view needs a specific set (?job/&pending + &mark), and the
+                way to one is already this card — Job materials, pick the set,
+                Edit set…. A second hub door to the same place is exactly the
+                duplicate the wave-F audit killed. */}
           </div>
         </div>
       </div>

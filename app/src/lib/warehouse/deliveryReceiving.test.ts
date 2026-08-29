@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   groupDelivery,
+  groupRowsByType,
   missingSummary,
   pickToReceive,
+  pickToReceiveGroup,
   pickToStore,
   pickToUndo,
   pickToUnstore,
@@ -113,6 +115,88 @@ describe("pickToUnstore", () => {
     expect(row.storedIds).toEqual(["s1", "s2"]);
     expect(pickToUnstore(row, 1)).toEqual(["s2"]);
     expect(pickToUnstore(row, 9)).toEqual(["s1", "s2"]);
+  });
+});
+
+describe("groupRowsByType — wave R, collapse the fifteen-card wall", () => {
+  it("collapses many individually numbered expected slots of the same type into one group", () => {
+    const packages = Array.from({ length: 15 }, (_, i) =>
+      pkg({ id: `p${i + 1}`, part_index: i + 1, part_total: 15, part_type: "glass" }),
+    );
+    const groups = groupDelivery(packages);
+    const typeGroups = groupRowsByType(groups[0].rows);
+    expect(typeGroups).toHaveLength(1);
+    expect(typeGroups[0]).toMatchObject({ mark: "5050", partType: "glass", missing: 15, received: 0 });
+    expect(typeGroups[0].rows).toHaveLength(15);
+    expect(typeGroups[0].expectedIds).toHaveLength(15);
+  });
+
+  it("keeps a single-row type ungrouped in spirit — one row in, one row out", () => {
+    const groups = groupDelivery([pkg({ part_type: "frame" })]);
+    const typeGroups = groupRowsByType(groups[0].rows);
+    expect(typeGroups).toHaveLength(1);
+    expect(typeGroups[0].rows).toHaveLength(1);
+  });
+
+  it("keeps different part types, and untyped slots, in their own groups", () => {
+    const packages = [
+      pkg({ id: "f1", part_index: 1, part_total: 5, part_type: "frame" }),
+      pkg({ id: "f2", part_index: 2, part_total: 5, part_type: "frame" }),
+      pkg({ id: "u1", part_index: 3, part_total: 5, part_type: null }),
+      pkg({ id: "u2", part_index: 4, part_total: 5, part_type: null }),
+    ];
+    const groups = groupDelivery(packages);
+    const typeGroups = groupRowsByType(groups[0].rows).sort((a, b) =>
+      (a.partType ?? "").localeCompare(b.partType ?? ""),
+    );
+    expect(typeGroups).toHaveLength(2);
+    expect(typeGroups[0]).toMatchObject({ partType: null, missing: 2 });
+    expect(typeGroups[1]).toMatchObject({ partType: "frame", missing: 2 });
+  });
+
+  it("never mixes boxes and crate-pool pieces of the same type into one group", () => {
+    const packages = [
+      pkg({ id: "b1", part_index: 1, part_total: 2, part_type: "glass" }),
+      pkg({ id: "b2", part_index: 2, part_total: 2, part_type: "glass" }),
+      pkg({
+        id: "c1",
+        part_index: null,
+        part_total: null,
+        piece_count: 12,
+        part_type: "glass",
+      }),
+    ];
+    const groups = groupDelivery(packages);
+    const typeGroups = groupRowsByType(groups[0].rows);
+    expect(typeGroups).toHaveLength(2);
+    expect(typeGroups.find((g) => g.isCrate)?.rows).toHaveLength(1);
+    expect(typeGroups.find((g) => !g.isCrate)?.rows).toHaveLength(2);
+  });
+
+  it("counts arrived alongside still-missing on a partially arrived group", () => {
+    const packages = [
+      pkg({ id: "a1", part_index: 1, part_total: 3, part_type: "frame", status: "received" }),
+      pkg({ id: "a2", part_index: 2, part_total: 3, part_type: "frame" }),
+      pkg({ id: "a3", part_index: 3, part_total: 3, part_type: "frame" }),
+    ];
+    const groups = groupDelivery(packages);
+    const typeGroups = groupRowsByType(groups[0].rows);
+    expect(typeGroups[0]).toMatchObject({ missing: 2, received: 1 });
+  });
+});
+
+describe("pickToReceiveGroup", () => {
+  it("takes the lowest part_index first across every member row", () => {
+    const packages = [
+      pkg({ id: "p3", part_index: 3, part_total: 3, part_type: "glass" }),
+      pkg({ id: "p1", part_index: 1, part_total: 3, part_type: "glass" }),
+      pkg({ id: "p2", part_index: 2, part_total: 3, part_type: "glass" }),
+    ];
+    const groups = groupDelivery(packages);
+    const [group] = groupRowsByType(groups[0].rows);
+    expect(pickToReceiveGroup(group, 1)).toEqual(["p1"]);
+    expect(pickToReceiveGroup(group, 2)).toEqual(["p1", "p2"]);
+    expect(pickToReceiveGroup(group, 99)).toEqual(["p1", "p2", "p3"]);
   });
 });
 

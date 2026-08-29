@@ -55,7 +55,9 @@ export const STATIONS: readonly Station[] = [
     number: 5,
     name: "Fix a mistake",
     when: "The paperwork doesn't match the truth.",
-    routes: ["/warehouse/materials"],
+    // Wave R: "Rewrite this set" is the fix itself — the ledger's own
+    // "Edit…" and the tailgate's "Edit set…" both land here now.
+    routes: ["/warehouse/materials", "/storage/rewrite-set"],
   },
 ] as const;
 
