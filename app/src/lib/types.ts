@@ -68,6 +68,12 @@ export interface Project {
    * job-history list say WHEN a job finished. Optional: rows written before
    * the lifecycle migration are null until first touched. */
   status_changed_at?: string | null;
+  /** Wave D: set by trash_project(), cleared by restore_project(). Null for
+   * every ordinary job. A non-owner never receives a row with this set at
+   * all (RLS) — this field only ever appears for the owner's own trash
+   * list. */
+  deleted_at?: string | null;
+  deleted_by?: string | null;
   /** Fake data for practice or QA — never a real job. Invisible below
    * supervisor (RLS); its packages never count as real inventory (client
    * partition, lib/warehouse/testPartition.ts). Optional like the other
