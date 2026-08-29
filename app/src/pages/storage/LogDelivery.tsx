@@ -15,10 +15,12 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { BackChip } from "../../components/BackChip";
+import { StationChip } from "../../components/warehouse/StationChip";
 import { listProjects } from "../../lib/api";
 import { isForemanPlus } from "../../lib/install/types";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { createManualDelivery } from "../../lib/storage";
+import { STATION_COMING_IN } from "../../lib/warehouse/stations";
 import {
   DRAFT_KEY,
   MAX_CLONES,
@@ -122,6 +124,7 @@ export function LogDelivery() {
           </div>
           <BackChip fallback="/warehouse" label="Warehouse" />
         </header>
+        <StationChip station={STATION_COMING_IN} />
         <p className="muted">How will this truck be tracked?</p>
         <div className="row-gap" style={{ flexDirection: "column", maxWidth: 460 }}>
           <button
@@ -157,6 +160,7 @@ export function LogDelivery() {
           </div>
           <BackChip fallback="/warehouse" label="Warehouse" />
         </header>
+        <StationChip station={STATION_COMING_IN} />
         <p>
           The standby list is saved — {result?.created ?? 0} expected package
           {(result?.created ?? 0) === 1 ? "" : "s"}.
@@ -204,6 +208,7 @@ export function LogDelivery() {
           </div>
           <BackChip fallback="/warehouse" label="Warehouse" />
         </header>
+        <StationChip station={STATION_COMING_IN} />
         {entries.map((entry, ei) => {
           const job = projects.data?.find((p) => p.id === entry.project_id);
           return (
@@ -249,6 +254,7 @@ export function LogDelivery() {
           </div>
           <BackChip fallback="/warehouse" label="Warehouse" />
         </header>
+        <StationChip station={STATION_COMING_IN} />
         {restoredFrom && (
           <p className="scanner-hint">
             Picked your unsaved delivery back up (from{" "}
@@ -347,6 +353,7 @@ export function LogDelivery() {
         </div>
         <BackChip fallback="/warehouse" label="Warehouse" />
       </header>
+      <StationChip station={STATION_COMING_IN} />
       <p className="muted">
         A set is everything for one window or door — its frame, glass,
         hardware. Count its packages; if some pieces ride in a crate, say how

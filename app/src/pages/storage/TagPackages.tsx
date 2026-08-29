@@ -10,6 +10,7 @@ import { listMarkSpecs } from "../../lib/install/api";
 import { formatApiError } from "../../lib/errors";
 import { pushToast } from "../../lib/toast";
 import { BackChip } from "../../components/BackChip";
+import { StationChip } from "../../components/warehouse/StationChip";
 import { Scanner } from "../../components/Scanner";
 import type { QrPayload } from "../../lib/qr";
 import { subscribeSynced } from "../../lib/offline/outbox";
@@ -23,6 +24,7 @@ import { addProjectMark, listScheduledMarks } from "../../lib/warehouse/warehous
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { isForemanPlus } from "../../lib/install/types";
 import { useScanWedge } from "../../lib/warehouse/scanWedge";
+import { STATION_OFF_TRUCK } from "../../lib/warehouse/stations";
 import {
   CATEGORY_LABELS,
   defaultDeliveryLabel,
@@ -464,6 +466,7 @@ export function TagPackages() {
           </p>
         </div>
       </header>
+      <StationChip station={STATION_OFF_TRUCK} />
 
       {(() => {
         const expected = (actives.data ?? []).filter(

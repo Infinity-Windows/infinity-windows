@@ -19,10 +19,12 @@ import { listProjects, listProjectsAnyStatus } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
 import { pushToast } from "../../lib/toast";
 import { BackChip } from "../../components/BackChip";
+import { StationChip } from "../../components/warehouse/StationChip";
 import { Explain } from "../../components/ui/Explain";
 import { PhotoCaptureSheet } from "../../components/PhotoCaptureSheet";
 import { enqueueIssuePhoto } from "../../lib/offline/outbox";
 import { playErrorTone, playSuccessTone } from "../../lib/sound";
+import { STATION_OFF_TRUCK } from "../../lib/warehouse/stations";
 import {
   arrivePackages,
   CATEGORY_LABELS,
@@ -151,6 +153,7 @@ export function ArrivePackages() {
           <h1>Arrival check</h1>
         </div>
       </header>
+      <StationChip station={STATION_OFF_TRUCK} />
 
       <Explain id="arrival-check">
         Only worth doing when something looks wrong. Tick anything that arrived

@@ -4855,6 +4855,90 @@ button.clock-out {
   font-size: 12px;
 }
 
+/* Station strip (wave F): five numbered cards, in the order material
+   actually moves. Mobile-first per the spec — a vertical flow is the
+   PRIMARY rendering (installers are on phones); the row layout below is
+   the wide-screen treatment only. Cards reuse .warehouse-tile's card look
+   (background/border/radius) rather than inventing a new one. */
+.station-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.station-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--card-raised);
+  border: 1px solid var(--border);
+  min-width: 0;
+}
+
+.station-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.station-num {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.station-name {
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 0.02em;
+}
+
+.station-when {
+  font-size: 12.5px;
+  margin: 0;
+}
+
+.station-actions {
+  margin-top: 2px;
+}
+
+.station-actions .button-like {
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
+/* A subtle connector so the strip reads as one flow — rotated to point
+   down between stacked cards, and back to pointing right once the strip
+   goes horizontal below. */
+.station-connector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 16px;
+  transform: rotate(90deg);
+}
+
+@media (min-width: 860px) {
+  .station-strip {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  .station-card {
+    flex: 1 1 0;
+  }
+
+  .station-connector {
+    transform: none;
+  }
+}
+
 /* --- Home header + next window + notifications --- */
 
 .home-header-actions {
@@ -6592,6 +6676,25 @@ body {
     border-radius: 18px;
     border: 1px solid var(--border);
   }
+}
+
+/* --- Station chip (wave F): "① Coming in" on a chipped destination page --- */
+.station-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.station-chip:hover {
+  filter: brightness(1.08);
 }
 
 /* --- Directions chip --- */
