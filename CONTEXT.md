@@ -140,6 +140,22 @@ Rationale: cohorts at the unit level are too sparse to trust. We may install thr
 - Splitting a unit's packages warns and is counted, never blocked — a frame on site while its glass waits is sometimes the job.
 - Burn is for labels that never lived; Reprint is for packages that did. One action covering both would eat history.
 
+**Rewrite a set** — wave R (2026-08-28, the Mad Moose story: a manifest
+said mark #8 was 16 packages; the truck actually had 12 pieces of glass in
+one crate plus 4 frame packages). Fixing a wrong declaration by hand meant
+editing fifteen slot cards one at a time. Rewrite a set replaces that with
+declaration-diff: the whole set is declared at once, as a short list of
+{count, part type, packaging} lines, and one apply (`rewrite_set`) diffs
+that declaration against reality and makes it so, atomically. Arrived
+pieces never die by arithmetic — a shrinking line releases only its
+never-arrived (`minted`) placeholders; if a line's new count would fall
+below what has already arrived, the whole apply refuses rather than delete
+real material. Retyping is free for expected material; for arrived
+material it is allowed only when a whole line vanishes and exactly one new
+line can unambiguously take it — anything less clear-cut refuses too.
+"Start this set over" is the literal factory reset, still just
+`delete_packages` on everything in the set, blank declaration after.
+
 ## The daily log
 
 Settled 2026-08-26, wave L. One log tells one job's one day.
