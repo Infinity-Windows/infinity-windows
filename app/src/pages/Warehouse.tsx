@@ -306,8 +306,19 @@ export function Warehouse() {
               </Link>
             ))}
           </div>
-          <Explain id="warehouse-cards" summary="What do these numbers mean?">
-            <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+          {/* raw because a <ul> may not sit inside Explain's quoted <p> —
+              React 19 logs a DOM-nesting error on every load without it.
+              The list carries the quoted-note styling itself instead. */}
+          <Explain id="warehouse-cards" summary="What do these numbers mean?" raw>
+            <ul
+              style={{
+                margin: "6px 0 0",
+                paddingLeft: 18,
+                color: "var(--muted)",
+                lineHeight: 1.5,
+                borderLeft: "2px solid var(--border)",
+              }}
+            >
               {WAREHOUSE_CARDS.map((c) => (
                 <li key={c.id} style={{ marginBottom: 6 }}>
                   <strong>{c.label}</strong> — {c.blurb}
