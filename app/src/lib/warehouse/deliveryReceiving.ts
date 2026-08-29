@@ -23,6 +23,9 @@ export interface SlotRow {
   label: string;
   mark: string;
   isCrate: boolean;
+  /** null = untyped, the "what is it?" pile — wave R's tailgate collapse
+   *  groups on this alongside mark and isCrate. */
+  partType: string | null;
   expected: number;
   received: number;
   stored: number;
@@ -143,6 +146,7 @@ export function groupDelivery(
         label: slotLabel(p, title),
         mark: p.mfr_mark ?? "?",
         isCrate: p.piece_count != null,
+        partType: p.part_type ?? null,
         expected: 0,
         received: 0,
         stored: 0,
@@ -229,4 +233,80 @@ export function missingSummary(groups: JobGroup[]): DeliverySummary {
     }
   }
   return { expected, received, missing: expected - received, lines };
+}
+
+/**
+ * Wave R, ticket R3 — collapse the fifteen-card wall: a mark declared as 15
+ * individually numbered packages used to render as 15 separate SlotRows
+ * (one per part_index), because groupDelivery's slot key includes the
+ * index. This groups those rows further, by (mark, isCrate, part type) —
+ * the "type" a whole line of the tailgate is checked in against.
+ *
+ * ONLY collapses when there are 2+ member rows: a mark with a single row
+ * already has nothing to collapse, and rendering it through the same
+ * summary-plus-expand chrome as a genuine wall would be a pointless extra
+ * tap for the common case. Bound marks/serials never enter this at all —
+ * they render as their own SlotRow already, one per package, and this
+ * function only ever groups WITHIN a job's rows.
+ */
+export interface TypeGroup {
+  key: string;
+  mark: string;
+  isCrate: boolean;
+  partType: string | null;
+  /** "#5050 — frame" — no count; the caller renders "N still coming" /
+   *  "N arrived" beside it, same split JobGroup rows already use. */
+  label: string;
+  missing: number;
+  received: number;
+  /** Every expected id across every member row, lowest part_index first —
+   *  "Arrive 1" takes from the front, "Arrive all" takes the lot. */
+  expectedIds: string[];
+  rows: SlotRow[];
+}
+
+const partIndexOf = (row: SlotRow): number => {
+  const raw = row.key.split("|")[2] ?? "";
+  if (raw === "") return Number.POSITIVE_INFINITY;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
+};
+
+/** "#5050 — frame" / "#5050 — what is it?" — the type-group's own title,
+ *  stripped of any job prefix a member row's label carries (the caller
+ *  already shows the job once, at the section header). */
+const typeGroupLabel = (mark: string, partType: string | null): string =>
+  `#${mark} — ${partType ?? "what is it?"}`;
+
+export function groupRowsByType(rows: SlotRow[]): TypeGroup[] {
+  const byKey = new Map<string, SlotRow[]>();
+  for (const row of rows) {
+    const key = [row.mark, row.isCrate ? "crate" : "box", row.partType ?? ""].join("|");
+    const list = byKey.get(key) ?? [];
+    list.push(row);
+    byKey.set(key, list);
+  }
+  const groups: TypeGroup[] = [];
+  for (const [key, members] of byKey) {
+    const [mark, crateFlag, partTypeRaw] = key.split("|");
+    const sorted = [...members].sort((a, b) => partIndexOf(a) - partIndexOf(b));
+    groups.push({
+      key,
+      mark,
+      isCrate: crateFlag === "crate",
+      partType: partTypeRaw || null,
+      label: typeGroupLabel(mark, partTypeRaw || null),
+      missing: sorted.reduce((s, r) => s + (r.expected - r.received), 0),
+      received: sorted.reduce((s, r) => s + r.received, 0),
+      expectedIds: sorted.flatMap((r) => r.expectedIds),
+      rows: sorted,
+    });
+  }
+  return groups;
+}
+
+/** "n of these arrived" for a whole type group — the collapsed-row version
+ *  of pickToReceive, taking from the lowest part_index first. */
+export function pickToReceiveGroup(group: TypeGroup, n: number): string[] {
+  return group.expectedIds.slice(0, Math.max(0, Math.min(n, group.expectedIds.length)));
 }
