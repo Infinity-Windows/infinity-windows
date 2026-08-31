@@ -254,7 +254,7 @@ function markTourSeen(): void {
 /** Studio 100x #44: five real features, plain words, in the order a first
  * build actually happens. Every step names something that works TODAY —
  * draw walls (mode button), drag-or-Add-window placement, tap-to-edit
- * panes, Save as catalog unit, and Publish to map are all live above. */
+ * panes, Save as catalog unit, and Submit final are all live above. */
 const TOUR_STEPS: { title: string; body: string }[] = [
   {
     title: "Draw a wall",
@@ -273,8 +273,8 @@ const TOUR_STEPS: { title: string; body: string }[] = [
     body: "Get a unit's panels right once, then Save as catalog unit so it's ready to drag onto the next wall.",
   },
   {
-    title: "Publish to map",
-    body: "When the model's ready, Publish to map puts it on the crew's interactive map.",
+    title: "Submit final",
+    body: "When the model's ready, Submit final makes it the job's live 3D map for every installer.",
   },
 ];
 
@@ -490,7 +490,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       });
     },
     onSuccess: () => {
-      pushToast("Linked — job specs, seeding and Publish are now available.");
+      pushToast("Linked — job specs, seeding and Submit final are now available.");
       void qc.invalidateQueries({ queryKey: ["studioProject", standaloneId] });
     },
     onError: (e) => pushToast(formatApiError(e), "error"),
@@ -2229,7 +2229,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       sizeByName,
     );
     if (!converted) {
-      pushToast("Nothing to publish — the model has no closed walls yet.");
+      pushToast("Nothing to submit — the model has no closed walls yet.");
       return;
     }
     setPublishPreview(converted);
@@ -2270,7 +2270,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     },
     onSuccess: () => {
       setPublishPreview(null);
-      pushToast("Published — the interactive map now renders this model.");
+      pushToast("Submitted — this is now the job's live 3D map for every installer.");
       void qc.invalidateQueries({ queryKey: ["planOutlines", projectId] });
     },
   });
@@ -2866,7 +2866,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           </button>
         )}
         <button className="button-like studio-mini active-pill" onClick={preparePublish}>
-          Publish to map
+          Submit final
         </button>
         <button
           type="button"
@@ -3804,7 +3804,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
               if (e.target.value) linkToJob.mutate(e.target.value);
             }}
           >
-            <option value="">Link to a job… (enables Publish)</option>
+            <option value="">Link to a job… (enables Submit final)</option>
             {(allProjects.data ?? []).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.job_code} — {p.name}
@@ -3835,7 +3835,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       {publishPreview && (
         <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={() => setPublishPreview(null)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <p style={{ margin: 0, fontWeight: 700 }}>Publish to the interactive map?</p>
+            <p style={{ margin: 0, fontWeight: 700 }}>Submit this as the job's final model?</p>
             <p className="muted" style={{ margin: "6px 0 0", fontSize: 12.5 }}>
               {publishPreview.stats.masses} building mass
               {publishPreview.stats.masses === 1 ? "" : "es"} ·{" "}
@@ -3847,9 +3847,8 @@ export function ModelStudio({ source }: { source: StudioSource }) {
                 ` (${publishPreview.stats.skippedWindows} skipped — not on a wall)`}
             </p>
             <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
-              The crew's Maps Interactive tab renders this immediately — glows,
-              specs and window taps included. The current map model is kept for
-              one-tap revert.
+              This becomes the job's live 3D map for every installer. The
+              previous model is kept — you can revert.
             </p>
             {publish.isError && <p className="error">{formatApiError(publish.error)}</p>}
             <div className="row-gap" style={{ marginTop: 10 }}>
@@ -3858,7 +3857,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
                 disabled={publish.isPending}
                 onClick={() => publish.mutate()}
               >
-                {publish.isPending ? "Publishing…" : "Publish"}
+                {publish.isPending ? "Submitting…" : "Submit final"}
               </button>
               <button className="button-like" onClick={() => setPublishPreview(null)}>
                 Cancel
