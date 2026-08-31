@@ -76,6 +76,7 @@ import {
   buildStudioPull,
   buildStudioSeed,
   catalogByMarkFrom,
+  formatPullToast,
   markKeyOf,
   resolveMarkConfig,
 } from "../../lib/modelstudio/fromProject";
@@ -1406,6 +1407,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     bulkRef.current = true;
     bulkStatsRef.current.raised = 0;
     let placedHere = 0;
+    let specPlacedHere = 0;
     let otherFloors = 0;
     let shifted = 0;
     let lengthened = 0;
@@ -1469,6 +1471,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           false,
         );
         placedHere += 1;
+        if (pl.fromSpec) specPlacedHere += 1;
       }
     } finally {
       // Attach/geometry runs async in itemLoadedCallbacks; keep toasts
@@ -1480,21 +1483,21 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     const auto = (plansJob as { autoScale?: { factor: number; longSideM: number } })
       .autoScale;
     window.setTimeout(() => {
-      const bits = [
-        `${placedHere} placed`,
-        healed > 0 ? `${healed} healed` : null,
-        shifted > 0 ? `${shifted} slid to fit their wall` : null,
-        lengthened > 0 ? `${lengthened} wall${lengthened === 1 ? "" : "s"} lengthened` : null,
-        wallsAdded > 0 ? `${wallsAdded} wall${wallsAdded === 1 ? "" : "s"} added from the plans` : null,
-        bulkStatsRef.current.raised > 0
-          ? `${bulkStatsRef.current.raised} wall${bulkStatsRef.current.raised === 1 ? "" : "s"} raised`
-          : null,
-        auto ? `building auto-scaled ×${auto.factor} from specs (${Math.round(auto.longSideM)} m long side)` : null,
-        pull.alreadyPlaced > 0 ? `${pull.alreadyPlaced} already placed` : null,
-        otherFloors > 0 ? `${otherFloors} on other floors — switch and pull again` : null,
-        pull.noWall > 0 ? `${pull.noWall} had no wall to land on` : null,
-      ].filter(Boolean);
-      pushToast(`Pull from plans: ${bits.join(" · ")}.`);
+      pushToast(
+        formatPullToast({
+          placedHere,
+          specPlacedHere,
+          healed,
+          shifted,
+          lengthened,
+          wallsAdded,
+          raised: bulkStatsRef.current.raised,
+          autoScale: auto ?? null,
+          alreadyPlaced: pull.alreadyPlaced,
+          otherFloors,
+          noWall: pull.noWall,
+        }),
+      );
     }, 1200);
   };
 
