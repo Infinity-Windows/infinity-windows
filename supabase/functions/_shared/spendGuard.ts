@@ -184,6 +184,15 @@ export const FUNCTION_SPEND: Record<string, FunctionSpend> = {
     model: "claude-sonnet-5",
     estimateMicros: 8_000,
   },
+  // Per PAGE (`units` is the floor-plan page count) — a smaller structured
+  // reply than extract-schedule's page read (positions for known marks, not
+  // full row transcription), so priced a step below it.
+  "extract-placement": {
+    kind: "content",
+    provider: "anthropic",
+    model: "claude-sonnet-5",
+    estimateMicros: 40_000,
+  },
 };
 
 // ---------------------------------------------------------------------------
