@@ -1266,12 +1266,12 @@ test("Publish from floor 2 keeps every floor — floor 1 stays the mirror", asyn
     );
   });
 
-  await page.getByRole("button", { name: "Publish to map" }).click();
+  await page.getByRole("button", { name: "Submit final" }).click();
   // The preview modal already counts BOTH stories…
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByText(/2 stories/)).toBeVisible();
-  await dialog.getByRole("button", { name: "Publish", exact: true }).click();
-  await expect(page.getByText("the interactive map now renders this model")).toBeVisible();
+  await dialog.getByRole("button", { name: "Submit final", exact: true }).click();
+  await expect(page.getByText("this is now the job's live 3D map")).toBeVisible();
 
   // …and the outline write carries the WHOLE studio model, not a floor-2 copy.
   expect(patches).toHaveLength(1);

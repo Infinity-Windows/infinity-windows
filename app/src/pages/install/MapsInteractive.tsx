@@ -23,9 +23,11 @@ import {
   fitviewModel,
   normalizeMarkCode,
   preferModelOutline,
+  unplacedScheduleMarks,
 } from "../../lib/fitview/adapter";
 import { mountFitView } from "../../lib/fitview/fitviewRenderer";
 import { jobModelFromFeatures } from "../../lib/modelstudio/projects";
+import { listScheduledMarks } from "../../lib/warehouse/warehouseCards";
 import { ProjectMap } from "./ProjectMap";
 import "../../lib/fitview/fitview.css";
 
@@ -103,6 +105,15 @@ export function MapsInteractive({ project }: { project: Project }) {
     queryKey: ["openingPhases", projectId],
     queryFn: () => listOpeningPhases(projectId),
   });
+  // B3 (wave V-B): the job's schedule of marks — SAME rows and SAME query
+  // key ModelStudio.tsx already fetches, so a visit to either tab warms the
+  // other's cache. This is the "what should exist" side of the unplaced
+  // count below; job.windows (built below) is the "what's actually on the
+  // model" side.
+  const scheduledMarks = useQuery({
+    queryKey: ["scheduledMarks", [projectId]],
+    queryFn: () => listScheduledMarks([projectId]),
+  });
 
   // The model-bearing outline wins; the auto-extracted one is a fallback.
   const outline = preferModelOutline(outlines.data);
@@ -168,6 +179,25 @@ export function MapsInteractive({ project }: { project: Project }) {
     phases.data,
   ]);
 
+  // B3 (wave V-B, the Mad Moose story): schedule marks with nothing placed
+  // for them on THIS rendered model — never pinned, or pinned on a
+  // different sheet. Computed here, outside the vendored renderer, then
+  // carried on the job object it already understands (unplacedMarks).
+  const unplaced = useMemo(
+    () =>
+      job
+        ? unplacedScheduleMarks(
+            (scheduledMarks.data ?? []).map((m) => m.mark_code),
+            job.windows.map((w) => w.id),
+          )
+        : [],
+    [job, scheduledMarks.data],
+  );
+  const jobForRenderer = useMemo(
+    () => (job ? { ...job, unplacedMarks: unplaced } : null),
+    [job, unplaced],
+  );
+
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<ReturnType<typeof mountFitView> | null>(null);
   const navTimerRef = useRef<number | null>(null);
@@ -225,12 +255,12 @@ export function MapsInteractive({ project }: { project: Project }) {
   // where the user left it, a remount would snap it back to the default.
   useEffect(() => {
     const host = hostRef.current;
-    if (!host || !job) return;
+    if (!host || !jobForRenderer) return;
     try {
       if (viewRef.current) {
         if (host.childElementCount > 0 && builtForRole.current === effectiveRole && builtForView.current === mapView) {
           // Same live host, same role — refresh in place, keep the camera.
-          viewRef.current.refresh(job);
+          viewRef.current.refresh(jobForRenderer);
           return;
         }
         // Two ways to land here. The Sheets toggle unmounted the old host, so
@@ -243,7 +273,7 @@ export function MapsInteractive({ project }: { project: Project }) {
       }
       builtForRole.current = effectiveRole;
       builtForView.current = mapView;
-      viewRef.current = mountFitView(host, job, {
+      viewRef.current = mountFitView(host, jobForRenderer, {
         toast: pushToast,
         flatView: mapView === "flat",
         openOpening: (code: string) => {
@@ -317,7 +347,7 @@ export function MapsInteractive({ project }: { project: Project }) {
       setMountFailed(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [job, mapView, effectiveRole, retryNonce]);
+  }, [jobForRenderer, mapView, effectiveRole, retryNonce]);
 
   // Unmount-only teardown: the renderer owns global listeners until then,
   // and a still-pending deferred navigation must die with the tab.
@@ -420,6 +450,22 @@ export function MapsInteractive({ project }: { project: Project }) {
             <p className="muted" style={{ margin: 0, flex: 1 }}>
               The outline is traced, but no openings are pinned on sheet{" "}
               {outline.page_number} yet — the model will populate as pins land.
+            </p>
+          )}
+          {/* B3 (wave V-B): the partial case the zero-case banner above
+              misses — some marks placed, others still off the model
+              entirely (the Mad Moose job read as complete at "8/8 fitted"
+              while its other marks were never pinned at all). */}
+          {!mountFailed && job && job.windows.length > 0 && unplaced.length > 0 && (
+            <p className="muted" style={{ margin: 0, flex: 1 }}>
+              {unplaced.length} mark{unplaced.length === 1 ? "" : "s"} not yet
+              placed
+              {canEditModel && !fullscreen && (
+                <>
+                  {" → "}
+                  <Link to={`/projects/${projectId}/trace-model`}>place them</Link>
+                </>
+              )}
             </p>
           )}
           {canEditModel && !fullscreen && (

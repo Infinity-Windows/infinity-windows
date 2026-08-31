@@ -126,6 +126,24 @@ describe("fitview renderer (Black Desert fixture)", () => {
     view.destroy();
   });
 
+  it("B3: lists JOB.unplacedMarks in a 'Not placed yet' schedule group", () => {
+    const withUnplaced = { ...(fixture as object), unplacedMarks: [{ id: "97" }, { id: "98" }] };
+    const { host, view } = mount(withUnplaced as never);
+    host.querySelector<HTMLButtonElement>('.tab[data-view="sched"]')!.click();
+    const rows = host.querySelector("#rows")!;
+    expect(rows.textContent).toContain("Not placed yet");
+    expect(rows.textContent).toContain("97");
+    expect(rows.textContent).toContain("98");
+    view.destroy();
+  });
+
+  it("no unplacedMarks on the job is a no-op (every other job builder)", () => {
+    const { host, view } = mount();
+    host.querySelector<HTMLButtonElement>('.tab[data-view="sched"]')!.click();
+    expect(host.querySelector("#rows")!.textContent).not.toContain("Not placed yet");
+    view.destroy();
+  });
+
   it("destroy removes the document-level listeners", () => {
     const before = document.body.childNodes.length;
     const { view } = mount();
