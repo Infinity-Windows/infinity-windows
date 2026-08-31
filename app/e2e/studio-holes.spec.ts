@@ -1057,6 +1057,86 @@ test("Pull from plans reads the PLANS — a published model never caps it", asyn
   expect(count).toBe(42);
 });
 
+test("Pull from plans: a placed unit carries a mark badge, and selecting it shows W×L", async ({
+  page,
+}) => {
+  // Owner ask (wave V, Studio map-parity): every unit placed in Studio —
+  // hand-added OR pulled from the plans/specs — should carry the same
+  // identity the elevations map already shows. "glyph overlay" above pins
+  // the mark chip for a hand-crafted item; this pins it for a unit that
+  // actually arrived via Pull from plans, plus the properties panel's new
+  // W×L identity line.
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useOutline(
+    page,
+    { fitview: { model: FITVIEW_MODEL } },
+    [
+      { x: 0.1, y: 0.15 },
+      { x: 0.7, y: 0.15 },
+      { x: 0.7, y: 0.9 },
+      { x: 0.1, y: 0.9 },
+    ],
+  );
+  await openStudio(page);
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    for (const it of [...bp.model.scene.getItems()]) bp.model.scene.removeItem(it);
+  });
+
+  await page.getByRole("button", { name: /Tools/ }).click();
+  await page.getByRole("button", { name: "Pull from plans", exact: true }).click();
+  await page.waitForFunction(
+    () => {
+      const bp = (window as any).__studio;
+      const items = bp.model.scene.getItems();
+      return items.length === 42 && items.every((it: any) => Boolean(it.currentWallEdge));
+    },
+    undefined,
+    { timeout: 60_000 },
+  );
+
+  // Mark 16 — spec-exact width per the pull test above, so it's a real
+  // specced unit, not an unpinned-fallback guess.
+  const idx = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    return bp.model.scene
+      .getItems()
+      .findIndex((it: any) => /^16([^0-9]|$)/.test(it.metadata.itemName));
+  });
+  expect(idx).toBeGreaterThanOrEqual(0);
+
+  // A mark chip is painted onto the pulled unit's annotation plane — same
+  // canvas-paint check "glyph overlay" uses for a hand-placed unit, now
+  // proven for one that landed via Pull from plans.
+  const paintedPixels = await page.evaluate((i) => {
+    const bp = (window as any).__studio;
+    const item = bp.model.scene.getItems()[i];
+    const ann = item.children.find((c: any) => c.name === "unit-annotations");
+    if (!ann) return -1;
+    const canvas = ann.material.map.image as HTMLCanvasElement;
+    const ctx = canvas.getContext("2d")!;
+    const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    let n = 0;
+    for (let j = 3; j < d.length; j += 4) if (d[j] > 10) n++;
+    return n;
+  }, idx);
+  expect(paintedPixels).toBeGreaterThan(0);
+
+  // Select the exact item by reference (itemSelectedCallbacks.fire, the
+  // same EventEmitter the vendor's own raycast picker fires into) rather
+  // than a projected-click, which risks landing on one of the other 41
+  // units crowding the same view.
+  await page.evaluate((i) => {
+    const bp = (window as any).__studio;
+    bp.three.itemSelectedCallbacks.fire(bp.model.scene.getItems()[i]);
+  }, idx);
+  await expect(page.getByText("Selected unit")).toBeVisible();
+  // The W×L identity line, in the elevations sheet's own tape-reading
+  // fraction format (fitviewRenderer.ts's inches()) — never a different
+  // fraction style for the same millimetre value.
+  await expect(page.getByText(/W \d[\d\s/]*"\s*·\s*L \d[\d\s/]*"/)).toBeVisible();
+});
+
 test("animation: ▶ opens the slider, toggling closes it; dbl-click refocuses", async ({
   page,
 }) => {
