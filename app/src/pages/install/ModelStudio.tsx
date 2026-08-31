@@ -97,6 +97,12 @@ import {
 } from "../../lib/modelstudio/handles3d";
 import { buildUnitAnnotations } from "../../lib/modelstudio/unitAnnotations";
 import { toggleUnitOpening } from "../../lib/modelstudio/openingAnimation";
+import {
+  unitMarkLabel,
+  unitPaneSummary,
+  unitSizeLabel,
+  unitTypeLabel,
+} from "../../lib/modelstudio/unitIdentity";
 import type { StudioItem } from "../../lib/modelstudio/core";
 import {
   applyPanePreset,
@@ -1585,7 +1591,11 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     const overlay =
       showLiveOverlayRef.current && name ? overlayMapRef.current.get(name) : undefined;
     for (const mesh of buildUnitAnnotations(cfg, {
-      mark: name,
+      // Chip text is the crew's work-order dialect (same conversion the
+      // elevations map applies) — `name` itself stays raw, since it also
+      // keys the overlay/package lookups above and those match on whatever
+      // dialect the mark was authored in.
+      mark: unitMarkLabel(name),
       dims,
       overlay,
     })) {
@@ -3262,8 +3272,22 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           <summary className="tcx-label">Selected unit</summary>
           <div className="studio-palette-body">
             <p className="muted" style={{ margin: 0, fontSize: 11.5 }}>
-              {selUnit.metadata?.itemName ?? "Unit"}
+              {unitMarkLabel(selUnit.metadata?.itemName) ?? selUnit.metadata?.itemName ?? "Unit"}
             </p>
+            {/* Map-parity identity line (owner ask): type, W×L and pane
+                breakdown, in the SAME vocabulary the elevations sheet uses
+                for a tapped window — unitIdentity.ts wraps its helpers so
+                the two screens can never drift apart. Absent only when the
+                unit has no config yet (a mid-load legacy item). */}
+            {(() => {
+              const cfg = selUnit.metadata?.unitConfig as UnitConfig | undefined;
+              if (!cfg) return null;
+              return (
+                <p className="muted" style={{ margin: "2px 0 0", fontSize: 11.5 }}>
+                  {unitTypeLabel(cfg)} · {unitSizeLabel(cfg)} · {unitPaneSummary(cfg)}
+                </p>
+              );
+            })()}
             {/* Where's-my-glass tap-through (#15/#18): the mark's package
                 answer plus where the pieces sit, one plain sentence, and
                 a way straight to the warehouse Find for it. */}
