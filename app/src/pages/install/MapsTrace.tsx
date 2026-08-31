@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
+  applyPlacementSuggestions,
   discardLocalOutline,
   downloadPlanset,
   listMarkSpecs,
@@ -10,7 +11,9 @@ import {
   listPlanOutlines,
   listPlansets,
   savePlanOutline,
+  updateOpening,
 } from "../../lib/install/api";
+import { readPlacementsFromDoc } from "../../lib/install/placementRead";
 import { listProjects } from "../../lib/api";
 import { loadPdf } from "../../lib/install/pdf";
 import { renderPageJpeg } from "../../lib/install/renderSpecImages";
@@ -31,9 +34,15 @@ import {
   fitviewCalibration,
   fitviewModel,
   normalizeMarkCode,
+  openingIdForMark,
   preferModelOutline,
   type AuthoredModel,
 } from "../../lib/fitview/adapter";
+import {
+  normalizedToPixel,
+  pixelToNormalized,
+  placementResultSummary,
+} from "../../lib/fitview/placementSuggestions";
 import { mountTracePlan } from "../../lib/fitview/traceRenderer";
 import { registerTrace, type TraceLike } from "../../lib/fitview/traceRegistration";
 import "../../lib/fitview/fitview.css";
@@ -94,6 +103,22 @@ export function MapsTrace() {
     );
   }, [plansets.data, pickedPlansetId]);
   const underlayPage = pickedPage ?? outline?.page_number ?? 1;
+  // Vision placement (wave V-A) always reads the BUILDING planset's floor-plan
+  // pages — the schedule marks it places are the plan's own marks, whichever
+  // sheet the picker above happens to be showing right now.
+  const buildingPlanset = useMemo(
+    () => (plansets.data ?? []).find((p) => p.kind === "building") ?? null,
+    [plansets.data],
+  );
+
+  // Vision placement (wave V-A): "Find placements" run state, shown next to
+  // the sheet picker — the tracer toolbar itself is the vendored template,
+  // so this progress/result line lives at the React level around it.
+  const [placementRun, setPlacementRun] = useState<{
+    status: "idle" | "reading" | "done";
+    pages: number[];
+    message: string | null;
+  }>({ status: "idle", pages: [], message: null });
 
   // The plan sheet as an image, rendered from the same planset the pins
   // live on. Dimensions ride along: pin coords are normalized, and both the
@@ -393,6 +418,70 @@ export function MapsTrace() {
         }
         return Object.keys(seed).length ? seed : null;
       },
+      // Vision placement (wave V-A): suggested pins for THIS page only — a
+      // suggestion normalized against a different sheet would land nowhere
+      // near its real callout on this one. Confirmed (pin_x set) openings
+      // are never suggested in the first place (the rescan law), but this
+      // filter is what keeps the dashed dots honest about which sheet
+      // they belong to as the picker above flips pages.
+      suggestedSeed: (planImg: HTMLImageElement) => {
+        const list = openingsRef.current ?? [];
+        const w = planImg.naturalWidth || planImage.data?.w || 0;
+        const h = planImg.naturalHeight || planImage.data?.h || 0;
+        if (!w || !h) return null;
+        const seed: Record<string, { x: number; y: number; confidence: number }> = {};
+        for (const o of list) {
+          if (o.suggested_pin_x == null || o.suggested_pin_y == null) continue;
+          if (o.suggested_page_number != null && o.suggested_page_number !== underlayPage) {
+            continue;
+          }
+          const px = normalizedToPixel({ x: o.suggested_pin_x, y: o.suggested_pin_y }, w, h);
+          seed[o.opening_code] = { x: px.x, y: px.y, confidence: o.suggested_confidence ?? 0.5 };
+        }
+        return Object.keys(seed).length ? seed : null;
+      },
+      // A suggestion becomes a real pin the instant it is confirmed —
+      // "the tracer already writes them" (ProjectMap's placePin, same
+      // pin_x/pin_y/page_number columns) — independent of whether this
+      // trace is ever Submitted. Fire-and-forget from the renderer's own
+      // point of view; failures surface as a toast, same as everywhere else
+      // an update can be refused by the database.
+      confirmSuggestion: (id: string, pos: { x: number; y: number }) => {
+        const openingId = openingIdForMark(openingsRef.current ?? [], id);
+        if (!openingId) return;
+        const norm = pixelToNormalized(
+          pos,
+          planImage.data?.w ?? 0,
+          planImage.data?.h ?? 0,
+        );
+        void updateOpening(openingId, {
+          pin_x: norm.x,
+          pin_y: norm.y,
+          page_number: underlayPage,
+          suggested_pin_x: null,
+          suggested_pin_y: null,
+          suggested_page_number: null,
+          suggested_at: null,
+          suggested_confidence: null,
+        })
+          .then(() => queryClient.invalidateQueries({ queryKey: ["openings", projectId] }))
+          .catch((e) => pushToast(formatApiError(e), "error"));
+      },
+      // Dismiss clears the suggestion only — pin_x/pin_y stay null, so the
+      // rescan law leaves this mark free to be suggested again later.
+      dismissSuggestion: (id: string) => {
+        const openingId = openingIdForMark(openingsRef.current ?? [], id);
+        if (!openingId) return;
+        void updateOpening(openingId, {
+          suggested_pin_x: null,
+          suggested_pin_y: null,
+          suggested_page_number: null,
+          suggested_at: null,
+          suggested_confidence: null,
+        })
+          .then(() => queryClient.invalidateQueries({ queryKey: ["openings", projectId] }))
+          .catch((e) => pushToast(formatApiError(e), "error"));
+      },
       // Phase 2: what the sheet titles said. Auto-place uses it to create
       // the detected stories and land each dot on its own story; windows on
       // pages the titles couldn't resolve stay in the tray — the Unclear
@@ -462,6 +551,70 @@ export function MapsTrace() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job, planImage.data, planImage.isLoading]);
 
+  /**
+   * "Find placements" (V2): read the building planset's floor-plan pages for
+   * every still-unplaced mark, write the results as SUGGESTED pins (never
+   * real ones — readPlacementsFromDoc/apply_placement_suggestions), then pull
+   * them into whatever trace is already open without losing unsaved work.
+   * Re-runnable: a rerun only ever replaces a mark's suggestion while that
+   * mark has no real pin yet (the rescan law) — a foreman working through
+   * the review tray is never fighting the next click of this button.
+   */
+  const findPlacements = async () => {
+    if (!buildingPlanset || placementRun.status === "reading") return;
+    setPlacementRun({ status: "reading", pages: [], message: null });
+    try {
+      const bytes = await downloadPlanset(buildingPlanset);
+      const doc = await loadPdf(bytes);
+      const result = await readPlacementsFromDoc(doc, openings.data ?? [], (pages) =>
+        setPlacementRun((prev) => ({ ...prev, pages })),
+      );
+
+      if (result.limited) {
+        setPlacementRun({ status: "done", pages: result.floorPlanPages, message: result.note ?? null });
+        if (result.note) pushToast(result.note, "error");
+        return;
+      }
+
+      const appliedCount = await applyPlacementSuggestions(
+        projectId,
+        result.suggestions.map((s) => ({
+          openingId: s.openingId,
+          x: s.x,
+          y: s.y,
+          page: s.page,
+          confidence: s.confidence,
+        })),
+      );
+
+      await queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+      // invalidateQueries resolves once the refetch lands in the CACHE, but
+      // this component's own re-render (and openingsRef's refresh with it)
+      // is scheduled separately — reading the cache directly is what
+      // guarantees refreshSuggestions sees the fresh suggested_pin_x rows
+      // rather than whatever render happened to run last.
+      const fresh = queryClient.getQueryData<typeof openings.data>([
+        "openings",
+        projectId,
+      ]);
+      if (fresh) openingsRef.current = fresh;
+      viewRef.current?.refreshSuggestions();
+
+      const totalKnown = result.suggestions.length + result.notFoundMarks.length;
+      const message = placementResultSummary({
+        placed: appliedCount,
+        totalKnown,
+        notFound: result.notFoundMarks.length,
+        unknown: result.unknownCallouts.length,
+      });
+      setPlacementRun({ status: "done", pages: result.floorPlanPages, message });
+      toastSuccess(message);
+    } catch (e) {
+      setPlacementRun({ status: "done", pages: [], message: null });
+      pushToast(formatApiError(e), "error");
+    }
+  };
+
   if (projects.isLoading || openings.isLoading || outlines.isLoading) {
     return <div className="page"><p className="muted">Loading the tracer…</p></div>;
   }
@@ -520,6 +673,30 @@ export function MapsTrace() {
           >
             ▶
           </button>
+        </div>
+      )}
+      {/* Vision placement (wave V-A), triggered on purpose — never automatic,
+          so the AI spend stays a deliberate tap. Reads the building plan-set's
+          floor-plan pages for every still-unplaced mark and drops suggested
+          (dashed) dots into the tracer above for review. */}
+      {buildingPlanset && (
+        <div className="row-gap" style={{ alignItems: "center", marginBottom: 6 }}>
+          <button
+            className="button-like studio-mini"
+            onClick={() => void findPlacements()}
+            disabled={placementRun.status === "reading"}
+          >
+            {placementRun.status === "reading" ? "Reading the plan…" : "Find placements"}
+          </button>
+          {placementRun.status === "reading" && placementRun.pages.length > 0 && (
+            <span className="muted">
+              Reading page{placementRun.pages.length === 1 ? "" : "s"}{" "}
+              {placementRun.pages.join(", ")}…
+            </span>
+          )}
+          {placementRun.status === "done" && placementRun.message && (
+            <span className="muted">{placementRun.message}</span>
+          )}
         </div>
       )}
       <div className="fitview-app fittrace-app" ref={hostRef} />
