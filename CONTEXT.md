@@ -278,6 +278,12 @@ undo it ever gets.
 the customer?" Answered at snap time or left null forever; the office can
 flip it later. Not an OCR field — always a human's own yes/no.
 
+## Maps Interactive
+
+Settled 2026-08-28, wave V-B. The official pipeline, once plans are in:
+trace the building → place and confirm marks on the sheet → refine the
+model in Studio → Submit final, which becomes the crew's live 3D map.
+
 ## Open questions
 
 None right now — the next ones come from building.
