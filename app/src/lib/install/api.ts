@@ -1499,7 +1499,24 @@ export async function updateOpening(
   patch: Partial<
     Pick<
       ProjectOpening,
-      "opening_code" | "window_type_id" | "label" | "page_number" | "pin_x" | "pin_y"
+      | "opening_code"
+      | "window_type_id"
+      | "label"
+      | "page_number"
+      | "pin_x"
+      | "pin_y"
+      // Wave V-A: confirming or dismissing a suggested placement goes through
+      // this same function — pin_x/pin_y is exactly "the tracer already
+      // writes them" (ProjectMap's placePin), and clearing suggested_* in the
+      // same call is what marks a suggestion resolved so a rescan leaves it
+      // alone. Confirming sets both; dismissing sets only the suggested_*
+      // ones, which never touches pin_x/pin_y/page_number and so never
+      // trips guard_opening_pin_move at all.
+      | "suggested_pin_x"
+      | "suggested_pin_y"
+      | "suggested_page_number"
+      | "suggested_at"
+      | "suggested_confidence"
     >
   >,
 ): Promise<void> {
@@ -3022,6 +3039,97 @@ export interface ScheduleRowLike {
   heightIn?: number | null;
   color?: string | null;
   kind?: "window" | "door";
+}
+
+/** One mark's schedule identity, fed to extract-placement as the allowlist it
+ * must match exactly — CAD-WINS: it places existing marks, it never invents one. */
+export interface KnownMarkLike {
+  code: string;
+  type?: string | null;
+}
+
+/** Where extract-placement found (or didn't find) a known mark on the plan. */
+export interface PlacementRowLike {
+  mark: string;
+  page: number;
+  x: number;
+  y: number;
+  confidence: number;
+}
+
+/** A plan callout that matched no known mark — reported, never turned into an
+ * opening (see supabase/functions/extract-placement). */
+export interface UnknownMarkLike {
+  mark: string;
+  page: number;
+}
+
+/** Invoke the vision-placement Edge Function (wave V-A): find where each
+ * still-unplaced schedule mark's callout sits on a floor-plan page. */
+export async function aiExtractPlacement(
+  images: { pageNumber: number; dataUrl: string }[],
+  marks: KnownMarkLike[],
+  projectId?: string,
+  plansetId?: string,
+): Promise<{
+  placements: PlacementRowLike[];
+  unknownMarks: UnknownMarkLike[];
+  failedPages: number[];
+  limited?: boolean;
+  note?: string | null;
+}> {
+  const { data, error } = await supabase.functions.invoke("extract-placement", {
+    body: { images, marks, projectId, plansetId },
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(String(data.error));
+  return {
+    placements: (data?.placements ?? []) as PlacementRowLike[],
+    unknownMarks: (data?.unknownMarks ?? []) as UnknownMarkLike[],
+    failedPages: (data?.failedPages ?? []) as number[],
+    limited: Boolean(data?.limited),
+    note: data?.note ?? null,
+  };
+}
+
+/** True when 20260961000000 (suggested placements) hasn't reached this database
+ * yet — the review tray degrades to "nothing to review" rather than crashing. */
+function isMissingPlacementFunction(error: unknown): boolean {
+  return isMissingSchemaFunction(error);
+}
+
+/**
+ * Write extract-placement's raw reading into suggested_pin_x/y/page/at/
+ * confidence (foreman+; RESCAN LAW enforced atomically in SQL — see
+ * apply_placement_suggestions). Returns how many suggestions actually landed,
+ * which is smaller than the input whenever a mark already has a real pin.
+ */
+export async function applyPlacementSuggestions(
+  projectId: string,
+  suggestions: {
+    openingId: string;
+    x: number;
+    y: number;
+    page: number;
+    confidence: number;
+  }[],
+): Promise<number> {
+  if (suggestions.length === 0) return 0;
+  const { data, error } = await supabase.rpc("apply_placement_suggestions", {
+    p_project_id: projectId,
+    p_suggestions: suggestions.map((s) => ({
+      opening_id: s.openingId,
+      x: s.x,
+      y: s.y,
+      page: s.page,
+      confidence: s.confidence,
+    })),
+  });
+  if (error) {
+    if (isMissingPlacementFunction(error)) return 0;
+    throw refusalOrError(error);
+  }
+  return Number(data) || 0;
 }
 
 /** Install events by this installer whose AI-filled memo still needs a glance. */

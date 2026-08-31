@@ -169,6 +169,18 @@ export interface ProjectOpening {
   origin_pin_x?: number | null;
   origin_pin_y?: number | null;
   origin_page_number?: number | null;
+  /**
+   * Vision placement's guess (wave V-A): a suggested pin, twin-shaped to
+   * pin_x/pin_y/page_number but never read by the live map — only a
+   * foreman confirming it in the trace tool promotes it to a real pin.
+   * Cleared once confirmed or dismissed. Null on rows from before
+   * 20260961000000, and on any job that has never run Find placements.
+   */
+  suggested_pin_x?: number | null;
+  suggested_pin_y?: number | null;
+  suggested_page_number?: number | null;
+  suggested_at?: string | null;
+  suggested_confidence?: number | null;
   assigned_window_id: string | null;
   status: OpeningStatus;
   confirmed: boolean;
