@@ -1,6 +1,9 @@
-// The Studio's front door: every model in the company — blank/linked
-// standalone projects and job-attached models — in one list, newest work
-// first. Start from nothing ("New project") or open a job's model.
+// The Studio's front door: blank/linked standalone projects, plus EVERY
+// active job (B1, wave V-B) — not just ones someone already seeded — each
+// with a state chip (not started / seeded / published). Newest work first.
+// Start from nothing ("New project") or open a job's model; a "not started"
+// job lazy-seeds from its traced building the moment its editor mounts
+// (ModelStudio.tsx), so listing it here creates nothing by itself.
 
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -12,10 +15,35 @@ import { BackChip } from "../../components/BackChip";
 import {
   buildWorkspaces,
   listJobModelRows,
+  listJobModelStates,
   listStudioProjectRows,
   saveStudioProject,
+  type JobModelState,
+  type StudioWorkspace,
 } from "../../lib/modelstudio/projects";
 import { ModelStudio } from "./ModelStudio";
+
+/** B1: plain words + a color for each derived model state. */
+const STATE_LABEL: Record<JobModelState, string> = {
+  not_started: "Not started",
+  seeded: "Seeded",
+  published: "Published",
+};
+const STATE_DOT: Record<JobModelState, string> = {
+  not_started: "dot-warn",
+  seeded: "dot-info",
+  published: "dot-ok",
+};
+
+/** The non-state half of a workspace card's subtitle line. */
+function workspaceMeta(w: StudioWorkspace): string {
+  const parts: string[] = [];
+  if (w.kind === "standalone") {
+    parts.push(w.jobCode ? `Linked to ${w.jobCode}` : "Not linked");
+  }
+  if (w.savedAt) parts.push(`saved ${new Date(w.savedAt).toLocaleDateString()}`);
+  return parts.join(" · ");
+}
 
 export function StudioList() {
   const navigate = useNavigate();
@@ -25,16 +53,24 @@ export function StudioList() {
     queryFn: listStudioProjectRows,
   });
   const jobModels = useQuery({ queryKey: ["studioJobModels"], queryFn: listJobModelRows });
+  const jobModelStates = useQuery({
+    queryKey: ["studioJobModelStates"],
+    queryFn: listJobModelStates,
+  });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
 
-  const workspaces = useMemo(() => {
-    const byId = new Map(
-      (projects.data ?? []).map((p) => [p.id, { job_code: p.job_code, name: p.name }]),
-    );
-    return buildWorkspaces(standalone.data ?? [], jobModels.data ?? [], byId);
-  }, [standalone.data, jobModels.data, projects.data]);
+  const workspaces = useMemo(
+    () =>
+      buildWorkspaces(
+        standalone.data ?? [],
+        jobModels.data ?? [],
+        projects.data ?? [],
+        jobModelStates.data ?? new Map(),
+      ),
+    [standalone.data, jobModels.data, projects.data, jobModelStates.data],
+  );
 
   const create = useMutation({
     mutationFn: () => saveStudioProject({ name: name.trim() || "Untitled model" }),
@@ -73,11 +109,17 @@ export function StudioList() {
             <div className="home-project-head">
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 600 }}>{w.name}</div>
-                <div className="muted" style={{ fontSize: 12 }}>
-                  {w.kind === "job" ? "Job model" : w.jobCode ? `Linked to ${w.jobCode}` : "Not linked"}
-                  {w.savedAt
-                    ? ` · saved ${new Date(w.savedAt).toLocaleDateString()}`
-                    : ""}
+                <div
+                  className="muted"
+                  style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}
+                >
+                  {w.state && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <span className={STATE_DOT[w.state]} />
+                      {STATE_LABEL[w.state]}
+                    </span>
+                  )}
+                  {workspaceMeta(w)}
                 </div>
               </div>
               <span className="muted">›</span>
