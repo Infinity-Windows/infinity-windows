@@ -388,7 +388,24 @@ export function mountTracePlan(host, job, shim) {
   function renderTray() {
     var tray = $("tray");
     Array.prototype.slice.call(tray.querySelectorAll(".chip-dot")).forEach(function (c) { c.remove(); });
-    JOB.windows.forEach(function (w) {
+    // Vision placement (wave V-A): a mark with ONLY a suggestion - no
+    // confirmed pin_x/pin_y yet - never made it into JOB.windows in the
+    // first place (buildFitViewJob only geometrizes CONFIRMED placements,
+    // adapter.ts). The tray is "what's waiting to be worked", and a
+    // suggestion pending Confirm/Dismiss is exactly that - Mad Moose's tray
+    // read as empty for the same reason its dashed dots did: the tray only
+    // ever looked at JOB.windows.
+    var known = {};
+    JOB.windows.forEach(function (w) { known[w.id] = true; });
+    var suggOnly = [];
+    stories.forEach(function (st) {
+      Object.keys(st.suggested).forEach(function (id) {
+        if (known[id]) return;
+        known[id] = true;
+        suggOnly.push({ id: id, door: false });
+      });
+    });
+    JOB.windows.concat(suggOnly).forEach(function (w) {
       var c = document.createElement("span");
       var at = dotStoryOf(w.id);
       var meta = dotMeta[w.id] || {};
@@ -811,12 +828,24 @@ export function mountTracePlan(host, job, shim) {
     if (seed) {
       // Same story-title routing autoBtn uses for confirmed pins, so a
       // suggestion lands on the story its own plan sheet actually shows,
-      // not always the ground floor.
+      // not always the ground floor - WHEN storyPlan.byId actually has an
+      // opinion. Unlike autoBtn's confirmed dots, storyPlan.byId is built
+      // (MapsTrace.tsx) by walking JOB.windows, which never contains a mark
+      // that only has a suggestion (buildFitViewJob only geometrizes
+      // CONFIRMED placements) - so byId lacking an entry here usually means
+      // "this mark was never in a position to be asked", not "the titles
+      // looked and couldn't say". Auto-place's "leave unplaced, not a
+      // guess" caution is right for ITS case because a confirmed dot is
+      // taken as truth the instant it lands; a suggestion is never taken as
+      // truth on its own - it sits dashed until a human confirms or
+      // dismisses it - so the worst a wrong default story costs is a drag,
+      // never a silently wrong placement. The host has already filtered the
+      // seed to the page being viewed (suggestedSeed's suggested_page_number
+      // check), so "the current story" is the right fallback, not a guess.
       ensureStoriesForPlan(storyPlan);
       Object.keys(seed).forEach(function (id) {
         if (dotStoryOf(id) >= 0 || suggStoryOf(id) >= 0) return;
         var plan2 = storyPlan && storyPlan.byId[id];
-        if (storyPlan && !plan2) return;  // titles couldn't say - leave unplaced, not a guess
         var target = plan2 ? stories[Math.min(plan2.story, stories.length) - 1] : stories[cur];
         target.suggested[id] = { x: seed[id].x, y: seed[id].y, confidence: seed[id].confidence };
       });

@@ -26,6 +26,78 @@ describe("trace renderer", () => {
     expect(host.innerHTML).toBe("");
   });
 
+  // Mad Moose (2026-08-31): 10 saved suggestions, zero confirmed pins. This
+  // job has never been traced before, so MapsTrace.tsx builds its job via
+  // buildFitViewJob rather than buildAuthoredJob — and buildFitViewJob only
+  // geometrizes openings that ALREADY have a confirmed pin_x/pin_y (adapter.ts,
+  // "Only openings pinned on the outline's page are placed on the model").
+  // A suggestion-only mark therefore never appears in JOB.windows; the
+  // vision-placement e2e (vision-placement.spec.ts) never catches this
+  // because its fixture pre-seeds an AUTHORED model whose windows[] already
+  // lists the mark, sidestepping exactly the gap Mad Moose falls into.
+  it("wave V-A: a suggestion still seeds and shows in the tray when the model has no confirmed windows yet (Mad Moose)", () => {
+    const job = {
+      id: "p1", ref: "Mad Moose", addr: "",
+      building: {
+        width: 0, depth: 0, height: 3.6, rise: 0, footprints: [],
+        trace: {
+          cal: { ax: 0, ay: 0, bx: 100, by: 0, value: 10, unit: "m" },
+          polys: [[{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 400 }, { x: 0, y: 400 }]],
+          dots: {},
+        },
+      },
+      windows: [], // buildFitViewJob's real output for a job with no confirmed pins yet
+    };
+    const { host, view } = mount(job, {
+      suggestedSeed: {
+        "1A": { x: 100, y: 6, confidence: 0.92 },
+        "1B": { x: 200, y: 6, confidence: 0.9 },
+      },
+    });
+    expect(host.querySelectorAll("#ol [data-sugg]").length).toBe(2);
+    expect(host.querySelectorAll("#tray .chip-dot").length).toBe(2);
+    view.destroy();
+  });
+
+  // The bug's other half: Mad Moose's plan-set titles resolve to more than
+  // one story ("MAIN FLR FLOOR PLAN" / "UPPER FLOOR PLAN"). storyPlan.byId
+  // is built (MapsTrace.tsx's storyPlan callback) by walking JOB.windows —
+  // which, per the test above, is empty for a never-traced job — so byId
+  // comes back empty even though the titles DID resolve real stories. The
+  // old gate ("titles couldn't say - leave unplaced, not a guess") could not
+  // tell that apart from a genuine unresolved mark, and dropped every
+  // suggestion silently. A suggestion is reviewed by a human before it
+  // becomes anything real, so — unlike Auto-place's confirmed dots — landing
+  // it on the wrong story by default costs nothing worse than a drag.
+  it("wave V-A: multi-story sheet titles never swallow a suggestion whose mark isn't in the model yet (Mad Moose)", () => {
+    const job = {
+      id: "p1", ref: "Mad Moose", addr: "",
+      building: {
+        width: 0, depth: 0, height: 3.6, rise: 0, footprints: [],
+        trace: {
+          cal: { ax: 0, ay: 0, bx: 100, by: 0, value: 10, unit: "m" },
+          polys: [[{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 400 }, { x: 0, y: 400 }]],
+          dots: {},
+        },
+      },
+      windows: [],
+    };
+    const { host, view } = mount(job, {
+      suggestedSeed: { "1A": { x: 100, y: 6, confidence: 0.92 } },
+      storyPlan: {
+        stories: [
+          { n: 1, name: "Ground", evidence: "MAIN FLR FLOOR PLAN" },
+          { n: 2, name: "Level 2", evidence: "UPPER FLOOR PLAN" },
+        ],
+        byId: {}, // empty: no window ever reached storyPlan, not "titles said nothing"
+        unclear: {},
+      },
+    });
+    expect(host.querySelectorAll("#ol [data-sugg]").length).toBe(1);
+    expect(host.querySelectorAll("#tray .chip-dot").length).toBe(1);
+    view.destroy();
+  });
+
   it("restores the fixture's stored trace: polys drawn, dots back, tray full", () => {
     const { host, view } = mount(fixture);
     const f = fixture as { windows: unknown[]; building: { trace: { polys: unknown[] } } };
