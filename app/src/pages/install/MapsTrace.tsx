@@ -42,6 +42,7 @@ import {
   normalizedToPixel,
   pixelToNormalized,
   placementResultSummary,
+  placementToastKind,
 } from "../../lib/fitview/placementSuggestions";
 import { mountTracePlan } from "../../lib/fitview/traceRenderer";
 import { registerTrace, type TraceLike } from "../../lib/fitview/traceRegistration";
@@ -118,7 +119,11 @@ export function MapsTrace() {
     status: "idle" | "reading" | "done";
     pages: number[];
     message: string | null;
-  }>({ status: "idle", pages: [], message: null });
+    // Mirrors the toast's own kind so the line stays honest even after the
+    // toast has faded — a zero-write result must still read as trouble, not
+    // as the same quiet gray text a clean run leaves behind.
+    kind: "success" | "error" | null;
+  }>({ status: "idle", pages: [], message: null, kind: null });
 
   // The plan sheet as an image, rendered from the same planset the pins
   // live on. Dimensions ride along: pin coords are normalized, and both the
@@ -562,7 +567,7 @@ export function MapsTrace() {
    */
   const findPlacements = async () => {
     if (!buildingPlanset || placementRun.status === "reading") return;
-    setPlacementRun({ status: "reading", pages: [], message: null });
+    setPlacementRun({ status: "reading", pages: [], message: null, kind: null });
     try {
       const bytes = await downloadPlanset(buildingPlanset);
       const doc = await loadPdf(bytes);
@@ -571,12 +576,17 @@ export function MapsTrace() {
       );
 
       if (result.limited) {
-        setPlacementRun({ status: "done", pages: result.floorPlanPages, message: result.note ?? null });
+        setPlacementRun({
+          status: "done",
+          pages: result.floorPlanPages,
+          message: result.note ?? null,
+          kind: "error",
+        });
         if (result.note) pushToast(result.note, "error");
         return;
       }
 
-      const appliedCount = await applyPlacementSuggestions(
+      const { saved: appliedCount, unavailable } = await applyPlacementSuggestions(
         projectId,
         result.suggestions.map((s) => ({
           openingId: s.openingId,
@@ -600,17 +610,36 @@ export function MapsTrace() {
       if (fresh) openingsRef.current = fresh;
       viewRef.current?.refreshSuggestions();
 
-      const totalKnown = result.suggestions.length + result.notFoundMarks.length;
+      // suggested/saved are kept as two separate numbers on purpose (the Mad
+      // Moose bug): extract-placement can match every known mark while
+      // apply_placement_suggestions saves fewer of them — or none — because
+      // the rescan law skips a mark that already has a real pin, or because
+      // the RPC isn't live yet on this database (isMissingPlacementFunction's
+      // degrade guard — see its comment in install/api.ts). Collapsing both
+      // into one "placed" count is exactly what let a zero-write read as
+      // 10-for-10 success; placementResultSummary/placementToastKind never
+      // let that happen, and `unavailable` keeps the write-path failure from
+      // being mislabeled "already placed" — the opposite of what a foreman
+      // should do next.
       const message = placementResultSummary({
-        placed: appliedCount,
-        totalKnown,
+        suggested: result.suggestions.length,
+        saved: appliedCount,
         notFound: result.notFoundMarks.length,
         unknown: result.unknownCallouts.length,
+        unavailable,
       });
-      setPlacementRun({ status: "done", pages: result.floorPlanPages, message });
-      toastSuccess(message);
+      const kind = placementToastKind({
+        suggested: result.suggestions.length,
+        saved: appliedCount,
+      });
+      setPlacementRun({ status: "done", pages: result.floorPlanPages, message, kind });
+      if (kind === "error") {
+        pushToast(message, "error");
+      } else {
+        toastSuccess(message);
+      }
     } catch (e) {
-      setPlacementRun({ status: "done", pages: [], message: null });
+      setPlacementRun({ status: "done", pages: [], message: null, kind: null });
       pushToast(formatApiError(e), "error");
     }
   };
@@ -695,7 +724,9 @@ export function MapsTrace() {
             </span>
           )}
           {placementRun.status === "done" && placementRun.message && (
-            <span className="muted">{placementRun.message}</span>
+            <span className={placementRun.kind === "error" ? "error" : "muted"}>
+              {placementRun.message}
+            </span>
           )}
         </div>
       )}

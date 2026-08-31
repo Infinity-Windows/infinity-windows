@@ -127,15 +127,40 @@ export function pixelToNormalized(
   };
 }
 
-/** The plain-English line after a Find placements run — same voice as the
- * tracer's other toasts ("N dots placed from the plan numbers…"). */
+/**
+ * The plain-English line after a Find placements run. THE BUG this shape
+ * fixes (Mad Moose, wave V-A): apply_placement_suggestions can legitimately
+ * save fewer rows than extract-placement found — the rescan law skips any
+ * mark that already has a real pin, and a database that hasn't caught up to
+ * the placement-suggestions migration yet degrades the write to a silent 0
+ * (see isMissingPlacementFunction in install/api.ts). A single "placed"
+ * number can't distinguish "found and saved" from "found and NOT saved" —
+ * `suggested` (extract-placement's own match count) and `saved` (apply_
+ * placement_suggestions' actual row count) are kept as two separate numbers
+ * for exactly that reason: there is no single count left that can lie about
+ * whether the write actually landed.
+ *
+ * `unavailable` keeps a SECOND lie from replacing the first: a gap between
+ * suggested and saved has two unrelated causes (a mark already has a real
+ * pin, or the write path itself isn't live on this database yet), and they
+ * call for opposite next steps — one means "nothing to do", the other means
+ * "try again once the deploy catches up". Attributing an unavailable-caused
+ * 0 to "already have real pins" would tell a foreman the marks are handled
+ * when they still need saving.
+ */
 export function placementResultSummary(counts: {
-  placed: number;
-  totalKnown: number;
+  suggested: number;
+  saved: number;
   notFound: number;
   unknown: number;
+  unavailable?: boolean;
 }): string {
-  const parts = [`Placed ${counts.placed} of ${counts.totalKnown} marks`];
+  const gap = counts.suggested - counts.saved;
+  const base = counts.unavailable
+    ? `Suggested ${counts.suggested} — ${counts.saved} saved — placements aren't set up on this database yet`
+    : gap > 0
+      ? `Suggested ${counts.suggested} — only ${counts.saved} saved — ${gap} already have real pins`
+      : `Suggested ${counts.suggested} — ${counts.saved} saved`;
   const tail: string[] = [];
   if (counts.notFound > 0) {
     tail.push(`${counts.notFound} not found`);
@@ -147,7 +172,22 @@ export function placementResultSummary(counts: {
         : `${counts.unknown} callouts on the plan aren't in the schedule`,
     );
   }
-  return tail.length > 0 ? `${parts[0]} — ${tail.join("; ")}` : `${parts[0]}.`;
+  return tail.length > 0 ? `${base} — ${tail.join("; ")}` : `${base}.`;
+}
+
+/**
+ * Which toast kind a Find placements run earns — separate from the message
+ * text so the ONE rule that matters ("a zero-write must never read as
+ * success") can't be lost in string formatting. Success covers "nothing to
+ * save" too (suggested 0): that is a clean no-op, not a failure. Only a real
+ * write that saved NONE of what it found — the exact Mad Moose shape, 10
+ * suggested / 0 saved — earns "error".
+ */
+export function placementToastKind(counts: {
+  suggested: number;
+  saved: number;
+}): "success" | "error" {
+  return counts.suggested > 0 && counts.saved === 0 ? "error" : "success";
 }
 
 /** Confirm-all's own toast, singular/plural handled once here rather than at
