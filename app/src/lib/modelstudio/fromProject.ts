@@ -5,7 +5,11 @@
 // the foundation on a real building, not a demo house.
 
 import { elevationsOf } from "../fitview/fitviewRenderer";
-import { normalizeMarkCode } from "../fitview/adapter";
+import {
+  DEFAULT_SILL_M,
+  DEFAULT_WALL_HEIGHT_M,
+  normalizeMarkCode,
+} from "../fitview/adapter";
 import {
   indexSpecsByMark,
   specForOpeningCode,
@@ -48,6 +52,9 @@ interface FitJobLike {
     y: number; // sill, meters
     w: number; // mm
     h: number; // mm
+    /** True only for a placement buildStudioPull invented itself (the
+     * unpinned-spec fallback below) — never set on a real job window. */
+    fromSpec?: boolean;
   }[];
 }
 
@@ -81,6 +88,10 @@ export interface PullPlacement {
   /** The plans have a wall the studio model doesn't: CREATE this segment
    * (studio-frame cm) before placing — emitted once per plan edge. */
   newWall?: StudioWallSeg;
+  /** This mark has no pin yet — the position is a deterministic guess
+   * (evenly spread along the ground floor's walls), not a survey result.
+   * The caller's status line should say so plainly. */
+  fromSpec?: boolean;
 }
 
 export interface PullResult {
@@ -300,6 +311,18 @@ function snapToWall(
   return { wall: best.wall, t: best.t, lenCm: best.lenCm, rotation: aligned };
 }
 
+/** Total plan-frame width a config's WIDEST leg demands — a corner unit
+ * counts only its main leg (cornerGeometryInfo's rule; the wrap leg turns
+ * down the next wall and never inflates THIS wall's demand). Shared by the
+ * pinned path and the unpinned-spec fallback below so both measure a
+ * unit's footprint the same way. */
+function widthMmFor(config: UnitConfig): number {
+  const legs = cornerLegs(config);
+  return legs
+    ? Math.max(panelsWidthMm(legs.left), panelsWidthMm(legs.right))
+    : panelsWidthMm(config.panels);
+}
+
 /**
  * "Pull from plans" (owner spec, 2026-08-14): every window the plans know
  * about, auto-placed as a PARAMETRIC, mark-labeled, editable unit — the
@@ -317,6 +340,17 @@ function snapToWall(
  * on that floor is aligned into the STUDIO's frame and snapped onto its
  * nearest same-direction wall — a window either lands ON a wall or is
  * skipped and counted, never left floating.
+ *
+ * UNPINNED marks (Mad Moose, 2026-08-31): `job.windows` only ever holds
+ * PINNED openings — buildFitViewJob (adapter.ts) skips any opening with no
+ * `pin_x`/`pin_y`, by design, for the fit-view MAP. A job can carry a
+ * traced building and a full extracted schedule (real sizes, ten marks)
+ * with not one pin placed yet, and this function used to walk `job.windows`
+ * only — an empty list — and report "0 placed" though nothing was actually
+ * wrong. Every SPECCED mark still gets pulled in: real spec size, spread
+ * deterministically along the ground floor's walls as an approximate,
+ * obviously-editable starting point (`fromSpec: true`), never a randomly
+ * or arbitrarily placed guess and never a substitute for a real pin.
  */
 export function buildStudioPull(
   job: FitJobLike,
@@ -327,7 +361,7 @@ export function buildStudioPull(
 ): PullResult {
   const elevs = elevationsOf(job) as {
     key: string; x1: number; z1: number; x2: number; z2: number; len: number;
-    A: number; story?: number; base?: number;
+    A: number; story?: number; base?: number; hM?: number;
   }[];
   const byKey = new Map(elevs.map((e) => [e.key, e]));
   const specIndex = indexSpecsByMark(specs);
@@ -353,7 +387,68 @@ export function buildStudioPull(
   let alreadyPlaced = 0;
   let noWall = 0;
 
-  for (const w of job.windows) {
+  // Specced marks with no pinned opening at all: everything job.windows
+  // already covers (by BASE mark, so "16-1" pinned still counts for spec
+  // "16") is excluded, so a mark never gets both a real placement and a
+  // guessed one.
+  const pinnedMarks = new Set(job.windows.map((w) => markKeyOf(w.id)));
+  const unpinnedMarks = specs
+    .filter((s) => !pinnedMarks.has(s.mark_code.toUpperCase()))
+    .map((s) => ({
+      spec: s,
+      config: catalogByMark.get(markKeyOf(s.mark_code)) ?? specToUnitConfig(s),
+    }))
+    // A spec with no usable width/height has no real size to place with —
+    // it's left out (and counted below) rather than inventing one.
+    .filter(
+      (u): u is { spec: ProjectMarkSpec; config: UnitConfig } => u.config != null,
+    )
+    .sort((a, b) =>
+      a.spec.mark_code.localeCompare(b.spec.mark_code, undefined, { numeric: true }),
+    );
+
+  const groundWalls = elevs.filter((e) => (e.story ?? 1) === 1 && e.len > 0);
+  const groundLenM = groundWalls.reduce((t, e) => t + e.len, 0);
+  const synthetic: FitJobLike["windows"] = [];
+  if (unpinnedMarks.length > 0 && groundLenM <= 0) {
+    noWall += unpinnedMarks.length;
+  } else if (unpinnedMarks.length > 0) {
+    const n = unpinnedMarks.length;
+    unpinnedMarks.forEach(({ spec, config }, i) => {
+      const wMm = widthMmFor(config);
+      const hM = config.heightMm / 1000;
+      // Evenly spread along the ground floor's UNROLLED perimeter —
+      // deterministic, no randomness — then land on whichever wall that
+      // running distance falls inside.
+      const target = ((i + 0.5) / n) * groundLenM;
+      let acc = 0;
+      let wall = groundWalls[groundWalls.length - 1];
+      for (const cand of groundWalls) {
+        if (target < acc + cand.len) {
+          wall = cand;
+          break;
+        }
+        acc += cand.len;
+      }
+      const centerM = Math.min(wall.len, Math.max(0, target - acc));
+      const wallHeightM = wall.hM ?? DEFAULT_WALL_HEIGHT_M;
+      const sillM =
+        config.kind === "door"
+          ? 0
+          : Math.max(0.15, Math.min(DEFAULT_SILL_M, wallHeightM - hM - 0.2));
+      synthetic.push({
+        id: spec.mark_code,
+        elev: wall.key,
+        x: centerM - wMm / 2000,
+        y: sillM,
+        w: wMm,
+        h: config.heightMm,
+        fromSpec: true,
+      });
+    });
+  }
+
+  for (const w of [...job.windows, ...synthetic]) {
     if (existingNames.has(w.id)) {
       alreadyPlaced += 1;
       continue;
@@ -378,10 +473,7 @@ export function buildStudioPull(
     // wall, so counting it inflated the width, slid corner units to
     // mid-wall and grew walls that were never short. snapIfCorner seats
     // the wrap end exactly at the wall end after placement.
-    const legs = cornerLegs(config);
-    const wMm = legs
-      ? Math.max(panelsWidthMm(legs.left), panelsWidthMm(legs.right))
-      : panelsWidthMm(config.panels);
+    const wMm = widthMmFor(config);
     const hMm = config.heightMm;
     const halfM = wMm / 2000;
     const baseM = e.base ?? 0;
@@ -410,6 +502,7 @@ export function buildStudioPull(
           floorIndex,
           shifted: fit.shifted || undefined,
           lengthenWallCm: fit.lengthenWallCm,
+          fromSpec: w.fromSpec || undefined,
         });
         continue;
       }
@@ -441,6 +534,7 @@ export function buildStudioPull(
         shifted: fit.shifted || undefined,
         lengthenWallCm: fit.lengthenWallCm,
         newWall: isNew ? seg : undefined,
+        fromSpec: w.fromSpec || undefined,
       });
       continue;
     }
@@ -458,10 +552,75 @@ export function buildStudioPull(
       floorIndex,
       shifted: fit.shifted || undefined,
       lengthenWallCm: fit.lengthenWallCm,
+      fromSpec: w.fromSpec || undefined,
     });
   }
 
   return { placements, alreadyPlaced, noWall };
+}
+
+/** Everything the "Pull from plans" status line needs to report, gathered
+ * by the caller as it applies `PullResult.placements` to the live scene. */
+export interface PullToastStats {
+  /** Placements applied on the ACTIVE floor (both pinned and fromSpec). */
+  placedHere: number;
+  /** Of `placedHere`, how many came from the unpinned-spec fallback. */
+  specPlacedHere: number;
+  healed: number;
+  shifted: number;
+  lengthened: number;
+  wallsAdded: number;
+  raised: number;
+  autoScale: { factor: number; longSideM: number } | null;
+  alreadyPlaced: number;
+  otherFloors: number;
+  noWall: number;
+}
+
+/**
+ * Plain-English "Pull from plans" status line (house style: an installer
+ * or foreman reads this, not a developer). When some or all of what got
+ * placed came off a spec with no pin yet, LEAD with that — a supervisor
+ * needs to know up front that those positions are a guess to rearrange,
+ * not a survey result (Mad Moose, 2026-08-31: a full 10-mark schedule with
+ * zero pins used to report "0 placed" instead of placing all ten from
+ * their specs). A pull that placed only real pinned windows keeps the
+ * original, plainer wording unchanged.
+ */
+export function formatPullToast(s: PullToastStats): string {
+  const pinnedPlaced = s.placedHere - s.specPlacedHere;
+  const bits: (string | null)[] = [];
+  if (s.specPlacedHere > 0) {
+    if (pinnedPlaced > 0) bits.push(`${pinnedPlaced} placed from pins`);
+    bits.push(
+      `${s.specPlacedHere} placed from specs (no pins yet; positions are a starting point)`,
+    );
+  } else {
+    bits.push(`${s.placedHere} placed`);
+  }
+  bits.push(
+    s.healed > 0 ? `${s.healed} healed` : null,
+    s.shifted > 0 ? `${s.shifted} slid to fit their wall` : null,
+    s.lengthened > 0
+      ? `${s.lengthened} wall${s.lengthened === 1 ? "" : "s"} lengthened`
+      : null,
+    s.wallsAdded > 0
+      ? `${s.wallsAdded} wall${s.wallsAdded === 1 ? "" : "s"} added from the plans`
+      : null,
+    s.raised > 0 ? `${s.raised} wall${s.raised === 1 ? "" : "s"} raised` : null,
+    s.autoScale
+      ? `building auto-scaled ×${s.autoScale.factor} from specs (${Math.round(s.autoScale.longSideM)} m long side)`
+      : null,
+    s.alreadyPlaced > 0 ? `${s.alreadyPlaced} already placed` : null,
+    s.otherFloors > 0
+      ? `${s.otherFloors} on other floors — switch and pull again`
+      : null,
+    s.noWall > 0 ? `${s.noWall} had no wall to land on` : null,
+  );
+  const joined = bits.filter(Boolean).join(" · ");
+  return s.specPlacedHere > 0
+    ? `Pulled ${s.placedHere} mark${s.placedHere === 1 ? "" : "s"} — ${joined}.`
+    : `Pull from plans: ${joined}.`;
 }
 
 /** Base-mark key used for catalog preference lookups. */

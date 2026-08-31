@@ -8,8 +8,10 @@ import {
   buildStudioPull,
   buildStudioSeed,
   catalogByMarkFrom,
+  formatPullToast,
   markKeyOf,
   resolveMarkConfig,
+  type PullToastStats,
 } from "./fromProject";
 import { indexSpecsByMark } from "../install/specs";
 import type { ProjectMarkSpec } from "../install/specs";
@@ -301,6 +303,103 @@ describe("buildStudioPull", () => {
     expect(out.noWall).toBe(1);
   });
 
+  describe("unpinned-spec fallback (Mad Moose, 2026-08-31)", () => {
+    // adapter.ts's buildFitViewJob only puts a PINNED opening into
+    // job.windows — by design, for the fit-view MAP. A job can carry a
+    // traced outline and a full extracted schedule (real inch sizes, ten
+    // marks) with not a single pin placed yet, and this used to walk an
+    // EMPTY job.windows and report "0 placed" though nothing was wrong.
+
+    it("places every specced mark, real spec sizes, even with zero pins", () => {
+      const marks = Array.from({ length: 10 }, (_, i) =>
+        spec(`${i + 1}`, 30 + i, 60, "Fixed"),
+      );
+      const out = buildStudioPull(jobWith([]) as never, marks, new Set());
+      expect(out.placements).toHaveLength(10);
+      expect(out.noWall).toBe(0);
+      expect(out.alreadyPlaced).toBe(0);
+      for (const m of marks) {
+        const p = out.placements.find((pl) => pl.itemName === m.mark_code);
+        expect(p).toBeDefined();
+        expect(p!.fromSpec).toBe(true);
+        expect(p!.config.panels[0].widthMm).toBeCloseTo(m.width_in! * 25.4, 0);
+        expect(p!.config.heightMm).toBeCloseTo(m.height_in! * 25.4, 0);
+        expect(p!.floorIndex).toBe(0);
+      }
+    });
+
+    it("is deterministic — the same job pulls the same positions twice", () => {
+      const marks = Array.from({ length: 6 }, (_, i) => spec(`${i + 1}`, 32, 48, "Fixed"));
+      const a = buildStudioPull(jobWith([]) as never, marks, new Set());
+      const b = buildStudioPull(jobWith([]) as never, marks, new Set());
+      expect(a.placements.map((p) => [p.itemName, p.xCm, p.yCm, p.floorIndex, p.rotation])).toEqual(
+        b.placements.map((p) => [p.itemName, p.xCm, p.yCm, p.floorIndex, p.rotation]),
+      );
+    });
+
+    it("never doubles a mark that's already pinned — only the unpinned rest fall back", () => {
+      // Mark "3" is pinned (in job.windows); marks 1, 2 and 4 have specs
+      // but no pin. Mark 3 must land ONCE, from its real placement.
+      const out = buildStudioPull(
+        jobWith([win("3", 4)]) as never,
+        [spec("1", 30, 48, "Fixed"), spec("2", 30, 48, "Fixed"), spec("3", 30, 48, "Fixed"), spec("4", 30, 48, "Fixed")],
+        new Set(),
+      );
+      expect(out.placements).toHaveLength(4);
+      expect(out.placements.filter((p) => p.itemName === "3")).toHaveLength(1);
+      const three = out.placements.find((p) => p.itemName === "3")!;
+      expect(three.fromSpec).toBeUndefined();
+      for (const id of ["1", "2", "4"]) {
+        const p = out.placements.find((pl) => pl.itemName === id)!;
+        expect(p.fromSpec).toBe(true);
+      }
+    });
+
+    it("a spec with no usable width/height is left out, not guessed", () => {
+      const noSize: ProjectMarkSpec = { ...spec("9", 30, 48, "Fixed"), width_in: null, height_in: null };
+      const out = buildStudioPull(jobWith([]) as never, [noSize], new Set());
+      expect(out.placements).toHaveLength(0);
+    });
+
+    it("a pull with NO traced walls at all counts the marks as noWall, not silently dropped", () => {
+      const out = buildStudioPull(
+        { building: { footprints: [] }, windows: [] } as never,
+        [spec("1", 30, 48, "Fixed")],
+        new Set(),
+      );
+      expect(out.placements).toHaveLength(0);
+      expect(out.noWall).toBe(1);
+    });
+
+    it("still snaps onto the studio's real walls when a frame is given", () => {
+      const walls = [
+        { x1: 0, y1: 0, x2: 1000, y2: 0 },
+        { x1: 1000, y1: 0, x2: 1000, y2: 600 },
+        { x1: 1000, y1: 600, x2: 0, y2: 600 },
+        { x1: 0, y1: 600, x2: 0, y2: 0 },
+      ];
+      const out = buildStudioPull(
+        jobWith([]) as never,
+        [spec("1", 30, 48, "Fixed"), spec("2", 30, 48, "Fixed")],
+        new Set(),
+        new Map(),
+        { walls, floorIndex: 0 },
+      );
+      expect(out.placements).toHaveLength(2);
+      for (const p of out.placements) {
+        const onWall = walls.some((w) => {
+          const wx = w.x2 - w.x1;
+          const wy = w.y2 - w.y1;
+          const len = Math.hypot(wx, wy);
+          const t = ((p.xCm - w.x1) * wx + (p.yCm - w.y1) * wy) / (len * len);
+          const d = Math.hypot(p.xCm - (w.x1 + wx * t), p.yCm - (w.y1 + wy * t));
+          return t >= 0 && t <= 1 && d < 1;
+        });
+        expect(onWall).toBe(true);
+      }
+    });
+  });
+
   it("markKeyOf folds every dialect onto the base mark", () => {
     expect(markKeyOf("16-2")).toBe("16");
     expect(markKeyOf("16B")).toBe("16");
@@ -428,5 +527,41 @@ describe("resolveMarkConfig", () => {
 
   it("resolves to null when neither a catalog unit nor a usable spec exists", () => {
     expect(resolveMarkConfig("99", new Map(), new Map())).toBeNull();
+  });
+});
+
+describe("formatPullToast", () => {
+  const base: PullToastStats = {
+    placedHere: 0,
+    specPlacedHere: 0,
+    healed: 0,
+    shifted: 0,
+    lengthened: 0,
+    wallsAdded: 0,
+    raised: 0,
+    autoScale: null,
+    alreadyPlaced: 0,
+    otherFloors: 0,
+    noWall: 0,
+  };
+
+  it("Mad Moose: all ten placed from specs reads as a plain, honest guess", () => {
+    expect(formatPullToast({ ...base, placedHere: 10, specPlacedHere: 10 })).toBe(
+      "Pulled 10 marks — 10 placed from specs (no pins yet; positions are a starting point).",
+    );
+  });
+
+  it("an all-pinned pull keeps the original wording unchanged", () => {
+    expect(formatPullToast({ ...base, placedHere: 4 })).toBe(
+      "Pull from plans: 4 placed.",
+    );
+  });
+
+  it("a mix of pinned and unpinned marks reports both", () => {
+    expect(
+      formatPullToast({ ...base, placedHere: 7, specPlacedHere: 3, alreadyPlaced: 2 }),
+    ).toBe(
+      "Pulled 7 marks — 4 placed from pins · 3 placed from specs (no pins yet; positions are a starting point) · 2 already placed.",
+    );
   });
 });
