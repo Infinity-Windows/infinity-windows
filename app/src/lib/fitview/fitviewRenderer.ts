@@ -2020,6 +2020,31 @@ export function mountFitView(host, job, shim) {
       off.forEach(function (w) { addRow(w, false); });
     }
 
+    // Marks the schedule knows about that have no window in JOB.windows at
+    // all — never pinned, or pinned on a different sheet (B3, wave V-B).
+    // Computed OUTSIDE this renderer (MapsInteractive.tsx / adapter glue)
+    // and passed through JOB the same way windows are; absent on every
+    // other job builder (MapsTrace included), so this is a no-op there.
+    var unplaced = (JOB.unplacedMarks || []).filter(function (m) {
+      return matchesQ({ id: m.id, type: "", room: "", floor: "" });
+    });
+    if (unplaced.length) {
+      any = true;
+      var g3 = document.createElement("div");
+      g3.className = "grp";
+      g3.innerHTML = "Not placed yet &mdash; " + unplaced.length +
+        " mark" + (unplaced.length > 1 ? "s" : "");
+      host.appendChild(g3);
+      unplaced.forEach(function (m) {
+        var r = document.createElement("div");
+        r.className = "row";
+        r.innerHTML =
+          '<span class="row-id">' + esc(m.id) + '</span>' +
+          '<span><span class="row-sub">Not yet pinned on this sheet</span></span>';
+        host.appendChild(r);
+      });
+    }
+
     if (!any) {
       host.innerHTML = '<div class="empty">No openings match &ldquo;' + esc(state.q) + '&rdquo;</div>';
     }

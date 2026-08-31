@@ -8,6 +8,7 @@ import {
   isDoorLike,
   openingIdForMark,
   specDrivenScaleFactor,
+  unplacedScheduleMarks,
   type AdapterInput,
 } from "./adapter";
 import type { ProjectOpening } from "../install/types";
@@ -510,5 +511,42 @@ describe("humanTraceModel (the tracer's model vs a Studio publish)", () => {
     expect(humanTraceModel({ fitview: { model: base } })).toBeNull();
     expect(humanTraceModel({})).toBeNull();
     expect(humanTraceModel(null)).toBeNull();
+  });
+});
+
+describe("unplacedScheduleMarks (B3, wave V-B: the Mad Moose story)", () => {
+  it("flags a schedule mark with no rendered window at all", () => {
+    const out = unplacedScheduleMarks(["9", "16"], ["16-1"]);
+    expect(out).toEqual([{ id: "9" }]);
+  });
+
+  it("matches by BASE mark across both id dialects", () => {
+    // "13" on the schedule, rendered as the extraction-dialect instance "13-1".
+    expect(unplacedScheduleMarks(["13"], ["13-1"])).toEqual([]);
+    // "13" on the schedule, rendered as the survey-dialect twin "13A".
+    expect(unplacedScheduleMarks(["13"], ["13A"])).toEqual([]);
+  });
+
+  it("is empty once every schedule mark has a placed window", () => {
+    expect(unplacedScheduleMarks(["9", "16"], ["9-1", "16-1"])).toEqual([]);
+  });
+
+  it("is empty with no schedule marks, whatever is rendered", () => {
+    expect(unplacedScheduleMarks([], ["9-1"])).toEqual([]);
+  });
+
+  it("dedupes a repeated schedule mark code to one entry", () => {
+    expect(unplacedScheduleMarks(["9", "9"], [])).toEqual([{ id: "9" }]);
+  });
+
+  it("never invents a mark the schedule never had — the elevation-sheet lesson", () => {
+    // planDetails.ts's isElevationSheet keeps a floor plan's elevation-view
+    // re-numbering out of the openings table in the first place; a mark
+    // that only ever appeared on an elevation sheet never reaches the
+    // schedule (project_marks mirrors project_mark_specs, a different
+    // document). So a rendered window with no matching schedule entry is
+    // simply not this function's business either way — it can only ever
+    // shrink the schedule side, never grow it.
+    expect(unplacedScheduleMarks([], ["9A", "9B"])).toEqual([]);
   });
 });

@@ -26,6 +26,11 @@ import { markBase } from "../install/extract";
 import type { ProjectMarkSpec } from "../install/specs";
 import type { ProjectOpening } from "../install/types";
 
+/** One schedule mark with no placed window in the rendered model. */
+export interface UnplacedMark {
+  id: string;
+}
+
 export interface FitViewWindow {
   id: string;
   elev: string;
@@ -142,6 +147,16 @@ export interface FitViewJob {
   /** Present when the spec-driven auto-scale grew an uncalibrated building
    * so its windows fit — surfaced so the Studio can say so. */
   autoScale?: { factor: number; longSideM: number };
+  /**
+   * B3 (wave V-B): schedule marks with no window in `windows` above —
+   * never pinned, or pinned on a different sheet than this outline. Set by
+   * the caller (MapsInteractive.tsx, via unplacedScheduleMarks), never by
+   * the builders in this file — they only know this outline's own openings,
+   * not the job's whole schedule. The renderer reads it to list a "Not
+   * placed yet" group on the Schedule tab; it never affects the "N/N
+   * fitted" counter, which stays about what's actually on the model.
+   */
+  unplacedMarks?: UnplacedMark[];
 }
 
 /** Longest bounding-box side of the footprint, metres, absent a real scale. */
@@ -312,6 +327,39 @@ export function openingIdForMark(
   if (!mark) return null;
   const norm = normalizeMarkCode(mark);
   return openings.find((o) => normalizeMarkCode(o.opening_code) === norm)?.id ?? null;
+}
+
+/**
+ * B3 (wave V-B, the Mad Moose story): schedule marks (project_marks — the
+ * manufacturer schedule, the count of record) that have no placed window in
+ * THIS rendered model — never pinned at all, or pinned on a page other than
+ * the one this outline shows. Matched by BASE mark: normalizeMarkCode first
+ * equates the survey ("13A") and extraction ("13-1") spellings, then
+ * markBase drops the instance suffix — the same key `project_marks`' own
+ * sync trigger and the mark-spec index (fromProject.ts) already group by.
+ *
+ * Elevation-sheet duplicates need no filtering here: `project_marks` mirrors
+ * `project_mark_specs`, which comes from the manufacturer schedule sheet —
+ * a different document than the floor/elevation plans planDetails.ts's
+ * isElevationSheet screens. The schedule is elevation-clean by construction,
+ * the same outcome that function protects on the floor-plan side.
+ */
+export function unplacedScheduleMarks(
+  scheduledMarkCodes: readonly string[],
+  renderedWindowIds: readonly string[],
+): UnplacedMark[] {
+  const placed = new Set(
+    renderedWindowIds.map((id) => markBase(normalizeMarkCode(id))),
+  );
+  const seen = new Set<string>();
+  const out: UnplacedMark[] = [];
+  for (const code of scheduledMarkCodes) {
+    const base = markBase(normalizeMarkCode(code));
+    if (placed.has(base) || seen.has(base)) continue;
+    seen.add(base);
+    out.push({ id: code });
+  }
+  return out;
 }
 
 /**
