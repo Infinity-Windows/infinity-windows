@@ -74,7 +74,23 @@ test("the list unions standalone projects with job models", async ({ page }) => 
 
   await expect(page.getByText("Spec house concept")).toBeVisible();
   await expect(page.getByText(/BLACK22 — /)).toBeVisible();
-  await expect(page.getByText("Job model")).toBeVisible();
+  // B1 (wave V-B): a saved-but-never-Submitted Studio model reads "Seeded",
+  // not the old fixed "Job model" label.
+  await expect(page.getByText("Seeded")).toBeVisible();
+});
+
+test("B1 (wave V-B): an active job with no trace and no model reads 'Not started'", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  // No studio_projects override (defaults to empty) and no
+  // project_plan_outlines override (the shared fixture's own default is
+  // empty too) — every job in the fixture set carries neither a trace nor
+  // a saved Studio model, which is exactly the "not started" case B1 adds
+  // a door for. Before this wave, a job with no model didn't appear here.
+  await page.goto("/studio");
+  await expect(page.getByText(/BLACK22 — /)).toBeVisible();
+  await expect(page.getByText("Not started").first()).toBeVisible();
 });
 
 test("a blank project boots editable, defaults to 3D, and keeps tools in 3D", async ({
