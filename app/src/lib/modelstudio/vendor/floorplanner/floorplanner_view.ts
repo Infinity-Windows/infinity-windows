@@ -134,7 +134,15 @@ export class FloorplannerView {
     })
 
     if (this.viewmodel.mode == floorplannerModes.DRAW) {
-      this.drawTarget(this.viewmodel.targetX, this.viewmodel.targetY, this.viewmodel.lastNode)
+      // infinity: W1 drag-to-draw (w-walls-spec.md, 2026-08-31) — dragOrigin
+      // rides along so a fresh, disconnected drag (no lastNode yet) still
+      // previews its line, same as continuing a chain already does.
+      this.drawTarget(
+        this.viewmodel.targetX,
+        this.viewmodel.targetY,
+        this.viewmodel.lastNode,
+        this.viewmodel.dragOrigin
+      )
     }
 
     this.floorplan.getWalls().forEach((wall) => {
@@ -267,17 +275,26 @@ export class FloorplannerView {
   }
 
   /** */
-  private drawTarget(x: number, y: number, lastNode: Corner | null) {
+  private drawTarget(
+    x: number,
+    y: number,
+    lastNode: Corner | null,
+    dragOrigin?: { x: number; y: number } | null
+  ) {
     this.drawCircle(
       this.viewmodel.convertX(x),
       this.viewmodel.convertY(y),
       cornerRadiusHover,
       cornerColorHover
     )
-    if (this.viewmodel.lastNode) {
+    // infinity: W1 drag-to-draw — prefer lastNode (an in-progress chain);
+    // dragOrigin is the fallback so a fresh drag with no chain yet still
+    // shows its press-to-cursor preview line.
+    const from = lastNode ?? dragOrigin
+    if (from) {
       this.drawLine(
-        this.viewmodel.convertX(lastNode!.x),
-        this.viewmodel.convertY(lastNode!.y),
+        this.viewmodel.convertX(from.x),
+        this.viewmodel.convertY(from.y),
         this.viewmodel.convertX(x),
         this.viewmodel.convertY(y),
         wallWidthHover,

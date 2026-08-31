@@ -2,6 +2,7 @@ import { Floorplan } from '../model/floorplan'
 import { Wall } from '../model/wall'
 import { Corner } from '../model/corner'
 import { FloorplannerView, floorplannerModes } from './floorplanner_view'
+import { snapWallAngle } from '../../wallAngleSnap'
 
 type FloorplannerMode = (typeof floorplannerModes)[keyof typeof floorplannerModes]
 
@@ -74,6 +75,18 @@ export class Floorplanner {
   /** mouse position at last click */
   private lastY = 0
 
+  // infinity: W1 drag-to-draw (w-walls-spec.md, 2026-08-31) — which button is
+  // currently down, so DRAW mode can tell a left-press-drag (draws a wall)
+  // from a right-press-drag (pans, since left now draws). event.button/
+  // event.buttons aren't otherwise tracked here.
+  private mouseButton = 0
+
+  // infinity: W1 — the press point of an in-progress DRAW-mode left-drag, in
+  // plan cm. Null outside such a drag. Lets mouseup draw press-point→
+  // release-point in one gesture, and lets the view preview that line even
+  // when there's no lastNode yet (a fresh, disconnected first wall).
+  public dragOrigin: { x: number; y: number } | null = null
+
   /** */
   private cmPerPixel: number
 
@@ -114,8 +127,8 @@ export class Floorplanner {
 
     this.setMode(floorplannerModes.MOVE)
 
-    this.canvasElement.addEventListener('mousedown', () => {
-      this.mousedown()
+    this.canvasElement.addEventListener('mousedown', (event: MouseEvent) => {
+      this.mousedown(event)
     })
     this.canvasElement.addEventListener('mousemove', (event: MouseEvent) => {
       this.mousemove(event)
@@ -126,6 +139,28 @@ export class Floorplanner {
     this.canvasElement.addEventListener('mouseleave', () => {
       this.mouseleave()
     })
+    // infinity: W1 drag-to-draw (w-walls-spec.md, 2026-08-31) — panning in
+    // DRAW mode moves to a right-drag (left now draws), so a right press must
+    // not pop the browser's context menu on release. Scoped to DRAW mode only
+    // — every other mode's right-click is untouched.
+    this.canvasElement.addEventListener('contextmenu', (event: MouseEvent) => {
+      if (this.mode === floorplannerModes.DRAW) event.preventDefault()
+    })
+    // infinity: W1 — two-finger trackpad pan in DRAW mode. Browsers report
+    // that as a plain wheel event (deltaX/deltaY, no ctrlKey); a pinch-zoom
+    // gesture also arrives as wheel but WITH ctrlKey, so it's left alone here
+    // rather than double-handled.
+    this.canvasElement.addEventListener(
+      'wheel',
+      (event: WheelEvent) => {
+        if (this.mode !== floorplannerModes.DRAW || event.ctrlKey) return
+        event.preventDefault()
+        this.originX += event.deltaX * this.cmPerPixel
+        this.originY += event.deltaY * this.cmPerPixel
+        this.view.draw()
+      },
+      { passive: false }
+    )
 
     document.addEventListener('keyup', (e: KeyboardEvent) => {
       if (e.keyCode == 27) {
@@ -148,9 +183,50 @@ export class Floorplanner {
   // the last node still wins so straight runs stay straight. 0 disables.
   public gridSnapCm = 15.24
 
+  /** infinity: W2 angle-snap (w-walls-spec.md, 2026-08-31) — the wall a
+   * lastNode is currently reached BY: its one attached corner, so drawing
+   * the NEXT segment can measure square/straight against it. A lastNode
+   * with no attached wall yet (the first corner of a fresh chain) has none,
+   * which is exactly the "first/disconnected wall" case snapWallAngle
+   * handles by falling back to the global axes. A branch point (2+ walls)
+   * picks the first — plain chains are the case this wave targets. */
+  private angleSnapReference(): Corner | null {
+    if (!this.lastNode) return null
+    const adjacent = this.lastNode.adjacentCorners()
+    return adjacent.length > 0 ? adjacent[0] : null
+  }
+
+  /** infinity: W2 angle-snap — true only for an endpoint corner (exactly
+   * one attached wall): returns that wall's OTHER corner (the pivot, which
+   * doesn't move) and, if the pivot itself continues into another wall,
+   * that wall's far corner as the angle reference — the same two-corner
+   * shape angleSnapReference uses for drawing. */
+  private singleWallPivot(corner: Corner): { pivot: Corner; reference: Corner | null } | null {
+    const neighbors = corner.adjacentCorners()
+    if (neighbors.length !== 1) return null
+    const pivot = neighbors[0]
+    const pivotNeighbors = pivot.adjacentCorners().filter((c) => c !== corner)
+    return { pivot, reference: pivotNeighbors.length > 0 ? pivotNeighbors[0] : null }
+  }
+
   /** */
   private updateTarget(): void {
     if (this.mode == floorplannerModes.DRAW && this.lastNode) {
+      // infinity: W2 angle-snap — square/straight relative to the wall this
+      // one connects to wins outright over the lastNode-axis/grid snap
+      // below; fall through to that ONLY when angle-snap doesn't apply, so
+      // the two snaps are mutually exclusive per point and can never fight.
+      const angleSnapped = snapWallAngle(this.lastNode, this.angleSnapReference(), {
+        x: this.mouseX,
+        y: this.mouseY
+      })
+      if (angleSnapped.x !== this.mouseX || angleSnapped.y !== this.mouseY) {
+        this.targetX = angleSnapped.x
+        this.targetY = angleSnapped.y
+        this.view.draw()
+        return
+      }
+
       if (Math.abs(this.mouseX - this.lastNode.x) < snapTolerance) {
         this.targetX = this.lastNode.x
       } else {
@@ -179,11 +255,20 @@ export class Floorplanner {
   }
 
   /** */
-  private mousedown(): void {
+  private mousedown(event: MouseEvent): void {
     this.mouseDown = true
     this.mouseMoved = false
     this.lastX = this.rawMouseX
     this.lastY = this.rawMouseY
+
+    // infinity: W1 drag-to-draw (w-walls-spec.md, 2026-08-31) — remember the
+    // press point (this.targetX/Y already hold the last snapped position, a
+    // mousemove having put the cursor here) so mouseup can draw press→
+    // release in one gesture on a left button.
+    this.mouseButton = event.button
+    if (this.mode == floorplannerModes.DRAW && this.mouseButton === 0) {
+      this.dragOrigin = { x: this.targetX, y: this.targetY }
+    }
 
     // delete
     if (this.mode == floorplannerModes.DELETE) {
@@ -244,7 +329,11 @@ export class Floorplanner {
     }
 
     // panning
-    if (this.mouseDown && !this.activeCorner && !this.activeWall) {
+    // infinity: W1 drag-to-draw — a left-drag in DRAW mode now draws
+    // instead of panning (see mouseup); panning there moves to a right-drag,
+    // which this same condition already reaches since it isn't button-gated.
+    const drawModeLeftDrag = this.mode == floorplannerModes.DRAW && this.mouseButton === 0
+    if (this.mouseDown && !this.activeCorner && !this.activeWall && !drawModeLeftDrag) {
       this.originX += this.lastX - this.rawMouseX
       this.originY += this.lastY - this.rawMouseY
       this.lastX = this.rawMouseX
@@ -256,7 +345,24 @@ export class Floorplanner {
     if (this.mode == floorplannerModes.MOVE && this.mouseDown) {
       if (this.activeCorner) {
         this.activeCorner.move(this.mouseX, this.mouseY)
-        this.activeCorner.snapToAxis(snapTolerance)
+        // infinity: W2 angle-snap — an endpoint corner (exactly one attached
+        // wall) snaps square/straight relative to that wall while dragging,
+        // same rule as drawing. A joint corner (2+ walls) has no single
+        // reference wall to measure against, so it keeps the plain
+        // positional snap below — scoped this way on purpose, not a bug.
+        const pivot = this.singleWallPivot(this.activeCorner)
+        const angleSnapped = pivot
+          ? snapWallAngle(pivot.pivot, pivot.reference, this.activeCorner)
+          : null
+        if (
+          angleSnapped &&
+          (angleSnapped.x !== this.activeCorner.x || angleSnapped.y !== this.activeCorner.y)
+        ) {
+          this.activeCorner.x = angleSnapped.x
+          this.activeCorner.y = angleSnapped.y
+        } else {
+          this.activeCorner.snapToAxis(snapTolerance)
+        }
       } else if (this.activeWall) {
         this.activeWall.relativeMove(
           (this.rawMouseX - this.lastX) * this.cmPerPixel,
@@ -274,7 +380,7 @@ export class Floorplanner {
   private mouseup(): void {
     this.mouseDown = false
 
-    // drawing
+    // drawing — click-click (no movement): unchanged.
     if (this.mode == floorplannerModes.DRAW && !this.mouseMoved) {
       const corner = this.floorplan.newCorner(this.targetX, this.targetY)
       if (this.lastNode != null) {
@@ -284,7 +390,39 @@ export class Floorplanner {
         this.setMode(floorplannerModes.MOVE)
       }
       this.lastNode = corner
+    } else if (
+      // infinity: W1 drag-to-draw (w-walls-spec.md, 2026-08-31) — a left-
+      // button drag in DRAW mode draws ONE wall from the press point to the
+      // release point, collapsing the vendor's two-click bootstrap into one
+      // gesture. A press near the current chain tip reuses lastNode as the
+      // start (continuing the chain exactly like click-click does); a press
+      // elsewhere creates a fresh start corner, merged onto anything it
+      // lands on/near — mechanically the same merge check click-click
+      // already runs on ITS new corner, just also run on this one's start.
+      this.mode == floorplannerModes.DRAW &&
+      this.mouseMoved &&
+      this.mouseButton === 0 &&
+      this.dragOrigin
+    ) {
+      const origin = this.dragOrigin
+      const continuesChain =
+        this.lastNode != null &&
+        Math.abs(this.lastNode.x - origin.x) < 1e-6 &&
+        Math.abs(this.lastNode.y - origin.y) < 1e-6
+      const startCorner = continuesChain
+        ? this.lastNode!
+        : this.floorplan.newCorner(origin.x, origin.y)
+      if (!continuesChain) startCorner.mergeWithIntersected()
+
+      const endCorner = this.floorplan.newCorner(this.targetX, this.targetY)
+      this.floorplan.newWall(startCorner, endCorner)
+      if (endCorner.mergeWithIntersected()) {
+        this.setMode(floorplannerModes.MOVE)
+      }
+      this.lastNode = endCorner
     }
+
+    this.dragOrigin = null
   }
 
   /** */
@@ -309,6 +447,9 @@ export class Floorplanner {
   /** Sets the interaction mode */
   public setMode(mode: FloorplannerMode): void {
     this.lastNode = null
+    // infinity: W1 drag-to-draw — a mode change abandons any in-progress
+    // drag-to-draw press.
+    this.dragOrigin = null
     this.mode = mode
     this.modeResetCallbacks.forEach((callback) => callback(mode))
     this.updateTarget()
