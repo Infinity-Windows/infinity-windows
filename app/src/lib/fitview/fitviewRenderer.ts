@@ -74,6 +74,27 @@ export function elevationsOf(job) {
       }
     });
   });
+  // Wave W (w-walls-spec.md, 2026-08-31), W3 — interior partitions and
+  // free-standing walls (toFitview.ts's building.interiorWalls), walked
+  // AFTER every exterior edge above so the "sN" key toFitview.ts assigned a
+  // unit sitting on one of these can never disagree with the key assigned
+  // here. The crew map's acceptance bar is "just another wall": no special
+  // rendering path, just an ordinary ELEVS entry — buildHouse (one .face per
+  // entry), flattenHouse/buildElevStrip's chip (its own "Bn · name" prefix
+  // already applies unchanged) and renderRows' schedule grouping all pick it
+  // up for free. `poly: 0` groups it under the first building mass on a
+  // multi-mass job — close enough; most jobs are one mass.
+  (b.interiorWalls || []).forEach(function (w) {
+    var dx = w.x2 - w.x1, dz = w.z2 - w.z1;
+    var len = Math.sqrt(dx * dx + dz * dz);
+    var A = Math.atan2(-dz, dx) * 180 / Math.PI;
+    out.push({ key: "s" + k, name: w.name || ("Interior " + (k + 1)),
+               poly: 0, len: len, A: A, ay: -A,
+               x1: w.x1, z1: w.z1, x2: w.x2, z2: w.z2,
+               story: w.story || 1, base: w.elevM || 0, hM: w.heightM,
+               interior: true });
+    k++;
+  });
   return out;
 }
 
@@ -251,6 +272,9 @@ export function mountFitView(host, job, shim) {
     if (e.len != null) {           // polygon wall: the edge sharing our end vertex
       for (var i = 0; i < ELEVS.length; i++) {
         var c = ELEVS[i];
+        // W3: a corner unit wraps around an EXTERIOR corner — never onto an
+        // interior partition that happens to share a vertex with the loop.
+        if (c.interior) continue;
         if (c.poly === e.poly && c !== e &&
             Math.abs(c.x1 - e.x2) < 0.001 && Math.abs(c.z1 - e.z2) < 0.001) return c;
       }
@@ -263,6 +287,7 @@ export function mountFitView(host, job, shim) {
     if (e.len != null) {
       for (var i = 0; i < ELEVS.length; i++) {
         var c = ELEVS[i];
+        if (c.interior) continue;
         if (c.poly === e.poly && c !== e &&
             Math.abs(c.x2 - e.x1) < 0.001 && Math.abs(c.z2 - e.z1) < 0.001) return c;
       }

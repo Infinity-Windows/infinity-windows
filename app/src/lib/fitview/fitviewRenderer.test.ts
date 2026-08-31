@@ -231,3 +231,70 @@ describe("wave N: compass rose on the mini-map (flat view)", () => {
     withNorth.view.destroy();
   });
 });
+
+// Wave W (w-walls-spec.md, 2026-08-31), W3 — an interior wall published by
+// toFitview.ts (building.interiorWalls) appears in the elevation walk AFTER
+// the exterior loop, as ordinary a wall as any other: a .face, an elevStrip
+// chip, and a schedule group for the units on it.
+describe("W3: interior walls publish as ordinary wall strips", () => {
+  const RECT = [
+    { x: 0, z: 0 }, { x: 10, z: 0 }, { x: 10, z: 8 }, { x: 0, z: 8 },
+  ];
+  const job = {
+    id: "p1", ref: "One story + a hallway wall", addr: "",
+    building: {
+      width: 10, depth: 8, height: 3, rise: 0, footprints: [RECT],
+      stories: [{ n: 1, name: "Ground", elevM: 0, heightM: 3, footprints: [RECT] }],
+      interiorWalls: [
+        { x1: 5, z1: 0, x2: 5, z2: 8, heightM: 3, elevM: 0, story: 1, name: "Interior 1" },
+      ],
+    },
+    windows: [
+      {
+        id: "H1", elev: "s4", floor: "Ground", room: "", type: "Fixed",
+        w: 900, h: 1200, x: 1, y: 0.9, lights: 1, open: "fixed", status: "tofit", story: 1,
+      },
+    ],
+  };
+
+  it("gets a .face after the exterior loop's 4 edges, at key s4", () => {
+    const { host, view } = mount(job as never);
+    const faces = host.querySelectorAll(".face");
+    expect(faces.length).toBe(5); // 4 exterior + 1 interior
+    expect(host.querySelector('.face[data-elev="s4"]')).toBeTruthy();
+    view.destroy();
+  });
+
+  it("carries its unit — the window renders inside the interior wall's face", () => {
+    const { host, view } = mount(job as never);
+    const face = host.querySelector('.face[data-elev="s4"]')!;
+    expect(face.querySelector('.win[data-id="H1"]')).toBeTruthy();
+    view.destroy();
+  });
+
+  it("gets an elevation chip labeled Interior, and highlights like any wall", () => {
+    const { host, view } = mount(job as never);
+    const chip = host.querySelector<HTMLElement>('#elevStrip .elev[data-elev="s4"]');
+    expect(chip).toBeTruthy();
+    expect(chip!.textContent).toContain("Interior 1");
+    view.destroy();
+  });
+
+  it("groups its window under an 'Interior 1 elevation' heading in the schedule", () => {
+    const { host, view } = mount(job as never);
+    host.querySelector<HTMLButtonElement>('.tab[data-view="sched"]')!.click();
+    expect(host.querySelector("#rows")!.textContent).toContain("Interior 1 elevation");
+    view.destroy();
+  });
+
+  it("a building with no interiorWalls at all is unaffected (BLACK22's shape)", () => {
+    const plain = {
+      ...job,
+      building: { ...job.building, interiorWalls: undefined },
+      windows: [],
+    };
+    const { host, view } = mount(plain as never);
+    expect(host.querySelectorAll(".face").length).toBe(4);
+    view.destroy();
+  });
+});

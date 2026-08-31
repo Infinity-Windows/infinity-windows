@@ -60,6 +60,38 @@ function key(p: Pt): string {
   return `${p.x.toFixed(3)}|${p.z.toFixed(3)}`;
 }
 
+/**
+ * infinity (W3, w-walls-spec.md, 2026-08-31): every wall edge outerPolygons'
+ * boundary walk did NOT consume — an interior partition sharing corners with
+ * the exterior loop, or a free-standing wall too small to loop at all
+ * (outerPolygons drops components under 3 nodes outright, silently, by
+ * design). Reruns the identical point-keying outerPolygons itself uses, so
+ * "consumed" can never disagree with what actually became the silhouette —
+ * outerPolygons is called here UNCHANGED, and its output isn't touched.
+ */
+export function interiorSegments(
+  walls: StudioWallLike[],
+): { a: Pt; b: Pt; heightM: number }[] {
+  const consumed = new Set<string>();
+  for (const { poly } of outerPolygons(walls)) {
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i];
+      const b = poly[(i + 1) % poly.length];
+      consumed.add(`${key(a)}>${key(b)}`);
+      consumed.add(`${key(b)}>${key(a)}`);
+    }
+  }
+  const out: { a: Pt; b: Pt; heightM: number }[] = [];
+  for (const w of walls) {
+    const a: Pt = { x: w.getStartX() * CM_TO_M, z: w.getStartY() * CM_TO_M };
+    const b: Pt = { x: w.getEndX() * CM_TO_M, z: w.getEndY() * CM_TO_M };
+    if (Math.hypot(a.x - b.x, a.z - b.z) < EPS_M) continue;
+    if (consumed.has(`${key(a)}>${key(b)}`) || consumed.has(`${key(b)}>${key(a)}`)) continue;
+    out.push({ a, b, heightM: w.height * CM_TO_M });
+  }
+  return out;
+}
+
 /** Outer boundary per connected wall component, leftmost-turn walk. */
 export function outerPolygons(walls: StudioWallLike[]): { poly: Pt[]; heightM: number }[] {
   type Node = { p: Pt; nbrs: { to: string; heightM: number }[] };
@@ -192,6 +224,23 @@ export function buildFitviewModelFromStudio(
   }
   const stories: Story[] = [];
   const edges: (Edge & { floor: number })[] = [];
+  // infinity (W3, w-walls-spec.md, 2026-08-31): interior partitions and
+  // free-standing walls, carried as additional labeled wall strips rather
+  // than dropped. Populated per floor below, appended to `windows`' sibling
+  // array on the finished model AFTER the exterior loop is fully built —
+  // never mixed into `edges`, so the exterior silhouette/story computation
+  // above is completely untouched by their presence.
+  const interiorWalls: Record<string, unknown>[] = [];
+  // infinity (W3): same order as `interiorWalls` above — kept as real Edge
+  // shapes purely so a placed unit can be matched onto an interior wall too
+  // ("carries units", the acceptance bar). Spliced onto the end of `edges`
+  // AFTER the floor loop finishes, once `edges.length` is final — mirroring
+  // exactly how elevationsOf (fitviewRenderer.ts) will independently walk
+  // stories→footprints first and only then building.interiorWalls, so the
+  // "sN" key a window stores here can never disagree with the key the
+  // renderer assigns that same wall.
+  const interiorEdges: (Edge & { floor: number })[] = [];
+  let interiorCount = 0;
   let elevAcc = 0;
   let anyMass = false;
 
@@ -212,6 +261,11 @@ export function buildFitviewModelFromStudio(
     const distinct = [...new Set(masses.map((m) => Math.round(m.heightM * 100)))]
       .sort((a, b) => a - b)
       .map((v) => v / 100);
+    // infinity (W3): the story an interior wall on this floor reports as —
+    // its own base story, since a partition runs floor-to-ceiling for ITS
+    // floor rather than stacking with a wing's own taller band the way the
+    // exterior masses do.
+    const floorBaseStoryN = stories.length + 1;
     for (let i = 0; i < distinct.length; i++) {
       const top = distinct[i];
       const bottom = i === 0 ? 0 : distinct[i - 1];
@@ -241,8 +295,43 @@ export function buildFitviewModelFromStudio(
         }
       }
     }
+
+    // infinity (W3): interior partitions and free-standing walls on this
+    // floor, published as their own labeled wall strips — the crew map's
+    // acceptance bar is "just another wall." Both faces of an interior wall
+    // are physically real, but this publishes ONE strip per interior wall
+    // (units on either face render on that strip) — the simplest honest
+    // model, called out in the PR body. A floor with no exterior mass at
+    // all (the `masses.length === 0` return above) has no story to anchor
+    // these to, so it carries none — an edge case, not a regression.
+    for (const seg of interiorSegments(floor.walls)) {
+      interiorCount += 1;
+      interiorWalls.push({
+        x1: seg.a.x,
+        z1: seg.a.z,
+        x2: seg.b.x,
+        z2: seg.b.z,
+        heightM: seg.heightM,
+        elevM: floorElev,
+        story: floorBaseStoryN,
+        name: `Interior ${interiorCount}`,
+        interior: true,
+      });
+      interiorEdges.push({
+        a: seg.a,
+        b: seg.b,
+        len: Math.hypot(seg.b.x - seg.a.x, seg.b.z - seg.a.z),
+        story: floorBaseStoryN,
+        elevM: floorElev,
+        floor: fi,
+      });
+    }
   });
   if (!anyMass) return null;
+
+  // infinity (W3): interior walls are candidates for window-matching too,
+  // positioned after every exterior edge — see interiorEdges' comment above.
+  const matchEdges = [...edges, ...interiorEdges];
 
   const floorElevs: number[] = [];
   {
@@ -279,7 +368,10 @@ export function buildFitviewModelFromStudio(
     let bestIdx = -1;
     let bestD = Infinity;
     let bestT = 0;
-    edges.forEach((e, i) => {
+    // infinity (W3): matchEdges = exterior edges + interior walls, in that
+    // order — see matchEdges' own comment. A unit placed near an interior
+    // partition now finds it exactly like any exterior wall.
+    matchEdges.forEach((e, i) => {
       if (e.floor !== fi) return;
       const { d, t } = distToSegment(p, e.a, e.b);
       // Prefer the story band the item's height actually sits in.
@@ -295,7 +387,7 @@ export function buildFitviewModelFromStudio(
       skipped += 1;
       continue; // not near any wall — don't invent a placement
     }
-    const e = edges[bestIdx];
+    const e = matchEdges[bestIdx];
     const sillM = Math.max(0, centreM - (size.hMm / 1000) / 2 - e.elevM);
     // A 90° corner unit publishes the legs + wrap the map renderer already
     // walks wall-to-wall (leg 0 on the anchored wall). The longer leg is
@@ -357,6 +449,10 @@ export function buildFitviewModelFromStudio(
       rise: 0,
       footprints: stories[0].footprints,
       stories,
+      // infinity (W3): additive-only — absent or empty on a building with no
+      // interior/free-standing walls, which is exactly today's shape. See
+      // interiorWalls' own comment above for what each entry carries.
+      interiorWalls,
     },
     windows,
   };
