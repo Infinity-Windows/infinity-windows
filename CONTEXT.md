@@ -284,6 +284,33 @@ Settled 2026-08-28, wave V-B. The official pipeline, once plans are in:
 trace the building → place and confirm marks on the sheet → refine the
 model in Studio → Submit final, which becomes the crew's live 3D map.
 
+## Vision placement
+
+Settled 2026-08-28, wave V-A (the Mad Moose story: schedules knew the windows;
+nothing knew where they lived). A foreman taps "Find placements" and AI vision
+reads the building plan-set's floor-plan pages for every still-unplaced
+schedule mark, never automatically — the cost stays a deliberate tap.
+
+**Suggested vs confirmed** — vision placement writes a SUGGESTED pin
+(`suggested_pin_x`/`_pin_y`/`_page_number`/`_at`/`_confidence` on
+`project_openings`), never a real one. A suggestion renders as a dashed,
+hollow dot in the trace tool's review tray — visually distinct from a solid
+confirmed dot on purpose. Confirming (Confirm all, or dragging one dot) is
+what promotes it: the same `pin_x`/`pin_y` columns ProjectMap's drag already
+writes, gated the same foreman+ way. Dismissing clears the suggestion without
+creating a placement, so the mark is free to be suggested again later.
+
+**Plans place, they never count** — CAD-WINS, unchanged: schedules own
+quantities, plans own positions. Vision placement locates existing marks only;
+a plan callout matching no schedule mark is reported, never turned into an
+opening. A mark it can't find on the plan simply stays unplaced.
+
+**Rerun replaces unconfirmed only** — the receipts precedent, reapplied: a
+mark with a real pin (`pin_x` set, however it got one) is never touched by a
+later Find placements run — enforced atomically in `apply_placement_
+suggestions`. A dismissed suggestion has no real pin, so it is fair game for
+the next run to suggest again; dismiss means "not now," not "never."
+
 ## Open questions
 
 None right now — the next ones come from building.

@@ -21,13 +21,19 @@
 
 import { elevationsOf } from "./fitviewRenderer";
 
-const TEMPLATE = "\n<div class=\"app loading\">\n\n  <header class=\"titleblock\">\n    <div class=\"tb-row\">\n      <div>\n        <div class=\"tb-ref\" id=\"jobRef\"></div>\n        <div class=\"tb-addr\" id=\"jobAddr\"></div>\n      </div>\n      \n    </div>\n\n    \n    <div class=\"tabs\">\n      <button class=\"tab\" aria-selected=\"true\">Trace plan</button>\n    </div>\n  </header>\n\n  <div class=\"boot\" id=\"boot\">\n    <b>Loading job</b>\n    <span id=\"bootMsg\">Fetching schedule</span>\n  </div>\n\n  <section class=\"view\">\n    <div class=\"toolrow\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Tool\">\n        <button data-mode=\"select\" aria-pressed=\"true\">Select</button>\n        <button data-mode=\"draw\" aria-pressed=\"false\">Draw</button>\n        <button data-mode=\"cal\" aria-pressed=\"false\">Calibrate</button>\n      </div>\n      <button class=\"mini\" id=\"closeShape\">Close shape</button>\n      <button class=\"mini\" id=\"undoPt\">Undo point</button>\n      <button class=\"mini\" id=\"undoAct\" disabled>Undo action</button>\n      <button class=\"mini\" id=\"boxErase\" aria-pressed=\"false\">Delete box</button>\n      <button class=\"mini\" id=\"delPt\" hidden>Delete point</button>\n      <button class=\"mini\" id=\"delBld\" hidden>Delete building</button>\n      <button class=\"mini\" id=\"removeDot\" hidden>Remove dot</button>\n      <button class=\"mini\" id=\"autoBtn\" hidden>Auto-place dots</button>\n      <button class=\"mini\" id=\"autoTrace\" hidden>Auto-trace building</button>\n      <span class=\"cal-lab\">Line =</span>\n      <input class=\"cal-in\" id=\"calM\" type=\"number\" step=\"0.1\" placeholder=\"ft\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Units\">\n        <button type=\"button\" data-unit=\"ft\" aria-pressed=\"true\">ft</button>\n        <button type=\"button\" data-unit=\"m\" aria-pressed=\"false\">m</button>\n      </div>\n      <button class=\"mini\" id=\"rescaleBtn\" hidden>Rescale</button>\n      <button class=\"mini hot\" id=\"submitBtn\" style=\"margin-left:auto\">Submit</button>\n    </div>\n\n    <div class=\"strip\" id=\"storyRail\"></div>\n\n    <div class=\"tray\" id=\"tray\"><span class=\"tray-lab\">Drag onto a wall:</span></div>\n\n    <div class=\"tstage\" id=\"tstage\">\n      <div class=\"world\" id=\"world\">\n        <img id=\"plan\" alt=\"\">\n        <svg id=\"ol\" xmlns=\"http://www.w3.org/2000/svg\"></svg>\n      </div>\n      <div class=\"noplan\" id=\"noplan\" hidden>\n        <span>No plan image on this job yet</span>\n        <label class=\"pbtn\">Load plan image\n          <input id=\"planFile\" type=\"file\" accept=\"image/*\" hidden>\n        </label>\n      </div>\n    </div>\n\n    <div class=\"hint\" style=\"padding:8px 16px;font-family:var(--f-mono);font-size:9px;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-3)\" id=\"hint\">\n      Draw: tap to add points, tap the first point to close &middot; Select: drag points and dots &middot; pinch or scroll to zoom\n    </div>\n  </section>\n\n  <div class=\"foot\">\n    Trace the outside walls &middot; each closed shape is one building &middot; dots snap to the nearest wall\n  </div>\n\n  <div class=\"toast\" id=\"toast\" role=\"status\" aria-live=\"polite\"></div>\n</div>\n";
+const TEMPLATE = "\n<div class=\"app loading\">\n\n  <header class=\"titleblock\">\n    <div class=\"tb-row\">\n      <div>\n        <div class=\"tb-ref\" id=\"jobRef\"></div>\n        <div class=\"tb-addr\" id=\"jobAddr\"></div>\n      </div>\n      \n    </div>\n\n    \n    <div class=\"tabs\">\n      <button class=\"tab\" aria-selected=\"true\">Trace plan</button>\n    </div>\n  </header>\n\n  <div class=\"boot\" id=\"boot\">\n    <b>Loading job</b>\n    <span id=\"bootMsg\">Fetching schedule</span>\n  </div>\n\n  <section class=\"view\">\n    <div class=\"toolrow\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Tool\">\n        <button data-mode=\"select\" aria-pressed=\"true\">Select</button>\n        <button data-mode=\"draw\" aria-pressed=\"false\">Draw</button>\n        <button data-mode=\"cal\" aria-pressed=\"false\">Calibrate</button>\n      </div>\n      <button class=\"mini\" id=\"closeShape\">Close shape</button>\n      <button class=\"mini\" id=\"undoPt\">Undo point</button>\n      <button class=\"mini\" id=\"undoAct\" disabled>Undo action</button>\n      <button class=\"mini\" id=\"boxErase\" aria-pressed=\"false\">Delete box</button>\n      <button class=\"mini\" id=\"delPt\" hidden>Delete point</button>\n      <button class=\"mini\" id=\"delBld\" hidden>Delete building</button>\n      <button class=\"mini\" id=\"removeDot\" hidden>Remove dot</button>\n      <button class=\"mini\" id=\"autoBtn\" hidden>Auto-place dots</button>\n      <button class=\"mini\" id=\"autoTrace\" hidden>Auto-trace building</button>\n      <button class=\"mini\" id=\"confirmSuggBtn\" hidden>Confirm all</button>\n      <button class=\"mini\" id=\"dismissSugg\" hidden>Dismiss</button>\n      <span class=\"cal-lab\">Line =</span>\n      <input class=\"cal-in\" id=\"calM\" type=\"number\" step=\"0.1\" placeholder=\"ft\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Units\">\n        <button type=\"button\" data-unit=\"ft\" aria-pressed=\"true\">ft</button>\n        <button type=\"button\" data-unit=\"m\" aria-pressed=\"false\">m</button>\n      </div>\n      <button class=\"mini\" id=\"rescaleBtn\" hidden>Rescale</button>\n      <button class=\"mini hot\" id=\"submitBtn\" style=\"margin-left:auto\">Submit</button>\n    </div>\n\n    <div class=\"strip\" id=\"storyRail\"></div>\n\n    <div class=\"tray\" id=\"tray\"><span class=\"tray-lab\">Drag onto a wall:</span></div>\n\n    <div class=\"tstage\" id=\"tstage\">\n      <div class=\"world\" id=\"world\">\n        <img id=\"plan\" alt=\"\">\n        <svg id=\"ol\" xmlns=\"http://www.w3.org/2000/svg\"></svg>\n      </div>\n      <div class=\"noplan\" id=\"noplan\" hidden>\n        <span>No plan image on this job yet</span>\n        <label class=\"pbtn\">Load plan image\n          <input id=\"planFile\" type=\"file\" accept=\"image/*\" hidden>\n        </label>\n      </div>\n    </div>\n\n    <div class=\"hint\" style=\"padding:8px 16px;font-family:var(--f-mono);font-size:9px;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-3)\" id=\"hint\">\n      Draw: tap to add points, tap the first point to close &middot; Select: drag points and dots &middot; pinch or scroll to zoom\n    </div>\n  </section>\n\n  <div class=\"foot\">\n    Trace the outside walls &middot; each closed shape is one building &middot; dots snap to the nearest wall\n  </div>\n\n  <div class=\"toast\" id=\"toast\" role=\"status\" aria-live=\"polite\"></div>\n</div>\n";
 
 export function mountTracePlan(host, job, shim) {
   var SHIM = shim || {};
   if (!SHIM.toast) SHIM.toast = function () {};
   if (!SHIM.pushOp) SHIM.pushOp = function () {};
   if (!SHIM.done) SHIM.done = function () {};
+  // Vision placement (wave V-A): with no shim for these, the review tray is
+  // simply absent - no suggested dots seed in, and confirming/dismissing one
+  // is a no-op on the data side (the local dot still moves so the UI never
+  // looks broken, it just has nothing to persist to).
+  if (!SHIM.confirmSuggestion) SHIM.confirmSuggestion = function () {};
+  if (!SHIM.dismissSuggestion) SHIM.dismissSuggestion = function () {};
   host.innerHTML = TEMPLATE;
   var ROOT = host;
   var cleanups = [];
@@ -66,15 +72,23 @@ export function mountTracePlan(host, job, shim) {
      calibration is global: one plan image, one scale. The legacy `polys` /
      `dots` variables stay, permanently BOUND to the active story, so every
      drawing/snapping/gesture path below keeps working untouched. */
-  var stories = [{ name: "Ground", heightM: 3, partial: false, polys: [], dots: {} }];
+  var stories = [{ name: "Ground", heightM: 3, partial: false, polys: [], dots: {}, suggested: {} }];
   var cur = 0;
   var MAXSTORIES = 8;
   var polys = stories[0].polys;
   var cal = { a: null, b: null };
   var dots = stories[0].dots;
+  /* Vision placement (wave V-A): suggestions the AI found on the plan but
+     nobody has looked at yet. Same per-story shape as `dots` — a suggestion
+     lives on whichever story it was seeded onto and is invisible on any
+     other, exactly like a confirmed dot already is. Never persisted in the
+     trace's own JSON (see submit, below): re-seeded fresh from the live
+     openings table every time this view boots. */
+  var suggested = stories[0].suggested;
   function bindStory() {
     polys = stories[cur].polys;
     dots = stories[cur].dots;
+    suggested = stories[cur].suggested;
   }
   function dotStoryOf(id) {
     for (var i = 0; i < stories.length; i++) if (stories[i].dots[id]) return i;
@@ -92,6 +106,7 @@ export function mountTracePlan(host, job, shim) {
   }
   var selV = null;             // {p, i} selected vertex
   var selDot = null;           // selected placed dot id
+  var selSugg = null;          // selected SUGGESTED dot id (wave V-A)
   var marquee = null;          // {a:{x,y}, b:{x,y}} world px - the erase box
 
   /* ---------- action-level undo ----------
@@ -124,10 +139,12 @@ export function mountTracePlan(host, job, shim) {
     buildStoryRail();
     selV = null;
     selDot = null;
+    selSugg = null;
     $("delPt").hidden = true;
     $("delBld").hidden = true;
     $("removeDot").hidden = true;
     renderTray();
+    updateSuggBtn();
     redraw();
     if (!history.length) $("undoAct").disabled = true;
     SHIM.toast("Undone");
@@ -254,10 +271,27 @@ export function mountTracePlan(host, job, shim) {
         '" style="pointer-events:none">' + id + '</text></g>');
     });
 
+    /* Suggested dots (wave V-A): dashed and hollow, on purpose - never
+       confused for a confirmed placement at a glance. Drag one to confirm it
+       at the dragged spot; tap to select it, then Dismiss. */
+    Object.keys(suggested).forEach(function (id) {
+      var sd = suggested[id];
+      var sel = selSugg === id;
+      var ringCol = sel ? "var(--accent)" : "var(--st-tofit)";
+      s.push('<g data-sugg="' + id + '">' +
+        '<circle cx="' + sd.x + '" cy="' + sd.y + '" r="' + (13 * px) +
+        '" fill="var(--paper)" fill-opacity="0.6" stroke="' + ringCol +
+        '" stroke-width="' + (2.5 * px) + '" stroke-dasharray="' + (4 * px) + " " + (3 * px) + '"/>' +
+        '<text x="' + sd.x + '" y="' + sd.y + '" text-anchor="middle" dominant-baseline="central" ' +
+        'fill="' + ringCol + '" font-family="var(--f-mono)" font-weight="700" font-size="' + (11 * px) +
+        '" style="pointer-events:none">' + id + '</text></g>');
+    });
+
     ol.innerHTML = s.join("");
     $("delPt").hidden = !selV;
     $("delBld").hidden = !selV;
     $("removeDot").hidden = !selDot;
+    $("dismissSugg").hidden = !selSugg;
     if (!selV) delBldArm(false);
   }
 
@@ -273,10 +307,11 @@ export function mountTracePlan(host, job, shim) {
     }
     cur = i;
     bindStory();
-    selV = null; selDot = null;
+    selV = null; selDot = null; selSugg = null;
     $("delPt").hidden = true; $("delBld").hidden = true; $("removeDot").hidden = true;
     buildStoryRail();
     renderTray();
+    updateSuggBtn();
     redraw();
   }
 
@@ -291,7 +326,8 @@ export function mountTracePlan(host, job, shim) {
       polys: below.polys.filter(function (p) { return p.closed; }).map(function (p) {
         return { pts: p.pts.map(function (q) { return { x: q.x, y: q.y }; }), closed: true };
       }),
-      dots: {}
+      dots: {},
+      suggested: {}
     });
     switchStory(stories.length - 1);
     SHIM.toast("Story " + stories.length + " added - footprint copied from below; " +
@@ -403,6 +439,8 @@ export function mountTracePlan(host, job, shim) {
       g.type = "vertex"; g.p = +pv[0]; g.i = +pv[1];
     } else if (t.closest && t.closest("[data-dot]")) {
       g.type = "dot"; g.id = t.closest("[data-dot]").dataset.dot;
+    } else if (t.closest && t.closest("[data-sugg]")) {
+      g.type = "sugg"; g.id = t.closest("[data-sugg]").dataset.sugg;
     } else {
       g.type = "empty";
     }
@@ -450,6 +488,15 @@ export function mountTracePlan(host, job, shim) {
       var sn = snapToWalls(w2);
       dots[gesture.id] = sn ? { x: sn.x, y: sn.y } : { x: w2.x, y: w2.y };
       redraw();
+    } else if (gesture.type === "sugg") {
+      // Live preview while dragging a suggested dot - not yet confirmed
+      // (that only happens on release, see pointerup), just visually
+      // following the finger the same way a confirmed dot's drag does.
+      if (!gesture.snap) { snapshot(); gesture.snap = true; }
+      var w3 = toWorld(e.clientX, e.clientY);
+      var sn3 = snapToWalls(w3);
+      suggested[gesture.id] = sn3 ? { x: sn3.x, y: sn3.y } : { x: w3.x, y: w3.y };
+      redraw();
     } else if (gesture.moved >= 8) {
       view.x = gesture.vx + dx;
       view.y = gesture.vy + dy;
@@ -476,6 +523,20 @@ export function mountTracePlan(host, job, shim) {
         selDot = (selDot === g.id) ? null : g.id;
         selV = null;
         redraw();
+        return;
+      }
+      if (g.type === "sugg" && g.moved < 5) {
+        // A tap, not a drag: select it for Dismiss rather than confirming -
+        // confirming a suggestion should always be a deliberate placement,
+        // never a stray tap.
+        selSugg = (selSugg === g.id) ? null : g.id;
+        selDot = null;
+        redraw();
+        return;
+      }
+      if (g.type === "sugg") {
+        // A real drag: confirm it AT the dragged (already wall-snapped) spot.
+        confirmSuggestion(g.id, suggested[g.id]);
         return;
       }
       if (g.type === "erase") {
@@ -547,6 +608,7 @@ export function mountTracePlan(host, job, shim) {
       } else {
         selV = null;
         selDot = null;
+        selSugg = null;
         redraw();
       }
     });
@@ -731,6 +793,99 @@ export function mountTracePlan(host, job, shim) {
     $("autoTrace").hidden = !(SHIM.outlineSeed && SHIM.outlineSeed.length);
   }
 
+  /* Vision placement (wave V-A): seed suggested dots onto the CURRENT story
+     from SHIM.suggestedSeed, same {x,y} plan-image-pixel shape as dotSeed.
+     Never moves a mark that already has a confirmed dot - the host should
+     never send one, but a job re-opened mid-review is exactly when a stale
+     seed could otherwise fight a dot the foreman already placed. Exposed as
+     `refreshSuggestions` on the mounted view (see the bottom of this file)
+     so a "Find placements" run elsewhere on the host can pull its fresh
+     results in without tearing down and losing an in-progress trace. */
+  function suggStoryOf(id) {
+    for (var i = 0; i < stories.length; i++) if (stories[i].suggested[id]) return i;
+    return -1;
+  }
+
+  function loadSuggestedSeed() {
+    var seed = (typeof SHIM.suggestedSeed === "function" ? SHIM.suggestedSeed(plan) : SHIM.suggestedSeed) || null;
+    if (seed) {
+      // Same story-title routing autoBtn uses for confirmed pins, so a
+      // suggestion lands on the story its own plan sheet actually shows,
+      // not always the ground floor.
+      ensureStoriesForPlan(storyPlan);
+      Object.keys(seed).forEach(function (id) {
+        if (dotStoryOf(id) >= 0 || suggStoryOf(id) >= 0) return;
+        var plan2 = storyPlan && storyPlan.byId[id];
+        if (storyPlan && !plan2) return;  // titles couldn't say - leave unplaced, not a guess
+        var target = plan2 ? stories[Math.min(plan2.story, stories.length) - 1] : stories[cur];
+        target.suggested[id] = { x: seed[id].x, y: seed[id].y, confidence: seed[id].confidence };
+      });
+    }
+    renderTray();
+    updateSuggBtn();
+    redraw();
+  }
+
+  function updateSuggBtn() {
+    $("confirmSuggBtn").hidden = Object.keys(suggested).length === 0;
+  }
+
+  /* One suggestion becomes one real, confirmed dot - the exact "every
+     suggested dot becomes a real dot" the review tray promises, whether it
+     got here via Confirm all or a single drag. `pos` is already in
+     plan-image pixels (wall-snapped, same as a hand-placed dot); the host's
+     SHIM.confirmSuggestion converts back to a normalized pin and persists
+     it, immediately, independent of whether this trace is ever Submitted. */
+  function confirmSuggestion(id, pos) {
+    if (!pos) return;
+    snapshot();
+    delete suggested[id];
+    stories.forEach(function (st) { delete st.dots[id]; });
+    dots[id] = { x: pos.x, y: pos.y };
+    dotMeta[id] = { byHand: true };
+    if (selSugg === id) selSugg = null;
+    renderTray();
+    updateSuggBtn();
+    redraw();
+    SHIM.confirmSuggestion(id, { x: pos.x, y: pos.y });
+    SHIM.toast(id + " confirmed");
+  }
+
+  $("confirmSuggBtn").addEventListener("click", function () {
+    var ids = Object.keys(suggested);
+    if (!ids.length) return;
+    snapshot();
+    var confirmed = [];
+    ids.forEach(function (id) {
+      var pos = suggested[id];
+      delete suggested[id];
+      stories.forEach(function (st) { delete st.dots[id]; });
+      dots[id] = { x: pos.x, y: pos.y };
+      dotMeta[id] = { byHand: true };
+      confirmed.push({ id: id, x: pos.x, y: pos.y });
+    });
+    if (!confirmed.length) { dropSnapshot(); return; }
+    selSugg = null;
+    renderTray();
+    updateSuggBtn();
+    redraw();
+    confirmed.forEach(function (c) { SHIM.confirmSuggestion(c.id, { x: c.x, y: c.y }); });
+    SHIM.toast(confirmed.length + (confirmed.length === 1 ? " placement" : " placements") +
+      " confirmed");
+  });
+
+  $("dismissSugg").addEventListener("click", function () {
+    if (!selSugg) return;
+    snapshot();
+    var id = selSugg;
+    delete suggested[id];
+    selSugg = null;
+    updateSuggBtn();
+    redraw();
+    SHIM.dismissSuggestion(id);
+    SHIM.toast(id + " dismissed - Find placements can suggest it again later");
+  });
+
   // Auto-trace: the app already extracts a building outline from the plan
   // PDF; that polygon lands here as a starting trace — closed, editable,
   // undoable. It replaces nothing you drew: only ADDS when no shape overlaps
@@ -772,29 +927,35 @@ export function mountTracePlan(host, job, shim) {
       " traced from the plan - drag any point that needs a nudge, then calibrate");
   });
 
+  /* Phase 2: the sheet titles named the stories - make sure they exist
+     (never touching ones already traced) so a dot from any source (a
+     confirmed auto-place or a vision-placement suggestion, wave V-A) can
+     land on its own. Shared so both callers create stories the same way. */
+  function ensureStoriesForPlan(plan) {
+    if (!plan) return;
+    plan.stories.forEach(function (ds) {
+      while (stories.length < ds.n && stories.length < MAXSTORIES) {
+        var below = stories[stories.length - 1];
+        stories.push({
+          name: "Level " + (stories.length + 1), heightM: 3, partial: false,
+          polys: below.polys.filter(function (p2) { return p2.closed; }).map(function (p2) {
+            return { pts: p2.pts.map(function (q) { return { x: q.x, y: q.y }; }), closed: true };
+          }),
+          dots: {},
+          suggested: {}
+        });
+      }
+      if (stories[ds.n - 1] && stories[ds.n - 1].name.indexOf("Level ") === 0) {
+        stories[ds.n - 1].name = ds.name;
+      }
+    });
+    buildStoryRail();
+  }
+
   $("autoBtn").addEventListener("click", function () {
     if (!dotSeed) return;
     snapshot();
-    // Phase 2: the sheet titles named the stories - make sure they exist
-    // (never touching ones already traced) so each dot can land on its own.
-    if (storyPlan) {
-      storyPlan.stories.forEach(function (ds) {
-        while (stories.length < ds.n && stories.length < MAXSTORIES) {
-          var below = stories[stories.length - 1];
-          stories.push({
-            name: "Level " + (stories.length + 1), heightM: 3, partial: false,
-            polys: below.polys.filter(function (p2) { return p2.closed; }).map(function (p2) {
-              return { pts: p2.pts.map(function (q) { return { x: q.x, y: q.y }; }), closed: true };
-            }),
-            dots: {}
-          });
-        }
-        if (stories[ds.n - 1] && stories[ds.n - 1].name.indexOf("Level ") === 0) {
-          stories[ds.n - 1].name = ds.name;
-        }
-      });
-      buildStoryRail();
-    }
+    ensureStoriesForPlan(storyPlan);
     var placed = 0, skipped = 0, unclearN = 0;
     JOB.windows.forEach(function (w) {
       if (dotStoryOf(w.id) >= 0) { skipped++; return; }  // never move a dot you placed - any story
@@ -830,6 +991,7 @@ export function mountTracePlan(host, job, shim) {
     var a = document.activeElement;
     if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA")) return;
     if (selDot) { e.preventDefault(); $("removeDot").click(); }
+    else if (selSugg) { e.preventDefault(); $("dismissSugg").click(); }
     else if (selV) { e.preventDefault(); $("delPt").click(); }
   });
 
@@ -1210,7 +1372,8 @@ export function mountTracePlan(host, job, shim) {
       // stories: a storied trace brings every story back editable.
       stories = tr.stories.map(function (ts, i) {
         var st = { name: ts.name || ("Level " + (i + 1)), heightM: ts.heightM || 3,
-                   partial: !!ts.partial, polys: (ts.polys || []).map(polyIn), dots: {} };
+                   partial: !!ts.partial, polys: (ts.polys || []).map(polyIn), dots: {},
+                   suggested: {} };
         Object.keys(ts.dots || {}).forEach(function (id) {
           st.dots[id] = { x: ts.dots[id].x, y: ts.dots[id].y };
         });
@@ -1251,6 +1414,7 @@ export function mountTracePlan(host, job, shim) {
     redraw();
     loadPlan();
     loadDotSeed();
+    loadSuggestedSeed();
   };
 
   $("rescaleBtn").addEventListener("click", function () {
@@ -1299,6 +1463,11 @@ export function mountTracePlan(host, job, shim) {
       cleanups.forEach(function (f) { f(); });
       cleanups.length = 0;
       host.innerHTML = "";
-    }
+    },
+    // Vision placement (wave V-A): re-pull SHIM.suggestedSeed without tearing
+    // the view down, so a "Find placements" run elsewhere on the host can
+    // land its results in this already-open trace without losing whatever
+    // the foreman was mid-way through drawing.
+    refreshSuggestions: loadSuggestedSeed
   };
 }

@@ -78,6 +78,7 @@ PLATFORM_PROVIDED = frozenset({
 FEATURE_NAMES = {
     'approve-access-request': 'letting a new crew member in',
     'ask': 'Ask Infinity',
+    'extract-placement': 'placing windows on the plan',
     'extract-receipt': 'reading receipts',
     'extract-schedule': 'reading delivery schedules',
     'extract-specs': 'plan-set reading',

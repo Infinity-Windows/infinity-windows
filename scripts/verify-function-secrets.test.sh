@@ -225,9 +225,11 @@ assert_has "- plan-set reading"
 # Every writing feature runs on this one key now, so the headline names two of
 # them and counts the rest. A bare count ("7 app features") would leave the
 # owner unable to tell a small problem from a dead app.
-# Wave P added extract-receipt as an ANTHROPIC_API_KEY consumer: the census
-# in this sentence counts real functions, so it moves when they do.
-assert_first_line_has "Ask Infinity, reading receipts and 7 other features need an API key"
+# Wave V added extract-placement as an ANTHROPIC_API_KEY consumer, sorting in
+# right after "ask" (its directory name alphabetizes before extract-receipt's)
+# — the census in this sentence counts real functions, in that order, so it
+# moves when they do.
+assert_first_line_has "Ask Infinity, placing windows on the plan and 8 other features need an API key"
 
 new_case "only ANTHROPIC_API_KEY missing: says where to click, not just a command"
 live_state
