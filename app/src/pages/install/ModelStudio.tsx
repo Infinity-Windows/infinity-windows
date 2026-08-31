@@ -85,6 +85,7 @@ import { UnitBuilder } from "../../components/studio/UnitBuilder";
 import { StudioAssistCard } from "../../components/studio/StudioAssistCard";
 import { FlatElevationsView } from "../../components/studio/FlatElevationsView";
 import { buildFitviewModelFromStudio, type PublishStats } from "../../lib/modelstudio/toFitview";
+import { isStudioTooNarrow } from "../../lib/modelstudio/studioWidthGate";
 import {
   applyUnitGeometry as applyUnitGeometryCore,
   cornerGeometryInfo,
@@ -2499,7 +2500,18 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     setSelTick((n) => n + 1);
   };
 
-  const narrow = typeof window !== "undefined" && window.innerWidth < 900;
+  // infinity: W5 (w-walls-spec.md, 2026-08-31) — Studio is laptop/PC-only.
+  // LIVE, not read once at mount: resizing back up must restore the editor
+  // without a reload (see the full-screen note in the main return below).
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== "undefined" && isStudioTooNarrow(window.innerWidth),
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onResize = () => setNarrow(isStudioTooNarrow(window.innerWidth));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   const applyUnitEdits = () => {
     const item = selUnit;
@@ -3767,6 +3779,31 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     </div>
   );
 
+  // infinity: W5 (w-walls-spec.md, 2026-08-31) — below ~900px the editor
+  // doesn't render at all; this replaces it outright rather than showing a
+  // banner above a cramped 3D pane. Every hook above has already run, so
+  // this early return is safe (React only cares that hooks run in the same
+  // order every render, not that every render reaches the same JSX).
+  if (narrow) {
+    return (
+      <div className="page studio-page">
+        <header className="page-header">
+          <div>
+            <p className="home-greeting">Studio</p>
+            <h1>Model Studio</h1>
+          </div>
+          <BackChip fallback="/studio" label="Back" />
+        </header>
+        <div className="studio-narrow-note">
+          <p>
+            Studio needs a laptop or PC — the 3D editor doesn't fit a phone.
+            Everything you publish here shows on phones in Maps Interactive.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page studio-page">
       <header className="page-header">
@@ -3816,11 +3853,9 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         <BackChip fallback="/studio" label="Back" />
       </header>
 
-      {narrow && (
-        <p className="warn-text" style={{ fontSize: 12.5 }}>
-          The Studio is built for a laptop screen — editing tools need the room.
-        </p>
-      )}
+      {/* infinity: W5 — the old inline warning lived here; the early return
+          above now replaces the whole editor instead, so this branch is
+          unreachable and was removed rather than left dead. */}
 
       <div className="row-gap" style={{ flexWrap: "wrap", marginBottom: 8 }}>
         {source.kind === "standalone" && !proj.data?.project_id && (
