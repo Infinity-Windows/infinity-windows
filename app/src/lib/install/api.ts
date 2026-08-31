@@ -3093,7 +3093,16 @@ export async function aiExtractPlacement(
 }
 
 /** True when 20260961000000 (suggested placements) hasn't reached this database
- * yet — the review tray degrades to "nothing to review" rather than crashing. */
+ * yet — the review tray degrades to "nothing to review" rather than crashing.
+ * PGRST202/42883 is PostgREST's own "function not in schema cache" — the SAME
+ * signal a genuinely-missing migration gives right after one that DID land,
+ * because PostgREST caches the function list and only reloads it on its own
+ * schema-reload notification. A deploy whose reload hook fires late (this
+ * project's history: "Deploy backend" silently failing) leaves a window where
+ * the function exists in Postgres but PostgREST still answers as if it
+ * doesn't — the Mad Moose shape: extract-placement (a separate Edge Function
+ * deploy) already found and matched every mark, but the very next call, to a
+ * database RPC added by the SAME migration, still 404s. */
 function isMissingPlacementFunction(error: unknown): boolean {
   return isMissingSchemaFunction(error);
 }
@@ -3101,8 +3110,18 @@ function isMissingPlacementFunction(error: unknown): boolean {
 /**
  * Write extract-placement's raw reading into suggested_pin_x/y/page/at/
  * confidence (foreman+; RESCAN LAW enforced atomically in SQL — see
- * apply_placement_suggestions). Returns how many suggestions actually landed,
- * which is smaller than the input whenever a mark already has a real pin.
+ * apply_placement_suggestions). `saved` is how many suggestions actually
+ * landed — smaller than the input whenever a mark already has a real pin.
+ *
+ * `unavailable` is kept SEPARATE from `saved` on purpose (the Mad Moose bug):
+ * isMissingPlacementFunction's degrade-instead-of-crash guard means `saved`
+ * is 0 for two very different reasons — "every mark already had a real pin"
+ * (the rescan law; expected, nothing to do) and "the write path isn't live
+ * on this database yet" (isMissingPlacementFunction; the marks still need
+ * saving, and will, once the schema catches up). Collapsing both into a bare
+ * saved-count is exactly what let a caller tell a foreman "already placed"
+ * when the true story was "couldn't write yet" — the wrong instruction for
+ * what to do next.
  */
 export async function applyPlacementSuggestions(
   projectId: string,
@@ -3113,8 +3132,8 @@ export async function applyPlacementSuggestions(
     page: number;
     confidence: number;
   }[],
-): Promise<number> {
-  if (suggestions.length === 0) return 0;
+): Promise<{ saved: number; unavailable: boolean }> {
+  if (suggestions.length === 0) return { saved: 0, unavailable: false };
   const { data, error } = await supabase.rpc("apply_placement_suggestions", {
     p_project_id: projectId,
     p_suggestions: suggestions.map((s) => ({
@@ -3126,10 +3145,10 @@ export async function applyPlacementSuggestions(
     })),
   });
   if (error) {
-    if (isMissingPlacementFunction(error)) return 0;
+    if (isMissingPlacementFunction(error)) return { saved: 0, unavailable: true };
     throw refusalOrError(error);
   }
-  return Number(data) || 0;
+  return { saved: Number(data) || 0, unavailable: false };
 }
 
 /** Install events by this installer whose AI-filled memo still needs a glance. */
