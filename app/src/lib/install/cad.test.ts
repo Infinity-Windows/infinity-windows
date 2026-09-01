@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   distanceToDivider,
+  mergeOutlineFeatures,
   nearestPointOnOutline,
   outlinePathWithOpenings,
   parseOutlineFeatures,
@@ -172,5 +173,47 @@ describe("parseOutlineFeatures", () => {
   it("returns empty features for junk", () => {
     expect(parseOutlineFeatures(null)).toEqual({ dividers: [], wallOpenings: [] });
     expect(parseOutlineFeatures("x")).toEqual({ dividers: [], wallOpenings: [] });
+  });
+});
+
+// The PlanModelEditor.tsx footgun fix (CLAUDE.md, wave N's N4): this editor
+// only ever knows dividers/wallOpenings, but the features column also
+// carries fitview (the tracer's survey model, calibration, northDeg) and
+// modelstudio. A save used to write {dividers, wallOpenings} as the WHOLE
+// column, wiping both silently — mergeOutlineFeatures is the fix PlanModelEditor
+// now calls before every save.
+describe("mergeOutlineFeatures (PlanModelEditor's writer, the footgun fix)", () => {
+  it("keeps an unknown top-level key (fitview, northDeg included) across a save", () => {
+    const prevRaw = {
+      fitview: {
+        longSideM: 30,
+        wallHeightM: 3.6,
+        northDeg: 27,
+        source: "in-app trace",
+        model: { building: {}, windows: [] },
+      },
+      modelstudio: { floors: ["x"] },
+      dividers: [{ id: "old", a: { x: 0, y: 0 }, b: { x: 1, y: 1 } }],
+      wallOpenings: [],
+    };
+    const patch = {
+      dividers: [{ id: "new", a: { x: 0.1, y: 0.1 }, b: { x: 0.9, y: 0.9 } }],
+      wallOpenings: [{ id: "w1", edge: 0, t: 0.5, width: 50, kind: "window" as const }],
+    };
+    const merged = mergeOutlineFeatures(prevRaw, patch);
+    // The editor's own fields win...
+    expect(merged.dividers).toEqual(patch.dividers);
+    expect(merged.wallOpenings).toEqual(patch.wallOpenings);
+    // ...but fitview (northDeg included) and modelstudio, which this editor
+    // never touches, ride through untouched.
+    expect(merged.fitview).toEqual(prevRaw.fitview);
+    expect(merged.modelstudio).toEqual(prevRaw.modelstudio);
+  });
+
+  it("works from nothing (a brand new outline's first save)", () => {
+    const patch = { dividers: [], wallOpenings: [] };
+    expect(mergeOutlineFeatures(undefined, patch)).toEqual(patch);
+    expect(mergeOutlineFeatures(null, patch)).toEqual(patch);
+    expect(mergeOutlineFeatures("not an object", patch)).toEqual(patch);
   });
 });

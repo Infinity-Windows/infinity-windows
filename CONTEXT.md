@@ -284,6 +284,13 @@ Settled 2026-08-28, wave V-B. The official pipeline, once plans are in:
 trace the building → place and confirm marks on the sheet → refine the
 model in Studio → Submit final, which becomes the crew's live 3D map.
 
+**True north** — `northDeg`, a clockwise-degrees-from-plan-up offset set by
+hand in the tracer's "Set north" mode and stored in `features.fitview`
+alongside its calibration; display-only, it only rotates the mini-map's
+compass rose and renames new wall submissions, never the 3D scene's own
+geometry. Every writer of `features.fitview` merges instead of replacing, so
+it (and everything else already there) survives an edit made anywhere else.
+
 ## Vision placement
 
 Settled 2026-08-28, wave V-A (the Mad Moose story: schedules knew the windows;

@@ -464,6 +464,59 @@ describe("calibration via outline features", () => {
   });
 });
 
+describe("wave N: true north", () => {
+  it("fitviewNorth reads northDeg and ignores everything else", async () => {
+    const { fitviewNorth } = await import("./adapter");
+    expect(fitviewNorth(null)).toBeUndefined();
+    expect(fitviewNorth({ dividers: [] })).toBeUndefined();
+    expect(fitviewNorth({ fitview: { longSideM: 30 } })).toBeUndefined();
+    expect(fitviewNorth({ fitview: { northDeg: 0 } })).toBe(0);
+    expect(fitviewNorth({ fitview: { northDeg: 137.5 } })).toBe(137.5);
+    expect(fitviewNorth({ fitview: { northDeg: "90" } })).toBeUndefined();
+    expect(fitviewNorth({ fitview: { northDeg: NaN } })).toBeUndefined();
+  });
+
+  it("mergeFitviewWrite spread-preserves unknown fitview keys (the footgun fix)", async () => {
+    const { mergeFitviewWrite } = await import("./adapter");
+    const prevFeatures = {
+      dividers: [{ id: "d1" }],
+      fitview: { longSideM: 30, wallHeightM: 3.6, northDeg: 42, source: "old" },
+    };
+    const merged = mergeFitviewWrite(prevFeatures, {
+      longSideM: 31,
+      wallHeightM: 3.7,
+      source: "in-app trace",
+      model: { building: {}, windows: [] },
+    });
+    // The submit's own fields win...
+    expect(merged.fitview).toMatchObject({
+      longSideM: 31,
+      wallHeightM: 3.7,
+      source: "in-app trace",
+    });
+    // ...but a key this submit never mentioned (northDeg) survives, and so
+    // does every OTHER top-level features key (dividers, unrelated to fitview
+    // entirely).
+    expect((merged.fitview as { northDeg?: number }).northDeg).toBe(42);
+    expect(merged.dividers).toEqual([{ id: "d1" }]);
+  });
+
+  it("mergeFitviewWrite lets an explicit patch key overwrite the old one", async () => {
+    const { mergeFitviewWrite } = await import("./adapter");
+    const merged = mergeFitviewWrite(
+      { fitview: { northDeg: 10 } },
+      { northDeg: 200, source: "in-app trace", model: {} },
+    );
+    expect((merged.fitview as { northDeg?: number }).northDeg).toBe(200);
+  });
+
+  it("mergeFitviewWrite works from nothing (first-ever trace on a job)", async () => {
+    const { mergeFitviewWrite } = await import("./adapter");
+    const merged = mergeFitviewWrite(undefined, { longSideM: 12, source: "x", model: {} });
+    expect(merged).toEqual({ fitview: { longSideM: 12, source: "x", model: {} } });
+  });
+});
+
 describe("hardware inference", () => {
   it("reads exact panel counts from operation letters", () => {
     expect(inferHardware("XO", "sliding door")).toEqual({ lights: 2, open: "bipart" });

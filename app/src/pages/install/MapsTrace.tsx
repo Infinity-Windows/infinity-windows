@@ -33,6 +33,8 @@ import {
   buildFitViewJob,
   fitviewCalibration,
   fitviewModel,
+  fitviewNorth,
+  mergeFitviewWrite,
   normalizeMarkCode,
   openingIdForMark,
   preferModelOutline,
@@ -283,19 +285,21 @@ export function MapsTrace() {
             )
           : undefined;
 
-      const prevFeatures =
-        outline && typeof outline.features === "object" && outline.features
-          ? (outline.features as Record<string, unknown>)
-          : {};
-      const features = {
-        ...prevFeatures,
-        fitview: {
-          longSideM,
-          wallHeightM: building.height,
-          source: "in-app trace",
-          model: { building, windows: [...byId.values()] },
-        },
-      };
+      // The three-writer footgun (CLAUDE.md): a submit that only knows
+      // longSideM/wallHeightM/source/model must not wipe a sibling fitview
+      // key it's never heard of — northDeg (wave N) today, whatever's next
+      // tomorrow. mergeFitviewWrite spreads the PREVIOUS fitview object
+      // first (ModelStudio.tsx's publish/revert precedent), so an unknown
+      // key survives; a mixed-heights model's own story data is untouched
+      // either way — it lives inside `model`, written whole below, never
+      // flattened by this merge.
+      const features = mergeFitviewWrite(outline?.features, {
+        longSideM,
+        wallHeightM: building.height,
+        ...(building.northDeg != null ? { northDeg: building.northDeg } : {}),
+        source: "in-app trace",
+        model: { building, windows: [...byId.values()] },
+      });
 
       // A browser-local draft (its id is not a UUID) cannot be UPDATED in
       // the database - Postgres rejects the fake id outright, which is
@@ -548,6 +552,12 @@ export function MapsTrace() {
       },
       done: () => saveRef.current.mutate(),
       scaleSuggestion: planImage.data?.scaleSuggestion ?? null,
+      // Wave N: whatever north this outline already carries, so re-opening
+      // the tracer restores the arrow instead of forgetting it. Read from
+      // the OUTLINE, not the authored model's building — the tracer's own
+      // Submit is what puts it there in the first place (see the northDeg
+      // line in traceRenderer.ts's submit handler).
+      northDeg: fitviewNorth(outline?.features) ?? null,
     });
     return () => {
       viewRef.current?.destroy();

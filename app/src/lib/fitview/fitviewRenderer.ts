@@ -77,12 +77,34 @@ export function elevationsOf(job) {
   return out;
 }
 
+/**
+ * Wave N: the compass rose's eight label angles, degrees clockwise from
+ * plan-up, rotated by northDeg (the tracer's "Set north" offset — see
+ * traceRenderer.ts). Pure and module-scope so the mini-map's placement math
+ * is unit-testable without a mounted renderer, same reason `elevationsOf`
+ * lives here rather than inside mountFitView's closure. Display-only: the
+ * caller places each label at (cx + r*sin(angle), cy - r*cos(angle)) on the
+ * mini-map SVG — this never feeds wall angles, camera math, or geometry.
+ */
+export function roseLabels(northDeg) {
+  var DIRS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  var off = typeof northDeg === "number" ? northDeg : 0;
+  return DIRS.map(function (label, i) {
+    return { label: label, angle: ((off + i * 45) % 360 + 360) % 360 };
+  });
+}
+
 export function mountFitView(host, job, shim) {
   var SHIM = shim || {};
   // Flat elevations (owner design, 2026-08-19): every wall laid side by side
   // in walking order — no 3D transforms at all, which is also what ends the
   // iOS layer-memory crashes for good. The 3D path stays behind the beta tab.
   var FLAT = SHIM.flatView === true;
+  // Wave N: the compass rose's rotation, read once at mount (same
+  // mount-time-only contract as `crew`/`onAssign` below) — display-only, and
+  // NEVER folded into wall angles, camera math, or geometry: the whole 3D
+  // scene stays in plan space, only the mini-map badge rotates.
+  var NORTH_DEG = typeof SHIM.northDeg === "number" ? SHIM.northDeg : null;
   if (!SHIM.toast) SHIM.toast = function () {};
   host.innerHTML = TEMPLATE;
   var ROOT = host;
@@ -1158,6 +1180,32 @@ export function mountFitView(host, job, shim) {
   }
 
 
+  /* Wave N: the mini-map's compass rose - a corner ornament, never a fight
+     with the footprint lines underneath (its own filled disc, and it paints
+     last in DOM order so it's always on top). Faded with a plain hint when
+     NORTH_DEG is unknown, rather than ever drawing a rose that LOOKS right
+     but isn't - see Trace 3D model is where a foreman fixes that. */
+  function roseHTML(northDeg) {
+    var known = typeof northDeg === "number";
+    var R = 20;
+    var body = roseLabels(known ? northDeg : 0).map(function (d) {
+      var rad = d.angle * Math.PI / 180;
+      var x = (26 + R * Math.sin(rad)).toFixed(1);
+      var y = (26 - R * Math.cos(rad)).toFixed(1);
+      var card = d.label.length === 1;   // N/E/S/W vs. the diagonals
+      return '<text x="' + x + '" y="' + y + '" text-anchor="middle" ' +
+        'dominant-baseline="central" font-family="var(--f-mono)" font-size="' +
+        (card ? 7.5 : 6) + '" font-weight="' + (card ? 700 : 500) +
+        '" fill="var(--ink)">' + d.label + '</text>';
+    }).join("");
+    var svg = '<svg viewBox="0 0 52 52" width="40" height="40">' +
+      '<circle cx="26" cy="26" r="24" fill="var(--paper)" fill-opacity="0.85" ' +
+      'stroke="var(--ink-3)"/>' + body + '</svg>';
+    return '<div class="flat-minimap-rose' + (known ? '' : ' unset') + '" ' +
+      'title="' + (known ? "Compass rose" : "North not set — see Trace 3D model") +
+      '">' + svg + '</div>';
+  }
+
   /* ---------- flat elevations (owner design, 2026-08-19) ----------
      The house is built exactly as for 3D, then each wall's faces move out
      into a horizontal scroll row, in walking order around the building —
@@ -1287,9 +1335,9 @@ export function mountFitView(host, job, shim) {
         }
       });
       svg += "</svg>";
-      map.innerHTML = svg + '<div class="flat-minimap-label"></div>';
+      map.innerHTML = svg + '<div class="flat-minimap-label"></div>' + roseHTML(NORTH_DEG);
     } else {
-      map.innerHTML = '<div class="flat-minimap-label"></div>';
+      map.innerHTML = '<div class="flat-minimap-label"></div>' + roseHTML(NORTH_DEG);
     }
     stage.appendChild(map);
 

@@ -10,6 +10,7 @@ import {
 } from "../../lib/install/api";
 import {
   EMPTY_FEATURES,
+  mergeOutlineFeatures,
   nearestPointOnOutline,
   newFeatureId,
   outlinePathWithOpenings,
@@ -424,6 +425,12 @@ export function PlanModelEditor(props: {
       if (!isValidOutlinePolygon(pts)) {
         throw new Error("Draw at least 3 points before saving.");
       }
+      // The footgun this closes (CLAUDE.md): this editor only ever knows
+      // dividers/wallOpenings, but a save used to write THAT as the entire
+      // features column — silently wiping the tracer's fitview model
+      // (calibration, wave N's northDeg) and Studio's modelstudio body the
+      // moment anyone touched a divider. Merge onto the row's raw features
+      // instead, so every key this editor doesn't own rides through.
       return savePlanOutline({
         outlineId: activeOutlineId ?? undefined,
         projectId,
@@ -431,7 +438,10 @@ export function PlanModelEditor(props: {
         pageNumber: page,
         points: pts,
         pageAspect: aspect,
-        features: override?.features ?? features,
+        features: mergeOutlineFeatures(
+          activeOutline?.features,
+          override?.features ?? features,
+        ),
       });
     },
     onSuccess: (row) => {

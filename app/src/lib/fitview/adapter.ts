@@ -245,6 +245,9 @@ export interface AuthoredModel {
     stories?: unknown;
     /** Raw tracer state for re-editing; opaque to the adapter. */
     trace?: unknown;
+    /** Wave N: true north, clockwise degrees from plan-up. Set by the
+     * tracer's "Set north" mode, carried through Submit; see fitviewNorth. */
+    northDeg?: number;
   };
   /** Renderer-native windows; extra fields (legs, wrap, panes…) pass through. */
   windows: Array<Record<string, unknown> & { id: string; status?: string }>;
@@ -444,6 +447,48 @@ export function fitviewCalibration(
     out.wallHeightM = o.wallHeightM;
   }
   return out;
+}
+
+/**
+ * Wave N: true north, when the surveyor has set one — a clockwise-degrees
+ * offset from plan-up to true north, stored alongside longSideM/wallHeightM
+ * (the tracer's "Set north" mode, traceRenderer.ts). Display-only: it drives
+ * the mini-map's compass rose (fitviewRenderer.ts) and nothing else — never
+ * fed into wall angles, camera math, or geometry, which stay in plan space.
+ * Absent (undefined) reads as "north not set," never a wrong-looking 0°.
+ */
+export function fitviewNorth(features: unknown): number | undefined {
+  if (!features || typeof features !== "object") return undefined;
+  const f = (features as { fitview?: unknown }).fitview;
+  if (!f || typeof f !== "object") return undefined;
+  const n = (f as { northDeg?: unknown }).northDeg;
+  return typeof n === "number" && Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * The trace submit's write of `features.fitview` (MapsTrace.tsx): spread the
+ * PREVIOUS fitview object before applying the new one, so a submit that
+ * knows nothing about a key another writer added (northDeg, someday
+ * something else) carries it forward instead of silently dropping it — the
+ * same footgun ModelStudio.tsx's publish/revert already guard against
+ * (`fitview: { ...prevFitview, model: ... }`, the safe precedent this
+ * copies). `patch` still wins on any key it names outright: a fresh Submit's
+ * longSideM/wallHeightM/model are the new truth, not a merge with the old
+ * geometry.
+ */
+export function mergeFitviewWrite(
+  prevFeatures: unknown,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const prev =
+    prevFeatures && typeof prevFeatures === "object"
+      ? (prevFeatures as Record<string, unknown>)
+      : {};
+  const prevFitview =
+    prev.fitview && typeof prev.fitview === "object"
+      ? (prev.fitview as Record<string, unknown>)
+      : {};
+  return { ...prev, fitview: { ...prevFitview, ...patch } };
 }
 
 /** Frames/mullions take room beyond the glass — packing headroom. */

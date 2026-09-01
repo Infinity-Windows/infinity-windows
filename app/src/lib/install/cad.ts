@@ -99,6 +99,25 @@ export function hasFeatures(features: OutlineFeatures): boolean {
   return features.dividers.length > 0 || features.wallOpenings.length > 0;
 }
 
+/**
+ * PlanModelEditor's own save writes only what it knows — dividers and wall
+ * openings — but the `features` jsonb column also carries `fitview` (the
+ * tracer's survey model, calibration, wave N's northDeg) and `modelstudio`
+ * (the 3D builder's model). Saving `patch` on its own as the whole column
+ * would wipe both wholesale; this merges it into the outline row's raw
+ * features instead, same shallow spread ModelStudio.tsx's save() already
+ * uses (`{ ...prev, modelstudio: body }`) — every OTHER top-level key rides
+ * through untouched, only `dividers`/`wallOpenings` change.
+ */
+export function mergeOutlineFeatures(
+  prevRaw: unknown,
+  patch: OutlineFeatures,
+): Record<string, unknown> {
+  const prev =
+    prevRaw && typeof prevRaw === "object" ? (prevRaw as Record<string, unknown>) : {};
+  return { ...prev, ...patch };
+}
+
 // --- display-space conversion ---
 
 function toDisp(p: OutlinePoint, aspect: number): { x: number; y: number } {

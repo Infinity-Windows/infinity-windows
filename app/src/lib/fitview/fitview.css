@@ -1980,3 +1980,15 @@ a.tb-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
     opacity: 0.8;
     margin-top: 2px;
   }
+  /* Wave N: the compass rose - a corner ornament tucked over the minimap's
+     own top-right corner. Its own filled disc (roseHTML, fitviewRenderer.ts)
+     keeps it legible over any footprint line underneath; painting last in
+     DOM order does the rest. */
+  .flat-minimap-rose {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    pointer-events: none;
+  }
+  .flat-minimap-rose svg { display: block; }
+  .flat-minimap-rose.unset { opacity: 0.45; }
