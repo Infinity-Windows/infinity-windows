@@ -93,7 +93,14 @@ if (mode === "plan") {
 
 // ---- live modes ----
 const { createAdminClient } = await import("./lib/supabase-admin.mjs");
-const supabase = createAdminClient();
+const { readCredential } = await import("./lib/supabase-key.mjs");
+const { value: dbUrl } = readCredential(process.env.SUPABASE_URL);
+const { value: dbKey } = readCredential(process.env.SUPABASE_SERVICE_ROLE_KEY);
+if (!dbUrl || !dbKey) {
+  console.error("Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY");
+  process.exit(1);
+}
+const supabase = createAdminClient(dbUrl, dbKey);
 
 const { data: projects, error: pErr } = await supabase
   .from("projects").select("id, job_code, name").eq("job_code", JOB_CODE);

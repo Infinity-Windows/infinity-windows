@@ -1,0 +1,46 @@
+# Run one of the repo's reviewed seed scripts against the live database, with
+# the service key staying in Actions secrets where it already lives (the same
+# key vault-sync and deploy-backend use). Dispatch-only, and the seed choice
+# is an allowlist — this can only ever run scripts that are already on master
+# and already passed review, never arbitrary code.
+#
+# Born for the Mad Moose pilot (PR #470): the owner's machine-of-the-day may
+# not hold service credentials, and pasting keys into a chat session is never
+# acceptable — so the seed runs HERE, auditable in the Actions log.
+name: Run seed script
+
+on:
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: "Which seed to run"
+        required: true
+        type: choice
+        options:
+          - madmoose
+          - black22
+      mode:
+        description: "dry-run shows the diff; apply writes it"
+        required: true
+        type: choice
+        default: dry-run
+        options:
+          - dry-run
+          - apply
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install script deps
+        run: npm install --no-save @supabase/supabase-js
+      - name: Seed (${{ inputs.seed }}, ${{ inputs.mode }})
+        env:
+          SUPABASE_URL: https://czprjcskmzzagdztqonm.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node "scripts/seed-${{ inputs.seed }}-fitview.mjs" "--${{ inputs.mode }}"
