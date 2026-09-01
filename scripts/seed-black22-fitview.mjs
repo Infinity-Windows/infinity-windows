@@ -5,9 +5,13 @@
 // What it writes: ONE row in project_plan_outlines — the traced main footprint
 // normalized to page coordinates, with the true scale and wall height carried
 // in features.fitview so the adapter stops using its documented defaults.
-// It does NOT touch openings, pins, specs, or any other table. Re-saving the
-// outline from the Plan Model editor later replaces features wholesale, which
-// would drop the calibration — rerun this script if that happens.
+// It does NOT touch openings, pins, specs, or any other table.
+//
+// --apply merges onto whatever features the row already carries (wave N):
+// a hand-set northDeg or a Plan Model editor divider survives a re-run —
+// only fitview.longSideM/wallHeightM/source/model, this script's own
+// fields, get overwritten. dividers/wallOpenings still reset to empty on
+// every run; this script has never carried those forward.
 //
 // Known v1 limit: the fixture has a second, smaller footprint polygon; the
 // outline table stores one polygon per row and the tab reads one outline, so
@@ -24,6 +28,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mergeFitviewSeed } from "./lib/fitview-seed.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const fixture = JSON.parse(
@@ -60,19 +65,18 @@ const points = foot.map((p) => ({
 // metres along the wall, sill height, panels, corner wraps) — AND the raw
 // `trace` (plan-pixel polygons, dots, calibration), which is what lets the
 // in-app tracer restore Ben's outline editable instead of starting over.
-const features = {
-  dividers: [],
-  wallOpenings: [],
-  fitview: {
-    longSideM: +longSideM.toFixed(2),
-    wallHeightM: fixture.building.height,
-    source: "window-viewer win-2423 hand trace",
-    model: {
-      building: fixture.building,
-      windows: fixture.windows,
-    },
-  },
-};
+// mergeFitviewSeed (scripts/lib/fitview-seed.mjs, pure and tested there) is
+// what protects a key this script doesn't know about — wave N's northDeg —
+// from a blind overwrite on a later --apply.
+
+// Local-plan preview (no DB yet): nothing to merge against.
+const features = mergeFitviewSeed(
+  null,
+  longSideM,
+  fixture.building.height,
+  fixture.building,
+  fixture.windows,
+);
 
 console.log(`Seed plan for ${JOB_CODE} (${fixture.addr || fixture.ref})`);
 console.log(`  outline points     : ${points.length} (main mass; for the flat plan editor)`);
@@ -132,13 +136,24 @@ if (mode === "dry-run") {
   process.exit(0);
 }
 
+// Re-merge against the LIVE row, not the local preview above: an --apply
+// against a job whose outline has moved on since (a hand-set northDeg, a
+// divider drawn in the Plan Model editor) must carry that forward, not the
+// blind overwrite this script used to do.
+const liveFeatures = mergeFitviewSeed(
+  target?.features ?? null,
+  longSideM,
+  fixture.building.height,
+  fixture.building,
+  fixture.windows,
+);
 const values = {
   project_id: project.id,
   planset_id: plans.id,
   page_number: 1,
   points,
   page_aspect: 1,
-  features,
+  features: liveFeatures,
 };
 const q = target
   ? supabase.from("project_plan_outlines").update(values).eq("id", target.id)
