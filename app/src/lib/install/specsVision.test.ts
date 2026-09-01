@@ -98,6 +98,23 @@ describe("normalizeMarkLabel", () => {
     expect(normalizeMarkLabel(null)).toBeNull();
     expect(normalizeMarkLabel("")).toBeNull();
   });
+
+  // The Mad Moose incident (2026-09-01): an addendum cut sheet's own marks
+  // are "Add-1"/"Add-2"/"Add-3" — but this function's "strip the project
+  // prefix" rule (built for a numeric job/building code like Smith's "Bldg
+  // 14") also stripped "Add", so the addendum's own #1/#2/#3 collided with
+  // the job's REAL marks 1/2/3. "Add" is not a job code, it's the sheet's
+  // own vocabulary, and must survive as part of the mark.
+  it("keeps an addendum sheet's own word prefix ('Add'), unlike Smith's numeric job code", () => {
+    expect(normalizeMarkLabel("Mad Moose Add-#1")).toBe("Add-1");
+    expect(normalizeMarkLabel("Mad Moose Add-#2")).toBe("Add-2");
+    expect(normalizeMarkLabel("Mad Moose Add-#3")).toBe("Add-3");
+  });
+
+  it("title-cases the word prefix deterministically, whatever case the source used", () => {
+    expect(normalizeMarkLabel("Mad Moose ADD-#1")).toBe("Add-1");
+    expect(normalizeMarkLabel("Mad Moose add-#1")).toBe("Add-1");
+  });
 });
 
 describe("splitSizeCodeOperation", () => {

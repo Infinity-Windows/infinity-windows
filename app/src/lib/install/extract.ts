@@ -253,8 +253,37 @@ function normalizeMark(raw: string): string {
   return raw.trim().replace(/^#/, "").toUpperCase();
 }
 
-/** Base mark without instance suffix (14-1 → 14). */
+/** "ADD" / "add" / "Add" -> "Add" — deterministic regardless of how a PDF
+ * text layer or vision transcription happened to capitalize a word, so the
+ * SAME addendum mark normalizes the SAME way every re-extraction. */
+function titleCase(word: string): string {
+  return word[0].toUpperCase() + word.slice(1).toLowerCase();
+}
+
+/**
+ * Base mark without instance suffix (14-1 → 14, 13A-2 → 13A). Only a DIGIT
+ * directly before the dash is treated as an instance separator — a run of
+ * LETTERS there is the mark's own identity, not something rowsToDraftOpenings
+ * appended, and survives whole, title-cased (Add-1 stays Add-1, never
+ * collapses to Add).
+ *
+ * The Mad Moose incident (2026-09-01): an addendum sheet's own marks are
+ * Add-1/Add-2/Add-3 — the exact spelling the owner's confirmed production
+ * data (mark specs, marks, and openings, all seeded #474/#477) already
+ * carries. Before this fix, this function struck all three down to one
+ * shared base "ADD" — the identity-loss bug one level below where the "Add"
+ * prefix first got dropped (see normalizeMarkLabel / markCalloutMatches),
+ * since normalizeSpec always re-derives mark_code via markBase regardless of
+ * what upstream already cleaned up. Matching that exact casing (not just
+ * case-insensitively) matters: `project_mark_specs` upserts on
+ * (project_id, mark_code) as a literal string, so a re-extraction that
+ * disagreed on case would insert a SECOND row next to the confirmed one
+ * instead of recognizing it.
+ */
 export function markBase(code: string): string {
+  const trimmed = code.trim().replace(/^#/, "");
+  const wordPrefixed = /^([A-Za-z]+)(-\d+)$/.exec(trimmed);
+  if (wordPrefixed) return `${titleCase(wordPrefixed[1])}${wordPrefixed[2]}`;
   const n = normalizeMark(code);
   return n.replace(/-\d+$/, "") || n;
 }
@@ -767,8 +796,13 @@ export interface DraftPersistencePlan {
  *     building plan keeps its old authority: callout counting stands.
  *  3. Never creates a second opening for a mark that already exists in the
  *     other slot, and never touches confirmed / in-progress openings.
- *  4. Preserves manually placed pins across a same-kind re-extract.
+ *  4. Preserves manually placed pins across a same-kind BUILDING re-extract.
  *  5. Never deletes an opening that carries field work — see `hasFieldWork`.
+ *  6. VISION-FIRST LAW, enforced here (the Mad Moose incident, 2026-09-01):
+ *     plans own placement, specs own specs/counts. A specs-kind insert NEVER
+ *     gets a pin, and its page_number never points at the spec sheet's own
+ *     page — regardless of what the incoming draft carries, since a spec
+ *     sheet is never a surface a crew would page through to place a window.
  */
 export function planDraftPersistence(
   existing: ExistingOpeningLite[],
@@ -876,6 +910,23 @@ export function planDraftPersistence(
       otherKindMarks.has(markBase(d.opening_code))
     ) {
       skipped += 1;
+      continue;
+    }
+    // Vision-first law (point 6 above): a specs draft's own page_number is
+    // whatever page of the SPEC SHEET the mark was read from, and — however
+    // it might have picked one up — never a real plan pin either. Neither
+    // survives into the DB: a spec sheet is specs and counts, never a
+    // placement surface, so an opening minted from one stays unplaced (page
+    // 1, no pin) until a real plan places it or a human taps it in.
+    if (incomingKind === "specs") {
+      inserts.push({
+        ...d,
+        page_number: 1,
+        pin_x: null,
+        pin_y: null,
+        origin_pin_x: null,
+        origin_pin_y: null,
+      });
       continue;
     }
     const kept = preservedPins.get(d.opening_code);

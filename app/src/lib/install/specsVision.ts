@@ -71,6 +71,34 @@ function str(v: unknown): string | null {
   return s ? s : null;
 }
 
+/** "ADD" / "add" / "Add" -> "Add" — deterministic regardless of how a PDF
+ * text layer or vision transcription happened to capitalize a word, so the
+ * SAME addendum mark normalizes the SAME way every re-extraction. */
+function titleCase(word: string): string {
+  return word[0].toUpperCase() + word.slice(1).toLowerCase();
+}
+
+/**
+ * The word directly hyphen-attached before a captured mark's suffix — "Add"
+ * in "Mad Moose Add-#1" or "Mad Moose Add-4A" — kept as the mark's OWN
+ * identity, unlike a purely numeric job/building code ("14" in "Bldg
+ * 14-#4A"), which is legitimately dropped because the same mark repeats
+ * across buildings. Only a prefix made of LETTERS survives, title-cased for
+ * a deterministic result regardless of source capitalization; `before` is
+ * everything in the original string up to (not including) the dash.
+ *
+ * The Mad Moose incident (2026-09-01): an addendum cut sheet's own marks
+ * read "Mad Moose Add-#1/#2/#3" — exactly the spelling ("Add-1" etc) the
+ * owner's confirmed production data already carries (seeded #474/#477).
+ * Reading this the same as Smith's numeric job-code shape dropped "Add"
+ * entirely, colliding the addendum's #1/#2/#3 with the job's REAL marks
+ * 1/2/3.
+ */
+function attachedWordPrefix(before: string): string | null {
+  const m = /([A-Za-z]+)$/.exec(before);
+  return m ? titleCase(m[1]) : null;
+}
+
 /**
  * Strip a manufacturer/project prefix off a printed mark label, leaving the
  * bare mark:
@@ -78,21 +106,34 @@ function str(v: unknown): string | null {
  *   "#1"                        → "1"
  *   "1"                         → "1"
  *   "PV Townhomes Bldg 14-13B"  → "13B"
- * When a '#' is present the text after the LAST '#' is the mark. Otherwise a
- * bare "…prefix-<mark>" (with whitespace before the dash group) has its prefix
- * dropped, while a lone code like "A-101" (no whitespace) is kept intact.
- * Returns null when there's nothing usable. PURE — no side effects.
+ *   "Mad Moose Add-#1"          → "Add-1"
+ * When a '#' is present the text after the LAST '#' is the mark, with any
+ * LETTER prefix directly hyphen-attached to that '#' kept (see
+ * `attachedWordPrefix`) — a numeric job code like "14-" is still dropped.
+ * Otherwise a bare "…prefix-<mark>" (with whitespace before the dash group)
+ * has its numeric prefix dropped the same way, while a lone code like
+ * "A-101" (no whitespace) is kept intact. Returns null when there's nothing
+ * usable. PURE — no side effects.
  */
 export function normalizeMarkLabel(raw: unknown): string | null {
   const s = str(raw);
   if (!s) return null;
   const hashes = [...s.matchAll(/#\s*([A-Za-z0-9]+)/g)];
   if (hashes.length > 0) {
-    return hashes[hashes.length - 1][1].toUpperCase();
+    const last = hashes[hashes.length - 1];
+    const base = last[1].toUpperCase();
+    let i = last.index ?? 0;
+    while (i > 0 && /\s/.test(s[i - 1])) i--;
+    const prefix = s[i - 1] === "-" ? attachedWordPrefix(s.slice(0, i - 1)) : null;
+    return prefix ? `${prefix}-${base}` : base;
   }
   if (/\s/.test(s)) {
     const dash = s.match(/-\s*([A-Za-z]{0,3}\d{1,4}[A-Za-z]?)\s*$/);
-    if (dash) return dash[1].toUpperCase();
+    if (dash) {
+      const base = dash[1].toUpperCase();
+      const prefix = attachedWordPrefix(s.slice(0, dash.index ?? 0));
+      return prefix ? `${prefix}-${base}` : base;
+    }
   }
   return s.toUpperCase();
 }
