@@ -1057,7 +1057,7 @@ test("Pull from plans reads the PLANS — a published model never caps it", asyn
   expect(count).toBe(42);
 });
 
-test("Pull from plans: a placed unit carries a mark badge, and selecting it shows W×L", async ({
+test("Pull from plans: a placed unit carries a mark badge, and selecting it shows W×L honestly", async ({
   page,
 }) => {
   // Owner ask (wave V, Studio map-parity): every unit placed in Studio —
@@ -1131,10 +1131,23 @@ test("Pull from plans: a placed unit carries a mark badge, and selecting it show
     bp.three.itemSelectedCallbacks.fire(bp.model.scene.getItems()[i]);
   }, idx);
   await expect(page.getByText("Selected unit")).toBeVisible();
+  // The identity card's mark badge — same chip language as the 3D overlay,
+  // now proven for the DOM card rather than just the canvas paint above.
+  await expect(page.locator(".studio-mark-badge")).toHaveText("16");
   // The W×L identity line, in the elevations sheet's own tape-reading
   // fraction format (fitviewRenderer.ts's inches()) — never a different
   // fraction style for the same millimetre value.
   await expect(page.getByText(/W \d[\d\s/]*"\s*·\s*L \d[\d\s/]*"/)).toBeVisible();
+
+  // Spec-silent case (owner ask, wave W): mark 16's real project_mark_specs
+  // row (e2e/fixtures/mark_specs.json) prints an overall operation
+  // ("Fixed") but NO extra.panels breakdown — the drawing only gave an
+  // overall size, not a per-panel dimension chain. The type chip may still
+  // say what the sheet said ("Window · Fixed"); the panel-breakdown line
+  // must be genuinely ABSENT, not a guess synthesized from whatever
+  // mechanisms the pulled/catalog config happens to carry underneath.
+  await expect(page.locator(".studio-type-chip")).toHaveText("Window · Fixed");
+  await expect(page.locator(".studio-identity-panes")).toHaveCount(0);
 });
 
 test("animation: ▶ opens the slider, toggling closes it; dbl-click refocuses", async ({
