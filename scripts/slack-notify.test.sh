@@ -186,11 +186,11 @@ run \
   RUN_URL="https://example/run" \
   COMMIT_SHA="deadbeef" \
   ACTOR="taylorhorizon" \
-  CAUSE="Ask Infinity and plan-set reading need an API key that has not been added yet" \
+  CAUSE="Ask Forge and plan-set reading need an API key that has not been added yet" \
   DETAIL="Everything else shipped."
 assert_rc 0
 assert_valid_json
-assert_first_text_line_has "Ask Infinity and plan-set reading need an API key"
+assert_first_text_line_has "Ask Forge and plan-set reading need an API key"
 assert_payload_lacks "Deploy backend FAILED"
 # The workflow still has to be identifiable, just not first.
 assert_payload_has "Deploy backend"
@@ -203,7 +203,7 @@ run \
   RUN_URL="https://example/run" \
   COMMIT_SHA="deadbeef" \
   ACTOR="someone" \
-  CAUSE="Ask Infinity needs an API key that has not been added yet"
+  CAUSE="Ask Forge needs an API key that has not been added yet"
 assert_rc 0
 assert_payload_lacks "Nothing shipped from this run"
 assert_payload_has "what to do is in the run"

@@ -30,7 +30,7 @@
 #   DETAIL           Optional extra plain-English line(s).
 #   CAUSE            Optional. The actual, specific, plain-English reason, in the
 #                    words the reader uses. When set it becomes the FIRST line and
-#                    the workflow name is demoted below it. "Ask Infinity needs an
+#                    the workflow name is demoted below it. "Ask Forge needs an
 #                    API key" tells the owner what to do; "Deploy backend FAILED"
 #                    tells him only to worry, and he is not an engineer. A caller
 #                    that cannot compute a specific cause leaves this unset and

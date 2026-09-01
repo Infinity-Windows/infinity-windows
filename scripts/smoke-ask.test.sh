@@ -7,7 +7,7 @@
 # first on PATH, and never touch the network, a project or a real key.
 #
 # The distinction that matters most is the LAST pair: a key that is missing and a
-# key that Anthropic rejects both leave Ask Infinity answering nothing, but they
+# key that Anthropic rejects both leave Ask Forge answering nothing, but they
 # need different things done about them, and no name-and-digest check can tell
 # them apart at all.
 #
@@ -177,7 +177,7 @@ run
 assert_rc 0
 assert_has "ANSWERED end to end"
 assert_has "A shim keeps the window square in the opening."
-assert_first_line_has "Ask Infinity works"
+assert_first_line_has "Ask Forge works"
 
 new_case "a passing run writes no cause for Slack to lead with"
 respond 200 '{"answer":"Real text."}'
@@ -263,7 +263,7 @@ new_case "a missing key is red and says so in plain English"
 respond 500 '{"error":"Error: ANTHROPIC_API_KEY secret is not set"}'
 run
 assert_rc 1
-assert_first_line_has "Ask Infinity has no AI key"
+assert_first_line_has "Ask Forge has no AI key"
 assert_first_line_has "never actually answered anything"
 assert_has "Deploy backend"
 
@@ -281,7 +281,7 @@ new_case "a missing key hands the cause to the workflow for Slack"
 respond 500 '{"error":"Error: ANTHROPIC_API_KEY secret is not set"}'
 run
 assert_rc 1
-assert_output_var "ask_smoke_headline=Ask Infinity has no AI key"
+assert_output_var "ask_smoke_headline=Ask Forge has no AI key"
 
 # --- broken, and ours to fix: the key is REJECTED --------------------------
 #
@@ -342,14 +342,14 @@ assert_rc 2
 assert_has "never answered"
 
 # A gateway 401 means THIS TEST could not sign in. That is a gap in the test, not
-# evidence about the feature, so it must not be reported as Ask Infinity failing.
+# evidence about the feature, so it must not be reported as Ask Forge failing.
 new_case "a gateway 401 blames the checker, not the feature"
 respond 401 '{"error":"unauthorized"}'
 run
 assert_rc 2
 assert_has "has no way to sign in"
-assert_has "NOTHING HERE IS EVIDENCE ABOUT ASK INFINITY"
-assert_lacks "Ask Infinity is not working"
+assert_has "NOTHING HERE IS EVIDENCE ABOUT ASK FORGE"
+assert_lacks "Ask Forge is not working"
 
 # The two 401s need different fixes, so they must not share one message.
 new_case "a project-level rejection names the new-format key as the likely cause"
@@ -373,7 +373,7 @@ assert_rc 2
 assert_has "no caller credentials"
 assert_has "Nothing was measured"
 
-# --- retries: the run that FIXES Ask Infinity must not report it broken ----
+# --- retries: the run that FIXES Ask Forge must not report it broken ----
 #
 # Deploy backend pushes ANTHROPIC_API_KEY and then runs this seconds later. A
 # just-written secret does not reach the already-running function workers
