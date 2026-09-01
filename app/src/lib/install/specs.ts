@@ -42,7 +42,10 @@ export interface MarkSpec {
   screen: string | null;
   /** Product line / manufacturer, e.g. "Andersen 100 Series". */
   product_line: string | null;
-  /** Flexible catch-all for any other line-item attributes found. */
+  /**
+   * Flexible catch-all for any other line-item attributes found — including
+   * the optional {@link PaneGrid} contract at `extra.pane_grid` (wave G).
+   */
   extra: Record<string, unknown> | null;
   /**
    * 1-based page of the SPECS planset holding this mark's elevation drawing
@@ -80,6 +83,94 @@ export interface ProjectMarkSpec extends MarkSpec {
   created_at: string;
   updated_at: string;
 }
+
+/**
+ * THE GRID CONTRACT (wave G) — a unit's real mullion-column design, captured
+ * straight off the pictured spec-sheet cell. Lives at `extra.pane_grid` on a
+ * `project_mark_specs` row (jsonb, no migration): column-major because
+ * storefronts are BUILT as mullion columns. Segments run TOP to BOTTOM within
+ * a column; `width_in`/`height_in` are printed inches, and an omitted one
+ * means "divide the remaining space equally" — never a stored 0.
+ *
+ * Back-compat law: absent `pane_grid` (every spec extracted before this wave,
+ * and any mark whose cell is a plain flat row) means the renderers fall back
+ * to today's flat `extra.panels` single-row drawing, unchanged. `pane_grid`
+ * never replaces `panels` — both may coexist on the same row.
+ *
+ * This is the shared interface both Wave G halves build to: extraction
+ * (here) writes it, the fitview + Studio renderers (the other half) read it.
+ */
+export interface PaneGrid {
+  columns: PaneGridColumn[];
+}
+
+export interface PaneGridColumn {
+  /** Column width in inches, left to right as drawn. Omitted = divide
+   * remaining width equally among columns that omit it. */
+  width_in?: number;
+  /** This column's segments, TOP to BOTTOM. */
+  segments: PaneGridSegment[];
+}
+
+/**
+ * op vocabulary is docs/window-vendor-conventions.md's (standing law — the
+ * fitview adapter's `inferHardware` must agree; change them together): "F"
+ * fixed, "X" operable/slider (the OXXO notation's X), "door" a swing leaf.
+ */
+export type PaneGridOp = "F" | "X" | "door";
+
+export interface PaneGridSegment {
+  op: PaneGridOp;
+  /** Segment height in inches, top to bottom. Omitted = divide remaining
+   * height equally among segments that omit it. */
+  height_in?: number;
+  /** Hinge/meet side — "door" segments only, when the sheet shows it. */
+  leaf?: "L" | "R";
+}
+
+/**
+ * THE canonical pane_grid fixture — owner-shown ground truth (Mad Moose mark
+ * 7's CAD cell, 2026-08-31): 167 1/2" x 143 1/2" storefront = LEFT column of
+ * three stacked fixed panes (47 1/2" / 48" / 48"), two 38"-wide door columns
+ * each carrying a fixed transom (47 1/2") over a ~96" swing-door leaf (pair
+ * meeting center, closers top), then a RIGHT column mirroring the left. 8
+ * fixed panes + 2 swing doors. Both Wave G halves test against this EXACT
+ * shape byte-for-byte — it is the interface, not just an example.
+ */
+export const madMooseMark7Grid: PaneGrid = {
+  columns: [
+    {
+      width_in: 45.75,
+      segments: [
+        { op: "F", height_in: 47.5 },
+        { op: "F", height_in: 48 },
+        { op: "F", height_in: 48 },
+      ],
+    },
+    {
+      width_in: 38,
+      segments: [
+        { op: "F", height_in: 47.5 },
+        { op: "door", height_in: 96, leaf: "L" },
+      ],
+    },
+    {
+      width_in: 38,
+      segments: [
+        { op: "F", height_in: 47.5 },
+        { op: "door", height_in: 96, leaf: "R" },
+      ],
+    },
+    {
+      width_in: 45.75,
+      segments: [
+        { op: "F", height_in: 47.5 },
+        { op: "F", height_in: 48 },
+        { op: "F", height_in: 48 },
+      ],
+    },
+  ],
+};
 
 /**
  * Coerce a raw DB row (or any loose object with identity fields) into a typed
