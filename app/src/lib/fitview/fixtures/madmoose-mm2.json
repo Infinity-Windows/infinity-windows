@@ -658,13 +658,13 @@
  "addWindows": [
   {
    "id": "Add-3",
-   "elev": "s4",
+   "elev": "s7",
    "floor": "Ground",
    "room": "Office 3",
    "type": "French door + fixed lites (office glass wall)",
    "w": 3416,
    "h": 2425,
-   "x": 0.05,
+   "x": 8.31,
    "y": 0.03,
    "open": "Fixed / French Door",
    "hand": "Inward opening, 3-point lock; leaf at the north end (outside view left)",
@@ -678,11 +678,11 @@
      1200
     ]
    ],
-   "notes": "MMV2A Add-#3: 40in French door + two 47 1/4in fixed, 134 1/2 x 95 1/2 in. Interior glass wall, Office 3 (north end of the office run)."
+   "notes": "MMV2A Add-#3: 40in French door + two 47 1/4in fixed, 134 1/2 x 95 1/2 in. Interior glass wall (B2 East 2, the lobby-facing side at ~69 ft; walk runs south to north so Office 1 comes first), Office 3 (north end of the office run)."
   },
   {
    "id": "Add-2",
-   "elev": "s4",
+   "elev": "s7",
    "floor": "Ground",
    "room": "Office 2",
    "type": "French door + fixed lites (office glass wall)",
@@ -703,17 +703,17 @@
      1147
     ]
    ],
-   "notes": "MMV2A Add-#2: 40in French door + three 45 1/8in fixed, 175 1/2 x 95 1/2 in. Interior glass wall, Office 2."
+   "notes": "MMV2A Add-#2: 40in French door + three 45 1/8in fixed, 175 1/2 x 95 1/2 in. Interior glass wall (B2 East 2, the lobby-facing side at ~69 ft; walk runs south to north so Office 1 comes first), Office 2."
   },
   {
    "id": "Add-1",
-   "elev": "s4",
+   "elev": "s7",
    "floor": "Ground",
    "room": "Office 1",
    "type": "French door + fixed lites (office glass wall)",
    "w": 3288,
    "h": 2425,
-   "x": 8.38,
+   "x": 0.11,
    "y": 0.03,
    "open": "Fixed / French Door",
    "hand": "Inward opening, 3-point lock; leaf at the north end (outside view left)",
@@ -727,7 +727,7 @@
      1136
     ]
    ],
-   "notes": "MMV2A Add-#1: 40in French door + two 44 3/4in fixed, 129 1/2 x 95 1/2 in. Interior glass wall, Office 1."
+   "notes": "MMV2A Add-#1: 40in French door + two 44 3/4in fixed, 129 1/2 x 95 1/2 in. Interior glass wall (B2 East 2, the lobby-facing side at ~69 ft; walk runs south to north so Office 1 comes first), Office 1."
   }
  ],
  "addSpecs": [
