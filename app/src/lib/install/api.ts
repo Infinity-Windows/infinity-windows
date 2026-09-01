@@ -24,6 +24,7 @@ import {
   type PinMove,
 } from "./pinHistory";
 import { foremanOnlyRefusal, REMOVED_LIST_DENIED } from "./openingAccess";
+import type { CustomMarkRegistrationPayload } from "../modelstudio/customMarks";
 import type {
   InstallEvent,
   MarkElevationView,
@@ -2611,6 +2612,49 @@ export async function addOpening(
     .single();
   if (error) throw refusalOrError(error);
   return data;
+}
+
+/**
+ * Register ONE Studio-named custom mark (W4, w-walls-spec.md) as a real
+ * project mark — reusing today's EXISTING creation paths rather than a new
+ * one: the schedule row (the add_project_mark RPC — same one
+ * warehouse/warehouseCards.ts's addProjectMark calls; inlined here rather
+ * than imported, see below), an opening carrying no planset/pin (addOpening
+ * — Studio-authored, never plan-placed, so those columns are simply absent,
+ * which the schema already allows), and its size. No server path already
+ * creates an opening WITH a size, but none was needed either:
+ * project_mark_specs already has width_in/height_in and its RLS already
+ * allows a foreman+ insert (mark_specs_insert_foreman), so this is a plain
+ * insert, not a migration.
+ *
+ * The RPC call is inlined rather than importing addProjectMark: that would
+ * pull warehouseCards.ts's own import of warehouse/containment.ts (and
+ * transitively storage.ts) into install/api.ts's static graph — and
+ * queryClient.ts imports THIS file at its own top level, which would make
+ * storage.ts eager everywhere queryClient.ts loads. prefetchWarehousePack's
+ * whole contract (queryClient.prefetch.test.ts) is that storage.ts loads
+ * lazily, behind a guarded dynamic import, so a bad connection at sign-in
+ * can never surface as an unhandled rejection; a static edge here would
+ * quietly break that guarantee. Same RPC, same params — just not the same
+ * import edge.
+ *
+ * Sequential on purpose: the mark row first, so a later step failing never
+ * leaves a size or an opening pointing at a mark_code the schedule doesn't
+ * know. Registered marks then glow/assign/QC exactly like extracted ones —
+ * they're real openings from here on.
+ */
+export async function registerCustomMark(
+  projectId: string,
+  payload: CustomMarkRegistrationPayload,
+): Promise<void> {
+  const { error: markError } = await supabase.rpc("add_project_mark", {
+    p_project: projectId,
+    p_mark: payload.markCode,
+  });
+  if (markError) throw markError;
+  await addOpening(projectId, payload.opening);
+  const { error } = await supabase.from("project_mark_specs").insert(payload.spec);
+  if (error) throw refusalOrError(error);
 }
 
 // --- Assignment + install events (RPCs) ---

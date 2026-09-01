@@ -28,6 +28,7 @@ import {
   listMarkSpecs,
   listOpenings,
   listPlanOutlines,
+  registerCustomMark,
   savePlanOutline,
 } from "../../lib/install/api";
 import { isForemanPlus } from "../../lib/install/types";
@@ -86,6 +87,12 @@ import { StudioAssistCard } from "../../components/studio/StudioAssistCard";
 import { FlatElevationsView } from "../../components/studio/FlatElevationsView";
 import { buildFitviewModelFromStudio, type PublishStats } from "../../lib/modelstudio/toFitview";
 import { isStudioTooNarrow } from "../../lib/modelstudio/studioWidthGate";
+import {
+  buildCustomMarkRegistrationPayload,
+  describeCustomMarkAdditions,
+  selectNewCustomMarks,
+  type CustomMarkDraft,
+} from "../../lib/modelstudio/customMarks";
 import {
   applyUnitGeometry as applyUnitGeometryCore,
   cornerGeometryInfo,
@@ -464,6 +471,14 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   const [unitH, setUnitH] = useState("");
   const [unitSill, setUnitSill] = useState("");
   const [unitGap, setUnitGap] = useState("");
+  // infinity: W4 (w-walls-spec.md, 2026-08-31) — custom marks from Studio.
+  // Every unit named as a mark this session, keyed by code; Submit final
+  // filters this against the job's already-known marks (selectNewCustomMarks)
+  // to decide what's actually new. The naming input itself lives next to the
+  // Width/Height fields, below.
+  const [customMarkDrafts, setCustomMarkDrafts] = useState<CustomMarkDraft[]>([]);
+  const [customMarkCode, setCustomMarkCode] = useState("");
+  const [customMarkKind, setCustomMarkKind] = useState<"window" | "door">("window");
   /** The tapped pane in the grid picker (col 0 = drawing's left, row 0 = top). */
   const [selPane, setSelPane] = useState<{ col: number; row: number } | null>(null);
   const [paneW, setPaneW] = useState("");
@@ -471,6 +486,12 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   const [publishPreview, setPublishPreview] = useState<
     { model: Record<string, unknown>; stats: PublishStats } | null
   >(null);
+  // infinity: W4 — the genuinely-new custom marks this particular preview
+  // would register, computed once at "Submit final" (preparePublish) and
+  // shown in the confirm dialog; empty on an ordinary publish.
+  const [pendingCustomMarks, setPendingCustomMarks] = useState<
+    ReturnType<typeof selectNewCustomMarks>
+  >([]);
   const units = useQuery({ queryKey: ["studioUnits"], queryFn: listStudioUnits });
   // #21/#26: the same evidence the estimating screen loads (one shared
   // fetch — lib/estimate/liveEstimate owns the query keys), used by the
@@ -2209,6 +2230,17 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     return m;
   }, [specs.data]);
 
+  // infinity: W4 — every mark code the job already knows, from every angle
+  // a custom mark could collide with: a real opening, a specced mark, or a
+  // bare schedule row with no spec yet.
+  const knownMarkCodes = useMemo(() => {
+    const codes: string[] = [];
+    for (const o of openings.data ?? []) codes.push(o.opening_code);
+    for (const sp of specs.data ?? []) codes.push(sp.mark_code);
+    for (const m of scheduledMarks.data ?? []) codes.push(m.mark_code);
+    return codes;
+  }, [openings.data, specs.data, scheduledMarks.data]);
+
   const preparePublish = () => {
     const bp = bpRef.current;
     if (!bp) return;
@@ -2246,6 +2278,19 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       pushToast("Nothing to submit — the model has no closed walls yet.");
       return;
     }
+    // infinity: W4 — only drafts whose named unit is STILL in this preview
+    // (present, not deleted or renamed away since it was named) are
+    // eligible; selectNewCustomMarks then drops anything the job already
+    // knows about and dedupes repeats.
+    const presentIds = new Set(
+      (converted.model.windows as { id: string }[]).map((w) => w.id),
+    );
+    setPendingCustomMarks(
+      selectNewCustomMarks(
+        customMarkDrafts.filter((d) => presentIds.has(d.code)),
+        knownMarkCodes,
+      ),
+    );
     setPublishPreview(converted);
   };
 
@@ -2253,6 +2298,13 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     mutationFn: async () => {
       const bp = bpRef.current;
       if (!bp || !outline || !publishPreview) throw new Error("Nothing to publish");
+      // infinity: W4 — register any new custom marks FIRST: they become
+      // real openings project_openings/openingIdForMark can already find, so
+      // by the time the map itself saves below, a unit named on it is
+      // already a real mark rather than a placement nothing yet knows about.
+      for (const mark of pendingCustomMarks) {
+        await registerCustomMark(projectId, buildCustomMarkRegistrationPayload(projectId, mark));
+      }
       const prev = (outline.features ?? {}) as Record<string, unknown>;
       const prevFitview = (prev.fitview ?? {}) as Record<string, unknown>;
       await savePlanOutline({
@@ -2284,8 +2336,26 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     },
     onSuccess: () => {
       setPublishPreview(null);
-      pushToast("Submitted — this is now the job's live 3D map for every installer.");
+      const registered = pendingCustomMarks.length;
+      pushToast(
+        registered > 0
+          ? `Submitted — ${registered} new mark${registered === 1 ? "" : "s"} added, and this is now the job's live 3D map for every installer.`
+          : "Submitted — this is now the job's live 3D map for every installer.",
+      );
+      // infinity: W4 — registered drafts drop out so a second Submit final
+      // never tries to re-register the same code (selectNewCustomMarks would
+      // already exclude it once the queries below refetch, but clearing here
+      // means it's gone from this session's list immediately, not just once
+      // the network round-trips).
+      const registeredCodes = new Set(pendingCustomMarks.map((m) => m.code));
+      setCustomMarkDrafts((prev) => prev.filter((d) => !registeredCodes.has(d.code)));
+      setPendingCustomMarks([]);
       void qc.invalidateQueries({ queryKey: ["planOutlines", projectId] });
+      if (registered > 0) {
+        void qc.invalidateQueries({ queryKey: ["openings", projectId] });
+        void qc.invalidateQueries({ queryKey: ["markSpecs", projectId] });
+        void qc.invalidateQueries({ queryKey: ["scheduledMarks", [projectId]] });
+      }
     },
   });
 
@@ -2643,6 +2713,43 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     refreshHandles();
     setUnitW(fmtFtIn(next.panels.reduce((t, p) => t + p.widthMm, 0) / 10));
     setUnitH(fmtFtIn(next.heightMm / 10));
+  };
+
+  // infinity: W4 (w-walls-spec.md, 2026-08-31) — naming a plain "+ Add
+  // window"/"+ Add door" unit turns it into a draft custom mark. The unit's
+  // OWN itemName becomes the code (the same field every seeded/catalog unit
+  // already keys off), so it renders and matches exactly like any other
+  // named unit from here on; whether it's actually NEW is decided later, at
+  // Submit final (selectNewCustomMarks) — a name that collides with an
+  // existing mark just quietly stops being a "draft" once the job's own
+  // marks are re-read, nothing here rejects it.
+  const nameSelUnitAsMark = () => {
+    const item = selUnit;
+    const cfg = item?.metadata?.unitConfig as UnitConfig | undefined;
+    const code = customMarkCode.trim();
+    if (!item || !cfg) {
+      pushToast("This unit has no size yet — build it out first.", "error");
+      return;
+    }
+    if (!code) {
+      pushToast("Type a mark code first.", "error");
+      return;
+    }
+    item.metadata = { ...item.metadata, itemName: code };
+    setSelTick((n) => n + 1);
+    refreshHandles();
+    const draft: CustomMarkDraft = {
+      code,
+      // The dropdown, not cfg.kind — window/door is an explicit choice at
+      // naming time (the spec's "code + window/door + W×L"), independent of
+      // however the placed item's own unitConfig happened to default.
+      kind: customMarkKind,
+      wMm: unitWidthMm(cfg),
+      hMm: cfg.heightMm,
+    };
+    setCustomMarkDrafts((prev) => [...prev.filter((d) => d.code !== code), draft]);
+    setCustomMarkCode("");
+    pushToast(`Named ${code} — Submit final will offer to add it as a real mark.`);
   };
 
   /**
@@ -3343,6 +3450,46 @@ export function ModelStudio({ source }: { source: StudioSource }) {
                 )}
               </div>
             )}
+            {/* infinity: W4 — un-named units stay Studio-only decorations
+                (owner's design). Only offered for a unit that isn't ALREADY
+                a real opening — selOpeningId covers extracted/plan-placed
+                marks and anything already named as a custom mark and
+                Submitted before. */}
+            {!selOpeningId && (
+              <div className="studio-card" style={{ padding: "6px 8px", marginTop: 2 }}>
+                <p className="tcx-label" style={{ margin: "0 0 4px" }}>
+                  Name this as a new mark (optional)
+                </p>
+                <div className="row-gap" style={{ flexWrap: "wrap" }}>
+                  <input
+                    aria-label="Mark code"
+                    placeholder="e.g. D-11"
+                    style={{ flex: 1, minWidth: 80 }}
+                    value={customMarkCode}
+                    onChange={(e) => setCustomMarkCode(e.target.value)}
+                  />
+                  <select
+                    aria-label="Window or door"
+                    value={customMarkKind}
+                    onChange={(e) => setCustomMarkKind(e.target.value as "window" | "door")}
+                  >
+                    <option value="window">Window</option>
+                    <option value="door">Door</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="button-like studio-mini"
+                    onClick={nameSelUnitAsMark}
+                  >
+                    Name it
+                  </button>
+                </div>
+                <p className="muted" style={{ margin: "4px 0 0", fontSize: 11 }}>
+                  Adds it to the job's schedule when you Submit final, with a
+                  chance to review it first.
+                </p>
+              </div>
+            )}
             <label className="field-label">Width</label>
             <input value={unitW} onChange={(e) => setUnitW(e.target.value)} />
             <label className="field-label">Height</label>
@@ -3912,6 +4059,15 @@ export function ModelStudio({ source }: { source: StudioSource }) {
               This becomes the job's live 3D map for every installer. The
               previous model is kept — you can revert.
             </p>
+            {/* infinity: W4 — the confirm-dialog deliberateness: a human
+                sees exactly which marks Submit final is about to REGISTER
+                (real openings, glow/assign/QC like any other) before it
+                happens. Absent on an ordinary publish. */}
+            {describeCustomMarkAdditions(pendingCustomMarks) && (
+              <p style={{ margin: "6px 0 0", fontSize: 12.5, fontWeight: 600 }}>
+                {describeCustomMarkAdditions(pendingCustomMarks)}
+              </p>
+            )}
             {publish.isError && <p className="error">{formatApiError(publish.error)}</p>}
             <div className="row-gap" style={{ marginTop: 10 }}>
               <button
