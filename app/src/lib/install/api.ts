@@ -154,6 +154,13 @@ export async function getMyProfile(): Promise<Profile | null> {
   // off this profile, so returning the previewed person makes the whole app
   // read as THEM. Display-side only — server writes still stamp the real
   // auth.uid(), and RLS still governs what this login may read.
+  //
+  // This DOES read the raw sessionStorage key directly rather than going
+  // through useEffectiveRole's clamp (view-as ceiling, 2026-09-01) — checked
+  // and left as-is on purpose: `isOwner(me.role)` gates it on the caller's
+  // real, server-fetched role, and owner already sits at the top rank, so a
+  // previewed person's role can never outrank the viewer here. A non-owner
+  // forging this key gets nothing — `me.role` still comes from the server.
   if (me && isOwner(me.role)) {
     try {
       const raw = sessionStorage.getItem("infinity.viewAsPerson");
