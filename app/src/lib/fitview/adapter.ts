@@ -62,6 +62,14 @@ export interface FitViewWindow {
   glow?: FitViewGlow;
   /** Flashing frame (flashFor): "done" solid aqua, "needed" dashed. */
   flash?: "done" | "needed";
+  /**
+   * Wave G (2026-09-01): the mark's real CAD cell — spec.extra.pane_grid,
+   * carried across UNTOUCHED. Neither builder in this file parses it; both
+   * renderers call paneGrid.ts's normalizePaneGrid themselves ("both
+   * renderers consume ONLY this module"). Absent -> the renderer's fallback
+   * law: draw exactly today's flat single-row `panes` layout.
+   */
+  pane_grid?: unknown;
 }
 
 export type FitViewGlow = "red" | "yellow" | "green" | "none";
@@ -174,6 +182,20 @@ const IN_TO_MM = 25.4;
 /** True when the unit stands on the floor rather than in the wall. */
 export function isDoorLike(text: string): boolean {
   return /\bdoors?\b/i.test(text);
+}
+
+/**
+ * Wave G (2026-09-01): a spec's `extra.pane_grid`, handed across raw — this
+ * module's only job is finding the right spec and passing the value along;
+ * parsing/resolving/drawing all live in paneGrid.ts. Defensive the same way
+ * unitIdentity.ts's specPanels is: `extra` is a flexible jsonb catch-all, so
+ * anything short of "a real object sitting at pane_grid" reads as absent.
+ */
+function paneGridFromSpec(spec: Pick<ProjectMarkSpec, "extra"> | null | undefined): unknown {
+  const extra = spec?.extra;
+  if (!extra || typeof extra !== "object") return undefined;
+  const grid = (extra as { pane_grid?: unknown }).pane_grid;
+  return grid && typeof grid === "object" ? grid : undefined;
 }
 
 /**
@@ -375,9 +397,20 @@ export function buildAuthoredJob(
   meta: { projectId: string; projectName: string; projectAddress: string | null },
   openings: ProjectOpening[],
   view?: FitViewViewContext,
+  /**
+   * Wave G (2026-09-01): mark specs, for pane_grid only — everything else
+   * about a window's identity/geometry still comes from the authored model
+   * itself. Optional and appended last so every existing 3-arg caller
+   * (MapsTrace's tracer preview, signatureSync) keeps compiling unchanged;
+   * omit it and windows simply carry no pane_grid, same as before this
+   * param existed.
+   */
+  specs?: ProjectMarkSpec[],
 ): FitViewJob {
   const liveByCode = new Map<string, ProjectOpening>();
   for (const o of openings) liveByCode.set(normalizeMarkCode(o.opening_code), o);
+  const specByMark = new Map<string, ProjectMarkSpec>();
+  for (const s of specs ?? []) specByMark.set(s.mark_code.toUpperCase(), s);
 
   // Storied models keep sills relative to their own floor (edits stay local);
   // the renderer positions in absolute height, so the conversion happens
@@ -405,6 +438,13 @@ export function buildAuthoredJob(
     // Crew-facing view: work-order spelling for the id. The tracer path
     // (no view) keeps authored ids — its stored dots are keyed by them.
     if (view) w.id = displayMarkCode(String(raw.id));
+    // Wave G: matched against the RAW authored id (before the display-dialect
+    // rewrite above) via the same markBase(normalizeMarkCode(...)) key
+    // unplacedScheduleMarks already groups by — mark_code is the base mark
+    // ("7"), never a twin-suffixed or work-order spelling.
+    const spec = specByMark.get(markBase(normalizeMarkCode(String(raw.id))).toUpperCase());
+    const grid = paneGridFromSpec(spec);
+    if (grid !== undefined) (w as { pane_grid?: unknown }).pane_grid = grid;
     const live = liveByCode.get(normalizeMarkCode(String(w.id)));
     if (view) {
       (w as { glow?: FitViewGlow }).glow = glowFor(live, view);
@@ -643,6 +683,7 @@ export function buildFitViewJob(
       hand: spec?.operation ?? undefined,
       glass: spec?.glass ?? undefined,
       frame: spec?.color ?? undefined,
+      pane_grid: paneGridFromSpec(spec),
       assigned: o.assignee?.display_name ? [o.assignee.display_name] : undefined,
     });
   }

@@ -1032,6 +1032,17 @@ a.tb-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
     opacity: 0.9;
   }
 
+  /* Wave G (2026-09-01): a pane-grid column's own segment break - like
+     .tran but scoped to ONE column's width (JS sets left/width/top),
+     since a storefront's columns can break at different heights (an
+     F-stack beside a shorter door column). */
+  .win .gmull {
+    position: absolute;
+    height: 2px;
+    background: var(--wc);
+    opacity: 0.9;
+  }
+
   .win .tran {
     position: absolute;
     left: 0; right: 0;
@@ -1233,6 +1244,7 @@ a.tb-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
     background: var(--deck);
   }
   .lod-far .win .mull,
+  .lod-far .win .gmull,
   .lod-far .win .tran,
   .lod-far .win .chandle,
   .lod-far .win .fglyph,

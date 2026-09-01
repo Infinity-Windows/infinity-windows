@@ -21,6 +21,10 @@
 // Stories (docs/maps-interactive-stories-design.md): the canonicalizers live
 // in stories.ts; the geometry extensions in this file are marked "stories:".
 import { envelopeHeight, storiesOf, storyLevels } from "./stories";
+// Wave G (2026-09-01): a mark's real CAD cell (paneGrid.ts) — drawn in place
+// of the flat single-row `panes` layout below when a window carries one.
+// Marked "Wave G:" wherever it touches this file.
+import { normalizePaneGrid } from "./paneGrid";
 
 const TEMPLATE = "\n<div class=\"app loading\">\n\n  <header class=\"titleblock\">\n    <div class=\"tb-row\">\n      <div>\n        <div class=\"tb-ref\" id=\"jobRef\"></div>\n        <div class=\"tb-addr\" id=\"jobAddr\"></div>\n      </div>\n      \n    </div>\n\n    <div class=\"tb-progress\">\n      <div class=\"bar\"><i id=\"bar\"></i></div>\n      <div class=\"tb-count\" id=\"count\"></div>\n    </div>\n\n    \n    <div class=\"tabs\" role=\"tablist\">\n      <button class=\"tab\" role=\"tab\" aria-selected=\"true\" data-view=\"plan\">Elevations</button>\n      <button class=\"tab\" role=\"tab\" aria-selected=\"false\" data-view=\"sched\">Schedule</button>\n    </div>\n  </header>\n\n  <div class=\"boot\" id=\"boot\">\n    <b>Loading job</b>\n    <span id=\"bootMsg\">Fetching schedule</span>\n  </div>\n\n  <!-- ============ PLAN VIEW ============ -->\n  <section class=\"view on\" id=\"v-plan\">\n    <div class=\"psearch\">\n      <input id=\"pq\" type=\"search\" placeholder=\"Find an opening - ID, room or type\"\n        autocomplete=\"off\" aria-label=\"Find an opening\">\n      <div class=\"pq-results\" id=\"pqr\" hidden></div>\n    </div>\n    <div class=\"stage\" id=\"stage\">\n      <div class=\"persp\" id=\"persp\">\n        <div class=\"house\" id=\"house\"></div>\n      </div>\n      <div class=\"zoomctl\">\n        <button id=\"zin\" type=\"button\" aria-label=\"Zoom in\">+</button>\n        <button id=\"zout\" type=\"button\" aria-label=\"Zoom out\">&#8722;</button>\n        <button id=\"zpan\" type=\"button\" aria-label=\"Pan mode\" aria-pressed=\"false\">Pan</button>\n        <button id=\"zpanp\" type=\"button\" aria-label=\"Pan plus: tilt with a straight horizon\" aria-pressed=\"false\">Pan +</button>\n        <button id=\"zfit\" type=\"button\" aria-label=\"Fit to view\">Fit</button>\n      </div>\n    </div>\n\n    <div class=\"controls\">\n      <div class=\"strip\" id=\"storyStrip\" hidden></div>\n\n      <div class=\"strip\" id=\"elevStrip\"></div>\n\n      <div class=\"toolrow\">\n        <div class=\"seg\" role=\"group\" aria-label=\"Label detail\">\n          <button data-labels=\"full\" aria-pressed=\"true\">Size</button>\n          <button data-labels=\"id\" aria-pressed=\"false\">ID</button>\n          <button data-labels=\"off\" aria-pressed=\"false\">Off</button>\n        </div>\n        <button class=\"mini\" id=\"mineBtn\" aria-pressed=\"false\">Mine</button>\n        <button class=\"mini\" id=\"assignBtn\" hidden>Assign</button>\n        <div class=\"legend\" id=\"legend\"></div>\n      </div>\n\n      <div class=\"assignbar\" id=\"assignBar\" hidden>\n        <b id=\"assignCount\">0 picked</b>\n        <button class=\"mini\" id=\"pickElev\">+ This elevation</button>\n        <button class=\"mini hot\" id=\"assignGo\">Assign</button>\n        <button class=\"mini\" id=\"assignCancel\">Cancel</button>\n      </div>\n\n      <div class=\"hint\" id=\"hint\">Drag to orbit &middot; pinch or scroll to zoom &middot; tap a unit for its spec</div>\n    </div>\n  </section>\n\n  <!-- ============ SCHEDULE VIEW ============ -->\n  <section class=\"view\" id=\"v-sched\">\n    <div class=\"sched\">\n      <div class=\"search\">\n        <input id=\"q\" type=\"search\" placeholder=\"Filter by ID, type or room\" aria-label=\"Filter schedule\">\n      </div>\n      <div id=\"rows\"></div>\n    </div>\n  </section>\n\n  <div class=\"foot\">\n    Prototype &middot; dimensions shown are survey-measured and govern the order &middot; scan estimates are indicative only\n  </div>\n\n  <div class=\"scrim\" id=\"scrim\"></div>\n  <aside class=\"sheet\" id=\"sheet\" role=\"dialog\" aria-modal=\"false\" aria-label=\"Unit specification\"></aside>\n  <div class=\"toast\" id=\"toast\" role=\"status\" aria-live=\"polite\"></div>\n  <div class=\"lightbox\" id=\"lightbox\" role=\"dialog\" aria-label=\"Photo\">\n    <img id=\"lb-img\" alt=\"Site photo\">\n    <div class=\"lb-cap\" id=\"lb-cap\"></div>\n  </div>\n</div>\n";
 
@@ -760,7 +764,17 @@ export function mountFitView(host, job, shim) {
       return !!(win.doorPanes && win.doorPanes.indexOf(paneOff + i2) >= 0);
     }
 
-    if (!FRAMING && nP) {
+    // Wave G: a mark's real CAD cell, columns of top-to-bottom segments,
+    // drawn INSTEAD of the flat single-row layout below. Corner units
+    // (win.legs) and framing mode stay on the old path — the pane_grid
+    // contract doesn't cover a wrapped leg, and framing draws jack studs,
+    // not glass. widthIn/heightIn hints are this piece's own real order
+    // size, only used if the grid itself left a dimension out.
+    var grid = (!FRAMING && isMain && !win.legs && win.pane_grid)
+      ? normalizePaneGrid(win.pane_grid, { widthIn: fw / 25.4, heightIn: win.h / 25.4 })
+      : null;
+
+    if (!grid && !FRAMING && nP) {
     for (var i = 1; i < nP; i++) {
       var m = document.createElement("i");
       m.className = "mull";
@@ -928,7 +942,74 @@ export function mountFitView(host, job, shim) {
       el.appendChild(svg);
     }
 
-    if (!FRAMING && nP && win.doorPanes && hasMM) {
+    // Wave G: the grid's own mullions, pane ops and door leaves — reuses
+    // drawOpenSymbol above for the hinge diagonal, so a grid door leaf reads
+    // with the exact same trade vocabulary a flat-row door pane already
+    // does. Only defined/called when `grid` resolved; every existing path
+    // below is untouched.
+    function drawPaneGrid(g) {
+      var sx = wp / g.widthIn, sy = hp / g.heightIn;
+      // Column mullions, full height - same visual language as the flat
+      // layout's own .mull (one line per interior column boundary). Every
+      // grid column spans the full window height by construction (the
+      // physical unit is a rectangle), so top:0/bottom:0 is exactly right.
+      for (var gi = 1; gi < g.columns.length; gi++) {
+        var cm = document.createElement("i");
+        cm.className = "mull";
+        cm.style.left = (g.columns[gi].x * sx - 1) + "px";
+        el.appendChild(cm);
+      }
+      g.cells.forEach(function (c) {
+        var cx0 = c.x * sx, cy0 = c.y * sy, cw = c.w * sx, ch = c.h * sy;
+        // A column's OWN segment break - can fall at a different height
+        // than the column next to it (a storefront's F-stack beside a
+        // shorter door column), so this is scoped to the cell's own width,
+        // never the flat layout's full-width .tran.
+        if (c.row > 0) {
+          var hm = document.createElement("i");
+          hm.className = "gmull";
+          hm.style.left = cx0 + "px";
+          hm.style.width = cw + "px";
+          hm.style.top = (cy0 - 1) + "px";
+          el.appendChild(hm);
+        }
+        if (c.op === "door") {
+          var k = document.createElement("i");
+          k.className = "kick";
+          k.style.left = cx0 + "px";
+          k.style.width = cw + "px";
+          k.style.right = "auto";
+          k.style.top = (cy0 + ch * 0.70) + "px";
+          k.style.height = (ch * 0.30) + "px";
+          el.appendChild(k);
+          var dir = c.leaf === "R" ? "hinge-r" : "hinge-l";
+          drawOpenSymbol({ l: cx0, t: cy0, w: cw, h: ch }, OPEN_SYMBOL[dir]);
+        } else if (cw > 14 && ch > 14) {
+          var fg = document.createElement("i");
+          fg.className = "fglyph";
+          fg.textContent = c.op;
+          fg.style.left = (cx0 + cw / 2 - 3) + "px";
+          fg.style.top = (cy0 + ch / 2 - 6) + "px";
+          el.appendChild(fg);
+        }
+      });
+      // Per-column width label along the head, same convention as the flat
+      // layout's own .pdim loop - a busy grid needs its own dimensions same
+      // as any other pane breakdown.
+      g.columns.forEach(function (col) {
+        var cwpx = col.w * sx;
+        var pd = document.createElement("i");
+        pd.className = cwpx < 26 ? "pdim pdim-v" : "pdim";
+        pd.textContent = inches(col.w * 25.4);
+        pd.style.left = (col.x * sx) + "px";
+        pd.style.width = (cwpx * 3) + "px";
+        el.appendChild(pd);
+      });
+    }
+
+    if (grid) {
+      drawPaneGrid(grid);
+    } else if (!FRAMING && nP && win.doorPanes && hasMM) {
       // The sheet says exactly which panes are hinged leaves - one diagonal
       // per leaf, apex to the hinge. A pair hinges at its outer stiles; a
       // lone leaf follows the unit's hinge side, else hinges away from the

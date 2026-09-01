@@ -12,6 +12,7 @@ import {
   type AdapterInput,
 } from "./adapter";
 import type { ProjectOpening } from "../install/types";
+import { madMooseMark7Grid } from "./paneGrid";
 
 // A 2:1 rectangle drawn on a square page: edges s0 (top), s1 (right),
 // s2 (bottom), s3 (left) in outline order.
@@ -601,5 +602,77 @@ describe("unplacedScheduleMarks (B3, wave V-B: the Mad Moose story)", () => {
     // simply not this function's business either way — it can only ever
     // shrink the schedule side, never grow it.
     expect(unplacedScheduleMarks([], ["9A", "9B"])).toEqual([]);
+  });
+});
+
+// Wave G (2026-09-01): both job builders find a window's spec and hand its
+// extra.pane_grid across untouched — adapter.ts never parses the shape
+// itself (paneGrid.ts's job), just the plumbing.
+describe("wave G: pane_grid threading (spec.extra.pane_grid -> window.pane_grid)", () => {
+  it("buildFitViewJob carries pane_grid across from the matching spec", () => {
+    const spec = { mark_code: "7", extra: { pane_grid: madMooseMark7Grid } } as never;
+    const job = buildFitViewJob(
+      input({
+        openings: [opening({ opening_code: "7", pin_x: 0.5, pin_y: 0.2 })],
+        specs: [spec],
+      }),
+    )!;
+    expect(job.windows[0].pane_grid).toEqual(madMooseMark7Grid);
+  });
+
+  it("buildFitViewJob leaves pane_grid undefined with no matching spec", () => {
+    const job = buildFitViewJob(
+      input({ openings: [opening({ opening_code: "9", pin_x: 0.5, pin_y: 0.2 })] }),
+    )!;
+    expect(job.windows[0].pane_grid).toBeUndefined();
+  });
+
+  it("a spec with no pane_grid in extra leaves the window's pane_grid undefined", () => {
+    const spec = { mark_code: "7", extra: { panels: [{ op: "F", width_in: 30 }] } } as never;
+    const job = buildFitViewJob(
+      input({
+        openings: [opening({ opening_code: "7", pin_x: 0.5, pin_y: 0.2 })],
+        specs: [spec],
+      }),
+    )!;
+    expect(job.windows[0].pane_grid).toBeUndefined();
+  });
+
+  it("buildAuthoredJob carries pane_grid across when specs are passed, matched by base mark", async () => {
+    const { buildAuthoredJob } = await import("./adapter");
+    const model = {
+      building: {
+        width: 20, depth: 8, height: 4, rise: 0,
+        footprints: [[{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 10, z: 8 }, { x: 0, z: 8 }]],
+      },
+      // Survey-dialect twin id "7A" — must still match spec mark_code "7".
+      windows: [{ id: "7A", status: "tofit", elev: "s0", x: 2, y: 0, w: 4254, h: 3645 }],
+    };
+    const spec = { mark_code: "7", extra: { pane_grid: madMooseMark7Grid } } as never;
+    const job = buildAuthoredJob(
+      model,
+      { projectId: "p1", projectName: "BD", projectAddress: null },
+      [],
+      undefined,
+      [spec],
+    );
+    expect(job.windows[0].pane_grid).toEqual(madMooseMark7Grid);
+  });
+
+  it("buildAuthoredJob omits pane_grid entirely when specs are not passed (existing 3-arg callers unaffected)", async () => {
+    const { buildAuthoredJob } = await import("./adapter");
+    const model = {
+      building: {
+        width: 20, depth: 8, height: 4, rise: 0,
+        footprints: [[{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 10, z: 8 }, { x: 0, z: 8 }]],
+      },
+      windows: [{ id: "7", status: "tofit", elev: "s0", x: 2, y: 0, w: 4254, h: 3645 }],
+    };
+    const job = buildAuthoredJob(
+      model,
+      { projectId: "p1", projectName: "BD", projectAddress: null },
+      [],
+    );
+    expect((job.windows[0] as { pane_grid?: unknown }).pane_grid).toBeUndefined();
   });
 });

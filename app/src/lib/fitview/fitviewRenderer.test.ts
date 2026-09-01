@@ -6,6 +6,7 @@
 // port-level failures: template ids, footprint parsing, per-window DOM.
 import { describe, expect, it } from "vitest";
 import { mountFitView, roseLabels } from "./fitviewRenderer";
+import { madMooseMark7Grid } from "./paneGrid";
 import fixture from "./fixtures/win-2423.json";
 
 function mount(job = fixture as never) {
@@ -295,6 +296,100 @@ describe("W3: interior walls publish as ordinary wall strips", () => {
     };
     const { host, view } = mount(plain as never);
     expect(host.querySelectorAll(".face").length).toBe(4);
+    view.destroy();
+  });
+});
+
+// Wave G (2026-09-01): a window's spec carries the real CAD cell
+// (paneGrid.ts) and the elevations view draws IT instead of the flat
+// single-row layout — mark 7's own worked example (8 fixed lites around a
+// center swing-door pair) proves the shape; a plain window with no
+// pane_grid proves the fallback law holds byte-identical alongside it.
+describe("wave G: pane grid rendering", () => {
+  const RECT = [
+    { x: 0, z: 0 }, { x: 20, z: 0 }, { x: 20, z: 8 }, { x: 0, z: 8 },
+  ];
+  function gridJob() {
+    return {
+      id: "p1", ref: "Grid test", addr: "",
+      building: { width: 20, depth: 8, height: 4, rise: 0, footprints: [RECT] },
+      windows: [
+        {
+          id: "7", elev: "s0", floor: "Ground", room: "Lobby east",
+          type: "Storefront: 8 fixed lites around a center double swing door pair",
+          w: 4254, h: 3645, x: 2, y: 0, lights: 1, open: "fixed", status: "tofit",
+          pane_grid: madMooseMark7Grid,
+        },
+        {
+          id: "20", elev: "s0", floor: "Ground", room: "Plain",
+          type: "Fixed", w: 900, h: 1200, x: 10, y: 0.9,
+          lights: 4, open: "fixed", status: "tofit",
+        },
+      ],
+    };
+  }
+
+  it("draws the grid's own mullions, F glyphs and 2 door hinge marks — not the flat single-row layout", () => {
+    const { host, view } = mount(gridJob() as never);
+    const win = host.querySelector<HTMLElement>('.win[data-id="7"]')!;
+    expect(win).toBeTruthy();
+    // 4 columns -> 3 interior column mullions.
+    expect(win.querySelectorAll(".mull").length).toBe(3);
+    // 6 interior segment breaks (2 in each F-stack column, 1 in each door
+    // column) — never the flat layout's full-width .tran.
+    expect(win.querySelectorAll(".gmull").length).toBe(6);
+    // 8 fixed lites, each its own F glyph.
+    const fglyphs = win.querySelectorAll(".fglyph");
+    expect(fglyphs.length).toBe(8);
+    expect([...fglyphs].every((n) => n.textContent === "F")).toBe(true);
+    // 2 door leaves, each its own hinge-diagonal svg + kick plate.
+    expect(win.querySelectorAll("svg").length).toBe(2);
+    expect(win.querySelectorAll(".kick").length).toBe(2);
+    // SIZE/ID overlays keep working regardless of the grid underneath.
+    expect(win.querySelector(".chip")!.textContent).toBe("7");
+    expect(win.querySelector(".dim")).toBeTruthy();
+    view.destroy();
+  });
+
+  it("fallback law: a window with no pane_grid still draws the old flat single-row layout, unaffected", () => {
+    const { host, view } = mount(gridJob() as never);
+    const plain = host.querySelector<HTMLElement>('.win[data-id="20"]')!;
+    // 4 equal lights -> 3 interior mullions, none of the grid's own furniture.
+    expect(plain.querySelectorAll(".mull").length).toBe(3);
+    expect(plain.querySelectorAll(".gmull").length).toBe(0);
+    expect(plain.querySelectorAll(".fglyph").length).toBe(0);
+    view.destroy();
+  });
+
+  it("a malformed pane_grid degrades to the flat layout rather than crashing the mount", () => {
+    const bad = gridJob();
+    (bad.windows[0] as { pane_grid?: unknown }).pane_grid = { columns: [] };
+    const { host, view } = mount(bad as never);
+    const win = host.querySelector<HTMLElement>('.win[data-id="7"]')!;
+    expect(win).toBeTruthy();
+    expect(win.querySelectorAll(".gmull").length).toBe(0);
+    expect(win.querySelectorAll(".mull").length).toBe(0); // lights: 1 -> one pane
+    view.destroy();
+  });
+
+  it("a corner unit (win.legs) keeps its panesSplit rendering — pane_grid is out of scope for legs", () => {
+    const cornerJob = {
+      id: "p1", ref: "Corner", addr: "",
+      building: { width: 20, depth: 8, height: 4, rise: 0, footprints: [RECT] },
+      windows: [
+        {
+          id: "9", elev: "s0", floor: "Ground", room: "",
+          type: "Corner", w: 3000, h: 2000, x: 5, y: 0.9,
+          legs: [1500, 1500], wrap: "end", panesSplit: [[1500], [1500]],
+          open: "fixed", status: "tofit",
+          pane_grid: madMooseMark7Grid, // present but must be ignored on a leg
+        },
+      ],
+    };
+    const { host, view } = mount(cornerJob as never);
+    const pieces = host.querySelectorAll('.win[data-id="9"]');
+    expect(pieces.length).toBeGreaterThan(0);
+    [...pieces].forEach((p) => expect(p.querySelectorAll(".gmull").length).toBe(0));
     view.destroy();
   });
 });

@@ -150,7 +150,11 @@ export function MapsInteractive({ project }: { project: Project }) {
     // surveyor-placed windows) beats anything derivable from plan pins —
     // when the outline carries one, use it and only merge live status in.
     const authored = fitviewModel(outline.features);
-    if (authored) return buildAuthoredJob(authored, meta, openings.data, view);
+    // Wave G: specs are already fetched above for the pin-derived path below
+    // (buildFitViewJob) — threading them here too gets pane_grid onto the
+    // authored path's windows, so a mark's real CAD cell draws the same way
+    // whether or not this job has a hand-traced/authored model.
+    if (authored) return buildAuthoredJob(authored, meta, openings.data, view, specs.data);
     return buildFitViewJob(
       {
         ...meta,
