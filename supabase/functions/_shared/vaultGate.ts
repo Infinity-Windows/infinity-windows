@@ -6,7 +6,7 @@
 // Two independent gates apply to every vault mutation:
 //   1. Role gate  — only supervisor+ may manage the vault (unchanged rule).
 //   2. PIN gate   — the owner-set shared PIN must be configured and supplied.
-// Read/query access (Ask Infinity) is never gated here.
+// Read/query access (Ask Forge) is never gated here.
 
 /**
  * Role rank mirroring app/src/lib/install/types.ts::roleRank so the server's

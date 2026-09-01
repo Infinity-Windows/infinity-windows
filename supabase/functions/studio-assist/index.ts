@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
     // Identical shape to ask/index.ts: reserve before the paid call, settle
     // with the provider's real token counts after, release on failure. A
     // question-kind reservation, so it shares the same per-user daily count
-    // and role floor as Ask Infinity — one "AI questions today" budget, not
+    // and role floor as Ask Forge — one "AI questions today" budget, not
     // a second one this feature would otherwise sneak past. See
     // docs/ai-spend-limits.md.
     const meter =
