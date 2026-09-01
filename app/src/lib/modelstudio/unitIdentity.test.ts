@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { displayMarkCode } from "../fitview/adapter";
 import { inches } from "../fitview/fitviewRenderer";
+import { madMooseMark7Grid } from "../fitview/paneGrid";
 import type { UnitConfig } from "./units";
 import {
   unitMarkLabel,
@@ -207,6 +208,70 @@ describe("unitPaneSummary", () => {
     const spec = {
       operation: null,
       extra: { panels: [{ op: "F", width_in: 30 }, { op: "X", width_in: null }] },
+    };
+    expect(unitPaneSummary({ kind: "window" }, spec)).toBe("1 panel · F");
+  });
+});
+
+// Wave G (2026-09-01): a real pane_grid on the spec is the actual fix for
+// the mark 7 bug above — the flat extra.panels read (mark7Spec, "4 panels ·
+// F · X · X · F") is only ever the CAD cell's bottom-row strip; the grid is
+// the whole storefront the sheet actually drew.
+describe("unitPaneSummary: pane_grid wins over the flat panels reading", () => {
+  it('reads mark 7\'s real grid as "8x F + 2 swing doors", not the flat 4-panel guess', () => {
+    const spec = {
+      operation: null,
+      extra: {
+        // Both fields coexist on a real row — pane_grid never replaces
+        // extra.panels in storage (THE GRID CONTRACT).
+        panels: [
+          { op: "F", width_in: 45.75 },
+          { op: "X", width_in: 38 },
+          { op: "X", width_in: 38 },
+          { op: "F", width_in: 45.75 },
+        ],
+        pane_grid: madMooseMark7Grid,
+      },
+    };
+    expect(unitPaneSummary({ kind: "door" }, spec)).toBe("8x F + 2 swing doors");
+  });
+
+  it("counts a single swing door in the singular", () => {
+    const spec = { extra: { pane_grid: { columns: [{ segments: [{ op: "door", leaf: "L" }] }] } } };
+    expect(unitPaneSummary({ kind: "door" }, spec)).toBe("1 swing door");
+  });
+
+  it("counts F and X separately, in that order, with doors always last", () => {
+    const spec = {
+      extra: {
+        pane_grid: {
+          columns: [
+            { segments: [{ op: "X" }] },
+            { segments: [{ op: "F" }] },
+            { segments: [{ op: "F" }] },
+            { segments: [{ op: "door", leaf: "R" }] },
+          ],
+        },
+      },
+    };
+    expect(unitPaneSummary({ kind: "window" }, spec)).toBe("2x F + 1x X + 1 swing door");
+  });
+
+  it("falls back to the flat panels reading when the spec has no pane_grid at all", () => {
+    const spec = {
+      operation: null,
+      extra: { panels: [{ op: "F", width_in: 45.75 }, { op: "X", width_in: 38 }] },
+    };
+    expect(unitPaneSummary({ kind: "window" }, spec)).toBe("2 panels · F · X");
+  });
+
+  it("falls back to the flat reading when pane_grid is present but unparseable", () => {
+    const spec = {
+      operation: null,
+      extra: {
+        panels: [{ op: "F", width_in: 45.75 }],
+        pane_grid: { columns: [] }, // fails parsePaneGrid's shape check
+      },
     };
     expect(unitPaneSummary({ kind: "window" }, spec)).toBe("1 panel · F");
   });

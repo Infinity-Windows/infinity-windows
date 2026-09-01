@@ -27,6 +27,7 @@
 
 import { displayMarkCode } from "../fitview/adapter";
 import { inches } from "../fitview/fitviewRenderer";
+import { parsePaneGrid } from "../fitview/paneGrid";
 import type { MarkSpec } from "../install/specs";
 import { unitWidthMm, type UnitConfig } from "./units";
 
@@ -109,6 +110,39 @@ function specPanels(spec: Pick<MarkSpec, "extra"> | null | undefined): SpecPanel
 }
 
 /**
+ * Wave G (2026-09-01): "8x F + 2 swing doors" straight off `spec.extra.
+ * pane_grid`, when the mark has one — a real count of the CAD cell's own
+ * op letters, not a flat-row guess. Counting is unaffected by an omitted
+ * width_in/height_in (paneGrid.ts's resolve step only matters for SIZING),
+ * so this reads the grid's shape via parsePaneGrid alone, never resolving
+ * it. Returns null when the spec carries no pane_grid at all — the caller
+ * falls back to the flat extra.panels reading below.
+ */
+function paneGridSummary(spec?: Pick<MarkSpec, "extra"> | null): string | null {
+  const raw = (spec?.extra as { pane_grid?: unknown } | null | undefined)?.pane_grid;
+  const grid = parsePaneGrid(raw);
+  if (!grid) return null;
+
+  const counts = new Map<string, number>();
+  for (const col of grid.columns) {
+    for (const seg of col.segments) counts.set(seg.op, (counts.get(seg.op) ?? 0) + 1);
+  }
+
+  const parts: string[] = [];
+  for (const op of ["F", "X"]) {
+    const n = counts.get(op);
+    if (n) parts.push(`${n}x ${op}`);
+  }
+  for (const [op, n] of [...counts].sort((a, b) => a[0].localeCompare(b[0]))) {
+    if (op === "F" || op === "X" || op === "door") continue;
+    parts.push(`${n}x ${op}`);
+  }
+  const doors = counts.get("door");
+  if (doors) parts.push(`${doors} swing door${doors === 1 ? "" : "s"}`);
+  return parts.length ? parts.join(" + ") : null;
+}
+
+/**
  * "4 panels · F · X · X · F" — the panel breakdown, off the SPEC
  * (`spec.extra.panels`), never off a placed/catalog config's own panels.
  * The Mad Moose bug (module header): a catalog build's mechanisms are a
@@ -123,11 +157,20 @@ function specPanels(spec: Pick<MarkSpec, "extra"> | null | undefined): SpecPanel
  * unknown and prints "?" rather than guessing. Returns null (omit the
  * clause entirely) when the sheet gave no panel breakdown at all — the
  * caller falls back to plain W×L, never a fabricated one.
+ *
+ * Wave G: a real pane_grid on the spec wins over this flat reading
+ * entirely (paneGridSummary above) — "8x F + 2 swing doors" beats "4
+ * panels · F · X · X · F" for the same storefront, because the grid is the
+ * shape the CAD sheet actually drew and the flat panels array is only ever
+ * its bottom-row strip. pane_grid never replaces extra.panels in storage;
+ * this is purely which one wins for DISPLAY when both are present.
  */
 export function unitPaneSummary(
   config: Pick<UnitConfig, "kind">,
   spec?: Pick<MarkSpec, "extra"> | null,
 ): string | null {
+  const grid = paneGridSummary(spec);
+  if (grid) return grid;
   const panels = specPanels(spec);
   if (!panels) return null;
   const letters = panels.map((p) => p.op ?? (config.kind === "door" ? "Door" : "?"));
