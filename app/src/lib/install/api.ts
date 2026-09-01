@@ -1937,11 +1937,31 @@ function withoutColumns(
 }
 
 /**
+ * Fill-missing-only law for `extra.pane_grid` (receipts precedent, wave G): a
+ * mark that already has a pane_grid on file keeps it through every future
+ * extraction run, confirmed row or not. `extractAndSaveMarkSpecs` upserts the
+ * WHOLE `extra` column on every unconfirmed mark's re-extract (existing,
+ * unchanged behavior for every other field in it) — without this, a second
+ * vision pass reading the SAME drawing slightly differently would silently
+ * replace a grid a foreman may already be relying on. `existingPaneGrid` is
+ * whatever `extra.pane_grid` currently sits on that mark_code's row (from
+ * `listMarkSpecs`), or undefined/null when there is none yet. PURE.
+ */
+export function preservePaneGrid(
+  draftExtra: Record<string, unknown> | null,
+  existingPaneGrid: unknown,
+): Record<string, unknown> | null {
+  if (existingPaneGrid == null) return draftExtra;
+  return { ...(draftExtra ?? {}), pane_grid: existingPaneGrid };
+}
+
+/**
  * Extract rich specs from the specs-planset page text and upsert them as
  * unconfirmed drafts keyed by (project_id, mark_code). Guardrail: a mark whose
  * spec is already CONFIRMED is never clobbered by a re-extract (same philosophy
- * as saveDraftOpenings). Best-effort: a missing table degrades to { saved: 0 }
- * instead of blowing up the upload flow.
+ * as saveDraftOpenings), and `extra.pane_grid` specifically is never clobbered
+ * even on an unconfirmed mark (see {@link preservePaneGrid}). Best-effort: a
+ * missing table degrades to { saved: 0 } instead of blowing up the upload flow.
  *
  * Two extractors run and are MERGED (never one replacing the other):
  *   1. Claude VISION (`extract-specs`) reads the rich line-item — style, glass,
@@ -2011,15 +2031,28 @@ export async function extractAndSaveMarkSpecs(
   const status = { pages: pageStatuses, visionFailed, drafts };
   if (drafts.length === 0) return { saved: 0, skipped: 0, ...status };
 
-  // Which marks are already confirmed? Never overwrite those.
+  // Which marks are already confirmed? Never overwrite those. Separately —
+  // pane_grid rescan law (receipts precedent, wave G): whatever pane_grid is
+  // already on file for a mark_code is kept forever, confirmed row or not.
+  // See preservePaneGrid above for why this needs its own map instead of
+  // riding on confirmedMarks.
   let confirmedMarks = new Set<string>();
+  const existingPaneGridByMark = new Map<string, unknown>();
   try {
     const existing = await listMarkSpecs(projectId);
     confirmedMarks = new Set(
       existing.filter((s) => s.confirmed).map((s) => s.mark_code.toUpperCase()),
     );
+    for (const s of existing) {
+      const grid = s.extra?.pane_grid;
+      if (grid != null) {
+        existingPaneGridByMark.set(s.mark_code.toUpperCase(), grid);
+      }
+    }
   } catch {
-    // If we can't read existing rows we simply won't skip any.
+    // If we can't read existing rows we simply won't skip any, and there's
+    // nothing on file to protect either — a fresh extraction proceeds
+    // exactly as it always has.
   }
 
   const toSave = drafts.filter(
@@ -2028,7 +2061,19 @@ export async function extractAndSaveMarkSpecs(
   const skipped = drafts.length - toSave.length;
   if (toSave.length === 0) return { saved: 0, skipped, ...status };
 
-  const rows = toSave.map((d) => specDraftColumns(projectId, d, plansetId));
+  const rows = toSave.map((d) =>
+    specDraftColumns(
+      projectId,
+      {
+        ...d,
+        extra: preservePaneGrid(
+          d.extra,
+          existingPaneGridByMark.get(d.mark_code.toUpperCase()),
+        ),
+      },
+      plansetId,
+    ),
+  );
   const upsert = (payload: Record<string, unknown>[]) =>
     supabase
       .from("project_mark_specs")
