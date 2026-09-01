@@ -85,7 +85,7 @@ function IssuedInviteCard({
     if (shareable.share) {
       try {
         await shareable.share({
-          title: "Infinity Windows login",
+          title: "Forge Windows login",
           text: message,
         });
         return;
@@ -489,7 +489,7 @@ const STATUS_WORDS: Record<string, string> = {
 /** Plain English for what each role unlocks, so the choice is not a guess. */
 const ROLE_HINTS: Record<CrewRoleName, string> = {
   installer:
-    "Their own jobs, scanning, the clock, and Ask Infinity. Nothing about money.",
+    "Their own jobs, scanning, the clock, and Ask Forge. Nothing about money.",
   foreman:
     "Everything an installer sees, plus the crew roster, timecards, quality sign-off and issues.",
   supervisor:

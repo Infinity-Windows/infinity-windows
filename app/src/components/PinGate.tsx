@@ -38,7 +38,7 @@ export function PinGate({ children }: { children: React.ReactNode }) {
   if (me.isLoading || hasPin.isLoading) {
     return (
       <div className="pin-gate">
-        <h1 className="pin-gate-brand">INFINITY</h1>
+        <h1 className="pin-gate-brand">FORGE WINDOWS</h1>
         <p className="pin-hint">Checking device lock…</p>
       </div>
     );
@@ -73,7 +73,7 @@ export function PinGate({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="pin-gate">
-      <h1 className="pin-gate-brand">INFINITY</h1>
+      <h1 className="pin-gate-brand">FORGE WINDOWS</h1>
       <div className="pin-avatar" aria-hidden>
         {initialsFrom(name)}
       </div>

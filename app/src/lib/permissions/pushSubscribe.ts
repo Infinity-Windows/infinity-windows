@@ -57,7 +57,7 @@ export function gatherPushFacts(): PushEnvFacts {
 }
 
 /** The user-facing hint shown when iOS web push needs a home-screen install. */
-export const IOS_INSTALL_HINT = "Add Infinity to your home screen to get alerts.";
+export const IOS_INSTALL_HINT = "Add Forge Windows to your home screen to get alerts.";
 
 async function currentProfileId(): Promise<string | null> {
   try {

@@ -85,7 +85,7 @@ function parsePush(event: PushEvent): PushPayload {
 
 self.addEventListener("push", (event: PushEvent) => {
   const payload = parsePush(event);
-  const title = payload.title || "Infinity Windows";
+  const title = payload.title || "Forge Windows";
   event.waitUntil(
     self.registration.showNotification(title, {
       body: payload.body,

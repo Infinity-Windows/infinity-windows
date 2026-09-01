@@ -177,7 +177,7 @@ export function Layout() {
         <UndoToast />
         <div className="app-frame">
           <aside className="app-rail" aria-label="Primary">
-            <span className="rail-brand" aria-label="Infinity Windows home">
+            <span className="rail-brand" aria-label="Forge Windows home">
               <InfinityLogo variant="full" size={22} />
             </span>
           </aside>
@@ -275,7 +275,7 @@ export function Layout() {
       <SummonBell />
       <div className="app-frame">
         <aside className="app-rail" aria-label="Primary">
-          <Link to="/" className="rail-brand" aria-label="Infinity Windows home">
+          <Link to="/" className="rail-brand" aria-label="Forge Windows home">
             <InfinityLogo variant="full" size={22} />
           </Link>
           <div className="rail-sync">

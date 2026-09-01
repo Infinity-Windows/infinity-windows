@@ -35,7 +35,7 @@ export function SetNewPassword({ onDone }: { onDone: () => void }) {
   return (
     <div className="signin">
       <div className="signin-brand">
-        <h1>INFINITY</h1>
+        <h1>FORGE</h1>
         <div className="signin-rule">
           <span>Windows &amp; Doors</span>
         </div>

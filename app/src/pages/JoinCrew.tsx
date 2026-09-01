@@ -13,7 +13,7 @@ import {
 } from "../../../supabase/functions/_shared/crewInvites";
 
 /**
- * "You've been added to Infinity Windows" — what a new crew member sees.
+ * "You've been added to Forge Windows" — what a new crew member sees.
  *
  * Reached by tapping the link a supervisor texted them, which carries the code
  * as `?join=…` on the app's own root URL, or by typing the code by hand if the
@@ -113,7 +113,7 @@ export function JoinCrew({
   return (
     <div className="signin">
       <div className="signin-brand">
-        <h1>INFINITY</h1>
+        <h1>FORGE</h1>
         <div className="signin-rule">
           <span>Windows &amp; Doors</span>
         </div>
@@ -181,7 +181,7 @@ export function JoinCrew({
           <p className="muted" style={{ margin: 0, lineHeight: 1.55 }}>
             {preview.existing_account
               ? `Pick a new password for your ${roleWord} login. That's the only step.`
-              : `You've been added to Infinity Windows as a ${roleWord}. Pick a password and you're in — there's no email to check.`}
+              : `You've been added to Forge Windows as a ${roleWord}. Pick a password and you're in — there's no email to check.`}
           </p>
 
           <label className="field-label" htmlFor="join-password">

@@ -83,8 +83,8 @@ export interface WebManifest {
  */
 export function buildWebManifest(base: string | undefined | null): WebManifest {
   return {
-    name: "Infinity Windows & Doors",
-    short_name: "Infinity",
+    name: "Forge Windows and Doors",
+    short_name: "Forge Windows",
     start_url: withBase(base, ""),
     scope: withBase(base, ""),
     display: "standalone",

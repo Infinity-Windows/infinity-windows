@@ -44,7 +44,7 @@ export function PermissionsSettings() {
           onEnable={perms.enableNotifications}
           extraHint={
             perms.notifications === "granted" && perms.pushReason === "ios-not-installed"
-              ? "Add Infinity to your home screen to get alerts when the app is closed."
+              ? "Add Forge Windows to your home screen to get alerts when the app is closed."
               : undefined
           }
           onDisable={

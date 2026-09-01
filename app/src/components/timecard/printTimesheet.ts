@@ -96,7 +96,7 @@ export function printTimesheet(args: {
   @media print { body { margin: 12px; } }
 </style></head><body>
 <h1>${esc(personName)} — Timesheet</h1>
-<p class="sub">${esc(periodLabel)} · Infinity Windows</p>
+<p class="sub">${esc(periodLabel)} · Forge Windows</p>
 <table>
   <thead><tr>
     <th>Date</th><th>Start</th><th>End</th><th class="num">Break</th>

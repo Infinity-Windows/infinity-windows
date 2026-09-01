@@ -95,8 +95,8 @@ describe("buildWebManifest", () => {
 
   it("keeps the identity the installed app is known by", () => {
     const m = buildWebManifest(PAGES);
-    expect(m.name).toBe("Infinity Windows & Doors");
-    expect(m.short_name).toBe("Infinity");
+    expect(m.name).toBe("Forge Windows and Doors");
+    expect(m.short_name).toBe("Forge Windows");
     expect(m.display).toBe("standalone");
     expect(m.background_color).toBe("#0C0B0A");
     expect(m.theme_color).toBe("#0C0B0A");
