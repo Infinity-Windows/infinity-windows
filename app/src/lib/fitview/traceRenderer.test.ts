@@ -3,7 +3,7 @@
 // Smoke tests for the vendored plan tracer: mount with the traced Black
 // Desert fixture and a bare job, drive the staged-save seam.
 import { describe, expect, it } from "vitest";
-import { mountTracePlan } from "./traceRenderer";
+import { bearingFromAnchor, compassName, mountTracePlan } from "./traceRenderer";
 import fixture from "./fixtures/win-2423.json";
 
 function mount(job: unknown, shim: Record<string, unknown> = {}) {
@@ -548,5 +548,162 @@ describe("trace renderer", () => {
         res();
       }, 1400),
     );
+  });
+});
+
+describe("wave N: true north math (pure helpers)", () => {
+  it("compassName buckets by the FOUR compass words, northDeg subtracted first", () => {
+    const used: Record<string, number> = {};
+    // With no north set (0), the raw wall angle is trusted as-is - the exact
+    // pre-wave-N behavior, so an untraced-for-north job keeps its old names.
+    expect(compassName(0, used, 0)).toBe("South");
+    expect(compassName(90, {}, 0)).toBe("East");
+    expect(compassName(180, {}, 0)).toBe("North");   // wraps past 180 to -180
+    expect(compassName(270, {}, 0)).toBe("West");    // wraps to -90
+    // Edge: 44° sits just inside the South bucket's (-45, 45] boundary.
+    expect(compassName(44, {}, 0)).toBe("South");
+    expect(compassName(46, {}, 0)).toBe("East");
+    // A wall that would have named "East" under the old plan-up assumption
+    // renames "South" once true north is declared 90° clockwise of plan-up -
+    // exactly compassName subtracting northDeg before bucketing.
+    expect(compassName(90, {}, 90)).toBe("South");
+    // A repeat in the same bucket still numbers ("South 2"), unaffected by
+    // the north offset - only WHICH bucket a wall lands in changes.
+    const used2: Record<string, number> = {};
+    expect(compassName(44, used2, 0)).toBe("South");
+    expect(compassName(-40, used2, 0)).toBe("South 2");
+  });
+
+  it("bearingFromAnchor: clockwise-from-up, matching northDeg's own definition", () => {
+    const a = { x: 0, y: 0 };
+    expect(bearingFromAnchor(a, { x: 0, y: -10 })).toBeCloseTo(0, 5);    // up
+    expect(bearingFromAnchor(a, { x: 10, y: 0 })).toBeCloseTo(90, 5);    // right
+    expect(bearingFromAnchor(a, { x: 0, y: 10 })).toBeCloseTo(180, 5);   // down
+    expect(bearingFromAnchor(a, { x: -10, y: 0 })).toBeCloseTo(270, 5);  // left
+    // No movement at all: a defined, harmless fallback rather than NaN.
+    expect(bearingFromAnchor(a, { x: 0, y: 0 })).toBe(0);
+  });
+});
+
+describe("wave N: \"Set north\" mode in the tracer", () => {
+  function tstageDrag(host: HTMLElement, pts: [number, number][], id = 9) {
+    const st = host.querySelector("#tstage")!;
+    const mk = (type: string, x: number, y: number) =>
+      st.dispatchEvent(
+        new PointerEvent(type, { bubbles: true, clientX: x, clientY: y, pointerId: id, isPrimary: true }),
+      );
+    mk("pointerdown", pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) mk("pointermove", pts[i][0], pts[i][1]);
+    mk("pointerup", pts[pts.length - 1][0], pts[pts.length - 1][1]);
+  }
+
+  it("a new mode button sits beside Calibrate, and dragging rotates the arrow into the submitted northDeg", () => {
+    const job = {
+      id: "p1", ref: "Job", addr: "",
+      building: {
+        width: 0, depth: 0, height: 3, rise: 0, footprints: [],
+        trace: {
+          cal: { ax: 0, ay: 0, bx: 100, by: 0, value: 10, unit: "m" },
+          polys: [[{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 400 }, { x: 0, y: 400 }]],
+          dots: {},
+        },
+      },
+      windows: [],
+    };
+    const ops: { op: string; building?: Record<string, unknown> }[] = [];
+    const { host, view } = mount(job, { pushOp: (op: never) => ops.push(op) });
+
+    const calBtn = host.querySelector('[data-mode="cal"]')!;
+    const northBtn = host.querySelector('[data-mode="north"]') as HTMLButtonElement;
+    expect(northBtn).toBeTruthy();
+    expect(northBtn.previousElementSibling).toBe(calBtn);
+    expect(northBtn.getAttribute("aria-pressed")).toBe("false");
+
+    northBtn.click();
+    expect(northBtn.getAttribute("aria-pressed")).toBe("true");
+    // The 400x400 square's bbox center is (200,200) — happy-dom's zeroed
+    // getBoundingClientRect makes toWorld the identity, same as the box
+    // erase test above. Dragging from the anchor straight right sets north
+    // to 90 (bearingFromAnchor's own "right = 90" convention).
+    tstageDrag(host, [[200, 200], [300, 200]]);
+    expect(host.querySelector('#ol [data-north-handle]')).toBeTruthy();
+
+    (host.querySelector("#submitBtn") as HTMLButtonElement).click();
+    const bld = ops.find((o) => o.op === "building")!.building as { northDeg?: number };
+    expect(bld.northDeg).toBeCloseTo(90, 1);
+    view.destroy();
+  });
+
+  it("north is absent from the submit when never set - no fabricated 0", () => {
+    const job = {
+      id: "p1", ref: "Job", addr: "",
+      building: {
+        width: 0, depth: 0, height: 3, rise: 0, footprints: [],
+        trace: {
+          cal: { ax: 0, ay: 0, bx: 100, by: 0, value: 10, unit: "m" },
+          polys: [[{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 400 }, { x: 0, y: 400 }]],
+          dots: {},
+        },
+      },
+      windows: [],
+    };
+    const ops: { op: string; building?: Record<string, unknown> }[] = [];
+    const { host, view } = mount(job, { pushOp: (op: never) => ops.push(op) });
+    (host.querySelector("#submitBtn") as HTMLButtonElement).click();
+    const bld = ops.find((o) => o.op === "building")!.building as { northDeg?: number };
+    expect("northDeg" in bld).toBe(false);
+    view.destroy();
+  });
+
+  it("restores a previously-set northDeg from the shim, editable again", () => {
+    const job = {
+      id: "p1", ref: "Job", addr: "",
+      building: {
+        width: 0, depth: 0, height: 3, rise: 0, footprints: [],
+        trace: {
+          cal: { ax: 0, ay: 0, bx: 100, by: 0, value: 10, unit: "m" },
+          polys: [[{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 400 }, { x: 0, y: 400 }]],
+          dots: {},
+        },
+      },
+      windows: [],
+    };
+    const ops: { op: string; building?: Record<string, unknown> }[] = [];
+    const { host, view } = mount(job, { pushOp: (op: never) => ops.push(op), northDeg: 15 });
+    // Untouched, it rides through the next submit exactly as it was.
+    (host.querySelector("#submitBtn") as HTMLButtonElement).click();
+    const bld = ops.find((o) => o.op === "building")!.building as { northDeg?: number };
+    expect(bld.northDeg).toBe(15);
+    view.destroy();
+  });
+
+  it("dragging north on a building that already has named walls warns once", () => {
+    const toasts: string[] = [];
+    const { host, view } = mount(fixture, { toast: (m: string) => toasts.push(m) });
+    (host.querySelector('[data-mode="north"]') as HTMLButtonElement).click();
+    tstageDrag(host, [[0, 0], [40, 0], [40, 5]]);
+    expect(toasts.filter((m) => m === "Wall names update on the next trace submit")).toHaveLength(1);
+    view.destroy();
+  });
+
+  it("dragging north on a never-submitted building (no named walls yet) stays quiet", () => {
+    const toasts: string[] = [];
+    const job = {
+      id: "p1", ref: "Job", addr: "",
+      building: {
+        width: 0, depth: 0, height: 3, rise: 0, footprints: [],
+        trace: {
+          cal: { ax: 0, ay: 0, bx: 100, by: 0, value: 10, unit: "m" },
+          polys: [[{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 400 }, { x: 0, y: 400 }]],
+          dots: {},
+        },
+      },
+      windows: [],
+    };
+    const { host, view } = mount(job, { toast: (m: string) => toasts.push(m) });
+    (host.querySelector('[data-mode="north"]') as HTMLButtonElement).click();
+    tstageDrag(host, [[200, 200], [250, 200]]);
+    expect(toasts).not.toContain("Wall names update on the next trace submit");
+    view.destroy();
   });
 });

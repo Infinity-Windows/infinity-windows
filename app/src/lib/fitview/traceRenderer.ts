@@ -21,7 +21,50 @@
 
 import { elevationsOf } from "./fitviewRenderer";
 
-const TEMPLATE = "\n<div class=\"app loading\">\n\n  <header class=\"titleblock\">\n    <div class=\"tb-row\">\n      <div>\n        <div class=\"tb-ref\" id=\"jobRef\"></div>\n        <div class=\"tb-addr\" id=\"jobAddr\"></div>\n      </div>\n      \n    </div>\n\n    \n    <div class=\"tabs\">\n      <button class=\"tab\" aria-selected=\"true\">Trace plan</button>\n    </div>\n  </header>\n\n  <div class=\"boot\" id=\"boot\">\n    <b>Loading job</b>\n    <span id=\"bootMsg\">Fetching schedule</span>\n  </div>\n\n  <section class=\"view\">\n    <div class=\"toolrow\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Tool\">\n        <button data-mode=\"select\" aria-pressed=\"true\">Select</button>\n        <button data-mode=\"draw\" aria-pressed=\"false\">Draw</button>\n        <button data-mode=\"cal\" aria-pressed=\"false\">Calibrate</button>\n      </div>\n      <button class=\"mini\" id=\"closeShape\">Close shape</button>\n      <button class=\"mini\" id=\"undoPt\">Undo point</button>\n      <button class=\"mini\" id=\"undoAct\" disabled>Undo action</button>\n      <button class=\"mini\" id=\"boxErase\" aria-pressed=\"false\">Delete box</button>\n      <button class=\"mini\" id=\"delPt\" hidden>Delete point</button>\n      <button class=\"mini\" id=\"delBld\" hidden>Delete building</button>\n      <button class=\"mini\" id=\"removeDot\" hidden>Remove dot</button>\n      <button class=\"mini\" id=\"autoBtn\" hidden>Auto-place dots</button>\n      <button class=\"mini\" id=\"autoTrace\" hidden>Auto-trace building</button>\n      <button class=\"mini\" id=\"confirmSuggBtn\" hidden>Confirm all</button>\n      <button class=\"mini\" id=\"dismissSugg\" hidden>Dismiss</button>\n      <span class=\"cal-lab\">Line =</span>\n      <input class=\"cal-in\" id=\"calM\" type=\"number\" step=\"0.1\" placeholder=\"ft\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Units\">\n        <button type=\"button\" data-unit=\"ft\" aria-pressed=\"true\">ft</button>\n        <button type=\"button\" data-unit=\"m\" aria-pressed=\"false\">m</button>\n      </div>\n      <button class=\"mini\" id=\"rescaleBtn\" hidden>Rescale</button>\n      <button class=\"mini hot\" id=\"submitBtn\" style=\"margin-left:auto\">Submit</button>\n    </div>\n\n    <div class=\"strip\" id=\"storyRail\"></div>\n\n    <div class=\"tray\" id=\"tray\"><span class=\"tray-lab\">Drag onto a wall:</span></div>\n\n    <div class=\"tstage\" id=\"tstage\">\n      <div class=\"world\" id=\"world\">\n        <img id=\"plan\" alt=\"\">\n        <svg id=\"ol\" xmlns=\"http://www.w3.org/2000/svg\"></svg>\n      </div>\n      <div class=\"noplan\" id=\"noplan\" hidden>\n        <span>No plan image on this job yet</span>\n        <label class=\"pbtn\">Load plan image\n          <input id=\"planFile\" type=\"file\" accept=\"image/*\" hidden>\n        </label>\n      </div>\n    </div>\n\n    <div class=\"hint\" style=\"padding:8px 16px;font-family:var(--f-mono);font-size:9px;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-3)\" id=\"hint\">\n      Draw: tap to add points, tap the first point to close &middot; Select: drag points and dots &middot; pinch or scroll to zoom\n    </div>\n  </section>\n\n  <div class=\"foot\">\n    Trace the outside walls &middot; each closed shape is one building &middot; dots snap to the nearest wall\n  </div>\n\n  <div class=\"toast\" id=\"toast\" role=\"status\" aria-live=\"polite\"></div>\n</div>\n";
+/**
+ * Wave N: true north math. Both pure and exported at module scope (not
+ * inside mountTracePlan's closure) so they are unit-testable without a
+ * mounted renderer — the same reason `inches`/`elevationsOf` in
+ * fitviewRenderer.ts live at module scope.
+ */
+
+/** Wrap any angle into (-180, 180], the range compassName's thresholds
+ * assume (atan2's own natural range). */
+function wrapAngle180(a) {
+  return (((a + 180) % 360) + 360) % 360 - 180;
+}
+
+/**
+ * The surveyor's drag, turned into a clockwise-from-plan-up bearing: 0° is
+ * straight "up" the sheet, 90° is right (east-ish), matching northDeg's own
+ * definition. Plan-pixel space only — angle is invariant under the uniform
+ * scale+translate the submit handler applies later, so this is exactly the
+ * same convention compassName's wall angle `A` uses.
+ */
+export function bearingFromAnchor(anchor, p) {
+  var dx = p.x - anchor.x, dy = p.y - anchor.y;
+  if (!dx && !dy) return 0;
+  return (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+}
+
+/**
+ * A wall's outward-normal angle `A` (survey space, plan-up assumed as 0°),
+ * bucketed into the four compass names. Before this wave every trace assumed
+ * plan-up = true north; now `northDeg` (the tracer's "Set north" offset, or
+ * 0 when never set) is subtracted first so NEW submits name walls by TRUE
+ * compass instead. Only the four buckets ever become a wall NAME — NE/SW etc.
+ * live on the mini-map's rose only (fitviewRenderer.ts), never here: chips,
+ * elevation labels and crews' habits all use the four words.
+ */
+export function compassName(A, used, northDeg) {
+  var A2 = wrapAngle180(A - (typeof northDeg === "number" ? northDeg : 0));
+  var base = (A2 > -45 && A2 <= 45) ? "South" : (A2 > 45 && A2 <= 135) ? "East" :
+             (A2 > -135 && A2 <= -45) ? "West" : "North";
+  used[base] = (used[base] || 0) + 1;
+  return used[base] > 1 ? base + " " + used[base] : base;
+}
+
+const TEMPLATE = "\n<div class=\"app loading\">\n\n  <header class=\"titleblock\">\n    <div class=\"tb-row\">\n      <div>\n        <div class=\"tb-ref\" id=\"jobRef\"></div>\n        <div class=\"tb-addr\" id=\"jobAddr\"></div>\n      </div>\n      \n    </div>\n\n    \n    <div class=\"tabs\">\n      <button class=\"tab\" aria-selected=\"true\">Trace plan</button>\n    </div>\n  </header>\n\n  <div class=\"boot\" id=\"boot\">\n    <b>Loading job</b>\n    <span id=\"bootMsg\">Fetching schedule</span>\n  </div>\n\n  <section class=\"view\">\n    <div class=\"toolrow\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Tool\">\n        <button data-mode=\"select\" aria-pressed=\"true\">Select</button>\n        <button data-mode=\"draw\" aria-pressed=\"false\">Draw</button>\n        <button data-mode=\"cal\" aria-pressed=\"false\">Calibrate</button>\n        <button data-mode=\"north\" aria-pressed=\"false\">Set north</button>\n      </div>\n      <button class=\"mini\" id=\"closeShape\">Close shape</button>\n      <button class=\"mini\" id=\"undoPt\">Undo point</button>\n      <button class=\"mini\" id=\"undoAct\" disabled>Undo action</button>\n      <button class=\"mini\" id=\"boxErase\" aria-pressed=\"false\">Delete box</button>\n      <button class=\"mini\" id=\"delPt\" hidden>Delete point</button>\n      <button class=\"mini\" id=\"delBld\" hidden>Delete building</button>\n      <button class=\"mini\" id=\"removeDot\" hidden>Remove dot</button>\n      <button class=\"mini\" id=\"autoBtn\" hidden>Auto-place dots</button>\n      <button class=\"mini\" id=\"autoTrace\" hidden>Auto-trace building</button>\n      <button class=\"mini\" id=\"confirmSuggBtn\" hidden>Confirm all</button>\n      <button class=\"mini\" id=\"dismissSugg\" hidden>Dismiss</button>\n      <span class=\"cal-lab\">Line =</span>\n      <input class=\"cal-in\" id=\"calM\" type=\"number\" step=\"0.1\" placeholder=\"ft\">\n      <div class=\"seg\" role=\"group\" aria-label=\"Units\">\n        <button type=\"button\" data-unit=\"ft\" aria-pressed=\"true\">ft</button>\n        <button type=\"button\" data-unit=\"m\" aria-pressed=\"false\">m</button>\n      </div>\n      <button class=\"mini\" id=\"rescaleBtn\" hidden>Rescale</button>\n      <button class=\"mini hot\" id=\"submitBtn\" style=\"margin-left:auto\">Submit</button>\n    </div>\n\n    <div class=\"strip\" id=\"storyRail\"></div>\n\n    <div class=\"tray\" id=\"tray\"><span class=\"tray-lab\">Drag onto a wall:</span></div>\n\n    <div class=\"tstage\" id=\"tstage\">\n      <div class=\"world\" id=\"world\">\n        <img id=\"plan\" alt=\"\">\n        <svg id=\"ol\" xmlns=\"http://www.w3.org/2000/svg\"></svg>\n      </div>\n      <div class=\"noplan\" id=\"noplan\" hidden>\n        <span>No plan image on this job yet</span>\n        <label class=\"pbtn\">Load plan image\n          <input id=\"planFile\" type=\"file\" accept=\"image/*\" hidden>\n        </label>\n      </div>\n    </div>\n\n    <div class=\"hint\" style=\"padding:8px 16px;font-family:var(--f-mono);font-size:9px;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-3)\" id=\"hint\">\n      Draw: tap to add points, tap the first point to close &middot; Select: drag points and dots &middot; pinch or scroll to zoom\n    </div>\n  </section>\n\n  <div class=\"foot\">\n    Trace the outside walls &middot; each closed shape is one building &middot; dots snap to the nearest wall\n  </div>\n\n  <div class=\"toast\" id=\"toast\" role=\"status\" aria-live=\"polite\"></div>\n</div>\n";
 
 export function mountTracePlan(host, job, shim) {
   var SHIM = shim || {};
@@ -78,6 +121,19 @@ export function mountTracePlan(host, job, shim) {
   var polys = stories[0].polys;
   var cal = { a: null, b: null };
   var dots = stories[0].dots;
+  /* Wave N: true north - a clockwise-degrees-from-plan-up offset the
+     surveyor sets by rotating an arrow to match the plan's own printed
+     north callout ("Set north" mode, below). Global like calibration: one
+     plan image, one offset. null = never set, which must stay visibly
+     different from 0deg (an explicit "plan-up IS north"). Restored from
+     whatever this outline already carries so re-opening the tracer doesn't
+     forget it; editable any time, and rides along on every Submit exactly
+     like longSideM/wallHeightM. NEVER read anywhere near wall angles, camera
+     math or geometry - only compassName (submit, below) and the mini-map's
+     rose (fitviewRenderer.ts, a display-only overlay) ever look at it. */
+  var north = (typeof SHIM.northDeg === "number") ? SHIM.northDeg : null;
+  var northAnchor = null;      // world (plan-pixel) point the arrow pivots on
+  var northNoteShown = false;  // one toast per "Set north" visit, not per drag tick
   /* Vision placement (wave V-A): suggestions the AI found on the plan but
      nobody has looked at yet. Same per-story shape as `dots` — a suggestion
      lives on whichever story it was seeded onto and is invisible on any
@@ -117,7 +173,7 @@ export function mountTracePlan(host, job, shim) {
      (and is itself undoable). Snapshots are taken BEFORE the mutation. */
   var history = [];
   function snapshot() {
-    history.push(JSON.stringify({ stories: stories, cur: cur, cal: cal, dotMeta: dotMeta }));
+    history.push(JSON.stringify({ stories: stories, cur: cur, cal: cal, dotMeta: dotMeta, north: north }));
     if (history.length > 60) history.shift();
     $("undoAct").disabled = false;
   }
@@ -135,6 +191,7 @@ export function mountTracePlan(host, job, shim) {
     cur = Math.min(s.cur || 0, stories.length - 1);
     cal = s.cal;
     dotMeta = s.dotMeta || {};
+    north = (typeof s.north === "number") ? s.north : null;
     bindStory();
     buildStoryRail();
     selV = null;
@@ -189,6 +246,38 @@ export function mountTracePlan(host, job, shim) {
       }
     });
     return best;
+  }
+
+  /* Wave N: where the north arrow pivots - the bbox center of everything
+     closed so far (so it sits over the building being traced), or the
+     current viewport's center in world space for a blank sheet. Computed
+     once per "Set north" visit, not every frame, so the arrow doesn't jump
+     around as new points get drawn while it's up. */
+  function northDefaultAnchor() {
+    var pts = [];
+    polys.forEach(function (p) { if (p.closed) pts = pts.concat(p.pts); });
+    if (pts.length) {
+      var xs = pts.map(function (p) { return p.x; });
+      var ys = pts.map(function (p) { return p.y; });
+      return { x: (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2,
+               y: (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2 };
+    }
+    var r = tstage.getBoundingClientRect();
+    return toWorld(r.left + r.width / 2, r.top + r.height / 2);
+  }
+
+  /* Wave N: has THIS building already been submitted with named walls at
+     least once? Only then does changing north matter to anyone yet - a
+     never-submitted trace has no names to go stale. Checked across every
+     story's footprints, legacy top-level ones included. */
+  function buildingHasNamedWalls() {
+    var b = JOB && JOB.building;
+    if (!b) return false;
+    var fps = [].concat(b.footprints || []);
+    (b.stories || []).forEach(function (st) { fps = fps.concat(st.footprints || []); });
+    return fps.some(function (fp) {
+      return (fp || []).some(function (v) { return !!(v && v.name); });
+    });
   }
 
   /* ---------- rendering ---------- */
@@ -286,6 +375,32 @@ export function mountTracePlan(host, job, shim) {
         'fill="' + ringCol + '" font-family="var(--f-mono)" font-weight="700" font-size="' + (11 * px) +
         '" style="pointer-events:none">' + id + '</text></g>');
     });
+
+    /* Wave N: the draggable north arrow, "Set north" mode only. Purely a
+       plan-space overlay drawn like everything else here - dragging it never
+       touches polys/dots/cal, only the `north` degrees value the submit
+       handler reads (below). */
+    if (mode === "north") {
+      if (!northAnchor) northAnchor = northDefaultAnchor();
+      var na = northAnchor, ndeg = (north == null ? 0 : north);
+      var nrad = ndeg * Math.PI / 180;
+      var NR = 60 / view.k;
+      var nx = na.x + NR * Math.sin(nrad), ny = na.y - NR * Math.cos(nrad);
+      s.push('<circle cx="' + na.x + '" cy="' + na.y + '" r="' + NR +
+        '" fill="none" stroke="var(--accent)" stroke-dasharray="' + (4 * px) +
+        '" stroke-width="' + px + '" pointer-events="none"/>');
+      s.push('<line x1="' + na.x + '" y1="' + na.y + '" x2="' + nx + '" y2="' + ny +
+        '" stroke="var(--accent)" stroke-width="' + (3 * px) + '" data-north-handle="1"/>');
+      s.push('<circle cx="' + nx + '" cy="' + ny + '" r="' + (12 * px) +
+        '" fill="var(--accent)" stroke="#fff" stroke-width="' + (2 * px) +
+        '" data-north-handle="1"/>');
+      s.push('<circle cx="' + na.x + '" cy="' + na.y + '" r="' + (5 * px) +
+        '" fill="var(--accent)" pointer-events="none" data-north-anchor="1"/>');
+      s.push('<text x="' + nx + '" y="' + (ny - 16 * px) + '" text-anchor="middle" ' +
+        'font-family="var(--f-mono)" font-weight="700" font-size="' + (12 * px) +
+        '" fill="var(--accent)" pointer-events="none">' +
+        (north == null ? "N?" : Math.round(north) + "°") + '</text>');
+    }
 
     ol.innerHTML = s.join("");
     $("delPt").hidden = !selV;
@@ -451,13 +566,19 @@ export function mountTracePlan(host, job, shim) {
       gesture = g;
       return;
     }
-    if (t.dataset && t.dataset.v) {
+    if (t.dataset && t.dataset.northHandle) {
+      g.type = "north";
+    } else if (t.dataset && t.dataset.v) {
       var pv = t.dataset.v.split(",");
       g.type = "vertex"; g.p = +pv[0]; g.i = +pv[1];
     } else if (t.closest && t.closest("[data-dot]")) {
       g.type = "dot"; g.id = t.closest("[data-dot]").dataset.dot;
     } else if (t.closest && t.closest("[data-sugg]")) {
       g.type = "sugg"; g.id = t.closest("[data-sugg]").dataset.sugg;
+    } else if (mode === "north") {
+      // Set-north mode is exclusive: any drag on the sheet rotates the
+      // arrow, forgiving of exactly where the finger lands on it.
+      g.type = "north";
     } else {
       g.type = "empty";
     }
@@ -504,6 +625,19 @@ export function mountTracePlan(host, job, shim) {
       var w2 = toWorld(e.clientX, e.clientY);
       var sn = snapToWalls(w2);
       dots[gesture.id] = sn ? { x: sn.x, y: sn.y } : { x: w2.x, y: w2.y };
+      redraw();
+    } else if (gesture.type === "north") {
+      // Wave N: rotate the arrow to follow the finger. Never touches
+      // polys/dots/cal/geometry - `north` is read only at Submit (below)
+      // and by the mini-map's rose overlay, nowhere near wall math.
+      if (!gesture.snap) { snapshot(); gesture.snap = true; }
+      var wN = toWorld(e.clientX, e.clientY);
+      var nextNorth = bearingFromAnchor(northAnchor, wN);
+      if (!northNoteShown && buildingHasNamedWalls()) {
+        northNoteShown = true;
+        SHIM.toast("Wall names update on the next trace submit");
+      }
+      north = nextNorth;
       redraw();
     } else if (gesture.type === "sugg") {
       // Live preview while dragging a suggested dot - not yet confirmed
@@ -700,10 +834,17 @@ export function mountTracePlan(host, job, shim) {
   Array.prototype.forEach.call(document.querySelectorAll("[data-mode]"), function (b) {
     b.addEventListener("click", function () {
       mode = b.dataset.mode;
+      if (mode === "north") {
+        // Fresh each visit: re-anchor over whatever's drawn now, and let the
+        // named-walls note fire again if it applies.
+        northAnchor = northDefaultAnchor();
+        northNoteShown = false;
+      }
       Array.prototype.forEach.call(document.querySelectorAll("[data-mode]"), function (x) {
         x.setAttribute("aria-pressed", String(x === b));
       });
       updateHint();
+      redraw();
     });
   });
 
@@ -712,6 +853,7 @@ export function mountTracePlan(host, job, shim) {
       eraseArm ? "Drag ONE box over outline points to erase them - tap Delete box again to cancel" :
       mode === "draw" ? "Tap to add wall points - tap the first point (or Close shape) to finish a building, then keep tapping to start the next" :
       mode === "cal" ? "Tap two points a known distance apart on the plan, then type the real distance in metres" :
+      mode === "north" ? "Drag the arrow to match the plan's printed north - it stores when you submit" :
       "Drag points and dots to adjust - tap one to select it, then Delete or Remove in the toolbar";
   }
 
@@ -1038,13 +1180,6 @@ export function mountTracePlan(host, job, shim) {
 
   /* ---------- submit ---------- */
 
-  function compassName(A, used) {
-    var base = (A > -45 && A <= 45) ? "South" : (A > 45 && A <= 135) ? "East" :
-               (A > -135 && A <= -45) ? "West" : "North";
-    used[base] = (used[base] || 0) + 1;
-    return used[base] > 1 ? base + " " + used[base] : base;
-  }
-
   $("submitBtn").addEventListener("click", function () {
     // stories: every story must have a closed footprint before anything
     // submits - a floating upper box with no walls under it helps nobody.
@@ -1098,7 +1233,7 @@ export function mountTracePlan(host, job, shim) {
           var b2 = pts[(i + 1) % pts.length];
           var A = Math.atan2(-(b2.z - p.z), b2.x - p.x) * 180 / Math.PI;
           return { x: Math.round(p.x * 100) / 100, z: Math.round(p.z * 100) / 100,
-                   name: compassName(A, used) };
+                   name: compassName(A, used, north) };
         });
       });
     }
@@ -1327,6 +1462,10 @@ export function mountTracePlan(host, job, shim) {
         dots: roundDots(stories[0].dots)
       }
     };
+    // Wave N: rides along whenever it's set, same as longSideM/wallHeightM -
+    // MapsTrace.tsx lifts it into features.fitview.northDeg on save. Absent
+    // when never set, so an untraced-for-north job never gets a fabricated 0.
+    if (north != null) bld.northDeg = Math.round(north * 10) / 10;
 
     SHIM.pushOp({ op: "building", building: bld });
     moves.forEach(function (w) { SHIM.pushOp({ op: "upsert", window: w }); });
