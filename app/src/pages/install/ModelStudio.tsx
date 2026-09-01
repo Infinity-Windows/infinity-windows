@@ -81,7 +81,7 @@ import {
   markKeyOf,
   resolveMarkConfig,
 } from "../../lib/modelstudio/fromProject";
-import { indexSpecsByMark } from "../../lib/install/specs";
+import { indexSpecsByMark, specForOpeningCode } from "../../lib/install/specs";
 import { UnitBuilder } from "../../components/studio/UnitBuilder";
 import { StudioAssistCard } from "../../components/studio/StudioAssistCard";
 import { FlatElevationsView } from "../../components/studio/FlatElevationsView";
@@ -109,6 +109,7 @@ import {
   unitMarkLabel,
   unitPaneSummary,
   unitSizeLabel,
+  unitStyleColorLine,
   unitTypeLabel,
 } from "../../lib/modelstudio/unitIdentity";
 import type { StudioItem } from "../../lib/modelstudio/core";
@@ -2888,6 +2889,16 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   // actual "where do the parts sit" call; this just feeds it.
   const selMark = selUnit?.metadata?.itemName?.trim() || null;
   const selMarkKey = selMark ? markKeyOf(selMark) : null;
+  // Identity card (owner ask: describe the CAD sheet, not the catalog
+  // build) — the selected unit's own spec row, the ONE source unitPaneSummary/
+  // unitTypeLabel/unitStyleColorLine are allowed to read a mechanism or an
+  // operation string off. Null for a Studio-only decoration with no matching
+  // mark, or a mark the job's specs never covered — both degrade to plain
+  // W×L rather than a crash or a guess.
+  const selSpec = useMemo(
+    () => (selMark ? specForOpeningCode(specIndex, selMark) : null),
+    [selMark, specIndex],
+  );
   const selPartsReport = useMemo(
     () => (selMarkKey ? unitParts(packages.data ?? [], projectId, selMarkKey) : null),
     [selMarkKey, packages.data, projectId],
@@ -3390,21 +3401,34 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         <details open>
           <summary className="tcx-label">Selected unit</summary>
           <div className="studio-palette-body">
-            <p className="muted" style={{ margin: 0, fontSize: 11.5 }}>
-              {unitMarkLabel(selUnit.metadata?.itemName) ?? selUnit.metadata?.itemName ?? "Unit"}
-            </p>
-            {/* Map-parity identity line (owner ask): type, W×L and pane
-                breakdown, in the SAME vocabulary the elevations sheet uses
-                for a tapped window — unitIdentity.ts wraps its helpers so
-                the two screens can never drift apart. Absent only when the
-                unit has no config yet (a mid-load legacy item). */}
+            {/* Identity card (owner ask, 2026-09-01: the old three lines of
+                plain text were "visually poor" AND — the worse bug — spoke
+                for the catalog build instead of the CAD sheet). The badge is
+                the mark ALONE, un-crossable by construction: unitMarkLabel
+                reads straight off this placement's own itemName, the same
+                field the 3D chip and the elevations sheet key on, never a
+                size or a lookup that could confuse two same-size marks
+                (Mad Moose: 1/7/8 all spec at 167.5x143.5in). Everything past
+                the badge/type chip is unitIdentity.ts's own read of the
+                SPEC (selSpec) — a mid-load legacy item with no config yet
+                still gets a badge, just no size/pane/style lines under it. */}
             {(() => {
               const cfg = selUnit.metadata?.unitConfig as UnitConfig | undefined;
-              if (!cfg) return null;
+              const mark =
+                unitMarkLabel(selUnit.metadata?.itemName) ?? selUnit.metadata?.itemName ?? "Unit";
+              const typeChip = cfg ? unitTypeLabel(cfg, selSpec?.operation) : null;
+              const paneLine = cfg ? unitPaneSummary(cfg, selSpec) : null;
+              const styleLine = unitStyleColorLine(selSpec);
               return (
-                <p className="muted" style={{ margin: "2px 0 0", fontSize: 11.5 }}>
-                  {unitTypeLabel(cfg)} · {unitSizeLabel(cfg)} · {unitPaneSummary(cfg)}
-                </p>
+                <div className="studio-identity">
+                  <div className="studio-identity-head">
+                    <span className="studio-mark-badge">{mark}</span>
+                    {typeChip && <span className="studio-type-chip">{typeChip}</span>}
+                  </div>
+                  {cfg && <p className="studio-identity-size">{unitSizeLabel(cfg)}</p>}
+                  {paneLine && <p className="studio-identity-panes">{paneLine}</p>}
+                  {styleLine && <p className="studio-identity-style">{styleLine}</p>}
+                </div>
               );
             })()}
             {/* Where's-my-glass tap-through (#15/#18): the mark's package

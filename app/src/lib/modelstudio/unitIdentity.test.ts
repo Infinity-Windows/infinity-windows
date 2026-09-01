@@ -193,7 +193,7 @@ describe("unitPaneSummary", () => {
   });
 
   it("stays honestly silent (null) when the spec has no panel breakdown at all", () => {
-    expect(unitPaneSummary({ kind: "window" }, { operation: "Fixed", extra: null })).toBeNull();
+    expect(unitPaneSummary({ kind: "window" }, { extra: null })).toBeNull();
     expect(unitPaneSummary({ kind: "window" }, null)).toBeNull();
     expect(unitPaneSummary({ kind: "window" }, undefined)).toBeNull();
   });
