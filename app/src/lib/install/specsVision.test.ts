@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { MarkSpecDraft } from "./specs";
+import { madMooseMark7Grid, type MarkSpecDraft, type PaneGrid } from "./specs";
 import {
+  cleanPaneGrid,
   deriveEgress,
   deriveTempered,
   normalizeMarkLabel,
@@ -204,6 +205,94 @@ describe("prepVisionSpec", () => {
     } as RawVisionMark);
     // Both rejected (unparsed width, after_panel out of range) → extra empty.
     expect(prepped.extra).toBeNull();
+  });
+
+  // THE GRID CONTRACT (wave G): Mad Moose mark 7's pictured cell reads as
+  // mullion columns, not a flat row — the vision model returns the shape
+  // verbatim and it lands at extra.pane_grid, additional to (never instead
+  // of) whatever extra.panels/corner/etc. this mark also carries.
+  it("stores a valid pane_grid verbatim at extra.pane_grid (Mad Moose mark 7)", () => {
+    const prepped = prepVisionSpec({
+      mark: "#7",
+      style: "Storefront",
+      size_code: null,
+      operation: null,
+      pane_grid: madMooseMark7Grid,
+    } as RawVisionMark);
+    expect((prepped.extra as { pane_grid: PaneGrid }).pane_grid).toEqual(
+      madMooseMark7Grid,
+    );
+  });
+
+  it("never invents a pane_grid — absent on the sheet stays absent in extra", () => {
+    const prepped = prepVisionSpec({
+      mark: "#1",
+      style: "Fixed",
+      size_code: "3060",
+      operation: "Fixed",
+    } as RawVisionMark);
+    expect(prepped.extra).toBeNull();
+  });
+
+  it("drops a pane_grid with a bad op rather than storing a half-true grid", () => {
+    const prepped = prepVisionSpec({
+      mark: "#7",
+      style: "Storefront",
+      pane_grid: {
+        columns: [{ width_in: 38, segments: [{ op: "SLIDER", height_in: 96 }] }],
+      },
+    } as RawVisionMark);
+    expect(prepped.extra).toBeNull();
+  });
+});
+
+describe("cleanPaneGrid", () => {
+  it("accepts THE GRID CONTRACT's own example verbatim", () => {
+    expect(cleanPaneGrid(madMooseMark7Grid)).toEqual(madMooseMark7Grid);
+  });
+
+  it("normalizes a lowercase/mixed-case op and leaf from the wire", () => {
+    const cleaned = cleanPaneGrid({
+      columns: [
+        { width_in: 38, segments: [{ op: "f", height_in: 47.5 }, { op: "Door", height_in: 96, leaf: "l" }] },
+      ],
+    });
+    expect(cleaned?.columns[0].segments).toEqual([
+      { op: "F", height_in: 47.5 },
+      { op: "door", height_in: 96, leaf: "L" },
+    ]);
+  });
+
+  it("omits width_in/height_in rather than storing them as 0 when unparseable", () => {
+    const cleaned = cleanPaneGrid({
+      columns: [{ segments: [{ op: "F", height_in: "not a number" }] }],
+    });
+    expect(cleaned).toEqual({ columns: [{ segments: [{ op: "F" }] }] });
+  });
+
+  it("rejects the whole grid on an unrecognized op — never guesses", () => {
+    expect(
+      cleanPaneGrid({ columns: [{ segments: [{ op: "hinge-l" }] }] }),
+    ).toBeNull();
+  });
+
+  it("rejects a grid with no columns or an empty segments list", () => {
+    expect(cleanPaneGrid({ columns: [] })).toBeNull();
+    expect(cleanPaneGrid({ columns: [{ segments: [] }] })).toBeNull();
+  });
+
+  it("rejects non-object and malformed input without throwing", () => {
+    expect(cleanPaneGrid(null)).toBeNull();
+    expect(cleanPaneGrid(undefined)).toBeNull();
+    expect(cleanPaneGrid("F,F,door")).toBeNull();
+    expect(cleanPaneGrid({ columns: "not an array" })).toBeNull();
+  });
+
+  it("drops leaf when it isn't L/R rather than failing the segment", () => {
+    const cleaned = cleanPaneGrid({
+      columns: [{ segments: [{ op: "door", height_in: 96, leaf: "center" }] }],
+    });
+    expect(cleaned?.columns[0].segments[0]).toEqual({ op: "door", height_in: 96 });
   });
 });
 

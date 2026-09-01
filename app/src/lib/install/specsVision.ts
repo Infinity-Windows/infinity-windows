@@ -21,7 +21,15 @@ import {
   resolveSpecSize,
   sizeMismatchRecord,
 } from "./printedSize";
-import { decodeSizeCode, mergeSpecsByMark, type MarkSpecDraft } from "./specs";
+import {
+  decodeSizeCode,
+  mergeSpecsByMark,
+  type MarkSpecDraft,
+  type PaneGrid,
+  type PaneGridColumn,
+  type PaneGridOp,
+  type PaneGridSegment,
+} from "./specs";
 
 /** One verbatim mark object as returned by the vision edge function. */
 export interface RawVisionMark {
@@ -51,6 +59,10 @@ export interface RawVisionMark {
   panel_ops?: unknown;
   corner?: unknown;
   inset_outset?: unknown;
+  /** THE GRID CONTRACT (wave G) — the pictured cell's real mullion-column
+   * design, when the drawing shows one (see {@link PaneGrid}). Null/absent
+   * for the ordinary flat-row case, which `panel_widths` above still covers. */
+  pane_grid?: unknown;
 }
 
 function str(v: unknown): string | null {
@@ -229,6 +241,88 @@ export function deriveEgress(style: unknown, operation: unknown): boolean | null
   return /egress/i.test(hay) ? true : null;
 }
 
+// --- pane_grid (THE GRID CONTRACT, wave G) ---
+//
+// The edge function already validates its own pane_grid read before it ever
+// reaches this module (same shape rules, mirrored server-side in
+// supabase/functions/extract-specs). This re-validates client-side anyway —
+// the same defense-in-depth `corner` and `bbox` already get here, because
+// nothing downstream should have to trust a network payload's shape.
+
+/** op vocabulary law: docs/window-vendor-conventions.md — F fixed, X
+ * operable/slider, "door" a swing leaf. Case-insensitive on the wire,
+ * canonicalized here. */
+function cleanPaneGridOp(raw: unknown): PaneGridOp | null {
+  const s = typeof raw === "string" ? raw.trim().toUpperCase() : "";
+  if (s === "F" || s === "X") return s;
+  if (s === "DOOR") return "door";
+  return null;
+}
+
+function cleanPaneGridLeaf(raw: unknown): "L" | "R" | undefined {
+  const s = typeof raw === "string" ? raw.trim().toUpperCase() : "";
+  return s === "L" || s === "R" ? (s as "L" | "R") : undefined;
+}
+
+/** A dimension in inches: finite, positive, and under a size no real unit
+ * reaches (50 ft is generous headroom against the model echoing a
+ * whole-building dimension by mistake). Omitted/unusable → undefined, never
+ * a stored 0 — the contract reads a missing key as "divide evenly". */
+function cleanPaneGridInches(raw: unknown): number | undefined {
+  if (raw == null || raw === "") return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 && n <= 600 ? n : undefined;
+}
+
+function cleanPaneGridSegment(raw: unknown): PaneGridSegment | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const op = cleanPaneGridOp(o.op);
+  if (!op) return null;
+  const segment: PaneGridSegment = { op };
+  const height = cleanPaneGridInches(o.height_in ?? o.heightIn);
+  if (height != null) segment.height_in = height;
+  const leaf = cleanPaneGridLeaf(o.leaf);
+  if (leaf) segment.leaf = leaf;
+  return segment;
+}
+
+function cleanPaneGridColumn(raw: unknown): PaneGridColumn | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const rawSegments = Array.isArray(o.segments) ? o.segments : null;
+  // 12 segments is already beyond any real unit — same smell test panel_widths
+  // uses for a transcribed dimension chain that isn't panel widths.
+  if (!rawSegments || rawSegments.length === 0 || rawSegments.length > 12) {
+    return null;
+  }
+  const segments = rawSegments.map(cleanPaneGridSegment);
+  if (segments.some((s) => s === null)) return null;
+  const column: PaneGridColumn = { segments: segments as PaneGridSegment[] };
+  const width = cleanPaneGridInches(o.width_in ?? o.widthIn);
+  if (width != null) column.width_in = width;
+  return column;
+}
+
+/**
+ * Validate the vision model's pane_grid read into a typed {@link PaneGrid},
+ * or null when it doesn't hold up. ALL-OR-NOTHING, same as `cleanBbox`/
+ * `corner` — one garbled column is worth zero trust, not a half-drawn grid,
+ * and dropping it costs nothing else: the mark's other fields (and
+ * `extra.panels`, the flat fallback) are unaffected either way. PURE.
+ */
+export function cleanPaneGrid(raw: unknown): PaneGrid | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const rawColumns = Array.isArray(o.columns) ? o.columns : null;
+  if (!rawColumns || rawColumns.length === 0 || rawColumns.length > 12) {
+    return null;
+  }
+  const columns = rawColumns.map(cleanPaneGridColumn);
+  if (columns.some((c) => c === null)) return null;
+  return { columns: columns as PaneGridColumn[] };
+}
+
 /**
  * Turn one verbatim vision mark into a loose object shaped for `normalizeSpec`:
  * normalized mark, split size/operation, derived tempered/egress, verbatim
@@ -313,6 +407,14 @@ export function prepVisionSpec(raw: RawVisionMark): Record<string, unknown> {
   // never a default.
   const io = typeof raw.inset_outset === "string" ? raw.inset_outset.trim().toLowerCase() : null;
   if (io === "inset" || io === "outset") extra.inset_outset = io;
+
+  // THE GRID CONTRACT (wave G): ADDITIONAL description of the same pictured
+  // cell, never a new source of marks/counts (vision-first law holds — this
+  // never runs without a mark_code already established above). Only stored
+  // when the cell actually reads as mullion columns; the ordinary flat-row
+  // case keeps using extra.panels above, untouched.
+  const paneGrid = cleanPaneGrid(raw.pane_grid);
+  if (paneGrid) extra.pane_grid = paneGrid;
 
   return {
     mark_code,

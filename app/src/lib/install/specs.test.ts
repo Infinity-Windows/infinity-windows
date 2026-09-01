@@ -6,6 +6,7 @@ import {
   formatInches,
   formatSize,
   hasAnySpec,
+  madMooseMark7Grid,
   mergeSpecsByMark,
   normalizeSpec,
 } from "./specs";
@@ -401,5 +402,69 @@ describe("mergeSpecsByMark", () => {
       { mark: "4", color: "Bronze" },
     ]);
     expect(merged.map((m) => m.mark_code)).toEqual(["4"]);
+  });
+
+  // extra is merged key-by-key (fillGaps), never wholesale — so a pane_grid
+  // found on one page and a plain field found on another both survive, and
+  // whichever page found pane_grid FIRST wins over a later page's read of the
+  // same key (same "does not overwrite" law as any other field).
+  it("fills extra.pane_grid across pages, first read wins", () => {
+    const grid = madMooseMark7Grid;
+    const otherGrid = { columns: [{ segments: [{ op: "F" }] }] };
+    const merged = mergeSpecsByMark([
+      { mark: "7", style: "Storefront", extra: { pane_grid: grid } },
+      { mark: "7", color: "Clay", extra: { pane_grid: otherGrid, qty: "1" } },
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].extra).toEqual({ pane_grid: grid, qty: "1" });
+    expect(merged[0].color).toBe("Clay");
+  });
+});
+
+describe("madMooseMark7Grid", () => {
+  it("is the canonical Wave G fixture: 4 columns, 8 F segments + 2 door leaves", () => {
+    expect(madMooseMark7Grid.columns).toHaveLength(4);
+    const segments = madMooseMark7Grid.columns.flatMap((c) => c.segments);
+    expect(segments.filter((s) => s.op === "F")).toHaveLength(8);
+    const doors = segments.filter((s) => s.op === "door");
+    expect(doors).toHaveLength(2);
+    expect(doors.map((d) => d.leaf)).toEqual(["L", "R"]);
+  });
+
+  it("matches THE GRID CONTRACT literal values exactly", () => {
+    expect(madMooseMark7Grid).toEqual({
+      columns: [
+        {
+          width_in: 45.75,
+          segments: [
+            { op: "F", height_in: 47.5 },
+            { op: "F", height_in: 48 },
+            { op: "F", height_in: 48 },
+          ],
+        },
+        {
+          width_in: 38,
+          segments: [
+            { op: "F", height_in: 47.5 },
+            { op: "door", height_in: 96, leaf: "L" },
+          ],
+        },
+        {
+          width_in: 38,
+          segments: [
+            { op: "F", height_in: 47.5 },
+            { op: "door", height_in: 96, leaf: "R" },
+          ],
+        },
+        {
+          width_in: 45.75,
+          segments: [
+            { op: "F", height_in: 47.5 },
+            { op: "F", height_in: 48 },
+            { op: "F", height_in: 48 },
+          ],
+        },
+      ],
+    });
   });
 });
