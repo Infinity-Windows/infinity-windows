@@ -18,6 +18,7 @@ on:
         type: choice
         options:
           - madmoose
+          - madmoose-repair
           - black22
       mode:
         description: "dry-run shows the diff; apply writes it"
