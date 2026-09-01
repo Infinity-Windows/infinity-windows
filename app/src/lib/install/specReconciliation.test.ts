@@ -157,6 +157,51 @@ describe("a job where the two documents agree", () => {
   });
 });
 
+describe("reconciling across multiple documents (the Mad Moose lesson, 2026-09-01)", () => {
+  // Mad Moose's real shape once persistence stops wiping a different specs
+  // document's openings (see planDraftPersistence in extract.ts): marks
+  // 4-10 came from the original cut sheet, marks 1-3 from a later "Add"
+  // addendum — a SEPARATE specs planset, not a re-upload — and the building
+  // plan places all ten. This module never scoped by planset itself
+  // (`listOpenings`/`listMarkSpecs` are always project-wide), so the two
+  // documents add up correctly as long as nothing upstream has thrown
+  // openings away.
+  const originalCutSheetMarks = ["4", "5", "6", "7", "8", "9", "10"];
+  const addendumMarks = ["1", "2", "3"];
+  const allMarks = [...addendumMarks, ...originalCutSheetMarks];
+
+  it("10 marks placed on the plans, 10 on the sheet — nothing left over", () => {
+    const r = reconcileSpecsWithPlans(healthy(allMarks));
+    expect(r.planMarkCount).toBe(10);
+    expect(r.specMarkCount).toBe(10);
+    expect(r.discrepancies).toEqual([]);
+    expect(r.reconciled).toBe(true);
+    expect(describeReconciliation(r)).toBeNull();
+  });
+
+  it("a spec with no recorded planset (server-seeded, source manual) still counts as a real spec", () => {
+    const r = reconcileSpecsWithPlans({
+      planMarks: [planMark("1")],
+      specs: [{ ...spec("1"), planset_id: null } as ReconcileSpec],
+    });
+    expect(r.reconciled).toBe(true);
+  });
+
+  it("still flags a mark that truly has no window anywhere on the job", () => {
+    // #11 lives on the addendum's spec sheet only — no opening on ANY
+    // planset, old or new, ever placed it. The union fix must never make a
+    // real gap invisible just because the job now has several documents.
+    const r = reconcileSpecsWithPlans({
+      planMarks: allMarks.map((m) => planMark(m)),
+      specs: [...allMarks.map((m) => spec(m)), spec("11")],
+    });
+    expect(kinds(r)).toEqual(["spec_without_mark:11"]);
+    expect(describeReconciliation(r)).toBe(
+      "1 spec has no window on the plans: #11.",
+    );
+  });
+});
+
 describe("marks on the plans with no spec sheet", () => {
   it("finds Black Desert's #7 and #8", () => {
     // The supplier's sheet numbers its panels #1…#39 and skips 7 and 8

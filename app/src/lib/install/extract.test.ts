@@ -449,6 +449,56 @@ describe("planDraftPersistence (per-slot re-extract, root-cause fix)", () => {
     expect(plan.inserts.map((d) => d.opening_code).sort()).toEqual(["14-1", "9-1"]);
   });
 
+  // Mad Moose, 2026-09-01: the original cut sheet placed marks 4-10 as
+  // unconfirmed specs-kind drafts. A SEPARATE, later "Add" addendum sheet —
+  // a second specs planset, not a re-upload of the first — covered marks
+  // 1-3 only. "Same kind" used to mean "the one specs slot this project
+  // has", so saving the addendum's drafts deleted all seven of the original
+  // sheet's openings even though the addendum never mentioned them and the
+  // building plan still placed every one. A job can carry more than one
+  // specs document at once; only the document actually being re-read may
+  // lose its stale drafts.
+  it("a second, non-overlapping specs planset does not wipe a different specs document's unconfirmed openings (Mad Moose)", () => {
+    const originalCutSheet = ["4", "5", "6", "7", "8", "9", "10"].map((c) =>
+      existing(c, "specs", { planset_id: "original-cut-sheet" }),
+    );
+    const addendumDrafts = ["1", "2", "3"].map((c) => draft(c));
+
+    const plan = planDraftPersistence(originalCutSheet, addendumDrafts, "specs");
+
+    expect(plan.deleteIds).toHaveLength(0);
+    expect(plan.inserts.map((d) => d.opening_code).sort()).toEqual(["1", "2", "3"]);
+  });
+
+  it("a specs upload that DOES share a mark with an existing planset replaces that whole document, leaving an unrelated one alone", () => {
+    const originalCutSheet = ["4", "5", "6"].map((c) =>
+      existing(c, "specs", { planset_id: "original-cut-sheet" }),
+    );
+    const addendum = ["1", "2", "3"].map((c) =>
+      existing(c, "specs", { planset_id: "addendum-sheet" }),
+    );
+    // The original cut sheet gets corrected: mark 6 drops, mark 11 appears.
+    // Its marks overlap the correction (4, 5) — this is a re-read of THAT
+    // document, so its whole stale set goes, but the unrelated addendum
+    // (no overlap at all) is untouched.
+    const correctedDrafts = ["4", "5", "11"].map((c) => draft(c));
+
+    const plan = planDraftPersistence(
+      [...originalCutSheet, ...addendum],
+      correctedDrafts,
+      "specs",
+    );
+
+    expect(plan.deleteIds.sort()).toEqual(
+      ["specs:4", "specs:5", "specs:6"].sort(),
+    );
+    expect(plan.inserts.map((d) => d.opening_code).sort()).toEqual([
+      "11",
+      "4",
+      "5",
+    ]);
+  });
+
   it("never deletes or overwrites confirmed / in-progress openings", () => {
     const prior = [
       existing("14-1", "building", { confirmed: true }),
