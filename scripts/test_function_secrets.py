@@ -227,7 +227,7 @@ class FunctionSecretsTest(unittest.TestCase):
         r = fs.requirements_for("ask")
         self.assertIn("ANTHROPIC_API_KEY", r["required"])
         # ask guards its RAG step on the key and answers from live data without
-        # it, so a missing OpenAI key degrades Ask Infinity rather than breaking it.
+        # it, so a missing OpenAI key degrades Ask Forge rather than breaking it.
         self.assertNotIn("OPENAI_API_KEY", r["required"])
         self.assertIn("OPENAI_API_KEY", r["optional"])
 
@@ -365,7 +365,7 @@ class PlainEnglishNames(unittest.TestCase):
         got = fs.features_needing(fs.all_requirements(), "ANTHROPIC_API_KEY")
         self.assertEqual(
             got,
-            "Ask Infinity|placing windows on the plan|reading receipts|"
+            "Ask Forge|placing windows on the plan|reading receipts|"
             "reading delivery schedules|plan-set reading|how-to guides|"
             "toolbox talks|the Model Studio AI assistant|"
             "video summaries and quizzes|window-type tips|install voice memos",

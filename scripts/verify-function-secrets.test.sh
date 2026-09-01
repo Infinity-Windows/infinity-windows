@@ -200,7 +200,7 @@ new_case "only ANTHROPIC_API_KEY missing: leads with the feature, not the variab
 live_state
 run
 assert_rc 1
-assert_first_line_has "Ask Infinity"
+assert_first_line_has "Ask Forge"
 assert_first_line_has "need an API key that has not been added yet"
 # The variable name belongs in the body, not in the sentence a non-engineer reads
 # first.
@@ -220,7 +220,7 @@ assert_count 1 "MISSING"
 new_case "only ANTHROPIC_API_KEY missing: names the affected features in English"
 live_state
 run
-assert_has "- Ask Infinity"
+assert_has "- Ask Forge"
 assert_has "- plan-set reading"
 # Every writing feature runs on this one key now, so the headline names two of
 # them and counts the rest. A bare count ("7 app features") would leave the
@@ -230,7 +230,7 @@ assert_has "- plan-set reading"
 # — the census in this sentence counts real functions, in that order, so it
 # moves when they do. Wave Q added a second: summarize-learning-video, sorting
 # between studio-assist and synthesize-type-tips.
-assert_first_line_has "Ask Infinity, placing windows on the plan and 9 other features need an API key"
+assert_first_line_has "Ask Forge, placing windows on the plan and 9 other features need an API key"
 
 new_case "only ANTHROPIC_API_KEY missing: says where to click, not just a command"
 live_state
@@ -248,7 +248,7 @@ new_case "the plain-English cause is handed to the workflow for Slack"
 live_state
 run
 assert_rc 1
-assert_output_var "missing_headline=Ask Infinity"
+assert_output_var "missing_headline=Ask Forge"
 assert_output_var "missing_count=1"
 
 # The optional variables are the ones with a working default in code, so a

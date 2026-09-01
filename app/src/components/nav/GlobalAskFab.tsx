@@ -12,7 +12,7 @@ export function GlobalAskFab() {
   if (pathname === "/ask") return null;
 
   return (
-    <Link to="/ask" className="ask-fab" aria-label="Ask Infinity AI">
+    <Link to="/ask" className="ask-fab" aria-label="Ask Forge AI">
       <Sparkles size={18} className="ask-fab-icon" aria-hidden="true" />
       <span className="ask-fab-label">Ask</span>
     </Link>

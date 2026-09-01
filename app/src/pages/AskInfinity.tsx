@@ -239,7 +239,7 @@ export function AskInfinity() {
       <header className="page-header">
         <div>
           <p className="home-greeting ai-eyebrow">
-            <Sparkles size={13} /> Infinity
+            <Sparkles size={13} /> Forge
           </p>
           <h1>Company brain</h1>
         </div>

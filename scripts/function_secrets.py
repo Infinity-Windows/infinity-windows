@@ -5,7 +5,7 @@ Why this exists: a function's runtime secrets live in the Supabase project, not
 in GitHub. Deploying `ask` without `ANTHROPIC_API_KEY` set gives you a function
 that is live, routes correctly, passes scripts/verify-functions.sh, shows green
 on every CI check — and returns 500 the first time an installer taps Ask
-Infinity. Every check in this repo can pass while the feature is completely
+Forge. Every check in this repo can pass while the feature is completely
 broken. That is the exact failure shape this project keeps hitting.
 
 DERIVED, NOT HAND-MAINTAINED. A committed list of "function -> secrets" would be
@@ -63,12 +63,12 @@ PLATFORM_PROVIDED = frozenset({
 
 # What each function IS, for whoever reads the failure. The person who has to act
 # on "ANTHROPIC_API_KEY is missing" is the owner, who is not an engineer: `ask`
-# means nothing to him, "Ask Infinity" is the button he has tapped.
+# means nothing to him, "Ask Forge" is the button he has tapped.
 #
 # This is presentation only — it never affects whether a secret is judged
 # required, so a wrong or missing label cannot produce a wrong verdict. It is the
 # one thing here that cannot be derived from source, since no amount of reading
-# index.ts yields the words "Ask Infinity". test_function_secrets.py asserts every
+# index.ts yields the words "Ask Forge". test_function_secrets.py asserts every
 # function has an entry, so adding a function without one fails CI rather than
 # quietly falling back to the directory name.
 #
@@ -77,7 +77,7 @@ PLATFORM_PROVIDED = frozenset({
 # that line unreadable.
 FEATURE_NAMES = {
     'approve-access-request': 'letting a new crew member in',
-    'ask': 'Ask Infinity',
+    'ask': 'Ask Forge',
     'extract-placement': 'placing windows on the plan',
     'extract-receipt': 'reading receipts',
     'extract-schedule': 'reading delivery schedules',
@@ -104,7 +104,7 @@ def feature_name(function: str) -> str:
 
 
 def features_needing(reqs: dict, var: str) -> str:
-    """Pipe-separated feature labels, e.g. 'Ask Infinity|plan-set reading'.
+    """Pipe-separated feature labels, e.g. 'Ask Forge|plan-set reading'.
 
     Pipe rather than comma because the labels are reassembled into a list by the
     caller, and a comma-separated string cannot be split back apart safely the

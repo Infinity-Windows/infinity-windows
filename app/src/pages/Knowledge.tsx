@@ -458,7 +458,7 @@ export function Knowledge() {
     if (!requirePinSet()) return;
     setPinPrompt({
       title: "Clear the whole vault",
-      hint: "Enter the vault PIN to hide every note from Ask Infinity.",
+      hint: "Enter the vault PIN to hide every note from Ask Forge.",
       run: async (pin) => {
         await clearKnowledge(pin);
         setSummary(null);
@@ -597,7 +597,7 @@ export function Knowledge() {
       <header className="page-header">
         <div>
           <p className="home-greeting ai-eyebrow">
-            <BrainCircuit size={13} /> Infinity AI
+            <BrainCircuit size={13} /> Forge AI
           </p>
           <h1>AI Knowledge</h1>
         </div>
@@ -605,8 +605,8 @@ export function Knowledge() {
       </header>
 
       <p className="muted">
-        Upload your Obsidian vault (or a set of Markdown notes) to teach Infinity
-        AI your company's playbooks, specs and standards. Everyone's Ask Infinity
+        Upload your Obsidian vault (or a set of Markdown notes) to teach Forge
+        AI your company's playbooks, specs and standards. Everyone's Ask Forge
         chat then answers from these notes plus live app data, with citations.
         Adding, refreshing or removing notes is protected by the owner's vault PIN.
       </p>
@@ -639,7 +639,7 @@ export function Knowledge() {
             )}
           </div>
           <p className="muted" style={{ fontSize: 13 }}>
-            Connect your vault folder once. Infinity watches for changes while
+            Connect your vault folder once. Forge Windows watches for changes while
             this page is open and stages them; a supervisor enters the PIN to
             approve them into the live vault. Nothing syncs without PIN approval.
           </p>
@@ -826,7 +826,7 @@ export function Knowledge() {
         <EmptyState
           icon={<BrainCircuit size={22} />}
           title="Knowledge base not set up yet"
-          message="Once the database has the knowledge store, upload a vault above and your notes will appear here. Until then, Ask Infinity still works from the built-in brain."
+          message="Once the database has the knowledge store, upload a vault above and your notes will appear here. Until then, Ask Forge still works from the built-in brain."
         />
       )}
       {ready && ready.docs.length === 0 && (
