@@ -291,6 +291,24 @@ compass rose and renames new wall submissions, never the 3D scene's own
 geometry. Every writer of `features.fitview` merges instead of replacing, so
 it (and everything else already there) survives an edit made anywhere else.
 
+**Pane grid** — wave G (2026-09-01, the Mad Moose mark 7 story: a real
+storefront — three stacked fixed lites beside a transom-over-door column —
+rendered as four equal panels everywhere, because `extra.panels` is a flat
+ONE-ROW strip and the schema itself can't say "stacked"). `pane_grid` on a
+mark's `project_mark_specs.extra` (jsonb, no migration) is the additional
+description that fixes this: column-major, because storefronts are built as
+mullion columns, each column a list of segments read top to bottom (F
+fixed, X operable, "door" a swing leaf with a hinge/meet `leaf` of L/R —
+window-vendor-conventions.md's vocabulary). `lib/fitview/paneGrid.ts` is the
+one place either renderer (the elevations view, the Studio unit face) reads
+its raw shape — both draw only from its resolved, normalized cell list.
+`pane_grid` never replaces `extra.panels`; both coexist on the same row, and
+a mark with no `pane_grid` renders exactly the flat single-row layout it
+always has — the fallback law, proven end to end for both renderers.
+Filled the same way a rescan fills any other spec field (the receipts
+precedent): fill-missing-only, a re-run of specs extraction never
+overwrites a `pane_grid` that's already there.
+
 ## Vision placement
 
 Settled 2026-08-28, wave V-A (the Mad Moose story: schedules knew the windows;
