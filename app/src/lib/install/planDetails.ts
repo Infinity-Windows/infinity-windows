@@ -64,6 +64,44 @@ export function markCalloutMatches(text: string): RegExpMatchArray[] {
   );
 }
 
+/** "ADD" / "add" / "Add" -> "Add" — deterministic regardless of how a PDF
+ * text layer happened to capitalize a word, so the SAME addendum mark
+ * normalizes the SAME way every re-extraction. */
+function titleCase(word: string): string {
+  return word[0].toUpperCase() + word.slice(1).toLowerCase();
+}
+
+/**
+ * The word directly hyphen-attached before a callout's '#' — "Add" in "Mad
+ * Moose Add-#1" — kept as the mark's OWN identity, unlike a purely numeric
+ * job/building code ("14" in "PV Townhomes Bldg 14-#4A"), which is
+ * legitimately dropped because the same mark repeats across buildings. Only
+ * a prefix made of LETTERS survives, title-cased for a deterministic result
+ * regardless of source capitalization.
+ *
+ * The Mad Moose incident (2026-09-01): an addendum cut sheet's own marks
+ * read "NO: Mad Moose Add-#1/#2/#3" — exactly the spelling ("Add-1" etc)
+ * the owner's confirmed production data already carries (seeded #474/#477).
+ * Reading this the same shape as Smith's numeric job code dropped "Add"
+ * entirely, colliding the addendum's #1/#2/#3 with the job's REAL marks
+ * 1/2/3.
+ */
+function attachedWordPrefix(text: string, hashIndex: number): string | null {
+  let i = hashIndex;
+  while (i > 0 && /\s/.test(text[i - 1])) i--;
+  if (text[i - 1] !== "-") return null;
+  const m = /([A-Za-z]+)$/.exec(text.slice(0, i - 1));
+  return m ? titleCase(m[1]) : null;
+}
+
+/** The full mark a callout match stands for, its hyphen-attached word prefix
+ * kept when genuine (see {@link attachedWordPrefix}). */
+export function calloutMark(text: string, match: RegExpMatchArray): string {
+  const base = match[1].toUpperCase();
+  const prefix = attachedWordPrefix(text, match.index ?? 0);
+  return prefix ? `${prefix}-${base}` : base;
+}
+
 /** Count #mark-style callouts — used to prefer the numbered floor sheet. */
 export function countPlanMarkCallouts(text: string): number {
   return markCalloutMatches(text).length;
@@ -267,7 +305,7 @@ export function mergePageLists(
 }
 
 function detailMarks(text: string): string[] {
-  return unique(markCalloutMatches(text).map((match) => match[1].toUpperCase()));
+  return unique(markCalloutMatches(text).map((match) => calloutMark(text, match)));
 }
 
 function productCodes(text: string): string[] {
@@ -432,7 +470,7 @@ export function parseCadDetailScheduleRows(
 
     for (let i = 0; i < matches.length; i++) {
       const match = matches[i];
-      const mark = match[1].toUpperCase();
+      const mark = calloutMark(page.text, match);
 
       const start = (match.index ?? 0) + match[0].length;
       const end =

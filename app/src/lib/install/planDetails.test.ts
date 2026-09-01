@@ -55,6 +55,29 @@ describe("mark callout recognition", () => {
     expect(countPlanMarkCallouts("#4A, #4B")).toBe(2);
   });
 
+  // The Mad Moose incident (2026-09-01): an addendum cut sheet's "NO: Mad
+  // Moose Add-#1/#2/#3" callouts read the SAME hyphen-attached shape as
+  // Smith's "Bldg 14-#4A" — but "Bldg 14" is a numeric job/building code
+  // (correctly dropped: the mark repeats across buildings), while "Add" is
+  // the addendum sheet's own word identifying these marks. Stripping it the
+  // same way collided the addendum's #1/#2/#3 with the job's real marks
+  // 1/2/3. A run of LETTERS immediately before the dash must survive.
+  it("keeps an addendum sheet's own word prefix, unlike a numeric job code", () => {
+    const MAD_MOOSE_ADDENDUM = [
+      "NO: Mad Moose Add-#1",
+      "QTY: 1",
+      "NO: Mad Moose Add-#2",
+      "QTY: 1",
+      "NO: Mad Moose Add-#3",
+      "QTY: 1",
+    ].join("\n");
+    expect(
+      parseCadDetailScheduleRows([{ pageNumber: 1, text: MAD_MOOSE_ADDENDUM }]).map(
+        (r) => r.openingCode,
+      ),
+    ).toEqual(["Add-1", "Add-2", "Add-3"]);
+  });
+
   it("does not turn Black Desert's spec sheet into openings", () => {
     expect(
       parseCadDetailScheduleRows([

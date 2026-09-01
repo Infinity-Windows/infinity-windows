@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   describeMarkCount,
   extractScheduleRows,
+  markBase,
   matchWindowType,
   parseScheduleRows,
   planDraftPersistence,
@@ -150,6 +151,43 @@ describe("matchWindowType", () => {
   it("tolerates a single typo in the code", () => {
     const m = matchWindowType("DH2847", TYPES);
     expect(m.type?.id).toBe("t-dh");
+  });
+});
+
+describe("markBase", () => {
+  it("strips a numeric instance suffix (14-1 -> 14)", () => {
+    expect(markBase("14-1")).toBe("14");
+    expect(markBase("#14")).toBe("14");
+  });
+
+  it("strips a numeric instance suffix off a lettered survey mark (13A-2 -> 13A)", () => {
+    // Real Smith marks: a lettered base ("13A", "4A", "18B") followed by an
+    // instance suffix rowsToDraftOpenings itself appends when qty > 1. A
+    // DIGIT sits directly before this dash, so it's an instance separator.
+    expect(markBase("13A-2")).toBe("13A");
+    expect(markBase("4A-1")).toBe("4A");
+    expect(markBase("18B-3")).toBe("18B");
+  });
+
+  // The Mad Moose incident (2026-09-01): normalizeMarkLabel fixed "Mad Moose
+  // Add-#1" -> "Add-1", but markBase ran on that result NEXT (normalizeSpec
+  // always re-derives mark_code via markBase) and — before this fix — struck
+  // "Add-1"/"Add-2"/"Add-3" down to one shared base "ADD", exactly the same
+  // collision one level down. A run of LETTERS (no digits) directly before
+  // the dash is the mark's OWN identity, not an instance suffix, so it must
+  // survive whole — title-cased so the SAME mark normalizes the SAME way
+  // regardless of source casing, matching the exact spelling the owner's
+  // confirmed production data already carries (seeded #474/#477: mark specs,
+  // marks and openings for "Add-1"/"Add-2"/"Add-3").
+  it("keeps an addendum mark's own identity whole, title-cased (Add-1 stays Add-1, not ADD)", () => {
+    expect(markBase("ADD-1")).toBe("Add-1");
+    expect(markBase("Add-2")).toBe("Add-2");
+    expect(markBase("add-3")).toBe("Add-3");
+  });
+
+  it("keeps a single-letter-prefixed mark whole (W-12, A-101 — never a real instance suffix)", () => {
+    expect(markBase("W-12")).toBe("W-12");
+    expect(markBase("A-101")).toBe("A-101");
   });
 });
 
@@ -440,6 +478,29 @@ describe("planDraftPersistence (per-slot re-extract, root-cause fix)", () => {
     // 4A is protected by code; 18B's mark is owned by a protected survivor.
     expect(plan.inserts).toHaveLength(0);
     expect(plan.skipped).toBe(2);
+  });
+
+  // The Mad Moose incident (2026-09-01), second thread: a specs-kind upload
+  // whose openings carried pin_x/pin_y AND a page_number pointing at the cut
+  // sheet's own page — placing a window on a page nobody would ever page
+  // through to place one. The vision-first law says PLANS own placement,
+  // SPECS own specs/counts; a specs draft's own pin/page (however it got
+  // there — an upstream mistake, a carried-over value) must never survive
+  // into the DB. This is enforced at the one choke point that knows the
+  // incoming kind, regardless of what the draft itself carries.
+  it("a specs-kind insert never gets a pin, and its page_number never points at the spec sheet", () => {
+    const addendumDrafts = ["Add-1", "Add-2", "Add-3"].map((c) => draft(c));
+    // draft() sets pin_x/pin_y = 0.5, 0.5 and page_number = 3 — standing in
+    // for the pin the addendum's own draft carried in production.
+    const plan = planDraftPersistence([], addendumDrafts, "specs", true);
+    expect(plan.inserts).toHaveLength(3);
+    for (const ins of plan.inserts) {
+      expect(ins.pin_x).toBeNull();
+      expect(ins.pin_y).toBeNull();
+      expect(ins.origin_pin_x).toBeNull();
+      expect(ins.origin_pin_y).toBeNull();
+      expect(ins.page_number).not.toBe(3);
+    }
   });
 
   it("re-uploading the SAME kind replaces its own unconfirmed drafts", () => {
