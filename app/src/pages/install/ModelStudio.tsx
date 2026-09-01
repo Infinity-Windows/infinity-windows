@@ -1613,6 +1613,11 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     const name = (item.metadata?.itemName as string | undefined) ?? null;
     const overlay =
       showLiveOverlayRef.current && name ? overlayMapRef.current.get(name) : undefined;
+    // Wave G: the mark's own CAD cell, when its spec has one — same
+    // specIndex lookup unitPaneSummary's caller already uses (specForOpeningCode,
+    // matched on the RAW mark name, before unitMarkLabel's display rewrite).
+    const spec = name ? specForOpeningCode(specIndex, name) : null;
+    const paneGrid = (spec?.extra as { pane_grid?: unknown } | null | undefined)?.pane_grid;
     for (const mesh of buildUnitAnnotations(cfg, {
       // Chip text is the crew's work-order dialect (same conversion the
       // elevations map applies) — `name` itself stays raw, since it also
@@ -1621,6 +1626,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       mark: unitMarkLabel(name),
       dims,
       overlay,
+      paneGrid,
     })) {
       obj.add(mesh);
     }

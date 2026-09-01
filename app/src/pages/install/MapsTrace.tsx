@@ -199,7 +199,11 @@ export function MapsTrace() {
     };
     const authored = outline ? fitviewModel(outline.features) : null;
     if (authored) {
-      const built = buildAuthoredJob(authored, meta, openings.data);
+      // Wave G: same specs.data the pin-derived branch below already reads,
+      // so a mark's real CAD cell (pane_grid) draws here too - "the tracer
+      // edits exactly what the crew sees" stays true for this too, not just
+      // geometry. Still no `view` — the tracer keeps authored ids.
+      const built = buildAuthoredJob(authored, meta, openings.data, undefined, specs.data);
       // A stored trace was drawn over SOME image of this sheet — not
       // necessarily the one we just rendered. Its dots and our extracted
       // pins name the same marks, so when both exist, a best-fit similarity
