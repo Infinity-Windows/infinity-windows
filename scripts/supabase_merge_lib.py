@@ -492,6 +492,13 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "studio_projects": None,
     # Training videos are authored content too.
     "learning_videos": None,
+    # Wave Q: one quiz per video already (video_id is UNIQUE) — the natural
+    # key IS the row.
+    "learning_video_quizzes": ("video_id",),
+    # Attempts are events, same reasoning as summons below: an installer can
+    # retake a quiz any number of times, and two attempts that look alike
+    # (same answers, same score) are two real tries, never a duplicate.
+    "learning_video_quiz_attempts": None,
     # One row per (project, runner) already — the natural key IS the row.
     "flash_run_assignments": ("project_id", "profile_id"),
     # Summons are events: two calls on one window at different times are
