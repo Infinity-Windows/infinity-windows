@@ -127,11 +127,14 @@ WebGL, no three.js — ported from a standalone prototype called window-viewer.
 - `adapter.ts` is the real integration: plan outline + opening pins
   (via `nearestPointOnOutline`) + mark-spec inches → the renderer's job JSON
   in metres. Scale and wall height default (30 m long side / 3.6 m) unless the
-  outline's `features.fitview` carries `{ longSideM, wallHeightM }` —
+  outline's `features.fitview` carries `{ longSideM, wallHeightM }` (`northDeg`,
+  the tracer's true-north offset, lives beside them) —
   `scripts/seed-black22-fitview.mjs` writes that calibration for BLACK22 from
   the prototype's hand-traced model (safe by default: plan → --dry-run → --apply).
-  NOTE: re-saving an outline from the Plan Model editor replaces `features`
-  wholesale and drops the calibration; rerun the seed script.
+  Every writer of `features` merges instead of replacing — the Plan Model editor
+  (`mergeOutlineFeatures`), trace submit (`mergeFitviewWrite`), the seed script
+  (`mergeFitviewSeed`) — so keys one writer never heard of, calibration and
+  `northDeg` included, survive every save; a new writer must merge the same way.
 - Hardware vocabulary (OXXO panels, hinge sides, corner units) and how to read
   Strata paperwork: [`docs/window-vendor-conventions.md`](docs/window-vendor-conventions.md).
   The adapter's `inferHardware` must agree with it; change them together.
