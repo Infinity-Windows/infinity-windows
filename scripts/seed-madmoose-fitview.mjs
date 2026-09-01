@@ -31,6 +31,7 @@ import {
   patchBuilding,
   mergeMadmooseFeatures,
   extraWithPaneGrid,
+  combineWindows,
 } from "./lib/madmoose-seed.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -51,6 +52,7 @@ console.log(`  windows        : ${w.length} hand-placed (marks ${w.map((x) => x.
 console.log(`  wall height    : ${fixture.buildingPatch.height} m (25 ft parapet; trace had 6 m)`);
 console.log(`  stories        : subfloor 3.35 m, parapet 7.62 m (trace had 3 m / 3 m)`);
 console.log(`  pane grids     : ${Object.keys(fixture.paneGrids).length} marks, fill-missing only`);
+console.log(`  add units      : ${(fixture.addWindows ?? []).length} on the office glass wall (s4) + spec/mark registration`);
 console.log(`  never touched  : outline points, trace, interior partition, dividers, modelstudio, northDeg`);
 
 if (mode === "plan") {
@@ -88,8 +90,9 @@ if (!target?.features?.fitview?.model?.building) {
 
 const liveBuilding = target.features.fitview.model.building;
 const patched = patchBuilding(liveBuilding, fixture.buildingPatch);
+const allWindows = combineWindows(fixture.windows, fixture.addWindows);
 const features = mergeMadmooseFeatures(
-  target.features, patched, fixture.windows, fixture.buildingPatch.wallHeightM,
+  target.features, patched, allWindows, fixture.buildingPatch.wallHeightM,
 );
 
 const { data: specs, error: sErr } = await supabase
@@ -109,11 +112,33 @@ for (const [mark, grid] of Object.entries(fixture.paneGrids)) {
 
 console.log(`\nLive: ${project.name} (${project.id})`);
 console.log(`  outline ${target.id} page 1: ${target.points?.length ?? 0} pts (untouched), ` +
-  `model windows ${target.features.fitview.model.windows?.length ?? 0} -> ${fixture.windows.length}`);
+  `model windows ${target.features.fitview.model.windows?.length ?? 0} -> ${allWindows.length}`);
 console.log(`  building height ${liveBuilding.height} -> ${patched.height}; ` +
   `stories ${JSON.stringify((liveBuilding.stories ?? []).map((s) => s.heightM))} -> ` +
   `${JSON.stringify((patched.stories ?? []).map((s) => s.heightM))}`);
 console.log(`  pane grids to write: ${specWrites.map((x) => x.mark).join(", ") || "none"}`);
+
+// The Add units (MMV2A - CU): registered the same way Studio's custom-mark
+// confirm does it — mark row, opening row, spec row — but idempotently and
+// server-side. Spec rows carry the pane grid inline.
+const { data: existingMarks, error: mErr } = await supabase
+  .from("project_marks").select("mark_code").eq("project_id", project.id);
+if (mErr) throw mErr;
+const haveMark = new Set((existingMarks ?? []).map((m) => m.mark_code));
+const { data: existingOpen, error: eoErr } = await supabase
+  .from("project_openings").select("opening_code").eq("project_id", project.id);
+if (eoErr) throw eoErr;
+const haveOpen = new Set((existingOpen ?? []).map((o) => o.opening_code));
+const regPlan = (fixture.addSpecs ?? []).map((spec) => ({
+  spec,
+  needsSpec: !specs?.some((r) => r.mark_code === spec.mark_code),
+  needsMark: !haveMark.has(spec.mark_code),
+  needsOpening: !haveOpen.has(spec.mark_code),
+}));
+for (const r of regPlan) {
+  console.log(`  add ${r.spec.mark_code}: spec ${r.needsSpec ? "INSERT" : "kept"}, ` +
+    `mark ${r.needsMark ? "INSERT" : "kept"}, opening ${r.needsOpening ? "INSERT (best effort)" : "kept"}`);
+}
 
 if (mode === "dry-run") {
   console.log("\nDry run only — nothing written. Re-run with --apply to write.");
@@ -128,5 +153,26 @@ for (const s of specWrites) {
     .from("project_mark_specs").update({ extra: s.extra }).eq("id", s.id);
   if (error) throw error;
 }
-console.log(`\nApplied: model with ${fixture.windows.length} windows + ${specWrites.length} pane grids.`);
+for (const r of regPlan) {
+  const code = r.spec.mark_code;
+  if (r.needsSpec) {
+    const grid = fixture.paneGrids[code];
+    const { error } = await supabase.from("project_mark_specs").insert({
+      project_id: project.id, planset_id: null,
+      ...r.spec, extra: { ...(r.spec.extra ?? {}), pane_grid: grid },
+    });
+    if (error) throw error;
+  }
+  if (r.needsMark) {
+    const { error } = await supabase.from("project_marks")
+      .insert({ project_id: project.id, mark_code: code });
+    if (error) throw error;
+  }
+  if (r.needsOpening) {
+    const { error } = await supabase.from("project_openings")
+      .insert({ project_id: project.id, opening_code: code, confirmed: true });
+    if (error) console.log(`  opening ${code}: insert refused (${error.message}) — register it from Studio's Submit final instead`);
+  }
+}
+console.log(`\nApplied: model with ${allWindows.length} windows + ${specWrites.length} pane grids + ${regPlan.length} add units.`);
 console.log("Open Maps Interactive / Studio for Mad Moose to see it.");

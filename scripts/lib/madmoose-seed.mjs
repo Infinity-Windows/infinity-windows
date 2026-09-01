@@ -50,3 +50,15 @@ export function extraWithPaneGrid(extraRaw, grid) {
   return { ...extra, pane_grid: grid };
 }
 
+
+/**
+ * Base windows plus the Add units, deduped by id (a re-apply after an Add
+ * already landed must not double it; adds win over a same-id base entry).
+ * Pure; tested.
+ */
+export function combineWindows(base, adds) {
+  const byId = new Map();
+  for (const w of base || []) byId.set(w.id, w);
+  for (const w of adds || []) byId.set(w.id, w);
+  return [...byId.values()];
+}
