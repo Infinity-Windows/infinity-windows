@@ -31,7 +31,7 @@ interface BeforeInstallPromptEvent extends Event {
 /**
  * PWA install + update surfaces (p1-18). Rendered once, high in the tree, so it
  * works on every screen regardless of auth/route:
- *   - Install banner: "Add Infinity Windows to your home screen" (native prompt
+ *   - Install banner: "Add Forge Windows to your home screen" (native prompt
  *     on Android/desktop Chromium; step-by-step Share → Add to Home Screen on
  *     iOS Safari, which never fires beforeinstallprompt). Installing is what
  *     unlocks iOS web-push notifications.
@@ -155,7 +155,7 @@ function PwaUpdateBanner() {
       </span>
       <div className="pwa-banner-text">
         <strong>A new version is available</strong>
-        <span>Refresh to get the latest Infinity Windows.</span>
+        <span>Refresh to get the latest Forge Windows.</span>
       </div>
       <button
         type="button"
@@ -241,14 +241,14 @@ function PwaInstallBanner() {
     <div
       className="pwa-banner pwa-banner-install"
       role="dialog"
-      aria-label="Add Infinity Windows to your home screen"
+      aria-label="Add Forge Windows to your home screen"
     >
       <div className="pwa-banner-row">
         <span className="pwa-banner-icon" aria-hidden>
           <Download size={18} />
         </span>
         <div className="pwa-banner-text">
-          <strong>Add Infinity Windows to your home screen</strong>
+          <strong>Add Forge Windows to your home screen</strong>
           <span>
             {mode === "ios"
               ? "Install it to launch like an app — and to receive notifications on your iPhone."
@@ -306,7 +306,7 @@ function PwaInstallBanner() {
               <Download size={16} />
             </span>
             <span>
-              Tap <strong>Add</strong>, then open Infinity from your home screen.
+              Tap <strong>Add</strong>, then open Forge Windows from your home screen.
             </span>
           </li>
         </ol>

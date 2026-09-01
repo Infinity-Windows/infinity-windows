@@ -126,7 +126,7 @@ export function OnboardingWizard({ open, onClose }: OnboardingWizardProps) {
               <Sparkles size={26} />
             </span>
             <h2 id={titleId} className="wizard-title">
-              Welcome to Infinity Windows
+              Welcome to Forge Windows
             </h2>
             <p className="wizard-body">
               Two quick options can make your day smoother: alerts for things that
@@ -163,7 +163,7 @@ export function OnboardingWizard({ open, onClose }: OnboardingWizardProps) {
             )}
             {perms.pushReason === "ios-not-installed" && (
               <p className="wizard-status wizard-status-muted" role="status">
-                Add Infinity to your home screen to get alerts when the app is closed.
+                Add Forge Windows to your home screen to get alerts when the app is closed.
               </p>
             )}
             <div className="wizard-actions">

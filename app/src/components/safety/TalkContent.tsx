@@ -20,7 +20,7 @@ export function TalkContent({ talk }: { talk: SafetyTalk }) {
         )}
         {talk.citation && (
           <p className="muted" style={{ margin: "6px 0 0", fontSize: 11 }}>
-            Source: {talk.citation} — Infinity safety brief inspired by OSHA
+            Source: {talk.citation} — Forge Windows safety brief inspired by OSHA
             topics, not an official OSHA publication.
           </p>
         )}

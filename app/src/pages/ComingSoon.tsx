@@ -33,7 +33,7 @@ export function ComingSoon({ title, blurb }: ComingSoonProps) {
         <h1>{heading}</h1>
         <p className="muted">
           {blurb ??
-            "This part of Infinity Windows isn't built yet. It's on the roadmap — check back soon."}
+            "This part of Forge Windows isn't built yet. It's on the roadmap — check back soon."}
         </p>
         <Link to="/" className="button-like">
           Back to home

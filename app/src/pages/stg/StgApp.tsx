@@ -3,7 +3,7 @@
 // nothing else. No values strip, no bottom crew bar, no menu drawer — a
 // partner never sees a single crew-facing word anywhere in here, including
 // the internal company name (this file, and everything under pages/stg/,
-// says "STG Windows & Doors" and never "Infinity").
+// says "STG Windows & Doors" and never "Forge Windows").
 import { useState } from "react";
 import { LogOut } from "lucide-react";
 import { supabase } from "../../lib/supabase";
