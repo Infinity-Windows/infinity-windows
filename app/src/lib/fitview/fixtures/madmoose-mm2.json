@@ -1,155 +1,553 @@
 {
-  "id": "madmoose-mm2",
-  "ref": "MADMOOSE",
-  "addr": "4343 Abbey Rd / 888 S Sandhollow Rd, Hurricane, UT 84737",
-  "rev": "2026-08-31 hand-read by Claude from MMV2_-_CU.pdf (cut sheets, ed. 2026-06-06) and MMV2_-_LP.pdf (A2 floor plans, A4/A5 exterior elevations). Strata Windows & Doors for Molu-Inc.",
-  "buildingPatch": {
-    "height": 7.62,
-    "wallHeightM": 7.62,
-    "stories": [
-      { "n": 1, "name": "Ground", "elevM": 0, "heightM": 3.35 },
-      { "n": 2, "name": "Level 2", "elevM": 3.35, "heightM": 4.27 }
-    ],
-    "note": "Heights from A5/A4 elevation datums: top of subfloor (2nd) 11 ft = 3.35 m, top of parapet 25 ft = 7.62 m. The trace's 3 m + 3 m defaults understate the real building. Footprints, trace, and the owner's interior partition are carried from the live model untouched."
-  },
-  "windows": [
-    {
-      "id": "1", "elev": "s2", "floor": "Ground", "room": "Lobby (front)",
-      "type": "Storefront: 8 fixed lites around a center double swing door pair",
-      "w": 4254, "h": 3645, "x": 1.22, "y": 0.03,
-      "open": "Fixed / double swing door", "hand": "Pair, meet center; panic hardware; closers",
-      "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
-      "frame": "Thermal-break aluminum, TruLite Bronze; black hardware",
-      "status": "tofit",
-      "panesSplit": [[1162, 965, 965, 1162]],
-      "notes": "CU-1 Main Door. Columns 45 3/4 | 38 | 38 | 45 3/4 in. Side columns: three stacked F (47 1/2 / 48 / 48 in). Center columns: F transom (47 1/2) over door leaf (~96 in). 8 F + 2 leaves. Plan: 14 x 12 door & window set at front-east, right edge ~4 ft off NE corner."
-    },
-    {
-      "id": "2", "elev": "s2", "floor": "Ground", "room": "Front west",
-      "type": "Commercial swing door, full glass leaf",
-      "w": 953, "h": 2515, "x": 28.94, "y": 0.03,
-      "open": "Swing door", "hand": "Single leaf; panic, closer, continuous hinge",
-      "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
-      "frame": "Thermal-break aluminum, TruLite Bronze; black hardware",
-      "status": "tofit",
-      "notes": "CU-1 Front Door, 37 1/2 x 99 in. Plan top-left, ~7.5 ft from NW corner."
-    },
-    {
-      "id": "3", "elev": "s0", "floor": "Ground", "room": "Back west",
-      "type": "Commercial swing door, full glass leaf",
-      "w": 953, "h": 2515, "x": 1.50, "y": 0.03,
-      "open": "Swing door", "hand": "Single leaf; panic, closer, continuous hinge",
-      "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
-      "frame": "Thermal-break aluminum, TruLite Bronze; black hardware",
-      "status": "tofit",
-      "notes": "CU-1 Back Door, 37 1/2 x 99 in. Plan bottom-left, ~6.5 ft from SW corner."
-    },
-    {
-      "id": "4", "elev": "s0", "floor": "Ground", "room": "Back center",
-      "type": "Swing door with fixed sidelite",
-      "w": 1575, "h": 2515, "x": 16.89, "y": 0.03,
-      "open": "Fixed / swing door", "hand": "Leaf 39 1/2 in + sidelite 22 1/2 in",
-      "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
-      "frame": "Thermal-break aluminum, TruLite Bronze; black hardware",
-      "status": "tofit",
-      "panesSplit": [[1003, 572]],
-      "notes": "CU-2 Back Door 2, 62 x 99 in total. Plan: 5'2 x 8'4 door & window set, ~58 ft from SW corner."
-    },
-    {
-      "id": "5", "elev": "s0", "floor": "Ground", "room": "Back east",
-      "type": "Storefront fixed window",
-      "w": 901, "h": 2515, "x": 20.58, "y": 0.03,
-      "open": "Fixed", "hand": "Fixed",
-      "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
-      "frame": "Thermal-break aluminum, TruLite Bronze",
-      "status": "tofit",
-      "notes": "CU-2 Back Window, 35 1/2 x 99 in. Plan back wall ~69 ft from SW corner."
-    },
-    {
-      "id": "6", "elev": "s1", "floor": "Ground", "room": "East lower (goggle room side)",
-      "type": "Swing door with fixed sidelite",
-      "w": 1575, "h": 2515, "x": 5.0, "y": 0.03,
-      "open": "Fixed / swing door", "hand": "Sidelite 22 1/2 in + leaf 39 1/2 in",
-      "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
-      "frame": "Thermal-break aluminum, TruLite Bronze; black hardware",
-      "status": "tofit",
-      "panesSplit": [[572, 1003]],
-      "notes": "CU-2 Left Door (sidelite hinge-side mirrored vs #4), 62 x 99 in. Plan east wall ~19 ft up from SE corner."
-    },
-    {
-      "id": "7", "elev": "s1", "floor": "Ground", "room": "Lobby east",
-      "type": "Storefront: 8 fixed lites around a center double swing door pair",
-      "w": 4254, "h": 3645, "x": 10.06, "y": 0.03,
-      "open": "Fixed / double swing door", "hand": "Pair, meet center; panic hardware; closers",
-      "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
-      "frame": "Thermal-break aluminum, TruLite Bronze; black hardware",
-      "status": "tofit",
-      "panesSplit": [[1162, 965, 965, 1162]],
-      "notes": "CU-3 Left Main Door — identical design to mark 1 (same drawing on both sheets). Plan: 14 x 12 door & window set mid east wall, ~40 ft up from SE corner."
-    },
-    {
-      "id": "8", "elev": "s1", "floor": "Ground", "room": "Lobby east (display wall)",
-      "type": "Storefront fixed wall, 12 lites (4 x 3)",
-      "w": 4254, "h": 3645, "x": 15.86, "y": 0.03,
-      "open": "Fixed", "hand": "Fixed",
-      "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
-      "frame": "Thermal-break aluminum, TruLite Bronze",
-      "status": "tofit",
-      "panesSplit": [[1063, 1064, 1064, 1063]],
-      "notes": "CU-2 Left SF Wall: 4 columns 41 7/8 in, 3 rows 47 1/2 / 48 / 48 in — all fixed. Plan: 14 x 12 window, ~14 ft down from NE corner."
-    },
-    {
-      "id": "9", "elev": "s1", "floor": "Level 2", "room": "Break room",
-      "type": "Storefront fixed window",
-      "w": 1816, "h": 1206, "x": 1.53, "y": 1.34,
-      "open": "Fixed", "hand": "Fixed",
-      "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
-      "frame": "Thermal-break aluminum, TruLite Bronze",
-      "status": "tofit",
-      "notes": "CU-3 Left Window, 71 1/2 x 47 1/2 in. Second floor east wall by the break room; head at 19'4 (A4), sill ~4'4 above the 11 ft subfloor."
-    },
-    {
-      "id": "10", "elev": "s3", "floor": "Ground", "room": "Mechanic shop west",
-      "type": "Commercial swing door, full glass leaf",
-      "w": 953, "h": 2515, "x": 7.14, "y": 0.03,
-      "open": "Swing door", "hand": "Single leaf; panic, closer, continuous hinge",
-      "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
-      "frame": "Thermal-break aluminum, TruLite Bronze; black hardware",
-      "status": "tofit",
-      "notes": "CU-3 Right Door, 37 1/2 x 99 in. Plan west wall ~25 ft down from NW corner."
-    }
+ "id": "madmoose-mm2",
+ "ref": "MADMOOSE",
+ "addr": "4343 Abbey Rd / 888 S Sandhollow Rd, Hurricane, UT 84737",
+ "rev": "2026-08-31 hand-read by Claude from MMV2_-_CU.pdf (cut sheets, ed. 2026-06-06) and MMV2_-_LP.pdf (A2 floor plans, A4/A5 exterior elevations). Strata Windows & Doors for Molu-Inc.",
+ "buildingPatch": {
+  "height": 7.62,
+  "wallHeightM": 7.62,
+  "stories": [
+   {
+    "n": 1,
+    "name": "Ground",
+    "elevM": 0,
+    "heightM": 3.35
+   },
+   {
+    "n": 2,
+    "name": "Level 2",
+    "elevM": 3.35,
+    "heightM": 4.27
+   }
   ],
-  "paneGrids": {
-    "1": { "columns": [
-      { "width_in": 45.75, "segments": [ { "op": "F", "height_in": 47.5 }, { "op": "F", "height_in": 48 }, { "op": "F", "height_in": 48 } ] },
-      { "width_in": 38, "segments": [ { "op": "F", "height_in": 47.5 }, { "op": "door", "height_in": 96, "leaf": "L" } ] },
-      { "width_in": 38, "segments": [ { "op": "F", "height_in": 47.5 }, { "op": "door", "height_in": 96, "leaf": "R" } ] },
-      { "width_in": 45.75, "segments": [ { "op": "F", "height_in": 47.5 }, { "op": "F", "height_in": 48 }, { "op": "F", "height_in": 48 } ] }
-    ] },
-    "2": { "columns": [ { "width_in": 37.5, "segments": [ { "op": "door", "height_in": 99, "leaf": "L" } ] } ] },
-    "3": { "columns": [ { "width_in": 37.5, "segments": [ { "op": "door", "height_in": 99, "leaf": "L" } ] } ] },
-    "4": { "columns": [
-      { "width_in": 39.5, "segments": [ { "op": "door", "height_in": 99, "leaf": "L" } ] },
-      { "width_in": 22.5, "segments": [ { "op": "F", "height_in": 99 } ] }
-    ] },
-    "5": { "columns": [ { "width_in": 35.5, "segments": [ { "op": "F", "height_in": 99 } ] } ] },
-    "6": { "columns": [
-      { "width_in": 22.5, "segments": [ { "op": "F", "height_in": 99 } ] },
-      { "width_in": 39.5, "segments": [ { "op": "door", "height_in": 99, "leaf": "R" } ] }
-    ] },
-    "7": { "columns": [
-      { "width_in": 45.75, "segments": [ { "op": "F", "height_in": 47.5 }, { "op": "F", "height_in": 48 }, { "op": "F", "height_in": 48 } ] },
-      { "width_in": 38, "segments": [ { "op": "F", "height_in": 47.5 }, { "op": "door", "height_in": 96, "leaf": "L" } ] },
-      { "width_in": 38, "segments": [ { "op": "F", "height_in": 47.5 }, { "op": "door", "height_in": 96, "leaf": "R" } ] },
-      { "width_in": 45.75, "segments": [ { "op": "F", "height_in": 47.5 }, { "op": "F", "height_in": 48 }, { "op": "F", "height_in": 48 } ] }
-    ] },
-    "8": { "columns": [
-      { "width_in": 41.875, "segments": [ { "op": "F", "height_in": 47.5 }, { "op": "F", "height_in": 48 }, { "op": "F", "height_in": 48 } ] },
-      { "width_in": 41.875, "segments": [ { "op": "F", "height_in": 47.5 }, { "op": "F", "height_in": 48 }, { "op": "F", "height_in": 48 } ] },
-      { "width_in": 41.875, "segments": [ { "op": "F", "height_in": 47.5 }, { "op": "F", "height_in": 48 }, { "op": "F", "height_in": 48 } ] },
-      { "width_in": 41.875, "segments": [ { "op": "F", "height_in": 47.5 }, { "op": "F", "height_in": 48 }, { "op": "F", "height_in": 48 } ] }
-    ] },
-    "9": { "columns": [ { "width_in": 71.5, "segments": [ { "op": "F", "height_in": 47.5 } ] } ] },
-    "10": { "columns": [ { "width_in": 37.5, "segments": [ { "op": "door", "height_in": 99, "leaf": "L" } ] } ] }
+  "note": "Heights from A5/A4 elevation datums: top of subfloor (2nd) 11 ft = 3.35 m, top of parapet 25 ft = 7.62 m. The trace's 3 m + 3 m defaults understate the real building. Footprints, trace, and the owner's interior partition are carried from the live model untouched."
+ },
+ "windows": [
+  {
+   "id": "1",
+   "elev": "s2",
+   "floor": "Ground",
+   "room": "Lobby (front)",
+   "type": "Storefront: 8 fixed lites around a center double swing door pair",
+   "w": 4254,
+   "h": 3645,
+   "x": 1.22,
+   "y": 0.03,
+   "open": "Fixed / double swing door",
+   "hand": "Pair, meet center; panic hardware; closers",
+   "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
+   "frame": "Thermal-break aluminum, TruLite Bronze; black hardware",
+   "status": "tofit",
+   "panesSplit": [
+    [
+     1162,
+     965,
+     965,
+     1162
+    ]
+   ],
+   "notes": "CU-1 Main Door. Columns 45 3/4 | 38 | 38 | 45 3/4 in. Side columns: three stacked F (47 1/2 / 48 / 48 in). Center columns: F transom (47 1/2) over door leaf (~96 in). 8 F + 2 leaves. Plan: 14 x 12 door & window set at front-east, right edge ~4 ft off NE corner."
+  },
+  {
+   "id": "2",
+   "elev": "s2",
+   "floor": "Ground",
+   "room": "Front west",
+   "type": "Commercial swing door, full glass leaf",
+   "w": 953,
+   "h": 2515,
+   "x": 28.94,
+   "y": 0.03,
+   "open": "Swing door",
+   "hand": "Single leaf; panic, closer, continuous hinge",
+   "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
+   "frame": "Thermal-break aluminum, TruLite Bronze; black hardware",
+   "status": "tofit",
+   "notes": "CU-1 Front Door, 37 1/2 x 99 in. Plan top-left, ~7.5 ft from NW corner."
+  },
+  {
+   "id": "3",
+   "elev": "s0",
+   "floor": "Ground",
+   "room": "Back west",
+   "type": "Commercial swing door, full glass leaf",
+   "w": 953,
+   "h": 2515,
+   "x": 1.5,
+   "y": 0.03,
+   "open": "Swing door",
+   "hand": "Single leaf; panic, closer, continuous hinge",
+   "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
+   "frame": "Thermal-break aluminum, TruLite Bronze; black hardware",
+   "status": "tofit",
+   "notes": "CU-1 Back Door, 37 1/2 x 99 in. Plan bottom-left, ~6.5 ft from SW corner."
+  },
+  {
+   "id": "4",
+   "elev": "s0",
+   "floor": "Ground",
+   "room": "Back center",
+   "type": "Swing door with fixed sidelite",
+   "w": 1575,
+   "h": 2515,
+   "x": 16.89,
+   "y": 0.03,
+   "open": "Fixed / swing door",
+   "hand": "Leaf 39 1/2 in + sidelite 22 1/2 in",
+   "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
+   "frame": "Thermal-break aluminum, TruLite Bronze; black hardware",
+   "status": "tofit",
+   "panesSplit": [
+    [
+     1003,
+     572
+    ]
+   ],
+   "notes": "CU-2 Back Door 2, 62 x 99 in total. Plan: 5'2 x 8'4 door & window set, ~58 ft from SW corner."
+  },
+  {
+   "id": "5",
+   "elev": "s0",
+   "floor": "Ground",
+   "room": "Back east",
+   "type": "Storefront fixed window",
+   "w": 901,
+   "h": 2515,
+   "x": 20.58,
+   "y": 0.03,
+   "open": "Fixed",
+   "hand": "Fixed",
+   "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
+   "frame": "Thermal-break aluminum, TruLite Bronze",
+   "status": "tofit",
+   "notes": "CU-2 Back Window, 35 1/2 x 99 in. Plan back wall ~69 ft from SW corner."
+  },
+  {
+   "id": "6",
+   "elev": "s1",
+   "floor": "Ground",
+   "room": "East lower (goggle room side)",
+   "type": "Swing door with fixed sidelite",
+   "w": 1575,
+   "h": 2515,
+   "x": 5.0,
+   "y": 0.03,
+   "open": "Fixed / swing door",
+   "hand": "Sidelite 22 1/2 in + leaf 39 1/2 in",
+   "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
+   "frame": "Thermal-break aluminum, TruLite Bronze; black hardware",
+   "status": "tofit",
+   "panesSplit": [
+    [
+     572,
+     1003
+    ]
+   ],
+   "notes": "CU-2 Left Door (sidelite hinge-side mirrored vs #4), 62 x 99 in. Plan east wall ~19 ft up from SE corner."
+  },
+  {
+   "id": "7",
+   "elev": "s1",
+   "floor": "Ground",
+   "room": "Lobby east",
+   "type": "Storefront: 8 fixed lites around a center double swing door pair",
+   "w": 4254,
+   "h": 3645,
+   "x": 10.06,
+   "y": 0.03,
+   "open": "Fixed / double swing door",
+   "hand": "Pair, meet center; panic hardware; closers",
+   "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
+   "frame": "Thermal-break aluminum, TruLite Bronze; black hardware",
+   "status": "tofit",
+   "panesSplit": [
+    [
+     1162,
+     965,
+     965,
+     1162
+    ]
+   ],
+   "notes": "CU-3 Left Main Door \u2014 identical design to mark 1 (same drawing on both sheets). Plan: 14 x 12 door & window set mid east wall, ~40 ft up from SE corner."
+  },
+  {
+   "id": "8",
+   "elev": "s1",
+   "floor": "Ground",
+   "room": "Lobby east (display wall)",
+   "type": "Storefront fixed wall, 12 lites (4 x 3)",
+   "w": 4254,
+   "h": 3645,
+   "x": 15.86,
+   "y": 0.03,
+   "open": "Fixed",
+   "hand": "Fixed",
+   "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
+   "frame": "Thermal-break aluminum, TruLite Bronze",
+   "status": "tofit",
+   "panesSplit": [
+    [
+     1063,
+     1064,
+     1064,
+     1063
+    ]
+   ],
+   "notes": "CU-2 Left SF Wall: 4 columns 41 7/8 in, 3 rows 47 1/2 / 48 / 48 in \u2014 all fixed. Plan: 14 x 12 window, ~14 ft down from NE corner."
+  },
+  {
+   "id": "9",
+   "elev": "s1",
+   "floor": "Level 2",
+   "room": "Break room",
+   "type": "Storefront fixed window",
+   "w": 1816,
+   "h": 1206,
+   "x": 1.53,
+   "y": 4.69,
+   "open": "Fixed",
+   "hand": "Fixed",
+   "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
+   "frame": "Thermal-break aluminum, TruLite Bronze",
+   "status": "tofit",
+   "notes": "CU-3 Left Window, 71 1/2 x 47 1/2 in. Second floor east wall by the break room; head at 19'4 (A4) -> sill 4.69 m ABOVE GRADE (the renderer places by absolute height and derives the storey from it; the floor string only filters/labels)."
+  },
+  {
+   "id": "10",
+   "elev": "s3",
+   "floor": "Ground",
+   "room": "Mechanic shop west",
+   "type": "Commercial swing door, full glass leaf",
+   "w": 953,
+   "h": 2515,
+   "x": 7.14,
+   "y": 0.03,
+   "open": "Swing door",
+   "hand": "Single leaf; panic, closer, continuous hinge",
+   "glass": "6(Low-E 366)+12A+5(Low-E 366) insulating tempered, argon, black IG spacers",
+   "frame": "Thermal-break aluminum, TruLite Bronze; black hardware",
+   "status": "tofit",
+   "notes": "CU-3 Right Door, 37 1/2 x 99 in. Plan west wall ~25 ft down from NW corner."
   }
+ ],
+ "paneGrids": {
+  "1": {
+   "columns": [
+    {
+     "width_in": 45.75,
+     "segments": [
+      {
+       "op": "F",
+       "height_in": 47.5
+      },
+      {
+       "op": "F",
+       "height_in": 48
+      },
+      {
+       "op": "F",
+       "height_in": 48
+      }
+     ]
+    },
+    {
+     "width_in": 38,
+     "segments": [
+      {
+       "op": "F",
+       "height_in": 47.5
+      },
+      {
+       "op": "door",
+       "height_in": 96,
+       "leaf": "L"
+      }
+     ]
+    },
+    {
+     "width_in": 38,
+     "segments": [
+      {
+       "op": "F",
+       "height_in": 47.5
+      },
+      {
+       "op": "door",
+       "height_in": 96,
+       "leaf": "R"
+      }
+     ]
+    },
+    {
+     "width_in": 45.75,
+     "segments": [
+      {
+       "op": "F",
+       "height_in": 47.5
+      },
+      {
+       "op": "F",
+       "height_in": 48
+      },
+      {
+       "op": "F",
+       "height_in": 48
+      }
+     ]
+    }
+   ]
+  },
+  "2": {
+   "columns": [
+    {
+     "width_in": 37.5,
+     "segments": [
+      {
+       "op": "door",
+       "height_in": 99,
+       "leaf": "L"
+      }
+     ]
+    }
+   ]
+  },
+  "3": {
+   "columns": [
+    {
+     "width_in": 37.5,
+     "segments": [
+      {
+       "op": "door",
+       "height_in": 99,
+       "leaf": "L"
+      }
+     ]
+    }
+   ]
+  },
+  "4": {
+   "columns": [
+    {
+     "width_in": 39.5,
+     "segments": [
+      {
+       "op": "door",
+       "height_in": 99,
+       "leaf": "L"
+      }
+     ]
+    },
+    {
+     "width_in": 22.5,
+     "segments": [
+      {
+       "op": "F",
+       "height_in": 99
+      }
+     ]
+    }
+   ]
+  },
+  "5": {
+   "columns": [
+    {
+     "width_in": 35.5,
+     "segments": [
+      {
+       "op": "F",
+       "height_in": 99
+      }
+     ]
+    }
+   ]
+  },
+  "6": {
+   "columns": [
+    {
+     "width_in": 22.5,
+     "segments": [
+      {
+       "op": "F",
+       "height_in": 99
+      }
+     ]
+    },
+    {
+     "width_in": 39.5,
+     "segments": [
+      {
+       "op": "door",
+       "height_in": 99,
+       "leaf": "R"
+      }
+     ]
+    }
+   ]
+  },
+  "7": {
+   "columns": [
+    {
+     "width_in": 45.75,
+     "segments": [
+      {
+       "op": "F",
+       "height_in": 47.5
+      },
+      {
+       "op": "F",
+       "height_in": 48
+      },
+      {
+       "op": "F",
+       "height_in": 48
+      }
+     ]
+    },
+    {
+     "width_in": 38,
+     "segments": [
+      {
+       "op": "F",
+       "height_in": 47.5
+      },
+      {
+       "op": "door",
+       "height_in": 96,
+       "leaf": "L"
+      }
+     ]
+    },
+    {
+     "width_in": 38,
+     "segments": [
+      {
+       "op": "F",
+       "height_in": 47.5
+      },
+      {
+       "op": "door",
+       "height_in": 96,
+       "leaf": "R"
+      }
+     ]
+    },
+    {
+     "width_in": 45.75,
+     "segments": [
+      {
+       "op": "F",
+       "height_in": 47.5
+      },
+      {
+       "op": "F",
+       "height_in": 48
+      },
+      {
+       "op": "F",
+       "height_in": 48
+      }
+     ]
+    }
+   ]
+  },
+  "8": {
+   "columns": [
+    {
+     "width_in": 41.875,
+     "segments": [
+      {
+       "op": "F",
+       "height_in": 47.5
+      },
+      {
+       "op": "F",
+       "height_in": 48
+      },
+      {
+       "op": "F",
+       "height_in": 48
+      }
+     ]
+    },
+    {
+     "width_in": 41.875,
+     "segments": [
+      {
+       "op": "F",
+       "height_in": 47.5
+      },
+      {
+       "op": "F",
+       "height_in": 48
+      },
+      {
+       "op": "F",
+       "height_in": 48
+      }
+     ]
+    },
+    {
+     "width_in": 41.875,
+     "segments": [
+      {
+       "op": "F",
+       "height_in": 47.5
+      },
+      {
+       "op": "F",
+       "height_in": 48
+      },
+      {
+       "op": "F",
+       "height_in": 48
+      }
+     ]
+    },
+    {
+     "width_in": 41.875,
+     "segments": [
+      {
+       "op": "F",
+       "height_in": 47.5
+      },
+      {
+       "op": "F",
+       "height_in": 48
+      },
+      {
+       "op": "F",
+       "height_in": 48
+      }
+     ]
+    }
+   ]
+  },
+  "9": {
+   "columns": [
+    {
+     "width_in": 71.5,
+     "segments": [
+      {
+       "op": "F",
+       "height_in": 47.5
+      }
+     ]
+    }
+   ]
+  },
+  "10": {
+   "columns": [
+    {
+     "width_in": 37.5,
+     "segments": [
+      {
+       "op": "door",
+       "height_in": 99,
+       "leaf": "L"
+      }
+     ]
+    }
+   ]
+  }
+ }
 }
