@@ -975,6 +975,120 @@ test("glyph overlay: arrows/F always, dims on selection, pane-op flips it", asyn
     .screenshot({ path: join(SHOTS, "glyph-overlay.png") });
 });
 
+// Wave G (2026-09-01): a mark's real CAD cell (spec.extra.pane_grid) paints
+// onto the unit's face canvas instead of annotationLayout's uniform-row
+// guess. Same paintedPixels() canvas hook the plain "glyph overlay" test
+// above already uses — the grid path adds real drawing (mullions, glyphs,
+// door hinge marks) on top of what a flat 1-panel config alone would ever
+// paint, so more ink on the canvas is the honest signal that it ran.
+test("Studio unit face: a mark with pane_grid paints the real grid, not the flat config guess", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useOutline(page, { fitview: { model: FITVIEW_MODEL } });
+  // Mad Moose mark 7's canonical fixture, the same one the parser/renderer
+  // unit tests pin against — overrides whatever this fixture project's real
+  // mark_specs.json says for mark 7.
+  await page.route("**/rest/v1/project_mark_specs**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "content-range": "0-0/1" },
+      body: JSON.stringify([
+        {
+          id: "00000000-0000-4000-8000-0000000c7001",
+          project_id: BLACK22.projectId,
+          mark_code: "7",
+          extra: {
+            pane_grid: {
+              columns: [
+                {
+                  width_in: 45.75,
+                  segments: [
+                    { op: "F", height_in: 47.5 },
+                    { op: "F", height_in: 48 },
+                    { op: "F", height_in: 48 },
+                  ],
+                },
+                {
+                  width_in: 38,
+                  segments: [
+                    { op: "F", height_in: 47.5 },
+                    { op: "door", height_in: 96, leaf: "L" },
+                  ],
+                },
+                {
+                  width_in: 38,
+                  segments: [
+                    { op: "F", height_in: 47.5 },
+                    { op: "door", height_in: 96, leaf: "R" },
+                  ],
+                },
+                {
+                  width_in: 45.75,
+                  segments: [
+                    { op: "F", height_in: 47.5 },
+                    { op: "F", height_in: 48 },
+                    { op: "F", height_in: 48 },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ]),
+    }),
+  );
+  await openStudio(page);
+
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    bp.model.scene.addItem(
+      3,
+      "/modelstudio/models/window.json",
+      {
+        itemName: "7",
+        itemType: 3,
+        modelUrl: "/modelstudio/models/window.json",
+        // A plain 1-panel placeholder — the grid, not this config, is what
+        // should paint the real storefront onto the face.
+        unitConfig: {
+          kind: "window",
+          heightMm: 3645,
+          panels: [{ widthMm: 4254, mechanism: "fixed" }],
+        },
+      },
+      { x: 900, y: 1800, z: 600 },
+      0,
+      undefined,
+      false,
+    );
+  });
+  await page.waitForFunction(() => {
+    const bp = (window as any).__studio;
+    const items = bp.model.scene.getItems();
+    return items.length === 1 && Boolean(items[0].currentWallEdge);
+  });
+
+  const paintedPixels = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const item = bp.model.scene.getItems()[0];
+    const ann = item.children.find((c: any) => c.name === "unit-annotations");
+    if (!ann) return -1;
+    const canvas = ann.material.map.image as HTMLCanvasElement;
+    const ctx = canvas.getContext("2d")!;
+    const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    let n = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 10) n++;
+    return n;
+  });
+  // The annotation plane exists and painted something real — mullions, 8 F
+  // glyphs, 2 door hinge marks and 4 column-width labels are a lot more ink
+  // than a single "F" glyph + mark chip the flat 1-panel config would paint
+  // on its own, so a healthy floor comfortably tells the two apart.
+  expect(paintedPixels).toBeGreaterThan(400);
+});
+
 test("Pull from plans reads the PLANS — a published model never caps it", async ({
   page,
 }) => {
