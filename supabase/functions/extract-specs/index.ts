@@ -176,6 +176,35 @@ interface RawVisionMark {
   bbox: [number, number, number, number] | null;
   /** 1-based page the drawing (and this transcription) came from. */
   image_page: number | null;
+  /**
+   * THE GRID CONTRACT (wave G): the pictured cell's real mullion-column
+   * design, when the drawing shows one — a storefront, sidelites, a transom
+   * over a door, stacked panes. ADDITIONAL description of the SAME cell
+   * (vision-first law holds: pane_grid is never a new source of marks or
+   * counts). Null for the ordinary flat-row case, which panel_widths above
+   * already covers.
+   */
+  pane_grid: RawPaneGrid | null;
+}
+
+/** One segment of one column of {@link RawPaneGrid} — see cleanPaneGrid. */
+interface RawPaneGridSegment {
+  op: "F" | "X" | "door";
+  height_in?: number;
+  leaf?: "L" | "R";
+}
+
+/** One mullion column of {@link RawPaneGrid} — see cleanPaneGrid. */
+interface RawPaneGridColumn {
+  width_in?: number;
+  segments: RawPaneGridSegment[];
+}
+
+/** THE GRID CONTRACT's own shape: column-major (storefronts are built as
+ * mullion columns), segments top to bottom, op vocabulary from
+ * docs/window-vendor-conventions.md. */
+interface RawPaneGrid {
+  columns: RawPaneGridColumn[];
 }
 
 /**
@@ -224,6 +253,87 @@ function cleanCorner(
   return { after_panel: after, side };
 }
 
+// --- pane_grid (THE GRID CONTRACT, wave G) ---
+
+/** op vocabulary law: docs/window-vendor-conventions.md — F fixed, X
+ * operable/slider, "door" a swing leaf. Case-insensitive on the wire,
+ * canonicalized here; anything else means the model didn't actually
+ * transcribe an op letter off the drawing. */
+function cleanPaneGridOp(raw: unknown): "F" | "X" | "door" | null {
+  const s = typeof raw === "string" ? raw.trim().toUpperCase() : "";
+  if (s === "F" || s === "X") return s;
+  if (s === "DOOR") return "door";
+  return null;
+}
+
+function cleanPaneGridLeaf(raw: unknown): "L" | "R" | undefined {
+  const s = typeof raw === "string" ? raw.trim().toUpperCase() : "";
+  return s === "L" || s === "R" ? (s as "L" | "R") : undefined;
+}
+
+/** A dimension in inches: finite, positive, and under a size no real unit
+ * reaches (storefronts run large; 50 ft is generous headroom against the
+ * model echoing a whole-building dimension by mistake). Unusable → undefined,
+ * never a stored 0 — the contract reads a missing key as "divide evenly". */
+function cleanPaneGridInches(raw: unknown): number | undefined {
+  if (raw == null || raw === "") return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 && n <= 600 ? n : undefined;
+}
+
+function cleanPaneGridSegment(raw: unknown): RawPaneGridSegment | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const op = cleanPaneGridOp(o.op);
+  if (!op) return null;
+  const segment: RawPaneGridSegment = { op };
+  const height = cleanPaneGridInches(o.height_in ?? o.heightIn);
+  if (height != null) segment.height_in = height;
+  const leaf = cleanPaneGridLeaf(o.leaf);
+  if (leaf) segment.leaf = leaf;
+  return segment;
+}
+
+function cleanPaneGridColumn(raw: unknown): RawPaneGridColumn | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const rawSegments = Array.isArray(o.segments) ? o.segments : null;
+  // 12 segments is already beyond any real unit — the same smell test
+  // cleanStringArray uses for a transcribed dimension chain that isn't panel
+  // widths.
+  if (!rawSegments || rawSegments.length === 0 || rawSegments.length > 12) {
+    return null;
+  }
+  const segments = rawSegments.map(cleanPaneGridSegment);
+  if (segments.some((s) => s === null)) return null;
+  const column: RawPaneGridColumn = {
+    segments: segments as RawPaneGridSegment[],
+  };
+  const width = cleanPaneGridInches(o.width_in ?? o.widthIn);
+  if (width != null) column.width_in = width;
+  return column;
+}
+
+/**
+ * Validate the model's pane_grid read of one mark's pictured cell. ALL-OR-
+ * NOTHING, same as {@link cleanBbox}/{@link cleanCorner}: a grid with one
+ * garbled column is worth zero trust, not a half-drawn one, and dropping it
+ * to null costs nothing else — the mark's TEXT and its `panel_widths` fallback
+ * survive untouched either way, same reasoning cleanBbox's own doc comment
+ * gives for a bad drawing box.
+ */
+function cleanPaneGrid(raw: unknown): RawPaneGrid | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const rawColumns = Array.isArray(o.columns) ? o.columns : null;
+  if (!rawColumns || rawColumns.length === 0 || rawColumns.length > 12) {
+    return null;
+  }
+  const columns = rawColumns.map(cleanPaneGridColumn);
+  if (columns.some((c) => c === null)) return null;
+  return { columns: columns as RawPaneGridColumn[] };
+}
+
 function cleanVisionMark(raw: unknown, pageNumber: number): RawVisionMark | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -250,6 +360,7 @@ function cleanVisionMark(raw: unknown, pageNumber: number): RawVisionMark | null
     panel_ops: cleanStringArray(o.panel_ops ?? o.panelOps),
     corner: cleanCorner(o.corner),
     inset_outset: cleanInsetOutset(o.inset_outset ?? o.insetOutset),
+    pane_grid: cleanPaneGrid(o.pane_grid ?? o.paneGrid),
     bbox,
     // The page is ours, not the model's — we know which image we sent. Only
     // meaningful alongside a box, so it rides along with one.
@@ -371,7 +482,28 @@ const VISION_SCHEMA =
   'the opening (block frame, recessed, "inset"), "outset" when it mounts ' +
   'proud of the face (nail fin/flange onto the face, "outset", surface ' +
   "mount). Read it from the style text, mounting notes, or section detail. " +
-  "Use null when the sheet does not say — NEVER guess. One object per mark.";
+  "Use null when the sheet does not say — NEVER guess. " +
+  "pane_grid: when the elevation drawing shows the unit built as MULLION " +
+  "COLUMNS instead of one flat row — a storefront, sidelites flanking a " +
+  "door, stacked panes, a fixed transom over a swing door — describe the " +
+  'FULL design as { "columns": [ { "width_in": number, "segments": [ ' +
+  '{ "op": "F"|"X"|"door", "height_in": number, "leaf": "L"|"R" } ] } ] }. ' +
+  "Read the dimension chain the same way panel_widths does: columns LEFT TO " +
+  "RIGHT as drawn (Outside View), each column's segments TOP TO BOTTOM. " +
+  "width_in / height_in are the PRINTED inches for that column/segment — " +
+  "OMIT the key (never write 0) when the sheet doesn't dimension it; the " +
+  "reader divides remaining space evenly among segments/columns that omit " +
+  'it. op is "F" for a fixed pane (hatch marks or an "F" on the drawing), ' +
+  '"X" for an operable/slider pane (an arrow, the "X" in OXXO notation), ' +
+  '"door" for a swing leaf (the full-height diagonal, kick plate) — see ' +
+  "the op vocabulary in docs/window-vendor-conventions.md. " +
+  'leaf is "L" or "R" for a "door" segment ONLY, from which side the hinge ' +
+  "or center-meet sits (apex/kick-plate side) — omit it for F/X. " +
+  "Use null for the WHOLE pane_grid when the cell is a single flat row " +
+  "(panel_widths above already covers that ordinary case) or you cannot " +
+  "read the column/segment breakdown. Never invent a column or segment the " +
+  "drawing does not show — same law as everything else here: transcribe " +
+  "only what's printed. One object per mark.";
 
 const SYSTEM =
   "You extract rich per-mark window and door line-item specifications from a " +
