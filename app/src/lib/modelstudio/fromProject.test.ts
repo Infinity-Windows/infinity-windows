@@ -15,6 +15,7 @@ import {
 } from "./fromProject";
 import { indexSpecsByMark } from "../install/specs";
 import type { ProjectMarkSpec } from "../install/specs";
+import { unitMarkLabel } from "./unitIdentity";
 import type { UnitConfig } from "./units";
 
 interface Plan {
@@ -404,6 +405,35 @@ describe("buildStudioPull", () => {
     expect(markKeyOf("16-2")).toBe("16");
     expect(markKeyOf("16B")).toBe("16");
     expect(markKeyOf("12@L3")).toBe("12");
+  });
+
+  it("keeps same-size marks un-crossed through the pull (Mad Moose: marks 1/7/8 all 167.5x143.5in)", () => {
+    // Real Mad Moose shapes (project 08c60cce-29f6-4b52-bd0c-2bc2c02a79a9):
+    // three unrelated marks that happen to share one CAD size. Nothing in
+    // buildStudioPull may key a placement by its size — only by its own
+    // mark/itemName — or two same-size marks would silently swap identities
+    // the moment they landed on the same wall.
+    const specs = [
+      spec("1", 167.5, 143.5, "Fixed / Double Swing Door"),
+      spec("7", 167.5, 143.5, ""),
+      spec("8", 167.5, 143.5, "Fixed"),
+    ];
+    const windows = [win("1", 0), win("7", 5), win("8", 10)];
+    const out = buildStudioPull(
+      { building: { footprints: [rect(0, 0, 30, 6)] }, windows } as never,
+      specs,
+      new Set(),
+    );
+    expect(out.placements).toHaveLength(3);
+    // Every placement keeps ITS OWN mark, in the order it was walked —
+    // no dedup/size-keyed map could have merged or reordered these three
+    // identically-sized configs into each other.
+    expect(out.placements.map((p) => p.itemName)).toEqual(["1", "7", "8"]);
+    // And unitMarkLabel (what the badge actually renders) is equally
+    // faithful to each placement's own itemName — size plays no part.
+    for (const p of out.placements) {
+      expect(unitMarkLabel(p.itemName)).toBe(p.itemName);
+    }
   });
 });
 

@@ -10259,6 +10259,42 @@ body {
   background: rgba(255,255,255,.03); padding: 10px 12px;
 }
 
+/* Selected-unit identity card (owner ask, 2026-09-01: the old three lines
+   of plain <p className="muted"> text were "visually poor"). The badge
+   deliberately reuses the 3D overlay's own mark-chip colors (unitAnnotations.ts's
+   resolvePaint: --info fill, white text) so a unit reads the same whether
+   it's tapped in the 3D scene or selected here — never a second chip
+   language invented for the panel. Hover changes nothing about layout:
+   every piece below sizes off its own content, never a hover state. */
+.studio-identity { display: flex; flex-direction: column; gap: 5px; padding: 1px 0 5px; }
+.studio-identity-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.studio-mark-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 28px; padding: 3px 10px; border-radius: 7px;
+  background: var(--info, #4a9dff); color: #fff;
+  font-family: ui-monospace, monospace; font-weight: 700; font-size: 15px;
+  line-height: 1.25; letter-spacing: .01em;
+}
+.studio-type-chip {
+  font-size: 11px; font-weight: 600; color: rgba(255,255,255,.68);
+}
+/* W x L — the ONE line the owner confirmed the old identity line already
+   got right (unitSizeLabel reads the placed config's own width/height, and
+   the config's overall size always matches the CAD sheet even when its
+   panels don't) — kept prominent, tape-reading fraction format unchanged. */
+.studio-identity-size {
+  margin: 0; font-family: ui-monospace, monospace; font-size: 14px;
+  font-weight: 700; color: rgba(255,255,255,.92);
+}
+.studio-identity-panes {
+  margin: 0; font-size: 11.5px; font-family: ui-monospace, monospace;
+  color: rgba(255,255,255,.68);
+}
+.studio-identity-style {
+  margin: 0; font-size: 11px; color: rgba(255,255,255,.55);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+
 .studio-palette.collapsed {
   width: auto; padding: 4px; background: rgba(20,16,13,.85);
 }
