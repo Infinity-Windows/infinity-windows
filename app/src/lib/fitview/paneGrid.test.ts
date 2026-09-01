@@ -191,7 +191,13 @@ describe("normalizePaneGrid: the fallback trigger renderers gate on", () => {
 // back within a hair of the mark's real order size (fixture window w/h, mm).
 describe("madmoose-mm2.json fixture: the parser handles every real grid", () => {
   const paneGrids = (fixture as { paneGrids: Record<string, unknown> }).paneGrids;
-  const windows = (fixture as { windows: { id: string; w: number; h: number }[] }).windows;
+  const fx = fixture as {
+    windows: { id: string; w: number; h: number }[];
+    addWindows?: { id: string; w: number; h: number }[];
+  };
+  // The Add units (MMV2A cut sheets) live in addWindows — same shape,
+  // same grids map, ordered later than the original ten.
+  const windows = fx.windows.concat(fx.addWindows ?? []);
   const IN_TO_MM = 25.4;
 
   for (const [mark, grid] of Object.entries(paneGrids)) {

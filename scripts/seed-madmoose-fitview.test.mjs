@@ -10,6 +10,7 @@ import {
   patchBuilding,
   mergeMadmooseFeatures,
   extraWithPaneGrid,
+  combineWindows,
 } from "./lib/madmoose-seed.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -25,7 +26,7 @@ assert.deepEqual(
   "marks 1 and 7 are the same drawing on CU-1 and CU-3",
 );
 for (const [mark, grid] of Object.entries(fx.paneGrids)) {
-  const win = fx.windows.find((w) => w.id === mark);
+  const win = fx.windows.concat(fx.addWindows).find((w) => w.id === mark);
   const colSum = grid.columns.reduce((a, c) => a + c.width_in, 0);
   assert.ok(
     Math.abs(colSum * 25.4 - win.w) < 26,
@@ -88,4 +89,20 @@ const fresh = extraWithPaneGrid({ qty: "1", panels: [1, 2] }, fx.paneGrids["5"])
 assert.deepEqual(fresh.panels, [1, 2], "existing extra keys survive");
 assert.ok(fresh.pane_grid, "the grid lands where none existed");
 
+// --- the Add units (MMV2A - CU) ---
+assert.equal(fx.addWindows.length, 3, "three add units");
+assert.equal(fx.addSpecs.length, 3, "three add specs");
+for (const w of fx.addWindows) {
+  assert.equal(w.elev, "s4", `${w.id} rides the office glass wall`);
+  assert.ok(w.x >= 0 && w.x + w.w / 1000 <= 24.4, `${w.id} fits the partition wall`);
+}
+const combined = combineWindows(fx.windows, fx.addWindows);
+assert.equal(combined.length, 13, "ten originals + three adds");
+assert.equal(combineWindows(combined, fx.addWindows).length, 13, "re-apply never doubles an add");
+for (const spec of fx.addSpecs) {
+  const grid = fx.paneGrids[spec.mark_code];
+  const colSum = grid.columns.reduce((a, c) => a + c.width_in, 0);
+  assert.ok(Math.abs(colSum - spec.width_in) < 0.6, `${spec.mark_code} grid sums to its width`);
+  assert.equal(grid.columns[0].segments[0].op, "door", `${spec.mark_code} leads with its French door`);
+}
 console.log("seed-madmoose-fitview: all assertions passed");
