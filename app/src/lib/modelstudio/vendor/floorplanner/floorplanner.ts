@@ -211,35 +211,56 @@ export class Floorplanner {
 
   /** */
   private updateTarget(): void {
-    if (this.mode == floorplannerModes.DRAW && this.lastNode) {
-      // infinity: W2 angle-snap — square/straight relative to the wall this
-      // one connects to wins outright over the lastNode-axis/grid snap
-      // below; fall through to that ONLY when angle-snap doesn't apply, so
-      // the two snaps are mutually exclusive per point and can never fight.
-      const angleSnapped = snapWallAngle(this.lastNode, this.angleSnapReference(), {
-        x: this.mouseX,
-        y: this.mouseY
-      })
-      if (angleSnapped.x !== this.mouseX || angleSnapped.y !== this.mouseY) {
-        this.targetX = angleSnapped.x
-        this.targetY = angleSnapped.y
-        this.view.draw()
-        return
+    if (this.mode == floorplannerModes.DRAW) {
+      // infinity: W1/W2 (w-walls-spec.md, 2026-08-31) — the pivot for the
+      // segment being placed right now. A drag creates BOTH its corners in
+      // one gesture, only at release (mouseup), so lastNode still reflects
+      // the PREVIOUS wall for the entire drag — dragOrigin is what a
+      // continuing gesture pivots on until then. Click-click has no
+      // dragOrigin, so it pivots on lastNode exactly as before.
+      const pivot =
+        this.dragOrigin ?? (this.lastNode ? { x: this.lastNode.x, y: this.lastNode.y } : null)
+      if (pivot) {
+        // Angle-snap only knows the wall a REAL lastNode connects to; a
+        // dragOrigin that isn't (yet) lastNode is a fresh/disconnected
+        // start, which is exactly snapWallAngle's null-reference case —
+        // global axes, same as a session's first wall ever.
+        const continuesChain =
+          this.lastNode != null &&
+          Math.abs(this.lastNode.x - pivot.x) < 1e-6 &&
+          Math.abs(this.lastNode.y - pivot.y) < 1e-6
+        const reference = continuesChain ? this.angleSnapReference() : null
+        // infinity: W2 angle-snap — square/straight wins outright over the
+        // lastNode-axis/grid snap below; fall through to that ONLY when
+        // angle-snap doesn't apply, so the two snaps are mutually exclusive
+        // per point and can never fight.
+        const angleSnapped = snapWallAngle(pivot, reference, {
+          x: this.mouseX,
+          y: this.mouseY
+        })
+        if (angleSnapped.x !== this.mouseX || angleSnapped.y !== this.mouseY) {
+          this.targetX = angleSnapped.x
+          this.targetY = angleSnapped.y
+          this.view.draw()
+          return
+        }
       }
 
-      if (Math.abs(this.mouseX - this.lastNode.x) < snapTolerance) {
-        this.targetX = this.lastNode.x
+      if (this.lastNode) {
+        if (Math.abs(this.mouseX - this.lastNode.x) < snapTolerance) {
+          this.targetX = this.lastNode.x
+        } else {
+          this.targetX = this.snapToGrid(this.mouseX)
+        }
+        if (Math.abs(this.mouseY - this.lastNode.y) < snapTolerance) {
+          this.targetY = this.lastNode.y
+        } else {
+          this.targetY = this.snapToGrid(this.mouseY)
+        }
       } else {
         this.targetX = this.snapToGrid(this.mouseX)
-      }
-      if (Math.abs(this.mouseY - this.lastNode.y) < snapTolerance) {
-        this.targetY = this.lastNode.y
-      } else {
         this.targetY = this.snapToGrid(this.mouseY)
       }
-    } else if (this.mode == floorplannerModes.DRAW) {
-      this.targetX = this.snapToGrid(this.mouseX)
-      this.targetY = this.snapToGrid(this.mouseY)
     } else {
       this.targetX = this.mouseX
       this.targetY = this.mouseY
