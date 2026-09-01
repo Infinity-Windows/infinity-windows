@@ -218,3 +218,48 @@ test("a two-story wall is ONE panel with both stories stacked", async ({ page })
   // No building break for a single building.
   await expect(page.locator(".flat-building-break")).toHaveCount(0);
 });
+
+// Owner report, 2026-09-01: a wall much narrower than its neighbours, at the
+// tail of the walk, could never be scrolled to centre — native
+// overflow-x:auto clamps at the row's own content edge, short of where a
+// wall this thin needs the row to reach, so the minimap's you-are-here edge
+// (which follows the centred wall) could never land on it. A plain 18x6m
+// rectangle with one extra vertex splits its west side into two panels — a
+// normal-width one, then a sliver that closes back to the origin and is
+// walked LAST — the shape of the owner's actual job (a narrow tail wall
+// next to an ordinary one), without needing an interior wall (whose own
+// panel has no matching minimap edge to light up at all — a separate,
+// pre-existing gap this fix does not touch).
+const NARROW_LAST_WALL = {
+  building: {
+    width: 18, depth: 6, height: 3, rise: 0,
+    footprints: [[
+      { x: 0, z: 0 }, { x: 18, z: 0 }, { x: 18, z: 6 }, { x: 0, z: 6 }, { x: 0, z: 0.5 },
+    ]],
+  },
+  windows: [
+    { id: "10", elev: "s0", x: 3, y: 0.9, w: 1500, h: 1200 },
+    { id: "11", elev: "s4", x: 0.05, y: 0.9, w: 300, h: 400 },
+  ],
+};
+
+test("scrolled to the max, a narrow LAST wall still centres and highlights", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  await useModel(page, NARROW_LAST_WALL);
+  await page.goto(`/projects/${BLACK22.projectId}?tab=maps-interactive`);
+  await expect(page.locator("button.win").first()).toBeVisible({ timeout: 60_000 });
+
+  const lastGeo = await page.locator(".flat-wall").last().getAttribute("data-geo");
+
+  await page.evaluate(() => {
+    const stage = document.querySelector(".stage.flat")!;
+    stage.scrollLeft = stage.scrollWidth;
+  });
+  // Frame-driven sync, same as the other cases above: the highlight lands
+  // on the LAST wall's edge, even though it is far narrower than the rest.
+  await expect(page.locator(".flat-minimap line.on")).toHaveAttribute(
+    "data-geo",
+    lastGeo!,
+    { timeout: 5_000 },
+  );
+});
