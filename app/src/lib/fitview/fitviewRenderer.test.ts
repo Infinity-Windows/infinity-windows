@@ -393,3 +393,115 @@ describe("wave G: pane grid rendering", () => {
     view.destroy();
   });
 });
+
+// Owner report, 2026-09-01: native overflow-x:auto scroll clamps at the flat
+// row's own content edges, so a wall right at either end can never have its
+// centre line up with the stage's centre — and the mini-map highlight, which
+// follows whichever wall sits there (syncCurrent, flattenHouse), could never
+// land on it. His case: an interior partition ("B2 · East 2") narrower than
+// the exterior walls around it, at the end of the walk. happy-dom does no
+// real layout, so these stub the handful of box-model numbers flattenHouse
+// and syncCurrent actually read (clientWidth, offsetLeft/offsetWidth,
+// scrollLeft) rather than trusting a browser to compute them.
+describe("flat elevations: a wall at either end can still reach the strip's centre", () => {
+  const GAP = 22; // .flatrow's CSS gap (fitview.css) — walls sit this far apart in the flex row.
+  const VIEWPORT = 390; // matches the e2e suite's phone width (e.g. BLACK22-map-390.png).
+
+  // The footprint's first edge is a 0.6m sliver (s0 starts narrow) and an
+  // interior wall — always walked in AFTER the exterior loop — is a 0.5m
+  // sliver too (s4 ends narrow), so both ends of the walk mirror the owner's
+  // report.
+  const THIN_ENDS = [
+    { x: 0, z: 0 }, { x: 0.6, z: 0 }, { x: 0.6, z: 8 }, { x: 0, z: 8 },
+  ];
+  function job() {
+    return {
+      id: "p1", ref: "Thin ends", addr: "",
+      building: {
+        width: 0.6, depth: 8, height: 3, rise: 0, footprints: [THIN_ENDS],
+        interiorWalls: [
+          { x1: 0.3, z1: 3, x2: 0.3, z2: 3.5, heightM: 3, elevM: 0, story: 1, name: "Narrow interior" },
+        ],
+      },
+      windows: [
+        { id: "F1", elev: "s0", floor: "Ground", room: "", type: "Fixed",
+          w: 300, h: 900, x: 0.1, y: 0.9, lights: 1, open: "fixed", status: "tofit" },
+        { id: "H1", elev: "s4", floor: "Ground", room: "", type: "Fixed",
+          w: 300, h: 900, x: 0.05, y: 0.9, lights: 1, open: "fixed", status: "tofit" },
+      ],
+    };
+  }
+
+  function mountFlat() {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    // flattenHouse() reads stage.clientWidth once, at mount, to size the
+    // row's end padding. happy-dom has no layout engine (every element
+    // reports 0), so stub the one element that matters before the renderer
+    // ever looks at it, and put the prototype back right after.
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth")!;
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get(this: HTMLElement) { return this.id === "stage" ? VIEWPORT : 0; },
+    });
+    const view = mountFitView(host, job(), { toast: () => {}, flatView: true });
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", original);
+    return { host, view };
+  }
+
+  /** Walk the flex row exactly as `.flatrow`'s CSS would, using the walls'
+   *  real widths (set by the renderer itself, off real job geometry) and the
+   *  row's real end padding (read back from the DOM, not assumed) — only the
+   *  CSS gap is a constant this test supplies, the same way scrollStrip.test's
+   *  `phone()` supplies a viewport. Stubs each wall's offsetLeft/offsetWidth
+   *  to match, since happy-dom won't compute them. */
+  function layOutWalls(host: HTMLElement) {
+    const row = host.querySelector<HTMLElement>(".flatrow")!;
+    const padLeft = parseFloat(row.style.paddingLeft) || 0;
+    const padRight = parseFloat(row.style.paddingRight) || 0;
+    let cursor = padLeft;
+    const walls = ["s0", "s1", "s2", "s3", "s4"].map((key) => {
+      const el = row.querySelector<HTMLElement>(`.flat-wall[data-elev="${key}"]`)!;
+      const width = parseFloat(el.style.width) || 0;
+      const offsetLeft = cursor;
+      Object.defineProperty(el, "offsetLeft", { configurable: true, value: offsetLeft });
+      Object.defineProperty(el, "offsetWidth", { configurable: true, value: width });
+      cursor += width + GAP;
+      return { key, el, offsetLeft, width };
+    });
+    const contentWidth = cursor - GAP + padRight;
+    return { walls, contentWidth };
+  }
+
+  function pressedChip(host: HTMLElement) {
+    return [...host.querySelectorAll<HTMLElement>("#elevStrip .elev")]
+      .find((b) => b.getAttribute("aria-pressed") === "true");
+  }
+
+  it("scrolled to the native max, the last (narrow) wall centres and highlights", () => {
+    const { host, view } = mountFlat();
+    const stage = host.querySelector<HTMLElement>("#stage")!;
+    Object.defineProperty(stage, "clientWidth", { configurable: true, value: VIEWPORT });
+    const { contentWidth } = layOutWalls(host);
+    // The native clamp a real overflow-x:auto stage applies to scrollLeft.
+    stage.scrollLeft = Math.max(0, contentWidth - VIEWPORT);
+    stage.dispatchEvent(new Event("scroll"));
+    expect(pressedChip(host)?.dataset.elev).toBe("s4");
+    expect(host.querySelector(".flat-minimap-label")!.textContent).toBe("Narrow interior");
+    view.destroy();
+  });
+
+  it("scrolled to bring the first (narrow) wall to centre, s0 centres and highlights too", () => {
+    const { host, view } = mountFlat();
+    const stage = host.querySelector<HTMLElement>("#stage")!;
+    Object.defineProperty(stage, "clientWidth", { configurable: true, value: VIEWPORT });
+    const { walls, contentWidth } = layOutWalls(host);
+    const first = walls[0];
+    const required = first.offsetLeft + first.width / 2 - VIEWPORT / 2;
+    const maxScroll = Math.max(0, contentWidth - VIEWPORT);
+    stage.scrollLeft = Math.min(maxScroll, Math.max(0, required));
+    stage.dispatchEvent(new Event("scroll"));
+    expect(pressedChip(host)?.dataset.elev).toBe("s0");
+    view.destroy();
+  });
+});

@@ -1329,6 +1329,18 @@ export function mountFitView(host, job, shim) {
 
     var row = document.createElement("div");
     row.className = "flatrow";
+    // Owner report, 2026-09-01: native overflow-x:auto scroll clamps at the
+    // row's own content edges, so the first and last wall's centre can never
+    // line up with the stage's centre line — the mini-map highlight, which
+    // follows whichever wall sits there (syncCurrent, below), could never
+    // land on either end (his case: the interior partition "B2 · East 2").
+    // Padding the row by half the viewport on both sides gives any wall,
+    // first or last, room to scroll to centre; syncCurrent's own maths
+    // (offsetLeft/offsetWidth vs. scrollLeft/clientWidth) already accounts
+    // for whatever padding is here, so it needs no change.
+    var endPad = (stage.clientWidth || 360) / 2;
+    row.style.paddingLeft = endPad + "px";
+    row.style.paddingRight = endPad + "px";
 
     // Group ELEVS entries into PHYSICAL walls: same polygon, same plan-view
     // geometry — a wall's stories stack inside ONE panel. Order the panels
