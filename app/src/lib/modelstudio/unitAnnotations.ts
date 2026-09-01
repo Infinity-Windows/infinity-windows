@@ -26,9 +26,14 @@ import {
 } from "./units";
 import { cornerGeometryInfo, UNIT_GEOMETRY_DEFAULTS } from "./unitGeometry";
 import { inches } from "../fitview/fitviewRenderer";
+// Wave G (2026-09-01): a mark's real CAD cell — mullion columns of
+// top-to-bottom segments (paneGrid.ts) — painted on the unit's face instead
+// of annotationLayout's uniform-row guess, when the spec carries one.
+import { normalizePaneGrid, type ResolvedPaneGrid } from "../fitview/paneGrid";
 import type { OverlayState } from "./liveOverlay";
 
 const MM_TO_CM = 0.1;
+const IN_TO_MM = 25.4;
 /** Canvas oversampling — the map uses a 3x trick for sharp text. */
 const PX_PER_CM = 3;
 /** Headroom above the frame for the mark chip, cm. */
@@ -372,6 +377,99 @@ function drawLabel(ctx: CanvasRenderingContext2D, l: LabelOp, paint: Paint) {
   ctx.restore();
 }
 
+/**
+ * Wave G (2026-09-01): the mark's real CAD cell — mullion columns of
+ * top-to-bottom segments (paneGrid.ts) — painted onto the SAME canvas the
+ * uniform-row annotationLayout would otherwise use, so mark 7 reads as 8
+ * fixed panes around its center swing-door pair instead of the four-wide
+ * equal strip a flat extra.panels read would invent. Reuses the existing
+ * bold-stroke/halo primitives so a grid door leaf carries the identical
+ * trade vocabulary a flat-panel one already does. Corner units stay on the
+ * old annotationLayout path entirely — the pane_grid contract is a flat
+ * storefront wall, not a wrapped leg — so this only ever paints the main
+ * (only) leg of a non-corner unit.
+ */
+function paintPaneGridFace(
+  ctx: CanvasRenderingContext2D,
+  grid: ResolvedPaneGrid,
+  legWcm: number,
+  legHcm: number,
+  paint: Paint,
+) {
+  const sx = legWcm / grid.widthIn;
+  const sy = legHcm / grid.heightIn;
+  const px = (v: number) => v * PX_PER_CM;
+  const top = CHIP_BAND_CM;
+
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.setLineDash([]);
+  ctx.strokeStyle = paint.ink;
+  ctx.lineWidth = 2;
+
+  // Column mullions, full height — every grid column spans the whole unit
+  // by construction (the physical unit is a rectangle).
+  ctx.beginPath();
+  for (let i = 1; i < grid.columns.length; i++) {
+    const x = px(grid.columns[i].x * sx);
+    ctx.moveTo(x, px(top));
+    ctx.lineTo(x, px(top + legHcm));
+  }
+  ctx.stroke();
+
+  for (const c of grid.cells) {
+    const x0 = px(c.x * sx);
+    const y0 = px(top + c.y * sy);
+    const w = px(c.w * sx);
+    const h = px(c.h * sy);
+    // A column's OWN segment break — can fall at a different height than
+    // the column next to it (an F-stack beside a shorter door column), so
+    // this only ever spans the one cell's own width.
+    if (c.row > 0) {
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x0 + w, y0);
+      ctx.stroke();
+    }
+    if (c.op === "door") {
+      // Kick plate tint + hinge V, the same trade language the map's
+      // OPEN_SYMBOL/.kick draw for a flat-row door pane.
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = paint.ink;
+      ctx.fillRect(x0, y0 + h * 0.7, w, h * 0.3);
+      ctx.globalAlpha = 1;
+      const hingeLeft = c.leaf !== "R";
+      const hingeX = hingeLeft ? x0 + 5 : x0 + w - 5;
+      const farX = hingeLeft ? x0 + w - 5 : x0 + 5;
+      strokeBold(ctx, paint.accent, () => {
+        ctx.moveTo(farX, y0 + 5);
+        ctx.lineTo(hingeX, y0 + h / 2);
+        ctx.lineTo(farX, y0 + h - 5);
+      });
+    } else if (w > px(14) && h > px(14)) {
+      boldText(ctx, paint.accent, c.op, x0 + w / 2, y0 + h / 2, Math.max(18, Math.min(w, h) * 0.35));
+    }
+  }
+  ctx.restore();
+
+  // Per-column width label along the head — same spot/format as
+  // annotationLayout's own panedim row, so a busy grid still reads its own
+  // dimensions the same way any other pane breakdown would.
+  for (const col of grid.columns) {
+    drawLabel(
+      ctx,
+      {
+        kind: "panedim",
+        text: inches(col.w * IN_TO_MM),
+        x: (col.x + col.w / 2) * sx,
+        y: 6,
+        vertical: col.w * sx < 26,
+      },
+      paint,
+    );
+  }
+}
+
 // --------------------------------------------------------- live overlays
 // liveOverlay.ts hands over a plain data bag (OverlayState); everything
 // below is the ONE place that decides what it looks like. Precedence, top
@@ -533,12 +631,27 @@ function paintOverlayBadges(
  */
 export function buildUnitAnnotations(
   config: UnitConfig,
-  o: { mark?: string | null; dims: boolean; overlay?: OverlayState },
+  o: {
+    mark?: string | null;
+    dims: boolean;
+    overlay?: OverlayState;
+    /** Wave G: the mark's raw spec.extra.pane_grid, if any — resolved here
+     * against this unit's own real width/height as a hint for any omitted
+     * dim. Ignored on a corner unit (see paintPaneGridFace's own note). */
+    paneGrid?: unknown;
+  },
 ): THREE.Mesh[] {
   const paint = resolvePaint();
   const layouts = annotationLayout(config, o);
   const corner = cornerGeometryInfo(config);
   const depth = UNIT_GEOMETRY_DEFAULTS.depthMm * MM_TO_CM;
+  const resolvedGrid =
+    !corner && o.paneGrid
+      ? normalizePaneGrid(o.paneGrid, {
+          widthIn: panelsWidthMm(config.panels) / IN_TO_MM,
+          heightIn: config.heightMm / IN_TO_MM,
+        })
+      : null;
   // Badges (blocked/loose/parts) need a strip below the frame; most units
   // carry none of these, so `bandCm` is 0 and every line below collapses
   // to exactly what shipped before overlays existed.
@@ -558,8 +671,16 @@ export function buildUnitAnnotations(
     canvas.height = Math.max(8, hPx);
     const ctx = canvas.getContext("2d")!;
     if (o.overlay) paintOverlayBackdrop(ctx, wPx, lay.legHcm, o.overlay);
-    for (const g of lay.glyphs) drawGlyph(ctx, g, paint);
-    for (const l of lay.labels) drawLabel(ctx, l, paint);
+    if (resolvedGrid && lay.leg === "main") {
+      // The grid replaces the uniform-row glyphs, but the mark chip / W×L
+      // pill are unchanged furniture — keep every OTHER label, drop only
+      // the per-pane "panedim" ones the grid draws its own version of.
+      paintPaneGridFace(ctx, resolvedGrid, lay.legWcm, lay.legHcm, paint);
+      for (const l of lay.labels) if (l.kind !== "panedim") drawLabel(ctx, l, paint);
+    } else {
+      for (const g of lay.glyphs) drawGlyph(ctx, g, paint);
+      for (const l of lay.labels) drawLabel(ctx, l, paint);
+    }
     if (o.overlay) paintOverlayFlashing(ctx, wPx, lay.legHcm, o.overlay);
     if (showBadges) paintOverlayBadges(ctx, wPx, lay.legHcm, badgeLines);
     // Photo pin: main leg only, same convention the mark chip uses — a
