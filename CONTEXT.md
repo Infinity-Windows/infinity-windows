@@ -318,6 +318,35 @@ later Find placements run — enforced atomically in `apply_placement_
 suggestions`. A dismissed suggestion has no real pin, so it is fair game for
 the next run to suggest again; dismiss means "not now," not "never."
 
+## Studio wall tools
+
+Settled 2026-08-31, wave W (grilled, owner's own design for the acceptance
+bar — cite, never re-decide). Drag-to-draw and angle-snap join the vendored
+floorplanner's existing click-click drawing; Publish stops dropping walls
+that aren't the outer loop.
+
+**Interior wall** — a partition or free-standing wall Publish used to walk
+past and drop. The crew map treats one as JUST ANOTHER WALL STRIP: it
+appears in the elevation walk after the exterior loop, highlights like any
+wall, carries units, and is labeled "Interior" on its chip (e.g. "B1 ·
+Interior 1"). Both faces of an interior wall are physically real, but
+Publish writes ONE strip per interior wall — units on either face render on
+that strip — the simplest honest model, not a claim that a wall has one
+side. Exterior publishing's shape never changes because of this: the
+silhouette (`outerPolygons`) is untouched code, only re-read afterward to
+find what it did NOT consume.
+
+**Custom mark** — a mark born in Studio instead of from a plan or a
+schedule import: a "+ Add window"/"+ Add door" unit a supervisor names
+(code + window/door + W×L) rather than leaving as a Studio-only decoration.
+CAD-WINS is unchanged by this — extraction still never invents a mark.
+Humans may, deliberately, naming one is only a draft, and Submit final's
+confirm dialog is the deliberateness: it lists exactly which codes are
+about to become real openings ("Adds 2 new marks to this job: D-11, W-A")
+before it happens. Once confirmed, a custom mark is registered through the
+same paths a plan-placed one would use and glows/assigns/QCs identically —
+nothing downstream can tell an opening was born in Studio.
+
 ## Open questions
 
 None right now — the next ones come from building.

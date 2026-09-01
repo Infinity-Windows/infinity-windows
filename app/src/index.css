@@ -10231,6 +10231,14 @@ body {
 
 .studio-mini { font-size: 11.5px; padding: 2px 9px; }
 
+/* infinity: W5 (w-walls-spec.md, 2026-08-31) — Studio is laptop/PC-only;
+   below ~900px this replaces the editor entirely (ModelStudio.tsx). */
+.studio-narrow-note {
+  display: flex; align-items: center; justify-content: center;
+  min-height: calc(100vh - 140px); text-align: center; padding: 24px 8px;
+}
+.studio-narrow-note p { max-width: 34em; color: var(--muted); font-size: 15px; line-height: 1.5; }
+
 .studio-stage { position: relative; flex: 1; min-height: 0; display: flex; }
 .studio-stage .studio-canvas { flex: 1; min-height: 0; height: auto; }
 .studio-palette {
