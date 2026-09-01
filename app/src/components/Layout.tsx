@@ -20,7 +20,7 @@ import { bottomBarForRole, menuForRole, roleRank, type MenuAction } from "../lib
 import { useClock } from "../lib/clockContext";
 import { formatClock } from "../lib/timeclock";
 import { shiftGuard } from "../lib/shiftGuard";
-import { effectiveRole, useViewAsRole } from "../lib/viewAsRoleContext";
+import { effectiveRole, previewableRoles, useViewAsRole } from "../lib/viewAsRoleContext";
 import { useRealtimeMyOpenings } from "../lib/useRealtimeOpenings";
 import { supabase } from "../lib/supabase";
 import { ToastHost } from "./ToastHost";
@@ -40,8 +40,6 @@ import {
   maybeAutoOpenWizard,
   subscribeWizard,
 } from "../lib/permissions/wizardBus";
-
-const PREVIEW_ROLES: CrewRole[] = ["installer", "foreman", "supervisor", "owner"];
 
 /** Icons for the registry-driven bottom-bar link tabs (see `bottomBarForRole`). */
 const TAB_ICONS: Record<string, ReactNode> = {
@@ -191,8 +189,14 @@ export function Layout() {
     );
   }
 
-  const previewing = view.canPreview && view.previewRole;
   const previewingPerson = view.canPreviewPerson ? view.previewPerson : null;
+  // `role` (above) already went through effectiveRole's clamp, so this is
+  // true only for a preview that actually took effect — not for a stale or
+  // forged previewRole above the real user's rank, which `role` fell back
+  // past (the view-as ceiling, 2026-09-01). Person preview wins the render
+  // when both are somehow set, so it's excluded here.
+  const previewing =
+    !previewingPerson && view.canPreview && view.previewRole != null && role === view.previewRole;
 
   const clockTab = (
     <button
@@ -220,8 +224,11 @@ export function Layout() {
     <div className="view-as-picker">
       <p className="view-as-title">View as role (preview)</p>
       <div className="view-as-options">
-        {PREVIEW_ROLES.map((r) => {
-          const active = (view.previewRole ?? realMe.data?.role) === r;
+        {previewableRoles(realMe.data?.role).map((r) => {
+          // Only trust view.previewRole for the active chip when it's a
+          // legitimate (non-clamped) preview — a stale/forged value above
+          // rank never lights up a chip that isn't even offered.
+          const active = (previewing ? view.previewRole : realMe.data?.role) === r;
           return (
             <button
               key={r}

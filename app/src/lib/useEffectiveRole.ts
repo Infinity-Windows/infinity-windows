@@ -28,12 +28,14 @@ export function useEffectiveRole(): EffectiveRole {
   const me = useQuery({ queryKey: ["myRealProfile"], queryFn: getRealProfile });
   const view = useViewAsRole();
   const realRole = me.data?.role ?? null;
-  const isPreviewing =
-    (view.canPreview && view.previewRole != null) ||
-    (view.canPreviewPerson && view.previewPerson != null);
+  const role = effectiveRole(realRole, view);
+  // Derived from the CLAMPED result, not the raw preview flags: a preview
+  // request that got clamped back to realRole (stale storage above rank,
+  // e.g.) isn't actually previewing anything, so no banner should claim it is.
+  const isPreviewing = role !== realRole;
   return {
     realRole,
-    effectiveRole: effectiveRole(realRole, view),
+    effectiveRole: role,
     isPreviewing,
     isLoading: me.isLoading,
   };
