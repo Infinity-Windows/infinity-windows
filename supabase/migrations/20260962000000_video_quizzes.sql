@@ -47,6 +47,74 @@ alter table learning_videos
 comment on column learning_videos.grants_clearance is
   'Optional: the window type a passing quiz on this video clears the installer for (installer_clearance''s own window_type_id — same FK target, so a clearance this grants is indistinguishable from one a lead granted by hand). Null means the video teaches without gating any work.';
 
+-- learning_videos has no insert/update/delete policy (20260816000000) —
+-- save_learning_video is its only writer, so the new column needs a new
+-- parameter on that same function rather than a second write path.
+create or replace function save_learning_video(
+  p_id uuid,
+  p_title text,
+  p_window_type uuid default null,
+  p_topic text default null,
+  p_video_path text default null,
+  p_youtube_url text default null,
+  p_summary text default null,
+  p_transcript text default null,
+  p_active boolean default true,
+  p_grants_clearance uuid default null
+)
+returns learning_videos
+language plpgsql
+security definer
+as $$
+declare
+  v_role text;
+  v_row learning_videos;
+begin
+  select role into v_role from profiles where id = auth.uid();
+  if v_role is null or v_role in ('installer', 'foreman') then
+    raise exception 'only a supervisor or above can manage training videos';
+  end if;
+  if p_title is null or length(trim(p_title)) = 0 then
+    raise exception 'a training video needs a title';
+  end if;
+  if p_video_path is null and nullif(trim(coalesce(p_youtube_url, '')), '') is null then
+    raise exception 'upload a video or paste a YouTube address';
+  end if;
+
+  if p_id is null then
+    insert into learning_videos (
+      title, window_type_id, topic, video_path, youtube_url,
+      summary, transcript, active, created_by, grants_clearance
+    )
+    values (
+      trim(p_title), p_window_type, nullif(trim(coalesce(p_topic, '')), ''),
+      p_video_path, nullif(trim(coalesce(p_youtube_url, '')), ''),
+      p_summary, p_transcript, coalesce(p_active, true), auth.uid()::text,
+      p_grants_clearance
+    )
+    returning * into v_row;
+  else
+    update learning_videos
+    set title = trim(p_title),
+        window_type_id = p_window_type,
+        topic = nullif(trim(coalesce(p_topic, '')), ''),
+        video_path = p_video_path,
+        youtube_url = nullif(trim(coalesce(p_youtube_url, '')), ''),
+        summary = p_summary,
+        transcript = p_transcript,
+        active = coalesce(p_active, true),
+        grants_clearance = p_grants_clearance,
+        updated_at = now()
+    where id = p_id
+    returning * into v_row;
+    if not found then
+      raise exception 'training video not found';
+    end if;
+  end if;
+  return v_row;
+end;
+$$;
+
 -- ---------------------------------------------------------------- learning_video_quizzes
 
 create table if not exists learning_video_quizzes (

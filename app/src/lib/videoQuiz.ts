@@ -50,6 +50,50 @@ export function stripAnswerKey(q: QuizQuestionFull): QuizQuestionPublic {
   return { q: q.q, choices: q.choices };
 }
 
+// --------------------------------------------------------- summarize-learning-video
+
+export interface TranscribeResponse {
+  ok: boolean;
+  skipped?: boolean;
+  reason?: string;
+  limited?: boolean;
+  note?: string | null;
+  transcript?: string;
+}
+
+/** Whisper on this video's own uploaded file — the Transcribe button, for an
+ * uploaded video with nothing typed into the transcript field yet. */
+export async function transcribeLearningVideo(videoId: string): Promise<TranscribeResponse> {
+  const { data, error } = await supabase.functions.invoke("summarize-learning-video", {
+    body: { videoId, action: "transcribe" },
+  });
+  if (error) throw error;
+  return data as TranscribeResponse;
+}
+
+export interface GenerateResponse {
+  ok: boolean;
+  skipped?: boolean;
+  limited?: boolean;
+  note?: string | null;
+  generation: { summary: string; questions: QuizQuestionFull[] } | null;
+}
+
+/** One Claude call: a plain-English summary plus a 5-question quiz, grounded
+ * only in the given transcript. Compute-only — the caller persists the
+ * result as a draft via saveVideoQuizDraft. */
+export async function generateVideoQuiz(
+  videoId: string,
+  title: string,
+  transcript: string,
+): Promise<GenerateResponse> {
+  const { data, error } = await supabase.functions.invoke("summarize-learning-video", {
+    body: { videoId, action: "generate", title, transcript },
+  });
+  if (error) throw error;
+  return data as GenerateResponse;
+}
+
 // --------------------------------------------------------------------- RPCs
 
 /** Persist summarize-learning-video's raw reading as a draft. Supervisor+. */
@@ -74,6 +118,45 @@ export async function approveVideoQuiz(videoId: string): Promise<LearningVideoQu
   });
   if (error) throw error;
   return data as LearningVideoQuiz;
+}
+
+/**
+ * The supervisor-facing read: the full row, correct_idx and all — this is
+ * what the video edit form shows while authoring/reviewing a draft or an
+ * already-approved quiz. Safe as a direct select: learning_video_quizzes'
+ * own RLS ("supervisor read") already gates this to supervisor+, so there is
+ * nothing here list_video_quiz needs to protect a second time.
+ */
+export async function getVideoQuizForAuthor(videoId: string): Promise<LearningVideoQuiz | null> {
+  const { data, error } = await supabase
+    .from("learning_video_quizzes")
+    .select("*")
+    .eq("video_id", videoId)
+    .maybeSingle();
+  if (error) {
+    if (isMissingTable(error, "learning_video_quizzes")) return null;
+    throw error;
+  }
+  return (data as LearningVideoQuiz | null) ?? null;
+}
+
+/**
+ * How many times this installer has already attempted this quiz — the seed
+ * shuffleQuiz uses so a retake reshuffles (Q4: "unlimited retakes with
+ * reshuffled order"). Own rows only, which is exactly what "own or lead
+ * read" already grants an installer reading their own history.
+ */
+export async function myAttemptCount(videoId: string, profileId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from("learning_video_quiz_attempts")
+    .select("id", { count: "exact", head: true })
+    .eq("video_id", videoId)
+    .eq("profile_id", profileId);
+  if (error) {
+    if (isMissingTable(error, "learning_video_quiz_attempts")) return 0;
+    throw error;
+  }
+  return count ?? 0;
 }
 
 /**
