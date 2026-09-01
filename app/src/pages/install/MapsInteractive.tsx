@@ -21,6 +21,7 @@ import {
   buildFitViewJob,
   fitviewCalibration,
   fitviewModel,
+  fitviewNorth,
   normalizeMarkCode,
   preferModelOutline,
   unplacedScheduleMarks,
@@ -276,6 +277,10 @@ export function MapsInteractive({ project }: { project: Project }) {
       viewRef.current = mountFitView(host, jobForRenderer, {
         toast: pushToast,
         flatView: mapView === "flat",
+        // Wave N: the mini-map's compass rose rotation, read once at mount —
+        // same mount-time-only contract as `crew`/`onAssign` below. Display
+        // only; the tracer (traceRenderer.ts) is the one place that sets it.
+        northDeg: fitviewNorth(outline?.features) ?? null,
         openOpening: (code: string) => {
           // Codes come in two dialects (survey "13A" vs extraction "13-1");
           // normalize both sides so the deep link finds its opening.

@@ -5,7 +5,7 @@
 // builds. No layout engine here, so nothing about pixels — these catch the
 // port-level failures: template ids, footprint parsing, per-window DOM.
 import { describe, expect, it } from "vitest";
-import { mountFitView } from "./fitviewRenderer";
+import { mountFitView, roseLabels } from "./fitviewRenderer";
 import fixture from "./fixtures/win-2423.json";
 
 function mount(job = fixture as never) {
@@ -152,5 +152,82 @@ describe("fitview renderer (Black Desert fixture)", () => {
     const again = mount();
     again.view.destroy();
     expect(document.body.childNodes.length).toBe(before + 2);
+  });
+});
+
+describe("wave N: roseLabels (pure)", () => {
+  it("gives all eight compass words, unrotated when north is unset", () => {
+    expect(roseLabels(undefined).map((d) => d.label)).toEqual([
+      "N", "NE", "E", "SE", "S", "SW", "W", "NW",
+    ]);
+    expect(roseLabels(undefined).map((d) => d.angle)).toEqual([
+      0, 45, 90, 135, 180, 225, 270, 315,
+    ]);
+  });
+
+  it("rotates every label by northDeg, wrapping into [0, 360)", () => {
+    const rotated = roseLabels(30);
+    expect(rotated.map((d) => d.angle)).toEqual([
+      30, 75, 120, 165, 210, 255, 300, 345,
+    ]);
+    // Past 360 wraps rather than growing unbounded — a label's angle is
+    // always a plain compass bearing, safe to feed straight into sin/cos.
+    const wrapped = roseLabels(350);
+    expect(wrapped[0].angle).toBe(350);   // N
+    expect(wrapped[1].angle).toBe(35);    // NE: 350 + 45 = 395 -> 35
+  });
+});
+
+describe("wave N: compass rose on the mini-map (flat view)", () => {
+  function mountFlat(job: unknown, shim: Record<string, unknown> = {}) {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const view = mountFitView(host, job, { toast: () => {}, flatView: true, ...shim });
+    return { host, view };
+  }
+
+  it("draws a rose with all eight labels when northDeg is set", () => {
+    const { host, view } = mountFlat(fixture, { northDeg: 42 });
+    const rose = host.querySelector(".flat-minimap-rose");
+    expect(rose).toBeTruthy();
+    expect(rose!.classList.contains("unset")).toBe(false);
+    const texts = [...rose!.querySelectorAll("text")].map((t) => t.textContent);
+    expect(texts).toEqual(["N", "NE", "E", "SE", "S", "SW", "W", "NW"]);
+    view.destroy();
+  });
+
+  it("shows a faded rose with a hint when north was never set - never a wrong-looking one", () => {
+    const { host, view } = mountFlat(fixture);
+    const rose = host.querySelector(".flat-minimap-rose");
+    expect(rose).toBeTruthy();
+    expect(rose!.classList.contains("unset")).toBe(true);
+    expect(rose!.getAttribute("title")).toMatch(/north not set/i);
+    view.destroy();
+  });
+
+  it("the rose sits inside the minimap corner ornament, not fighting the footprint svg", () => {
+    const { host, view } = mountFlat(fixture, { northDeg: 0 });
+    const map = host.querySelector(".flat-minimap")!;
+    const rose = map.querySelector(".flat-minimap-rose")!;
+    // Paints AFTER the footprint svg and the wall-name label in DOM order,
+    // so it stacks visually on top of both rather than being buried under
+    // whichever wall line happens to run through that corner.
+    const children = [...map.children];
+    expect(children.indexOf(rose)).toBe(children.length - 1);
+    view.destroy();
+  });
+
+  it("NORTH_DEG never reaches wall geometry - the 3D scene is unaffected by it", () => {
+    const withoutNorth = mountFlat(fixture);
+    const withNorth = mountFlat(fixture, { northDeg: 200 });
+    const wallsA = [...withoutNorth.host.querySelectorAll(".face")].map(
+      (f) => (f as HTMLElement).style.transform,
+    );
+    const wallsB = [...withNorth.host.querySelectorAll(".face")].map(
+      (f) => (f as HTMLElement).style.transform,
+    );
+    expect(wallsB).toEqual(wallsA);
+    withoutNorth.view.destroy();
+    withNorth.view.destroy();
   });
 });
