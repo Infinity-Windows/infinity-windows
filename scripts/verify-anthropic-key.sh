@@ -5,7 +5,7 @@
 #
 #   scripts/verify-function-secrets.sh   the secret EXISTS on the project
 #   scripts/sync-function-secrets.sh     the value GitHub has is now on the project
-#   scripts/smoke-ask.sh                 the whole Ask Infinity feature answers
+#   scripts/smoke-ask.sh                 the whole Ask Forge feature answers
 #
 # The first two are blind to whether the key is any good. `supabase secrets list`
 # reports names and a digest, so a revoked key, a key from somebody else's
@@ -19,7 +19,7 @@
 # This closes that gap without needing any Supabase credential whatsoever. It
 # asks Anthropic directly, with the same key that was just pushed to the project,
 # so a key that is wrong is caught on the run that pushed it rather than by an
-# installer tapping Ask Infinity and getting nothing.
+# installer tapping Ask Forge and getting nothing.
 #
 # It is a real request and it generates real text, because a key can be
 # well-formed, present, and still refused. Only using it settles the question.
@@ -150,7 +150,7 @@ if [ "$code" = "200" ] && [ -n "${text//[[:space:]]/}" ]; then
   echo
   echo
   echo "ACCEPTED. This is the same key the Edge Functions now hold, so Ask"
-  echo "Infinity and plan-set reading have a working key behind them."
+  echo "Forge and plan-set reading have a working key behind them."
   exit 0
 fi
 
@@ -205,7 +205,7 @@ fi
   echo
   echo "$what"
   echo
-  echo "  Until this is fixed, Ask Infinity answers only from the built-in company"
+  echo "  Until this is fixed, Ask Forge answers only from the built-in company"
   echo "  brain and reading specs off a planset does not work."
   echo
   echo "TECHNICAL DETAIL"

@@ -155,7 +155,7 @@ export const FUNCTION_SPEND: Record<string, FunctionSpend> = {
     estimateMicros: 20_000,
   },
   // A person tapping a button, same as `ask` — question-kind, so it shares
-  // Ask Infinity's per-user daily count rather than getting its own. The
+  // Ask Forge's per-user daily count rather than getting its own. The
   // simplified model JSON is capped at ~8KB (~2k tokens) client-side; add the
   // system prompt, catalog summary and question and call it 3k tokens in.
   // Replies are short, occasionally with an add_unit JSON block: ~400 out.

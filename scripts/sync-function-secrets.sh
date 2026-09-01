@@ -3,7 +3,7 @@
 # (GitHub Actions secrets) INTO the Supabase project.
 #
 # Why this exists: scripts/verify-function-secrets.sh can tell you a key is
-# missing. It cannot put it there. So the pipeline's answer to "Ask Infinity is
+# missing. It cannot put it there. So the pipeline's answer to "Ask Forge is
 # broken in production" was a red X plus a paragraph asking a non-technical
 # owner to log into a dashboard and paste a key by hand. That step was never
 # taken: ANTHROPIC_API_KEY had never been set on czprjcskmzzagdztqonm, so `ask`

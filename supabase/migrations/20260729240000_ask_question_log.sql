@@ -1,4 +1,4 @@
--- Every question asked of Ask Infinity, and whether our own written knowledge
+-- Every question asked of Ask Forge, and whether our own written knowledge
 -- answered it.
 --
 -- This is the cheapest way to find out what to write next, in the crew's own

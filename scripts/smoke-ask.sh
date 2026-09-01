@@ -2,7 +2,7 @@
 # Ask the DEPLOYED `ask` function a real question and check a real answer comes
 # back.
 #
-# Why this exists: every other check in this repo can pass while Ask Infinity
+# Why this exists: every other check in this repo can pass while Ask Forge
 # answers nothing. scripts/verify-functions.sh proves the function ROUTES.
 # scripts/verify-function-secrets.sh proves a secret EXISTS by name. Neither
 # proves the feature WORKS, and the gap between those is where this project keeps
@@ -26,7 +26,7 @@
 #
 # So this makes one real request end to end: through the platform gateway, into
 # the function, out to Anthropic, and back with generated text. Only genuinely
-# generated prose counts. If that works, Ask Infinity works, and there is nothing
+# generated prose counts. If that works, Ask Forge works, and there is nothing
 # left to be quietly wrong.
 #
 # THREE OUTCOMES, and the third is deliberately not a failure — the same
@@ -53,7 +53,7 @@
 # backend pushes the secrets and then runs this seconds later. A secret that has
 # just been written does not reach the already-running function workers
 # instantly, so the first probe can legitimately see the old, keyless
-# environment. Failing on that would make the very run that FIXED Ask Infinity
+# environment. Failing on that would make the very run that FIXED Ask Forge
 # report it as broken. A rejected key, by contrast, is a settled answer and is
 # never retried.
 #
@@ -88,7 +88,7 @@ if [ -z "${SUPABASE_PROJECT_REF:-}" ] && [ -z "${ASK_SMOKE_URL:-}" ]; then
   cat >&2 <<'EOF'
 FAIL: SUPABASE_PROJECT_REF is not set, and there is no default.
 
-Name the project whose Ask Infinity you mean to test, e.g. for production:
+Name the project whose Ask Forge you mean to test, e.g. for production:
 
   SUPABASE_PROJECT_REF=czprjcskmzzagdztqonm scripts/smoke-ask.sh
 EOF
@@ -107,11 +107,11 @@ RETRY_DELAY="${ASK_SMOKE_RETRY_DELAY:-10}"
 QUESTION="${ASK_SMOKE_QUESTION:-In one short sentence, what is a shim used for when installing a window?}"
 
 if [ -z "$JWT" ]; then
-  echo "Ask Infinity was not tested: no caller credentials are available here."
+  echo "Ask Forge was not tested: no caller credentials are available here."
   echo
   echo "Set SUPABASE_SERVICE_ROLE_KEY (or ASK_SMOKE_JWT) to test it. Without one,"
   echo "the platform gateway rejects the request before the function runs, so a"
-  echo "failure would say nothing about whether Ask Infinity works."
+  echo "failure would say nothing about whether Ask Forge works."
   echo
   echo "This is a VERIFICATION gap, not a broken feature. Nothing was measured."
   exit 2
@@ -280,7 +280,7 @@ while [ "$attempt" -lt "$ATTEMPTS" ]; do
 done
 
 if [ "$verdict" = "answered" ]; then
-  echo "Ask Infinity works: it answered a real question"
+  echo "Ask Forge works: it answered a real question"
   echo
   echo "  project:  ${REF:-<from ASK_SMOKE_URL>}"
   echo "  question: $QUESTION"
@@ -300,7 +300,7 @@ fi
 
 if [ "$verdict" = "no_answer" ]; then
   {
-    echo "Could not tell whether Ask Infinity works: it never answered"
+    echo "Could not tell whether Ask Forge works: it never answered"
     echo
     echo "$detail"
     echo
@@ -313,7 +313,7 @@ fi
 
 if [ "$verdict" = "busy" ]; then
   {
-    echo "Could not tell whether Ask Infinity works: the AI service was busy"
+    echo "Could not tell whether Ask Forge works: the AI service was busy"
     echo
     echo "$detail"
     echo
@@ -326,7 +326,7 @@ fi
 
 if [ "$verdict" = "limited" ]; then
   {
-    echo "Could not tell whether Ask Infinity works: an AI spend limit stopped it"
+    echo "Could not tell whether Ask Forge works: an AI spend limit stopped it"
     echo
     echo "$detail"
     echo
@@ -346,7 +346,7 @@ if [ "$verdict" = "gateway_401" ]; then
   # let the request through but the caller is not a signed-in user.
   lower="$(printf '%s' "$detail" | tr '[:upper:]' '[:lower:]')"
   {
-    echo "Could not test Ask Infinity: this checker has no way to sign in"
+    echo "Could not test Ask Forge: this checker has no way to sign in"
     echo
     if printf '%s' "$lower" | grep -qF 'invalid api key'; then
       echo "  $REF rejected the credential outright, so the request never reached"
@@ -365,7 +365,7 @@ if [ "$verdict" = "gateway_401" ]; then
     echo "  legacy service-role key (the long eyJ… one, Project Settings -> API"
     echo "  Keys -> legacy) or an access token for a real low-privilege user."
     echo
-    echo "  NOTHING HERE IS EVIDENCE ABOUT ASK INFINITY. It was never asked"
+    echo "  NOTHING HERE IS EVIDENCE ABOUT ASK FORGE. It was never asked"
     echo "  anything. Whether its API key is any good is answered separately by"
     echo "  scripts/verify-anthropic-key.sh, which needs no Supabase credential."
     echo
@@ -378,10 +378,10 @@ fi
 
 case "$verdict" in
 not_set)
-  headline="Ask Infinity has no AI key, so it has never actually answered anything"
+  headline="Ask Forge has no AI key, so it has never actually answered anything"
   what="  ANTHROPIC_API_KEY is not set on this project, so no question has ever
   reached Claude. This is easy to miss from the app: rather than showing an
-  error, Ask Infinity quietly answers from the bundled company brain, so it
+  error, Ask Forge quietly answers from the bundled company brain, so it
   looks like it is working. It is not — it is guessing from a fixed snapshot
   and cannot see anything live.
 
@@ -391,7 +391,7 @@ not_set)
   the running functions."
   ;;
 rejected)
-  headline="Ask Infinity is not working: the AI provider rejected our API key"
+  headline="Ask Forge is not working: the AI provider rejected our API key"
   what="  The key IS set, and Anthropic refused it. It is the wrong key, it was
   revoked, or it belongs to an account without access. A name-and-digest check
   cannot see this — only a real request can, which is why this test exists.
@@ -399,7 +399,7 @@ rejected)
   Deploy backend."
   ;;
 *)
-  headline="Ask Infinity is not working: it returned an error instead of an answer"
+  headline="Ask Forge is not working: it returned an error instead of an answer"
   what="  The function was reached and did not produce an answer. The response is
   below. If it mentions a missing table or column the fix is a migration, not
   a key."
@@ -413,7 +413,7 @@ esac
   echo
   echo "$what"
   echo
-  echo "  Nothing in this run broke it. Ask Infinity has been failing this way on"
+  echo "  Nothing in this run broke it. Ask Forge has been failing this way on"
   echo "  every question already — this is the first check that can see it."
   echo
   echo "TECHNICAL DETAIL"

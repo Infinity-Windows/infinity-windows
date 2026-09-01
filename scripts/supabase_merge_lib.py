@@ -1,4 +1,4 @@
-"""Shared logic for evaluating and merging two Infinity Windows Supabase projects.
+"""Shared logic for evaluating and merging two Forge Windows Supabase projects.
 
 Three things live here, all of them pure and offline so they can be unit tested
 without a database:
