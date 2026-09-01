@@ -12,38 +12,48 @@
 // shape. Both call `normalizePaneGrid` and draw from its cell list; neither
 // reaches into spec.extra.pane_grid directly.
 //
-// Contract (THE GRID CONTRACT, both wave-G halves build to this exactly):
-//   pane_grid: {
-//     columns: [
-//       { width_in, segments: [ {op, height_in}, {op, height_in}, ... ] },
-//       ...
-//     ]
-//   }
-// Segments run TOP to BOTTOM within their column. width_in/height_in may be
-// omitted — "divide remaining space equally" among whichever siblings left
-// it out. `pane_grid` never replaces `extra.panels`; both may coexist, and
-// the fallback law is absolute: no pane_grid -> today's flat single-row
-// drawing, byte-identical.
+// THE GRID CONTRACT itself — PaneGrid/PaneGridColumn/PaneGridSegment and
+// the canonical madMooseMark7Grid fixture — lives in ../install/specs.ts,
+// the write-time half that validates what extraction stores. The two wave-G
+// halves landed independently (#469/#472) with byte-identical copies; this
+// module now imports the install half's and only DERIVES from them, so the
+// contract can't drift between writer and renderers. Everything below is
+// the render-time job the write side doesn't do: resolve omitted
+// width_in/height_in into concrete cell positions.
 
-/** F fixed, X operable/slider, "door" a swing leaf with a hinge/meet side —
- * window-vendor-conventions.md's vocabulary. Anything else passes through
- * uppercased rather than being rejected outright; a busy CAD sheet's op
- * vocabulary is Ben's to extend, not this parser's to gatekeep. */
-export type PaneLeaf = "L" | "R";
+import {
+  madMooseMark7Grid,
+  type PaneGrid,
+  type PaneGridColumn,
+  type PaneGridSegment,
+} from "../install/specs";
 
-export interface PaneGridSegment {
+export { madMooseMark7Grid };
+export type { PaneGrid, PaneGridColumn, PaneGridSegment };
+
+/** Hinge/meet side of a door leaf — the contract's own "L" | "R". */
+export type PaneLeaf = NonNullable<PaneGridSegment["leaf"]>;
+
+/**
+ * What {@link parsePaneGrid} hands back: the contract shape with `op`
+ * widened to plain string. The write side (`cleanPaneGrid`) gates storage
+ * to the strict PaneGridOp vocabulary, but this reader passes anything else
+ * through uppercased rather than rejecting the whole grid — a busy CAD
+ * sheet's op vocabulary is Ben's to extend, not this parser's to gatekeep,
+ * and a grid stored by a newer extractor must still draw on an older
+ * client. Derived from the contract types, never redeclared, so a new
+ * contract field flows through here automatically.
+ */
+export interface ParsedPaneGridSegment extends Omit<PaneGridSegment, "op"> {
   op: string;
-  height_in?: number;
-  leaf?: PaneLeaf;
 }
 
-export interface PaneGridColumn {
-  width_in?: number;
-  segments: PaneGridSegment[];
+export interface ParsedPaneGridColumn extends Omit<PaneGridColumn, "segments"> {
+  segments: ParsedPaneGridSegment[];
 }
 
-export interface PaneGrid {
-  columns: PaneGridColumn[];
+export interface ParsedPaneGrid {
+  columns: ParsedPaneGridColumn[];
 }
 
 /** One resolved cell, unit-local inches, top-left origin, column-major
@@ -69,51 +79,6 @@ export interface ResolvedPaneGrid {
   heightIn: number;
 }
 
-/**
- * Mad Moose mark 7's CAD cell (g-pane-grid-spec.md's own worked example,
- * ground-truthed by the owner 2026-08-31: 167 1/2 x 143 1/2 in). THE
- * canonical fixture both wave-G halves share — named identically on
- * purpose, so a diff between the extraction and render tests reads as one
- * shape. LEFT column: three stacked fixed lites (47 1/2 / 48 / 48). Two
- * center door columns: an F transom over a swing leaf, meeting in the
- * middle (leaf L / leaf R). RIGHT column mirrors the left. 8 fixed + 2
- * doors.
- */
-export const madMooseMark7Grid: PaneGrid = {
-  columns: [
-    {
-      width_in: 45.75,
-      segments: [
-        { op: "F", height_in: 47.5 },
-        { op: "F", height_in: 48 },
-        { op: "F", height_in: 48 },
-      ],
-    },
-    {
-      width_in: 38,
-      segments: [
-        { op: "F", height_in: 47.5 },
-        { op: "door", height_in: 96, leaf: "L" },
-      ],
-    },
-    {
-      width_in: 38,
-      segments: [
-        { op: "F", height_in: 47.5 },
-        { op: "door", height_in: 96, leaf: "R" },
-      ],
-    },
-    {
-      width_in: 45.75,
-      segments: [
-        { op: "F", height_in: 47.5 },
-        { op: "F", height_in: 48 },
-        { op: "F", height_in: 48 },
-      ],
-    },
-  ],
-};
-
 function normalizeOp(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const t = raw.trim();
@@ -138,16 +103,16 @@ function positiveNumber(raw: unknown): number | undefined {
  * back null, the same signal an absent pane_grid gives — both are the
  * fallback trigger, not an error to surface mid-render.
  */
-export function parsePaneGrid(raw: unknown): PaneGrid | null {
+export function parsePaneGrid(raw: unknown): ParsedPaneGrid | null {
   if (!raw || typeof raw !== "object") return null;
   const columnsRaw = (raw as { columns?: unknown }).columns;
   if (!Array.isArray(columnsRaw) || columnsRaw.length === 0) return null;
-  const columns: PaneGridColumn[] = [];
+  const columns: ParsedPaneGridColumn[] = [];
   for (const c of columnsRaw) {
     if (!c || typeof c !== "object") return null;
     const segmentsRaw = (c as { segments?: unknown }).segments;
     if (!Array.isArray(segmentsRaw) || segmentsRaw.length === 0) return null;
-    const segments: PaneGridSegment[] = [];
+    const segments: ParsedPaneGridSegment[] = [];
     for (const s of segmentsRaw) {
       if (!s || typeof s !== "object") return null;
       const op = normalizeOp((s as { op?: unknown }).op);
@@ -187,14 +152,16 @@ function fillOmitted(known: number[], omittedCount: number, total: number | unde
 
 /**
  * Resolve omitted width_in/height_in and produce the normalized cell list —
- * unit-local inches, top-left origin. `hint` (typically the mark's own
- * spec.width_in/height_in — CONTEXT.md's "survey-measured sizes GOVERN THE
- * ORDER") only matters when the grid itself left a dimension out; every
- * real fixture read off the Mad Moose CADs so far is fully dimensioned and
- * ignores it entirely.
+ * unit-local inches, top-left origin. Takes the widened parse shape; a
+ * strictly-typed contract {@link PaneGrid} (the fixture, a test literal) is
+ * structurally assignable and passes straight in. `hint` (typically the
+ * mark's own spec.width_in/height_in — CONTEXT.md's "survey-measured sizes
+ * GOVERN THE ORDER") only matters when the grid itself left a dimension
+ * out; every real fixture read off the Mad Moose CADs so far is fully
+ * dimensioned and ignores it entirely.
  */
 export function resolvePaneGrid(
-  grid: PaneGrid,
+  grid: ParsedPaneGrid,
   hint?: { widthIn?: number; heightIn?: number },
 ): ResolvedPaneGrid {
   const knownW = grid.columns.filter((c) => c.width_in != null).map((c) => c.width_in as number);
