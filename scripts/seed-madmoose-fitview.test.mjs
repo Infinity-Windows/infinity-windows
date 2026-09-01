@@ -93,8 +93,8 @@ assert.ok(fresh.pane_grid, "the grid lands where none existed");
 assert.equal(fx.addWindows.length, 3, "three add units");
 assert.equal(fx.addSpecs.length, 3, "three add specs");
 for (const w of fx.addWindows) {
-  assert.equal(w.elev, "s4", `${w.id} rides the office glass wall`);
-  assert.ok(w.x >= 0 && w.x + w.w / 1000 <= 24.4, `${w.id} fits the partition wall`);
+  assert.equal(w.elev, "s7", `${w.id} rides the lobby-facing glass wall (East 2)`);
+  assert.ok(w.x >= 0 && w.x + w.w / 1000 <= 12.1, `${w.id} fits the East 2 wall (~12 m)`);
 }
 const combined = combineWindows(fx.windows, fx.addWindows);
 assert.equal(combined.length, 13, "ten originals + three adds");
