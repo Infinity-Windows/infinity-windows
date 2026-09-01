@@ -365,6 +365,38 @@ before it happens. Once confirmed, a custom mark is registered through the
 same paths a plan-placed one would use and glows/assigns/QCs identically —
 nothing downstream can tell an opening was born in Studio.
 
+## Video quizzes
+
+Settled 2026-09-01, wave Q (grilled, Q1-Q4 approved — cite, never
+re-decide). A learning video can carry a 5-question quiz, generated from its
+transcript and drawn on to check whether a crew member actually learned the
+lesson.
+
+**Transcript source** — paste (YouTube's own transcript panel, copied by
+hand) or, for an uploaded file, Whisper transcribing our own stored copy.
+The app never fetches YouTube itself: its caption endpoints answer a real
+browser's UI, not a server-side request, so an edge function reaching for
+one gets nothing back. Links stay YouTube-only, same as before this wave.
+
+**Draft-first** — a supervisor's Generate produces a draft (summary +
+questions) nobody but a supervisor can see; only Approve & publish copies it
+onto the live, crew-visible quiz and the video's own summary. Regenerating
+always makes a new draft — it never touches what crews are currently
+quizzed on until the NEXT approval. The crew-board drafts precedent
+(wave A), reapplied here.
+
+**Server-scored** — correct answers never reach a client that has not
+already submitted. The crew-facing read strips them entirely; scoring,
+the attempt record, and the pass/fail verdict all happen inside one
+SECURITY DEFINER RPC (`submit_video_quiz`), never client-computed. Pass is
+4 of 5, retakes are unlimited and reshuffled, and a first pass pays points
+the same way the Education Quiz tab does.
+
+**Clearance hook** — a video may name a window type ("passing this quiz
+clears the installer for…"); a first pass grants it through the same write
+`setClearance` performs — the hook the app had built but never called until
+this wave wired it up.
+
 ## Open questions
 
 None right now — the next ones come from building.
