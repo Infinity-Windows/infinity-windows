@@ -78,6 +78,7 @@ import {
 import {
   rowsToDraftOpenings,
   calloutsToDraftOpenings,
+  draftSourcePlansetId,
   summarizeDraftMarks,
   summarizeExtractOutcome,
   type ExtractOutcomeSummary,
@@ -507,13 +508,19 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           source = rows.length > 0 ? "merged" : "details";
         }
       }
+      const fromBuildingCallouts = drafts != null;
       if (!drafts) {
         drafts = rowsToDraftOpenings(rows, types.data ?? []);
       }
 
       drafts = await ensureTypesFromSpecs(drafts);
       await linkSpecsToOpenings(projectId, drafts);
-      const plansetId = specsPdf?.id ?? buildingPdf!.id;
+      // The guard at the top of this mutation promises at least one document.
+      const plansetId = draftSourcePlansetId({
+        specsPlansetId: specsPdf?.id ?? null,
+        buildingPlansetId: buildingPdf?.id ?? null,
+        fromBuildingCallouts,
+      })!;
       const result = await saveDraftOpenings(projectId, plansetId, drafts, {
         specsAuthoritative: ["vision", "deterministic", "ai"].includes(source),
       });

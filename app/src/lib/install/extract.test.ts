@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   describeMarkCount,
+  draftSourcePlansetId,
   extractScheduleRows,
   markBase,
   matchWindowType,
@@ -394,6 +395,69 @@ describe("unionScheduleRows", () => {
     expect(fourteen?.qty).toBe(5);
     expect(fourteen?.typeText).toBe("CAS3050");
     expect(merged.find((r) => r.openingCode === "22")).toBeDefined();
+  });
+});
+
+describe("draftSourcePlansetId (drafts are attributed to the document that made them)", () => {
+  it("building-callout drafts belong to the BUILDING planset even with a specs sheet loaded", () => {
+    // The bug: with both documents loaded, callout-built drafts were saved
+    // under the SPECS planset id. saveDraftOpenings then classified them as
+    // specs-kind — stripping their real plan pins on insert and leaving rows
+    // that later same-kind sweeps would mistake for spec-sheet reads.
+    expect(
+      draftSourcePlansetId({
+        specsPlansetId: "specs-1",
+        buildingPlansetId: "building-1",
+        fromBuildingCallouts: true,
+      }),
+    ).toBe("building-1");
+  });
+
+  it("schedule-row drafts belong to the specs sheet when one is loaded", () => {
+    expect(
+      draftSourcePlansetId({
+        specsPlansetId: "specs-1",
+        buildingPlansetId: "building-1",
+        fromBuildingCallouts: false,
+      }),
+    ).toBe("specs-1");
+  });
+
+  it("a specs-only job attributes to the specs sheet", () => {
+    expect(
+      draftSourcePlansetId({
+        specsPlansetId: "specs-1",
+        buildingPlansetId: null,
+        fromBuildingCallouts: false,
+      }),
+    ).toBe("specs-1");
+  });
+
+  it("a plans-only job attributes to the building plan, callouts or not", () => {
+    expect(
+      draftSourcePlansetId({
+        specsPlansetId: null,
+        buildingPlansetId: "building-1",
+        fromBuildingCallouts: true,
+      }),
+    ).toBe("building-1");
+    expect(
+      draftSourcePlansetId({
+        specsPlansetId: null,
+        buildingPlansetId: "building-1",
+        fromBuildingCallouts: false,
+      }),
+    ).toBe("building-1");
+  });
+
+  it("no document at all yields null (the mutation guards before this)", () => {
+    expect(
+      draftSourcePlansetId({
+        specsPlansetId: null,
+        buildingPlansetId: null,
+        fromBuildingCallouts: false,
+      }),
+    ).toBeNull();
   });
 });
 

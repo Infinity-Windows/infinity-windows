@@ -776,6 +776,31 @@ export interface DraftPersistencePlan {
 }
 
 /**
+ * Which planset document a re-extract's drafts actually came from — the id
+ * `saveDraftOpenings` resolves into the incoming KIND for
+ * `planDraftPersistence`, and stamps as `planset_id` on every inserted row.
+ * Drafts built from the building plan's own mark callouts belong to the
+ * BUILDING planset even when a specs sheet was read in the same pass:
+ * attributing them to the specs sheet made the planner treat genuinely
+ * plan-placed openings as specs-kind, which strips their pins on insert
+ * (vision-first law, point 6 of `planDraftPersistence`) and leaves rows whose `planset_id`
+ * mis-scopes every later same-kind sweep. Schedule-row drafts came from the
+ * specs sheet when one is loaded, else from the building plan (the fallback
+ * read on a plans-only job).
+ */
+export function draftSourcePlansetId(opts: {
+  specsPlansetId: string | null;
+  buildingPlansetId: string | null;
+  /** True when the drafts were built from the building plan's mark callouts. */
+  fromBuildingCallouts: boolean;
+}): string | null {
+  if (opts.fromBuildingCallouts && opts.buildingPlansetId) {
+    return opts.buildingPlansetId;
+  }
+  return opts.specsPlansetId ?? opts.buildingPlansetId;
+}
+
+/**
  * Decide what a re-extract should delete and insert, WITHOUT wiping openings
  * that belong to the other planset slot.
  *
