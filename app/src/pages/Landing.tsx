@@ -7,7 +7,7 @@ export function Landing({ onSignIn, onRequest }: LandingProps) {
   return (
     <div className="landing">
       <div className="landing-brand">
-        <h1>INFINITY</h1>
+        <h1>FORGE</h1>
         <div className="signin-rule">
           <span>Windows &amp; Doors</span>
         </div>

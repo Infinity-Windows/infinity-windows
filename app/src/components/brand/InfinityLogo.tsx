@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 export type InfinityLogoTone = "default" | "mono" | "onDark" | "glow";
 export type InfinityLogoVariant = "full" | "icon" | "wordmark";
 
-const WORDMARK_TEXT = "INFINITY WINDOWS";
+const WORDMARK_TEXT = "FORGE WINDOWS";
 
 const TONES: Record<InfinityLogoTone, string> = {
   default: "var(--primary)",
@@ -81,7 +81,7 @@ interface InfinityLogoProps {
   className?: string;
 }
 
-/** Mark + "INFINITY WINDOWS" wordmark lockup (or either piece alone). */
+/** Mark + "FORGE WINDOWS" wordmark lockup (or either piece alone). */
 export function InfinityLogo({
   variant = "full",
   tone = "default",
