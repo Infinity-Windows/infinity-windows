@@ -690,6 +690,12 @@ export interface ExistingOpeningLite {
   page_number: number;
   /** Kind of the planset this opening came from. */
   planset_kind: PlansetKindLike;
+  /**
+   * Which planset row produced this opening — the specific document, not just
+   * its kind. Null for legacy rows written before the column existed; see
+   * `planDraftPersistence`'s same-kind grouping for what that means.
+   */
+  planset_id?: string | null;
   /** Dispatched to an installer (`assign_opening_to_installer`). */
   assigned_to?: string | null;
   /** Installer tapped "start" on this one (`start_opening_work`). */
@@ -748,8 +754,10 @@ export interface DraftPersistencePlan {
  * uploading the specs sheet after the marked building plan destroyed all the
  * building-plan openings (105 → 6 on Smith Residence). This planner instead:
  *
- *  1. Replaces only unconfirmed drafts from a planset of the SAME kind (each
- *     upload creates a new planset row, so we scope by kind, not planset id).
+ *  1. Replaces only unconfirmed drafts from a planset of the SAME kind AND the
+ *     same source DOCUMENT (see `isRereadOfThisDocument` below) — a job can
+ *     carry more than one specs planset at once (an addendum sheet on top of
+ *     the original cut sheet), so "same kind" alone is not "the same slot".
  *  2. CAD WINS (owner rule, settled 2026-08-21, proven on ESH-18): the signed
  *     CAD/specs planset owns unit counts. A specs save supersedes unconfirmed
  *     building-callout openings that share its marks, never the reverse — and
@@ -774,11 +782,37 @@ export function planDraftPersistence(
   const isProtected = (o: ExistingOpeningLite) =>
     o.confirmed || o.status !== "planned" || hasFieldWork(o);
 
-  const sameKindStale = existing.filter(
+  const incomingMarks = new Set(drafts.map((d) => markBase(d.opening_code)));
+
+  // Stale same-kind drafts, scoped PER SOURCE DOCUMENT rather than blanket by
+  // kind (the Mad Moose lesson, 2026-09-01): "kind" used to stand in for "the
+  // one planset slot this project has of that kind", which broke the moment a
+  // job carried a second specs planset at once — an "Add" addendum sheet's
+  // 3-mark upload deleted the 7 unconfirmed openings the ORIGINAL cut sheet
+  // had placed, because both were merely "specs". A planset is being RE-READ
+  // when the incoming marks overlap anything it previously placed; a planset
+  // the incoming read never mentions is a different document and is left
+  // alone. Rows with no recorded planset_id (legacy data written before the
+  // column existed) keep the old, single-slot behaviour: grouped together and
+  // always treated as the one slot being replaced.
+  const sameKindCandidates = existing.filter(
     (o) => !isProtected(o) && o.planset_kind === incomingKind,
   );
+  const sameKindGroups = new Map<string, ExistingOpeningLite[]>();
+  for (const o of sameKindCandidates) {
+    const key = o.planset_id ?? "";
+    const group = sameKindGroups.get(key);
+    if (group) group.push(o);
+    else sameKindGroups.set(key, [o]);
+  }
+  const sameKindStale: ExistingOpeningLite[] = [];
+  for (const [plansetId, group] of sameKindGroups) {
+    const isRereadOfThisDocument =
+      plansetId === "" ||
+      group.some((o) => incomingMarks.has(markBase(o.opening_code)));
+    if (isRereadOfThisDocument) sameKindStale.push(...group);
+  }
 
-  const incomingMarks = new Set(drafts.map((d) => markBase(d.opening_code)));
   // ESH-18 went 31 -> 79 openings because this arrow used to point the other
   // way: hand-labeled plan callouts deleted the signed CAD's correct counts
   // and replaced them with appearance counting. CAD wins now.

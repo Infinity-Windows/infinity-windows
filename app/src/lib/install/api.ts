@@ -1294,6 +1294,7 @@ export async function saveDraftOpenings(
     planset_kind: o.planset_id
       ? (kindById.get(o.planset_id) ?? "building")
       : "building",
+    planset_id: o.planset_id ?? null,
     assigned_to: o.assigned_to ?? null,
     work_started_at: o.work_started_at ?? null,
     ro_width_in: o.ro_width_in == null ? null : Number(o.ro_width_in),
