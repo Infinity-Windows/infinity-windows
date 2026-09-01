@@ -73,7 +73,13 @@ export type OutboxOp =
   // picked AFTER the photo was already snapped) — see enqueueReceiptAnswer.
   // Always `dependsOn` its receipt_capture entry: asking the server to
   // update a receipt that has not been filed yet would fail every time.
-  | "receipt_answer";
+  | "receipt_answer"
+  // Wave Q: a finished video quiz attempt. Unlike most of this queue, the
+  // caller tries submit_video_quiz directly FIRST (videoQuiz.ts's
+  // submitVideoQuiz, the offlineWrites.ts pattern) so an installer sees
+  // their score immediately when there is signal — this op only exists for
+  // the fallback, when that direct call fails with a network-shaped error.
+  | "video_quiz_submit";
 
 /**
  * queued   — waiting to be sent (respecting nextAttemptAt backoff)
@@ -534,6 +540,7 @@ const OP_REGISTRY = {
   issue_photo_upload: true,
   receipt_capture: true,
   receipt_answer: true,
+  video_quiz_submit: true,
 } as const satisfies Record<OutboxOp, true>;
 
 /** Every op the queue can carry — the single list tests enumerate. */

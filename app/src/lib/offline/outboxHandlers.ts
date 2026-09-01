@@ -1075,6 +1075,35 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     if (error) throw error;
   };
 
+  // Wave Q: the fallback path for a video quiz attempt that could not reach
+  // the server on the first try (videoQuiz.ts's submitVideoQuiz always tries
+  // direct first). "isn't published yet" / "Answer all five" are both
+  // permanent — the first can only mean the quiz was unpublished after this
+  // was queued (nothing to retry into existing), the second means the
+  // client built an incomplete answer set, which is a bug in whatever
+  // queued it, not a signal problem.
+  const videoQuizSubmit: OpHandler = async (entry) => {
+    const p = entry.payload;
+    const videoId = str(p.videoId);
+    const rawAnswers = Array.isArray(p.answers) ? p.answers : null;
+    const answers =
+      rawAnswers && rawAnswers.every((a) => typeof a === "number") ? (rawAnswers as number[]) : null;
+    if (!videoId || !answers || answers.length !== 5) {
+      throw tagPermanent(new Error("This quiz result is missing its video or its answers"));
+    }
+    const { error } = await supabase.rpc("submit_video_quiz", {
+      p_video_id: videoId,
+      p_answers: answers,
+    });
+    if (error) {
+      const msg = String((error as { message?: unknown }).message ?? "");
+      if (/isn't published yet|Answer all five/.test(msg)) {
+        throw tagPermanent(error as Error);
+      }
+      throw missingGuard(error, "quiz result");
+    }
+  };
+
   return {
     clock_in: clockIn,
     clock_out: clockOut,
@@ -1084,6 +1113,7 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
     receipt_upload: upload,
     receipt_capture: receiptCapture,
     receipt_answer: receiptAnswer,
+    video_quiz_submit: videoQuizSubmit,
     daily_log: dailyLog,
     pin_undo: pinUndo,
     pin_reset_project: pinResetProject,

@@ -381,6 +381,22 @@ export function enqueueReceiptAnswer(input: {
   });
 }
 
+/**
+ * Queue a finished video quiz attempt for later. Only called as the FALLBACK
+ * after a direct submit_video_quiz call fails with a network-shaped error
+ * (see videoQuiz.ts's submitVideoQuiz) — there is no score to show yet once
+ * this has queued, only "will send when you're back in signal".
+ */
+export function enqueueVideoQuizSubmit(input: {
+  videoId: string;
+  answers: number[];
+}): Promise<string> {
+  return enqueue({
+    op: "video_quiz_submit",
+    payload: { videoId: input.videoId, answers: input.answers },
+  });
+}
+
 export interface DailyLogInput {
   projectId: string | null;
   profileId: string | null;
