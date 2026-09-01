@@ -193,6 +193,17 @@ export const FUNCTION_SPEND: Record<string, FunctionSpend> = {
     model: "claude-sonnet-5",
     estimateMicros: 40_000,
   },
+  // A lesson transcript in, a summary plus 5 structured MC questions out —
+  // more structured output than generate-howto's plain prose, so priced a
+  // step above it. The transcribe action (Whisper, on our own stored file)
+  // shares this same booking and is reconciled to its real cost afterward,
+  // exactly like transcribe-install-memo's whisperMicros.
+  "summarize-learning-video": {
+    kind: "content",
+    provider: "anthropic",
+    model: "claude-sonnet-5",
+    estimateMicros: 18_000,
+  },
 };
 
 // ---------------------------------------------------------------------------

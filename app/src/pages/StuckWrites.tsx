@@ -57,6 +57,7 @@ const OP_LABELS: Record<OutboxOp, string> = {
   issue_photo_upload: "Damage photo",
   receipt_capture: "Receipt",
   receipt_answer: "Receipt details",
+  video_quiz_submit: "Quiz result",
 };
 
 /**

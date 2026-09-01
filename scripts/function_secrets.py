@@ -90,6 +90,7 @@ FEATURE_NAMES = {
     'redeem-crew-invite': 'setting up a new crew login from a code',
     'send-push': 'push notifications',
     'studio-assist': 'the Model Studio AI assistant',
+    'summarize-learning-video': 'video summaries and quizzes',
     'summon-warning-sweep': 'summon 5-minute warnings',
     'synthesize-type-tips': 'window-type tips',
     'transcribe-install-memo': 'install voice memos',

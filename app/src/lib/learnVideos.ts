@@ -19,6 +19,9 @@ export interface LearningVideo {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  /** Wave Q: the window type a PASSING quiz on this video clears the
+   * installer for. Null means the video teaches without gating any work. */
+  grants_clearance: string | null;
 }
 
 export async function listLearningVideos(): Promise<LearningVideo[]> {
@@ -44,6 +47,7 @@ export async function saveLearningVideo(input: {
   summary?: string | null;
   transcript?: string | null;
   active?: boolean;
+  grantsClearance?: string | null;
 }): Promise<LearningVideo> {
   const { data, error } = await supabase.rpc("save_learning_video", {
     p_id: input.id ?? null,
@@ -55,6 +59,7 @@ export async function saveLearningVideo(input: {
     p_summary: input.summary ?? null,
     p_transcript: input.transcript ?? null,
     p_active: input.active ?? true,
+    p_grants_clearance: input.grantsClearance ?? null,
   });
   if (error) throw error;
   return data as LearningVideo;

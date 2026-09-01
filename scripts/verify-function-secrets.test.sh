@@ -228,8 +228,9 @@ assert_has "- plan-set reading"
 # Wave V added extract-placement as an ANTHROPIC_API_KEY consumer, sorting in
 # right after "ask" (its directory name alphabetizes before extract-receipt's)
 # — the census in this sentence counts real functions, in that order, so it
-# moves when they do.
-assert_first_line_has "Ask Infinity, placing windows on the plan and 8 other features need an API key"
+# moves when they do. Wave Q added a second: summarize-learning-video, sorting
+# between studio-assist and synthesize-type-tips.
+assert_first_line_has "Ask Infinity, placing windows on the plan and 9 other features need an API key"
 
 new_case "only ANTHROPIC_API_KEY missing: says where to click, not just a command"
 live_state
