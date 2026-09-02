@@ -10,6 +10,7 @@ import { useEffectiveRole } from "../lib/useEffectiveRole";
 import {
   getHeartbeat,
   isAnomaly,
+  liveCrewHref,
   setProjectGreenLight,
   type HeartbeatTask,
 } from "../lib/heartbeat";
@@ -249,53 +250,66 @@ export function Heartbeat() {
           <h2 style={{ fontSize: 16, marginBottom: 8 }}>Live crew</h2>
           <ul className="unit-list work-list">
             {liveTasks.map((t) => (
-              <li key={t.openingId} className="find-row dispatch-row">
-                <div style={{ minWidth: 0 }}>
-                  <div>
-                    {t.stale && (
-                      <strong
-                        className="error"
-                        style={{ marginRight: 6 }}
-                        title="Started but never finished — needs a person"
-                      >
-                        ⚠ NEVER FINISHED
-                      </strong>
-                    )}
-                    {t.liveAnomaly && (
-                      <strong
-                        className="error"
-                        style={{ marginRight: 6 }}
-                        title="Running long vs median"
-                      >
-                        ⚠ LONG
-                      </strong>
-                    )}
-                    <strong>{t.installerName}</strong>{" "}
-                    <span className="muted">
-                      {t.jobCode} · {t.openingLabel}
-                    </span>
+              // The li itself carries no card styling — .unit-list li's bare
+              // background/border/padding are switched off inline so the
+              // Link underneath (which owns find-row/dispatch-row) is the
+              // only box, not a card nested inside a card.
+              <li key={t.openingId} style={{ background: "none", border: "none", padding: 0 }}>
+                <Link
+                  to={liveCrewHref(t)}
+                  className="find-row dispatch-row"
+                  style={{ textDecoration: "none", color: "inherit" }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div>
+                      {t.stale && (
+                        <strong
+                          className="error"
+                          style={{ marginRight: 6 }}
+                          title="Started but never finished — needs a person"
+                        >
+                          ⚠ NEVER FINISHED
+                        </strong>
+                      )}
+                      {t.liveAnomaly && (
+                        <strong
+                          className="error"
+                          style={{ marginRight: 6 }}
+                          title="Running long vs median"
+                        >
+                          ⚠ LONG
+                        </strong>
+                      )}
+                      <strong>{t.installerName}</strong>{" "}
+                      <span className="muted">
+                        {t.jobCode} · {t.openingLabel}
+                      </span>
+                    </div>
+                    <div
+                      className={t.liveAnomaly || t.stale ? "error" : "muted"}
+                      style={{ fontSize: 13 }}
+                    >
+                      {t.stale ? (
+                        // Never a stopwatch on one of these. How long ago it was
+                        // started is a fact; how long it took is not ours to say.
+                        <>
+                          Started {describeDuration(t.liveElapsedSec)} ago and never
+                          finished — ask whoever was on it
+                        </>
+                      ) : (
+                        <>
+                          {fmtDur(t.liveElapsedSec)}
+                          {t.medianSec != null
+                            ? ` · expected ${fmtMin(t.medianSec)} min`
+                            : ""}
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <div
-                    className={t.liveAnomaly || t.stale ? "error" : "muted"}
-                    style={{ fontSize: 13 }}
-                  >
-                    {t.stale ? (
-                      // Never a stopwatch on one of these. How long ago it was
-                      // started is a fact; how long it took is not ours to say.
-                      <>
-                        Started {describeDuration(t.liveElapsedSec)} ago and never
-                        finished — ask whoever was on it
-                      </>
-                    ) : (
-                      <>
-                        {fmtDur(t.liveElapsedSec)}
-                        {t.medianSec != null
-                          ? ` · expected ${fmtMin(t.medianSec)} min`
-                          : ""}
-                      </>
-                    )}
-                  </div>
-                </div>
+                  <span className="muted" aria-hidden style={{ marginLeft: "auto", flex: "none" }}>
+                    Open →
+                  </span>
+                </Link>
               </li>
             ))}
             {liveTasks.length === 0 && (

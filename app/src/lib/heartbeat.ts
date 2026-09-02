@@ -117,6 +117,17 @@ export function heartbeatTask(o: OpeningRow, now: number): HeartbeatTask | null 
 }
 
 /**
+ * Where a Live crew row sends you: the unit's own opening sheet, the same
+ * deep link MapsInteractive's openOpening uses. A stale start gets resolved
+ * there — its install stage shows the "open since … type the real minutes
+ * when you capture it" state — so the row that flags the problem is the row
+ * that opens it.
+ */
+export function liveCrewHref(t: Pick<HeartbeatTask, "projectId" | "openingId">): string {
+  return `/projects/${t.projectId}/opening/${t.openingId}`;
+}
+
+/**
  * Aggregate the live pulse across ACTIVE projects. Supervisor+ only (the page
  * route guards it, and list_issues is itself foreman+ guarded server-side).
  */
