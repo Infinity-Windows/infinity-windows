@@ -61,7 +61,10 @@ const STORAGE_PATH = "08c60cce-29f6-4b52-bd0c-2bc2c02a79a9/1788206016569-MMV2_-_
 // pdfinfo on the real sheet: all 4 pages are 2592x1728pt.
 const PAGE_ASPECT = 2592 / 1728;
 
-async function useMadMooseFixtures(page: import("@playwright/test").Page) {
+async function useMadMooseFixtures(
+  page: import("@playwright/test").Page,
+  opts: { storagePath?: string } = {},
+) {
   await page.route("**/rest/v1/project_plansets**", (route) =>
     json(
       route,
@@ -69,7 +72,7 @@ async function useMadMooseFixtures(page: import("@playwright/test").Page) {
         {
           id: PLANSET_ID,
           project_id: BLACK22.projectId,
-          storage_path: STORAGE_PATH,
+          storage_path: opts.storagePath ?? STORAGE_PATH,
           source_format: "pdf",
           converted_pdf_path: null,
           page_count: 4,
@@ -244,5 +247,46 @@ test.describe("Studio plan underlay, real Mad Moose trace (desktop)", () => {
       Math.abs(withPlan - withoutPlan),
       "the canvas pixels are identical with the plan layer on vs off — nothing actually painted",
     ).toBeGreaterThan(1000);
+  });
+
+  test("says so honestly when the plan sheet can't be fetched, instead of drawing nothing silently", async ({
+    page,
+  }) => {
+    // Same real trace, but the planset row points at a storage path with
+    // nothing behind it — useSupabaseFixtures' default storage route 404s
+    // anything it can't find on disk, same as a real fetch failure would.
+    // Degrade-with-honesty (house style): the toggle used to just stay
+    // "Plans: on" over a blank canvas with no signal anything had gone
+    // wrong — that IS the bug on Mad Moose, independent of the fit math.
+    await useSupabaseFixtures(page, { role: "owner" });
+    await useMadMooseFixtures(page, {
+      storagePath: "08c60cce-29f6-4b52-bd0c-2bc2c02a79a9/does-not-exist.pdf",
+    });
+    await page.goto(`/studio/j/${BLACK22.projectId}`);
+
+    await page.waitForFunction(
+      () => {
+        const bp = (window as any).__studio;
+        return (bp?.model?.floorplan?.getWalls?.()?.length ?? 0) === 4;
+      },
+      undefined,
+      { timeout: 60_000 },
+    );
+
+    await page.getByLabel("View", { exact: true }).selectOption("plan");
+    await page.getByRole("button", { name: /Tools/ }).click();
+    await expect(page.getByText(/trace on file/)).toBeVisible();
+    await page.getByRole("button", { name: "Draw walls" }).click();
+
+    const plansToggle = page.getByRole("button", { name: /^Plans:/ });
+    await expect(plansToggle).toHaveText("Plans: unavailable", { timeout: 30_000 });
+    await expect(page.getByText("the plan sheet failed to load")).toBeVisible();
+
+    // Never silently draws — the vendor canvas's layer stays null the
+    // whole time, exactly like the real bug looked from the outside.
+    const underlay = await page.evaluate(
+      () => (window as any).__studio.floorplanner.view.planUnderlay,
+    );
+    expect(underlay).toBeNull();
   });
 });

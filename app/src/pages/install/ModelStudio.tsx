@@ -425,6 +425,12 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   // that so a deliberate off stays off.
   const [plansOn, setPlansOn] = useState(false);
   const plansDefaultedRef = useRef(false);
+  // Degrade-with-honesty (house style): when the toggle is on but
+  // rebuildPlanUnderlay below can't actually produce anything to draw — the
+  // sheet failed to fetch/decode, or this floor's trace and walls don't
+  // line up even with the bounding-box fallback — say so in plain English
+  // rather than silently leaving a blank canvas the way #488 originally did.
+  const [planUnderlayIssue, setPlanUnderlayIssue] = useState<string | null>(null);
   const shellsRef = useRef<unknown[]>([]);
   /** Building-wide roof choice (Studio 100x #49) + the mesh it builds. The
    * ref mirrors the state for the same mount-time-closure reason
@@ -1824,18 +1830,42 @@ export function ModelStudio({ source }: { source: StudioSource }) {
    * floorsRef first, so a wall dragged moments ago is read rather than a
    * stale snapshot from the last save/switch. Clears the underlay — never
    * throws — when the toggle is off, the image hasn't loaded yet, or this
-   * floor's trace and model footprints no longer line up: a faint
-   * background reference is worth skipping, never worth a crash.
+   * floor's trace and model footprints truly can't align (planUnderlayIssue
+   * says which, for the toggle to show honestly instead of just going
+   * quiet — the real bug on Mad Moose was a blank canvas with no signal at
+   * all that anything had gone wrong).
    */
   const rebuildPlanUnderlay = () => {
     const bp = bpRef.current;
     const fp = bp?.floorplanner;
     if (!fp) return;
+    if (!plansOn) {
+      setPlanUnderlayIssue(null);
+      fp.view.planUnderlay = null;
+      fp.view.draw();
+      return;
+    }
+    if (planUnderlayImage.isError) {
+      setPlanUnderlayIssue("the plan sheet failed to load");
+      fp.view.planUnderlay = null;
+      fp.view.draw();
+      return;
+    }
     const img = planUnderlayImage.data?.img;
     const trace = traceModel?.building.trace;
     const active = activeFloorRef.current;
-    const tracePolys = plansOn && img && trace ? tracePolysForStory(trace, active) : null;
+    if (!img || !trace) {
+      // Still fetching/decoding (img) — not an issue yet — or this job
+      // simply has no trace at all, which is why the toggle itself never
+      // renders (see the `traceModel &&` guard around the button below).
+      setPlanUnderlayIssue(null);
+      fp.view.planUnderlay = null;
+      fp.view.draw();
+      return;
+    }
+    const tracePolys = tracePolysForStory(trace, active);
     if (!tracePolys) {
+      setPlanUnderlayIssue("no trace for this floor");
       fp.view.planUnderlay = null;
       fp.view.draw();
       return;
@@ -1853,12 +1883,19 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       mass.poly.map((p) => ({ x: p.x * 100, y: p.z * 100 })),
     );
     const transform = storyUnderlayTransform(tracePolys, modelPolysCm);
+    if (!transform) {
+      setPlanUnderlayIssue("this floor's walls don't match the traced plan");
+      fp.view.planUnderlay = null;
+      fp.view.draw();
+      return;
+    }
+    setPlanUnderlayIssue(null);
     // 0.45, not #488's original 0.25: paired with the vendor canvas's
     // 'multiply' compositing (floorplanner_view.ts), white paper still
     // vanishes into the cream grid — this only controls how dark the
     // sheet's actual linework reads, and 0.25 read as barely-there on a
     // real scanned/vector plan sheet.
-    fp.view.planUnderlay = transform ? { image: img!, transform, opacity: 0.45 } : null;
+    fp.view.planUnderlay = { image: img, transform, opacity: 0.45 };
     fp.view.draw();
   };
 
@@ -1892,13 +1929,15 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     rebuildPlanUnderlay();
   };
 
-  // Plan underlay: recompute on a toggle flip or once the page image
-  // finishes loading — floor switches/adds/deletes already call
-  // rebuildPlanUnderlay via rebuildFloorContext above.
+  // Plan underlay: recompute on a toggle flip, once the page image finishes
+  // loading, OR if it fails — react-query gives isError its own transition,
+  // not a `data` change, so it needs to be named explicitly or a failed
+  // fetch would never re-run this (floor switches/adds/deletes already call
+  // rebuildPlanUnderlay via rebuildFloorContext above).
   useEffect(() => {
     rebuildPlanUnderlay();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plansOn, planUnderlayImage.data, traceModel]);
+  }, [plansOn, planUnderlayImage.data, planUnderlayImage.isError, traceModel]);
 
   /**
    * Rebuild the roof cap (Studio 100x #49) — cheap (touches only the top
@@ -4364,9 +4403,14 @@ export function ModelStudio({ source }: { source: StudioSource }) {
             {view === "model"
               ? "drag to orbit · right-drag to pan · double-click to focus · tap to edit"
               : view === "plan"
-                ? // infinity (studio-trace-mode-obvious, 2026-09-01): drag-to-draw
-                  // (#466) existed with no hint anywhere it could be found —
-                  // name the gesture outright while Draw walls is the active tool.
+                ? // Degrade-with-honesty (2026-09-01 Mad Moose fix) wins
+                  // outright: "Plans: on" with nothing to show used to look
+                  // identical to a building with no trace at all — say why,
+                  // regardless of which tool is active. Otherwise, the
+                  // studio-trace-mode-obvious drag-to-draw hint (#466 had no
+                  // hint anywhere it could be found) while Draw walls is
+                  // the active tool, or the plain drag hint otherwise.
+                  (plansOn && planUnderlayIssue) ||
                   (mode === floorplannerModes.DRAW
                     ? "press and drag to draw a wall · click corner to corner also works · corners square up within 5° · Plans: on shows the sheet"
                     : "drag walls & corners · drag empty space to pan")
@@ -4390,10 +4434,18 @@ export function ModelStudio({ source }: { source: StudioSource }) {
                         : "button-like studio-mini"
                     }
                     aria-pressed={plansOn}
-                    title="Show the real plan sheet, faintly, behind the walls"
+                    title={
+                      plansOn && planUnderlayIssue
+                        ? planUnderlayIssue
+                        : "Show the real plan sheet, faintly, behind the walls"
+                    }
                     onClick={() => setPlansOn((v) => !v)}
                   >
-                    {plansOn ? "Plans: on" : "Plans: off"}
+                    {plansOn && planUnderlayIssue
+                      ? "Plans: unavailable"
+                      : plansOn
+                        ? "Plans: on"
+                        : "Plans: off"}
                   </button>
                 )}
               </>
