@@ -136,11 +136,9 @@ describe("adoptableDrawingCoords", () => {
   it("never overwrites drawing coordinates a row already has", () => {
     const already = [
       row({ id: "has-all", image_page: 3, image_bbox: BOX, planset_id: "MMV2" }),
-      // Half-known provenance is exactly how a box crops the wrong file, so a
-      // row holding ANY one of the three is left completely alone.
+      // Half a box is still a located picture this run has no standing to move.
       row({ id: "has-page", image_page: 3 }),
       row({ id: "has-box", image_bbox: BOX }),
-      row({ id: "has-planset", planset_id: "MMV2" }),
     ];
     expect(
       adoptableDrawingCoords(
@@ -149,6 +147,36 @@ describe("adoptableDrawingCoords", () => {
         "MMV2A",
       ),
     ).toEqual([]);
+  });
+
+  it("un-strands a row the old retire step left pointing at nothing", () => {
+    // Marks 4–10 as the addendum upload left them: the page and the box were
+    // blanked and the pointer at the original sheet was kept. A pointer crops
+    // nothing, so the row is still picture-less — and if it can't be adopted it
+    // stays that way however many times the sheet is re-read.
+    expect(
+      adoptableDrawingCoords(
+        [row({ id: "mark-7", mark_code: "7", planset_id: "MMV2" })],
+        [{ mark_code: "7", image_page: 2, image_bbox: BOX }],
+        "MMV2",
+      ),
+    ).toEqual([
+      { id: "mark-7", image_page: 2, image_bbox: BOX, planset_id: "MMV2" },
+    ]);
+  });
+
+  it("writes the sheet this run read over a stale pointer", () => {
+    // Page, box and planset land as one set, so a row can't end up with the
+    // original's pointer and the addendum's box.
+    expect(
+      adoptableDrawingCoords(
+        [row({ id: "mark-7", mark_code: "7", planset_id: "deleted-sheet" })],
+        [{ mark_code: "7", image_page: 1, image_bbox: BOX }],
+        "MMV2A",
+      ),
+    ).toEqual([
+      { id: "mark-7", image_page: 1, image_bbox: BOX, planset_id: "MMV2A" },
+    ]);
   });
 
   it("leaves unconfirmed rows to the ordinary upsert", () => {

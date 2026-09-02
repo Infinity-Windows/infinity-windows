@@ -2032,12 +2032,17 @@ export interface AdoptedDrawingCoords {
  * schedule, so without this they would stay picture-less forever no matter how
  * many times the sheet is re-read.
  *
- * Fill-missing-only, and as a SET: page, box and planset go on together or not
- * at all. A row holding any one of the three already is left completely alone —
- * half-known provenance is how a box ends up cropping the wrong file. For the
- * same reason nothing is adopted unless we know which planset this run read,
- * because a box saved with a null planset falls back to whichever specs sheet
- * happens to be newest. PURE.
+ * Fill-missing-only, and as a SET: page, box and planset are written together,
+ * so provenance is never half from one sheet and half from another. "Has no
+ * drawing" means no page and no box; a row holding either one is left alone,
+ * because only the run that measured a box may argue with it.
+ *
+ * A LONE planset id is not a drawing. That is exactly what the old retire step
+ * left behind on Mad Moose's marks 4–10 — it blanked page and box and kept the
+ * pointer — and refusing those rows would strand them picture-less forever, the
+ * permanent loss this whole change exists to undo. Nothing is adopted unless we
+ * know which planset THIS run read, because a box saved with a null planset is
+ * unplaceable. PURE.
  */
 export function adoptableDrawingCoords(
   existing: StoredDrawingCoords[],
@@ -2061,9 +2066,10 @@ export function adoptableDrawingCoords(
   const adopted: AdoptedDrawingCoords[] = [];
   for (const row of existing ?? []) {
     if (!row?.confirmed || !row.id) continue;
-    if (row.image_page != null || row.image_bbox != null || row.planset_id != null) {
-      continue;
-    }
+    // A page or a box means the picture is already located, and this run has no
+    // standing to move it. A pointer on its own crops nothing, so the row is
+    // still picture-less and the write below replaces the pointer too.
+    if (row.image_page != null || row.image_bbox != null) continue;
     const match = found.get(key(row.mark_code));
     if (!match) continue;
     adopted.push({
