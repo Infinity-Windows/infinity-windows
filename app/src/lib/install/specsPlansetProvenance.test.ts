@@ -6,14 +6,16 @@
 // Interactive wall.
 //
 // These are the pure pieces of the rule that replaced that behaviour: which
-// sheets count as current, which sheet ONE mark's drawing belongs to, and which
-// confirmed rows may take a drawing they never had.
+// sheets count as current, which sheet ONE mark's drawing belongs to, which
+// confirmed rows may take a drawing they never had, and which sheets a job has
+// genuinely lost — the decision behind the write that erased the drawings.
 
 import { describe, expect, it } from "vitest";
 import {
   adoptableDrawingCoords,
   findSpecsPlansetFor,
   findSpecsPlansets,
+  orphanedPlansetIds,
   specsPlansetIds,
   type StoredDrawingCoords,
 } from "./api";
@@ -242,5 +244,50 @@ describe("adoptableDrawingCoords", () => {
     expect(
       adoptableDrawingCoords([row({})], [], "MMV2A"),
     ).toEqual([]);
+  });
+});
+
+describe("orphanedPlansetIds", () => {
+  // What the spec rows point at after the addendum upload: marks 1-10 off the
+  // original supplier sheet, the three added units off the addendum.
+  const MAD_MOOSE_ROWS = [
+    { planset_id: "MMV2" },
+    { planset_id: "MMV2" },
+    { planset_id: "MMV2A" },
+  ];
+
+  it("orphans nothing while both sheets are still on the job", () => {
+    // The whole bug in one assertion. "Every planset except the file I just
+    // read" answered ["MMV2"] here, and the answer was wiped off marks 4-10.
+    expect(orphanedPlansetIds(MAD_MOOSE_ROWS, ["MMV2A", "MMV2"])).toEqual([]);
+  });
+
+  it("names a sheet the job no longer has", () => {
+    expect(orphanedPlansetIds(MAD_MOOSE_ROWS, ["MMV2A"])).toEqual(["MMV2"]);
+  });
+
+  it("names each vanished sheet once, however many rows point at it", () => {
+    const gone = orphanedPlansetIds(
+      [...MAD_MOOSE_ROWS, { planset_id: "MMV1" }, { planset_id: "MMV1" }],
+      ["MMV2A", "MMV2"],
+    );
+    expect(gone).toEqual(["MMV1"]);
+  });
+
+  it("leaves legacy rows that name no sheet alone", () => {
+    // Smith's live drawings: no provenance was ever recorded, so there is no
+    // file to call gone, and wiping them would take working pictures off a job
+    // mid-install.
+    expect(
+      orphanedPlansetIds([{ planset_id: null }, {}], ["MMV2A"]),
+    ).toEqual([]);
+  });
+
+  it("claims nothing when we can't see what the job holds", () => {
+    expect(orphanedPlansetIds(MAD_MOOSE_ROWS, [])).toEqual([]);
+  });
+
+  it("survives a job with no spec rows at all", () => {
+    expect(orphanedPlansetIds([], ["MMV2A"])).toEqual([]);
   });
 });

@@ -2272,27 +2272,58 @@ export async function extractAndSaveMarkSpecs(
 }
 
 /**
- * Blank the drawing coordinates on any spec row pointing at a specs planset the
- * project NO LONGER HAS — a file that was deleted or genuinely replaced. Those
+ * Which plansets the project's spec rows still point at that the project NO
+ * LONGER HAS — the whole decision {@link clearOrphanedDrawingCoords} acts on,
+ * pulled out so it can be tested without a database.
+ *
+ * `currentSpecsPlansetIds` is every specs planset the project still holds, not
+ * just the one we happened to read last. Until 2026-09-01 the query said "every
+ * planset except the file I just read", which is how Mad Moose's one-page
+ * ADDENDUM cut sheet erased the drawings for marks 4–10 off the original
+ * four-page supplier sheet the moment it finished uploading. An addendum adds a
+ * file; it does not take the first one away — so a sheet that is still on the
+ * job is never orphaned, however many other sheets arrive after it.
+ *
+ * Rows with a null `planset_id` name no file and so can't be orphaned: that's
+ * legacy data whose provenance we never recorded (all pre-migration rows,
+ * including the live Smith job), and wiping working drawings to satisfy a
+ * bookkeeping rule would be a downgrade for the crew. An empty current set
+ * means we can't see what the project holds, so nothing is provably gone. PURE.
+ */
+export function orphanedPlansetIds(
+  rows: readonly { planset_id?: string | null }[],
+  currentSpecsPlansetIds: readonly string[],
+): string[] {
+  if (currentSpecsPlansetIds.length === 0) return [];
+  const current = new Set(currentSpecsPlansetIds);
+  const gone = new Set<string>();
+  for (const row of rows ?? []) {
+    const source = row?.planset_id;
+    if (!source || current.has(source)) continue;
+    gone.add(source);
+  }
+  return [...gone];
+}
+
+/**
+ * Blank the drawing provenance on any spec row pointing at a specs planset the
+ * project no longer has — a file that was deleted or genuinely replaced. Those
  * boxes can never be rendered again (nothing left to crop out of), so clearing
  * them makes the row honest instead of merely un-rendered.
  *
- * `currentSpecsPlansetIds` is every specs planset the project still holds, not
- * just the one we happened to read last. Until 2026-09-01 this took a single id
- * and blanked every other planset's coordinates, which is how Mad Moose's
- * one-page ADDENDUM cut sheet erased the drawings for marks 4–10 off the
- * original four-page supplier sheet the moment it finished uploading. An
- * addendum adds a file; it does not take the first one away.
+ * All THREE columns go, the pointer included. Leaving a dead planset id behind
+ * is what stranded Mad Moose's marks: a row with no page and no box but a
+ * pointer at a file that no longer exists is picture-less, and until the
+ * adoption rule stopped refusing those rows it stayed that way forever. Once
+ * the pointer is gone the row is plainly "no drawing yet", which is what it is,
+ * and the next read of a re-uploaded sheet fills it back in.
  *
- * Two things are left ALONE. Rows with a null `planset_id` — legacy data whose
- * provenance we never recorded (all pre-migration rows, including the live
- * Smith job), where wiping working drawings to satisfy a bookkeeping rule would
- * be a downgrade for the crew. And everything, when the project has no specs
- * planset we can name: no comparison is possible, so nothing is provably gone.
- *
- * Returns the ids of the vanished plansets it actually found, so the caller can
- * drop their cached crop pixels too. Best-effort — nothing here is worth
- * failing an upload.
+ * Which ids are gone is decided first, by {@link orphanedPlansetIds} — the
+ * update can't report it, because clearing the pointer is exactly what the
+ * returned rows would no longer carry. Those ids go back to the caller so it
+ * can drop the cached crop pixels too. The clear runs only when something is
+ * genuinely orphaned, and it can't repeat: afterwards those rows name no
+ * planset at all. Best-effort — nothing here is worth failing an upload.
  */
 export async function clearOrphanedDrawingCoords(
   projectId: string,
@@ -2302,21 +2333,22 @@ export async function clearOrphanedDrawingCoords(
   try {
     const { data, error } = await supabase
       .from("project_mark_specs")
-      .update({ image_page: null, image_bbox: null })
+      .select("planset_id")
       .eq("project_id", projectId)
-      .not("planset_id", "is", null)
-      .not("planset_id", "in", `(${currentSpecsPlansetIds.join(",")})`)
-      // Don't touch rows that have nothing left to clear: a re-read runs this
-      // every time, and an idempotent write would still bump `updated_at` on
-      // rows a foreman is looking at.
-      .or("image_page.not.is.null,image_bbox.not.is.null")
-      .select("planset_id");
+      .not("planset_id", "is", null);
     if (error) throw error;
-    const gone = new Set<string>();
-    for (const row of (data ?? []) as { planset_id?: string | null }[]) {
-      if (row.planset_id) gone.add(row.planset_id);
-    }
-    return [...gone];
+    const gone = orphanedPlansetIds(
+      (data ?? []) as { planset_id?: string | null }[],
+      currentSpecsPlansetIds,
+    );
+    if (gone.length === 0) return [];
+    const { error: clearError } = await supabase
+      .from("project_mark_specs")
+      .update({ image_page: null, image_bbox: null, planset_id: null })
+      .eq("project_id", projectId)
+      .in("planset_id", gone);
+    if (clearError) throw clearError;
+    return gone;
   } catch {
     // Table or columns not migrated yet, or no write permission — nothing to do.
     return [];
@@ -2627,9 +2659,10 @@ async function finishSpecExtraction(
  * the only thing worth retiring is provenance pointing at a planset that is
  * genuinely gone from the project.
  *
- * Two things retire: the saved coordinates (see
- * {@link clearOrphanedDrawingCoords}) and any crop pixels cached from those
- * vanished plansets. The cache purge is best-effort on purpose — the client's
+ * Two things retire: the row's whole drawing provenance — page, box and the
+ * pointer at the vanished file (see {@link clearOrphanedDrawingCoords}) — and
+ * any crop pixels cached from those plansets. The cache purge is best-effort
+ * on purpose — the client's
  * staleness guard already refuses to render one of those crops, so this is
  * housekeeping, not the safety net.
  */
