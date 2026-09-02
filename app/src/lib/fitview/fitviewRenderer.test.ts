@@ -504,4 +504,28 @@ describe("flat elevations: a wall at either end can still reach the strip's cent
     expect(pressedChip(host)?.dataset.elev).toBe("s0");
     view.destroy();
   });
+
+  // Wave W follow-up (2026-09-01): the mini-map drew exterior polygon edges
+  // only, so when the interior wall above took the centre its chip and label
+  // lit but no line on the map ever did. It now gets its own line — dashed,
+  // so the solid silhouette still reads as the outside of the building —
+  // keyed by the same geo string as its panel, and the you-are-here
+  // highlight lands on it like any other wall.
+  it("the centred interior wall lights its own (dashed) mini-map line", () => {
+    const { host, view } = mountFlat();
+    const stage = host.querySelector<HTMLElement>("#stage")!;
+    Object.defineProperty(stage, "clientWidth", { configurable: true, value: VIEWPORT });
+    const { contentWidth } = layOutWalls(host);
+    // 4 exterior edges plus the one interior wall.
+    expect(host.querySelectorAll(".flat-minimap svg line").length).toBe(5);
+    const interiorLine = host.querySelector(".flat-minimap svg line.interior");
+    expect(interiorLine).not.toBeNull();
+    stage.scrollLeft = Math.max(0, contentWidth - VIEWPORT);
+    stage.dispatchEvent(new Event("scroll"));
+    const wallGeo = host.querySelector<HTMLElement>('.flat-wall[data-elev="s4"]')!.dataset.geo;
+    const lit = host.querySelector(".flat-minimap line.on");
+    expect(lit?.getAttribute("data-geo")).toBe(wallGeo);
+    expect(lit).toBe(interiorLine);
+    view.destroy();
+  });
 });
