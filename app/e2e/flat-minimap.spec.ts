@@ -228,8 +228,8 @@ test("a two-story wall is ONE panel with both stories stacked", async ({ page })
 // normal-width one, then a sliver that closes back to the origin and is
 // walked LAST — the shape of the owner's actual job (a narrow tail wall
 // next to an ordinary one), without needing an interior wall (whose own
-// panel has no matching minimap edge to light up at all — a separate,
-// pre-existing gap this fix does not touch).
+// minimap line — once a separate, pre-existing gap — is the next case
+// below).
 const NARROW_LAST_WALL = {
   building: {
     width: 18, depth: 6, height: 3, rise: 0,
@@ -260,6 +260,55 @@ test("scrolled to the max, a narrow LAST wall still centres and highlights", asy
   await expect(page.locator(".flat-minimap line.on")).toHaveAttribute(
     "data-geo",
     lastGeo!,
+    { timeout: 5_000 },
+  );
+});
+
+// The gap the case above deliberately stepped around (2026-09-01): a
+// published interior wall (wave W) is an ordinary panel in the strip — it
+// can centre, and its chip and label light — but the minimap outline drew
+// exterior polygon edges only, so no line on the map ever lit for it. The
+// map now draws interior walls too (dashed, so the solid silhouette still
+// reads as the outside of the building) and the you-are-here highlight
+// lands on them like any other wall.
+const ONE_INTERIOR_WALL = {
+  building: {
+    width: 18, depth: 6, height: 3, rise: 0,
+    footprints: [[ { x: 0, z: 0 }, { x: 18, z: 0 }, { x: 18, z: 6 }, { x: 0, z: 6 } ]],
+    interiorWalls: [
+      { x1: 9, z1: 0, x2: 9, z2: 6, heightM: 3, elevM: 0, story: 1, name: "Interior 1", interior: true },
+    ],
+  },
+  windows: [
+    { id: "10", elev: "s0", x: 3, y: 0.9, w: 1500, h: 1200 },
+    { id: "11", elev: "s4", x: 2, y: 0.9, w: 1500, h: 1200 },
+  ],
+};
+
+test("an interior wall centred in the strip lights its own minimap line", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  await useModel(page, ONE_INTERIOR_WALL);
+  await page.goto(`/projects/${BLACK22.projectId}?tab=maps-interactive`);
+  await expect(page.locator("button.win").first()).toBeVisible({ timeout: 60_000 });
+
+  // Interior walls walk in after every exterior edge: last panel, key s4.
+  const wall = page.locator(".flat-wall").last();
+  await expect(wall).toHaveAttribute("data-elev", "s4");
+  const geo = await wall.getAttribute("data-geo");
+
+  // The outline carries a line for it: 4 exterior edges + 1 interior.
+  await expect(page.locator(".flat-minimap svg line")).toHaveCount(5);
+  await expect(page.locator(".flat-minimap svg line.interior")).toHaveCount(1);
+
+  await page.evaluate(() => {
+    const stage = document.querySelector(".stage.flat")!;
+    stage.scrollLeft = stage.scrollWidth;
+  });
+  // Same frame-driven sync as every case above — but now the lit line is
+  // the interior wall's own.
+  await expect(page.locator(".flat-minimap line.on")).toHaveAttribute(
+    "data-geo",
+    geo!,
     { timeout: 5_000 },
   );
 });
