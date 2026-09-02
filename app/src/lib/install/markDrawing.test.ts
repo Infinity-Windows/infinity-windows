@@ -79,55 +79,79 @@ describe("validateBbox", () => {
 describe("isDrawingStale", () => {
   const BOX = PAGE_1_BOXES["4A"];
   const CURRENT = "planset-current";
+  // Mad Moose after the addendum upload: the original four-page supplier cut
+  // sheet AND the one-page addendum for the three added units. Both current.
+  const ORIGINAL = "planset-MMV2";
+  const ADDENDUM = "planset-MMV2A";
+  const BOTH = [ORIGINAL, ADDENDUM];
 
   it("is fine when the box came from the planset we're cropping", () => {
-    expect(isDrawingStale({ image_bbox: BOX, planset_id: CURRENT }, CURRENT)).toBe(
+    expect(isDrawingStale({ image_bbox: BOX, planset_id: CURRENT }, [CURRENT])).toBe(
       false,
     );
   });
 
-  it("is stale when the specs planset has been replaced", () => {
+  it("is stale when the specs planset is gone from the project", () => {
     expect(
-      isDrawingStale({ image_bbox: BOX, planset_id: "planset-old" }, CURRENT),
+      isDrawingStale({ image_bbox: BOX, planset_id: "planset-old" }, [CURRENT]),
+    ).toBe(true);
+  });
+
+  it("keeps BOTH sheets' drawings once an addendum is added", () => {
+    // The bug: uploading the addendum used to make every mark read off the
+    // original cut sheet stale, and marks 4–10 lost their page of markups.
+    expect(isDrawingStale({ image_bbox: BOX, planset_id: ORIGINAL }, BOTH)).toBe(
+      false,
+    );
+    expect(isDrawingStale({ image_bbox: BOX, planset_id: ADDENDUM }, BOTH)).toBe(
+      false,
+    );
+  });
+
+  it("still goes stale when one of several sheets is deleted", () => {
+    expect(
+      isDrawingStale({ image_bbox: BOX, planset_id: ORIGINAL }, [ADDENDUM]),
     ).toBe(true);
   });
 
   it("keeps legacy rows with no recorded planset — the live Smith drawings", () => {
-    expect(isDrawingStale({ image_bbox: BOX, planset_id: null }, CURRENT)).toBe(
+    expect(isDrawingStale({ image_bbox: BOX, planset_id: null }, [CURRENT])).toBe(
       false,
     );
-    expect(isDrawingStale({ image_bbox: BOX }, CURRENT)).toBe(false);
+    expect(isDrawingStale({ image_bbox: BOX }, [CURRENT])).toBe(false);
   });
 
   it("is never stale when there are no coordinates to be stale", () => {
-    expect(isDrawingStale({ image_bbox: null, planset_id: "planset-old" }, CURRENT)).toBe(
+    expect(isDrawingStale({ image_bbox: null, planset_id: "planset-old" }, [CURRENT])).toBe(
       false,
     );
-    expect(isDrawingStale({ planset_id: "planset-old" }, CURRENT)).toBe(false);
+    expect(isDrawingStale({ planset_id: "planset-old" }, [CURRENT])).toBe(false);
   });
 
   it("treats an unusable box as no box at all", () => {
     // Fails validateBbox (reversed), so there is nothing to mis-crop.
     expect(
-      isDrawingStale({ image_bbox: [0.9, 0.9, 0.1, 0.1], planset_id: "old" }, CURRENT),
+      isDrawingStale({ image_bbox: [0.9, 0.9, 0.1, 0.1], planset_id: "old" }, [CURRENT]),
     ).toBe(false);
   });
 
-  it("does not claim staleness when the current planset is unknown", () => {
+  it("does not claim staleness when the project's sheets are unknown", () => {
     expect(isDrawingStale({ image_bbox: BOX, planset_id: "planset-old" }, null)).toBe(
       false,
     );
     expect(
       isDrawingStale({ image_bbox: BOX, planset_id: "planset-old" }, undefined),
     ).toBe(false);
-    expect(isDrawingStale({ image_bbox: BOX, planset_id: "planset-old" }, "")).toBe(
+    // An empty set is "we can't see any specs planset", not "every drawing is
+    // wrong" — a planset query that hasn't landed must not blank the sheet.
+    expect(isDrawingStale({ image_bbox: BOX, planset_id: "planset-old" }, [])).toBe(
       false,
     );
   });
 
   it("compares ids exactly — a near-miss uuid is a different file", () => {
     expect(
-      isDrawingStale({ image_bbox: BOX, planset_id: `${CURRENT} ` }, CURRENT),
+      isDrawingStale({ image_bbox: BOX, planset_id: `${CURRENT} ` }, [CURRENT]),
     ).toBe(true);
   });
 });

@@ -16,6 +16,7 @@
 //   • it stops at a small cap, and any failure ends the run quietly. The cards
 //     still crop on demand exactly as before.
 
+import { findSpecsPlansetFor } from "./api";
 import { hasCachedCrop, markDrawingDataUrl } from "./drawingCrops";
 import { validateBbox } from "./markDrawing";
 import type { Planset } from "./types";
@@ -27,6 +28,12 @@ interface PrefetchSpec {
   mark_code: string;
   image_page: number | null;
   image_bbox: unknown;
+  /**
+   * Which specs planset the box was measured against, so a job holding both a
+   * supplier cut sheet and an addendum warms each mark off its own file. Null
+   * on legacy rows, which fall back to the newest specs planset.
+   */
+  planset_id?: string | null;
 }
 
 /**
@@ -61,11 +68,14 @@ function whenIdle(fn: () => void, timeout = 2000): () => void {
 }
 
 /**
- * Warm the crops for `specs` off `planset`, one at a time, yielding to idle
- * between each. Returns how many were produced. Never throws.
+ * Warm the crops for `specs`, one at a time, yielding to idle between each.
+ * `plansets` is the project's whole planset list, because each spec's sheet is
+ * resolved individually — a mark read off an addendum must warm from the
+ * addendum, not from whichever specs file happens to be newest. Returns how
+ * many were produced. Never throws.
  */
 export async function prefetchMarkDrawings(
-  planset: Planset,
+  plansets: Planset[],
   specs: PrefetchSpec[],
   shouldStop: () => boolean = () => false,
 ): Promise<number> {
@@ -76,10 +86,19 @@ export async function prefetchMarkDrawings(
       markCode: s.mark_code,
       pageNumber: s.image_page,
       bbox: validateBbox(s.image_bbox),
+      planset: findSpecsPlansetFor(plansets, s),
     }))
     .filter(
-      (s): s is { markCode: string; pageNumber: number; bbox: [number, number, number, number] } =>
-        s.bbox != null && s.pageNumber != null && Boolean(s.markCode),
+      (s): s is {
+        markCode: string;
+        pageNumber: number;
+        bbox: [number, number, number, number];
+        planset: Planset;
+      } =>
+        s.bbox != null &&
+        s.pageNumber != null &&
+        s.planset != null &&
+        Boolean(s.markCode),
     )
     .slice(0, MAX_PREFETCH);
 
@@ -87,7 +106,7 @@ export async function prefetchMarkDrawings(
   for (const item of wanted) {
     if (shouldStop()) break;
     const req = {
-      planset,
+      planset: item.planset,
       pageNumber: item.pageNumber,
       bbox: item.bbox,
       markCode: item.markCode,
@@ -112,13 +131,13 @@ export async function prefetchMarkDrawings(
  * cancel function for the caller's effect cleanup.
  */
 export function schedulePrefetchMarkDrawings(
-  planset: Planset,
+  plansets: Planset[],
   specs: PrefetchSpec[],
 ): () => void {
   let cancelled = false;
   const cancelIdle = whenIdle(() => {
     if (cancelled) return;
-    void prefetchMarkDrawings(planset, specs, () => cancelled);
+    void prefetchMarkDrawings(plansets, specs, () => cancelled);
   });
   return () => {
     cancelled = true;

@@ -8,12 +8,12 @@ import { LiveSummonsStrip } from "../components/install/LiveSummonsStrip";
 import { LogTodayChip } from "../components/dailyLogs/LogTodayChip";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
-  findSpecsPlanset,
   getMyProfile,
   listMarkSpecs,
   listMemosToConfirm,
   listMyOpeningsAllJobs,
   listPlansets,
+  specsPlansetIds,
   undoInstall,
 } from "../lib/install/api";
 import { formatApiError } from "../lib/install/errors";
@@ -202,20 +202,22 @@ export function MyWork() {
     return byProject;
   }, [openings.data, specIndexByProject]);
 
+  // Every specs planset on the job, not just the newest: a job can hold the
+  // supplier's cut sheet and an addendum at once, and the prefetch resolves
+  // each mark's own file (Mad Moose, 2026-09-01).
   const plansetIds = projectIds
     .map((pid, i) => {
       const list = plansetQueries[i]?.data;
-      return `${pid}:${(list && findSpecsPlanset(list)?.id) ?? ""}`;
+      return `${pid}:${(list ? specsPlansetIds(list) : []).join("|")}`;
     })
     .join(",");
   useEffect(() => {
     const cancels: (() => void)[] = [];
     projectIds.forEach((pid, i) => {
       const list = plansetQueries[i]?.data;
-      const planset = list ? findSpecsPlanset(list) : null;
       const specs = myMarkSpecs.get(pid);
-      if (!planset || !specs || specs.length === 0) return;
-      cancels.push(schedulePrefetchMarkDrawings(planset, specs));
+      if (!list || !specs || specs.length === 0) return;
+      cancels.push(schedulePrefetchMarkDrawings(list, specs));
     });
     return () => cancels.forEach((c) => c());
     // Re-runs when my marks change or a job's specs planset resolves; the
