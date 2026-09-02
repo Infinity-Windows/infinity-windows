@@ -2,11 +2,18 @@
 // every signed-in device shows a banner with the window, the caller, and
 // an Answer path — plus as much noise as the platform allows. Push covers
 // closed apps; this covers the open one.
+//
+// The ring obeys the same two rules the landing strip does (owner ask,
+// 2026-09-02): a call you declined and a call that has ended — expired after
+// a day, or closed by the caller — take the banner down with them. A banner
+// still shouting "Answer to help" for a summon nobody can answer is exactly
+// the pile-up the Decline button exists to stop.
 
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { supabase, supabaseConfigured } from "../lib/supabase";
+import { summonExpired } from "../lib/install/summons";
 
 interface RingRow {
   id: string;
@@ -14,6 +21,7 @@ interface RingRow {
   opening_id: string;
   requested_by: string;
   needed: number;
+  created_at?: string;
 }
 
 export function SummonBell() {
@@ -45,6 +53,9 @@ export function SummonBell() {
             void queryClient.invalidateQueries({ queryKey: ["summons", row.project_id] });
           }
           if (!row?.id || row.requested_by === meRef.current) return;
+          // Same one-day rule as the strip: a call that is already over
+          // never rings, however it reached us.
+          if (row.created_at && summonExpired(row.created_at)) return;
           void (async () => {
             const [{ data: opening }, { data: caller }] = await Promise.all([
               supabase
@@ -72,6 +83,28 @@ export function SummonBell() {
               /* not supported */
             }
           })();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "summon_declines" },
+        (payload) => {
+          const row = payload.new as { summon_id?: string; profile_id?: string };
+          if (!row?.summon_id || row.profile_id !== meRef.current) return;
+          void queryClient.invalidateQueries({ queryKey: ["liveSummonsAll"] });
+          // You said you can't come — take the banner with it.
+          setRing((cur) => (cur && cur.row.id === row.summon_id ? null : cur));
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "summons" },
+        (payload) => {
+          const row = payload.new as { id?: string; status?: string };
+          if (!row?.id || row.status !== "closed") return;
+          void queryClient.invalidateQueries({ queryKey: ["liveSummonsAll"] });
+          // Ended by the caller, or swept away a day after it went out.
+          setRing((cur) => (cur && cur.row.id === row.id ? null : cur));
         },
       )
       .subscribe();
