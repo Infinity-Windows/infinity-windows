@@ -95,6 +95,49 @@ export function resolveSpecPlansets(rows, plansets) {
 }
 
 /**
+ * What is wrong with the live planset row a fragment resolved to, as plain
+ * sentences (empty means it is the sheet these boxes were read off).
+ *
+ * `checkDrawingTable` cannot do this job. It compares the fixture's page
+ * numbers against the fixture's own page count, written two lines above them,
+ * so it passes by construction. The count that decides anything is the one on
+ * the row in the database: if someone has re-uploaded a revised one-page cut
+ * sheet under the same name, page 3 of "the cut sheet" is now either missing or
+ * a different unit, and writing `image_page: 3` onto marks 7-10 takes their
+ * drawing away again — the exact damage this repair exists to undo. An unknown
+ * page count is refused for the same reason: nothing can be checked, and a
+ * confident picture of the wrong window is worse than no picture.
+ *
+ * `kind` is here because the spec card only ever draws from a sheet the app
+ * files under "specs". Coordinates written onto a sheet filed as anything else
+ * are honest and permanently invisible, which reads to whoever ran this as "the
+ * log said 13 rows updated and nothing changed on any phone". Pure; tested.
+ */
+export function checkLiveSheet(label, row, expected) {
+  const problems = [];
+  const pageWord = (n) => `${n} page${n === 1 ? "" : "s"}`;
+  const kind = row?.kind ?? "building";
+  if (kind !== "specs") {
+    problems.push(
+      `the ${label} is filed as "${kind}", not a specs sheet — the app only ever draws from specs sheets`,
+    );
+  }
+  const pages = row?.page_count;
+  if (pages == null) {
+    problems.push(
+      `the ${label} has no page count recorded, so there is no telling whether it is still the ` +
+        `${pageWord(expected.pages)} these boxes were read off`,
+    );
+  } else if (pages !== expected.pages) {
+    problems.push(
+      `the ${label} has ${pageWord(pages)}, not the ${pageWord(expected.pages)} these boxes were ` +
+        `read off — it is a different edition of ${expected.label}`,
+    );
+  }
+  return problems;
+}
+
+/**
  * Why a normalized box is unusable, or null when it is fine. Same rules the app
  * applies in `validateBbox` (four finite numbers inside the page, positive
  * width and height) minus the area limits, which are the vision pass's problem

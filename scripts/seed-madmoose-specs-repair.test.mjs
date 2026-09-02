@@ -12,6 +12,7 @@ import {
   bboxProblem,
   boxesOverlap,
   checkDrawingTable,
+  checkLiveSheet,
   fillMissingExtra,
   mergeRowPatches,
   planAddFill,
@@ -137,6 +138,37 @@ assert.throws(
 // specs sheet — that is the whole reason the fragments run past "MMV2".
 assert.throws(() => resolveSpecPlansets([livePlansets[0]], sheets), /No cut sheet/,
   "the plans are not a cut sheet");
+
+// --- the live sheets are the editions these boxes were read off ------------
+// checkDrawingTable can only compare the fixture's pages against the fixture's
+// own count, so it passes however wrong the sheet on the job is. These are the
+// checks that need a row from the database.
+const liveCu = { id: CU, kind: "specs", page_count: 4 };
+const liveAdd = { id: ADD, kind: "specs", page_count: 1 };
+assert.deepEqual(checkLiveSheet("cut sheet", liveCu, sheets.cu), [],
+  "the four-page cut sheet is the edition the boxes were read off");
+assert.deepEqual(checkLiveSheet("addendum", liveAdd, sheets.addendum), []);
+const cuPages = Object.values(drawings.cu).map((d) => d.page);
+assert.ok(Math.max(...cuPages) > 1, "there really are boxes past page 1 to protect");
+assert.ok(
+  checkLiveSheet("cut sheet", { ...liveCu, page_count: 1 }, sheets.cu)
+    .some((p) => p.includes("1 page, not the 4 pages")),
+  "a revised one-page sheet re-uploaded under the same name is refused before mark 7 is sent to page 3",
+);
+assert.ok(
+  checkLiveSheet("cut sheet", { ...liveCu, page_count: null }, sheets.cu)
+    .some((p) => p.includes("no page count recorded")),
+  "an uncounted sheet is refused too — nothing can be checked against it",
+);
+assert.ok(
+  checkLiveSheet("cut sheet", { ...liveCu, kind: "building" }, sheets.cu)
+    .some((p) => p.includes('filed as "building"')),
+  "a sheet the app does not file under specs would never draw these coordinates",
+);
+assert.ok(
+  checkLiveSheet("cut sheet", { id: CU }, sheets.cu).length === 2,
+  "a row with neither kind nor page count fails both ways",
+);
 
 // --- the live rows, as the incident left them -----------------------------
 /** A spec row shaped like PostgREST returns it. */

@@ -45,6 +45,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   checkDrawingTable,
+  checkLiveSheet,
   mergeRowPatches,
   planAddFill,
   planDrawingWrites,
@@ -126,6 +127,20 @@ try {
   ({ cu, addendum } = resolveSpecPlansets(plansetRows, sheets));
 } catch (err) {
   console.error(err.message);
+  process.exit(1);
+}
+
+// The paper check above can only hold the fixture to itself. Now that the two
+// rows are in hand, hold them to the sheets the boxes were actually read off: a
+// different edition uploaded under the same name is the one way this writes a
+// page number that lands on a different unit, or on no page at all.
+const sheetProblems = [
+  ...checkLiveSheet("cut sheet", cu, sheets.cu),
+  ...checkLiveSheet("addendum", addendum, sheets.addendum),
+];
+if (sheetProblems.length) {
+  console.error("The sheets on this job are not the ones these boxes were read off — nothing was written:");
+  for (const p of sheetProblems) console.error(`  ${p}`);
   process.exit(1);
 }
 
