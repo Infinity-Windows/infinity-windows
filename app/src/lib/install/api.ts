@@ -1157,9 +1157,15 @@ export function specsPlansetIds(plansets: Planset[]): string[] {
  *
  * A spec that names a planset gets that planset or NOTHING — falling back to
  * another file would crop the same page number out of a different sheet, which
- * is the one failure worth refusing (see `isDrawingStale`). A spec with no
- * recorded planset is legacy, unknown provenance, and keeps the old behaviour:
- * the newest specs planset. PURE.
+ * is the one failure worth refusing (see `isDrawingStale`).
+ *
+ * A spec with no recorded planset is legacy — every row written before the
+ * provenance column existed, including the live Smith / PV Townhomes drawings.
+ * On a job with ONE specs sheet there is only one file it could mean, so it
+ * renders exactly as it always has. On a job with two, guessing the newest is a
+ * guess: page 3 of a one-page addendum shows nothing, and page 3 of a longer
+ * addendum shows a confident picture of the wrong window. Once addenda are
+ * normal that guess stops being rare, so we show text only instead. PURE.
  */
 export function findSpecsPlansetFor(
   plansets: Planset[],
@@ -1167,7 +1173,7 @@ export function findSpecsPlansetFor(
 ): Planset | null {
   const specsPlansets = findSpecsPlansets(plansets);
   const source = spec?.planset_id;
-  if (!source) return specsPlansets[0] ?? null;
+  if (!source) return specsPlansets.length === 1 ? specsPlansets[0] : null;
   return specsPlansets.find((p) => p.id === source) ?? null;
 }
 

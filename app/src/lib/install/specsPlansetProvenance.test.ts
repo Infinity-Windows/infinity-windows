@@ -79,9 +79,20 @@ describe("findSpecsPlansetFor", () => {
     expect(findSpecsPlansetFor(MAD_MOOSE, { planset_id: "MMV2A" })).toBe(ADDENDUM);
   });
 
-  it("falls back to the newest sheet for a legacy row with no provenance", () => {
-    expect(findSpecsPlansetFor(MAD_MOOSE, { planset_id: null })).toBe(ADDENDUM);
-    expect(findSpecsPlansetFor(MAD_MOOSE, {})).toBe(ADDENDUM);
+  it("gives a legacy row the job's sheet when there is only one", () => {
+    // Smith / PV Townhomes: every row predates the provenance column, one
+    // supplier sheet on the job, and the crew's drawings must keep showing.
+    const smith = [ORIGINAL, BUILDING];
+    expect(findSpecsPlansetFor(smith, { planset_id: null })).toBe(ORIGINAL);
+    expect(findSpecsPlansetFor(smith, {})).toBe(ORIGINAL);
+  });
+
+  it("gives a legacy row NOTHING once the job has two sheets", () => {
+    // The page number counts pages in one file and we no longer know which.
+    // Page 3 of the addendum is a different window, and text only beats a
+    // confident picture of the wrong one.
+    expect(findSpecsPlansetFor(MAD_MOOSE, { planset_id: null })).toBeNull();
+    expect(findSpecsPlansetFor(MAD_MOOSE, {})).toBeNull();
   });
 
   it("gives NOTHING when the named sheet is gone from the job", () => {

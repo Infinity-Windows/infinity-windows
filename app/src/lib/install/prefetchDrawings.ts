@@ -31,7 +31,8 @@ interface PrefetchSpec {
   /**
    * Which specs planset the box was measured against, so a job holding both a
    * supplier cut sheet and an addendum warms each mark off its own file. Null
-   * on legacy rows, which fall back to the newest specs planset.
+   * on legacy rows, which resolve to the job's single specs sheet when it has
+   * one and warm nothing when it has more (see `findSpecsPlansetFor`).
    */
   planset_id?: string | null;
 }

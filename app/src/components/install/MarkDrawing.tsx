@@ -79,7 +79,9 @@ export function MarkDrawing({ spec, projectId, compact = false }: MarkDrawingPro
     enabled: Boolean(projectId) && visible && locatable,
   });
   // This mark's own sheet: the specs planset its coordinates were measured
-  // against, or — for a legacy row that never recorded one — the newest.
+  // against, or — for a legacy row that never recorded one — the job's single
+  // specs sheet, when it has exactly one. Nothing at all when the job has two
+  // and we'd be guessing which of them the page number counts pages in.
   const planset = plansets.data ? findSpecsPlansetFor(plansets.data, spec) : null;
 
   // The page number was measured against one specific file. If that file is
