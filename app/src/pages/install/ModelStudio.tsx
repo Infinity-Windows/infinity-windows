@@ -775,7 +775,11 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   }, [outline, openings.data, specs.data, projectId]);
 
   // Wall-geometry fallback for jobs with a published model but no usable
-  // trace: seeding may use it (it's only wall shapes), the pull NEVER does.
+  // trace: seeding may use it (it's only wall shapes). The pull reads it
+  // ONLY when a human trace backs it (`traceModel`, below) — and then only
+  // for units on its INTERIOR walls, which no pin can describe (owner,
+  // 2026-09-02: Mad Moose's Add-1/2/3 on the office glass wall). A Studio
+  // publish carries no trace, so it is never read back (the echo law).
   const authoredJob = useMemo(() => {
     if (!outline || !openings.data) return null;
     const authored = fitviewModel(outline.features);
@@ -1490,12 +1494,15 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       x2: w.getEndX(),
       y2: w.getEndY(),
     }));
+    // The hand-read model's interior-wall units come along ONLY behind the
+    // same human-trace gate the seed uses — a publish never feeds back in.
     const pull = buildStudioPull(
       plansJob as never,
       specs.data ?? [],
       existing,
       catalogByMark,
       { walls: wallSegs, floorIndex: activeFloorRef.current },
+      traceModel ? (authoredJob as never) : null,
     );
     // Heal: a placed generic (no config) whose mark now resolves — same
     // rebuild the tap-heal does, position untouched.
@@ -1522,6 +1529,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     bulkStatsRef.current.raised = 0;
     let placedHere = 0;
     let specPlacedHere = 0;
+    let readPlacedHere = 0;
     let otherFloors = 0;
     let shifted = 0;
     let lengthened = 0;
@@ -1586,6 +1594,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         );
         placedHere += 1;
         if (pl.fromSpec) specPlacedHere += 1;
+        if (pl.fromRead) readPlacedHere += 1;
       }
     } finally {
       // Attach/geometry runs async in itemLoadedCallbacks; keep toasts
@@ -1601,6 +1610,7 @@ export function ModelStudio({ source }: { source: StudioSource }) {
         formatPullToast({
           placedHere,
           specPlacedHere,
+          readPlacedHere,
           healed,
           shifted,
           lengthened,
