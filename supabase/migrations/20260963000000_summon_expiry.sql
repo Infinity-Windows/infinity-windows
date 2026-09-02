@@ -25,8 +25,9 @@
 -- Every function this file replaces is rebuilt from its CURRENT full body
 -- (the movements_event_ck lesson: whole body, never a diff) — 20260923020000
 -- for answer_summon and decline_summon, 20260920000000 for create_summon,
--- 20260818000000 for close_summon — with the same signatures, so nothing is
--- dropped and no overload appears.
+-- 20260818000000 for close_summon, 20260919000000 for the helper-session
+-- trigger — with the same signatures, so nothing is dropped and no overload
+-- appears.
 
 -- ---------------------------------------------------------------------------
 -- 1. The sweep
@@ -34,9 +35,9 @@
 -- The helper UPDATE is close_summon's statement, because an expired summon
 -- must be indistinguishable from one the caller ended by hand — the same
 -- stamped minutes, and the same helper-session trigger firing behind it
--- (unit_sessions_follow_summon_helpers ends the helper's clock on
--- completed_at) — or the time record would tell two different stories about
--- the same afternoon.
+-- (unit_sessions_follow_summon_helpers ends the helper's clock on that
+-- window when completed_at lands) — or the time record would tell two
+-- different stories about the same afternoon.
 --
 -- With one guard both statements need: `canceled_at is null`. Somebody who
 -- answered at 08:00 and tapped "Can't make it" at 08:05 already has
@@ -121,6 +122,69 @@ begin
   where id = p_summon_id
   returning * into v_summon;
   return v_summon;
+end;
+$$;
+
+-- Full current body from 20260919000000_summon_cancel.sql, plus the window
+-- the session belongs to.
+--
+-- Stamping a helper row ends that person's helper clock, and the two UPDATE
+-- branches matched on profile_id alone: "end whatever helper session this
+-- person has open". That held while only a human ended a call they were
+-- standing at. It stops holding the moment a sweep stamps YESTERDAY's
+-- unfinished row: Dana helped on BLACK22 and never tapped Complete, answers
+-- a fresh summon on RAC-OAK-5 this morning, and ten minutes later the sweep
+-- over the old job ends the clock she is carrying a window on right now —
+-- and on the first run after deploy, for everyone with a stale row at once.
+--
+-- unit_sessions has no summon_id, so the opening is the closest thing to the
+-- session's identity we can name: end the helper clock on the window THIS
+-- summon was called for.
+create or replace function unit_sessions_follow_summon_helpers()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_opening uuid;
+begin
+  if tg_op = 'INSERT' then
+    select opening_id into v_opening from summons where id = new.summon_id;
+    if v_opening is not null then
+      perform _close_stale_sessions(new.profile_id);
+      perform _end_open_session(new.profile_id, 'handoff');
+      insert into unit_sessions (opening_id, profile_id, role, is_rework)
+      values (v_opening, new.profile_id, 'helper', _has_open_redo(v_opening));
+    end if;
+    return new;
+  end if;
+  if tg_op = 'UPDATE' and new.completed_at is not null and old.completed_at is null then
+    select opening_id into v_opening from summons where id = new.summon_id;
+    update unit_sessions
+    set ended_at = now(), end_reason = 'complete'
+    where profile_id = new.profile_id and ended_at is null and role = 'helper'
+      and opening_id = v_opening;
+  end if;
+  if tg_op = 'UPDATE' and new.canceled_at is not null and old.canceled_at is null then
+    select opening_id into v_opening from summons where id = new.summon_id;
+    update unit_sessions
+    set ended_at = now(), end_reason = 'handoff'
+    where profile_id = new.profile_id and ended_at is null and role = 'helper'
+      and opening_id = v_opening;
+  end if;
+  -- A revived answer (canceled_at cleared) opens a fresh helper session.
+  if tg_op = 'UPDATE' and new.canceled_at is null and old.canceled_at is not null then
+    select opening_id into v_opening from summons where id = new.summon_id;
+    if v_opening is not null then
+      perform _close_stale_sessions(new.profile_id);
+      perform _end_open_session(new.profile_id, 'handoff');
+      insert into unit_sessions (opening_id, profile_id, role, is_rework)
+      values (v_opening, new.profile_id, 'helper', _has_open_redo(v_opening));
+    end if;
+    return new;
+  end if;
+  return new;
 end;
 $$;
 

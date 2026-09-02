@@ -10,6 +10,11 @@
 // sweep would credit that person up to eight hours for a call they backed
 // out of five minutes in, and fire the session trigger's 'complete' branch
 // on somebody who never completed.
+//
+// And what stamping must never reach: a clock running on another job. Every
+// stamp fires unit_sessions_follow_summon_helpers, so if that trigger ends
+// "whatever helper session this person has open", a sweep over yesterday's
+// summon cuts short the window they are carrying this morning.
 
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -58,6 +63,33 @@ describe("stamping a helper as complete", () => {
   it("never touches a helper who backed out", () => {
     for (const { file, stmt } of stamping) {
       expect(/canceled_at\s+is\s+null/i.test(stmt), `${file}: ${stmt}`).toBe(true);
+    }
+  });
+});
+
+describe("the helper-session trigger", () => {
+  /** The newest definition wins — that is the one the database runs. */
+  const newest = files()
+    .filter((f) =>
+      /create\s+or\s+replace\s+function\s+unit_sessions_follow_summon_helpers/i.test(sqlOf(f)),
+    )
+    .pop();
+
+  it("is defined by a migration", () => {
+    expect(newest).toBeTruthy();
+  });
+
+  it("ends the helper clock on the summon's own window, never on every window", () => {
+    const sql = sqlOf(newest!);
+    const body = sql.slice(
+      sql.search(/create\s+or\s+replace\s+function\s+unit_sessions_follow_summon_helpers/i),
+    );
+    const ends = [...body.matchAll(/update\s+unit_sessions\b[\s\S]*?;/gi)]
+      .map((m) => m[0].replace(/\s+/g, " "))
+      .filter((stmt) => /role\s*=\s*'helper'/i.test(stmt));
+    expect(ends.length).toBeGreaterThan(0);
+    for (const stmt of ends) {
+      expect(/opening_id\s*=/i.test(stmt), stmt).toBe(true);
     }
   });
 });
