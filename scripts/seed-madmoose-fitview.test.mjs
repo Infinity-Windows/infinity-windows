@@ -11,6 +11,7 @@ import {
   mergeMadmooseFeatures,
   extraWithPaneGrid,
   combineWindows,
+  interiorWallKeys,
 } from "./lib/madmoose-seed.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -61,8 +62,11 @@ const patched = patchBuilding(live, fx.buildingPatch);
 assert.equal(patched.height, 7.62, "height corrected to the 25 ft parapet");
 assert.equal(patched.stories[0].heightM, 3.35, "ground to the 11 ft subfloor");
 assert.equal(patched.stories[1].elevM, 3.35, "level 2 starts at the subfloor");
-assert.deepEqual(patched.stories[0].footprints, [["main"], ["partition"]],
-  "the traced interior partition survives");
+assert.deepEqual(patched.stories[0].footprints, [["main"]],
+  "the traced 5-point partition is dropped — it was never a room");
+assert.deepEqual(patched.footprints, [[{ x: 0, z: 0 }]], "building footprints keep only the exterior mass");
+assert.equal(patched.interiorWalls.length, 2, "two real interior walls ride in");
+assert.equal(patched.interiorWalls[1].name, "Office glass wall");
 assert.deepEqual(patched.trace, live.trace, "the trace survives");
 assert.equal(live.height, 6, "the live object itself is never mutated");
 
@@ -93,7 +97,7 @@ assert.ok(fresh.pane_grid, "the grid lands where none existed");
 assert.equal(fx.addWindows.length, 3, "three add units");
 assert.equal(fx.addSpecs.length, 3, "three add specs");
 for (const w of fx.addWindows) {
-  assert.equal(w.elev, "s7", `${w.id} rides the lobby-facing glass wall (East 2)`);
+  assert.equal(w.elev, "s9", `${w.id} rides the office glass wall (second interior wall)`);
   assert.ok(w.x >= 0 && w.x + w.w / 1000 <= 12.1, `${w.id} fits the East 2 wall (~12 m)`);
 }
 const combined = combineWindows(fx.windows, fx.addWindows);
@@ -105,4 +109,10 @@ for (const spec of fx.addSpecs) {
   assert.ok(Math.abs(colSum - spec.width_in) < 0.6, `${spec.mark_code} grid sums to its width`);
   assert.equal(grid.columns[0].segments[0].op, "door", `${spec.mark_code} leads with its French door`);
 }
+// --- interior wall keys: the renderer walks every story's footprints first ---
+const keyed = { stories: [{ footprints: [[1,2,3,4]] }, { footprints: [[1,2,3,4]] }], interiorWalls: fx.buildingPatch.interiorWalls };
+assert.deepEqual(interiorWallKeys(keyed), ["s8", "s9"], "bay wall = s8, glass wall = s9 after two 4-edge stories");
+assert.equal(fx.addWindows[0].elev, interiorWallKeys(keyed)[1], "the adds key to the glass wall the renderer will name");
+const glass = fx.buildingPatch.interiorWalls[1];
+assert.ok(glass.z1 > glass.z2, "glass wall is walked south to north so Office 1 comes first");
 console.log("seed-madmoose-fitview: all assertions passed");

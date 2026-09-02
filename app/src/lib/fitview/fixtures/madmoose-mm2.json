@@ -20,7 +20,32 @@
     "heightM": 4.27
    }
   ],
-  "note": "Heights from A5/A4 elevation datums: top of subfloor (2nd) 11 ft = 3.35 m, top of parapet 25 ft = 7.62 m. The trace's 3 m + 3 m defaults understate the real building. Footprints, trace, and the owner's interior partition are carried from the live model untouched."
+  "note": "Heights from A5/A4 elevation datums: top of subfloor (2nd) 11 ft = 3.35 m, top of parapet 25 ft = 7.62 m. The trace's 3 m + 3 m defaults understate the real building. Footprints, trace, and the owner's interior partition are carried from the live model untouched. Interior: the traced 5-point partition is replaced by two real walls (bay wall full depth, office glass wall south->north so Office 1 leads); Studio's seed does not import interior walls, so anything drawn there over the plans and Submitted replaces these.",
+  "dropInteriorFootprints": true,
+  "interiorWalls": [
+   {
+    "x1": 1.23,
+    "z1": -12.17,
+    "x2": 1.35,
+    "z2": 12.19,
+    "heightM": 3.35,
+    "elevM": 0,
+    "story": 1,
+    "name": "Bay wall",
+    "interior": true
+   },
+   {
+    "x1": 5.45,
+    "z1": -0.09,
+    "x2": 5.51,
+    "z2": -12.08,
+    "heightM": 3.35,
+    "elevM": 0,
+    "story": 1,
+    "name": "Office glass wall",
+    "interior": true
+   }
+  ]
  },
  "windows": [
   {
@@ -658,7 +683,7 @@
  "addWindows": [
   {
    "id": "Add-3",
-   "elev": "s7",
+   "elev": "s9",
    "floor": "Ground",
    "room": "Office 3",
    "type": "French door + fixed lites (office glass wall)",
@@ -678,11 +703,11 @@
      1200
     ]
    ],
-   "notes": "MMV2A Add-#3: 40in French door + two 47 1/4in fixed, 134 1/2 x 95 1/2 in. Interior glass wall (B2 East 2, the lobby-facing side at ~69 ft; walk runs south to north so Office 1 comes first), Office 3 (north end of the office run)."
+   "notes": "MMV2A Add-#3: 40in French door + two 47 1/4in fixed, 134 1/2 x 95 1/2 in. Interior glass wall (the office glass wall, an interior wall at ~69 ft walked south to north so Office 1 comes first), Office 3 (north end of the office run)."
   },
   {
    "id": "Add-2",
-   "elev": "s7",
+   "elev": "s9",
    "floor": "Ground",
    "room": "Office 2",
    "type": "French door + fixed lites (office glass wall)",
@@ -703,11 +728,11 @@
      1147
     ]
    ],
-   "notes": "MMV2A Add-#2: 40in French door + three 45 1/8in fixed, 175 1/2 x 95 1/2 in. Interior glass wall (B2 East 2, the lobby-facing side at ~69 ft; walk runs south to north so Office 1 comes first), Office 2."
+   "notes": "MMV2A Add-#2: 40in French door + three 45 1/8in fixed, 175 1/2 x 95 1/2 in. Interior glass wall (the office glass wall, an interior wall at ~69 ft walked south to north so Office 1 comes first), Office 2."
   },
   {
    "id": "Add-1",
-   "elev": "s7",
+   "elev": "s9",
    "floor": "Ground",
    "room": "Office 1",
    "type": "French door + fixed lites (office glass wall)",
@@ -727,7 +752,7 @@
      1136
     ]
    ],
-   "notes": "MMV2A Add-#1: 40in French door + two 44 3/4in fixed, 129 1/2 x 95 1/2 in. Interior glass wall (B2 East 2, the lobby-facing side at ~69 ft; walk runs south to north so Office 1 comes first), Office 1."
+   "notes": "MMV2A Add-#1: 40in French door + two 44 3/4in fixed, 129 1/2 x 95 1/2 in. Interior glass wall (the office glass wall, an interior wall at ~69 ft walked south to north so Office 1 comes first), Office 1."
   }
  ],
  "addSpecs": [

@@ -12,6 +12,18 @@
 export function patchBuilding(liveBuilding, patch) {
   const b = JSON.parse(JSON.stringify(liveBuilding ?? {}));
   b.height = patch.height;
+  // The traced 5-point "partition" was never a room — drop it from every
+  // footprint list and carry the two real interior walls instead (wave-W
+  // shape, walked by the renderer after every exterior edge of every story).
+  if (patch.dropInteriorFootprints) {
+    if (Array.isArray(b.footprints) && b.footprints.length > 1) b.footprints = [b.footprints[0]];
+    if (Array.isArray(b.stories)) {
+      b.stories = b.stories.map((s) =>
+        Array.isArray(s.footprints) && s.footprints.length > 1 ? { ...s, footprints: [s.footprints[0]] } : s,
+      );
+    }
+  }
+  if (Array.isArray(patch.interiorWalls)) b.interiorWalls = patch.interiorWalls.map((w) => ({ ...w }));
   if (Array.isArray(b.stories)) {
     b.stories = b.stories.map((s, i) => {
       const p = patch.stories[i];
@@ -61,4 +73,15 @@ export function combineWindows(base, adds) {
   for (const w of base || []) byId.set(w.id, w);
   for (const w of adds || []) byId.set(w.id, w);
   return [...byId.values()];
+}
+
+/**
+ * The renderer's wall-key walk, replicated so the seed can prove where an
+ * interior wall lands: every story's footprint edges first, then
+ * building.interiorWalls in order. Pure; tested.
+ */
+export function interiorWallKeys(building) {
+  let k = 0;
+  for (const s of building.stories || []) for (const poly of s.footprints || []) k += poly.length;
+  return (building.interiorWalls || []).map(() => "s" + k++);
 }
