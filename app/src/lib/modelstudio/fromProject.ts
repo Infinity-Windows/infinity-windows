@@ -44,6 +44,12 @@ interface FitJobLike {
   building: {
     footprints?: { x: number; z: number }[][];
     stories?: { footprints: { x: number; z: number }[][] }[];
+    /** Partitions the hand-read model carries (toFitview.ts's shape);
+     * elevationsOf walks them after every exterior edge, `interior: true`. */
+    interiorWalls?: {
+      x1: number; z1: number; x2: number; z2: number;
+      story?: number; heightM?: number; elevM?: number; interior?: boolean;
+    }[];
   };
   windows: {
     id: string;
@@ -92,6 +98,16 @@ export interface PullPlacement {
    * (evenly spread along the ground floor's walls), not a survey result.
    * The caller's status line should say so plainly. */
   fromSpec?: boolean;
+  /** Placed from the hand-read model's INTERIOR wall (the `readModel`
+   * param) — a real position off the plans, not a guess, on a partition
+   * the pins can never describe. */
+  fromRead?: boolean;
+}
+
+/** One `elevationsOf` entry, typed for the pull (the renderer is plain JS). */
+interface ElevEntry {
+  key: string; x1: number; z1: number; x2: number; z2: number; len: number;
+  A: number; story?: number; base?: number; hM?: number; interior?: boolean;
 }
 
 export interface PullResult {
@@ -351,6 +367,20 @@ function widthMmFor(config: UnitConfig): number {
  * deterministically along the ground floor's walls as an approximate,
  * obviously-editable starting point (`fromSpec: true`), never a randomly
  * or arbitrarily placed guess and never a substitute for a real pin.
+ *
+ * INTERIOR walls (Mad Moose, owner 2026-09-02: "i drew the interior walls,
+ * add the 3 missing on the interior wall"): a pin is a point on the
+ * exterior outline, so a unit on a partition — the office glass wall's
+ * Add-1/2/3 — can never be pinned and used to fall into the spread above,
+ * landing on the wrong (exterior) wall. The hand-read model (`readModel`,
+ * the human-trace-backed authored job — the caller gates it on
+ * humanTraceModel, so a Studio PUBLISH is never read back: the BLACK22
+ * echo law) knows exactly which interior wall each one sits on and where.
+ * Its windows on an `interior: true` elevation, unpinned and not yet
+ * placed, are taken OUT of the spread and placed from the read position
+ * instead (`fromRead: true`), snapped onto the studio wall the owner drew
+ * there, or bringing the read wall with them when none is drawn. Exterior
+ * read windows are ignored here on purpose — pins own exterior placement.
  */
 export function buildStudioPull(
   job: FitJobLike,
@@ -358,11 +388,9 @@ export function buildStudioPull(
   existingNames: Set<string>,
   catalogByMark: Map<string, UnitConfig> = new Map(),
   studio?: { walls: StudioWallSeg[]; floorIndex: number },
+  readModel?: FitJobLike | null,
 ): PullResult {
-  const elevs = elevationsOf(job) as {
-    key: string; x1: number; z1: number; x2: number; z2: number; len: number;
-    A: number; story?: number; base?: number; hM?: number;
-  }[];
+  const elevs = elevationsOf(job) as ElevEntry[];
   const byKey = new Map(elevs.map((e) => [e.key, e]));
   const specIndex = indexSpecsByMark(specs);
 
@@ -380,7 +408,9 @@ export function buildStudioPull(
     ]),
   );
   const SNAP_MAX_CM = 500;
-  /** Plan edges already emitted as new walls this pull (keyed by elev). */
+  /** Plan edges already emitted as new walls this pull (keyed by elev;
+   * read-model edges under their own "read:" prefix — the two key spaces
+   * both count "s0…sN" and must never share a wall). */
   const emittedWalls = new Map<string, StudioWallSeg>();
 
   const placements: PullPlacement[] = [];
@@ -392,8 +422,51 @@ export function buildStudioPull(
   // "16") is excluded, so a mark never gets both a real placement and a
   // guessed one.
   const pinnedMarks = new Set(job.windows.map((w) => markKeyOf(w.id)));
+
+  // Interior-wall windows off the hand-read model. Pinned-ness is checked
+  // by the window's OWN normalized id (and by base only when the id IS a
+  // base mark): Mad Moose's Add-1/2/3 are three separate marks that
+  // markKeyOf folds onto one base, "ADD", so a base-only check would drop
+  // Add-2 and Add-3 the moment Add-1 got pinned. Frame alignment comes
+  // from the READ model's own footprint — it's a different source than
+  // `job` and may sit in its own frame, so `toStudio` above can't serve.
+  const readElevs = readModel ? (elevationsOf(readModel) as ElevEntry[]) : [];
+  const readByKey = new Map(readElevs.map((e) => [e.key, e]));
+  const pinnedIds = new Set(job.windows.map((w) => normalizeMarkCode(w.id)));
+  const readWindows = (readModel?.windows ?? []).filter((w) => {
+    const e = readByKey.get(w.elev);
+    if (!e?.interior || !(e.len > 0)) return false;
+    const norm = normalizeMarkCode(w.id);
+    return !pinnedIds.has(norm) && !pinnedMarks.has(norm);
+  });
+  const toStudioRead = readModel
+    ? frameTransform(
+        groundFootprints(readModel)
+          .flat()
+          .map((p) => ({ x: p.x * M_TO_CM, y: p.z * M_TO_CM })),
+        snapWalls.flatMap((w) => [
+          { x: w.x1, y: w.y1 },
+          { x: w.x2, y: w.y2 },
+        ]),
+      )
+    : toStudio;
+  // The owner hand-draws partitions over the plan underlay, so a read
+  // wall must snap across ordinary drawing drift (half a metre) — but a
+  // PARALLEL partition must not steal the unit: Mad Moose's bay wall runs
+  // 4.1 m from the office glass wall. 3 m sits between the two.
+  const READ_SNAP_MAX_CM = 300;
+  // A read-placed mark never ALSO gets a spread guess. Keyed by the exact
+  // normalized id and its base, so spec "16" is covered by a read "16-1"
+  // while spec "Add-2" stays in the spread unless Add-2 itself was read.
+  const readKeys = new Set(
+    readWindows.flatMap((w) => [normalizeMarkCode(w.id), markKeyOf(w.id)]),
+  );
   const unpinnedMarks = specs
-    .filter((s) => !pinnedMarks.has(s.mark_code.toUpperCase()))
+    .filter(
+      (s) =>
+        !pinnedMarks.has(s.mark_code.toUpperCase()) &&
+        !readKeys.has(normalizeMarkCode(s.mark_code)),
+    )
     .map((s) => ({
       spec: s,
       config: catalogByMark.get(markKeyOf(s.mark_code)) ?? specToUnitConfig(s),
@@ -448,12 +521,33 @@ export function buildStudioPull(
     });
   }
 
-  for (const w of [...job.windows, ...synthetic]) {
+  // Every window to land, each with the frame it was measured in: the
+  // plans' windows (pinned + spread) in the plans frame, then the read
+  // model's interior windows in the read frame, with its tighter snap.
+  const walk = [
+    ...[...job.windows, ...synthetic].map((w) => ({
+      w,
+      e: byKey.get(w.elev),
+      toFrame: toStudio,
+      snapMaxCm: SNAP_MAX_CM,
+      wallKey: w.elev,
+      fromRead: false,
+    })),
+    ...readWindows.map((w) => ({
+      w,
+      e: readByKey.get(w.elev),
+      toFrame: toStudioRead,
+      snapMaxCm: READ_SNAP_MAX_CM,
+      wallKey: `read:${w.elev}`,
+      fromRead: true,
+    })),
+  ];
+
+  for (const { w, e, toFrame, snapMaxCm, wallKey, fromRead } of walk) {
     if (existingNames.has(w.id)) {
       alreadyPlaced += 1;
       continue;
     }
-    const e = byKey.get(w.elev);
     if (!e || !(e.len > 0)) {
       noWall += 1;
       continue;
@@ -485,11 +579,11 @@ export function buildStudioPull(
     // Snap path: align the plan point into the studio frame, land it on
     // the nearest same-direction RUN of real walls, refit inside the run.
     if (snapWalls.length > 0 && floorIndex === studio!.floorIndex) {
-      const raw = toStudio({
+      const raw = toFrame({
         x: (e.x1 + (e.x2 - e.x1) * desiredT) * M_TO_CM,
         y: (e.z1 + (e.z2 - e.z1) * desiredT) * M_TO_CM,
       });
-      const snap = snapToWall(raw.x, raw.y, rotation, snapRuns, SNAP_MAX_CM);
+      const snap = snapToWall(raw.x, raw.y, rotation, snapRuns, snapMaxCm);
       if (snap) {
         const fit = fitAlongSegment(snap.t, wMm, snap.lenCm / 100);
         placements.push({
@@ -503,20 +597,22 @@ export function buildStudioPull(
           shifted: fit.shifted || undefined,
           lengthenWallCm: fit.lengthenWallCm,
           fromSpec: w.fromSpec || undefined,
+          fromRead: fromRead || undefined,
         });
         continue;
       }
       // The plans have a wall this model doesn't (old save missing a
-      // wing, retraced geometry): BRING THE WALL WITH THE WINDOW — the
-      // plan edge, transformed into the studio frame, created once and
-      // shared by every window on it. Nothing is skipped or floated.
-      let seg = emittedWalls.get(w.elev);
+      // wing, retraced geometry, a read partition the owner hasn't drawn):
+      // BRING THE WALL WITH THE WINDOW — the plan edge, transformed into
+      // the studio frame, created once and shared by every window on it.
+      // Nothing is skipped or floated.
+      let seg = emittedWalls.get(wallKey);
       const isNew = !seg;
       if (!seg) {
-        const p1 = toStudio({ x: e.x1 * M_TO_CM, y: e.z1 * M_TO_CM });
-        const p2 = toStudio({ x: e.x2 * M_TO_CM, y: e.z2 * M_TO_CM });
+        const p1 = toFrame({ x: e.x1 * M_TO_CM, y: e.z1 * M_TO_CM });
+        const p2 = toFrame({ x: e.x2 * M_TO_CM, y: e.z2 * M_TO_CM });
         seg = { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
-        emittedWalls.set(w.elev, seg);
+        emittedWalls.set(wallKey, seg);
       }
       const segLenM = Math.hypot(seg.x2 - seg.x1, seg.y2 - seg.y1) / 100;
       const fit = fitAlongSegment(desiredT, wMm, Math.max(0.01, segLenM));
@@ -535,12 +631,14 @@ export function buildStudioPull(
         lengthenWallCm: fit.lengthenWallCm,
         newWall: isNew ? seg : undefined,
         fromSpec: w.fromSpec || undefined,
+        fromRead: fromRead || undefined,
       });
       continue;
     }
 
     // Frameless path (no studio walls / frozen floors): the plan's own
     // edge, fit-to-wall as before (owner: "windows sticking past walls").
+    // A read window lands at the read model's own coordinates here.
     const fit = fitAlongSegment(desiredT, wMm, e.len);
     placements.push({
       itemName: w.id,
@@ -553,6 +651,7 @@ export function buildStudioPull(
       shifted: fit.shifted || undefined,
       lengthenWallCm: fit.lengthenWallCm,
       fromSpec: w.fromSpec || undefined,
+      fromRead: fromRead || undefined,
     });
   }
 
