@@ -349,4 +349,62 @@ test.describe("Studio plan underlay, real Mad Moose trace (desktop)", () => {
     );
     expect(underlay).toBeNull();
   });
+
+  // studio-plans-through-floor (2026-09-01, owner: "highlight the walls we
+  // have exterior and interior when we make them so we can distinguish
+  // them"). The Mad Moose ground floor boots as a bare 4-wall rectangle
+  // (this file's own readiness check above); one free-standing wall added
+  // programmatically inside it — same newCorner/newWall calls
+  // studio-standalone.spec.ts uses for its own programmatic floors, not a
+  // mouse drag — gives a real floor with exactly one interior wall, without
+  // needing the plan sheet itself to load first (no Tools/Draw-walls/Plans
+  // toggle involved, so this test doesn't pay the real-PDF fetch cost the
+  // other two in this file do).
+  test("wall style: the real rectangle plus one free-standing wall classifies as 4 exterior + 1 interior", async ({
+    page,
+  }) => {
+    await useSupabaseFixtures(page, { role: "owner" });
+    await useMadMooseFixtures(page);
+    await page.goto(`/studio/j/${BLACK22.projectId}`);
+
+    await page.waitForFunction(
+      () => {
+        const bp = (window as any).__studio;
+        return (bp?.model?.floorplan?.getWalls?.()?.length ?? 0) === 4;
+      },
+      undefined,
+      { timeout: 60_000 },
+    );
+
+    // Sanity first: the bare rectangle alone is 4-for-4 exterior — proves
+    // the count below actually moved because of the wall this test adds,
+    // not some pre-existing interior wall in the real trace.
+    const before = await page.evaluate(
+      () => (window as any).__studio.floorplanner.view.wallStyleCounts(),
+    );
+    expect(before).toEqual({ exterior: 4, interior: 0 });
+
+    const after = await page.evaluate(() => {
+      const bp = (window as any).__studio;
+      const fp = bp.model.floorplan;
+      const walls = fp.getWalls();
+      const xs = walls.flatMap((w: any) => [w.getStartX(), w.getEndX()]);
+      const ys = walls.flatMap((w: any) => [w.getStartY(), w.getEndY()]);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      // A vertical wall a third of the way in, well clear of the exterior
+      // loop's own corners — free-standing, touches nothing.
+      const x = minX + (maxX - minX) * 0.3;
+      const y1 = minY + (maxY - minY) * 0.3;
+      const y2 = minY + (maxY - minY) * 0.7;
+      const e = fp.newCorner(x, y1);
+      const f = fp.newCorner(x, y2);
+      fp.newWall(e, f);
+      fp.update();
+      return bp.floorplanner.view.wallStyleCounts();
+    });
+    expect(after).toEqual({ exterior: 4, interior: 1 });
+  });
 });

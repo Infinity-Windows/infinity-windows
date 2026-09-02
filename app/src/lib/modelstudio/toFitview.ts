@@ -19,7 +19,7 @@ interface Pt {
   z: number;
 }
 
-interface StudioWallLike {
+export interface StudioWallLike {
   height: number; // cm
   getStartX(): number;
   getStartY(): number;
@@ -61,17 +61,14 @@ function key(p: Pt): string {
 }
 
 /**
- * infinity (W3, w-walls-spec.md, 2026-08-31): every wall edge outerPolygons'
- * boundary walk did NOT consume — an interior partition sharing corners with
- * the exterior loop, or a free-standing wall too small to loop at all
- * (outerPolygons drops components under 3 nodes outright, silently, by
- * design). Reruns the identical point-keying outerPolygons itself uses, so
- * "consumed" can never disagree with what actually became the silhouette —
+ * infinity (W3, w-walls-spec.md, 2026-08-31): every directed edge
+ * outerPolygons' boundary walk DID consume, both directions keyed so a
+ * lookup never has to care which way a wall's start/end point. Shared by
+ * interiorSegments (below) and classifyWalls (studio-plans-through-floor,
+ * 2026-09-01) so the two can never drift apart on what counts as exterior —
  * outerPolygons is called here UNCHANGED, and its output isn't touched.
  */
-export function interiorSegments(
-  walls: StudioWallLike[],
-): { a: Pt; b: Pt; heightM: number }[] {
+function outerLoopConsumedEdges(walls: StudioWallLike[]): Set<string> {
   const consumed = new Set<string>();
   for (const { poly } of outerPolygons(walls)) {
     for (let i = 0; i < poly.length; i++) {
@@ -81,6 +78,20 @@ export function interiorSegments(
       consumed.add(`${key(b)}>${key(a)}`);
     }
   }
+  return consumed;
+}
+
+/**
+ * infinity (W3, w-walls-spec.md, 2026-08-31): every wall edge outerPolygons'
+ * boundary walk did NOT consume — an interior partition sharing corners with
+ * the exterior loop, or a free-standing wall too small to loop at all
+ * (outerPolygons drops components under 3 nodes outright, silently, by
+ * design).
+ */
+export function interiorSegments(
+  walls: StudioWallLike[],
+): { a: Pt; b: Pt; heightM: number }[] {
+  const consumed = outerLoopConsumedEdges(walls);
   const out: { a: Pt; b: Pt; heightM: number }[] = [];
   for (const w of walls) {
     const a: Pt = { x: w.getStartX() * CM_TO_M, z: w.getStartY() * CM_TO_M };
@@ -90,6 +101,32 @@ export function interiorSegments(
     out.push({ a, b, heightM: w.height * CM_TO_M });
   }
   return out;
+}
+
+/**
+ * infinity (studio-plans-through-floor, 2026-09-01, owner: "highlight the
+ * walls we have exterior and interior when we make them so we can
+ * distinguish them"): per-wall exterior/interior for the 2D floorplanner's
+ * live drawing — identity-keyed (a Map over the wall objects themselves,
+ * not their coordinates) so a caller can style a wall, or an in-progress
+ * drag-preview candidate, without re-deriving segments. Built from the same
+ * outerLoopConsumedEdges interiorSegments uses, so the 2D view's coloring
+ * and what Publish actually ships can never disagree about which wall is
+ * which.
+ */
+export function classifyWalls<T extends StudioWallLike>(
+  walls: T[],
+): Map<T, "exterior" | "interior"> {
+  const consumed = outerLoopConsumedEdges(walls);
+  const result = new Map<T, "exterior" | "interior">();
+  for (const w of walls) {
+    const a: Pt = { x: w.getStartX() * CM_TO_M, z: w.getStartY() * CM_TO_M };
+    const b: Pt = { x: w.getEndX() * CM_TO_M, z: w.getEndY() * CM_TO_M };
+    const onOuterLoop =
+      consumed.has(`${key(a)}>${key(b)}`) || consumed.has(`${key(b)}>${key(a)}`);
+    result.set(w, onOuterLoop ? "exterior" : "interior");
+  }
+  return result;
 }
 
 /** Outer boundary per connected wall component, leftmost-turn walk. */
