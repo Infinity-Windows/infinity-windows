@@ -344,7 +344,37 @@ export class FloorplannerView {
         wallWidthHover,
         wallColorHover
       )
+      // infinity (studio-trace-mode-obvious, 2026-09-01): the owner asked to
+      // "see the dimensions in 2d" while dragging — drag-to-draw (#466) had
+      // no live readout. Same label a finished wall gets (drawEdgeLabel),
+      // just measured from the two raw plan points instead of a HalfEdge,
+      // since the wall doesn't exist yet.
+      this.drawLiveLengthLabel(from, { x, y })
     }
+  }
+
+  /** infinity (studio-trace-mode-obvious, 2026-09-01): live length while
+   * drag-drawing, in the same feet-inches style drawEdgeLabel gives a
+   * finished wall (Dimensioning.cmToMeasure) — the readout shouldn't look
+   * like a different feature. draw()-only, called from drawTarget; no
+   * hit-testing implications. */
+  private drawLiveLengthLabel(from: { x: number; y: number }, to: { x: number; y: number }) {
+    const length = Math.hypot(to.x - from.x, to.y - from.y)
+    if (length < 60) {
+      // dont draw labels on walls this short — same floor drawEdgeLabel uses
+      return
+    }
+    const midX = this.viewmodel.convertX((from.x + to.x) / 2)
+    const midY = this.viewmodel.convertY((from.y + to.y) / 2)
+    this.context.font = 'normal 12px Arial'
+    this.context.fillStyle = '#000000'
+    this.context.textBaseline = 'middle'
+    this.context.textAlign = 'center'
+    this.context.strokeStyle = '#ffffff'
+    this.context.lineWidth = 4
+
+    this.context.strokeText(Dimensioning.cmToMeasure(length), midX, midY)
+    this.context.fillText(Dimensioning.cmToMeasure(length), midX, midY)
   }
 
   /** */

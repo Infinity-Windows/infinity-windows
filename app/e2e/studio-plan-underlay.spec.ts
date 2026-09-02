@@ -240,4 +240,60 @@ test.describe("Studio plan underlay (desktop)", () => {
     );
     expect(wallCount).toBe(5);
   });
+
+  // Owner feedback after #488 shipped: "Trace plans" navigated him to the
+  // legacy outline tracer expecting to draw walls over the faint plans right
+  // there, and drag-to-draw (#466) had no hint anywhere it could be found.
+  // studio-trace-mode-obvious fixes discoverability only — same mechanics,
+  // reachable and named.
+  test("\"Draw over the plans\" switches to Draw mode with the underlay on; the draw-mode hint names the gesture; the legacy tracer link still works", async ({
+    page,
+  }) => {
+    await useSupabaseFixtures(page, { role: "supervisor" });
+    await useUnderlayFixtures(page);
+    await page.goto(`/studio/j/${BLACK22.projectId}`);
+
+    await page.waitForFunction(
+      () => {
+        const bp = (window as any).__studio;
+        return (bp?.model?.floorplan?.getWalls?.()?.length ?? 0) === 4;
+      },
+      undefined,
+      { timeout: 60_000 },
+    );
+
+    // Fresh visit: 3D, palette closed — same starting point the owner hit.
+    await expect(page.getByText("Model (3D)")).toBeVisible();
+
+    await page.getByRole("button", { name: /Tools/ }).click();
+    await expect(page.getByText(/trace on file/)).toBeVisible();
+
+    // The legacy tracer stays reachable, just demoted to a small text link.
+    const legacyLink = page.getByRole("link", { name: "Outline tracer (job tab)" });
+    await expect(legacyLink).toHaveAttribute(
+      "href",
+      `/projects/${BLACK22.projectId}/trace-model`,
+    );
+
+    await page.getByRole("button", { name: "Draw over the plans" }).click();
+
+    // One click: Draw walls mode, plan underlay forced on, view flips to 2D —
+    // what the owner expected "Trace plans" to do in the first place.
+    await expect(page.getByText("Plan (2D)")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Draw walls" })).toHaveClass(/active-pill/);
+    const plansToggle = page.getByRole("button", { name: /^Plans:/ });
+    await expect(plansToggle).toHaveText("Plans: on");
+    await page.waitForFunction(
+      () => (window as any).__studio?.floorplanner?.view?.planUnderlay != null,
+      undefined,
+      { timeout: 60_000 },
+    );
+
+    // The hint that used to not exist anywhere: drag-to-draw named outright.
+    await expect(
+      page.getByText(
+        "press and drag to draw a wall · click corner to corner also works · corners square up within 5° · Plans: on shows the sheet",
+      ),
+    ).toBeVisible();
+  });
 });
