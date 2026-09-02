@@ -15,6 +15,7 @@ import {
   specForOpeningCode,
   type ProjectMarkSpec,
 } from "../install/specs";
+import { classifyWalls } from "./toFitview";
 import {
   cornerLegs,
   panelsWidthMm,
@@ -287,6 +288,27 @@ export function buildWallRuns(walls: StudioWallSeg[]): StudioWallSeg[] {
   return runs;
 }
 
+/**
+ * The studio walls that are NOT on the building's outer boundary, decided
+ * by the SAME classifier the 2D floorplanner colours walls with
+ * (`classifyWalls`, toFitview.ts) — one source of truth for "which wall is
+ * a partition", so what a read Add is allowed to land on can never
+ * disagree with what the owner sees drawn as interior. A `StudioWallSeg`
+ * is a bare segment, so each is wrapped in the wall shape the classifier
+ * reads; height plays no part in telling exterior from interior.
+ */
+function interiorWallSegs(walls: StudioWallSeg[]): StudioWallSeg[] {
+  const likes = walls.map((w) => ({
+    height: 0,
+    getStartX: () => w.x1,
+    getStartY: () => w.y1,
+    getEndX: () => w.x2,
+    getEndY: () => w.y2,
+  }));
+  const classes = classifyWalls(likes);
+  return walls.filter((_, i) => classes.get(likes[i]) === "interior");
+}
+
 /** Nearest run going the placement's direction (±35° — old saves drift
  * off today's trace angles), within `maxDistCm`. Returns the projection
  * along it and the run-aligned rotation closest to the original. */
@@ -378,9 +400,11 @@ function widthMmFor(config: UnitConfig): number {
  * echo law) knows exactly which interior wall each one sits on and where.
  * Its windows on an `interior: true` elevation, unpinned and not yet
  * placed, are taken OUT of the spread and placed from the read position
- * instead (`fromRead: true`), snapped onto the studio wall the owner drew
- * there, or bringing the read wall with them when none is drawn. Exterior
- * read windows are ignored here on purpose — pins own exterior placement.
+ * instead (`fromRead: true`), snapped onto an INTERIOR studio wall the
+ * owner drew there, or bringing the read wall with them when none is
+ * drawn — never onto an exterior wall that happens to run parallel a
+ * couple of metres away. Exterior read windows are ignored here on
+ * purpose — pins own exterior placement.
  */
 export function buildStudioPull(
   job: FitJobLike,
@@ -455,6 +479,14 @@ export function buildStudioPull(
   // PARALLEL partition must not steal the unit: Mad Moose's bay wall runs
   // 4.1 m from the office glass wall. 3 m sits between the two.
   const READ_SNAP_MAX_CM = 300;
+  // ...and only walls the drawing calls INTERIOR are candidates at all. A
+  // parallel EXTERIOR wall within 3 m used to win whenever the owner
+  // hadn't drawn the partition yet — the Add landed on the outside of the
+  // building while the status line told the owner it went "on your
+  // interior walls". With no interior wall in range the window brings its
+  // read wall along instead (the newWall path below), never the exterior.
+  const readSnapRuns =
+    readWindows.length > 0 ? buildWallRuns(interiorWallSegs(snapWalls)) : [];
   // A read-placed mark never ALSO gets a spread guess. Keyed by the exact
   // normalized id and its base, so spec "16" is covered by a read "16-1"
   // while spec "Add-2" stays in the spread unless Add-2 itself was read.
@@ -529,6 +561,7 @@ export function buildStudioPull(
       w,
       e: byKey.get(w.elev),
       toFrame: toStudio,
+      runs: snapRuns,
       snapMaxCm: SNAP_MAX_CM,
       wallKey: w.elev,
       fromRead: false,
@@ -537,13 +570,14 @@ export function buildStudioPull(
       w,
       e: readByKey.get(w.elev),
       toFrame: toStudioRead,
+      runs: readSnapRuns,
       snapMaxCm: READ_SNAP_MAX_CM,
       wallKey: `read:${w.elev}`,
       fromRead: true,
     })),
   ];
 
-  for (const { w, e, toFrame, snapMaxCm, wallKey, fromRead } of walk) {
+  for (const { w, e, toFrame, runs, snapMaxCm, wallKey, fromRead } of walk) {
     if (existingNames.has(w.id)) {
       alreadyPlaced += 1;
       continue;
@@ -583,7 +617,7 @@ export function buildStudioPull(
         x: (e.x1 + (e.x2 - e.x1) * desiredT) * M_TO_CM,
         y: (e.z1 + (e.z2 - e.z1) * desiredT) * M_TO_CM,
       });
-      const snap = snapToWall(raw.x, raw.y, rotation, snapRuns, snapMaxCm);
+      const snap = snapToWall(raw.x, raw.y, rotation, runs, snapMaxCm);
       if (snap) {
         const fit = fitAlongSegment(snap.t, wMm, snap.lenCm / 100);
         placements.push({
@@ -602,7 +636,8 @@ export function buildStudioPull(
         continue;
       }
       // The plans have a wall this model doesn't (old save missing a
-      // wing, retraced geometry, a read partition the owner hasn't drawn):
+      // wing, retraced geometry, a read partition the owner hasn't drawn
+      // — an exterior wall nearby is never allowed to stand in for it):
       // BRING THE WALL WITH THE WINDOW — the plan edge, transformed into
       // the studio frame, created once and shared by every window on it.
       // Nothing is skipped or floated.

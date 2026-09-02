@@ -530,6 +530,84 @@ describe("buildStudioPull", () => {
       }
     });
 
+    describe("a read Add only ever lands on an INTERIOR wall", () => {
+      // A narrow building where an EXTERIOR wall runs parallel to the read
+      // partition and closer to it than half the snap radius: the read wall
+      // sits at x = 8 m, the east exterior wall at x = 9.5 m — 1.5 m away,
+      // well inside the 3 m a read Add may snap across. Nearest-wall alone
+      // therefore lands the Add outside the building while the status line
+      // says it went on the owner's interior walls.
+      const NARROW_FP = [
+        { x: 0, z: 0 },
+        { x: 9.5, z: 0 },
+        { x: 9.5, z: 10 },
+        { x: 0, z: 10 },
+      ];
+      const READ_PARTITION = {
+        name: "Office wall", x1: 8, z1: 2, x2: 8, z2: 8,
+        story: 1, heightM: 3, elevM: 0, interior: true,
+      };
+      // Centre lands 2.5 m along the partition → (8 m, 4.5 m) = (800, 450) cm.
+      const READ_ADD = { id: "Add-9", elev: "s4", x: 2, y: 0.9, w: 1000, h: 1200 };
+      const narrowRead = {
+        building: { footprints: [NARROW_FP], interiorWalls: [READ_PARTITION] },
+        windows: [READ_ADD],
+      };
+      const narrowPlans = { building: { footprints: [NARROW_FP] }, windows: [] };
+      const NARROW_EXTERIOR = [
+        seg(0, 0, 950, 0),
+        seg(950, 0, 950, 1000),
+        seg(950, 1000, 0, 1000),
+        seg(0, 1000, 0, 0),
+      ];
+      const pullNarrow = (walls: { x1: number; y1: number; x2: number; y2: number }[]) =>
+        buildStudioPull(
+          narrowPlans as never,
+          [],
+          new Set(),
+          new Map(),
+          { walls, floorIndex: 0 },
+          narrowRead as never,
+        );
+
+      it("brings its own wall rather than landing on the exterior wall 1.5 m away", () => {
+        const out = pullNarrow(NARROW_EXTERIOR);
+        expect(out.placements).toHaveLength(1);
+        const [p] = out.placements;
+        expect(p.fromRead).toBe(true);
+        // The read partition came with it — NOT the exterior wall next door.
+        expect(p.newWall).toBeDefined();
+        expect(p.xCm).toBeCloseTo(800, 0);
+        expect(p.yCm).toBeCloseTo(450, 0);
+        expect(NARROW_EXTERIOR.some((s) => onSeg(p, s))).toBe(false);
+      });
+
+      it("lands on the partition once the owner draws it half a metre off", () => {
+        const drawn = seg(850, 200, 850, 800);
+        const out = pullNarrow([...NARROW_EXTERIOR, drawn]);
+        expect(out.placements).toHaveLength(1);
+        const [p] = out.placements;
+        expect(p.fromRead).toBe(true);
+        expect(p.newWall).toBeUndefined();
+        expect(onSeg(p, drawn)).toBe(true);
+        expect(p.xCm).toBeCloseTo(850, 0);
+      });
+
+      it("prefers the drawn partition even when an exterior wall is nearer", () => {
+        // Drawn 2 m west of the read wall; the exterior wall is 1.5 m east.
+        // Nearest-wall-wins would take the exterior one.
+        const drawn = seg(600, 200, 600, 800);
+        const out = pullNarrow([...NARROW_EXTERIOR, drawn]);
+        expect(out.placements).toHaveLength(1);
+        const [p] = out.placements;
+        expect(p.fromRead).toBe(true);
+        expect(p.newWall).toBeUndefined();
+        expect(onSeg(p, drawn)).toBe(true);
+        expect(p.xCm).toBeCloseTo(600, 0);
+        expect(NARROW_EXTERIOR.some((s) => onSeg(p, s))).toBe(false);
+      });
+    });
+
     it("is add-only: an Add already placed is skipped and counted, the rest still land", () => {
       const out = buildStudioPull(
         plansJob() as never,
