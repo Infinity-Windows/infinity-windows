@@ -119,6 +119,18 @@ function sortedCanonicalMasses(polys: Pt[][]): Pt[][] {
     .sort((a, b) => a[0].x - b[0].x || a[0].y - b[0].y);
 }
 
+/** Shoelace area, unsigned — used only to rank rings by size, so the sign
+ * (which canonicalRing already normalizes away) doesn't matter here. */
+function ringArea(ring: Pt[]): number {
+  let area = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    area += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(area) / 2;
+}
+
 /**
  * The transform from a trace's stored footprint (sheet pixels, one or more
  * closed masses) onto a Studio floor's CURRENT footprint (plan cm, same
@@ -126,18 +138,40 @@ function sortedCanonicalMasses(polys: Pt[][]): Pt[][] {
  * canonicalizing each ring, least-squares fit through every pair at once.
  * Masses are matched by sorted position, not input order, since neither
  * side's array order is guaranteed to agree with the other's. Null when the
- * two footprints don't actually match up (different mass count, or a mass
- * whose corner count changed since the seed — a wall added or merged has no
- * trustworthy per-corner correspondence left) — the caller's job is to skip
- * the underlay quietly, never to guess.
+ * two footprints don't actually match up (a mass whose corner count changed
+ * since the seed — a wall added or merged has no trustworthy per-corner
+ * correspondence left) — the caller's job is to skip the underlay quietly,
+ * never to guess.
+ *
+ * A traced story can carry interior partitions as their own closed rings —
+ * the tracer lets a surveyor draw whatever they see — that `outerPolygons`
+ * NEVER produces for the model side ("interior partition walls never leak
+ * into the silhouette", toFitview.ts): Mad Moose's Ground story, for
+ * instance, traces the exterior rectangle PLUS a 5-point partition, while
+ * the Studio floor it seeded is a bare rectangle, one mass. When the trace
+ * has MORE masses than the model, keep only the largest-by-area trace rings
+ * — an exterior shell always dwarfs an interior wall's sliver — down to the
+ * model's count, rather than refusing the whole underlay outright. The
+ * reverse (model has more masses than the trace) has no such reading — the
+ * model can't have grown a building the trace never saw — so that still
+ * refuses below.
  */
 export function storyUnderlayTransform(
   tracePolys: Pt[][],
   modelFootprintPolys: Pt[][],
 ): Affine | null {
-  const traceMasses = sortedCanonicalMasses(tracePolys);
+  let traceMasses = sortedCanonicalMasses(tracePolys);
   const modelMasses = sortedCanonicalMasses(modelFootprintPolys);
-  if (traceMasses.length === 0 || traceMasses.length !== modelMasses.length) return null;
+  if (traceMasses.length === 0 || modelMasses.length === 0) return null;
+
+  if (traceMasses.length > modelMasses.length) {
+    traceMasses = traceMasses
+      .slice()
+      .sort((a, b) => ringArea(b) - ringArea(a))
+      .slice(0, modelMasses.length)
+      .sort((a, b) => a[0].x - b[0].x || a[0].y - b[0].y);
+  }
+  if (traceMasses.length !== modelMasses.length) return null;
 
   const pairs: { from: Pt; to: Pt }[] = [];
   for (let m = 0; m < traceMasses.length; m++) {

@@ -128,8 +128,49 @@ describe("storyUnderlayTransform", () => {
     expect(naive.a).not.toBeCloseTo(0.6, 1);
   });
 
-  it("returns null when mass counts differ", () => {
+  it("returns null when the MODEL has more masses than the trace", () => {
+    // The model can't have grown a building the trace never saw — no
+    // reading exists for this direction, unlike the trace-has-more case
+    // below (a traced interior partition the model never modeled).
     expect(storyUnderlayTransform([tracePoly], [modelPoly, modelPoly])).toBeNull();
+  });
+
+  it("drops an interior partition when the trace has one more mass than the model (Mad Moose)", () => {
+    // Real bug (Mad Moose, 2026-09-01): a traced story can carry an
+    // interior partition as its own closed ring — the tracer lets a
+    // surveyor draw whatever they see — while outerPolygons NEVER emits
+    // one for the model side ("interior walls never leak into the
+    // silhouette"). A thin sliver traced well inside the exterior
+    // rectangle must be dropped, not treated as a second real mass.
+    const partition: Pt[] = [
+      { x: 250, y: 400 },
+      { x: 250, y: 600 },
+      { x: 260, y: 600 },
+      { x: 260, y: 400 },
+    ];
+    const fit = storyUnderlayTransform([tracePoly, partition], [modelPoly])!;
+    expect(fit).not.toBeNull();
+    for (const p of tracePoly) {
+      const got = applyAffine(fit, p);
+      const want = toModel(p);
+      expect(got.x).toBeCloseTo(want.x, 4);
+      expect(got.y).toBeCloseTo(want.y, 4);
+    }
+  });
+
+  it("drops a 5-point interior partition the same way (Mad Moose's actual shape)", () => {
+    // Mad Moose's real Ground story: a 4-point exterior rect plus a
+    // 5-point partition (an L-shaped interior wall run, not a simple
+    // rectangle) — corner count alone can't be the filter, only area.
+    const fivePointPartition: Pt[] = [
+      { x: 200, y: 350 },
+      { x: 200, y: 650 },
+      { x: 300, y: 650 },
+      { x: 300, y: 500 },
+      { x: 350, y: 500 },
+    ];
+    const fit = storyUnderlayTransform([tracePoly, fivePointPartition], [modelPoly]);
+    expect(fit).not.toBeNull(); // the larger 4-pt exterior still wins and pairs fine
   });
 
   it("returns null when a mass's corner count changed since the seed", () => {
