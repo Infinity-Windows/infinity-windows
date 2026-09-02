@@ -1171,6 +1171,101 @@ test("Pull from plans reads the PLANS — a published model never caps it", asyn
   expect(count).toBe(42);
 });
 
+test("Pull from plans lands a read Add on the interior wall the owner drew", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  // Mad Moose, re-staged on the fixture job (owner, 2026-09-02: "i drew
+  // the interior walls, add the 3 missing on the interior wall"). A HUMAN
+  // trace (building.trace) carries one interior wall at x=5 m inside
+  // MASS_A and one unit read onto it, Add-1 — elevation s8, the first key
+  // after MASS_A+MASS_B's eight exterior edges. The saved studio plan has
+  // that wall drawn by hand as a free-standing segment. Add-1 has no pin
+  // (a partition unit never can), so before this it fell into the spec
+  // spread and landed on an exterior wall.
+  const interiorWall = {
+    x1: 5, z1: 0.1, x2: 5, z2: 5.9, story: 1, heightM: 3, elevM: 0, interior: true,
+  };
+  const plan = JSON.parse(twinWallPlan()) as {
+    floorplan: {
+      corners: Record<string, { x: number; y: number }>;
+      walls: { corner1: string; corner2: string }[];
+    };
+  };
+  plan.floorplan.corners.i0 = { x: 500, y: 10 };
+  plan.floorplan.corners.i1 = { x: 500, y: 590 };
+  plan.floorplan.walls.push({ corner1: "i0", corner2: "i1" });
+  await useOutline(
+    page,
+    {
+      fitview: {
+        model: {
+          ...FITVIEW_MODEL,
+          building: {
+            ...FITVIEW_MODEL.building,
+            trace: { polys: [], dots: [], stories: [] },
+            interiorWalls: [interiorWall],
+          },
+          windows: [{ id: "Add-1", elev: "s8", x: 1.2, y: 0.9, w: 1500, h: 1200 }],
+        },
+      },
+      modelstudio: { serialized: JSON.stringify(plan) },
+    },
+    // The same page-area trace the pull test above uses, so the plans job
+    // exists (the pull refuses to run without one).
+    [
+      { x: 0.1, y: 0.15 },
+      { x: 0.7, y: 0.15 },
+      { x: 0.7, y: 0.9 },
+      { x: 0.1, y: 0.9 },
+    ],
+  );
+  await openStudio(page);
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    for (const it of [...bp.model.scene.getItems()]) bp.model.scene.removeItem(it);
+  });
+
+  await page.getByRole("button", { name: /Tools/ }).click();
+  await page.getByRole("button", { name: "Pull from plans", exact: true }).click();
+  await page.waitForFunction(
+    () => {
+      const bp = (window as any).__studio;
+      const add = bp.model.scene
+        .getItems()
+        .find((it: any) => it.metadata?.itemName === "Add-1");
+      return Boolean(add?.currentWallEdge);
+    },
+    undefined,
+    { timeout: 60_000 },
+  );
+  const add = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const it = bp.model.scene
+      .getItems()
+      .find((it: any) => it.metadata?.itemName === "Add-1");
+    const w = it.currentWallEdge.wall;
+    return {
+      x: it.position.x,
+      z: it.position.z,
+      wallX: [w.getStartX(), w.getEndX()],
+    };
+  });
+  // ON the hand-drawn x=500 partition, inside the span it was drawn with
+  // — not an exterior wall, and not the x=1000 twin boundary 5 m east.
+  // (The wall's own length is not asserted: BLACK22's 42 pinned openings,
+  // crowded into this 18 m fixture box, can grow it — that is the pinned
+  // path's fit-to-wall, not what this test pins.)
+  expect(Math.abs(add.x - 500)).toBeLessThan(5);
+  expect(add.z).toBeGreaterThan(10);
+  expect(add.z).toBeLessThan(590);
+  expect(Math.abs(add.wallX[0] - 500)).toBeLessThan(1);
+  expect(Math.abs(add.wallX[1] - 500)).toBeLessThan(1);
+  await expect(
+    page.getByText(/1 placed on your interior walls from the read plans/),
+  ).toBeVisible({ timeout: 15_000 });
+});
+
 test("Pull from plans: a placed unit carries a mark badge, and selecting it shows W×L honestly", async ({
   page,
 }) => {
