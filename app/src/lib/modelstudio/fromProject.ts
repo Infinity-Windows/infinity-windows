@@ -661,10 +661,13 @@ export function buildStudioPull(
 /** Everything the "Pull from plans" status line needs to report, gathered
  * by the caller as it applies `PullResult.placements` to the live scene. */
 export interface PullToastStats {
-  /** Placements applied on the ACTIVE floor (both pinned and fromSpec). */
+  /** Placements applied on the ACTIVE floor (pinned, fromSpec and fromRead). */
   placedHere: number;
   /** Of `placedHere`, how many came from the unpinned-spec fallback. */
   specPlacedHere: number;
+  /** Of `placedHere`, how many landed on an interior wall from the
+   * hand-read model (`fromRead`). */
+  readPlacedHere: number;
   healed: number;
   shifted: number;
   lengthened: number;
@@ -685,15 +688,26 @@ export interface PullToastStats {
  * zero pins used to report "0 placed" instead of placing all ten from
  * their specs). A pull that placed only real pinned windows keeps the
  * original, plainer wording unchanged.
+ *
+ * Units placed on an INTERIOR wall from the hand-read plans (Mad Moose,
+ * 2026-09-02) get their own plain sentence so the owner can see the Adds
+ * went where the plans put them — a real position, not a guess.
  */
 export function formatPullToast(s: PullToastStats): string {
-  const pinnedPlaced = s.placedHere - s.specPlacedHere;
+  const pinnedPlaced = s.placedHere - s.specPlacedHere - s.readPlacedHere;
   const bits: (string | null)[] = [];
-  if (s.specPlacedHere > 0) {
+  if (s.specPlacedHere > 0 || s.readPlacedHere > 0) {
     if (pinnedPlaced > 0) bits.push(`${pinnedPlaced} placed from pins`);
-    bits.push(
-      `${s.specPlacedHere} placed from specs (no pins yet; positions are a starting point)`,
-    );
+    if (s.readPlacedHere > 0) {
+      bits.push(
+        `${s.readPlacedHere} placed on your interior walls from the read plans`,
+      );
+    }
+    if (s.specPlacedHere > 0) {
+      bits.push(
+        `${s.specPlacedHere} placed from specs (no pins yet; positions are a starting point)`,
+      );
+    }
   } else {
     bits.push(`${s.placedHere} placed`);
   }
