@@ -241,22 +241,39 @@ export function summonEtaLine(
  * many, where — in the crew's words. `mine` flips the voice ("You called
  * for…") so your own summon reads as confirmation, not as somebody else's
  * emergency.
+ *
+ * Once a call is a day old it is over (owner ask, 2026-09-02). The caller is
+ * the only person still shown it, and what they need is the ending, not a
+ * countdown — so their line says so plainly instead of reading as open.
  */
 export function summonStripLine(
-  s: Pick<Summon, "needed" | "status" | "requester" | "project" | "opening" | "needed_at">,
+  s: Pick<
+    Summon,
+    "needed" | "status" | "requester" | "project" | "opening" | "needed_at" | "helpers"
+  > &
+    Partial<Pick<Summon, "created_at">>,
   mine: boolean,
   now: number = Date.now(),
 ): string {
-  const hands = `${s.needed} ${s.needed === 1 ? "hand" : "hands"}`;
-  const head = mine
-    ? `You called for ${hands}`
-    : `${s.requester?.display_name ?? "Someone"} needs ${hands}`;
   const where = [
     s.project?.job_code ?? null,
     s.opening?.opening_code ? `#${s.opening.opening_code}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
+  if (mine && s.created_at && summonExpired(s.created_at, now)) {
+    // "Nobody came" has to be true to be worth saying — a call that got
+    // hands and then ran out of day gets the other half of the sentence.
+    const anyoneCame = (s.helpers ?? []).some((h) => !h.canceled_at);
+    const ended = anyoneCame
+      ? "Expired — the call ended after a day"
+      : "Expired — nobody came in a day";
+    return where ? `${ended} — ${where}` : ended;
+  }
+  const hands = `${s.needed} ${s.needed === 1 ? "hand" : "hands"}`;
+  const head = mine
+    ? `You called for ${hands}`
+    : `${s.requester?.display_name ?? "Someone"} needs ${hands}`;
   let base = where ? `${head} — ${where}` : head;
   const eta = summonEtaLine(s.needed_at, now);
   if (eta) base = `${base} · ${eta}`;

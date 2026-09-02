@@ -261,3 +261,57 @@ describe("visibleSummons", () => {
     ]);
   });
 });
+
+// The caller's side of the one-day rule (owner ask, 2026-09-02): their own
+// expired call is the one row that stays, and it has to read as ended.
+
+describe("summonStripLine on an expired call", () => {
+  const expiredAt = new Date(NOW - SUMMON_LIFETIME_MS - 1).toISOString();
+  const base = {
+    needed: 3,
+    status: "open" as const,
+    requester: { display_name: "Marcus" },
+    project: { job_code: "BLACK22" },
+    opening: { opening_code: "14" },
+    created_at: expiredAt,
+  };
+
+  it("the caller reads what happened, not a live call", () => {
+    expect(summonStripLine(base, true, NOW)).toBe(
+      "Expired — nobody came in a day — BLACK22 · #14",
+    );
+  });
+
+  it("says the truth when hands did come and the day ran out", () => {
+    expect(
+      summonStripLine(
+        { ...base, helpers: [{ profile_id: "chris", completed_at: null, canceled_at: null }] },
+        true,
+        NOW,
+      ),
+    ).toBe("Expired — the call ended after a day — BLACK22 · #14");
+  });
+
+  it("a helper who backed out is not somebody who came", () => {
+    expect(
+      summonStripLine(
+        {
+          ...base,
+          helpers: [{ profile_id: "dave", completed_at: null, canceled_at: expiredAt }],
+        },
+        true,
+        NOW,
+      ),
+    ).toBe("Expired — nobody came in a day — BLACK22 · #14");
+  });
+
+  it("a still-live call of mine reads exactly as before", () => {
+    expect(
+      summonStripLine(
+        { ...base, created_at: new Date(NOW - 60 * 60_000).toISOString() },
+        true,
+        NOW,
+      ),
+    ).toBe("You called for 3 hands — BLACK22 · #14");
+  });
+});

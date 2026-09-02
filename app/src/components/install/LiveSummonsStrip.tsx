@@ -20,6 +20,7 @@ import {
   declineSummon,
   iAnswered,
   listAllLiveSummons,
+  summonExpired,
   summonStripLine,
   visibleSummons,
 } from "../../lib/install/summons";
@@ -69,7 +70,10 @@ export function LiveSummonsStrip() {
       {rows.map((s) => {
         const mine = Boolean(me.data?.id && s.requested_by === me.data.id);
         const answered = iAnswered(s, me.data?.id);
-        const open = s.status === "open";
+        // Only your own expired call survives the visibility rule, and it is
+        // a record of what happened, not a call anyone can still answer.
+        const expired = summonExpired(s.created_at);
+        const open = s.status === "open" && !expired;
         return (
           <div
             key={s.id}
@@ -97,8 +101,14 @@ export function LiveSummonsStrip() {
               }}
             >
               <span style={{ minWidth: 0, flex: 1 }}>
-                <strong className={answered ? "ok" : open ? "error" : "muted"}>
-                  {answered ? "You answered" : open ? "SUMMON" : "Summon covered"}
+                <strong className={answered && !expired ? "ok" : open ? "error" : "muted"}>
+                  {expired
+                    ? "Expired"
+                    : answered
+                      ? "You answered"
+                      : open
+                        ? "SUMMON"
+                        : "Summon covered"}
                 </strong>{" "}
                 <span>{summonStripLine(s, mine)}</span>
               </span>
