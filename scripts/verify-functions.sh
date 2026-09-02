@@ -3,7 +3,7 @@
 # deployed project.
 #
 # Why this exists: on 2026-07-29 only 4 of 10 functions were live in production.
-# `ask` had never been deployed, so Ask Infinity answered nothing, and no build
+# `ask` had never been deployed, so Ask Forge answered nothing, and no build
 # ever went red about it. The README listed 4 functions to deploy and was never
 # updated as 6 more were added, so following the setup instructions produced
 # exactly the wrong result. Shipping the frontend without its backend is the

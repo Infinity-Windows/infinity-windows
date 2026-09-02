@@ -189,7 +189,7 @@ TOTAL_STAGES=10
 REPO="Infinity-Windows/infinity-windows"
 OLD_URL="https://infinity-windows.github.io/infinity-windows/"
 
-banner "Infinity Windows — go live on your own domain"
+banner "Forge Windows and Doors — go live on your own domain"
 
 # ── Stage 1: buy the domain ────────────────────────────────────────────────
 stage "Buy the domain"

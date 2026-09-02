@@ -2,7 +2,7 @@
 # Make the DEPLOYED writing features actually write something, and read what
 # came back.
 #
-# Why this exists: scripts/smoke-ask.sh proves Ask Infinity reaches Claude. It
+# Why this exists: scripts/smoke-ask.sh proves Ask Forge reaches Claude. It
 # says nothing about the other five features that generate text, and those moved
 # provider — from OpenAI to Claude — which is exactly the kind of change that
 # deploys clean and fails on first real use. This repo has been bitten by that

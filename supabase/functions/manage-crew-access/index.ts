@@ -1,5 +1,5 @@
 /**
- * Who has access to Infinity Windows, and who is being offered it.
+ * Who has access to Forge Windows, and who is being offered it.
  *
  * The owner needs to add his own crew. Creating a login requires the
  * service-role key, which must never reach a browser, so this is an edge

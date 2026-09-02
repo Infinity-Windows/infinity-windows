@@ -23,7 +23,7 @@
 --
 -- It does not hide a test project's openings or packages by RLS. Those
 -- tables are reached through project joins all over the UI (warehouse
--- screens, the schedule, Ask Infinity), and repeating "and the project isn't
+-- screens, the schedule, Ask Forge), and repeating "and the project isn't
 -- a test project" in every one of those policies is exactly the "twenty-one
 -- read paths, the twenty-first written wrong" failure the soft-delete
 -- migration was written against — except worse here, because a package's
