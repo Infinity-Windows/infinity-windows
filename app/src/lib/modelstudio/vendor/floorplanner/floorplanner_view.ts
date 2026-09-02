@@ -6,6 +6,12 @@ import { HalfEdge } from '../model/half_edge'
 import { Dimensioning } from '../core/dimensioning'
 import { Utils } from '../core/utils'
 import type { Floorplanner } from './floorplanner'
+// infinity (studio-plans-through-floor, 2026-09-01): the same exterior-loop
+// test Publish uses (toFitview.ts), reused rather than re-walked here, so
+// the 2D view's wall coloring and what actually ships to the crew map can
+// never disagree about which wall is which. A deliberate, surgical reach
+// outside vendor/ — see this file's own draw()-only deviations below.
+import { classifyWalls } from '../../toFitview'
 
 /** */
 export const floorplannerModes = {
@@ -21,15 +27,34 @@ const gridColor = '#f1f1f1'
 
 // room config
 const roomColor = '#f9f9f9'
+// infinity (studio-plans-through-floor, 2026-09-01, owner: "let the plans
+// show through the floor"): the opaque roomColor fill above blanked out
+// the sheet everywhere INSIDE the building — exactly where interior walls
+// get drawn. Used instead of roomColor whenever the plan underlay is
+// active (see draw()'s underlayIsActive() check); same hue, low alpha,
+// so a room still reads as a room without hiding what's under it.
+const roomColorOverPlan = 'rgba(249, 249, 249, 0.15)'
 
 // wall config
-const wallWidth = 5
 const wallWidthHover = 7
-const wallColor = '#dddddd'
 const wallColorHover = '#008cba'
 const edgeColor = '#888888'
 const edgeColorHover = '#008cba'
 const edgeWidth = 1
+// infinity (studio-plans-through-floor, 2026-09-01, owner: "highlight the
+// walls we have exterior and interior when we make them so we can
+// distinguish them"): exterior walls heavy and dark (the silhouette
+// Publish ships); interior walls in the app's accent — index.css's
+// `.active-pill` (the same pill class the "Plans: on" toggle wears) reads
+// `background: var(--accent)`, and `--accent` is `--primary`, documented
+// in index.css's own comment as "coral / sunset orange ≈ #f15b00". Hex
+// literal on purpose, same call vendor/three/main.ts's sky colors made —
+// canvas fillStyle needs a resolved color, and the oklch() token isn't
+// something this plain vendor file should have to parse.
+const wallWidthExterior = 7
+const wallColorExterior = '#242424'
+const wallWidthInterior = 4
+const wallColorInterior = '#f15b00'
 
 const deleteColor = '#ff0000'
 
@@ -114,6 +139,22 @@ export class FloorplannerView {
     opacity: number
   } | null = null
 
+  // infinity (studio-plans-through-floor, 2026-09-01): a thin, serializable
+  // read of the same classification draw() uses internally — exposed for
+  // the e2e suite (window.__studio.floorplanner.view.wallStyleCounts()) and
+  // anyone else who wants "how many exterior/interior walls does this floor
+  // have" without re-deriving it.
+  public wallStyleCounts(): { exterior: number; interior: number } {
+    const classes = classifyWalls(this.floorplan.getWalls())
+    let exterior = 0
+    let interior = 0
+    for (const cls of classes.values()) {
+      if (cls === 'exterior') exterior++
+      else interior++
+    }
+    return { exterior, interior }
+  }
+
   /** */
   public draw() {
     this.context.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height)
@@ -136,12 +177,22 @@ export class FloorplannerView {
       }
     }
 
+    // infinity (studio-plans-through-floor, 2026-09-01): the plan sheet is
+    // the bottom layer (drawPlanUnderlay above); the room fill used to be
+    // opaque and blanked it out everywhere inside the building. When the
+    // sheet is actually on screen, fill low-alpha instead so it reads
+    // through — see roomColorOverPlan's own comment.
+    const overPlan = this.activeUnderlay() !== null
     this.floorplan.getRooms().forEach((room) => {
-      this.drawRoom(room)
+      this.drawRoom(room, overPlan)
     })
 
+    // infinity (studio-plans-through-floor, 2026-09-01): classified once per
+    // frame — see classifyWalls' own comment (toFitview.ts) for why this is
+    // the same test Publish uses, not a re-walk of its own.
+    const wallStyles = classifyWalls(this.floorplan.getWalls())
     this.floorplan.getWalls().forEach((wall) => {
-      this.drawWall(wall)
+      this.drawWall(wall, wallStyles.get(wall) ?? 'exterior')
     })
 
     this.floorplan.getCorners().forEach((corner) => {
@@ -156,13 +207,24 @@ export class FloorplannerView {
         this.viewmodel.targetX,
         this.viewmodel.targetY,
         this.viewmodel.lastNode,
-        this.viewmodel.dragOrigin
+        this.viewmodel.dragOrigin,
+        this.previewWallStyle()
       )
     }
 
     this.floorplan.getWalls().forEach((wall) => {
       this.drawWallLabels(wall)
     })
+  }
+
+  // infinity (studio-plans-through-floor, 2026-09-01): the resolved
+  // planUnderlay only when it's actually ready to paint — same guard
+  // drawPlanUnderlay always used inline, now shared with draw()'s room-fill
+  // decision so the two can never disagree about whether there's a sheet
+  // to show through.
+  private activeUnderlay(): FloorplannerView['planUnderlay'] {
+    const u = this.planUnderlay
+    return u && u.image.complete && u.image.naturalWidth !== 0 ? u : null
   }
 
   // infinity (studio-plan-underlay): draw the plan image via ONE composed
@@ -173,8 +235,8 @@ export class FloorplannerView {
   // two probe points recover today's pan/zoom without reaching into the
   // viewmodel's private fields.
   private drawPlanUnderlay() {
-    const u = this.planUnderlay
-    if (!u || !u.image.complete || u.image.naturalWidth === 0) return
+    const u = this.activeUnderlay()
+    if (!u) return
     const originX = this.viewmodel.convertX(0)
     const pxPerCmX = this.viewmodel.convertX(1) - originX
     const originY = this.viewmodel.convertY(0)
@@ -221,20 +283,33 @@ export class FloorplannerView {
   }
 
   /** */
-  private drawWall(wall: Wall) {
+  // infinity (studio-plans-through-floor, 2026-09-01): style now takes the
+  // wall's exterior/interior classification (computed once per draw() —
+  // see classifyWalls) so hover/delete highlighting can still override it,
+  // but the base color/weight tells exterior from interior at a glance.
+  private drawWall(wall: Wall, wallClass: 'exterior' | 'interior') {
     const hover = wall === this.viewmodel.activeWall
-    let color = wallColor
+    let color: string
+    let width: number
     if (hover && this.viewmodel.mode == floorplannerModes.DELETE) {
       color = deleteColor
+      width = wallWidthHover
     } else if (hover) {
       color = wallColorHover
+      width = wallWidthHover
+    } else if (wallClass === 'exterior') {
+      color = wallColorExterior
+      width = wallWidthExterior
+    } else {
+      color = wallColorInterior
+      width = wallWidthInterior
     }
     this.drawLine(
       this.viewmodel.convertX(wall.getStartX()),
       this.viewmodel.convertY(wall.getStartY()),
       this.viewmodel.convertX(wall.getEndX()),
       this.viewmodel.convertY(wall.getEndY()),
-      hover ? wallWidthHover : wallWidth,
+      width,
       color
     )
     if (!hover && wall.frontEdge) {
@@ -297,8 +372,10 @@ export class FloorplannerView {
     )
   }
 
-  /** */
-  private drawRoom(room: Room) {
+  // infinity (studio-plans-through-floor, 2026-09-01): overPlan swaps in
+  // roomColorOverPlan (low alpha) — see draw()'s underlayIsActive() call
+  // and roomColorOverPlan's own comment.
+  private drawRoom(room: Room, overPlan: boolean) {
     this.drawPolygon(
       Utils.map(room.corners, (corner: Corner) => {
         return this.viewmodel.convertX(corner.x)
@@ -307,7 +384,7 @@ export class FloorplannerView {
         return this.viewmodel.convertY(corner.y)
       }),
       true,
-      roomColor
+      overPlan ? roomColorOverPlan : roomColor
     )
   }
 
@@ -328,12 +405,36 @@ export class FloorplannerView {
     )
   }
 
+  // infinity (studio-plans-through-floor, 2026-09-01): what the wall being
+  // drawn right now would classify as if released this instant — the same
+  // classifyWalls test real walls get, run against the current floor's
+  // walls PLUS a synthetic candidate for the in-progress segment (lastNode/
+  // dragOrigin -> targetX/targetY). A candidate's own height never affects
+  // classifyWalls' outer-loop walk (only start/end points do), so `1` is
+  // fine here. No lastNode/dragOrigin yet (mode just switched to DRAW,
+  // nothing pressed) means no segment exists to classify — 'interior' is
+  // as good a default as any since nothing draws from it either way.
+  private previewWallStyle(): 'exterior' | 'interior' {
+    const from = this.viewmodel.lastNode ?? this.viewmodel.dragOrigin
+    if (!from) return 'interior'
+    const candidate = {
+      height: 1,
+      getStartX: () => from.x,
+      getStartY: () => from.y,
+      getEndX: () => this.viewmodel.targetX,
+      getEndY: () => this.viewmodel.targetY
+    }
+    const classified = classifyWalls([...this.floorplan.getWalls(), candidate])
+    return classified.get(candidate) ?? 'interior'
+  }
+
   /** */
   private drawTarget(
     x: number,
     y: number,
     lastNode: Corner | null,
-    dragOrigin?: { x: number; y: number } | null
+    dragOrigin: { x: number; y: number } | null | undefined,
+    previewStyle: 'exterior' | 'interior'
   ) {
     this.drawCircle(
       this.viewmodel.convertX(x),
@@ -346,13 +447,21 @@ export class FloorplannerView {
     // shows its press-to-cursor preview line.
     const from = lastNode ?? dragOrigin
     if (from) {
+      // infinity (studio-plans-through-floor, 2026-09-01): the preview now
+      // wears the style the finished wall would get (previewWallStyle),
+      // not a flat hover-blue — "distinguish them... when we make them"
+      // means while drawing, too.
+      const [width, color] =
+        previewStyle === 'exterior'
+          ? [wallWidthExterior, wallColorExterior]
+          : [wallWidthInterior, wallColorInterior]
       this.drawLine(
         this.viewmodel.convertX(from.x),
         this.viewmodel.convertY(from.y),
         this.viewmodel.convertX(x),
         this.viewmodel.convertY(y),
-        wallWidthHover,
-        wallColorHover
+        width,
+        color
       )
       // infinity (studio-trace-mode-obvious, 2026-09-01): the owner asked to
       // "see the dimensions in 2d" while dragging — drag-to-draw (#466) had

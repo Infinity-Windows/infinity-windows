@@ -119,6 +119,33 @@ async function canvasChecksum(page: import("@playwright/test").Page): Promise<nu
   });
 }
 
+// infinity (studio-plans-through-floor, 2026-09-01, owner: "let the plans
+// show through the floor"): a pixel in the middle of the traced building's
+// own bounding box — well clear of any wall, corner, or grid line — read
+// straight off the same "studio-floorplan" canvas. Position comes from the
+// live wall data (fp.convertX/convertY), not a hardcoded screen coordinate,
+// so it works for Mad Moose's real (non-rectangular-at-the-canvas-origin)
+// footprint the same as any other.
+async function pixelInsideBuilding(
+  page: import("@playwright/test").Page,
+): Promise<[number, number, number, number]> {
+  return page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const fp = bp.floorplanner;
+    const walls = bp.model.floorplan.getWalls();
+    const xs = walls.flatMap((w: any) => [w.getStartX(), w.getEndX()]);
+    const ys = walls.flatMap((w: any) => [w.getStartY(), w.getEndY()]);
+    const midX = (Math.min(...xs) + Math.max(...xs)) / 2;
+    const midY = (Math.min(...ys) + Math.max(...ys)) / 2;
+    const px = Math.round(fp.convertX(midX));
+    const py = Math.round(fp.convertY(midY));
+    const canvas = document.getElementById("studio-floorplan") as HTMLCanvasElement;
+    const ctx = canvas.getContext("2d")!;
+    const d = ctx.getImageData(px, py, 1, 1).data;
+    return [d[0], d[1], d[2], d[3]];
+  });
+}
+
 test.describe("Studio plan underlay, real Mad Moose trace (desktop)", () => {
   test.use({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
 
@@ -237,6 +264,30 @@ test.describe("Studio plan underlay, real Mad Moose trace (desktop)", () => {
     // canvas. This is what would catch a transform that "fit" but drew at
     // opacity too low to read, or an image that never finished decoding.
     const withPlan = await canvasChecksum(page);
+
+    // studio-plans-through-floor (2026-09-01, owner: "i need to be able to
+    // see it through the building as well"): #488/#490 proved the sheet
+    // paints under the model; this proves it's still visible INSIDE the
+    // building, where the room fill used to blank it out solid. The room
+    // fill's own color is rgb(249,249,249) opaque — the low-alpha version
+    // it blends with the sheet at 15% can only reproduce that exact triple
+    // if the sheet pixel underneath happened to be 249,249,249 too, which a
+    // real scanned/vector architectural sheet never is.
+    //
+    // Draw walls mode (clicked above) always renders a small target dot at
+    // the current mouse position (floorplanner_view.ts's drawTarget) —
+    // parked here, in a canvas corner, so it can never land on the
+    // centroid pixel these checks read next.
+    const canvasBox = await page.locator("#studio-floorplan").boundingBox();
+    if (!canvasBox) throw new Error("no floorplan canvas");
+    await page.mouse.move(canvasBox.x + 10, canvasBox.y + 10);
+
+    const insideWithPlan = await pixelInsideBuilding(page);
+    expect(
+      insideWithPlan.slice(0, 3),
+      "a pixel inside the building still reads as the flat floor color with Plans on — the sheet isn't showing through",
+    ).not.toEqual([249, 249, 249]);
+
     await plansToggle.click();
     await expect(plansToggle).toHaveText("Plans: off");
     await expect
@@ -247,6 +298,15 @@ test.describe("Studio plan underlay, real Mad Moose trace (desktop)", () => {
       Math.abs(withPlan - withoutPlan),
       "the canvas pixels are identical with the plan layer on vs off — nothing actually painted",
     ).toBeGreaterThan(1000);
+
+    // And with Plans off, the ordinary opaque floor fill is back exactly —
+    // the same pixel, same spot, now the flat rgb(249,249,249) drawRoom
+    // always painted before this change.
+    const insideWithoutPlan = await pixelInsideBuilding(page);
+    expect(
+      insideWithoutPlan,
+      "the floor fill did not return to its normal opaque color with Plans off",
+    ).toEqual([249, 249, 249, 255]);
   });
 
   test("says so honestly when the plan sheet can't be fetched, instead of drawing nothing silently", async ({
@@ -288,5 +348,63 @@ test.describe("Studio plan underlay, real Mad Moose trace (desktop)", () => {
       () => (window as any).__studio.floorplanner.view.planUnderlay,
     );
     expect(underlay).toBeNull();
+  });
+
+  // studio-plans-through-floor (2026-09-01, owner: "highlight the walls we
+  // have exterior and interior when we make them so we can distinguish
+  // them"). The Mad Moose ground floor boots as a bare 4-wall rectangle
+  // (this file's own readiness check above); one free-standing wall added
+  // programmatically inside it — same newCorner/newWall calls
+  // studio-standalone.spec.ts uses for its own programmatic floors, not a
+  // mouse drag — gives a real floor with exactly one interior wall, without
+  // needing the plan sheet itself to load first (no Tools/Draw-walls/Plans
+  // toggle involved, so this test doesn't pay the real-PDF fetch cost the
+  // other two in this file do).
+  test("wall style: the real rectangle plus one free-standing wall classifies as 4 exterior + 1 interior", async ({
+    page,
+  }) => {
+    await useSupabaseFixtures(page, { role: "owner" });
+    await useMadMooseFixtures(page);
+    await page.goto(`/studio/j/${BLACK22.projectId}`);
+
+    await page.waitForFunction(
+      () => {
+        const bp = (window as any).__studio;
+        return (bp?.model?.floorplan?.getWalls?.()?.length ?? 0) === 4;
+      },
+      undefined,
+      { timeout: 60_000 },
+    );
+
+    // Sanity first: the bare rectangle alone is 4-for-4 exterior — proves
+    // the count below actually moved because of the wall this test adds,
+    // not some pre-existing interior wall in the real trace.
+    const before = await page.evaluate(
+      () => (window as any).__studio.floorplanner.view.wallStyleCounts(),
+    );
+    expect(before).toEqual({ exterior: 4, interior: 0 });
+
+    const after = await page.evaluate(() => {
+      const bp = (window as any).__studio;
+      const fp = bp.model.floorplan;
+      const walls = fp.getWalls();
+      const xs = walls.flatMap((w: any) => [w.getStartX(), w.getEndX()]);
+      const ys = walls.flatMap((w: any) => [w.getStartY(), w.getEndY()]);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      // A vertical wall a third of the way in, well clear of the exterior
+      // loop's own corners — free-standing, touches nothing.
+      const x = minX + (maxX - minX) * 0.3;
+      const y1 = minY + (maxY - minY) * 0.3;
+      const y2 = minY + (maxY - minY) * 0.7;
+      const e = fp.newCorner(x, y1);
+      const f = fp.newCorner(x, y2);
+      fp.newWall(e, f);
+      fp.update();
+      return bp.floorplanner.view.wallStyleCounts();
+    });
+    expect(after).toEqual({ exterior: 4, interior: 1 });
   });
 });

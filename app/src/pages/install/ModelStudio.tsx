@@ -4410,10 +4410,20 @@ export function ModelStudio({ source }: { source: StudioSource }) {
                   // studio-trace-mode-obvious drag-to-draw hint (#466 had no
                   // hint anywhere it could be found) while Draw walls is
                   // the active tool, or the plain drag hint otherwise.
-                  (plansOn && planUnderlayIssue) ||
-                  (mode === floorplannerModes.DRAW
-                    ? "press and drag to draw a wall · click corner to corner also works · corners square up within 5° · Plans: on shows the sheet"
-                    : "drag walls & corners · drag empty space to pan")
+                  //
+                  // studio-plans-through-floor (2026-09-01, owner: "let the
+                  // plans show through the floor... highlight the walls we
+                  // have exterior and interior"): once the sheet is actually
+                  // on screen (plansOn with no issue — the same condition
+                  // rebuildPlanUnderlay uses to set fp.view.planUnderlay),
+                  // a one-line legend for the wall coloring floorplanner_view
+                  // .ts now always draws, appended to whichever hint above
+                  // was already showing.
+                  ((plansOn && planUnderlayIssue) ||
+                    (mode === floorplannerModes.DRAW
+                      ? "press and drag to draw a wall · click corner to corner also works · corners square up within 5° · Plans: on shows the sheet"
+                      : "drag walls & corners · drag empty space to pan")) +
+                  (plansOn && !planUnderlayIssue ? " · dark = exterior · orange = interior" : "")
                 : "scroll to see every wall · drag a window or door to move it · tap to edit"}
           </span>
           <span className="row-gap" style={{ marginLeft: "auto" }}>
