@@ -3191,13 +3191,33 @@ export function ModelStudio({ source }: { source: StudioSource }) {
           <Link className="button-like studio-mini" to={`/projects/${projectId}/upload`}>
             📄 Upload plan-sets
           </Link>
-          <Link
-            className="button-like studio-mini"
-            title="Trace the building outline over the plans — corner to corner, one shape per building, a story per floor"
-            to={`/projects/${projectId}/trace-model`}
-          >
-            ✏️ Trace plans
-          </Link>
+          {/* infinity (studio-trace-mode-obvious, 2026-09-01): the owner
+              clicked "Trace plans" expecting to draw walls over the faint
+              plans right here, and instead landed on the legacy outline
+              tracer with no wall-drag. This button now does what he
+              expected — Draw walls mode, plan underlay forced on, view
+              flipped to 2D — no new mechanics, just the ones from #488/#466
+              actually reachable. The outline tracer (a genuinely separate
+              job: tracing the building's own outer shape, once) stays one
+              tap away as the plain link below. */}
+          {traceModel ? (
+            <button
+              type="button"
+              className="button-like studio-mini"
+              title="Switch to Draw walls with the plan sheet showing behind the 2D view"
+              onClick={() => {
+                setMode(floorplannerModes.DRAW);
+                setPlansOn(true);
+                setView("plan");
+              }}
+            >
+              ✏️ Draw over the plans
+            </button>
+          ) : (
+            <span className="muted" style={{ fontSize: 12, alignSelf: "center" }}>
+              This job's outline needs tracing before you can draw over the plans.
+            </span>
+          )}
           {traceModel && (
             <span className="muted" style={{ fontSize: 12, alignSelf: "center" }}>
               trace on file
@@ -3206,6 +3226,18 @@ export function ModelStudio({ source }: { source: StudioSource }) {
                 : ""}
             </span>
           )}
+        </div>
+      )}
+      {projectId && (
+        <div className="row-gap" style={{ marginTop: 2 }}>
+          <Link
+            className="muted"
+            style={{ fontSize: 11 }}
+            title="Trace the building outline over the plans — corner to corner, one shape per building, a story per floor"
+            to={`/projects/${projectId}/trace-model`}
+          >
+            Outline tracer (job tab)
+          </Link>
         </div>
       )}
       <details open>
