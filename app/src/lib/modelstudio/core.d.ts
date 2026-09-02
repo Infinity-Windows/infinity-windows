@@ -142,9 +142,15 @@ export interface StudioFloorplanner {
   wallWidth: number;
   /** 6-inch drawing snap (0 disables) — infinity vendor diff. */
   gridSnapCm: number;
-  /** The 2D canvas view; `underlayWalls` ghosts the floor below. */
+  /** The 2D canvas view; `underlayWalls` ghosts the floor below,
+   * `planUnderlay` is the real plan sheet drawn faintly beneath it. */
   view: {
     underlayWalls: Array<{ x1: number; y1: number; x2: number; y2: number }> | null;
+    planUnderlay: {
+      image: HTMLImageElement;
+      transform: { a: number; b: number; c: number; d: number; tx: number; ty: number };
+      opacity: number;
+    } | null;
     draw(): void;
   };
   setMode(mode: number): void;
