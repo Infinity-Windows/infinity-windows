@@ -63,15 +63,19 @@ const SUMMON_SELECT =
  * A summon is over one day after it was sent (owner ask, 2026-09-02: "a
  * summons should expire 1 day after the user sends the summons"). The server
  * sweep (expire_summons, every 10 minutes) is what actually closes the row;
- * this is the same rule read on the phone so nothing stale ever renders in
- * the gap between sweeps.
+ * the same rule is read on the phone so the landing strip never leaves a
+ * day-old call sitting there in the gap between sweeps.
+ *
+ * It is applied AFTER the read, by `visibleSummons` — never as a `created_at`
+ * bound in the query, and never against the handset's own clock. `created_at`
+ * is stamped by `now()` on the server; `Date.now()` is whatever the phone
+ * believes. A handset a day ahead (a dead battery restoring a bad clock,
+ * someone setting the date by hand) would ask for rows newer than any that
+ * exist and show that installer no calls for hands at all, with nothing on
+ * screen to explain it. And the caller's own expired summon has to come back
+ * from the server, or the strip has nothing to tell them nobody came with.
  */
 export const SUMMON_LIFETIME_MS = 24 * 60 * 60 * 1000;
-
-/** The oldest created_at still worth asking the server for. */
-function liveSince(now: number = Date.now()): string {
-  return new Date(now - SUMMON_LIFETIME_MS).toISOString();
-}
 
 /** Live (open/covered) summons on a job — Dispatch indicator + the sheet. */
 export async function listLiveSummons(projectId: string): Promise<Summon[]> {
@@ -80,7 +84,6 @@ export async function listLiveSummons(projectId: string): Promise<Summon[]> {
     .select(SUMMON_SELECT)
     .eq("project_id", projectId)
     .in("status", ["open", "covered"])
-    .gte("created_at", liveSince())
     .order("created_at");
   if (isMissingTableError(error)) return [];
   if (error) throw error;
@@ -93,16 +96,15 @@ export async function listLiveSummons(projectId: string): Promise<Summon[]> {
  * already are, My Work and Home, not only on the window's own sheet. One
  * read: a call for hands is never quietly hidden — except for a job the
  * owner just deleted (Wave D), since nobody should keep getting summoned
- * onto a job that no longer exists, and except for a call that went out more
- * than a day ago, which is over (owner ask, 2026-09-02). What each viewer
- * then sees is `visibleSummons`, which also drops the ones they declined.
+ * onto a job that no longer exists. What each viewer then sees is
+ * `visibleSummons`, which drops the ones they declined and the day-old ones
+ * that are not their own.
  */
 export async function listAllLiveSummons(): Promise<Summon[]> {
   const { data, error } = await supabase
     .from("summons")
     .select(SUMMON_SELECT)
     .in("status", ["open", "covered"])
-    .gte("created_at", liveSince())
     .order("created_at");
   if (isMissingTableError(error)) return [];
   if (error) throw error;
@@ -253,7 +255,7 @@ export function summonStripLine(
   > &
     Partial<Pick<Summon, "created_at">>,
   mine: boolean,
-  now: number = Date.now(),
+  now: number | null = Date.now(),
 ): string {
   const where = [
     s.project?.job_code ?? null,
@@ -275,7 +277,10 @@ export function summonStripLine(
     ? `You called for ${hands}`
     : `${s.requester?.display_name ?? "Someone"} needs ${hands}`;
   let base = where ? `${head} — ${where}` : head;
-  const eta = summonEtaLine(s.needed_at, now);
+  // The countdown is a live timer, not a hiding rule: with no measured
+  // offset the device's own clock is the only one there is, and a wrong one
+  // makes a minute count look off rather than making a call disappear.
+  const eta = summonEtaLine(s.needed_at, now ?? Date.now());
   if (eta) base = `${base} · ${eta}`;
   return s.status === "covered" ? `${base} (covered)` : base;
 }
@@ -296,6 +301,24 @@ export function iAnswered(
 }
 
 /**
+ * The clock the one-day rule is read against: the database's, reconstructed
+ * on the phone from a measured offset (`clockSkewMs`, wave T's `server_now`
+ * RPC) rather than trusted from `Date.now()`. The device's *elapsed* time is
+ * fine — it is its idea of the date that can be hours or days out.
+ *
+ * `null` — no offset measured yet, or the phone is offline — means "no clock
+ * worth deciding on", and then nothing is treated as expired. Showing a call
+ * ten minutes past its day costs someone a walk they didn't need; hiding a
+ * live one costs them the help.
+ */
+export function summonNow(
+  skewMs: number | null | undefined,
+  deviceNowMs: number = Date.now(),
+): number | null {
+  return skewMs == null ? null : deviceNowMs - skewMs;
+}
+
+/**
  * Is this call over? One day from `created_at`, matching the server rule
  * (`created_at < now() - interval '1 day'`) exactly — a summon sent 24 hours
  * ago on the nose is still live for that instant, one tick later it is not.
@@ -304,8 +327,9 @@ export function iAnswered(
  */
 export function summonExpired(
   createdAt: string,
-  now: number = Date.now(),
+  now: number | null = Date.now(),
 ): boolean {
+  if (now == null) return false; // no trusted clock: never hide the call
   const at = Date.parse(createdAt);
   if (Number.isNaN(at)) return false; // unreadable date: never hide the call
   return now - at > SUMMON_LIFETIME_MS;
@@ -328,7 +352,7 @@ export function summonExpired(
 export function visibleSummons(
   rows: readonly Summon[],
   myProfileId: string | null | undefined,
-  now: number = Date.now(),
+  now: number | null = Date.now(),
 ): Summon[] {
   return rows.filter((s) => {
     const mine = Boolean(myProfileId) && s.requested_by === myProfileId;

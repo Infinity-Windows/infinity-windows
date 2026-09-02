@@ -13,6 +13,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { clockSkewMs, fetchServerNowMs } from "../../lib/clockSkew";
 import { getMyProfile } from "../../lib/install/api";
 import { formatApiError } from "../../lib/install/errors";
 import { pushToast } from "../../lib/toast";
@@ -21,6 +22,7 @@ import {
   iAnswered,
   listAllLiveSummons,
   summonExpired,
+  summonNow,
   summonStripLine,
   visibleSummons,
 } from "../../lib/install/summons";
@@ -35,6 +37,19 @@ export function LiveSummonsStrip() {
     // already sitting on the page.
     refetchInterval: 30_000,
   });
+  // Whose day is it? The database's. Every summon's created_at is stamped by
+  // the server, so the one-day rule is read against the server's clock,
+  // measured once as an offset from this phone's (clockSkew.ts, the same
+  // precedent as the 30-day trash countdown). A handset whose date has
+  // drifted must never hide a live call for hands from the one person
+  // standing next to the window — until the offset is known, nothing is
+  // treated as expired.
+  const skew = useQuery({
+    queryKey: ["clockSkewMs"],
+    queryFn: async () => clockSkewMs(Date.now(), await fetchServerNowMs()),
+    staleTime: 5 * 60_000,
+  });
+  const now = summonNow(skew.data);
 
   // A declined row leaves the screen on the tap, not on the refetch — a
   // phone on bad signal must not leave the summon sitting there looking
@@ -60,7 +75,7 @@ export function LiveSummonsStrip() {
     },
   });
 
-  const rows = visibleSummons(live.data ?? [], me.data?.id).filter(
+  const rows = visibleSummons(live.data ?? [], me.data?.id, now).filter(
     (s) => !dismissed.includes(s.id),
   );
   if (rows.length === 0) return null;
@@ -72,7 +87,7 @@ export function LiveSummonsStrip() {
         const answered = iAnswered(s, me.data?.id);
         // Only your own expired call survives the visibility rule, and it is
         // a record of what happened, not a call anyone can still answer.
-        const expired = summonExpired(s.created_at);
+        const expired = summonExpired(s.created_at, now);
         const open = s.status === "open" && !expired;
         return (
           <div
@@ -110,7 +125,7 @@ export function LiveSummonsStrip() {
                         ? "SUMMON"
                         : "Summon covered"}
                 </strong>{" "}
-                <span>{summonStripLine(s, mine)}</span>
+                <span>{summonStripLine(s, mine, now)}</span>
               </span>
               {open && !mine && !answered && (
                 <span className="button-like active-pill" aria-hidden>
