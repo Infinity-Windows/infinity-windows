@@ -24,13 +24,18 @@ import { pushToast } from "../../lib/toast";
 import { formatApiError } from "../../lib/errors";
 import { listLocations, listProjects } from "../../lib/api";
 import {
+  downloadPlanset,
   getMyProfile,
   listMarkSpecs,
   listOpenings,
   listPlanOutlines,
+  listPlansets,
   registerCustomMark,
   savePlanOutline,
 } from "../../lib/install/api";
+import { loadPdf, extractSheetTextLines } from "../../lib/install/pdf";
+import { renderPageJpeg } from "../../lib/install/renderSpecImages";
+import { detectPageStories } from "../../lib/fitview/storyDetect";
 import { isForemanPlus } from "../../lib/install/types";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { listOpeningPhases } from "../../lib/install/phases";
@@ -85,7 +90,8 @@ import { indexSpecsByMark, specForOpeningCode } from "../../lib/install/specs";
 import { UnitBuilder } from "../../components/studio/UnitBuilder";
 import { StudioAssistCard } from "../../components/studio/StudioAssistCard";
 import { FlatElevationsView } from "../../components/studio/FlatElevationsView";
-import { buildFitviewModelFromStudio, type PublishStats } from "../../lib/modelstudio/toFitview";
+import { buildFitviewModelFromStudio, outerPolygons, type PublishStats } from "../../lib/modelstudio/toFitview";
+import { storyUnderlayTransform, tracePolysForStory } from "../../lib/modelstudio/planUnderlay";
 import { isStudioTooNarrow } from "../../lib/modelstudio/studioWidthGate";
 import {
   buildCustomMarkRegistrationPayload,
@@ -412,6 +418,13 @@ export function ModelStudio({ source }: { source: StudioSource }) {
    * the vendor, the rest render as shells. */
   const floorsRef = useRef<string[]>([]);
   const [floorInfo, setFloorInfo] = useState({ count: 1, active: 0 });
+  // Plan underlay (owner: "draw walls... see the plans faintly behind this
+  // view... a better version of trace walls"): the toggle stays plain
+  // React state, remembered only for this page visit — defaults ON the
+  // FIRST time Draw walls is opened (setMode below), never re-forced after
+  // that so a deliberate off stays off.
+  const [plansOn, setPlansOn] = useState(false);
+  const plansDefaultedRef = useRef(false);
   const shellsRef = useRef<unknown[]>([]);
   /** Building-wide roof choice (Studio 100x #49) + the mesh it builds. The
    * ref mirrors the state for the same mount-time-closure reason
@@ -607,6 +620,18 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     queryFn: () => listMarkSpecs(projectId),
     enabled: Boolean(projectId),
   });
+  // Plan underlay: the SAME building planset the tracer draws over —
+  // fetched only when there's a job to fetch it for; a standalone Studio
+  // row (no projectId) simply never has one.
+  const plansets = useQuery({
+    queryKey: ["plansets", projectId],
+    queryFn: () => listPlansets(projectId),
+    enabled: Boolean(projectId),
+  });
+  const buildingPlanset = useMemo(
+    () => (plansets.data ?? []).find((p) => p.kind === "building") ?? plansets.data?.[0] ?? null,
+    [plansets.data],
+  );
 
   // Studio live overlays (owner-approved recs #1,3,4,5,6,17,19): the SAME
   // rows the map, Dispatch and the warehouse hub already fetch, under the
@@ -767,6 +792,54 @@ export function ModelStudio({ source }: { source: StudioSource }) {
     () => (outline ? humanTraceModel(outline.features) : null),
     [outline],
   );
+
+  // Plan underlay: the building planset's page for the ACTIVE floor's
+  // story, rendered the same way MapsTrace renders its own background —
+  // same helper, same defaults, so the trace's stored pixel coordinates
+  // still describe this render. Only fetched while the toggle is actually
+  // on (a full-doc render is not free) and re-fetched per floor since a
+  // different story usually means a different sheet.
+  const planUnderlayImage = useQuery({
+    queryKey: ["planUnderlayImage", buildingPlanset?.id, floorInfo.active],
+    enabled: Boolean(buildingPlanset) && Boolean(traceModel) && plansOn,
+    staleTime: Infinity,
+    queryFn: async () => {
+      const bytes = await downloadPlanset(buildingPlanset!);
+      const doc = await loadPdf(bytes);
+      // Sheet titles say which story each page shows (same reading the
+      // tracer itself uses for Auto-place) — when nothing resolves, page 1
+      // stands, the same fallback the tracer's own boot uses.
+      let page = 1;
+      try {
+        const lines = await extractSheetTextLines(doc);
+        const byPage = new Map<number, string[]>();
+        for (const l of lines) {
+          if (!byPage.has(l.pageNumber)) byPage.set(l.pageNumber, []);
+          byPage.get(l.pageNumber)!.push(l.text);
+        }
+        const detection = detectPageStories(
+          [...byPage.entries()].map(([pageNumber, ls]) => ({ pageNumber, lines: ls })),
+        );
+        const story = floorInfo.active + 1;
+        const hit = detection.pages.find(
+          (p) => p.story === story || (p.range && story >= p.range[0] && story <= p.range[1]),
+        );
+        if (hit) page = hit.pageNumber;
+      } catch {
+        /* a raster set with no text layer detects nothing — page 1 stands */
+      }
+      page = Math.min(Math.max(1, page), doc.numPages);
+      const url = await renderPageJpeg(doc, page);
+      const img = new Image();
+      await new Promise<void>((res, rej) => {
+        img.onload = () => res();
+        img.onerror = () => rej(new Error("plan image failed to decode"));
+        img.src = url;
+      });
+      return { img };
+    },
+  });
+
   const seed = useMemo(() => {
     const src = traceModel ? authoredJob : plansJob ?? authoredJob;
     return src ? buildStudioSeed(src as never) : null;
@@ -1148,6 +1221,12 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   const setMode = (m: number) => {
     bpRef.current?.floorplanner?.setMode(m);
     setModeState(m);
+    // Plan underlay: default ON the first time this session opens Draw
+    // walls (owner spec) — once, so a later deliberate toggle-off sticks.
+    if (m === floorplannerModes.DRAW && traceModel && !plansDefaultedRef.current) {
+      plansDefaultedRef.current = true;
+      setPlansOn(true);
+    }
   };
 
   /** #40: persist the snap choice and write it straight to the vendor. */
@@ -1737,6 +1816,47 @@ export function ModelStudio({ source }: { source: StudioSource }) {
 
   const activeFloorRef = useRef(0);
 
+  /**
+   * Plan underlay (owner: "draw walls... see the plans faintly behind this
+   * view... a better version of trace walls"): fit trace-poly -> plan-cm
+   * for the ACTIVE floor's story and hand the vendor canvas an image +
+   * transform to draw beneath everything else. Flushes the live floor into
+   * floorsRef first, so a wall dragged moments ago is read rather than a
+   * stale snapshot from the last save/switch. Clears the underlay — never
+   * throws — when the toggle is off, the image hasn't loaded yet, or this
+   * floor's trace and model footprints no longer line up: a faint
+   * background reference is worth skipping, never worth a crash.
+   */
+  const rebuildPlanUnderlay = () => {
+    const bp = bpRef.current;
+    const fp = bp?.floorplanner;
+    if (!fp) return;
+    const img = planUnderlayImage.data?.img;
+    const trace = traceModel?.building.trace;
+    const active = activeFloorRef.current;
+    const tracePolys = plansOn && img && trace ? tracePolysForStory(trace, active) : null;
+    if (!tracePolys) {
+      fp.view.planUnderlay = null;
+      fp.view.draw();
+      return;
+    }
+    floorsRef.current[active] = bp!.model.exportSerialized();
+    const { walls } = parseFloorLite(floorsRef.current[active]);
+    const like = walls.map((w) => ({
+      height: w.height,
+      getStartX: () => w.x1,
+      getStartY: () => w.y1,
+      getEndX: () => w.x2,
+      getEndY: () => w.y2,
+    }));
+    const modelPolysCm = outerPolygons(like).map((mass) =>
+      mass.poly.map((p) => ({ x: p.x * 100, y: p.z * 100 })),
+    );
+    const transform = storyUnderlayTransform(tracePolys, modelPolysCm);
+    fp.view.planUnderlay = transform ? { image: img!, transform, opacity: 0.25 } : null;
+    fp.view.draw();
+  };
+
   /** Shells + lids for the frozen floors, and the 2D ghost of the floor
    * below. The active floor edits at y=0, so shells sit RELATIVE to it —
    * the floor below's ceiling is the ground you build on. */
@@ -1764,7 +1884,16 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       fp.view.draw();
     }
     refreshRoofMesh();
+    rebuildPlanUnderlay();
   };
+
+  // Plan underlay: recompute on a toggle flip or once the page image
+  // finishes loading — floor switches/adds/deletes already call
+  // rebuildPlanUnderlay via rebuildFloorContext above.
+  useEffect(() => {
+    rebuildPlanUnderlay();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plansOn, planUnderlayImage.data, traceModel]);
 
   /**
    * Rebuild the roof cap (Studio 100x #49) — cheap (touches only the top
@@ -4210,6 +4339,21 @@ export function ModelStudio({ source }: { source: StudioSource }) {
                   onClick={() => bpRef.current && zoomPlan(bpRef.current, 1 / 1.35)}>−</button>
                 <button className="button-like studio-mini"
                   onClick={() => bpRef.current && fitPlan(bpRef.current)}>Fit</button>
+                {traceModel && (
+                  <button
+                    type="button"
+                    className={
+                      plansOn
+                        ? "button-like studio-mini active-pill"
+                        : "button-like studio-mini"
+                    }
+                    aria-pressed={plansOn}
+                    title="Show the real plan sheet, faintly, behind the walls"
+                    onClick={() => setPlansOn((v) => !v)}
+                  >
+                    {plansOn ? "Plans: on" : "Plans: off"}
+                  </button>
+                )}
               </>
             )}
             {view === "model" && (

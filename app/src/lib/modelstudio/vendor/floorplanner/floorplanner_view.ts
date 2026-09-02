@@ -101,9 +101,24 @@ export class FloorplannerView {
   // the page; cm plan coordinates, same space as walls.
   public underlayWalls: Array<{ x1: number; y1: number; x2: number; y2: number }> | null = null
 
+  // infinity (studio-plan-underlay, 2026-09-01): the real plan sheet,
+  // faintly, behind the walls being drawn — "a better version of trace
+  // walls" (owner). `image` is a rendered planset page; `transform` maps
+  // its PIXEL space into plan CENTIMETRES (fit by planUnderlay.ts from the
+  // trace's own footprint corners — the image and the wall grid don't
+  // share a coordinate system on their own). Set by the page; draw()-only,
+  // so it never affects hit-testing or wall snapping.
+  public planUnderlay: {
+    image: HTMLImageElement
+    transform: { a: number; b: number; c: number; d: number; tx: number; ty: number }
+    opacity: number
+  } | null = null
+
   /** */
   public draw() {
     this.context.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height)
+
+    this.drawPlanUnderlay()
 
     this.drawGrid()
 
@@ -148,6 +163,35 @@ export class FloorplannerView {
     this.floorplan.getWalls().forEach((wall) => {
       this.drawWallLabels(wall)
     })
+  }
+
+  // infinity (studio-plan-underlay): draw the plan image via ONE composed
+  // canvas transform (image pixels -> plan cm -> screen pixels) rather than
+  // computing a destination rect, so an affine with rotation/shear still
+  // lands right, not just a pure scale. convertX/convertY are each a
+  // one-axis scale+offset (no rotation — confirmed in floorplanner.ts), so
+  // two probe points recover today's pan/zoom without reaching into the
+  // viewmodel's private fields.
+  private drawPlanUnderlay() {
+    const u = this.planUnderlay
+    if (!u || !u.image.complete || u.image.naturalWidth === 0) return
+    const originX = this.viewmodel.convertX(0)
+    const pxPerCmX = this.viewmodel.convertX(1) - originX
+    const originY = this.viewmodel.convertY(0)
+    const pxPerCmY = this.viewmodel.convertY(1) - originY
+    const t = u.transform
+    this.context.save()
+    this.context.globalAlpha = u.opacity
+    this.context.setTransform(
+      pxPerCmX * t.a,
+      pxPerCmY * t.c,
+      pxPerCmX * t.b,
+      pxPerCmY * t.d,
+      pxPerCmX * t.tx + originX,
+      pxPerCmY * t.ty + originY
+    )
+    this.context.drawImage(u.image, 0, 0)
+    this.context.restore()
   }
 
   /** */
