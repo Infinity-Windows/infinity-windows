@@ -280,7 +280,7 @@ function markTourSeen(): void {
 const TOUR_STEPS: { title: string; body: string }[] = [
   {
     title: "Draw a wall",
-    body: "Open Tools, tap Draw walls, then click corner to corner on the 2D plan to trace the building.",
+    body: "Open Tools, tap Draw walls, then press and drag — or click corner to corner — on the 2D plan to trace the building.",
   },
   {
     title: "Drop a window",
@@ -4359,7 +4359,12 @@ export function ModelStudio({ source }: { source: StudioSource }) {
             {view === "model"
               ? "drag to orbit · right-drag to pan · double-click to focus · tap to edit"
               : view === "plan"
-                ? "drag walls & corners · drag empty space to pan"
+                ? // infinity (studio-trace-mode-obvious, 2026-09-01): drag-to-draw
+                  // (#466) existed with no hint anywhere it could be found —
+                  // name the gesture outright while Draw walls is the active tool.
+                  (mode === floorplannerModes.DRAW
+                    ? "press and drag to draw a wall · click corner to corner also works · corners square up within 5° · Plans: on shows the sheet"
+                    : "drag walls & corners · drag empty space to pan")
                 : "scroll to see every wall · drag a window or door to move it · tap to edit"}
           </span>
           <span className="row-gap" style={{ marginLeft: "auto" }}>
