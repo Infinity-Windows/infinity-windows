@@ -182,6 +182,16 @@ export class FloorplannerView {
     const t = u.transform
     this.context.save()
     this.context.globalAlpha = u.opacity
+    // infinity (2026-09-01, Mad Moose real-plan fix): a real architectural
+    // sheet is near-white paper with black/gray linework — plain
+    // source-over at low alpha barely tints the cream grid background
+    // ("not even a faint sheet" was the exact complaint on a REAL plan; the
+    // #488 e2e never caught this because its stub PDF page had no content
+    // stream at all). 'multiply' leaves white paper untouched (white * cream
+    // = cream) and darkens proportionally wherever the sheet actually drew
+    // something, so the linework reads without the page itself dimming the
+    // grid underneath it.
+    this.context.globalCompositeOperation = 'multiply'
     this.context.setTransform(
       pxPerCmX * t.a,
       pxPerCmY * t.c,

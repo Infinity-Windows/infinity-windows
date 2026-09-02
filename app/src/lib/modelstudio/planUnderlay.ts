@@ -131,17 +131,35 @@ function ringArea(ring: Pt[]): number {
   return Math.abs(area) / 2;
 }
 
+/** A ring's axis-aligned bounding box, as its own 4-corner ring (already in
+ * canonicalRing's lowest-x/lowest-y, positive-winding form — a bbox never
+ * needs reversing or rotating to get there). Used only as a fallback: cruder
+ * than the real shape, but every ring has one, so two rings that can't be
+ * paired corner-for-corner can still be paired corner-for-corner AS boxes. */
+function bboxRing(ring: Pt[]): Pt[] {
+  const xs = ring.map((p) => p.x);
+  const ys = ring.map((p) => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  return [
+    { x: minX, y: minY },
+    { x: maxX, y: minY },
+    { x: maxX, y: maxY },
+    { x: minX, y: maxY },
+  ];
+}
+
 /**
  * The transform from a trace's stored footprint (sheet pixels, one or more
  * closed masses) onto a Studio floor's CURRENT footprint (plan cm, same
  * shape read via `outerPolygons`) — corner-for-corner correspondence after
  * canonicalizing each ring, least-squares fit through every pair at once.
  * Masses are matched by sorted position, not input order, since neither
- * side's array order is guaranteed to agree with the other's. Null when the
- * two footprints don't actually match up (a mass whose corner count changed
- * since the seed — a wall added or merged has no trustworthy per-corner
- * correspondence left) — the caller's job is to skip the underlay quietly,
- * never to guess.
+ * side's array order is guaranteed to agree with the other's. Null when
+ * there is truly nothing to align (no masses on either side, or a mass
+ * whose bounding box itself can't fit — the caller's job is to skip the
+ * underlay quietly, never to guess) — every other mismatch degrades to a
+ * cruder fit rather than refusing outright, per below.
  *
  * A traced story can carry interior partitions as their own closed rings —
  * the tracer lets a surveyor draw whatever they see — that `outerPolygons`
@@ -154,7 +172,14 @@ function ringArea(ring: Pt[]): number {
  * model's count, rather than refusing the whole underlay outright. The
  * reverse (model has more masses than the trace) has no such reading — the
  * model can't have grown a building the trace never saw — so that still
- * refuses below.
+ * refuses.
+ *
+ * Within one surviving mass pair, a corner count that no longer matches (a
+ * wall added or merged since the seed leaves no trustworthy per-corner
+ * correspondence) falls back to that mass's bounding box on BOTH sides — a
+ * coarser fit (position + rough scale, not the exact shape) beats no fit at
+ * all, and is exactly as honest as it looks: a slightly-off alignment, not
+ * a hidden guess.
  */
 export function storyUnderlayTransform(
   tracePolys: Pt[][],
@@ -175,9 +200,12 @@ export function storyUnderlayTransform(
 
   const pairs: { from: Pt; to: Pt }[] = [];
   for (let m = 0; m < traceMasses.length; m++) {
-    const tr = traceMasses[m];
-    const mo = modelMasses[m];
-    if (tr.length !== mo.length) return null;
+    let tr = traceMasses[m];
+    let mo = modelMasses[m];
+    if (tr.length !== mo.length) {
+      tr = bboxRing(tr);
+      mo = bboxRing(mo);
+    }
     for (let i = 0; i < tr.length; i++) pairs.push({ from: tr[i], to: mo[i] });
   }
   return fitAffine(pairs);

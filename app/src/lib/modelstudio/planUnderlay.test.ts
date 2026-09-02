@@ -173,9 +173,47 @@ describe("storyUnderlayTransform", () => {
     expect(fit).not.toBeNull(); // the larger 4-pt exterior still wins and pairs fine
   });
 
-  it("returns null when a mass's corner count changed since the seed", () => {
-    const extraCorner = [...modelPoly, { x: 0, y: 0 }];
-    expect(storyUnderlayTransform([tracePoly], [extraCorner])).toBeNull();
+  it("falls back to a bounding-box fit when a mass's corner count changed since the seed", () => {
+    // A wall added since the seed: the model mass now has a 5th corner
+    // that pushes its footprint wider than tracePoly's own corners
+    // describe — no exact per-corner correspondence exists any more, but
+    // the two bounding boxes still describe the same building well enough
+    // to place the sheet roughly right, rather than not at all.
+    const widened = [...modelPoly, { x: 200, y: 0 }]; // model bbox x: -120..120 -> -120..200
+    const fit = storyUnderlayTransform([tracePoly], [widened])!;
+    expect(fit).not.toBeNull();
+    // Checked against bboxRing's own corner order (lowest-x/lowest-y
+    // first) rather than a hardcoded recovered scale.
+    const traceBox: Pt[] = [
+      { x: 100, y: 300 },
+      { x: 500, y: 300 },
+      { x: 500, y: 700 },
+      { x: 100, y: 700 },
+    ];
+    const modelBox: Pt[] = [
+      { x: -120, y: -120 },
+      { x: 200, y: -120 },
+      { x: 200, y: 120 },
+      { x: -120, y: 120 },
+    ];
+    for (let i = 0; i < traceBox.length; i++) {
+      const got = applyAffine(fit, traceBox[i]);
+      expect(got.x).toBeCloseTo(modelBox[i].x, 6);
+      expect(got.y).toBeCloseTo(modelBox[i].y, 6);
+    }
+  });
+
+  it("still returns null when even the bounding boxes can't fit (a genuinely degenerate mass)", () => {
+    // A flat, collinear "ring" (every point on one line) has no 2D spread
+    // for its bounding box either — the fallback is cruder, not magic.
+    const flat: Pt[] = [
+      { x: 100, y: 300 },
+      { x: 200, y: 300 },
+      { x: 300, y: 300 },
+      { x: 400, y: 300 },
+      { x: 500, y: 300 },
+    ];
+    expect(storyUnderlayTransform([flat], [modelPoly])).toBeNull();
   });
 
   it("returns null with no masses", () => {

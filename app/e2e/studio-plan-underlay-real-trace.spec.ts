@@ -196,7 +196,10 @@ test.describe("Studio plan underlay, real Mad Moose trace (desktop)", () => {
       const fp = bp.floorplanner;
       const u = fp.view.planUnderlay;
       const t = u.transform;
-      const vm = fp.viewmodel;
+      // floorplanner_view.ts's drawPlanUnderlay calls convertX/convertY on
+      // "viewmodel" — which is the Floorplanner instance itself (`fp`), the
+      // second constructor arg FloorplannerView stores under that name; the
+      // methods live directly on `fp`, not on some nested `fp.viewmodel`.
       const corners = [
         { x: 0, y: 0 },
         { x: u.image.naturalWidth, y: 0 },
@@ -205,7 +208,7 @@ test.describe("Studio plan underlay, real Mad Moose trace (desktop)", () => {
       ].map((p) => {
         const cmX = t.a * p.x + t.b * p.y + t.tx;
         const cmY = t.c * p.x + t.d * p.y + t.ty;
-        return { x: vm.convertX(cmX), y: vm.convertY(cmY) };
+        return { x: fp.convertX(cmX), y: fp.convertY(cmY) };
       });
       const canvas = document.getElementById("studio-floorplan") as HTMLCanvasElement;
       return {

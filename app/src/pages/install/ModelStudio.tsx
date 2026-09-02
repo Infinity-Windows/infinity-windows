@@ -1853,7 +1853,12 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       mass.poly.map((p) => ({ x: p.x * 100, y: p.z * 100 })),
     );
     const transform = storyUnderlayTransform(tracePolys, modelPolysCm);
-    fp.view.planUnderlay = transform ? { image: img!, transform, opacity: 0.25 } : null;
+    // 0.45, not #488's original 0.25: paired with the vendor canvas's
+    // 'multiply' compositing (floorplanner_view.ts), white paper still
+    // vanishes into the cream grid — this only controls how dark the
+    // sheet's actual linework reads, and 0.25 read as barely-there on a
+    // real scanned/vector plan sheet.
+    fp.view.planUnderlay = transform ? { image: img!, transform, opacity: 0.45 } : null;
     fp.view.draw();
   };
 
