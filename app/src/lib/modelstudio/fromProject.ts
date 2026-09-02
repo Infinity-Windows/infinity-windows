@@ -494,11 +494,18 @@ export function buildStudioPull(
     readWindows.flatMap((w) => [normalizeMarkCode(w.id), markKeyOf(w.id)]),
   );
   const unpinnedMarks = specs
-    .filter(
-      (s) =>
-        !pinnedMarks.has(s.mark_code.toUpperCase()) &&
-        !readKeys.has(normalizeMarkCode(s.mark_code)),
-    )
+    .filter((s) => {
+      // Pinned-ness by the SAME rule the read filter above uses: the
+      // spec's own normalized mark against the pinned IDS, and against the
+      // pinned BASES only when the mark is itself a base (so spec "16" is
+      // covered by a pinned "16-1", while spec "Add-2" is not covered by a
+      // pinned "Add-1" and still gets its guess). The old check compared
+      // the raw upper-cased code against the base set alone, which a
+      // suffixed spec code can never match — a pinned "Add-1" got a spread
+      // guess on top of its real pin and the unit was placed twice.
+      const norm = normalizeMarkCode(s.mark_code);
+      return !pinnedIds.has(norm) && !pinnedMarks.has(norm) && !readKeys.has(norm);
+    })
     .map((s) => ({
       spec: s,
       config: catalogByMark.get(markKeyOf(s.mark_code)) ?? specToUnitConfig(s),

@@ -689,14 +689,35 @@ describe("buildStudioPull", () => {
         { walls: STUDIO_WALLS, floorIndex: 0 },
         readModel() as never,
       );
-      // The pinned copy lands from its pin; the read path never adds one.
-      const pinned = out.placements.filter((p) => p.itemName === "Add-1" && !p.fromSpec);
+      // The pinned copy lands from its pin, ONCE — the read path never
+      // adds one, and neither does the spread (which used to, because it
+      // compared a suffixed spec code against BASE marks and never matched).
+      const pinned = out.placements.filter((p) => p.itemName === "Add-1");
       expect(pinned).toHaveLength(1);
       expect(pinned[0].fromRead).toBeUndefined();
+      expect(pinned[0].fromSpec).toBeUndefined();
       expect(out.placements.filter((p) => p.fromRead).map((p) => p.itemName)).toEqual([
         "Add-2",
         "Add-3",
       ]);
+    });
+
+    it("a pinned Add is placed once, and its siblings still get their guess", () => {
+      // No read model at all: Add-1 is pinned on the plans, Add-2 and Add-3
+      // are not. Add-1 must not ALSO be guessed into the spread, and the
+      // other two must not be dropped from it just because markKeyOf folds
+      // all three onto the one base mark "ADD".
+      const out = buildStudioPull(
+        plansJob([{ id: "Add-1", elev: "s0", x: 2, y: 0.03, w: 3288, h: 2425 }]) as never,
+        addSpecs,
+        new Set(),
+        new Map(),
+        { walls: STUDIO_WALLS, floorIndex: 0 },
+      );
+      expect(out.placements.map((p) => p.itemName)).toEqual(["Add-1", "Add-2", "Add-3"]);
+      expect(out.placements[0].fromSpec).toBeUndefined();
+      expect(out.placements[1].fromSpec).toBe(true);
+      expect(out.placements[2].fromSpec).toBe(true);
     });
 
     it("with no studio frame, a read Add sits at the read model's own coordinates", () => {
