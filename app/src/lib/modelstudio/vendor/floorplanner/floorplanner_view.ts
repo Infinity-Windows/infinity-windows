@@ -21,6 +21,13 @@ const gridColor = '#f1f1f1'
 
 // room config
 const roomColor = '#f9f9f9'
+// infinity (studio-plans-through-floor, 2026-09-01, owner: "let the plans
+// show through the floor"): the opaque roomColor fill above blanked out
+// the sheet everywhere INSIDE the building — exactly where interior walls
+// get drawn. Used instead of roomColor whenever the plan underlay is
+// active (see draw()'s underlayIsActive() check); same hue, low alpha,
+// so a room still reads as a room without hiding what's under it.
+const roomColorOverPlan = 'rgba(249, 249, 249, 0.15)'
 
 // wall config
 const wallWidth = 5
@@ -136,8 +143,14 @@ export class FloorplannerView {
       }
     }
 
+    // infinity (studio-plans-through-floor, 2026-09-01): the plan sheet is
+    // the bottom layer (drawPlanUnderlay above); the room fill used to be
+    // opaque and blanked it out everywhere inside the building. When the
+    // sheet is actually on screen, fill low-alpha instead so it reads
+    // through — see roomColorOverPlan's own comment.
+    const overPlan = this.activeUnderlay() !== null
     this.floorplan.getRooms().forEach((room) => {
-      this.drawRoom(room)
+      this.drawRoom(room, overPlan)
     })
 
     this.floorplan.getWalls().forEach((wall) => {
@@ -165,6 +178,16 @@ export class FloorplannerView {
     })
   }
 
+  // infinity (studio-plans-through-floor, 2026-09-01): the resolved
+  // planUnderlay only when it's actually ready to paint — same guard
+  // drawPlanUnderlay always used inline, now shared with draw()'s room-fill
+  // decision so the two can never disagree about whether there's a sheet
+  // to show through.
+  private activeUnderlay(): FloorplannerView['planUnderlay'] {
+    const u = this.planUnderlay
+    return u && u.image.complete && u.image.naturalWidth !== 0 ? u : null
+  }
+
   // infinity (studio-plan-underlay): draw the plan image via ONE composed
   // canvas transform (image pixels -> plan cm -> screen pixels) rather than
   // computing a destination rect, so an affine with rotation/shear still
@@ -173,8 +196,8 @@ export class FloorplannerView {
   // two probe points recover today's pan/zoom without reaching into the
   // viewmodel's private fields.
   private drawPlanUnderlay() {
-    const u = this.planUnderlay
-    if (!u || !u.image.complete || u.image.naturalWidth === 0) return
+    const u = this.activeUnderlay()
+    if (!u) return
     const originX = this.viewmodel.convertX(0)
     const pxPerCmX = this.viewmodel.convertX(1) - originX
     const originY = this.viewmodel.convertY(0)
@@ -297,8 +320,10 @@ export class FloorplannerView {
     )
   }
 
-  /** */
-  private drawRoom(room: Room) {
+  // infinity (studio-plans-through-floor, 2026-09-01): overPlan swaps in
+  // roomColorOverPlan (low alpha) — see draw()'s underlayIsActive() call
+  // and roomColorOverPlan's own comment.
+  private drawRoom(room: Room, overPlan: boolean) {
     this.drawPolygon(
       Utils.map(room.corners, (corner: Corner) => {
         return this.viewmodel.convertX(corner.x)
@@ -307,7 +332,7 @@ export class FloorplannerView {
         return this.viewmodel.convertY(corner.y)
       }),
       true,
-      roomColor
+      overPlan ? roomColorOverPlan : roomColor
     )
   }
 
