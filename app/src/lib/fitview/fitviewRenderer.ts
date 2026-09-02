@@ -1428,11 +1428,31 @@ export function mountFitView(host, job, shim) {
     var map = document.createElement("div");
     map.className = "flat-minimap";
     map.setAttribute("aria-hidden", "true");
+    // Wave W follow-up (2026-09-01): interior walls are ordinary panels in
+    // the strip, but this outline drew exterior polygon edges only — so the
+    // you-are-here highlight below, which matches lines by data-geo, had no
+    // line to land on when an interior wall took the centre (its chip and
+    // label lit, the map stayed dark). Draw them too: one line per PHYSICAL
+    // wall (the deduped groups above), geo straight off the group so the
+    // match can never drift, dashed-thin (fitview.css) so the solid
+    // silhouette still reads as the outside of the building.
+    var interiorGroups = groups.filter(function (g) {
+      return g.entries[0] && g.entries[0].interior;
+    });
     var polys = FOOT && FOOT.length ? FOOT : [];
     if (polys.length && polys[0].length >= 3) {
       var minx = Infinity, minz = Infinity, maxx = -Infinity, maxz = -Infinity;
       polys.forEach(function (fp) {
         fp.forEach(function (pt) {
+          if (pt.x < minx) minx = pt.x; if (pt.x > maxx) maxx = pt.x;
+          if (pt.z < minz) minz = pt.z; if (pt.z > maxz) maxz = pt.z;
+        });
+      });
+      // A free-standing wall may stand outside every footprint; keep it in
+      // the bounds or its line lands off the viewBox, invisible.
+      interiorGroups.forEach(function (g) {
+        var e = g.entries[0];
+        [{ x: e.x1, z: e.z1 }, { x: e.x2, z: e.z2 }].forEach(function (pt) {
           if (pt.x < minx) minx = pt.x; if (pt.x > maxx) maxx = pt.x;
           if (pt.z < minz) minz = pt.z; if (pt.z > maxz) maxz = pt.z;
         });
@@ -1451,6 +1471,11 @@ export function mountFitView(host, job, shim) {
           svg += '<line data-geo="' + geo + '" x1="' + toX(a.x) + '" y1="' + toZ(a.z) +
                  '" x2="' + toX(b.x) + '" y2="' + toZ(b.z) + '" />';
         }
+      });
+      interiorGroups.forEach(function (g) {
+        var e = g.entries[0];
+        svg += '<line class="interior" data-geo="' + g.geo + '" x1="' + toX(e.x1) +
+               '" y1="' + toZ(e.z1) + '" x2="' + toX(e.x2) + '" y2="' + toZ(e.z2) + '" />';
       });
       svg += "</svg>";
       map.innerHTML = svg + '<div class="flat-minimap-label"></div>' + roseHTML(NORTH_DEG);
