@@ -80,6 +80,34 @@ jobs:
       - name: Test scripts/lib/supabase-key.mjs
         run: node scripts/supabase-key.test.mjs
 
+      # The seed scripts. Each one WRITES to a real job with the service key
+      # when someone runs the "Run seed script" workflow, and the rules that
+      # decide which rows they refuse to touch — a confirmed row, a row the
+      # owner already put right, a sheet that turns out to be a different
+      # edition — live in a pure lib exactly so they can be checked here. Until
+      # now nothing ran these but a person remembering to. Offline: no
+      # database, no key, no network.
+      - name: Test the Mad Moose spec repair
+        run: node scripts/seed-madmoose-specs-repair.test.mjs
+
+      - name: Test the Mad Moose fit-view seed
+        run: node scripts/seed-madmoose-fitview.test.mjs
+
+      - name: Test the BLACK22 fit-view seed
+        run: node scripts/seed-black22-fitview.test.mjs
+
+      # And the check that keeps this list honest: a test in scripts/ that no
+      # step above names is a test nobody runs.
+      - name: Test that CI runs every script test
+        run: node scripts/ci-runs-script-tests.test.mjs
+
+      # Whether every active job still has its two staging bays. The check
+      # itself runs on a schedule against live rows; this is the test of the
+      # check. Stubs psql; no database, no token.
+      - name: Test scripts/verify-staging-bays.sh
+        shell: bash
+        run: scripts/verify-staging-bays.test.sh
+
       # Where the nightly vault sync puts its output. Uses a local bare repo as
       # the remote, so it pushes nothing anywhere real.
       - name: Test scripts/publish-vault.sh
@@ -144,6 +172,13 @@ jobs:
 
       - name: Test the function-secret enumerator
         run: python3 scripts/test_function_secrets.py
+
+      # The partner wall, replayed from the migrations rather than from a list
+      # written on the day it landed — so a future migration that grants a new
+      # table to `authenticated` without the guard fails here, on its own PR,
+      # instead of showing a builder another builder's job.
+      - name: Test the partner wall
+        run: python3 scripts/test_partner_wall.py
 
       # The misnamed-key check gives ADVICE to a human, so crying wolf is its
       # real failure mode: one wrong suggestion and nobody reads it again. The
