@@ -2,7 +2,17 @@
 // two-man-lift rule that drives the declinable install-start prompt.
 
 import { describe, expect, it } from "vitest";
-import { iAnswered, sizeSuggestsSummon, summonEtaLine, summonHelperMinutes, summonStripLine } from "./summons";
+import {
+  SUMMON_LIFETIME_MS,
+  iAnswered,
+  sizeSuggestsSummon,
+  summonEtaLine,
+  summonExpired,
+  summonHelperMinutes,
+  summonStripLine,
+  visibleSummons,
+  type Summon,
+} from "./summons";
 
 describe("summonHelperMinutes", () => {
   const t0 = Date.parse("2026-08-14T10:00:00Z");
@@ -164,5 +174,90 @@ describe("canceled helpers", () => {
     expect(iAnswered(s, "dave")).toBe(false);
     expect(iAnswered(s, "maria")).toBe(false);
     expect(iAnswered(s, null)).toBe(false);
+  });
+});
+
+// A day and it's over, and a decline takes the row off your screen (owner
+// ask, 2026-09-02): "I should have the option to say Decline so that it goes
+// off of my screen. That way I don't have these summons piled up. A summons
+// should expire 1 day after the user sends the summons."
+
+const NOW = Date.parse("2026-09-02T13:00:00Z");
+
+function summonRow(over: Partial<Summon> = {}): Summon {
+  return {
+    id: "s1",
+    project_id: "p1",
+    opening_id: "o1",
+    requested_by: "marcus",
+    needed: 3,
+    status: "open",
+    created_at: new Date(NOW - 60 * 60_000).toISOString(),
+    closed_at: null,
+    ...over,
+  };
+}
+
+describe("summonExpired", () => {
+  it("an hour-old call is still live", () => {
+    expect(summonExpired(new Date(NOW - 60 * 60_000).toISOString(), NOW)).toBe(false);
+  });
+
+  it("exactly a day old is still live — the server uses the same < boundary", () => {
+    expect(summonExpired(new Date(NOW - SUMMON_LIFETIME_MS).toISOString(), NOW)).toBe(false);
+  });
+
+  it("one millisecond past a day is over", () => {
+    expect(summonExpired(new Date(NOW - SUMMON_LIFETIME_MS - 1).toISOString(), NOW)).toBe(true);
+  });
+
+  it("an unreadable date never hides a call", () => {
+    expect(summonExpired("not a date", NOW)).toBe(false);
+  });
+});
+
+describe("visibleSummons", () => {
+  it("keeps a live call from someone else", () => {
+    expect(visibleSummons([summonRow()], "chris", NOW)).toHaveLength(1);
+  });
+
+  it("drops a call I declined; someone else's decline changes nothing", () => {
+    const declinedByMe = summonRow({ id: "a", declines: [{ profile_id: "chris" }] });
+    const declinedByDave = summonRow({ id: "b", declines: [{ profile_id: "dave" }] });
+    expect(visibleSummons([declinedByMe, declinedByDave], "chris", NOW).map((s) => s.id)).toEqual([
+      "b",
+    ]);
+  });
+
+  it("drops someone else's day-old call — nothing piles up", () => {
+    const stale = summonRow({ created_at: new Date(NOW - SUMMON_LIFETIME_MS - 1).toISOString() });
+    expect(visibleSummons([stale], "chris", NOW)).toHaveLength(0);
+  });
+
+  it("keeps my own expired call, so I learn nobody came", () => {
+    const mine = summonRow({
+      requested_by: "chris",
+      created_at: new Date(NOW - SUMMON_LIFETIME_MS - 1).toISOString(),
+    });
+    expect(visibleSummons([mine], "chris", NOW)).toHaveLength(1);
+  });
+
+  it("keeps my own live call too — the caller sees their own summon", () => {
+    expect(visibleSummons([summonRow({ requested_by: "chris" })], "chris", NOW)).toHaveLength(1);
+  });
+
+  it("keeps a covered call: answered is not the same as over", () => {
+    expect(visibleSummons([summonRow({ status: "covered" })], "chris", NOW)).toHaveLength(1);
+  });
+
+  it("signed out (no profile yet): live calls still show, stale ones do not", () => {
+    const stale = summonRow({
+      id: "old",
+      created_at: new Date(NOW - SUMMON_LIFETIME_MS - 1).toISOString(),
+      declines: [{ profile_id: "chris" }],
+    });
+    expect(visibleSummons([summonRow({ id: "new" }), stale], null, NOW).map((s) => s.id)).toEqual([
+      "new",
+    ]);
   });
 });

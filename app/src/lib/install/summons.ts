@@ -25,6 +25,9 @@ export interface Summon {
   project?: { job_code: string | null } | null;
   opening?: { opening_code: string | null } | null;
   helpers?: Pick<SummonHelper, "profile_id" | "completed_at" | "canceled_at">[] | null;
+  /** Who said they can't come — read so a decline can take the row off
+   * their own screen. Absent on older reads, so optional. */
+  declines?: Pick<SummonDecline, "profile_id">[] | null;
 }
 
 export interface SummonHelper {
@@ -54,7 +57,21 @@ function isMissingTableError(e: { code?: string; message?: string } | null): boo
 }
 
 const SUMMON_SELECT =
-  "*, requester:profiles!summons_requested_by_fkey(display_name), project:projects(job_code), opening:project_openings(opening_code), helpers:summon_helpers(profile_id, completed_at, canceled_at)";
+  "*, requester:profiles!summons_requested_by_fkey(display_name), project:projects(job_code), opening:project_openings(opening_code), helpers:summon_helpers(profile_id, completed_at, canceled_at), declines:summon_declines(profile_id)";
+
+/**
+ * A summon is over one day after it was sent (owner ask, 2026-09-02: "a
+ * summons should expire 1 day after the user sends the summons"). The server
+ * sweep (expire_summons, every 10 minutes) is what actually closes the row;
+ * this is the same rule read on the phone so nothing stale ever renders in
+ * the gap between sweeps.
+ */
+export const SUMMON_LIFETIME_MS = 24 * 60 * 60 * 1000;
+
+/** The oldest created_at still worth asking the server for. */
+function liveSince(now: number = Date.now()): string {
+  return new Date(now - SUMMON_LIFETIME_MS).toISOString();
+}
 
 /** Live (open/covered) summons on a job — Dispatch indicator + the sheet. */
 export async function listLiveSummons(projectId: string): Promise<Summon[]> {
@@ -63,6 +80,7 @@ export async function listLiveSummons(projectId: string): Promise<Summon[]> {
     .select(SUMMON_SELECT)
     .eq("project_id", projectId)
     .in("status", ["open", "covered"])
+    .gte("created_at", liveSince())
     .order("created_at");
   if (isMissingTableError(error)) return [];
   if (error) throw error;
@@ -73,16 +91,18 @@ export async function listLiveSummons(projectId: string): Promise<Summon[]> {
  * Every live summon on every job — the landing pages' call-for-hands strip
  * (owner ask, 2026-08-18): a live summon should find helpers where they
  * already are, My Work and Home, not only on the window's own sheet. One
- * read, no filter beyond "live": a call for hands is never quietly hidden —
- * except for a job the owner just deleted (Wave D): nobody should keep
- * getting summoned onto a job that no longer exists, so a trashed project's
- * summons are filtered out here the same as everywhere else.
+ * read: a call for hands is never quietly hidden — except for a job the
+ * owner just deleted (Wave D), since nobody should keep getting summoned
+ * onto a job that no longer exists, and except for a call that went out more
+ * than a day ago, which is over (owner ask, 2026-09-02). What each viewer
+ * then sees is `visibleSummons`, which also drops the ones they declined.
  */
 export async function listAllLiveSummons(): Promise<Summon[]> {
   const { data, error } = await supabase
     .from("summons")
     .select(SUMMON_SELECT)
     .in("status", ["open", "covered"])
+    .gte("created_at", liveSince())
     .order("created_at");
   if (isMissingTableError(error)) return [];
   if (error) throw error;
@@ -256,6 +276,54 @@ export function iAnswered(
   return (s.helpers ?? []).some(
     (h) => h.profile_id === myProfileId && !h.canceled_at,
   );
+}
+
+/**
+ * Is this call over? One day from `created_at`, matching the server rule
+ * (`created_at < now() - interval '1 day'`) exactly — a summon sent 24 hours
+ * ago on the nose is still live for that instant, one tick later it is not.
+ * Same boundary in both places, so the phone and the database never disagree
+ * about a row on screen.
+ */
+export function summonExpired(
+  createdAt: string,
+  now: number = Date.now(),
+): boolean {
+  const at = Date.parse(createdAt);
+  if (Number.isNaN(at)) return false; // unreadable date: never hide the call
+  return now - at > SUMMON_LIFETIME_MS;
+}
+
+/**
+ * What one person should actually see on their landing strip (owner ask,
+ * 2026-09-02: "I should have the option to say Decline so that it goes off
+ * of my screen. That way I don't have these summons piled up").
+ *
+ * Two things come off: a summon you declined, and a summon older than a day.
+ * One thing deliberately stays — your OWN expired call. You are the person
+ * owed an answer about it, so it holds its place reading "Expired — nobody
+ * came in a day" rather than vanishing without a word; the server sweep is
+ * what finally takes it away.
+ *
+ * Everything else stays, including summons you answered and covered ones: a
+ * call for hands is never quietly hidden.
+ */
+export function visibleSummons(
+  rows: readonly Summon[],
+  myProfileId: string | null | undefined,
+  now: number = Date.now(),
+): Summon[] {
+  return rows.filter((s) => {
+    const mine = Boolean(myProfileId) && s.requested_by === myProfileId;
+    if (
+      myProfileId &&
+      (s.declines ?? []).some((d) => d.profile_id === myProfileId)
+    ) {
+      return false;
+    }
+    if (!summonExpired(s.created_at, now)) return true;
+    return mine;
+  });
 }
 
 /**
