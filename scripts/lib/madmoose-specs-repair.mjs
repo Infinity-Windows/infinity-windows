@@ -38,36 +38,54 @@ function indexByMark(rows) {
 }
 
 /**
- * Resolve the two specs sheets this job carries at once, by the tail of their
- * storage_path.
+ * The name a stored planset was uploaded under. `uploadPlanset` stores every
+ * file at `<project id>/<timestamp>-<file name>`, so the last path segment is
+ * the name the person who uploaded it would recognise.
+ */
+function fileNameOf(path) {
+  const cut = path.lastIndexOf("/");
+  return cut === -1 ? path : path.slice(cut + 1);
+}
+
+/**
+ * Resolve the two specs sheets this job carries at once, by a fragment of
+ * their file name.
  *
  * Ids are deliberately NOT constants: a planset id is only right until someone
  * re-uploads the file, and a seed that writes drawing coordinates against a
  * stale id points every crop at the wrong window — the exact failure
  * `isDrawingStale` exists to prevent. Missing or ambiguous is a refusal, never
  * a guess: writing coordinates onto the wrong sheet is worse than writing
- * nothing. Pure; tested.
+ * nothing.
+ *
+ * A FRAGMENT, and not the tail, because a real path never ends in one. Stored
+ * names keep their extension — `uploadPlanset` refuses anything but .pdf/.dwg/
+ * .dxf — while the fragments in the fixture are the opening characters of the
+ * names as the planset list prints them, truncated and extensionless. Matching
+ * on the tail therefore found NOTHING on the live job: the first version of
+ * this seed refused to run every time, and its test hid that by handing the
+ * matcher two paths with the extension stripped off. Pure; tested.
  */
 export function resolveSpecPlansets(rows, plansets) {
-  const pick = (label, suffix) => {
+  const pick = (label, fragment) => {
     const hits = (rows ?? []).filter(
-      (r) => typeof r?.storage_path === "string" && r.storage_path.endsWith(suffix),
+      (r) => typeof r?.storage_path === "string" && fileNameOf(r.storage_path).includes(fragment),
     );
     if (hits.length === 0) {
       throw new Error(
-        `No ${label} on this project: nothing whose file path ends "${suffix}". Nothing was written.`,
+        `No ${label} on this project: no file name contains "${fragment}". Nothing was written.`,
       );
     }
     if (hits.length > 1) {
       throw new Error(
-        `${hits.length} plansets end "${suffix}" (${hits.map((h) => h.id).join(", ")}). ` +
+        `${hits.length} plansets have a file name containing "${fragment}" (${hits.map((h) => h.id).join(", ")}). ` +
           `Which one the drawings live on would be a guess, so nothing was written.`,
       );
     }
     return hits[0];
   };
-  const cu = pick("cut sheet", plansets.cu.pathSuffix);
-  const addendum = pick("addendum sheet", plansets.addendum.pathSuffix);
+  const cu = pick("cut sheet", plansets.cu.pathFragment);
+  const addendum = pick("addendum sheet", plansets.addendum.pathFragment);
   if (cu.id === addendum.id) {
     throw new Error(
       "The cut sheet and the addendum resolved to the SAME planset row — the file paths no longer tell the two sheets apart. Nothing was written.",

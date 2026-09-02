@@ -92,21 +92,51 @@ for (const [mark, entry] of Object.entries(addFill)) {
 }
 
 // --- resolving the two sheets ---------------------------------------------
+// Paths built the way uploadPlanset actually stores one — `<project id>/
+// <timestamp>-<file name>`, keeping the extension, because the upload accepts
+// nothing but pdf/dwg/dxf. The first version of this test stripped the
+// extension off the two sheets under test, which is a path no upload can
+// produce, and so never noticed that the matcher was an endsWith against a
+// fragment: on the live job it matched nothing and the seed refused every run.
+const PROJECT = "08c60cce-29f6-4b52-bd0c-2bc2c02a79a9";
+const storedPath = (stamp, fileName) =>
+  // Mirrors uploadPlanset: a timestamp, then the file name with runs of
+  // anything but word characters, dots and dashes collapsed to underscores.
+  `${PROJECT}/${stamp}-${fileName.replace(/[^\w.-]+/g, "_")}`;
 const livePlansets = [
-  { id: "planset-plans", storage_path: "proj/1756000000000-MMV2_-_LP.pdf" },
-  { id: CU, storage_path: "proj/1756000001000-MMV2_-_CU" },
-  { id: ADD, storage_path: "proj/1756700000000-MMV2A_-_C" },
+  { id: "planset-plans", storage_path: storedPath(1756000000000, "MMV2 - LOT PLANS.pdf") },
+  { id: CU, storage_path: storedPath(1756000001000, "MMV2 - CUTSHEETS.pdf") },
+  { id: ADD, storage_path: storedPath(1756700000000, "MMV2A - CADS.pdf") },
 ];
+for (const p of livePlansets) {
+  assert.ok(p.storage_path.endsWith(".pdf"), `${p.id}: a stored planset path keeps its extension`);
+}
+// The regression itself, stated plainly: neither fragment is the tail of a
+// real path, so a tail match can only ever find nothing.
+for (const key of ["cu", "addendum"]) {
+  const fragment = sheets[key].pathFragment;
+  assert.ok(
+    livePlansets.every((p) => !p.storage_path.endsWith(fragment)),
+    `${key}: the fragment is never the tail of a stored path — matching on endsWith finds nothing`,
+  );
+}
 assert.deepEqual(resolveSpecPlansets(livePlansets, sheets), {
   cu: livePlansets[1], addendum: livePlansets[2],
-}, "each sheet is found by the tail of its own path");
+}, "each sheet is found by a fragment of its own file name");
 assert.throws(() => resolveSpecPlansets([livePlansets[0], livePlansets[2]], sheets), /No cut sheet/,
   "a missing sheet is a refusal, not a guess");
 assert.throws(
-  () => resolveSpecPlansets([...livePlansets, { id: "dupe", storage_path: "x/MMV2A_-_C" }], sheets),
-  /2 plansets end/,
+  () => resolveSpecPlansets(
+    [...livePlansets, { id: "dupe", storage_path: storedPath(1756800000000, "MMV2A - CADS (1).pdf") }],
+    sheets,
+  ),
+  /2 plansets have a file name containing/,
   "two files that could both be the addendum is a refusal",
 );
+// The building sheet shares the job prefix and must never answer for either
+// specs sheet — that is the whole reason the fragments run past "MMV2".
+assert.throws(() => resolveSpecPlansets([livePlansets[0]], sheets), /No cut sheet/,
+  "the plans are not a cut sheet");
 
 // --- the live rows, as the incident left them -----------------------------
 /** A spec row shaped like PostgREST returns it. */

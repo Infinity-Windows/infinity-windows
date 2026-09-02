@@ -4,16 +4,16 @@
 // per-document rules were written for; this is the data half of that fix).
 //
 // What happened, in order:
-//   1. An addendum cut sheet (specs planset, file path ending "MMV2A_-_C", one
-//      page) was extracted before the mark-prefix fix landed, so its three
+//   1. An addendum cut sheet (specs planset, file name containing "MMV2A_-_C",
+//      one page) was extracted before the mark-prefix fix landed, so its three
 //      units "Add-1/2/3" were read as marks "1/2/3" and UPSERTED over the job's
 //      real rows 1, 2 and 3 — size, style, glass, color, operation, tempered,
 //      printed sizes, panels, planset and drawing box all replaced. Only
 //      `pane_grid` survived, because the extractor fills that key just once.
 //   2. The same upload's "retire replaced planset" step then nulled
 //      image_page/image_bbox on marks 4-10, whose drawings live on the ORIGINAL
-//      cut sheet (path ending "MMV2_-_CU", four pages) — it knew only about one
-//      specs sheet per job, and this job carries two.
+//      cut sheet (file name containing "MMV2_-_CU", four pages) — it knew only
+//      about one specs sheet per job, and this job carries two.
 //   3. Rows Add-1/2/3 were later typed by hand: right words, no numbers, no
 //      drawing.
 //
@@ -83,8 +83,8 @@ if (paperProblems.length) {
 }
 
 console.log("Repair plan for MADMOOSE mark specs");
-console.log(`  cut sheet      : path ends "${sheets.cu.pathSuffix}" (${sheets.cu.label})`);
-console.log(`  addendum       : path ends "${sheets.addendum.pathSuffix}" (${sheets.addendum.label})`);
+console.log(`  cut sheet      : file name contains "${sheets.cu.pathFragment}" (${sheets.cu.label})`);
+console.log(`  addendum       : file name contains "${sheets.addendum.pathFragment}" (${sheets.addendum.label})`);
 console.log(`  restore text   : marks ${Object.keys(restore).join(", ")} — only while a row still reads ` +
   `${Object.values(restore).map((r) => r.addendumWidthIn).join(" / ")} in wide and is unconfirmed`);
 console.log(`  cut-sheet art  : marks ${Object.keys(drawings.cu).join(", ")} ` +

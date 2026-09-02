@@ -800,14 +800,14 @@
   }
  ],
  "specPlansets": {
-  "note": "The two specs sheets this job carries at once. Ids are resolved AT RUN TIME from project_plansets.storage_path \u2014 a pasted uuid is only right until someone re-uploads.",
+  "note": "The two specs sheets this job carries at once. Ids are resolved AT RUN TIME from project_plansets.storage_path \u2014 a pasted uuid is only right until someone re-uploads. pathFragment is the opening of each stored file name (a stored name is <timestamp>-<file name> and keeps its extension), matched as a fragment, not a tail.",
   "cu": {
-   "pathSuffix": "MMV2_-_CU",
+   "pathFragment": "MMV2_-_CU",
    "pages": 4,
    "label": "Mad Moose CADs-1 cut sheets (Strata, ed. 2026-06-06) - marks 1-10"
   },
   "addendum": {
-   "pathSuffix": "MMV2A_-_C",
+   "pathFragment": "MMV2A_-_C",
    "pages": 1,
    "label": "Mad Moose Add CADs (ed. 2026-06-17) - Add-1/2/3 only"
   }
