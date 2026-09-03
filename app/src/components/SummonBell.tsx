@@ -13,12 +13,15 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { supabase, supabaseConfigured } from "../lib/supabase";
-import { summonExpired } from "../lib/install/summons";
+import { summonExpired, summonHref } from "../lib/install/summons";
 
 interface RingRow {
   id: string;
   project_id: string;
-  opening_id: string;
+  // Null for a job-level call for hands (job-level-summons slice 4,
+  // 2026-09-03): a tracking job has no openings, so the call hangs off the
+  // whole job. The ring must not build `/opening/null` from it.
+  opening_id: string | null;
   requested_by: string;
   needed: number;
   created_at?: string;
@@ -57,12 +60,19 @@ export function SummonBell() {
           // never rings, however it reached us.
           if (row.created_at && summonExpired(row.created_at)) return;
           void (async () => {
+            // A job-level call for hands has no window (opening_id null), so
+            // there is nothing to look up and the headline reads as the whole
+            // job — querying project_openings with a null id returns nothing
+            // and would fall back to "a unit" for what is a whole-job call.
+            const openingLookup = row.opening_id
+              ? supabase
+                  .from("project_openings")
+                  .select("opening_code")
+                  .eq("id", row.opening_id)
+                  .maybeSingle()
+              : Promise.resolve({ data: null });
             const [{ data: opening }, { data: caller }] = await Promise.all([
-              supabase
-                .from("project_openings")
-                .select("opening_code")
-                .eq("id", row.opening_id)
-                .maybeSingle(),
+              openingLookup,
               supabase
                 .from("profiles")
                 .select("display_name")
@@ -71,7 +81,9 @@ export function SummonBell() {
             ]);
             setRing({
               row,
-              code: (opening as { opening_code?: string } | null)?.opening_code ?? "a unit",
+              code: row.opening_id
+                ? ((opening as { opening_code?: string } | null)?.opening_code ?? "a unit")
+                : "the whole job",
               caller: (caller as { display_name?: string } | null)?.display_name ?? "an installer",
             });
             // As much noise as a browser allows without a prior gesture:
@@ -148,7 +160,9 @@ export function SummonBell() {
         onClick={() => {
           const r = ring;
           setRing(null);
-          navigate(`/projects/${r.row.project_id}/opening/${r.row.opening_id}`);
+          // A job-level call for hands (opening_id null) opens the job, where
+          // CallForHandsPanel lives — not `/opening/null`, a dead route.
+          navigate(summonHref(r.row.project_id, r.row.opening_id));
         }}
       >
         Answer

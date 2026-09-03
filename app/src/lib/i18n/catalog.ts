@@ -274,6 +274,98 @@ export const CATALOG = {
     es: "Rechazada — ya no está en tu pantalla. Tus puntos no cambian.",
   },
 
+  // ---- Call for hands: the job-level summon surface (slice 4) -----------
+  "callhands.button": { en: "Call for hands", es: "Pedir manos" },
+  "callhands.subtitle": {
+    en: "Ring the crew clocked into this job.",
+    es: "Llama a la cuadrilla marcada en este trabajo.",
+  },
+  "callhands.howMany": { en: "How many helpers?", es: "¿Cuántos ayudantes?" },
+  "callhands.whatFor": {
+    en: "What do you need? (optional)",
+    es: "¿Qué necesitas? (opcional)",
+  },
+  "callhands.whereAmI": {
+    en: "Where are you on the job? (optional)",
+    es: "¿Dónde estás en el trabajo? (opcional)",
+  },
+  "callhands.ring": {
+    en: "Ring the crew — need {count}",
+    es: "Llamar a la cuadrilla — necesito {count}",
+  },
+  "callhands.ringing": { en: "Ringing the crew…", es: "Llamando a la cuadrilla…" },
+  "callhands.liveHeader": {
+    en: "Call for hands — {count}/{needed}",
+    es: "Pedir manos — {count}/{needed}",
+  },
+  "callhands.answeredWord": { en: "answered", es: "respondieron" },
+  "callhands.coveredWord": { en: "covered", es: "cubierto" },
+  "callhands.end": { en: "End call", es: "Terminar llamada" },
+  "callhands.answer": {
+    en: "Answer — help out (+10 pts)",
+    es: "Responder — ayudar (+10 pts)",
+  },
+  "callhands.joining": { en: "Joining…", es: "Uniéndote…" },
+  "callhands.cantHelp": { en: "Can't help", es: "No puedo ayudar" },
+  "callhands.cantHelpNoted": {
+    en: "Can't help — noted",
+    es: "No puedo ayudar — anotado",
+  },
+  "callhands.sayingSo": { en: "Saying so…", es: "Avisando…" },
+  "callhands.complete": {
+    en: "Complete — back to my work",
+    es: "Listo — volver a mi trabajo",
+  },
+  "callhands.stamping": { en: "Stamping…", es: "Registrando…" },
+  "callhands.cantMakeIt": {
+    en: "Can't make it — give my seat back",
+    es: "No puedo ir — libera mi lugar",
+  },
+  "callhands.backingOut": { en: "Backing out…", es: "Retirándote…" },
+  "callhands.cantCome": { en: "Can't come:", es: "No pueden venir:" },
+  "callhands.onTheWay": { en: "on the way", es: "en camino" },
+  "callhands.done": { en: "done", es: "listo" },
+  "callhands.backedOut": { en: "backed out", es: "se retiró" },
+  "callhands.helperMin": {
+    en: "{count} helper-min total",
+    es: "{count} min de ayuda en total",
+  },
+  "callhands.lockedViewAs": {
+    en: "You're viewing as someone else — these buttons act as your real account, so they're off.",
+    es: "Estás viendo como otra persona — estos botones actúan como tu cuenta real, así que están desactivados.",
+  },
+
+  // ---- Call for hands: reach-further picker (job-level-summons slice 4) --
+  "callhands.reach.title": {
+    en: "Reach more people",
+    es: "Llamar a más personas",
+  },
+  "callhands.reach.hint": {
+    en: "The crew clocked into this job already gets the call. Add anyone else here.",
+    es: "La cuadrilla marcada en este trabajo ya recibe la llamada. Agrega aquí a cualquier otra persona.",
+  },
+  "callhands.reach.onClockNow": {
+    en: "On the clock now",
+    es: "En turno ahora",
+  },
+  "callhands.reach.onJob": { en: "on {job}", es: "en {job}" },
+  "callhands.reach.offClock": { en: "off the clock", es: "fuera de turno" },
+  "callhands.reach.search": {
+    en: "Search anyone by name",
+    es: "Buscar a cualquiera por nombre",
+  },
+  "callhands.reach.add": { en: "Add", es: "Agregar" },
+  "callhands.reach.remove": { en: "Remove", es: "Quitar" },
+  "callhands.reach.nobodyElse": {
+    en: "Nobody else is on the clock right now — search a name to add anyone.",
+    es: "Nadie más está en turno ahora — busca un nombre para agregar a cualquiera.",
+  },
+  "callhands.reach.chosen": {
+    en: "Also ringing ({count})",
+    es: "También llamando ({count})",
+  },
+  "callhands.reach.someone": { en: "Someone", es: "Alguien" },
+
   // ---- Opening / install sheet: top-level actions -----------------------
   "opening.action.clockIn": { en: "Clock in", es: "Marcar entrada" },
   // SAFETY / toolbox — needs bilingual review.

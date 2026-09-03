@@ -6,11 +6,16 @@
 
 import { supabase } from "../supabase";
 import { filterToLiveProjects } from "../liveProjects";
+import { sendPush } from "../permissions/pushServer";
 
 export interface Summon {
   id: string;
   project_id: string;
-  opening_id: string;
+  /** The window this call for hands hangs off — or null for a JOB-level call
+   * for hands (job-level-summons slice 4, 2026-09-03): a tracking job has no
+   * openings, so "come help me carry this" attaches to the job itself, with
+   * `where_note` standing in for the window. */
+  opening_id: string | null;
   requested_by: string;
   needed: number;
   status: "open" | "covered" | "closed";
@@ -20,6 +25,10 @@ export interface Summon {
   needed_at?: string | null;
   /** Optional plain-words why ("second story, no elevator"). */
   note?: string | null;
+  /** "Where I am on the job" — a job-level call for hands has no window, so
+   * this says where to walk to ("north side, second floor"). Null on a window
+   * summon: the opening already says where (job-level-summons slice 4). */
+  where_note?: string | null;
   requester?: { display_name: string | null } | null;
   /** Embedded for the landing strip — absent on older reads, so optional. */
   project?: { job_code: string | null } | null;
@@ -134,6 +143,76 @@ export async function listSummonDeclines(summonId: string): Promise<SummonDeclin
   return (data ?? []) as unknown as SummonDecline[];
 }
 
+/** One person on the clock (job-level-summons slice 4). `jobCode` is null on
+ * the same-job read — everyone is on the one job — and carries the job code on
+ * the reach-further read, where it says where a person is. */
+export interface ClockedInPerson {
+  profileId: string;
+  displayName: string | null;
+  jobCode: string | null;
+}
+
+interface OpenShiftRow {
+  profile_id: string;
+  worker?: { display_name: string | null } | null;
+  project?: { job_code: string | null } | null;
+}
+
+/**
+ * The DEFAULT audience for a JOB-level call for hands (job-level-summons
+ * slice 4): everyone with an OPEN shift on THIS job right now. This is NOT
+ * listRoster — that is the SCHEDULED crew, which is the wrong set. A call for
+ * hands rings the people actually clocked into the job, wherever the schedule
+ * said they'd be; someone scheduled but not yet on the clock is not carrying
+ * anything, and someone clocked into a DIFFERENT job is not here to help. The
+ * `status = 'open'` + `clock_out_at is null` pair is the same "genuinely on
+ * the clock" test getOpenShift uses.
+ */
+export async function listClockedInOnJob(projectId: string): Promise<ClockedInPerson[]> {
+  const { data, error } = await supabase
+    .from("time_shifts")
+    .select("profile_id, worker:profiles!profile_id(display_name)")
+    .eq("project_id", projectId)
+    .eq("status", "open")
+    .is("clock_out_at", null);
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return dedupeClockedIn((data ?? []) as unknown as OpenShiftRow[]);
+}
+
+/**
+ * Everyone clocked in ANYWHERE right now — the reach-further picker's starting
+ * list (job-level-summons slice 4). Carries each person's job so the picker
+ * can say where they are before you pull them off it onto your own.
+ */
+export async function listClockedInAnywhere(): Promise<ClockedInPerson[]> {
+  const { data, error } = await supabase
+    .from("time_shifts")
+    .select("profile_id, worker:profiles!profile_id(display_name), project:projects(job_code)")
+    .eq("status", "open")
+    .is("clock_out_at", null);
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return dedupeClockedIn((data ?? []) as unknown as OpenShiftRow[]);
+}
+
+/** One row per person, not per shift — the audience is a set of people. A
+ * person should never hold two open shifts, but the read must be a set even
+ * if the data ever isn't. `jobCode` rides along when the row carries a project
+ * embed (the reach-further read); the same-job read leaves it null. */
+function dedupeClockedIn(rows: readonly OpenShiftRow[]): ClockedInPerson[] {
+  const seen = new Map<string, ClockedInPerson>();
+  for (const r of rows) {
+    if (!r.profile_id || seen.has(r.profile_id)) continue;
+    seen.set(r.profile_id, {
+      profileId: r.profile_id,
+      displayName: r.worker?.display_name ?? null,
+      jobCode: r.project?.job_code ?? null,
+    });
+  }
+  return [...seen.values()];
+}
+
 export async function createSummon(
   openingId: string,
   needed: number,
@@ -145,6 +224,31 @@ export async function createSummon(
     p_needed: needed,
     p_lead_minutes: leadMinutes ?? null,
     p_note: note?.trim() || null,
+  });
+  if (error) throw error;
+  return data as Summon;
+}
+
+/**
+ * Call for hands on the whole JOB — no window (job-level-summons slice 4). A
+ * tracking job has no openings, so this is how "come help me carry this" gets
+ * out on one. `whereNote` is the "where I am on the job" line the job path
+ * carries in place of a window. Same server RPC family as createSummon, a
+ * distinct name (create_job_summon) so the two can never resolve ambiguously.
+ */
+export async function createJobSummon(
+  projectId: string,
+  needed: number,
+  note?: string | null,
+  whereNote?: string | null,
+  leadMinutes?: number | null,
+): Promise<Summon> {
+  const { data, error } = await supabase.rpc("create_job_summon", {
+    p_project_id: projectId,
+    p_needed: needed,
+    p_lead_minutes: leadMinutes ?? null,
+    p_note: note?.trim() || null,
+    p_where_note: whereNote?.trim() || null,
   });
   if (error) throw error;
   return data as Summon;
@@ -196,6 +300,69 @@ export async function closeSummon(summonId: string): Promise<Summon> {
 }
 
 // ------------------------------------------------------------- pure bits
+
+/**
+ * Who a JOB-level call for hands rings (job-level-summons slice 4): the
+ * same-job clocked-in crew, PLUS anyone chosen through "Reach more people",
+ * as one deduped set, minus the caller — nobody rings themselves. Pure so the
+ * audience math is tested without a database or a push.
+ */
+export function callForHandsTargets(
+  sameJobIds: readonly string[],
+  extraIds: readonly string[],
+  callerId: string | null | undefined,
+): string[] {
+  const set = new Set<string>();
+  for (const id of sameJobIds) if (id) set.add(id);
+  for (const id of extraIds) if (id) set.add(id);
+  if (callerId) set.delete(callerId);
+  return [...set];
+}
+
+export interface CallForHandsPushInput {
+  summonId: string;
+  projectId: string;
+  jobLabel: string;
+  callerId: string | null;
+  callerName: string | null;
+  needed: number;
+  note?: string | null;
+  whereNote?: string | null;
+  /** The default audience: profile ids clocked into this job. */
+  sameJobIds: readonly string[];
+  /** Reach-further additions from the by-name picker (may be empty). */
+  extraIds?: readonly string[];
+}
+
+/**
+ * Ring the computed audience for a job-level call for hands. Best-effort like
+ * every summon push (sendPush never throws); returns false when there was
+ * nobody to ring so the caller can tell the summoner the call is live but
+ * silent. The deep link lands on the JOB, not a window — there isn't one.
+ */
+export async function notifyCallForHands(
+  input: CallForHandsPushInput,
+): Promise<boolean> {
+  const profileIds = callForHandsTargets(
+    input.sameJobIds,
+    input.extraIds ?? [],
+    input.callerId,
+  );
+  if (profileIds.length === 0) return false;
+  const why = input.note?.trim();
+  const where = input.whereNote?.trim();
+  const tail = [why, where ? `📍 ${where}` : null].filter(Boolean).join(" · ");
+  return sendPush({
+    profileIds,
+    title: `🙌 Hands needed — ${input.jobLabel}`,
+    body: `${input.callerName ?? "Someone"} needs ${input.needed} on ${input.jobLabel}${
+      tail ? ` — ${tail.slice(0, 120)}` : ""
+    }. Answer to help (+10 pts).`,
+    tag: `summon-${input.summonId}`,
+    url: `/projects/${input.projectId}`,
+    urgent: true,
+  });
+}
 
 /** Helper man-minutes on a summon: completed rows as stamped, open rows
  * live against `now` — the number the window's true cost breakdown shows. */
@@ -283,6 +450,23 @@ export function summonStripLine(
   const eta = summonEtaLine(s.needed_at, now ?? Date.now());
   if (eta) base = `${base} · ${eta}`;
   return s.status === "covered" ? `${base} (covered)` : base;
+}
+
+/**
+ * Where "Answer" on a call for hands lands. A window-scoped summon opens that
+ * window's sheet; a job-level call for hands (job-level-summons slice 4,
+ * 2026-09-03) has no window to walk to, so it opens the JOB, where
+ * CallForHandsPanel answers it. Building `/opening/${null}` sends the helper
+ * to a dead opening route they cannot answer from — the one place every
+ * summon surface (strip, board, realtime ring) has to agree.
+ */
+export function summonHref(
+  projectId: string,
+  openingId: string | null | undefined,
+): string {
+  return openingId
+    ? `/projects/${projectId}/opening/${openingId}`
+    : `/projects/${projectId}`;
 }
 
 /**
