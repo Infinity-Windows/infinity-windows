@@ -159,6 +159,42 @@ class TestTheMigrationText(unittest.TestCase):
         )
 
 
+class TestTheProvisionerAsksTheSameQuestion(unittest.TestCase):
+    """scripts/provision-test-foreman.py creates a foreman-grade QA login, and
+    refuses to when the cage is not on the database. That refusal has to be
+    judged the same way the deploy judges it: test_account_write_scope()'s
+    `guarded` column asks only whether a trigger of that NAME exists — no
+    check of the function, the timing, the arguments or whether it is switched
+    on. On a database where a guard is mis-attached or disabled, the old
+    question says yes, provisioning proceeds, and the deploy's fence check on
+    the same database says no."""
+
+    def source(self) -> str:
+        path = Path(__file__).resolve().parent / "provision-test-foreman.py"
+        return path.read_text(encoding="utf-8")
+
+    def test_the_preflight_reads_the_census(self):
+        body = " ".join(self.source().split())
+        start = body.index("def guard_is_installed()")
+        preflight = body[start:body.index("def check_migration()", start)]
+        self.assertIn("public.sandbox_guard_census()", preflight)
+        self.assertIn("public.sandbox_scoped_tables()", preflight)
+        self.assertNotIn(
+            "public.test_account_write_scope()", preflight,
+            "the pre-flight is back on the weaker definition of 'guarded' — a "
+            "trigger of the right name, whatever it points at",
+        )
+
+    def test_the_run_checks_coverage_with_the_census_too(self):
+        """Step 8 asserts every project-scoped table carries the guard. Same
+        reasoning, and the same function has to answer it."""
+        body = " ".join(self.source().split())
+        claim = "every project-scoped table carries the guard"
+        self.assertIn(claim, body)
+        before = body[body.index("8. Say out loud what is NOT covered"):body.index(claim)]
+        self.assertIn("public.sandbox_guard_census()", before)
+
+
 class TestLinkPrecedence(unittest.TestCase):
     """The rule public.sandbox_scoped_tables() uses, mirrored here."""
 

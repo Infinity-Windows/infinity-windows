@@ -164,14 +164,22 @@ and never move one inside a checkout.
 This is not advice. Since migration
 `20260730220000_test_accounts_sandbox_only.sql` the database refuses it:
 
-- `public.sandbox_projects` lists the projects a test login may write. It holds
-  exactly one row, the `ZZTEST` job. No client role can read or write that table
-  at all, so an account cannot add itself a new playground.
+- `public.sandbox_projects` lists the projects a test login may write. No client
+  role can read or write that table at all, so an account cannot add itself a
+  new playground — but a supervisor flagging a job as a testing project does add
+  it (`set_project_test`, 20260933000000), and BLACK22 was put in by name on
+  2026-08-25. Every backend deploy prints the current list and marks anything
+  that is not `ZZTEST` as a real job; see
+  `.scratch/test-login-fence/issues/01-a-real-job-is-inside-the-sandbox.md`.
 - A `BEFORE INSERT OR UPDATE OR DELETE` trigger on **every project-scoped table
   in `public`** refuses a write by a profile flagged `is_test` when the row's
   project is not on that list. The tables are found from the catalogue rather
-  than typed out, so a table added next month is covered by re-running the
-  migration, and `public.test_account_write_scope()` reports any that are not.
+  than typed out, and `public.attach_sandbox_guards()` re-runs that sweep, so a
+  table added next month is covered by calling it from the migration that adds
+  the table. `public.sandbox_guard_census()` reports any table it is missing
+  from, switched off on, or mis-attached to, and the deploy fails on any row.
+  (`public.test_account_write_scope()` is the older report and asks a weaker
+  question — whether a trigger of that name exists at all. Use the census.)
 - That covers the undo and reset RPCs for free. They are `SECURITY DEFINER` and
   so run past row-level security entirely, but they still have to write
   `project_openings`, and that write goes through the trigger. No RPC needed

@@ -117,20 +117,34 @@ def guard_is_installed() -> tuple[bool, str]:
     it, and on 2026-09-02 the QA foreman login wrote to a live job while this
     check happily reported the cage installed. It now counts the tables that
     are project-scoped and NOT guarded, and any of those is a no.
+
+    It counts them with sandbox_guard_census(), the same function the deploy
+    reads, and NOT with test_account_write_scope() — which asks only whether a
+    trigger of that NAME exists. A guard pointed at a column the table no
+    longer links through, or one somebody switched off, satisfies that older
+    question and enforces nothing, so provisioning would proceed on a database
+    the deploy's own fence check would fail. One definition, one answer.
     """
     got = sb.sql(
         "select "
         "  (to_regclass('public.sandbox_projects') is not null) as table_there, "
-        "  (select count(*) from public.test_account_write_scope() "
-        "     where link_column is not null) as scoped, "
-        "  (select count(*) from public.test_account_write_scope() "
-        "     where link_column is not null and not guarded) as unguarded, "
+        "  (select count(*) from public.sandbox_scoped_tables()) as scoped, "
+        "  (select count(*) from public.sandbox_guard_census()) as unguarded, "
         "  (select count(*) from pg_policies where schemaname = 'storage' "
         "     and tablename = 'objects' "
         "     and policyname like 'test logins write only their sandbox%') as policies"
     )
     row = got[0] if isinstance(got, list) and got else {}
     if not row:
+        message = str(got)
+        # By far the likeliest failure: the rearm migration has not been pushed
+        # to this database. Say that, rather than dumping a parse error.
+        if "sandbox_guard_census" in message or "sandbox_scoped_tables" in message:
+            return False, (
+                "this database has no sandbox_guard_census(), so the fence was "
+                "not measured. Push " + GUARD_MIGRATIONS[1] + " first "
+                "(Deploy backend does it on merge). Server said: " + message
+            )
         return False, f"could not ask the database: {got}"
     ok = (row.get("table_there") is True
           and int(row.get("scoped") or 0) > 0
@@ -794,16 +808,30 @@ def main() -> int:  # noqa: C901 — a checklist reads better in one place
     # Measured on the live database rather than asserted in a document that
     # ages. A table with no way to tie it to a project cannot be scoped to the
     # sandbox, so if a client role can write it, this account can too.
+    #
+    # Coverage is read from sandbox_guard_census(), the deploy's own function:
+    # test_account_write_scope().guarded asks only whether a trigger of that
+    # name exists, which is true of a guard pointed at the wrong column and of
+    # one that has been switched off. This run has to agree with the deploy or
+    # one of them is lying. What the older report is still the only source for
+    # is the residual list below — tables with NO project link at all, which
+    # the census has nothing to say about because they cannot be fenced.
+    census = sb.sql(
+        "select table_name, link_column, reason from public.sandbox_guard_census()")
+    scoped = sb.sql("select count(*) as n from public.sandbox_scoped_tables()")
+    if isinstance(census, list) and isinstance(scoped, list) and scoped:
+        missing = [f"{r.get('table_name')} ({r.get('reason')})" for r in census]
+        steps.check(not missing,
+                    f"every project-scoped table carries the guard "
+                    f"({scoped[0].get('n')} table(s)); unguarded: "
+                    f"{missing or 'none'}")
+    else:
+        steps.check(False, f"could not read the guard's coverage: {census}")
+
     scope = sb.sql(
-        "select table_name, link_column, guarded, client_writable "
+        "select table_name, link_column, client_writable "
         "from public.test_account_write_scope()")
     if isinstance(scope, list):
-        linked = [r for r in scope if r.get("link_column")]
-        unguarded = [r for r in linked if not r.get("guarded")]
-        steps.check(not unguarded,
-                    f"every project-scoped table carries the guard "
-                    f"({len(linked)} table(s)); unguarded: "
-                    f"{[r['table_name'] for r in unguarded] or 'none'}")
         residual = sorted(r["table_name"] for r in scope
                           if not r.get("link_column") and r.get("client_writable"))
         print(f"\n  Residual reach ({len(residual)} table(s) that cannot be tied to a job,")
@@ -812,7 +840,7 @@ def main() -> int:  # noqa: C901 — a checklist reads better in one place
         for name in residual:
             print(f"    - {name}")
     else:
-        steps.check(False, f"could not audit the guard's coverage: {scope}")
+        steps.check(False, f"could not list what the fence cannot reach: {scope}")
 
     remove_decoy()
     steps.check(not one(sb.svc("GET", f"/rest/v1/projects?job_code=eq.{DECOY_CODE}&select=id")),
