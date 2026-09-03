@@ -124,6 +124,22 @@ export function ClockInBlock() {
     if (r.costCodeId) setPickCostCodeId(r.costCodeId);
   }, [recents.data, shift]);
 
+  // Drop a picked cost code that isn't valid for the job now chosen (standard-
+  // tracking-jobs slice 3, 2026-09-03). Switching jobs sets only the project;
+  // costCodes then refetches to the new job's subset, and a code held over from
+  // the previous job (a recent's last code, or one the worker tapped) can be
+  // outside it. Without this, canStart stays true with nothing highlighted and a
+  // Clock in would record a cost_code_id the job's subset doesn't allow —
+  // defeating the per-job scoping. WHY newly needed: before per-job subsets every
+  // code was valid for every job, so a switch never invalidated the selection.
+  // Wait for the list to settle (undefined = still loading) before clearing.
+  useEffect(() => {
+    if (!pickCostCodeId) return;
+    const list = costCodes.data;
+    if (!list) return;
+    if (!list.some((c) => c.id === pickCostCodeId)) setPickCostCodeId("");
+  }, [costCodes.data, pickCostCodeId]);
+
   // Capture the current fix ONCE, and only when geolocation is already granted —
   // the "not near this job" note must never trigger its own permission prompt.
   // Off the clock only. clock-in itself still stamps geo via captureGeoSoft.

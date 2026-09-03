@@ -54,6 +54,9 @@ afterEach(() => {
 interface Seed {
   shift?: TimeShift | null;
   costCodes?: unknown[];
+  // Per-project cost-code subsets (slice 3): seed a distinct list per project id
+  // so a job switch reads a real, different subset from the cache.
+  costCodesByProject?: Record<string, unknown[]>;
   recents?: unknown[];
   projects?: unknown[];
   talk?: unknown;
@@ -81,6 +84,11 @@ function mount(seed: Seed = {}): HTMLElement {
   costCodesHolder.current = seed.costCodes ?? [];
   qc.setQueryData(["clockCostCodes", "all"], seed.costCodes ?? []);
   qc.setQueryData(["clockCostCodes", "p1"], seed.costCodes ?? []);
+  // A distinct subset per project id, so switching jobs reads a different list
+  // synchronously (staleTime Infinity means a seeded key never refetches).
+  for (const [pid, list] of Object.entries(seed.costCodesByProject ?? {})) {
+    qc.setQueryData(["clockCostCodes", pid], list);
+  }
   qc.setQueryData(["recentJobs", "me"], seed.recents ?? []);
   qc.setQueryData(["projects"], seed.projects ?? []);
   qc.setQueryData(["todayTalk"], seed.talk ?? null);
@@ -291,6 +299,51 @@ describe("the clock-in block", () => {
       null,
       "tracking",
     ]);
+  });
+
+  it("drops a picked cost code that isn't in the job you switch to", async () => {
+    // Slice 3 regression: a code valid for job A must not survive a switch to a
+    // job B whose subset excludes it — otherwise Start stays enabled and clock-in
+    // would record a cost_code_id outside B's per-job subset.
+    const install = { id: "ccInstall", code: "100", label: "Install", active: true };
+    const service = { id: "ccService", code: "200", label: "Service call", active: true };
+    const warranty = { id: "ccWarranty", code: "210", label: "Warranty", active: true };
+    const el = mount({
+      // Prime job p1 with its own last code (Install), valid for p1's subset.
+      costCodes: [install],
+      recents: [recent("ccInstall")],
+      projects: [
+        { id: "p1", job_code: "BLACK22", name: "Black Desert", address: null, status: "active", allowed_modes: ["data"] },
+        { id: "p2", job_code: "SVC-9", name: "Service Run", address: null, status: "active", allowed_modes: ["data"] },
+      ],
+      costCodesByProject: {
+        p1: [install],
+        // p2 is a service job — Install is NOT one of its codes.
+        p2: [service, warranty],
+      },
+    });
+    // Primed: job p1 + Install code → Start is enabled.
+    expect(
+      el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!.disabled,
+    ).toBe(false);
+
+    // Open the full list and switch to the service job p2. The item onClick sets
+    // only the project, leaving the Install code held from p1.
+    const toggle = el.querySelectorAll<HTMLButtonElement>(".clock-list-toggle")[0];
+    act(() => toggle.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const p2Item = Array.from(
+      el.querySelectorAll<HTMLButtonElement>(".clock-project-item"),
+    ).find((b) => b.textContent?.includes("SVC-9"))!;
+    await clickAndFlush(p2Item);
+
+    // Install is gone from the offered codes, nothing is highlighted, and Start
+    // is disabled again — no path to submit a code outside p2's subset.
+    expect(el.textContent).not.toContain("100 — Install");
+    expect(el.querySelector(".clock-costcode-item.selected")).toBeNull();
+    expect(
+      el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!.disabled,
+    ).toBe(true);
+    expect(clockInSpy).not.toHaveBeenCalled();
   });
 
   it("records the one mode silently on a single-mode job", async () => {
