@@ -16,6 +16,9 @@ const GRANTED_SELECT_COLUMNS = [
   "skill_level",
   "role",
   "active",
+  // 20260968000000_profile_language.sql granted SELECT (language) to the
+  // authenticated role — a person may read their own app-language preference.
+  "language",
   "created_at",
   "updated_at",
 ];

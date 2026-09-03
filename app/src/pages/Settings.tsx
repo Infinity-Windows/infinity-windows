@@ -3,6 +3,8 @@ import { BackChip } from "../components/BackChip";
 import { BuildIdentityCard } from "../components/BuildIdentityCard";
 import { PermissionsSettings } from "../components/permissions/PermissionsSettings";
 import { playSuccessTone, setSoundsEnabled, soundsEnabled } from "../lib/sound";
+import { useLanguage } from "../lib/i18n";
+import type { Lang } from "../lib/i18n";
 
 type ThemeChoice = "system" | "light" | "dark";
 
@@ -41,6 +43,7 @@ function applyTheme(t: ThemeChoice) {
 export function Settings() {
   const [theme, setTheme] = useState<ThemeChoice>(readTheme);
   const [sounds, setSounds] = useState<boolean>(soundsEnabled);
+  const { lang, setLang, t } = useLanguage();
 
   return (
     <div className="page">
@@ -51,6 +54,26 @@ export function Settings() {
         </div>
         <BackChip label="Back" />
       </header>
+
+      <section className="detail-card" style={{ marginBottom: 12 }}>
+        <h2 style={{ marginTop: 0, fontSize: 18 }}>{t("settings.language.heading")}</h2>
+        <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+          {t("settings.language.help")}
+        </p>
+        <div className="row-gap">
+          {(["en", "es"] as const).map((l: Lang) => (
+            <button
+              key={l}
+              className={lang === l ? "button-like active-pill" : "button-like"}
+              // Takes effect immediately: setLang flips the whole app's language
+              // and persists it to the profile in the same tap.
+              onClick={() => setLang(l)}
+            >
+              {l === "en" ? t("picker.english") : t("picker.spanish")}
+            </button>
+          ))}
+        </div>
+      </section>
 
       <section className="detail-card" style={{ marginBottom: 12 }}>
         <h2 style={{ marginTop: 0, fontSize: 18 }}>Appearance</h2>

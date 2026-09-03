@@ -4448,3 +4448,74 @@ begin
   end if;
 end;
 $$;
+
+
+-- ===========================================================================
+-- 20260968000000_profile_language.sql (mirrored)
+-- profiles.language ('en'/'es') plus set_my_language(): a person picks English
+-- or Spanish once, it rides their profile, and the RPC is the only writer —
+-- scoped to auth.uid()'s own row, exactly like set_my_pin / set_profile_role.
+-- ===========================================================================
+
+-- A language the app speaks back in: English or Spanish, per person.
+--
+-- WHY (standard-tracking-jobs grill, 2026-09-02): most of the install crew reads
+-- Spanish more comfortably than English. The language layer lets a person pick
+-- once, stores it on their profile, and every string later slices add is written
+-- in both from the start. This is the DATA half.
+--
+-- The column is NOT NULL DEFAULT 'en' so a screen never branches on a null; the
+-- CHECK keeps the value to the two languages the app speaks; and UPDATE(language)
+-- is never granted to authenticated, so set_my_language() is the single writer.
+
+alter table public.profiles
+  add column if not exists language text not null default 'en';
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'profiles_language_check'
+      and conrelid = 'public.profiles'::regclass
+  ) then
+    alter table public.profiles
+      add constraint profiles_language_check
+      check (language in ('en', 'es'));
+  end if;
+end;
+$$;
+
+comment on column public.profiles.language is
+  'The language the app renders in for this person: ''en'' or ''es''. Written only through set_my_language(); the authenticated role holds SELECT but not UPDATE on it, matching how role and pin_hash are guarded.';
+
+grant select (language) on table public.profiles to authenticated;
+revoke update (language) on table public.profiles from anon, authenticated;
+
+create or replace function public.set_my_language(p_lang text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v text := lower(coalesce(trim(p_lang), ''));
+begin
+  if auth.uid() is null then
+    raise exception 'sign in before choosing a language' using errcode = '42501';
+  end if;
+
+  if v not in ('en', 'es') then
+    raise exception 'language must be en or es' using errcode = '22023';
+  end if;
+
+  update public.profiles
+     set language = v, updated_at = now()
+   where id = auth.uid();
+end;
+$$;
+
+comment on function public.set_my_language(text) is
+  'Set the calling user''s own app language (''en'' or ''es''). SECURITY DEFINER and scoped to auth.uid(); the only client-reachable way to write profiles.language, which is revoked from anon and authenticated at the column level.';
+
+revoke all on function public.set_my_language(text) from public, anon;
+grant execute on function public.set_my_language(text) to authenticated;

@@ -269,6 +269,10 @@ export async function useSupabaseFixtures(
       // (Studio 100x #44) is a modal-backdrop overlay that would sit on
       // top of the drawing on every fixture's first Studio visit.
       window.localStorage.setItem("studio-tour-seen", "1");
+      // And the first-login language picker (i18n slice 0): a full-screen
+      // choice shown until a language is picked on this device. Seeding the
+      // cache marks the choice as made, so it never overlays a fixture.
+      window.localStorage.setItem("infinity.language", "en");
     },
     { session: SESSION, tipKeys: DISMISSED_TIPS },
   );

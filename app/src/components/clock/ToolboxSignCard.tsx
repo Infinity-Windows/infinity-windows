@@ -6,6 +6,7 @@ import { submitToolboxCompletion } from "../../lib/toolbox";
 import { SignaturePad, type SignaturePadHandle } from "../SignaturePad";
 import { formatApiError } from "../../lib/install/errors";
 import { TalkContent } from "../safety/TalkContent";
+import { useT } from "../../lib/i18n";
 
 /**
  * Sign today's toolbox talk without leaving the clock-in sheet.
@@ -25,6 +26,7 @@ export function ToolboxSignCard({
   talk: SafetyTalk;
 }) {
   const queryClient = useQueryClient();
+  const t = useT();
   const sigRef = useRef<SignaturePadHandle>(null);
   const [ack, setAck] = useState(false);
   const [typedName, setTypedName] = useState("");
@@ -49,13 +51,14 @@ export function ToolboxSignCard({
 
   return (
     <div className="detail-card" style={{ marginTop: 8 }}>
+      {/* SAFETY / toolbox strings — Spanish flagged for bilingual review. */}
       <p className="clock-row-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <HardHat size={16} aria-hidden /> Today's toolbox talk
+        <HardHat size={16} aria-hidden /> {t("toolbox.today")}
       </p>
       <p style={{ margin: "2px 0 6px", fontWeight: 600 }}>{talk.title}</p>
       <details>
         <summary className="muted" style={{ cursor: "pointer", fontSize: 13 }}>
-          Read the talk
+          {t("toolbox.read")}
         </summary>
         {/* The same tiered render the Safety page uses — key points, watch
             for, stop work — not just the plain-text fallback body. */}
@@ -69,16 +72,16 @@ export function ToolboxSignCard({
           checked={ack}
           onChange={(e) => setAck(e.target.checked)}
         />
-        {talk.pledge ?? "I read and understood today's talk"}
+        {talk.pledge ?? t("toolbox.pledge")}
       </label>
-      <label className="field-label">Type your name</label>
+      <label className="field-label">{t("toolbox.typeName")}</label>
       <input
         type="text"
         value={typedName}
-        placeholder="Full name"
+        placeholder={t("toolbox.fullName")}
         onChange={(e) => setTypedName(e.target.value)}
       />
-      <label className="field-label">Sign</label>
+      <label className="field-label">{t("toolbox.sign")}</label>
       <SignaturePad ref={sigRef} onChange={setSigEmpty} />
       {sign.isError && <p className="error">{formatApiError(sign.error)}</p>}
       <button
@@ -88,7 +91,7 @@ export function ToolboxSignCard({
         disabled={!canSubmit || sign.isPending}
         onClick={() => sign.mutate()}
       >
-        {sign.isPending ? "Signing…" : "Sign today's talk"}
+        {sign.isPending ? t("toolbox.signing") : t("toolbox.signTalk")}
       </button>
     </div>
   );

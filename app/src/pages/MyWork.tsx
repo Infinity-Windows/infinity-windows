@@ -49,6 +49,7 @@ import { formatStartTime } from "../lib/schedule/dates";
 import { listVehicleLinksForAssignments } from "../lib/vehicles/api";
 import { vehicleTitle } from "../lib/vehicles/display";
 import { listTrips } from "../lib/travel/api";
+import { useT } from "../lib/i18n";
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -58,6 +59,7 @@ function todayLocalISO(): string {
 
 export function MyWork() {
   const navigate = useNavigate();
+  const t = useT();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const openings = useQuery({
     queryKey: ["myOpenings", me.data?.id],
@@ -329,7 +331,7 @@ export function MyWork() {
     if (blocks.has(o.id))
       return `Waiting on: ${blocks.get(o.id) ?? "a blocker"} — pick it back up once it's cleared`;
     const r = openingReadiness(o);
-    if (r.status === "ready") return "Tap to install — photos, voice memo, grade";
+    if (r.status === "ready") return t("mywork.tapToInstall");
     if (r.status === "blocked") return r.reasons.join(" ");
     return r.reasons[0] ?? "Finish checks before installing";
   };
@@ -367,8 +369,8 @@ export function MyWork() {
       <div className="page">
         <header className="page-header">
           <div>
-            <p className="home-greeting">Your day</p>
-            <h1>My work</h1>
+            <p className="home-greeting">{t("mywork.greeting")}</p>
+            <h1>{t("mywork.title")}</h1>
           </div>
         </header>
         <SkeletonList rows={5} />
@@ -381,8 +383,8 @@ export function MyWork() {
       <div className="page">
         <header className="page-header">
           <div>
-            <p className="home-greeting">Your day</p>
-            <h1>My work</h1>
+            <p className="home-greeting">{t("mywork.greeting")}</p>
+            <h1>{t("mywork.title")}</h1>
           </div>
         </header>
         <QueryError
@@ -398,15 +400,15 @@ export function MyWork() {
     <div className="page">
       <header className="page-header">
         <div>
-          <p className="home-greeting">Your day</p>
-          <h1>My work</h1>
+          <p className="home-greeting">{t("mywork.greeting")}</p>
+          <h1>{t("mywork.title")}</h1>
         </div>
       </header>
       <LiveSummonsStrip />
       <LogTodayChip />
       <p className="muted">
-        {me.data?.display_name ? `${me.data.display_name} — ` : ""}do the top
-        unit next; capture as you go.
+        {me.data?.display_name ? `${me.data.display_name} — ` : ""}
+        {t("mywork.hint")}
       </p>
 
       {/* THE MORNING HERO (grilled Q1): off the clock, the first thing on
@@ -414,7 +416,7 @@ export function MyWork() {
           window. The Today strip's facts fold in underneath. */}
       {!openShift.data && !openShift.isLoading && (
         <div className="today-strip home-card" style={{ borderColor: "var(--accent-line)" }}>
-          <span className="next-label">Good morning</span>
+          <span className="next-label">{t("mywork.goodMorning")}</span>
           {(todayAssignment || heroTarget || flashRun) && (
             <p style={{ margin: "4px 0 2px", fontSize: 14.5 }}>
               <strong>
@@ -441,14 +443,16 @@ export function MyWork() {
             onClick={() => heroClockIn.mutate()}
           >
             {heroClockIn.isPending
-              ? "Clocking in…"
+              ? t("mywork.clockingIn")
               : activeInstall
-                ? `Clock in & finish ${activeInstall.opening_code} →`
+                ? t("mywork.clockInFinish", { code: activeInstall.opening_code })
                 : flashRun
-                  ? `Clock in — flash run at ${flashRun.projects?.job_code ?? "your job"} →`
+                  ? t("mywork.clockInFlash", {
+                      job: flashRun.projects?.job_code ?? t("mywork.yourJob"),
+                    })
                   : next
-                    ? `Clock in & start on ${next.opening_code} →`
-                    : "Clock in"}
+                    ? t("mywork.clockInStart", { code: next.opening_code })
+                    : t("mywork.clockIn")}
           </button>
           <div
             style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginTop: 8 }}
@@ -460,7 +464,7 @@ export function MyWork() {
               />
             )}
             <button className="link" style={{ fontSize: 12.5 }} onClick={() => clock.openClock()}>
-              Just clock in — pick the job or unit yourself
+              {t("mywork.justClockIn")}
             </button>
           </div>
         </div>
@@ -469,7 +473,7 @@ export function MyWork() {
       {Boolean(openShift.data) && todayAssignment && (
         <div className="today-strip home-card">
           <div className="home-card-top">
-            <span className="next-label">Today</span>
+            <span className="next-label">{t("mywork.today")}</span>
             {todayAssignment.start_time && (
               <span className="muted" style={{ fontSize: 12 }}>
                 {formatStartTime(todayAssignment.start_time)}
@@ -542,14 +546,14 @@ export function MyWork() {
           className="next-card resume-card"
           onClick={() => go(activeInstall)}
         >
-          <span className="next-label">Continue install</span>
+          <span className="next-label">{t("mywork.continueInstall")}</span>
           <span className="next-code">{activeInstall.opening_code}</span>
           <span className="next-meta">
             {activeInstall.window_types?.type_code ?? "type?"} ·{" "}
             {activeInstall.projects?.job_code ?? ""} · {areaKey(activeInstall)}
           </span>
           <span className="next-capture">
-            You started this one — tap to finish and grade it.
+            {t("mywork.startedThisOne")}
           </span>
         </button>
       )}
@@ -557,11 +561,11 @@ export function MyWork() {
       {!activeInstall && !next && active.length === 0 && (
         <EmptyState
           icon={<CheckCircle2 size={22} />}
-          title="Nothing assigned right now"
-          message="Check with your lead, or help stage the next units."
+          title={t("mywork.nothingAssigned.title")}
+          message={t("mywork.nothingAssigned.msg")}
           action={
             <Link to="/projects" className="button-like">
-              Browse jobs
+              {t("mywork.browseJobs")}
             </Link>
           }
         />
@@ -635,15 +639,15 @@ export function MyWork() {
       <div className="stat-grid">
         <div className="stat-card">
           <span className="stat-num">{active.length}</span>
-          <span>assigned</span>
+          <span>{t("mywork.stat.assigned")}</span>
         </div>
         <div className="stat-card accent">
           <span className="stat-num">{readyCount}</span>
-          <span>ready now</span>
+          <span>{t("mywork.stat.readyNow")}</span>
         </div>
         <div className="stat-card">
           <span className="stat-num">{done.length}</span>
-          <span>done today</span>
+          <span>{t("mywork.stat.doneToday")}</span>
         </div>
       </div>
 
@@ -707,13 +711,13 @@ export function MyWork() {
 
       {done.length > 0 && (
         <>
-          <h2>Done today ({done.length})</h2>
+          <h2>{t("mywork.doneTodayCount", { count: done.length })}</h2>
           <ul className="unit-list work-list">
             {done.map((o) => (
               <li key={o.id} className="find-row">
                 <strong>{o.opening_code}</strong>{" "}
                 <span className="muted">{o.window_types?.type_code}</span>{" "}
-                <span className="ok" style={{ marginLeft: "auto" }}>installed</span>
+                <span className="ok" style={{ marginLeft: "auto" }}>{t("mywork.installed")}</span>
                 <button
                   type="button"
                   className="button-like"
@@ -723,7 +727,7 @@ export function MyWork() {
                     setUnsubmit(o);
                   }}
                 >
-                  Un-submit
+                  {t("mywork.unsubmit")}
                 </button>
               </li>
             ))}

@@ -147,6 +147,14 @@ export interface Profile {
   skill_level: number;
   role: CrewRole;
   active: boolean;
+  /**
+   * The language the app renders in for this person: "en" or "es"
+   * (20260968000000_profile_language.sql). NOT NULL DEFAULT 'en' in the
+   * database, so it is always present on a fresh read; typed optional only for
+   * rows a client parsed before the column existed. Normalize through the i18n
+   * layer rather than trusting it raw.
+   */
+  language?: "en" | "es";
   created_at?: string;
   updated_at?: string;
 }

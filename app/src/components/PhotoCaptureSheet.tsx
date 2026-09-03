@@ -18,6 +18,7 @@ import { supabase } from "../lib/supabase";
 import { formatApiError } from "../lib/errors";
 import { pushToast } from "../lib/toast";
 import { useClock } from "../lib/clockContext";
+import { useT } from "../lib/i18n";
 import { listProjects } from "../lib/api";
 import {
   extractReceipt,
@@ -400,6 +401,7 @@ function JobPhotoCapture({
   onClose,
   onQueued,
 }: Extract<PhotoCaptureSheetProps, { mode: "job" }>) {
+  const t = useT();
   const isReceipt = kind === "receipt";
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -489,7 +491,7 @@ function JobPhotoCapture({
     }
   };
 
-  const title = isReceipt ? "Add a receipt" : "Add job photos";
+  const title = isReceipt ? t("photo.title.addReceipt") : t("photo.title.addPhotos");
 
   if (filedReceipt) {
     return (
@@ -539,7 +541,7 @@ function JobPhotoCapture({
 
         <p className="muted jobphoto-sub">
           {label ? <>For <strong>{label}</strong>. </> : null}
-          Each shot is stamped with the time and GPS location.
+          {t("photo.stamped")}
         </p>
 
         {cameraOn ? (
@@ -547,16 +549,16 @@ function JobPhotoCapture({
             <video ref={videoRef} playsInline muted className="ba-video" />
             <div className="row-gap">
               <button className="primary big" disabled={busy} onClick={snap}>
-                {busy ? "Saving…" : "Capture"}
+                {busy ? t("photo.action.saving") : t("photo.action.capture")}
               </button>
               <button className="big" onClick={() => setCameraOn(false)}>
-                Done
+                {t("photo.action.done")}
               </button>
             </div>
           </div>
         ) : (
           <>
-            <label className="field-label">Caption (optional)</label>
+            <label className="field-label">{t("photo.label.caption")}</label>
             <input
               className="jobphoto-caption"
               value={caption}
@@ -570,11 +572,11 @@ function JobPhotoCapture({
                 onClick={() => setCameraOn(true)}
               >
                 <Camera size={22} aria-hidden />
-                <span>Use camera</span>
+                <span>{t("photo.action.useCamera")}</span>
               </button>
               <label className="jobphoto-action" style={{ cursor: "pointer" }}>
                 <ImagePlus size={22} aria-hidden />
-                <span>Upload files</span>
+                <span>{t("photo.action.uploadFiles")}</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -588,8 +590,8 @@ function JobPhotoCapture({
           </>
         )}
 
-        {cameraError && <p className="muted">Camera unavailable — use Upload files instead.</p>}
-        {busy && !cameraOn && <p className="muted">Stamping GPS &amp; time…</p>}
+        {cameraError && <p className="muted">{t("photo.cameraUnavailable")}</p>}
+        {busy && !cameraOn && <p className="muted">{t("photo.stampingGps")}</p>}
         {queued > 0 && (
           <p className="ok jobphoto-count">
             {queued} photo{queued === 1 ? "" : "s"} queued — syncing in the background.
@@ -606,6 +608,7 @@ function BeforeAfterCapture({
   label,
   slots,
 }: Extract<PhotoCaptureSheetProps, { mode: "beforeAfter" }>) {
+  const t = useT();
   const [mode, setMode] = useState<"idle" | "before" | "after">("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [stamping, setStamping] = useState(false);
@@ -665,14 +668,14 @@ function BeforeAfterCapture({
         </div>
         <div className="row-gap">
           <button className="primary big" onClick={snap}>
-            Capture {mode}
+            {mode === "before" ? t("photo.captureBefore") : t("photo.captureAfter")}
           </button>
           <button className="big" onClick={() => setMode("idle")}>
-            Cancel
+            {t("photo.action.cancel")}
           </button>
         </div>
         {mode === "after" && beforeUrl && (
-          <p className="muted">Line up with the ghosted "before" shot.</p>
+          <p className="muted">{t("photo.lineUpGhost")}</p>
         )}
       </div>
     );
@@ -684,12 +687,8 @@ function BeforeAfterCapture({
       {only.map((slot) => (
         <CaptureSlot
           key={slot}
-          title={slot === "before" ? "Take the before photo" : "Take the after photo"}
-          hint={
-            slot === "after"
-              ? "Lines up over the ghosted before shot"
-              : "GPS + time stamped automatically"
-          }
+          title={slot === "before" ? t("photo.before") : t("photo.after")}
+          hint={slot === "after" ? t("photo.afterHint") : t("photo.gpsTimeAuto")}
           url={slot === "before" ? beforeUrl : afterUrl}
           onCamera={() => setMode(slot)}
           onFile={pickFile(slot)}
@@ -697,12 +696,12 @@ function BeforeAfterCapture({
       ))}
       {stamping && (
         <p className="muted" style={{ gridColumn: "1 / -1" }}>
-          Stamping GPS &amp; time…
+          {t("photo.stampingGps")}
         </p>
       )}
       {cameraError && (
         <p className="muted" style={{ gridColumn: "1 / -1" }}>
-          Camera unavailable — use the file option instead.
+          {t("photo.cameraUnavailableFile")}
         </p>
       )}
     </div>
@@ -730,16 +729,17 @@ function CaptureSlot({
   onCamera: () => void;
   onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
+  const t = useT();
   if (url) {
     return (
       <div className="cap-slot filled">
         <img src={url} alt={title} className="cap-photo" />
         <div className="cap-photo-bar">
           <button type="button" className="cap-bar-btn" onClick={onCamera}>
-            <RefreshCw size={14} aria-hidden /> Retake
+            <RefreshCw size={14} aria-hidden /> {t("photo.action.retake")}
           </button>
           <label className="cap-bar-btn">
-            <ImagePlus size={14} aria-hidden /> File
+            <ImagePlus size={14} aria-hidden /> {t("photo.action.file")}
             <input type="file" accept="image/*" hidden onChange={onFile} />
           </label>
         </div>
@@ -753,10 +753,10 @@ function CaptureSlot({
           <Camera size={26} />
         </span>
         <span className="cap-cta">{title}</span>
-        <span className="cap-sub">{hint ?? "Tap to open the camera"}</span>
+        <span className="cap-sub">{hint ?? t("photo.tapToOpenCamera")}</span>
       </button>
       <label className="cap-file-alt">
-        <ImagePlus size={13} aria-hidden /> or choose from files
+        <ImagePlus size={13} aria-hidden /> {t("photo.chooseFromFiles")}
         <input type="file" accept="image/*" hidden onChange={onFile} />
       </label>
     </div>
@@ -783,6 +783,7 @@ function SinglePhotoCapture({
   label,
   prompt,
 }: Extract<PhotoCaptureSheetProps, { mode: "single" }>) {
+  const t = useT();
   const [live, setLive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [stamping, setStamping] = useState(false);
@@ -822,8 +823,8 @@ function SinglePhotoCapture({
           <video ref={videoRef} playsInline muted className="ba-video" />
         </div>
         <div className="row-gap">
-          <button className="primary big" onClick={snap}>Capture</button>
-          <button className="big" onClick={() => setLive(false)}>Cancel</button>
+          <button className="primary big" onClick={snap}>{t("photo.action.capture")}</button>
+          <button className="big" onClick={() => setLive(false)}>{t("photo.action.cancel")}</button>
         </div>
       </div>
     );
@@ -838,14 +839,14 @@ function SinglePhotoCapture({
     <div className="ba-grid one">
       <CaptureSlot
         title={prompt}
-        hint="GPS + time stamped automatically"
+        hint={t("photo.gpsTimeAuto")}
         url={url}
         onCamera={() => setLive(true)}
         onFile={pick}
       />
-      {stamping && <p className="muted">Stamping GPS &amp; time…</p>}
+      {stamping && <p className="muted">{t("photo.stampingGps")}</p>}
       {cameraError && (
-        <p className="muted">{cameraError} — use the file option instead.</p>
+        <p className="muted">{cameraError} — {t("photo.useFileInstead")}</p>
       )}
     </div>
   );
