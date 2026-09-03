@@ -411,6 +411,84 @@ class TestTheGateCanActuallyFail(unittest.TestCase):
                 uncovered_new_tables(directory),
             )
 
+    def test_naming_the_function_inside_a_string_is_not_arming_it(self):
+        """`comment on function … is '… select public.attach_sandbox_guards();
+        …'` is the sentence 20260965000000 itself writes, in a SQL literal.
+        Reading literals as code means the documentation of the fix passes for
+        the fix."""
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "20260970000000_new_feature.sql").write_text(
+                "create table job_notes (id uuid primary key, project_id uuid);\n"
+                "comment on table job_notes is\n"
+                "  'Any migration that adds one of these must end with "
+                "`select public.attach_sandbox_guards();`.';\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                [("job_notes", "project_id", "20260970000000_new_feature.sql")],
+                uncovered_new_tables(directory),
+            )
+
+    def test_naming_the_function_in_a_block_comment_is_not_arming_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "20260970000000_new_feature.sql").write_text(
+                "/* todo: select public.attach_sandbox_guards();\n"
+                "   /* and mind the nesting */ still inside */\n"
+                "create table job_notes (id uuid primary key, project_id uuid);\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                [("job_notes", "project_id", "20260970000000_new_feature.sql")],
+                uncovered_new_tables(directory),
+            )
+
+    def test_a_raise_notice_quoting_the_instruction_is_not_arming_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "20260970000000_new_feature.sql").write_text(
+                "create table job_notes (id uuid primary key, project_id uuid);\n"
+                "do $$ begin\n"
+                "  raise notice 'next time, select public.attach_sandbox_guards();';\n"
+                "end $$;\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                [("job_notes", "project_id", "20260970000000_new_feature.sql")],
+                uncovered_new_tables(directory),
+            )
+
+    def test_arming_from_inside_a_do_block_still_counts(self):
+        """Which is how 20260965000000 does it, so a scanner that threw dollar
+        bodies away would call the real fix a mention."""
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "20260970000000_new_feature.sql").write_text(
+                "create table job_notes (id uuid primary key, project_id uuid);\n"
+                "do $$ declare v int; begin\n"
+                "  select count(*) into v from public.attach_sandbox_guards();\n"
+                "  raise notice 'armed %', v;\n"
+                "end $$;\n",
+                encoding="utf-8",
+            )
+            self.assertEqual([], uncovered_new_tables(directory))
+
+    def test_deleting_the_real_arming_block_is_noticed(self):
+        """The whole gate, pointed at the real migration with its `do` block
+        cut out. Everything else in that file — the function definition, the
+        grants, the sentence in `comment on` — still names the function."""
+        migration = (MIGRATIONS_DIR / REARM_MIGRATION).read_text(encoding="utf-8")
+        cut = migration.index("-- 4. Arm it now")
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / REARM_MIGRATION).write_text(migration[:cut], encoding="utf-8")
+            self.assertEqual([], migrations_calling_attach(directory))
+            self.assertIn(
+                REARM_MIGRATION, migrations_calling_attach(MIGRATIONS_DIR),
+                "and the real file, with the block, still counts",
+            )
+
     def test_declaring_the_function_is_not_calling_it(self):
         """`create or replace function public.attach_sandbox_guards()` and the
         grant lines under it all name the function without arming anything."""

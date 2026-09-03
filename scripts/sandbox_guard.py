@@ -153,13 +153,69 @@ def migrations_calling_attach(directory: Path | str = MIGRATIONS_DIR) -> list[st
     return sorted(
         path.name
         for path in directory.glob("*.sql")
-        if ATTACH_CALL.search(_without_comments(path.read_text(encoding="utf-8")))
+        if ATTACH_CALL.search(_code_only(path.read_text(encoding="utf-8")))
     )
 
 
-def _without_comments(sql: str) -> str:
-    """Drop `-- …` lines, so naming the function in a comment does not count."""
-    return "\n".join(line.split("--", 1)[0] for line in sql.splitlines())
+def _code_only(sql: str) -> str:
+    """The SQL with comments and quoted strings blanked out.
+
+    Prose that NAMES the arming call must not read as the arming call, and
+    prose is not only `-- …` lines. 20260965000000 ends its
+    `comment on function` with the sentence "must end with
+    `select public.attach_sandbox_guards();`" — inside a SQL string literal.
+    Scanning the raw text finds that sentence, so deleting the actual `do`
+    block that arms the fence would have left this whole gate green with
+    nothing arming anything. Same hole for a `/* … */` block and for any
+    `raise notice` that quotes the instruction.
+
+    Dollar-quoted bodies are deliberately NOT dropped: `do $$ … $$` is where a
+    migration legitimately arms the fence, so the delimiters are passed over
+    and the body is read as the code it is. Comments and literals inside it are
+    blanked like everywhere else.
+
+    Narrow on purpose. `E'…\\''` — a backslash-escaped quote inside an escape
+    string — would confuse it; no migration in this repo writes one, and the
+    failure would be a false REPORT of an unarmed table, which is the safe
+    direction.
+    """
+    out: list[str] = []
+    i, n = 0, len(sql)
+    depth = 0
+    while i < n:
+        if depth:
+            if sql.startswith("/*", i):
+                depth += 1
+                i += 2
+            elif sql.startswith("*/", i):
+                depth -= 1
+                i += 2
+            else:
+                i += 1
+            continue
+        if sql.startswith("--", i):
+            newline = sql.find("\n", i)
+            i = n if newline < 0 else newline
+            continue
+        if sql.startswith("/*", i):
+            depth = 1
+            i += 2
+            continue
+        if sql[i] == "'":
+            i += 1
+            while i < n:
+                if sql[i] != "'":
+                    i += 1
+                elif sql.startswith("''", i):
+                    i += 2
+                else:
+                    i += 1
+                    break
+            out.append(" ")
+            continue
+        out.append(sql[i])
+        i += 1
+    return "".join(out)
 
 
 def uncovered_new_tables(
