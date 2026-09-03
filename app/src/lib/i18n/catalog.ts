@@ -84,6 +84,10 @@ export const CATALOG = {
   },
   "clock.label.hideJobList": { en: "Hide job list", es: "Ocultar lista de trabajos" },
   "clock.search.jobs": { en: "Search jobs…", es: "Buscar trabajos…" },
+  "clock.search.noJobs": {
+    en: "No jobs match “{q}”.",
+    es: "Ningún trabajo coincide con «{q}».",
+  },
   "clock.label.notesOffice": {
     en: "Notes for the office (optional)",
     es: "Notas para la oficina (opcional)",
@@ -178,6 +182,10 @@ export const CATALOG = {
   "clockblock.moreOptions": {
     en: "More options — different job, break, sign the talk",
     es: "Más opciones — otro trabajo, descanso, firmar la charla",
+  },
+  "clockblock.notePlaceholder": {
+    en: "Add a note for the office (optional)",
+    es: "Agrega una nota para la oficina (opcional)",
   },
 
   // ---- My Work landing --------------------------------------------------

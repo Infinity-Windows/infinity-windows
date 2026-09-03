@@ -12,10 +12,11 @@
 // everything that already lives there. The sheet stays the single owner of the
 // complex, safety-relevant flows — this block is the front door to them.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play } from "lucide-react";
 import { getMyProfile } from "../../lib/install/api";
+import { listProjects } from "../../lib/api";
 import { captureGeoSoft } from "../../lib/geo";
 import { toastSuccess } from "../../lib/toast";
 import { openClockGlobally } from "../../lib/clockContext";
@@ -49,9 +50,16 @@ export function ClockInBlock() {
     queryFn: () => listRecentJobs(profileId!),
     enabled: Boolean(profileId),
   });
+  const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
 
   const [pickProjectId, setPickProjectId] = useState<string>("");
   const [pickCostCodeId, setPickCostCodeId] = useState<string>("");
+  const [search, setSearch] = useState("");
+  const [showFullList, setShowFullList] = useState(false);
+  // Optional free-text the worker adds for the office. It rides the existing
+  // time_shifts.note column — clockIn has always carried it; the UI just never
+  // offered a box for it until now.
+  const [note, setNote] = useState("");
   const [now, setNow] = useState(Date.now());
   const primedRef = useRef(false);
 
@@ -85,7 +93,12 @@ export function ClockInBlock() {
   const doStart = useMutation({
     mutationFn: async () => {
       const geo = await captureGeoSoft();
-      await clockIn(pickProjectId || null, pickCostCodeId || null, geo, null);
+      await clockIn(
+        pickProjectId || null,
+        pickCostCodeId || null,
+        geo,
+        note.trim() || null,
+      );
     },
     onSuccess: () => {
       toastSuccess(t("clock.action.clockingIn"));
@@ -96,6 +109,15 @@ export function ClockInBlock() {
     // rather than fork any of that here.
     onError: () => openClockGlobally(),
   });
+
+  const filteredProjects = useMemo(() => {
+    const list = projects.data ?? [];
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((p) =>
+      `${p.job_code} ${p.name} ${p.address ?? ""}`.toLowerCase().includes(q),
+    );
+  }, [projects.data, search]);
 
   // Not signed in yet (or the profile is still resolving): render nothing rather
   // than a half-built card. In the running app the provider has this cached, so
@@ -193,6 +215,45 @@ export function ClockInBlock() {
         </div>
       )}
 
+      {/* The full job list, searchable — for anything not in the recent chips. */}
+      <button
+        type="button"
+        className="clock-list-toggle"
+        onClick={() => setShowFullList((v) => !v)}
+      >
+        {showFullList ? t("clock.label.hideJobList") : t("clock.label.chooseDifferentJob")}
+      </button>
+      {showFullList && (
+        <div className="clock-picker">
+          <input
+            className="clock-search"
+            placeholder={t("clock.search.jobs")}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <div className="clock-project-list">
+            {filteredProjects.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className={
+                  pickProjectId === p.id
+                    ? "clock-project-item selected"
+                    : "clock-project-item"
+                }
+                onClick={() => setPickProjectId(p.id)}
+              >
+                <span className="clock-project-code">{p.job_code}</span>
+                <span className="clock-project-name">{p.name}</span>
+              </button>
+            ))}
+            {filteredProjects.length === 0 && (
+              <p className="muted">{t("clock.search.noJobs", { q: search })}</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Cost code — REQUIRED; Start stays disabled until one is picked. */}
       <p className="clock-row-label">{t("clock.label.costCode")}</p>
       <div className="clock-costcode-list">
@@ -216,6 +277,27 @@ export function ClockInBlock() {
           </button>
         ))}
       </div>
+
+      {/* ---- SLICE 2 SEAM ----------------------------------------------------
+          A "both-mode" job (one that tracks BOTH standard time and per-unit
+          data) needs a Data-vs-Tracking mode step to land RIGHT HERE, between
+          the cost code and the optional description. Slice 1 does not read job
+          mode at all — every clock-in is a plain shift. Do NOT wire mode until
+          slice 2; this comment marks where it goes. -------------------------- */}
+
+      {/* Optional note for the office — persists to time_shifts.note. */}
+      <label className="clock-row-label" htmlFor="clockin-block-note">
+        {t("clock.label.notesOffice")}
+      </label>
+      <textarea
+        id="clockin-block-note"
+        className="clock-note-input"
+        rows={2}
+        maxLength={1000}
+        placeholder={t("clockblock.notePlaceholder")}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
 
       <button
         type="button"

@@ -98,6 +98,7 @@ function mount(tasks: HeartbeatTask[]): HTMLElement {
   qc.setQueryData(["openShift", "me"], null);
   qc.setQueryData(["costCodes"], []);
   qc.setQueryData(["recentJobs", "me"], []);
+  qc.setQueryData(["projects"], []);
 
   host = document.createElement("div");
   document.body.appendChild(host);
