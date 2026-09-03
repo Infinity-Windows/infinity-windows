@@ -53,9 +53,15 @@ describe("the redundant toolbox re-check is gone from start-work", () => {
     expect(doc).toContain(
       "20260969000000_drop_redundant_toolbox_recheck.sql (mirrored)",
     );
-    // And the mirrored tail is the toolbox-free version, not a stale copy.
-    const tail = doc.slice(doc.indexOf("20260969000000_drop_redundant_toolbox_recheck.sql (mirrored)"));
-    expect(tail).not.toContain("from toolbox_completions");
+    // And the mirrored 969 SECTION is the toolbox-free version, not a stale
+    // copy. Bound the slice to just this section (up to the next mirrored
+    // header) — a LATER migration's mirror may legitimately gate on the toolbox
+    // (clock_in itself does), and that must not fail this assertion.
+    const marker = "20260969000000_drop_redundant_toolbox_recheck.sql (mirrored)";
+    const after = doc.slice(doc.indexOf(marker) + marker.length);
+    const nextMirror = after.indexOf("(mirrored)");
+    const section = nextMirror === -1 ? after : after.slice(0, nextMirror);
+    expect(section).not.toContain("from toolbox_completions");
   });
 });
 
