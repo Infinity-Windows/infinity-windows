@@ -681,11 +681,13 @@ export function ClockSheet({
                 </div>
                 {onBreak ? (
                   <p className="clock-hero-sub">
-                    Worked so far <strong>{formatClock(workSec)}</strong>
+                    {t("clock.hero.workedSoFar")} <strong>{formatClock(workSec)}</strong>
                   </p>
                 ) : (
                   breakSec > 0 && (
-                    <p className="clock-hero-sub">Breaks today {formatClock(breakSec)}</p>
+                    <p className="clock-hero-sub">
+                      {t("clock.hero.breaksToday")} {formatClock(breakSec)}
+                    </p>
                   )
                 )}
                 {guard?.state === "long" && (
@@ -1060,7 +1062,7 @@ export function ClockSheet({
                         </button>
                       ))}
                       {filteredProjects.length === 0 && (
-                        <p className="muted">No jobs match “{search}”.</p>
+                        <p className="muted">{t("clock.search.noJobs", { q: search })}</p>
                       )}
                     </div>
                   </div>

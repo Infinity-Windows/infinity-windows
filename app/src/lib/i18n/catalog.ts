@@ -70,6 +70,10 @@ export const CATALOG = {
   "clock.title.onBreak": { en: "On break", es: "En descanso" },
   "clock.title.onClock": { en: "On the clock", es: "En horario" },
   "clock.status.working": { en: "Working", es: "Trabajando" },
+  // Hero-card subtitles on the on-the-clock screen. Were hard-coded English on
+  // the crew flow (slice 7 fix). The running time follows in its own element.
+  "clock.hero.workedSoFar": { en: "Worked so far", es: "Trabajado hasta ahora" },
+  "clock.hero.breaksToday": { en: "Breaks today", es: "Descansos hoy" },
   "clock.label.youreOn": { en: "You're on", es: "Estás en" },
   "clock.label.switchCostCode": {
     en: "Switch cost code",
