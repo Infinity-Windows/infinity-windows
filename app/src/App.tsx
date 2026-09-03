@@ -106,6 +106,8 @@ import { ToolboxHistory } from "./pages/ToolboxHistory";
 import { Supplies } from "./pages/Supplies";
 import { Qc } from "./pages/Qc";
 import { PinGate } from "./components/PinGate";
+import { LanguageProvider } from "./lib/i18n";
+import { FirstRunLanguagePicker } from "./components/LanguagePicker";
 import { ensureMyProfile } from "./lib/install/api";
 import "./index.css";
 import { DataHub } from "./pages/DataHub";
@@ -387,6 +389,11 @@ export default function App() {
         },
       }}
     >
+      <LanguageProvider>
+      {/* The first-login language choice sits above everything — even the PIN
+          gate — so a new crew member picks their language before the app asks
+          for anything else. It renders nothing once a choice exists. */}
+      <FirstRunLanguagePicker />
       <PinGate>
       <ViewAsRoleProvider>
       <BrowserRouter basename={routerBasename(import.meta.env.BASE_URL)}>
@@ -717,6 +724,7 @@ export default function App() {
       </BrowserRouter>
       </ViewAsRoleProvider>
       </PinGate>
+      </LanguageProvider>
     </PersistQueryClientProvider>
   );
 }
