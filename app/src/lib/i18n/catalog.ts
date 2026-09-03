@@ -159,6 +159,27 @@ export const CATALOG = {
   "toolbox.signTalk": { en: "Sign today's talk", es: "Firmar la charla de hoy" },
   "toolbox.signing": { en: "Signing…", es: "Firmando…" },
 
+  // ---- Clock-in block (the one big clock-in spot on every landing) ------
+  "clockblock.title": { en: "Clock in", es: "Marcar entrada" },
+  "clockblock.subtitle": {
+    en: "Pick your job and cost code — your time flows to payroll and job costing.",
+    es: "Elige tu trabajo y código de costo — tu tiempo va a la nómina y al costo del trabajo.",
+  },
+  "clockblock.onClock": { en: "On the clock", es: "En horario" },
+  "clockblock.switch": { en: "Switch", es: "Cambiar" },
+  "clockblock.needsFinish": {
+    en: "Shift needs a finish time",
+    es: "El turno necesita una hora de salida",
+  },
+  "clockblock.needsFinishSub": {
+    en: "We stopped counting — tell us when you finished.",
+    es: "Dejamos de contar — dinos cuándo terminaste.",
+  },
+  "clockblock.moreOptions": {
+    en: "More options — different job, break, sign the talk",
+    es: "Más opciones — otro trabajo, descanso, firmar la charla",
+  },
+
   // ---- My Work landing --------------------------------------------------
   "mywork.greeting": { en: "Your day", es: "Tu día" },
   "mywork.title": { en: "My work", es: "Mi trabajo" },

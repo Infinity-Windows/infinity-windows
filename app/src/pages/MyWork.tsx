@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Plane, Truck } from "lucide-react";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { RoleMaps } from "../components/RoleMaps";
+import { ClockInBlock } from "../components/clock/ClockInBlock";
 import { LiveSummonsStrip } from "../components/install/LiveSummonsStrip";
 import { LogTodayChip } from "../components/dailyLogs/LogTodayChip";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
@@ -41,9 +42,7 @@ import { blockedUnits, listSessionsForOpenings } from "../lib/install/sessions";
 import {
   type ProjectOpening,
 } from "../lib/install/types";
-import { useClock } from "../lib/clockContext";
-import { captureGeoSoft } from "../lib/geo";
-import { clockIn, getOpenShift, listRecentJobs } from "../lib/timeclock";
+import { getOpenShift } from "../lib/timeclock";
 import { listMyPublished } from "../lib/schedule/api";
 import { formatStartTime } from "../lib/schedule/dates";
 import { listVehicleLinksForAssignments } from "../lib/vehicles/api";
@@ -101,7 +100,6 @@ export function MyWork() {
     enabled: Boolean(todayAssignmentId),
   });
   useRealtimeMyOpenings(me.data?.id);
-  const clock = useClock();
 
   // Live session-blocks (grilled Q4): a window whose newest session ended in
   // a Block is never recommended — it wears its reason in the list instead.
@@ -118,12 +116,6 @@ export function MyWork() {
     () => new Map(blockedUnits(blockSessions.data ?? []).map((b) => [b.openingId, b.reason])),
     [blockSessions.data],
   );
-  const recents = useQuery({
-    queryKey: ["recentJobs", me.data?.id],
-    queryFn: () => listRecentJobs(me.data!.id),
-    enabled: Boolean(me.data?.id),
-  });
-
   // Un-submit: take back an install you just submitted, reason required.
   // Same undo path as the foreman's "send it back" — the server only lets an
   // installer void their OWN latest event, under 24 hours old.
@@ -336,34 +328,6 @@ export function MyWork() {
     return r.reasons[0] ?? "Finish checks before installing";
   };
 
-  // ---- The morning hero (grilled Q1/Q3): off the clock, ONE tap clocks
-  // you in and lands you on your window — its gates (toolbox, before
-  // photo, flashing) still stand on the sheet. Clock-in itself is the
-  // ungated part, so a refused start can never un-ring that bell.
-  const flashRun = (myFlashRuns.data ?? [])[0] ?? null;
-  const heroTarget = activeInstall ?? (flashRun ? null : next ?? null);
-  const heroClockIn = useMutation({
-    mutationFn: async () => {
-      const projectId =
-        heroTarget?.project_id ?? flashRun?.project_id ?? todayJobId ??
-        recents.data?.[0]?.projectId ?? null;
-      if (!projectId) throw new Error("no-project");
-      const costCodeId =
-        recents.data?.find((r) => r.projectId === projectId)?.costCodeId ??
-        recents.data?.[0]?.costCodeId ?? null;
-      const geo = await captureGeoSoft();
-      await clockIn(projectId, costCodeId, geo, null);
-    },
-    onSuccess: () => {
-      void openShift.refetch();
-      if (heroTarget) go(heroTarget);
-      else if (flashRun) navigate(`/projects/${flashRun.project_id}/flash-run`);
-    },
-    // Whatever went wrong (offline, no job to pin the punch to), the clock
-    // sheet is the full-featured path — outbox, pickers, toolbox sign-off.
-    onError: () => clock.openClock(),
-  });
-
   if (me.isLoading || (Boolean(me.data?.id) && openings.isLoading)) {
     return (
       <div className="page">
@@ -405,70 +369,12 @@ export function MyWork() {
         </div>
       </header>
       <LiveSummonsStrip />
+      <ClockInBlock />
       <LogTodayChip />
       <p className="muted">
         {me.data?.display_name ? `${me.data.display_name} — ` : ""}
         {t("mywork.hint")}
       </p>
-
-      {/* THE MORNING HERO (grilled Q1): off the clock, the first thing on
-          screen is one button that clocks you in and puts you on your
-          window. The Today strip's facts fold in underneath. */}
-      {!openShift.data && !openShift.isLoading && (
-        <div className="today-strip home-card" style={{ borderColor: "var(--accent-line)" }}>
-          <span className="next-label">{t("mywork.goodMorning")}</span>
-          {(todayAssignment || heroTarget || flashRun) && (
-            <p style={{ margin: "4px 0 2px", fontSize: 14.5 }}>
-              <strong>
-                {todayAssignment?.project?.name ??
-                  heroTarget?.projects?.name ??
-                  heroTarget?.projects?.job_code ??
-                  flashRun?.projects?.name ??
-                  "Your day"}
-              </strong>
-              {todayAssignment?.start_time && (
-                <span className="muted"> · {formatStartTime(todayAssignment.start_time)}</span>
-              )}
-              {todayTruck && (
-                <span className="muted" style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 8 }}>
-                  <Truck size={13} aria-hidden /> {todayTruck}
-                </span>
-              )}
-            </p>
-          )}
-          <button
-            className="primary big"
-            style={{ width: "100%", marginTop: 8 }}
-            disabled={heroClockIn.isPending}
-            onClick={() => heroClockIn.mutate()}
-          >
-            {heroClockIn.isPending
-              ? t("mywork.clockingIn")
-              : activeInstall
-                ? t("mywork.clockInFinish", { code: activeInstall.opening_code })
-                : flashRun
-                  ? t("mywork.clockInFlash", {
-                      job: flashRun.projects?.job_code ?? t("mywork.yourJob"),
-                    })
-                  : next
-                    ? t("mywork.clockInStart", { code: next.opening_code })
-                    : t("mywork.clockIn")}
-          </button>
-          <div
-            style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginTop: 8 }}
-          >
-            {todayAssignment?.project?.address && (
-              <DirectionsButton
-                address={todayAssignment.project.address}
-                title="Directions to today's job"
-              />
-            )}
-            <button className="link" style={{ fontSize: 12.5 }} onClick={() => clock.openClock()}>
-              {t("mywork.justClockIn")}
-            </button>
-          </div>
-        </div>
-      )}
 
       {Boolean(openShift.data) && todayAssignment && (
         <div className="today-strip home-card">
