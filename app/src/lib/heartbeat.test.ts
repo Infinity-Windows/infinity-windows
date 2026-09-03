@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ANOMALY_THRESHOLD, heartbeatTask, isAnomaly, type OpeningRow } from "./heartbeat";
+import {
+  ANOMALY_THRESHOLD,
+  heartbeatTask,
+  isAnomaly,
+  liveCrewHref,
+  type OpeningRow,
+} from "./heartbeat";
 
 /**
  * The Heartbeat flags a running task as "long" when elapsed time exceeds the
@@ -106,5 +112,36 @@ describe("heartbeatTask", () => {
 
   it("ignores an unreadable stamp rather than showing NaN", () => {
     expect(heartbeatTask(row({ work_started_at: "nonsense" }), NOW)).toBeNull();
+  });
+});
+
+/**
+ * Live crew rows link straight to the unit's own opening sheet — the same
+ * deep link MapsInteractive's openOpening uses — so a stale start gets
+ * resolved on the row that flags it instead of sending someone hunting.
+ */
+describe("liveCrewHref", () => {
+  it("points at the opening sheet for that project and opening", () => {
+    expect(liveCrewHref({ projectId: "p1", openingId: "o1" })).toBe(
+      "/projects/p1/opening/o1",
+    );
+  });
+
+  it("works from a full HeartbeatTask, not just the two id fields", () => {
+    const t = heartbeatTask(
+      {
+        id: "o1",
+        project_id: "p1",
+        opening_code: "C101",
+        label: "Unit C101 living",
+        status: "planned",
+        work_started_at: new Date(Date.now() - 60_000).toISOString(),
+        assignee: { display_name: "Ammon" },
+        window_types: { median_minutes: 30 },
+      },
+      Date.now(),
+    );
+    expect(t).not.toBeNull();
+    expect(liveCrewHref(t!)).toBe(`/projects/${t!.projectId}/opening/${t!.openingId}`);
   });
 });
