@@ -114,7 +114,7 @@ export function photoTime(p: Pick<FeedPhoto, "takenAt" | "createdAt">): string {
 // Job-photo trash (standard-tracking-jobs slice 3): a foreman removes a bad or
 // wrong photo; it drops off the feed into a 30-day recoverable trash, then the
 // nightly sweep erases it. deleted_at/deleted_by + the RPCs live in migration
-// 20260971000000. Reads degrade to empty on a database without the column.
+// 20260973000000. Reads degrade to empty on a database without the column.
 // ---------------------------------------------------------------------------
 
 /** The removed job photos still recoverable (newest-deleted first). */

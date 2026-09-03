@@ -631,7 +631,7 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # natural key (Wave L, L1, 20260949000000).
     "daily_logs": ("project_id", "log_date"),
     # One row per (job, cost code) — the UNIQUE constraint IS the natural key
-    # (standard-tracking-jobs slice 3, 20260971000000). Two projects that both
+    # (standard-tracking-jobs slice 3, 20260973000000). Two projects that both
     # enable the same code are the same enablement once merged, not a
     # duplicate to keep twice.
     "project_cost_codes": ("project_id", "cost_code_id"),

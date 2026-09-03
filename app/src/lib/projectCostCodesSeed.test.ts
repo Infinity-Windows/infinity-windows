@@ -10,11 +10,11 @@ import { dirname, resolve } from "node:path";
 // in the ~7s vitest suite with no network.
 const here = dirname(fileURLToPath(import.meta.url));
 const sql = readFileSync(
-  resolve(here, "../../../supabase/migrations/20260971000000_project_cost_codes.sql"),
+  resolve(here, "../../../supabase/migrations/20260973000000_project_cost_codes.sql"),
   "utf8",
 );
 
-describe("20260971000000_project_cost_codes seed", () => {
+describe("20260973000000_project_cost_codes seed", () => {
   it("seeds the two new company cost codes", () => {
     expect(sql).toContain("'Service call'");
     expect(sql).toContain("'Warranty'");
