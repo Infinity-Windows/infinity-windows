@@ -50,7 +50,7 @@
 --
 -- The one-shot `do` block becomes a function anyone deploying can call again:
 -- attach_sandbox_guards(). It is idempotent, it fixes a guard attached to the
--- wrong column or switched off as well as a missing one, and 20260965000000
+-- wrong column or switched off as well as a missing one, and 20260967000000
 -- (this file) calls it, so every table listed above is covered the moment this
 -- lands.
 --

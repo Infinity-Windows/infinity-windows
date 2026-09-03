@@ -3995,7 +3995,7 @@ end $$;
 
 
 -- ===========================================================================
--- 20260965000000_sandbox_guard_rearm.sql (mirrored)
+-- 20260967000000_sandbox_guard_rearm.sql (mirrored)
 -- The test-login sandbox guard re-arms itself: attach_sandbox_guards() puts
 -- guard_test_account_sandbox_only back on every project-scoped table, and
 -- sandbox_guard_census() names the ones it is still missing from.
@@ -4053,7 +4053,7 @@ end $$;
 --
 -- The one-shot `do` block becomes a function anyone deploying can call again:
 -- attach_sandbox_guards(). It is idempotent, it fixes a guard attached to the
--- wrong column or switched off as well as a missing one, and 20260965000000
+-- wrong column or switched off as well as a missing one, and 20260967000000
 -- (this file) calls it, so every table listed above is covered the moment this
 -- lands.
 --

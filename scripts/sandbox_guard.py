@@ -16,7 +16,7 @@ block that ran exactly once, on 2026-07-30. Fourteen project-scoped tables have
 been created since and never carried the guard, two more lost it when their
 table was dropped and recreated, and on 2026-09-02 the QA foreman login wrote to
 a live job. Nothing was watching, because the only coverage report in the schema
-had one caller and it ran on demand. See 20260965000000_sandbox_guard_rearm.sql.
+had one caller and it ran on demand. See 20260967000000_sandbox_guard_rearm.sql.
 
 TWO CHECKS, BECAUSE ONE OF THEM IS ALWAYS TOO LATE.
 
@@ -85,16 +85,16 @@ GUARD_MIGRATION = "20260730220000_test_accounts_sandbox_only.sql"
 #: was project-scoped on the database when this ran is covered by that call —
 #: which is not the same set as "every table whose filename sorts below it",
 #: hence REARM_COVERED.
-REARM_MIGRATION = "20260965000000_sandbox_guard_rearm.sql"
+REARM_MIGRATION = "20260967000000_sandbox_guard_rearm.sql"
 
-#: What 20260965000000's sweep actually armed: every table that was
+#: What 20260967000000's sweep actually armed: every table that was
 #: project-scoped in the repo on the day it was written (2026-09-02).
 #:
 #: A FROZEN HISTORICAL FACT, not a list to maintain. Nothing may be added to
 #: it — a table that becomes project-scoped after that sweep has to arm the
 #: fence from its own migration, and this list is how the gate tells the two
 #: apart. A version comparison cannot: `supabase db push` applies whatever is
-#: pending, so a branch numbered below 20260965000000 and merged after it runs
+#: pending, so a branch numbered below 20260967000000 and merged after it runs
 #: on a database where the sweep is already behind it. Its table would sort as
 #: "covered" and carry no trigger.
 #:
@@ -266,7 +266,7 @@ def _code_only(sql: str) -> str:
     """The SQL with comments and quoted strings blanked out.
 
     Prose that NAMES the arming call must not read as the arming call, and
-    prose is not only `-- …` lines. 20260965000000 ends its
+    prose is not only `-- …` lines. 20260967000000 ends its
     `comment on function` with the sentence "must end with
     `select public.attach_sandbox_guards();`" — inside a SQL string literal.
     Scanning the raw text finds that sentence, so deleting the actual `do`
@@ -329,12 +329,12 @@ def uncovered_new_tables(
     """(table, link column, migration) for project-scoped tables nothing arms.
 
     A table is covered when THE MIGRATION THAT MAKES IT PROJECT-SCOPED arms the
-    fence itself, or when 20260965000000's sweep already covered it.
+    fence itself, or when 20260967000000's sweep already covered it.
 
     "Or a later migration arms it" is not on that list, and the omission is the
     point. Filenames are a version order, not the order the files reach a
     database: `supabase db push` applies whatever is pending, so a branch
-    numbered below 20260965000000 and merged after it lands on a database where
+    numbered below 20260967000000 and merged after it lands on a database where
     the only arming call has already run. Its table gets no trigger, and a gate
     that credited any higher-sorting filename would be green on that PR — the
     one-shot bug, reproduced by the check written to catch it. Arming in the
@@ -361,7 +361,7 @@ def load_census(paths) -> dict[str, list[list[str]]]:
     """Read scripts/sandbox_guard_census.sql's output into kind -> [fields].
 
     A dict rather than a list is the Management API's error shape, and the most
-    likely error by far is that 20260965000000 has not been applied — so that
+    likely error by far is that 20260967000000 has not been applied — so that
     one is named rather than dumped.
     """
     rows: dict[str, list[list[str]]] = {}

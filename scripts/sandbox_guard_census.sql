@@ -7,7 +7,7 @@
 --
 -- Read-only: every row here is a SELECT, which is all scripts/pgq.sh allows.
 --
--- The three functions come from 20260965000000_sandbox_guard_rearm.sql. If this
+-- The three functions come from 20260967000000_sandbox_guard_rearm.sql. If this
 -- query fails to parse on the server, that migration has not been applied —
 -- which is itself the answer, and sandbox_guard.py says so in those words.
 select 'scoped|' || table_name || '|' || link_column || '|' || link_kind as k

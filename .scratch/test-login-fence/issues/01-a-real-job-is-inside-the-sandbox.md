@@ -35,7 +35,7 @@ Both readings are defensible and they cannot both stand:
 
 ## What has already been done
 
-`20260965000000_sandbox_guard_rearm.sql` put the guard back on the fourteen
+`20260967000000_sandbox_guard_rearm.sql` put the guard back on the fourteen
 project-scoped tables that never had it, and every backend deploy now prints
 which jobs a test login may write — naming any job that is not the automation
 sandbox (`ZZTEST`) as a real job, in the summary headline. The fence itself is

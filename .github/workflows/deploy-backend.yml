@@ -917,7 +917,7 @@ jobs:
       # Every deploy in between was green, because nothing ever asked.
       #
       # So now something asks, every time. Any table the guard is missing from
-      # fails this job. 20260965000000 re-arms the fence and the static gate in
+      # fails this job. 20260967000000 re-arms the fence and the static gate in
       # scripts/test_sandbox_guard.py (CI) refuses a new project-scoped table
       # that does not arm itself, so the honest answer here is always zero.
       #

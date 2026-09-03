@@ -98,7 +98,7 @@ steps = Steps()
 # discovered so a renamed file is a loud failure instead of a silent skip.
 GUARD_MIGRATIONS = (
     "supabase/migrations/20260730220000_test_accounts_sandbox_only.sql",
-    "supabase/migrations/20260965000000_sandbox_guard_rearm.sql",
+    "supabase/migrations/20260967000000_sandbox_guard_rearm.sql",
 )
 
 
@@ -166,7 +166,7 @@ def check_migration() -> int:
     does not just fail to ship itself — it blocks everybody else's deploy until
     somebody notices.
 
-    Both files, in order: 20260965000000 rebuilds the attach loop as a callable
+    Both files, in order: 20260967000000 rebuilds the attach loop as a callable
     function and then asks the census whether the fence is complete, so running
     it is the only way to see that half of the cage work without merging first.
     """

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Standing test for the test-login fence (20260965000000_sandbox_guard_rearm).
+"""Standing test for the test-login fence (20260967000000_sandbox_guard_rearm).
 
     python3 scripts/test_sandbox_guard.py
 
 Two jobs.
 
 THE STATIC GATE. Replays every migration to find every table that becomes
-project-scoped after 20260965000000's sweep — created with a project link,
+project-scoped after 20260967000000's sweep — created with a project link,
 dropped and recreated, or given one by ALTER — and asserts that the migration
 doing it arms the fence itself. This is the check that stops the live census
 from ever going non-empty again: the original fence attached its triggers from
@@ -449,7 +449,7 @@ class TestTheGateCanActuallyFail(unittest.TestCase):
 
     def test_the_tables_the_rearm_sweep_covered_are_not_re_reported(self):
         """The gate has to stay quiet about the forty-three tables
-        20260965000000 actually armed, or nobody will read it."""
+        20260967000000 actually armed, or nobody will read it."""
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
             (directory / "20260814000000_storage_tracking.sql").write_text(
@@ -491,7 +491,7 @@ class TestTheGateCanActuallyFail(unittest.TestCase):
 
     def test_naming_the_function_inside_a_string_is_not_arming_it(self):
         """`comment on function … is '… select public.attach_sandbox_guards();
-        …'` is the sentence 20260965000000 itself writes, in a SQL literal.
+        …'` is the sentence 20260967000000 itself writes, in a SQL literal.
         Reading literals as code means the documentation of the fix passes for
         the fix."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -538,7 +538,7 @@ class TestTheGateCanActuallyFail(unittest.TestCase):
             )
 
     def test_arming_from_inside_a_do_block_still_counts(self):
-        """Which is how 20260965000000 does it, so a scanner that threw dollar
+        """Which is how 20260967000000 does it, so a scanner that threw dollar
         bodies away would call the real fix a mention."""
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)

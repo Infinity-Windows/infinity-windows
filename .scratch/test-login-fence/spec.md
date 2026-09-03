@@ -10,7 +10,7 @@ question.
 
 **Is the guard on every table?** Engineering. `attach_sandbox_guards()` puts it
 back and `sandbox_guard_census()` proves it is there
-(`20260965000000_sandbox_guard_rearm.sql`). Every backend deploy reads the
+(`20260967000000_sandbox_guard_rearm.sql`). Every backend deploy reads the
 census and fails on any row; `scripts/test_sandbox_guard.py` fails CI when a
 migration makes a table project-scoped without arming it.
 

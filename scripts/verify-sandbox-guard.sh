@@ -6,14 +6,14 @@
 # the CLI ran, not that the database is what the repo says it is.
 #
 # WHAT IT MEASURES. public.sandbox_guard_census() (added by
-# 20260965000000_sandbox_guard_rearm.sql) lists every project-scoped table that
+# 20260967000000_sandbox_guard_rearm.sql) lists every project-scoped table that
 # does NOT carry guard_test_account_sandbox_only. Any row is a table a QA login
 # can write on ANY job, so any row fails the deploy.
 #
 # WHY IT IS NOT ADVISORY, WHEN THE SCHEMA CHECK'S LIVE-ONLY HALF IS. The schema
 # check tolerates undeclared objects because blocking on them would be red on
 # every merge forever. This is the opposite: the healthy answer is zero rows,
-# it has been zero rows by construction since 20260965000000 armed everything,
+# it has been zero rows by construction since 20260967000000 armed everything,
 # and the static gate in scripts/test_sandbox_guard.py stops a new table from
 # arriving unarmed. A row here means the fence came down between deploys, which
 # is exactly the thing nobody noticed for five weeks.
