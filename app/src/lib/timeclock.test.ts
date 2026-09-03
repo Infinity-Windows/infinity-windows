@@ -1,7 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { JobMode } from "./types";
+
+// clockIn is the only function here that talks to the database; the rest are
+// pure. Mock just supabase.rpc — indirected through `rpc` the same way
+// liveProjects.test.ts does, so the factory closes over the spy safely.
+const rpc = vi.fn();
+vi.mock("./supabase", () => ({
+  supabase: { rpc: (...args: unknown[]) => rpc(...args) },
+  supabaseConfigured: true,
+}));
+
 import {
   addDays,
   breakTypeLabel,
+  clockIn,
   currentBreakSeconds,
   elapsedWorkSeconds,
   formatClock,
@@ -154,5 +166,89 @@ describe("startOfWeekIso", () => {
     expect(d.getDay()).toBe(1); // Monday
     expect(d.getHours()).toBe(0);
     expect(d.getMinutes()).toBe(0);
+  });
+});
+
+// The actual write of job_mode to the shift (standard-tracking-jobs slice 2).
+// These guard the RPC wiring itself: mocking the whole clockIn wrapper (as the
+// ClockInBlock test does) would let a broken payload pass, so we assert on the
+// exact args reaching supabase.rpc. The missing-overload error shape is the one
+// isMissingClockInOverload recognises (PGRST202) so the fallback chain runs.
+describe("clockIn (mode-carrying path, slice 2)", () => {
+  const MISSING = { code: "PGRST202", message: "Could not find the function" };
+
+  beforeEach(() => {
+    rpc.mockReset();
+  });
+
+  it("sends the picked mode to clock_in as p_mode, alongside the note", async () => {
+    const returned = shift({});
+    rpc.mockResolvedValueOnce({ data: returned, error: null });
+
+    const out = await clockIn("j1", "cc1", { lat: 1, lng: 2 }, "  morning  ", "tracking");
+
+    expect(rpc).toHaveBeenCalledTimes(1);
+    const [fn, payload] = rpc.mock.calls[0];
+    expect(fn).toBe("clock_in");
+    // The write that would silently vanish if p_mode were renamed, dropped, or
+    // the whole cleanMode branch deleted.
+    expect(payload).toMatchObject({
+      p_project_id: "j1",
+      p_cost_code_id: "cc1",
+      p_lat: 1,
+      p_lng: 2,
+      p_note: "morning",
+      p_mode: "tracking",
+    });
+    expect(out).toBe(returned);
+  });
+
+  it("falls back mode+note -> note-only -> bare punch when the overload is missing", async () => {
+    rpc.mockResolvedValueOnce({ data: null, error: MISSING }); // mode+note overload absent
+    rpc.mockResolvedValueOnce({ data: null, error: MISSING }); // note-only overload absent
+    const returned = shift({});
+    rpc.mockResolvedValueOnce({ data: returned, error: null }); // bare punch works
+
+    const out = await clockIn("j1", null, undefined, "hello", "data");
+
+    expect(rpc).toHaveBeenCalledTimes(3);
+    // 1st carries both note and mode.
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_note: "hello", p_mode: "data" });
+    // 2nd drops the mode but keeps the note.
+    expect(rpc.mock.calls[1][1]).toHaveProperty("p_note", "hello");
+    expect(rpc.mock.calls[1][1]).not.toHaveProperty("p_mode");
+    // 3rd is a bare punch: neither note nor mode.
+    expect(rpc.mock.calls[2][1]).not.toHaveProperty("p_note");
+    expect(rpc.mock.calls[2][1]).not.toHaveProperty("p_mode");
+    expect(out).toBe(returned);
+  });
+
+  it("throws a non-missing-overload error instead of quietly falling back", async () => {
+    const real = { code: "P0001", message: "complete today's toolbox talk before clocking in" };
+    rpc.mockResolvedValueOnce({ data: null, error: real });
+
+    await expect(clockIn("j1", null, undefined, "note", "tracking")).rejects.toBe(real);
+    expect(rpc).toHaveBeenCalledTimes(1); // no fallback on a real error
+  });
+
+  it("leaves a single-mode punch on the note-only path, with no p_mode key", async () => {
+    rpc.mockResolvedValueOnce({ data: shift({}), error: null });
+
+    await clockIn("j1", null, undefined, "note", null);
+
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc.mock.calls[0][1]).toHaveProperty("p_note", "note");
+    expect(rpc.mock.calls[0][1]).not.toHaveProperty("p_mode");
+  });
+
+  it("ignores an unrecognised mode rather than sending it", async () => {
+    rpc.mockResolvedValueOnce({ data: shift({}), error: null });
+
+    await clockIn("j1", null, undefined, null, "bogus" as unknown as JobMode);
+
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc.mock.calls[0][1]).not.toHaveProperty("p_mode");
+    // note normalised to null when blank/absent
+    expect(rpc.mock.calls[0][1]).toHaveProperty("p_note", null);
   });
 });
