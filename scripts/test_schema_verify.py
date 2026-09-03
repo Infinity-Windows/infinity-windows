@@ -375,7 +375,71 @@ class MigrationLintTest(unittest.TestCase):
         self.assertIn("project_opening_id", text)
         self.assertIn("before.sql", text)
 
+    # --- the same bug, spelled with one more pair of brackets ---------------
+    #
+    # The incident happened to write the filter flat. Nothing about the bug
+    # needs it to be flat, and the first cut of the scanner only judged text at
+    # paren depth 0 — so every spelling below re-shipped the identical bug with
+    # the gate printing "no silently-resolving column references" (2026-09-03).
+
+    def test_the_filter_wrapped_in_its_own_parentheses_is_caught(self):
+        sql = """
+        select 1 from install_events
+        where (opening_id = p_opening_id and voided_at is null);
+        """
+        self.assertEqual(
+            [(t, w) for _f, _l, t, w, _r in migration_lint.scan_sql(sql)],
+            [("install_events", "opening_id")],
+        )
+
+    def test_the_filter_inside_a_function_call_is_caught(self):
+        sql = """
+        select 1 from install_events
+        where coalesce(opening_id, '00000000-0000-0000-0000-000000000000'::uuid)
+              = p_opening_id;
+        """
+        self.assertEqual(
+            [(t, w) for _f, _l, t, w, _r in migration_lint.scan_sql(sql)],
+            [("install_events", "opening_id")],
+        )
+
+    def test_the_2026_09_02_statement_with_a_bracketed_filter_is_caught(self):
+        """The whole incident again, one bracket deeper — the shape a future
+        finish_unit is most likely to be written in."""
+        sql = FINISH_UNIT_BEFORE.replace(
+            "where opening_id = p_opening_id and voided_at is null",
+            "where (opening_id = p_opening_id and voided_at is null)",
+        )
+        self.assertEqual(
+            [(t, w) for _f, _l, t, w, _r in migration_lint.scan_sql(sql)],
+            [("install_events", "opening_id")],
+        )
+
     # --- it does not cry wolf ----------------------------------------------
+
+    def test_a_subquery_on_another_table_is_that_querys_business(self):
+        """Descending into brackets must not start judging a nested query that
+        brought its own FROM: `opening_id` really is unit_sessions' column."""
+        sql = """
+        select 1 from install_events
+        where project_opening_id in (
+          select opening_id from unit_sessions where ended_at is not null
+        );
+        """
+        self.assertEqual(migration_lint.scan_sql(sql), [])
+
+    def test_the_from_inside_extract_is_not_a_table_source(self):
+        """`extract(epoch from (a - b))` reads like a FROM clause and is not
+        one — if it were treated as a nested query, the trap could hide in it."""
+        sql = """
+        select extract(epoch from (created_at - started_at)) from install_events
+        where (opening_id = p_opening_id);
+        """
+        self.assertEqual(
+            [(t, w) for _f, _l, t, w, _r in migration_lint.scan_sql(sql)],
+            [("install_events", "opening_id")],
+        )
+
 
     def test_a_qualified_opening_id_on_another_table_is_fine(self):
         """20260959000000's shape: install_events joined next to a table that
