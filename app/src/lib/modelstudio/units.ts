@@ -477,6 +477,17 @@ export function specToUnitConfig(spec: ProjectMarkSpec): UnitConfig | null {
   const kind: UnitKind = isDoor ? "door" : "window";
   const frameColor = frameColorFromSpecColor(spec.color);
 
+  // A door either SLIDES or SWINGS, and the two are drawn differently — a
+  // slide arrow vs the casement hinge "V". `isDoor` above already counts
+  // sliders as doors; this is the sub-distinction (owner, live pilot
+  // 2026-09-02: Mad Moose's French doors were drawing as sliders). Only a
+  // "slider"/"patio" door slides; a "French Door", a swing/hinged door, a
+  // storefront entry all swing. Read style AND operation so either naming
+  // reaches the same answer. Windows never swing here — this is door-only.
+  const isSlide = /slid|patio/i.test(`${style} ${op}`);
+  const operableMechanism: Mechanism =
+    kind === "door" && !isSlide ? "casement" : "slider";
+
   // The extractor's drawing read wins: EXACT per-panel widths (window 16's
   // 30¼ | 88½ | 90 | 87¾ | 17) + per-panel ops + the 90° corner, straight
   // off the elevation. Falls through to operation-string splitting when
@@ -494,7 +505,10 @@ export function specToUnitConfig(spec: ProjectMarkSpec): UnitConfig | null {
       const operable = p.op === "X";
       return {
         widthMm: p.width_in * IN_TO_MM,
-        mechanism: operable ? "slider" : "fixed",
+        mechanism: operable ? operableMechanism : "fixed",
+        // A casement leaf needs a hinge side and a slider a slide side —
+        // same left/right assignment either way (first leaf one way, the
+        // rest the other), so the swing "V" always has a hinge to draw.
         direction: operable ? (i === 0 ? "right" : "left") : undefined,
       };
     });
@@ -519,14 +533,20 @@ export function specToUnitConfig(spec: ProjectMarkSpec): UnitConfig | null {
     const pw = w / letters.length;
     panels = letters.map((ch, i) => ({
       widthMm: pw,
-      mechanism: ch === "X" ? "slider" : "fixed",
-      // A moving panel slides toward its nearest fixed neighbour.
+      mechanism: ch === "X" ? operableMechanism : "fixed",
+      // A moving panel slides (or, on a swinging door, hinges) toward its
+      // nearest fixed neighbour.
       direction: ch === "X" ? (i === 0 ? "right" : "left") : undefined,
     })) as UnitPanel[];
   } else if (/CASEMENT/.test(op)) {
     panels = [{ widthMm: w, mechanism: "casement", direction: "left" }];
   } else if (/HUNG|SH|DH/.test(op)) {
     panels = [{ widthMm: w, mechanism: "hung" }];
+  } else if (kind === "door" && !isSlide) {
+    // A swinging door with no drawn panels and no operation we recognized
+    // (a bare "French Door") still swings — fall to a single casement leaf,
+    // not a fixed pane. Sliding/patio doors and every window stay "fixed".
+    panels = [{ widthMm: w, mechanism: "casement", direction: "left" }];
   } else {
     panels = [{ widthMm: w, mechanism: "fixed" }];
   }
