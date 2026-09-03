@@ -200,6 +200,15 @@ export interface ProjectOpening {
     widths?: (string | number | null)[];
     heights?: (string | number | null)[];
   } | null;
+  /**
+   * "Quick check: all good" — one tap saying somebody looked at the opening,
+   * held the unit to it, and it goes in, with no tape numbers written down
+   * (owner, 2026-09-02). Weaker than a measurement on purpose: only read when
+   * ro_width_in / ro_height_in are null, and cleared by the server the moment
+   * real numbers are saved. Optional: the column arrives with 20260966000000,
+   * so an older row reads as absent, which is the same as "no quick check".
+   */
+  ro_quick_ok?: boolean | null;
   condition: OpeningCondition;
   condition_note: string | null;
   condition_checked_by: string | null;

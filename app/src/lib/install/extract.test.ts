@@ -681,6 +681,14 @@ describe("planDraftPersistence (per-slot re-extract, root-cause fix)", () => {
       expect(plan.deleteIds).toEqual([]);
     });
 
+    it("keeps an opening someone quick-checked (quick_check_rough_opening)", () => {
+      // The quick check leaves no numbers behind, so it is the only record
+      // that anybody walked to that window.
+      const prior = [existing("14-1", "building", { ro_quick_ok: true })];
+      const plan = planDraftPersistence(prior, [draft("14-1")], "building");
+      expect(plan.deleteIds).toEqual([]);
+    });
+
     it("keeps an opening whose arrival condition was checked", () => {
       const prior = [existing("14-1", "building", { condition: "damaged" })];
       const plan = planDraftPersistence(prior, [draft("14-1")], "building");

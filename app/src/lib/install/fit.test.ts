@@ -41,6 +41,115 @@ describe("checkFit", () => {
     expect(r.verdict).toBe("too_big");
   });
 
+  // The one-tap "Quick check: all good" (owner, 2026-09-02): a stand-in for a
+  // measurement nobody took, and only that.
+  describe("a quick check with no tape numbers", () => {
+    it("answers fits, and says there are no numbers behind it", () => {
+      const r = checkFit({
+        unitWidthIn: 30,
+        unitHeightIn: 50,
+        roWidthIn: null,
+        roHeightIn: null,
+        roQuickOk: true,
+      });
+      expect(r.verdict).toBe("fits");
+      expect(r.message).toBe("Quick check: all good — no tape numbers on file.");
+      expect(r.widthGap).toBeNull();
+      expect(r.heightGap).toBeNull();
+    });
+
+    it("speaks even when the unit's own size is unknown", () => {
+      // A person judged the window against the hole. That judgment does not
+      // need the catalog to have dimensions on file.
+      const r = checkFit({
+        unitWidthIn: null,
+        unitHeightIn: null,
+        roWidthIn: null,
+        roHeightIn: null,
+        roQuickOk: true,
+      });
+      expect(r.verdict).toBe("fits");
+    });
+
+    it("still answers unknown when nobody has tapped it", () => {
+      const r = checkFit({
+        unitWidthIn: 30,
+        unitHeightIn: 50,
+        roWidthIn: null,
+        roHeightIn: null,
+        roQuickOk: false,
+      });
+      expect(r.verdict).toBe("unknown");
+    });
+
+    it("changes nothing for a caller that never passes the flag", () => {
+      expect(
+        checkFit({ unitWidthIn: 30, unitHeightIn: 50, roWidthIn: null, roHeightIn: null })
+          .verdict,
+      ).toBe("unknown");
+    });
+  });
+
+  describe("numbers on file outrank a quick check", () => {
+    it("is ignored when the measurements say too_small", () => {
+      const r = checkFit({
+        unitWidthIn: 30,
+        unitHeightIn: 50,
+        roWidthIn: 29.5,
+        roHeightIn: 50.375,
+        roQuickOk: true,
+      });
+      expect(r.verdict).toBe("too_small");
+    });
+
+    it("is ignored when the measurements say tight", () => {
+      const r = checkFit({
+        unitWidthIn: 30,
+        unitHeightIn: 50,
+        roWidthIn: 30.0625,
+        roHeightIn: 50.375,
+        roQuickOk: true,
+      });
+      expect(r.verdict).toBe("tight");
+    });
+
+    it("is ignored when the measurements say too_big", () => {
+      const r = checkFit({
+        unitWidthIn: 30,
+        unitHeightIn: 50,
+        roWidthIn: 30.75,
+        roHeightIn: 50.375,
+        roQuickOk: true,
+      });
+      expect(r.verdict).toBe("too_big");
+    });
+
+    it("reports the real gaps, not the quick check, when the numbers do fit", () => {
+      const r = checkFit({
+        unitWidthIn: 30,
+        unitHeightIn: 50,
+        roWidthIn: 30.375,
+        roHeightIn: 50.375,
+        roQuickOk: true,
+      });
+      expect(r.verdict).toBe("fits");
+      expect(r.message).toBe('Fits: 0.38" width gap, 0.38" height gap.');
+    });
+
+    it("half a measurement is not a measurement — the quick check still speaks", () => {
+      // A width with no height cannot be judged; the walk still happened.
+      const r = checkFit({
+        unitWidthIn: 30,
+        unitHeightIn: 50,
+        roWidthIn: 30.375,
+        roHeightIn: null,
+        roQuickOk: true,
+      });
+      expect(r.verdict).toBe("fits");
+      expect(r.message).toMatch(/no tape numbers on file/);
+    });
+  });
+
   it("respects a custom clearance", () => {
     const r = checkFit({
       unitWidthIn: 30,
@@ -154,6 +263,36 @@ describe("openingReadiness", () => {
     });
     expect(r.status).toBe("incomplete");
     expect(r.reasons.some((m) => /staged\/loaded\/on-site/i.test(m))).toBe(true);
+  });
+
+  // The whole point of the quick check: the dispatch board, MyWork and the
+  // next-window pick read this function, so one tap has to clear
+  // "Rough opening not measured." everywhere, not only on the sheet.
+  it("a quick-checked opening with no numbers is ready", () => {
+    const r = openingReadiness({
+      ...base,
+      ro_width_in: null,
+      ro_height_in: null,
+      ro_quick_ok: true,
+    });
+    expect(r.fit).toBe("fits");
+    expect(r.status).toBe("ready");
+  });
+
+  it("without the tap, an unmeasured opening is still incomplete", () => {
+    const r = openingReadiness({ ...base, ro_width_in: null, ro_height_in: null });
+    expect(r.fit).toBe("unknown");
+    expect(r.reasons).toContain("Rough opening not measured.");
+  });
+
+  it("a quick check cannot rescue an opening the tape says is too small", () => {
+    const r = openingReadiness({
+      ...base,
+      ro_width_in: 29,
+      ro_height_in: 50.375,
+      ro_quick_ok: true,
+    });
+    expect(r.status).toBe("blocked");
   });
 });
 
