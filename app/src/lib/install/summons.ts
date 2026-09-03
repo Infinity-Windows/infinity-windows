@@ -180,6 +180,22 @@ export async function listClockedInOnJob(projectId: string): Promise<ClockedInPe
   return dedupeClockedIn((data ?? []) as unknown as OpenShiftRow[]);
 }
 
+/**
+ * Everyone clocked in ANYWHERE right now — the reach-further picker's starting
+ * list (job-level-summons slice 4). Carries each person's job so the picker
+ * can say where they are before you pull them off it onto your own.
+ */
+export async function listClockedInAnywhere(): Promise<ClockedInPerson[]> {
+  const { data, error } = await supabase
+    .from("time_shifts")
+    .select("profile_id, worker:profiles!profile_id(display_name), project:projects(job_code)")
+    .eq("status", "open")
+    .is("clock_out_at", null);
+  if (isMissingTableError(error)) return [];
+  if (error) throw error;
+  return dedupeClockedIn((data ?? []) as unknown as OpenShiftRow[]);
+}
+
 /** One row per person, not per shift — the audience is a set of people. A
  * person should never hold two open shifts, but the read must be a set even
  * if the data ever isn't. `jobCode` rides along when the row carries a project

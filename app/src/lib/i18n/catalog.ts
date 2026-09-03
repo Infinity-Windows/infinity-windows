@@ -274,6 +274,37 @@ export const CATALOG = {
     es: "Rechazada — ya no está en tu pantalla. Tus puntos no cambian.",
   },
 
+  // ---- Call for hands: reach-further picker (job-level-summons slice 4) --
+  "callhands.reach.title": {
+    en: "Reach more people",
+    es: "Llamar a más personas",
+  },
+  "callhands.reach.hint": {
+    en: "The crew clocked into this job already gets the call. Add anyone else here.",
+    es: "La cuadrilla marcada en este trabajo ya recibe la llamada. Agrega aquí a cualquier otra persona.",
+  },
+  "callhands.reach.onClockNow": {
+    en: "On the clock now",
+    es: "En turno ahora",
+  },
+  "callhands.reach.onJob": { en: "on {job}", es: "en {job}" },
+  "callhands.reach.offClock": { en: "off the clock", es: "fuera de turno" },
+  "callhands.reach.search": {
+    en: "Search anyone by name",
+    es: "Buscar a cualquiera por nombre",
+  },
+  "callhands.reach.add": { en: "Add", es: "Agregar" },
+  "callhands.reach.remove": { en: "Remove", es: "Quitar" },
+  "callhands.reach.nobodyElse": {
+    en: "Nobody else is on the clock right now — search a name to add anyone.",
+    es: "Nadie más está en turno ahora — busca un nombre para agregar a cualquiera.",
+  },
+  "callhands.reach.chosen": {
+    en: "Also ringing ({count})",
+    es: "También llamando ({count})",
+  },
+  "callhands.reach.someone": { en: "Someone", es: "Alguien" },
+
   // ---- Opening / install sheet: top-level actions -----------------------
   "opening.action.clockIn": { en: "Clock in", es: "Marcar entrada" },
   // SAFETY / toolbox — needs bilingual review.
