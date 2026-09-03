@@ -70,17 +70,24 @@ export function isTrackingOnly(
 }
 
 /**
- * The effective mode for a clock-in: a both-mode job uses the worker's pick; a
- * single-mode job uses its one mode silently; an unknown job records nothing
- * (null) and lets the server default stand.
+ * The effective mode to record on a clock-in shift: a both-mode job uses the
+ * worker's pick; a single-mode job uses its one mode silently; a job we can't
+ * read a mode for (not in the list, or nothing declared) records nothing (null)
+ * and lets the punch take its unchanged, mode-less path.
+ *
+ * Reads the RAW modes on purpose — an unknown job must stay null rather than
+ * being coerced to data-only the way display code does — so the block never
+ * invents a mode for a job it doesn't actually know.
  */
 export function effectiveClockInMode(
   allowed: readonly string[] | null | undefined,
   picked: JobMode | null,
 ): JobMode | null {
-  const m = normalizeModes(allowed);
-  if (m.length >= 2) return picked; // both → the pick (may be null until chosen)
-  if (m.length === 1) return m[0];
+  const set = new Set<JobMode>();
+  for (const m of allowed ?? []) if (isJobMode(m)) set.add(m);
+  const known = KNOWN.filter((m) => set.has(m));
+  if (known.length >= 2) return picked; // both → the pick (may be null until chosen)
+  if (known.length === 1) return known[0];
   return null;
 }
 
