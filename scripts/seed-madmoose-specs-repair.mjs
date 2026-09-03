@@ -27,11 +27,15 @@
 // and it never invents a planset id: both sheets are resolved at run time from
 // project_plansets.storage_path.
 //
-// HEADS UP for whoever runs it: the spec card still hides a drawing whose
-// planset is not the project's NEWEST specs planset (`isDrawingStale`, written
-// when a job could only have one specs sheet). While the addendum is the newer
-// upload, marks 1-10 will hold honest coordinates that the card declines to
-// draw. Teaching that guard about two-sheet jobs is app work, not a seed.
+// Why every write below names a sheet: the app resolves a drawing's file PER
+// SPEC (`findSpecsPlansetFor`, app/src/lib/install/api.ts, PR #496). A spec
+// that names a specs planset the project still has is drawn from exactly that
+// file, so marks 1-10 render off the cut sheet and the Adds off the addendum on
+// the same card; `isDrawingStale` hides a drawing only when its sheet is GONE
+// from the job. A spec with a NULL planset_id draws nothing at all on a job
+// carrying two specs sheets — guessing between them is what took these pictures
+// away in the first place — which is why planDrawingWrites always writes
+// planset_id alongside the page and the box, never a box on its own.
 //
 // Modes (safe by default), same as the other Mad Moose seeds:
 //   node scripts/seed-madmoose-specs-repair.mjs            # plan: local only
@@ -116,7 +120,7 @@ if (!project) throw new Error(`no project ${PROJECT} — wrong database?`);
 
 const { data: plansetRows, error: plErr } = await supabase
   .from("project_plansets")
-  .select("id, storage_path, kind, page_count, created_at")
+  .select("id, storage_path, kind, page_count, converted_pdf_path, source_format, created_at")
   .eq("project_id", PROJECT);
 if (plErr) throw plErr;
 // A missing or ambiguous sheet is a refusal. It is also the likeliest reason

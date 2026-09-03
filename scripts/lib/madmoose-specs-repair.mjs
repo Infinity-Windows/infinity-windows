@@ -108,10 +108,14 @@ export function resolveSpecPlansets(rows, plansets) {
  * page count is refused for the same reason: nothing can be checked, and a
  * confident picture of the wrong window is worse than no picture.
  *
- * `kind` is here because the spec card only ever draws from a sheet the app
- * files under "specs". Coordinates written onto a sheet filed as anything else
- * are honest and permanently invisible, which reads to whoever ran this as "the
- * log said 13 rows updated and nothing changed on any phone". Pure; tested.
+ * `kind` and renderability are here because they are the app's own two tests
+ * for a sheet it can draw from: `findSpecsPlansets` (app/src/lib/install/api.ts)
+ * keeps a planset only when it is filed under "specs" AND
+ * `plansetIsViewable` — a PDF, or something converted to one. A sheet failing
+ * either is not in the set `isDrawingStale` checks against and is not what
+ * `findSpecsPlansetFor` will return, so coordinates written onto it are honest
+ * and permanently invisible: it reads to whoever ran this as "the log said 13
+ * rows updated and nothing changed on any phone". Pure; tested.
  */
 export function checkLiveSheet(label, row, expected) {
   const problems = [];
@@ -120,6 +124,12 @@ export function checkLiveSheet(label, row, expected) {
   if (kind !== "specs") {
     problems.push(
       `the ${label} is filed as "${kind}", not a specs sheet — the app only ever draws from specs sheets`,
+    );
+  }
+  if (!row?.converted_pdf_path && row?.source_format !== "pdf") {
+    problems.push(
+      `the ${label} is not a PDF the app can render (no converted copy, source format ` +
+        `"${row?.source_format ?? "unknown"}") — the spec card would never draw these boxes`,
     );
   }
   const pages = row?.page_count;

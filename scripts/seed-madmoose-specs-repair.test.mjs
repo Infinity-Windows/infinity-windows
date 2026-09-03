@@ -143,8 +143,8 @@ assert.throws(() => resolveSpecPlansets([livePlansets[0]], sheets), /No cut shee
 // checkDrawingTable can only compare the fixture's pages against the fixture's
 // own count, so it passes however wrong the sheet on the job is. These are the
 // checks that need a row from the database.
-const liveCu = { id: CU, kind: "specs", page_count: 4 };
-const liveAdd = { id: ADD, kind: "specs", page_count: 1 };
+const liveCu = { id: CU, kind: "specs", page_count: 4, source_format: "pdf", converted_pdf_path: null };
+const liveAdd = { id: ADD, kind: "specs", page_count: 1, source_format: "pdf", converted_pdf_path: null };
 assert.deepEqual(checkLiveSheet("cut sheet", liveCu, sheets.cu), [],
   "the four-page cut sheet is the edition the boxes were read off");
 assert.deepEqual(checkLiveSheet("addendum", liveAdd, sheets.addendum), []);
@@ -165,9 +165,23 @@ assert.ok(
     .some((p) => p.includes('filed as "building"')),
   "a sheet the app does not file under specs would never draw these coordinates",
 );
+// The app draws only from a specs sheet it can RENDER (`plansetIsViewable`),
+// so a CAD upload with no converted PDF is refused for the same reason as a
+// sheet filed under the wrong kind: the write would succeed and no phone would
+// change. A converted copy is enough — that is a sheet the card can open.
 assert.ok(
-  checkLiveSheet("cut sheet", { id: CU }, sheets.cu).length === 2,
-  "a row with neither kind nor page count fails both ways",
+  checkLiveSheet("cut sheet", { ...liveCu, source_format: "dwg" }, sheets.cu)
+    .some((p) => p.includes("not a PDF the app can render")),
+  "a CAD sheet with no converted copy would hold these boxes where nothing draws them",
+);
+assert.deepEqual(
+  checkLiveSheet("cut sheet", { ...liveCu, source_format: "dwg", converted_pdf_path: "x.pdf" }, sheets.cu),
+  [],
+  "a converted CAD sheet is one the card can open, so it passes",
+);
+assert.ok(
+  checkLiveSheet("cut sheet", { id: CU }, sheets.cu).length === 3,
+  "a row with no kind, no page count and nothing renderable fails all three ways",
 );
 
 // --- the live rows, as the incident left them -----------------------------
