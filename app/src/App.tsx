@@ -603,11 +603,17 @@ export default function App() {
                 // The 3D model is the whole crew's reference; EDITING it is an
                 // owner/supervisor call (stories design doc) — foremen and
                 // installers view, never reshape.
-                <RequireDataJob>
-                  <RequireRole minRole="supervisor">
-                    <MapsTrace />
-                  </RequireRole>
-                </RequireDataJob>
+                //
+                // Deliberately NOT wrapped in RequireDataJob: it isn't in slice
+                // 2's route-guard list, it's only ever reached from the (hidden
+                // on a tracking job) Maps Interactive tab, and — the real reason
+                // — the guard warms the projectsAll cache, which on a trace →
+                // Submit → map hop makes MapsInteractive mount before the
+                // invalidated outline refetch lands, dropping the north rose it
+                // reads once at mount (wave-n-true-north.spec).
+                <RequireRole minRole="supervisor">
+                  <MapsTrace />
+                </RequireRole>
               }
             />
             {/* The phone-friendly job model viewer (Studio 100x #27) is
