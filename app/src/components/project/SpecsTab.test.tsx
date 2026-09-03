@@ -103,6 +103,14 @@ function mount(role: string): HTMLElement {
   });
   // Seed the role so the foreman+ gate resolves synchronously.
   qc.setQueryData(["myRealProfile"], { id: "me", role, display_name: "Dana" });
+  // Seed the plansets list too, so the upload affordance is present on the very
+  // first render instead of after the query settles. Without this the file input
+  // only appears once the async plansets query resolves, and a fixed number of
+  // microtask flushes was not always enough for it to have arrived — the source
+  // of this test's old flakiness. listPlansets still runs on the post-upload
+  // invalidate, so the refresh path stays covered. Matches JobCostCodesPanel's
+  // seed-the-cache convention in this same directory.
+  qc.setQueryData(["plansets", PROJECT], []);
 
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -125,7 +133,25 @@ async function flush() {
   }
 }
 
-function selectFile(input: HTMLInputElement, file: File) {
+// Grab the upload input, failing loudly if it hasn't rendered. Seeding the
+// plansets cache in mount() should make it present from the first render; if it
+// is ever null this throws a plain message instead of the cryptic
+// "Object.defineProperty called on non-object" that a null input produced.
+function getFileInput(el: HTMLElement): HTMLInputElement {
+  const input = el.querySelector<HTMLInputElement>('input[type="file"]');
+  if (!input) {
+    throw new Error(
+      "expected the upload file input to be rendered, but found none — " +
+        "the plansets query has not settled into the upload-capable state",
+    );
+  }
+  return input;
+}
+
+function selectFile(input: HTMLInputElement | null, file: File) {
+  if (!input) {
+    throw new Error("selectFile: no file input to select into (it was null)");
+  }
   Object.defineProperty(input, "files", { value: [file], configurable: true });
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
@@ -151,7 +177,7 @@ describe("the tracking job Plans & specs tab", () => {
     const el = mount("foreman");
     await flush();
 
-    const input = el.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const input = getFileInput(el);
     const file = new File(["%PDF-1.4 fake"], "site-plans.pdf", {
       type: "application/pdf",
     });
@@ -189,7 +215,7 @@ describe("the tracking job Plans & specs tab", () => {
     const el = mount("foreman");
     await flush();
 
-    const input = el.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const input = getFileInput(el);
     const files = [
       new File(["a"], "a.pdf", { type: "application/pdf" }),
       new File(["b"], "b.pdf", { type: "application/pdf" }),
