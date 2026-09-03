@@ -569,6 +569,11 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     "flights": None,
     "ground_transport": None,
     "incidents": None,
+    # One row per install_event the 2026-09-02 finish_unit bug filed with no
+    # minutes (20260965000000). Nothing identifies it but the event it points
+    # at, and install_events itself has no natural key, so a repair row can
+    # only ride its event's fate.
+    "install_event_time_repairs": None,
     "install_events": None,
     "issues": None,
     "job_costs": None,
