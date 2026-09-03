@@ -686,7 +686,13 @@ export const CATALOG = {
   "projtab.specs": { en: "Plans & specs", es: "Planos y especificaciones" },
   "projtab.time": { en: "Time", es: "Tiempo" },
   "specs.empty": { en: "No plans uploaded yet.", es: "Aún no se han subido planos." },
+  "specs.emptyUploadHint": {
+    en: "Upload a PDF planset so the crew can open it here.",
+    es: "Sube un planset en PDF para que la cuadrilla pueda abrirlo aquí.",
+  },
   "specs.open": { en: "Open", es: "Abrir" },
+  "specs.upload": { en: "Upload plans", es: "Subir planos" },
+  "specs.uploading": { en: "Uploading…", es: "Subiendo…" },
   "specs.error": {
     en: "Couldn't open that plan — try again.",
     es: "No se pudo abrir ese plano — inténtalo de nuevo.",
