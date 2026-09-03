@@ -94,33 +94,40 @@ export interface DrawingProvenance {
 }
 
 /**
- * True when a spec's drawing coordinates can no longer be trusted, because they
- * were measured against a DIFFERENT specs planset than the one the project has
- * now.
+ * True when a spec's drawing coordinates can no longer be trusted, because the
+ * specs planset they were measured against is GONE from the project.
  *
  * This is the one failure mode worth being strict about. A missing drawing is
  * obvious and harmless — the card shows text only. A drawing cropped from a
- * replaced planset is neither: page 3 of the new upload is a real page, the box
- * still lands on a real elevation, and the installer sees a confident picture of
- * the WRONG unit with no way to tell.
+ * planset that is no longer there is neither: page 3 of whatever file we fall
+ * back to is a real page, the box still lands on a real elevation, and the
+ * installer sees a confident picture of the WRONG unit with no way to tell.
+ *
+ * "Current" is a SET, not one file. A project can hold several specs plansets
+ * at once — the supplier's original cut sheet plus an ADDENDUM for units added
+ * later — and every one of them is current. Mad Moose, 2026-09-01: a one-page
+ * addendum for three added units was uploaded on top of the four-page supplier
+ * sheet, treated as a replacement, and marks 4–10 lost the page with their
+ * markups on every spec card and on the Maps Interactive wall. An addendum
+ * ADDS; only a file the project no longer has makes a drawing stale.
  *
  * A null `planset_id` is treated as UNKNOWN, not stale, so we keep showing it.
  * Every row written before the provenance column existed has a null here —
  * including the live Smith / PV Townhomes drawings that crews are using today —
  * and hiding those would delete working pictures from a job mid-install to guard
  * against a re-upload that may never happen. The same reasoning applies when we
- * don't know the project's current specs planset: no comparison is possible, so
+ * don't know which specs plansets the project has: no comparison is possible, so
  * we don't pretend to have made one. PURE.
  */
 export function isDrawingStale(
   spec: DrawingProvenance,
-  currentSpecsPlansetId: string | null | undefined,
+  currentSpecsPlansetIds: readonly string[] | null | undefined,
 ): boolean {
   if (validateBbox(spec.image_bbox) == null) return false;
   const source = spec.planset_id;
   if (!source) return false;
-  if (!currentSpecsPlansetId) return false;
-  return source !== currentSpecsPlansetId;
+  if (!currentSpecsPlansetIds || currentSpecsPlansetIds.length === 0) return false;
+  return !currentSpecsPlansetIds.includes(source);
 }
 
 export interface PixelRect {

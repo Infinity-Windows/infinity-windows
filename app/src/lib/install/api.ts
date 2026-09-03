@@ -9,6 +9,7 @@ import { markBase, planDraftPersistence } from "./extract";
 import type { MarkSpecDraft, ProjectMarkSpec } from "./specs";
 import { mergeSpecsByMark, parseSpecRow } from "./specs";
 import { dropCropsForPlanset } from "./cropCache";
+import { validateBbox, type Bbox } from "./markDrawing";
 import { buildSequenceAssignments, maxExistingSequence } from "./mapDispatch";
 import { extractSpecsDeterministic } from "./specsDeterministic";
 import { parseSpecPageStatuses, type SpecPageStatus } from "./specPageStatus";
@@ -1123,14 +1124,57 @@ export function plansetIsViewable(planset: Planset): boolean {
 }
 
 /**
- * The project's current SPECS planset — the manufacturer sheet that carries
- * both the per-mark spec table and each mark's elevation drawing. `listPlansets`
- * returns newest first, so this picks the most recent renderable one.
+ * The project's SPECS plansets — the manufacturer sheets carrying both the
+ * per-mark spec table and each mark's elevation drawing. Newest first, because
+ * `listPlansets` is.
+ *
+ * Plural on purpose. A job routinely holds more than one of these at a time:
+ * the supplier's original cut sheet, plus an ADDENDUM sheet for units added
+ * later. Every one of them is current, and each one is the source of truth for
+ * the marks that were read off it. PURE.
  */
-export function findSpecsPlanset(plansets: Planset[]): Planset | null {
-  return (
-    plansets.find((p) => p.kind === "specs" && plansetIsViewable(p)) ?? null
+export function findSpecsPlansets(plansets: Planset[]): Planset[] {
+  return (plansets ?? []).filter(
+    (p) => p.kind === "specs" && plansetIsViewable(p),
   );
+}
+
+/**
+ * Ids of {@link findSpecsPlansets} — the set a drawing's provenance is checked
+ * against by `isDrawingStale`. PURE.
+ */
+export function specsPlansetIds(plansets: Planset[]): string[] {
+  return findSpecsPlansets(plansets).map((p) => p.id);
+}
+
+/**
+ * The specs planset ONE spec's drawing coordinates belong to.
+ *
+ * Every renderer, prefetch and cache key resolves the file PER SPEC through
+ * here rather than asking for "the" specs planset, so an added unit drawn on
+ * the addendum and a mark drawn on the original both show their own picture
+ * off their own file (Mad Moose, 2026-09-01).
+ *
+ * A spec that names a planset gets that planset or NOTHING — falling back to
+ * another file would crop the same page number out of a different sheet, which
+ * is the one failure worth refusing (see `isDrawingStale`).
+ *
+ * A spec with no recorded planset is legacy — every row written before the
+ * provenance column existed, including the live Smith / PV Townhomes drawings.
+ * On a job with ONE specs sheet there is only one file it could mean, so it
+ * renders exactly as it always has. On a job with two, guessing the newest is a
+ * guess: page 3 of a one-page addendum shows nothing, and page 3 of a longer
+ * addendum shows a confident picture of the wrong window. Once addenda are
+ * normal that guess stops being rare, so we show text only instead. PURE.
+ */
+export function findSpecsPlansetFor(
+  plansets: Planset[],
+  spec: { planset_id?: string | null },
+): Planset | null {
+  const specsPlansets = findSpecsPlansets(plansets);
+  const source = spec?.planset_id;
+  if (!source) return specsPlansets.length === 1 ? specsPlansets[0] : null;
+  return specsPlansets.find((p) => p.id === source) ?? null;
 }
 
 /**
@@ -1963,6 +2007,119 @@ export function preservePaneGrid(
   return { ...(draftExtra ?? {}), pane_grid: existingPaneGrid };
 }
 
+/** The little the drawing-adoption rule needs off a stored spec row. */
+export interface StoredDrawingCoords {
+  id: string;
+  mark_code: string;
+  confirmed: boolean;
+  image_page: number | null;
+  image_bbox: unknown;
+  planset_id: string | null;
+}
+
+/** One confirmed row's drawing coordinates, filled in as a set. */
+export interface AdoptedDrawingCoords {
+  id: string;
+  image_page: number;
+  image_bbox: Bbox;
+  planset_id: string;
+}
+
+/**
+ * Which CONFIRMED marks may take the drawing coordinates this extraction run
+ * just found.
+ *
+ * A confirmed mark's TEXT is untouchable — a foreman read the sheet and said so,
+ * and a re-read must never argue with that (unchanged law, and why confirmed
+ * marks are skipped by the upsert entirely). But a confirmed row that has NO
+ * drawing at all has nothing to protect: the foreman confirmed words, and the
+ * picture was simply never located. Mad Moose, 2026-09-01 — the addendum sheet
+ * carried three added units whose marks were already confirmed from the
+ * schedule, so without this they would stay picture-less forever no matter how
+ * many times the sheet is re-read.
+ *
+ * Fill-missing-only, and as a SET: page, box and planset are written together,
+ * so provenance is never half from one sheet and half from another. "Has no
+ * drawing" means no page and no box; a row holding either one is left alone,
+ * because only the run that measured a box may argue with it.
+ *
+ * A LONE planset id is not a drawing. That is exactly what the old retire step
+ * left behind on Mad Moose's marks 4–10 — it blanked page and box and kept the
+ * pointer — and refusing those rows would strand them picture-less forever, the
+ * permanent loss this whole change exists to undo. Nothing is adopted unless we
+ * know which planset THIS run read, because a box saved with a null planset is
+ * unplaceable. PURE.
+ */
+export function adoptableDrawingCoords(
+  existing: StoredDrawingCoords[],
+  drafts: { mark_code: string; image_page: number | null; image_bbox: unknown }[],
+  plansetId: string | null | undefined,
+): AdoptedDrawingCoords[] {
+  if (!plansetId) return [];
+
+  const key = (code: unknown) => String(code ?? "").trim().toUpperCase();
+  const found = new Map<string, { page: number; bbox: Bbox }>();
+  for (const draft of drafts ?? []) {
+    const page = draft?.image_page;
+    const bbox = validateBbox(draft?.image_bbox);
+    if (page == null || !Number.isInteger(page) || page < 1 || bbox == null) continue;
+    const mark = key(draft.mark_code);
+    if (!mark || found.has(mark)) continue;
+    found.set(mark, { page, bbox });
+  }
+  if (found.size === 0) return [];
+
+  const adopted: AdoptedDrawingCoords[] = [];
+  for (const row of existing ?? []) {
+    if (!row?.confirmed || !row.id) continue;
+    // A page or a box means the picture is already located, and this run has no
+    // standing to move it. A pointer on its own crops nothing, so the row is
+    // still picture-less and the write below replaces the pointer too.
+    if (row.image_page != null || row.image_bbox != null) continue;
+    const match = found.get(key(row.mark_code));
+    if (!match) continue;
+    adopted.push({
+      id: row.id,
+      image_page: match.page,
+      image_bbox: match.bbox,
+      planset_id: plansetId,
+    });
+  }
+  return adopted;
+}
+
+/**
+ * Write what {@link adoptableDrawingCoords} decided, one row at a time and
+ * touching only the three drawing columns, so a confirmed mark's text is never
+ * in the payload at all. Best-effort: an un-migrated column or a refused write
+ * leaves the row exactly as it was and the extraction carries on.
+ */
+async function adoptDrawingCoords(
+  adopted: AdoptedDrawingCoords[],
+): Promise<number> {
+  let filled = 0;
+  try {
+    for (const row of adopted) {
+      const { error } = await supabase
+        .from("project_mark_specs")
+        .update({
+          image_page: row.image_page,
+          image_bbox: row.image_bbox,
+          planset_id: row.planset_id,
+        })
+        .eq("id", row.id);
+      // One refusal means every row will be refused the same way (a missing
+      // column, no write permission) — stop rather than issue N doomed writes.
+      if (error) break;
+      filled += 1;
+    }
+  } catch {
+    // Offline mid-run. The rows that landed keep their drawings; the rest are
+    // still eligible next time the sheet is read.
+  }
+  return filled;
+}
+
 /**
  * Extract rich specs from the specs-planset page text and upsert them as
  * unconfirmed drafts keyed by (project_id, mark_code). Guardrail: a mark whose
@@ -2046,12 +2203,13 @@ export async function extractAndSaveMarkSpecs(
   // riding on confirmedMarks.
   let confirmedMarks = new Set<string>();
   const existingPaneGridByMark = new Map<string, unknown>();
+  let existingRows: ProjectMarkSpec[] = [];
   try {
-    const existing = await listMarkSpecs(projectId);
+    existingRows = await listMarkSpecs(projectId);
     confirmedMarks = new Set(
-      existing.filter((s) => s.confirmed).map((s) => s.mark_code.toUpperCase()),
+      existingRows.filter((s) => s.confirmed).map((s) => s.mark_code.toUpperCase()),
     );
-    for (const s of existing) {
+    for (const s of existingRows) {
       const grid = s.extra?.pane_grid;
       if (grid != null) {
         existingPaneGridByMark.set(s.mark_code.toUpperCase(), grid);
@@ -2062,6 +2220,14 @@ export async function extractAndSaveMarkSpecs(
     // nothing on file to protect either — a fresh extraction proceeds
     // exactly as it always has.
   }
+
+  // A confirmed mark with no picture at all can take the one this run located,
+  // even though its text is untouchable — see adoptableDrawingCoords. Fire and
+  // forget: a spec row that gains its drawing a second later is a bonus, and
+  // failing the whole extraction over it would be a bad trade.
+  await adoptDrawingCoords(
+    adoptableDrawingCoords(existingRows, drafts, plansetId),
+  );
 
   const toSave = drafts.filter(
     (d) => !confirmedMarks.has(d.mark_code.toUpperCase()),
@@ -2106,36 +2272,86 @@ export async function extractAndSaveMarkSpecs(
 }
 
 /**
- * Blank the drawing coordinates on any spec row that points at a DIFFERENT
- * specs planset than `currentPlansetId` — i.e. the leftovers after a specs
- * planset is replaced. Confirmed marks are skipped by the re-extract, so without
- * this their boxes would keep pointing into a file that is no longer the source
- * of truth; the client already refuses to render those, and clearing them makes
- * the row honest instead of merely un-rendered.
+ * Which plansets the project's spec rows still point at that the project NO
+ * LONGER HAS — the whole decision {@link clearOrphanedDrawingCoords} acts on,
+ * pulled out so it can be tested without a database.
  *
- * Rows with a null `planset_id` are left ALONE: that's legacy data whose
- * provenance we never recorded (all pre-migration rows, including the live Smith
- * job), and wiping working drawings to satisfy a bookkeeping rule would be a
- * downgrade for the crew. Best-effort — nothing here is worth failing an upload.
+ * `currentSpecsPlansetIds` is every specs planset the project still holds, not
+ * just the one we happened to read last. Until 2026-09-01 the query said "every
+ * planset except the file I just read", which is how Mad Moose's one-page
+ * ADDENDUM cut sheet erased the drawings for marks 4–10 off the original
+ * four-page supplier sheet the moment it finished uploading. An addendum adds a
+ * file; it does not take the first one away — so a sheet that is still on the
+ * job is never orphaned, however many other sheets arrive after it.
+ *
+ * Rows with a null `planset_id` name no file and so can't be orphaned: that's
+ * legacy data whose provenance we never recorded (all pre-migration rows,
+ * including the live Smith job), and wiping working drawings to satisfy a
+ * bookkeeping rule would be a downgrade for the crew. An empty current set
+ * means we can't see what the project holds, so nothing is provably gone. PURE.
  */
-export async function clearStaleDrawingCoords(
+export function orphanedPlansetIds(
+  rows: readonly { planset_id?: string | null }[],
+  currentSpecsPlansetIds: readonly string[],
+): string[] {
+  if (currentSpecsPlansetIds.length === 0) return [];
+  const current = new Set(currentSpecsPlansetIds);
+  const gone = new Set<string>();
+  for (const row of rows ?? []) {
+    const source = row?.planset_id;
+    if (!source || current.has(source)) continue;
+    gone.add(source);
+  }
+  return [...gone];
+}
+
+/**
+ * Blank the drawing provenance on any spec row pointing at a specs planset the
+ * project no longer has — a file that was deleted or genuinely replaced. Those
+ * boxes can never be rendered again (nothing left to crop out of), so clearing
+ * them makes the row honest instead of merely un-rendered.
+ *
+ * All THREE columns go, the pointer included. Leaving a dead planset id behind
+ * is what stranded Mad Moose's marks: a row with no page and no box but a
+ * pointer at a file that no longer exists is picture-less, and until the
+ * adoption rule stopped refusing those rows it stayed that way forever. Once
+ * the pointer is gone the row is plainly "no drawing yet", which is what it is,
+ * and the next read of a re-uploaded sheet fills it back in.
+ *
+ * Which ids are gone is decided first, by {@link orphanedPlansetIds} — the
+ * update can't report it, because clearing the pointer is exactly what the
+ * returned rows would no longer carry. Those ids go back to the caller so it
+ * can drop the cached crop pixels too. The clear runs only when something is
+ * genuinely orphaned, and it can't repeat: afterwards those rows name no
+ * planset at all. Best-effort — nothing here is worth failing an upload.
+ */
+export async function clearOrphanedDrawingCoords(
   projectId: string,
-  currentPlansetId: string,
-): Promise<number> {
-  if (!projectId || !currentPlansetId) return 0;
+  currentSpecsPlansetIds: readonly string[],
+): Promise<string[]> {
+  if (!projectId || currentSpecsPlansetIds.length === 0) return [];
   try {
     const { data, error } = await supabase
       .from("project_mark_specs")
-      .update({ image_page: null, image_bbox: null })
+      .select("planset_id")
       .eq("project_id", projectId)
-      .not("planset_id", "is", null)
-      .neq("planset_id", currentPlansetId)
-      .select("id");
+      .not("planset_id", "is", null);
     if (error) throw error;
-    return data?.length ?? 0;
+    const gone = orphanedPlansetIds(
+      (data ?? []) as { planset_id?: string | null }[],
+      currentSpecsPlansetIds,
+    );
+    if (gone.length === 0) return [];
+    const { error: clearError } = await supabase
+      .from("project_mark_specs")
+      .update({ image_page: null, image_bbox: null, planset_id: null })
+      .eq("project_id", projectId)
+      .in("planset_id", gone);
+    if (clearError) throw clearError;
+    return gone;
   } catch {
     // Table or columns not migrated yet, or no write permission — nothing to do.
-    return 0;
+    return [];
   }
 }
 
@@ -2183,7 +2399,7 @@ export async function reextractSpecPages(
     images,
     planset.id,
   );
-  await retireReplacedSpecsPlansets(projectId, planset.id);
+  await retireVanishedSpecsPlansets(projectId);
   return result;
 }
 
@@ -2424,36 +2640,45 @@ async function finishSpecExtraction(
     stored.filter((p) => p.pageNumber <= total).map((p) => p.pageNumber),
   );
   if (total > 0 && attempted.size < total) return;
-  await retireReplacedSpecsPlansets(projectId, planset.id);
+  await retireVanishedSpecsPlansets(projectId);
   await updatePlanset(planset.id, { status: "ready" }).catch(() => {});
 }
 
 /**
- * Called once a specs planset has been processed for a project: retire anything
- * still tied to a PREVIOUS specs planset, so a replaced upload can't leave
- * drawings pointing into a file that is no longer the source of truth.
+ * Called once a specs planset has been processed for a project: retire whatever
+ * is left over from a specs planset the project no longer HAS, so a deleted or
+ * genuinely replaced file can't leave drawings pointing into nothing.
  *
- * Two things retire: the saved coordinates (see
- * {@link clearStaleDrawingCoords}) and any crop pixels already cached from those
- * older plansets. The cache purge is best-effort on purpose — the client's
+ * This used to be `retireReplacedSpecsPlansets(projectId, currentPlansetId)`,
+ * and it treated the file just read as the only one that counts. Mad Moose,
+ * 2026-09-01: the owner uploaded a one-page ADDENDUM cut sheet for three added
+ * units alongside the four-page supplier sheet, and finishing that upload
+ * blanked the drawing coordinates for marks 4–10 — the crew lost the page with
+ * the markups on every spec card and on the Maps Interactive wall. Uploading a
+ * specs planset ADDS one; the app has no "replace this file" action at all, so
+ * the only thing worth retiring is provenance pointing at a planset that is
+ * genuinely gone from the project.
+ *
+ * Two things retire: the row's whole drawing provenance — page, box and the
+ * pointer at the vanished file (see {@link clearOrphanedDrawingCoords}) — and
+ * any crop pixels cached from those plansets. The cache purge is best-effort
+ * on purpose — the client's
  * staleness guard already refuses to render one of those crops, so this is
  * housekeeping, not the safety net.
  */
-export async function retireReplacedSpecsPlansets(
+export async function retireVanishedSpecsPlansets(
   projectId: string,
-  currentPlansetId: string,
 ): Promise<void> {
-  if (!projectId || !currentPlansetId) return;
-  await clearStaleDrawingCoords(projectId, currentPlansetId);
+  if (!projectId) return;
+  let current: string[];
   try {
-    const plansets = await listPlansets(projectId);
-    for (const ps of plansets) {
-      if (ps.kind === "specs" && ps.id !== currentPlansetId) {
-        await dropCropsForPlanset(ps.id);
-      }
-    }
+    current = specsPlansetIds(await listPlansets(projectId));
   } catch {
-    // Ignore — a stale crop is already unreachable through the staleness guard.
+    // Can't see what the project holds, so nothing is provably gone.
+    return;
+  }
+  for (const plansetId of await clearOrphanedDrawingCoords(projectId, current)) {
+    await dropCropsForPlanset(plansetId).catch(() => {});
   }
 }
 

@@ -10,15 +10,23 @@
 //
 // Two guardrails carry over from the crop era:
 //   • nothing starts until the card is actually scrolled into view;
-//   • a page number measured against a DIFFERENT specs planset is not
-//     rendered at all. A missing picture is harmless; a confident picture of
-//     the wrong sheet is not.
+//   • a page number measured against a specs planset the project no longer has
+//     is not rendered at all. A missing picture is harmless; a confident
+//     picture of the wrong sheet is not.
+// The sheet is resolved PER SPEC, because a job routinely has more than one
+// specs planset at a time — the supplier's cut sheet plus an addendum for units
+// added later. A mark read off the addendum renders from the addendum, a mark
+// read off the original renders from the original (Mad Moose, 2026-09-01).
 // Every failure path renders nothing — a missing drawing must never take a
 // spec card down with it, and the spec TEXT always survives.
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { findSpecsPlanset, listPlansets } from "../../lib/install/api";
+import {
+  findSpecsPlansetFor,
+  listPlansets,
+  specsPlansetIds,
+} from "../../lib/install/api";
 import { specsPageDataUrl } from "../../lib/install/drawingCrops";
 import { SheetZoomViewer } from "./SheetZoomViewer";
 import type { MarkSpec } from "../../lib/install/specs";
@@ -70,12 +78,18 @@ export function MarkDrawing({ spec, projectId, compact = false }: MarkDrawingPro
     queryFn: () => listPlansets(projectId!),
     enabled: Boolean(projectId) && visible && locatable,
   });
-  const planset = plansets.data ? findSpecsPlanset(plansets.data) : null;
+  // This mark's own sheet: the specs planset its coordinates were measured
+  // against, or — for a legacy row that never recorded one — the job's single
+  // specs sheet, when it has exactly one. Nothing at all when the job has two
+  // and we'd be guessing which of them the page number counts pages in.
+  const planset = plansets.data ? findSpecsPlansetFor(plansets.data, spec) : null;
 
-  // The page number was measured against one specific file. If the project's
-  // specs planset has since been replaced, the same page of the new file may
-  // be a different sheet entirely, so we show nothing.
-  const stale = planset ? isDrawingStale(spec, planset.id) : false;
+  // The page number was measured against one specific file. If that file is
+  // gone from the project, the same page of any other sheet may be a different
+  // window entirely, so we show nothing.
+  const stale = plansets.data
+    ? isDrawingStale(spec, specsPlansetIds(plansets.data))
+    : false;
 
   useEffect(() => {
     if (!visible || !planset || page == null || stale) return;
