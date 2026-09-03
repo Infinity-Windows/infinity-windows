@@ -83,7 +83,7 @@ export function LiveSummonsStrip() {
   if (rows.length === 0) return null;
 
   return (
-    <section aria-label="Live summons" style={{ display: "grid", gap: 8 }}>
+    <section aria-label={t("summon.a11y.live")} style={{ display: "grid", gap: 8 }}>
       {rows.map((s) => {
         const mine = Boolean(me.data?.id && s.requested_by === me.data.id);
         const answered = iAnswered(s, me.data?.id);

@@ -72,7 +72,7 @@ export function JobCostCodesPanel({ projectId }: { projectId: string }) {
         {t("jobcost.help")}
       </p>
 
-      {all.isLoading && <p className="muted">Loading…</p>}
+      {all.isLoading && <p className="muted">{t("jobcost.loading")}</p>}
       {!all.isLoading && activeCodes.length === 0 && (
         <p className="muted">{t("jobcost.empty")}</p>
       )}

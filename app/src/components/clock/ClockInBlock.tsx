@@ -285,7 +285,7 @@ export function ClockInBlock() {
           <span className="clockin-bar-label">{t("clockblock.onClock")}</span>
           <span className="clockin-bar-name">{jobLine}</span>
         </div>
-        <span className="clockin-bar-timer" aria-label="Time worked">
+        <span className="clockin-bar-timer" aria-label={t("clock.a11y.timeWorked")}>
           {formatClock(workSec)}
         </span>
         <div className="clockin-bar-actions">

@@ -321,11 +321,11 @@ export function MyWork() {
 
   const captureHint = (o: ProjectOpening) => {
     if (blocks.has(o.id))
-      return `Waiting on: ${blocks.get(o.id) ?? "a blocker"} — pick it back up once it's cleared`;
+      return t("mywork.waitingOn", { what: blocks.get(o.id) ?? t("mywork.aBlocker") });
     const r = openingReadiness(o);
     if (r.status === "ready") return t("mywork.tapToInstall");
     if (r.status === "blocked") return r.reasons.join(" ");
-    return r.reasons[0] ?? "Finish checks before installing";
+    return r.reasons[0] ?? t("mywork.finishChecks");
   };
 
   if (me.isLoading || (Boolean(me.data?.id) && openings.isLoading)) {
@@ -354,7 +354,7 @@ export function MyWork() {
         <QueryError
           error={openings.error}
           onRetry={() => void openings.refetch()}
-          label="Couldn't load your work"
+          label={t("mywork.loadError")}
         />
       </div>
     );
@@ -393,7 +393,7 @@ export function MyWork() {
             <strong style={{ fontSize: 15 }}>
               {todayAssignment.project?.name ??
                 todayAssignment.project?.job_code ??
-                "Your job today"}
+                t("mywork.jobToday")}
             </strong>
             {todayAssignment.project?.address && (
               <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
@@ -419,7 +419,7 @@ export function MyWork() {
               )}
               {todayTrip && (
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <Plane size={13} aria-hidden /> Travel: {todayTrip.destination || todayTrip.name}
+                  <Plane size={13} aria-hidden /> {t("mywork.travel")} {todayTrip.destination || todayTrip.name}
                 </span>
               )}
             </div>
@@ -435,7 +435,7 @@ export function MyWork() {
           >
             <DirectionsButton
               address={todayAssignment.project?.address}
-              title="Directions to today's job"
+              title={t("mywork.directionsTitle")}
             />
           </div>
         </div>
@@ -443,7 +443,9 @@ export function MyWork() {
 
       {newlyAssigned > 0 && (
         <div className="assign-toast" onClick={() => setNewlyAssigned(0)}>
-          {newlyAssigned} new unit{newlyAssigned > 1 ? "s" : ""} assigned to you — tap to dismiss
+          {newlyAssigned === 1
+            ? t("mywork.newUnits.one", { count: newlyAssigned })
+            : t("mywork.newUnits.many", { count: newlyAssigned })}
         </div>
       )}
 
@@ -455,7 +457,7 @@ export function MyWork() {
           <span className="next-label">{t("mywork.continueInstall")}</span>
           <span className="next-code">{activeInstall.opening_code}</span>
           <span className="next-meta">
-            {activeInstall.window_types?.type_code ?? "type?"} ·{" "}
+            {activeInstall.window_types?.type_code ?? t("mywork.typeUnknown")} ·{" "}
             {activeInstall.projects?.job_code ?? ""} · {areaKey(activeInstall)}
           </span>
           <span className="next-capture">
@@ -492,13 +494,13 @@ export function MyWork() {
           icon={<AlertTriangle size={22} />}
           title={
             active.length === 1
-              ? "Your unit is waiting on something"
-              : `All ${active.length} of your units are waiting on something`
+              ? t("mywork.oneWaiting.title")
+              : t("mywork.manyWaiting.title", { count: active.length })
           }
           message={
             active.length === 1
-              ? "It can't start until the blocker clears — call your lead about it."
-              : "None of these can start until the blockers clear — call your lead about the ones below."
+              ? t("mywork.oneWaiting.msg")
+              : t("mywork.manyWaiting.msg")
           }
           action={
             <div style={{ display: "flex", flexDirection: "column", gap: 6, textAlign: "left" }}>
@@ -652,19 +654,17 @@ export function MyWork() {
         >
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <p style={{ margin: 0, fontWeight: 700 }}>
-              Un-submit {unsubmit.opening_code}?
+              {t("mywork.unsubmitTitle", { code: unsubmit.opening_code })}
             </p>
             <p className="muted" style={{ margin: "6px 0 0" }}>
-              The window goes back on your list and nothing is lost — photos,
-              memo and time all stay on the record. Say why so the next person
-              (maybe you) knows what still needs doing.
+              {t("mywork.unsubmitBody")}
             </p>
-            <label className="field-label">Why are you un-submitting?</label>
+            <label className="field-label">{t("mywork.unsubmitWhy")}</label>
             <textarea
               rows={3}
               value={unsubmitReason}
               onChange={(e) => setUnsubmitReason(e.target.value)}
-              placeholder="Forgot the shims on the left side…"
+              placeholder={t("mywork.notePlaceholder")}
             />
             {unsubmitError && <p className="warn-text">{unsubmitError}</p>}
             <div className="row-gap" style={{ marginTop: 10 }}>
@@ -673,10 +673,10 @@ export function MyWork() {
                 disabled={!unsubmitReason.trim() || doUnsubmit.isPending}
                 onClick={() => doUnsubmit.mutate(unsubmit)}
               >
-                {doUnsubmit.isPending ? "Un-submitting…" : "Un-submit"}
+                {doUnsubmit.isPending ? t("mywork.unsubmitting") : t("mywork.unsubmit")}
               </button>
               <button className="button-like" onClick={() => setUnsubmit(null)}>
-                Cancel
+                {t("mywork.cancel")}
               </button>
             </div>
           </div>

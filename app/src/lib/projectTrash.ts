@@ -46,14 +46,42 @@ function countWord(n: number, word: string): string {
 }
 
 /**
+ * Localized pieces the confirm message drops its counts into. Passed in
+ * (from the i18n catalog) so the message reads in the crew's language;
+ * omitted, it defaults to the English wording below (tracking-jobs slice 7,
+ * 2026-09-03). The +s plural in countWord is regular in both languages for
+ * these three nouns (opening/abertura, package/paquete, photo/foto).
+ */
+export interface DeleteConfirmParts {
+  opening: string;
+  package: string;
+  photo: string;
+  /** Sentence with {job} {openings} {packages} {photos} placeholders. */
+  template: string;
+}
+
+const EN_DELETE_PARTS: DeleteConfirmParts = {
+  opening: "opening",
+  package: "package",
+  photo: "photo",
+  template:
+    "Delete {job}? This job has {openings}, {packages}, and {photos}.\n\n" +
+    "It disappears everywhere, and you have 30 days to undo from Job history.",
+};
+
+/**
  * The confirm dialog's exact text (owner ask: "confirm dialog states the
  * real cost in numbers before the tap"). A pure function of already-fetched
  * counts so it's testable without a network call.
  */
-export function buildDeleteConfirmMessage(jobLabel: string, counts: ProjectDeleteCounts): string {
-  return (
-    `Delete ${jobLabel}? This job has ${countWord(counts.openings, "opening")}, ` +
-    `${countWord(counts.packages, "package")}, and ${countWord(counts.photos, "photo")}.\n\n` +
-    `It disappears everywhere, and you have 30 days to undo from Job history.`
-  );
+export function buildDeleteConfirmMessage(
+  jobLabel: string,
+  counts: ProjectDeleteCounts,
+  parts: DeleteConfirmParts = EN_DELETE_PARTS,
+): string {
+  return parts.template
+    .replace("{job}", jobLabel)
+    .replace("{openings}", countWord(counts.openings, parts.opening))
+    .replace("{packages}", countWord(counts.packages, parts.package))
+    .replace("{photos}", countWord(counts.photos, parts.photo));
 }
