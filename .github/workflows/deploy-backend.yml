@@ -857,6 +857,42 @@ jobs:
         with:
           version: ${{ env.SUPABASE_CLI_VERSION }}
 
+      # ONE-TIME migration-history reconciliation. 2026-09-03.
+      #
+      # Slice 3's cost-codes migration was authored as 20260971000000 and applied
+      # PARTIALLY to production under that version — the `project_cost_codes`
+      # table exists live, but the `soft_delete_job_photo` RPC the same file
+      # declares does NOT — then RENAMED to 20260973000000 (#510) so it sorts
+      # above slice 4's already-applied 20260972000000. That left version
+      # 20260971000000 recorded in `supabase_migrations.schema_migrations` with no
+      # matching file on disk: a "missing" phantom. The CLI checks the missing
+      # bucket FIRST and `--include-all` does not get past it, so the Dry run step
+      # below fails at `supabase db push --dry-run` with "Remote migration
+      # versions not found in local migrations directory" BEFORE it can apply
+      # anything — which is why this runs here, ahead of the dry run, and not just
+      # before Push. See docs/db-push-readiness.md.
+      #
+      # Marking 20260971000000 reverted removes the phantom, so the dry run passes
+      # and Push then applies 20260973000000, whose create-or-replace bodies build
+      # the missing RPCs. That file is fully idempotent (create table if not
+      # exists / where-not-exists seeds / create or replace function), so
+      # re-applying the table that is already there is a no-op.
+      #
+      # Tolerant on purpose: once 20260971000000 is gone the repair is a no-op and
+      # the `|| echo` keeps it from ever failing a future deploy. This is a
+      # one-time reconciliation — safe to delete in a later cleanup once the
+      # phantom is confirmed gone from the history table.
+      - name: Reconcile the renamed cost-codes migration (one-time, 2026-09-03)
+        if: steps.guard.outputs.ok == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          supabase link --project-ref "$SUPABASE_PROJECT_REF"
+          supabase migration repair --status reverted 20260971000000 \
+            || echo "migration 20260971000000 already reconciled"
+
       # Shows what would run before anything runs, so the log records the
       # intended change even when the apply then fails. This is the last line
       # of defence in front of an unattended write to production, so it is
