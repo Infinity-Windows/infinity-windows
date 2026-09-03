@@ -906,10 +906,43 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: scripts/verify-schema.sh
 
+      # The test-login fence, measured rather than assumed.
+      #
+      # Migration 20260730220000 confines a `profiles.is_test` login to the jobs
+      # in `sandbox_projects` with a trigger on every project-scoped table, and
+      # it attached those triggers from a `do` block that ran exactly ONCE, on
+      # 2026-07-30. Fourteen project-scoped tables have been created since and
+      # never carried the guard; two more lost it when their table was dropped
+      # and recreated. On 2026-09-02 the QA foreman login wrote to a live job.
+      # Every deploy in between was green, because nothing ever asked.
+      #
+      # So now something asks, every time. Any table the guard is missing from
+      # fails this job. 20260965000000 re-arms the fence and the static gate in
+      # scripts/test_sandbox_guard.py (CI) refuses a new project-scoped table
+      # that does not arm itself, so the honest answer here is always zero.
+      #
+      # `shell: bash` is load-bearing for the same reason the function probe
+      # says so: without it GitHub gives the step no pipefail and a summary
+      # written through a pipe can hide a non-zero exit.
+      #
+      # Read-only: everything goes through scripts/pgq.sh, which refuses any
+      # statement that is not a SELECT. Nothing here writes to production.
+      - name: Verify a test login still cannot touch a real job
+        id: fence
+        if: steps.guard.outputs.ok == 'true'
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: scripts/verify-sandbox-guard.sh
+
       # A red run here is cryptic unless you already know what the CLI is
       # complaining about, so say it in the summary rather than in a log tail.
+      #
+      # Not when the fence check is what failed: that one writes its own summary
+      # naming the tables, and telling someone to read db-push-readiness.md
+      # about a push that succeeded would send them a day in the wrong direction.
       - name: Explain a failed push
-        if: failure()
+        if: failure() && steps.fence.outcome != 'failure'
         run: |
           {
             echo "### Migrations: not pushed"
