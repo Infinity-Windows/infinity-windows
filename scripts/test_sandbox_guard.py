@@ -98,6 +98,67 @@ class TestTheStaticGate(unittest.TestCase):
         self.assertNotIn("sandbox_projects", tables)
 
 
+class TestTheMigrationText(unittest.TestCase):
+    """What the SQL says, read as text.
+
+    There is no database here, so the parts of the migration a reviewer would
+    otherwise have to hold in their head are asserted instead. Each of these
+    stands for a way the fence can be present and useless.
+    """
+
+    def body_of(self, function: str) -> str:
+        """One `create or replace function` body, whitespace flattened.
+
+        Flattened because where a predicate is split across lines is the
+        formatter's business, and a check that goes red over a reflow is a
+        check people start deleting.
+        """
+        sql = (MIGRATIONS_DIR / REARM_MIGRATION).read_text(encoding="utf-8")
+        start = sql.index("create or replace function public." + function)
+        return " ".join(sql[start:sql.index("$$;", start)].split())
+
+    def test_the_attacher_does_not_count_a_switched_off_trigger(self):
+        """`alter table … disable trigger` and `pg_restore --disable-triggers`
+        both leave a trigger with the right name, function, arguments and
+        tgtype that fires on nothing. Skipping it as 'already armed' would
+        leave the fence down and say it was up."""
+        body = self.body_of("attach_sandbox_guards")
+        self.assertIn("tg.tgenabled in ('O', 'A')", body)
+        self.assertIn("coalesce(v_on, false)", body)
+
+    def test_the_census_reports_a_switched_off_trigger(self):
+        body = self.body_of("sandbox_guard_census")
+        self.assertIn("tg.tgenabled not in ('O', 'A')", body)
+        self.assertIn("the guard is switched off and fires on nothing", body)
+
+    def test_the_census_still_checks_the_shape_it_always_did(self):
+        """The trigger has to exist, fire on every write, and read this
+        table's link column. Losing one of those to a later edit would make
+        the deploy proof weaker without making it red."""
+        body = self.body_of("sandbox_guard_census")
+        self.assertIn("tg.oid is null", body)
+        self.assertIn("tg.tgtype <> 31", body)
+        self.assertIn("quote_literal(s.link_column)", body)
+        self.assertIn("quote_literal(s.link_kind)", body)
+
+    def test_the_migration_is_mirrored_into_the_prototype_file(self):
+        """docs/prototype-migrations.sql is the consolidated schema. A mirror
+        that has drifted from the migration is worse than no mirror: it is
+        read as the truth."""
+        repo = Path(__file__).resolve().parent.parent
+        migration = (repo / "supabase" / "migrations" / REARM_MIGRATION).read_text(
+            encoding="utf-8")
+        mirror = (repo / "docs" / "prototype-migrations.sql").read_text(encoding="utf-8")
+        # assertTrue rather than assertIn: this compares two 12 kB strings, and
+        # assertIn prints both of them on failure.
+        self.assertTrue(
+            migration in mirror,
+            f"{REARM_MIGRATION} and its copy in docs/prototype-migrations.sql "
+            "have drifted. Re-mirror it: the migration body goes in verbatim, "
+            "under the banner that names the file.",
+        )
+
+
 class TestLinkPrecedence(unittest.TestCase):
     """The rule public.sandbox_scoped_tables() uses, mirrored here."""
 

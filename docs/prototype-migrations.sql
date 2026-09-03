@@ -4053,8 +4053,9 @@ end $$;
 --
 -- The one-shot `do` block becomes a function anyone deploying can call again:
 -- attach_sandbox_guards(). It is idempotent, it fixes a guard attached to the
--- wrong column as well as a missing one, and 20260965000000 (this file) calls
--- it, so every table listed above is covered the moment this lands.
+-- wrong column or switched off as well as a missing one, and 20260965000000
+-- (this file) calls it, so every table listed above is covered the moment this
+-- lands.
 --
 -- Re-arming is not a fix on its own — the one-shot block was "fixed" on the
 -- day it ran too. So this also adds sandbox_guard_census(): the project-scoped
@@ -4173,9 +4174,19 @@ grant execute on function public.sandbox_scoped_tables() to service_role;
 -- and recreated. `drop trigger` takes an ACCESS EXCLUSIVE lock, and this
 -- function is meant to be called on a live database on every deploy that adds
 -- a table: forty-odd exclusive locks to change nothing is a real cost paid for
--- tidiness. "Right" means the guard function, the timing and events, AND the
--- two arguments — a trigger reading a column the table no longer links through
--- is re-attached, not passed over.
+-- tidiness. "Right" means the guard function, the timing and events, the two
+-- arguments, AND that the trigger is switched on — a trigger reading a column
+-- the table no longer links through is re-attached, not passed over.
+--
+-- SWITCHED ON is checked because a trigger can be present and inert.
+-- `alter table … disable trigger` during a bulk data repair, or a pg_restore
+-- run with --disable-triggers, leaves tgenabled = 'D': the row is still in
+-- pg_trigger with the right name, the right function, the right arguments and
+-- the right tgtype, and it fires on nothing. A census that did not look would
+-- return no rows and the deploy would print "fence: HOLDING" over a database
+-- where a test login can write every job — the same silent rot as the one-shot
+-- attach, in a new costume. 'O' fires on ordinary writes and 'A' fires always;
+-- 'D' is off and 'R' fires only on a replica, which for our purposes is off.
 --
 -- tgtype is compared as a number on purpose. 1|2|4|8|16 = 31 is
 -- ROW|BEFORE|INSERT|DELETE|UPDATE, the shape 20260730220000 created, and the
@@ -4200,11 +4211,12 @@ declare
   r      record;
   v_def  text;
   v_type smallint;
+  v_on   boolean;
 begin
   for r in select * from public.sandbox_scoped_tables()
   loop
-    select pg_get_triggerdef(tg.oid), tg.tgtype
-      into v_def, v_type
+    select pg_get_triggerdef(tg.oid), tg.tgtype, tg.tgenabled in ('O', 'A')
+      into v_def, v_type, v_on
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace
     join pg_trigger tg on tg.tgrelid = c.oid
@@ -4215,6 +4227,7 @@ begin
       and not tg.tgisinternal;
 
     if v_def is not null
+       and coalesce(v_on, false)
        and v_type = 31
        and position(quote_literal(r.link_column) in v_def) > 0
        and position(quote_literal(r.link_kind) in v_def) > 0
@@ -4246,7 +4259,7 @@ end;
 $$;
 
 comment on function public.attach_sandbox_guards() is
-  'Puts guard_test_account_sandbox_only on every project-scoped table, and repairs one attached to the wrong column. Idempotent — a table already correctly guarded is not touched. Any migration that creates a project-scoped table must end with `select public.attach_sandbox_guards();`; scripts/test_sandbox_guard.py fails CI if one forgets.';
+  'Puts guard_test_account_sandbox_only on every project-scoped table, and repairs one attached to the wrong column or switched off. Idempotent — a table already correctly guarded is not touched. Any migration that creates a project-scoped table must end with `select public.attach_sandbox_guards();`; scripts/test_sandbox_guard.py fails CI if one forgets.';
 
 revoke all on function public.attach_sandbox_guards() from public, anon, authenticated;
 grant execute on function public.attach_sandbox_guards() to service_role;
@@ -4275,6 +4288,7 @@ as $$
     s.link_kind,
     case
       when tg.oid is null then 'no sandbox guard on this table'
+      when tg.tgenabled not in ('O', 'A') then 'the guard is switched off and fires on nothing'
       when tg.tgtype <> 31 then 'the guard does not fire on every write'
       else 'the guard reads a column this table no longer links through'
     end
@@ -4287,6 +4301,12 @@ as $$
     and tg.tgfoid = 'public.guard_test_account_sandbox_only()'::regprocedure
     and not tg.tgisinternal
   where tg.oid is null
+     -- A DISABLEd trigger passes every other test in this query: right name,
+     -- right function, right arguments, right tgtype, and it fires on nothing.
+     -- Nothing in this repo disables it, but `alter table … disable trigger`
+     -- during a data repair and `pg_restore --disable-triggers` both leave it
+     -- that way, and a fence that is down has to read as down.
+     or tg.tgenabled not in ('O', 'A')
      or tg.tgtype <> 31
      or position(quote_literal(s.link_column) in pg_get_triggerdef(tg.oid)) = 0
      or position(quote_literal(s.link_kind) in pg_get_triggerdef(tg.oid)) = 0
@@ -4294,7 +4314,7 @@ as $$
 $$;
 
 comment on function public.sandbox_guard_census() is
-  'The project-scoped tables a test login could still write on ANY job, because the sandbox guard is missing or mis-attached. Empty is the only healthy answer; scripts/verify-sandbox-guard.sh fails the deploy on any row.';
+  'The project-scoped tables a test login could still write on ANY job, because the sandbox guard is missing, switched off, or mis-attached. Empty is the only healthy answer; scripts/verify-sandbox-guard.sh fails the deploy on any row.';
 
 revoke all on function public.sandbox_guard_census() from public, anon, authenticated;
 grant execute on function public.sandbox_guard_census() to service_role;
