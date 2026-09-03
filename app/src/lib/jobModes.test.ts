@@ -12,6 +12,7 @@ import {
   isTrackingOnly,
   modeBadgeKey,
   normalizeModes,
+  promotedModes,
   resolveHubTab,
   validateModes,
   type HubTabId,
@@ -177,5 +178,87 @@ describe("resolveHubTab — the choke point the URL guards share", () => {
     expect(
       resolveHubTab("warehouse", { ...trk, warehouseStaged: true }),
     ).toBe("warehouse");
+  });
+});
+
+// The one-way upgrade (standard-tracking-jobs slice 6). promotedModes is the
+// pure mirror of the promote_project_to_data RPC's union, so the tab/route
+// consequences of "Build this out" are pinned here rather than only in the DB.
+describe("promotedModes — Build this out ADDS data and never removes a mode", () => {
+  it("adds data to a tracking-only job (it becomes data+tracking)", () => {
+    expect(promotedModes(["tracking"])).toEqual(["data", "tracking"]);
+  });
+
+  it("is a no-op for a job that already allows data", () => {
+    expect(promotedModes(["data"])).toEqual(["data"]);
+    expect(promotedModes(["data", "tracking"])).toEqual(["data", "tracking"]);
+    // Idempotent: promoting a promoted tracking job lands on the same set.
+    expect(promotedModes(promotedModes(["tracking"]))).toEqual(["data", "tracking"]);
+  });
+
+  it("degrades a garbled or empty job to data-only, matching the SQL coalesce", () => {
+    expect(promotedModes(undefined)).toEqual(["data"]);
+    expect(promotedModes(null)).toEqual(["data"]);
+    expect(promotedModes([])).toEqual(["data"]);
+    expect(promotedModes(["bogus"])).toEqual(["data"]);
+  });
+
+  it("ALWAYS yields data and never a tracking-only set — the change is one-way", () => {
+    for (const input of [["tracking"], ["data"], ["data", "tracking"], [], ["bogus"]]) {
+      const out = promotedModes(input);
+      expect(out).toContain("data"); // data is only ever added
+      expect(isTrackingOnly(out)).toBe(false); // so it can never downgrade
+    }
+  });
+
+  it("keeps every mode the job already had — nothing is dropped", () => {
+    // A both-mode job keeps tracking; promotion is a superset of the known input.
+    const before = new Set(normalizeModes(["data", "tracking"]));
+    for (const m of before) expect(promotedModes(["data", "tracking"])).toContain(m);
+  });
+});
+
+describe("a promoted job flips onto the full data tab set and routes", () => {
+  // After "Build this out", a job that WAS tracking-only reads as data.
+  const promoted = promotedModes(["tracking"]); // ["data","tracking"]
+
+  it("no longer reads as tracking-only", () => {
+    expect(isTrackingOnly(promoted)).toBe(false);
+  });
+
+  it("shows the data-heavy tabs it was hiding", () => {
+    const trackingOnly = isTrackingOnly(promoted);
+    const tabs = hubTabsFor({ trackingOnly, isLead: true, warehouseStaged: false });
+    for (const shown of ["dispatch", "maps-interactive", "brain", "exceptions"]) {
+      expect(tabs).toContain(shown as HubTabId);
+    }
+  });
+
+  it("its URL guards now accept the map, the studio and dispatch", () => {
+    // RequireDataJob keys off isTrackingOnly: false → the data routes
+    // (/opening, /flash-run, /studio, /model) render instead of redirecting.
+    expect(isTrackingOnly(promoted)).toBe(false);
+    const opts = { trackingOnly: isTrackingOnly(promoted), isLead: true, warehouseStaged: false };
+    expect(resolveHubTab("maps-interactive", opts)).toBe("maps-interactive");
+    expect(resolveHubTab("map", opts)).toBe("map");
+    expect(resolveHubTab("model-studio", opts)).toBe("model-studio");
+    expect(resolveHubTab("dispatch", opts)).toBe("dispatch");
+  });
+});
+
+describe("nothing logged is lost — the surfaces that show a job's work survive", () => {
+  // Promotion only ADDS data; the tabs that render project-scoped logged work
+  // (photos, chat, and — for a lead — the daily log) are in BOTH the tracking
+  // and the data tab set, so none of them vanish when a job is built out. The
+  // records themselves are keyed by project_id, never by mode (verified in the
+  // client wrapper test), so the mode flip cannot touch them.
+  const trk = { trackingOnly: true, isLead: true, warehouseStaged: false };
+  const data = { trackingOnly: false, isLead: true, warehouseStaged: false };
+
+  it("photos, chat and the daily log appear before AND after promotion", () => {
+    for (const shared of ["photos", "chat", "logs"] as HubTabId[]) {
+      expect(hubTabsFor(trk)).toContain(shared);
+      expect(hubTabsFor(data)).toContain(shared);
+    }
   });
 });
