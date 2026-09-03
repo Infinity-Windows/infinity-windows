@@ -489,6 +489,48 @@ export const CATALOG = {
     en: "Clock your time against this job.",
     es: "Registra tu tiempo en este trabajo.",
   },
+
+  // ---- Per-job cost codes (foreman+ editor, slice 3) --------------------
+  "jobcost.title": {
+    en: "Cost codes for this job",
+    es: "Códigos de costo para este trabajo",
+  },
+  "jobcost.help": {
+    en: "Crew pick from these when they clock into this job. Leave every code off to show the full company list.",
+    es: "La cuadrilla elige entre estos al marcar entrada en este trabajo. Deja todos apagados para mostrar la lista completa de la empresa.",
+  },
+  "jobcost.empty": {
+    en: "No cost codes in the library yet.",
+    es: "Aún no hay códigos de costo en la biblioteca.",
+  },
+  "jobcost.allShown": {
+    en: "Showing the full company list — no per-job subset.",
+    es: "Mostrando la lista completa de la empresa — sin subconjunto por trabajo.",
+  },
+  "jobcost.subsetCount": {
+    en: "{n} of {total} codes chosen for this job.",
+    es: "{n} de {total} códigos elegidos para este trabajo.",
+  },
+  "jobcost.save": { en: "Save cost codes", es: "Guardar códigos de costo" },
+  "jobcost.saving": { en: "Saving…", es: "Guardando…" },
+  "jobcost.saved": { en: "Cost codes saved.", es: "Códigos de costo guardados." },
+
+  // ---- Per-job / per-cost-code time report (foreman+, slice 3) ----------
+  "timereport.title": {
+    en: "Time by job & cost code",
+    es: "Tiempo por trabajo y código de costo",
+  },
+  "timereport.help": {
+    en: "This pay period's hours, split by job and the cost code charged — the basis for billing service work.",
+    es: "Las horas de este período de pago, divididas por trabajo y código de costo — la base para facturar el trabajo de servicio.",
+  },
+  "timereport.empty": {
+    en: "No hours in this pay period yet.",
+    es: "Aún no hay horas en este período de pago.",
+  },
+  "timereport.total": { en: "Total", es: "Total" },
+  "timereport.noJob": { en: "No job", es: "Sin trabajo" },
+  "timereport.noCode": { en: "No cost code", es: "Sin código de costo" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

@@ -30,9 +30,9 @@ import {
   getJobLastGeo,
   getOpenShift,
   isOnTheClock,
-  listCostCodes,
   listRecentJobs,
 } from "../../lib/timeclock";
+import { getClockCostCodesForProject } from "../../lib/costCodes";
 import { useT } from "../../lib/i18n";
 import { effectiveClockInMode, normalizeModes, type JobMode } from "../../lib/jobModes";
 import { JobModeBadge } from "../JobModeBadge";
@@ -50,7 +50,6 @@ export function ClockInBlock() {
     queryFn: () => getOpenShift(profileId!),
     enabled: Boolean(profileId),
   });
-  const costCodes = useQuery({ queryKey: ["costCodes"], queryFn: listCostCodes });
   const recents = useQuery({
     queryKey: ["recentJobs", profileId],
     queryFn: () => listRecentJobs(profileId!),
@@ -72,6 +71,13 @@ export function ClockInBlock() {
 
   const [pickProjectId, setPickProjectId] = useState<string>("");
   const [pickCostCodeId, setPickCostCodeId] = useState<string>("");
+  // The cost-code list follows the picked job (slice 3): a job with its own
+  // subset shows only those codes (plus the general fallback); a job with none
+  // shows the full active library. Keyed on the job so it re-fetches on switch.
+  const costCodes = useQuery({
+    queryKey: ["clockCostCodes", pickProjectId || "all"],
+    queryFn: () => getClockCostCodesForProject(pickProjectId || null),
+  });
   // The mode a worker picks when the chosen job allows BOTH data and tracking
   // (standard-tracking-jobs slice 2). Only shown for a both-mode job; a
   // single-mode job records its one mode silently. Defaults to install work.
@@ -117,6 +123,22 @@ export function ClockInBlock() {
     setPickProjectId(r.projectId);
     if (r.costCodeId) setPickCostCodeId(r.costCodeId);
   }, [recents.data, shift]);
+
+  // Drop a picked cost code that isn't valid for the job now chosen (standard-
+  // tracking-jobs slice 3, 2026-09-03). Switching jobs sets only the project;
+  // costCodes then refetches to the new job's subset, and a code held over from
+  // the previous job (a recent's last code, or one the worker tapped) can be
+  // outside it. Without this, canStart stays true with nothing highlighted and a
+  // Clock in would record a cost_code_id the job's subset doesn't allow —
+  // defeating the per-job scoping. WHY newly needed: before per-job subsets every
+  // code was valid for every job, so a switch never invalidated the selection.
+  // Wait for the list to settle (undefined = still loading) before clearing.
+  useEffect(() => {
+    if (!pickCostCodeId) return;
+    const list = costCodes.data;
+    if (!list) return;
+    if (!list.some((c) => c.id === pickCostCodeId)) setPickCostCodeId("");
+  }, [costCodes.data, pickCostCodeId]);
 
   // Capture the current fix ONCE, and only when geolocation is already granted —
   // the "not near this job" note must never trigger its own permission prompt.

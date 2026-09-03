@@ -96,7 +96,9 @@ function mount(tasks: HeartbeatTask[]): HTMLElement {
   // reaching for the server behind the test's back.
   qc.setQueryData(["myProfile"], { id: "me", role: "supervisor" });
   qc.setQueryData(["openShift", "me"], null);
-  qc.setQueryData(["costCodes"], []);
+  // The picker is project-scoped (slice 3); with no recent job it reads the
+  // "all" scope. Seed it so the block never reaches the server behind the test.
+  qc.setQueryData(["clockCostCodes", "all"], []);
   qc.setQueryData(["recentJobs", "me"], []);
   qc.setQueryData(["projects"], []);
   qc.setQueryData(["todayTalk"], null);

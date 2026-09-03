@@ -49,6 +49,10 @@ export function CostCodes() {
     void queryClient.invalidateQueries({ queryKey: ["allCostCodes"] });
     // The pickers (clock-in / timecard) read the active-only list.
     void queryClient.invalidateQueries({ queryKey: ["costCodes"] });
+    // The per-job clock-in picker reads a project-scoped list built from the
+    // same library (slice 3), and the per-job editor its own active copy.
+    void queryClient.invalidateQueries({ queryKey: ["clockCostCodes"] });
+    void queryClient.invalidateQueries({ queryKey: ["allActiveCostCodes"] });
   };
 
   const create = useMutation({

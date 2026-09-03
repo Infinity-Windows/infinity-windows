@@ -36,6 +36,7 @@ import {
 } from "../lib/shiftGuard";
 import { TimecardPanel } from "../components/timecard/TimecardPanel";
 import { ShiftEditor } from "../components/timecard/ShiftEditor";
+import { TimeByJobReport } from "../components/timecard/TimeByJobReport";
 import { fmtTime } from "../components/timecard/format";
 
 function downloadText(text: string, filename: string, mime: string) {
@@ -487,6 +488,10 @@ export function TeamTimecards() {
           </p>
         )}
       </div>
+
+      {/* The pay period's hours cut by job & cost code — the billing basis for
+          service work (slice 3). Foreman+, same as this whole page. */}
+      <TimeByJobReport />
     </div>
   );
 }
