@@ -61,6 +61,7 @@ import { JobChat } from "../components/chat/JobChat";
 import { DailyLogsTab } from "../components/dailyLogs/DailyLogsTab";
 import { ClockInBlock } from "../components/clock/ClockInBlock";
 import { SpecsTab } from "../components/project/SpecsTab";
+import { CallForHandsPanel } from "../components/install/CallForHandsPanel";
 import { JobModeBadge } from "../components/JobModeBadge";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
 import { formatApiError } from "../lib/errors";
@@ -290,8 +291,19 @@ export function ProjectDetail() {
       </ScrollTabs>
 
       {tab === "overview" && (
-        <OverviewTab
-          projectId={projectId}
+        <>
+          {/* Call for hands on the whole job (job-level-summons slice 4). A
+              tracking job has no window sheet to summon from, so it creates
+              here; every job shows a LIVE call so a helper who lands here from
+              the landing strip can answer — a data job creates from the window
+              sheet instead (allowCreate={false}). */}
+          <CallForHandsPanel
+            projectId={projectId}
+            jobLabel={project?.job_code ?? project?.name ?? "this job"}
+            allowCreate={trackingOnly}
+          />
+          <OverviewTab
+            projectId={projectId}
           neededTotal={neededTotal}
           heldCount={heldCount}
           outCount={outCount}
@@ -306,7 +318,8 @@ export function ProjectDetail() {
           canFlagTesting={isSupervisorPlus(effectiveRole)}
           canDeleteTesting={isOwner(effectiveRole)}
           project={project}
-        />
+          />
+        </>
       )}
 
       {tab === "warehouse" && (

@@ -61,6 +61,7 @@ import {
   startUnitSession,
 } from "../../lib/install/sessions";
 import { SummonPanel } from "../../components/install/SummonPanel";
+import { CallForHandsPanel } from "../../components/install/CallForHandsPanel";
 import { UnitRecordCard } from "../../components/install/UnitRecordCard";
 import { InstallChip } from "../../components/install/InstallChip";
 import { checkFit, isInstallReadyStatus, readyToInstall, smallest } from "../../lib/install/fit";
@@ -2174,6 +2175,12 @@ export function OpeningSheet() {
             effectiveRole={effectiveRole ?? "installer"}
             installRunning={false}
           />
+
+          {/* A GENERAL call for hands on the whole job, alongside the
+              per-window summon above (job-level-summons slice 4): sometimes
+              the help you need isn't for this one window. Rings the crew
+              clocked into the job, not just this opening's neighbours. */}
+          <CallForHandsPanel projectId={projectId} />
 
           {/* The flashing gate is the one blocker with somewhere to go, so it
               gets controls instead of a dead button. A unit whose clock is

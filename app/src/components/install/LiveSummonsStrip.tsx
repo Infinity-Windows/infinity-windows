@@ -104,9 +104,15 @@ export function LiveSummonsStrip() {
           >
             {/* The whole row still opens the sheet — Decline is a SIBLING of
                 that link, never inside it, so a tap on "no" can't also walk
-                you to the window. */}
+                you to the window. A job-level call for hands (no opening,
+                job-level-summons slice 4) opens the JOB instead — there is no
+                window to walk to; CallForHandsPanel on the job page answers it. */}
             <Link
-              to={`/projects/${s.project_id}/opening/${s.opening_id}`}
+              to={
+                s.opening_id
+                  ? `/projects/${s.project_id}/opening/${s.opening_id}`
+                  : `/projects/${s.project_id}`
+              }
               style={{
                 minWidth: 0,
                 flex: 1,
