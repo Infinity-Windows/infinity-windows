@@ -327,7 +327,9 @@ export function ClockSheet({
     },
     onSuccess: (r) => {
       if (r.startedOpening && pickedOpening) {
-        toastSuccess(`Clocked in — clock running on ${pickedOpening.opening_code}`);
+        toastSuccess(
+          t("clock.toast.clockedInOnUnit", { code: pickedOpening.opening_code }),
+        );
       } else {
         toastSuccess(
           r.queued ? t("clock.toast.clockedInQueued") : t("clock.toast.clockedIn"),

@@ -162,6 +162,12 @@ export const CATALOG = {
     en: "Clocked in — we'll sync it when you're back online",
     es: "Entrada marcada — la sincronizamos cuando vuelvas a estar en línea",
   },
+  // Shown when the clock-in also starts a specific unit ({code} is its work-order
+  // mark, e.g. "1-2"). Was hard-coded English on the crew flow (slice 7 fix).
+  "clock.toast.clockedInOnUnit": {
+    en: "Clocked in — clock running on {code}",
+    es: "Entrada marcada — el reloj corre en {code}",
+  },
   "clock.toast.switched": { en: "Switched project", es: "Trabajo cambiado" },
   "clock.toast.switchedQueued": {
     en: "Switch saved — we'll sync it when you're back online",
