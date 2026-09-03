@@ -23,6 +23,7 @@ actually is, ahead of a deploy rather than after one.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -466,6 +467,69 @@ class MigrationLintTest(unittest.TestCase):
             self.assertGreater(
                 fixer, old,
                 f"{fixer} does not sort after {old}, so it never runs second",
+            )
+
+
+#: The per-session minutes arithmetic, wherever it appears. Pulled out of the
+#: file text rather than retyped, so the assertion below compares what the two
+#: migrations actually say.
+MINUTES_EXPRESSION = re.compile(r"coalesce\(sum\(least\(480.*?\)\), 0\)::int", re.S)
+
+
+def _squash(text: str) -> str:
+    """Whitespace-insensitive form: the two files indent this expression
+    differently, and indentation is not the thing under test."""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+class ShippedColumnBugRepairTest(unittest.TestCase):
+    """Fixing the function is half the incident; the rows it wrote are the
+    other half.
+
+    finish_unit filed finished units with no minutes and no start time for
+    thirteen days. Replacing the function stops the next one and repairs none
+    of them — and a unit whose time reads as "nobody recorded this" is a lie
+    about a crew that did the work. So a shipped column bug has to name the
+    migration that put its rows right and the list of what could not be.
+    """
+
+    def test_every_shipped_column_bug_names_the_repair_for_its_rows(self):
+        names = {p.name for p in migration_lint.MIGRATIONS_DIR.glob("*.sql")}
+        for old, fixer in migration_lint.SUPERSEDED.items():
+            self.assertIn(
+                old, migration_lint.REPAIRED,
+                f"{old} wrote wrong rows until {fixer} replaced it; name the "
+                "migration that repaired them (and the list of the ones it "
+                "could not) in migration_lint.REPAIRED",
+            )
+            repair, listing = migration_lint.REPAIRED[old]
+            self.assertIn(repair, names, f"{old}'s repair {repair} is missing")
+            self.assertGreater(
+                repair, fixer,
+                f"{repair} must run after {fixer}, or it repairs rows with the "
+                "broken function still in place",
+            )
+            text = (migration_lint.MIGRATIONS_DIR / repair).read_text()
+            self.assertIn(
+                f"create table if not exists {listing}", text,
+                f"{repair} must leave {listing} behind: a row it could not "
+                "recover is only visible if something names it",
+            )
+
+    def test_the_repair_recomputes_with_the_arithmetic_the_fix_uses(self):
+        """A repair that adds minutes up differently from the fixed function
+        would file a second wrong number over the first one."""
+        for old, fixer in migration_lint.SUPERSEDED.items():
+            repair, _listing = migration_lint.REPAIRED[old]
+            fixed = MINUTES_EXPRESSION.search(
+                (migration_lint.MIGRATIONS_DIR / fixer).read_text())
+            repaired = MINUTES_EXPRESSION.search(
+                (migration_lint.MIGRATIONS_DIR / repair).read_text())
+            self.assertIsNotNone(fixed, f"no minutes arithmetic found in {fixer}")
+            self.assertIsNotNone(repaired, f"no minutes arithmetic found in {repair}")
+            self.assertEqual(
+                _squash(fixed.group(0)), _squash(repaired.group(0)),
+                f"{repair} sums a session's minutes differently from {fixer}",
             )
 
 

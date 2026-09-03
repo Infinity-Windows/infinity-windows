@@ -68,6 +68,24 @@ SUPERSEDED: dict[str, str] = {
     "20260820000000_unit_sessions.sql": "20260964000000_finish_unit_own_sessions.sql",
 }
 
+#: Shipped migration -> (the migration that REPAIRED the rows it damaged, the
+#: table that lists them).
+#:
+#: A column reference that resolves outward does not merely break a code path;
+#: it writes wrong rows for every day it lives. Replacing the function is
+#: therefore half an incident — the rows already written stay wrong, and nobody
+#: can name which units they are. 20260820000000 filed finished units with no
+#: minutes and no start time from 2026-08-20 until the fix, and the first cut of
+#: this branch shipped the fix with those rows unmentioned (2026-09-03). Every
+#: entry in SUPERSEDED needs an entry here, and the test in
+#: scripts/test_schema_verify.py refuses a fix that arrives without one.
+REPAIRED: dict[str, tuple[str, str]] = {
+    "20260820000000_unit_sessions.sql": (
+        "20260965000000_finish_unit_minutes_repair.sql",
+        "install_event_time_repairs",
+    ),
+}
+
 
 def _blank_comments(sql: str) -> str:
     """Blank out -- line comments and /* */ blocks.
