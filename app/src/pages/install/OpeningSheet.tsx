@@ -198,6 +198,50 @@ const READY_LABEL: Record<string, string> = {
 };
 
 /**
+ * The two real ways past a unit that still owes flashing.
+ *
+ * There used to be a DISABLED button here reading "Flash this opening first",
+ * which is the exact thing the owner reported on 2026-09-02 as "the button
+ * doesn't register": it named an action and did nothing, and nothing else on
+ * the sheet said where that action lives. Flashing is its own pass on the
+ * flash run, and a foreman can decide this unit was never going to be flashed
+ * — so those are the two things this offers, both as controls that actually do
+ * something. Shown wherever the flashing gate stops someone.
+ */
+function FlashingWayOut({
+  projectId,
+  openingCode,
+  canClear,
+  clearing,
+  onClear,
+}: {
+  projectId: string;
+  openingCode: string;
+  canClear: boolean;
+  clearing: boolean;
+  onClear: () => void;
+}) {
+  return (
+    <div className="detail-card wh-card" style={{ textAlign: "left" }}>
+      <p className="wh-row-sub" style={{ margin: 0 }}>
+        Flashing is its own pass, not part of this install. Open the flash run
+        and pick {openingCode} from its list.
+      </p>
+      <div className="row-gap" style={{ flexWrap: "wrap", marginTop: 8 }}>
+        <Link className="action-btn" to={`/projects/${projectId}/flash-run`}>
+          Go to the flash run
+        </Link>
+        {canClear && (
+          <button className="action-btn" disabled={clearing} onClick={onClear}>
+            Doesn't need flashing
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
  * A status line for the user, carrying its own tone instead of one guessed
  * from its first word. That guess (a regex against the message text, below)
  * is the bug this replaces: "Redo filed" and "Marked damaged" both matched no
@@ -440,13 +484,6 @@ export function OpeningSheet() {
     timer,
   });
 
-  // No partial submits: an install is filed with its proof (after photo +
-  // quality grade) or it is not filed. See lib/install/submitGate.ts.
-  const submitBlockedBy = submitBlockersLine({
-    grade,
-    hasAfterPhoto: photos.after !== null,
-  });
-
   // Phases: work on this opening that isn't the install (flashing today).
   // One project-level query so the map and every sheet share a cache entry.
   const phases = useQuery({
@@ -458,6 +495,18 @@ export function OpeningSheet() {
   const flashingBlocked = opening.data
     ? flashingOutstanding(opening.data, myPhases)
     : false;
+
+  // No partial submits: an install is filed with its proof (after photo +
+  // quality grade) or it is not filed. See lib/install/submitGate.ts.
+  //
+  // Flashing joined this gate on 2026-09-02: the server has always refused
+  // `finish_unit` on a unit that still owes flashing, but the screen used to
+  // let you tap Submit anyway and then blame the network for the refusal.
+  const submitBlockedBy = submitBlockersLine({
+    grade,
+    hasAfterPhoto: photos.after !== null,
+    flashingOwed: flashingBlocked,
+  });
   // Undo an install from the window itself (foreman+): required reason,
   // nothing lost - the event is voided, never deleted.
   const [undoReason, setUndoReason] = useState("");
@@ -2014,11 +2063,10 @@ export function OpeningSheet() {
                   </button>
                 )}
               </div>
-              {!flashing && (
-                <p className="wh-row-sub" style={{ margin: "8px 0 0" }}>
-                  Flashing happens on the flash run — your foreman dispatches it.
-                </p>
-              )}
+              {/* No "your foreman dispatches it" line any more: it was a dead
+                  end on a screen whose only flashing control was a disabled
+                  button. FlashingWayOut below says where the run is and takes
+                  you there. */}
             </div>
           )}
           {o.needs_flashing === false && isForemanPlus(effectiveRole) && (
@@ -2044,28 +2092,46 @@ export function OpeningSheet() {
             installRunning={false}
           />
 
-          {/* The deliberate act. This is the moment the clock starts — and the
-              moment the lead board sees this window as in progress. */}
-          <button
-            className="primary big"
-            disabled={
-              ready.status === "blocked" ||
-              beginInstall.isPending ||
-              flashingBlocked ||
-              (!startedAt && photos.before === null) ||
-              (!startedAt && !canStartInstall(eligibility.status))
-            }
-            onClick={() => (startedAt ? setStage("install") : beginInstall.mutate())}
-          >
-            {/* "already started" is checked FIRST, matching the order the
-                disable logic above uses. It used to sit below the clock-in
-                check, so somebody returning to a window they started
-                yesterday read "Clock in first to start" on a live button that
-                took them straight into the install — the label simply lied. */}
-            {ready.status === "blocked"
-              ? "Resolve blockers to start"
-              : flashingBlocked
-                ? "Flash this opening first"
+          {/* The flashing gate is the one blocker with somewhere to go, so it
+              gets controls instead of a dead button. A unit whose clock is
+              already running keeps its way back into the install stage — the
+              gate is on FILING the install, and the sheet still refuses that
+              at Submit. */}
+          {flashingBlocked ? (
+            <>
+              <FlashingWayOut
+                projectId={projectId}
+                openingCode={o.opening_code}
+                canClear={isForemanPlus(effectiveRole)}
+                clearing={toggleNeedsFlashing.isPending}
+                onClear={() => toggleNeedsFlashing.mutate(false)}
+              />
+              {startedAt && (
+                <button className="button-like" onClick={() => setStage("install")}>
+                  Back to the install →
+                </button>
+              )}
+            </>
+          ) : (
+            /* The deliberate act. This is the moment the clock starts — and the
+               moment the lead board sees this window as in progress. */
+            <button
+              className="primary big"
+              disabled={
+                ready.status === "blocked" ||
+                beginInstall.isPending ||
+                (!startedAt && photos.before === null) ||
+                (!startedAt && !canStartInstall(eligibility.status))
+              }
+              onClick={() => (startedAt ? setStage("install") : beginInstall.mutate())}
+            >
+              {/* "already started" is checked FIRST, matching the order the
+                  disable logic above uses. It used to sit below the clock-in
+                  check, so somebody returning to a window they started
+                  yesterday read "Clock in first to start" on a live button that
+                  took them straight into the install — the label simply lied. */}
+              {ready.status === "blocked"
+                ? "Resolve blockers to start"
                 : startedAt
                   ? "Back to the install →"
                   : photos.before === null
@@ -2075,7 +2141,8 @@ export function OpeningSheet() {
                       : beginInstall.isPending
                         ? "Starting…"
                         : "Start install →"}
-          </button>
+            </button>
+          )}
         </>
       )}
 
@@ -2167,11 +2234,16 @@ export function OpeningSheet() {
                   </p>
                 </>
               ) : (
+                /* There is no minutes box to type in any more — minutes come
+                   from this unit's sessions, server-side (spec
+                   .scratch/sessions). The old copy still sent people looking
+                   for a field that was removed with the hand-typed era. */
                 <p className="muted" style={{ margin: 0 }}>
                   This has been open since{" "}
                   {startedAt ? new Date(startedAt).toLocaleString() : "a while ago"},
-                  so the timer stopped guessing. Type the real minutes when you
-                  capture it.
+                  so the stopwatch stopped counting. Your time still comes from
+                  your clocked sessions — nothing to type. Carry on and capture
+                  it.
                 </p>
               )}
               {tips.length > 0 && (
@@ -2381,6 +2453,19 @@ export function OpeningSheet() {
 
           {submitBlockedBy && (
             <p className="muted" role="status">{submitBlockedBy}</p>
+          )}
+
+          {/* Saying "this needs flashing" and leaving them on a dead Submit is
+              how the 2026-09-02 report started. The way out goes here, at the
+              button they actually tapped. */}
+          {flashingBlocked && (
+            <FlashingWayOut
+              projectId={projectId}
+              openingCode={o.opening_code}
+              canClear={isForemanPlus(effectiveRole)}
+              clearing={toggleNeedsFlashing.isPending}
+              onClear={() => toggleNeedsFlashing.mutate(false)}
+            />
           )}
 
           <button
