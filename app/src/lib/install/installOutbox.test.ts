@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   deserializeInstallOutbox,
   nextInstallStep,
@@ -6,6 +6,16 @@ import {
   stageToAttempt,
   type InstallOutboxRecord,
 } from "./installOutbox";
+
+// The network edges of a flush, faked so the queue's own decisions are what
+// is under test: the RPC that files the install, the points award, and the
+// media upload queue.
+vi.mock("./api", () => ({ submitInstallEvent: vi.fn() }));
+vi.mock("../points", () => ({ awardPoints: vi.fn(async () => {}) }));
+vi.mock("./queue", () => ({
+  enqueueUpload: vi.fn(async () => {}),
+  flushQueue: vi.fn(async () => ({ sent: 0, remaining: 0 })),
+}));
 
 const RECORD: InstallOutboxRecord = {
   id: "outbox-1",
@@ -88,5 +98,188 @@ describe("install outbox state machine", () => {
         JSON.stringify({ id: "x", step: "queued", payload: { openingId: "o" } }),
       ),
     ).toBeNull();
+  });
+});
+
+// --- the flush itself -----------------------------------------------------
+//
+// Everything above is pure. These need the IndexedDB the outbox actually
+// writes to, and vitest runs in node with no browser storage — so this is the
+// smallest store that behaves the way installOutbox uses one: open, one object
+// store keyed by id, put / delete / getAll, and transactions that complete on
+// their own. Callbacks fire on a macrotask so the handlers assigned right
+// after each call are always in place first, which is how a real request
+// behaves.
+
+interface FakeRow {
+  id: string;
+  meta: string;
+  blobs: Blob[];
+}
+
+function installFakeIndexedDb(): Map<string, FakeRow> {
+  const rows = new Map<string, FakeRow>();
+  const settle = <T,>(result: T) => {
+    const req = { result, onsuccess: null, onerror: null } as unknown as {
+      result: T;
+      onsuccess: (() => void) | null;
+      onerror: (() => void) | null;
+    };
+    setTimeout(() => req.onsuccess?.(), 0);
+    return req;
+  };
+  const store = {
+    put: (row: FakeRow) => {
+      rows.set(row.id, row);
+      return settle(undefined);
+    },
+    delete: (id: string) => {
+      rows.delete(id);
+      return settle(undefined);
+    },
+    getAll: () => settle([...rows.values()]),
+  };
+  const db = {
+    objectStoreNames: { contains: () => true },
+    createObjectStore: () => store,
+    transaction: () => {
+      const tx = { objectStore: () => store, oncomplete: null, onerror: null } as {
+        objectStore: () => typeof store;
+        oncomplete: (() => void) | null;
+        onerror: (() => void) | null;
+      };
+      setTimeout(() => tx.oncomplete?.(), 0);
+      return tx;
+    },
+    close: () => {},
+  };
+  vi.stubGlobal("indexedDB", {
+    open: () => {
+      const req = {
+        result: db,
+        onsuccess: null,
+        onerror: null,
+        onupgradeneeded: null,
+      } as unknown as {
+        result: typeof db;
+        onsuccess: (() => void) | null;
+        onerror: (() => void) | null;
+        onupgradeneeded: (() => void) | null;
+      };
+      setTimeout(() => {
+        req.onupgradeneeded?.();
+        req.onsuccess?.();
+      }, 0);
+      return req;
+    },
+  });
+  return rows;
+}
+
+const INPUT = {
+  openingId: "opening-1",
+  projectId: "project-1",
+  openingCode: "10",
+  assignedWindowId: null,
+  createdBy: "installer@crew.com",
+  submitParams: { openingId: "opening-1" },
+  points: null,
+  media: [],
+};
+
+describe("a refused install reaches the person who submitted it", () => {
+  let rows: Map<string, FakeRow>;
+
+  beforeEach(() => {
+    rows = installFakeIndexedDb();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  // The 2026-09-02 report: finish_unit refused a BLACK22 unit that still owed
+  // flashing, and the sheet said "Install saved on this device — will sync
+  // when you're back in signal."
+  it("hands back a P0001 refusal instead of calling it queued", async () => {
+    const { submitInstallEvent } = await import("./api");
+    const refusal = {
+      code: "P0001",
+      message: "this opening needs flashing submitted before the install is filed",
+    };
+    vi.mocked(submitInstallEvent).mockRejectedValue(refusal);
+
+    const { submitInstallViaOutbox, listFailedInstalls } = await import(
+      "./installOutbox"
+    );
+    const result = await submitInstallViaOutbox(INPUT);
+
+    expect(result.refused?.error).toBe(refusal);
+
+    // And it is parked, not lost: one failed record, still at the RPC step, so
+    // a retry after the cause is fixed resumes rather than repeats.
+    const failed = await listFailedInstalls();
+    expect(failed).toHaveLength(1);
+    expect(failed[0]?.step).toBe("queued");
+    expect(failed[0]?.lastError).toContain("needs flashing");
+    expect(rows.size).toBe(1);
+  });
+
+  it("says nothing about a dead zone — that one still just queues", async () => {
+    const { submitInstallEvent } = await import("./api");
+    vi.mocked(submitInstallEvent).mockRejectedValue(
+      new TypeError("Failed to fetch"),
+    );
+
+    const { submitInstallViaOutbox, pendingInstallCount, failedInstallCount } =
+      await import("./installOutbox");
+    const result = await submitInstallViaOutbox(INPUT);
+
+    expect(result.refused).toBeNull();
+    expect(result.queued).toBe(true);
+    expect(await pendingInstallCount()).toBe(1);
+    expect(await failedInstallCount()).toBe(0);
+  });
+
+  it("reports the refusal only for the install that was just submitted", async () => {
+    const { submitInstallEvent } = await import("./api");
+    const { enqueueInstall, submitInstallViaOutbox, flushInstallOutbox } =
+      await import("./installOutbox");
+
+    // An older install that will be refused for its own reasons, already sat
+    // through one attempt.
+    vi.mocked(submitInstallEvent).mockRejectedValue({
+      code: "23505",
+      message: "duplicate key value violates unique constraint",
+    });
+    const older = await enqueueInstall({ ...INPUT, openingId: "opening-old" });
+    await flushInstallOutbox();
+
+    // It is failed now, so the next flush skips it entirely and the new
+    // install's own refusal is the only one reported.
+    vi.mocked(submitInstallEvent).mockRejectedValue({
+      code: "P0001",
+      message: "this opening needs flashing submitted before the install is filed",
+    });
+    const result = await submitInstallViaOutbox(INPUT);
+
+    expect(result.refused).not.toBeNull();
+    expect(result.refused?.id).not.toBe(older.id);
+    expect(rows.size).toBe(2);
+  });
+
+  it("files a clean install and clears it off the device", async () => {
+    const { submitInstallEvent } = await import("./api");
+    vi.mocked(submitInstallEvent).mockResolvedValue({
+      id: "event-1",
+    } as unknown as Awaited<ReturnType<typeof submitInstallEvent>>);
+
+    const { submitInstallViaOutbox } = await import("./installOutbox");
+    const result = await submitInstallViaOutbox(INPUT);
+
+    expect(result.refused).toBeNull();
+    expect(result.queued).toBe(false);
+    expect(rows.size).toBe(0);
   });
 });

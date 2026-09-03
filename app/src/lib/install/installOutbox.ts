@@ -5,6 +5,7 @@
 import { awardPoints, type PointEntry } from "../points";
 import {
   errorMessage,
+  isNetworkError,
   isRetryableError,
   MAX_ATTEMPTS,
 } from "../offline/outbox-core";
@@ -332,19 +333,44 @@ export async function enqueueInstall(
 let flushingInstalls = false;
 
 /**
+ * An install the server refused outright, on its very first try, with signal.
+ *
+ * This is not "couldn't send it yet" — it is a verdict, and the person who
+ * tapped Submit two seconds ago is standing there waiting to hear it. The
+ * record still parks in Stuck writes either way; this only decides whether
+ * they are told the real reason now or shown the "saved on this device" toast
+ * and left to find out four minutes later that nothing saved.
+ */
+export interface InstallRefusal {
+  /** Which outbox record was refused — the caller matches its own. */
+  id: string;
+  /** The raw error, so the caller can run it through formatApiError. */
+  error: unknown;
+}
+
+export interface InstallFlushResult {
+  synced: number;
+  remaining: number;
+  /**
+   * Refusals from THIS pass, first attempt only. A list because a flush walks
+   * every stored record and IndexedDB hands them back in key order, so the
+   * one that just failed is not necessarily the one the caller enqueued.
+   */
+  failedNow: InstallRefusal[];
+}
+
+/**
  * Replay pending installs in order: RPC → points → enqueue media → drop.
  * Each step is marked complete before the next so a retry never re-runs a
  * finished stage. Media then rides the existing upload queue.
  */
-export async function flushInstallOutbox(): Promise<{
-  synced: number;
-  remaining: number;
-}> {
+export async function flushInstallOutbox(): Promise<InstallFlushResult> {
   if (flushingInstalls) {
-    return { synced: 0, remaining: await pendingInstallCount() };
+    return { synced: 0, remaining: await pendingInstallCount(), failedNow: [] };
   }
   flushingInstalls = true;
   let synced = 0;
+  const failedNow: InstallRefusal[] = [];
   try {
     const rows = await listRows();
     for (const row of rows) {
@@ -422,7 +448,8 @@ export async function flushInstallOutbox(): Promise<{
         // no matter how many times we retry it, so it skips straight to
         // failed instead of burning through MAX_ATTEMPTS first.
         const attemptCount = current.attemptCount + 1;
-        const givenUp = !isRetryableError(err) || attemptCount >= MAX_ATTEMPTS;
+        const permanent = !isRetryableError(err);
+        const givenUp = permanent || attemptCount >= MAX_ATTEMPTS;
         current = {
           ...current,
           attemptCount,
@@ -434,13 +461,20 @@ export async function flushInstallOutbox(): Promise<{
         // untouched, so a retry resumes instead of repeating a stage (like
         // the RPC) that already landed on the server.
         await putRecord(current, blobs);
+        // First try, with signal, and the server said no on the merits: hand
+        // the error back so the sheet can print the actual sentence. A dead
+        // zone is a different thing entirely and still gets the calm queued
+        // toast — being offline is not a verdict on anybody's install.
+        if (permanent && attemptCount === 1 && !isNetworkError(err)) {
+          failedNow.push({ id: current.id, error: err });
+        }
       }
     }
   } finally {
     flushingInstalls = false;
     notifySyncListeners();
   }
-  return { synced, remaining: await pendingInstallCount() };
+  return { synced, remaining: await pendingInstallCount(), failedNow };
 }
 
 // --- stuck installs: seeing them, and doing something about them ---------
@@ -500,17 +534,29 @@ export async function discardFailedInstall(id: string): Promise<void> {
 
 /**
  * Enqueue then immediately attempt flush (online path). Returns whether the
- * install RPC completed this call, or is waiting for signal.
+ * install RPC completed this call, or is waiting for signal — and, when the
+ * server refused THIS install outright, the error that says why.
+ *
+ * `refused` is matched by record id rather than taken as "whatever failed in
+ * that flush": a flush walks every stored install, and an old stuck one from
+ * another window must never be reported as the reason this Submit didn't go
+ * through.
  */
 export async function submitInstallViaOutbox(
   input: EnqueueInstallInput,
-): Promise<{ queued: boolean; remainingInstalls: number; remainingUploads: number }> {
-  await enqueueInstall(input);
+): Promise<{
+  queued: boolean;
+  remainingInstalls: number;
+  remainingUploads: number;
+  refused: InstallRefusal | null;
+}> {
+  const record = await enqueueInstall(input);
   const flush = await flushInstallOutbox();
   const uploads = await flushQueue();
   return {
     queued: flush.remaining > 0,
     remainingInstalls: flush.remaining,
     remainingUploads: uploads.remaining,
+    refused: flush.failedNow.find((f) => f.id === record.id) ?? null,
   };
 }

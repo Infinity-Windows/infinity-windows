@@ -1086,7 +1086,7 @@ export function OpeningSheet() {
           })
         : [];
 
-      return submitInstallViaOutbox({
+      const result = await submitInstallViaOutbox({
         openingId,
         projectId,
         openingCode: o.opening_code,
@@ -1115,6 +1115,15 @@ export function OpeningSheet() {
           : null,
         media,
       });
+
+      // The server refused this install on the merits — a rule said no, and
+      // asking again in thirty seconds will not change the answer. Throw so
+      // the error banner shows what actually happened, instead of the "saved
+      // on this device" toast the outbox used to give every failure alike.
+      // The record is still in Stuck writes: fix the cause, then retry it
+      // from there.
+      if (result.refused) throw result.refused.error;
+      return result;
     },
     onSuccess: (result) => {
       // This opening is finished; its start must not be waiting on the device
