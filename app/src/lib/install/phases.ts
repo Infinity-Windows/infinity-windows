@@ -121,12 +121,31 @@ export function flashingAlarm(
   return { owed, runActive, alarm: owed > 0 && !runActive };
 }
 
-/** The one question the install gate asks. */
+/**
+ * The one question the install gate asks.
+ *
+ * `undefined` phases mean the phase read has not answered — an offline
+ * reload, a failed request — and that is NOT the same answer as an empty
+ * list. An empty list is "loaded, and nothing has been submitted"; undefined
+ * is "we don't know yet", and a gate must not refuse work on a fact it
+ * doesn't have. Same rule the role guard follows for a null role during load.
+ *
+ * Told apart 2026-09-02, on review of the flashing submit gate: the opening
+ * row IS kept in the offline cache (so `needs_flashing = true` survives a
+ * reload in a dead spot) and the phase rows that clear it were not, so an
+ * already-flashed unit read as still owing flashing, Submit went dead, and
+ * the install could not even be queued for later — the exact failure the
+ * toolbox-signature cache entry was added to stop. The phase query is cached
+ * now too (lib/queryClient.ts), and this is the belt to that pair of braces:
+ * when the answer is genuinely unknown, the server is still the one that
+ * refuses, and the sheet prints its refusal.
+ */
 export function flashingOutstanding(
   opening: { needs_flashing?: boolean | null },
-  phases: OpeningPhase[],
+  phases: readonly OpeningPhase[] | undefined,
 ): boolean {
   if (opening.needs_flashing !== true) return false;
+  if (!phases) return false;
   return !phases.some((p) => p.kind === "flashing" && p.status === "submitted");
 }
 

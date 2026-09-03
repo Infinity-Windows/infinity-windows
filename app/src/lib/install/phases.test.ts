@@ -38,6 +38,17 @@ describe("flashingOutstanding (the install gate)", () => {
     expect(flashingOutstanding({}, [])).toBe(false);
     expect(flashingOutstanding({ needs_flashing: null }, [])).toBe(false);
   });
+
+  // Review, 2026-09-02. An offline reload restores the opening (so
+  // needs_flashing = true comes back) and, if the phase read has not
+  // answered, nothing that clears it. Reading that silence as "flashing
+  // owed" disabled Submit on a unit that was already flashed, and the
+  // install could not be queued for later either.
+  it("a phase read that hasn't answered is not an answer", () => {
+    expect(flashingOutstanding({ needs_flashing: true }, undefined)).toBe(false);
+    // An EMPTY list is still a real answer: loaded, and nothing submitted.
+    expect(flashingOutstanding({ needs_flashing: true }, [])).toBe(true);
+  });
 });
 
 describe("phaseElapsedSeconds (the live clock, net of pauses)", () => {

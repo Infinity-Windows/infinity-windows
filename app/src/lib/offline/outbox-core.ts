@@ -158,15 +158,58 @@ export function makeEntry(
 }
 
 /**
+ * The SQLSTATE, where the failure carries one.
+ *
+ * Every error supabase-js hands back from PostgREST has `code` on it, and it
+ * is a far better signal than the sentence: the sentence is written by
+ * whoever raised it and changes whenever we reword a message.
+ */
+export function errorCode(err: unknown): string | null {
+  if (err == null || typeof err !== "object") return null;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === "string" && code.trim() !== "" ? code.trim() : null;
+}
+
+/**
+ * Is this SQLSTATE one that will still be refused on the tenth try?
+ *
+ * P0001 is a RAISE EXCEPTION from one of our own functions — a rule we wrote
+ * said no, and it will say no again. Class 22 is bad input, class 23 is a
+ * constraint violation, class 42 is syntax / undefined object / permission
+ * denied. None of those are fixed by waiting.
+ *
+ * Deliberately NOT here: class 08 (connection), 53 (out of resources), 57
+ * (operator intervention, which includes a restarting database) and 5xx HTTP
+ * — those are exactly the ones a retry does fix.
+ *
+ * PostgREST's own codes (PGRST…) don't match this shape and fall through to
+ * the message heuristics below, as they did before.
+ */
+export function isPermanentSqlState(code: string | null | undefined): boolean {
+  if (!code) return false;
+  const c = code.trim().toUpperCase();
+  if (c === "P0001") return true;
+  return /^(22|23|42)[0-9A-Z]{3}$/.test(c);
+}
+
+/**
  * Classify a drain failure. Network / transient errors are retried with
  * backoff; permanent errors (validation, auth, conflict) go straight to the
  * dead-letter so we don't hammer the server forever. Anything unknown is
  * treated as retryable — losing a field write is worse than a wasted retry.
+ *
+ * The SQLSTATE check was added 2026-09-02: `finish_unit` refused an install
+ * with P0001 "this opening needs flashing submitted before the install is
+ * filed", none of the message patterns below matched it, so the queue called
+ * it retryable — the installer got "saved on this device, will sync when
+ * you're back in signal", the phone tried eight more times over four minutes,
+ * and the real reason never reached anybody.
  */
 export function isRetryableError(err: unknown): boolean {
   if (err == null) return true;
   const permanent = (err as { permanent?: unknown }).permanent;
   if (permanent === true) return false;
+  if (isPermanentSqlState(errorCode(err))) return false;
   const msg = errorMessage(err).toLowerCase();
   // Postgres/PostgREST permanent-ish signals.
   if (/duplicate key|already exists|violates|invalid input|permission denied|not authorized|forbidden|jwt|row-level security/.test(msg)) {

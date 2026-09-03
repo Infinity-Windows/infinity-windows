@@ -618,3 +618,126 @@ test("Condition: marking a unit damaged fires set_opening_condition with the not
     page.getByRole("button", { name: "Skip for now — go to my work" }),
   ).toBeVisible();
 });
+
+// The two halves of the 2026-09-02 report, both of which lived only in
+// OpeningSheet.tsx and neither of which any test touched: the sheet must
+// refuse a unit that owes flashing BEFORE the tap, and it must print the
+// server's refusal instead of the "saved on this device" toast when the
+// server is the one that says no. Reverting either hunk left the whole suite
+// green until these landed.
+
+test("Flashing owed: Submit is refused on the sheet, with somewhere to go", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await stubGeolocationDenied(page);
+  // A unit started before the flashing rule existed — the owner's BLACK22
+  // case. `opening_phases` answers `[]` from the fixture router, which is a
+  // real answer: loaded, and nothing submitted.
+  const o = opening(8, {
+    status: "assigned",
+    needs_flashing: true,
+    work_started_at: "2026-08-20T09:00:00Z",
+    confirmed: true,
+  });
+  await routeOpenings(page, [o]);
+
+  const finishes: Json[] = [];
+  await page.route("**/rest/v1/rpc/finish_unit", async (route) => {
+    finishes.push(route.request().postDataJSON() as Json);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ id: "evt-should-never-happen" }),
+    });
+  });
+
+  await page.goto(`/projects/${str(o.project_id)}/opening/${str(o.id)}`);
+
+  // Check stage: the dead button the owner tapped is gone, and what stands
+  // in its place actually goes somewhere.
+  await expect(
+    page.getByRole("button", { name: "Flash this opening first" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Go to the flash run" }).first(),
+  ).toHaveAttribute("href", `/projects/${str(o.project_id)}/flash-run`);
+
+  // Capture stage: proof complete, and Submit still refuses — with the
+  // reason, and the same way out at the button they actually tap.
+  await page.getByRole("button", { name: "3. Capture" }).click();
+  await page
+    .locator('input[type="file"][accept="image/*"]')
+    .setInputFiles(pngFile("after.png"));
+  await page.getByRole("button", { name: "4", exact: true }).click();
+
+  await expect(
+    page
+      .getByText("This unit still needs flashing before the install can be filed.")
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Go to the flash run" }).first(),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Submit install" })).toBeDisabled();
+
+  // And nothing was sent — the point of saying it first.
+  expect(finishes).toHaveLength(0);
+});
+
+test("Refused: the server's sentence reaches the sheet, not the queued toast", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  await stubGeolocationDenied(page);
+  // This phone's copy of the row says no flashing is owed. The server's
+  // doesn't — a foreman flipped the flag while this installer was working.
+  // That gap is the one the sheet can never close on its own, and it is the
+  // whole reason the outbox hands a refusal back instead of swallowing it.
+  const o = opening(9, {
+    status: "assigned",
+    needs_flashing: false,
+    work_started_at: "2026-08-20T09:00:00Z",
+    confirmed: true,
+  });
+  await routeOpenings(page, [o]);
+
+  let calls = 0;
+  await page.route("**/rest/v1/rpc/finish_unit", async (route) => {
+    calls++;
+    // Exactly what PostgREST returns for a RAISE EXCEPTION out of
+    // finish_unit (20260811000000_opening_phases.sql).
+    await route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({
+        code: "P0001",
+        details: null,
+        hint: null,
+        message:
+          "this opening needs flashing submitted before the install is filed",
+      }),
+    });
+  });
+
+  await page.goto(`/projects/${str(o.project_id)}/opening/${str(o.id)}`);
+  await page.getByRole("button", { name: "3. Capture" }).click();
+  await page
+    .locator('input[type="file"][accept="image/*"]')
+    .setInputFiles(pngFile("after.png"));
+  await page.getByRole("button", { name: "4", exact: true }).click();
+  await page.getByRole("button", { name: "Submit install" }).click();
+
+  // The real sentence, on the screen, while the person is still standing
+  // there — instead of "Install saved on this device" and a modal saying the
+  // window is done.
+  await expect(
+    page
+      .getByText(/needs flashing submitted before the install is filed/)
+      .first(),
+  ).toBeVisible();
+  await expect(page.getByText(/saved on this device/)).toHaveCount(0);
+  await expect(page.getByText("Nice — window done.")).toHaveCount(0);
+  // And it stopped asking: one attempt, not eight over four minutes.
+  expect(calls).toBe(1);
+});

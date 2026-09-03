@@ -135,7 +135,10 @@ class TestSchemaParsing(unittest.TestCase):
         # +1: receipts (Wave P, P1, 20260957000000).
         # +2: learning_video_quizzes + learning_video_quiz_attempts (Wave Q,
         # video summaries and quizzes, 20260962000000).
-        self.assertEqual(len(SCHEMA.tables), 114)
+        # +1: install_event_time_repairs — the list of finished units the
+        # 2026-09-02 finish_unit bug filed with no minutes, and what was put
+        # back (20260965000000).
+        self.assertEqual(len(SCHEMA.tables), 115)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
