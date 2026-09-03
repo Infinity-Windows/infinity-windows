@@ -58,7 +58,7 @@ async function actor(): Promise<string | null> {
 // 20260729200000_profiles_rls_lockdown.sql the database enforces this too — the
 // authenticated role holds column privileges on exactly this list.
 export const PROFILE_COLS =
-  "id, display_name, skill_level, role, active, created_at, updated_at";
+  "id, display_name, skill_level, role, active, language, created_at, updated_at";
 
 /** Emails that auto-promote to Owner on first/any sign-in. */
 const OWNER_BOOTSTRAP_EMAILS = new Set([
@@ -298,6 +298,17 @@ export async function approveAccessRequest(
 
 export async function setMyPin(pin: string): Promise<void> {
   const { error } = await supabase.rpc("set_my_pin", { p_pin: pin });
+  if (error) throw error;
+}
+
+/**
+ * Set the signed-in user's own app language. The RPC is the only writer of
+ * profiles.language — the column is revoked from the authenticated role at the
+ * grant level (20260968000000_profile_language.sql) — and it scopes the write
+ * to auth.uid()'s own row, so this can only ever change your own preference.
+ */
+export async function setMyLanguage(lang: "en" | "es"): Promise<void> {
+  const { error } = await supabase.rpc("set_my_language", { p_lang: lang });
   if (error) throw error;
 }
 
