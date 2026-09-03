@@ -1316,7 +1316,7 @@ export async function saveDraftOpenings(
       supabase
         .from("project_openings")
         .select(
-          "id, opening_code, confirmed, status, pin_x, pin_y, page_number, planset_id, assigned_to, work_started_at, ro_width_in, ro_height_in, condition",
+          "id, opening_code, confirmed, status, pin_x, pin_y, page_number, planset_id, assigned_to, work_started_at, ro_width_in, ro_height_in, ro_quick_ok, condition",
         )
         .eq("project_id", projectId),
     ]);
@@ -1350,6 +1350,7 @@ export async function saveDraftOpenings(
     work_started_at: o.work_started_at ?? null,
     ro_width_in: o.ro_width_in == null ? null : Number(o.ro_width_in),
     ro_height_in: o.ro_height_in == null ? null : Number(o.ro_height_in),
+    ro_quick_ok: Boolean(o.ro_quick_ok),
     condition: o.condition ?? null,
     referenced: referenced.has(o.id),
   }));
@@ -2975,6 +2976,36 @@ export async function setRoughOpening(
     });
     if (fallback.error) throw fallback.error;
     return fallback.data as ProjectOpening;
+  }
+  if (error) throw error;
+  return data as ProjectOpening;
+}
+
+/**
+ * "Quick check: all good" — the fast path beside the tape measure.
+ *
+ * One tap saying somebody looked at the opening, held the unit to it, and it
+ * goes in (owner, 2026-09-02). It records who and when, and nothing else: the
+ * server never invents width and height numbers, and saving real ones later
+ * clears this flag, so a quick check can never outrank a measurement.
+ */
+export async function quickCheckRoughOpening(
+  openingId: string,
+): Promise<ProjectOpening> {
+  const { data, error } = await supabase.rpc("quick_check_rough_opening", {
+    p_opening_id: openingId,
+    p_actor: await actor(),
+  });
+  // The app bundle can reach a phone before the migration reaches the server;
+  // deploying the backend has silently failed on this project before. There is
+  // no older call to fall back to, so say what happened in words an installer
+  // can act on instead of letting PostgREST's "could not find the function"
+  // through to the sheet.
+  if (error && isMissingFunction(error)) {
+    throw new Error(
+      "Quick check needs an app update that has not reached the server yet. " +
+        "Nothing was changed — measure the opening and save the numbers instead.",
+    );
   }
   if (error) throw error;
   return data as ProjectOpening;
