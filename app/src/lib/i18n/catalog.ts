@@ -545,6 +545,10 @@ export const CATALOG = {
 
   // ---- Build a tracking job out into a data job (foreman+, slice 6) ------
   // The one-way upgrade, offered on a tracking job's Overview.
+  // The label a job wears when it has neither a job_code nor a name yet — its
+  // own key so the fallback never leaks English into the Spanish confirm/done
+  // sentences it's interpolated into (tracking-jobs slice 7, 2026-09-03).
+  "buildout.thisJob": { en: "this job", es: "este trabajo" },
   "buildout.button": {
     en: "Build this out — turn this into a full data job",
     es: "Desarróllalo — conviértelo en un trabajo de datos completo",
@@ -571,6 +575,7 @@ export const CATALOG = {
     en: "Crew pick from these when they clock into this job. Leave every code off to show the full company list.",
     es: "La cuadrilla elige entre estos al marcar entrada en este trabajo. Deja todos apagados para mostrar la lista completa de la empresa.",
   },
+  "jobcost.loading": { en: "Loading…", es: "Cargando…" },
   "jobcost.empty": {
     en: "No cost codes in the library yet.",
     es: "Aún no hay códigos de costo en la biblioteca.",
@@ -603,6 +608,26 @@ export const CATALOG = {
   "timereport.total": { en: "Total", es: "Total" },
   "timereport.noJob": { en: "No job", es: "Sin trabajo" },
   "timereport.noCode": { en: "No cost code", es: "Sin código de costo" },
+
+  // ---- The job Photos tab (the photo/receipt feed, tracking-jobs slice 7) ----
+  // PhotoFeed was English-only by convention until this slice; these wrap the
+  // whole feed so a Spanish reader never meets an English label on their photos.
+  // The foreman+ 30-day recoverable trash (slice-3 curation):
+  "feed.trash": { en: "Trash", es: "Papelera" },
+  "feed.backToPhotos": { en: "Back to photos", es: "Volver a las fotos" },
+  "feed.trashHint": {
+    en: "Removed photos stay here for 30 days, then they're erased for good.",
+    es: "Las fotos quitadas se quedan aquí 30 días, luego se borran para siempre.",
+  },
+  "feed.removeConfirm": {
+    en: "Remove this photo? It goes to the trash — recoverable for 30 days.",
+    es: "¿Quitar esta foto? Va a la papelera — se puede recuperar por 30 días.",
+  },
+  "feed.photoTrashed": {
+    en: "Photo moved to trash — 30 days to undo.",
+    es: "Foto movida a la papelera — 30 días para deshacer.",
+  },
+  "feed.restore": { en: "Restore", es: "Restaurar" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

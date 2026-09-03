@@ -26,6 +26,7 @@ import { isForemanPlus } from "../../lib/install/types";
 import { pushToast, toastError } from "../../lib/toast";
 import { EmptyState, QueryError, SkeletonCard } from "../ui/States";
 import { PhotoCaptureSheet } from "../PhotoCaptureSheet";
+import { useT } from "../../lib/i18n";
 
 function whoLabel(createdBy: string | null): string {
   if (!createdBy) return "Someone";
@@ -104,6 +105,7 @@ export function PhotoFeed({
   toolbarExtra?: ReactNode;
 }) {
   const isReceipt = kind === "receipt";
+  const t = useT();
   const queryClient = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
   // Removing / restoring a job photo is foreman+ (server-enforced by the RPCs).
@@ -138,7 +140,7 @@ export function PhotoFeed({
   const removePhoto = useMutation({
     mutationFn: (id: string) => deleteJobPhoto(id),
     onSuccess: () => {
-      pushToast("Photo moved to trash — 30 days to undo.", "info");
+      pushToast(t("feed.photoTrashed"), "info");
       setViewer(null);
       refreshPhotos();
     },
@@ -192,7 +194,7 @@ export function PhotoFeed({
             aria-pressed={showTrash}
             onClick={() => setShowTrash((v) => !v)}
           >
-            <Trash2 size={16} aria-hidden /> {showTrash ? "Back to photos" : "Trash"}
+            <Trash2 size={16} aria-hidden /> {showTrash ? t("feed.backToPhotos") : t("feed.trash")}
           </button>
         )}
       </div>
@@ -201,7 +203,7 @@ export function PhotoFeed({
       {showTrash && (
         <>
           <p className="muted" style={{ margin: "0 0 8px" }}>
-            Removed photos stay here for 30 days, then they're erased for good.
+            {t("feed.trashHint")}
           </p>
           {trash.isLoading && (
             <div className="photos-grid">
@@ -243,7 +245,7 @@ export function PhotoFeed({
                       disabled={restorePhoto.isPending}
                       onClick={() => restorePhoto.mutate(p.id)}
                     >
-                      <RotateCcw size={12} aria-hidden /> Restore
+                      <RotateCcw size={12} aria-hidden /> {t("feed.restore")}
                     </button>
                   </span>
                 </div>
@@ -414,11 +416,7 @@ export function PhotoFeed({
                   className="button-like"
                   disabled={removePhoto.isPending}
                   onClick={() => {
-                    if (
-                      window.confirm(
-                        "Remove this photo? It goes to the trash — recoverable for 30 days.",
-                      )
-                    ) {
+                    if (window.confirm(t("feed.removeConfirm"))) {
                       removePhoto.mutate(viewer.id);
                     }
                   }}

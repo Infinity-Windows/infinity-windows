@@ -447,11 +447,16 @@ function BuildOutPanel({
   jobLabel,
 }: {
   projectId: string;
-  jobLabel: string;
+  // The raw job_code/name, or null when the job has neither yet. The English
+  // fallback is resolved HERE through t() (tracking-jobs slice 7, 2026-09-03)
+  // so a nameless job never interpolates a hard-coded "this job" into the
+  // Spanish confirm/done sentences below.
+  jobLabel: string | null;
 }) {
   const t = useT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const label = jobLabel ?? t("buildout.thisJob");
 
   const promote = useMutation({
     mutationFn: () => promoteProjectToData(projectId),
@@ -468,14 +473,14 @@ function BuildOutPanel({
       );
       queryClient.invalidateQueries({ queryKey: ["projectsAll"] });
       queryClient.invalidateQueries({ queryKey: ["projects"] });
-      pushToast(t("buildout.done", { job: jobLabel }), "info");
+      pushToast(t("buildout.done", { job: label }), "info");
       navigate(`/projects/${projectId}/upload`);
     },
     onError: (e) => toastError(e),
   });
 
   const confirmBuildOut = () => {
-    if (window.confirm(t("buildout.confirm", { job: jobLabel }))) {
+    if (window.confirm(t("buildout.confirm", { job: label }))) {
       promote.mutate();
     }
   };
@@ -550,7 +555,7 @@ function OverviewTab({
       {trackingOnly && isLead && (
         <BuildOutPanel
           projectId={projectId}
-          jobLabel={project?.job_code ?? project?.name ?? "this job"}
+          jobLabel={project?.job_code ?? project?.name ?? null}
         />
       )}
 
