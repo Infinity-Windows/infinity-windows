@@ -25,6 +25,9 @@ export interface Summon {
   project?: { job_code: string | null } | null;
   opening?: { opening_code: string | null } | null;
   helpers?: Pick<SummonHelper, "profile_id" | "completed_at" | "canceled_at">[] | null;
+  /** Who said they can't come — read so a decline can take the row off
+   * their own screen. Absent on older reads, so optional. */
+  declines?: Pick<SummonDecline, "profile_id">[] | null;
 }
 
 export interface SummonHelper {
@@ -54,7 +57,25 @@ function isMissingTableError(e: { code?: string; message?: string } | null): boo
 }
 
 const SUMMON_SELECT =
-  "*, requester:profiles!summons_requested_by_fkey(display_name), project:projects(job_code), opening:project_openings(opening_code), helpers:summon_helpers(profile_id, completed_at, canceled_at)";
+  "*, requester:profiles!summons_requested_by_fkey(display_name), project:projects(job_code), opening:project_openings(opening_code), helpers:summon_helpers(profile_id, completed_at, canceled_at), declines:summon_declines(profile_id)";
+
+/**
+ * A summon is over one day after it was sent (owner ask, 2026-09-02: "a
+ * summons should expire 1 day after the user sends the summons"). The server
+ * sweep (expire_summons, every 10 minutes) is what actually closes the row;
+ * the same rule is read on the phone so the landing strip never leaves a
+ * day-old call sitting there in the gap between sweeps.
+ *
+ * It is applied AFTER the read, by `visibleSummons` — never as a `created_at`
+ * bound in the query, and never against the handset's own clock. `created_at`
+ * is stamped by `now()` on the server; `Date.now()` is whatever the phone
+ * believes. A handset a day ahead (a dead battery restoring a bad clock,
+ * someone setting the date by hand) would ask for rows newer than any that
+ * exist and show that installer no calls for hands at all, with nothing on
+ * screen to explain it. And the caller's own expired summon has to come back
+ * from the server, or the strip has nothing to tell them nobody came with.
+ */
+export const SUMMON_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
 /** Live (open/covered) summons on a job — Dispatch indicator + the sheet. */
 export async function listLiveSummons(projectId: string): Promise<Summon[]> {
@@ -73,10 +94,11 @@ export async function listLiveSummons(projectId: string): Promise<Summon[]> {
  * Every live summon on every job — the landing pages' call-for-hands strip
  * (owner ask, 2026-08-18): a live summon should find helpers where they
  * already are, My Work and Home, not only on the window's own sheet. One
- * read, no filter beyond "live": a call for hands is never quietly hidden —
- * except for a job the owner just deleted (Wave D): nobody should keep
- * getting summoned onto a job that no longer exists, so a trashed project's
- * summons are filtered out here the same as everywhere else.
+ * read: a call for hands is never quietly hidden — except for a job the
+ * owner just deleted (Wave D), since nobody should keep getting summoned
+ * onto a job that no longer exists. What each viewer then sees is
+ * `visibleSummons`, which drops the ones they declined and the day-old ones
+ * that are not their own.
  */
 export async function listAllLiveSummons(): Promise<Summon[]> {
   const { data, error } = await supabase
@@ -221,24 +243,44 @@ export function summonEtaLine(
  * many, where — in the crew's words. `mine` flips the voice ("You called
  * for…") so your own summon reads as confirmation, not as somebody else's
  * emergency.
+ *
+ * Once a call is a day old it is over (owner ask, 2026-09-02). The caller is
+ * the only person still shown it, and what they need is the ending, not a
+ * countdown — so their line says so plainly instead of reading as open.
  */
 export function summonStripLine(
-  s: Pick<Summon, "needed" | "status" | "requester" | "project" | "opening" | "needed_at">,
+  s: Pick<
+    Summon,
+    "needed" | "status" | "requester" | "project" | "opening" | "needed_at" | "helpers"
+  > &
+    Partial<Pick<Summon, "created_at">>,
   mine: boolean,
-  now: number = Date.now(),
+  now: number | null = Date.now(),
 ): string {
-  const hands = `${s.needed} ${s.needed === 1 ? "hand" : "hands"}`;
-  const head = mine
-    ? `You called for ${hands}`
-    : `${s.requester?.display_name ?? "Someone"} needs ${hands}`;
   const where = [
     s.project?.job_code ?? null,
     s.opening?.opening_code ? `#${s.opening.opening_code}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
+  if (mine && s.created_at && summonExpired(s.created_at, now)) {
+    // "Nobody came" has to be true to be worth saying — a call that got
+    // hands and then ran out of day gets the other half of the sentence.
+    const anyoneCame = (s.helpers ?? []).some((h) => !h.canceled_at);
+    const ended = anyoneCame
+      ? "Expired — the call ended after a day"
+      : "Expired — nobody came in a day";
+    return where ? `${ended} — ${where}` : ended;
+  }
+  const hands = `${s.needed} ${s.needed === 1 ? "hand" : "hands"}`;
+  const head = mine
+    ? `You called for ${hands}`
+    : `${s.requester?.display_name ?? "Someone"} needs ${hands}`;
   let base = where ? `${head} — ${where}` : head;
-  const eta = summonEtaLine(s.needed_at, now);
+  // The countdown is a live timer, not a hiding rule: with no measured
+  // offset the device's own clock is the only one there is, and a wrong one
+  // makes a minute count look off rather than making a call disappear.
+  const eta = summonEtaLine(s.needed_at, now ?? Date.now());
   if (eta) base = `${base} · ${eta}`;
   return s.status === "covered" ? `${base} (covered)` : base;
 }
@@ -256,6 +298,73 @@ export function iAnswered(
   return (s.helpers ?? []).some(
     (h) => h.profile_id === myProfileId && !h.canceled_at,
   );
+}
+
+/**
+ * The clock the one-day rule is read against: the database's, reconstructed
+ * on the phone from a measured offset (`clockSkewMs`, wave T's `server_now`
+ * RPC) rather than trusted from `Date.now()`. The device's *elapsed* time is
+ * fine — it is its idea of the date that can be hours or days out.
+ *
+ * `null` — no offset measured yet, or the phone is offline — means "no clock
+ * worth deciding on", and then nothing is treated as expired. Showing a call
+ * ten minutes past its day costs someone a walk they didn't need; hiding a
+ * live one costs them the help.
+ */
+export function summonNow(
+  skewMs: number | null | undefined,
+  deviceNowMs: number = Date.now(),
+): number | null {
+  return skewMs == null ? null : deviceNowMs - skewMs;
+}
+
+/**
+ * Is this call over? One day from `created_at`, matching the server rule
+ * (`created_at < now() - interval '1 day'`) exactly — a summon sent 24 hours
+ * ago on the nose is still live for that instant, one tick later it is not.
+ * Same boundary in both places, so the phone and the database never disagree
+ * about a row on screen.
+ */
+export function summonExpired(
+  createdAt: string,
+  now: number | null = Date.now(),
+): boolean {
+  if (now == null) return false; // no trusted clock: never hide the call
+  const at = Date.parse(createdAt);
+  if (Number.isNaN(at)) return false; // unreadable date: never hide the call
+  return now - at > SUMMON_LIFETIME_MS;
+}
+
+/**
+ * What one person should actually see on their landing strip (owner ask,
+ * 2026-09-02: "I should have the option to say Decline so that it goes off
+ * of my screen. That way I don't have these summons piled up").
+ *
+ * Two things come off: a summon you declined, and a summon older than a day.
+ * One thing deliberately stays — your OWN expired call. You are the person
+ * owed an answer about it, so it holds its place reading "Expired — nobody
+ * came in a day" rather than vanishing without a word; the server sweep is
+ * what finally takes it away.
+ *
+ * Everything else stays, including summons you answered and covered ones: a
+ * call for hands is never quietly hidden.
+ */
+export function visibleSummons(
+  rows: readonly Summon[],
+  myProfileId: string | null | undefined,
+  now: number | null = Date.now(),
+): Summon[] {
+  return rows.filter((s) => {
+    const mine = Boolean(myProfileId) && s.requested_by === myProfileId;
+    if (
+      myProfileId &&
+      (s.declines ?? []).some((d) => d.profile_id === myProfileId)
+    ) {
+      return false;
+    }
+    if (!summonExpired(s.created_at, now)) return true;
+    return mine;
+  });
 }
 
 /**
