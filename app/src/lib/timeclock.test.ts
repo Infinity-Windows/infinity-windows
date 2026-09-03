@@ -22,6 +22,7 @@ import {
   shiftHours,
   shiftsToExportRows,
   startOfWeekIso,
+  summarizeByJobCostCode,
   timecardRange,
   type TimeShift,
 } from "./timeclock";
@@ -139,6 +140,72 @@ describe("shiftsToExportRows (T7: one shared export mapping)", () => {
   it("defaults the fallback name to Crew when none is given", () => {
     const [row] = shiftsToExportRows([shift({})]);
     expect(row.employee).toBe("Crew");
+  });
+});
+
+describe("summarizeByJobCostCode (slice 3: the service billing basis)", () => {
+  // Two jobs, three cost codes, closed shifts of known lengths.
+  const cedar = { job_code: "W-1001", name: "Cedar Ridge" };
+  const oak = { job_code: "W-2002", name: "Oak Park" };
+  const serviceCode = { code: "500", label: "Service call" };
+  const warrantyCode = { code: "600", label: "Warranty" };
+
+  function closed(hours: number, partial: Partial<TimeShift>): TimeShift {
+    const start = "2026-01-05T08:00:00Z";
+    const end = new Date(new Date(start).getTime() + hours * 3_600_000).toISOString();
+    return shift({ clock_in_at: start, clock_out_at: end, status: "approved", ...partial });
+  }
+
+  it("splits hours by job AND by cost code, and totals them", () => {
+    const report = summarizeByJobCostCode([
+      closed(6, { project_id: "cedar", projects: cedar, cost_code_id: "svc", cost_codes: serviceCode }),
+      closed(2, { project_id: "cedar", projects: cedar, cost_code_id: "war", cost_codes: warrantyCode }),
+      closed(4, { project_id: "oak", projects: oak, cost_code_id: "svc", cost_codes: serviceCode }),
+    ]);
+
+    expect(report.totalHours).toBe(12);
+    expect(report.shiftCount).toBe(3);
+    // Cedar (8h) sorts ahead of Oak (4h).
+    expect(report.jobs.map((j) => j.jobKey)).toEqual(["cedar", "oak"]);
+
+    const cedarJob = report.jobs.find((j) => j.jobKey === "cedar")!;
+    expect(cedarJob.hours).toBe(8);
+    expect(cedarJob.jobCode).toBe("W-1001");
+    // Service call (6h) ahead of Warranty (2h).
+    expect(cedarJob.costCodes.map((c) => [c.code, c.hours])).toEqual([
+      ["500", 6],
+      ["600", 2],
+    ]);
+  });
+
+  it("sums repeated shifts on the same job+code into one line", () => {
+    const report = summarizeByJobCostCode([
+      closed(3, { project_id: "cedar", projects: cedar, cost_code_id: "svc", cost_codes: serviceCode }),
+      closed(5, { project_id: "cedar", projects: cedar, cost_code_id: "svc", cost_codes: serviceCode }),
+    ]);
+    const cedarJob = report.jobs[0];
+    expect(cedarJob.costCodes).toHaveLength(1);
+    expect(cedarJob.costCodes[0].hours).toBe(8);
+    expect(cedarJob.costCodes[0].shiftCount).toBe(2);
+  });
+
+  it("buckets a shift with no job / no cost code rather than dropping it", () => {
+    const report = summarizeByJobCostCode([
+      closed(2, { project_id: null, projects: null, cost_code_id: null, cost_codes: null }),
+    ]);
+    expect(report.jobs).toHaveLength(1);
+    expect(report.jobs[0].jobKey).toBe("unassigned");
+    expect(report.jobs[0].costCodes[0].costCodeKey).toBe("none");
+    expect(report.jobs[0].hours).toBe(2);
+  });
+
+  it("counts an open (unfinished) shift as zero hours, never a bill", () => {
+    const report = summarizeByJobCostCode([
+      shift({ project_id: "cedar", projects: cedar, cost_code_id: "svc", cost_codes: serviceCode }),
+    ]);
+    expect(report.totalHours).toBe(0);
+    expect(report.jobs[0].hours).toBe(0);
+    expect(report.jobs[0].costCodes[0].shiftCount).toBe(1);
   });
 });
 
