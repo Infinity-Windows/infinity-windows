@@ -453,6 +453,23 @@ export function summonStripLine(
 }
 
 /**
+ * Where "Answer" on a call for hands lands. A window-scoped summon opens that
+ * window's sheet; a job-level call for hands (job-level-summons slice 4,
+ * 2026-09-03) has no window to walk to, so it opens the JOB, where
+ * CallForHandsPanel answers it. Building `/opening/${null}` sends the helper
+ * to a dead opening route they cannot answer from — the one place every
+ * summon surface (strip, board, realtime ring) has to agree.
+ */
+export function summonHref(
+  projectId: string,
+  openingId: string | null | undefined,
+): string {
+  return openingId
+    ? `/projects/${projectId}/opening/${openingId}`
+    : `/projects/${projectId}`;
+}
+
+/**
  * Has this viewer answered this summon and not backed out? Drives the strip
  * row ("You answered — on the way" instead of an Answer pill) so a person
  * who already committed is never re-asked (owner report, 2026-08-19).

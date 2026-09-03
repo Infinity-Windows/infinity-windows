@@ -48,6 +48,7 @@ import {
   summonEtaLine,
   summonExpired,
   summonHelperMinutes,
+  summonHref,
   summonNow,
   summonStripLine,
   visibleSummons,
@@ -72,6 +73,20 @@ describe("summonHelperMinutes", () => {
     expect(
       summonHelperMinutes([{ joined_at: "2026-08-14T11:00:00Z", completed_at: null, minutes: null }], t0),
     ).toBe(0);
+  });
+});
+
+// Where "Answer" lands, on every surface that shows a call for hands — the
+// landing strip, the dispatch board, and the realtime ring banner. A
+// job-level call has no window, so the ring once built `/opening/null`, a
+// dead route the helper could not answer from (job-level-summons slice 4).
+describe("summonHref", () => {
+  it("opens the window's sheet for a window-scoped call", () => {
+    expect(summonHref("p1", "op1")).toBe("/projects/p1/opening/op1");
+  });
+  it("opens the job — never /opening/null — for a job-level call", () => {
+    expect(summonHref("p1", null)).toBe("/projects/p1");
+    expect(summonHref("p1", undefined)).toBe("/projects/p1");
   });
 });
 
