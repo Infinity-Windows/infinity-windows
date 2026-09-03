@@ -72,6 +72,7 @@ import {
   isTrackingOnly,
   promotedModes,
   resolveHubTab,
+  tabPendingModes,
   type HubTabId,
 } from "../lib/jobModes";
 
@@ -145,6 +146,13 @@ export function ProjectDetail() {
   const warehouseStaged = minePkgs.length > 0;
   const tabOpts = { trackingOnly, isLead, warehouseStaged };
   const tab: HubTab = resolveHubTab(tabParam, tabOpts);
+  // tracking-jobs cleanup, 2026-09-03: on a cold deep-link the project row is
+  // still loading, so isTrackingOnly reads false and resolveHubTab accepts a
+  // data-only ?tab= a tracking job never shows — its body would flash for one
+  // frame before the redirect effect below strips it. Hold that body while the
+  // row loads. Only a data-only tab is ever held; a shared tab (and every
+  // warm-cache load) renders exactly as before, so a data job is untouched.
+  const modesPending = tabPendingModes(tabParam, projects.isLoading);
   const tabLabel = (id: HubTabId): string => {
     switch (id) {
       case "dispatch":
@@ -292,6 +300,12 @@ export function ProjectDetail() {
         ))}
       </ScrollTabs>
 
+      {/* Hold the body until the job's mode is known, so a data-only ?tab= on a
+          tracking job never flashes its body before the redirect fires. Nothing
+          is rendered in the gap on purpose (no new loader for a data job); the
+          project row resolves in the same tick its own queries do. */}
+      {!modesPending && (
+      <>
       {tab === "overview" && (
         <>
           {/* Call for hands on the whole job (job-level-summons slice 4). A
@@ -409,6 +423,8 @@ export function ProjectDetail() {
             )}
           </ul>
         </div>
+      )}
+      </>
       )}
     </div>
   );

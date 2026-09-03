@@ -218,3 +218,35 @@ export function resolveHubTab(
   ];
   return accept.includes(t) ? (t as HubTabId) : "overview";
 }
+
+/**
+ * The tabs a data (or both-mode) job shows that a tracking-only job never does:
+ * the data accept-list MINUS the tabs both kinds share. Rendering one of these
+ * before the job's mode is known is the one-frame flash tabPendingModes closes.
+ */
+const DATA_ONLY_TABS: readonly string[] = [
+  "map",
+  "model-studio",
+  "maps-interactive",
+  "brain",
+  "dispatch",
+  "exceptions",
+];
+
+/**
+ * On a cold deep-link the project row is briefly unknown, and isTrackingOnly
+ * reads false for an unknown row (isTrackingOnly(undefined) === false) — so
+ * resolveHubTab would accept a data-only ?tab= a tracking job never shows, and
+ * its body would render for one frame before the mode loads and the redirect
+ * effect strips the tab. While the row is still loading, a data-only ?tab= is
+ * "pending": the hub holds its body until the mode is known, THEN resolves for
+ * real. A shared tab (overview, photos, chat, specs, time, warehouse, logs) is
+ * never pending — both kinds of job show it — so a data job's normal load, and
+ * every warm-cache load, is untouched.
+ */
+export function tabPendingModes(
+  tabParam: string | null | undefined,
+  modesLoading: boolean,
+): boolean {
+  return modesLoading && DATA_ONLY_TABS.includes(tabParam ?? "");
+}

@@ -1,7 +1,7 @@
 import { BackChip } from "../../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 import {
   applyPlacementSuggestions,
   discardLocalOutline,
@@ -15,6 +15,7 @@ import {
 } from "../../lib/install/api";
 import { readPlacementsFromDoc } from "../../lib/install/placementRead";
 import { listProjects } from "../../lib/api";
+import { isTrackingOnly } from "../../lib/jobModes";
 import { loadPdf } from "../../lib/install/pdf";
 import { renderPageJpeg } from "../../lib/install/renderSpecImages";
 import { extractSheetTextLines } from "../../lib/install/pdf";
@@ -663,6 +664,17 @@ export function MapsTrace() {
   }
   if (!project) {
     return <div className="page"><p className="error">Job not found.</p></div>;
+  }
+  // tracking-jobs cleanup, 2026-09-03: a tracking-only job has no 3D model to
+  // trace, so a URL that lands here (pasted, bookmarked, or a stale link) goes
+  // back to the job Overview — the same data-only fence RequireDataJob draws on
+  // the sibling /studio, /flash-run and /model routes. Guarded HERE, off the
+  // project row this screen already fetches (the ["projects"] query), and
+  // deliberately NOT with RequireDataJob: that guard's ["projectsAll"] read
+  // warms a cache that reorders the trace → Submit → map hop and drops the
+  // compass rose (wave-n-true-north.spec).
+  if (isTrackingOnly(project.allowed_modes)) {
+    return <Navigate to={`/projects/${projectId}`} replace />;
   }
 
   return (
