@@ -15,6 +15,12 @@ export interface CostCode {
   description?: string | null;
   active: boolean;
   sort_order?: number;
+  /**
+   * The one general / catch-all code the clock-in picker always folds in as a
+   * fallback (standard-tracking-jobs slice 3, 20260971000000). Optional so a
+   * database that predates the column reads as "not general".
+   */
+  is_general?: boolean;
 }
 
 export type BreakType = "lunch" | "rest" | "other";
@@ -293,6 +299,103 @@ export function summarizeTeamWeek(shifts: TimeShift[]): TeamWeekSummary[] {
   return [...byPerson.values()].sort((a, b) =>
     a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Per-job / per-cost-code time report (standard-tracking-jobs slice 3) — the
+// billing basis for service work. The pay-period rollup already sums a person's
+// hours; this cuts the SAME shifts the other way, by job AND by the cost code
+// charged, so an owner can see "8h Service call + 2h Warranty on this job" and
+// bill from it. Pure: it takes an already-fetched TimeShift[] and returns the
+// breakdown, so it is tested with fixtures rather than through a network read.
+// ---------------------------------------------------------------------------
+
+/** One cost code's hours within one job. */
+export interface CostCodeHours {
+  /** cost_code_id, or "none" for a shift with no code. */
+  costCodeKey: string;
+  code: string;
+  label: string;
+  hours: number;
+  shiftCount: number;
+}
+
+/** One job's hours, split by cost code. */
+export interface JobCostCodeHours {
+  /** project_id, or "unassigned" for a shift with no job. */
+  jobKey: string;
+  jobCode: string;
+  jobName: string;
+  hours: number;
+  shiftCount: number;
+  costCodes: CostCodeHours[];
+}
+
+export interface JobCostCodeReport {
+  jobs: JobCostCodeHours[];
+  totalHours: number;
+  shiftCount: number;
+}
+
+/**
+ * Roll a flat list of shifts up by job, then by cost code, summing worked
+ * hours. Open (unfinished) shifts contribute zero hours — the same
+ * `shiftHours` rule the payroll rollup uses — so a runaway punch never inflates
+ * a bill. Jobs and codes are ordered by hours descending, then by code, so the
+ * costliest work reads first.
+ */
+export function summarizeByJobCostCode(shifts: TimeShift[]): JobCostCodeReport {
+  const byJob = new Map<string, JobCostCodeHours>();
+  const codeMaps = new Map<string, Map<string, CostCodeHours>>();
+  let totalHours = 0;
+
+  for (const s of shifts) {
+    const jobKey = s.project_id ?? "unassigned";
+    let job = byJob.get(jobKey);
+    if (!job) {
+      job = {
+        jobKey,
+        jobCode: s.projects?.job_code ?? (s.project_id ? "—" : "No job"),
+        jobName: s.projects?.name ?? "",
+        hours: 0,
+        shiftCount: 0,
+        costCodes: [],
+      };
+      byJob.set(jobKey, job);
+      codeMaps.set(jobKey, new Map());
+    }
+
+    const codeKey = s.cost_code_id ?? "none";
+    const codes = codeMaps.get(jobKey)!;
+    let code = codes.get(codeKey);
+    if (!code) {
+      code = {
+        costCodeKey: codeKey,
+        code: s.cost_codes?.code ?? (s.cost_code_id ? "—" : "No code"),
+        label: s.cost_codes?.label ?? "",
+        hours: 0,
+        shiftCount: 0,
+      };
+      codes.set(codeKey, code);
+    }
+
+    const h = shiftHours(s);
+    job.hours += h;
+    job.shiftCount += 1;
+    code.hours += h;
+    code.shiftCount += 1;
+    totalHours += h;
+  }
+
+  const jobs = [...byJob.values()].map((job) => ({
+    ...job,
+    costCodes: [...codeMaps.get(job.jobKey)!.values()].sort(
+      (a, b) => b.hours - a.hours || a.code.localeCompare(b.code),
+    ),
+  }));
+  jobs.sort((a, b) => b.hours - a.hours || a.jobCode.localeCompare(b.jobCode));
+
+  return { jobs, totalHours, shiftCount: shifts.length };
 }
 
 export async function rejectShift(

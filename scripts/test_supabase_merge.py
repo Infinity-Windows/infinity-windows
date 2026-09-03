@@ -138,7 +138,9 @@ class TestSchemaParsing(unittest.TestCase):
         # +1: install_event_time_repairs — the list of finished units the
         # 2026-09-02 finish_unit bug filed with no minutes, and what was put
         # back (20260965000000).
-        self.assertEqual(len(SCHEMA.tables), 115)
+        # +1: project_cost_codes — a job's pickable cost-code subset
+        # (standard-tracking-jobs slice 3, 20260971000000).
+        self.assertEqual(len(SCHEMA.tables), 116)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

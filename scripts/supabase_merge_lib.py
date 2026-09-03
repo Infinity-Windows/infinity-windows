@@ -630,6 +630,11 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # One shared log per job per day (Q6) — the UNIQUE constraint IS the
     # natural key (Wave L, L1, 20260949000000).
     "daily_logs": ("project_id", "log_date"),
+    # One row per (job, cost code) — the UNIQUE constraint IS the natural key
+    # (standard-tracking-jobs slice 3, 20260971000000). Two projects that both
+    # enable the same code are the same enablement once merged, not a
+    # duplicate to keep twice.
+    "project_cost_codes": ("project_id", "cost_code_id"),
     # One grant per (partner, job) — the UNIQUE constraint IS the natural
     # key (Wave S, S1 the partner wall, 20260950000000).
     "partner_job_grants": ("partner_profile_id", "project_id"),
