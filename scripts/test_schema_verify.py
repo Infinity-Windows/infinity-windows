@@ -11,6 +11,13 @@ The behaviour that matters most is the DIRECTION of the check, because getting
 it wrong in either direction breaks the pipeline in a different way: too strict
 and every merge is red forever because of `project_marks`, too loose and a
 migration that never applied ships silently. Both directions are asserted.
+
+This file also carries the standing gate for scripts/migration_lint.py — the
+2026-09-02 finish_unit incident, where a column name that does not exist on
+install_events resolved against the enclosing query and made a subquery return
+the newest install on the whole database. That belongs here because it is the
+same job as the rest of the file: proving the migrations say what the schema
+actually is, ahead of a deploy rather than after one.
 """
 
 from __future__ import annotations
@@ -23,6 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import migration_lint
 import schema_verify
 
 REPO = Path(__file__).resolve().parent.parent
@@ -315,6 +323,150 @@ class SchemaVerifyTest(unittest.TestCase):
         # Only columns can be missing here; no table is.
         self.assertEqual([f for _fn, f in blocking if f.startswith("table|")], [])
         self.assertEqual(extra["tables"], ["project_marks"])
+
+
+#: The exact statement that shipped in 20260820000000_unit_sessions.sql and
+#: cost an owner a finished unit's minutes on 2026-09-02. Kept verbatim so
+#: these tests fail if the scanner ever stops recognising the real shape.
+FINISH_UNIT_BEFORE = """
+  select coalesce(sum(least(480,
+           greatest(0, floor(extract(epoch from (ended_at - started_at)) / 60)))), 0)::int,
+         min(started_at)
+  into v_minutes, v_started
+  from unit_sessions
+  where opening_id = p_opening_id and ended_at is not null
+    and started_at > coalesce(
+      (select max(created_at) from install_events
+       where opening_id = p_opening_id and voided_at is null),
+      '-infinity'::timestamptz);
+"""
+
+FINISH_UNIT_AFTER = FINISH_UNIT_BEFORE.replace(
+    "where opening_id = p_opening_id and voided_at is null",
+    "where project_opening_id = p_opening_id and voided_at is null",
+)
+
+
+class MigrationLintTest(unittest.TestCase):
+    """A column name that isn't on the table it is filtering.
+
+    Postgres resolves it against the enclosing query rather than raising, so
+    nothing errors and the filter silently stops filtering. See
+    scripts/migration_lint.py for the incident this came from.
+    """
+
+    # --- it catches the real thing -----------------------------------------
+
+    def test_the_2026_09_02_statement_is_caught(self):
+        hits = migration_lint.scan_sql(FINISH_UNIT_BEFORE, "before.sql")
+        self.assertEqual(
+            [(t, w) for _f, _l, t, w, _r in hits],
+            [("install_events", "opening_id")],
+        )
+
+    def test_the_fixed_statement_is_clean(self):
+        self.assertEqual(migration_lint.scan_sql(FINISH_UNIT_AFTER, "after.sql"), [])
+
+    def test_the_report_names_the_column_that_should_have_been_used(self):
+        text = migration_lint.describe(
+            migration_lint.scan_sql(FINISH_UNIT_BEFORE, "before.sql"),
+        )
+        self.assertIn("project_opening_id", text)
+        self.assertIn("before.sql", text)
+
+    # --- it does not cry wolf ----------------------------------------------
+
+    def test_a_qualified_opening_id_on_another_table_is_fine(self):
+        """20260959000000's shape: install_events joined next to a table that
+        really does have opening_id, every reference qualified."""
+        sql = """
+        select a.path from attachments a
+        join install_events ie on ie.id = a.install_event_id
+        join project_openings po on po.id = ie.project_opening_id
+        union all
+        select op.photo_path from opening_phases op
+        join project_openings po on po.id = op.opening_id;
+        """
+        self.assertEqual(migration_lint.scan_sql(sql), [])
+
+    def test_an_aliased_subquery_on_a_different_table_is_fine(self):
+        """20260718005000's shape: the bare-looking name belongs to `issues`,
+        and is qualified with its alias."""
+        sql = """
+        select 1 from install_events e
+        join project_openings o on o.id = e.project_opening_id
+        where e.voided_at is not null
+          and not exists (
+            select 1 from issues i
+            where i.opening_id = e.project_opening_id and i.kind = 'failed_install'
+          );
+        """
+        self.assertEqual(migration_lint.scan_sql(sql), [])
+
+    def test_a_later_statements_column_list_is_not_this_statements_scope(self):
+        """20260718070000's shape: the select on install_events ends at its
+        semicolon; the insert after it names opening_id legitimately."""
+        sql = """
+        select id into v_event from install_events
+        where window_id = p_window_id and voided_at is null
+        order by created_at desc limit 1;
+        insert into service_cases (window_id, install_event_id, opening_id)
+        values (p_window_id, v_event, p_opening_id);
+        """
+        self.assertEqual(migration_lint.scan_sql(sql), [])
+
+    def test_the_real_column_name_is_never_flagged(self):
+        sql = "select 1 from install_events where project_opening_id = p_opening_id;"
+        self.assertEqual(migration_lint.scan_sql(sql), [])
+
+    def test_creating_and_indexing_the_table_is_not_a_query(self):
+        sql = """
+        create table install_events (
+          id uuid primary key,
+          project_opening_id uuid not null references project_openings(id)
+        );
+        create index install_events_opening_idx on install_events(project_opening_id);
+        """
+        self.assertEqual(migration_lint.scan_sql(sql), [])
+
+    # --- the standing gate on this repo ------------------------------------
+
+    def test_the_real_migrations_carry_no_unforgiven_trap(self):
+        self.assertEqual(
+            migration_lint.unexpected_hits(), [],
+            "a migration filters install_events by a bare opening_id:\n"
+            + migration_lint.describe(migration_lint.unexpected_hits()),
+        )
+
+    def test_the_shipped_bug_is_still_found_in_the_history_it_shipped_in(self):
+        """Proof the scanner works on this repo's real text and not just on
+        fixtures: 20260820000000 still reads the way it read on the day."""
+        hit_files = {fn for fn, _l, _t, _w, _r in migration_lint.scan_migrations()}
+        self.assertIn("20260820000000_unit_sessions.sql", hit_files)
+
+    def test_forgiveness_dies_if_the_fix_goes_away(self):
+        """The whole tree passes only BECAUSE 20260964000000 is there. With
+        the history alone, the gate is red — which is what it would have said
+        about master any day between 2026-08-20 and 2026-09-02."""
+        history_only = [
+            migration_lint.MIGRATIONS_DIR / "20260820000000_unit_sessions.sql",
+        ]
+        hits = migration_lint.unexpected_hits(history_only)
+        self.assertEqual(
+            [(t, w) for _f, _l, t, w, _r in hits],
+            [("install_events", "opening_id")],
+        )
+
+    def test_every_superseded_entry_names_a_real_later_migration(self):
+        """A stale exemption is worse than none: it forgives a live bug."""
+        names = {p.name for p in migration_lint.MIGRATIONS_DIR.glob("*.sql")}
+        for old, fixer in migration_lint.SUPERSEDED.items():
+            self.assertIn(old, names, f"{old} is exempted but no longer exists")
+            self.assertIn(fixer, names, f"{old}'s replacement {fixer} is missing")
+            self.assertGreater(
+                fixer, old,
+                f"{fixer} does not sort after {old}, so it never runs second",
+            )
 
 
 if __name__ == "__main__":
