@@ -28,8 +28,10 @@ import { EmptyState, QueryError, SkeletonCard } from "../ui/States";
 import { PhotoCaptureSheet } from "../PhotoCaptureSheet";
 import { useT } from "../../lib/i18n";
 
-function whoLabel(createdBy: string | null): string {
-  if (!createdBy) return "Someone";
+// The fallback is passed in (t("feed.someone")) rather than hard-coded so a
+// null uploader reads in the viewer's language too (tracking-jobs slice 7).
+function whoLabel(createdBy: string | null, fallback: string): string {
+  if (!createdBy) return fallback;
   const at = createdBy.indexOf("@");
   return at > 0 ? createdBy.slice(0, at) : createdBy;
 }
@@ -149,7 +151,7 @@ export function PhotoFeed({
   const restorePhoto = useMutation({
     mutationFn: (id: string) => restoreJobPhoto(id),
     onSuccess: () => {
-      pushToast("Photo restored.", "info");
+      pushToast(t("feed.photoRestored"), "info");
       refreshPhotos();
     },
     onError: (e) => toastError(e),
@@ -185,7 +187,7 @@ export function PhotoFeed({
           onClick={() => setCapturing(true)}
         >
           {isReceipt ? <ReceiptIcon size={16} aria-hidden /> : <Camera size={16} aria-hidden />}{" "}
-          {isReceipt ? "Add receipt" : "Add photo"}
+          {isReceipt ? t("feed.addReceipt") : t("feed.addPhoto")}
         </button>
         {canCurate && (
           <button
@@ -216,14 +218,14 @@ export function PhotoFeed({
             <QueryError
               error={trash.error}
               onRetry={() => void trash.refetch()}
-              label="Couldn't load the trash"
+              label={t("feed.trashLoadError")}
             />
           )}
           {trash.isSuccess && trash.data.length === 0 && (
             <EmptyState
               icon={<Trash2 size={22} />}
-              title="Trash is empty"
-              message="Removed photos show up here, recoverable for 30 days."
+              title={t("feed.trashEmptyTitle")}
+              message={t("feed.trashEmptyMsg")}
             />
           )}
           {trash.isSuccess && trash.data.length > 0 && (
@@ -231,14 +233,14 @@ export function PhotoFeed({
               {trash.data.map((p) => (
                 <div key={p.id} className="photo-card">
                   {p.signedUrl ? (
-                    <img src={p.signedUrl} alt={p.caption ?? "Removed photo"} loading="lazy" />
+                    <img src={p.signedUrl} alt={p.caption ?? t("feed.removedPhotoAlt")} loading="lazy" />
                   ) : (
                     <div className="photo-card-missing muted">
                       <ImageIcon size={20} aria-hidden />
                     </div>
                   )}
                   <span className="photo-card-meta">
-                    <span className="photo-card-who">{whoLabel(p.createdBy)}</span>
+                    <span className="photo-card-who">{whoLabel(p.createdBy, t("feed.someone"))}</span>
                     <button
                       type="button"
                       className="link"
@@ -266,29 +268,29 @@ export function PhotoFeed({
         <QueryError
           error={isReceipt ? receipts.error : photos.error}
           onRetry={() => void (isReceipt ? receipts.refetch() : photos.refetch())}
-          label={isReceipt ? "Couldn't load receipts" : "Couldn't load photos"}
+          label={isReceipt ? t("feed.receiptLoadError") : t("feed.photoLoadError")}
         />
       )}
       {!showTrash && !isLoading && !isError && isEmpty && (
         <EmptyState
           icon={isReceipt ? <ReceiptIcon size={22} /> : <ImageIcon size={22} />}
-          title={isReceipt ? "No receipts yet" : "No photos yet"}
+          title={isReceipt ? t("feed.noReceiptsTitle") : t("feed.noPhotosTitle")}
           message={
             isReceipt
-              ? "Snap a gas or materials receipt — the job is optional, everything else is skippable."
+              ? t("feed.noReceiptsMsg")
               : selectedJobCode
-                ? "Snap the first progress or install photo for this job."
-                : "Photos from every job show up here as the crew captures them."
+                ? t("feed.noPhotosJobMsg")
+                : t("feed.noPhotosAllMsg")
           }
           action={
             <button type="button" className="action-btn primary" onClick={() => setCapturing(true)}>
               {isReceipt ? (
                 <>
-                  <ReceiptIcon size={16} aria-hidden /> Add a receipt
+                  <ReceiptIcon size={16} aria-hidden /> {t("photo.title.addReceipt")}
                 </>
               ) : (
                 <>
-                  <Camera size={16} aria-hidden /> Add a photo
+                  <Camera size={16} aria-hidden /> {t("feed.addAPhoto")}
                 </>
               )}
             </button>
@@ -309,14 +311,14 @@ export function PhotoFeed({
                   onClick={() => setViewer(p)}
                 >
                   {p.signedUrl ? (
-                    <img src={p.signedUrl} alt={p.caption ?? "Job photo"} loading="lazy" />
+                    <img src={p.signedUrl} alt={p.caption ?? t("feed.jobPhotoAlt")} loading="lazy" />
                   ) : (
                     <div className="photo-card-missing muted">
                       <ImageIcon size={20} aria-hidden />
                     </div>
                   )}
                   <span className="photo-card-meta">
-                    <span className="photo-card-who">{whoLabel(p.createdBy)}</span>
+                    <span className="photo-card-who">{whoLabel(p.createdBy, t("feed.someone"))}</span>
                     <span className="photo-card-time">{timeLabel(p)}</span>
                   </span>
                   {p.lat != null && p.lng != null && (
@@ -338,21 +340,21 @@ export function PhotoFeed({
               {group.photos.map((r) => (
                 <div key={r.id} className="photo-card receipt-card">
                   {r.signedUrl ? (
-                    <img src={r.signedUrl} alt={r.vendor ?? "Receipt"} loading="lazy" />
+                    <img src={r.signedUrl} alt={r.vendor ?? t("feed.receiptAlt")} loading="lazy" />
                   ) : (
                     <div className="photo-card-missing muted">
                       <ReceiptIcon size={20} aria-hidden />
                     </div>
                   )}
                   <span className="photo-card-meta">
-                    <span className="photo-card-who">{r.vendor ?? "Receipt"}</span>
+                    <span className="photo-card-who">{r.vendor ?? t("feed.receiptAlt")}</span>
                     <span className="photo-card-time">
                       {r.amountCents != null ? formatCents(r.amountCents) : "—"}
                     </span>
                   </span>
                   {r.reviewed && (
                     <span className="photo-gps-chip">
-                      <CheckCircle2 size={11} aria-hidden /> Reviewed
+                      <CheckCircle2 size={11} aria-hidden /> {t("feed.reviewed")}
                     </span>
                   )}
                 </div>
@@ -384,14 +386,14 @@ export function PhotoFeed({
         >
           <div className="photo-viewer" onClick={(e) => e.stopPropagation()}>
             {viewer.signedUrl ? (
-              <img src={viewer.signedUrl} alt={viewer.caption ?? "Job photo"} />
+              <img src={viewer.signedUrl} alt={viewer.caption ?? t("feed.jobPhotoAlt")} />
             ) : (
-              <div className="photo-card-missing muted">Image unavailable offline.</div>
+              <div className="photo-card-missing muted">{t("feed.imageOffline")}</div>
             )}
             <div className="photo-viewer-info">
               {viewer.caption && <p className="photo-viewer-caption">{viewer.caption}</p>}
               <p className="muted">
-                {whoLabel(viewer.createdBy)} ·{" "}
+                {whoLabel(viewer.createdBy, t("feed.someone"))} ·{" "}
                 {new Intl.DateTimeFormat(undefined, {
                   dateStyle: "medium",
                   timeStyle: "short",
@@ -421,7 +423,7 @@ export function PhotoFeed({
                     }
                   }}
                 >
-                  <Trash2 size={14} aria-hidden /> Remove
+                  <Trash2 size={14} aria-hidden /> {t("feed.remove")}
                 </button>
               )}
               <button
@@ -429,7 +431,7 @@ export function PhotoFeed({
                 className="action-btn photo-viewer-close"
                 onClick={() => setViewer(null)}
               >
-                Close
+                {t("feed.close")}
               </button>
             </div>
           </div>

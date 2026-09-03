@@ -131,7 +131,7 @@ export function Projects() {
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       deleteJob(id, reason),
     onSuccess: () => {
-      setMessage("Deleted — it disappears everywhere. Undo for 30 days from Job history.");
+      setMessage(t("deljob.deleted"));
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
       void queryClient.invalidateQueries({ queryKey: ["projectsAll"] });
     },
@@ -148,8 +148,15 @@ export function Projects() {
     setDeletingId(p.id);
     try {
       const counts = await getProjectDeleteCounts(p.id);
+      // The confirm text is built in the crew's language: the count words and
+      // sentence come from the catalog (tracking-jobs slice 7, 2026-09-03).
       const reason = window.prompt(
-        `${buildDeleteConfirmMessage(p.job_code, counts)}\n\nWhy are you deleting it? (every supervisor is told)`,
+        `${buildDeleteConfirmMessage(p.job_code, counts, {
+          opening: t("deljob.word.opening"),
+          package: t("deljob.word.package"),
+          photo: t("deljob.word.photo"),
+          template: t("deljob.confirmTemplate"),
+        })}\n\n${t("deljob.why")}`,
       );
       if (reason && reason.trim()) trash.mutate({ id: p.id, reason: reason.trim() });
     } catch (e) {
@@ -419,7 +426,7 @@ export function Projects() {
                       void handleDeleteClick(p);
                     }}
                   >
-                    {deletingId === p.id ? "Checking…" : "Delete…"}
+                    {deletingId === p.id ? t("deljob.checking") : t("deljob.delete")}
                   </button>
                 )}
               </div>

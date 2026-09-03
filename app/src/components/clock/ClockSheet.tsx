@@ -330,7 +330,7 @@ export function ClockSheet({
         toastSuccess(`Clocked in — clock running on ${pickedOpening.opening_code}`);
       } else {
         toastSuccess(
-          r.queued ? "Clocked in — we'll sync it when you're back online" : "Clocked in",
+          r.queued ? t("clock.toast.clockedInQueued") : t("clock.toast.clockedIn"),
         );
       }
       if (r.startFailed && pickedOpening) {
@@ -372,7 +372,7 @@ export function ClockSheet({
       }
     },
     onSuccess: (r) => {
-      toastSuccess(r.queued ? "Switch saved — we'll sync it when you're back online" : "Switched project");
+      toastSuccess(r.queued ? t("clock.toast.switchedQueued") : t("clock.toast.switched"));
       if (!r.queued) refresh();
       onClose();
     },
@@ -399,7 +399,7 @@ export function ClockSheet({
       }
     },
     onSuccess: (r) => {
-      toastSuccess(r.queued ? "Cost code saved — will sync when online" : "Switched cost code");
+      toastSuccess(r.queued ? t("clock.toast.costSwitchedQueued") : t("clock.toast.costSwitched"));
       if (!r.queued) refresh();
     },
     onError: (e) => toastError(e),
@@ -459,7 +459,7 @@ export function ClockSheet({
       }
     },
     onSuccess: (r) => {
-      toastSuccess(r.queued ? "Back on the clock — will sync when online" : "Back on the clock");
+      toastSuccess(r.queued ? t("clock.toast.backOnClockQueued") : t("clock.toast.backOnClock"));
       if (!r.queued) refresh();
       // The held unit auto-resumed server-side (sessions trigger, owner
       // call): tell them which window they're back on.
@@ -516,7 +516,7 @@ export function ClockSheet({
       }
     },
     onSuccess: (r) => {
-      toastSuccess(r.queued ? "Clocked out — we'll sync it when you're back online" : "Clocked out");
+      toastSuccess(r.queued ? t("clock.toast.clockedOutQueued") : t("clock.toast.clockedOut"));
       setInjured(false);
       setInjuryNote("");
       setTimeWrong(false);
@@ -534,14 +534,14 @@ export function ClockSheet({
   const doFinish = useMutation({
     mutationFn: async () => {
       const check = checkFinishTime(shift!, localInputToIso(finishAt), Date.now());
-      if (!check.ok) throw new Error(check.error ?? "That finish time won't work.");
+      if (!check.ok) throw new Error(check.error ?? t("clock.error.badFinishTime"));
       return finishShiftAt(shift!.id, localInputToIso(finishAt)!, {
         injured,
         breakSeconds: shift!.break_seconds ?? 0,
       });
     },
     onSuccess: () => {
-      toastSuccess("Thanks — your hours are with the office to check");
+      toastSuccess(t("clock.toast.finishSaved"));
       setInjured(false);
       setFinishAt("");
       refresh();
@@ -632,13 +632,13 @@ export function ClockSheet({
         className="clock-sheet"
         role="dialog"
         aria-modal="true"
-        aria-label="Time clock"
+        aria-label={t("clock.a11y.timeClock")}
         onClick={stop}
       >
         <div className="clock-sheet-grip" aria-hidden />
         <div className="clock-sheet-head">
           <h2 className="clock-sheet-title">{title}</h2>
-          <button type="button" className="clock-sheet-x" onClick={onClose} aria-label="Close">
+          <button type="button" className="clock-sheet-x" onClick={onClose} aria-label={t("clock.a11y.close")}>
             <X size={18} />
           </button>
         </div>
@@ -705,12 +705,12 @@ export function ClockSheet({
                 setPickCostCodeId(shift.cost_code_id ?? "");
                 setMode("switch");
               }}
-              title={onBreak ? "End break to switch project" : "Tap to switch project"}
+              title={onBreak ? t("clock.title.endBreakToSwitch") : t("clock.title.tapToSwitch")}
             >
               <span className="clock-job-chip-main">
-                <span className="clock-job-chip-label">Job</span>
+                <span className="clock-job-chip-label">{t("clock.jobLabel")}</span>
                 <span className="clock-job-chip-name">
-                  {shift.projects?.job_code ?? "—"} · {shift.projects?.name ?? "No job"}
+                  {shift.projects?.job_code ?? "—"} · {shift.projects?.name ?? t("clock.noJob")}
                 </span>
                 {shift.cost_codes && (
                   <span className="clock-job-chip-code">
@@ -994,7 +994,7 @@ export function ClockSheet({
                       >
                         {scheduled.project?.job_code ??
                           scheduled.project?.name ??
-                          "Today's job"}
+                          t("clock.todaysJob")}
                       </button>
                     </div>
                   </div>
@@ -1137,14 +1137,14 @@ export function ClockSheet({
                   className="clock-note-input"
                   rows={3}
                   maxLength={1000}
-                  placeholder="Anything the cost code doesn't cover, or an explanation for the office…"
+                  placeholder={t("clock.notePlaceholder")}
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                 />
 
                 {pickedProject && (
                   <p className="clock-pick-summary">
-                    {mode === "switch" ? "To: " : "On: "}
+                    {mode === "switch" ? t("clock.summaryTo") : t("clock.summaryOn")}
                     <strong>{pickedProject.job_code}</strong> · {pickedProject.name}
                     {pickCostCodeId &&
                       (() => {

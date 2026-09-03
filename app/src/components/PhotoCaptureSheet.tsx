@@ -506,7 +506,7 @@ function JobPhotoCapture({
           <div className="capture-grip" aria-hidden />
           <div className="capture-head">
             <h2 className="capture-title">{title}</h2>
-            <button type="button" className="capture-close" aria-label="Close" onClick={onClose}>
+            <button type="button" className="capture-close" aria-label={t("photo.a11y.close")} onClick={onClose}>
               <X size={20} />
             </button>
           </div>
@@ -534,13 +534,13 @@ function JobPhotoCapture({
         <div className="capture-grip" aria-hidden />
         <div className="capture-head">
           <h2 className="capture-title">{title}</h2>
-          <button type="button" className="capture-close" aria-label="Close" onClick={onClose}>
+          <button type="button" className="capture-close" aria-label={t("photo.a11y.close")} onClick={onClose}>
             <X size={20} />
           </button>
         </div>
 
         <p className="muted jobphoto-sub">
-          {label ? <>For <strong>{label}</strong>. </> : null}
+          {label ? <>{t("photo.for")} <strong>{label}</strong>. </> : null}
           {t("photo.stamped")}
         </p>
 
@@ -663,7 +663,7 @@ function BeforeAfterCapture({
         <div className="ba-camera-stage">
           <video ref={videoRef} playsInline muted className="ba-video" />
           {mode === "after" && beforeUrl && (
-            <img src={beforeUrl} alt="before ghost" className="ba-ghost" />
+            <img src={beforeUrl} alt={t("photo.beforeGhostAlt")} className="ba-ghost" />
           )}
         </div>
         <div className="row-gap">

@@ -130,6 +130,68 @@ export const CATALOG = {
     en: "My recorded time looks wrong — flag it for office review",
     es: "Mi tiempo registrado se ve mal — márcalo para que la oficina lo revise",
   },
+  // Clock sheet chrome + result toasts, the last English the clock-in flow
+  // carried (tracking-jobs slice 7, 2026-09-03). The "…Queued" variants are the
+  // offline-outbox wording shown when a punch is saved to sync later.
+  "clock.a11y.timeClock": { en: "Time clock", es: "Reloj de tiempo" },
+  "clock.a11y.close": { en: "Close", es: "Cerrar" },
+  "clock.a11y.timeWorked": { en: "Time worked", es: "Tiempo trabajado" },
+  "clock.jobLabel": { en: "Job", es: "Trabajo" },
+  "clock.noJob": { en: "No job", es: "Sin trabajo" },
+  "clock.summaryOn": { en: "On: ", es: "En: " },
+  "clock.summaryTo": { en: "To: ", es: "A: " },
+  "clock.todaysJob": { en: "Today's job", es: "Trabajo de hoy" },
+  "clock.title.endBreakToSwitch": {
+    en: "End break to switch project",
+    es: "Termina el descanso para cambiar de trabajo",
+  },
+  "clock.title.tapToSwitch": {
+    en: "Tap to switch project",
+    es: "Toca para cambiar de trabajo",
+  },
+  "clock.notePlaceholder": {
+    en: "Anything the cost code doesn't cover, or an explanation for the office…",
+    es: "Algo que el código de costo no cubra, o una explicación para la oficina…",
+  },
+  "clock.error.badFinishTime": {
+    en: "That finish time won't work.",
+    es: "Esa hora de salida no funciona.",
+  },
+  "clock.toast.clockedIn": { en: "Clocked in", es: "Entrada marcada" },
+  "clock.toast.clockedInQueued": {
+    en: "Clocked in — we'll sync it when you're back online",
+    es: "Entrada marcada — la sincronizamos cuando vuelvas a estar en línea",
+  },
+  "clock.toast.switched": { en: "Switched project", es: "Trabajo cambiado" },
+  "clock.toast.switchedQueued": {
+    en: "Switch saved — we'll sync it when you're back online",
+    es: "Cambio guardado — lo sincronizamos cuando vuelvas a estar en línea",
+  },
+  "clock.toast.costSwitched": {
+    en: "Switched cost code",
+    es: "Código de costo cambiado",
+  },
+  "clock.toast.costSwitchedQueued": {
+    en: "Cost code saved — will sync when online",
+    es: "Código de costo guardado — se sincroniza cuando estés en línea",
+  },
+  "clock.toast.backOnClock": {
+    en: "Back on the clock",
+    es: "De vuelta en horario",
+  },
+  "clock.toast.backOnClockQueued": {
+    en: "Back on the clock — will sync when online",
+    es: "De vuelta en horario — se sincroniza cuando estés en línea",
+  },
+  "clock.toast.clockedOut": { en: "Clocked out", es: "Salida marcada" },
+  "clock.toast.clockedOutQueued": {
+    en: "Clocked out — we'll sync it when you're back online",
+    es: "Salida marcada — la sincronizamos cuando vuelvas a estar en línea",
+  },
+  "clock.toast.finishSaved": {
+    en: "Thanks — your hours are with the office to check",
+    es: "Gracias — tus horas están con la oficina para revisar",
+  },
   // SAFETY / injury — needs bilingual review.
   "clock.injury.was": {
     en: "I was injured this shift",
@@ -314,8 +376,75 @@ export const CATALOG = {
   "mywork.unsubmit": { en: "Un-submit", es: "Deshacer envío" },
   "mywork.installed": { en: "installed", es: "instalada" },
   "mywork.doneTodayCount": { en: "Done today ({count})", es: "Hechas hoy ({count})" },
+  // Leftover My Work chrome the earlier pass missed (tracking-jobs slice 7,
+  // 2026-09-03). The one/many split is how the crew flow does plurals — the
+  // framework interpolates {vars} but has no plural rule, so the caller picks
+  // the key by count (English unit/units, Spanish unidad/unidades).
+  "mywork.loadError": {
+    en: "Couldn't load your work",
+    es: "No se pudo cargar tu trabajo",
+  },
+  "mywork.jobToday": { en: "Your job today", es: "Tu trabajo de hoy" },
+  "mywork.travel": { en: "Travel:", es: "Viaje:" },
+  "mywork.directionsTitle": {
+    en: "Directions to today's job",
+    es: "Cómo llegar al trabajo de hoy",
+  },
+  "mywork.typeUnknown": { en: "type?", es: "¿tipo?" },
+  "mywork.newUnits.one": {
+    en: "{count} new unit assigned to you — tap to dismiss",
+    es: "{count} unidad nueva asignada a ti — toca para descartar",
+  },
+  "mywork.newUnits.many": {
+    en: "{count} new units assigned to you — tap to dismiss",
+    es: "{count} unidades nuevas asignadas a ti — toca para descartar",
+  },
+  "mywork.oneWaiting.title": {
+    en: "Your unit is waiting on something",
+    es: "Tu unidad está esperando algo",
+  },
+  "mywork.manyWaiting.title": {
+    en: "All {count} of your units are waiting on something",
+    es: "Las {count} unidades tuyas están esperando algo",
+  },
+  "mywork.oneWaiting.msg": {
+    en: "It can't start until the blocker clears — call your lead about it.",
+    es: "No puede empezar hasta que se libere el bloqueo — llama a tu líder sobre esto.",
+  },
+  "mywork.manyWaiting.msg": {
+    en: "None of these can start until the blockers clear — call your lead about the ones below.",
+    es: "Ninguna puede empezar hasta que se liberen los bloqueos — llama a tu líder sobre las de abajo.",
+  },
+  "mywork.waitingOn": {
+    en: "Waiting on: {what} — pick it back up once it's cleared",
+    es: "Esperando: {what} — retómala cuando se libere",
+  },
+  "mywork.aBlocker": { en: "a blocker", es: "un bloqueo" },
+  "mywork.finishChecks": {
+    en: "Finish checks before installing",
+    es: "Termina las revisiones antes de instalar",
+  },
+  "mywork.unsubmitting": { en: "Un-submitting…", es: "Deshaciendo envío…" },
+  "mywork.unsubmitTitle": {
+    en: "Un-submit {code}?",
+    es: "¿Deshacer el envío de {code}?",
+  },
+  "mywork.unsubmitBody": {
+    en: "The window goes back on your list and nothing is lost — photos, memo and time all stay on the record. Say why so the next person (maybe you) knows what still needs doing.",
+    es: "La ventana vuelve a tu lista y no se pierde nada — las fotos, la nota y el tiempo quedan en el registro. Di por qué, para que la próxima persona (quizá tú) sepa qué falta.",
+  },
+  "mywork.unsubmitWhy": {
+    en: "Why are you un-submitting?",
+    es: "¿Por qué deshaces el envío?",
+  },
+  "mywork.cancel": { en: "Cancel", es: "Cancelar" },
+  "mywork.notePlaceholder": {
+    en: "Forgot the shims on the left side…",
+    es: "Olvidé las cuñas del lado izquierdo…",
+  },
 
   // ---- Summon strip -----------------------------------------------------
+  "summon.a11y.live": { en: "Live summons", es: "Llamadas activas" },
   "summon.status.expired": { en: "Expired", es: "Vencida" },
   "summon.status.answered": { en: "You answered", es: "Respondiste" },
   "summon.status.open": { en: "SUMMON", es: "LLAMADA" },
@@ -504,6 +633,14 @@ export const CATALOG = {
     en: "or choose from files",
     es: "o elige de tus archivos",
   },
+  // Photo capture sheet chrome the earlier pass left in English
+  // (tracking-jobs slice 7, 2026-09-03).
+  "photo.a11y.close": { en: "Close", es: "Cerrar" },
+  "photo.for": { en: "For", es: "Para" },
+  "photo.beforeGhostAlt": {
+    en: "before ghost",
+    es: "foto de antes en transparencia",
+  },
 
   // ---- Job modes (data vs tracking, standard-tracking-jobs slice 2) ------
   // Badges on job cards / the clock-in list / the job header.
@@ -628,6 +765,76 @@ export const CATALOG = {
     es: "Foto movida a la papelera — 30 días para deshacer.",
   },
   "feed.restore": { en: "Restore", es: "Restaurar" },
+  "feed.photoRestored": { en: "Photo restored.", es: "Foto restaurada." },
+  "feed.trashLoadError": {
+    en: "Couldn't load the trash",
+    es: "No se pudo cargar la papelera",
+  },
+  "feed.trashEmptyTitle": { en: "Trash is empty", es: "La papelera está vacía" },
+  "feed.trashEmptyMsg": {
+    en: "Removed photos show up here, recoverable for 30 days.",
+    es: "Las fotos quitadas aparecen aquí, recuperables por 30 días.",
+  },
+  "feed.removedPhotoAlt": { en: "Removed photo", es: "Foto quitada" },
+  // The photo/receipt grid, toolbar, empty states and lightbox:
+  "feed.addPhoto": { en: "Add photo", es: "Agregar foto" },
+  "feed.addReceipt": { en: "Add receipt", es: "Agregar recibo" },
+  "feed.addAPhoto": { en: "Add a photo", es: "Agregar una foto" },
+  "feed.photoLoadError": {
+    en: "Couldn't load photos",
+    es: "No se pudieron cargar las fotos",
+  },
+  "feed.receiptLoadError": {
+    en: "Couldn't load receipts",
+    es: "No se pudieron cargar los recibos",
+  },
+  "feed.noPhotosTitle": { en: "No photos yet", es: "Aún no hay fotos" },
+  "feed.noReceiptsTitle": { en: "No receipts yet", es: "Aún no hay recibos" },
+  "feed.noPhotosJobMsg": {
+    en: "Snap the first progress or install photo for this job.",
+    es: "Toma la primera foto de avance o instalación de este trabajo.",
+  },
+  "feed.noPhotosAllMsg": {
+    en: "Photos from every job show up here as the crew captures them.",
+    es: "Las fotos de todos los trabajos aparecen aquí mientras la cuadrilla las toma.",
+  },
+  "feed.noReceiptsMsg": {
+    en: "Snap a gas or materials receipt — the job is optional, everything else is skippable.",
+    es: "Toma una foto de un recibo de gasolina o materiales — el trabajo es opcional, todo lo demás se puede omitir.",
+  },
+  "feed.jobPhotoAlt": { en: "Job photo", es: "Foto del trabajo" },
+  "feed.receiptAlt": { en: "Receipt", es: "Recibo" },
+  "feed.reviewed": { en: "Reviewed", es: "Revisado" },
+  "feed.someone": { en: "Someone", es: "Alguien" },
+  "feed.imageOffline": {
+    en: "Image unavailable offline.",
+    es: "Imagen no disponible sin conexión.",
+  },
+  "feed.remove": { en: "Remove", es: "Quitar" },
+  "feed.close": { en: "Close", es: "Cerrar" },
+
+  // ---- Delete-a-job dialog (supervisor+, tracking-jobs slice 7) ----------
+  // The confirm text is assembled from a template + the count words so both
+  // languages pluralize the same way (regular +s covers opening/abertura,
+  // package/paquete, photo/foto). buildDeleteConfirmMessage does the counting;
+  // these are the words and sentence it drops them into.
+  "deljob.word.opening": { en: "opening", es: "abertura" },
+  "deljob.word.package": { en: "package", es: "paquete" },
+  "deljob.word.photo": { en: "photo", es: "foto" },
+  "deljob.confirmTemplate": {
+    en: "Delete {job}? This job has {openings}, {packages}, and {photos}.\n\nIt disappears everywhere, and you have 30 days to undo from Job history.",
+    es: "¿Eliminar {job}? Este trabajo tiene {openings}, {packages} y {photos}.\n\nDesaparece de todas partes y tienes 30 días para deshacerlo desde el Historial de trabajos.",
+  },
+  "deljob.why": {
+    en: "Why are you deleting it? (every supervisor is told)",
+    es: "¿Por qué lo eliminas? (se avisa a cada supervisor)",
+  },
+  "deljob.deleted": {
+    en: "Deleted — it disappears everywhere. Undo for 30 days from Job history.",
+    es: "Eliminado — desaparece de todas partes. Deshacer por 30 días desde el Historial de trabajos.",
+  },
+  "deljob.checking": { en: "Checking…", es: "Comprobando…" },
+  "deljob.delete": { en: "Delete…", es: "Eliminar…" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
