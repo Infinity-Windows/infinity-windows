@@ -5054,8 +5054,16 @@ $$;
 comment on function public.purge_expired_job_photos() is
   'Nightly sweep (pg_cron, ''purge-expired-job-photos''): erases every job photo whose 30-day trash window has passed, file then row. Trusted JWT-less cron context, same as purge_expired_projects.';
 
-revoke all on function public.purge_expired_job_photos() from public, anon;
-grant execute on function public.purge_expired_job_photos() to authenticated, service_role;
+-- Cron-only, and destructive: it permanently erases expired job photos (file
+-- then row) across EVERY project. SECURITY DEFINER runs it as the owner, so a
+-- grant to `authenticated` would let any signed-in user fire the whole-fleet
+-- purge on demand — never the intent. The nightly schedule below runs as its
+-- creator (postgres, the pg_cron owner), which owns the function and needs no
+-- grant; service_role (the trusted backend key, not a user) keeps the explicit
+-- grant the sibling sweeps carry (expire_summons, purge_expired_projects). No
+-- user role may call it.
+revoke all on function public.purge_expired_job_photos() from public, anon, authenticated;
+grant execute on function public.purge_expired_job_photos() to service_role;
 
 create extension if not exists pg_cron;
 
