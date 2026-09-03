@@ -1288,6 +1288,41 @@ export async function openingsReferencedElsewhere(
 }
 
 /**
+ * Everything `planDraftPersistence` needs to decide what a re-extract may
+ * delete. Named explicitly, never `*`, so adding a column to `project_openings`
+ * cannot quietly change what a re-extract considers field work.
+ */
+export const EXISTING_OPENING_COLS =
+  "id, opening_code, confirmed, status, pin_x, pin_y, page_number, planset_id, assigned_to, work_started_at, ro_width_in, ro_height_in, ro_quick_ok, condition";
+
+/**
+ * The same list as the database knew it before 20260966000000 added
+ * `ro_quick_ok` — the fallback for a phone running ahead of the server.
+ */
+export const EXISTING_OPENING_COLS_NO_QUICK_OK =
+  "id, opening_code, confirmed, status, pin_x, pin_y, page_number, planset_id, assigned_to, work_started_at, ro_width_in, ro_height_in, condition";
+
+/** What either of those two selects hands back. `ro_quick_ok` is optional so
+ *  the same variable holds both — a row read without it is a row nobody
+ *  quick-checked. */
+interface ExistingOpeningRow {
+  id: string;
+  opening_code: string;
+  confirmed: boolean | null;
+  status: string | null;
+  pin_x: number | string | null;
+  pin_y: number | string | null;
+  page_number: number | null;
+  planset_id: string | null;
+  assigned_to: string | null;
+  work_started_at: string | null;
+  ro_width_in: number | string | null;
+  ro_height_in: number | string | null;
+  ro_quick_ok?: boolean | null;
+  condition: string | null;
+}
+
+/**
  * Save a fresh extract as unconfirmed drafts. Guardrail (same philosophy as
  * the Horizon BOM rule): confirmed openings are never deleted or overwritten
  * by a re-extract.
@@ -1307,21 +1342,36 @@ export async function saveDraftOpenings(
   if (drafts.length === 0)
     return { inserted: 0, skipped: 0, unmatchedPlanMarks: [] };
 
-  const [{ data: plansets, error: psErr }, { data: existing, error: exErr }] =
-    await Promise.all([
-      supabase
-        .from("project_plansets")
-        .select("id, kind")
-        .eq("project_id", projectId),
-      supabase
-        .from("project_openings")
-        .select(
-          "id, opening_code, confirmed, status, pin_x, pin_y, page_number, planset_id, assigned_to, work_started_at, ro_width_in, ro_height_in, ro_quick_ok, condition",
-        )
-        .eq("project_id", projectId),
-    ]);
+  const [{ data: plansets, error: psErr }, first] = await Promise.all([
+    supabase
+      .from("project_plansets")
+      .select("id, kind")
+      .eq("project_id", projectId),
+    supabase
+      .from("project_openings")
+      .select(EXISTING_OPENING_COLS)
+      .eq("project_id", projectId),
+  ]);
   if (psErr) throw psErr;
-  if (exErr) throw exErr;
+
+  // The app bundle can reach a phone before the migration reaches the server,
+  // and deploying the backend has silently failed on this project before. Every
+  // other read of an opening asks for `*` (OPENING_SELECT) and so rides that
+  // out; this explicit list is the one that would name a column the database
+  // has not got yet, and the whole draft save is thrown away with it — a
+  // foreman taps "Load marks from plans" and no openings are saved at all.
+  // Read the row without the quick check instead: on a server that has never
+  // heard of the column, "nobody quick-checked anything" is exactly the truth.
+  let existing: ExistingOpeningRow[] | null = first.data;
+  if (first.error) {
+    if (!isMissingColumn(first.error, "ro_quick_ok")) throw first.error;
+    const retry = await supabase
+      .from("project_openings")
+      .select(EXISTING_OPENING_COLS_NO_QUICK_OK)
+      .eq("project_id", projectId);
+    if (retry.error) throw retry.error;
+    existing = retry.data;
+  }
 
   const referenced = await openingsReferencedElsewhere(
     (existing ?? []).map((o) => o.id as string),
