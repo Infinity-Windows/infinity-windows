@@ -3992,3 +3992,82 @@ begin
     execute format('alter function %s set search_path = public', fn.sig);
   end loop;
 end $$;
+
+
+-- ============================================================================
+-- rough-opening quick check  [20260966000000_rough_opening_quick_check.sql]
+-- =============================================================================
+
+-- One tap says the rough opening is good, without typing a tape measure.
+-- Weaker than a measurement on purpose: only read when no numbers are on file,
+-- and cleared the moment real numbers are saved (the rebuild below).
+
+alter table project_openings
+  add column if not exists ro_quick_ok boolean not null default false;
+
+comment on column project_openings.ro_quick_ok is
+  'One-tap "quick check: all good" on the rough opening: somebody looked and '
+  'said the unit goes in, without writing tape numbers down. Only read when '
+  'ro_width_in / ro_height_in are null — set_opening_rough_opening clears it '
+  'whenever real numbers are saved, because numbers always win.';
+
+-- Same caller rules as set_opening_rough_opening beside it: SECURITY INVOKER,
+-- so the `openings_update_live` policy decides who may write.
+create or replace function quick_check_rough_opening(
+  p_opening_id uuid,
+  p_actor text default null
+)
+returns project_openings
+language plpgsql
+set search_path = public, pg_temp
+as $$
+declare
+  v_opening project_openings;
+begin
+  update project_openings
+  set ro_quick_ok = true,
+      ro_measured_by = p_actor,
+      ro_measured_at = now()
+  where id = p_opening_id
+  returning * into v_opening;
+
+  if v_opening is null then
+    raise exception 'unknown opening %', p_opening_id;
+  end if;
+  return v_opening;
+end;
+$$;
+
+grant execute on function quick_check_rough_opening(uuid, text) to authenticated;
+
+-- Full current body plus one line: real numbers clear the quick check.
+create or replace function set_opening_rough_opening(
+  p_opening_id uuid,
+  p_width_in numeric,
+  p_height_in numeric,
+  p_actor text default null,
+  p_check jsonb default null
+)
+returns project_openings
+language plpgsql
+set search_path = public, pg_temp
+as $$
+declare
+  v_opening project_openings;
+begin
+  update project_openings
+  set ro_width_in = p_width_in,
+      ro_height_in = p_height_in,
+      ro_measured_by = p_actor,
+      ro_measured_at = now(),
+      ro_check = coalesce(p_check, ro_check),
+      ro_quick_ok = false
+  where id = p_opening_id
+  returning * into v_opening;
+
+  if v_opening is null then
+    raise exception 'unknown opening %', p_opening_id;
+  end if;
+  return v_opening;
+end;
+$$;
