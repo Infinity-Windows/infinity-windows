@@ -94,9 +94,12 @@ DO_NOT_TOUCH = "b1a6266b-87a0-42fa-a56a-2f9de83793f1"
 sb = Client()
 steps = Steps()
 
-# The migration that builds the cage. Named here rather than discovered so a
-# renamed file is a loud failure instead of a silent skip.
-GUARD_MIGRATION = "supabase/migrations/20260730220000_test_accounts_sandbox_only.sql"
+# The migrations that build the cage, and keep it built. Named here rather than
+# discovered so a renamed file is a loud failure instead of a silent skip.
+GUARD_MIGRATIONS = (
+    "supabase/migrations/20260730220000_test_accounts_sandbox_only.sql",
+    "supabase/migrations/20260967000000_sandbox_guard_rearm.sql",
+)
 
 
 def guard_is_installed() -> tuple[bool, str]:
@@ -107,51 +110,82 @@ def guard_is_installed() -> tuple[bool, str]:
     to avoid, and "the migration is in the repo" is not the same claim as "the
     migration is on the server" — that gap is how production ended up 26 tables
     short of the migrations in July.
+
+    This used to ask whether ANY table carried the guard trigger. That answer
+    stayed yes the whole time the fence was rotting: the attach loop in
+    20260730220000 ran once, fourteen project-scoped tables were created after
+    it, and on 2026-09-02 the QA foreman login wrote to a live job while this
+    check happily reported the cage installed. It now counts the tables that
+    are project-scoped and NOT guarded, and any of those is a no.
+
+    It counts them with sandbox_guard_census(), the same function the deploy
+    reads, and NOT with test_account_write_scope() — which asks only whether a
+    trigger of that NAME exists. A guard pointed at a column the table no
+    longer links through, or one somebody switched off, satisfies that older
+    question and enforces nothing, so provisioning would proceed on a database
+    the deploy's own fence check would fail. One definition, one answer.
     """
     got = sb.sql(
         "select "
         "  (to_regclass('public.sandbox_projects') is not null) as table_there, "
-        "  (select count(*) from pg_trigger "
-        "     where tgname = 'guard_test_account_sandbox_only' "
-        "       and not tgisinternal) as triggers, "
+        "  (select count(*) from public.sandbox_scoped_tables()) as scoped, "
+        "  (select count(*) from public.sandbox_guard_census()) as unguarded, "
         "  (select count(*) from pg_policies where schemaname = 'storage' "
         "     and tablename = 'objects' "
         "     and policyname like 'test logins write only their sandbox%') as policies"
     )
     row = got[0] if isinstance(got, list) and got else {}
     if not row:
+        message = str(got)
+        # By far the likeliest failure: the rearm migration has not been pushed
+        # to this database. Say that, rather than dumping a parse error.
+        if "sandbox_guard_census" in message or "sandbox_scoped_tables" in message:
+            return False, (
+                "this database has no sandbox_guard_census(), so the fence was "
+                "not measured. Push " + GUARD_MIGRATIONS[1] + " first "
+                "(Deploy backend does it on merge). Server said: " + message
+            )
         return False, f"could not ask the database: {got}"
     ok = (row.get("table_there") is True
-          and int(row.get("triggers") or 0) > 0
+          and int(row.get("scoped") or 0) > 0
+          and int(row.get("unguarded") or 0) == 0
           and int(row.get("policies") or 0) == 3)
     return ok, (f"sandbox_projects={row.get('table_there')}, "
-                f"guard triggers={row.get('triggers')}, "
+                f"guarded tables="
+                f"{int(row.get('scoped') or 0) - int(row.get('unguarded') or 0)}"
+                f"/{row.get('scoped')}, "
                 f"storage policies={row.get('policies')}/3")
 
 
 def check_migration() -> int:
-    """Apply the guard migration inside a transaction and roll it back.
+    """Apply the guard migrations inside a transaction and roll them back.
 
     So the SQL can be proved to parse and run against the real database BEFORE
     the merge that deploys it. `supabase db push` applies each file in its own
     transaction and stops at the first failure, so a migration with a typo in it
     does not just fail to ship itself — it blocks everybody else's deploy until
     somebody notices.
-    """
-    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        GUARD_MIGRATION)
-    if not os.path.exists(path):
-        print(f"FAIL  {GUARD_MIGRATION} is not in this checkout")
-        return 1
-    with open(path, encoding="utf-8") as fh:
-        body = fh.read()
 
-    print(f"\nDry run: applying {GUARD_MIGRATION} and rolling it back.\n")
-    got = sb.sql(f"begin;\n{body}\nrollback;")
-    if isinstance(got, dict) and got.get("message"):
-        print(f"  FAIL  the migration would not apply: {got.get('message')}")
-        return 1
-    print("  PASS  the migration applies cleanly, and was rolled back")
+    Both files, in order: 20260967000000 rebuilds the attach loop as a callable
+    function and then asks the census whether the fence is complete, so running
+    it is the only way to see that half of the cage work without merging first.
+    """
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for relative in GUARD_MIGRATIONS:
+        path = os.path.join(repo, relative)
+        if not os.path.exists(path):
+            print(f"FAIL  {relative} is not in this checkout")
+            return 1
+        with open(path, encoding="utf-8") as fh:
+            body = fh.read()
+
+        print(f"\nDry run: applying {relative} and rolling it back.\n")
+        got = sb.sql(f"begin;\n{body}\nrollback;")
+        if isinstance(got, dict) and got.get("message"):
+            print(f"  FAIL  the migration would not apply: {got.get('message')}")
+            return 1
+        print("  PASS  the migration applies cleanly, and was rolled back")
+
     print("\nNothing was changed. Merge the PR to apply it for real.")
     return 0
 
@@ -417,7 +451,7 @@ def main() -> int:  # noqa: C901 — a checklist reads better in one place
     if not armed:
         print("\nRefusing to create a foreman test login on a database where the")
         print("guard is not in place. Deploy the backend first (deploy-backend.yml")
-        print(f"applies {GUARD_MIGRATION}), then run this again.")
+        print(f"applies {' and '.join(GUARD_MIGRATIONS)}), then run this again.")
         return steps.report()
 
     project_id, type_id, openings = ensure_sandbox()
@@ -774,16 +808,30 @@ def main() -> int:  # noqa: C901 — a checklist reads better in one place
     # Measured on the live database rather than asserted in a document that
     # ages. A table with no way to tie it to a project cannot be scoped to the
     # sandbox, so if a client role can write it, this account can too.
+    #
+    # Coverage is read from sandbox_guard_census(), the deploy's own function:
+    # test_account_write_scope().guarded asks only whether a trigger of that
+    # name exists, which is true of a guard pointed at the wrong column and of
+    # one that has been switched off. This run has to agree with the deploy or
+    # one of them is lying. What the older report is still the only source for
+    # is the residual list below — tables with NO project link at all, which
+    # the census has nothing to say about because they cannot be fenced.
+    census = sb.sql(
+        "select table_name, link_column, reason from public.sandbox_guard_census()")
+    scoped = sb.sql("select count(*) as n from public.sandbox_scoped_tables()")
+    if isinstance(census, list) and isinstance(scoped, list) and scoped:
+        missing = [f"{r.get('table_name')} ({r.get('reason')})" for r in census]
+        steps.check(not missing,
+                    f"every project-scoped table carries the guard "
+                    f"({scoped[0].get('n')} table(s)); unguarded: "
+                    f"{missing or 'none'}")
+    else:
+        steps.check(False, f"could not read the guard's coverage: {census}")
+
     scope = sb.sql(
-        "select table_name, link_column, guarded, client_writable "
+        "select table_name, link_column, client_writable "
         "from public.test_account_write_scope()")
     if isinstance(scope, list):
-        linked = [r for r in scope if r.get("link_column")]
-        unguarded = [r for r in linked if not r.get("guarded")]
-        steps.check(not unguarded,
-                    f"every project-scoped table carries the guard "
-                    f"({len(linked)} table(s)); unguarded: "
-                    f"{[r['table_name'] for r in unguarded] or 'none'}")
         residual = sorted(r["table_name"] for r in scope
                           if not r.get("link_column") and r.get("client_writable"))
         print(f"\n  Residual reach ({len(residual)} table(s) that cannot be tied to a job,")
@@ -792,7 +840,7 @@ def main() -> int:  # noqa: C901 — a checklist reads better in one place
         for name in residual:
             print(f"    - {name}")
     else:
-        steps.check(False, f"could not audit the guard's coverage: {scope}")
+        steps.check(False, f"could not list what the fence cannot reach: {scope}")
 
     remove_decoy()
     steps.check(not one(sb.svc("GET", f"/rest/v1/projects?job_code=eq.{DECOY_CODE}&select=id")),

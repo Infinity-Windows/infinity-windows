@@ -180,6 +180,17 @@ jobs:
       - name: Test the partner wall
         run: python3 scripts/test_partner_wall.py
 
+      # The test-login fence, checked the same way and for the same reason. The
+      # sandbox guard was attached by a `do` block that ran once, on 2026-07-30,
+      # so every project-scoped table added since — fourteen of them — could be
+      # written by a QA login on any job, and on 2026-09-02 one was. This test
+      # replays the migrations and fails when a migration makes a table
+      # project-scoped — creating it, recreating it, or adding the link column
+      # — without arming the guard in that same file, so the next one is
+      # caught on its own PR instead of five weeks later on a real job.
+      - name: Test the test-login fence
+        run: python3 scripts/test_sandbox_guard.py
+
       # The misnamed-key check gives ADVICE to a human, so crying wolf is its
       # real failure mode: one wrong suggestion and nobody reads it again. The
       # tests check every secret this repo actually holds against every name the
