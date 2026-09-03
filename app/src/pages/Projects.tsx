@@ -3,8 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { LayoutGrid } from "lucide-react";
-import { createProject, getProjectDeleteCounts, listProjects, trashProject } from "../lib/api";
+import { createProject, getProjectDeleteCounts, listProjects, setProjectModes, trashProject } from "../lib/api";
 import { formatApiError } from "../lib/errors";
+import { useT } from "../lib/i18n";
+import { JobModeBadge } from "../components/JobModeBadge";
+import type { JobMode } from "../lib/types";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus, isOwner } from "../lib/install/types";
@@ -21,12 +24,20 @@ interface OpeningCountRow {
   status: "planned" | "assigned" | "installed";
 }
 
+type ModeChoice = "data" | "tracking" | "both";
+const modesForChoice = (choice: ModeChoice): JobMode[] =>
+  choice === "both" ? ["data", "tracking"] : [choice];
+
 export function Projects() {
+  const t = useT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [jobCode, setJobCode] = useState("");
   const [name, setName] = useState("");
+  // Which modes the new job allows (standard-tracking-jobs slice 2). Data is the
+  // default — every job today is a data job — so the common create is unchanged.
+  const [modeChoice, setModeChoice] = useState<ModeChoice>("data");
   const [address, setAddress] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
@@ -60,8 +71,8 @@ export function Projects() {
     },
   });
   const addProject = useMutation({
-    mutationFn: () =>
-      createProject({
+    mutationFn: async () => {
+      const project = await createProject({
         jobCode,
         name,
         address,
@@ -73,7 +84,15 @@ export function Projects() {
         startDate,
         endDate,
         notes,
-      }),
+      });
+      const modes = modesForChoice(modeChoice);
+      // The column already defaults to data-only, so only spend the extra RPC
+      // when the job allows something other than plain data.
+      if (!(modes.length === 1 && modes[0] === "data")) {
+        await setProjectModes(project.id, modes);
+      }
+      return project;
+    },
     onSuccess: async (project) => {
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
       setAdding(false);
@@ -88,7 +107,12 @@ export function Projects() {
       setStartDate("");
       setEndDate("");
       setNotes("");
-      navigate(`/projects/${project.id}/upload`);
+      // A tracking-only job has no plans to extract, so land it on its hub
+      // rather than the planset upload; data (and both-mode) jobs keep the
+      // straight-to-PDFs flow they had.
+      const wasTrackingOnly = modeChoice === "tracking";
+      setModeChoice("data");
+      navigate(wasTrackingOnly ? `/projects/${project.id}` : `/projects/${project.id}/upload`);
     },
   });
 
@@ -265,6 +289,20 @@ export function Projects() {
                     rows={3}
                   />
                 </label>
+                <label className="project-create-address">
+                  <span className="field-label">{t("jobmode.create.label")}</span>
+                  <select
+                    value={modeChoice}
+                    onChange={(e) => setModeChoice(e.target.value as ModeChoice)}
+                  >
+                    <option value="data">{t("jobmode.opt.data")}</option>
+                    <option value="tracking">{t("jobmode.opt.tracking")}</option>
+                    <option value="both">{t("jobmode.opt.both")}</option>
+                  </select>
+                  <span className="wh-row-sub" style={{ display: "block", marginTop: 4 }}>
+                    {t("jobmode.create.hint")}
+                  </span>
+                </label>
               </div>
               {addProject.isError && <p className="error">{formatApiError(addProject.error)}</p>}
               <button
@@ -316,6 +354,7 @@ export function Projects() {
                     <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
                       {p.name || p.job_code}
                     </span>
+                    <JobModeBadge allowed={p.allowed_modes} />
                     {chatUnread > 0 && (
                       <span className="chat-badge" title={`${chatUnread} unread message${chatUnread > 1 ? "s" : ""}`}>
                         <MessagesSquare size={11} aria-hidden />

@@ -59,23 +59,25 @@ import { ScrollTabs } from "../components/nav/ScrollTabs";
 import { PhotoFeed } from "../components/photos/PhotoFeed";
 import { JobChat } from "../components/chat/JobChat";
 import { DailyLogsTab } from "../components/dailyLogs/DailyLogsTab";
+import { ClockInBlock } from "../components/clock/ClockInBlock";
+import { SpecsTab } from "../components/project/SpecsTab";
+import { JobModeBadge } from "../components/JobModeBadge";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
 import { formatApiError } from "../lib/errors";
+import { useT } from "../lib/i18n";
+import {
+  hubTabsFor,
+  isTrackingOnly,
+  resolveHubTab,
+  type HubTabId,
+} from "../lib/jobModes";
 
 
 
-type HubTab =
-  | "overview"
-  | "warehouse"
-  | "map"
-  | "model-studio"
-  | "maps-interactive"
-  | "brain"
-  | "dispatch"
-  | "exceptions"
-  | "photos"
-  | "chat"
-  | "logs";
+// The full tab union (incl. the transient map / model-studio deep-link values
+// and the tracking-only specs / time tabs) lives in lib/jobModes with the pure
+// tab/route decision it drives.
+type HubTab = HubTabId;
 
 export function ProjectDetail() {
   const { projectId = "" } = useParams();
@@ -83,56 +85,16 @@ export function ProjectDetail() {
   // Read before the tab is resolved: which tabs a URL may open depends on it.
   const { effectiveRole } = useEffectiveRole();
   const isLead = isForemanPlus(effectiveRole);
+  const t = useT();
   const tabParam = searchParams.get("tab");
-  const tab: HubTab =
-    tabParam === "warehouse" ||
-    tabParam === "map" ||
-    tabParam === "model-studio" ||
-    tabParam === "maps-interactive" ||
-    tabParam === "brain" ||
-    // Lead-only tabs, and ONLY when the viewer is one. The tab BUTTONS are
-    // already hidden from non-leads, but a shared or bookmarked link went
-    // straight through — the tab opened and its lead-gated content rendered
-    // nothing, so the page was a header and empty space with no message.
-    (isLead && (tabParam === "dispatch" || tabParam === "exceptions" || tabParam === "logs")) ||
-    tabParam === "photos" ||
-    tabParam === "chat"
-      ? tabParam
-      : "overview";
-
-  // Legacy deep links (?tab=map) land on the merged tab's Sheets view — the
-  // 8 places that link to the 2D map keep working without edits. The Studio
-  // left the job tabs entirely (?tab=model-studio → its own home).
+  // The tab resolution, TABS list and legacy-redirect effect all depend on
+  // whether this is a tracking-only job — which needs the project row — so they
+  // live further down, after the project and its packages have loaded.
   const navigate = useNavigate();
-  useEffect(() => {
-    if (tabParam === "map") {
-      setSearchParams({ tab: "maps-interactive", mapview: "sheets" }, { replace: true });
-    }
-    if (tabParam === "model-studio") {
-      navigate(`/studio/j/${projectId}`, { replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabParam]);
 
   useRealtimeOpenings(projectId);
   const unread = useUnreadCounts();
   const chatUnread = unread.data?.[projectId] ?? 0;
-
-  const TABS: { id: HubTab; label: string }[] = [
-    { id: "overview", label: "Overview" },
-    ...(isLead ? [{ id: "dispatch" as HubTab, label: "Dispatch" }] : []),
-    ...(isLead ? [{ id: "logs" as HubTab, label: "Logs" }] : []),
-    { id: "warehouse", label: "Warehouse" },
-    { id: "chat", label: "Chat" },
-    { id: "photos", label: "Photos" },
-    // "Map" and "Maps Interactive" merged 2026-08-13 (owner call): one tab,
-    // 3D + Sheets views inside. ?tab=map deep links redirect below.
-    // The Studio stood up as its own top-level tab the same day — the old
-    // ?tab=model-studio deep links redirect to /studio/j/<id> below.
-    { id: "maps-interactive", label: "Maps Interactive" },
-    ...(isLead ? [{ id: "exceptions" as HubTab, label: "Exceptions" }] : []),
-    { id: "brain", label: "Brain" },
-  ];
 
   const setTab = (next: HubTab) => {
     if (next === "overview") {
@@ -170,6 +132,65 @@ export function ProjectDetail() {
     (p) => p.status === "received" || p.status === "stored",
   ).length;
   const outCount = minePkgs.filter((p) => p.status === "checked_out").length;
+
+  // Job modes (standard-tracking-jobs slice 2). A tracking-ONLY job hides the
+  // data-heavy tabs and shows a lighter set; a data (or both-mode) job is
+  // unchanged. Warehouse rides along on a tracking job only when it actually has
+  // material staged. Until the project row loads, isTrackingOnly reads false
+  // (data tabs), so an ordinary job never flickers.
+  const trackingOnly = isTrackingOnly(project?.allowed_modes);
+  const warehouseStaged = minePkgs.length > 0;
+  const tabOpts = { trackingOnly, isLead, warehouseStaged };
+  const tab: HubTab = resolveHubTab(tabParam, tabOpts);
+  const tabLabel = (id: HubTabId): string => {
+    switch (id) {
+      case "dispatch":
+        return "Dispatch";
+      case "logs":
+        return "Logs";
+      case "warehouse":
+        return "Warehouse";
+      case "chat":
+        return "Chat";
+      case "photos":
+        return "Photos";
+      case "maps-interactive":
+        return "Maps Interactive";
+      case "exceptions":
+        return "Exceptions";
+      case "brain":
+        return "Brain";
+      case "specs":
+        return t("projtab.specs");
+      case "time":
+        return t("projtab.time");
+      default:
+        return "Overview";
+    }
+  };
+  const TABS = hubTabsFor(tabOpts).map((id) => ({ id, label: tabLabel(id) }));
+
+  // Legacy deep links and hidden tabs. On a DATA job: ?tab=map lands on the
+  // merged tab's Sheets view and ?tab=model-studio goes to the Studio's own
+  // home — the behaviour those links have always had. On a TRACKING job every
+  // hidden or legacy ?tab= is stripped back to Overview, so a bookmarked URL
+  // can't point at a feature the job doesn't have.
+  useEffect(() => {
+    if (trackingOnly) {
+      if (tabParam && tabParam !== "overview" && tab === "overview") {
+        setSearchParams({}, { replace: true });
+      }
+      return;
+    }
+    if (tabParam === "map") {
+      setSearchParams({ tab: "maps-interactive", mapview: "sheets" }, { replace: true });
+    }
+    if (tabParam === "model-studio") {
+      navigate(`/studio/j/${projectId}`, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabParam, trackingOnly, tab]);
+
   const brainTypes = useMemo(() => {
     const map = new Map<
       string,
@@ -237,7 +258,10 @@ export function ProjectDetail() {
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <BackChip fallback="/projects" label="Back to jobs" />
           <div style={{ minWidth: 0 }}>
-            <h1 style={{ fontSize: 26 }}>{project?.job_code ?? "Job"}</h1>
+            <h1 style={{ fontSize: 26, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {project?.job_code ?? "Job"}
+              {project && <JobModeBadge allowed={project.allowed_modes} />}
+            </h1>
             <p className="wh-row-sub" style={{ margin: 0 }}>
               {project?.name}
               {project?.address ? ` — ${project.address}` : ""}
@@ -248,17 +272,17 @@ export function ProjectDetail() {
       </header>
 
       <ScrollTabs className="hub-tabs" label="Project sections" activeId={tab}>
-        {TABS.map((t) => (
+        {TABS.map((item) => (
           <button
-            key={t.id}
+            key={item.id}
             type="button"
-            className={tab === t.id ? "hub-tab active" : "hub-tab"}
-            data-tab-active={tab === t.id}
-            aria-current={tab === t.id ? "page" : undefined}
-            onClick={() => setTab(t.id)}
+            className={tab === item.id ? "hub-tab active" : "hub-tab"}
+            data-tab-active={tab === item.id}
+            aria-current={tab === item.id ? "page" : undefined}
+            onClick={() => setTab(item.id)}
           >
-            {t.label}
-            {t.id === "chat" && chatUnread > 0 && (
+            {item.label}
+            {item.id === "chat" && chatUnread > 0 && (
               <span className="chat-badge hub-tab-badge">{chatUnread}</span>
             )}
           </button>
@@ -316,6 +340,17 @@ export function ProjectDetail() {
           projectId={projectId}
           jobLabel={project?.job_code ?? project?.name ?? "this job"}
         />
+      )}
+
+      {/* Tracking-only tabs (slice 2): the plan files, read-only, and the one
+          big clock-in spot pointed at this job. */}
+      {tab === "specs" && <SpecsTab projectId={projectId} />}
+
+      {tab === "time" && (
+        <div>
+          <p className="muted" style={{ marginTop: 0 }}>{t("jobtime.hint")}</p>
+          <ClockInBlock />
+        </div>
       )}
 
       {tab === "photos" && (

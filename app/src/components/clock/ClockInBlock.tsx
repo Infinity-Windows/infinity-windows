@@ -34,6 +34,8 @@ import {
   listRecentJobs,
 } from "../../lib/timeclock";
 import { useT } from "../../lib/i18n";
+import { effectiveClockInMode, normalizeModes, type JobMode } from "../../lib/jobModes";
+import { JobModeBadge } from "../JobModeBadge";
 
 export function ClockInBlock() {
   const t = useT();
@@ -70,6 +72,10 @@ export function ClockInBlock() {
 
   const [pickProjectId, setPickProjectId] = useState<string>("");
   const [pickCostCodeId, setPickCostCodeId] = useState<string>("");
+  // The mode a worker picks when the chosen job allows BOTH data and tracking
+  // (standard-tracking-jobs slice 2). Only shown for a both-mode job; a
+  // single-mode job records its one mode silently. Defaults to install work.
+  const [pickedMode, setPickedMode] = useState<JobMode>("data");
   const [search, setSearch] = useState("");
   const [showFullList, setShowFullList] = useState(false);
   // Optional free-text the worker adds for the office. It rides the existing
@@ -147,6 +153,14 @@ export function ClockInBlock() {
     void queryClient.invalidateQueries({ queryKey: ["recentJobs"] });
   };
 
+  // The chosen job's declared modes drive the mode step below and what the
+  // shift records. A both-mode job asks; a single-mode job records its one mode
+  // silently; a job we can't read a mode for records nothing.
+  const chosenProject = (projects.data ?? []).find((p) => p.id === pickProjectId);
+  const chosenModes = normalizeModes(chosenProject?.allowed_modes);
+  const isBothMode = chosenModes.length >= 2;
+  const effectiveMode = effectiveClockInMode(chosenProject?.allowed_modes, pickedMode);
+
   const doStart = useMutation({
     mutationFn: async () => {
       const geo = await captureGeoSoft();
@@ -155,6 +169,7 @@ export function ClockInBlock() {
         pickCostCodeId || null,
         geo,
         note.trim() || null,
+        effectiveMode,
       );
     },
     onSuccess: () => {
@@ -317,6 +332,7 @@ export function ClockInBlock() {
               >
                 <span className="clock-project-code">{p.job_code}</span>
                 <span className="clock-project-name">{p.name}</span>
+                <JobModeBadge allowed={p.allowed_modes} />
               </button>
             ))}
             {filteredProjects.length === 0 && (
@@ -350,12 +366,41 @@ export function ClockInBlock() {
         ))}
       </div>
 
-      {/* ---- SLICE 2 SEAM ----------------------------------------------------
-          A "both-mode" job (one that tracks BOTH standard time and per-unit
-          data) needs a Data-vs-Tracking mode step to land RIGHT HERE, between
-          the cost code and the optional description. Slice 1 does not read job
-          mode at all — every clock-in is a plain shift. Do NOT wire mode until
-          slice 2; this comment marks where it goes. -------------------------- */}
+      {/* ---- Mode step (slice 2) ---------------------------------------------
+          A both-mode job (one that allows BOTH the full data loop and lighter
+          tracking) asks which you're here to do; the shift records the pick. A
+          single-mode job records its one mode silently, so nothing shows here. */}
+      {isBothMode && (
+        <>
+          <p className="clock-row-label">{t("clockblock.mode.label")}</p>
+          <div className="clock-costcode-list">
+            <button
+              type="button"
+              className={
+                pickedMode === "data"
+                  ? "clock-costcode-item selected"
+                  : "clock-costcode-item"
+              }
+              aria-pressed={pickedMode === "data"}
+              onClick={() => setPickedMode("data")}
+            >
+              <span className="clock-costcode-code">{t("clockblock.mode.data")}</span>
+            </button>
+            <button
+              type="button"
+              className={
+                pickedMode === "tracking"
+                  ? "clock-costcode-item selected"
+                  : "clock-costcode-item"
+              }
+              aria-pressed={pickedMode === "tracking"}
+              onClick={() => setPickedMode("tracking")}
+            >
+              <span className="clock-costcode-code">{t("clockblock.mode.tracking")}</span>
+            </button>
+          </div>
+        </>
+      )}
 
       {/* Optional note for the office — persists to time_shifts.note. */}
       <label className="clock-row-label" htmlFor="clockin-block-note">

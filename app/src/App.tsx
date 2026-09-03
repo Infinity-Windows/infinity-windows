@@ -1,6 +1,9 @@
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { listProjectsAnyStatus } from "./lib/api";
+import { isTrackingOnly } from "./lib/jobModes";
 import {
   persister,
   prefetchWarehousePack,
@@ -209,6 +212,30 @@ function LegacyInstallOpeningRedirect() {
 function LegacyStudioRedirect() {
   const { id = "" } = useParams();
   return <Navigate to={`/studio/j/${id}`} replace />;
+}
+
+/**
+ * A data-only guard for the per-window routes (standard-tracking-jobs slice 2).
+ * A tracking-only job has no openings, no 3D model, no flash runs and no Studio,
+ * so those URLs must not reach a feature the job doesn't have — pasted, bookmarked
+ * or arrived at by a stale link. It sends them back to the job's hub, where the
+ * tracking tab set (ProjectDetail) is the only way in. Reads the same cached
+ * `projectsAll` list ProjectDetail uses; while the mode is unknown it holds a
+ * brief loader rather than flashing the feature or wrongly redirecting, and if
+ * the job isn't in the list at all it fails open (renders the child) so a
+ * legitimate data job is never blocked by a cold cache.
+ */
+function RequireDataJob({ children }: { children: ReactNode }) {
+  const { projectId = "" } = useParams();
+  const projects = useQuery({ queryKey: ["projectsAll"], queryFn: listProjectsAnyStatus });
+  if (projects.isLoading) {
+    return <div className="page"><p className="muted">Loading…</p></div>;
+  }
+  const project = projects.data?.find((p) => p.id === projectId);
+  if (project && isTrackingOnly(project.allowed_modes)) {
+    return <Navigate to={`/projects/${projectId}`} replace />;
+  }
+  return <>{children}</>;
 }
 
 /**
@@ -524,7 +551,7 @@ export default function App() {
             />
             <Route
               path="/projects/:projectId/opening/:openingId"
-              element={<OpeningSheetRoute />}
+              element={<RequireDataJob><OpeningSheetRoute /></RequireDataJob>}
             />
             <Route
               path="/data"
@@ -547,11 +574,13 @@ export default function App() {
             <Route
               path="/studio/j/:projectId"
               element={
-                <RequireRole minRole="supervisor">
-                  <Suspense fallback={<div className="page"><p className="muted">Loading the Studio…</p></div>}>
-                    <StudioJobRoute />
-                  </Suspense>
-                </RequireRole>
+                <RequireDataJob>
+                  <RequireRole minRole="supervisor">
+                    <Suspense fallback={<div className="page"><p className="muted">Loading the Studio…</p></div>}>
+                      <StudioJobRoute />
+                    </Suspense>
+                  </RequireRole>
+                </RequireDataJob>
               }
             />
             <Route
@@ -574,6 +603,14 @@ export default function App() {
                 // The 3D model is the whole crew's reference; EDITING it is an
                 // owner/supervisor call (stories design doc) — foremen and
                 // installers view, never reshape.
+                //
+                // Deliberately NOT wrapped in RequireDataJob: it isn't in slice
+                // 2's route-guard list, it's only ever reached from the (hidden
+                // on a tracking job) Maps Interactive tab, and — the real reason
+                // — the guard warms the projectsAll cache, which on a trace →
+                // Submit → map hop makes MapsInteractive mount before the
+                // invalidated outline refetch lands, dropping the north rose it
+                // reads once at mount (wave-n-true-north.spec).
                 <RequireRole minRole="supervisor">
                   <MapsTrace />
                 </RequireRole>
@@ -583,10 +620,17 @@ export default function App() {
                 installer-open ON PURPOSE — same line ContainerViewer draws
                 for a container's shell: it is the map, not the pen. Studio
                 itself stays supervisor+ and desktop-only, above. */}
-            <Route path="/projects/:projectId/model" element={<JobModelViewer />} />
+            <Route
+              path="/projects/:projectId/model"
+              element={<RequireDataJob><JobModelViewer /></RequireDataJob>}
+            />
             {/* Flashing ahead of the crew is any installer's job — no gate
-                beyond being signed in; the server enforces the clock rules. */}
-            <Route path="/projects/:projectId/flash-run" element={<FlashRun />} />
+                beyond being signed in; the server enforces the clock rules. A
+                tracking-only job has no openings to flash, so it's guarded. */}
+            <Route
+              path="/projects/:projectId/flash-run"
+              element={<RequireDataJob><FlashRun /></RequireDataJob>}
+            />
             <Route path="/brain/:typeId" element={<TypeBrainCard />} />
             <Route
               path="/catalog"

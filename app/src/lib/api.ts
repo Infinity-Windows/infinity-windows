@@ -7,6 +7,7 @@ import {
   type PutawaySuggestion,
 } from "./staging";
 import type {
+  JobMode,
   Location,
   Movement,
   Project,
@@ -284,6 +285,23 @@ export async function setProjectTest(
   const { error } = await supabase.rpc("set_project_test", {
     p_project: projectId,
     p_is_test: isTest,
+  });
+  if (error) throw error;
+}
+
+/**
+ * Set which work modes a job allows — a non-empty subset of {data,tracking}
+ * (standard-tracking-jobs slice 2). Foreman+, checked server-side. The only
+ * legal way to change projects.allowed_modes: writing the column directly is
+ * revoked from every client role (20260970000000_job_modes.sql).
+ */
+export async function setProjectModes(
+  projectId: string,
+  modes: JobMode[],
+): Promise<void> {
+  const { error } = await supabase.rpc("set_project_modes", {
+    p_project_id: projectId,
+    p_modes: modes,
   });
   if (error) throw error;
 }

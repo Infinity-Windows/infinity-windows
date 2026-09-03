@@ -178,11 +178,14 @@ describe("the clock-in block", () => {
     });
 
     expect(clockInSpy).toHaveBeenCalledTimes(1);
+    // The 5th arg is the job mode (slice 2). This recent job isn't in the
+    // projects list, so its mode is unknown → null (unchanged, mode-less punch).
     expect(clockInSpy.mock.calls[0]).toEqual([
       "p1",
       "cc1",
       expect.anything(),
       "left the gate open",
+      null,
     ]);
   });
 
@@ -210,5 +213,91 @@ describe("the clock-in block", () => {
     });
     expect(el.textContent).toContain("Start clock");
     expect(el.textContent).not.toContain("Sign safety talk & clock in");
+  });
+
+  // ---- Mode step (standard-tracking-jobs slice 2) --------------------------
+  const proj = (allowed_modes: string[]) => ({
+    id: "p1",
+    job_code: "BLACK22",
+    name: "Black Desert",
+    address: null,
+    status: "active",
+    allowed_modes,
+  });
+
+  async function clickAndFlush(btn: HTMLButtonElement) {
+    await act(async () => {
+      btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
+
+  it("asks Install vs Tracking only when the job allows both", () => {
+    const el = mount({
+      costCodes: [CC],
+      recents: [recent("cc1")],
+      projects: [proj(["data", "tracking"])],
+    });
+    expect(el.textContent).toContain("What are you here to do?");
+    expect(el.textContent).toContain("Install work");
+    expect(el.textContent).toContain("Tracking only");
+  });
+
+  it("stays silent about mode when the job allows only one", () => {
+    const el = mount({
+      costCodes: [CC],
+      recents: [recent("cc1")],
+      projects: [proj(["data"])],
+    });
+    expect(el.textContent).not.toContain("What are you here to do?");
+  });
+
+  it("records the picked mode when the job allows both", async () => {
+    const el = mount({
+      costCodes: [CC],
+      recents: [recent("cc1")],
+      projects: [proj(["data", "tracking"])],
+    });
+    // Switch from the default (install work) to tracking only — the mode
+    // buttons are the ones carrying aria-pressed.
+    const modeBtns = Array.from(
+      el.querySelectorAll<HTMLButtonElement>("[aria-pressed]"),
+    );
+    const tracking = modeBtns.find((b) => b.textContent?.includes("Tracking only"))!;
+    act(() => tracking.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+    const start = el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!;
+    await clickAndFlush(start);
+
+    expect(clockInSpy).toHaveBeenCalledTimes(1);
+    expect(clockInSpy.mock.calls[0]).toEqual([
+      "p1",
+      "cc1",
+      expect.anything(),
+      null,
+      "tracking",
+    ]);
+  });
+
+  it("records the one mode silently on a single-mode job", async () => {
+    const el = mount({
+      costCodes: [CC],
+      recents: [recent("cc1")],
+      projects: [proj(["tracking"])],
+    });
+    const start = el.querySelector<HTMLButtonElement>(".clock-btn.primary.big")!;
+    await clickAndFlush(start);
+
+    expect(clockInSpy).toHaveBeenCalledTimes(1);
+    expect(clockInSpy.mock.calls[0]).toEqual([
+      "p1",
+      "cc1",
+      expect.anything(),
+      null,
+      "tracking",
+    ]);
   });
 });

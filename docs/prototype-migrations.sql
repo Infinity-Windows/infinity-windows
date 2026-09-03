@@ -4645,3 +4645,97 @@ $$;
 grant execute on function start_opening_work(uuid) to authenticated;
 grant execute on function start_opening_phase(uuid, text) to authenticated;
 grant execute on function start_unit_session(uuid, text) to authenticated;
+
+
+-- ===========================================================================
+-- 20260970000000_job_modes.sql (mirrored)
+-- A job declares which work modes it allows: data (the full per-window loop) or
+-- tracking (a lighter clock-time-and-log-the-day job), or both. projects
+-- .allowed_modes is a projects flag written only by set_project_modes (foreman+,
+-- SECURITY DEFINER), the same shape as is_test. time_shifts.job_mode records the
+-- mode the worker picked at clock-in on a both-mode job; a new clock_in overload
+-- (note + mode) carries it, and every older overload is left in place.
+-- ===========================================================================
+
+alter table projects
+  add column if not exists allowed_modes text[] not null default '{data}'::text[];
+
+alter table projects drop constraint if exists projects_allowed_modes_check;
+alter table projects add constraint projects_allowed_modes_check
+  check (
+    cardinality(allowed_modes) >= 1
+    and allowed_modes <@ array['data', 'tracking']::text[]
+  );
+
+revoke insert (allowed_modes), update (allowed_modes) on table projects from anon, authenticated;
+
+create or replace function public.set_project_modes(p_project_id uuid, p_modes text[])
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_clean text[];
+begin
+  if not _is_lead(auth.uid()) then
+    raise exception 'only a foreman or above can change a job''s modes';
+  end if;
+
+  select array_agg(distinct m order by m) into v_clean
+  from unnest(p_modes) as m
+  where m in ('data', 'tracking');
+
+  if v_clean is null or cardinality(v_clean) = 0 then
+    raise exception 'a job must allow at least one of: data, tracking';
+  end if;
+
+  update projects set allowed_modes = v_clean where id = p_project_id;
+  if not found then
+    raise exception 'that job does not exist';
+  end if;
+end;
+$$;
+
+revoke all on function public.set_project_modes(uuid, text[]) from public;
+grant execute on function public.set_project_modes(uuid, text[]) to authenticated;
+
+alter table time_shifts
+  add column if not exists job_mode text;
+
+alter table time_shifts drop constraint if exists time_shifts_job_mode_check;
+alter table time_shifts add constraint time_shifts_job_mode_check
+  check (job_mode is null or job_mode in ('data', 'tracking'));
+
+create or replace function clock_in(
+  p_project_id uuid,
+  p_cost_code_id uuid,
+  p_photo text,
+  p_lat double precision,
+  p_lng double precision,
+  p_note text,
+  p_mode text
+)
+returns time_shifts language plpgsql set search_path = public, pg_temp as $$
+declare v_shift time_shifts;
+begin
+  if not exists (
+    select 1 from toolbox_completions
+    where profile_id = auth.uid() and (signed_at at time zone 'America/Denver')::date = (now() at time zone 'America/Denver')::date
+  ) then
+    raise exception 'complete today''s toolbox talk before clocking in';
+  end if;
+
+  perform _close_dangling_shift(auth.uid());
+
+  insert into time_shifts
+    (profile_id, project_id, cost_code_id, clock_in_photo, clock_in_lat, clock_in_lng,
+     note, job_mode)
+  values
+    (auth.uid(), p_project_id, p_cost_code_id, p_photo, p_lat, p_lng,
+     nullif(btrim(p_note), ''),
+     case when p_mode in ('data', 'tracking') then p_mode else null end)
+  returning * into v_shift;
+  return v_shift;
+end;
+$$;

@@ -359,6 +359,44 @@ export const CATALOG = {
     en: "or choose from files",
     es: "o elige de tus archivos",
   },
+
+  // ---- Job modes (data vs tracking, standard-tracking-jobs slice 2) ------
+  // Badges on job cards / the clock-in list / the job header.
+  "jobmode.badge.data": { en: "Data", es: "Datos" },
+  "jobmode.badge.tracking": { en: "Tracking", es: "Seguimiento" },
+  "jobmode.badge.both": { en: "Data + Tracking", es: "Datos + Seguimiento" },
+  // Create-job mode picker (foreman+).
+  "jobmode.create.label": {
+    en: "What does this job track?",
+    es: "¿Qué registra este trabajo?",
+  },
+  "jobmode.create.hint": {
+    en: "Data jobs track every window. Tracking jobs just clock time and log the day.",
+    es: "Los trabajos de datos registran cada ventana. Los de seguimiento solo marcan tiempo y registran el día.",
+  },
+  "jobmode.opt.data": { en: "Data", es: "Datos" },
+  "jobmode.opt.tracking": { en: "Tracking", es: "Seguimiento" },
+  "jobmode.opt.both": { en: "Both", es: "Ambos" },
+  // Clock-in mode step (shown only when the job allows both).
+  "clockblock.mode.label": {
+    en: "What are you here to do?",
+    es: "¿A qué vienes?",
+  },
+  "clockblock.mode.data": { en: "Install work", es: "Trabajo de instalación" },
+  "clockblock.mode.tracking": { en: "Tracking only", es: "Solo seguimiento" },
+  // Tracking-only project tabs.
+  "projtab.specs": { en: "Plans & specs", es: "Planos y especificaciones" },
+  "projtab.time": { en: "Time", es: "Tiempo" },
+  "specs.empty": { en: "No plans uploaded yet.", es: "Aún no se han subido planos." },
+  "specs.open": { en: "Open", es: "Abrir" },
+  "specs.error": {
+    en: "Couldn't open that plan — try again.",
+    es: "No se pudo abrir ese plano — inténtalo de nuevo.",
+  },
+  "jobtime.hint": {
+    en: "Clock your time against this job.",
+    es: "Registra tu tiempo en este trabajo.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
