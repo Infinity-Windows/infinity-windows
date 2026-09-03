@@ -47,6 +47,24 @@ export function validateModes(
   return out.length > 0 ? [...out] : null;
 }
 
+/**
+ * The modes a job has AFTER "Build this out" (standard-tracking-jobs slice 6) —
+ * the client-side mirror of promote_project_to_data's union, the same way
+ * validateModes mirrors set_project_modes. ADD 'data' to whatever the job
+ * already allowed: a tracking-only job becomes data+tracking, a both-mode job is
+ * unchanged, a data job is a no-op. 'data' is only ever ADDED, never removed, so
+ * this can never yield a tracking-only set — the upgrade is one-way and has no
+ * inverse. A garbled or empty input degrades to data-only, matching the SQL's
+ * coalesce.
+ */
+export function promotedModes(
+  allowed: readonly string[] | null | undefined,
+): JobMode[] {
+  const set = new Set<JobMode>(["data"]);
+  for (const m of allowed ?? []) if (isJobMode(m)) set.add(m);
+  return KNOWN.filter((m) => set.has(m)); // stable order: data, tracking
+}
+
 export function allowsData(allowed: readonly string[] | null | undefined): boolean {
   return normalizeModes(allowed).includes("data");
 }

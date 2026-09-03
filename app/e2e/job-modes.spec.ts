@@ -119,3 +119,79 @@ test("a data job is unchanged — it keeps Maps Interactive and reaches its flas
   await page.goto(`/projects/${DATA_ID}/flash-run`);
   await expect(page).toHaveURL(new RegExp(`/projects/${DATA_ID}/flash-run$`));
 });
+
+// ---------------------------------------------------------------------------
+// Build this out (standard-tracking-jobs slice 6): the one-way upgrade from a
+// tracking job to a full data job. The button is foreman+ and only on a tracking
+// job; pressing it promotes the job and drops the foreman into the plan-set
+// upload, and the job's data-heavy tabs switch on.
+// ---------------------------------------------------------------------------
+
+// A stateful projects route: the tracking job starts tracking-only and reads as
+// data+tracking once the promote RPC has fired, so a refetch after "Build this
+// out" sees the promoted job.
+function usePromotableFixtures(page: Page): { wasPromoted: () => boolean } {
+  const state = { promoted: false };
+  void page.route("**/rest/v1/rpc/promote_project_to_data", (r) => {
+    state.promoted = true;
+    return json(
+      r,
+      { id: TRACKING_ID, job_code: "TRACK01", name: "Tracking Job", allowed_modes: ["data", "tracking"] },
+      1,
+    );
+  });
+  void page.route("**/rest/v1/projects**", (r) => {
+    const track = { ...PROJECTS[0], allowed_modes: state.promoted ? ["data", "tracking"] : ["tracking"] };
+    return json(r, [track, PROJECTS[1]], 2);
+  });
+  return { wasPromoted: () => state.promoted };
+}
+
+test("Build this out promotes a tracking job and reveals its data screens", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  const promo = usePromotableFixtures(page);
+  page.on("dialog", (d) => d.accept());
+
+  await page.goto(`/projects/${TRACKING_ID}`);
+
+  // The Build-this-out button lives on the tracking job's Overview.
+  const buildOut = page.getByRole("button", { name: /Build this out/i });
+  await expect(buildOut).toBeVisible();
+  await buildOut.click();
+
+  // It promotes the job (the RPC fired) and lands the foreman in the plan-set
+  // upload — building it out is where the job starts getting built.
+  await expect(page).toHaveURL(new RegExp(`/projects/${TRACKING_ID}/upload$`));
+  expect(promo.wasPromoted()).toBe(true);
+
+  // Back on the hub, the job now shows the data-heavy tabs it was hiding.
+  await page.goto(`/projects/${TRACKING_ID}`);
+  const tabs = page.locator(".hub-tabs");
+  await expect(tabs.getByText("Maps Interactive", { exact: true })).toBeVisible();
+  await expect(tabs.getByText("Dispatch", { exact: true })).toBeVisible();
+  // And the flash run, once guarded, now renders instead of redirecting.
+  await page.goto(`/projects/${TRACKING_ID}/flash-run`);
+  await expect(page).toHaveURL(new RegExp(`/projects/${TRACKING_ID}/flash-run$`));
+});
+
+test("an installer never sees Build this out on a tracking job", async ({ page }) => {
+  // Foreman+ only: an installer on the tracking job has no button.
+  await useSupabaseFixtures(page, { role: "installer" });
+  await useModeFixtures(page);
+  await page.goto(`/projects/${TRACKING_ID}`);
+  await expect(page.getByText("Overview", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /Build this out/i })).toHaveCount(0);
+});
+
+test("a data job never offers Build this out — it is already built out", async ({
+  page,
+}) => {
+  // Even a foreman, who WOULD see the button on a tracking job, sees none here.
+  await useSupabaseFixtures(page, { role: "foreman" });
+  await useModeFixtures(page);
+  await page.goto(`/projects/${DATA_ID}`);
+  await expect(page.getByText("Overview", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /Build this out/i })).toHaveCount(0);
+});

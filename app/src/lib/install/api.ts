@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 import { filterToLiveProjects } from "../liveProjects";
 import { isOwner } from "./types";
 import { isMissingColumn, isMissingFunction as isMissingSchemaFunction, isMissingTable } from "../schemaErrors";
-import type { WindowType } from "../types";
+import type { Project, WindowType } from "../types";
 import type { DraftOpening, ExistingOpeningLite, PlansetKindLike } from "./extract";
 import { markBase, planDraftPersistence } from "./extract";
 import type { MarkSpecDraft, ProjectMarkSpec } from "./specs";
@@ -435,6 +435,26 @@ export async function listJobNotes(projectId: string): Promise<JobNote[]> {
     .limit(50);
   if (error) throw error;
   return (data ?? []) as JobNote[];
+}
+
+/**
+ * Build a Tracking job out into a full Data job (standard-tracking-jobs slice
+ * 6). One-way: the promote_project_to_data RPC ADDS 'data' to the job's
+ * allowed_modes — a tracking-only job becomes data+tracking, a job that already
+ * allows data is a no-op — so the previously-hidden data screens (the map, Maps
+ * Interactive, Model Studio, framing/flash/unit tracking, dispatch) switch on
+ * the instant this returns and the ["projectsAll"] cache is refreshed. The RPC
+ * touches nothing but allowed_modes, so every project-scoped record already
+ * logged (time, photos, daily logs, cost codes, summons) is carried straight
+ * through. Foreman+ is enforced server-side (_is_lead); the returned row carries
+ * the new modes so the caller need not re-fetch to know what turned on.
+ */
+export async function promoteProjectToData(projectId: string): Promise<Project> {
+  const { data, error } = await supabase.rpc("promote_project_to_data", {
+    p_project_id: projectId,
+  });
+  if (error) throw new Error(formatApiError(error));
+  return data as Project;
 }
 
 // --- Opening notes: a free-form record on one opening ---

@@ -543,6 +543,25 @@ export const CATALOG = {
     es: "Registra tu tiempo en este trabajo.",
   },
 
+  // ---- Build a tracking job out into a data job (foreman+, slice 6) ------
+  // The one-way upgrade, offered on a tracking job's Overview.
+  "buildout.button": {
+    en: "Build this out — turn this into a full data job",
+    es: "Desarróllalo — conviértelo en un trabajo de datos completo",
+  },
+  "buildout.hint": {
+    en: "Adds the plan map, the 3D model, the Studio, and window-by-window install tracking. Everything you've already logged stays. This can't be undone.",
+    es: "Agrega el mapa del plano, el modelo 3D, el Studio y el seguimiento de instalación ventana por ventana. Todo lo que ya registraste se conserva. Esto no se puede deshacer.",
+  },
+  "buildout.confirm": {
+    en: "Turn {job} into a full data job?\n\nThis switches on the plan map, the 3D model, the Studio, and window-by-window install tracking. All the time, photos, and daily logs already on this job stay put. You can't switch it back.",
+    es: "¿Convertir {job} en un trabajo de datos completo?\n\nEsto activa el mapa del plano, el modelo 3D, el Studio y el seguimiento de instalación ventana por ventana. Todo el tiempo, las fotos y los registros diarios que ya tiene este trabajo se conservan. No se puede deshacer.",
+  },
+  "buildout.done": {
+    en: "{job} is now a full data job. Upload its plans to get started.",
+    es: "{job} ahora es un trabajo de datos completo. Sube sus planos para empezar.",
+  },
+
   // ---- Per-job cost codes (foreman+ editor, slice 3) --------------------
   "jobcost.title": {
     en: "Cost codes for this job",

@@ -19,7 +19,7 @@ import {
 import { totalReorder } from "../lib/loadout";
 import { missingStagingSlots, stagingBaysFor } from "../lib/staging";
 import { pushToast, toastError } from "../lib/toast";
-import { listOpenings, saveJobEstimate } from "../lib/install/api";
+import { listOpenings, promoteProjectToData, saveJobEstimate } from "../lib/install/api";
 import {
   compareIssues,
   KIND_LABELS,
@@ -70,6 +70,7 @@ import { useT } from "../lib/i18n";
 import {
   hubTabsFor,
   isTrackingOnly,
+  promotedModes,
   resolveHubTab,
   type HubTabId,
 } from "../lib/jobModes";
@@ -319,6 +320,7 @@ export function ProjectDetail() {
           canFlagTesting={isSupervisorPlus(effectiveRole)}
           canDeleteTesting={isOwner(effectiveRole)}
           project={project}
+          trackingOnly={trackingOnly}
           />
         </>
       )}
@@ -431,6 +433,68 @@ function OfflineDownloadButton({ projectId }: { projectId: string }) {
   );
 }
 
+/**
+ * "Build this out" — the one-way upgrade from a tracking job to a full data job
+ * (standard-tracking-jobs slice 6). Foreman+; only rendered on a tracking-only
+ * job. The confirm names exactly what turns on and that nothing logged is lost;
+ * on success it refreshes the ["projectsAll"] cache the hub and the
+ * RequireDataJob guard both read — so the map, Studio and window tracking switch
+ * on at once — then drops the foreman straight into the plan-set upload, because
+ * building it out is the moment the job starts getting built.
+ */
+function BuildOutPanel({
+  projectId,
+  jobLabel,
+}: {
+  projectId: string;
+  jobLabel: string;
+}) {
+  const t = useT();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const promote = useMutation({
+    mutationFn: () => promoteProjectToData(projectId),
+    onSuccess: (updated) => {
+      // Flip the cached job to its promoted modes at once, so the hub and the
+      // RequireDataJob guard show the data screens the moment we land back —
+      // the invalidate below is the backstop that reconciles with the server.
+      queryClient.setQueryData<Project[]>(["projectsAll"], (prev) =>
+        prev?.map((p) =>
+          p.id === projectId
+            ? { ...p, allowed_modes: promotedModes(updated?.allowed_modes ?? p.allowed_modes) }
+            : p,
+        ),
+      );
+      queryClient.invalidateQueries({ queryKey: ["projectsAll"] });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      pushToast(t("buildout.done", { job: jobLabel }), "info");
+      navigate(`/projects/${projectId}/upload`);
+    },
+    onError: (e) => toastError(e),
+  });
+
+  const confirmBuildOut = () => {
+    if (window.confirm(t("buildout.confirm", { job: jobLabel }))) {
+      promote.mutate();
+    }
+  };
+
+  return (
+    <section className="detail-card" style={{ marginBottom: 16 }}>
+      <button
+        type="button"
+        className="action-btn primary"
+        disabled={promote.isPending}
+        onClick={confirmBuildOut}
+      >
+        {t("buildout.button")}
+      </button>
+      <p className="wh-row-sub" style={{ marginTop: 8 }}>{t("buildout.hint")}</p>
+    </section>
+  );
+}
+
 function OverviewTab({
   projectId,
   neededTotal,
@@ -447,6 +511,7 @@ function OverviewTab({
   canFlagTesting,
   canDeleteTesting,
   project,
+  trackingOnly,
 }: {
   projectId: string;
   neededTotal: number;
@@ -463,6 +528,7 @@ function OverviewTab({
   canFlagTesting: boolean;
   canDeleteTesting: boolean;
   project?: Project;
+  trackingOnly: boolean;
 }) {
   const queryClient = useQueryClient();
   const saveEstimate = useMutation({
@@ -477,6 +543,17 @@ function OverviewTab({
 
   return (
     <>
+      {/* Build a tracking job out into a full data job (slice 6). Foreman+ and
+          only on a tracking-only job — a data job is already built out. Sits at
+          the very top of Overview because on a tracking job it's the one action
+          that changes what the job IS. */}
+      {trackingOnly && isLead && (
+        <BuildOutPanel
+          projectId={projectId}
+          jobLabel={project?.job_code ?? project?.name ?? "this job"}
+        />
+      )}
+
       {project && <JobDetailsPanel project={project} isLead={isLead} />}
 
       {/* effectiveRole-gated, not project.is_test — "view as installer" must

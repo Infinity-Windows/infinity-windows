@@ -5676,3 +5676,50 @@ comment on function public.purge_project(uuid) is
 
 revoke all on function public.purge_project(uuid) from public, anon;
 grant execute on function public.purge_project(uuid) to authenticated;
+
+-- ===========================================================================
+-- 20260975000000_promote_to_data.sql (mirrored)
+-- The one-way upgrade from a Tracking job to a full Data job: a foreman+
+-- SECURITY DEFINER RPC that ADDS 'data' to projects.allowed_modes (union, never
+-- replace — a both-mode job keeps tracking), so the data screens switch on while
+-- every project-scoped record (logged time, photos, daily logs, cost codes,
+-- summons) stays put. Idempotent; 'data' is only added, never removed, so there
+-- is no downgrade path. Same lock as is_test / set_project_modes; no new table.
+-- ===========================================================================
+
+create or replace function public.promote_project_to_data(p_project_id uuid)
+returns projects
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row projects;
+  v_current text[];
+  v_next text[];
+begin
+  if not _is_lead(auth.uid()) then
+    raise exception 'only a foreman or above can build a job out into a data job';
+  end if;
+
+  select allowed_modes into v_current from projects where id = p_project_id;
+  if not found then
+    raise exception 'that job does not exist';
+  end if;
+
+  select array_agg(distinct m order by m) into v_next
+  from (
+    select m from unnest(coalesce(v_current, array['data']::text[])) as m
+    where m in ('data', 'tracking')
+    union
+    select 'data'
+  ) s;
+
+  update projects set allowed_modes = v_next where id = p_project_id
+  returning * into v_row;
+  return v_row;
+end;
+$$;
+
+revoke all on function public.promote_project_to_data(uuid) from public;
+grant execute on function public.promote_project_to_data(uuid) to authenticated;
