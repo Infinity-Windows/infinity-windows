@@ -6,10 +6,12 @@ import {
   configFromTiers,
   constructabilityProblems,
   mirrorUnitConfig,
+  specToUnitConfig,
   unitTiers,
   type UnitConfig,
   type UnitTier,
 } from "./units";
+import type { ProjectMarkSpec } from "../install/specs";
 
 describe("mirrorUnitConfig", () => {
   it("flips every panel's operable direction, left<->right", () => {
@@ -230,5 +232,92 @@ describe("constructabilityProblems (Studio 100x #13)", () => {
       cornerAfterPanel: 5,
     };
     expect(constructabilityProblems(cfg)).toHaveLength(2);
+  });
+});
+
+// Owner, live pilot 2026-09-02: Mad Moose's Add units are French doors
+// ("Fixed / French Door") but Studio drew the operable leaf as a SLIDING
+// panel with a → arrow instead of a swing. A door that doesn't slide swings.
+describe("specToUnitConfig door leaf swings vs slides", () => {
+  const base: ProjectMarkSpec = {
+    mark_code: "D-11", style: null, glass: null, color: null,
+    size_code: null, width_in: 72, height_in: 84, operation: null,
+    tempered: null, egress: null, u_factor: null, shgc: null, grids: null,
+    screen: null, product_line: null, extra: null, image_page: null,
+    image_bbox: null, planset_id: null, confirmed: false, source: "ai",
+    id: "d11", project_id: "p", created_at: "", updated_at: "",
+  };
+
+  it("a French door's operable leaf swings (casement, with a hinge side); its fixed leaves stay fixed", () => {
+    const spec: ProjectMarkSpec = {
+      ...base,
+      style: "Fixed / French Door (inward, 3-point lock)",
+      operation: "Fixed / French Door",
+      extra: {
+        panels: [
+          { op: "X", width_in: 40 },
+          { op: "F", width_in: 20 },
+          { op: "F", width_in: 20 },
+        ],
+      },
+    };
+    const cfg = specToUnitConfig(spec)!;
+    expect(cfg.kind).toBe("door");
+    expect(cfg.panels[0].mechanism).toBe("casement");
+    expect(cfg.panels[0].direction).toBeDefined();
+    expect(cfg.panels[1].mechanism).toBe("fixed");
+    expect(cfg.panels[2].mechanism).toBe("fixed");
+  });
+
+  it("a bare French door with no drawn panels swings too, not a fixed slab", () => {
+    const cfg = specToUnitConfig({
+      ...base,
+      style: "Aluminum French Door",
+      operation: "French Door",
+    })!;
+    expect(cfg.kind).toBe("door");
+    expect(cfg.panels).toHaveLength(1);
+    expect(cfg.panels[0].mechanism).toBe("casement");
+    expect(cfg.panels[0].direction).toBeDefined();
+  });
+
+  it("a sliding patio door's operable leaf still slides — drawn panels", () => {
+    const spec: ProjectMarkSpec = {
+      ...base,
+      style: "Aluminum Sliding Patio Door",
+      operation: "XO",
+      extra: {
+        panels: [
+          { op: "X", width_in: 36 },
+          { op: "O", width_in: 36 },
+        ],
+      },
+    };
+    const cfg = specToUnitConfig(spec)!;
+    expect(cfg.kind).toBe("door");
+    expect(cfg.panels[0].mechanism).toBe("slider");
+    expect(cfg.panels[1].mechanism).toBe("fixed");
+  });
+
+  it("a sliding patio door's operable leaf still slides — operation string", () => {
+    const cfg = specToUnitConfig({
+      ...base,
+      style: "Sliding Patio Door",
+      operation: "OX",
+    })!;
+    expect(cfg.kind).toBe("door");
+    expect(cfg.panels.some((p) => p.mechanism === "slider")).toBe(true);
+    expect(cfg.panels.every((p) => p.mechanism !== "casement")).toBe(true);
+  });
+
+  it("a window with an XO operation is untouched — X stays a slider", () => {
+    const cfg = specToUnitConfig({
+      ...base,
+      style: "Aluminum Sliding Window",
+      operation: "XO",
+    })!;
+    expect(cfg.kind).toBe("window");
+    expect(cfg.panels[0].mechanism).toBe("slider");
+    expect(cfg.panels[1].mechanism).toBe("fixed");
   });
 });
