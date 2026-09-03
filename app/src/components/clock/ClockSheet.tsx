@@ -478,7 +478,7 @@ export function ClockSheet({
               .eq("id", open.opening_id)
               .maybeSingle();
             const code = (data as { opening_code?: string } | null)?.opening_code;
-            if (code) toastSuccess(`Back on unit ${code} — clock's running.`);
+            if (code) toastSuccess(t("clock.toast.backOnUnit", { code }));
           } catch {
             /* cosmetic only */
           }

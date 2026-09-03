@@ -189,6 +189,12 @@ export const CATALOG = {
     en: "Back on the clock — will sync when online",
     es: "De vuelta en horario — se sincroniza cuando estés en línea",
   },
+  // A held unit auto-resumed after a break; {code} is its work-order mark. Was
+  // hard-coded English on the crew flow (slice 7 fix).
+  "clock.toast.backOnUnit": {
+    en: "Back on unit {code} — clock's running.",
+    es: "De vuelta en la unidad {code} — el reloj está corriendo.",
+  },
   "clock.toast.clockedOut": { en: "Clocked out", es: "Salida marcada" },
   "clock.toast.clockedOutQueued": {
     en: "Clocked out — we'll sync it when you're back online",

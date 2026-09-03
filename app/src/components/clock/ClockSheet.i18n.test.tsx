@@ -43,4 +43,24 @@ describe("the clock sheet leaves no English toast on the crew flow (slice 7)", (
       translate(CATALOG, "es", "clock.toast.clockedInOnUnit", { code: "1-2" }),
     ).not.toBe(translate(CATALOG, "en", "clock.toast.clockedInOnUnit", { code: "1-2" }));
   });
+
+  it("routes the auto-resume toast through t(), not a hard-coded literal", () => {
+    // The held-unit resume toast fired from an async IIFE that reads Supabase;
+    // it must build from the catalog, not a template literal, or a Spanish
+    // reader gets English after every break.
+    expect(SHEET_SRC).not.toContain("Back on unit ");
+    expect(SHEET_SRC).toContain('t("clock.toast.backOnUnit"');
+  });
+
+  it("resolves backOnUnit to real Spanish with the unit code filled in", () => {
+    expect(translate(CATALOG, "en", "clock.toast.backOnUnit", { code: "1-2" })).toBe(
+      "Back on unit 1-2 — clock's running.",
+    );
+    expect(translate(CATALOG, "es", "clock.toast.backOnUnit", { code: "1-2" })).toBe(
+      "De vuelta en la unidad 1-2 — el reloj está corriendo.",
+    );
+    expect(translate(CATALOG, "es", "clock.toast.backOnUnit", { code: "1-2" })).not.toBe(
+      translate(CATALOG, "en", "clock.toast.backOnUnit", { code: "1-2" }),
+    );
+  });
 });
