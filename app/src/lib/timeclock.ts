@@ -630,6 +630,33 @@ export async function listRecentJobs(
   return out;
 }
 
+/**
+ * Where this job's clock-ins have actually happened: the coordinates of the
+ * most recent shift on the project that carried a GPS fix, or null if none has.
+ *
+ * Projects hold a text address and no coordinates, so this is the honest
+ * reference point for "are you near this job" — it degrades to null (no note)
+ * the first time anyone clocks into a brand-new job. Reads across the crew,
+ * which the time_shifts read policy allows for any signed-in non-partner.
+ */
+export async function getJobLastGeo(
+  projectId: string,
+): Promise<{ lat: number; lng: number } | null> {
+  const { data, error } = await supabase
+    .from("time_shifts")
+    .select("clock_in_lat, clock_in_lng")
+    .eq("project_id", projectId)
+    .not("clock_in_lat", "is", null)
+    .not("clock_in_lng", "is", null)
+    .order("clock_in_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  const row = data as { clock_in_lat: number | null; clock_in_lng: number | null } | null;
+  if (!row || row.clock_in_lat == null || row.clock_in_lng == null) return null;
+  return { lat: row.clock_in_lat, lng: row.clock_in_lng };
+}
+
 export async function approveShift(shiftId: string): Promise<void> {
   const { data, error } = await supabase.rpc("approve_shift", { p_shift_id: shiftId });
   if (error) throw error;

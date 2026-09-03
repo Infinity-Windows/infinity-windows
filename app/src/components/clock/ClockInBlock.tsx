@@ -20,12 +20,14 @@ import { listProjects } from "../../lib/api";
 import { getTodayTalk } from "../../lib/ops";
 import { myTodayCompletion } from "../../lib/toolbox";
 import { captureGeoSoft } from "../../lib/geo";
+import { farFromJob, type DeviceFix } from "../../lib/jobProximity";
 import { toastSuccess } from "../../lib/toast";
 import { openClockGlobally } from "../../lib/clockContext";
 import {
   clockIn,
   elapsedWorkSeconds,
   formatClock,
+  getJobLastGeo,
   getOpenShift,
   isOnTheClock,
   listCostCodes,
@@ -75,7 +77,19 @@ export function ClockInBlock() {
   // offered a box for it until now.
   const [note, setNote] = useState("");
   const [now, setNow] = useState(Date.now());
+  // The device's current fix, captured ONLY when geolocation is already
+  // permitted — the advisory must never trigger its own permission prompt.
+  const [myGeo, setMyGeo] = useState<DeviceFix | null>(null);
   const primedRef = useRef(false);
+  const geoTriedRef = useRef(false);
+
+  // Where this job's clock-ins have happened — the reference for "near the
+  // job". Only worth fetching once we have a fix to compare it against.
+  const jobGeo = useQuery({
+    queryKey: ["jobLastGeo", pickProjectId],
+    queryFn: () => getJobLastGeo(pickProjectId),
+    enabled: Boolean(pickProjectId) && Boolean(myGeo) && !openShift.data,
+  });
 
   const shift = openShift.data ?? null;
   const onClock = isOnTheClock(shift);
@@ -97,6 +111,35 @@ export function ClockInBlock() {
     setPickProjectId(r.projectId);
     if (r.costCodeId) setPickCostCodeId(r.costCodeId);
   }, [recents.data, shift]);
+
+  // Capture the current fix ONCE, and only when geolocation is already granted —
+  // the "not near this job" note must never trigger its own permission prompt.
+  // Off the clock only. clock-in itself still stamps geo via captureGeoSoft.
+  useEffect(() => {
+    if (geoTriedRef.current || openShift.data) return;
+    geoTriedRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const perms = (navigator as Navigator & { permissions?: Permissions })
+          .permissions;
+        if (!perms?.query) return;
+        const status = await perms.query({
+          name: "geolocation" as PermissionName,
+        });
+        if (status.state !== "granted") return;
+        const fix = await captureGeoSoft();
+        if (!cancelled && fix.lat != null && fix.lng != null) {
+          setMyGeo({ lat: fix.lat, lng: fix.lng, accuracyM: fix.accuracyM });
+        }
+      } catch {
+        /* no advisory without a fix — never blocks the clock-in */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [openShift.data]);
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["openShift"] });
@@ -207,6 +250,10 @@ export function ClockInBlock() {
     todayTalk.data !== null &&
     toolboxDone.isSuccess &&
     !toolboxDone.data;
+  // SOFT, advisory only: far from where this job's clock-ins happen. Never
+  // disables the button — a real reason to clock in off-site is common enough
+  // (staging, the shop, a bad address) that this only ever whispers.
+  const showFarNote = farFromJob(myGeo, jobGeo.data ?? null);
 
   return (
     <section className="clockin-block" aria-label={t("clockblock.title")}>
@@ -323,6 +370,8 @@ export function ClockInBlock() {
         value={note}
         onChange={(e) => setNote(e.target.value)}
       />
+
+      {showFarNote && <p className="clockin-note">{t("clockblock.notNearJob")}</p>}
 
       {toolboxKnownUnsigned ? (
         <>

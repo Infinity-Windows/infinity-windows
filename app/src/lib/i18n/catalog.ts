@@ -195,6 +195,10 @@ export const CATALOG = {
     en: "Add a note for the office (optional)",
     es: "Agrega una nota para la oficina (opcional)",
   },
+  "clockblock.notNearJob": {
+    en: "You're not near this job — clock in anyway?",
+    es: "No estás cerca de este trabajo — ¿marcar entrada de todos modos?",
+  },
   // SAFETY / toolbox — needs bilingual review.
   "clockblock.signFirst": {
     en: "Sign today's safety talk to clock in.",
