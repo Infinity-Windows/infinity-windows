@@ -640,7 +640,13 @@ function SummonStrip({
     <div className="detail-card wh-card">
       {(live.data ?? []).map((s) => (
         <p key={s.id} style={{ margin: "2px 0" }}>
-          🔔 <strong>{openingCodeById.get(s.opening_id) ?? "unit"}</strong>{" "}
+          {/* A job-level call for hands has no window (job-level-summons
+              slice 4); it reads as the whole job. Copy matches this
+              foreman-only strip's own English — it predates the crew i18n. */}
+          🔔{" "}
+          <strong>
+            {s.opening_id ? (openingCodeById.get(s.opening_id) ?? "unit") : "Whole job"}
+          </strong>{" "}
           <span className="muted">
             — {s.requester?.display_name ?? "installer"} needs {s.needed}
             {s.status === "covered" ? " · covered" : " · ringing"}
