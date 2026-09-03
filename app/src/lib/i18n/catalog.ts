@@ -28,6 +28,9 @@ export const SAFETY_KEYS = [
   "clock.injury.emergency",
   "clock.injury.placeholder",
   "clock.toolbox.signed",
+  "clock.toolbox.signToClockIn",
+  "clockblock.signFirst",
+  "clockblock.signAndClockIn",
   "toolbox.today",
   "toolbox.read",
   "toolbox.pledge",
@@ -84,6 +87,10 @@ export const CATALOG = {
   },
   "clock.label.hideJobList": { en: "Hide job list", es: "Ocultar lista de trabajos" },
   "clock.search.jobs": { en: "Search jobs…", es: "Buscar trabajos…" },
+  "clock.search.noJobs": {
+    en: "No jobs match “{q}”.",
+    es: "Ningún trabajo coincide con «{q}».",
+  },
   "clock.label.notesOffice": {
     en: "Notes for the office (optional)",
     es: "Notas para la oficina (opcional)",
@@ -142,6 +149,11 @@ export const CATALOG = {
     en: "✓ Today's toolbox talk is signed.",
     es: "✓ La charla de seguridad de hoy está firmada.",
   },
+  // SAFETY / toolbox — the clock-in gate, in plain words.
+  "clock.toolbox.signToClockIn": {
+    en: "Sign today's toolbox talk above to clock in.",
+    es: "Firma la charla de seguridad de hoy arriba para marcar entrada.",
+  },
 
   // ---- Toolbox sign card (all SAFETY — needs bilingual review) ----------
   "toolbox.today": {
@@ -158,6 +170,44 @@ export const CATALOG = {
   "toolbox.sign": { en: "Sign", es: "Firmar" },
   "toolbox.signTalk": { en: "Sign today's talk", es: "Firmar la charla de hoy" },
   "toolbox.signing": { en: "Signing…", es: "Firmando…" },
+
+  // ---- Clock-in block (the one big clock-in spot on every landing) ------
+  "clockblock.title": { en: "Clock in", es: "Marcar entrada" },
+  "clockblock.subtitle": {
+    en: "Pick your job and cost code — your time flows to payroll and job costing.",
+    es: "Elige tu trabajo y código de costo — tu tiempo va a la nómina y al costo del trabajo.",
+  },
+  "clockblock.onClock": { en: "On the clock", es: "En horario" },
+  "clockblock.switch": { en: "Switch", es: "Cambiar" },
+  "clockblock.needsFinish": {
+    en: "Shift needs a finish time",
+    es: "El turno necesita una hora de salida",
+  },
+  "clockblock.needsFinishSub": {
+    en: "We stopped counting — tell us when you finished.",
+    es: "Dejamos de contar — dinos cuándo terminaste.",
+  },
+  "clockblock.moreOptions": {
+    en: "More options — different job, break, sign the talk",
+    es: "Más opciones — otro trabajo, descanso, firmar la charla",
+  },
+  "clockblock.notePlaceholder": {
+    en: "Add a note for the office (optional)",
+    es: "Agrega una nota para la oficina (opcional)",
+  },
+  "clockblock.notNearJob": {
+    en: "You're not near this job — clock in anyway?",
+    es: "No estás cerca de este trabajo — ¿marcar entrada de todos modos?",
+  },
+  // SAFETY / toolbox — needs bilingual review.
+  "clockblock.signFirst": {
+    en: "Sign today's safety talk to clock in.",
+    es: "Firma la charla de seguridad de hoy para marcar entrada.",
+  },
+  "clockblock.signAndClockIn": {
+    en: "Sign safety talk & clock in",
+    es: "Firmar charla de seguridad y marcar entrada",
+  },
 
   // ---- My Work landing --------------------------------------------------
   "mywork.greeting": { en: "Your day", es: "Tu día" },

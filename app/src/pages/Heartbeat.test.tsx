@@ -91,6 +91,16 @@ function mount(tasks: HeartbeatTask[]): HTMLElement {
   qc.setQueryData(["myRealProfile"], { id: "me", role: "supervisor" });
   qc.setQueryData(["jobsNeedingLog"], []);
   qc.setQueryData(["heartbeat"], snapshot(tasks));
+  // The ClockInBlock now rides the top of this landing (standard-tracking-jobs
+  // slice 1). Seed what it reads so it renders its off-the-clock state without
+  // reaching for the server behind the test's back.
+  qc.setQueryData(["myProfile"], { id: "me", role: "supervisor" });
+  qc.setQueryData(["openShift", "me"], null);
+  qc.setQueryData(["costCodes"], []);
+  qc.setQueryData(["recentJobs", "me"], []);
+  qc.setQueryData(["projects"], []);
+  qc.setQueryData(["todayTalk"], null);
+  qc.setQueryData(["toolboxToday", "me"], null);
 
   host = document.createElement("div");
   document.body.appendChild(host);

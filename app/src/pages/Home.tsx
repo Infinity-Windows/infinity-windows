@@ -14,6 +14,7 @@ import { isOwner, ROLE_LABELS, type CrewRole } from "../lib/install/types";
 import { roleRank } from "../lib/nav";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { RoleMaps } from "../components/RoleMaps";
+import { ClockInBlock } from "../components/clock/ClockInBlock";
 import { LogTodayChip } from "../components/dailyLogs/LogTodayChip";
 import { LiveSummonsStrip } from "../components/install/LiveSummonsStrip";
 import { TERMS } from "../lib/glossary";
@@ -21,7 +22,6 @@ import { listMyProgress } from "../lib/learn";
 import { listLedger } from "../lib/points";
 import { supabase } from "../lib/supabase";
 import { getOpenShift, isOnTheClock, listShiftsToApprove } from "../lib/timeclock";
-import { useClock } from "../lib/clockContext";
 import { listInstalledForQc } from "../lib/ops";
 import { getHeartbeat } from "../lib/heartbeat";
 import { listAssignments } from "../lib/schedule/api";
@@ -58,7 +58,6 @@ function termOfDay(): (typeof TERMS)[number] {
 }
 
 export function Home() {
-  const clock = useClock();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const { effectiveRole: role } = useEffectiveRole();
   const boss = isOwner(role);
@@ -261,6 +260,8 @@ export function Home() {
 
       <LiveSummonsStrip />
 
+      <ClockInBlock />
+
       <ToolboxTalkNagBanner profileId={profileId} clockedIn={isOnTheClock(openShift.data)} />
 
       <LogTodayChip />
@@ -435,22 +436,8 @@ export function Home() {
         </>
       )}
 
-      {!openShift.data && (
-        // Opens the same clock sheet as the nav Clock tab, instead of routing
-        // to a page — the old /clock page was a second, weaker clock-in flow
-        // (hard toolbox-talk gate, no offline support) that's now gone.
-        <button type="button" className="home-card" onClick={() => clock.openClock()}>
-          <div className="home-card-top">
-            <span className="next-label">Today — where to go</span>
-            <span className="muted" style={{ fontSize: 11 }}>Clock</span>
-          </div>
-          <strong style={{ fontSize: 15 }}>Clock in for your job</strong>
-          <p className="muted" style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5 }}>
-            Pick a job and cost code — time flows into payroll and costing.
-          </p>
-          <span className="home-card-cta">Tap to clock in ›</span>
-        </button>
-      )}
+      {/* Clock-in moved to the ClockInBlock at the top of the page — one big,
+          identical spot on every landing (standard-tracking-jobs slice 1). */}
 
       {activeOpening && (
         <Link

@@ -1,5 +1,6 @@
 import { BackChip } from "../components/BackChip";
 import { RoleMaps } from "../components/RoleMaps";
+import { ClockInBlock } from "../components/clock/ClockInBlock";
 import { LogTodayChip } from "../components/dailyLogs/LogTodayChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -120,6 +121,8 @@ export function Heartbeat() {
         </div>
         <BackChip fallback="/projects" label="Back" />
       </header>
+
+      <ClockInBlock />
 
       <LogTodayChip />
 
