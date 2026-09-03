@@ -657,7 +657,7 @@ test("3D wall slide handle drags the whole wall perpendicular", async ({
   expect(Math.abs((after as number) - 600)).toBeGreaterThan(5);
 });
 
-test("polish: first tap selects (no hover), highlight appears, legacy windows heal", async ({
+test("polish: first tap selects (no hover) READ-ONLY; legacy windows heal on edit, not on tap", async ({
   page,
 }) => {
   await useSupabaseFixtures(page, { role: "supervisor" });
@@ -665,9 +665,8 @@ test("polish: first tap selects (no hover), highlight appears, legacy windows he
   await openStudio(page);
 
   // A LEGACY window: attached but saved without any unitConfig (the
-  // pre-2026-08-13 format) — its card's Apply/pane tools used to be dead.
-  // Real legacy saves DO carry their scale (the raw model is ~1 unit tall),
-  // so the fixture passes one too.
+  // pre-2026-08-13 format). Real legacy saves DO carry their scale (the raw
+  // model is ~1 unit tall), so the fixture passes one too.
   await page.evaluate(() => {
     const bp = (window as any).__studio;
     bp.model.scene.addItem(
@@ -686,9 +685,16 @@ test("polish: first tap selects (no hover), highlight appears, legacy windows he
     return items.length === 1 && Boolean(items[0].currentWallEdge);
   });
 
+  // Snapshot the item's placement BEFORE the tap — selection must not move
+  // or re-face it (owner, 2026-09-02: tapping an Add mirrored its label).
+  const before = await page.evaluate(() => {
+    const it = (window as any).__studio.model.scene.getItems()[0];
+    return { x: it.position.x, y: it.position.y, z: it.position.z, ry: it.rotation.y };
+  });
+
   // Tap WITHOUT any prior mousemove: synthetic mousedown+mouseup straight
   // at the projected centre. The vendor's hover-dependent path can't fire
-  // here — only the new first-tap raycast can.
+  // here — only the first-tap raycast can.
   await page.evaluate(() => {
     const bp = (window as any).__studio;
     const cam = bp.three.camera;
@@ -705,8 +711,9 @@ test("polish: first tap selects (no hover), highlight appears, legacy windows he
 
   // Selection landed: the palette's unit card is open…
   await expect(page.getByText("Selected unit")).toBeVisible();
-  // …the bright outline is in the scene…
-  const state = await page.evaluate(() => {
+  // …the bright outline is in the scene, and NOTHING about the item changed:
+  // no config was written back (no rebuild) and its placement is byte-identical.
+  const afterTap = await page.evaluate(() => {
     const bp = (window as any).__studio;
     const scene = bp.model.scene.getScene();
     const item = bp.model.scene.getItems()[0];
@@ -714,17 +721,35 @@ test("polish: first tap selects (no hover), highlight appears, legacy windows he
       highlight: scene.children.some(
         (c: any) => c.name === "studio-select-highlight",
       ),
-      // …and the legacy window healed: a config synthesized from its size,
-      // parametric frame+glass geometry (2 material groups).
+      cfg: item.metadata.unitConfig ?? null,
+      x: item.position.x, y: item.position.y, z: item.position.z, ry: item.rotation.y,
+    };
+  });
+  expect(afterTap.highlight).toBe(true);
+  expect(afterTap.cfg).toBeNull(); // read-only: the heal does NOT run on select
+  expect({ x: afterTap.x, y: afterTap.y, z: afterTap.z, ry: afterTap.ry }).toEqual(before);
+  // The pane picker is not live yet — there is no config to pick panes of.
+  await expect(page.getByText(/Panes — tap one/)).toHaveCount(0);
+
+  // Now the owner actually EDITS the card (Apply): the legacy window heals
+  // here — a config synthesized from its size, parametric frame+glass
+  // geometry (2 material groups) — because an edit is a change they asked for.
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await page.waitForFunction(() => {
+    const it = (window as any).__studio.model.scene.getItems()[0];
+    return Boolean(it.metadata.unitConfig);
+  });
+  const afterEdit = await page.evaluate(() => {
+    const item = (window as any).__studio.model.scene.getItems()[0];
+    return {
       cfg: item.metadata.unitConfig ?? null,
       groups: item.geometry.groups?.length ?? 0,
     };
   });
-  expect(state.highlight).toBe(true);
-  expect(state.cfg).not.toBeNull();
-  expect((state.cfg as { panels: unknown[] }).panels).toHaveLength(1);
-  expect(state.groups).toBe(2);
-  // The pane picker renders for it — the card is fully live.
+  expect(afterEdit.cfg).not.toBeNull();
+  expect((afterEdit.cfg as { panels: unknown[] }).panels).toHaveLength(1);
+  expect(afterEdit.groups).toBe(2);
+  // The pane picker renders now — the card is fully live.
   await expect(page.getByText(/Panes — tap one/)).toBeVisible();
 });
 

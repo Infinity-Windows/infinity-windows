@@ -137,6 +137,7 @@ import {
   type UnitConfig,
   type UnitPanel,
 } from "../../lib/modelstudio/units";
+import { editableUnitConfig } from "../../lib/modelstudio/selectionConfig";
 import { fmtInchesFromMm } from "../../lib/modelstudio/dims";
 import { syncProjectSignatures } from "../../lib/estimate/signatureSync";
 import { estimateForUnitConfig, useCohortEvidence } from "../../lib/estimate/liveEstimate";
@@ -2084,10 +2085,16 @@ export function ModelStudio({ source }: { source: StudioSource }) {
 
   /** Open a unit for editing — the ONE path every selection route uses
    * (vendor hover-click, our first-tap raycast, and future callers).
-   * Windows saved before the metadata fix (2026-08-13) lost their panel
-   * config permanently; those heal here: a config is rebuilt from the
-   * unit's measured size so Apply, the pane picker and the handles all
-   * work on first tap. */
+   * SELECTION IS READ-ONLY (owner, 2026-09-02, Mad Moose live pilot:
+   * tapping one of the three Adds on the office glass wall mirrored its
+   * label "Add-1" -> "I-bbA" and re-split its panels). It highlights the
+   * unit, shows its handles and its measurements — and changes NOTHING
+   * about the item until the owner edits a field. Windows saved before the
+   * metadata fix (2026-08-13) lost their panel config; the editor DERIVES a
+   * config from their measured size (editableUnitConfig) so Apply, the pane
+   * picker and the handles work, but that heal is applied to the item only
+   * on the first real edit (applyUnitEdits), never here on select — a
+   * rebuild-on-select is what re-seated (mirror) and re-split them. */
   // The shelf (ticket 22, slice 2): Studio's first free-standing object.
   // Selection is its OWN state — a shelf landing in the window palette would
   // get "rebuilt from its size" into a window, which is the one thing the
@@ -2133,25 +2140,17 @@ export function ModelStudio({ source }: { source: StudioSource }) {
       selectShelf(it);
       return;
     }
-    let cfg = it.metadata?.unitConfig as UnitConfig | undefined;
-    if (!cfg?.panels?.length && it.metadata) {
-      cfg = {
-        kind: "window",
-        heightMm: Math.max(200, Math.round(it.getHeight() * 10)),
-        panels: [
-          { widthMm: Math.max(200, Math.round(it.getWidth() * 10)), mechanism: "fixed" },
-        ],
-      };
-      applyUnitGeometry(it, cfg);
-      it.placeInRoom();
-      growWallToFit(it);
-      pushToast("Rebuilt this window from its size — panels are editable now.");
-    }
+    // Read-only: derive the editor's config from the item, never write it
+    // back. A real config is returned by identity; a legacy generic gets a
+    // single fixed panel sized to its footprint — for the inputs only.
+    const cfg = editableUnitConfig({
+      unitConfig: it.metadata?.unitConfig as UnitConfig | undefined,
+      getHeight: () => it.getHeight(),
+      getWidth: () => it.getWidth(),
+    });
     setSelUnit(it);
-    const h = cfg ? cfg.heightMm / 10 : it.getHeight();
-    const w = cfg
-      ? cfg.panels.reduce((t, pp) => t + pp.widthMm, 0) / 10
-      : it.getWidth();
+    const h = cfg.heightMm / 10;
+    const w = cfg.panels.reduce((t, pp) => t + pp.widthMm, 0) / 10;
     setUnitW(fmtFtIn(w));
     setUnitH(fmtFtIn(h));
     setUnitSill(fmtFtIn(Math.max(0, it.position.y - h / 2)));
@@ -2776,11 +2775,15 @@ export function ModelStudio({ source }: { source: StudioSource }) {
   const applyUnitEdits = () => {
     const item = selUnit;
     if (!item) return;
-    const cfg = (item.metadata?.unitConfig ?? null) as UnitConfig | null;
-    if (!cfg) {
-      pushToast("This window came from the old seed — re-insert it from the catalog to edit panels.");
-      return;
-    }
+    // A legacy generic that lost its panels heals HERE, on the owner's first
+    // real edit — not on select (that re-seated and re-split it silently).
+    // editableUnitConfig gives it a single fixed panel from its measured
+    // size; the edited W/H below then apply as they do for any unit.
+    const cfg = editableUnitConfig({
+      unitConfig: item.metadata?.unitConfig as UnitConfig | undefined,
+      getHeight: () => item.getHeight(),
+      getWidth: () => item.getWidth(),
+    });
     pushUndo();
     const wCm = unitW ? parseFtIn(unitW) : null;
     const hCm = unitH ? parseFtIn(unitH) : null;
@@ -2811,8 +2814,14 @@ export function ModelStudio({ source }: { source: StudioSource }) {
 
   const setPanelCountOnUnit = (n: number) => {
     const item = selUnit;
-    const cfg = (item?.metadata?.unitConfig ?? null) as UnitConfig | null;
-    if (!item || !cfg) return;
+    if (!item) return;
+    // Same on-edit heal as applyUnitEdits: a legacy generic gets a derived
+    // single-panel base here rather than being silently rebuilt on select.
+    const cfg = editableUnitConfig({
+      unitConfig: item.metadata?.unitConfig as UnitConfig | undefined,
+      getHeight: () => item.getHeight(),
+      getWidth: () => item.getWidth(),
+    });
     pushUndo();
     const total = cfg.panels.reduce((t, pp) => t + pp.widthMm, 0);
     const next: UnitConfig = {
