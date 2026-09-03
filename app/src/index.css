@@ -5868,6 +5868,54 @@ button.clock-out {
 }
 .clock-costcode-desc { font-size: 12px; color: var(--muted); white-space: normal; }
 
+/* Per-job cost-code checklist (JobCostCodesPanel, standard-tracking-jobs).
+   A bare checkbox inherits the global full-width 52px `input` box, so every
+   box landed at a different width and the codes zig-zagged down the page.
+   Reset the box and lay each row out as [box] [code] [label] so the checkboxes
+   line up in one left column and the codes read as a table.
+   (tracking-jobs polish, 2026-09-03) */
+.jobcost-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.jobcost-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--card-raised);
+  padding: 10px 14px;
+  min-height: 48px;
+  cursor: pointer;
+  color: var(--text);
+}
+.jobcost-row:hover { border-color: var(--accent-line); }
+.jobcost-row input[type="checkbox"] {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+.jobcost-code {
+  flex: none;
+  min-width: 3.5ch;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 13.5px;
+}
+.jobcost-label {
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--text);
+}
+
 /* Optional worker note at clock-in. */
 .clock-note-input {
   width: 100%;

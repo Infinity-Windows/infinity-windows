@@ -84,25 +84,15 @@ export function JobCostCodesPanel({ projectId }: { projectId: string }) {
               ? t("jobcost.allShown")
               : t("jobcost.subsetCount", { n: chosen.size, total: activeCodes.length })}
           </p>
-          <ul className="unit-list work-list">
+          <ul className="jobcost-list">
             {activeCodes.map((c) => {
               const on = chosen.has(c.id);
               return (
-                <li key={c.id} className="find-row">
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      cursor: "pointer",
-                      flex: 1,
-                      minWidth: 0,
-                    }}
-                  >
+                <li key={c.id}>
+                  <label className="jobcost-row">
                     <input type="checkbox" checked={on} onChange={() => toggle(c.id)} />
-                    <span style={{ minWidth: 0 }}>
-                      <span style={{ fontFamily: "monospace" }}>{c.code}</span> {c.label}
-                    </span>
+                    <span className="jobcost-code">{c.code}</span>
+                    <span className="jobcost-label">{c.label}</span>
                   </label>
                 </li>
               );
