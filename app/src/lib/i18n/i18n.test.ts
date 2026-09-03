@@ -13,6 +13,7 @@ import {
   type Catalog,
 } from "./translate";
 import { CATALOG, SAFETY_KEYS } from "./catalog";
+import { buildDeleteConfirmMessage } from "../projectTrash";
 
 describe("translate()", () => {
   const cat: Catalog = {
@@ -134,5 +135,77 @@ describe("the seeded crew-flow catalog", () => {
     expect(translate(CATALOG, "es", "clock.action.startOn", { code: "1A" })).toBe(
       "Marca entrada en 1A",
     );
+  });
+});
+
+// The slice-7 promise: with the whole crew flow now going through t(), NOTHING
+// on it falls back to English when the language is Spanish, and the strings the
+// last cleanup wrapped resolve to real Spanish — not the key, not the English.
+describe("the crew flow reads fully in Spanish (slice 7)", () => {
+  const keys = Object.keys(CATALOG) as (keyof typeof CATALOG)[];
+
+  it("returns the Spanish string for EVERY key under es — never the English fallback", () => {
+    for (const key of keys) {
+      // translate() falls back to en only when es is absent; every entry ships
+      // es, so this proves no crew-flow key silently shows English to a Spanish
+      // reader.
+      expect(translate(CATALOG, "es", key), `es for ${key}`).toBe(CATALOG[key].es);
+    }
+  });
+
+  it("resolves the newly-wrapped keys to real Spanish, distinct from English", () => {
+    const samples: Array<[keyof typeof CATALOG, string, string]> = [
+      ["jobcost.loading", "Loading…", "Cargando…"],
+      ["buildout.thisJob", "this job", "este trabajo"],
+      ["feed.trash", "Trash", "Papelera"],
+      ["feed.photoTrashed",
+        "Photo moved to trash — 30 days to undo.",
+        "Foto movida a la papelera — 30 días para deshacer."],
+      ["feed.addPhoto", "Add photo", "Agregar foto"],
+      ["clock.toast.clockedIn", "Clocked in", "Entrada marcada"],
+      ["clock.a11y.timeClock", "Time clock", "Reloj de tiempo"],
+      ["summon.a11y.live", "Live summons", "Llamadas activas"],
+      ["mywork.jobToday", "Your job today", "Tu trabajo de hoy"],
+      ["mywork.loadError", "Couldn't load your work", "No se pudo cargar tu trabajo"],
+      ["deljob.delete", "Delete…", "Eliminar…"],
+    ];
+    for (const [key, en, es] of samples) {
+      expect(translate(CATALOG, "en", key)).toBe(en);
+      expect(translate(CATALOG, "es", key)).toBe(es);
+      expect(translate(CATALOG, "es", key)).not.toBe(en);
+    }
+  });
+
+  it("interpolates the new plural / var keys in Spanish", () => {
+    expect(translate(CATALOG, "es", "mywork.newUnits.one", { count: 1 })).toBe(
+      "1 unidad nueva asignada a ti — toca para descartar",
+    );
+    expect(translate(CATALOG, "es", "mywork.newUnits.many", { count: 3 })).toBe(
+      "3 unidades nuevas asignadas a ti — toca para descartar",
+    );
+    expect(translate(CATALOG, "es", "mywork.unsubmitTitle", { code: "1-2" })).toBe(
+      "¿Deshacer el envío de 1-2?",
+    );
+  });
+
+  it("builds the delete-job confirm fully in Spanish — no English words leak", () => {
+    // The dialog assembles its count sentence from the catalog; the regular +s
+    // plural covers abertura/paquete/foto, so a Spanish reader gets a clean,
+    // fully-Spanish confirmation (the exact wiring Projects.tsx uses).
+    const msg = buildDeleteConfirmMessage(
+      "PECAN14",
+      { openings: 2, packages: 1, photos: 0 },
+      {
+        opening: translate(CATALOG, "es", "deljob.word.opening"),
+        package: translate(CATALOG, "es", "deljob.word.package"),
+        photo: translate(CATALOG, "es", "deljob.word.photo"),
+        template: translate(CATALOG, "es", "deljob.confirmTemplate"),
+      },
+    );
+    expect(msg).toContain("¿Eliminar PECAN14?");
+    expect(msg).toContain("2 aberturas");
+    expect(msg).toContain("1 paquete"); // singular, no trailing s
+    expect(msg).toContain("0 fotos");
+    expect(msg).not.toMatch(/opening|package|photo|Delete/);
   });
 });
