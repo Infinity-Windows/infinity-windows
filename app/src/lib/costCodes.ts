@@ -128,7 +128,7 @@ export async function moveCostCode(
 // ---------------------------------------------------------------------------
 // Per-job cost codes (standard-tracking-jobs slice 3): a job's OPTIONAL pickable
 // subset of the library. project_cost_codes + the foreman+ RPCs live in
-// migration 20260971000000. Writes go only through the RPCs (the table's direct
+// migration 20260973000000. Writes go only through the RPCs (the table's direct
 // write grants are revoked); reads degrade to empty on a database that hasn't
 // applied the migration, the house rule for a feature that ships ahead of it.
 // ---------------------------------------------------------------------------

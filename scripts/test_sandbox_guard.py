@@ -383,7 +383,7 @@ class TestTheGateCanActuallyFail(unittest.TestCase):
                 "create table job_notes (id uuid primary key, project_id uuid);\n",
                 encoding="utf-8",
             )
-            (directory / "20260971000000_arm_it.sql").write_text(
+            (directory / "20260973000000_arm_it.sql").write_text(
                 "select public.attach_sandbox_guards();\n", encoding="utf-8",
             )
             self.assertEqual(
@@ -467,12 +467,12 @@ class TestTheGateCanActuallyFail(unittest.TestCase):
             (directory / "20260970000000_arm_it.sql").write_text(
                 "select public.attach_sandbox_guards();\n", encoding="utf-8",
             )
-            (directory / "20260971000000_new_feature.sql").write_text(
+            (directory / "20260973000000_new_feature.sql").write_text(
                 "create table job_notes (id uuid primary key, project_id uuid);\n",
                 encoding="utf-8",
             )
             self.assertEqual(
-                [("job_notes", "project_id", "20260971000000_new_feature.sql")],
+                [("job_notes", "project_id", "20260973000000_new_feature.sql")],
                 uncovered_new_tables(directory),
             )
 

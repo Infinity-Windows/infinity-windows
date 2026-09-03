@@ -17,7 +17,7 @@ export interface CostCode {
   sort_order?: number;
   /**
    * The one general / catch-all code the clock-in picker always folds in as a
-   * fallback (standard-tracking-jobs slice 3, 20260971000000). Optional so a
+   * fallback (standard-tracking-jobs slice 3, 20260973000000). Optional so a
    * database that predates the column reads as "not general".
    */
   is_general?: boolean;
