@@ -90,19 +90,29 @@ REARM_MIGRATION = "20260967000000_sandbox_guard_rearm.sql"
 #: What 20260967000000's sweep actually armed: every table that was
 #: project-scoped in the repo on the day it was written (2026-09-02).
 #:
-#: A FROZEN HISTORICAL FACT, not a list to maintain. Nothing may be added to
-#: it — a table that becomes project-scoped after that sweep has to arm the
-#: fence from its own migration, and this list is how the gate tells the two
-#: apart. A version comparison cannot: `supabase db push` applies whatever is
-#: pending, so a branch numbered below 20260967000000 and merged after it runs
-#: on a database where the sweep is already behind it. Its table would sort as
-#: "covered" and carry no trigger.
+#: A FROZEN HISTORICAL FACT, not a list to maintain. The only name that may be
+#: added is a table the sweep GENUINELY armed — project-scoped, numbered below
+#: this sweep, and landed before the sweep first deployed, so it exists when the
+#: sweep walks the catalogue. A table that becomes project-scoped AFTER that
+#: sweep has to arm the fence from its own migration, and this list is how the
+#: gate tells the two apart. A version comparison alone cannot: `supabase db
+#: push` applies whatever is pending, so a branch numbered below 20260967000000
+#: and merged after the sweep has already deployed runs on a database where the
+#: sweep is behind it. Its table would sort as "covered" and carry no trigger.
+#:
+#: install_event_time_repairs is here for exactly that reason and no other. #498
+#: (20260965000000_finish_unit_minutes_repair.sql) added it the same day, one
+#: version below this sweep and merged first; the sweep had not deployed yet, so
+#: attach_sandbox_guards() arms it when 20260967000000 runs. It is part of the
+#: same-day snapshot, not a table that outran the sweep — do not read it as
+#: licence to add a table whose migration lands above the sweep or after it.
 #:
 #: A name here that no longer exists costs nothing; the gate only ever looks up
 #: tables the replay still finds.
 REARM_COVERED: frozenset[str] = frozenset({
     "attachments", "change_orders", "daily_logs", "flash_run_assignments",
-    "incidents", "install_events", "issues", "job_costs", "job_notes",
+    "incidents", "install_event_time_repairs", "install_events", "issues",
+    "job_costs", "job_notes",
     "monday_jobs", "movements", "opening_notes", "opening_phases",
     "package_events", "packages", "partner_job_grants",
     "project_mark_elevation_views", "project_mark_specs", "project_marks",
