@@ -17,6 +17,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play } from "lucide-react";
 import { getMyProfile } from "../../lib/install/api";
 import { listProjects } from "../../lib/api";
+import { getTodayTalk } from "../../lib/ops";
+import { myTodayCompletion } from "../../lib/toolbox";
 import { captureGeoSoft } from "../../lib/geo";
 import { toastSuccess } from "../../lib/toast";
 import { openClockGlobally } from "../../lib/clockContext";
@@ -51,6 +53,18 @@ export function ClockInBlock() {
     enabled: Boolean(profileId),
   });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  // Today's toolbox talk and whether this person signed it — only relevant off
+  // the clock (the first clock-in of the day is the gate).
+  const todayTalk = useQuery({
+    queryKey: ["todayTalk"],
+    queryFn: getTodayTalk,
+    enabled: !openShift.data,
+  });
+  const toolboxDone = useQuery({
+    queryKey: ["toolboxToday", profileId],
+    queryFn: () => myTodayCompletion(profileId!),
+    enabled: Boolean(profileId) && !openShift.data,
+  });
 
   const [pickProjectId, setPickProjectId] = useState<string>("");
   const [pickCostCodeId, setPickCostCodeId] = useState<string>("");
@@ -182,6 +196,17 @@ export function ClockInBlock() {
   // ---- OFF THE CLOCK: the big, can't-miss block. ----
   const busy = doStart.isPending;
   const canStart = Boolean(pickProjectId && pickCostCodeId);
+  // The server refuses the first clock-in of the day without today's signed
+  // toolbox talk. Hold the button only when we POSITIVELY know a talk exists
+  // today and isn't signed; if the talk itself couldn't load, fail OPEN and let
+  // the server (or the sheet) sort it out. Signing lives in the clock sheet's
+  // ToolboxSignCard, so a held button routes there rather than embedding a
+  // second copy of the sign-off here.
+  const toolboxKnownUnsigned =
+    todayTalk.isSuccess &&
+    todayTalk.data !== null &&
+    toolboxDone.isSuccess &&
+    !toolboxDone.data;
 
   return (
     <section className="clockin-block" aria-label={t("clockblock.title")}>
@@ -299,20 +324,35 @@ export function ClockInBlock() {
         onChange={(e) => setNote(e.target.value)}
       />
 
-      <button
-        type="button"
-        className="clock-btn primary big"
-        disabled={busy || !canStart}
-        onClick={() => doStart.mutate()}
-      >
-        {busy ? (
-          t("clock.action.clockingIn")
-        ) : (
-          <>
-            <Play size={18} aria-hidden /> {t("clock.action.startClock")}
-          </>
-        )}
-      </button>
+      {toolboxKnownUnsigned ? (
+        <>
+          {/* SAFETY / toolbox — needs bilingual review. */}
+          <p className="clockin-note">{t("clockblock.signFirst")}</p>
+          <button
+            type="button"
+            className="clock-btn primary big"
+            disabled={!canStart}
+            onClick={openClockGlobally}
+          >
+            <Play size={18} aria-hidden /> {t("clockblock.signAndClockIn")}
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          className="clock-btn primary big"
+          disabled={busy || !canStart}
+          onClick={() => doStart.mutate()}
+        >
+          {busy ? (
+            t("clock.action.clockingIn")
+          ) : (
+            <>
+              <Play size={18} aria-hidden /> {t("clock.action.startClock")}
+            </>
+          )}
+        </button>
+      )}
       {/* Everything the sheet does and this block doesn't (pick a different job
           via search, sign the talk, go offline) is one tap away. */}
       <button type="button" className="clock-list-toggle" onClick={openClockGlobally}>

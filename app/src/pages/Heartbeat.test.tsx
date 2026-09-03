@@ -99,6 +99,8 @@ function mount(tasks: HeartbeatTask[]): HTMLElement {
   qc.setQueryData(["costCodes"], []);
   qc.setQueryData(["recentJobs", "me"], []);
   qc.setQueryData(["projects"], []);
+  qc.setQueryData(["todayTalk"], null);
+  qc.setQueryData(["toolboxToday", "me"], null);
 
   host = document.createElement("div");
   document.body.appendChild(host);

@@ -28,6 +28,9 @@ export const SAFETY_KEYS = [
   "clock.injury.emergency",
   "clock.injury.placeholder",
   "clock.toolbox.signed",
+  "clock.toolbox.signToClockIn",
+  "clockblock.signFirst",
+  "clockblock.signAndClockIn",
   "toolbox.today",
   "toolbox.read",
   "toolbox.pledge",
@@ -146,6 +149,11 @@ export const CATALOG = {
     en: "✓ Today's toolbox talk is signed.",
     es: "✓ La charla de seguridad de hoy está firmada.",
   },
+  // SAFETY / toolbox — the clock-in gate, in plain words.
+  "clock.toolbox.signToClockIn": {
+    en: "Sign today's toolbox talk above to clock in.",
+    es: "Firma la charla de seguridad de hoy arriba para marcar entrada.",
+  },
 
   // ---- Toolbox sign card (all SAFETY — needs bilingual review) ----------
   "toolbox.today": {
@@ -186,6 +194,15 @@ export const CATALOG = {
   "clockblock.notePlaceholder": {
     en: "Add a note for the office (optional)",
     es: "Agrega una nota para la oficina (opcional)",
+  },
+  // SAFETY / toolbox — needs bilingual review.
+  "clockblock.signFirst": {
+    en: "Sign today's safety talk to clock in.",
+    es: "Firma la charla de seguridad de hoy para marcar entrada.",
+  },
+  "clockblock.signAndClockIn": {
+    en: "Sign safety talk & clock in",
+    es: "Firmar charla de seguridad y marcar entrada",
   },
 
   // ---- My Work landing --------------------------------------------------

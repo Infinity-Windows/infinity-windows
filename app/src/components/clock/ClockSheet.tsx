@@ -547,13 +547,25 @@ export function ClockSheet({
       : 0;
   const workSec = shift ? elapsedWorkSeconds(shift, now) : 0;
 
-  // Clock-in is no longer gated on today's toolbox talk — installers can always
-  // start their shift. A non-blocking nag banner (below) nudges them to sign it.
-  // The one exception: starting a WINDOW in the same tap does require the talk
-  // (the server refuses without it), so a picked window + unsigned talk holds
-  // the button with a hint instead of failing after the fact.
+  // The server REFUSES the first clock-in of the day without today's signed
+  // toolbox talk (migration 20260813000000). The old copy here claimed clock-in
+  // was ungated — a mismatch that let a tap sail through and then fail with a
+  // raw server error. Reflect the real gate: hold the button when we POSITIVELY
+  // know a talk exists today and isn't signed. Fail OPEN when the talk itself
+  // couldn't load — a network blip must never strand a crew who may already be
+  // signed, and the server stays the backstop either way. Once-per-day, all
+  // jobs: a switch (already on the clock, so already signed today) is never
+  // re-gated, which is why this only bites in "pick" mode.
+  const toolboxKnownUnsigned =
+    todayTalk.isSuccess &&
+    todayTalk.data !== null &&
+    toolboxDone.isSuccess &&
+    !toolboxDone.data;
+  const clockInBlockedByToolbox = mode === "pick" && toolboxKnownUnsigned;
   const canStart =
-    Boolean(pickProjectId && pickCostCodeId) && !(pickedOpening && !toolboxOk);
+    Boolean(pickProjectId && pickCostCodeId) &&
+    !(pickedOpening && !toolboxOk) &&
+    !clockInBlockedByToolbox;
 
   const busy =
     doStart.isPending ||
@@ -1137,6 +1149,13 @@ export function ClockSheet({
                   <p className="error" style={{ margin: "4px 0 0" }}>
                     Sign today's toolbox talk above to start on{" "}
                     {pickedOpening.opening_code} — or unselect it to just clock in.
+                  </p>
+                )}
+                {/* SAFETY / toolbox — the clock-in gate, plainly. Only when no
+                    window is picked; the picked-window hint above covers that. */}
+                {clockInBlockedByToolbox && !pickedOpening && (
+                  <p className="error" style={{ margin: "4px 0 0" }}>
+                    {t("clock.toolbox.signToClockIn")}
                   </p>
                 )}
                 <button
