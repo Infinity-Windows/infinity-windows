@@ -1214,6 +1214,7 @@ export function OpeningSheet() {
     unitHeightIn: o.window_types?.height_in,
     roWidthIn: o.ro_width_in,
     roHeightIn: o.ro_height_in,
+    roQuickOk: Boolean(o.ro_quick_ok),
   });
 
   const ready = readyToInstall({
