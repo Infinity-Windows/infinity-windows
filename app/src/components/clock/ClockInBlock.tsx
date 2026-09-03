@@ -16,7 +16,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play } from "lucide-react";
 import { getMyProfile } from "../../lib/install/api";
-import { listProjects } from "../../lib/api";
+import { isForemanPlus } from "../../lib/install/types";
+import { createTrackingJob, listProjects } from "../../lib/api";
+import { matchingTrackingJobs } from "../../lib/quickJobs";
+import { requestJobForClockIn } from "../../lib/needJob";
 import { getTodayTalk } from "../../lib/ops";
 import { myTodayCompletion } from "../../lib/toolbox";
 import { captureGeoSoft } from "../../lib/geo";
@@ -84,6 +87,17 @@ export function ClockInBlock() {
   const [pickedMode, setPickedMode] = useState<JobMode>("data");
   const [search, setSearch] = useState("");
   const [showFullList, setShowFullList] = useState(false);
+  // Quick tracking job (slice 5, foreman+): a job with no board entry — a
+  // callback, a warranty visit — made in a tap so the crew can clock in now.
+  const [showQuick, setShowQuick] = useState(false);
+  const [quickName, setQuickName] = useState("");
+  const [quickAddress, setQuickAddress] = useState("");
+  // Installer "need a job" request (slice 5): an installer can't create one, so
+  // they ask a lead to. Tracks the little form and whether the ask reached anyone.
+  const [showNeedJob, setShowNeedJob] = useState(false);
+  const [needJobNote, setNeedJobNote] = useState("");
+  const [needJobAddress, setNeedJobAddress] = useState("");
+  const [needJobResult, setNeedJobResult] = useState<null | "sent" | "noOne">(null);
   // Optional free-text the worker adds for the office. It rides the existing
   // time_shifts.note column — clockIn has always carried it; the UI just never
   // offered a box for it until now.
@@ -212,6 +226,45 @@ export function ClockInBlock() {
       `${p.job_code} ${p.name} ${p.address ?? ""}`.toLowerCase().includes(q),
     );
   }, [projects.data, search]);
+
+  // Foreman+ may make a quick tracking job; an installer instead asks a lead
+  // for one (slice 5). Creation stays foreman+, matching every other create-job
+  // affordance in the app (Projects.tsx canAdd).
+  const canCreateJob = isForemanPlus(me.data?.role);
+
+  // De-dupe: open tracking jobs matching what's being typed, so a second person
+  // JOINS the live callback instead of forking a duplicate.
+  const quickMatches = useMemo(
+    () => matchingTrackingJobs(projects.data ?? [], quickName, quickAddress),
+    [projects.data, quickName, quickAddress],
+  );
+
+  const quickCreate = useMutation({
+    mutationFn: () =>
+      createTrackingJob({ name: quickName, address: quickAddress }),
+    onSuccess: (project) => {
+      // Land on the new job with tracking pre-picked; the cost-code list
+      // refetches for it and the worker taps a code and clocks in.
+      setPickProjectId(project.id);
+      setPickedMode("tracking");
+      setShowQuick(false);
+      setQuickName("");
+      setQuickAddress("");
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+      toastSuccess(t("clockblock.quickJob.created"));
+    },
+  });
+
+  const needJob = useMutation({
+    mutationFn: () =>
+      requestJobForClockIn({
+        note: needJobNote,
+        address: needJobAddress,
+        callerId: profileId,
+        callerName: me.data?.display_name ?? null,
+      }),
+    onSuccess: (reached) => setNeedJobResult(reached ? "sent" : "noOne"),
+  });
 
   // Not signed in yet (or the profile is still resolving): render nothing rather
   // than a half-built card. In the running app the provider has this cached, so
@@ -362,6 +415,117 @@ export function ClockInBlock() {
             )}
           </div>
         </div>
+      )}
+
+      {/* No job for this one? A foreman makes a quick tracking job on the spot;
+          an installer asks a lead to (slice 5). Creation stays foreman+. */}
+      {canCreateJob ? (
+        <>
+          <button
+            type="button"
+            className="clock-list-toggle"
+            onClick={() => setShowQuick((v) => !v)}
+          >
+            {t("clockblock.quickJob.start")}
+          </button>
+          {showQuick && (
+            <div className="clock-picker">
+              <p className="muted" style={{ margin: 0 }}>{t("clockblock.quickJob.help")}</p>
+              <input
+                className="clock-search"
+                placeholder={t("clockblock.quickJob.namePlaceholder")}
+                value={quickName}
+                onChange={(e) => setQuickName(e.target.value)}
+              />
+              <input
+                className="clock-search"
+                placeholder={t("clockblock.quickJob.addressPlaceholder")}
+                value={quickAddress}
+                onChange={(e) => setQuickAddress(e.target.value)}
+              />
+              {/* De-dupe: join a live match instead of forking a duplicate. */}
+              {quickMatches.length > 0 && (
+                <div className="clock-chip-row-wrap">
+                  <p className="clock-row-label">{t("clockblock.quickJob.matchTitle")}</p>
+                  <div className="clock-chip-row">
+                    {quickMatches.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        className={pickProjectId === m.id ? "clock-chip current" : "clock-chip"}
+                        onClick={() => {
+                          setPickProjectId(m.id);
+                          setShowQuick(false);
+                        }}
+                      >
+                        {m.job_code || m.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <button
+                type="button"
+                className="clock-btn primary"
+                disabled={
+                  quickCreate.isPending ||
+                  (!quickName.trim() && !quickAddress.trim())
+                }
+                onClick={() => quickCreate.mutate()}
+              >
+                {quickCreate.isPending
+                  ? t("clockblock.quickJob.creating")
+                  : t("clockblock.quickJob.create")}
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            className="clock-list-toggle"
+            onClick={() => setShowNeedJob((v) => !v)}
+          >
+            {t("clockblock.needJob.ask")}
+          </button>
+          {showNeedJob && (
+            <div className="clock-picker">
+              <p className="muted" style={{ margin: 0 }}>{t("clockblock.needJob.help")}</p>
+              <input
+                className="clock-search"
+                placeholder={t("clockblock.needJob.notePlaceholder")}
+                value={needJobNote}
+                onChange={(e) => setNeedJobNote(e.target.value)}
+              />
+              <input
+                className="clock-search"
+                placeholder={t("clockblock.quickJob.addressPlaceholder")}
+                value={needJobAddress}
+                onChange={(e) => setNeedJobAddress(e.target.value)}
+              />
+              {needJobResult === "sent" && (
+                <p className="clockin-note">{t("clockblock.needJob.sent")}</p>
+              )}
+              {needJobResult === "noOne" && (
+                <p className="clockin-note">{t("clockblock.needJob.noOne")}</p>
+              )}
+              <button
+                type="button"
+                className="clock-btn primary"
+                disabled={needJob.isPending}
+                onClick={() => {
+                  setNeedJobResult(null);
+                  needJob.mutate();
+                }}
+              >
+                {needJob.isPending
+                  ? t("clockblock.needJob.sending")
+                  : t("clockblock.needJob.send")}
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Cost code — REQUIRED; Start stays disabled until one is picked. */}

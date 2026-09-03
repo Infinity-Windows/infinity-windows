@@ -4,8 +4,9 @@
 // page stays fully readable), and can be reopened by a supervisor if the
 // site calls back.
 //
-// Wave D adds the Deleted section (owner-only): a job trashed from Active
-// projects lives here for 30 days with an Undo, then it's gone for good
+// Wave D adds the Deleted section (supervisor+ since standard-tracking-jobs
+// slice 5 — was owner-only): a job trashed from Active projects lives here for
+// 30 days with an Undo, then it's gone for good
 // (purge_expired_projects, nightly). Days-left is computed against the
 // SERVER's clock (server_now), never the phone's own — a wrong device clock
 // must never make the countdown lie about how much time is actually left.
@@ -14,10 +15,11 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { BackChip } from "../components/BackChip";
 import { EmptyState } from "../components/ui/States";
-import { listProjectsAnyStatus, listTrashedProjects, restoreProject, setProjectStatus, trashProject } from "../lib/api";
+import { listProjectsAnyStatus, listTrashedProjects, restoreProject, setProjectStatus } from "../lib/api";
+import { deleteJob } from "../lib/jobDeletion";
 import { fetchServerNowMs } from "../lib/clockSkew";
 import { formatApiError } from "../lib/errors";
-import { isOwner, isSupervisorPlus } from "../lib/install/types";
+import { isSupervisorPlus } from "../lib/install/types";
 import { trashStatusLine } from "../lib/projectTrash";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 
@@ -29,8 +31,9 @@ const STATUS_WORDS: Record<string, string> = {
 export function JobHistory() {
   const qc = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
+  // Supervisor+ reopens finished jobs, deletes jobs, and works the trash
+  // (slice 5 widened delete/restore from owner-only to supervisor+).
   const boss = isSupervisorPlus(effectiveRole);
-  const owner = isOwner(effectiveRole);
   const [message, setMessage] = useState<string | null>(null);
 
   const projects = useQuery({
@@ -42,12 +45,12 @@ export function JobHistory() {
   const trashed = useQuery({
     queryKey: ["projectsTrashed"],
     queryFn: listTrashedProjects,
-    enabled: owner,
+    enabled: boss,
   });
   const serverNow = useQuery({
     queryKey: ["serverNowMs"],
     queryFn: fetchServerNowMs,
-    enabled: owner,
+    enabled: boss,
     staleTime: 60_000,
   });
 
@@ -67,7 +70,8 @@ export function JobHistory() {
   });
 
   const remove = useMutation({
-    mutationFn: (id: string) => trashProject(id),
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      deleteJob(id, reason),
     onSuccess: () => {
       setMessage("Deleted — it disappears everywhere. Undo for 30 days, right here.");
       refresh();
@@ -128,18 +132,17 @@ export function JobHistory() {
                   Reopen
                 </button>
               )}
-              {owner && (
+              {boss && (
                 <button
                   className="link"
                   style={{ color: "var(--danger)" }}
                   disabled={remove.isPending}
                   onClick={() => {
-                    if (
-                      window.confirm(
-                        `Delete ${p.job_code}? It disappears everywhere, and you have 30 days to undo right here.`,
-                      )
-                    ) {
-                      remove.mutate(p.id);
+                    const reason = window.prompt(
+                      `Delete ${p.job_code}? It disappears everywhere, and you have 30 days to undo right here.\n\nWhy are you deleting it? (every supervisor is told)`,
+                    );
+                    if (reason && reason.trim()) {
+                      remove.mutate({ id: p.id, reason: reason.trim() });
                     }
                   }}
                 >
@@ -157,7 +160,7 @@ export function JobHistory() {
         />
       )}
 
-      {owner && (
+      {boss && (
         <>
           <h2 style={{ marginTop: 28 }}>Deleted</h2>
           <p className="muted">

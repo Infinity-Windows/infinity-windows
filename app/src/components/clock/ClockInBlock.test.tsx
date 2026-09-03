@@ -52,6 +52,8 @@ afterEach(() => {
 });
 
 interface Seed {
+  /** The signed-in role (slice 5 gates quick-create vs. "need a job"). */
+  role?: string;
   shift?: TimeShift | null;
   costCodes?: unknown[];
   // Per-project cost-code subsets (slice 3): seed a distinct list per project id
@@ -76,7 +78,11 @@ function mount(seed: Seed = {}): HTMLElement {
       },
     },
   });
-  qc.setQueryData(["myProfile"], { id: "me", role: "installer" });
+  qc.setQueryData(["myProfile"], {
+    id: "me",
+    role: seed.role ?? "installer",
+    display_name: "Dana",
+  });
   qc.setQueryData(["openShift", "me"], seed.shift ?? null);
   // The picker follows the chosen job; seed both the primed ("p1") and unprimed
   // ("all") scopes so the cost codes are there synchronously either way, and
@@ -363,5 +369,60 @@ describe("the clock-in block", () => {
       null,
       "tracking",
     ]);
+  });
+
+  // ---- Quick tracking job / "need a job" (slice 5) -------------------------
+
+  function byText(el: HTMLElement, text: string): HTMLButtonElement | undefined {
+    return Array.from(el.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
+      b.textContent?.includes(text),
+    );
+  }
+
+  it("offers a foreman a quick tracking job, not the installer's ask", () => {
+    const el = mount({ role: "foreman", costCodes: [CC], projects: [] });
+    expect(el.textContent).toContain("Start a quick tracking job");
+    expect(el.textContent).not.toContain("Need a job for this?");
+  });
+
+  it("offers an installer the ask, and refuses them the quick-create", () => {
+    const el = mount({ role: "installer", costCodes: [CC], projects: [] });
+    expect(el.textContent).toContain("Need a job for this?");
+    expect(el.textContent).not.toContain("Start a quick tracking job");
+  });
+
+  it("surfaces an open tracking job to join instead of forking a duplicate", () => {
+    const el = mount({
+      role: "foreman",
+      costCodes: [CC],
+      projects: [
+        {
+          id: "pX",
+          job_code: "WARR-1",
+          name: "Warranty callback",
+          address: null,
+          status: "active",
+          allowed_modes: ["tracking"],
+        },
+      ],
+    });
+    // Open the quick-job panel and type a matching name.
+    act(() => byText(el, "Start a quick tracking job")!.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    ));
+    const nameInput = el.querySelector<HTMLInputElement>(
+      'input[placeholder="Job name (optional)"]',
+    )!;
+    const nativeSet = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )!.set!;
+    act(() => {
+      nativeSet.call(nameInput, "warranty");
+      nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    // The de-dupe list surfaces the live job as a chip to join.
+    expect(el.textContent).toContain("Already open — join one instead");
+    expect(byText(el, "WARR-1")).toBeTruthy();
   });
 });
