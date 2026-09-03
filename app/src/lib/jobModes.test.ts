@@ -14,6 +14,7 @@ import {
   normalizeModes,
   promotedModes,
   resolveHubTab,
+  tabPendingModes,
   validateModes,
   type HubTabId,
 } from "./jobModes";
@@ -178,6 +179,41 @@ describe("resolveHubTab — the choke point the URL guards share", () => {
     expect(
       resolveHubTab("warehouse", { ...trk, warehouseStaged: true }),
     ).toBe("warehouse");
+  });
+});
+
+describe("tabPendingModes — hold a data-only tab until the job's mode is known", () => {
+  it("holds every data-only ?tab while the project row is still loading", () => {
+    for (const dataOnly of ["map", "model-studio", "maps-interactive", "brain", "dispatch", "exceptions"]) {
+      expect(tabPendingModes(dataOnly, true)).toBe(true);
+    }
+  });
+
+  it("never holds a shared tab — a data job's normal load is untouched", () => {
+    for (const shared of ["overview", "specs", "time", "photos", "chat", "warehouse", "logs", "bogus", "", null, undefined]) {
+      expect(tabPendingModes(shared, true)).toBe(false);
+    }
+  });
+
+  it("never holds once the row has loaded, whatever the tab", () => {
+    expect(tabPendingModes("maps-interactive", false)).toBe(false);
+    expect(tabPendingModes("brain", false)).toBe(false);
+    expect(tabPendingModes("overview", false)).toBe(false);
+  });
+
+  it("holds exactly the tabs a tracking job's resolveHubTab sends to overview", () => {
+    // The flash only matters for a tab a tracking job would reject; a held tab
+    // and a redirected tab must be the same set, or the hold would either miss a
+    // flash or wrongly stall a tab the job actually shows.
+    const trk = { trackingOnly: true, isLead: true, warehouseStaged: true };
+    for (const t of ["map", "model-studio", "maps-interactive", "brain", "dispatch", "exceptions"]) {
+      expect(tabPendingModes(t, true)).toBe(true);
+      expect(resolveHubTab(t, trk)).toBe("overview");
+    }
+    // ...and a tab the tracking job DOES show is never held.
+    for (const t of ["overview", "specs", "time", "photos", "chat", "warehouse", "logs"]) {
+      expect(tabPendingModes(t, true)).toBe(false);
+    }
   });
 });
 
