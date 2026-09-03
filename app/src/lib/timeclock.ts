@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import type { GeoFix } from "./geo";
+import type { JobMode } from "./types";
 import { sendPush } from "./permissions/pushServer";
 import { isMissingTable } from "./schemaErrors";
 import { isMissingClockInOverload, normalizeNote } from "./timeclockNote";
@@ -502,6 +503,10 @@ export async function clockIn(
   costCodeId: string | null,
   geo?: GeoFix,
   note?: string | null,
+  // The work mode the worker picked when the job allows BOTH data and tracking
+  // (standard-tracking-jobs slice 2). null on a single-mode job — the common
+  // case — and the punch takes the exact same path it always has.
+  mode?: JobMode | null,
 ): Promise<TimeShift> {
   const base = {
     p_project_id: projectId,
@@ -510,6 +515,27 @@ export async function clockIn(
     p_lat: geo?.lat ?? null,
     p_lng: geo?.lng ?? null,
   };
+  const cleanMode = mode === "data" || mode === "tracking" ? mode : null;
+
+  if (cleanMode) {
+    // Mode-carrying path (migration 20260970000000): note + mode. Fall back the
+    // same way the note path does if a database hasn't applied the migration —
+    // to note-only, then to a bare punch — so clock-in never breaks over it.
+    let res = await supabase.rpc("clock_in", {
+      ...base,
+      p_note: normalizeNote(note),
+      p_mode: cleanMode,
+    });
+    if (res.error && isMissingClockInOverload(res.error)) {
+      res = await supabase.rpc("clock_in", { ...base, p_note: normalizeNote(note) });
+      if (res.error && isMissingClockInOverload(res.error)) {
+        res = await supabase.rpc("clock_in", base);
+      }
+    }
+    if (res.error) throw res.error;
+    return res.data as TimeShift;
+  }
+
   // Preferred path: persist the worker note (migration 20260723060000).
   let res = await supabase.rpc("clock_in", { ...base, p_note: normalizeNote(note) });
   if (res.error && isMissingClockInOverload(res.error)) {

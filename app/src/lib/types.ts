@@ -58,12 +58,26 @@ export interface Location {
   active: boolean;
 }
 
+/**
+ * The work modes a job can allow (standard-tracking-jobs slice 2). `data` is the
+ * full per-window loop — openings, the map, Studio, flash runs, unit tracking.
+ * `tracking` is a lighter job that only clocks time and logs the day. A job
+ * allows one or both; see lib/jobModes.ts for what each combination shows.
+ */
+export type JobMode = "data" | "tracking";
+
 export interface Project {
   id: string;
   job_code: string;
   name: string;
   address: string | null;
   status: "active" | "completed" | "cancelled";
+  /** Which work modes this job allows (a non-empty subset of {data,tracking}).
+   * Written only via set_project_modes() — the column is client-write-locked
+   * (20260970000000_job_modes.sql). Optional like the other fields added after
+   * this interface's first fixtures: a real fetch always has it (not null
+   * default '{data}'), so absent/empty is read as data-only by jobModes.ts. */
+  allowed_modes?: JobMode[] | null;
   /** When status last moved (set_project_status stamps it) — what lets the
    * job-history list say WHEN a job finished. Optional: rows written before
    * the lifecycle migration are null until first touched. */
