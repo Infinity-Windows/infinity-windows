@@ -1,4 +1,5 @@
 import { BackChip } from "../../components/BackChip";
+import { useT } from "../../lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -253,6 +254,7 @@ function FlashingWayOut({
 type SheetMessage = { text: string; tone: "ok" | "error" } | null;
 
 export function OpeningSheet() {
+  const t = useT();
   const { projectId = "", openingId = "" } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -1433,10 +1435,11 @@ export function OpeningSheet() {
             {/* The clock is a sheet over this screen, so they punch in and
                 start the window without losing their place. */}
             <button className="primary" onClick={clock.openClock}>
-              Clock in
+              {t("opening.action.clockIn")}
             </button>
+            {/* SAFETY / toolbox — Spanish flagged for bilingual review. */}
             <button className="action-btn" onClick={() => navigate("/safety")}>
-              Sign toolbox talk
+              {t("opening.action.signToolbox")}
             </button>
           </div>
         </div>
@@ -2188,7 +2191,7 @@ export function OpeningSheet() {
               />
               {startedAt && (
                 <button className="button-like" onClick={() => setStage("install")}>
-                  Back to the install →
+                  {t("opening.action.backToInstall")}
                 </button>
               )}
             </>
@@ -2211,16 +2214,16 @@ export function OpeningSheet() {
                   yesterday read "Clock in first to start" on a live button that
                   took them straight into the install — the label simply lied. */}
               {ready.status === "blocked"
-                ? "Resolve blockers to start"
+                ? t("opening.action.resolveBlockers")
                 : startedAt
-                  ? "Back to the install →"
+                  ? t("opening.action.backToInstall")
                   : photos.before === null
-                    ? "Take the before photo to start"
+                    ? t("opening.action.beforePhotoToStart")
                     : eligibility.status === "blocked"
-                      ? "Clock in first to start"
+                      ? t("opening.action.clockInFirst")
                       : beginInstall.isPending
-                        ? "Starting…"
-                        : "Start install →"}
+                        ? t("opening.action.starting")
+                        : t("opening.action.startInstall")}
             </button>
           )}
         </>
@@ -2345,7 +2348,7 @@ export function OpeningSheet() {
                 installRunning
               />
               <button className="primary big" onClick={() => setStage("capture")}>
-                Done — capture it →
+                {t("opening.action.doneCapture")}
               </button>
               {/* BLOCK: the first-class exit — stuck through no fault of
                   yours. Reason required; the blocker issue files itself;
@@ -2409,7 +2412,7 @@ export function OpeningSheet() {
                 then start this window.
               </p>
               <button className="primary big" onClick={clock.openClock}>
-                Clock in
+                {t("opening.action.clockIn")}
               </button>
             </>
           ) : timer.status === "unknown" ? (
@@ -2426,7 +2429,7 @@ export function OpeningSheet() {
                 disabled={beginInstall.isPending}
                 onClick={() => beginInstall.mutate()}
               >
-                {beginInstall.isPending ? "Starting…" : "Start the timer"}
+                {beginInstall.isPending ? t("opening.action.starting") : t("opening.action.startTimer")}
               </button>
             </>
           )}
@@ -2558,7 +2561,7 @@ export function OpeningSheet() {
             }
             onClick={() => submit.mutate()}
           >
-            {submit.isPending ? "Saving…" : "Submit install"}
+            {submit.isPending ? t("opening.action.saving") : t("opening.action.submitInstall")}
           </button>
           {!o.assigned_window_id && (
             <p className="muted">
@@ -2611,14 +2614,14 @@ export function OpeningSheet() {
                 disabled={takeBreak.isPending}
                 onClick={() => takeBreak.mutate("lunch")}
               >
-                Lunch
+                {t("opening.action.lunch")}
               </button>
               <button
                 className="big"
                 disabled={takeBreak.isPending}
                 onClick={() => takeBreak.mutate("rest")}
               >
-                Break
+                {t("opening.action.break")}
               </button>
             </div>
           </div>

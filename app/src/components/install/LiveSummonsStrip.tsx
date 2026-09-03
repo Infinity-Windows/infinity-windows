@@ -17,6 +17,7 @@ import { clockSkewMs, fetchServerNowMs } from "../../lib/clockSkew";
 import { getMyProfile } from "../../lib/install/api";
 import { formatApiError } from "../../lib/install/errors";
 import { pushToast } from "../../lib/toast";
+import { useT } from "../../lib/i18n";
 import {
   declineSummon,
   iAnswered,
@@ -29,6 +30,7 @@ import {
 
 export function LiveSummonsStrip() {
   const queryClient = useQueryClient();
+  const t = useT();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const live = useQuery({
     queryKey: ["liveSummonsAll"],
@@ -62,7 +64,7 @@ export function LiveSummonsStrip() {
       setDismissed((ids) => [...ids, summonId]);
     },
     onSuccess: () => {
-      pushToast("Declined — it's off your screen. No points change.", "success");
+      pushToast(t("summon.declined"), "success");
       void queryClient.invalidateQueries({ queryKey: ["liveSummonsAll"] });
       // The window's own sheet keeps a live "Can't come" list, so every
       // project-scoped summon read refreshes too.
@@ -118,18 +120,18 @@ export function LiveSummonsStrip() {
               <span style={{ minWidth: 0, flex: 1 }}>
                 <strong className={answered && !expired ? "ok" : open ? "error" : "muted"}>
                   {expired
-                    ? "Expired"
+                    ? t("summon.status.expired")
                     : answered
-                      ? "You answered"
+                      ? t("summon.status.answered")
                       : open
-                        ? "SUMMON"
-                        : "Summon covered"}
+                        ? t("summon.status.open")
+                        : t("summon.status.covered")}
                 </strong>{" "}
                 <span>{summonStripLine(s, mine, now)}</span>
               </span>
               {open && !mine && !answered && (
                 <span className="button-like active-pill" aria-hidden>
-                  Answer
+                  {t("summon.action.answer")}
                 </span>
               )}
             </Link>
@@ -140,7 +142,7 @@ export function LiveSummonsStrip() {
                 disabled={decline.isPending}
                 onClick={() => decline.mutate(s.id)}
               >
-                Decline
+                {t("summon.action.decline")}
               </button>
             )}
           </div>

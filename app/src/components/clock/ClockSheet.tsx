@@ -63,6 +63,7 @@ import {
   SHIFT_CAP_HOURS,
   type FinishTimeCheck,
 } from "../../lib/shiftGuard";
+import { useT } from "../../lib/i18n";
 
 const BREAK_ICONS: Record<BreakType, LucideIcon> = {
   lunch: UtensilsCrossed,
@@ -98,6 +99,7 @@ export function ClockSheet({
 }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const t = useT();
   const [mode, setMode] = useState<Mode>(shift ? "main" : "pick");
   const [pickProjectId, setPickProjectId] = useState<string>("");
   const [pickCostCodeId, setPickCostCodeId] = useState<string>("");
@@ -590,14 +592,14 @@ export function ClockSheet({
 
   const title =
     mode === "switch"
-      ? "Switch project"
+      ? t("clock.title.switch")
       : mode === "break-type"
-        ? "Go on break"
+        ? t("clock.title.break")
         : shift
           ? onBreak
-            ? "On break"
-            : "On the clock"
-          : "Where are you working?";
+            ? t("clock.title.onBreak")
+            : t("clock.title.onClock")
+          : t("clock.title.pick");
 
   const stop = (e: React.MouseEvent) => e.stopPropagation();
 
@@ -647,7 +649,7 @@ export function ClockSheet({
               <div className={onBreak ? "clock-hero-card break" : "clock-hero-card work"}>
                 <span className={onBreak ? "clock-status-pill break" : "clock-status-pill work"}>
                   <span className="clock-live-dot" aria-hidden />
-                  {onBreak ? `On ${breakTypeLabel(shift.break_type).toLowerCase()} break` : "Working"}
+                  {onBreak ? `On ${breakTypeLabel(shift.break_type).toLowerCase()} break` : t("clock.status.working")}
                 </span>
                 <div className="clock-hero-time">
                   {formatClock(onBreak ? runningBreakSec : workSec)}
@@ -704,7 +706,7 @@ export function ClockSheet({
                 Between tasks says so, which quietly surfaces off-task time. */}
             {!needsRealFinish && (myPhases.data ?? []).length > 0 && (
               <div className="clock-chip-row-wrap">
-                <p className="clock-row-label">You're on</p>
+                <p className="clock-row-label">{t("clock.label.youreOn")}</p>
                 {(myPhases.data ?? []).map((ph) => (
                   <div
                     key={ph.id}
@@ -756,7 +758,7 @@ export function ClockSheet({
                 screen is "when did you stop", not "what are you doing now". */}
             {!onBreak && !needsRealFinish && (costCodes.data?.length ?? 0) > 1 && (
               <div className="clock-chip-row-wrap">
-                <p className="clock-row-label">Switch cost code</p>
+                <p className="clock-row-label">{t("clock.label.switchCostCode")}</p>
                 <div className="clock-chip-row wrap">
                   {(costCodes.data ?? []).map((c) => {
                     const current = shift.cost_code_id === c.id;
@@ -789,7 +791,7 @@ export function ClockSheet({
                 disabled={busy}
                 onClick={() => doBreakEnd.mutate()}
               >
-                <Play size={18} aria-hidden /> Resume work
+                <Play size={18} aria-hidden /> {t("clock.action.resumeWork")}
               </button>
             ) : (
               <button
@@ -798,24 +800,25 @@ export function ClockSheet({
                 disabled={busy}
                 onClick={() => setMode("break-type")}
               >
-                <Coffee size={18} aria-hidden /> Go on break
+                <Coffee size={18} aria-hidden /> {t("clock.action.goOnBreak")}
               </button>
             )}
 
+            {/* SAFETY / injury strings — Spanish flagged for bilingual review. */}
             <label className="clock-injury">
               <input
                 type="checkbox"
                 checked={injured}
                 onChange={(e) => setInjured(e.target.checked)}
               />
-              I was injured this shift
+              {t("clock.injury.was")}
             </label>
             {injured && (
               <div style={{ margin: "6px 0 2px" }}>
                 <label className="field-label" htmlFor="injury-what-happened">
-                  What happened?{" "}
+                  {t("clock.injury.whatHappened")}{" "}
                   <strong style={{ color: "var(--danger)" }}>
-                    (If this is an emergency immediately call 911)
+                    {t("clock.injury.emergency")}
                   </strong>
                 </label>
                 <textarea
@@ -823,7 +826,7 @@ export function ClockSheet({
                   rows={3}
                   value={injuryNote}
                   onChange={(e) => setInjuryNote(e.target.value)}
-                  placeholder="A sentence or two — what happened, and what part of you it got."
+                  placeholder={t("clock.injury.placeholder")}
                   style={{ width: "100%" }}
                 />
               </div>
@@ -835,13 +838,13 @@ export function ClockSheet({
                 checked={timeWrong}
                 onChange={(e) => setTimeWrong(e.target.checked)}
               />
-              My recorded time looks wrong — flag it for office review
+              {t("clock.timeWrong")}
             </label>
 
             {needsRealFinish ? (
               <>
                 <label className="clock-row-label" htmlFor="clock-finish-at">
-                  When did you finish?
+                  {t("clock.label.whenFinish")}
                 </label>
                 <input
                   id="clock-finish-at"
@@ -868,10 +871,10 @@ export function ClockSheet({
                   onClick={() => doFinish.mutate()}
                 >
                   {doFinish.isPending ? (
-                    "Saving…"
+                    t("clock.action.saving")
                   ) : (
                     <>
-                      <Square size={16} aria-hidden /> Save my finish time
+                      <Square size={16} aria-hidden /> {t("clock.action.saveFinish")}
                     </>
                   )}
                 </button>
@@ -888,10 +891,10 @@ export function ClockSheet({
                 onClick={() => doClockOut.mutate()}
               >
                 {doClockOut.isPending ? (
-                  "Clocking out…"
+                  t("clock.action.clockingOut")
                 ) : (
                   <>
-                    <Square size={16} aria-hidden /> Clock out
+                    <Square size={16} aria-hidden /> {t("clock.action.clockOut")}
                   </>
                 )}
               </button>
@@ -900,7 +903,7 @@ export function ClockSheet({
             {/* /clock is another clock-in screen; the hours summary is
                 /timecard, which is exactly what this link says. */}
             <Link to="/timecard" className="clock-timecard-link" onClick={onClose}>
-              View my timecard
+              {t("clock.action.viewTimecard")}
             </Link>
           </div>
         )}
@@ -909,7 +912,7 @@ export function ClockSheet({
         {mode === "break-type" && shift && (
           <div className="clock-sheet-body">
             <p className="clock-row-label">
-              Your timecard pauses until you tap Resume.
+              {t("clock.break.pauseNote")}
             </p>
             <div className="clock-break-grid">
               {BREAK_TYPES.map((b) => {
@@ -931,7 +934,7 @@ export function ClockSheet({
               })}
             </div>
             <button type="button" className="clock-cancel" onClick={() => setMode("main")}>
-              Cancel
+              {t("clock.action.cancel")}
             </button>
           </div>
         )}
@@ -952,7 +955,7 @@ export function ClockSheet({
                 {/* Scheduled today — pre-selects the right job for clock-in */}
                 {!shift && scheduled && (
                   <div className="clock-chip-row-wrap">
-                    <p className="clock-row-label">Scheduled today</p>
+                    <p className="clock-row-label">{t("clock.label.scheduledToday")}</p>
                     <div className="clock-chip-row">
                       <button
                         type="button"
@@ -977,7 +980,7 @@ export function ClockSheet({
                 {/* Recent jobs chips */}
                 {(recents.data?.length ?? 0) > 0 && (
                   <div className="clock-chip-row-wrap">
-                    <p className="clock-row-label">Recent jobs</p>
+                    <p className="clock-row-label">{t("clock.label.recentJobs")}</p>
                     <div className="clock-chip-row">
                       {(recents.data ?? []).map((r) => {
                         const selected = pickProjectId === r.projectId;
@@ -1005,13 +1008,13 @@ export function ClockSheet({
                   className="clock-list-toggle"
                   onClick={() => setShowFullList((v) => !v)}
                 >
-                  {showFullList ? "Hide job list" : "Choose a different job"}
+                  {showFullList ? t("clock.label.hideJobList") : t("clock.label.chooseDifferentJob")}
                 </button>
                 {showFullList && (
                   <div className="clock-picker">
                     <input
                       className="clock-search"
-                      placeholder="Search jobs…"
+                      placeholder={t("clock.search.jobs")}
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                     />
@@ -1040,7 +1043,7 @@ export function ClockSheet({
 
                 {/* Cost code — full label so the worker sees exactly what
                     they're charging to, not just the bare code. */}
-                <p className="clock-row-label">Cost code</p>
+                <p className="clock-row-label">{t("clock.label.costCode")}</p>
                 <div className="clock-costcode-list">
                   {(costCodes.data ?? []).map((c) => (
                     <button
@@ -1098,12 +1101,13 @@ export function ClockSheet({
                     <ToolboxSignCard profileId={profileId} talk={todayTalk.data} />
                   )}
                 {!shift && Boolean(toolboxDone.data) && (
-                  <p className="clock-pick-summary">✓ Today's toolbox talk is signed.</p>
+                  /* SAFETY / toolbox — Spanish flagged for bilingual review. */
+                  <p className="clock-pick-summary">{t("clock.toolbox.signed")}</p>
                 )}
 
                 {/* Optional note the worker can add for the office. */}
                 <label className="clock-row-label" htmlFor="clock-note">
-                  Notes for the office (optional)
+                  {t("clock.label.notesOffice")}
                 </label>
                 <textarea
                   id="clock-note"
@@ -1143,28 +1147,30 @@ export function ClockSheet({
                 >
                   {mode === "switch" ? (
                     doSwitch.isPending ? (
-                      "Switching…"
+                      t("clock.action.switching")
                     ) : (
                       <>
-                        <ArrowLeftRight size={18} aria-hidden /> Switch project
+                        <ArrowLeftRight size={18} aria-hidden /> {t("clock.action.switchProject")}
                       </>
                     )
                   ) : doStart.isPending ? (
-                    "Clocking in…"
+                    t("clock.action.clockingIn")
                   ) : (
                     <>
                       <Play size={18} aria-hidden />{" "}
                       {pickedOpening && toolboxOk
-                        ? `Start clock on ${pickedOpening.opening_code}`
+                        ? t("clock.action.startOn", { code: pickedOpening.opening_code })
                         : canResume
-                          ? `Resume on ${resumeJob?.jobCode || resumeJob?.name}`
-                          : "Start clock"}
+                          ? t("clock.action.resumeOn", {
+                              job: resumeJob?.jobCode || resumeJob?.name || "",
+                            })
+                          : t("clock.action.startClock")}
                     </>
                   )}
                 </button>
                 {mode === "switch" && (
                   <button type="button" className="clock-cancel" onClick={() => setMode("main")}>
-                    Cancel
+                    {t("clock.action.cancel")}
                   </button>
                 )}
               </>
