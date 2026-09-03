@@ -30,9 +30,9 @@ import {
   getJobLastGeo,
   getOpenShift,
   isOnTheClock,
-  listCostCodes,
   listRecentJobs,
 } from "../../lib/timeclock";
+import { getClockCostCodesForProject } from "../../lib/costCodes";
 import { useT } from "../../lib/i18n";
 import { effectiveClockInMode, normalizeModes, type JobMode } from "../../lib/jobModes";
 import { JobModeBadge } from "../JobModeBadge";
@@ -50,7 +50,6 @@ export function ClockInBlock() {
     queryFn: () => getOpenShift(profileId!),
     enabled: Boolean(profileId),
   });
-  const costCodes = useQuery({ queryKey: ["costCodes"], queryFn: listCostCodes });
   const recents = useQuery({
     queryKey: ["recentJobs", profileId],
     queryFn: () => listRecentJobs(profileId!),
@@ -72,6 +71,13 @@ export function ClockInBlock() {
 
   const [pickProjectId, setPickProjectId] = useState<string>("");
   const [pickCostCodeId, setPickCostCodeId] = useState<string>("");
+  // The cost-code list follows the picked job (slice 3): a job with its own
+  // subset shows only those codes (plus the general fallback); a job with none
+  // shows the full active library. Keyed on the job so it re-fetches on switch.
+  const costCodes = useQuery({
+    queryKey: ["clockCostCodes", pickProjectId || "all"],
+    queryFn: () => getClockCostCodesForProject(pickProjectId || null),
+  });
   // The mode a worker picks when the chosen job allows BOTH data and tracking
   // (standard-tracking-jobs slice 2). Only shown for a both-mode job; a
   // single-mode job records its one mode silently. Defaults to install work.

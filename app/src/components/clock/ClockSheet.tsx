@@ -49,12 +49,12 @@ import {
   finishShiftAt,
   formatClock,
   isOnTheClock,
-  listCostCodes,
   listRecentJobs,
   startBreak,
   type BreakType,
   type TimeShift,
 } from "../../lib/timeclock";
+import { getClockCostCodesForProject } from "../../lib/costCodes";
 import {
   checkFinishTime,
   describeDuration,
@@ -124,7 +124,18 @@ export function ClockSheet({
   const primedRef = useRef(false);
 
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
-  const costCodes = useQuery({ queryKey: ["costCodes"], queryFn: listCostCodes });
+  // Cost codes scoped to the job in play (slice 3): while picking or switching,
+  // the job being picked; on the clock, the job of the current shift. A job with
+  // its own subset shows only those codes (plus the general fallback); a job with
+  // none shows the full active library.
+  const clockScopeProjectId =
+    mode === "pick" || mode === "switch"
+      ? pickProjectId || null
+      : shift?.project_id ?? null;
+  const costCodes = useQuery({
+    queryKey: ["clockCostCodes", clockScopeProjectId ?? "all"],
+    queryFn: () => getClockCostCodesForProject(clockScopeProjectId),
+  });
   const recents = useQuery({
     queryKey: ["recentJobs", profileId],
     queryFn: () => listRecentJobs(profileId!),

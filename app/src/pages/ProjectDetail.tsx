@@ -62,6 +62,7 @@ import { DailyLogsTab } from "../components/dailyLogs/DailyLogsTab";
 import { ClockInBlock } from "../components/clock/ClockInBlock";
 import { SpecsTab } from "../components/project/SpecsTab";
 import { CallForHandsPanel } from "../components/install/CallForHandsPanel";
+import { JobCostCodesPanel } from "../components/project/JobCostCodesPanel";
 import { JobModeBadge } from "../components/JobModeBadge";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
 import { formatApiError } from "../lib/errors";
@@ -499,6 +500,11 @@ function OverviewTab({
       )}
 
       <ScheduledCrewPanel projectId={projectId} isLead={isLead} />
+
+      {/* Which cost codes crew can pick when clocking into THIS job (slice 3).
+          Foreman+ curate the subset; the tab-gating idiom, with the real gate
+          on the set_project_cost_codes RPC. */}
+      {isLead && <JobCostCodesPanel projectId={projectId} />}
 
       <WhoOnJobPanel projectId={projectId} />
 

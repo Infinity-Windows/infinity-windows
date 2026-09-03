@@ -16,8 +16,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // hold the network still: the writes and reads all become resolved spies, so a
 // cache invalidation after a punch never reaches for a server behind the test.
 // vi.mock is hoisted above the file, so the spy is defined via vi.hoisted.
-const { clockInSpy } = vi.hoisted(() => ({
+const { clockInSpy, costCodesHolder } = vi.hoisted(() => ({
   clockInSpy: vi.fn(async () => ({}) as unknown),
+  // The project-aware clock picker (slice 3) reads getClockCostCodesForProject;
+  // this holder lets each mount seed what it returns.
+  costCodesHolder: { current: [] as unknown[] },
 }));
 vi.mock("../../lib/timeclock", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/timeclock")>();
@@ -30,6 +33,9 @@ vi.mock("../../lib/timeclock", async (importOriginal) => {
     getJobLastGeo: vi.fn(async () => null),
   };
 });
+vi.mock("../../lib/costCodes", () => ({
+  getClockCostCodesForProject: vi.fn(async () => costCodesHolder.current),
+}));
 
 import { ClockInBlock } from "./ClockInBlock";
 import type { TimeShift } from "../../lib/timeclock";
@@ -69,7 +75,12 @@ function mount(seed: Seed = {}): HTMLElement {
   });
   qc.setQueryData(["myProfile"], { id: "me", role: "installer" });
   qc.setQueryData(["openShift", "me"], seed.shift ?? null);
-  qc.setQueryData(["costCodes"], seed.costCodes ?? []);
+  // The picker follows the chosen job; seed both the primed ("p1") and unprimed
+  // ("all") scopes so the cost codes are there synchronously either way, and
+  // point the mocked fetch at the same list for any other scope.
+  costCodesHolder.current = seed.costCodes ?? [];
+  qc.setQueryData(["clockCostCodes", "all"], seed.costCodes ?? []);
+  qc.setQueryData(["clockCostCodes", "p1"], seed.costCodes ?? []);
   qc.setQueryData(["recentJobs", "me"], seed.recents ?? []);
   qc.setQueryData(["projects"], seed.projects ?? []);
   qc.setQueryData(["todayTalk"], seed.talk ?? null);
