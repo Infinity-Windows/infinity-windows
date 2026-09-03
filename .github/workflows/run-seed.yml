@@ -7,6 +7,21 @@
 # Born for the Mad Moose pilot (PR #470): the owner's machine-of-the-day may
 # not hold service credentials, and pasting keys into a chat session is never
 # acceptable — so the seed runs HERE, auditable in the Actions log.
+#
+# What each choice runs, and what it writes:
+#   madmoose        scripts/seed-madmoose-fitview.mjs — the 3D fit view for Mad
+#                   Moose: true wall heights, ten placed windows, pane grids.
+#   madmoose-repair scripts/seed-madmoose-repair-fitview.mjs — puts back the ten
+#                   openings and their pins the 2026-09-01 addendum upload
+#                   deleted.
+#   madmoose-specs  scripts/seed-madmoose-specs-repair.mjs — the same incident's
+#                   other half: marks 1/2/3's line items, every mark's drawing
+#                   coordinates on the cut sheet, and the three Add units'
+#                   drawings and printed sizes.
+#   black22         scripts/seed-black22-fitview.mjs — BLACK22's fit-view
+#                   calibration from the hand-traced prototype model.
+# Every one of them is plan / --dry-run / --apply and is idempotent: run the
+# dry-run, read it, then run apply.
 name: Run seed script
 
 on:
@@ -19,6 +34,7 @@ on:
         options:
           - madmoose
           - madmoose-repair
+          - madmoose-specs
           - black22
       mode:
         description: "dry-run shows the diff; apply writes it"
@@ -44,4 +60,25 @@ jobs:
         env:
           SUPABASE_URL: https://czprjcskmzzagdztqonm.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: node "scripts/seed-${{ inputs.seed }}-fitview.mjs" "--${{ inputs.mode }}"
+          SEED: ${{ inputs.seed }}
+          MODE: ${{ inputs.mode }}
+        # The choice used to be pasted straight into a filename, which only
+        # worked while every seed was called "seed-<choice>-fitview.mjs" — and
+        # the repair seeds are not. Naming each script here keeps the allowlist
+        # that matters (an unknown choice runs nothing) and stops the file name
+        # dictating what a seed may be called. Both inputs arrive as env vars
+        # rather than inline expressions so nothing can be spliced into the
+        # shell.
+        run: |
+          case "$SEED" in
+            madmoose)        script=scripts/seed-madmoose-fitview.mjs ;;
+            madmoose-repair) script=scripts/seed-madmoose-repair-fitview.mjs ;;
+            madmoose-specs)  script=scripts/seed-madmoose-specs-repair.mjs ;;
+            black22)         script=scripts/seed-black22-fitview.mjs ;;
+            *) echo "Unknown seed: $SEED"; exit 1 ;;
+          esac
+          case "$MODE" in
+            dry-run|apply) ;;
+            *) echo "Unknown mode: $MODE"; exit 1 ;;
+          esac
+          node "$script" "--$MODE"
