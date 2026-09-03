@@ -35,6 +35,15 @@ The static scan reuses supabase_merge_lib's migration replay rather than a
 hand-written list of tables, for the reason partner_wall_lib.py gives: a list
 written on the day of the fix is stale by the next merge.
 
+WHAT NEITHER CHECK DECIDES. A fence is only as tight as the list of what is
+inside it, and that list is not an engineering question. 20260933000000 made
+BLACK22 — a real job — practice data on 2026-08-25, which put it inside the
+sandbox, which is why the QA login's write on 2026-09-02 was accepted by a guard
+working exactly as written. Removing it is the owner's call, so this file does
+not: it names every non-automation job in the summary and in the headline, on
+every deploy, and points at the open question. Reporting the shape of the fence
+is not the same as approving it.
+
 DIRECTION OF ERROR. Both checks over-report by design. A table with a
 `project_id` that a test login could never reach for some other reason still has
 to carry the guard, because "some other reason" is not a control. An honest
@@ -89,6 +98,17 @@ LINK_COLUMNS: tuple[tuple[str, str], ...] = (
 #: has RLS on with no policy (20260730220000), so it is not fenced and does not
 #: need to be. public.sandbox_scoped_tables() skips the same name.
 NOT_SCOPED: frozenset[str] = frozenset({"sandbox_projects"})
+
+#: The job that exists to be written by robots — created by 20260730220000 and
+#: never removed from the sandbox even if somebody unflags it
+#: (20260933000000's set_project_test guards it by name). Every OTHER job on the
+#: sandbox list is a real job that somebody turned into practice data, which is
+#: a different kind of thing entirely and gets said out loud.
+AUTOMATION_SANDBOX = "ZZTEST"
+
+#: Where the open question about that lives, so the deploy summary can point at
+#: something a person can answer rather than restating it every fortnight.
+SANDBOX_DECISION = ".scratch/test-login-fence/issues/01-a-real-job-is-inside-the-sandbox.md"
 
 # Long lists in a job summary get skimmed, not read. Same cap as schema_verify.
 MAX_LISTED = 40
@@ -195,14 +215,40 @@ def load_census(paths) -> dict[str, list[list[str]]]:
     return rows
 
 
+def real_jobs(census: dict[str, list[list[str]]]) -> list[list[str]]:
+    """Sandbox jobs that are not the dedicated automation sandbox.
+
+    Every one of these is a job that was somebody's real work before it was
+    made practice data, and a test login may finish its units, edit its
+    openings and delete its rows. Split out from the rest because a summary
+    that lists ZZTEST and a live job in one flat list reads as "the sandbox",
+    and that is how BLACK22 sat inside the fence for a week without anyone
+    weighing in (2026-08-25 seeded it, 2026-09-02 the owner reported the write).
+    """
+    return sorted(
+        fields for fields in census.get("sandbox_job", [])
+        if fields and fields[0] != AUTOMATION_SANDBOX
+    )
+
+
 def render(census: dict[str, list[list[str]]], project: str) -> tuple[str, bool]:
     """The job summary, and whether the deploy may proceed."""
     scoped = census.get("scoped", [])
     unguarded = census.get("unguarded", [])
-    jobs = sorted(fields[0] for fields in census.get("sandbox_job", []))
+    jobs = sorted(census.get("sandbox_job", []))
+    real = real_jobs(census)
     logins = sorted(fields[0] for fields in census.get("test_login", []))
 
-    out = ["### Test-login fence: " + ("HOLDING" if not unguarded else "OPEN")]
+    # "HOLDING" on its own is a claim this check is not entitled to make while a
+    # real job sits inside the sandbox: the triggers can all be present and a QA
+    # login can still write a customer's house. So the headline carries both
+    # facts, and the reader does not have to scroll to find the second one.
+    headline = "HOLDING" if not unguarded else "OPEN"
+    if not unguarded and real:
+        headline += " on every table — and %d real job%s %s inside the sandbox" % (
+            len(real), "" if len(real) == 1 else "s", "is" if len(real) == 1 else "are",
+        )
+    out = ["### Test-login fence: " + headline]
     out.append("")
 
     if not scoped:
@@ -245,15 +291,35 @@ def render(census: dict[str, list[list[str]]], project: str) -> tuple[str, bool]
     if jobs:
         out.append(
             "Everything else on this database is read-only to the accounts "
-            "below. This list is not a pass or a fail — it is the shape of the "
-            "sandbox, and it grew once already without anyone deciding to "
-            "(`20260933000000_testing_projects.sql`).",
+            "below. `%s` is the automation sandbox — a job that exists to be "
+            "written by robots. Anything else here is a real job somebody made "
+            "practice data, and a test login can finish its units, edit its "
+            "openings and delete its rows." % AUTOMATION_SANDBOX,
         )
         out.append("")
-        for code in jobs[:MAX_LISTED]:
-            out.append("- `%s`" % code)
+        for fields in jobs[:MAX_LISTED]:
+            code = fields[0]
+            name = fields[1] if len(fields) > 1 and fields[1] else ""
+            if code == AUTOMATION_SANDBOX:
+                out.append("- `%s` — %s (the automation sandbox)" % (code, name))
+            else:
+                out.append("- `%s` — %s — **a real job**" % (code, name))
         if len(jobs) > MAX_LISTED:
             out.append("- …and %d more" % (len(jobs) - MAX_LISTED))
+        if real:
+            out.append("")
+            # Naming the decision, not making it. Which jobs count as practice
+            # data is the owner's call; what this check owes him is that the
+            # answer stops being discovered by accident.
+            out.append(
+                "**This is a decision nobody has confirmed since the "
+                "2026-09-02 incident.** `20260933000000_testing_projects.sql` "
+                "put a real job into the sandbox by name, and the fence has "
+                "allowed a test login to write it ever since — the guard doing "
+                "exactly what it says, against a sandbox that grew. Nothing in "
+                "this check reverses that. The open question is written down at "
+                "`" + SANDBOX_DECISION + "`.",
+            )
     else:
         out.append(
             "None. No job is registered as a sandbox, so a test login can "
@@ -271,12 +337,20 @@ def render(census: dict[str, list[list[str]]], project: str) -> tuple[str, bool]
 
 
 def result_line(census: dict[str, list[list[str]]]) -> str:
-    """One machine-readable line, the shape scripts/verify-schema.sh parses."""
-    return "::result:: scoped=%d unguarded=%d sandbox_jobs=%d test_logins=%d" % (
-        len(census.get("scoped", [])),
-        len(census.get("unguarded", [])),
-        len(census.get("sandbox_job", [])),
-        len(census.get("test_login", [])),
+    """One machine-readable line, the shape scripts/verify-schema.sh parses.
+
+    `real_jobs` is the count that moved on 2026-08-25 and that nobody saw move,
+    so it is on the line a person greps rather than only in the prose.
+    """
+    return (
+        "::result:: scoped=%d unguarded=%d sandbox_jobs=%d real_jobs=%d "
+        "test_logins=%d" % (
+            len(census.get("scoped", [])),
+            len(census.get("unguarded", [])),
+            len(census.get("sandbox_job", [])),
+            len(real_jobs(census)),
+            len(census.get("test_login", [])),
+        )
     )
 
 

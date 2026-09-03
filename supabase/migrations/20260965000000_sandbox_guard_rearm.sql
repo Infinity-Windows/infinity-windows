@@ -71,7 +71,14 @@
 -- include a job people still treat as real. That is a decision about which
 -- jobs are practice data, not a bug in this fence, and quietly reversing it
 -- would break the testing-projects feature. It is reported instead: the deploy
--- check prints every job a test login may write, by job code, on every merge.
+-- check prints every job a test login may write, by job code, on every merge —
+-- and says in its FIRST line how many of them are real jobs rather than the
+-- automation sandbox, because "fence: HOLDING" over a list nobody reads is how
+-- this went unremarked from 2026-08-25 to 2026-09-02. The open question is
+-- .scratch/test-login-fence/issues/01-a-real-job-is-inside-the-sandbox.md and
+-- it is the owner's to answer. Until he does, this migration leaves a test
+-- login able to write BLACK22: every table is guarded, and that job is inside
+-- the fence.
 --
 -- WHAT CHANGES FOR A REAL PERSON: nothing. Every guard returns on its first
 -- statement unless auth.uid() is a profiles.is_test account, of which there

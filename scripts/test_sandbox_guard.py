@@ -32,6 +32,7 @@ from sandbox_guard import (  # noqa: E402
     GUARD_MIGRATION,
     REARM_MIGRATION,
     MIGRATIONS_DIR,
+    SANDBOX_DECISION,
     link_for,
     load_census,
     migrations_calling_attach,
@@ -178,6 +179,44 @@ class TestTheLiveReport(unittest.TestCase):
         self.assertIn("`ZZTEST`", summary)
         self.assertIn("`BLACK22`", summary)
 
+    def test_a_real_job_in_the_sandbox_is_named_in_the_headline(self):
+        """Every trigger can be in place and a QA login can still write a
+        customer's house, because the sandbox grew to include one. A summary
+        whose first line reads "HOLDING" and nothing else is how that went
+        unremarked from 2026-08-25 to 2026-09-02."""
+        census = load_census([census_file([
+            "scoped|project_openings|project_id|project",
+            "sandbox_job|ZZTEST|TEST — automation sandbox",
+            "sandbox_job|BLACK22|Black Desert",
+        ])])
+        summary, ok = render(census, "czprjcskmzzagdztqonm")
+        self.assertTrue(ok, "the fence question is about triggers, and they are all here")
+        self.assertIn("1 real job is inside the sandbox", summary.splitlines()[0])
+        self.assertIn("**a real job**", summary)
+        self.assertIn(SANDBOX_DECISION, summary)
+
+    def test_the_automation_sandbox_on_its_own_raises_nothing(self):
+        """ZZTEST exists to be written by robots. Crying wolf over it would
+        train everyone to skip the paragraph that matters."""
+        census = load_census([census_file([
+            "scoped|project_openings|project_id|project",
+            "sandbox_job|ZZTEST|TEST — automation sandbox",
+        ])])
+        summary, ok = render(census, "czprjcskmzzagdztqonm")
+        self.assertTrue(ok)
+        self.assertEqual("### Test-login fence: HOLDING", summary.splitlines()[0])
+        self.assertNotIn("**a real job**", summary)
+        self.assertNotIn(SANDBOX_DECISION, summary)
+
+    def test_the_decision_the_summary_points_at_is_written_down(self):
+        """A deploy summary citing a file nobody wrote is worse than one that
+        says nothing at all."""
+        self.assertTrue(
+            (Path(__file__).resolve().parent.parent / SANDBOX_DECISION).exists(),
+            f"{SANDBOX_DECISION} is quoted in every deploy summary that finds a "
+            "real job inside the sandbox",
+        )
+
     def test_a_query_error_names_the_missing_migration(self):
         path = census_file([])
         Path(path).write_text(
@@ -194,10 +233,11 @@ class TestTheLiveReport(unittest.TestCase):
             "scoped|unit_sessions|opening_id|opening",
             "unguarded|unit_sessions|opening_id|no sandbox guard on this table",
             "sandbox_job|ZZTEST|TEST — automation sandbox",
+            "sandbox_job|BLACK22|Black Desert",
             "test_login|TEST — automation FOREMAN, do not assign",
         ])])
         self.assertEqual(
-            "::result:: scoped=2 unguarded=1 sandbox_jobs=1 test_logins=1",
+            "::result:: scoped=2 unguarded=1 sandbox_jobs=2 real_jobs=1 test_logins=1",
             result_line(census),
         )
 
