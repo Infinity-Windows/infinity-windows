@@ -1,10 +1,29 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Camera, CheckCircle2, ImageIcon, MapPin, Receipt as ReceiptIcon } from "lucide-react";
-import { groupPhotosByDay, listPhotos, photoTime, type FeedPhoto } from "../../lib/photos";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Camera,
+  CheckCircle2,
+  ImageIcon,
+  MapPin,
+  Receipt as ReceiptIcon,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
+import {
+  deleteJobPhoto,
+  groupPhotosByDay,
+  listDeletedPhotos,
+  listPhotos,
+  photoTime,
+  restoreJobPhoto,
+  type FeedPhoto,
+} from "../../lib/photos";
 import { formatCents } from "../../lib/aiSpend";
 import { listReceipts, type Receipt } from "../../lib/receipts";
 import { subscribeSynced } from "../../lib/offline/outbox";
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
+import { isForemanPlus } from "../../lib/install/types";
+import { pushToast, toastError } from "../../lib/toast";
 import { EmptyState, QueryError, SkeletonCard } from "../ui/States";
 import { PhotoCaptureSheet } from "../PhotoCaptureSheet";
 
@@ -86,8 +105,13 @@ export function PhotoFeed({
 }) {
   const isReceipt = kind === "receipt";
   const queryClient = useQueryClient();
+  const { effectiveRole } = useEffectiveRole();
+  // Removing / restoring a job photo is foreman+ (server-enforced by the RPCs).
+  // Receipts have their own model — no trash here.
+  const canCurate = isForemanPlus(effectiveRole) && !isReceipt;
   const [capturing, setCapturing] = useState(initialCapture);
   const [viewer, setViewer] = useState<FeedPhoto | null>(null);
+  const [showTrash, setShowTrash] = useState(false);
 
   const photos = useQuery({
     queryKey: ["photos", projectId ?? "all"],
@@ -98,6 +122,35 @@ export function PhotoFeed({
     queryKey: ["receipts-feed", projectId ?? "all"],
     queryFn: () => listReceipts({ projectId }),
     enabled: isReceipt,
+  });
+  // The 30-day recoverable trash (slice 3) — loaded only when a lead opens it.
+  const trash = useQuery({
+    queryKey: ["photos-trash", projectId ?? "all"],
+    queryFn: () => listDeletedPhotos(projectId),
+    enabled: canCurate && showTrash,
+  });
+
+  const refreshPhotos = () => {
+    void queryClient.invalidateQueries({ queryKey: ["photos"] });
+    void queryClient.invalidateQueries({ queryKey: ["photos-trash"] });
+  };
+
+  const removePhoto = useMutation({
+    mutationFn: (id: string) => deleteJobPhoto(id),
+    onSuccess: () => {
+      pushToast("Photo moved to trash — 30 days to undo.", "info");
+      setViewer(null);
+      refreshPhotos();
+    },
+    onError: (e) => toastError(e),
+  });
+  const restorePhoto = useMutation({
+    mutationFn: (id: string) => restoreJobPhoto(id),
+    onSuccess: () => {
+      pushToast("Photo restored.", "info");
+      refreshPhotos();
+    },
+    onError: (e) => toastError(e),
   });
 
   useEffect(() => {
@@ -132,23 +185,89 @@ export function PhotoFeed({
           {isReceipt ? <ReceiptIcon size={16} aria-hidden /> : <Camera size={16} aria-hidden />}{" "}
           {isReceipt ? "Add receipt" : "Add photo"}
         </button>
+        {canCurate && (
+          <button
+            type="button"
+            className="action-btn"
+            aria-pressed={showTrash}
+            onClick={() => setShowTrash((v) => !v)}
+          >
+            <Trash2 size={16} aria-hidden /> {showTrash ? "Back to photos" : "Trash"}
+          </button>
+        )}
       </div>
 
-      {isLoading && (
+      {/* ---- The 30-day recoverable trash (foreman+) ---- */}
+      {showTrash && (
+        <>
+          <p className="muted" style={{ margin: "0 0 8px" }}>
+            Removed photos stay here for 30 days, then they're erased for good.
+          </p>
+          {trash.isLoading && (
+            <div className="photos-grid">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <SkeletonCard key={i} height={120} />
+              ))}
+            </div>
+          )}
+          {trash.isError && (
+            <QueryError
+              error={trash.error}
+              onRetry={() => void trash.refetch()}
+              label="Couldn't load the trash"
+            />
+          )}
+          {trash.isSuccess && trash.data.length === 0 && (
+            <EmptyState
+              icon={<Trash2 size={22} />}
+              title="Trash is empty"
+              message="Removed photos show up here, recoverable for 30 days."
+            />
+          )}
+          {trash.isSuccess && trash.data.length > 0 && (
+            <div className="photos-grid">
+              {trash.data.map((p) => (
+                <div key={p.id} className="photo-card">
+                  {p.signedUrl ? (
+                    <img src={p.signedUrl} alt={p.caption ?? "Removed photo"} loading="lazy" />
+                  ) : (
+                    <div className="photo-card-missing muted">
+                      <ImageIcon size={20} aria-hidden />
+                    </div>
+                  )}
+                  <span className="photo-card-meta">
+                    <span className="photo-card-who">{whoLabel(p.createdBy)}</span>
+                    <button
+                      type="button"
+                      className="link"
+                      disabled={restorePhoto.isPending}
+                      onClick={() => restorePhoto.mutate(p.id)}
+                    >
+                      <RotateCcw size={12} aria-hidden /> Restore
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {!showTrash && isLoading && (
         <div className="photos-grid">
           {Array.from({ length: 6 }).map((_, i) => (
             <SkeletonCard key={i} height={120} />
           ))}
         </div>
       )}
-      {isError && (
+      {!showTrash && isError && (
         <QueryError
           error={isReceipt ? receipts.error : photos.error}
           onRetry={() => void (isReceipt ? receipts.refetch() : photos.refetch())}
           label={isReceipt ? "Couldn't load receipts" : "Couldn't load photos"}
         />
       )}
-      {!isLoading && !isError && isEmpty && (
+      {!showTrash && !isLoading && !isError && isEmpty && (
         <EmptyState
           icon={isReceipt ? <ReceiptIcon size={22} /> : <ImageIcon size={22} />}
           title={isReceipt ? "No receipts yet" : "No photos yet"}
@@ -175,7 +294,7 @@ export function PhotoFeed({
         />
       )}
 
-      {!isLoading && !isError && !isReceipt &&
+      {!showTrash && !isLoading && !isError && !isReceipt &&
         groups.map((group) => (
           <section key={group.key} className="photos-day">
             <h2 className="photos-day-label">{group.label}</h2>
@@ -209,7 +328,7 @@ export function PhotoFeed({
           </section>
         ))}
 
-      {!isLoading && !isError && isReceipt &&
+      {!showTrash && !isLoading && !isError && isReceipt &&
         receiptGroups.map((group) => (
           <section key={group.key} className="photos-day">
             <h2 className="photos-day-label">{group.label}</h2>
@@ -288,13 +407,33 @@ export function PhotoFeed({
                 </a>
               )}
             </div>
-            <button
-              type="button"
-              className="action-btn photo-viewer-close"
-              onClick={() => setViewer(null)}
-            >
-              Close
-            </button>
+            <div className="row-gap" style={{ justifyContent: "space-between" }}>
+              {canCurate && (
+                <button
+                  type="button"
+                  className="button-like"
+                  disabled={removePhoto.isPending}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        "Remove this photo? It goes to the trash — recoverable for 30 days.",
+                      )
+                    ) {
+                      removePhoto.mutate(viewer.id);
+                    }
+                  }}
+                >
+                  <Trash2 size={14} aria-hidden /> Remove
+                </button>
+              )}
+              <button
+                type="button"
+                className="action-btn photo-viewer-close"
+                onClick={() => setViewer(null)}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

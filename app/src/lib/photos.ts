@@ -4,7 +4,7 @@
 // columns (20260721002000) are not yet applied.
 
 import { supabase } from "./supabase";
-import { isMissingColumn as isMissingSchemaColumn } from "./schemaErrors";
+import { isMissingColumn as isMissingSchemaColumn, isMissingTable } from "./schemaErrors";
 
 export interface FeedPhoto {
   id: string;
@@ -67,6 +67,10 @@ export async function listPhotos(
     .from("attachments")
     .select(GEO_SELECT)
     .eq("kind", "photo")
+    // Hide soft-deleted photos (slice 3): a removed photo is in the 30-day trash,
+    // not on the feed. On a database that predates deleted_at the column filter
+    // errors and the fallback below drops it (nothing is deleted there anyway).
+    .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(limit);
   if (projectId) query = query.eq("project_id", projectId);
@@ -104,6 +108,63 @@ export async function listPhotos(
 /** Prefer the true capture time; fall back to the server insert time. */
 export function photoTime(p: Pick<FeedPhoto, "takenAt" | "createdAt">): string {
   return p.takenAt ?? p.createdAt;
+}
+
+// ---------------------------------------------------------------------------
+// Job-photo trash (standard-tracking-jobs slice 3): a foreman removes a bad or
+// wrong photo; it drops off the feed into a 30-day recoverable trash, then the
+// nightly sweep erases it. deleted_at/deleted_by + the RPCs live in migration
+// 20260971000000. Reads degrade to empty on a database without the column.
+// ---------------------------------------------------------------------------
+
+/** The removed job photos still recoverable (newest-deleted first). */
+export async function listDeletedPhotos(
+  projectId?: string | null,
+  limit = 60,
+): Promise<FeedPhoto[]> {
+  let query = supabase
+    .from("attachments")
+    .select(GEO_SELECT)
+    .eq("kind", "photo")
+    .not("deleted_at", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (projectId) query = query.eq("project_id", projectId);
+  const res = await query;
+  // Not migrated yet — no trash is the honest answer, not an error screen.
+  if (res.error && (isMissingColumn(res.error) || isMissingTable(res.error, "attachments"))) {
+    return [];
+  }
+  if (res.error) throw res.error;
+
+  const rows = (res.data ?? []) as AttachmentRow[];
+  return Promise.all(
+    rows.map(async (r) => ({
+      id: r.id,
+      storagePath: r.storage_path,
+      signedUrl: await signedMedia(r.storage_path),
+      createdBy: r.created_by ?? null,
+      createdAt: r.created_at,
+      takenAt: r.taken_at ?? null,
+      lat: typeof r.lat === "number" ? r.lat : null,
+      lng: typeof r.lng === "number" ? r.lng : null,
+      accuracyM: typeof r.accuracy_m === "number" ? r.accuracy_m : null,
+      caption: r.caption ?? null,
+      projectId: r.project_id ?? null,
+    })),
+  );
+}
+
+/** Move a job photo to the 30-day trash (foreman+). */
+export async function deleteJobPhoto(id: string): Promise<void> {
+  const { error } = await supabase.rpc("soft_delete_job_photo", { p_id: id });
+  if (error) throw error;
+}
+
+/** Bring a job photo back from the trash within 30 days (foreman+). */
+export async function restoreJobPhoto(id: string): Promise<void> {
+  const { error } = await supabase.rpc("restore_job_photo", { p_id: id });
+  if (error) throw error;
 }
 
 export interface PhotoDayGroup<T> {
