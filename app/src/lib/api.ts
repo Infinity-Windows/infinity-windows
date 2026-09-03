@@ -15,6 +15,7 @@ import type {
   WindowType,
   WindowUnit,
 } from "./types";
+import { quickJobName, quickTrackingJobCode } from "./quickJobs";
 
 const WINDOW_SELECT =
   "*, window_types(*), locations(*), projects(*)";
@@ -101,14 +102,11 @@ export async function listTrashedProjects(): Promise<Project[]> {
   return data;
 }
 
-/** Owner-only. Moves a job to the 30-day trash — see projectTrash.ts for the
- * days-left math and the confirm-dialog copy. */
-export async function trashProject(projectId: string): Promise<void> {
-  const { error } = await supabase.rpc("trash_project", { p_project_id: projectId });
-  if (error) throw error;
-}
+// Trashing a job now lives in lib/jobDeletion.ts (deleteJob): supervisor+, with
+// a required reason and an all-supervisor notice (standard-tracking-jobs slice
+// 5). The reason and the push are why it moved out of this bare RPC wrapper.
 
-/** Owner-only. Undoes a trash within the 30-day window. */
+/** Supervisor+. Undoes a trash within the 30-day window (server-enforced). */
 export async function restoreProject(projectId: string): Promise<void> {
   const { error } = await supabase.rpc("restore_project", { p_project_id: projectId });
   if (error) throw error;
@@ -228,6 +226,38 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
   if (projectError) throw projectError;
 
   return project as Project;
+}
+
+/**
+ * Create a Tracking-ONLY job in one tap from the clock-in (standard-tracking-
+ * jobs slice 5). Foreman+ only — the CALLER is gated in the UI, the same way
+ * every other create-project affordance is (projects' INSERT policy is open to
+ * authenticated). Reuses createProject, then flips modes to tracking via the
+ * one legal writer of allowed_modes (set_project_modes); a job briefly born
+ * data-mode between the two writes never matters — nothing reads it until this
+ * returns and the caller clocks into it.
+ *
+ * The name is auto-derived (address, else customer) when the box is left blank
+ * — a callback often only has an address — and the job_code is generated with a
+ * random tail so two same-named callbacks never collide. The returned row's
+ * allowed_modes is set to ['tracking'] so the caller need not re-fetch to know
+ * what it just made.
+ */
+export async function createTrackingJob(input: {
+  name?: string | null;
+  address?: string | null;
+  customerName?: string | null;
+}): Promise<Project> {
+  const name = quickJobName(input);
+  const jobCode = quickTrackingJobCode(name);
+  const project = await createProject({
+    jobCode,
+    name,
+    address: input.address ?? null,
+    customerName: input.customerName ?? null,
+  });
+  await setProjectModes(project.id, ["tracking"]);
+  return { ...project, allowed_modes: ["tracking"] };
 }
 
 /**

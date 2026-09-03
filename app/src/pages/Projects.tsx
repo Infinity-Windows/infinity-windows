@@ -3,14 +3,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { LayoutGrid } from "lucide-react";
-import { createProject, getProjectDeleteCounts, listProjects, setProjectModes, trashProject } from "../lib/api";
+import { createProject, getProjectDeleteCounts, listProjects, setProjectModes } from "../lib/api";
+import { deleteJob } from "../lib/jobDeletion";
 import { formatApiError } from "../lib/errors";
 import { useT } from "../lib/i18n";
 import { JobModeBadge } from "../components/JobModeBadge";
 import type { JobMode } from "../lib/types";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { getMyProfile } from "../lib/install/api";
-import { isForemanPlus, isOwner } from "../lib/install/types";
+import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
 import { supabase } from "../lib/supabase";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
@@ -54,7 +55,9 @@ export function Projects() {
   const profile = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const canAdd = isForemanPlus(profile.data?.role);
   const { effectiveRole } = useEffectiveRole();
-  const canDelete = isOwner(effectiveRole);
+  // Deleting a job is supervisor+ now (slice 5) — was owner-only. The server
+  // enforces the same rank in trash_project; this gates the affordance.
+  const canDelete = isSupervisorPlus(effectiveRole);
   const counts = useQuery({
     queryKey: ["openingCounts"],
     // NOTE: this pulls every opening row for every job with no limit or
@@ -125,7 +128,8 @@ export function Projects() {
   };
 
   const trash = useMutation({
-    mutationFn: (id: string) => trashProject(id),
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      deleteJob(id, reason),
     onSuccess: () => {
       setMessage("Deleted — it disappears everywhere. Undo for 30 days from Job history.");
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
@@ -135,15 +139,19 @@ export function Projects() {
   });
 
   // Async on purpose: the confirm dialog states the real cost in numbers
-  // (owner ask), which means fetching cheap head-counts BEFORE window.confirm
-  // can show them, not after.
+  // (owner ask), which means fetching cheap head-counts BEFORE the prompt can
+  // show them. One prompt does both jobs — states the cost AND takes the
+  // required reason (slice 5): every supervisor is told why, so a blank one is
+  // refused here and again server-side.
   const handleDeleteClick = async (p: Project) => {
     setMessage(null);
     setDeletingId(p.id);
     try {
       const counts = await getProjectDeleteCounts(p.id);
-      const proceed = window.confirm(buildDeleteConfirmMessage(p.job_code, counts));
-      if (proceed) trash.mutate(p.id);
+      const reason = window.prompt(
+        `${buildDeleteConfirmMessage(p.job_code, counts)}\n\nWhy are you deleting it? (every supervisor is told)`,
+      );
+      if (reason && reason.trim()) trash.mutate({ id: p.id, reason: reason.trim() });
     } catch (e) {
       setMessage(formatApiError(e));
     } finally {

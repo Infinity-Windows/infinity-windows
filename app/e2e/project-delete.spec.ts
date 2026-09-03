@@ -59,6 +59,7 @@ function useTrashFixture(page: Page, initialDeletedAt: string | null) {
     deleted_by: null as string | null,
   };
   const trashCalls: string[] = [];
+  const trashReasons: (string | undefined)[] = [];
   const restoreCalls: string[] = [];
 
   void page.route("**/rest/v1/projects**", (route) => {
@@ -74,8 +75,12 @@ function useTrashFixture(page: Page, initialDeletedAt: string | null) {
   void page.route("**/rest/v1/attachments**", (r) => json(r, [], 0));
 
   void page.route("**/rest/v1/rpc/trash_project", (route) => {
-    const body = route.request().postDataJSON() as { p_project_id: string };
+    const body = route.request().postDataJSON() as {
+      p_project_id: string;
+      p_reason?: string;
+    };
     trashCalls.push(body.p_project_id);
+    trashReasons.push(body.p_reason);
     project.deleted_at = SERVER_NOW;
     project.deleted_by = "e2e-fixture";
     return rpcResult(route, project);
@@ -89,21 +94,23 @@ function useTrashFixture(page: Page, initialDeletedAt: string | null) {
   });
   void page.route("**/rest/v1/rpc/server_now", (route) => rpcResult(route, SERVER_NOW));
 
-  return { project, trashCalls, restoreCalls };
+  return { project, trashCalls, trashReasons, restoreCalls };
 }
 
 test.use({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 
-test("an owner deletes a job from Active projects, the confirm states the real cost, and it's gone from the list", async ({
+test("a supervisor deletes a job from Active projects, the prompt states the real cost and takes a reason, and it's gone from the list", async ({
   page,
 }) => {
-  await useSupabaseFixtures(page, { role: "owner" });
-  const { trashCalls } = useTrashFixture(page, null);
+  // Deletion is supervisor+ since standard-tracking-jobs slice 5 — was
+  // owner-only. One prompt states the cost AND takes the required reason.
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  const { trashCalls, trashReasons } = useTrashFixture(page, null);
 
-  let confirmMessage = "";
+  let promptMessage = "";
   page.on("dialog", (d) => {
-    confirmMessage = d.message();
-    void d.accept();
+    promptMessage = d.message();
+    void d.accept("no longer needed");
   });
 
   await page.goto("/projects");
@@ -113,18 +120,36 @@ test("an owner deletes a job from Active projects, the confirm states the real c
 
   await expect.poll(() => trashCalls.length).toBe(1);
   expect(trashCalls[0]).toBe(PECAN14.projectId);
-  expect(confirmMessage).toContain("Delete PECAN14?");
-  expect(confirmMessage).toContain("0 openings");
-  expect(confirmMessage).toContain("0 packages");
-  expect(confirmMessage).toContain("0 photos");
-  expect(confirmMessage).toContain("30 days to undo from Job history");
+  expect(trashReasons[0]).toBe("no longer needed");
+  expect(promptMessage).toContain("Delete PECAN14?");
+  expect(promptMessage).toContain("0 openings");
+  expect(promptMessage).toContain("0 packages");
+  expect(promptMessage).toContain("0 photos");
+  expect(promptMessage).toContain("30 days to undo from Job history");
+  expect(promptMessage).toContain("every supervisor is told");
 
   await expect(page.getByText("Deleted — it disappears everywhere.")).toBeVisible();
   await expect(page.getByText("Pecan Valley")).toHaveCount(0);
 });
 
-test("a supervisor (non-owner) sees no Delete action on Active projects", async ({ page }) => {
+test("a supervisor who cancels the reason prompt does not delete the job", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "supervisor" });
+  const { trashCalls } = useTrashFixture(page, null);
+
+  page.on("dialog", (d) => void d.dismiss());
+
+  await page.goto("/projects");
+  await expect(page.getByText("Pecan Valley")).toBeVisible();
+  await page.getByRole("button", { name: /Delete/ }).click();
+
+  // A dismissed (or blank) reason is refused — nothing is trashed.
+  await page.waitForTimeout(200);
+  expect(trashCalls.length).toBe(0);
+  await expect(page.getByText("Pecan Valley")).toBeVisible();
+});
+
+test("a foreman (below supervisor) sees no Delete action on Active projects", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
   useTrashFixture(page, null);
 
   await page.goto("/projects");

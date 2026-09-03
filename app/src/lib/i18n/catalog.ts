@@ -209,6 +209,59 @@ export const CATALOG = {
     es: "Firmar charla de seguridad y marcar entrada",
   },
 
+  // ---- Quick tracking job (foreman+, slice 5) ---------------------------
+  "clockblock.quickJob.start": {
+    en: "Start a quick tracking job",
+    es: "Crear un trabajo de seguimiento rápido",
+  },
+  "clockblock.quickJob.help": {
+    en: "For a callback with no job yet — clocks time only. Name it, or just give the address.",
+    es: "Para una visita sin trabajo aún — solo registra el tiempo. Ponle nombre, o solo la dirección.",
+  },
+  "clockblock.quickJob.namePlaceholder": {
+    en: "Job name (optional)",
+    es: "Nombre del trabajo (opcional)",
+  },
+  "clockblock.quickJob.addressPlaceholder": {
+    en: "Address (optional)",
+    es: "Dirección (opcional)",
+  },
+  "clockblock.quickJob.matchTitle": {
+    en: "Already open — join one instead of making a new one:",
+    es: "Ya está abierto — únete a uno en vez de crear otro:",
+  },
+  "clockblock.quickJob.create": { en: "Create & pick", es: "Crear y elegir" },
+  "clockblock.quickJob.creating": { en: "Creating…", es: "Creando…" },
+  "clockblock.quickJob.created": {
+    en: "Job created — pick a cost code and clock in.",
+    es: "Trabajo creado — elige un código de costo y marca entrada.",
+  },
+  "clockblock.quickJob.needName": {
+    en: "Give it a name or an address first.",
+    es: "Primero ponle un nombre o una dirección.",
+  },
+
+  // ---- Installer "need a job" request (slice 5) -------------------------
+  "clockblock.needJob.ask": { en: "Need a job for this?", es: "¿Necesitas un trabajo para esto?" },
+  "clockblock.needJob.help": {
+    en: "Ask a lead to set up a job so you can clock in.",
+    es: "Pide a un encargado que cree un trabajo para que puedas marcar entrada.",
+  },
+  "clockblock.needJob.notePlaceholder": {
+    en: "What are you here for? (optional)",
+    es: "¿Para qué estás aquí? (opcional)",
+  },
+  "clockblock.needJob.send": { en: "Ask a lead for a job", es: "Pedir un trabajo a un encargado" },
+  "clockblock.needJob.sending": { en: "Asking…", es: "Preguntando…" },
+  "clockblock.needJob.sent": {
+    en: "Asked — a lead will set you up.",
+    es: "Enviado — un encargado te va a ayudar.",
+  },
+  "clockblock.needJob.noOne": {
+    en: "No lead is reachable right now — call one instead.",
+    es: "Ningún encargado está disponible ahora — mejor llama a uno.",
+  },
+
   // ---- My Work landing --------------------------------------------------
   "mywork.greeting": { en: "Your day", es: "Tu día" },
   "mywork.title": { en: "My work", es: "Mi trabajo" },
