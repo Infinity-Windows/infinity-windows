@@ -242,31 +242,52 @@ describe("a refused install reaches the person who submitted it", () => {
     expect(await failedInstallCount()).toBe(0);
   });
 
+  // The guarantee: an old stuck install from another window must never be
+  // reported as the reason THIS Submit didn't go through.
+  //
+  // The older install has to still be PENDING and be refused in the same
+  // flush, with the store handing it back first. An earlier version of this
+  // test pre-failed it, which meant the flush skipped it outright — so the
+  // pass only ever produced one refusal and "just take the first one" would
+  // have passed too. Real IndexedDB orders by key, and the keys are random
+  // UUIDs, so which one comes first is a coin toss in the field; the fake
+  // store's insertion order lets the losing side of that toss be the case
+  // under test every run.
   it("reports the refusal only for the install that was just submitted", async () => {
     const { submitInstallEvent } = await import("./api");
-    const { enqueueInstall, submitInstallViaOutbox, flushInstallOutbox } =
+    const { enqueueInstall, failedInstallCount, submitInstallViaOutbox } =
       await import("./installOutbox");
 
-    // An older install that will be refused for its own reasons, already sat
-    // through one attempt.
-    vi.mocked(submitInstallEvent).mockRejectedValue({
-      code: "23505",
-      message: "duplicate key value violates unique constraint",
+    // Two refusals with different sentences, told apart by which install is
+    // being filed.
+    vi.mocked(submitInstallEvent).mockImplementation(async (params) => {
+      if (params.openingId === "opening-old") {
+        throw {
+          code: "23505",
+          message: "duplicate key value violates unique constraint",
+        };
+      }
+      throw {
+        code: "P0001",
+        message:
+          "this opening needs flashing submitted before the install is filed",
+      };
     });
-    const older = await enqueueInstall({ ...INPUT, openingId: "opening-old" });
-    await flushInstallOutbox();
 
-    // It is failed now, so the next flush skips it entirely and the new
-    // install's own refusal is the only one reported.
-    vi.mocked(submitInstallEvent).mockRejectedValue({
-      code: "P0001",
-      message: "this opening needs flashing submitted before the install is filed",
+    const older = await enqueueInstall({
+      ...INPUT,
+      openingId: "opening-old",
+      submitParams: { openingId: "opening-old" },
     });
     const result = await submitInstallViaOutbox(INPUT);
 
-    expect(result.refused).not.toBeNull();
+    // The premise: the stale one is walked FIRST in this pass.
+    expect([...rows.keys()][0]).toBe(older.id);
+    // The guarantee: the id, and the sentence, belong to this Submit.
     expect(result.refused?.id).not.toBe(older.id);
-    expect(rows.size).toBe(2);
+    expect((result.refused?.error as { code?: string })?.code).toBe("P0001");
+    // Both are parked for a person; neither was lost.
+    expect(await failedInstallCount()).toBe(2);
   });
 
   // Review, 2026-09-02. The re-entrancy guard used to return
