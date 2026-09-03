@@ -269,6 +269,51 @@ describe("a refused install reaches the person who submitted it", () => {
     expect(rows.size).toBe(2);
   });
 
+  // Review, 2026-09-02. The re-entrancy guard used to return
+  // `failedNow: []` on the spot when a flush was already running, having
+  // attempted nothing — and lib/install/queue.ts flushes every 30 seconds, so
+  // "already running" is a window an installer hits by tapping Submit at the
+  // wrong second. The sheet then said "Install saved on this device" for an
+  // install the server was about to refuse: the exact bug this work exists to
+  // kill, through the back door.
+  it("still gives a verdict when a background flush is already running", async () => {
+    const { submitInstallEvent } = await import("./api");
+    const { enqueueInstall, flushInstallOutbox, submitInstallViaOutbox } =
+      await import("./installOutbox");
+
+    vi.mocked(submitInstallEvent).mockImplementation(async (params) => {
+      if (params.openingId === "opening-old") {
+        // Hold the background pass open until Submit's own record is on
+        // disk. That is precisely the window the guard used to shrug at.
+        await vi.waitFor(() => expect(rows.size).toBe(2));
+        throw new TypeError("Failed to fetch");
+      }
+      throw {
+        code: "P0001",
+        message:
+          "this opening needs flashing submitted before the install is filed",
+      };
+    });
+
+    await enqueueInstall({
+      ...INPUT,
+      openingId: "opening-old",
+      // The RPC is called with submitParams, so the OLD install has to be
+      // told apart there, not just on the record.
+      submitParams: { openingId: "opening-old" },
+    });
+    const background = flushInstallOutbox();
+
+    const result = await submitInstallViaOutbox(INPUT);
+    await background;
+
+    expect((result.refused?.error as { code?: string })?.code).toBe("P0001");
+    // And the older one is untouched by somebody else's verdict: a dead zone
+    // is still just a dead zone, still pending, still going to retry.
+    const { failedInstallCount } = await import("./installOutbox");
+    expect(await failedInstallCount()).toBe(1);
+  });
+
   it("files a clean install and clears it off the device", async () => {
     const { submitInstallEvent } = await import("./api");
     vi.mocked(submitInstallEvent).mockResolvedValue({
