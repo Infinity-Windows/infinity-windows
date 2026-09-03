@@ -9696,6 +9696,20 @@ body {
 .ro-verdict { margin: 6px 0 0; font-size: 12.5px; color: var(--ok); }
 .ro-verdict.bad { color: var(--danger); }
 
+/* "Save rough opening" and "Quick check: all good" share one row (owner,
+   2026-09-02) so the fast path sits beside the thorough one instead of under
+   it. The quick one reads secondary - no fill, muted text - because typed
+   numbers are still the better answer, and it is the wider of the two only
+   when the save button's text grows to name a framing issue. */
+.ro-save-row { display: flex; gap: 8px; align-items: stretch; }
+.ro-save-row .action-btn { flex: 1; }
+.ro-save-row .action-btn.secondary {
+  background: transparent;
+  color: var(--muted, #b3a498);
+}
+.ro-save-row .action-btn:disabled { opacity: 0.55; }
+.ro-quick-why { margin: 6px 0 0; font-size: 12.5px; }
+
 /* ==========================================================================
    Issue cards: a company punch list, not a stack trace. An urgency stripe
    carries the alarm; the words stay in the app's normal voice. The kind

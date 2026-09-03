@@ -24,6 +24,7 @@ import {
   listMyOpeningsAllJobs,
   listOpeningNotes,
   listUndoneInstalls,
+  quickCheckRoughOpening,
   setOpeningCondition,
   setRoughOpening,
   undoInstall,
@@ -884,6 +885,20 @@ export function OpeningSheet() {
     onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
+  // The fast path beside the thorough one (owner, 2026-09-02). It files no
+  // framing issue and resolves none: there is nothing measured to judge, and a
+  // thumbs-up must never close an issue a tape measure opened. Real numbers
+  // saved afterward clear the flag server-side, so this can only ever be the
+  // answer for an opening nobody has measured.
+  const quickCheckRo = useMutation({
+    mutationFn: () => quickCheckRoughOpening(openingId),
+    onSuccess: () => {
+      setMessage({ text: "Quick check saved — rough opening marked good.", tone: "ok" });
+      refresh();
+    },
+    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
+  });
+
   // Pick 12: setOpeningCondition is its own inverse — a real setter, so
   // "undo" is simply calling it again with whatever condition and note it
   // carried before this tap (captured here, before the write). The toast
@@ -1216,6 +1231,24 @@ export function OpeningSheet() {
     roHeightIn: o.ro_height_in,
     roQuickOk: Boolean(o.ro_quick_ok),
   });
+
+  // Numbers on file settle the rough opening, so the quick-check button is not
+  // offered and the verdict line reads the measurement instead.
+  const hasRoNumbers = o.ro_width_in != null && o.ro_height_in != null;
+  const roHasBadTap = Object.values(roJudge).includes("bad");
+
+  // Who said it was good, and when — the same short date the sent-back list
+  // uses. An installer signs in with an email, which is what the server stored.
+  const quickCheckWho = [
+    o.ro_measured_by?.trim(),
+    o.ro_measured_at &&
+      new Date(o.ro_measured_at).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      }),
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   const ready = readyToInstall({
     hasUnit: Boolean(o.assigned_window_id),
@@ -1947,21 +1980,46 @@ export function OpeningSheet() {
             );
           })}
 
-          <button
-            className="action-btn"
-            disabled={saveRo.isPending}
-            onClick={() => saveRo.mutate()}
-          >
-            {saveRo.isPending
-              ? "Saving…"
-              : roFailures(roChecklist, roJudge).length > 0
-                ? "Save — files a framing issue for this window"
-                : "Save rough opening"}
-          </button>
+          <div className="ro-save-row">
+            <button
+              className="action-btn"
+              disabled={saveRo.isPending}
+              onClick={() => saveRo.mutate()}
+            >
+              {saveRo.isPending
+                ? "Saving…"
+                : roFailures(roChecklist, roJudge).length > 0
+                  ? "Save — files a framing issue for this window"
+                  : "Save rough opening"}
+            </button>
+            {/* Hidden once numbers are on file: they outrank a quick check, so
+                offering one there would only invite somebody to overwrite a
+                measurement with a thumb. */}
+            {!hasRoNumbers && (
+              <button
+                type="button"
+                className="action-btn secondary"
+                disabled={quickCheckRo.isPending || roHasBadTap}
+                onClick={() => quickCheckRo.mutate()}
+              >
+                {quickCheckRo.isPending ? "Saving…" : "Quick check: all good"}
+              </button>
+            )}
+          </div>
+          {!hasRoNumbers && roHasBadTap && (
+            <p className="muted ro-quick-why">
+              Clear the Bad marks first, or save the numbers.
+            </p>
+          )}
           <div className={`fit-verdict fit-${fit.verdict}`}>
-            {o.ro_width_in != null && o.ro_height_in != null ? (
+            {hasRoNumbers ? (
               <>
                 <strong>Rough opening {o.ro_width_in}×{o.ro_height_in}"</strong> — {fit.message}
+              </>
+            ) : o.ro_quick_ok ? (
+              <>
+                <strong>Quick check: all good</strong>
+                {quickCheckWho && ` — ${quickCheckWho}`}
               </>
             ) : (
               <span className="muted">{fit.message}</span>
