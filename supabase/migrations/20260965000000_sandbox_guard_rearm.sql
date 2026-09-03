@@ -61,8 +61,12 @@
 -- `supabase db push` and FAILS the deploy when it is not empty, the same way
 -- scripts/verify-schema.sh fails a deploy whose migrations did not apply.
 -- scripts/test_sandbox_guard.py closes the other end: a future migration that
--- creates a project-scoped table and does not call attach_sandbox_guards()
--- fails CI before it can ever reach the database.
+-- makes a table project-scoped — creating it, recreating it, or adding the
+-- column that ties it to a job — and does not call attach_sandbox_guards() in
+-- that same file fails CI before it can ever reach the database. In that same
+-- file, not merely before the next arming call: files are applied in whatever
+-- order they are still pending, so a branch numbered below this one and merged
+-- after it lands on a database this sweep has already run over.
 --
 -- SEPARATE FINDING, DELIBERATELY NOT CHANGED HERE. The guard refuses writes
 -- outside public.sandbox_projects, and 20260933000000_testing_projects.sql
@@ -256,7 +260,7 @@ end;
 $$;
 
 comment on function public.attach_sandbox_guards() is
-  'Puts guard_test_account_sandbox_only on every project-scoped table, and repairs one attached to the wrong column or switched off. Idempotent — a table already correctly guarded is not touched. Any migration that creates a project-scoped table must end with `select public.attach_sandbox_guards();`; scripts/test_sandbox_guard.py fails CI if one forgets.';
+  'Puts guard_test_account_sandbox_only on every project-scoped table, and repairs one attached to the wrong column or switched off. Idempotent — a table already correctly guarded is not touched. Any migration that makes a table project-scoped — creating it, recreating it, or adding the column that ties it to a job — must end with `select public.attach_sandbox_guards();`; scripts/test_sandbox_guard.py fails CI if one forgets.';
 
 revoke all on function public.attach_sandbox_guards() from public, anon, authenticated;
 grant execute on function public.attach_sandbox_guards() to service_role;

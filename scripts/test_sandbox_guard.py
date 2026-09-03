@@ -5,14 +5,15 @@
 
 Two jobs.
 
-THE STATIC GATE. Replays every migration to find every project-scoped table
-declared after the fence migration, and asserts something arms it — a call to
-attach_sandbox_guards() in that migration or a later one. This is the check
-that stops the live census from ever going non-empty again: the original fence
-attached its triggers from a `do` block that ran once, on 2026-07-30, and
-fourteen tables created since then never carried a guard at all. Nobody has to
-remember to add a new table to a list here; a migration that adds one and does
-not arm it fails THIS test, before it can reach any database.
+THE STATIC GATE. Replays every migration to find every table that becomes
+project-scoped after 20260965000000's sweep — created with a project link,
+dropped and recreated, or given one by ALTER — and asserts that the migration
+doing it arms the fence itself. This is the check that stops the live census
+from ever going non-empty again: the original fence attached its triggers from
+a `do` block that ran once, on 2026-07-30, and fourteen tables created since
+then never carried a guard at all. Nobody has to remember to add a new table to
+a list here; a migration that adds one and does not arm it fails THIS test,
+before it can reach any database.
 
 THE REPORT. Exercises scripts/sandbox_guard.py's rendering and verdict against
 fixed census snapshots, so the deploy check cannot be red or green for the wrong
@@ -32,6 +33,7 @@ from sandbox_guard import (  # noqa: E402
     GUARD_MIGRATION,
     REARM_MIGRATION,
     MIGRATIONS_DIR,
+    REARM_COVERED,
     SANDBOX_DECISION,
     link_for,
     load_census,
@@ -369,7 +371,12 @@ class TestTheGateCanActuallyFail(unittest.TestCase):
             )
             self.assertEqual([], uncovered_new_tables(directory))
 
-    def test_a_later_migration_arming_the_fence_clears_it_too(self):
+    def test_a_later_migration_arming_the_fence_does_not_clear_it(self):
+        """Filenames are a version order, not the order files reach a
+        database. `supabase db push` applies whatever is pending, so the
+        arming migration may already have run when this table lands — the
+        table is created, nothing sweeps, and the fence is down on it. Only
+        arming in the SAME file has no such gap."""
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
             (directory / "20260970000000_new_feature.sql").write_text(
@@ -379,6 +386,77 @@ class TestTheGateCanActuallyFail(unittest.TestCase):
             (directory / "20260971000000_arm_it.sql").write_text(
                 "select public.attach_sandbox_guards();\n", encoding="utf-8",
             )
+            self.assertEqual(
+                [("job_notes", "project_id", "20260970000000_new_feature.sql")],
+                uncovered_new_tables(directory),
+            )
+
+    def test_a_table_that_becomes_project_scoped_later_is_caught(self):
+        """`alter table cost_codes add column project_id` makes a table that
+        has existed for months project-scoped for the first time. It has no
+        trigger from that statement onwards, and keying coverage to the
+        migration that CREATED it would call it covered forever."""
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "20260500000000_cost_codes.sql").write_text(
+                "create table cost_codes (id uuid primary key, code text);\n",
+                encoding="utf-8",
+            )
+            (directory / "20260970000000_bill_by_job.sql").write_text(
+                "alter table cost_codes add column project_id uuid references projects(id);\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                [("cost_codes", "project_id", "20260970000000_bill_by_job.sql")],
+                uncovered_new_tables(directory),
+            )
+
+    def test_a_table_dropped_and_recreated_is_caught(self):
+        """Root cause 2, in a future migration. Postgres drops the trigger
+        with the table, so a recreated table is a new table as far as the
+        fence is concerned — which is how project_marks and package_events
+        lost guards they had on day one."""
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "20260814000000_storage_tracking.sql").write_text(
+                "create table packages (id uuid primary key, project_id uuid);\n",
+                encoding="utf-8",
+            )
+            (directory / "20260970000000_repack.sql").write_text(
+                "drop table packages cascade;\n"
+                "create table packages (id uuid primary key, project_id uuid, lpn text);\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                [("packages", "project_id", "20260970000000_repack.sql")],
+                uncovered_new_tables(directory),
+            )
+
+    def test_a_recreated_table_that_arms_itself_is_fine(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "20260814000000_storage_tracking.sql").write_text(
+                "create table packages (id uuid primary key, project_id uuid);\n",
+                encoding="utf-8",
+            )
+            (directory / "20260970000000_repack.sql").write_text(
+                "drop table packages cascade;\n"
+                "create table packages (id uuid primary key, project_id uuid, lpn text);\n"
+                "select public.attach_sandbox_guards();\n",
+                encoding="utf-8",
+            )
+            self.assertEqual([], uncovered_new_tables(directory))
+
+    def test_the_tables_the_rearm_sweep_covered_are_not_re_reported(self):
+        """The gate has to stay quiet about the forty-three tables
+        20260965000000 actually armed, or nobody will read it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "20260814000000_storage_tracking.sql").write_text(
+                "create table packages (id uuid primary key, project_id uuid);\n",
+                encoding="utf-8",
+            )
+            self.assertIn("packages", REARM_COVERED)
             self.assertEqual([], uncovered_new_tables(directory))
 
     def test_an_earlier_arming_call_does_not_cover_a_later_table(self):

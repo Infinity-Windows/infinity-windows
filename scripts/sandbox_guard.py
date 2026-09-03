@@ -27,13 +27,15 @@ TWO CHECKS, BECAUSE ONE OF THEM IS ALWAYS TOO LATE.
 
   THE STATIC SCAN (uncovered_new_tables(), asserted by
   scripts/test_sandbox_guard.py) reads the migration files. A migration that
-  creates a project-scoped table and never calls attach_sandbox_guards() fails
+  makes a table project-scoped and never calls attach_sandbox_guards() fails
   CI, before it reaches any database. That is the check that stops the census
   from ever going non-empty again by somebody simply forgetting.
 
-The static scan reuses supabase_merge_lib's migration replay rather than a
-hand-written list of tables, for the reason partner_wall_lib.py gives: a list
-written on the day of the fix is stale by the next merge.
+The static scan replays the migrations rather than reading a hand-written list
+of tables, for the reason partner_wall_lib.py gives: a list written on the day
+of the fix is stale by the next merge. REARM_COVERED is the one list here, and
+it is a different kind of thing — a record of what one sweep did on one day,
+which cannot go stale because that day is over.
 
 WHAT NEITHER CHECK DECIDES. A fence is only as tight as the list of what is
 inside it, and that list is not an engineering question. 20260933000000 made
@@ -60,19 +62,66 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from supabase_merge_lib import parse_migrations  # noqa: E402
+# The private names are the migration parser this repo already has, borrowed
+# rather than written again. If one is renamed the import fails loudly, which is
+# the right failure for a security gate — a second copy of the parser drifting
+# quietly is what put seventeen versions of the missing-table check in the app.
+from supabase_merge_lib import (  # noqa: E402
+    _ADD_COLUMN,
+    _CREATE_TABLE,
+    _parse_create_table,
+    _read_parens,
+    _strip_dollar_quoted,
+)
 
 REPO_ROOT = HERE.parent
 MIGRATIONS_DIR = REPO_ROOT / "supabase" / "migrations"
 
-#: The migration that invented the fence. Tables declared by it or earlier were
-#: swept by its own one-shot `do` block on the day it ran, so the static scan
-#: only has an opinion about what came after.
+#: The migration that invented the fence, and swept the catalogue once from a
+#: `do` block on the day it ran.
 GUARD_MIGRATION = "20260730220000_test_accounts_sandbox_only.sql"
 
 #: The migration that made re-arming callable, and called it. Every table that
-#: existed when this ran is covered by that call.
+#: was project-scoped on the database when this ran is covered by that call —
+#: which is not the same set as "every table whose filename sorts below it",
+#: hence REARM_COVERED.
 REARM_MIGRATION = "20260965000000_sandbox_guard_rearm.sql"
+
+#: What 20260965000000's sweep actually armed: every table that was
+#: project-scoped in the repo on the day it was written (2026-09-02).
+#:
+#: A FROZEN HISTORICAL FACT, not a list to maintain. Nothing may be added to
+#: it — a table that becomes project-scoped after that sweep has to arm the
+#: fence from its own migration, and this list is how the gate tells the two
+#: apart. A version comparison cannot: `supabase db push` applies whatever is
+#: pending, so a branch numbered below 20260965000000 and merged after it runs
+#: on a database where the sweep is already behind it. Its table would sort as
+#: "covered" and carry no trigger.
+#:
+#: A name here that no longer exists costs nothing; the gate only ever looks up
+#: tables the replay still finds.
+REARM_COVERED: frozenset[str] = frozenset({
+    "attachments", "change_orders", "daily_logs", "flash_run_assignments",
+    "incidents", "install_events", "issues", "job_costs", "job_notes",
+    "monday_jobs", "movements", "opening_notes", "opening_phases",
+    "package_events", "packages", "partner_job_grants",
+    "project_mark_elevation_views", "project_mark_specs", "project_marks",
+    "project_message_reads", "project_messages", "project_opening_pin_moves",
+    "project_openings", "project_plan_outlines", "project_plansets",
+    "project_spec_discrepancies", "project_windows", "projects", "qc_checks",
+    "receipts", "schedule_assignments", "service_cases", "studio_projects",
+    "summons", "supply_orders", "takeoffs", "task_sessions", "time_shifts",
+    "trips", "unit_redos", "unit_sessions", "vehicle_project_assignments",
+    "windows",
+})
+
+#: `drop table a, b cascade;` — the names, up to the semicolon. A table that is
+#: dropped takes its triggers with it, so the replay has to see the drop or it
+#: reports a recreated table as still guarded (root cause 2 of this incident).
+DROP_TABLE = re.compile(
+    r"drop\s+table\s+(?:if\s+exists\s+)?([^;]*?)(?:\s+(?:cascade|restrict))?\s*;",
+    re.IGNORECASE,
+)
 
 #: What a migration has to contain to count as re-arming the fence: a CALL,
 #: not a mention. `create or replace function public.attach_sandbox_guards()`
@@ -132,18 +181,74 @@ def link_for(table_name: str, columns) -> tuple[str, str] | None:
 
 
 def scoped_tables(directory: Path | str = MIGRATIONS_DIR) -> dict[str, tuple[str, str, str]]:
-    """table -> (link column, link kind, the migration that declared it).
+    """table -> (link column, link kind, the migration where it BECAME scoped).
 
-    `create table … as select` is invisible to this replay (the archive tables
-    in 20260942000000_time_wipe.sql are the only instances), so those are
-    covered by the live census and not by the static scan.
+    The third field is the load-bearing one, and it is not "the migration that
+    created the table". A trigger is attached to a table at a moment in time,
+    and there are three ways a table can need one after that moment:
+
+      * it is created project-scoped — the ordinary case;
+      * it is dropped and recreated, which takes the trigger with it. That is
+        root cause 2 of the 2026-09-02 incident: project_marks and
+        package_events lost guards they had, on migrations about something
+        else. A parser that keeps the first `create table` cannot see it;
+      * `alter table … add column project_id` makes a table that has existed
+        for months project-scoped for the first time, and unguarded from that
+        statement onwards.
+
+    So this replays the files in version order the way `supabase db push`
+    applies them, tracking each table's live columns, and records the file
+    where it last crossed into being project-scoped.
+
+    `create table … as select` is invisible to it (the archive tables in
+    20260942000000_time_wipe.sql are the only instances), so those are covered
+    by the live census and not by the static scan.
     """
-    schema = parse_migrations(Path(directory))
+    live: dict[str, set[str]] = {}
+    scoped_after_last_file: set[str] = set()
+    became: dict[str, str] = {}
+
+    for path in sorted(Path(directory).glob("*.sql")):
+        # Comments, quoted strings and function bodies all contain DDL-shaped
+        # text that never runs as DDL.
+        sql = _strip_dollar_quoted(_code_only(path.read_text(encoding="utf-8")))
+
+        for statement in DROP_TABLE.finditer(sql):
+            for name in statement.group(1).split(","):
+                name = name.strip().strip('"').lower()
+                if name.startswith("public."):
+                    name = name[len("public."):]
+                live.pop(name, None)
+                scoped_after_last_file.discard(name)
+
+        position = 0
+        while True:
+            match = _CREATE_TABLE.search(sql, position)
+            if not match:
+                break
+            try:
+                body, position = _read_parens(sql, match.end() - 1)
+            except ValueError:
+                position = match.end()
+                continue
+            name = match.group(1).lower()
+            live[name] = set(_parse_create_table(name, body, path.name).columns)
+
+        for match in _ADD_COLUMN.finditer(sql):
+            table = live.get(match.group(1).lower())
+            if table is not None:
+                table.add(match.group(2).lower())
+
+        scoped_now = {n for n, cols in live.items() if link_for(n, cols)}
+        for name in scoped_now - scoped_after_last_file:
+            became[name] = path.name
+        scoped_after_last_file = scoped_now
+
     out: dict[str, tuple[str, str, str]] = {}
-    for name, table in schema.tables.items():
-        link = link_for(name, table.columns)
+    for name in scoped_after_last_file:
+        link = link_for(name, live[name])
         if link is not None:
-            out[name] = (link[0], link[1], table.defined_in)
+            out[name] = (link[0], link[1], became[name])
     return out
 
 
@@ -223,18 +328,27 @@ def uncovered_new_tables(
 ) -> list[tuple[str, str, str]]:
     """(table, link column, migration) for project-scoped tables nothing arms.
 
-    A table is covered when some migration at or after the one that declared it
-    calls attach_sandbox_guards(). Tables declared by GUARD_MIGRATION or earlier
-    are covered by its own sweep.
+    A table is covered when THE MIGRATION THAT MAKES IT PROJECT-SCOPED arms the
+    fence itself, or when 20260965000000's sweep already covered it.
+
+    "Or a later migration arms it" is not on that list, and the omission is the
+    point. Filenames are a version order, not the order the files reach a
+    database: `supabase db push` applies whatever is pending, so a branch
+    numbered below 20260965000000 and merged after it lands on a database where
+    the only arming call has already run. Its table gets no trigger, and a gate
+    that credited any higher-sorting filename would be green on that PR — the
+    one-shot bug, reproduced by the check written to catch it. Arming in the
+    same file has no such gap: the table and the sweep are one transaction, in
+    one place, whenever it runs.
     """
-    arming = migrations_calling_attach(directory)
+    arming = set(migrations_calling_attach(directory))
     uncovered = []
-    for name, (column, _kind, declared_in) in sorted(scoped_tables(directory).items()):
-        if declared_in <= GUARD_MIGRATION:
+    for name, (column, _kind, became_scoped_in) in sorted(scoped_tables(directory).items()):
+        if became_scoped_in in arming:
             continue
-        if any(fn >= declared_in for fn in arming):
+        if became_scoped_in <= REARM_MIGRATION and name in REARM_COVERED:
             continue
-        uncovered.append((name, column, declared_in))
+        uncovered.append((name, column, became_scoped_in))
     return uncovered
 
 
@@ -328,8 +442,9 @@ def render(census: dict[str, list[list[str]]], project: str) -> tuple[str, bool]
         out.append("")
         out.append(
             "Each row is a table `guard_test_account_sandbox_only` is missing "
-            "from or mis-attached to. Call `select public.attach_sandbox_guards();` "
-            "from the migration that created it — see "
+            "from, switched off on, or mis-attached to. Call "
+            "`select public.attach_sandbox_guards();` from the migration that "
+            "made it project-scoped — see "
             "`supabase/migrations/" + REARM_MIGRATION + "`.",
         )
         out.append("")
