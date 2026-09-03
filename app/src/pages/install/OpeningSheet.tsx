@@ -490,8 +490,12 @@ export function OpeningSheet() {
     queryKey: ["openingPhases", projectId],
     queryFn: () => listOpeningPhases(projectId),
   });
-  const myPhases = (phases.data ?? []).filter((p) => p.opening_id === openingId);
-  const flashing = myPhases.find((p) => p.kind === "flashing") ?? null;
+  // Left UNDEFINED while the phase read has not answered, on purpose: the
+  // gate below reads that as "not known yet" rather than "flashing owed".
+  // `?? []` here would make a phone that could not reach the phase table say
+  // a flashed unit still owes flashing — see flashingOutstanding's comment.
+  const myPhases = phases.data?.filter((p) => p.opening_id === openingId);
+  const flashing = myPhases?.find((p) => p.kind === "flashing") ?? null;
   const flashingBlocked = opening.data
     ? flashingOutstanding(opening.data, myPhases)
     : false;
