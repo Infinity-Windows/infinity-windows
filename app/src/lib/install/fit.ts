@@ -43,6 +43,13 @@ export interface FitInput {
   unitHeightIn: number | null | undefined;
   roWidthIn: number | null | undefined;
   roHeightIn: number | null | undefined;
+  /**
+   * The one-tap "Quick check: all good" (owner, 2026-09-02): somebody stood at
+   * the opening, held the unit to it and said it goes in, without writing the
+   * tape numbers down. It only speaks when there are no rough-opening numbers
+   * on file — the moment a tape measure has an answer, the tape is the answer.
+   */
+  roQuickOk?: boolean;
   clearance?: FitClearance;
 }
 
@@ -66,6 +73,18 @@ function round2(n: number): number {
 export function checkFit(input: FitInput): FitResult {
   const { unitWidthIn, unitHeightIn, roWidthIn, roHeightIn } = input;
   const clearance = input.clearance ?? DEFAULT_CLEARANCE;
+
+  // A quick check stands in for a measurement that was never taken, and only
+  // for that: it is read before the "unknown" answer and never instead of a
+  // real one. There are no gaps to report, because nobody wrote a number down.
+  if ((roWidthIn == null || roHeightIn == null) && input.roQuickOk) {
+    return {
+      verdict: "fits",
+      widthGap: null,
+      heightGap: null,
+      message: "Quick check: all good — no tape numbers on file.",
+    };
+  }
 
   if (
     unitWidthIn == null ||
@@ -216,6 +235,10 @@ export interface OpeningLike {
   condition: "unknown" | "ok" | "damaged";
   ro_width_in: number | null;
   ro_height_in: number | null;
+  /** The one-tap "quick check: all good" — see `FitInput.roQuickOk`. Optional:
+   *  the column arrives with 20260966000000, and an older row (or a partial
+   *  select) reads as absent, which is the same as no quick check. */
+  ro_quick_ok?: boolean | null;
   window_types?: { width_in: number | null; height_in: number | null } | null;
   windows?: { window_type_id: string; status: string } | null;
 }
@@ -233,6 +256,7 @@ export function openingReadiness(o: OpeningLike): OpeningReadiness {
     unitHeightIn: o.window_types?.height_in,
     roWidthIn: o.ro_width_in,
     roHeightIn: o.ro_height_in,
+    roQuickOk: Boolean(o.ro_quick_ok),
   });
   const typeMatches =
     !o.assigned_window_id ||

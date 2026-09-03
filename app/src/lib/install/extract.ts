@@ -732,6 +732,8 @@ export interface ExistingOpeningLite {
   /** Rough-opening measurements (`set_opening_rough_opening`). */
   ro_width_in?: number | null;
   ro_height_in?: number | null;
+  /** The one-tap "quick check: all good" (`quick_check_rough_opening`). */
+  ro_quick_ok?: boolean | null;
   /** Arrival condition once someone has actually looked (`set_opening_condition`). */
   condition?: string | null;
   /**
@@ -750,6 +752,11 @@ export interface ExistingOpeningLite {
  * an opening to planned/unconfirmed while KEEPING (voiding, not deleting) the
  * install event — and `install_events` and `qc_checks` are ON DELETE CASCADE,
  * so deleting that row would destroy the install record it was preserving.
+ *
+ * The quick check counts for the same reason a measurement does: somebody
+ * stood at that window and judged it (2026-09-02). It leaves no numbers
+ * behind, so without naming it here a re-extract would delete the only record
+ * that the walk ever happened.
  */
 export function hasFieldWork(o: ExistingOpeningLite): boolean {
   return Boolean(
@@ -757,6 +764,7 @@ export function hasFieldWork(o: ExistingOpeningLite): boolean {
       o.work_started_at ||
       o.ro_width_in != null ||
       o.ro_height_in != null ||
+      o.ro_quick_ok ||
       (o.condition != null && o.condition !== "unknown") ||
       o.referenced,
   );

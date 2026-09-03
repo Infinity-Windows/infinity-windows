@@ -561,6 +561,201 @@ test("Rough opening: a too-tight measurement saves AND files a framing issue", a
   ).toBeVisible();
 });
 
+// The fast path beside the tape measure (owner, 2026-09-02). Three things are
+// worth a net: the tap sends the actor the server stamps, the verdict line
+// afterward says who and when, and a Bad mark holds the button shut — because
+// a thumbs-up on an opening somebody just judged bad is the one way this
+// button could paper over a real framing problem.
+test("Rough opening: one tap records a quick check when there is no tape", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  const o = opening(5, {
+    status: "assigned",
+    confirmed: true,
+    ro_width_in: null,
+    ro_height_in: null,
+    ro_quick_ok: false,
+    ro_measured_by: null,
+    ro_measured_at: null,
+    window_type_id: "wt-e2e-quick",
+    window_types: {
+      id: "wt-e2e-quick",
+      type_code: "E2EQ",
+      name: "Test unit",
+      width_in: 36,
+      height_in: 48,
+    },
+  });
+  const openings = await routeOpenings(page, [o]);
+
+  const quick: Json[] = [];
+  await page.route(
+    "**/rest/v1/rpc/quick_check_rough_opening",
+    async (route) => {
+      const body = route.request().postDataJSON() as Json;
+      quick.push(body);
+      const patch = {
+        ro_quick_ok: true,
+        ro_measured_by: body.p_actor,
+        ro_measured_at: "2026-09-02T15:00:00Z",
+      };
+      openings.set(str(o.id), patch);
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ...o, ...patch }),
+      });
+    },
+  );
+
+  await page.goto(`/projects/${str(o.project_id)}/opening/${str(o.id)}`);
+
+  const quickButton = page.getByRole("button", {
+    name: "Quick check: all good",
+    exact: true,
+  });
+  await expect(quickButton).toBeEnabled();
+
+  // A Bad tap shuts it, and says why in words.
+  await page
+    .getByRole("group", { name: "Square?" })
+    .getByRole("button", { name: "Bad ✕" })
+    .click();
+  await expect(quickButton).toBeDisabled();
+  await expect(
+    page.getByText("Clear the Bad marks first, or save the numbers."),
+  ).toBeVisible();
+
+  // Untapping Square clears it again (the pill toggles).
+  await page
+    .getByRole("group", { name: "Square?" })
+    .getByRole("button", { name: "Bad ✕" })
+    .click();
+  await expect(quickButton).toBeEnabled();
+
+  await quickButton.click();
+
+  await expect.poll(() => quick.length).toBe(1);
+  expect(quick[0]).toMatchObject({
+    p_opening_id: str(o.id),
+    p_actor: TEST_USER.email,
+  });
+  // No measurements are invented on the way through.
+  expect(quick[0]).not.toHaveProperty("p_width_in");
+  expect(quick[0]).not.toHaveProperty("p_height_in");
+
+  await expect(
+    page.getByText("Quick check saved — rough opening marked good."),
+  ).toBeVisible();
+
+  // Once the refetch lands, the fit line stops asking for a measurement and
+  // names who stood there instead.
+  const verdict = page.locator(".fit-verdict");
+  await expect(verdict).toContainText("Quick check: all good");
+  await expect(verdict).toContainText(TEST_USER.email);
+  await expect(verdict).not.toContainText("Measure the rough opening");
+});
+
+test("Rough opening: numbers on file leave no quick-check button to press", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  const o = opening(5, {
+    status: "assigned",
+    confirmed: true,
+    ro_width_in: 36.25,
+    ro_height_in: 48.25,
+    ro_quick_ok: false,
+    window_type_id: "wt-e2e-measured",
+    window_types: {
+      id: "wt-e2e-measured",
+      type_code: "E2EM",
+      name: "Test unit",
+      width_in: 36,
+      height_in: 48,
+    },
+  });
+  await routeOpenings(page, [o]);
+
+  await page.goto(`/projects/${str(o.project_id)}/opening/${str(o.id)}`);
+
+  await expect(
+    page.getByRole("button", { name: "Save rough opening", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Quick check: all good", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator(".fit-verdict")).toContainText(
+    "Rough opening 36.25×48.25",
+  );
+});
+
+// The phone that has been out of signal all morning. It is still drawing the
+// button because the row it holds has no numbers on it; somebody measured that
+// window an hour ago. The server refuses the tap (the null guard in
+// 20260966000000), and the sheet has to come back with the numbers rather than
+// leaving a button that can only fail again.
+test("Rough opening: a quick check on an opening measured meanwhile shows the numbers", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  const o = opening(5, {
+    status: "assigned",
+    confirmed: true,
+    ro_width_in: null,
+    ro_height_in: null,
+    ro_quick_ok: false,
+    window_type_id: "wt-e2e-stale",
+    window_types: {
+      id: "wt-e2e-stale",
+      type_code: "E2ES",
+      name: "Test unit",
+      width_in: 36,
+      height_in: 48,
+    },
+  });
+  const openings = await routeOpenings(page, [o]);
+
+  await page.route(
+    "**/rest/v1/rpc/quick_check_rough_opening",
+    async (route) => {
+      // What the tape measure wrote while this phone was offline.
+      openings.set(str(o.id), {
+        ro_width_in: 36.25,
+        ro_height_in: 48.25,
+        ro_measured_by: "pat@example.com",
+        ro_measured_at: "2026-09-02T13:02:00Z",
+      });
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({
+          code: "P0001",
+          message:
+            "Somebody measured this rough opening already. Reload the sheet to see the numbers.",
+        }),
+      });
+    },
+  );
+
+  await page.goto(`/projects/${str(o.project_id)}/opening/${str(o.id)}`);
+
+  await page
+    .getByRole("button", { name: "Quick check: all good", exact: true })
+    .click();
+
+  await expect(
+    page.getByText("Somebody measured this rough opening already."),
+  ).toBeVisible();
+  await expect(page.locator(".fit-verdict")).toContainText(
+    "Rough opening 36.25×48.25",
+  );
+  await expect(
+    page.getByRole("button", { name: "Quick check: all good", exact: true }),
+  ).toHaveCount(0);
+});
+
 test("Condition: marking a unit damaged fires set_opening_condition with the note", async ({
   page,
 }) => {
