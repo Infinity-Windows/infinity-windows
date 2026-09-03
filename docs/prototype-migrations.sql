@@ -4008,11 +4008,15 @@ alter table project_openings
 comment on column project_openings.ro_quick_ok is
   'One-tap "quick check: all good" on the rough opening: somebody looked and '
   'said the unit goes in, without writing tape numbers down. Only read when '
-  'ro_width_in / ro_height_in are null — set_opening_rough_opening clears it '
-  'whenever real numbers are saved, because numbers always win.';
+  'ro_width_in / ro_height_in are null, and it can never be true alongside '
+  'them: set_opening_rough_opening clears it whenever real numbers are saved, '
+  'and quick_check_rough_opening refuses a row that already has any. Numbers '
+  'always win.';
 
 -- Same caller rules as set_opening_rough_opening beside it: SECURITY INVOKER,
--- so the `openings_update_live` policy decides who may write.
+-- so the `openings_update_live` policy decides who may write. The null guard
+-- is what stops a phone holding a stale row from overwriting the name and the
+-- minute of a tape measurement taken while it was offline.
 create or replace function quick_check_rough_opening(
   p_opening_id uuid,
   p_actor text default null
@@ -4029,9 +4033,20 @@ begin
       ro_measured_by = p_actor,
       ro_measured_at = now()
   where id = p_opening_id
+    and ro_width_in is null
+    and ro_height_in is null
   returning * into v_opening;
 
   if v_opening is null then
+    if exists (
+      select 1
+      from project_openings
+      where id = p_opening_id
+        and (ro_width_in is not null or ro_height_in is not null)
+    ) then
+      raise exception
+        'Somebody measured this rough opening already. Reload the sheet to see the numbers.';
+    end if;
     raise exception 'unknown opening %', p_opening_id;
   end if;
   return v_opening;

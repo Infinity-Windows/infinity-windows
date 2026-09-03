@@ -691,6 +691,71 @@ test("Rough opening: numbers on file leave no quick-check button to press", asyn
   );
 });
 
+// The phone that has been out of signal all morning. It is still drawing the
+// button because the row it holds has no numbers on it; somebody measured that
+// window an hour ago. The server refuses the tap (the null guard in
+// 20260966000000), and the sheet has to come back with the numbers rather than
+// leaving a button that can only fail again.
+test("Rough opening: a quick check on an opening measured meanwhile shows the numbers", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "installer" });
+  const o = opening(5, {
+    status: "assigned",
+    confirmed: true,
+    ro_width_in: null,
+    ro_height_in: null,
+    ro_quick_ok: false,
+    window_type_id: "wt-e2e-stale",
+    window_types: {
+      id: "wt-e2e-stale",
+      type_code: "E2ES",
+      name: "Test unit",
+      width_in: 36,
+      height_in: 48,
+    },
+  });
+  const openings = await routeOpenings(page, [o]);
+
+  await page.route(
+    "**/rest/v1/rpc/quick_check_rough_opening",
+    async (route) => {
+      // What the tape measure wrote while this phone was offline.
+      openings.set(str(o.id), {
+        ro_width_in: 36.25,
+        ro_height_in: 48.25,
+        ro_measured_by: "pat@example.com",
+        ro_measured_at: "2026-09-02T13:02:00Z",
+      });
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({
+          code: "P0001",
+          message:
+            "Somebody measured this rough opening already. Reload the sheet to see the numbers.",
+        }),
+      });
+    },
+  );
+
+  await page.goto(`/projects/${str(o.project_id)}/opening/${str(o.id)}`);
+
+  await page
+    .getByRole("button", { name: "Quick check: all good", exact: true })
+    .click();
+
+  await expect(
+    page.getByText("Somebody measured this rough opening already."),
+  ).toBeVisible();
+  await expect(page.locator(".fit-verdict")).toContainText(
+    "Rough opening 36.25×48.25",
+  );
+  await expect(
+    page.getByRole("button", { name: "Quick check: all good", exact: true }),
+  ).toHaveCount(0);
+});
+
 test("Condition: marking a unit damaged fires set_opening_condition with the note", async ({
   page,
 }) => {

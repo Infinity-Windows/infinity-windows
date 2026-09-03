@@ -896,7 +896,15 @@ export function OpeningSheet() {
       setMessage({ text: "Quick check saved — rough opening marked good.", tone: "ok" });
       refresh();
     },
-    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
+    // The server refuses a quick check on an opening that already carries
+    // numbers, and the only way this phone offered the button is that it is
+    // holding a row from before somebody measured (bad signal, PWA cache). Read
+    // the opening again on the way out, so the sheet shows those numbers rather
+    // than leaving a tap that can only fail again.
+    onError: (e) => {
+      setMessage({ text: formatApiError(e), tone: "error" });
+      refresh();
+    },
   });
 
   // Pick 12: setOpeningCondition is its own inverse — a real setter, so

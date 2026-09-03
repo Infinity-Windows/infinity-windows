@@ -19,8 +19,10 @@ alter table project_openings
 comment on column project_openings.ro_quick_ok is
   'One-tap "quick check: all good" on the rough opening: somebody looked and '
   'said the unit goes in, without writing tape numbers down. Only read when '
-  'ro_width_in / ro_height_in are null — set_opening_rough_opening clears it '
-  'whenever real numbers are saved, because numbers always win.';
+  'ro_width_in / ro_height_in are null, and it can never be true alongside '
+  'them: set_opening_rough_opening clears it whenever real numbers are saved, '
+  'and quick_check_rough_opening refuses a row that already has any. Numbers '
+  'always win.';
 
 -- Record the quick check.
 --
@@ -52,14 +54,43 @@ as $$
 declare
   v_opening project_openings;
 begin
+  -- Numbers win, and the server is the only place that can say so.
+  --
+  -- The screen hides this button once numbers are on file, but a phone can be
+  -- holding the pre-measurement row for a long time — bad signal, PWA cache —
+  -- and go on drawing "Quick check: all good" after somebody else ran a tape
+  -- over that window. One tap would then overwrite the measurer's name and the
+  -- minute they took it, and leave a row carrying numbers AND a quick check,
+  -- the one combination the column comment above says cannot exist. The fit
+  -- verdict reads the tape either way, so nothing would look wrong on any
+  -- screen: the loss would be silent. The same tap is a plain POST to
+  -- /rest/v1/rpc/quick_check_rough_opening for any authenticated crew member,
+  -- which is the other reason this cannot live in the UI alone.
   update project_openings
   set ro_quick_ok = true,
       ro_measured_by = p_actor,
       ro_measured_at = now()
   where id = p_opening_id
+    and ro_width_in is null
+    and ro_height_in is null
   returning * into v_opening;
 
   if v_opening is null then
+    -- Two different misses, and an installer can act on only one of them, so
+    -- they get different sentences. The numbers are named again rather than
+    -- just the id, because the update also misses a soft-removed opening and a
+    -- row this login may not write — those are still "unknown opening", not
+    -- "somebody measured it". `exists` runs under the caller's own row
+    -- policies for the same reason.
+    if exists (
+      select 1
+      from project_openings
+      where id = p_opening_id
+        and (ro_width_in is not null or ro_height_in is not null)
+    ) then
+      raise exception
+        'Somebody measured this rough opening already. Reload the sheet to see the numbers.';
+    end if;
     raise exception 'unknown opening %', p_opening_id;
   end if;
   return v_opening;
