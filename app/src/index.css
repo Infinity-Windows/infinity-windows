@@ -11383,3 +11383,24 @@ button.stage-chip {
 .log-today-chip:hover {
   background: color-mix(in oklab, var(--warn) 24%, transparent);
 }
+
+
+/* Job mode pill (standard-tracking-jobs slice 2): a quiet neutral tag that
+   says whether a job is Data, Tracking, or both -- on the jobs list, the
+   clock-in job list, and the job header. Deliberately low-contrast: it labels,
+   it doesn't shout. */
+.job-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}

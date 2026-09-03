@@ -35,6 +35,7 @@ import {
 } from "../../lib/timeclock";
 import { useT } from "../../lib/i18n";
 import { effectiveClockInMode, normalizeModes, type JobMode } from "../../lib/jobModes";
+import { JobModeBadge } from "../JobModeBadge";
 
 export function ClockInBlock() {
   const t = useT();
@@ -331,6 +332,7 @@ export function ClockInBlock() {
               >
                 <span className="clock-project-code">{p.job_code}</span>
                 <span className="clock-project-name">{p.name}</span>
+                <JobModeBadge allowed={p.allowed_modes} />
               </button>
             ))}
             {filteredProjects.length === 0 && (

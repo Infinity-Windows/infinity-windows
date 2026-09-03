@@ -6,6 +6,7 @@ import { LayoutGrid } from "lucide-react";
 import { createProject, getProjectDeleteCounts, listProjects, setProjectModes, trashProject } from "../lib/api";
 import { formatApiError } from "../lib/errors";
 import { useT } from "../lib/i18n";
+import { JobModeBadge } from "../components/JobModeBadge";
 import type { JobMode } from "../lib/types";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { getMyProfile } from "../lib/install/api";
@@ -353,6 +354,7 @@ export function Projects() {
                     <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
                       {p.name || p.job_code}
                     </span>
+                    <JobModeBadge allowed={p.allowed_modes} />
                     {chatUnread > 0 && (
                       <span className="chat-badge" title={`${chatUnread} unread message${chatUnread > 1 ? "s" : ""}`}>
                         <MessagesSquare size={11} aria-hidden />

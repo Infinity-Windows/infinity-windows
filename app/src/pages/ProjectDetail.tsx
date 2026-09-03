@@ -61,6 +61,7 @@ import { JobChat } from "../components/chat/JobChat";
 import { DailyLogsTab } from "../components/dailyLogs/DailyLogsTab";
 import { ClockInBlock } from "../components/clock/ClockInBlock";
 import { SpecsTab } from "../components/project/SpecsTab";
+import { JobModeBadge } from "../components/JobModeBadge";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
 import { formatApiError } from "../lib/errors";
 import { useT } from "../lib/i18n";
@@ -257,7 +258,10 @@ export function ProjectDetail() {
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <BackChip fallback="/projects" label="Back to jobs" />
           <div style={{ minWidth: 0 }}>
-            <h1 style={{ fontSize: 26 }}>{project?.job_code ?? "Job"}</h1>
+            <h1 style={{ fontSize: 26, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {project?.job_code ?? "Job"}
+              {project && <JobModeBadge allowed={project.allowed_modes} />}
+            </h1>
             <p className="wh-row-sub" style={{ margin: 0 }}>
               {project?.name}
               {project?.address ? ` — ${project.address}` : ""}
