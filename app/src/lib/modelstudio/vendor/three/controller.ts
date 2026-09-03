@@ -45,6 +45,26 @@ export class Controller {
   private touchStartPos: THREE.Vector2 | null = null
   private touchMoveThreshold = 10 // pixels to distinguish tap from drag
 
+  // ─── infinity vendored deviation (2026-09-02) ─────────────────────────────
+  // FIX: "A tap in Studio selects a unit without dragging it."
+  // Owner live-pilot report: tapping a pulled Mad Moose "Add" unit CHANGED it —
+  // its face-mounted label rendered mirrored ("Add-1" → "I-bbA") and its panels
+  // re-split. Cause: mousedown/touchstart entered ControllerState.DRAGGING
+  // immediately, so ANY pointer movement — even a pixel of hand tremor on a tap
+  // — drove clickDragged → WallItem.moveToPosition → changeWallEdge, re-seating
+  // the unit on whichever wall edge the ray hit and re-facing it (rotation flip
+  // + panel-order reversal). PR #503 only made the read-only selectUnit path
+  // safe for config-LESS units; units carrying a real panels config (the pulled
+  // Adds) still moved. This deviation adds a movement DEAD-ZONE: mousedown/
+  // touchstart now ARM a drag; the DRAGGING/move behavior does not begin until
+  // the pointer travels past `dragDeadZone` px from the press point. Below it
+  // the gesture is a tap (select only). At/above it, dragging/snapping/wall
+  // editing behave exactly as before. `dragDeadZone` matches the 6 px still-
+  // click threshold ModelStudio.tsx already uses for its pick fallback.
+  private pendingDrag = false
+  private dragArmPos: THREE.Vector2 | null = null
+  private dragDeadZone = 6 // px; matches ModelStudio's still-click threshold
+
   constructor(
     three: Main,
     model: Model,
@@ -170,6 +190,15 @@ export class Controller {
         this.updateIntersections()
       }
 
+      // infinity: a press over a movable item armed a drag but did not start
+      // it — begin the DRAGGING/move behavior only once the pointer leaves the
+      // dead-zone. Below it this stays a tap (select only), so a pixel of
+      // tremor no longer re-seats/re-faces the unit.
+      if (this.pendingDrag && this.beyondDeadZone(this.mouse)) {
+        this.clearPendingDrag()
+        this.switchState(ControllerState.DRAGGING)
+      }
+
       switch (this.state) {
         case ControllerState.UNSELECTED:
           this.updateMouseover()
@@ -192,6 +221,25 @@ export class Controller {
     return this.state === ControllerState.ROTATING || this.state === ControllerState.ROTATING_FREE
   }
 
+  // ─── infinity dead-zone helpers (see field block above) ───────────────────
+  /** Arm a drag WITHOUT starting it; the anchor is the current pointer. */
+  private armDrag(): void {
+    this.pendingDrag = true
+    this.dragArmPos = this.mouse.clone()
+  }
+
+  /** True once the pointer has travelled past the tap dead-zone. */
+  private beyondDeadZone(pos: THREE.Vector2): boolean {
+    if (!this.dragArmPos) return false
+    return Math.hypot(pos.x - this.dragArmPos.x, pos.y - this.dragArmPos.y) > this.dragDeadZone
+  }
+
+  /** Forget an armed-but-never-started drag (a tap that never moved far). */
+  private clearPendingDrag(): void {
+    this.pendingDrag = false
+    this.dragArmPos = null
+  }
+
   private mouseDownEvent(event: MouseEvent): void {
     if (this.enabled) {
       event.preventDefault()
@@ -206,7 +254,8 @@ export class Controller {
           } else if (this.intersectedObject !== null) {
             this.setSelectedObject(this.intersectedObject)
             if (!this.intersectedObject.fixed) {
-              this.switchState(ControllerState.DRAGGING)
+              // infinity: ARM the drag; the move starts only past the dead-zone
+              this.armDrag()
             }
           }
           break
@@ -214,7 +263,8 @@ export class Controller {
           if (this.intersectedObject !== null) {
             this.setSelectedObject(this.intersectedObject)
             if (!this.intersectedObject.fixed) {
-              this.switchState(ControllerState.DRAGGING)
+              // infinity: ARM the drag; the move starts only past the dead-zone
+              this.armDrag()
             }
           }
           break
@@ -231,6 +281,9 @@ export class Controller {
   private mouseUpEvent(_event: MouseEvent): void {
     if (this.enabled) {
       this.mouseDown = false
+      // infinity: a release inside the dead-zone was a tap — drop the arm so
+      // it can never start a move (the object stays selected, unmoved).
+      this.clearPendingDrag()
 
       switch (this.state) {
         case ControllerState.DRAGGING:
@@ -535,8 +588,10 @@ export class Controller {
           } else if (this.intersectedObject !== null) {
             this.setSelectedObject(this.intersectedObject)
             if (!this.intersectedObject.fixed) {
-              this.switchState(ControllerState.DRAGGING)
-              // Prevent camera controls when dragging object
+              // infinity: ARM the drag; the move starts only past the dead-zone
+              this.armDrag()
+              // Claim the gesture from the camera controls up front — a tap on
+              // a movable item is ours whether it turns into a drag or not.
               event.preventDefault()
               event.stopPropagation()
             }
@@ -546,8 +601,10 @@ export class Controller {
           if (this.intersectedObject !== null) {
             this.setSelectedObject(this.intersectedObject)
             if (!this.intersectedObject.fixed) {
-              this.switchState(ControllerState.DRAGGING)
-              // Prevent camera controls when dragging object
+              // infinity: ARM the drag; the move starts only past the dead-zone
+              this.armDrag()
+              // Claim the gesture from the camera controls up front — a tap on
+              // a movable item is ours whether it turns into a drag or not.
               event.preventDefault()
               event.stopPropagation()
             }
@@ -605,6 +662,15 @@ export class Controller {
       }
     }
 
+    // infinity: a finger-down over a movable item armed a drag but did not
+    // start it — begin the move only once the finger leaves the dead-zone.
+    // Below it this stays a tap (select only), so tremor no longer re-seats
+    // the unit.
+    if (this.pendingDrag && this.beyondDeadZone(touchPos)) {
+      this.clearPendingDrag()
+      this.switchState(ControllerState.DRAGGING)
+    }
+
     // Handle different states
     switch (this.state) {
       case ControllerState.UNSELECTED:
@@ -654,6 +720,9 @@ export class Controller {
       this.touchActive = false
       this.touchIdentifier = null
       this.mouseDown = false
+      // infinity: a lift inside the dead-zone was a tap — drop the arm so it
+      // can never start a move (the object stays selected, unmoved).
+      this.clearPendingDrag()
 
       // Simulate mouse up behavior
       switch (this.state) {

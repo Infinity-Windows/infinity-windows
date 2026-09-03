@@ -491,6 +491,149 @@ test("3D drag handles: pulling the top handle makes the unit taller", async ({
   expect(after).toBeGreaterThan(before + 50); // meaningfully taller, in mm
 });
 
+test("a tap with a few pixels of tremor selects a unit without re-seating it", async ({
+  page,
+}) => {
+  // The owner's live-pilot bug (2026-09-02): tapping a pulled Mad Moose "Add"
+  // unit in Studio CHANGED it — its face-mounted label rendered mirrored
+  // ("Add-1" → "I-bbA") and its panels re-split. The vendored controller
+  // entered its DRAG/move state on mousedown and ANY pointer movement (even
+  // 1–3 px of hand tremor on a tap) drove wall_item.moveToPosition →
+  // changeWallEdge, which re-seats the unit on whichever wall edge the ray
+  // hits and re-faces it (rotation flip + panel-order reversal). A unit that
+  // carries a real unitConfig — exactly the pulled Adds — is NOT healed by the
+  // read-only selectUnit path (PR #503); only a movement dead-zone in the
+  // controller keeps a tap from moving it. This pins that: a 3 px jitter tap
+  // (below the 6 px still-click threshold) must leave the unit's position,
+  // facing and wall edge untouched.
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await useOutline(page, { fitview: { model: FITVIEW_MODEL } });
+  await openStudio(page);
+
+  await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    bp.model.scene.addItem(
+      3,
+      "/modelstudio/models/window.json",
+      {
+        itemName: "E2E jitter-tap unit",
+        itemType: 3,
+        modelUrl: "/modelstudio/models/window.json",
+        unitConfig: {
+          kind: "window",
+          heightMm: 1500,
+          panels: [
+            { widthMm: 1200, mechanism: "fixed" },
+            { widthMm: 1200, mechanism: "slider", direction: "left" },
+          ],
+        },
+      },
+      { x: 900, y: 150, z: 600 },
+      0,
+      undefined,
+      false,
+    );
+  });
+  await page.waitForFunction(() => {
+    const bp = (window as any).__studio;
+    const items = bp.model.scene.getItems();
+    return items.length === 1 && Boolean(items[0].currentWallEdge);
+  });
+
+  /** A stable snapshot of everything a re-seat would disturb. */
+  const snapshot = () =>
+    page.evaluate(() => {
+      const bp = (window as any).__studio;
+      const it = bp.model.scene.getItems()[0];
+      const e = it.currentWallEdge;
+      return {
+        pos: { x: it.position.x, y: it.position.y, z: it.position.z },
+        rotY: it.rotation.y,
+        edge: {
+          sx: e.wall.getStartX(),
+          sy: e.wall.getStartY(),
+          ex: e.wall.getEndX(),
+          ey: e.wall.getEndY(),
+          front: it.isFrontEdge,
+        },
+      };
+    });
+
+  const before = await snapshot();
+
+  // Let the render loop run a couple of frames so the camera has settled and
+  // every object's world matrix is current — the vendor's raycast reads
+  // item.matrixWorld directly, and on the very first frame after a fresh boot
+  // it can still be stale (the "first tap selects nothing" the pick fallback
+  // exists for).
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+
+  // A tap with hand tremor, driven through the REAL vendor event path:
+  // hover → press → drift 3 px (below the 6 px still-click threshold) →
+  // release. The whole gesture runs in ONE synchronous evaluate with
+  // synthetic MouseEvents so the camera cannot settle/move between projecting
+  // the unit's centre and the vendor's hover raycast — Playwright's async
+  // mouse pipeline leaves that race open, and the vendor's hover selection is
+  // exactly the flaky path ModelStudio's pick fallback was built to sidestep.
+  const gesture = await page.evaluate(() => {
+    const bp = (window as any).__studio;
+    const el = bp.three.element;
+    const ctrl = bp.three.getController();
+    const item = bp.model.scene.getItems()[0];
+    const cam = bp.three.camera;
+    // The vendor's hover raycast transforms the ray by each object's
+    // matrixWorld; refresh the whole scene so the synchronous cast below is
+    // deterministic rather than dependent on the last rendered frame.
+    bp.model.scene.getScene().updateMatrixWorld(true);
+    cam.updateMatrixWorld();
+    const v = item.position.clone();
+    v.project(cam);
+    // Invert the vendor's OWN screen→NDC math exactly: it offsets by the
+    // element rect but scales by three.elementWidth/Height (clientWidth/
+    // Height), which differ from the rect here (856×528 vs 854×557). Using the
+    // rect size to place the click leaves the reconstructed ray a few percent
+    // off vertically and it misses the unit — the flakiness this test kept
+    // hitting. Scaling by the element size lands the ray on the unit's centre.
+    const r = el.getBoundingClientRect();
+    const cx = r.left + ((v.x + 1) / 2) * bp.three.elementWidth;
+    const cy = r.top + ((1 - v.y) / 2) * bp.three.elementHeight;
+    const fire = (type: string, x: number, y: number) =>
+      el.dispatchEvent(
+        new MouseEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          clientX: x,
+          clientY: y,
+          button: 0,
+        }),
+      );
+    fire("mousemove", cx, cy); // hover: registers the unit for the press
+    fire("mousedown", cx, cy);
+    // Guard the repro: the press must have selected THIS unit through the
+    // vendor controller, or the drag path never runs and a green result would
+    // prove nothing.
+    const selectedOnPress = ctrl.getSelectedObject() === item;
+    fire("mousemove", cx + 3, cy + 3); // 3 px of tremor
+    fire("mouseup", cx + 3, cy + 3);
+    return { selectedOnPress };
+  });
+  expect(gesture.selectedOnPress).toBe(true);
+
+  const after = await snapshot();
+
+  // The tap must not have moved, re-faced, or re-seated the unit.
+  expect(after.pos.x).toBeCloseTo(before.pos.x, 3);
+  expect(after.pos.y).toBeCloseTo(before.pos.y, 3);
+  expect(after.pos.z).toBeCloseTo(before.pos.z, 3);
+  expect(after.rotY).toBeCloseTo(before.rotY, 6);
+  expect(after.edge).toEqual(before.edge);
+});
+
 test("pane grid: split, type a pane size, corner-by-pane, wall auto-grows", async ({
   page,
 }) => {
