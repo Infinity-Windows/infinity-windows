@@ -27,4 +27,30 @@ describe("submitGate", () => {
     expect(submitBlockers({ grade: undefined as unknown as null, hasAfterPhoto: true }))
       .toEqual(["a quality grade"]);
   });
+
+  // 2026-09-02: the database was the first thing to mention flashing, after
+  // the after photo and the grade were already done. The screen says it now.
+  it("names outstanding flashing first, in its own sentence", () => {
+    expect(
+      submitBlockersLine({ grade: 4, hasAfterPhoto: true, flashingOwed: true }),
+    ).toBe("This unit still needs flashing before the install can be filed.");
+    expect(
+      submitBlockersLine({ grade: null, hasAfterPhoto: false, flashingOwed: true }),
+    ).toBe(
+      "This unit still needs flashing before the install can be filed. To submit, add an after photo and a quality grade.",
+    );
+  });
+
+  it("leaves flashing out of the add-this list - it is a different pass", () => {
+    expect(
+      submitBlockers({ grade: 4, hasAfterPhoto: true, flashingOwed: true }),
+    ).toEqual([]);
+  });
+
+  it("says nothing when flashing is done or was never owed", () => {
+    expect(
+      submitBlockersLine({ grade: 4, hasAfterPhoto: true, flashingOwed: false }),
+    ).toBeNull();
+    expect(submitBlockersLine({ grade: 4, hasAfterPhoto: true })).toBeNull();
+  });
 });

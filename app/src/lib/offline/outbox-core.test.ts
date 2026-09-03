@@ -11,8 +11,10 @@ import {
   deserializeEntry,
   drainStore,
   dueEntries,
+  errorCode,
   isDeadLetter,
   isNetworkError,
+  isPermanentSqlState,
   isRetryableError,
   makeEntry,
   markSending,
@@ -103,6 +105,51 @@ describe("error classification", () => {
     expect(isNetworkError(new TypeError("Failed to fetch"))).toBe(true);
     expect(isNetworkError(new Error("NetworkError when attempting to fetch"))).toBe(true);
     expect(isNetworkError(new Error("duplicate key value"))).toBe(false);
+  });
+
+  // 2026-09-02: finish_unit refused an install with P0001 and a sentence no
+  // pattern above matched, so the queue retried it eight times and told the
+  // installer it was saved. The SQLSTATE said "permanent" the whole time.
+  it("reads the SQLSTATE, not just the sentence", () => {
+    expect(
+      isRetryableError({
+        code: "P0001",
+        message: "this opening needs flashing submitted before the install is filed",
+      }),
+    ).toBe(false);
+    expect(isRetryableError({ code: "42501", message: "denied" })).toBe(false);
+    expect(isRetryableError({ code: "23505", message: "conflict" })).toBe(false);
+    expect(isRetryableError({ code: "22P02", message: "bad uuid" })).toBe(false);
+  });
+
+  it("leaves the errors a retry actually fixes alone", () => {
+    expect(isRetryableError(new TypeError("Failed to fetch"))).toBe(true);
+    expect(isRetryableError({ code: "503", message: "Service Unavailable" })).toBe(true);
+    // Connection lost, out of resources, database restarting: all worth
+    // another go once there is signal and a server again.
+    expect(isRetryableError({ code: "08006", message: "connection failure" })).toBe(true);
+    expect(isRetryableError({ code: "57P03", message: "cannot connect now" })).toBe(true);
+    // PostgREST's own codes keep falling through to the message heuristics.
+    expect(isRetryableError({ code: "PGRST301", message: "no rows" })).toBe(true);
+  });
+
+  it("classifies SQLSTATEs on their own", () => {
+    expect(isPermanentSqlState("P0001")).toBe(true);
+    expect(isPermanentSqlState("42P01")).toBe(true);
+    expect(isPermanentSqlState("23503")).toBe(true);
+    expect(isPermanentSqlState("22007")).toBe(true);
+    expect(isPermanentSqlState("08006")).toBe(false);
+    expect(isPermanentSqlState("PGRST205")).toBe(false);
+    expect(isPermanentSqlState(null)).toBe(false);
+    expect(isPermanentSqlState("")).toBe(false);
+  });
+
+  it("reads a code only off an object that has one", () => {
+    expect(errorCode({ code: "P0001" })).toBe("P0001");
+    expect(errorCode(new Error("plain"))).toBeNull();
+    expect(errorCode("a string")).toBeNull();
+    expect(errorCode(null)).toBeNull();
+    expect(errorCode({ code: 500 })).toBeNull();
   });
 });
 

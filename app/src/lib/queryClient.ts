@@ -76,6 +76,14 @@ const OFFLINE_KEYS = new Set([
   // offline work exists for (installer audit, 2026-08-17).
   "toolboxToday",
   "toolboxHistory",
+  // Same shape of bug as toolboxToday, found on review 2026-09-02: the
+  // OPENING was cached (so `needs_flashing = true` came back after an offline
+  // reload) and the flashing phase row that CLEARS it was not. A unit whose
+  // flashing was already done then read as still owing it, Submit went dead
+  // with no way out, and the install could not even be queued for later. The
+  // fact that clears a gate has to be as offline-durable as the fact that
+  // raises it.
+  "openingPhases",
   // Shelf and bin addresses. Without these a supply with a home spot degrades
   // to "home spot set" — which looks configured and tells nobody where to go,
   // in the conex where the answer matters most.
