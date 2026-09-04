@@ -135,6 +135,23 @@ begin
   -- wrong and nobody was asked to say which kind. A kind with no note is fine
   -- — the reason IS the message.
   if v_clean is null and v_kind is null then
+    -- THE RANK LIVES HERE, not only in clear_opening_flag. Both arities and
+    -- both call paths end up in this branch, and the two-argument form is
+    -- granted to every signed-in account and cannot be revoked without
+    -- breaking the callers it exists for — so a check that sat only in
+    -- clear_opening_flag was one `flag_opening(id, null)` away from being no
+    -- check at all. Only asked when there is something to take down: clearing
+    -- nothing is not a claim about anything.
+    if not public.is_foreman_plus(auth.uid())
+       and exists (
+         select 1 from project_openings
+          where id = p_opening_id
+            and (flag_kind is not null or flag_note is not null)
+       ) then
+      raise exception 'Only a foreman or above can clear a data-off flag.'
+        using errcode = '42501';
+    end if;
+
     update project_openings
        set flag_kind = null, flag_note = null, flagged_by = null, flagged_at = null
      where id = p_opening_id
@@ -184,7 +201,9 @@ $$;
 
 -- Clearing is the foreman saying "the record is right again", which is why it
 -- is the one half of this that carries a rank. An installer raises the flag;
--- somebody who can go and check takes it down.
+-- somebody who can go and check takes it down. The named door for it, so the
+-- app has something to call and something to hide behind a role — the rule
+-- itself is enforced in flag_opening's clear branch, which every path reaches.
 create or replace function clear_opening_flag(p_opening_id uuid)
 returns project_openings
 language plpgsql
@@ -204,6 +223,59 @@ revoke all on function flag_opening(uuid, text, text) from public, anon;
 revoke all on function clear_opening_flag(uuid) from public, anon;
 grant execute on function flag_opening(uuid, text, text) to authenticated, service_role;
 grant execute on function clear_opening_flag(uuid) to authenticated, service_role;
+
+-- And the same rule at the table, because the RPCs are not the only door.
+-- `openings_update_live` (20260730210000) is `for update to authenticated
+-- using (removed_at is null) with check (true)`, so a plain PATCH of
+-- flag_kind/flag_note goes straight past every function above. Scoped exactly
+-- like guard_opening_pin_move (20260730160000): an update that leaves the flag
+-- columns alone — every claim, start, finish, measurement, condition check and
+-- assignment — never reaches the body.
+--
+-- RAISING a flag stays anyone's right, which is the whole point of the feature.
+-- Only taking one DOWN carries the rank, so this needs no escape hatch for the
+-- RPCs: flag_opening's own clear branch is foreman+ now, and the trigger simply
+-- agrees with it.
+create or replace function public.guard_opening_flag_clear()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.flag_kind is not distinct from old.flag_kind
+     and new.flag_note is not distinct from old.flag_note then
+    return new;
+  end if;
+
+  -- No JWT is a migration or an edge function on the service key, both already
+  -- trusted above RLS.
+  if auth.uid() is null then
+    return new;
+  end if;
+
+  -- Still flagged after this write: raising or re-wording one is anyone's.
+  if new.flag_kind is not null or new.flag_note is not null then
+    return new;
+  end if;
+
+  if (old.flag_kind is not null or old.flag_note is not null)
+     and not public.is_foreman_plus(auth.uid()) then
+    raise exception 'Only a foreman or above can clear a data-off flag.'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_opening_flag_clear on project_openings;
+create trigger guard_opening_flag_clear
+  before update of flag_kind, flag_note on project_openings
+  for each row execute function public.guard_opening_flag_clear();
+
+comment on function public.guard_opening_flag_clear() is
+  'Refuses taking a data-off flag down from anyone below foreman, whichever door they came through. Raising one is unrestricted.';
 
 -- ---------------------------------------------------------------------------
 -- 3. Adding a unit nobody drew
