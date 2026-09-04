@@ -1186,6 +1186,61 @@ export const CATALOG = {
     en: "From the traced 3D model.",
     es: "Del modelo 3D trazado.",
   },
+
+  // ---- Recordings by link (wave U) --------------------------------------
+  // The owner's design (Q15/Q19): the app never collects raw footage. An
+  // installer mails the clip to their lead, the lead puts it on YouTube, and a
+  // supervisor pastes the LINK into Learn. Everything below is either the
+  // mailing half or the draft-until-published half of that.
+  //
+  // The mail subject and body are composed on the INSTALLER's phone, so they
+  // are written in the installer's language even though a lead reads them —
+  // the person typing is the person the copy has to be clear to, and a lead
+  // opening "Grabación — Sand Hollow — 3 sep 2026" knows exactly what it is.
+  "recording.send": { en: "Send a recording", es: "Enviar una grabación" },
+  "recording.help": {
+    en: "Email the video to your lead. They put it on YouTube and it shows up in Learn.",
+    es: "Envía el video por correo a tu líder. Él lo sube a YouTube y aparece en Aprender.",
+  },
+  // Said when nobody could be addressed — a database without the address book
+  // yet, or a company with no lead on the books. The button still opens the
+  // mail app, empty, which is better than a button that does nothing.
+  "recording.noLead": {
+    en: "No lead's address on file — pick one in your mail app.",
+    es: "No hay dirección de un líder — elige una en tu app de correo.",
+  },
+  "recording.subject": {
+    en: "Recording — {job} — {date}",
+    es: "Grabación — {job} — {date}",
+  },
+  "recording.subjectNoJob": { en: "Recording — {date}", es: "Grabación — {date}" },
+  "recording.body": { en: "Attach your video.", es: "Adjunta tu video." },
+
+  // The Videos tab's Inbox: a supervisor's own unfinished lessons, above the
+  // library everybody else sees.
+  "learn.videos.inbox": { en: "Inbox — not published yet", es: "Bandeja — sin publicar" },
+  "learn.videos.inboxHelp": {
+    en: "Only supervisors see these. Publish one once the lesson is ready for crews.",
+    es: "Solo los supervisores ven esto. Publica una lección cuando esté lista para los equipos.",
+  },
+  "learn.videos.draft": { en: "Draft", es: "Borrador" },
+  "learn.videos.draftNote": {
+    en: "Draft — crews can't see this yet.",
+    es: "Borrador — los equipos aún no pueden ver esto.",
+  },
+  "learn.videos.publish": { en: "Publish", es: "Publicar" },
+  "learn.videos.publishing": { en: "Publishing…", es: "Publicando…" },
+  "learn.videos.publishedToast": {
+    en: "Published — crews can see it now.",
+    es: "Publicado — los equipos ya pueden verlo.",
+  },
+  // Beside the transcript box. YouTube stopped answering caption requests made
+  // by anything but a real browser, so a pasted transcript is the only way a
+  // linked lesson gets its words.
+  "learn.videos.transcriptHelp": {
+    en: "YouTube won't hand us the words for a link. Paste the transcript here, or ask your coordinator to pull it for you.",
+    es: "YouTube no nos entrega el texto de un enlace. Pega aquí la transcripción, o pídele a tu coordinador que la saque por ti.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

@@ -8,18 +8,28 @@
 // & publishes it — only then do crews see a "Take the quiz" button on the
 // card. Scoring happens server-side (submit_video_quiz); this file never
 // carries a correct answer anywhere near an installer's screen.
+//
+// Wave U extends draft-first from the quiz to the WHOLE lesson: a new video is
+// born a draft and lives in an Inbox only supervisors can see until somebody
+// taps Publish. The library below the Inbox is what crews get. Row-level
+// security is the real lock (20260984000000); partitionLearningVideos is what
+// draws the two groups, and a second pair of hands on the same rule.
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listWindowTypes } from "../../lib/api";
 import { getMyProfile } from "../../lib/install/api";
 import { formatApiError } from "../../lib/errors";
+import { useT } from "../../lib/i18n";
 import { pushToast } from "../../lib/toast";
 import {
   learningVideoUrl,
   listLearningVideos,
+  partitionLearningVideos,
+  publishLearningVideo,
   saveLearningVideo,
   uploadLearningVideo,
+  videoStatus,
   youtubeEmbedUrl,
   type LearningVideo,
 } from "../../lib/learnVideos";
@@ -77,6 +87,7 @@ function Player({ video }: { video: LearningVideo }) {
 }
 
 export function VideoLibrary({ canAuthor }: { canAuthor: boolean }) {
+  const t = useT();
   const qc = useQueryClient();
   const videos = useQuery({ queryKey: ["learningVideos"], queryFn: listLearningVideos });
   const types = useQuery({ queryKey: ["windowTypes"], queryFn: listWindowTypes });
@@ -85,9 +96,36 @@ export function VideoLibrary({ canAuthor }: { canAuthor: boolean }) {
 
   const typeName = useMemo(() => {
     const m = new Map<string, string>();
-    for (const t of types.data ?? []) m.set(t.id, t.name || t.type_code);
+    for (const wt of types.data ?? []) m.set(wt.id, wt.name || wt.type_code);
     return m;
   }, [types.data]);
+
+  const { inbox, published } = useMemo(
+    () => partitionLearningVideos(videos.data ?? [], canAuthor),
+    [videos.data, canAuthor],
+  );
+
+  const publish = useMutation({
+    mutationFn: (id: string) => publishLearningVideo(id),
+    onSuccess: () => {
+      pushToast(t("learn.videos.publishedToast"));
+      void qc.invalidateQueries({ queryKey: ["learningVideos"] });
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
+
+  const card = (v: LearningVideo) => (
+    <VideoCard
+      key={v.id}
+      video={v}
+      canAuthor={canAuthor}
+      typeName={typeName}
+      profileId={me.data?.id ?? null}
+      onEdit={() => setEditing(v)}
+      onPublish={publish.isPending ? undefined : () => publish.mutate(v.id)}
+      publishing={publish.isPending}
+    />
+  );
 
   return (
     <div>
@@ -98,45 +136,22 @@ export function VideoLibrary({ canAuthor }: { canAuthor: boolean }) {
       )}
       {videos.isError && <p className="error">{formatApiError(videos.error)}</p>}
 
+      {/* The Inbox comes FIRST and only for a supervisor: an unfinished lesson
+          is a thing somebody has to come back to, and a list that buries it
+          under the finished ones is a list nobody comes back to. */}
+      {inbox.length > 0 && (
+        <section style={{ marginTop: 12 }}>
+          <p className="field-label" style={{ marginTop: 0 }}>{t("learn.videos.inbox")}</p>
+          <p className="muted" style={{ fontSize: 12.5, margin: "0 0 6px" }}>
+            {t("learn.videos.inboxHelp")}
+          </p>
+          <div className="home-projects">{inbox.map(card)}</div>
+        </section>
+      )}
+
       <div className="home-projects" style={{ marginTop: 8 }}>
-        {(videos.data ?? []).map((v) => (
-          <div key={v.id} className="project-card" style={{ padding: 12 }}>
-            <div className="home-project-head">
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>{v.title}</div>
-                <div className="muted" style={{ fontSize: 12 }}>
-                  {v.window_type_id
-                    ? typeName.get(v.window_type_id) ?? "Window type"
-                    : v.topic ?? "General"}
-                </div>
-              </div>
-              {canAuthor && (
-                <button className="button-like studio-mini" onClick={() => setEditing(v)}>
-                  ✎ Edit
-                </button>
-              )}
-            </div>
-            <Player video={v} />
-            {v.summary && (
-              <details>
-                <summary className="tcx-label">Transcript Summary</summary>
-                <p className="learn-transcript">{v.summary}</p>
-              </details>
-            )}
-            {v.transcript && (
-              <details>
-                <summary className="tcx-label">Transcript Full</summary>
-                <p className="learn-transcript">{v.transcript}</p>
-              </details>
-            )}
-            <TakeQuizCard
-              videoId={v.id}
-              profileId={me.data?.id ?? null}
-              clearanceTypeName={v.grants_clearance ? typeName.get(v.grants_clearance) ?? null : null}
-            />
-          </div>
-        ))}
-        {(videos.data ?? []).length === 0 && !videos.isLoading && (
+        {published.map(card)}
+        {published.length === 0 && inbox.length === 0 && !videos.isLoading && (
           <p className="muted">
             No training videos yet{canAuthor ? " — add the first one." : "."}
           </p>
@@ -146,12 +161,96 @@ export function VideoLibrary({ canAuthor }: { canAuthor: boolean }) {
       {editing && (
         <VideoForm
           initial={editing === "new" ? null : editing}
-          types={(types.data ?? []).map((t) => ({ id: t.id, name: t.name || t.type_code }))}
+          types={(types.data ?? []).map((wt) => ({ id: wt.id, name: wt.name || wt.type_code }))}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
             void qc.invalidateQueries({ queryKey: ["learningVideos"] });
           }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** One lesson, whether it is a draft in the Inbox or live in the library. The
+ * Publish button only exists on a draft, and only for somebody who can author
+ * one — the same "a callback it doesn't get renders as absent UI" rule the map
+ * shim follows. */
+function VideoCard({
+  video,
+  canAuthor,
+  typeName,
+  profileId,
+  onEdit,
+  onPublish,
+  publishing,
+}: {
+  video: LearningVideo;
+  canAuthor: boolean;
+  typeName: Map<string, string>;
+  profileId: string | null;
+  onEdit: () => void;
+  onPublish?: () => void;
+  publishing: boolean;
+}) {
+  const t = useT();
+  const isDraft = videoStatus(video) === "draft";
+  return (
+    <div className="project-card" style={{ padding: 12 }}>
+      <div className="home-project-head">
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>
+            {video.title}
+            {isDraft && (
+              <span className="muted" style={{ fontWeight: 500, fontSize: 12, marginLeft: 6 }}>
+                · {t("learn.videos.draft")}
+              </span>
+            )}
+          </div>
+          <div className="muted" style={{ fontSize: 12 }}>
+            {video.window_type_id
+              ? typeName.get(video.window_type_id) ?? "Window type"
+              : video.topic ?? "General"}
+          </div>
+        </div>
+        {canAuthor && (
+          <button className="button-like studio-mini" onClick={onEdit}>
+            ✎ Edit
+          </button>
+        )}
+      </div>
+      <Player video={video} />
+      {video.summary && (
+        <details>
+          <summary className="tcx-label">Transcript Summary</summary>
+          <p className="learn-transcript">{video.summary}</p>
+        </details>
+      )}
+      {video.transcript && (
+        <details>
+          <summary className="tcx-label">Transcript Full</summary>
+          <p className="learn-transcript">{video.transcript}</p>
+        </details>
+      )}
+      {isDraft && canAuthor && (
+        <button
+          className="button-like active-pill"
+          style={{ marginTop: 8 }}
+          disabled={publishing || !onPublish}
+          onClick={onPublish}
+        >
+          {publishing ? t("learn.videos.publishing") : t("learn.videos.publish")}
+        </button>
+      )}
+      {/* A draft has no crew to quiz yet, so it shows no quiz entry point. */}
+      {!isDraft && (
+        <TakeQuizCard
+          videoId={video.id}
+          profileId={profileId}
+          clearanceTypeName={
+            video.grants_clearance ? typeName.get(video.grants_clearance) ?? null : null
+          }
         />
       )}
     </div>
@@ -169,6 +268,7 @@ function VideoForm({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useT();
   const [title, setTitle] = useState(initial?.title ?? "");
   const [windowTypeId, setWindowTypeId] = useState(initial?.window_type_id ?? "");
   const [topic, setTopic] = useState(initial?.topic ?? "");
@@ -204,7 +304,19 @@ function VideoForm({
     onError: (e) => pushToast(formatApiError(e), "error"),
   });
 
+  const publish = useMutation({
+    mutationFn: () => publishLearningVideo(initial!.id),
+    onSuccess: () => {
+      pushToast(t("learn.videos.publishedToast"));
+      onSaved();
+    },
+    onError: (e) => pushToast(formatApiError(e), "error"),
+  });
+
   const hasSource = Boolean(file || initial?.video_path || (youtube.trim() && !youtubeBad));
+  // A brand-new lesson has no row yet, so it is a draft the moment it is
+  // saved — say so before the save, not after.
+  const isDraft = initial ? videoStatus(initial) === "draft" : true;
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
@@ -212,6 +324,7 @@ function VideoForm({
         <p style={{ margin: 0, fontWeight: 700 }}>
           {initial ? `Edit ${initial.title}` : "New training video"}
         </p>
+        {isDraft && <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>{t("learn.videos.draftNote")}</p>}
         <label className="field-label">Title</label>
         <input
           placeholder="Installing the XO slider"
@@ -257,6 +370,9 @@ function VideoForm({
           value={transcript}
           onChange={(e) => setTranscript(e.target.value)}
         />
+        <p className="muted" style={{ margin: "2px 0 0", fontSize: 12.5 }}>
+          {t("learn.videos.transcriptHelp")}
+        </p>
         <label className="field-label">Passing this quiz clears the installer for…</label>
         <select value={grantsClearance} onChange={(e) => setGrantsClearance(e.target.value)}>
           <option value="">Nothing — this video just teaches</option>
@@ -275,6 +391,18 @@ function VideoForm({
           >
             {save.isPending ? "Saving…" : "Save"}
           </button>
+          {/* The last step of the flow, right where the flow ends: paste the
+              link, paste the transcript, Generate, Approve, Publish. A video
+              that has never been saved has no row to publish yet. */}
+          {initial && isDraft && (
+            <button
+              className="button-like active-pill"
+              disabled={publish.isPending || save.isPending}
+              onClick={() => publish.mutate()}
+            >
+              {publish.isPending ? t("learn.videos.publishing") : t("learn.videos.publish")}
+            </button>
+          )}
           {initial && (
             <button
               className="button-like"
@@ -364,6 +492,12 @@ function QuizAuthoring({
 
   const q = quiz.data;
   const hasDraft = Boolean(q && q.draft_questions && q.draft_questions.length === 5);
+  // UPLOADED FILES ONLY, and wave U keeps it that way on purpose. Transcribe
+  // runs Whisper over a copy we hold; a YouTube link is not a copy we hold, and
+  // YouTube's caption endpoints stopped answering anything but a real browser
+  // in 2024. So a linked lesson gets its transcript pasted in (or pulled by the
+  // coordinator on request — see the help line under the box), and the button
+  // that cannot work simply is not drawn.
   const canTranscribe = Boolean(video.video_path) && !transcript.trim();
 
   return (
