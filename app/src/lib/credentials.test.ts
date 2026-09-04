@@ -15,6 +15,7 @@ import {
   credentialDocPath,
   dueCredentialNudges,
   expiringSoon,
+  expiryDay,
   expiryState,
   isLive,
   summarizeCertifications,
@@ -322,6 +323,30 @@ describe("credentialDocPath — the path IS the permission", () => {
 
   it("keeps a PDF a PDF", () => {
     expect(credentialDocPath("p1", "pdf")).toMatch(/\.pdf$/);
+  });
+});
+
+describe("expiryDay — the chip carries the year", () => {
+  it("names the year, because a card list is dates years apart", () => {
+    // THE POINT: without a year, an OSHA 30 good until 2029 and a forklift card
+    // that lapsed in 2019 both read "Sep 22" on a list whose whole subject is
+    // deadlines. The chip's colour is not the fallback for that — somebody who
+    // cannot tell the amber from the red reads the sentence.
+    expect(expiryDay("2029-09-22", "en-US")).toBe("Sep 22, 2029");
+    expect(expiryDay("2019-09-22", "en-US")).toBe("Sep 22, 2019");
+    expect(expiryDay("2029-09-22", "en-US")).not.toBe(expiryDay("2019-09-22", "en-US"));
+  });
+
+  it("reads a timestamp as its day, not as the day before in another timezone", () => {
+    expect(expiryDay("2029-09-22T00:00:00Z", "en-US")).toBe("Sep 22, 2029");
+  });
+
+  it("renders nothing at all for a missing or unreadable date", () => {
+    // Never "Invalid Date" on a phone.
+    expect(expiryDay(null)).toBe("");
+    expect(expiryDay(undefined)).toBe("");
+    expect(expiryDay("")).toBe("");
+    expect(expiryDay("soon")).toBe("");
   });
 });
 

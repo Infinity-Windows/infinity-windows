@@ -17,11 +17,11 @@ import { useMutation } from "@tanstack/react-query";
 import { PhotoCaptureSheet } from "../PhotoCaptureSheet";
 import { formatApiError } from "../../lib/errors";
 import { useLanguage, useT } from "../../lib/i18n";
-import { shortDay } from "../../lib/pipeline";
 import { CERT_KIND_KEYS, useCertLabel } from "../../lib/credentialLabels";
 import {
   CERTIFICATION_KINDS,
   credentialDocUrl,
+  expiryDay,
   expiryState,
   setCertification,
   uploadCredentialDoc,
@@ -42,7 +42,9 @@ function ExpiryChip({ cert, today }: { cert: Certification; today: string }) {
   const t = useT();
   const { lang } = useLanguage();
   const state = expiryState(cert.expiresOn, today);
-  const date = shortDay(cert.expiresOn, lang);
+  // With the YEAR. See expiryDay — a card list is dates years apart, which is
+  // the one thing the pipeline's year-less format is built for the opposite of.
+  const date = expiryDay(cert.expiresOn, lang);
   const text =
     state === "none"
       ? t("cred.chip.noExpiry")

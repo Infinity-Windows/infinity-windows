@@ -21,7 +21,7 @@
 
 import { supabase } from "./supabase";
 import { isMissingTable } from "./schemaErrors";
-import { daysBetween } from "./pipeline";
+import { daysBetween, localMidnight } from "./pipeline";
 import { signedMedia } from "./photos";
 
 /** The cards this company is actually asked for. Mirrors the CHECK. */
@@ -142,6 +142,30 @@ export function expiryState(
   if (days === null) return "none";
   if (days < 0) return "expired";
   return days <= EXPIRY_WARN_DAYS ? "soon" : "ok";
+}
+
+/**
+ * The date on an expiry chip — "Sep 22, 2029" — WITH THE YEAR.
+ *
+ * Not `shortDay` from lib/pipeline.ts, which is the same idea without a year
+ * and says why in its own docstring: every date wave J puts on screen is within
+ * weeks either way, so the year would be noise taking room off a job name. A
+ * certification is the exact opposite case. An OSHA 30 runs three years, a card
+ * typed in as history ran out in 2019, and "Good until Sep 22" beside "Expired
+ * Sep 22" is two chips that read identically and mean four years apart. The
+ * chips are colour-coded, but the sentence is what makes them readable without
+ * colour, and a sentence missing the year is not one.
+ *
+ * An empty or unreadable date renders as an empty string, never "Invalid Date".
+ */
+export function expiryDay(day: string | null | undefined, locale?: string): string {
+  const at = localMidnight(day?.slice(0, 10));
+  if (!at) return "";
+  return at.toLocaleDateString(locale, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 /** A card that has not been voided. Voided cards are kept forever and shown
