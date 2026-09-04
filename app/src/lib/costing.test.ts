@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bidForMargin, computeLabor, HOURLY_RATE, toCsv, type JobCosting } from "./costing";
+import { indexPayRates, type PayRate } from "./payRates";
 
 describe("computeLabor", () => {
   it("sums hours x role rate per project, minus breaks", () => {
@@ -17,6 +18,112 @@ describe("computeLabor", () => {
       { project_id: null, clock_in_at: "2026-01-01T08:00:00Z", clock_out_at: "2026-01-01T10:00:00Z", break_seconds: 0, role: "installer" },
     ]);
     expect(m.size).toBe(0);
+  });
+});
+
+// Wave Z, Z3: real pay rates. The role table above becomes the FALLBACK, and a
+// line priced off it says so instead of passing a guess off as a cost.
+describe("computeLabor with real pay rates", () => {
+  function payRate(profileId: string, hourlyCents: number, effectiveFrom: string): PayRate {
+    return {
+      id: `${profileId}-${effectiveFrom}`,
+      profileId,
+      hourlyCents,
+      effectiveFrom,
+      setBy: null,
+      createdAt: `${effectiveFrom}T09:00:00.000Z`,
+    };
+  }
+
+  // A local 8am–4pm day, built from local parts so the shift's own calendar day
+  // is unambiguous wherever the suite runs.
+  function shiftOn(year: number, monthIndex: number, day: number) {
+    return {
+      clock_in_at: new Date(year, monthIndex, day, 8, 0, 0).toISOString(),
+      clock_out_at: new Date(year, monthIndex, day, 16, 0, 0).toISOString(),
+    };
+  }
+
+  it("prices a shift at what that person earned on the day they worked it", () => {
+    const rates = indexPayRates([
+      payRate("maria", 2800, "2026-01-01"),
+      payRate("maria", 3250, "2026-06-01"),
+    ]);
+    const may = computeLabor(
+      [
+        {
+          project_id: "p1",
+          ...shiftOn(2026, 4, 20),
+          break_seconds: 0,
+          role: "installer",
+          profile_id: "maria",
+          profile_name: "Maria",
+        },
+      ],
+      rates,
+    ).get("p1")!;
+    // 8 hours at the January rate, NOT June's — a raise must not reprice May.
+    expect(may.cost).toBeCloseTo(8 * 28, 2);
+    expect(may.estimated).toBe(false);
+
+    const july = computeLabor(
+      [
+        {
+          project_id: "p1",
+          ...shiftOn(2026, 6, 20),
+          break_seconds: 0,
+          role: "installer",
+          profile_id: "maria",
+          profile_name: "Maria",
+        },
+      ],
+      rates,
+    ).get("p1")!;
+    expect(july.cost).toBeCloseTo(8 * 32.5, 2);
+  });
+
+  it("falls back to the role table and marks the person's line estimated", () => {
+    const totals = computeLabor(
+      [
+        {
+          project_id: "p1",
+          ...shiftOn(2026, 6, 20),
+          break_seconds: 0,
+          role: "foreman",
+          profile_id: "sam",
+          profile_name: "Sam",
+        },
+      ],
+      indexPayRates([]),
+    ).get("p1")!;
+    expect(totals.cost).toBeCloseTo(8 * HOURLY_RATE.foreman, 2);
+    expect(totals.estimated).toBe(true);
+    expect(totals.people).toEqual([
+      { profileId: "sam", name: "Sam", hours: 8, cost: 8 * HOURLY_RATE.foreman, estimated: true },
+    ]);
+  });
+
+  it("marks the job estimated when only ONE of two people has a rate", () => {
+    const rates = indexPayRates([payRate("maria", 3000, "2026-01-01")]);
+    const totals = computeLabor(
+      [
+        { project_id: "p1", ...shiftOn(2026, 6, 20), break_seconds: 0, role: "installer", profile_id: "maria", profile_name: "Maria" },
+        { project_id: "p1", ...shiftOn(2026, 6, 20), break_seconds: 0, role: "installer", profile_id: "sam", profile_name: "Sam" },
+      ],
+      rates,
+    ).get("p1")!;
+    expect(totals.estimated).toBe(true);
+    const maria = totals.people.find((p) => p.profileId === "maria")!;
+    const sam = totals.people.find((p) => p.profileId === "sam")!;
+    expect(maria.estimated).toBe(false);
+    expect(sam.estimated).toBe(true);
+  });
+
+  it("prices exactly as before when no rates are passed at all", () => {
+    const before = computeLabor([
+      { project_id: "p1", ...shiftOn(2026, 6, 20), break_seconds: 0, role: "supervisor" },
+    ]).get("p1")!;
+    expect(before.cost).toBeCloseTo(8 * HOURLY_RATE.supervisor, 2);
   });
 });
 

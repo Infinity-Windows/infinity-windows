@@ -145,7 +145,9 @@ class TestSchemaParsing(unittest.TestCase):
         # +1: project_financials — the bid and target margin, moved off
         # `projects` so they can carry a policy of their own (Wave Z, Z2,
         # 20260978000000).
-        self.assertEqual(len(SCHEMA.tables), 118)
+        # +1: pay_rates — what one person earns per hour, from a given day
+        # (Wave Z, Z3, 20260978000000).
+        self.assertEqual(len(SCHEMA.tables), 119)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

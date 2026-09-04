@@ -360,6 +360,111 @@ create policy "ai_usage_events_select_office" on ai_usage_events
 
 
 -- ===========================================================================
+-- 3. Z3 — real pay rates
+-- ===========================================================================
+-- Until now labor cost was hours × a hardcoded table of role rates in
+-- app/src/lib/costing.ts (installer 35, foreman 50, …). Every margin the owner
+-- has ever looked at was priced off four guesses. This is where the real
+-- numbers live.
+--
+-- A HISTORY, not a column on profiles. A rate that changed in March must not
+-- reprice January: a job costed last quarter has to keep costing what it cost,
+-- or every historical margin silently moves the next time somebody gets a
+-- raise. So a row per rate per start date, and the reader asks "what was in
+-- force on the day of this shift".
+--
+-- NOT project-scoped (no project_id): a rate is about a person, not a job, so
+-- it gets no sandbox guard — a test login has no business writing one anyway,
+-- which set_pay_rate's owner check already settles.
+create table if not exists pay_rates (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  -- Cents, like every other money figure the app stores (receipts.amount_cents,
+  -- ai_spend_limits.monthly_cap_cents). Never a float: $32.335 is not a wage.
+  hourly_cents integer not null check (hourly_cents >= 0),
+  -- The day this rate STARTS. There is no end date on purpose — a rate runs
+  -- until the next one begins, so ending one is writing the next, and there is
+  -- no way to leave a gap or an overlap by getting two dates out of step.
+  effective_from date not null default current_date,
+  set_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  -- One rate per person per start date, so "the rate in force on a day" always
+  -- has exactly one answer, and re-saving a typo overwrites rather than
+  -- stacking a second row nobody can tell apart.
+  unique (profile_id, effective_from)
+);
+
+create index if not exists pay_rates_profile_idx
+  on pay_rates (profile_id, effective_from desc);
+
+comment on table pay_rates is
+  'What one person earns per hour, from a given day. A history, not a current value: a raise in March must never reprice January''s margins. Readable only by an owner or somebody granted "Sees pay rates"; written only by set_pay_rate (Wave Z, Z3).';
+
+alter table pay_rates enable row level security;
+
+-- Revoke first (Supabase's default privileges hand `authenticated` the full set
+-- on every new public table), then grant back SELECT alone. Unlike
+-- project_financials there is no write policy here at all: set_pay_rate,
+-- SECURITY DEFINER, is the only writer, so there is no direct path that could
+-- skip the owner check.
+revoke all on pay_rates from anon, authenticated;
+grant select on pay_rates to authenticated;
+grant all on pay_rates to service_role;
+
+-- No self arm. "You may read your own rate" sounds kind and is a leak: a
+-- person's own rate is on their paycheck already, and the moment the policy
+-- says `profile_id = auth.uid()` the table starts answering questions from
+-- every phone in the company, one row at a time. Payroll tells people what
+-- they earn; this table exists so the owner can cost a job.
+drop policy if exists "pay_rates_select" on pay_rates;
+create policy "pay_rates_select" on pay_rates
+  for select to authenticated
+  using (not public.is_partner_user() and public.can_see_pay(auth.uid()));
+
+create or replace function public.set_pay_rate(
+  p_profile_id uuid,
+  p_hourly_cents integer,
+  p_effective_from date default current_date
+)
+returns pay_rates
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row pay_rates;
+begin
+  if public.my_role_rank() < 3 then
+    raise exception 'Only an owner can set what somebody is paid.'
+      using errcode = '42501';
+  end if;
+  if p_hourly_cents is null or p_hourly_cents < 0 then
+    raise exception 'An hourly rate has to be a number, and not a negative one.';
+  end if;
+  if not exists (select 1 from profiles where id = p_profile_id) then
+    raise exception 'That person is not on the crew list.';
+  end if;
+
+  insert into pay_rates (profile_id, hourly_cents, effective_from, set_by)
+  values (p_profile_id, p_hourly_cents, coalesce(p_effective_from, current_date), auth.uid())
+  on conflict (profile_id, effective_from) do update
+    set hourly_cents = excluded.hourly_cents,
+        set_by = excluded.set_by,
+        created_at = now()
+  returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
+comment on function public.set_pay_rate(uuid, integer, date) is
+  'Owner-only: set what somebody earns per hour from a given day. Re-saving the same start date corrects that rate rather than stacking a second row, so a typo is fixable without a delete door.';
+
+revoke all on function public.set_pay_rate(uuid, integer, date) from public, anon;
+grant execute on function public.set_pay_rate(uuid, integer, date) to authenticated;
+
+
+-- ===========================================================================
 -- 99. Re-arm the sandbox fence
 -- ===========================================================================
 -- project_financials carries a `project_id`, which is what makes a table

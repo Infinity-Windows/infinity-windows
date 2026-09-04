@@ -660,6 +660,10 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- project_id IS the primary key, so it is the natural key too — merge it
     # -- the same way the job it belongs to is merged.
     "project_financials": ("project_id",),
+    # -- One rate per person per start date, and the table's own UNIQUE says so
+    # -- (Wave Z, Z3). Two projects holding the same person's 2026-06-01 rate
+    # -- are the same fact, so it dedups cleanly.
+    "pay_rates": ("profile_id", "effective_from"),
 }
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.

@@ -117,8 +117,9 @@ export function Costing() {
         </div>
       </div>
       <p className="muted" style={{ fontSize: 12 }}>
-        Labor cost is auto-derived from clocked time_shifts x role rate; manual
-        cost entries are adjustments on top.
+        Labor cost comes from clocked hours priced at each person’s pay rate on
+        the day they worked. Somebody with no rate on file is priced off their
+        role, and their line says so. Manual cost entries sit on top.
       </p>
 
       <div className="row-between">
@@ -201,6 +202,20 @@ export function Costing() {
             <span>Labor</span>
             <strong>{selJob.laborHours}h · {money(selJob.laborCost)}</strong>
           </div>
+          {/* Wave Z: labor is priced at each person's real rate on the day they
+              worked. Anyone with no rate on file falls back to the role table,
+              and that line says so rather than passing a guess off as a cost. */}
+          {(selJob.laborPeople ?? []).map((person) => (
+            <div className="cost-kv" key={person.profileId}>
+              <span>
+                {person.name}
+                {person.estimated ? " · estimated — no rate on file" : ""}
+              </span>
+              <strong>
+                {Math.round(person.hours * 10) / 10}h · {money(person.cost)}
+              </strong>
+            </div>
+          ))}
           <div className="cost-kv">
             <span>Manual costs</span>
             <strong>{money(selJob.manualCosts)}</strong>

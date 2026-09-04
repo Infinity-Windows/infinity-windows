@@ -44,7 +44,15 @@ describe("a shift written off as no work done", () => {
         role: "owner",
       },
     ]);
-    expect(labor.get("pecan14")).toEqual({ hours: 0, cost: 0 });
+    // Wave Z added the per-person breakdown (so Costing can mark a line
+    // "estimated — no rate on file"); the two numbers that matter are still
+    // zero, and the person's own line is zero too.
+    const pecan = labor.get("pecan14")!;
+    expect(pecan.hours).toBe(0);
+    expect(pecan.cost).toBe(0);
+    expect(pecan.people).toEqual([
+      { profileId: "unknown", name: "Someone", hours: 0, cost: 0, estimated: true },
+    ]);
   });
 
   it("is no longer unfinished, so it leaves the office's runaway list", () => {
