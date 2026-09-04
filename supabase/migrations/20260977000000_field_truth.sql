@@ -178,9 +178,15 @@ begin
     select 1 from issues
      where opening_id = p_opening_id and kind = 'flag' and status = 'open'
   ) then
+    -- The NOTE is only ever what a person typed. It used to fall back to the
+    -- reason code, so a flag raised with a reason and no note filed an issue
+    -- whose note read `wrong_size` — a column value from this database printed
+    -- to a foreman on a phone, which is the thing plain-English copy exists to
+    -- stop. The reason is already on the opening; Blockers and the Issues page
+    -- read it from there and say it in the reader's own language.
     insert into issues (project_id, opening_id, kind, urgency, note, created_by)
     values (v_opening.project_id, p_opening_id, 'flag', 'normal',
-            coalesce(v_clean, v_opening.flag_kind), auth.uid());
+            v_clean, auth.uid());
   end if;
 
   return v_opening;

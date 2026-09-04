@@ -5,7 +5,9 @@ import {
   dataOffIds,
   dataOffKind,
   dataOffRate,
+  dataOffReasonKey,
   dataOffUnits,
+  holdsOffDispatch,
   isDataOff,
 } from "./dataOff";
 
@@ -92,5 +94,57 @@ describe("the reasons offered on the sheet", () => {
     for (const kind of DATA_OFF_CHOICES) {
       expect(DATA_OFF_LABEL_KEYS[kind]).toBeTruthy();
     }
+  });
+});
+
+describe("dataOffReasonKey", () => {
+  // The reason is on the OPENING. The database used to write it into the
+  // issue's note when nobody typed one, which put the string `wrong_size` in
+  // front of a foreman; the screens read it from here instead and translate it.
+  it("names the reason so an issue with no note still says something", () => {
+    expect(dataOffReasonKey({ flag_kind: "wrong_size", flag_note: null })).toBe(
+      "dataoff.reason.wrongSize",
+    );
+  });
+
+  it("is null when the record is not in doubt", () => {
+    expect(dataOffReasonKey({ flag_kind: null, flag_note: null })).toBeNull();
+    expect(dataOffReasonKey(null)).toBeNull();
+  });
+});
+
+describe("holdsOffDispatch", () => {
+  it("keeps a unit whose record is in doubt out of the assignable columns", () => {
+    expect(holdsOffDispatch({ flag_kind: "wrong_size", flag_note: null })).toBe(true);
+  });
+
+  it("lets an unflagged unit through", () => {
+    expect(holdsOffDispatch({ flag_kind: null, flag_note: null })).toBe(false);
+  });
+
+  // THE REGRESSION. add_field_unit stamps `not_on_plans` on every missed unit
+  // and never takes it off, so reading the skip straight off isDataOff hid the
+  // window the crew added from every assignable column on the board — and the
+  // only way out was clearing the flag, which erases the one stored fact
+  // saying why the unit exists. The sheet that adds one promises it will be
+  // "ordered and installed".
+  it("still dispatches a missed unit, which is flagged from birth", () => {
+    expect(
+      holdsOffDispatch({
+        flag_kind: "not_on_plans",
+        flag_note: null,
+        field_added: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("still dispatches a missed unit a foreman has since flagged for something else", () => {
+    expect(
+      holdsOffDispatch({
+        flag_kind: "wrong_size",
+        flag_note: "ordered 3060, opening is 3050",
+        field_added: true,
+      }),
+    ).toBe(false);
   });
 });

@@ -80,6 +80,40 @@ export function isDataOff(opening: FlaggableOpening | null | undefined): boolean
   return dataOffKind(opening) !== null;
 }
 
+/**
+ * The catalog key for this unit's reason, or null when it isn't flagged.
+ *
+ * What a `flag` issue says when nobody typed a note. The reason used to be
+ * written into the issue's note by the database, which put `wrong_size` on a
+ * foreman's screen; the reason lives on the OPENING, so the screens that show
+ * an issue look it up here and say it in the reader's language.
+ */
+export function dataOffReasonKey(
+  opening: FlaggableOpening | null | undefined,
+): TKey | null {
+  const kind = dataOffKind(opening);
+  return kind ? DATA_OFF_LABEL_KEYS[kind] : null;
+}
+
+/**
+ * A unit is kept out of the dispatch board's assignable columns while its
+ * record is in doubt — a lead should look before sending somebody to it.
+ *
+ * EXCEPT a missed unit. It is flagged `not_on_plans` from the moment it is
+ * created, permanently, and that is not doubt about the record: it IS the
+ * record, and the sheet that adds one promises the crew it will be "ordered and
+ * installed". Hiding it from every assignable column made that promise
+ * unkeepable — the only way out was clearing the flag, which erases the one
+ * stored fact saying why the unit exists.
+ */
+export function holdsOffDispatch(
+  opening: (FlaggableOpening & { field_added?: boolean | null }) | null | undefined,
+): boolean {
+  if (!opening) return false;
+  if (opening.field_added) return false;
+  return isDataOff(opening);
+}
+
 /** Ids of every flagged unit in a list — what the map and the Data Tab want. */
 export function dataOffIds<T extends FlaggableOpening & { id: string }>(
   openings: readonly T[],
