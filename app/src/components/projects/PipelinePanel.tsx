@@ -77,6 +77,12 @@ export function PipelinePanel({
   // Expected start IS the existing start_date, edited through the existing
   // path: it rides wave D's column grant, so unlike the other three it needs
   // no RPC of its own and must not grow one.
+  //
+  // One field, and one field only, reaches the database — updateProject writes
+  // exactly the columns it is handed (lib/api.ts, detailColumns). That is a
+  // guarantee this card depends on: it holds no address, no phone number and no
+  // notes to send back, so a writer that filled in the blanks would quietly
+  // erase them. updateProject.test.ts pins it.
   const start = useMutation({
     mutationFn: (day: string) => updateProject(project.id, { startDate: day || null }),
     onSuccess: async () => {

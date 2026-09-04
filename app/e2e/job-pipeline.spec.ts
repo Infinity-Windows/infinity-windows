@@ -51,11 +51,18 @@ function project(over: Record<string, unknown>) {
 
 // Starts in ten days, nobody has said it is ready, and the windows are still
 // due — the exact job the 7 AM sweep would push about.
+// The contact details are here on purpose: the Pipeline card can save this
+// job's start date, and the test below proves it takes none of them with it.
 const NOT_READY = project({
   ready_state: "not_ready",
   start_date: day(10),
   materials_eta: day(4),
   sort_order: 1,
+  address: "1 Sand Hollow Way",
+  customer_name: "Dixie Builders",
+  contact_phone: "435-555-0100",
+  contact_email: "site@dixiebuilders.test",
+  notes: "Gate code 1234, dogs on site.",
 });
 
 // Starts in a week and is completely fine. Wears no pill and no chip.
@@ -136,12 +143,27 @@ function usePipelineFixtures(page: Page) {
   });
 
   void page.route("**/rest/v1/projects**", (r) => {
+    const request = r.request();
+
+    // The inline "Expected start" edit is an ordinary PATCH on the row, not an
+    // RPC — start_date rides wave D's column grant. Recording the BODY is the
+    // point: a writer that filled in the columns the card does not hold would
+    // blank this job's address, customer and notes on the way past.
+    if (request.method() === "PATCH") {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      calls.push({ fn: "PATCH projects", body });
+      const id = /id=eq\.([^&]+)/.exec(request.url())?.[1] ?? "";
+      state.rows = state.rows.map((row) => (row.id === id ? { ...row, ...body } : row));
+      const patched = state.rows.find((row) => row.id === id) ?? null;
+      return json(r, patched, patched ? 1 : 0);
+    }
+
     // The server's own order, so the page gets the list already sorted the way
     // lib/api.ts asks PostgREST for it.
     const rows = [...state.rows].sort(
       (a, b) => ((a.sort_order as number) ?? 1e9) - ((b.sort_order as number) ?? 1e9),
     );
-    const accept = r.request().headers()["accept"] ?? "";
+    const accept = request.headers()["accept"] ?? "";
     if (accept.includes("pgrst.object")) return json(r, rows[0] ?? null, rows.length);
     return json(r, rows, rows.length);
   });
@@ -266,6 +288,33 @@ test("a foreman marks the windows arrived in one tap from the job's Overview", a
   // The one-tap call must NOT carry an ETA, or pressing it would wipe the date.
   expect(body.p_materials_eta).toBeNull();
   expect(body.p_clear_eta).toBe(false);
+});
+
+test("changing Expected start does not blank the job's address, customer or notes", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  const fixtures = usePipelineFixtures(page);
+  await page.goto(`/projects/${NOT_READY_ID}`);
+
+  const card = page.locator("section.detail-card").filter({ hasText: "Pipeline" }).first();
+  await expect(card).toBeVisible();
+
+  await card.getByRole("button", { name: /^Change$/ }).first().click();
+  await card.getByLabel("Expected start").fill("2026-09-22");
+  await card.getByRole("button", { name: /^Save$/ }).click();
+
+  await expect
+    .poll(() => fixtures.calls.filter((c) => c.fn === "PATCH projects").length)
+    .toBeGreaterThan(0);
+
+  const body = fixtures.calls.find((c) => c.fn === "PATCH projects")?.body as Record<
+    string,
+    unknown
+  >;
+  // THE POINT: one column. Not nine, eight of them nulled because this card has
+  // no address box to have read them from.
+  expect(body).toEqual({ start_date: "2026-09-22" });
 });
 
 test("an installer reads the Pipeline card but cannot change it", async ({ page }) => {

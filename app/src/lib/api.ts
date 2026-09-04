@@ -225,19 +225,37 @@ export interface CreateProjectInput extends ProjectDetailsInput {
 const clean = (value: string | null | undefined): string | null =>
   value?.trim() ? value.trim() : null;
 
-/** Shape the shared detail fields into the DB column names. */
+/**
+ * Shape the shared detail fields into the DB column names — ONLY the ones the
+ * caller actually named.
+ *
+ * The distinction is the whole point, and it used to be missing. This function
+ * returned all nine columns every time, and `clean(undefined)` is null, so a
+ * caller who passed one field was silently sending "erase the other eight".
+ * The one caller at the time (the job details form) always passed all nine, so
+ * nothing broke — until wave J's Pipeline card saved an expected start date on
+ * its own and took the job's address, customer, phone, email and notes with it.
+ *
+ * So: absent means LEAVE THAT COLUMN ALONE, and an explicit null (or "") still
+ * means CLEAR IT. The full form is unaffected — it names every field, so it
+ * still sends every column, including the blanks a person deliberately emptied.
+ * On INSERT an omitted column simply takes its default, which is NULL, so
+ * createProject behaves exactly as before.
+ */
 function detailColumns(input: ProjectDetailsInput): Record<string, string | null> {
-  return {
-    address: clean(input.address),
-    customer_name: clean(input.customerName),
-    contact_phone: clean(input.contactPhone),
-    contact_email: clean(input.contactEmail),
-    site_state: clean(input.siteState)?.toUpperCase() ?? null,
-    unit_number: clean(input.unitNumber),
-    start_date: clean(input.startDate),
-    end_date: clean(input.endDate),
-    notes: clean(input.notes),
-  };
+  const patch: Record<string, string | null> = {};
+  if (input.address !== undefined) patch.address = clean(input.address);
+  if (input.customerName !== undefined) patch.customer_name = clean(input.customerName);
+  if (input.contactPhone !== undefined) patch.contact_phone = clean(input.contactPhone);
+  if (input.contactEmail !== undefined) patch.contact_email = clean(input.contactEmail);
+  if (input.siteState !== undefined) {
+    patch.site_state = clean(input.siteState)?.toUpperCase() ?? null;
+  }
+  if (input.unitNumber !== undefined) patch.unit_number = clean(input.unitNumber);
+  if (input.startDate !== undefined) patch.start_date = clean(input.startDate);
+  if (input.endDate !== undefined) patch.end_date = clean(input.endDate);
+  if (input.notes !== undefined) patch.notes = clean(input.notes);
+  return patch;
 }
 
 /**
@@ -407,9 +425,17 @@ export interface UpdateProjectInput extends ProjectDetailsInput {
   name?: string;
 }
 
-/** Edit an existing job's Horizon-style details (foreman+ from the hub).
+/**
+ * Edit an existing job's Horizon-style details (foreman+ from the hub).
+ *
+ * PARTIAL: only the fields named in `input` are written. A caller that wants
+ * one date changed sends one date and every other column is left exactly as it
+ * was; a caller that wants a field emptied sends null (or "") for it. See
+ * detailColumns above for the bug that rule exists to stop.
+ *
  * Status is NOT accepted here: projects.status is column-locked (wave D's
- * grant restructure) and changes only through set_project_status(). */
+ * grant restructure) and changes only through set_project_status().
+ */
 export async function updateProject(
   projectId: string,
   input: UpdateProjectInput,
@@ -420,6 +446,9 @@ export async function updateProject(
     if (!name) throw new Error("Project name is required.");
     patch.name = name;
   }
+  // An update naming no columns at all is a caller bug, and PostgREST would
+  // answer it with a 400 nobody could act on. Say what happened instead.
+  if (Object.keys(patch).length === 0) throw new Error("Nothing to save on this job.");
 
   const { data, error } = await supabase
     .from("projects")
