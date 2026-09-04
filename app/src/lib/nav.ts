@@ -124,6 +124,24 @@ export interface NavDest {
   icon: string;
   /** Minimum role that may see/reach this destination. */
   minRole: CrewRole;
+  /**
+   * Wave Z: a money screen. An owner's "Sees costs" grant
+   * (`profiles.can_see_costs`) opens it for somebody below `minRole` — the
+   * owner can hand one supervisor the cost books without making them an owner.
+   * The floor above is unchanged: it is what everyone WITHOUT the grant gets.
+   */
+  costGrantOpens?: true;
+}
+
+/**
+ * The money grants a person holds, as the nav sees them. Both default to false
+ * — "we do not know yet" and "no" are the same answer for a door.
+ */
+export interface MoneyGrants {
+  /** profiles.can_see_costs — the cost books. */
+  costs?: boolean;
+  /** profiles.can_see_pay — pay rates. Reserved: no ROUTE turns on it today. */
+  pay?: boolean;
 }
 
 /**
@@ -227,11 +245,13 @@ export const NAV: NavDest[] = [
   { id: "access", to: "/access", label: "Crew access", icon: "⚿", minRole: "supervisor" },
   { id: "cost-codes", to: "/cost-codes", label: "Cost codes", icon: "☷", minRole: "supervisor" },
   // Wave P: the office receipts table — supervisor+ review (spec, settled).
-  { id: "receipts", to: "/receipts", label: "Receipts", icon: "🧾", minRole: "supervisor" },
+  // Wave Z: or anyone the owner granted "Sees costs" — a bookkeeper who is
+  // not a supervisor still has to reconcile the card statement.
+  { id: "receipts", to: "/receipts", label: "Receipts", icon: "🧾", minRole: "supervisor", costGrantOpens: true },
 
   // Owner only.
-  { id: "costing", to: "/costing", label: "Cost", icon: "$", minRole: "owner" },
-  { id: "ai-spend", to: "/ai-spend", label: "AI spend", icon: "◍", minRole: "owner" },
+  { id: "costing", to: "/costing", label: "Cost", icon: "$", minRole: "owner", costGrantOpens: true },
+  { id: "ai-spend", to: "/ai-spend", label: "AI spend", icon: "◍", minRole: "owner", costGrantOpens: true },
   // Wave S: inviting a builder login and granting jobs is the same kind of
   // power as handing out a crew login (set_profile_role) — but a step
   // further, since the person is outside the company. Owner-only (Q13).
@@ -257,11 +277,21 @@ export function minRoleForPath(path: string): CrewRole | null {
  * Access check used by nav visibility and the `<RequireRole>` route guard.
  * Paths not in the registry (detail/legacy like /w/:id, /projects/:id/*) default
  * to allow so deep links keep working.
+ *
+ * `grants` is Wave Z's money grant. It only ever OPENS a door, never closes one
+ * — the role floors stay exactly as written, and a person with no grant sees
+ * precisely what they saw before this argument existed. Callers that have no
+ * profile to hand (the role-access doc, most tests) omit it and get the floors.
  */
-export function canAccess(role: CrewRole | string | null | undefined, path: string): boolean {
+export function canAccess(
+  role: CrewRole | string | null | undefined,
+  path: string,
+  grants?: MoneyGrants,
+): boolean {
   const dest = NAV_BY_PATH.get(path as RoutePath);
   if (!dest) return true;
-  return roleRank(role) >= roleRank(dest.minRole);
+  if (roleRank(role) >= roleRank(dest.minRole)) return true;
+  return Boolean(dest.costGrantOpens && grants?.costs);
 }
 
 // =============================================================================
@@ -522,11 +552,14 @@ const INSTALLER_MORE_PATHS: RoutePath[] = [
   "/settings",
 ];
 
-function installerMenu(role: CrewRole | string | null | undefined): MenuSection[] {
+function installerMenu(
+  role: CrewRole | string | null | undefined,
+  grants?: MoneyGrants,
+): MenuSection[] {
   const pick = (paths: RoutePath[]): MenuItem[] =>
     paths
       .map((p) => MENU_ITEM_BY_PATH.get(p))
-      .filter((it): it is MenuItem => Boolean(it?.to) && canAccess(role, it!.to!))
+      .filter((it): it is MenuItem => Boolean(it?.to) && canAccess(role, it!.to!, grants))
       .map((it) => (it.to === "/" ? { ...it, label: "My Work" } : it));
 
   const out: MenuSection[] = [{ items: pick(INSTALLER_LOOP_PATHS) }];
@@ -534,7 +567,7 @@ function installerMenu(role: CrewRole | string | null | undefined): MenuSection[
   // Keep the Time tracking pill (clock in/out) — installers clock in daily.
   const timePill = MENU_DEF.find((s) => s.title === "Time tracking");
   if (timePill) {
-    const items = timePill.items.filter((it) => !it.to || canAccess(role, it.to));
+    const items = timePill.items.filter((it) => !it.to || canAccess(role, it.to, grants));
     if (items.length) out.push({ ...timePill, items });
   }
 
@@ -559,11 +592,14 @@ function installerMenu(role: CrewRole | string | null | undefined): MenuSection[
  * menu filtered through `canAccess` (the same registry the route guards use),
  * with empty sections dropped. Non-installer "/" reads "Home".
  */
-export function menuForRole(role: CrewRole | string | null | undefined): MenuSection[] {
-  if (roleRank(role) === 0) return installerMenu(role);
+export function menuForRole(
+  role: CrewRole | string | null | undefined,
+  grants?: MoneyGrants,
+): MenuSection[] {
+  if (roleRank(role) === 0) return installerMenu(role, grants);
   const out: MenuSection[] = [];
   for (const section of MENU_DEF) {
-    const items = section.items.filter((it) => !it.to || canAccess(role, it.to));
+    const items = section.items.filter((it) => !it.to || canAccess(role, it.to, grants));
     if (items.length === 0) continue;
     out.push({ ...section, items });
   }

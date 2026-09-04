@@ -19,14 +19,25 @@ import {
  * it answers "is this costing me anything, and can it surprise me?" in the first
  * sentence, and then gives an owner the two numbers they can change.
  *
+ * Wave Z: reading it is an owner OR anyone the owner granted "Sees costs" — the
+ * nav registry opens the door for the same people (nav.ts, costGrantOpens), and
+ * ai_spend_overview() refuses everyone else in SQL. The two limit inputs stay
+ * owner-only off the RPC's `can_edit`, so a granted bookkeeper reads the meter
+ * without being able to move it.
+ *
  * The cap itself is enforced in the database, not here — see
  * docs/ai-spend-limits.md. Nothing on this screen is a control; it is a window
  * onto one, so a crew member who reaches the URL can only read.
  */
 export function AiSpend() {
   const queryClient = useQueryClient();
-  const { effectiveRole } = useEffectiveRole();
-  const canOpen = isOwner(effectiveRole);
+  const { effectiveRole, grants } = useEffectiveRole();
+  // Wave Z: an owner, or anyone the owner granted "Sees costs" — the same gate
+  // Costing and Receipts use, and the same one ai_spend_overview() now applies
+  // in SQL. The nav floor stays `owner`; the grant is what opens the door, so
+  // this must agree with canAccess() or the drawer draws a link onto a wall.
+  // CHANGING the two limits stays owner-only, off the RPC's own `can_edit`.
+  const canOpen = isOwner(effectiveRole) || grants.costs === true;
 
   const overview = useQuery({
     queryKey: ["aiSpendOverview"],
@@ -67,8 +78,8 @@ export function AiSpend() {
           <BackChip fallback="/" label="Home" />
         </header>
         <p className="muted">
-          What the assistant costs is the owner's business. Nothing you do is
-          being limited by this screen.
+          What the assistant costs the company. Ask an owner to turn on “Sees
+          costs” for you. Nothing you do is being limited by this screen.
         </p>
       </div>
     );

@@ -1,18 +1,30 @@
 import { BackChip } from "../components/BackChip";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getMyProfile,
   listCapabilityBadges,
   listProfiles,
   setCapabilityBadge,
+  setProfileGrants,
   updateProfile,
 } from "../lib/install/api";
+import { formatApiError } from "../lib/errors";
 import {
   CAPABILITIES,
   CAPABILITY_LABELS,
   type Capability,
 } from "../lib/dispatch";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
+import {
+  formatRate,
+  indexPayRates,
+  listPayRates,
+  parseRateDollars,
+  rateInEffect,
+  setPayRate,
+  type PayRate,
+} from "../lib/payRates";
 import { PinSetter } from "../components/PinGate";
 import { SavedCrewsSection } from "../components/schedule/SavedCrewsSection";
 import {
@@ -34,6 +46,108 @@ const SKILL_LABELS: Record<number, string> = {
 };
 
 const ROLE_ORDER: CrewRole[] = ["installer", "foreman", "supervisor", "owner"];
+
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Wave Z: one person's pay, on their Roster row. Shown to an owner or to
+ * somebody granted "Sees pay rates" — and to nobody else, which the pay_rates
+ * policy enforces anyway: without the grant the list simply comes back empty.
+ *
+ * The history is visible on purpose. A rate is a record with dates, not a
+ * current value, and the whole reason Costing prices January at January's rate
+ * is that the older rows are still there to read.
+ */
+function PayRateRow({
+  profile,
+  rates,
+  canSet,
+  onSaved,
+}: {
+  profile: Profile;
+  rates: PayRate[];
+  canSet: boolean;
+  onSaved: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [from, setFrom] = useState(todayIso());
+  const [error, setError] = useState<string | null>(null);
+
+  const current = rateInEffect(rates, todayIso());
+
+  const save = useMutation({
+    mutationFn: () => {
+      const cents = parseRateDollars(amount);
+      if (cents == null) throw new Error("Type an hourly rate, like 32.50.");
+      return setPayRate(profile.id, cents, from || undefined);
+    },
+    onSuccess: () => {
+      setAmount("");
+      setError(null);
+      setOpen(false);
+      onSaved();
+    },
+    onError: (e) => setError(formatApiError(e)),
+  });
+
+  return (
+    <>
+      <label className="field-label">Pay</label>
+      <p className="muted" style={{ margin: 0 }}>
+        {current ? `${formatRate(current.hourlyCents)}/hr since ${current.effectiveFrom}` : "No rate on file"}
+      </p>
+      {rates.length > 1 && (
+        <ul className="muted" style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+          {rates.slice(1).map((r) => (
+            <li key={r.id}>
+              {formatRate(r.hourlyCents)}/hr from {r.effectiveFrom}
+            </li>
+          ))}
+        </ul>
+      )}
+      {canSet && (
+        <div className="row-gap" style={{ marginTop: 6, flexWrap: "wrap" }}>
+          {!open ? (
+            <button type="button" className="button-like" onClick={() => setOpen(true)}>
+              Set rate
+            </button>
+          ) : (
+            <>
+              <input
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="32.50"
+                aria-label={`Hourly rate for ${profile.display_name}`}
+              />
+              <input
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                aria-label={`Rate starts for ${profile.display_name}`}
+              />
+              <button
+                type="button"
+                className="action-btn"
+                disabled={save.isPending || !amount.trim()}
+                onClick={() => save.mutate()}
+              >
+                {save.isPending ? "Saving…" : "Save rate"}
+              </button>
+              <button type="button" className="button-like" onClick={() => setOpen(false)}>
+                Cancel
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {error && <p className="error">{error}</p>}
+    </>
+  );
+}
 
 export function Crew() {
   const queryClient = useQueryClient();
@@ -62,9 +176,34 @@ export function Crew() {
     },
   });
 
-  const { effectiveRole } = useEffectiveRole();
+  const { effectiveRole, grants } = useEffectiveRole();
   const isLead = isForemanPlus(effectiveRole);
   const canSetRoles = isSupervisorPlus(effectiveRole);
+  // Wave Z: only an owner hands out money. Same floor as set_profile_grants,
+  // which refuses everyone else server-side — this just doesn't offer the tap.
+  const canSetGrants = isOwner(effectiveRole);
+  // Reading pay is its own grant. The query is `enabled` on it purely to save a
+  // round trip: pay_rates' policy answers anybody else with no rows anyway.
+  const canSeePay = isOwner(effectiveRole) || grants.pay === true;
+  const payRates = useQuery({
+    queryKey: ["payRates"],
+    queryFn: () => listPayRates(),
+    enabled: canSeePay,
+  });
+  const ratesByPerson = indexPayRates(payRates.data ?? []);
+
+  const [grantError, setGrantError] = useState<string | null>(null);
+  const setGrants = useMutation({
+    mutationFn: (args: { id: string; costs?: boolean; pay?: boolean }) =>
+      setProfileGrants(args.id, { costs: args.costs, pay: args.pay }),
+    onSuccess: () => {
+      setGrantError(null);
+      queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["myProfile"] });
+      queryClient.invalidateQueries({ queryKey: ["myRealProfile"] });
+    },
+    onError: (e) => setGrantError(formatApiError(e)),
+  });
 
   return (
     <div className="page">
@@ -84,6 +223,8 @@ export function Crew() {
       )}
 
       <PinSetter />
+
+      {grantError && <p className="error">{grantError}</p>}
 
       <h2>Roster</h2>
       <ul className="unit-list">
@@ -191,6 +332,50 @@ export function Crew() {
                             {ROLE_LABELS[r]}
                           </button>
                         ))}
+                      </div>
+                    </>
+                  )}
+                  {canSeePay && (
+                    <PayRateRow
+                      profile={p}
+                      rates={ratesByPerson.get(p.id) ?? []}
+                      canSet={isOwner(effectiveRole)}
+                      onSaved={() =>
+                        queryClient.invalidateQueries({ queryKey: ["payRates"] })
+                      }
+                    />
+                  )}
+                  {/* Wave Z: money is a grant, not a rank. An owner can let one
+                      supervisor read the cost books without making them an
+                      owner, and can hand pay rates to somebody who never sees a
+                      job's margin. Owners themselves always see both, so their
+                      own row shows no checkboxes to mislead anyone. */}
+                  {canSetGrants && p.role !== "owner" && (
+                    <>
+                      <label className="field-label">Money</label>
+                      <div className="row-gap" style={{ flexWrap: "wrap" }}>
+                        <label className="row-gap" style={{ alignItems: "center", gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={p.can_see_costs === true}
+                            disabled={setGrants.isPending}
+                            onChange={(e) =>
+                              setGrants.mutate({ id: p.id, costs: e.target.checked })
+                            }
+                          />
+                          Sees costs
+                        </label>
+                        <label className="row-gap" style={{ alignItems: "center", gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={p.can_see_pay === true}
+                            disabled={setGrants.isPending}
+                            onChange={(e) =>
+                              setGrants.mutate({ id: p.id, pay: e.target.checked })
+                            }
+                          />
+                          Sees pay rates
+                        </label>
                       </div>
                     </>
                   )}

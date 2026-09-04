@@ -103,6 +103,43 @@ describe("canAccess", () => {
     expect(canAccess("supervisor", "/costing")).toBe(false);
   });
 
+  // Wave Z: money is a grant, not a rank. The floors above are unchanged —
+  // they are what everyone WITHOUT the grant still gets — and "Sees costs"
+  // opens exactly three doors for the person the owner handed it to.
+  describe("the Sees costs grant", () => {
+    it("opens the three money screens below their floor", () => {
+      for (const p of ["/costing", "/ai-spend", "/receipts"] as const) {
+        expect(canAccess("foreman", p, { costs: true })).toBe(true);
+        expect(canAccess("installer", p, { costs: true })).toBe(true);
+      }
+    });
+
+    it("opens nothing else", () => {
+      for (const p of ["/admin", "/heartbeat", "/knowledge", "/account/builders"] as const) {
+        expect(canAccess("foreman", p, { costs: true })).toBe(false);
+      }
+    });
+
+    it("is not opened by the pay grant, which no route turns on", () => {
+      expect(canAccess("foreman", "/costing", { pay: true })).toBe(false);
+    });
+
+    it("never closes a door the role already opened", () => {
+      expect(canAccess("owner", "/costing", { costs: false })).toBe(true);
+      expect(canAccess("supervisor", "/receipts", {})).toBe(true);
+    });
+
+    it("puts the granted rows back in the drawer", () => {
+      const labels = (grants: { costs?: boolean }) =>
+        menuForRole("foreman", grants)
+          .flatMap((s) => s.items)
+          .map((i) => i.label);
+      expect(labels({})).not.toContain("Cost");
+      expect(labels({ costs: true })).toContain("Cost");
+      expect(labels({ costs: true })).toContain("Receipts");
+    });
+  });
+
   it("keeps heartbeat supervisor+ (blocked for installers and foremen)", () => {
     expect(canAccess("installer", "/heartbeat")).toBe(false);
     expect(canAccess("foreman", "/heartbeat")).toBe(false);

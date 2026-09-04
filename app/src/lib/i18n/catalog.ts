@@ -1054,6 +1054,23 @@ export const CATALOG = {
     es: "Quitada del trabajo — está en la lista de quitadas.",
   },
 
+  // ---- Wave Z: money doors (transcripts program, 2026-09-03) -------------
+  // Almost all of wave Z is office and owner work — the Cost screen, the
+  // receipts table, the Roster's grant checkboxes, the bank import — and stays
+  // English like the rest of those files. These two are the exception: ANYONE
+  // signed in snaps a receipt, so the one new question the capture sheet asks
+  // is a crew string and goes through t() in both languages, even though its
+  // neighbours on that sheet are older English.
+  //
+  // "Cost code" is worded exactly as the clock's own picker words it
+  // (clock.label.costCode) — it is the same list, so it should not be two
+  // different phrases to learn.
+  "receipt.costCode.label": { en: "Cost code", es: "Código de costo" },
+  "receipt.costCode.help": {
+    en: "Optional — it helps the office put this on the right job.",
+    es: "Opcional — ayuda a la oficina a ponerlo en el trabajo correcto.",
+  },
+
   // ---- Wave J — the job pipeline ---------------------------------------
   // (transcripts program, grill 2026-09-03, Q8+Q9). The stretch between
   // winning a bid and the first window going in: is the job ready, when do

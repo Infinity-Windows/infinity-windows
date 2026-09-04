@@ -495,6 +495,20 @@ export function createSupabaseHandlers(resolver: ShiftResolver): OpHandlers {
       p_note: row.note,
     });
     if (error) throw missingGuard(error, "receipt answer");
+
+    // Wave Z: the cost code the same question asked for, through its own narrow
+    // RPC. Sent AFTER the answer above and tolerant of a database that has not
+    // got the function yet: the job and the bill-to-customer flag are the parts
+    // that must land, and stranding the whole answer over a cost code the
+    // office can set by hand would be the wrong trade.
+    const costCodeId = str(p.costCodeId);
+    if (costCodeId) {
+      const { error: codeErr } = await supabase.rpc("set_receipt_cost_code", {
+        p_id: receiptId,
+        p_cost_code_id: costCodeId,
+      });
+      if (codeErr && !isMissingFunction(codeErr)) throw codeErr;
+    }
   };
 
   const dailyLog: OpHandler = async (entry) => {

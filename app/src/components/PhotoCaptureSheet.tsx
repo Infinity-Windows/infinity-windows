@@ -20,6 +20,7 @@ import { pushToast } from "../lib/toast";
 import { useClock } from "../lib/clockContext";
 import { useT } from "../lib/i18n";
 import { listProjects } from "../lib/api";
+import { getClockCostCodesForProject } from "../lib/costCodes";
 import {
   extractReceipt,
   listThisWeekJobSuggestions,
@@ -154,6 +155,10 @@ interface ReceiptAnswer {
   passthrough: boolean | null;
   projectId: string | null;
   pendingJobName: string | null;
+  /** Wave Z: which kind of purchase this was — the same cost-code list the
+   * clock offers for this job (its own subset if it has one, else the whole
+   * active library, general always included). */
+  costCodeId: string | null;
 }
 
 /**
@@ -180,11 +185,13 @@ function ReceiptFollowUp({
   presetJobLabel: string | null;
   onClose: () => void;
 }) {
+  const t = useT();
   const { profileId } = useClock();
   const [answer, setAnswer] = useState<ReceiptAnswer>({
     passthrough: null,
     projectId: presetProjectId,
     pendingJobName: null,
+    costCodeId: null,
   });
   const [pickingJob, setPickingJob] = useState(false);
   const [search, setSearch] = useState("");
@@ -202,6 +209,26 @@ function ReceiptFollowUp({
     queryFn: listProjects,
     enabled: pickingJob,
   });
+  // Wave Z: the SAME picker logic the clock uses — the job's own cost-code
+  // subset if it has one, else the whole active library, with the general
+  // fallback always present and common codes first. Reused, not re-derived:
+  // two lists of cost codes that could disagree is how a receipt ends up
+  // filed under a code the job does not allow.
+  const costCodes = useQuery({
+    queryKey: ["clockCostCodes", answer.projectId || "all"],
+    queryFn: () => getClockCostCodesForProject(answer.projectId),
+  });
+
+  // A code held over from the previous job may not be in the new job's subset.
+  // Same guard ClockInBlock keeps for the same reason.
+  useEffect(() => {
+    if (!answer.costCodeId) return;
+    const list = costCodes.data;
+    if (!list) return;
+    if (!list.some((c) => c.id === answer.costCodeId)) {
+      setAnswer((a) => ({ ...a, costCodeId: null }));
+    }
+  }, [costCodes.data, answer.costCodeId]);
 
   // Fire-and-forget: the row updates when it lands (P3). The FIRST attempt
   // can beat the offline outbox's own drain — enqueueReceiptCapture returns
@@ -275,6 +302,7 @@ function ReceiptFollowUp({
         projectId: answer.projectId,
         pendingJobName: answer.pendingJobName,
         isPassthrough: answer.passthrough,
+        costCodeId: answer.costCodeId,
       });
       setSaved(true);
     } catch (e) {
@@ -285,7 +313,10 @@ function ReceiptFollowUp({
   };
 
   const answeredSomething =
-    answer.passthrough !== null || answer.projectId !== presetProjectId || answer.pendingJobName !== null;
+    answer.passthrough !== null ||
+    answer.projectId !== presetProjectId ||
+    answer.pendingJobName !== null ||
+    answer.costCodeId !== null;
 
   return (
     <div className="jobphoto-followup">
@@ -371,6 +402,42 @@ function ReceiptFollowUp({
               </div>
             </div>
           )}
+        </>
+      )}
+
+      {/* Wave Z: which kind of purchase. Skippable like everything else on
+          this sheet — a bare photo is still a valid receipt — but answering it
+          here is what lets the office post it to the job without guessing. */}
+      {(costCodes.data ?? []).length > 0 && (
+        <>
+          <p className="field-label">{t("receipt.costCode.label")}</p>
+          <div className="clock-costcode-list">
+            {(costCodes.data ?? []).map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className={
+                  answer.costCodeId === c.id
+                    ? "clock-costcode-item selected"
+                    : "clock-costcode-item"
+                }
+                onClick={() =>
+                  setAnswer((a) => ({
+                    ...a,
+                    costCodeId: a.costCodeId === c.id ? null : c.id,
+                  }))
+                }
+              >
+                <span className="clock-costcode-code">
+                  {c.code} — {c.label}
+                </span>
+                {c.description && (
+                  <span className="clock-costcode-desc">{c.description}</span>
+                )}
+              </button>
+            ))}
+          </div>
+          <p className="muted">{t("receipt.costCode.help")}</p>
         </>
       )}
 

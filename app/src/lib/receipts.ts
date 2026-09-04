@@ -12,6 +12,7 @@
 
 import { supabase } from "./supabase";
 import { signedMedia } from "./photos";
+import { isMissingColumn } from "./schemaErrors";
 import { weekRange } from "./timeclock";
 import type { ReceiptCategory } from "./receiptMerge";
 
@@ -38,6 +39,12 @@ export interface Receipt {
   createdAt: string;
   reviewedBy: string | null;
   reviewedAt: string | null;
+  /** Wave Z: which kind of purchase, from the same library the clock picks
+   * from. Null on a receipt filed before the picker existed, or skipped. */
+  costCodeId: string | null;
+  /** Wave Z: the one job_costs line this receipt became. Set once and never
+   * cleared, so a receipt reads "posted" for good once it has. */
+  jobCostId: string | null;
 }
 
 interface ReceiptRow {
@@ -57,14 +64,43 @@ interface ReceiptRow {
   created_at: string;
   reviewed_by: string | null;
   reviewed_at: string | null;
+  cost_code_id?: string | null;
+  job_cost_id?: string | null;
   projects?: { job_code: string; name: string } | { job_code: string; name: string }[] | null;
   profiles?: { display_name: string } | { display_name: string }[] | null;
 }
 
-const RECEIPT_SELECT =
+const RECEIPT_BASE_COLS =
   "id, uploaded_by, project_id, pending_job_name, photo_path, amount_cents, vendor, " +
   "purchased_on, category, category_by, is_passthrough, note, ocr, created_at, " +
   "reviewed_by, reviewed_at, projects(job_code, name), profiles!uploaded_by(display_name)";
+
+/** Wave Z's two columns (20260978000000), asked for separately so the office
+ * table can fall back to the list without them. */
+const RECEIPT_SELECT = `${RECEIPT_BASE_COLS}, cost_code_id, job_cost_id`;
+
+/**
+ * Narrowed once, for the life of the tab, the first time the database says it
+ * has no wave Z columns. The house rule: a phone running a bundle ahead of the
+ * migration still LOADS the Receipts screen — it just shows no cost codes and
+ * no "posted" chips until the backend catches up.
+ */
+let receiptCols = RECEIPT_SELECT;
+
+async function readReceipts(
+  run: (cols: string) => PromiseLike<{ data: unknown; error: unknown }>,
+): Promise<{ data: unknown; error: unknown }> {
+  const first = await run(receiptCols);
+  if (
+    first.error &&
+    receiptCols !== RECEIPT_BASE_COLS &&
+    isMissingColumn(first.error, "cost_code_id")
+  ) {
+    receiptCols = RECEIPT_BASE_COLS;
+    return run(receiptCols);
+  }
+  return first;
+}
 
 function one<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
@@ -94,6 +130,8 @@ async function mapRow(row: ReceiptRow): Promise<Receipt> {
     createdAt: row.created_at,
     reviewedBy: row.reviewed_by,
     reviewedAt: row.reviewed_at,
+    costCodeId: row.cost_code_id ?? null,
+    jobCostId: row.job_cost_id ?? null,
   };
 }
 
@@ -112,37 +150,36 @@ export interface ReceiptFilter {
  * the database itself enforces, so a filter here can never leak a row RLS
  * would have refused. */
 export async function listReceipts(filter: ReceiptFilter = {}): Promise<Receipt[]> {
-  let query = supabase
-    .from("receipts")
-    .select(RECEIPT_SELECT)
-    .order("created_at", { ascending: false })
-    .limit(500);
+  const { data, error } = await readReceipts((cols) => {
+    let query = supabase
+      .from("receipts")
+      .select(cols)
+      .order("created_at", { ascending: false })
+      .limit(500);
 
-  if (filter.month) {
-    const [y, m] = filter.month.split("-").map(Number);
-    const start = new Date(Date.UTC(y, m - 1, 1));
-    const end = new Date(Date.UTC(y, m, 1));
-    query = query.gte("created_at", start.toISOString()).lt("created_at", end.toISOString());
-  }
-  if (filter.projectId) query = query.eq("project_id", filter.projectId);
-  if (filter.category === "uncategorized") query = query.is("category", null);
-  else if (filter.category) query = query.eq("category", filter.category);
-  if (filter.passthrough != null) query = query.eq("is_passthrough", filter.passthrough);
-  if (filter.unreviewedOnly) query = query.is("reviewed_at", null);
-
-  const { data, error } = await query;
+    if (filter.month) {
+      const [y, m] = filter.month.split("-").map(Number);
+      const start = new Date(Date.UTC(y, m - 1, 1));
+      const end = new Date(Date.UTC(y, m, 1));
+      query = query.gte("created_at", start.toISOString()).lt("created_at", end.toISOString());
+    }
+    if (filter.projectId) query = query.eq("project_id", filter.projectId);
+    if (filter.category === "uncategorized") query = query.is("category", null);
+    else if (filter.category) query = query.eq("category", filter.category);
+    if (filter.passthrough != null) query = query.eq("is_passthrough", filter.passthrough);
+    if (filter.unreviewedOnly) query = query.is("reviewed_at", null);
+    return query;
+  });
   if (error) throw error;
-  return Promise.all(((data ?? []) as unknown as ReceiptRow[]).map(mapRow));
+  return Promise.all(((data ?? []) as ReceiptRow[]).map(mapRow));
 }
 
 export async function getReceipt(id: string): Promise<Receipt | null> {
-  const { data, error } = await supabase
-    .from("receipts")
-    .select(RECEIPT_SELECT)
-    .eq("id", id)
-    .maybeSingle();
+  const { data, error } = await readReceipts((cols) =>
+    supabase.from("receipts").select(cols).eq("id", id).maybeSingle(),
+  );
   if (error) throw error;
-  return data ? mapRow(data as unknown as ReceiptRow) : null;
+  return data ? mapRow(data as ReceiptRow) : null;
 }
 
 export interface FileReceiptInput {
@@ -234,6 +271,23 @@ export async function setCategory(id: string, value: ReceiptCategory | null): Pr
     isPassthrough: current.isPassthrough,
     note: current.note,
   });
+}
+
+/**
+ * Which kind of purchase this receipt was. A narrow RPC, not a field on
+ * update_receipt's full record — see set_receipt_cost_code's own comment in
+ * 20260978000000 for why.
+ */
+export async function setReceiptCostCode(
+  id: string,
+  costCodeId: string | null,
+): Promise<Receipt> {
+  const { data, error } = await supabase.rpc("set_receipt_cost_code", {
+    p_id: id,
+    p_cost_code_id: costCodeId,
+  });
+  if (error) throw error;
+  return mapRow(data as ReceiptRow);
 }
 
 export async function reviewReceipt(id: string, reviewed = true): Promise<Receipt> {

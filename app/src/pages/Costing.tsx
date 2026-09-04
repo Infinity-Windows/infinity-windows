@@ -9,6 +9,7 @@ import {
   addJobCost,
   bidForMargin,
   getCompanyCosting,
+  listJobCosts,
   setBid,
   toCsv,
 } from "../lib/costing";
@@ -20,11 +21,22 @@ function money(n: number): string {
 export function Costing() {
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const { effectiveRole } = useEffectiveRole();
+  const { effectiveRole, grants } = useEffectiveRole();
+  // Wave Z: an owner, or anyone the owner granted "Sees costs". The database
+  // decides the same way (can_see_costs(auth.uid()) on every money policy);
+  // this only stops the screen asking for rows it would be refused.
+  const canSeeCosts = isOwner(effectiveRole) || grants.costs === true;
+  // The OTHER grant, and a separate question. Somebody with "Sees costs" but
+  // not "Sees pay rates" is handed no pay_rates rows by RLS, so every line
+  // falls back to the role table — which is fine, as long as the screen says
+  // that is why, instead of telling them a rate is missing when it is not.
+  const canSeePay = isOwner(effectiveRole) || grants.pay === true;
   const jobs = useQuery({
-    queryKey: ["companyCosting"],
-    queryFn: getCompanyCosting,
-    enabled: isOwner(effectiveRole),
+    // The grant is part of the key: two people with different grants read two
+    // different pictures, and one must never be served the other's cache.
+    queryKey: ["companyCosting", canSeePay],
+    queryFn: () => getCompanyCosting({ canSeePay }),
+    enabled: canSeeCosts,
   });
   const [sel, setSel] = useState<string>("");
   const [costAmt, setCostAmt] = useState("");
@@ -37,7 +49,19 @@ export function Costing() {
   const [calcCost, setCalcCost] = useState("");
   const [calcMargin, setCalcMargin] = useState("20");
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["companyCosting"] });
+  // Wave Z: the selected job's own cost lines, so a receipt that posted itself
+  // is visible as a line rather than only as a bigger total — and so the
+  // "billable to customer" flag it carried over has somewhere to show.
+  const jobLines = useQuery({
+    queryKey: ["jobCosts", sel],
+    queryFn: () => listJobCosts(sel),
+    enabled: canSeeCosts && Boolean(sel),
+  });
+
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ["companyCosting"] });
+    void queryClient.invalidateQueries({ queryKey: ["jobCosts"] });
+  };
   const addCost = useMutation({
     mutationFn: () => addJobCost(sel, costCat, Number(costAmt)),
     onSuccess: () => { setCostAmt(""); refresh(); },
@@ -52,14 +76,16 @@ export function Costing() {
     onSuccess: () => { setCoLabel(""); setCoAmt(""); refresh(); },
   });
 
-  if (me.data && !isOwner(effectiveRole)) {
+  if (me.data && !canSeeCosts) {
     return (
       <div className="page">
         <header className="page-header">
           <h1>Job costing</h1>
           <BackChip fallback="/" label="Home" />
         </header>
-        <p className="muted">Revenue, costs and margin — Owner only.</p>
+        <p className="muted">
+          Revenue, costs and margin. Ask an owner to turn on “Sees costs” for you.
+        </p>
       </div>
     );
   }
@@ -86,7 +112,7 @@ export function Costing() {
         <div>
           <h1>Job costing</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Revenue, costs and margin — Owner only.
+            Revenue, costs and margin — owners, and anyone given “Sees costs”.
           </p>
         </div>
         <BackChip fallback="/" label="Home" />
@@ -111,8 +137,9 @@ export function Costing() {
         </div>
       </div>
       <p className="muted" style={{ fontSize: 12 }}>
-        Labor cost is auto-derived from clocked time_shifts x role rate; manual
-        cost entries are adjustments on top.
+        Labor cost comes from clocked hours priced at each person’s pay rate on
+        the day they worked. Somebody with no rate on file is priced off their
+        role, and their line says so. Manual cost entries sit on top.
       </p>
 
       <div className="row-between">
@@ -195,10 +222,48 @@ export function Costing() {
             <span>Labor</span>
             <strong>{selJob.laborHours}h · {money(selJob.laborCost)}</strong>
           </div>
+          {/* Wave Z: labor is priced at each person's real rate on the day they
+              worked. Anyone with no rate on file falls back to the role table,
+              and that line says so rather than passing a guess off as a cost.
+
+              Unless the READER is the one who cannot see rates — then every
+              line is estimated for the same reason, and repeating "no rate on
+              file" on each of them would be both noise and a lie. One sentence
+              under the total instead, below. */}
+          {(selJob.laborPeople ?? []).map((person) => (
+            <div className="cost-kv" key={person.profileId}>
+              <span>
+                {person.name}
+                {person.estimated && selJob.laborRatesVisible !== false
+                  ? " · estimated — no rate on file"
+                  : ""}
+              </span>
+              <strong>
+                {Math.round(person.hours * 10) / 10}h · {money(person.cost)}
+              </strong>
+            </div>
+          ))}
+          {selJob.laborRatesVisible === false && (
+            <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+              Labor here is priced off the role table, not real pay — you don't
+              have “Sees pay rates”, so this labor cost and the margin above are
+              an estimate. Ask an owner if you need the real numbers.
+            </p>
+          )}
           <div className="cost-kv">
             <span>Manual costs</span>
             <strong>{money(selJob.manualCosts)}</strong>
           </div>
+          {(jobLines.data ?? []).map((line) => (
+            <div className="cost-kv" key={line.id}>
+              <span>
+                {line.cost_date} · {line.category}
+                {line.label ? ` · ${line.label}` : ""}
+                {line.billable ? " · billable to customer" : ""}
+              </span>
+              <strong>{money(Number(line.amount))}</strong>
+            </div>
+          ))}
         </div>
       )}
 

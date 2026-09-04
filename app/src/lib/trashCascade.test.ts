@@ -95,6 +95,13 @@ const CASCADE_COVERED: Record<string, string> = {
   project_opening_pin_moves: "ON DELETE CASCADE from project_openings",
   package_events:
     "package survives (detached); its project_id is ON DELETE SET NULL on the final delete from projects",
+  // Wave Z (20260978000000): project_financials.project_id IS the primary key
+  // and references projects ON DELETE CASCADE, so the final `delete from
+  // projects` takes the row. Deliberately NOT on the detach list beside
+  // job_costs and receipts: a bid is a number about a job, not a money RECORD
+  // with retention weight, and it died with the job when it was a column on
+  // `projects`. This wave moved where it lives, not how long it lives.
+  project_financials: "ON DELETE CASCADE from projects (the pk is the FK)",
   // Wave J, 20260979000000. The ledger of what the pipeline sweep already said
   // about this job: the row means nothing without the job, so it goes with it
   // on the final `delete from projects`. Nothing else references it.

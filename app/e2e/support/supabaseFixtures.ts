@@ -111,6 +111,11 @@ const TEST_PROFILE = {
   skill_level: 3,
   role: "installer",
   active: true,
+  // Wave Z: the two money grants an owner hands out. False by default, which is
+  // what every account starts as and what every spec should be measuring
+  // against unless it says otherwise.
+  can_see_costs: false,
+  can_see_pay: false,
   created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z",
 };
@@ -122,6 +127,13 @@ export interface FixtureOptions {
    * supervisor+) names the weakest role that can reach it.
    */
   role?: "installer" | "foreman" | "supervisor" | "owner";
+  /**
+   * Wave Z: sign in as somebody the owner granted "Sees costs" / "Sees pay
+   * rates". These are grants on a PERSON, not a rank, so a spec proving the
+   * money doors has to be able to set them independently of `role`.
+   */
+  canSeeCosts?: boolean;
+  canSeePay?: boolean;
 }
 
 /** Every first-run micro-tip, pre-dismissed (see lib/featureTips). */
@@ -242,7 +254,12 @@ export async function useSupabaseFixtures(
 }> {
   const unmatched: string[] = [];
   const missingStorage: string[] = [];
-  const profile = { ...TEST_PROFILE, role: opts.role ?? TEST_PROFILE.role };
+  const profile = {
+    ...TEST_PROFILE,
+    role: opts.role ?? TEST_PROFILE.role,
+    can_see_costs: opts.canSeeCosts ?? false,
+    can_see_pay: opts.canSeePay ?? false,
+  };
 
   // A session in localStorage, under whatever key this build's Supabase URL
   // produces (`sb-<ref>-auth-token`), so the app boots signed in. Also settles

@@ -66,6 +66,9 @@ function receipt(overrides: Partial<Receipt> = {}): Receipt {
     createdAt: "2026-08-20T10:00:00Z",
     reviewedBy: null,
     reviewedAt: null,
+    // Wave Z: not yet coded, not yet posted — a freshly snapped receipt.
+    costCodeId: null,
+    jobCostId: null,
     ...overrides,
   };
 }
