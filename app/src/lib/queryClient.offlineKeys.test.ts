@@ -1,3 +1,4 @@
+import { dehydrate, hydrate, QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 // api.ts reaches for supabase at import time; nothing here calls the network.
 vi.mock("./supabase", () => ({ supabase: {} }));
@@ -201,5 +202,73 @@ describe("a persisted answer survives the round trip localStorage puts it throug
   it("the same rows in a Map would have lost every key", () => {
     const asMap = new Map([["job-1", row("job-1")]]);
     expect(JSON.parse(JSON.stringify(asMap))).toEqual({});
+  });
+});
+
+/**
+ * The snapshot itself, end to end: dehydrate with the app's own filter,
+ * through `JSON.stringify` exactly as the persister writes it, and back.
+ *
+ * The boolean above is only half a guarantee. What the phone actually needs is
+ * for the DATA to survive the round trip, and the case that matters is the one
+ * that reads oddly: a query whose last refetch FAILED. On a phone with bars
+ * and no data that is the normal state of a sheet somebody has been reading
+ * for ten minutes — the answer is right there on screen, and the refresh
+ * behind it is failing. React Query keeps the data through that, so the
+ * snapshot must too. It briefly did not (this branch, in review): the filter
+ * asked for `status === "success"`, and because the persister rewrites the
+ * whole file on every save, the next failed refresh did not leave a stale spec
+ * sheet on the phone — it deleted it.
+ */
+describe("the snapshot survives the trip to disk and back", () => {
+  const SPECS = [{ id: "spec-1", mark_code: "1", style: "OXXO" }];
+
+  /** One query, holding data, whose most recent fetch ended in `status`. */
+  function clientHolding(status: "success" | "error") {
+    const client = new QueryClient();
+    client.setQueryData(["markSpecs", "project-1"], SPECS);
+    if (status === "error") {
+      const query = client
+        .getQueryCache()
+        .find({ queryKey: ["markSpecs", "project-1"] })!;
+      // What a failed background refetch leaves behind: the error, and the
+      // data from the read before it.
+      query.setState({
+        ...query.state,
+        status: "error",
+        error: new Error("Failed to fetch"),
+        fetchStatus: "idle",
+      });
+    }
+    return client;
+  }
+
+  /** Write it the way the persister does, read it the way launch does. */
+  function throughDisk(client: QueryClient): QueryClient {
+    const written = JSON.stringify(
+      dehydrate(client, {
+        shouldDehydrateQuery: (query) =>
+          shouldPersistQueryState(query.queryKey, query.state.status),
+      }),
+    );
+    const restored = new QueryClient();
+    hydrate(restored, JSON.parse(written));
+    return restored;
+  }
+
+  it("brings a good read back", () => {
+    expect(
+      throughDisk(clientHolding("success")).getQueryData([
+        "markSpecs",
+        "project-1",
+      ]),
+    ).toEqual(SPECS);
+  });
+
+  it("brings back a read whose last refresh failed, data and all", () => {
+    expect(
+      throughDisk(clientHolding("error")).getQueryData(["markSpecs", "project-1"]),
+      "a failed refresh wiped the spec sheet off the phone",
+    ).toEqual(SPECS);
   });
 });
