@@ -22,7 +22,7 @@ export interface ChaseableCharge {
  * The deep link opens the receipt camera, so answering is one tap from the
  * notification rather than a hunt through the menu.
  */
-export async function pushSummonToProfiles(
+export async function askForReceipt(
   profileId: string,
   charge: ChaseableCharge,
 ): Promise<boolean> {

@@ -368,7 +368,7 @@ export function Receipts() {
           GRANT, not on rank: bank_transactions answers to can_see_costs, so a
           supervisor without it would get an empty section and no explanation.
           The database is the wall; this only stops the empty room. */}
-      {canSeeCosts && <BankImportSection receipts={sorted} />}
+      {canSeeCosts && <BankImportSection />}
     </div>
   );
 }

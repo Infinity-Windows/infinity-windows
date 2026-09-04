@@ -20,7 +20,7 @@ import { Landmark, Upload } from "lucide-react";
 import { formatApiError } from "../../lib/errors";
 import { formatCents } from "../../lib/aiSpend";
 import { listProfiles } from "../../lib/install/api";
-import { pushSummonToProfiles } from "../../lib/receiptsChase";
+import { askForReceipt } from "../../lib/receiptsChase";
 import {
   importBankTransactions,
   ignoreBankTransaction,
@@ -41,7 +41,7 @@ import {
   type ParsedFile,
 } from "../../lib/bankImport";
 import { proposeMatches, withoutReceipts } from "../../lib/bankMatch";
-import type { Receipt } from "../../lib/receipts";
+import { listReceipts } from "../../lib/receipts";
 
 const FIELDS: { key: keyof BankFieldMapping; label: string; required?: boolean }[] = [
   { key: "postedOn", label: "Date", required: true },
@@ -51,7 +51,7 @@ const FIELDS: { key: keyof BankFieldMapping; label: string; required?: boolean }
   { key: "externalId", label: "Bank's own id" },
 ];
 
-export function BankImportSection({ receipts }: { receipts: Receipt[] }) {
+export function BankImportSection() {
   const qc = useQueryClient();
   const fileInput = useRef<HTMLInputElement | null>(null);
   const [pending, setPending] = useState<{ file: string; parsed: ParsedFile } | null>(null);
@@ -64,6 +64,14 @@ export function BankImportSection({ receipts }: { receipts: Receipt[] }) {
     queryFn: listBankTransactions,
   });
   const imports = useQuery({ queryKey: ["bankImports"], queryFn: listBankImports });
+  // The whole receipt feed, NOT the office table's filtered view: a statement
+  // covers whatever the card covered, and matching against "August only"
+  // because that filter happens to be set would quietly leave real pairs
+  // unmatched and the charge sitting in "No receipt yet".
+  const allReceipts = useQuery({
+    queryKey: ["receipts-office", {}],
+    queryFn: () => listReceipts({}),
+  });
   const crew = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
 
   const refresh = () => {
@@ -127,7 +135,7 @@ export function BankImportSection({ receipts }: { receipts: Receipt[] }) {
           vendorGuess: t.vendorGuess,
           description: t.description,
         })),
-        receipts
+        (allReceipts.data ?? [])
           .filter((r) => !matchedReceiptIds.has(r.id))
           .map((r) => ({
             id: r.id,
@@ -136,7 +144,7 @@ export function BankImportSection({ receipts }: { receipts: Receipt[] }) {
             vendor: r.vendor,
           })),
       ),
-    [open, receipts, matchedReceiptIds],
+    [open, allReceipts.data, matchedReceiptIds],
   );
 
   const acceptAll = useMutation({
@@ -185,7 +193,7 @@ export function BankImportSection({ receipts }: { receipts: Receipt[] }) {
   const chase = async (txn: BankTransaction) => {
     const who = cardholderProfile(txn);
     if (!who) return;
-    await pushSummonToProfiles(who.id, txn);
+    await askForReceipt(who.id, txn);
     setChased((s) => new Set(s).add(txn.id));
   };
 

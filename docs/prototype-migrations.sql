@@ -7169,14 +7169,23 @@ begin
       using errcode = '42501';
   end if;
 
+  -- Nobody has touched these: they go.
   delete from bank_transactions
    where import_id = p_import_id
      and receipt_id is null
      and status = 'unreceipted';
 
+  -- Somebody said "that receipt answers for this charge". The charge stays and
+  -- goes back on the list; the job cost line the match posted stands, because
+  -- the money was still spent.
   update bank_transactions
      set receipt_id = null, status = 'unreceipted'
-   where import_id = p_import_id;
+   where import_id = p_import_id
+     and status = 'matched';
+
+  -- Rows somebody set aside as needing no receipt are left exactly as they are.
+  -- That is a decision about a charge, and an undo of the IMPORT has no
+  -- business reversing it.
 
   update bank_imports set undone_at = now()
    where id = p_import_id
@@ -7190,7 +7199,7 @@ end;
 $$;
 
 comment on function public.undo_bank_import(uuid) is
-  'Cost-seers only: take one whole import back. Charges nobody touched are dropped; charges somebody matched or set aside are kept and unmatched, because a person''s decision is work an undo has no business throwing away. Any job cost lines the matches posted stand — the money was still spent.';
+  'Cost-seers only: take one whole import back. Charges nobody touched are dropped; matched charges are kept and unmatched; charges somebody set aside stay set aside — a person''s decision is work an undo has no business throwing away. Any job cost lines the matches posted stand, because the money was still spent.';
 
 revoke all on function public.undo_bank_import(uuid) from public, anon;
 grant execute on function public.undo_bank_import(uuid) to authenticated;
