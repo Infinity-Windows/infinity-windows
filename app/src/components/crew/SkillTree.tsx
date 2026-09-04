@@ -42,18 +42,13 @@ export function SkillTree({
 }) {
   const t = useT();
   const held = CAPABILITIES.filter((c) => badges.includes(c));
-  const empty =
-    held.length === 0 && clearanceCount === 0 && certifications.length === 0;
 
+  // A badge line and a clearance line are simply ABSENT when there are none,
+  // rather than saying so: the credentials list below already speaks for the
+  // empty case, and two "nothing here yet" sentences in a row read as a bug.
   return (
     <div className="skill-tree">
       <label className="field-label">{t("cred.skillTree")}</label>
-      {empty && !isSelf && !canManage && (
-        <p className="muted" style={{ margin: 0 }}>
-          {t("cred.nothingYet")}
-        </p>
-      )}
-
       {held.length > 0 && (
         <p className="muted" style={{ margin: "2px 0 0", fontSize: 12.5 }}>
           {t("cred.badges")}: {held.map((c) => CAPABILITY_LABELS[c]).join(" · ")}

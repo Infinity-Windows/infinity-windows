@@ -1225,10 +1225,6 @@ export const CATALOG = {
   "cred.badges": { en: "Badges", es: "Insignias" },
   "cred.clearances.one": { en: "{n} type cleared", es: "{n} tipo aprobado" },
   "cred.clearances.many": { en: "{n} types cleared", es: "{n} tipos aprobados" },
-  "cred.nothingYet": {
-    en: "Nothing on file yet — badges, cleared window types and cards all show up here.",
-    es: "Todavía no hay nada — las insignias, los tipos aprobados y las tarjetas aparecen aquí.",
-  },
 
   // The expiry chips. Deliberately four different sentences rather than one
   // with a number swapped in: "no expiry" and "ran out" are not the same
