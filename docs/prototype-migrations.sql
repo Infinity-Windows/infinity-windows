@@ -7249,10 +7249,24 @@ grant execute on function public.pipeline_nudge_audience(uuid) to service_role;
 --   (b) the promised ETA came and went with nothing arrived — said once, keyed
 --       to the date that was missed, so it does not become a daily drumbeat.
 --
--- The spec's third start-date clause, "no GC check-in in the last 14 days", is
--- NOT here: wave H ships the project_gc_checkins table it needs, and a rule
--- that reads a missing table would either break the sweep or fire on every job
--- in the company for the crime of never having been asked. See section 8.
+-- A PROMISE IS HALF THE MATERIALS RULE. Both branches ask for materials_eta to
+-- be set before "nothing arrived" counts, and that is not a detail — it is what
+-- stops the very first 7 AM run pushing about every job in the company.
+-- materials_arrived_at is a new column: on the morning this deploys it is null
+-- everywhere, because nobody has ever been able to set it. A bare
+-- `arrived_at is null` would therefore have fired rule (a) for every active job
+-- starting inside a fortnight, sent one push per job to every supervisor's
+-- phone (distinct tags, so they would not even collapse on the lock screen),
+-- and lit a "Needs a call" chip on all of those cards — every one of them
+-- wrong. An ETA on file is what turns "no windows" from a gap in the record
+-- into a fact: somebody said the 15th, and they are not here.
+--
+-- That is the same rule the spec's third start-date clause gets, "no GC
+-- check-in in the last 14 days", which is NOT here at all: wave H ships the
+-- project_gc_checkins table it needs, and a rule that reads a missing table
+-- would either break the sweep or fire on every job in the company for the
+-- crime of never having been asked. See section 8. app/src/lib/pipeline.ts's
+-- materialsMissing() carries the twin of this clause and the same note.
 --
 -- Service context only. auth.uid() is null under the service-role key the edge
 -- function uses and under pg_cron, and no crew member should be able to fire
@@ -7310,17 +7324,21 @@ begin
        and p.deleted_at is null
   ),
   due as (
-    -- (a) starting soon, and still not ready or still no windows.
+    -- (a) starting soon, and still not ready or the promised windows are not
+    --     here. "Promised" is c.eta is not null — see the note above.
     select c.pid,
            c.label,
            case when c.days_out > 7 then 'start_14' else 'start_7' end::text as due_kind,
            (v_today + c.days_out) as due_date,
            c.days_out,
            c.ready = 'not_ready' as flag_not_ready,
-           c.arrived_at is null as flag_no_materials
+           (c.eta is not null and c.arrived_at is null) as flag_no_materials
       from candidate c
      where c.days_out between 0 and 14
-       and (c.ready = 'not_ready' or c.arrived_at is null)
+       and (
+         c.ready = 'not_ready'
+         or (c.eta is not null and c.arrived_at is null)
+       )
     union all
     -- (b) the promised day came and went and nothing is here.
     select c.pid,

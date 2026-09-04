@@ -4,6 +4,7 @@ import {
   daysBetween,
   dueNudges,
   materialsLate,
+  materialsMissing,
   needsCall,
   shortDay,
   sortProjectsForList,
@@ -122,6 +123,26 @@ describe("needsCall", () => {
     );
   });
 
+  it("says nothing about windows nobody has promised, however soon the job starts", () => {
+    // THE FIRST-MORNING RULE. materials_arrived_at is a new column: on the day
+    // this ships it is null on every job in the company, because nobody has
+    // ever been able to set it. If "not arrived" alone counted, the first 7 AM
+    // sweep would have pushed about every job starting inside a fortnight and
+    // chipped every one of those cards — all of it wrong. An ETA on file is
+    // what turns a gap in the record into a fact worth calling about.
+    const untouched = { ready_state: "ready", start_date: "2026-09-12" };
+    expect(materialsMissing(untouched)).toBe(false);
+    const r = needsCall(untouched, TODAY);
+    expect(r.call).toBe(false);
+    expect(r.reasons).toEqual([]);
+  });
+
+  it("still calls out a job whose promised windows have not turned up", () => {
+    expect(
+      materialsMissing({ materials_eta: "2026-09-14", materials_arrived_at: null }),
+    ).toBe(true);
+  });
+
   it("treats a row with no pipeline columns at all as nothing to say", () => {
     // A phone running ahead of the migration: the columns simply are not in
     // the row. The Jobs page must still render, with no chip.
@@ -196,6 +217,34 @@ describe("dueNudges — the same rule the sweep runs in SQL", () => {
 
   it("says nothing about a job starting soon that is ready with its windows in", () => {
     expect(dueNudges(fine({ start_date: "2026-09-12" }), TODAY)).toEqual([]);
+  });
+
+  it("says nothing on the first morning, when no job has a materials record yet", () => {
+    // Every job in the company on deploy day: backfilled 'ready', no ETA
+    // anybody could have set, nothing marked arrived. The sweep must be silent
+    // — this is the burst the eta-is-not-null half of the rule prevents.
+    for (const day of ["2026-09-09", "2026-09-12", "2026-09-20"]) {
+      expect(
+        dueNudges(
+          { ready_state: "ready", start_date: day, materials_eta: null, materials_arrived_at: null },
+          TODAY,
+        ),
+      ).toEqual([]);
+    }
+  });
+
+  it("still warns when the windows were promised and are not here", () => {
+    const due = dueNudges(
+      {
+        ready_state: "ready",
+        start_date: "2026-09-12",
+        materials_eta: "2026-09-11",
+        materials_arrived_at: null,
+      },
+      TODAY,
+    );
+    expect(due.map((d) => d.kind)).toEqual(["start_7"]);
+    expect(due[0].materialsMissing).toBe(true);
   });
 
   it("keys the start warning to the start date, so moving the date warns again", () => {

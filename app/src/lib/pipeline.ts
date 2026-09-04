@@ -105,9 +105,26 @@ export function shortDay(day: string | null | undefined, locale?: string): strin
   return at.toLocaleDateString(locale, { month: "short", day: "numeric" });
 }
 
-/** True when the windows have not been marked as arrived on this job. */
+/**
+ * True when the windows were PROMISED for a day and have not been marked
+ * arrived.
+ *
+ * The promise is half the rule, and leaving it out was the bug. A bare
+ * `!materials_arrived_at` is true of every job in the company on the morning
+ * this ships, because `materials_arrived_at` is a brand new column nobody has
+ * ever been able to set — so the first sweep would have pushed "windows not in"
+ * about every job starting inside a fortnight, and lit a "Needs a call" chip on
+ * every one of those cards, for the crime of never having been asked.
+ *
+ * That is exactly the reasoning that keeps the GC check-in clause switched off
+ * until wave H (see needsCall's `gcCheckinsKnown`), and it holds here for the
+ * same reason: a fact nobody has been able to record yet is UNKNOWN, and an
+ * unknown is never counted against a job. An ETA on file is what turns it into
+ * a fact — somebody said the windows were coming on the 15th, and they are not
+ * here.
+ */
 export function materialsMissing(job: PipelineJob): boolean {
-  return !job.materials_arrived_at;
+  return !!job.materials_eta && !job.materials_arrived_at;
 }
 
 /**
@@ -176,13 +193,17 @@ export interface DueNudge {
  * claim_pipeline_nudges()'s `due` CTE.
  *
  * Two rules today:
- *   (a) the job starts within a fortnight and is still not ready, or still has
- *       no windows. Said once at the far mark (8..14 days out) and once at the
- *       near mark (0..7). WINDOWED rather than "exactly 14 and exactly 7"
- *       because one missed sweep must not silently drop a warning; the ledger's
- *       unique key is what makes each one a single event per start date.
+ *   (a) the job starts within a fortnight and is still not ready, or its
+ *       windows were promised and are not here. Said once at the far mark
+ *       (8..14 days out) and once at the near mark (0..7). WINDOWED rather than
+ *       "exactly 14 and exactly 7" because one missed sweep must not silently
+ *       drop a warning; the ledger's unique key is what makes each one a single
+ *       event per start date.
  *   (b) the promised ETA came and went with nothing arrived — once, keyed to
  *       the date that was missed, so it never becomes a daily drumbeat.
+ *
+ * A job nobody has promised windows for raises neither, on purpose — see
+ * materialsMissing.
  */
 export function dueNudges(job: PipelineJob, today: string): DueNudge[] {
   const out: DueNudge[] = [];
