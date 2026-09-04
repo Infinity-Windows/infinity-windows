@@ -13,6 +13,8 @@
 // swaps the source without touching this ladder.
 
 import { supabase } from "../supabase";
+import { isMissingColumn } from "../schemaErrors";
+import { dataOffKind, type DataOffKind } from "../install/dataOff";
 import { sumMixes, type SignatureTierV1, type SignatureV1 } from "./signature";
 import { estimateForSignatureViaFormula, fitPanelFormula, type PanelFormulaFit } from "./panelFormula";
 
@@ -25,6 +27,44 @@ export interface CohortEvidence {
   /** The unit the sample came from, when known — lets sources be merged
    * without double-counting a unit. Never affects ladder resolution. */
   unitId?: string;
+  /**
+   * Wave E: the unit's "data off" reason, when its record is flagged wrong.
+   * Carried on the sample rather than looked up later so the ONE filter
+   * (partitionDataOff, applied in useCohortEvidence) can name why it dropped
+   * a sample instead of silently shrinking the pool.
+   */
+  dataOff?: DataOffKind | null;
+}
+
+/**
+ * Split the pool into what may be averaged and what may not.
+ *
+ * WHY A UNIT WITH A DATA-OFF FLAG IS NOT EVIDENCE (wave E, Q12): the minutes
+ * are real, but what they are minutes OF is not. A unit installed against a
+ * wrong-size order, or a mirrored one, or one that is not what the plans
+ * drew, is timed against a signature that describes a different window — so
+ * folding it into a cohort teaches the estimator the wrong thing about a
+ * shape we never actually installed. It is excluded WITH ITS REASON, and
+ * counted separately as the data-off rate, so the pool never quietly shrinks
+ * with nobody able to say by how much or why.
+ *
+ * Timing note: the flag is read as it stands, not as it stood at the moment
+ * somebody tapped Finish — nothing stores a history of flags. That is the
+ * behaviour worth having anyway: a foreman clearing the flag is a person
+ * saying the record is right now, which is exactly when the sample becomes
+ * trustworthy again, and it rejoins the pool.
+ */
+export function partitionDataOff(evidence: readonly CohortEvidence[]): {
+  usable: CohortEvidence[];
+  excluded: { unitId?: string; sigKey: string; reason: DataOffKind }[];
+} {
+  const usable: CohortEvidence[] = [];
+  const excluded: { unitId?: string; sigKey: string; reason: DataOffKind }[] = [];
+  for (const e of evidence) {
+    if (e.dataOff) excluded.push({ unitId: e.unitId, sigKey: e.sigKey, reason: e.dataOff });
+    else usable.push(e);
+  }
+  return { usable, excluded };
 }
 
 export type LadderRung =
@@ -156,16 +196,37 @@ export type EvidenceSource = () => Promise<CohortEvidence[]>;
  * this function; the ladder above never changes.
  */
 export const installEventsEvidence: EvidenceSource = async () => {
-  const { data, error } = await supabase
+  // The flag columns arrive with 20260977000000. A bundle that reaches a phone
+  // before the migration reaches the server must still produce evidence, so the
+  // read peels them off rather than throwing the whole pool away — a database
+  // with no flag column has no flagged units either, which is the truth there.
+  const withFlags = await supabase
     .from("install_events")
-    .select("minutes, opening:project_openings!inner(id, sig_key, signature)")
+    .select("minutes, opening:project_openings!inner(id, sig_key, signature, flag_kind, flag_note)")
     .is("voided_at", null)
     .not("minutes", "is", null)
     .not("opening.sig_key", "is", null);
-  if (error) return [];
-  const rows = (data ?? []) as unknown as {
+  let res = withFlags;
+  if (res.error && isMissingColumn(res.error, "flag_kind")) {
+    res = (await supabase
+      .from("install_events")
+      .select("minutes, opening:project_openings!inner(id, sig_key, signature)")
+      .is("voided_at", null)
+      .not("minutes", "is", null)
+      .not("opening.sig_key", "is", null)) as typeof res;
+  }
+  if (res.error) return [];
+  const rows = (res.data ?? []) as unknown as {
     minutes: number;
-    opening: { id: string; sig_key: string; signature: SignatureV1 | null } | null;
+    opening:
+      | {
+          id: string;
+          sig_key: string;
+          signature: SignatureV1 | null;
+          flag_kind?: string | null;
+          flag_note?: string | null;
+        }
+      | null;
   }[];
   return rows
     .filter((r) => r.opening?.sig_key && r.minutes != null && r.minutes >= 0)
@@ -174,6 +235,7 @@ export const installEventsEvidence: EvidenceSource = async () => {
       signature: r.opening!.signature,
       minutes: r.minutes,
       unitId: r.opening!.id,
+      dataOff: dataOffKind(r.opening!),
     }));
 };
 
@@ -189,6 +251,9 @@ interface SessionEvidenceRow {
     id: string;
     sig_key: string | null;
     signature: SignatureV1 | null;
+    /** Wave E. Absent on a database without the column — no flags there. */
+    flag_kind?: string | null;
+    flag_note?: string | null;
   } | null;
 }
 
@@ -204,14 +269,26 @@ export function evidenceFromSessions(
 ): CohortEvidence[] {
   const perUnit = new Map<
     string,
-    { sigKey: string; signature: SignatureV1 | null; minutes: number; finished: boolean }
+    {
+      sigKey: string;
+      signature: SignatureV1 | null;
+      minutes: number;
+      finished: boolean;
+      dataOff: DataOffKind | null;
+    }
   >();
   for (const r of rows) {
     const o = r.opening;
     if (!o?.sig_key || !r.ended_at) continue;
     const entry =
       perUnit.get(o.id) ??
-      { sigKey: o.sig_key, signature: o.signature, minutes: 0, finished: false };
+      {
+        sigKey: o.sig_key,
+        signature: o.signature,
+        minutes: 0,
+        finished: false,
+        dataOff: dataOffKind(o),
+      };
     if (!r.is_rework) {
       const mins = Math.max(
         0,
@@ -229,6 +306,7 @@ export function evidenceFromSessions(
       signature: u.signature,
       minutes: u.minutes,
       unitId,
+      dataOff: u.dataOff,
     }));
 }
 
@@ -238,15 +316,26 @@ export function evidenceFromSessions(
  * exactly the swap ticket 04 promised.
  */
 export const sessionsEvidence: EvidenceSource = async () => {
-  const { data, error } = await supabase
+  const cols = (flags: boolean) =>
+    `started_at, ended_at, role, is_rework, end_reason, opening:project_openings!inner(id, sig_key, signature${
+      flags ? ", flag_kind, flag_note" : ""
+    })`;
+  // Same peel-back as installEventsEvidence: a phone ahead of the migration
+  // still gets a pool, it just has no flags in it to exclude.
+  let res = await supabase
     .from("unit_sessions")
-    .select(
-      "started_at, ended_at, role, is_rework, end_reason, opening:project_openings!inner(id, sig_key, signature)",
-    )
+    .select(cols(true))
     .not("ended_at", "is", null)
     .not("opening.sig_key", "is", null);
-  if (error) return [];
-  return evidenceFromSessions((data ?? []) as unknown as SessionEvidenceRow[]);
+  if (res.error && isMissingColumn(res.error, "flag_kind")) {
+    res = (await supabase
+      .from("unit_sessions")
+      .select(cols(false))
+      .not("ended_at", "is", null)
+      .not("opening.sig_key", "is", null)) as typeof res;
+  }
+  if (res.error) return [];
+  return evidenceFromSessions((res.data ?? []) as unknown as SessionEvidenceRow[]);
 };
 
 

@@ -58,6 +58,7 @@ import {
   type Planset,
   type ProjectOpening,
 } from "../../lib/install/types";
+import { isDataOff } from "../../lib/install/dataOff";
 import {
   buildInstallerWorklist,
   buildSequenceAssignments,
@@ -107,6 +108,8 @@ import {
 } from "../../lib/install/openingFilter";
 import { dispatchNudge, dispatchNudgeText } from "../../lib/install/dispatchNudge";
 import { MapPinLayer } from "./MapPinLayer";
+import { AddMissedUnitSheet } from "../../components/install/AddMissedUnitSheet";
+import { useT } from "../../lib/i18n";
 import { MapWallLayer } from "./MapWallLayer";
 import { movedMarkIds, nextUndoableMove } from "../../lib/install/pinHistory";
 import { PlanMarkUndoBar } from "../../components/install/PlanMarkUndoBar";
@@ -194,6 +197,7 @@ function isHandDrawnOutline(features: unknown): boolean {
 
 export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   const { projectId = "" } = useParams();
+  const t = useT();
   const queryClient = useQueryClient();
   // Standalone /map is its own route, so it needs its own subscription; when
   // embedded, ProjectDetail already has one and a second would be a duplicate.
@@ -273,6 +277,13 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
   // Map-based ordered dispatch (foreman+). Tapping pins builds an ordered
   // selection for the chosen installer; the tap order IS the completion order.
   const [dispatchMode, setDispatchMode] = useState(false);
+  // Wave E: "Add a missed unit" armed on the toolbar; the next tap on the
+  // drawing sets the point it goes at. Null pin = it lands unplaced, which is
+  // exactly what a job with no plan set can honestly offer.
+  const [missedMode, setMissedMode] = useState(false);
+  const [missedPin, setMissedPin] = useState<
+    { x: number; y: number; pageNumber: number } | null
+  >(null);
   const [dispatchInstaller, setDispatchInstaller] = useState("");
   const [selection, setSelection] = useState<string[]>([]);
   const [dispatchNote, setDispatchNote] = useState<string | null>(null);
@@ -1198,6 +1209,24 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
       document.addEventListener("pointercancel", onUp);
     };
 
+  /**
+   * Wave E: while "Add a missed unit" is armed, a tap anywhere on the drawing
+   * sets the point the new unit goes at. It reads the tap the same way the pin
+   * drag does (fraction of the sheet's own box), so a unit placed by tapping
+   * lands exactly where a dragged pin would.
+   */
+  const onSheetPointerDown = (e: React.PointerEvent) => {
+    if (!missedMode) return;
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+    const rect = sheet.getBoundingClientRect();
+    setMissedPin({
+      x: clamp((e.clientX - rect.left) / rect.width, 0.015, 0.985),
+      y: clamp((e.clientY - rect.top) / rect.height, 0.02, 0.98),
+      pageNumber: page,
+    });
+  };
+
   /** Pin tapped: open its row below and bring the row into view. */
   const selectFromMap = (id: string) => {
     setExpandedRowId(id);
@@ -1918,7 +1947,45 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
         >
           Numbers
         </button>
+        {/*
+          Wave E: anyone signed in may add a window the plans never had — the
+          server checks that they are clocked in on this job, which is the
+          permission that matters. Armed here, placed by the next tap on the
+          drawing, so the unit lands where it actually is.
+        */}
+        <button
+          type="button"
+          className={missedMode ? "chip active" : "chip"}
+          aria-pressed={missedMode}
+          onClick={() => {
+            setMissedPin(null);
+            setMissedMode((on) => !on);
+          }}
+        >
+          {t("missed.add")}
+        </button>
       </nav>
+
+      {missedMode && (
+        <AddMissedUnitSheet
+          projectId={projectId}
+          jobName={project?.job_code ?? "this job"}
+          callerId={myProfileId}
+          callerName={myProfile.data?.display_name ?? null}
+          pin={missedPin}
+          hasMap={Boolean(image) || (footprintPoints?.length ?? 0) > 0}
+          onClose={() => {
+            setMissedMode(false);
+            setMissedPin(null);
+          }}
+          onAdded={(code) => {
+            setMissedMode(false);
+            setMissedPin(null);
+            pushToast(t("missed.added", { code }));
+            void queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+          }}
+        />
+      )}
 
       {dispatchControls}
 
@@ -2032,6 +2099,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
                 <div
                   ref={sheetRef}
                   className="cartoon-sheet"
+                  onPointerDown={onSheetPointerDown}
                   data-outline-zoom={outlineZoom}
                   /**
                    * Width is the zoom. Aspect stays locked so pin percentages
@@ -2153,6 +2221,7 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               <div
                 ref={sheetRef}
                 className="plan-map plan-map--pdf-sketch plan-map--with-dots"
+                onPointerDown={onSheetPointerDown}
                 style={{ width: `${pdfZoom * 100}%` }}
               >
                 <img
@@ -2325,6 +2394,12 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
               style={{ borderColor: VOIDED_RING_COLOR }}
             />{" "}
             install undone
+          </span>
+        )}
+        {/* Wave E: a marker, not a ring or a fill — those two are spoken for. */}
+        {all.some((o) => isDataOff(o)) && (
+          <span>
+            <i className="map-legend__dataoff" /> data off
           </span>
         )}
         {dispatchMode &&

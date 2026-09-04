@@ -2118,6 +2118,29 @@ button:disabled {
   pointer-events: none;
 }
 
+/*
+ * "Data off" (wave E): a unit whose PAPERWORK is wrong. A MARKER, deliberately
+ * — the pin rule is law (fill = window or door, ring = install status), and
+ * repainting either to carry a third fact would cost the crew the two they
+ * already read at a glance. So it rides a corner dot instead, on the opposite
+ * corner from the dispatch initials so a pin can wear both at once.
+ */
+.plan-dot__dataoff {
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  width: 12px;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--dataoff-marker, #e08a2e);
+  border: 1.5px solid #141210;
+  pointer-events: none;
+}
+
+.map-legend__dataoff {
+  background: #e08a2e !important;
+}
+
 .map-detail-card__installer {
   display: inline-flex;
   align-items: center;

@@ -112,4 +112,19 @@ describe("MapPinLayer", () => {
     expect(html).not.toContain("plan-dot__mark");
     expect(html).toContain(`--pin-fill:${OPENING_KIND_COLORS.door}`);
   });
+  // Wave E: the fourth fact a pin can carry, and the rule it must not break.
+  it("marks a data-off pin without touching its fill or its ring", () => {
+    const html = pins(
+      [opening({ status: "installed", flag_kind: "wrong_size" } as Partial<ProjectOpening>)],
+      () => "window",
+    );
+    expect(html).toContain("plan-dot__dataoff");
+    // The two tokens job-map.spec asserts are exactly as they were.
+    expect(html).toContain(`--pin-fill:${OPENING_KIND_COLORS.window}`);
+    expect(html).toContain(`--pin-ring:${OPENING_STATUS_COLORS.installed}`);
+  });
+
+  it("leaves an unflagged pin unmarked", () => {
+    expect(pins([opening()], () => "window")).not.toContain("plan-dot__dataoff");
+  });
 });

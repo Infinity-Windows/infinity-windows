@@ -45,10 +45,14 @@ const OVERLAY_PAD_CM = 3;
 /** Status-glow hex, pinned to the SAME values fitview.css uses for the map
  * (--gl-red/yellow/green) — the Studio must never show a different red
  * than the map does for the same opening. */
-const GLOW_HEX: Record<"red" | "yellow" | "green", string> = {
+const GLOW_HEX: Record<"red" | "yellow" | "green" | "amber", string> = {
   red: "#e4655c",
   yellow: "#e8c14a",
   green: "#35b98d",
+  // Wave E's data-off amber (--gl-amber). Nothing in the Studio produces it
+  // today — its overlay builds a view context with no data-off set — but the
+  // table has to be total, and if it ever does, it must be the map's amber.
+  amber: "#e08a2e",
 };
 /** Flashing-owed accent, pinned to fitview.css's --fl-needed (dashed aqua
  * on the map; same color here, dashed stroke does the rest). */

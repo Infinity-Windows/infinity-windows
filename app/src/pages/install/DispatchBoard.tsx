@@ -35,6 +35,8 @@ import { EmptyState } from "../../components/ui/States";
 import { installerColorMap } from "../../lib/install/mapDispatch";
 import { toggleExpandedOpening } from "../../lib/install/openingRowAction";
 import { readyStatusLabel, type ProjectOpening } from "../../lib/install/types";
+import { dataOffReasonKey, holdsOffDispatch } from "../../lib/install/dataOff";
+import { useT } from "../../lib/i18n";
 import {
   compareIssues,
   KIND_LABELS,
@@ -57,6 +59,7 @@ import {
 import { showUndoToast } from "../../lib/undoToast";
 
 export function DispatchBoard({ projectId }: { projectId: string }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const [message, setMessage] = useState<string | null>(null);
   // Which row has its details open. One at a time: this is a working screen and
@@ -236,8 +239,13 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
         continue;
       }
       // Flagged openings are handled through the issues list below and stay out
-      // of the assignable columns until the flag is resolved.
-      if (o.flag_note) continue;
+      // of the assignable columns until the flag is resolved. Read through
+      // holdsOffDispatch (wave E) rather than off flag_note: a data-off flag
+      // can carry a reason and NO note, and a unit whose record is wrong is
+      // exactly the one a lead should look at before sending somebody to it —
+      // but a MISSED unit carries that flag by construction and still has to be
+      // assignable, so it stays in the column wearing a badge.
+      if (holdsOffDispatch(o)) continue;
       if (o.assigned_to) {
         const list = byInstaller.get(o.assigned_to) ?? [];
         list.push(o);
@@ -260,6 +268,11 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
   const openingCodeById = new Map(
     (openings.data ?? []).map((o) => [o.id, o.opening_code]),
   );
+  // A data-off flag can be raised with a reason and no note at all, and the
+  // reason is stored on the OPENING — never in the issue's note, which is only
+  // ever what a person typed. Look it up here so a note-less flag reads as
+  // "Wrong size" in the reader's own language rather than as the word "Flag".
+  const openingById = new Map((openings.data ?? []).map((o) => [o.id, o]));
   const blockerCount = openIssues.length + readinessBlocked.length;
 
   const nameOf = (id: string) =>
@@ -332,6 +345,15 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
               <InstallChip state={r.status}>
                 {isInstallInProgress(o) ? "in progress" : readyStatusLabel(r.status)}
               </InstallChip>
+              {/* Wave E: a missed unit stays assignable — this is how a lead
+                  can tell it apart from a window the plans had, without it
+                  vanishing out of the column altogether. */}
+              {o.field_added && (
+                <>
+                  {" · "}
+                  <span className="issue-kind kind-flag">{t("missed.badge")}</span>
+                </>
+              )}
             </div>
           </div>
         </OpeningRowButton>
@@ -383,6 +405,10 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
                 ? openingCodeById.get(i.opening_id) ?? "opening"
                 : "job";
               const mark = URGENCY_MARK[i.urgency];
+              const reasonKey =
+                i.kind === "flag" && i.opening_id
+                  ? dataOffReasonKey(openingById.get(i.opening_id))
+                  : null;
               return (
                 <li key={i.id} className="dispatch-row blocker find-row">
                   <div style={{ minWidth: 0 }}>
@@ -396,7 +422,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
                     <span className="muted">{KIND_LABELS[i.kind]}</span>
                     <div className="error" style={{ fontSize: 12 }}>
                       {mark ? `${mark} ` : ""}
-                      {i.note ?? KIND_LABELS[i.kind]}
+                      {i.note ?? (reasonKey ? t(reasonKey) : KIND_LABELS[i.kind])}
                     </div>
                   </div>
                   <button

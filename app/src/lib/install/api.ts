@@ -25,6 +25,7 @@ import {
   type PinMove,
 } from "./pinHistory";
 import { foremanOnlyRefusal, REMOVED_LIST_DENIED } from "./openingAccess";
+import { isDataOff, type DataOffKind } from "./dataOff";
 import type { CustomMarkRegistrationPayload } from "../modelstudio/customMarks";
 import type {
   InstallEvent,
@@ -452,14 +453,159 @@ export async function startOpeningWork(openingId: string): Promise<ProjectOpenin
   return data as ProjectOpening;
 }
 
-/** Flag an opening to the lead with a reason (empty note clears the flag). */
+/**
+ * Flag an opening to the lead (empty note and no kind clears the flag).
+ *
+ * Wave E gave the flag a REASON. The reason rides a THREE-argument overload
+ * rather than a defaulted third parameter, because PostgREST picks an overload
+ * by the set of argument names it is sent and a defaulted parameter would make
+ * every old two-argument call ambiguous. A phone running ahead of the server
+ * has no three-argument form to call, so it falls back to the old one: the
+ * flag is still raised, and the reason reads as "other" until the migration
+ * lands — which is what every pre-wave-E flag reads as anyway.
+ */
 export async function flagOpening(
   openingId: string,
   note: string | null,
+  kind?: DataOffKind | null,
 ): Promise<ProjectOpening> {
+  if (kind) {
+    const withKind = await supabase.rpc("flag_opening", {
+      p_opening_id: openingId,
+      p_note: note,
+      p_kind: kind,
+    });
+    if (!withKind.error) return withKind.data as ProjectOpening;
+    if (!isMissingSchemaFunction(withKind.error)) throw withKind.error;
+  }
   const { data, error } = await supabase.rpc("flag_opening", {
     p_opening_id: openingId,
     p_note: note,
+  });
+  if (error) throw error;
+  return data as ProjectOpening;
+}
+
+/**
+ * Take a data-off flag back down. Foreman+ in SQL, because clearing it is a
+ * claim that somebody went and checked — see clear_opening_flag. Degrades to
+ * the old "flag with an empty note" clear on a database without the RPC.
+ */
+export async function clearOpeningFlag(openingId: string): Promise<ProjectOpening> {
+  const cleared = await supabase.rpc("clear_opening_flag", {
+    p_opening_id: openingId,
+  });
+  if (!cleared.error) return cleared.data as ProjectOpening;
+  if (!isMissingSchemaFunction(cleared.error)) throw cleared.error;
+  return flagOpening(openingId, null);
+}
+
+/**
+ * How many units on each of these jobs carry a data-off flag.
+ *
+ * Job history's line ("3 units data off") reads this: a finished job's honest
+ * epitaph is not only how long it took, it is how much of what it recorded was
+ * wrong. Degrades to an empty map on a database without the flag column — no
+ * flags there is the truth there, not an error screen.
+ */
+export async function countDataOffByProject(
+  projectIds: readonly string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (projectIds.length === 0) return out;
+  const { data, error } = await supabase
+    .from("project_openings")
+    .select("project_id, flag_kind, flag_note")
+    .in("project_id", [...projectIds]);
+  if (error) {
+    if (isMissingColumn(error, "flag_kind") || isMissingTable(error, "project_openings")) {
+      return out;
+    }
+    throw error;
+  }
+  for (const row of (data ?? []) as {
+    project_id: string;
+    flag_kind?: string | null;
+    flag_note?: string | null;
+  }[]) {
+    if (!isDataOff(row)) continue;
+    out.set(row.project_id, (out.get(row.project_id) ?? 0) + 1);
+  }
+  return out;
+}
+
+// --- A window or door nobody drew (wave E) ---------------------------------
+
+export interface FieldUnitInput {
+  projectId: string;
+  kind: "window" | "door";
+  widthIn: number;
+  heightIn: number;
+  /** "bucket/path" of a photo already uploaded, or null. */
+  photoPath?: string | null;
+  /** Where it was tapped on the plan, both 0–1. Null on a job with no map. */
+  pinX?: number | null;
+  pinY?: number | null;
+  /** Which sheet the tap was on — meaningless without a pin. */
+  pageNumber?: number | null;
+  note?: string | null;
+}
+
+/**
+ * Add a window or door the paperwork never had. The server checks PRESENCE,
+ * not rank: an open shift on that job is the permission, because the person
+ * looking at the hole is the person who should be able to record it.
+ */
+export async function addFieldUnit(input: FieldUnitInput): Promise<ProjectOpening> {
+  const { data, error } = await supabase.rpc("add_field_unit", {
+    p_project_id: input.projectId,
+    p_kind: input.kind,
+    p_width_in: input.widthIn,
+    p_height_in: input.heightIn,
+    p_photo_path: input.photoPath ?? null,
+    p_pin_x: input.pinX ?? null,
+    p_pin_y: input.pinY ?? null,
+    p_note: input.note ?? null,
+    p_page_number: input.pageNumber ?? null,
+  });
+  if (error) throw error;
+  return data as ProjectOpening;
+}
+
+/** Keep it, under a name the paperwork now uses. Supervisor+. */
+export async function renameFieldUnit(
+  openingId: string,
+  code: string,
+): Promise<ProjectOpening> {
+  const { data, error } = await supabase.rpc("rename_field_unit", {
+    p_opening_id: openingId,
+    p_code: code,
+  });
+  if (error) throw error;
+  return data as ProjectOpening;
+}
+
+/** It turned out to be a mark we already had. Refused once anyone has worked it. */
+export async function mergeFieldUnit(
+  openingId: string,
+  intoCode: string,
+): Promise<ProjectOpening> {
+  const { data, error } = await supabase.rpc("merge_field_unit", {
+    p_opening_id: openingId,
+    p_into_code: intoCode,
+  });
+  if (error) throw error;
+  return data as ProjectOpening;
+}
+
+/** Take it back off the job — the ordinary soft delete, restorable. */
+export async function removeFieldUnit(
+  openingId: string,
+  reason?: string | null,
+): Promise<ProjectOpening> {
+  const { data, error } = await supabase.rpc("remove_field_unit", {
+    p_opening_id: openingId,
+    p_reason: reason ?? null,
   });
   if (error) throw error;
   return data as ProjectOpening;
@@ -1379,11 +1525,18 @@ export async function openingsReferencedElsewhere(
  * cannot quietly change what a re-extract considers field work.
  */
 export const EXISTING_OPENING_COLS =
+  "id, opening_code, confirmed, status, pin_x, pin_y, page_number, planset_id, assigned_to, work_started_at, ro_width_in, ro_height_in, ro_quick_ok, condition, field_added";
+
+/**
+ * The same list as the database knew it before 20260977000000 added
+ * `field_added` — the first fallback for a phone running ahead of the server.
+ */
+export const EXISTING_OPENING_COLS_NO_FIELD_ADDED =
   "id, opening_code, confirmed, status, pin_x, pin_y, page_number, planset_id, assigned_to, work_started_at, ro_width_in, ro_height_in, ro_quick_ok, condition";
 
 /**
  * The same list as the database knew it before 20260966000000 added
- * `ro_quick_ok` — the fallback for a phone running ahead of the server.
+ * `ro_quick_ok` — the fallback for a phone running further ahead still.
  */
 export const EXISTING_OPENING_COLS_NO_QUICK_OK =
   "id, opening_code, confirmed, status, pin_x, pin_y, page_number, planset_id, assigned_to, work_started_at, ro_width_in, ro_height_in, condition";
@@ -1406,6 +1559,9 @@ interface ExistingOpeningRow {
   ro_height_in: number | string | null;
   ro_quick_ok?: boolean | null;
   condition: string | null;
+  /** Wave E. Optional for the same reason ro_quick_ok is: a database that has
+   *  never heard of it has no field-added rows to protect. */
+  field_added?: boolean | null;
 }
 
 /**
@@ -1448,15 +1604,34 @@ export async function saveDraftOpenings(
   // foreman taps "Load marks from plans" and no openings are saved at all.
   // Read the row without the quick check instead: on a server that has never
   // heard of the column, "nobody quick-checked anything" is exactly the truth.
+  //
+  // Two rungs now, newest column first, because the two migrations that added
+  // them can land separately: a server with ro_quick_ok but no field_added
+  // must not lose the quick check on the way down.
   let existing: ExistingOpeningRow[] | null = first.data;
   if (first.error) {
-    if (!isMissingColumn(first.error, "ro_quick_ok")) throw first.error;
-    const retry = await supabase
+    // Either name is a reason to peel back — PostgREST names whichever unknown
+    // column it hit first, and on a database missing both that is not
+    // necessarily the newest one.
+    const peelable =
+      isMissingColumn(first.error, "field_added") ||
+      isMissingColumn(first.error, "ro_quick_ok");
+    if (!peelable) throw first.error;
+    const noFieldAdded = await supabase
       .from("project_openings")
-      .select(EXISTING_OPENING_COLS_NO_QUICK_OK)
+      .select(EXISTING_OPENING_COLS_NO_FIELD_ADDED)
       .eq("project_id", projectId);
-    if (retry.error) throw retry.error;
-    existing = retry.data;
+    if (!noFieldAdded.error) {
+      existing = noFieldAdded.data;
+    } else {
+      if (!isMissingColumn(noFieldAdded.error, "ro_quick_ok")) throw noFieldAdded.error;
+      const retry = await supabase
+        .from("project_openings")
+        .select(EXISTING_OPENING_COLS_NO_QUICK_OK)
+        .eq("project_id", projectId);
+      if (retry.error) throw retry.error;
+      existing = retry.data;
+    }
   }
 
   const referenced = await openingsReferencedElsewhere(
@@ -1488,6 +1663,7 @@ export async function saveDraftOpenings(
     ro_height_in: o.ro_height_in == null ? null : Number(o.ro_height_in),
     ro_quick_ok: Boolean(o.ro_quick_ok),
     condition: o.condition ?? null,
+    field_added: Boolean(o.field_added),
     referenced: referenced.has(o.id),
   }));
 
@@ -3297,13 +3473,21 @@ export async function listProjectExceptions(
   canSee = true,
 ): Promise<ProjectExceptions> {
   if (!canSee) return { failedInstalls: [], flaggedOpenings: [] };
-  const [flaggedRes, voidedRes] = await Promise.all([
+  // A data-off flag can carry a reason and NO note (wave E) — a note is
+  // optional on the card and the reason is the message. Asking only about
+  // flag_note therefore missed the ordinary case the wave introduced: the
+  // foreman's exceptions list stayed empty while the map went amber.
+  const flaggedWhere = "flag_kind.not.is.null,flag_note.not.is.null,condition.eq.damaged";
+  const flaggedWhereNoKind = "flag_note.not.is.null,condition.eq.damaged";
+  const flaggedQuery = (where: string) =>
     supabase
       .from("project_openings")
       .select(OPENING_SELECT)
       .eq("project_id", projectId)
-      .or("flag_note.not.is.null,condition.eq.damaged")
-      .order("opening_code"),
+      .or(where)
+      .order("opening_code");
+  const [flaggedFirst, voidedRes] = await Promise.all([
+    flaggedQuery(flaggedWhere),
     supabase
       .from("install_events")
       .select(
@@ -3315,6 +3499,13 @@ export async function listProjectExceptions(
       .eq("project_openings.project_id", projectId)
       .order("voided_at", { ascending: false }),
   ]);
+  // A phone ahead of the migration asks about a column the server has not got.
+  // Peel back to the question it can answer rather than throwing the whole
+  // exceptions screen away: on that database every flag has a note anyway.
+  const flaggedRes =
+    flaggedFirst.error && isMissingColumn(flaggedFirst.error, "flag_kind")
+      ? await flaggedQuery(flaggedWhereNoKind)
+      : flaggedFirst;
   if (flaggedRes.error) throw flaggedRes.error;
   if (voidedRes.error) throw voidedRes.error;
 

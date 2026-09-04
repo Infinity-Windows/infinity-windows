@@ -16,6 +16,7 @@ import { Link } from "react-router-dom";
 import { BackChip } from "../components/BackChip";
 import { EmptyState } from "../components/ui/States";
 import { listProjectsAnyStatus, listTrashedProjects, restoreProject, setProjectStatus } from "../lib/api";
+import { countDataOffByProject } from "../lib/install/api";
 import { deleteJob } from "../lib/jobDeletion";
 import { fetchServerNowMs } from "../lib/clockSkew";
 import { formatApiError } from "../lib/errors";
@@ -41,6 +42,15 @@ export function JobHistory() {
     queryFn: listProjectsAnyStatus,
   });
   const done = (projects.data ?? []).filter((p) => p.status !== "active");
+
+  // Wave E: how much of what each finished job recorded turned out to be
+  // wrong. A job's epitaph is not only how long it took — a job that finished
+  // fast with nine units data off did not finish clean.
+  const dataOff = useQuery({
+    queryKey: ["dataOffByProject", done.map((p) => p.id).join(",")],
+    queryFn: () => countDataOffByProject(done.map((p) => p.id)),
+    enabled: done.length > 0,
+  });
 
   const trashed = useQuery({
     queryKey: ["projectsTrashed"],
@@ -121,6 +131,10 @@ export function JobHistory() {
                         year: "numeric",
                       })}`
                     : ""}
+                  {(dataOff.data?.get(p.id) ?? 0) > 0 &&
+                    ` · ${dataOff.data?.get(p.id)} unit${
+                      dataOff.data?.get(p.id) === 1 ? "" : "s"
+                    } data off`}
                 </div>
               </div>
               {boss && (

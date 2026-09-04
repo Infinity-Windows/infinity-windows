@@ -7,6 +7,12 @@
 //   fill   = window (blue) or door (green)
 //   ring   = status: planned / assigned / installed, or red for an undone install
 //
+// Wave E adds a fourth fact — "the paperwork on this one is wrong" — and it is
+// drawn as a MARKER, an amber corner dot, precisely because fill and ring are
+// already spoken for. Repurposing either to carry a third meaning is what the
+// map got wrong once before, and job-map.spec asserts those two tokens for
+// exactly that reason.
+//
 // The window/door colour was briefly moved off the pin and replaced by a status
 // fill, which on a job where every opening is `planned` painted all 42 marks the
 // same yellow. A crew cannot tell a door from a window in that picture, and the
@@ -25,6 +31,7 @@ import {
   type ProjectOpening,
 } from "../../lib/install/types";
 import { openingMarkerStyle } from "../../lib/install/openingMarkerScale";
+import { isDataOff } from "../../lib/install/dataOff";
 import { showsVoidedInstall } from "../../lib/install/openingRowAction";
 import { installerInitials } from "../../lib/install/mapDispatch";
 import { VOIDED_RING_COLOR } from "../../components/install/OpeningDetailCard";
@@ -100,6 +107,7 @@ export function MapPinLayer({
         const pos = positions.get(o.id);
         if (!pos) return null;
         const isDoor = unitKind(o) === "door";
+        const dataOff = isDataOff(o);
         const isVoided = showsVoidedInstall(effectiveRole, o, voidedIds);
         const isSelected = selectedId === o.id;
         const selIndex = selection.indexOf(o.id);
@@ -182,10 +190,15 @@ export function MapPinLayer({
             title={
               isVoided
                 ? `${pinTitle(o)} — install undone, needs re-do`
-                : pinTitle(o)
+                : dataOff
+                  ? `${pinTitle(o)} — data off`
+                  : pinTitle(o)
             }
             onPointerDown={onPinPointerDown(o)}
           >
+            {dataOff && (
+              <span className="plan-dot__dataoff" data-data-off="1" aria-hidden />
+            )}
             {showLabel && (
               <span className="plan-dot__mark">
                 {openingMarkCode(o.opening_code)}
