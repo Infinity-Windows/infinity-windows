@@ -5,6 +5,7 @@
 // anything that compares stays foreman+ (that gate lives in the UI).
 
 import { supabase } from "../supabase";
+import { isMissingColumn } from "../schemaErrors";
 import type { MemoTopics } from "./types";
 import { MEMO_TOPICS } from "./types";
 import { sessionMinutes, type UnitRedo, type UnitSession } from "./sessions";
@@ -15,6 +16,9 @@ export interface RecordEvent extends MemoTopics {
   created_at: string;
   started_at: string | null;
   installer: string | null;
+  installer_id?: string | null;
+  /** Wave Y: who installed it, when somebody else filed it. Null = the filer. */
+  credited_to?: string | null;
   minutes: number | null;
   quality_grade: number | null;
   transcript_raw: string | null;
@@ -30,15 +34,22 @@ export async function listOpeningInstallEvents(
   openingId: string,
 ): Promise<RecordEvent[]> {
   const memoCols = MEMO_TOPICS.map((t) => t.key).join(", ");
-  const { data, error } = await supabase
-    .from("install_events")
-    .select(
-      `id, created_at, started_at, installer, minutes, quality_grade, transcript_raw, photo_findings, voided_at, void_reason, ${memoCols}, voider:voided_by(display_name)`,
-    )
-    .eq("project_opening_id", openingId)
-    .order("created_at", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as unknown as RecordEvent[];
+  const base = `id, created_at, started_at, installer, minutes, quality_grade, transcript_raw, photo_findings, voided_at, void_reason, ${memoCols}, voider:voided_by(display_name)`;
+  const read = async (cols: string) =>
+    supabase
+      .from("install_events")
+      .select(cols)
+      .eq("project_opening_id", openingId)
+      .order("created_at", { ascending: true });
+  // The credit columns come first, and a database that predates them falls
+  // back to the round exactly as the Record has always read it — a phone ahead
+  // of the migration still gets the window's whole story.
+  const first = await read(`${base}, installer_id, credited_to`);
+  if (!first.error) return (first.data ?? []) as unknown as RecordEvent[];
+  if (!isMissingColumn(first.error, "credited_to")) throw first.error;
+  const fallback = await read(base);
+  if (fallback.error) throw fallback.error;
+  return (fallback.data ?? []) as unknown as RecordEvent[];
 }
 
 export interface RecordMedia {
@@ -192,7 +203,7 @@ export interface TimelineRow {
   at: string;
   /** Plain sentence, already resolved to names. */
   text: string;
-  kind: "work" | "block" | "redo" | "note";
+  kind: "work" | "block" | "redo" | "note" | "assign";
 }
 
 const END_REASON_TEXT: Record<string, string> = {
@@ -215,8 +226,15 @@ export function buildTimeline(
   redos: readonly UnitRedo[],
   nameOf: (profileId: string) => string | null | undefined,
   now: number = Date.now(),
+  /**
+   * Wave Y: the unit's hand-overs, already worded by
+   * assignmentHistory.assignmentTimelineRows. Passed in rather than fetched
+   * here so this stays the pure sorter it has always been, and so the two
+   * existing callers keep their three-argument call.
+   */
+  assignments: readonly TimelineRow[] = [],
 ): TimelineRow[] {
-  const rows: TimelineRow[] = [];
+  const rows: TimelineRow[] = [...assignments];
   for (const s of sessions) {
     const who = nameOf(s.profile_id) || "Crew";
     const min = sessionMinutes(s, now);

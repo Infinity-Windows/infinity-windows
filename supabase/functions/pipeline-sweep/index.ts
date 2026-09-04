@@ -59,6 +59,8 @@ interface ClaimedNudge {
   days_until: number | null;
   not_ready?: boolean;
   materials_missing?: boolean;
+  /** Wave H (H1): nobody has talked to this job's GC in a fortnight — or ever. */
+  no_gc_checkin?: boolean;
   profile_ids: string[] | null;
   // Wave O (O4): a credential warning.
   certification_id?: string;
@@ -103,6 +105,11 @@ function pipelineCopy(row: ClaimedNudge): PushCopy {
   const reasons: string[] = [];
   if (row.not_ready) reasons.push("still Not ready");
   if (row.materials_missing) reasons.push("windows not in");
+  // Wave H (H1). Said last because it is the one a person fixes with a phone
+  // call rather than with a truck, and because on the first mornings after this
+  // ships it will be the only reason on most of these jobs — nobody has ever
+  // been able to file a check-in before now.
+  if (row.no_gc_checkin) reasons.push("no GC check-in");
   const tail = reasons.length > 0 ? ` — ${reasons.join(" · ")}` : "";
 
   if (row.kind === "materials_late") {

@@ -9212,6 +9212,2282 @@ comment on column projects.stories is
 
 grant insert (stories) on projects to authenticated;
 grant update (stories) on projects to authenticated;
+-- ===========================================================================
+-- 20260981000000_gc_handshake.sql (mirrored)
+-- Wave H of the transcripts program: the GC handshake, plus one wall fix on the
+-- wave before it. H0 MOVES ready_state / materials_eta / materials_arrived_at
+-- off `projects` into project_pipeline, because a granted builder (partner)
+-- login reads a `projects` row whole and was therefore reading our own "not
+-- ready / windows still not in" — the same correction 20260978000000 made for
+-- the bid. sort_order stays. H1 adds project_gc_checkins (the six answers,
+-- append-only, log_gc_checkin foreman+) and switches on the sweep's fourth
+-- reason, "no GC check-in in the last 14 days", which 20260979000000 section 8
+-- was written to hand over. H2 adds gc_links and gc_messages: a 32-random-byte
+-- token, stored hashed, behind a no-login page whose every read and write goes
+-- through the gc-link edge function on the SERVICE ROLE — no anon policy is
+-- added to any table here, and a token never grants table access. projects
+-- gains gc_brand (stg | forge, RPC-only) so the page and the email wear the
+-- brand the office chose for that job. Deploy AFTER 20260979000000 (wave J),
+-- whose columns it moves and whose sweep it rewrites — and therefore after
+-- 20260980000000 (wave X), which merged first.
+-- ===========================================================================
+-- Wave H — The GC handshake (transcripts program, grill of 2026-09-03, Q10 +
+-- Q11 + Q20), plus one wall fix on the wave that came before it.
+--
+-- Three things happen here:
+--
+--   H0  ready_state, materials_eta and materials_arrived_at MOVE off `projects`
+--       into a crew-only side table. Wave J weighed leaving them there and
+--       decided they were harmless; they are not. A builder (partner) login
+--       granted a job reads the whole `projects` row, so "your windows have not
+--       arrived" was readable by the general contractor — which is the exact
+--       fact this wave exists to let us tell a GC on OUR schedule, in our own
+--       words, on a page we built for the purpose.
+--
+--   H1  project_gc_checkins — the six answers somebody gets off the GC on the
+--       phone, filed once, append-only, and read by the sweep so "nobody has
+--       called this builder in a fortnight" finally counts for something.
+--
+--   H2  gc_links + gc_messages — a no-login page a GC opens from a text or an
+--       email, answers the same six questions on, and asks a question back
+--       through. Every read and write on that page goes through the gc-link
+--       edge function on the service role. NO ANON POLICY IS ADDED TO ANY TABLE
+--       BY THIS MIGRATION: a token is a key to a function, never to a table.
+--
+-- Idempotent throughout (add column if not exists / create ... if not exists /
+-- create or replace / drop ... if exists before a signature change), so
+-- re-running it changes nothing.
+--
+-- Timezone: 'America/Denver' spelled out, the same company-local day every
+-- clock gate and both sweeps use. There is no shared helper — the convention IS
+-- the literal.
+
+-- ===========================================================================
+-- H0. The wall fix: the pipeline facts move off `projects`
+-- ===========================================================================
+-- WHY THIS IS A BUG AND NOT A PREFERENCE. `projects` is the one table a partner
+-- login reads whole, row-level, for each job they were granted (THE WALL,
+-- 20260950000000 section 6). RLS has no column-level half. So when wave J put
+-- readiness and the two materials dates on that table, it handed every granted
+-- builder a live feed of whether we are behind on their house — no push
+-- required, just the row. 20260979000000's own reasoning says a builder "is
+-- never PUSHED about our problems", and that is true of the sweep and false of
+-- the table.
+--
+-- The three facts are not secrets in the way a bid is. They are worse: they are
+-- OUR OPERATIONAL STATE, and the whole point of wave H is that a GC learns
+-- where we are from a conversation we start — a check-in, a link, an email —
+-- and not by refreshing a portal at 6 AM. "Not ready" is a note we write to
+-- ourselves about a site nobody has walked yet. Read by the builder who owns
+-- that site, it is an accusation.
+--
+-- The shape is Z's, verbatim: a side table with its own policy, one row per
+-- job, project_id as the primary key (a job has one pipeline state, and a
+-- surrogate id would invite two). 20260978000000 moved bid_amount and
+-- target_margin_pct off `projects` for exactly this reason and left the note
+-- saying so; this is the second time, and the note was right.
+--
+-- sort_order STAYS on `projects`. It is a bare integer whose meaning is "fourth
+-- in a list a builder cannot see", it orders every one of those lists in SQL,
+-- and moving it would put a join in the hot path of the app shell to hide a
+-- number that says nothing.
+create table if not exists project_pipeline (
+  project_id uuid primary key references projects(id) on delete cascade,
+  -- Same default as the column it replaces: every job that already existed is
+  -- ready, because nobody has ever been able to say otherwise about them.
+  ready_state text not null default 'ready',
+  materials_eta date,
+  materials_arrived_at timestamptz,
+  updated_at timestamptz not null default now(),
+  -- Filled by the RPCs below (auth.uid()), never by a client: who last said a
+  -- job was ready is not something the browser gets to claim. Null under the
+  -- service role or a SQL console, which is the honest answer there.
+  updated_by uuid references profiles(id) on delete set null
+);
+
+alter table project_pipeline drop constraint if exists project_pipeline_ready_state_check;
+alter table project_pipeline add constraint project_pipeline_ready_state_check
+  check (ready_state in ('not_ready', 'ready'));
+
+comment on table project_pipeline is
+  'One job''s readiness and materials dates, moved off `projects` (20260979000000) by wave H so they can carry a policy of their own. A partner login reads the whole `projects` row for a job it was granted, so anything about how WE are doing has to live somewhere else — the same reasoning that moved the bid to project_financials. Written only by set_project_readiness / set_project_materials (foreman+); read by any crew login, never by a partner.';
+
+comment on column project_pipeline.ready_state is
+  'not_ready | ready — whether the site is ready for us to work. Existing jobs are ready; Monday imports and one-tap tracking jobs are born not_ready.';
+comment on column project_pipeline.materials_eta is
+  'The day the windows are expected on this job (job-level, not package_deliveries.expected_at, which is one truck).';
+comment on column project_pipeline.materials_arrived_at is
+  'When somebody tapped "Materials arrived". Null means the windows are still not in — and, with no materials_eta, that nobody has said anything either way, which is why both the sweep and needsCall read the pair.';
+
+-- Backfill BEFORE the drop and only while the old columns still exist, so a
+-- second run of this file is a no-op instead of an error. `on conflict do
+-- nothing` protects a row the app has already written since.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'projects' and column_name = 'ready_state'
+  ) then
+    execute $q$
+      insert into project_pipeline (project_id, ready_state, materials_eta, materials_arrived_at)
+      select id,
+             coalesce(ready_state, 'ready'),
+             materials_eta,
+             materials_arrived_at
+        from projects
+       where ready_state is distinct from 'ready'
+          or materials_eta is not null
+          or materials_arrived_at is not null
+      on conflict (project_id) do nothing
+    $q$;
+  end if;
+end;
+$$;
+
+alter table projects drop constraint if exists projects_ready_state_check;
+alter table projects drop column if exists ready_state;
+alter table projects drop column if exists materials_eta;
+alter table projects drop column if exists materials_arrived_at;
+
+alter table project_pipeline enable row level security;
+
+-- Revoke BEFORE granting: this project's default privileges hand every new
+-- table in `public` the full set to `authenticated`, and RLS alone is not the
+-- place to stand. SELECT only — both writers are SECURITY DEFINER RPCs with a
+-- rank check in the body, because "is this job ready" is a foreman's call and a
+-- column grant cannot check a rank.
+revoke all on project_pipeline from anon, authenticated;
+grant select on project_pipeline to authenticated;
+grant all on project_pipeline to service_role;
+
+-- Any signed-in crew member reads it, and no partner ever does. An installer
+-- opening a job wants to know there is no glass on site just as much as the
+-- office does — hiding that behind a rank is how a crew drives to a job that
+-- was never going to happen.
+drop policy if exists "pipeline_crew_read" on project_pipeline;
+create policy "pipeline_crew_read" on project_pipeline
+  for select to authenticated
+  using (not public.is_partner_user() and (true));
+
+-- THE PROJECTS GRANT LAW (wave D, 20260959000000, re-stated by wave Z): the
+-- table-level INSERT/UPDATE on `projects` is revoked and only the columns the
+-- app writes directly are granted back. Dropping a column drops its privilege
+-- with it, so the lists are re-stated here. Re-stating them is the law's point:
+-- a reader should learn what is writable from the newest migration that touched
+-- this table rather than by diffing three of them.
+--
+-- A RE-STATEMENT IS THE WHOLE WRITABLE SET, NEVER A COPY OF THE LAST ONE.
+-- `stories` is in both lists below and must stay there. Wave X (20260980000000)
+-- granted it one migration number earlier and ADDITIVELY — a bare
+-- `grant insert (stories)` with no revoke of its own. A table-level
+-- `revoke insert, update` takes every COLUMN-level grant of those privileges
+-- with it, so the revoke on the next line un-grants `stories` and only these
+-- lists put it back. Copying wave Z's lists, which predate the column, was the
+-- first cut of this file and it lost the privilege silently: nothing errors,
+-- because api.ts's isMissingStoriesColumn reads the 42501 as "that column is
+-- not deployed yet", drops `stories` from the write and retries — so the save
+-- succeeds and the storey count a foreman typed is quietly gone. Wave X's own
+-- header names this file's hazard; scripts/migration_lint.py
+-- (shrinking_grants) now fails the merge gate on it, which is the only reason
+-- the paragraph above can be trusted by the next wave to restate these lists.
+--
+-- Deliberately absent and staying absent: the three columns dropped above (all
+-- RPC-only, never named here), and gc_brand, which section H2 adds RPC-only
+-- behind set_project_gc_brand.
+revoke insert, update on table projects from anon, authenticated;
+grant insert (job_code, name, address, customer_name, contact_phone,
+              contact_email, site_state, unit_number, start_date, end_date,
+              notes, stories)
+  on projects to authenticated;
+grant update (name, address, customer_name, contact_phone, contact_email,
+              site_state, unit_number, start_date, end_date, notes,
+              estimated_minutes, estimated_crew, estimated_at, stories)
+  on projects to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- H0. set_project_readiness — same name, same arguments, new home
+-- ---------------------------------------------------------------------------
+-- The RETURN TYPE changes (a `projects` row no longer carries these facts), and
+-- Postgres will not let CREATE OR REPLACE change one, so the old function is
+-- dropped first. Its only caller is lib/api.ts's wrapper, which has always
+-- ignored the returned row.
+drop function if exists public.set_project_readiness(uuid, text);
+
+create or replace function public.set_project_readiness(
+  p_project_id uuid,
+  p_ready_state text
+)
+returns project_pipeline
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row project_pipeline;
+begin
+  if not _is_lead(auth.uid()) then
+    raise exception 'Only a foreman or above can say whether a job is ready.';
+  end if;
+  if p_ready_state is null or p_ready_state not in ('not_ready', 'ready') then
+    raise exception 'A job is either ready or not ready — nothing else.';
+  end if;
+  if not exists (select 1 from projects where id = p_project_id) then
+    raise exception 'That job does not exist.';
+  end if;
+
+  insert into project_pipeline (project_id, ready_state, updated_at, updated_by)
+  values (p_project_id, p_ready_state, now(), auth.uid())
+  on conflict (project_id) do update
+    set ready_state = excluded.ready_state,
+        updated_at = now(),
+        updated_by = auth.uid()
+  returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
+comment on function public.set_project_readiness(uuid, text) is
+  'Foreman+: mark a job Ready or Not ready. Writes project_pipeline, not `projects` — wave H moved the fact off a table a granted builder reads whole. SECURITY DEFINER because the side table grants no write to any client role; the rank check belongs in a body, not in a column grant.';
+
+revoke all on function public.set_project_readiness(uuid, text) from public, anon;
+grant execute on function public.set_project_readiness(uuid, text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- H0. set_project_materials — same name, same arguments, new home
+-- ---------------------------------------------------------------------------
+-- The argument contract is untouched, and it is worth restating because it is
+-- load-bearing: nulls mean LEAVE THAT FACT ALONE, and the two ways of erasing
+-- one are said out loud. "Null clears it" would make the one-tap "Materials
+-- arrived" button wipe the ETA every time it was pressed, because that call has
+-- no ETA to send.
+drop function if exists public.set_project_materials(uuid, date, boolean, boolean);
+
+create or replace function public.set_project_materials(
+  p_project_id uuid,
+  p_materials_eta date default null,
+  p_clear_eta boolean default false,
+  p_arrived boolean default null
+)
+returns project_pipeline
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row project_pipeline;
+begin
+  if not _is_lead(auth.uid()) then
+    raise exception 'Only a foreman or above can set when the windows are coming.';
+  end if;
+  if not exists (select 1 from projects where id = p_project_id) then
+    raise exception 'That job does not exist.';
+  end if;
+
+  -- The row may not exist yet (a job nobody has touched since wave H), so this
+  -- is an upsert whose INSERT branch applies the same three-way logic against
+  -- "no row" that the UPDATE branch applies against the stored one.
+  insert into project_pipeline (project_id, materials_eta, materials_arrived_at, updated_at, updated_by)
+  values (
+    p_project_id,
+    case when coalesce(p_clear_eta, false) then null else p_materials_eta end,
+    case when p_arrived is true then now() else null end,
+    now(),
+    auth.uid()
+  )
+  on conflict (project_id) do update
+    set materials_eta = case
+          when coalesce(p_clear_eta, false) then null
+          when p_materials_eta is not null then p_materials_eta
+          else project_pipeline.materials_eta
+        end,
+        materials_arrived_at = case
+          -- Arriving twice must not move the time: the first tap is when the
+          -- truck actually showed up, and a second tap (a mis-tap, a refresh,
+          -- a second person confirming) should not quietly rewrite it.
+          when p_arrived is true then coalesce(project_pipeline.materials_arrived_at, now())
+          when p_arrived is false then null
+          else project_pipeline.materials_arrived_at
+        end,
+        updated_at = now(),
+        updated_by = auth.uid()
+  returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
+comment on function public.set_project_materials(uuid, date, boolean, boolean) is
+  'Foreman+: set or clear a job''s window ETA and record that the windows arrived (or un-record it). Writes project_pipeline (wave H moved the facts off `projects`). Null arguments mean "leave that fact alone" so the one-tap Materials-arrived call cannot wipe the ETA.';
+
+revoke all on function public.set_project_materials(uuid, date, boolean, boolean) from public, anon;
+grant execute on function public.set_project_materials(uuid, date, boolean, boolean) to authenticated;
+
+-- ===========================================================================
+-- H1. project_gc_checkins — what the general contractor actually said
+-- ===========================================================================
+-- Six questions get asked on every job, and the answers used to live in
+-- somebody's memory of a phone call: when does the GC think the house is
+-- finished, when does the roof go on, has the framing been checked, does he
+-- want the windows inset or outset, and what is going on the outside and the
+-- inside. Six answers, one row, and the row IS the record that somebody talked
+-- to the builder.
+--
+-- APPEND-ONLY, and that is the design rather than an omission. A check-in is
+-- what a person said on a day. If the GC changes his mind next week that is a
+-- SECOND check-in, and the pair of them is the story: "he told us the 14th in
+-- August and the 28th in September" is a fact worth having, and an UPDATE would
+-- erase it. There is no update or delete policy on this table at all, and the
+-- one writer below only ever inserts.
+--
+-- All six are NOT NULL. A half-filled check-in is worse than none: it looks
+-- like somebody asked, and the next person to open the job believes it.
+--
+-- inset/outset here is the GC's JOB-LEVEL answer, and it does not decide
+-- anything about a unit. The per-unit spec field in the signature stays
+-- authoritative for what actually gets installed where — this is what the
+-- builder SAID he wanted, which is a different fact and sometimes a different
+-- answer.
+create table if not exists project_gc_checkins (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  -- Who filed it. Null when the GC answered on the no-login page (there is no
+  -- profile to point at) and when a crew member's account is later removed.
+  author_id uuid references profiles(id) on delete set null,
+  -- When the conversation happened, which is not always when it was typed up.
+  contacted_at timestamptz not null default now(),
+  contact_name text,
+  channel text not null,
+  expected_end_date date not null,
+  roof_on_date date not null,
+  framing_checked boolean not null,
+  set_preference text not null,
+  exterior_material text not null,
+  interior_material text not null,
+  notes text,
+  -- 'crew' — somebody in the office filed it after a call. 'gc' — the builder
+  -- answered it himself on the link. The difference matters when the answers
+  -- disagree: one of them is a memory of a phone call and the other is the
+  -- builder's own typing.
+  source text not null default 'crew',
+  created_at timestamptz not null default now()
+);
+
+alter table project_gc_checkins drop constraint if exists project_gc_checkins_channel_check;
+alter table project_gc_checkins add constraint project_gc_checkins_channel_check
+  -- 'link' is the GC answering on his own page (H2). It is deliberately NOT
+  -- offered to a crew member by log_gc_checkin below — nobody in the office
+  -- ever talked to the builder "on the link" — so the constraint is wider than
+  -- the RPC on purpose rather than by accident.
+  check (channel in ('call', 'text', 'email', 'site', 'link'));
+
+alter table project_gc_checkins drop constraint if exists project_gc_checkins_set_pref_check;
+alter table project_gc_checkins add constraint project_gc_checkins_set_pref_check
+  check (set_preference in ('inset', 'outset', 'unknown'));
+
+alter table project_gc_checkins drop constraint if exists project_gc_checkins_source_check;
+alter table project_gc_checkins add constraint project_gc_checkins_source_check
+  check (source in ('crew', 'gc'));
+
+-- The sweep asks "when was the last one on this job" for every active job every
+-- morning, and the GC card asks the same question about one job. Both are this
+-- index.
+create index if not exists project_gc_checkins_project_idx
+  on project_gc_checkins (project_id, contacted_at desc);
+
+comment on table project_gc_checkins is
+  'One conversation with a job''s general contractor: the six standing questions, who said it, how, and when. Append-only — a changed answer is a second row, and the pair is the story. source = crew (the office filed it after a call) or gc (the builder answered on the no-login link). Filing one is what "communicated with the GC" means, and the 7 AM sweep reads the latest one.';
+
+alter table project_gc_checkins enable row level security;
+
+-- Revoke BEFORE granting: this project's default privileges hand every new
+-- table in `public` the full set to `authenticated`. SELECT only — the RPC
+-- below is the only writer, so append-only is a fact about the grants and not
+-- just about the code.
+revoke all on project_gc_checkins from anon, authenticated;
+grant select on project_gc_checkins to authenticated;
+grant all on project_gc_checkins to service_role;
+
+-- Any signed-in crew member reads it, and no partner ever does. THE WALL, and
+-- more than mechanically: this table holds one side of a conversation with the
+-- builder, written by us, and a builder login reading our own notes about
+-- talking to him is the same mistake H0 just undid.
+drop policy if exists "gc_checkins_crew_read" on project_gc_checkins;
+create policy "gc_checkins_crew_read" on project_gc_checkins
+  for select to authenticated
+  using (not public.is_partner_user() and (true));
+
+-- ---------------------------------------------------------------------------
+-- H1. log_gc_checkin (foreman+)
+-- ---------------------------------------------------------------------------
+-- Validated in here as well as in the browser, because the browser's copy is a
+-- courtesy and this one is the rule. Every refusal is a sentence somebody in a
+-- truck can act on — "Say when the GC expects the house to be finished", not
+-- "null value in column expected_end_date violates not-null constraint".
+create or replace function public.log_gc_checkin(
+  p_project_id uuid,
+  p_expected_end_date date,
+  p_roof_on_date date,
+  p_framing_checked boolean,
+  p_set_preference text,
+  p_exterior_material text,
+  p_interior_material text,
+  p_channel text default 'call',
+  p_contact_name text default null,
+  p_notes text default null,
+  p_contacted_at timestamptz default null
+)
+returns project_gc_checkins
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row project_gc_checkins;
+begin
+  if not _is_lead(auth.uid()) then
+    raise exception 'Only a foreman or above can file a GC check-in.';
+  end if;
+  if not exists (select 1 from projects where id = p_project_id) then
+    raise exception 'That job does not exist.';
+  end if;
+
+  if p_expected_end_date is null then
+    raise exception 'Say when the GC expects the house to be finished.';
+  end if;
+  if p_roof_on_date is null then
+    raise exception 'Say when the roof goes on.';
+  end if;
+  if p_framing_checked is null then
+    raise exception 'Say whether the framing has been checked.';
+  end if;
+  if coalesce(p_set_preference, '') not in ('inset', 'outset', 'unknown') then
+    raise exception 'Say whether the GC wants the windows inset, outset, or that he has not said.';
+  end if;
+  if coalesce(btrim(p_exterior_material), '') = '' then
+    raise exception 'Say what is going on the outside.';
+  end if;
+  if coalesce(btrim(p_interior_material), '') = '' then
+    raise exception 'Say what is going on the inside.';
+  end if;
+  if coalesce(p_channel, '') not in ('call', 'text', 'email', 'site') then
+    raise exception 'Say how you talked to the GC: a call, a text, an email, or on site.';
+  end if;
+
+  insert into project_gc_checkins (
+    project_id, author_id, contacted_at, contact_name, channel,
+    expected_end_date, roof_on_date, framing_checked, set_preference,
+    exterior_material, interior_material, notes, source
+  )
+  values (
+    p_project_id,
+    auth.uid(),
+    -- A check-in typed up the morning after is dated to the conversation, not
+    -- to the typing. Null means "just now", which is the common case.
+    coalesce(p_contacted_at, now()),
+    nullif(btrim(coalesce(p_contact_name, '')), ''),
+    p_channel,
+    p_expected_end_date,
+    p_roof_on_date,
+    p_framing_checked,
+    p_set_preference,
+    btrim(p_exterior_material),
+    btrim(p_interior_material),
+    nullif(btrim(coalesce(p_notes, '')), ''),
+    'crew'
+  )
+  returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
+comment on function public.log_gc_checkin(uuid, date, date, boolean, text, text, text, text, text, text, timestamptz) is
+  'Foreman+: file one conversation with a job''s GC — the six standing answers plus who, how and any notes. Append-only; a changed answer is a second row. SECURITY DEFINER because project_gc_checkins grants no INSERT to any client role, which is what makes append-only a fact about the grants rather than a promise about the code.';
+
+revoke all on function public.log_gc_checkin(uuid, date, date, boolean, text, text, text, text, text, text, timestamptz) from public, anon;
+grant execute on function public.log_gc_checkin(uuid, date, date, boolean, text, text, text, text, text, text, timestamptz) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- H0 + H1. The 7 AM sweep: the new home, and the fourth reason
+-- ---------------------------------------------------------------------------
+-- Two changes, and they arrive together because the function has to be dropped
+-- and recreated either way — Postgres will not let CREATE OR REPLACE change a
+-- function's OUT columns, and the second change adds one.
+--
+-- H0. claim_pipeline_nudges() decided from three columns on `projects`; they
+-- are gone, so its candidate CTE joins project_pipeline instead. A LEFT JOIN
+-- with coalesce, not an inner one: a job nobody has ever set readiness on has
+-- no row there at all, and it is READY — the same answer the NOT NULL DEFAULT
+-- gave when these were columns, and the only one that does not put a red flag
+-- on every job in the company the morning this deploys.
+--
+-- H1. THE FOURTH REASON, which 20260979000000 section 8 was written to hand
+-- over: "no GC check-in in the last 14 days", as one more OR beside
+-- ready_state = 'not_ready'. Wave J left it out because project_gc_checkins did
+-- not exist and a rule reading a missing table either breaks the sweep or fires
+-- on every job in the company. The table exists now, and here is the thing
+-- worth saying out loud before this ships:
+--
+--   IT WILL FIRE ON EVERY JOB STARTING INSIDE A FORTNIGHT, on the first
+--   morning, because no job in the company has ever had a check-in filed. THAT
+--   IS THE POINT AND NOT A BUG. Unlike materials_arrived_at — where a blank
+--   meant "nobody could record it" and counting it would have been a lie — a
+--   missing check-in now means exactly what it says: nobody has talked to that
+--   builder, and somebody should. The list empties itself as the calls get
+--   made, one row each.
+--
+-- THE RULE STILL LIVES TWICE AND THE COPIES ARE STILL PINNED. The readable
+-- version is needsCall / dueNudges in app/src/lib/pipeline.ts; this body is the
+-- one the sweep runs, because it has to decide and claim in one statement or
+-- two overlapping sweeps both push. pipeline.test.ts carries a block named
+-- after this function that spells these clauses out in TypeScript, including
+-- the fourteen days.
+drop function if exists public.claim_pipeline_nudges();
+
+create or replace function public.claim_pipeline_nudges()
+returns table (
+  project_id uuid,
+  job_label text,
+  kind text,
+  days_until int,
+  not_ready boolean,
+  materials_missing boolean,
+  no_gc_checkin boolean,
+  profile_ids uuid[]
+)
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+-- The OUT columns above share their names with real columns in the query below.
+-- Ambiguity between an OUT parameter and a column is a plpgsql RUNTIME error,
+-- not a compile one, so it would first appear at 7 AM in production. Every
+-- reference below is table-qualified AND this pragma makes the column win
+-- regardless — belt and braces on a function nobody watches run.
+#variable_conflict use_column
+declare
+  v_tz constant text := 'America/Denver';
+  v_today date;
+  v_hour int;
+begin
+  if auth.uid() is not null then
+    raise exception 'The pipeline reminder sends itself — nobody needs to press anything.';
+  end if;
+
+  v_today := (now() at time zone v_tz)::date;
+  v_hour := extract(hour from (now() at time zone v_tz))::int;
+
+  -- Before 7 AM company time there is nothing due. The cron pokes this hourly
+  -- rather than once at a fixed UTC hour so the "morning" stays the crew's
+  -- morning through both halves of the year; the claim is what makes a repeated
+  -- poke free.
+  if v_hour < 7 then
+    return;
+  end if;
+
+  return query
+  with candidate as (
+    select p.id as pid,
+           coalesce(nullif(btrim(p.name), ''), p.job_code) as label,
+           (p.start_date - v_today)::int as days_out,
+           -- No row means nobody has ever said anything about this job, and
+           -- that job is READY — the same answer wave J's NOT NULL DEFAULT gave
+           -- while these were columns, and the only one that does not red-flag
+           -- every job in the company on the morning the table appears.
+           coalesce(pp.ready_state, 'ready') as ready,
+           pp.materials_eta as eta,
+           pp.materials_arrived_at as arrived_at,
+           -- The company-local DAY of the most recent conversation, so "14
+           -- days ago" means fourteen of the crew's days and not fourteen
+           -- times twenty-four hours measured in UTC. Null means there has
+           -- never been one, which is itself the thing worth calling about.
+           (select max((g.contacted_at at time zone v_tz)::date)
+              from project_gc_checkins g
+             where g.project_id = p.id) as last_checkin_day
+      from projects p
+      left join project_pipeline pp on pp.project_id = p.id
+     where p.status = 'active'
+       and p.deleted_at is null
+  ),
+  due as (
+    -- (a) starting soon, and still not ready or the promised windows are not
+    --     here. "Promised" is c.eta is not null — a job nobody promised windows
+    --     for cannot be missing them.
+    select c.pid,
+           c.label,
+           case when c.days_out > 7 then 'start_14' else 'start_7' end::text as due_kind,
+           (v_today + c.days_out) as due_date,
+           c.days_out,
+           c.ready = 'not_ready' as flag_not_ready,
+           (c.eta is not null and c.arrived_at is null) as flag_no_materials,
+           (c.last_checkin_day is null or c.last_checkin_day <= v_today - 14) as flag_no_checkin
+      from candidate c
+     where c.days_out between 0 and 14
+       and (
+         c.ready = 'not_ready'
+         or (c.eta is not null and c.arrived_at is null)
+         or c.last_checkin_day is null
+         or c.last_checkin_day <= v_today - 14
+       )
+    union all
+    -- (b) the promised day came and went and nothing is here.
+    select c.pid,
+           c.label,
+           'materials_late'::text as due_kind,
+           c.eta as due_date,
+           c.days_out,
+           c.ready = 'not_ready' as flag_not_ready,
+           true as flag_no_materials,
+           -- Late windows are their own message. Whether anybody has called
+           -- the builder lately is not part of it, and saying so here would
+           -- pad a sentence that is already the only one that matters.
+           false as flag_no_checkin
+      from candidate c
+     where c.eta is not null
+       and c.arrived_at is null
+       and c.eta < v_today
+  ),
+  claimed as (
+    insert into pipeline_nudges (project_id, kind, on_date)
+    select d.pid, d.due_kind, d.due_date from due d
+    on conflict (project_id, kind, on_date) do nothing
+    returning pipeline_nudges.project_id as claimed_pid,
+              pipeline_nudges.kind as claimed_kind
+  )
+  select d.pid,
+         d.label,
+         d.due_kind,
+         d.days_out,
+         d.flag_not_ready,
+         d.flag_no_materials,
+         d.flag_no_checkin,
+         public.pipeline_nudge_audience(d.pid)
+    from due d
+    join claimed cl
+      on cl.claimed_pid = d.pid
+     and cl.claimed_kind = d.due_kind;
+end;
+$$;
+
+comment on function public.claim_pipeline_nudges() is
+  'Service-role only (the pipeline-sweep edge function): claims and returns the job warnings due this company-local morning — 14 and 7 days before a start date on a job that is still not ready, has no windows, or has had no GC check-in in a fortnight, and the morning after a missed materials ETA. Reads project_pipeline (wave H moved readiness and the materials dates off `projects`); a job with no row there is ready. The claim and the decision are one statement, so two overlapping sweeps cannot both push. The readable copy of this rule is needsCall/dueNudges in app/src/lib/pipeline.ts.';
+
+revoke all on function public.claim_pipeline_nudges() from public, anon, authenticated;
+grant execute on function public.claim_pipeline_nudges() to service_role;
+
+-- ===========================================================================
+-- H2. The GC's own page: gc_brand, gc_links, gc_messages
+-- ===========================================================================
+-- A general contractor does not have a login here and is never going to want
+-- one. He gets a link in a text or an email, opens it on his phone, answers the
+-- same six questions, and can ask a question back. That is the whole feature.
+--
+-- HOW THE TOKEN IS SAFE, said plainly because this is the first thing in this
+-- schema a stranger on the internet can reach with a credential we minted:
+--
+--   * 32 random bytes — 256 bits. There is no guessing it, and no rate limit
+--     is what makes that true; the entropy is.
+--   * STORED HASHED (sha256, hex). A database backup, a support query, a
+--     screenshot of a table: none of them hand anybody a working link.
+--   * IT IS A KEY TO A FUNCTION, NEVER TO A TABLE. No policy in this migration
+--     grants anon anything. Everything the page reads and writes goes through
+--     the gc-link edge function on the service role, which builds its answer
+--     field by field (wave S's projection law) from exactly four things: the
+--     job's name, the brand, the six questions with any prior answers, and the
+--     thread. A crew login pointing the same token at PostgREST directly gets
+--     nothing it could not already read, because the token is not a grant.
+--   * 30 days, then it stops working. Revocable at any time, from the card.
+--
+-- WHAT THE GC NEVER SEES, and this is the whole reason H0 came first: our
+-- readiness, our materials dates, our schedule, our costs, our crew. The page
+-- shows him the questions and his own answers. It is a conversation we started,
+-- not a window into the company.
+
+-- ---- The brand this job is presented under (Q20, the owner's design) --------
+-- One company, two names, and which one a customer hears is a per-JOB decision
+-- rather than a company-wide setting: some builders know us as STG Windows &
+-- Doors and some as Forge, and the wrong name on an email is the kind of small
+-- wrong thing that makes somebody wonder who they are actually dealing with.
+--
+-- On `projects` rather than on gc_links, because a job's brand outlives any one
+-- link — revoke and resend and it is still the same relationship — and because
+-- the page header and the email subject both need it. RPC-ONLY under the
+-- projects grant law: it is deliberately NOT added to the insert or update
+-- grant lists restated in section H0 above, so set_project_gc_brand is the only
+-- writer. A granted builder reading it learns which of our two names we use
+-- with them, which they already know.
+alter table projects
+  add column if not exists gc_brand text not null default 'stg';
+
+alter table projects drop constraint if exists projects_gc_brand_check;
+alter table projects add constraint projects_gc_brand_check
+  check (gc_brand in ('stg', 'forge'));
+
+comment on column projects.gc_brand is
+  'stg | forge — which of the company''s two names this job''s general contractor hears, on the GC page and in the email. Default stg, the outward-facing brand. Written only by set_project_gc_brand (foreman+); deliberately absent from the projects grant lists.';
+
+create or replace function public.set_project_gc_brand(
+  p_project_id uuid,
+  p_brand text
+)
+returns projects
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row projects;
+begin
+  if not _is_lead(auth.uid()) then
+    raise exception 'Only a foreman or above can choose which name the GC sees.';
+  end if;
+  if coalesce(p_brand, '') not in ('stg', 'forge') then
+    raise exception 'The GC sees us as STG Windows & Doors or as Forge Windows and Doors — nothing else.';
+  end if;
+
+  update projects set gc_brand = p_brand where id = p_project_id
+  returning * into v_row;
+
+  if not found then
+    raise exception 'That job does not exist.';
+  end if;
+
+  return v_row;
+end;
+$$;
+
+comment on function public.set_project_gc_brand(uuid, text) is
+  'Foreman+: choose which of the company''s two names this job''s GC sees on his page and in his email. SECURITY DEFINER because gc_brand is deliberately off the projects grant lists — a column grant cannot check a rank.';
+
+revoke all on function public.set_project_gc_brand(uuid, text) from public, anon;
+grant execute on function public.set_project_gc_brand(uuid, text) to authenticated;
+
+-- ---- gc_links ---------------------------------------------------------------
+create table if not exists gc_links (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  -- The credential, hashed. UNIQUE so a hash collision or a double-insert is a
+  -- constraint error rather than two links that both open one job.
+  token_hash text not null unique,
+  -- A RECORD OF THE NAME WE USED WHEN THIS LINK WENT OUT, not the name the
+  -- page wears today. Every live read — gc_link_open, the send-email function
+  -- — takes projects.gc_brand instead, so tapping the brand pill changes the
+  -- builder's open page and the next email. Kept because "which name did that
+  -- email say" is a real question months later, and the sent mail cannot be
+  -- edited to match a later change of mind.
+  brand text not null default 'stg',
+  -- Who the office meant to mail. Written at mint time; it is an INTENT, and
+  -- on its own it is not evidence that anything was delivered.
+  sent_to_email text,
+  sent_by uuid references profiles(id) on delete set null,
+  -- WRITTEN ONLY BY THE send-email FUNCTION, ONLY ON A REAL 2xx FROM RESEND.
+  -- The first cut stamped it here at mint time alongside sent_to_email, which
+  -- made the card say "Sent to bob@builder.com" for a link no mail server ever
+  -- saw — including the RESEND_API_KEY-unset case, where the only honest thing
+  -- to tell a foreman is "copy it and text it". Null means nothing has left the
+  -- building, and the card says so.
+  sent_at timestamptz,
+  -- Thirty days. Long enough to survive a builder who reads his email weekly,
+  -- short enough that a forwarded text from last spring is dead.
+  expires_at timestamptz not null default now() + interval '30 days',
+  -- The first time anybody answered anything on it. Not "opened" — a link the
+  -- GC looked at and closed has told us nothing.
+  used_at timestamptz,
+  revoked_at timestamptz,
+  created_at timestamptz not null default now(),
+  -- Rate limiting, on the row rather than in a side table: the row IS the
+  -- rate-limit subject, one link is one conversation, and a table of attempts
+  -- would need its own purge.
+  post_count int not null default 0,
+  last_post_at timestamptz,
+  -- Reads are COUNTED, not limited. Refusing a refresh loop would lock out the
+  -- one person the link exists for, and a read costs a lookup; 256 bits of
+  -- token is what stops a stranger, not a counter.
+  hit_count int not null default 0,
+  last_hit_at timestamptz
+);
+
+alter table gc_links drop constraint if exists gc_links_brand_check;
+alter table gc_links add constraint gc_links_brand_check
+  check (brand in ('stg', 'forge'));
+
+-- One job's links, newest first — what the GC card lists, and how "is there a
+-- live link on this job" is answered.
+create index if not exists gc_links_project_idx
+  on gc_links (project_id, created_at desc);
+
+comment on table gc_links is
+  'A no-login link handed to one job''s general contractor. token_hash is sha256 of 32 random bytes; the plaintext is returned by create_gc_link ONCE and never stored, so a link that was not copied or emailed is gone and a fresh one gets minted. 30-day expiry, revocable. NO ROLE HAS ANY POLICY TO WRITE THIS TABLE and anon has none at all: the token is a key to the gc-link edge function, never to a table.';
+
+alter table gc_links enable row level security;
+
+revoke all on gc_links from anon, authenticated;
+grant select on gc_links to authenticated;
+grant all on gc_links to service_role;
+
+-- Crew read, never a partner. The office has to be able to see that a link is
+-- out, when it was sent and to whom — and the token is not in this table in any
+-- usable form, so reading it hands nobody the ability to open the page.
+drop policy if exists "gc_links_crew_read" on gc_links;
+create policy "gc_links_crew_read" on gc_links
+  for select to authenticated
+  using (not public.is_partner_user() and (true));
+
+-- ---- gc_messages -------------------------------------------------------------
+-- The thread. Two people talk on it: the general contractor, on his page, and
+-- the office, from the GC card.
+--
+-- NEVER CREW CHAT. project_messages is where the crew talks to each other about
+-- a job, and it is walled from partners for a reason; putting an outsider's
+-- words in it — or letting him read what is already there — is the one mistake
+-- that would make this feature dangerous rather than useful. Two tables, no
+-- join between them, and nothing on this one is shown on the chat tab.
+create table if not exists gc_messages (
+  id uuid primary key default gen_random_uuid(),
+  -- Which link it came in on. SET NULL rather than CASCADE: revoking a link
+  -- must not delete what the builder already said.
+  gc_link_id uuid references gc_links(id) on delete set null,
+  project_id uuid not null references projects(id) on delete cascade,
+  -- 'gc' — the builder typed it on his page. 'office' — one of ours replied.
+  author text not null,
+  -- Who, when it was one of ours. Always null for a GC message: there is no
+  -- profile to point at, and that is the honest answer.
+  author_profile_id uuid references profiles(id) on delete set null,
+  body text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table gc_messages drop constraint if exists gc_messages_author_check;
+alter table gc_messages add constraint gc_messages_author_check
+  check (author in ('gc', 'office'));
+
+create index if not exists gc_messages_project_idx
+  on gc_messages (project_id, created_at);
+
+comment on table gc_messages is
+  'The thread between one job''s general contractor and the office. Deliberately NOT project_messages: crew chat is walled from outsiders, and an outsider''s words must not land in it nor his eyes on what is already there. Written only by post_gc_message (office, foreman+) and gc_link_say (the GC, through the edge function on the service role).';
+
+alter table gc_messages enable row level security;
+
+revoke all on gc_messages from anon, authenticated;
+grant select on gc_messages to authenticated;
+grant all on gc_messages to service_role;
+
+drop policy if exists "gc_messages_crew_read" on gc_messages;
+create policy "gc_messages_crew_read" on gc_messages
+  for select to authenticated
+  using (not public.is_partner_user() and (true));
+
+-- ---------------------------------------------------------------------------
+-- H2. create_gc_link (foreman+) — the only place a token is ever born
+-- ---------------------------------------------------------------------------
+-- Returns the PLAINTEXT token exactly once, to the person who pressed the
+-- button. It is never stored, never logged and cannot be recovered: "send it
+-- again" mints a fresh link and revokes the old one, which is both simpler than
+-- keeping a secret around and better hygiene — a resend rotates the credential.
+--
+-- ONE LIVE LINK PER JOB. Any earlier link on the same job is revoked in the
+-- same statement, so a builder who was sent two links last month cannot answer
+-- on the older one and have it look current.
+create or replace function public.create_gc_link(
+  p_project_id uuid,
+  p_email text default null,
+  p_brand text default null
+)
+returns table (link_id uuid, token text, expires_at timestamptz, brand text)
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+-- The OUT columns (brand, expires_at) share their names with real columns of
+-- gc_links. Ambiguity between an OUT parameter and a column is a plpgsql
+-- RUNTIME error, not a compile one, so make the column win — the same pragma
+-- and the same reason as claim_pipeline_nudges above.
+#variable_conflict use_column
+declare
+  v_token text;
+  v_hash text;
+  v_brand text;
+  v_row gc_links;
+begin
+  if not _is_lead(auth.uid()) then
+    raise exception 'Only a foreman or above can hand a job to its GC.';
+  end if;
+  if not exists (select 1 from projects where id = p_project_id) then
+    raise exception 'That job does not exist.';
+  end if;
+  if p_brand is not null and p_brand not in ('stg', 'forge') then
+    raise exception 'The GC sees us as STG Windows & Doors or as Forge Windows and Doors — nothing else.';
+  end if;
+
+  -- The job's own brand unless the caller names one, so the page and the email
+  -- match whatever the office chose on this job.
+  select coalesce(p_brand, pr.gc_brand, 'stg') into v_brand
+    from projects pr where pr.id = p_project_id;
+
+  -- base64url: the standard alphabet's + and / become - and _, and translate
+  -- drops the padding = because it has no replacement character. 43 characters,
+  -- safe in a URL and in a text message.
+  v_token := translate(encode(extensions.gen_random_bytes(32), 'base64'), '+/=', '-_');
+  v_hash := encode(extensions.digest(v_token, 'sha256'), 'hex');
+
+  update gc_links
+     set revoked_at = now()
+   where gc_links.project_id = p_project_id
+     and gc_links.revoked_at is null;
+
+  -- sent_at IS DELIBERATELY NOT SET HERE. Minting a link sends nothing — the
+  -- send-email edge function does that, and stamps sent_at itself on a real 2xx
+  -- from Resend. Stamping it here (the first cut did, whenever an address was
+  -- supplied) makes every link look delivered the instant it exists, which is
+  -- exactly wrong in the case that matters most: RESEND_API_KEY unset, where
+  -- the function answers "email is not configured" and the foreman needs the
+  -- card to keep telling him to copy the link and text it.
+  insert into gc_links (project_id, token_hash, brand, sent_to_email, sent_by)
+  values (
+    p_project_id,
+    v_hash,
+    v_brand,
+    nullif(btrim(lower(coalesce(p_email, ''))), ''),
+    auth.uid()
+  )
+  returning * into v_row;
+
+  return query select v_row.id, v_token, v_row.expires_at, v_row.brand;
+end;
+$$;
+
+comment on function public.create_gc_link(uuid, text, text) is
+  'Foreman+: mint a no-login link for one job''s GC and revoke any earlier live one. Returns the plaintext token ONCE — it is stored only as a sha256 hash, so it cannot be shown again and "send it again" mints a fresh link, rotating the credential.';
+
+revoke all on function public.create_gc_link(uuid, text, text) from public, anon;
+grant execute on function public.create_gc_link(uuid, text, text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- H2. revoke_gc_link (foreman+)
+-- ---------------------------------------------------------------------------
+create or replace function public.revoke_gc_link(p_link_id uuid)
+returns gc_links
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row gc_links;
+begin
+  if not _is_lead(auth.uid()) then
+    raise exception 'Only a foreman or above can turn a GC link off.';
+  end if;
+
+  -- Revoking twice is not an error and does not move the time: the first
+  -- revoke is when somebody decided, and a second tap should not rewrite it.
+  update gc_links
+     set revoked_at = coalesce(revoked_at, now())
+   where id = p_link_id
+  returning * into v_row;
+
+  if not found then
+    raise exception 'That link does not exist.';
+  end if;
+
+  return v_row;
+end;
+$$;
+
+comment on function public.revoke_gc_link(uuid) is
+  'Foreman+: turn a GC link off. Idempotent — revoking twice keeps the first time, because that is when somebody decided.';
+
+revoke all on function public.revoke_gc_link(uuid) from public, anon;
+grant execute on function public.revoke_gc_link(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- H2. post_gc_message (foreman+) — the office's side of the thread
+-- ---------------------------------------------------------------------------
+create or replace function public.post_gc_message(
+  p_project_id uuid,
+  p_body text
+)
+returns gc_messages
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row gc_messages;
+  v_link uuid;
+begin
+  if not _is_lead(auth.uid()) then
+    raise exception 'Only a foreman or above can write to the GC.';
+  end if;
+  if coalesce(btrim(p_body), '') = '' then
+    raise exception 'Write something before you send it.';
+  end if;
+  if length(btrim(p_body)) > 4000 then
+    raise exception 'That message is too long to send — keep it under 4000 characters.';
+  end if;
+
+  -- Attached to the live link when there is one, so the GC sees the reply on
+  -- the page he already has open. With no live link the reply is still recorded
+  -- against the job, and the office can see it was written before anybody had
+  -- somewhere to read it.
+  select id into v_link
+    from gc_links
+   where project_id = p_project_id
+     and revoked_at is null
+     and expires_at > now()
+   order by created_at desc
+   limit 1;
+
+  insert into gc_messages (gc_link_id, project_id, author, author_profile_id, body)
+  values (v_link, p_project_id, 'office', auth.uid(), btrim(p_body))
+  returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
+comment on function public.post_gc_message(uuid, text) is
+  'Foreman+: reply to a job''s GC on the thread he sees on his link page. Never crew chat — project_messages is a different table for a different audience.';
+
+revoke all on function public.post_gc_message(uuid, text) from public, anon;
+grant execute on function public.post_gc_message(uuid, text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- H2. The three service-role doors the gc-link edge function knocks on
+-- ---------------------------------------------------------------------------
+-- These are the ONLY way a token turns into anything. Each is
+-- service-role-only: `revoke ... from authenticated` means a crew login holding
+-- a token cannot call them from the browser, and anon was never granted
+-- anything. The edge function hashes the token it was handed and passes the
+-- HASH, so the plaintext never reaches the database.
+--
+-- Each one re-checks the link's state itself rather than trusting the caller to
+-- have checked: expired, revoked, or unknown all end the same way, and the
+-- function tells the page one plain sentence rather than four.
+
+/*
+ * The state check and the rate limit, in one place, for both write doors.
+ *
+ * It CLAIMS the attempt as it checks it — the update that bumps post_count is
+ * the same statement that reads last_post_at, so two taps arriving together
+ * cannot both pass. A separate read-then-write would be a race with a stranger
+ * on the other end of it.
+ *
+ * The limits are deliberately loose. Somebody answering six questions on a
+ * phone with bad signal will retry, and a limit tight enough to catch a script
+ * would catch him first; 256 bits of token is what stops a stranger, and this
+ * only stops a stuck retry loop from filling the table.
+ *
+ * And it can only ever be that, for a reason worth writing down: a REFUSED
+ * write rolls back its own claim along with everything else in the statement,
+ * so somebody posting nothing but invalid answers is never throttled by this.
+ * That is fine here — the counter is a guard against a loop, not against an
+ * attacker, and the attacker would need the token first.
+ */
+create or replace function public._gc_link_for_write(p_token_hash text)
+returns gc_links
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_link gc_links;
+begin
+  update gc_links
+     set post_count = gc_links.post_count + 1,
+         last_post_at = now()
+   where token_hash = p_token_hash
+     and revoked_at is null
+     and expires_at > now()
+     and (last_post_at is null or last_post_at < now() - interval '2 seconds')
+     and post_count < 200
+  returning * into v_link;
+
+  if found then
+    return v_link;
+  end if;
+
+  -- Work out WHY, but only in the two cases where saying so helps the person
+  -- holding the link. An unknown token and a revoked one get the same sentence,
+  -- because telling a stranger which of the two he has is telling him something.
+  select * into v_link from gc_links where token_hash = p_token_hash;
+  if found and v_link.revoked_at is null and v_link.expires_at > now() then
+    raise exception 'That went through a moment ago — give it a second and try again.';
+  end if;
+
+  raise exception 'This link has expired — ask your installer for a new one.';
+end;
+$$;
+
+comment on function public._gc_link_for_write(text) is
+  'Service role only: the shared state check and rate limit behind gc_link_answer and gc_link_say. Claims the attempt in the same statement that checks it, so two taps at once cannot both pass. An unknown token and a revoked one get the same sentence on purpose.';
+
+revoke all on function public._gc_link_for_write(text) from public, anon, authenticated;
+grant execute on function public._gc_link_for_write(text) to service_role;
+
+/* Resolve a token to the little the page is allowed to know. */
+create or replace function public.gc_link_open(p_token_hash text)
+returns table (
+  link_id uuid,
+  project_id uuid,
+  job_label text,
+  brand text,
+  state text
+)
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+-- OUT columns project_id / brand / state share names with real columns.
+#variable_conflict use_column
+declare
+  v_link gc_links;
+begin
+  select * into v_link from gc_links where token_hash = p_token_hash;
+  if not found then
+    -- No row, and no hint about why. A stranger learns nothing from the shape
+    -- of the answer, and the one real user is told the same plain sentence
+    -- whatever went wrong.
+    return;
+  end if;
+
+  update gc_links
+     set hit_count = gc_links.hit_count + 1,
+         last_hit_at = now()
+   where id = v_link.id;
+
+  return query
+  select v_link.id,
+         v_link.project_id,
+         coalesce(nullif(btrim(p.name), ''), p.job_code) as job_label,
+         -- THE JOB'S BRAND, NOT THE LINK'S. gc_links.brand is a record of the
+         -- name we used when this link went out; the page has to wear the name
+         -- the office is using with this builder NOW. A foreman who sends a
+         -- link, then realises this builder knows us as Forge and taps the
+         -- pill, would otherwise leave the builder's open page headed "STG
+         -- Windows & Doors" with nothing on either screen saying it is stale —
+         -- and the column comment on projects.gc_brand says the opposite is
+         -- the intent ("a job's brand outlives any one link").
+         coalesce(p.gc_brand, v_link.brand, 'stg') as brand,
+         -- Cast spelled out: RETURN QUERY matches the function's declared
+         -- result type by TYPE, and a bare string literal is `unknown` until
+         -- something resolves it. claim_pipeline_nudges casts its own CASE for
+         -- the same reason.
+         (case
+           when v_link.revoked_at is not null then 'revoked'
+           when v_link.expires_at <= now() then 'expired'
+           else 'live'
+         end)::text as state
+    from projects p
+   where p.id = v_link.project_id;
+end;
+$$;
+
+comment on function public.gc_link_open(text) is
+  'Service role only (the gc-link edge function): turn a token HASH into the job label, the job''s CURRENT brand (projects.gc_brand, not the link''s record of what was sent) and whether the link is live. Counts the read. Returns no row at all for a token nobody minted, so a stranger cannot tell an unknown token from an expired one.';
+
+revoke all on function public.gc_link_open(text) from public, anon, authenticated;
+grant execute on function public.gc_link_open(text) to service_role;
+
+/* The GC answers the six questions. Returns who should be told. */
+create or replace function public.gc_link_answer(
+  p_token_hash text,
+  p_expected_end_date date,
+  p_roof_on_date date,
+  p_framing_checked boolean,
+  p_set_preference text,
+  p_exterior_material text,
+  p_interior_material text,
+  p_contact_name text default null,
+  p_notes text default null
+)
+returns table (project_id uuid, job_label text, profile_ids uuid[])
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+-- OUT column project_id shares its name with a real column on both tables
+-- touched below.
+#variable_conflict use_column
+declare
+  v_link gc_links;
+begin
+  v_link := public._gc_link_for_write(p_token_hash);
+
+  -- The same six checks log_gc_checkin makes, in the same words. The GC reads
+  -- these sentences too, so they say what to do rather than what failed.
+  if p_expected_end_date is null then
+    raise exception 'Please say when you expect the house to be finished.';
+  end if;
+  if p_roof_on_date is null then
+    raise exception 'Please say when the roof goes on.';
+  end if;
+  if p_framing_checked is null then
+    raise exception 'Please say whether the framing has been checked.';
+  end if;
+  if coalesce(p_set_preference, '') not in ('inset', 'outset', 'unknown') then
+    raise exception 'Please say whether you want the windows inset or outset.';
+  end if;
+  if coalesce(btrim(p_exterior_material), '') = '' then
+    raise exception 'Please say what is going on the outside.';
+  end if;
+  if coalesce(btrim(p_interior_material), '') = '' then
+    raise exception 'Please say what is going on the inside.';
+  end if;
+
+  insert into project_gc_checkins (
+    project_id, author_id, contacted_at, contact_name, channel,
+    expected_end_date, roof_on_date, framing_checked, set_preference,
+    exterior_material, interior_material, notes, source
+  )
+  values (
+    v_link.project_id,
+    -- No profile: the person who typed this has no login here, and inventing
+    -- one for them would put a crew member's name on the builder's words.
+    null,
+    now(),
+    nullif(btrim(coalesce(p_contact_name, '')), ''),
+    -- He typed it on the page we sent him, which is neither a call nor an
+    -- email. Recording it as one of those would put a conversation in the
+    -- record that never happened.
+    'link',
+    p_expected_end_date,
+    p_roof_on_date,
+    p_framing_checked,
+    p_set_preference,
+    btrim(p_exterior_material),
+    btrim(p_interior_material),
+    nullif(btrim(coalesce(p_notes, '')), ''),
+    'gc'
+  );
+
+  update gc_links
+     set used_at = coalesce(used_at, now())
+   where id = v_link.id;
+
+  return query
+  select p.id,
+         coalesce(nullif(btrim(p.name), ''), p.job_code),
+         public.pipeline_nudge_audience(p.id)
+    from projects p
+   where p.id = v_link.project_id;
+end;
+$$;
+
+comment on function public.gc_link_answer(text, date, date, boolean, text, text, text, text, text) is
+  'Service role only (the gc-link edge function): file the GC''s own answers as a project_gc_checkins row with source = gc, and return who to push. Rate-limited and state-checked through _gc_link_for_write.';
+
+revoke all on function public.gc_link_answer(text, date, date, boolean, text, text, text, text, text) from public, anon, authenticated;
+grant execute on function public.gc_link_answer(text, date, date, boolean, text, text, text, text, text) to service_role;
+
+/* The GC asks a question. Returns who should be told. */
+create or replace function public.gc_link_say(
+  p_token_hash text,
+  p_body text
+)
+returns table (project_id uuid, job_label text, profile_ids uuid[])
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+-- OUT column project_id shares its name with a real column on both tables
+-- touched below.
+#variable_conflict use_column
+declare
+  v_link gc_links;
+begin
+  v_link := public._gc_link_for_write(p_token_hash);
+
+  if coalesce(btrim(p_body), '') = '' then
+    raise exception 'Please write something before you send it.';
+  end if;
+  if length(btrim(p_body)) > 4000 then
+    raise exception 'That message is too long to send — please keep it under 4000 characters.';
+  end if;
+
+  insert into gc_messages (gc_link_id, project_id, author, author_profile_id, body)
+  values (v_link.id, v_link.project_id, 'gc', null, btrim(p_body));
+
+  update gc_links
+     set used_at = coalesce(used_at, now())
+   where id = v_link.id;
+
+  return query
+  select p.id,
+         coalesce(nullif(btrim(p.name), ''), p.job_code),
+         public.pipeline_nudge_audience(p.id)
+    from projects p
+   where p.id = v_link.project_id;
+end;
+$$;
+
+comment on function public.gc_link_say(text, text) is
+  'Service role only (the gc-link edge function): record a message the GC typed on his page and return who to push. Never writes project_messages — crew chat is a different table for a different audience.';
+
+revoke all on function public.gc_link_say(text, text) from public, anon, authenticated;
+grant execute on function public.gc_link_say(text, text) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- The test-login fence
+-- ---------------------------------------------------------------------------
+-- All four tables this wave adds carry a project_id, which is what makes a
+-- table project-scoped (sandbox_scoped_tables, 20260967000000), so all four are
+-- fenced by this one line at the end of the file. Re-arming is idempotent and
+-- reports what it did; a test login can only ever touch the sandbox job's rows,
+-- and neither the service-role sweep nor the gc-link function is affected,
+-- because the guard is a no-op when there is no JWT.
+select public.attach_sandbox_guards();
+
+
+-- ===========================================================================
+-- 20260982000000_who_did_what.sql (mirrored)
+-- Who did what, wave Y of the transcripts program. install_events gains
+-- credited_to (null = installer_id, the filer): finish_unit and
+-- submit_install_event each gain a WIDER EXACT ARITY carrying p_credited_to
+-- (never a defaulted parameter — PostgREST would call the old form ambiguous),
+-- with the old arity kept as a delegator so a phone behind this migration
+-- finishes units exactly as before. credit_refusal is the one rule — rank 0
+-- may credit self or the unit's assignee, foreman+ any active crew member —
+-- and it is enforced twice, in the RPC and in a table trigger, because a plain
+-- PATCH is a door too. Every per-person rollup switches to
+-- coalesce(credited_to, installer_id): installer_type_stats,
+-- installer_category_stats, recompute_window_type_rollups, pick_golden_install
+-- and open_service_case. Adds ONE table, opening_assignment_events, written by
+-- a trigger on project_openings.assigned_to so no assigning surface can forget,
+-- and finally puts the foreman+ rank INSIDE assign_opening_to_installer (now
+-- carrying p_via) and unassign_opening, where until today it lived only in the
+-- buttons the UI chose to draw. Deploy AFTER 20260980000000 (wave X) and
+-- 20260981000000 (wave H).
+-- ===========================================================================
+
+-- Wave Y — Who did what (transcripts program, grill of 2026-09-03, Q2).
+--
+-- Until now the app answered "who installed this window?" with "whoever
+-- pressed Submit". That is the same person about nine times in ten, and wrong
+-- the tenth: a foreman finishing a unit for an installer whose phone is dead,
+-- a lead filing the last three of the day so the crew can drive home. Every
+-- one of those quietly moved a window onto the filer's record — into his
+-- median, his fail rate, the figures dispatch ranks him on — and off the
+-- person who actually stood on the ladder.
+--
+-- Two facts, kept apart, fix it:
+--
+--   * WHO INSTALLED IT   install_events.credited_to (null = the filer)
+--   * WHO FILED IT       install_events.installer_id, unchanged
+--
+-- The Record reads "Installed by Sam · filed by Jed", and every per-person
+-- rollup in this database reads coalesce(credited_to, installer_id) from here
+-- on. Credit is about the RECORD; it never moves a session. The finisher's
+-- session stays the finisher's, because sessions follow the human (CONTEXT.md,
+-- "Session") and the walk Jed made to that window is Jed's time.
+--
+-- And a second, older silence: assignment. `assigned_to` is a single column
+-- that gets overwritten, so "who was this on before, and who moved it?" had no
+-- answer at all — the previous assignee was simply gone. opening_assignment_events
+-- is that answer, written by a trigger so no writing surface can forget, and
+-- assign_opening_to_installer / unassign_opening finally carry the foreman+
+-- rank that until today lived only in the buttons the UI chose to draw.
+--
+-- Deploy AFTER 20260980000000 (wave X) and 20260981000000 (wave H).
+
+-- ===========================================================================
+-- 1. Y1 — the credited installer
+-- ===========================================================================
+-- Nullable, and null MEANS "the filer installed it". Not a backfill: every row
+-- filed before today was filed by whoever installed it as far as anyone knew,
+-- and writing that guess into a column would turn an assumption into a record.
+
+alter table install_events
+  add column if not exists credited_to uuid references profiles(id) on delete set null;
+
+comment on column install_events.credited_to is
+  'Who actually installed this unit, when that is not the person who filed the event. NULL means installer_id — the filer did the work — and is the ordinary case. Every per-person rollup reads coalesce(credited_to, installer_id); nothing reads this column alone.';
+
+-- The leaderboard and the timecard both ask "everything this person installed",
+-- which is now two columns. One partial index on the rare one keeps that cheap
+-- without paying for an index entry on the millions of rows where it is null.
+create index if not exists install_events_credited_idx
+  on install_events (credited_to, created_at desc)
+  where credited_to is not null;
+
+
+-- ---------------------------------------------------------------------------
+-- 1a. The rule, in one place
+-- ---------------------------------------------------------------------------
+-- Returns NULL when the credit is allowed, and the SENTENCE to refuse with when
+-- it is not — so the RPC and the table trigger below enforce one rule and say
+-- the same words, rather than two copies that drift.
+--
+-- Who may credit whom:
+--   * anybody may credit THEMSELVES (that is just filing your own work)
+--   * a plain installer may additionally credit the person this unit is
+--     ASSIGNED to — the one on-site case that needs no permission: the window
+--     was Sam's, Sam did it, somebody else typed it in
+--   * foreman and above may credit any active crew member
+--
+-- "Any active crew member" rather than "anyone with a shift on this job" on
+-- purpose: a helper who walked over for a four-man lift and never clocked in to
+-- that job still installed the window, and a rule that refuses the honest
+-- answer teaches people to file the dishonest one. The picker on the sheet
+-- offers the job's own crew first; the DATABASE only refuses names that are not
+-- crew at all.
+create or replace function public.credit_refusal(
+  p_opening_id uuid,
+  p_credited_to uuid
+)
+returns text
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_assigned uuid;
+begin
+  -- Nothing claimed, nothing to check.
+  if p_credited_to is null then
+    return null;
+  end if;
+
+  -- No JWT means the service role or a migration, not a phone. The key IS the
+  -- fence there; a rank check would only break the server's own jobs.
+  if v_actor is null then
+    return null;
+  end if;
+
+  if p_credited_to = v_actor then
+    return null;
+  end if;
+
+  if not exists (
+    select 1 from profiles
+     where id = p_credited_to
+       and active
+       and not coalesce(is_partner, false)
+  ) then
+    return 'That person is not on the crew list, so the install cannot be filed under their name.';
+  end if;
+
+  if public.is_foreman_plus(v_actor) then
+    return null;
+  end if;
+
+  select assigned_to into v_assigned from project_openings where id = p_opening_id;
+  if v_assigned is not null and v_assigned = p_credited_to then
+    return null;
+  end if;
+
+  return 'Only a foreman or above can file an install under somebody else''s name. You can record it as yours, or as the person this unit is assigned to.';
+end;
+$$;
+
+comment on function public.credit_refusal(uuid, uuid) is
+  'NULL when the calling user may credit p_credited_to with an install on p_opening_id, otherwise the plain-English sentence to refuse with. Rank 0 may credit self or the unit''s current assignee; foreman+ may credit any active crew member; a partner login is never a candidate. One rule, shared by submit_install_event and the table trigger.';
+
+revoke all on function public.credit_refusal(uuid, uuid) from public, anon;
+grant execute on function public.credit_refusal(uuid, uuid) to authenticated, service_role;
+
+
+-- ---------------------------------------------------------------------------
+-- 1b. submit_install_event — the wider arity
+-- ---------------------------------------------------------------------------
+-- A NEW EXACT ARITY, not a defaulted parameter on the old one. PostgREST picks
+-- an overload by the SET OF ARGUMENT NAMES in the request body and a parameter
+-- carrying a default is still a candidate, so a 17th defaulted parameter
+-- alongside the 16-argument form would make every existing call ambiguous and
+-- fail. Two exact arities never can be (the same reasoning wave E wrote down
+-- for flag_opening, 20260977000000). The old form stays, rebuilt as a
+-- one-line delegator, so there is exactly one body and one set of rules.
+--
+-- Rebuilt from the CURRENT body (20260811000000_opening_phases.sql — the
+-- flashing gate included), never from an older copy.
+create or replace function submit_install_event(
+  p_opening_id uuid,
+  p_installer text,
+  p_minutes int,
+  p_quality_grade int,
+  p_difficulty text,
+  p_went_well text,
+  p_went_poorly text,
+  p_obstacles text,
+  p_tools_helped text,
+  p_time_vs_estimate text,
+  p_safety_notes text,
+  p_do_again text,
+  p_transcript_raw text,
+  p_started_at timestamptz,
+  p_installer_id uuid,
+  p_estimate_minutes int,
+  p_credited_to uuid
+)
+returns install_events
+language plpgsql
+set search_path = public, pg_temp
+as $$
+declare
+  v_opening project_openings;
+  v_event install_events;
+  v_actor uuid := auth.uid();
+  v_profile uuid := coalesce(p_installer_id, auth.uid());
+  v_credited uuid;
+  v_refusal text;
+begin
+  select * into v_opening from project_openings where id = p_opening_id;
+  if v_opening is null then
+    raise exception 'unknown opening %', p_opening_id;
+  end if;
+
+  if _flashing_outstanding(p_opening_id) then
+    raise exception 'this opening needs flashing submitted before the install is filed';
+  end if;
+
+  -- p_installer_id has always been able to name somebody else, and doing so
+  -- has always meant "file it as them". From wave Y that IS a credit, so it
+  -- answers to the credit rule like every other one — otherwise the rule below
+  -- would be one argument away from being no rule at all.
+  v_refusal := public.credit_refusal(p_opening_id, nullif(v_profile, v_actor));
+  if v_refusal is not null then
+    raise exception '%', v_refusal using errcode = '42501';
+  end if;
+
+  v_refusal := public.credit_refusal(p_opening_id, nullif(p_credited_to, v_actor));
+  if v_refusal is not null then
+    raise exception '%', v_refusal using errcode = '42501';
+  end if;
+
+  -- Crediting the filer is what NULL already means. Storing it twice would
+  -- give the same fact two spellings and every reader a choice to get wrong.
+  v_credited := nullif(p_credited_to, v_profile);
+
+  insert into install_events (
+    project_opening_id, window_id, window_type_id, installer, installer_id,
+    credited_to, started_at, minutes, estimate_minutes, quality_grade,
+    difficulty, went_well, went_poorly, obstacles, tools_helped,
+    time_vs_estimate, safety_notes, do_again, transcript_raw
+  ) values (
+    v_opening.id, v_opening.assigned_window_id, v_opening.window_type_id,
+    p_installer, v_profile, v_credited, p_started_at, p_minutes,
+    p_estimate_minutes, p_quality_grade, p_difficulty, p_went_well, p_went_poorly,
+    p_obstacles, p_tools_helped, p_time_vs_estimate, p_safety_notes, p_do_again,
+    p_transcript_raw
+  )
+  returning * into v_event;
+
+  update project_openings
+  set status = 'installed', confirmed = true, work_ended_at = now()
+  where id = v_opening.id;
+
+  if v_opening.assigned_window_id is not null then
+    perform install_window(v_opening.assigned_window_id, p_installer);
+  end if;
+
+  -- Task-time follows the FILER, not the credited person: whoever is standing
+  -- here is the one who is now between windows. Sessions follow the human.
+  if v_profile is not null then
+    perform close_open_task_sessions(v_profile);
+    insert into task_sessions (profile_id, opening_id, project_id, state)
+    values (v_profile, null, v_opening.project_id, 'off_task');
+  end if;
+
+  return v_event;
+end;
+$$;
+
+-- The old sixteen-argument form, kept for every caller that has no credit to
+-- name (which is most of them, most of the time) and rebuilt on top of the new
+-- one so the rules live in exactly one body.
+create or replace function submit_install_event(
+  p_opening_id uuid,
+  p_installer text default null,
+  p_minutes int default null,
+  p_quality_grade int default null,
+  p_difficulty text default null,
+  p_went_well text default null,
+  p_went_poorly text default null,
+  p_obstacles text default null,
+  p_tools_helped text default null,
+  p_time_vs_estimate text default null,
+  p_safety_notes text default null,
+  p_do_again text default null,
+  p_transcript_raw text default null,
+  p_started_at timestamptz default null,
+  p_installer_id uuid default null,
+  p_estimate_minutes int default null
+)
+returns install_events
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  return submit_install_event(
+    p_opening_id, p_installer, p_minutes, p_quality_grade, p_difficulty,
+    p_went_well, p_went_poorly, p_obstacles, p_tools_helped,
+    p_time_vs_estimate, p_safety_notes, p_do_again, p_transcript_raw,
+    p_started_at, p_installer_id, p_estimate_minutes, null);
+end;
+$$;
+
+revoke all on function submit_install_event(
+  uuid, text, int, int, text, text, text, text, text, text, text, text, text,
+  timestamptz, uuid, int, uuid) from public, anon;
+grant execute on function submit_install_event(
+  uuid, text, int, int, text, text, text, text, text, text, text, text, text,
+  timestamptz, uuid, int, uuid) to authenticated, service_role;
+
+
+-- ---------------------------------------------------------------------------
+-- 1c. finish_unit — the wider arity
+-- ---------------------------------------------------------------------------
+-- Same two-exact-arities shape. Rebuilt IN FULL from the current body
+-- (20260964000000_finish_unit_own_sessions.sql), including the corrected
+-- `project_opening_id` cutoff — the 2026-09-02 incident's fix, which
+-- scripts/migration_lint.py now guards. Nothing about the minutes maths, the
+-- session close or the chain moves; the only new line is the credit riding
+-- through to submit_install_event.
+create or replace function finish_unit(
+  p_opening_id uuid,
+  p_next_opening_id uuid,
+  p_installer text,
+  p_quality_grade int,
+  p_difficulty text,
+  p_went_well text,
+  p_went_poorly text,
+  p_obstacles text,
+  p_tools_helped text,
+  p_time_vs_estimate text,
+  p_safety_notes text,
+  p_do_again text,
+  p_transcript_raw text,
+  p_installer_id uuid,
+  p_estimate_minutes int,
+  p_credited_to uuid
+)
+returns install_events
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_minutes int;
+  v_started timestamptz;
+  v_event install_events;
+  v_tiers int;
+begin
+  -- Close the caller's open session on this unit first so it counts. THE
+  -- CALLER'S — crediting somebody else does not reach into their clock, and a
+  -- finish filed for Sam still ends the session of whoever is standing here.
+  update unit_sessions
+  set ended_at = now(), end_reason = 'finish'
+  where profile_id = v_uid and ended_at is null and opening_id = p_opening_id;
+
+  -- Session-derived figures for THIS round: sessions since the last
+  -- non-voided event ON THIS UNIT (all of them for a first install). The
+  -- column is `project_opening_id`; a bare `opening_id` here resolves to the
+  -- outer unit_sessions row instead and picks the newest install on the whole
+  -- database (2026-09-02).
+  select coalesce(sum(least(480,
+           greatest(0, floor(extract(epoch from (ended_at - started_at)) / 60)))), 0)::int,
+         min(started_at)
+  into v_minutes, v_started
+  from unit_sessions
+  where opening_id = p_opening_id and ended_at is not null
+    and started_at > coalesce(
+      (select max(created_at) from install_events
+       where project_opening_id = p_opening_id and voided_at is null),
+      '-infinity'::timestamptz);
+
+  v_event := submit_install_event(
+    p_opening_id, p_installer, nullif(v_minutes, 0), p_quality_grade,
+    p_difficulty, p_went_well, p_went_poorly, p_obstacles, p_tools_helped,
+    p_time_vs_estimate, p_safety_notes, p_do_again, p_transcript_raw,
+    v_started, p_installer_id, p_estimate_minutes, p_credited_to);
+
+  -- Finishing resolves the unit's open redo, if any.
+  update unit_redos
+  set resolved_at = now()
+  where opening_id = p_opening_id and resolved_at is null;
+
+  -- The CHAIN — suppressed on multi-tier units (signature tiers > 1) and
+  -- never allowed to sink the submit: a refused start (flashing owed on
+  -- the next unit) leaves the finish standing.
+  select coalesce(jsonb_array_length(signature -> 'tiers'), 1)
+  into v_tiers from project_openings where id = p_opening_id;
+  if p_next_opening_id is not null and coalesce(v_tiers, 1) <= 1 then
+    begin
+      perform start_unit_session(p_next_opening_id, 'install');
+    exception when others then
+      null; -- next starts by hand
+    end;
+  end if;
+
+  return v_event;
+end;
+$$;
+
+-- The old fifteen-argument form, delegating. A phone that is behind this
+-- migration keeps finishing units exactly as it always has.
+create or replace function finish_unit(
+  p_opening_id uuid,
+  p_next_opening_id uuid default null,
+  p_installer text default null,
+  p_quality_grade int default null,
+  p_difficulty text default null,
+  p_went_well text default null,
+  p_went_poorly text default null,
+  p_obstacles text default null,
+  p_tools_helped text default null,
+  p_time_vs_estimate text default null,
+  p_safety_notes text default null,
+  p_do_again text default null,
+  p_transcript_raw text default null,
+  p_installer_id uuid default null,
+  p_estimate_minutes int default null
+)
+returns install_events
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  return finish_unit(
+    p_opening_id, p_next_opening_id, p_installer, p_quality_grade,
+    p_difficulty, p_went_well, p_went_poorly, p_obstacles, p_tools_helped,
+    p_time_vs_estimate, p_safety_notes, p_do_again, p_transcript_raw,
+    p_installer_id, p_estimate_minutes, null);
+end;
+$$;
+
+revoke all on function finish_unit(
+  uuid, uuid, text, int, text, text, text, text, text, text, text, text, text,
+  uuid, int, uuid) from public, anon;
+grant execute on function finish_unit(
+  uuid, uuid, text, int, text, text, text, text, text, text, text, text, text,
+  uuid, int, uuid) to authenticated, service_role;
+
+
+-- ---------------------------------------------------------------------------
+-- 1d. The same rule at the table, because the RPC is not the only door
+-- ---------------------------------------------------------------------------
+-- install_events' policy is `for all to authenticated using (not
+-- is_partner_user() and (true))` (20260950000000), so a plain PATCH can set
+-- credited_to on any row. Wave E made the same discovery about flag_kind and
+-- answered it the same way: put the rule on the table too.
+--
+-- TWO questions have to be asked here, not one. credit_refusal answers "may
+-- this person be credited?" — but on a PATCH of somebody ELSE'S row that is
+-- the wrong question, and asking only it leaves three doors wide open:
+--
+--   * Sam PATCHes {"credited_to": "<sam>"} onto Jed's install. Crediting
+--     yourself is always allowed, so the value passes — and Jed's window
+--     lands on Sam's median, Sam's fail rate, Sam's leaderboard row.
+--   * Anybody PATCHes {"credited_to": null} onto a credited install and the
+--     credit a foreman set is silently gone, handing the work back to
+--     whoever typed it in.
+--   * Anybody PATCHes {"installer_id": "<someone>"}, which the RPC has
+--     guarded since this migration but the table never looked at.
+--
+-- So the row's AUTHORITY is checked first — only the person who filed an
+-- install, or a foreman, may change who it is filed under — and only then the
+-- value. Every ordinary update (a void, a memo confirm, an unsubmit) leaves
+-- both columns alone and returns before either question is asked.
+--
+-- It also normalises credit-to-the-filer down to NULL from every door, so
+-- "null means the filer" can never be broken by a caller that spells it out.
+create or replace function public.guard_install_credit()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_refusal text;
+begin
+  if new.credited_to is not null and new.credited_to = new.installer_id then
+    new.credited_to := null;
+  end if;
+
+  -- No JWT is the service role or a migration, not a phone — the same
+  -- exemption credit_refusal makes, for the same reason: the key is the fence
+  -- there, and a rank check would only break the server's own jobs.
+  if v_actor is null then
+    return new;
+  end if;
+
+  if tg_op = 'UPDATE' then
+    -- Nothing about who did this is moving: every void, restore, unsubmit and
+    -- memo confirm in the app takes this door and is none of our business.
+    if new.credited_to is not distinct from old.credited_to
+       and new.installer_id is not distinct from old.installer_id then
+      return new;
+    end if;
+
+    -- WHOSE ROW IS THIS. Correcting your own filing is ordinary bookkeeping;
+    -- reaching into somebody else's is the theft this guard exists for.
+    if v_actor is distinct from old.installer_id
+       and not public.is_foreman_plus(v_actor) then
+      raise exception 'Only the person who filed this install, or a foreman, can change who it is filed under.'
+        using errcode = '42501';
+    end if;
+
+    -- WHAT IT IS BEING CHANGED TO. Only the columns that actually moved, so a
+    -- foreman clearing a credit on a round whose filer has since left the crew
+    -- is not refused over a name nobody is touching.
+    if new.installer_id is distinct from old.installer_id then
+      v_refusal := public.credit_refusal(new.project_opening_id, nullif(new.installer_id, v_actor));
+      if v_refusal is not null then
+        raise exception '%', v_refusal using errcode = '42501';
+      end if;
+    end if;
+    if new.credited_to is distinct from old.credited_to then
+      v_refusal := public.credit_refusal(new.project_opening_id, nullif(new.credited_to, v_actor));
+      if v_refusal is not null then
+        raise exception '%', v_refusal using errcode = '42501';
+      end if;
+    end if;
+    return new;
+  end if;
+
+  -- INSERT. Filing under somebody else's name through installer_id is the same
+  -- claim as crediting them, so it answers to the same rule — which is exactly
+  -- what submit_install_event says about its own p_installer_id. A null
+  -- installer_id (the oldest rows' shape) claims nothing and passes.
+  v_refusal := public.credit_refusal(new.project_opening_id, nullif(new.installer_id, v_actor));
+  if v_refusal is not null then
+    raise exception '%', v_refusal using errcode = '42501';
+  end if;
+  v_refusal := public.credit_refusal(new.project_opening_id, nullif(new.credited_to, v_actor));
+  if v_refusal is not null then
+    raise exception '%', v_refusal using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+comment on function public.guard_install_credit() is
+  'Guards who an install is filed under, on every write to install_events. On UPDATE: only the filer or a foreman may change installer_id or credited_to at all, and the new value must pass credit_refusal; an update touching neither column returns untouched. On INSERT: both columns answer to credit_refusal. Also folds "credited to the filer" down to NULL. The RPC says it first and better; this is the door a plain PATCH would otherwise walk through.';
+
+drop trigger if exists install_events_credit_guard on install_events;
+create trigger install_events_credit_guard
+  before insert or update on install_events
+  for each row execute function public.guard_install_credit();
+
+
+-- ===========================================================================
+-- 2. Y1 — every per-person reader switches to coalesce(credited_to, installer_id)
+-- ===========================================================================
+-- These are the figures a person is measured by, and the whole point of the
+-- column is that they follow the work rather than the typing. Rebuilt from
+-- their CURRENT definitions (20260730120000_test_accounts_excluded_from_learning.sql)
+-- with one substitution each; the column lists are untouched, so
+-- `create or replace view` is legal.
+
+create or replace view installer_type_stats as
+select
+  coalesce(e.credited_to, e.installer_id) as installer_id,
+  e.window_type_id,
+  count(*) filter (where e.minutes is not null) as n,
+  percentile_cont(0.5) within group (order by e.minutes)
+    filter (where e.minutes is not null) as median_minutes,
+  avg(e.quality_grade) filter (where e.quality_grade is not null) as avg_grade,
+  (count(distinct e.id) filter (where e.quality_grade <= 2 or q.status = 'callback'))::numeric
+    / nullif(count(*), 0) as fail_rate,
+  max(e.created_at) as last_at
+from install_events e
+left join qc_checks q on q.project_opening_id = e.project_opening_id
+where coalesce(e.credited_to, e.installer_id) is not null and e.window_type_id is not null
+  and not public.is_test_profile(coalesce(e.credited_to, e.installer_id))
+group by coalesce(e.credited_to, e.installer_id), e.window_type_id;
+
+comment on view installer_type_stats is
+  'Per-person proven performance per window type, which dispatch ranks on. The person is coalesce(credited_to, installer_id) — who installed it, not who typed it in (wave Y).';
+
+create or replace view installer_category_stats as
+select
+  coalesce(e.credited_to, e.installer_id) as installer_id,
+  t.category,
+  count(*) filter (where e.minutes is not null) as n,
+  percentile_cont(0.5) within group (order by e.minutes)
+    filter (where e.minutes is not null) as median_minutes,
+  avg(e.quality_grade) filter (where e.quality_grade is not null) as avg_grade
+from install_events e
+join window_types t on t.id = e.window_type_id
+where coalesce(e.credited_to, e.installer_id) is not null and t.category is not null
+  and not public.is_test_profile(coalesce(e.credited_to, e.installer_id))
+group by coalesce(e.credited_to, e.installer_id), t.category;
+
+
+-- The type rollups' test-account exclusion asks "was this a real person's
+-- install?", so it has to ask about the person who INSTALLED it. A foreman
+-- filing on behalf of the QA login is still a QA install and must still be
+-- kept out of the numbers the crew is measured against.
+create or replace function recompute_window_type_rollups(p_type_id uuid)
+returns void
+language plpgsql
+as $$
+declare
+  v_n int; v_total int; v_median numeric; v_p90 numeric; v_avg_grade numeric;
+  v_problem int; v_fail numeric; v_last timestamptz;
+  v_time_score numeric; v_grade_score numeric; v_diff numeric;
+  v_min_med numeric; v_max_med numeric;
+begin
+  select
+    count(*) filter (where minutes is not null),
+    count(*),
+    percentile_cont(0.5) within group (order by minutes) filter (where minutes is not null),
+    percentile_cont(0.9) within group (order by minutes) filter (where minutes is not null),
+    avg(quality_grade) filter (where quality_grade is not null),
+    max(created_at)
+  into v_n, v_total, v_median, v_p90, v_avg_grade, v_last
+  from install_events
+  where window_type_id = p_type_id
+    and not public.is_test_profile(coalesce(credited_to, installer_id));
+
+  -- Problem = low grade OR a QC callback on that opening.
+  select count(distinct e.id)
+  into v_problem
+  from install_events e
+  left join qc_checks q on q.project_opening_id = e.project_opening_id
+  where e.window_type_id = p_type_id
+    and not public.is_test_profile(coalesce(e.credited_to, e.installer_id))
+    and (e.quality_grade <= 2 or q.status = 'callback');
+
+  v_fail := case when coalesce(v_total,0) > 0 then v_problem::numeric / v_total else null end;
+
+  select min(median_minutes), max(median_minutes) into v_min_med, v_max_med
+  from window_types where median_minutes is not null;
+
+  if v_median is not null and v_max_med is not null and v_max_med > coalesce(v_min_med, 0) then
+    v_time_score := (v_median - v_min_med) / (v_max_med - v_min_med);
+  else
+    v_time_score := 0.5;
+  end if;
+  v_grade_score := coalesce((5 - v_avg_grade) / 4.0, 0.3);
+  v_diff := 1 + 4 * least(1, greatest(0,
+    0.5 * v_time_score + 0.3 * coalesce(v_fail, 0) + 0.2 * v_grade_score));
+
+  update window_types
+  set n_installs = coalesce(v_n, 0), median_minutes = v_median, p90_minutes = v_p90,
+      avg_grade = round(v_avg_grade, 2),
+      fail_rate = round(coalesce(v_fail, 0) * 100, 1),
+      learned_difficulty = case when v_total >= 2 then round(v_diff, 2) else learned_difficulty end,
+      last_install_at = v_last
+  where id = p_type_id;
+end;
+$$;
+
+
+-- The golden install is the worked example a real installer is shown. Same
+-- reasoning: a test account's install must not become the how-to, whoever
+-- filed it.
+create or replace function pick_golden_install(p_type_id uuid)
+returns void
+language plpgsql
+as $$
+declare v_locked boolean; v_golden uuid;
+begin
+  select golden_locked into v_locked from window_types where id = p_type_id;
+  if v_locked then return; end if;
+
+  select e.id into v_golden
+  from install_events e
+  where e.window_type_id = p_type_id
+    and not public.is_test_profile(coalesce(e.credited_to, e.installer_id))
+  order by
+    coalesce(e.quality_grade, 0) desc,
+    (e.transcript_raw is not null) desc,
+    (exists (select 1 from attachments a
+             where a.install_event_id = e.id and a.kind = 'photo')) desc,
+    e.created_at desc
+  limit 1;
+
+  update window_types set golden_install_event_id = v_golden where id = p_type_id;
+end;
+$$;
+
+
+-- A service case names the installer whose work is being called back. That is
+-- a per-person fact — the Service page groups by it — so it follows the credit
+-- too. Rebuilt in full from 20260718080030_chain_correctness_fixes.sql.
+create or replace function open_service_case(
+  p_window_id uuid,
+  p_reason text,
+  p_fail_point text default null,
+  p_description text default null
+)
+returns service_cases
+language plpgsql
+security definer
+as $$
+declare
+  v_role text;
+  v_window windows;
+  v_event install_events;
+  v_case service_cases;
+begin
+  select role into v_role from profiles where id = auth.uid();
+  if v_role is null or v_role = 'installer' then
+    raise exception 'only a foreman-level user or above can open a service case';
+  end if;
+
+  select * into v_window from windows where id = p_window_id;
+  if v_window is null then
+    raise exception 'unknown window %', p_window_id;
+  end if;
+
+  -- Idempotent: one open case per unit. Return the existing open case if any.
+  select * into v_case
+  from service_cases
+  where window_id = p_window_id and status = 'open'
+  order by created_at desc
+  limit 1;
+  if v_case.id is not null then
+    return v_case;
+  end if;
+
+  -- Latest non-voided install event for this unit gives us the opening,
+  -- installer, and the exact event the failure traces back to.
+  select * into v_event
+  from install_events
+  where window_id = p_window_id and voided_at is null
+  order by created_at desc
+  limit 1;
+
+  insert into service_cases (
+    window_id, install_event_id, project_id, opening_id, window_type_id,
+    installer_id, status, reason, fail_point, description, reported_by
+  ) values (
+    p_window_id,
+    v_event.id,
+    v_window.project_id,
+    v_event.project_opening_id,
+    v_window.window_type_id,
+    coalesce(v_event.credited_to, v_event.installer_id),
+    'open',
+    p_reason,
+    p_fail_point,
+    p_description,
+    auth.uid()
+  )
+  returning * into v_case;
+
+  return v_case;
+end;
+$$;
+
+
+-- ===========================================================================
+-- 3. Y5 — assignment history
+-- ===========================================================================
+-- `assigned_to` is one column that gets overwritten, so a reassignment erased
+-- the fact that anybody else ever had the unit. Every "why was this sitting
+-- unstarted for two days" conversation ran into that wall. One row per change,
+-- written by a trigger rather than by each of the four surfaces that assign
+-- (Dispatch, the flat map, Maps Interactive, auto-distribute) — a surface can
+-- forget; a trigger on the column cannot.
+
+create table if not exists opening_assignment_events (
+  id uuid primary key default gen_random_uuid(),
+  opening_id uuid not null references project_openings(id) on delete cascade,
+  project_id uuid not null references projects(id) on delete cascade,
+  from_profile uuid references profiles(id) on delete set null,
+  to_profile uuid references profiles(id) on delete set null,
+  changed_by uuid references profiles(id) on delete set null,
+  changed_at timestamptz not null default now(),
+  via text not null check (via in ('dispatch', 'map', 'auto', 'unassign'))
+);
+
+create index if not exists opening_assignment_events_opening_idx
+  on opening_assignment_events (opening_id, changed_at desc);
+create index if not exists opening_assignment_events_project_idx
+  on opening_assignment_events (project_id, changed_at desc);
+
+comment on table opening_assignment_events is
+  'One row per time a unit changed hands: who it was on, who it went to, who moved it, and from which surface. Written only by the trigger on project_openings.assigned_to, so no assigning screen can forget to log. Read by foreman+; a partner login never.';
+
+alter table opening_assignment_events enable row level security;
+
+-- Revoke BEFORE granting: this project's default privileges hand every new
+-- table in `public` the full set to `authenticated`, and RLS alone is not the
+-- wall. No insert/update/delete grant at all — the trigger is the only writer,
+-- and it is SECURITY DEFINER for exactly that reason.
+revoke all on opening_assignment_events from anon, authenticated;
+grant select on opening_assignment_events to authenticated;
+grant all on opening_assignment_events to service_role;
+
+-- Foreman+ read: who is on what, and who moved it, is a supervision fact.
+-- An installer sees their own list; they do not need the ledger of everyone
+-- else's. Never a partner login — the mechanical wall guard every crew table
+-- carries since 20260950000000.
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where tablename = 'opening_assignment_events' and policyname = 'foreman read'
+  ) then
+    create policy "foreman read" on opening_assignment_events
+      for select to authenticated
+      using (not public.is_partner_user() and public.my_role_rank() >= 1);
+  end if;
+end;
+$$;
+
+
+-- The trigger. AFTER UPDATE OF assigned_to only: an opening is INSERTED
+-- unassigned by every path that makes one (extraction, Studio, wave E's
+-- add_field_unit), so there is no birth event to record, and a log row for
+-- every one of the thousands of openings a planset creates would bury the
+-- handful that are real handovers.
+--
+-- `via` cannot be worked out from the row — the database has no idea which
+-- screen the tap came from — so assign_opening_to_installer states it in a
+-- transaction-local setting below. Anything that writes assigned_to WITHOUT
+-- going through the RPC (a plain PATCH) leaves it unset and reads as
+-- 'dispatch', which is honest: somebody handed the unit out.
+create or replace function public.trg_opening_assignment_event()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_via text;
+begin
+  if new.assigned_to is not distinct from old.assigned_to then
+    return new;
+  end if;
+
+  if new.assigned_to is null then
+    v_via := 'unassign';
+  else
+    v_via := coalesce(nullif(current_setting('app.assignment_via', true), ''), 'dispatch');
+    -- A stray value must never be able to refuse an assignment: the check
+    -- constraint is about the vocabulary, not about the crew's afternoon.
+    if v_via not in ('dispatch', 'map', 'auto') then
+      v_via := 'dispatch';
+    end if;
+  end if;
+
+  insert into opening_assignment_events (
+    opening_id, project_id, from_profile, to_profile, changed_by, via
+  ) values (
+    new.id, new.project_id, old.assigned_to, new.assigned_to, auth.uid(), v_via
+  );
+
+  return new;
+end;
+$$;
+
+drop trigger if exists project_openings_assignment_log on project_openings;
+create trigger project_openings_assignment_log
+  after update of assigned_to on project_openings
+  for each row execute function public.trg_opening_assignment_event();
+
+
+-- ---------------------------------------------------------------------------
+-- 3a. The rank the buttons were carrying on their own
+-- ---------------------------------------------------------------------------
+-- assign_opening_to_installer and unassign_opening (20260715240000) have never
+-- had a rank check in SQL. The gate was `isForemanPlus` in the UI, which is a
+-- hidden button, not a lock: any signed-in crew phone could hand work to
+-- anybody. Every caller in the app is already behind that same UI gate
+-- (DispatchBoard is only mounted for isLead, ProjectMap's controls are isLead,
+-- MapsInteractive and JobModelViewer pass onAssign only for foreman+), so
+-- nothing legitimate loses a door today — the check simply moves to where it
+-- cannot be walked around.
+--
+-- assign_opening_to_installer is DROPPED and recreated rather than overloaded:
+-- it gains a trailing p_via, and a defaulted parameter alongside the old
+-- four-argument form would make every existing call ambiguous through
+-- PostgREST (see 1b). With exactly ONE function, an old four-name call resolves
+-- to it and takes the default.
+drop function if exists assign_opening_to_installer(uuid, uuid, uuid, int);
+
+create or replace function assign_opening_to_installer(
+  p_opening_id uuid,
+  p_profile_id uuid,
+  p_actor_id uuid default null,
+  p_sequence int default null,
+  p_via text default 'dispatch'
+)
+returns project_openings
+language plpgsql
+set search_path = public, pg_temp
+as $$
+declare
+  v_opening project_openings;
+begin
+  -- No JWT is the service role or a migration, not a phone; the key is the
+  -- fence there.
+  if auth.uid() is not null and not public.is_foreman_plus(auth.uid()) then
+    raise exception 'Only a foreman or above can hand out work.'
+      using errcode = '42501';
+  end if;
+
+  -- Which screen this came from, for the history row the trigger writes.
+  -- Transaction-local, so it can never leak into the next request.
+  perform set_config('app.assignment_via', coalesce(p_via, 'dispatch'), true);
+
+  update project_openings
+  set assigned_to = p_profile_id,
+      assigned_by = p_actor_id,
+      assigned_at = now(),
+      sequence = coalesce(p_sequence, sequence)
+  where id = p_opening_id
+  returning * into v_opening;
+
+  if v_opening is null then
+    raise exception 'That window or door is not on this job.' using errcode = 'P0002';
+  end if;
+  return v_opening;
+end;
+$$;
+
+revoke all on function assign_opening_to_installer(uuid, uuid, uuid, int, text)
+  from public, anon;
+grant execute on function assign_opening_to_installer(uuid, uuid, uuid, int, text)
+  to authenticated, service_role;
+
+create or replace function unassign_opening(p_opening_id uuid)
+returns project_openings
+language plpgsql
+set search_path = public, pg_temp
+as $$
+declare
+  v_opening project_openings;
+begin
+  if auth.uid() is not null and not public.is_foreman_plus(auth.uid()) then
+    raise exception 'Only a foreman or above can take work off somebody''s list.'
+      using errcode = '42501';
+  end if;
+
+  update project_openings
+  set assigned_to = null, assigned_by = null, assigned_at = null
+  where id = p_opening_id
+  returning * into v_opening;
+
+  if v_opening is null then
+    raise exception 'That window or door is not on this job.' using errcode = 'P0002';
+  end if;
+  return v_opening;
+end;
+$$;
+
+revoke all on function unassign_opening(uuid) from public, anon;
+grant execute on function unassign_opening(uuid) to authenticated, service_role;
+
+
+-- ===========================================================================
+-- 4. Re-arm the sandbox fence
+-- ===========================================================================
+-- opening_assignment_events carries a project_id, which is what makes a table
+-- project-scoped (sandbox_scoped_tables, 20260967000000), so the test-login
+-- fence belongs on it. Idempotent: a table already correctly guarded is left
+-- alone. scripts/test_sandbox_guard.py fails CI for exactly this omission.
+select public.attach_sandbox_guards();
 
 
 -- ===========================================================================

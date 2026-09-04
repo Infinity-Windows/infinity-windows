@@ -876,6 +876,8 @@ export function ProjectMap({ embedded = false }: { embedded?: boolean }) {
           step.openingId,
           args.installerId,
           step.sequence,
+          // Picked off the plan, so the history says "map" (wave Y).
+          "map",
         );
       }
       return plan.length;

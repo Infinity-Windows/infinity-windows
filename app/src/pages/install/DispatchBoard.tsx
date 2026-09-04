@@ -14,6 +14,7 @@ import {
   unassignOpening,
 } from "../../lib/install/api";
 import { formatApiError } from "../../lib/install/errors";
+import { AssignmentHistoryCard } from "../../components/install/AssignmentHistoryCard";
 import { openingReadiness } from "../../lib/install/fit";
 import { isInstallInProgress } from "../../lib/install/installTimer";
 import {
@@ -206,7 +207,10 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
       };
       const suggestions = autoDistribute(dispatchOpenings, dispatchCrew, ctx);
       for (const s of suggestions) {
-        await assignOpeningToInstaller(s.openingId, s.profileId);
+        // "auto" in the assignment history (wave Y): a unit the app handed
+        // out reads differently from one a person chose to hand out, and the
+        // conversation about why somebody has this window starts there.
+        await assignOpeningToInstaller(s.openingId, s.profileId, null, "auto");
       }
       return suggestions.length;
     },
@@ -513,6 +517,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
       <p className="wh-row-sub">
         {activeCrew.length === 0 ? "Add crew on the Crew screen to assign work." : ""}
       </p>
+      <AssignmentHistoryCard projectId={projectId} />
     </div>
   );
 }

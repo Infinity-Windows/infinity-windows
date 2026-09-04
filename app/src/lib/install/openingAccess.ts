@@ -44,6 +44,13 @@ const CREW_SENTENCES = [
   /^That window or door /,
   /^There is already a #.+ on this job, /,
   /^Use Remove or Put back /,
+  // Wave Y: filing an install under a name the crew list does not have. Not a
+  // rank refusal — it is "that person is not one of ours" — but it is aimed at
+  // a person on a phone in exactly the same way, so it travels the same road.
+  /^That person is not on the crew list/,
+  // Wave Y again, from the table guard: reaching into somebody else's filed
+  // install. Names two people who MAY, so it does not start "Only a foreman".
+  /^Only the person who filed this install, or a foreman, /,
 ];
 
 /**

@@ -44,6 +44,14 @@ code himself from his own phone, through his own messaging app, via the Web Shar
 sheet (with an `sms:` fallback). That path has no rate limit and no silent
 failure mode.
 
+**Since wave H (2026-09-04) the app CAN send one kind of email**, and it changes
+nothing above. `supabase/functions/send-email` mails a general contractor his
+GC link over Resend's HTTP API — one recipient, stored on the link, with the
+body written inside the function. It is not Supabase Auth's mailer, so it has no
+bearing on invites, confirmations or password resets, and it is not a relay:
+nothing else in this app may use it to send anything to anybody. A crew invite
+is still a code the owner texts.
+
 `mailer_autoconfirm: false` is why redemption creates the user with
 `email_confirm: true`: a confirmation email nobody can receive is a locked-out
 crew member. The invite is the verification — a supervisor named this person

@@ -15,6 +15,8 @@ const MIGRATION =
   "../../../../supabase/migrations/20260730180000_foreman_only_opening_create_delete.sql";
 const SOFT_DELETE =
   "../../../../supabase/migrations/20260730210000_soft_delete_openings.sql";
+const WHO_DID_WHAT =
+  "../../../../supabase/migrations/20260982000000_who_did_what.sql";
 
 /** A shape PostgREST returns when a guard raises. */
 const refusal = (message: string) => ({
@@ -76,6 +78,39 @@ describe("the app and the database say the same thing", () => {
       // `%` is a plpgsql placeholder; the app matches the shape around it.
       const rendered = sentence.replace("%", "12");
       expect(foremanOnlyRefusal({ message: rendered, code: "42501" })).toBe(rendered);
+    }
+  });
+
+  // Wave Y put a rank on assigning, and a guard on who an install is filed
+  // under, in a second migration — so the same decay applies to it.
+  const whoDidWhat = readFileSync(new URL(WHO_DID_WHAT, import.meta.url), "utf8");
+
+  it("guards WHO MAY CHANGE a filed install, not only who may be credited", () => {
+    // The rule that was missing: credit_refusal answers "may this person be
+    // credited?", which on a PATCH of somebody else's row is the wrong
+    // question — crediting yourself is always allowed, so Sam could move Jed's
+    // install onto his own record with one PATCH, or clear a credit a foreman
+    // set. The table has to ask whose row it is first.
+    expect(whoDidWhat).toContain(
+      "raise exception 'Only the person who filed this install, or a foreman, can change who it is filed under.'",
+    );
+    // And an update that changes neither column still has to sail through, or
+    // every void and memo confirm in the app starts failing.
+    expect(whoDidWhat).toContain(
+      "if new.credited_to is not distinct from old.credited_to\n       and new.installer_id is not distinct from old.installer_id then",
+    );
+  });
+
+  it("recognises every sentence wave Y raises at a person", () => {
+    // A sentence written for somebody holding a phone starts with a capital;
+    // the machine-facing ones this file has always raised ("unknown opening
+    // %") do not, and are not this detector's business.
+    const raised = [...whoDidWhat.matchAll(/raise exception '((?:[^']|'')+)'/g)]
+      .map((m) => m[1].replace(/''/g, "'"))
+      .filter((s) => /^[A-Z]/.test(s));
+    expect(raised.length).toBeGreaterThanOrEqual(5);
+    for (const sentence of raised) {
+      expect(foremanOnlyRefusal({ message: sentence, code: "42501" })).toBe(sentence);
     }
   });
 });

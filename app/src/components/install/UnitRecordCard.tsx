@@ -7,6 +7,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { listProfiles } from "../../lib/install/api";
+import {
+  assignmentTimelineRows,
+  listOpeningAssignmentEvents,
+} from "../../lib/install/assignmentHistory";
+import { creditLine } from "../../lib/install/credit";
+import { useT, type TFn } from "../../lib/i18n";
 import type { OpeningPhase } from "../../lib/install/phases";
 import {
   buildTimeline,
@@ -36,6 +42,7 @@ export function UnitRecordCard({
   openingId: string;
   flashing: OpeningPhase | null;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
 
   // Cheap always-on probe: does this window have a story yet? Rounds exist
@@ -53,6 +60,14 @@ export function UnitRecordCard({
   const redos = useQuery({
     queryKey: ["openingRedos", openingId],
     queryFn: () => listOpeningRedos(openingId),
+    enabled: open,
+  });
+  // Wave Y: who this unit has been handed to. Foreman+ in RLS, so an
+  // installer's own copy comes back empty rather than refused, and the
+  // timeline simply has fewer lines in it.
+  const assignments = useQuery({
+    queryKey: ["openingAssignments", openingId],
+    queryFn: () => listOpeningAssignmentEvents(openingId),
     enabled: open,
   });
   const profiles = useQuery({
@@ -79,7 +94,13 @@ export function UnitRecordCard({
   const nameOf = (id: string) =>
     (profiles.data ?? []).find((p) => p.id === id)?.display_name;
   const rounds = groupRounds(events.data ?? [], media.data ?? []);
-  const timeline = buildTimeline(sessions.data ?? [], redos.data ?? [], nameOf);
+  const timeline = buildTimeline(
+    sessions.data ?? [],
+    redos.data ?? [],
+    nameOf,
+    Date.now(),
+    assignmentTimelineRows(assignments.data ?? [], nameOf, t),
+  );
 
   return (
     <div className="detail-card">
@@ -95,7 +116,13 @@ export function UnitRecordCard({
           </p>
 
           {rounds.map((r) => (
-            <RoundBlock key={r.event.id} round={r} many={rounds.length > 1} />
+            <RoundBlock
+              key={r.event.id}
+              round={r}
+              many={rounds.length > 1}
+              nameOf={nameOf}
+              t={t}
+            />
           ))}
 
           {flashing?.status === "submitted" && (
@@ -147,8 +174,21 @@ export function UnitRecordCard({
   );
 }
 
-function RoundBlock({ round, many }: { round: RecordRound; many: boolean }) {
+function RoundBlock({
+  round,
+  many,
+  nameOf,
+  t,
+}: {
+  round: RecordRound;
+  many: boolean;
+  nameOf: (profileId: string) => string | null | undefined;
+  t: TFn;
+}) {
   const e = round.event;
+  // "Installed by Sam · filed by Jed" — or just the name, when the person who
+  // filed it is the person who did it, which is nearly always (wave Y).
+  const who = creditLine(e, nameOf, t);
   const topics = filledTopics(e);
   const photos = round.media.filter((m) => m.kind === "photo" && m.signedUrl);
   const video = round.media.find((m) => m.kind === "video" && m.signedUrl);
@@ -175,7 +215,7 @@ function RoundBlock({ round, many }: { round: RecordRound; many: boolean }) {
         <span className="muted">
           {" · "}
           {shortStamp(e.created_at)}
-          {e.installer ? ` · ${e.installer}` : ""}
+          {who ? ` · ${who}` : ""}
           {e.minutes != null ? ` · ${e.minutes}m` : ""}
           {e.quality_grade != null
             ? ` · self-graded ${"★".repeat(e.quality_grade)}`

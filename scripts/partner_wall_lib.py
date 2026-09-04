@@ -61,9 +61,16 @@ MIGRATIONS_DIR = REPO_ROOT / "supabase" / "migrations"
 #:     where they sat, so 20260978000000 MOVED them to project_financials,
 #:     which carries its own policy. That is the shape to copy: anything a
 #:     builder must not see belongs in its own table, not in a column here.
-#:     Wave J's ready_state / materials_eta / materials_arrived_at /
-#:     sort_order were weighed against this and deliberately left on
-#:     `projects` — see 20260979000000 section 1 for the per-column reasoning.
+#:     Wave J's ready_state / materials_eta / materials_arrived_at were
+#:     weighed against this, left on `projects` — and MOVED OFF AGAIN one
+#:     wave later, because that judgement was wrong: a granted builder was
+#:     reading our own "not ready / windows still not in" off their job row.
+#:     They live in `project_pipeline` now (20260981000000, wave H, H0).
+#:     TWO WAVES IN A ROW got this wrong in the same direction, which is the
+#:     lesson: the question is not "is this fact sensitive" but "is this fact
+#:     ABOUT US". A date the builder already knows is still ours to say, in
+#:     our words, when we choose to. Only `sort_order` stayed — a bare
+#:     integer whose meaning is "fourth in a list a builder cannot see".
 #:   - daily_logs: a partner never reads the table at all, under any
 #:     predicate — the S3 projection RPC is the only door, and daily_logs'
 #:     policy (my_role_rank() >= 1) already excludes the installer-ranked
