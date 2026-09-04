@@ -17,8 +17,6 @@ import { Link, useNavigate } from "react-router-dom";
 import { BackChip } from "../../components/BackChip";
 import { StationChip } from "../../components/warehouse/StationChip";
 import { listProjects } from "../../lib/api";
-import { isForemanPlus } from "../../lib/install/types";
-import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import { createManualDelivery } from "../../lib/storage";
 import { STATION_COMING_IN } from "../../lib/warehouse/stations";
 import {
@@ -49,8 +47,6 @@ export function LogDelivery() {
   // the option here (rather than showing a button that only errors at the
   // very end of a three-step form) is the same pattern the warehouse page
   // uses everywhere else: gate the tool, not the door.
-  const { effectiveRole } = useEffectiveRole();
-  const lead = isForemanPlus(effectiveRole);
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const [stage, setStage] = useState<Stage>("mode");
   const [label, setLabel] = useState("");
@@ -133,18 +129,16 @@ export function LogDelivery() {
           >
             With QR stickers — scan and tag at the tailgate
           </button>
-          {lead && (
-            <>
-              <button className="button-like big" onClick={() => setStage("jobs")}>
-                Without stickers — prepare the list, check the truck against it
-              </button>
-              <p className="muted">
-                Entering by hand builds a standby list of expected packages,
-                each with its own ID. At the truck you check material off
-                against the list; labels print whenever the printer shows up.
-              </p>
-            </>
-          )}
+          {/* Both ways in are open to every crew member (ADR-0007) — the
+              person meeting the truck decides how the truck gets tracked. */}
+          <button className="button-like big" onClick={() => setStage("jobs")}>
+            Without stickers — prepare the list, check the truck against it
+          </button>
+          <p className="muted">
+            Entering by hand builds a standby list of expected packages, each
+            with its own ID. At the truck you check material off against the
+            list; labels print whenever the printer shows up.
+          </p>
         </div>
       </div>
     );

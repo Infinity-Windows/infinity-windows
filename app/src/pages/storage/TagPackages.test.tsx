@@ -542,7 +542,12 @@ describe("the schedule's door (owner report, 2026-08-18)", () => {
     }
   });
 
-  it("an installer is told who can open the door, not offered the handle", async () => {
+  // Inverted with ADR-0007 (owner call, 2026-09-04). This used to assert that
+  // an installer got a sentence naming a foreman instead of the button. The
+  // person at the truck holding a package for a window the plans missed is
+  // exactly who should add it, so they get the handle now — and
+  // add_project_mark was opened in the same migration so the button works.
+  it("an installer gets the handle too, not a note about who holds it", async () => {
     const { el } = await mount();
     const mark = el.querySelector<HTMLInputElement>('input[aria-label="Window number"]')!;
     act(() => {
@@ -551,12 +556,12 @@ describe("the schedule's door (owner report, 2026-08-18)", () => {
       mark.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await settle();
-    expect(el.textContent).toContain("A foreman can add it");
+    expect(el.textContent).not.toContain("A foreman can add it");
     expect(
       [...el.querySelectorAll("button")].some((b) =>
         (b.textContent ?? "").includes("Add window 6"),
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("a scheduled window says nothing — the door only shows at the wall", async () => {

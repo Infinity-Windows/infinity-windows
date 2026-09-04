@@ -317,13 +317,18 @@ describe("what an installer can still reach", () => {
 });
 
 describe("container tools absorbed from the Storage hub (ticket 18)", () => {
-  it("hides New container / Print blank stickers / All posters from an installer", () => {
+  // These three were foreman-only until ADR-0007 (owner call, 2026-09-04):
+  // warehouse actions are crew actions. Registering the conex that turned up,
+  // printing its door poster and running off a roll of blank stickers are all
+  // things the person at the truck does, so the assertion is inverted on
+  // purpose — an installer is now expected to see all three.
+  it("gives an installer New container / Print blank stickers / All posters", () => {
     const el = mount({ packages: [], locations: [], role: "installer" });
     for (const label of ["New container", "Print blank stickers", "All posters"]) {
       const hit = [...el.querySelectorAll("button")].find((b) =>
         b.textContent?.includes(label),
       );
-      expect(hit, `an installer should not see "${label}"`).toBeFalsy();
+      expect(hit, `an installer should see "${label}"`).toBeTruthy();
     }
   });
 
@@ -378,15 +383,17 @@ describe("the station strip (wave F)", () => {
     expect(hrefs).toContain("/warehouse/materials");
   });
 
-  it("keeps station 3's container link lead-only, same as 'In storage' always was", () => {
-    const installerEl = mount({ packages: [], locations: [], role: "installer" });
-    expect(
-      [...installerEl.querySelectorAll("a")].some((a) => a.textContent === "See containers"),
-    ).toBe(false);
-
-    const foremanEl = mount({ packages: [], locations: [], role: "foreman" });
-    expect(
-      [...foremanEl.querySelectorAll("a")].some((a) => a.textContent === "See containers"),
-    ).toBe(true);
+  it("opens station 3's container link to everyone, same as 'In storage' now is", () => {
+    // Inverted deliberately with ADR-0007: "In storage" is no longer
+    // foreman+, so the station card that lands on it must not be either. A
+    // station in the funnel that half the crew cannot enter is the funnel
+    // lying about the flow.
+    for (const role of ["installer", "foreman"] as const) {
+      const el = mount({ packages: [], locations: [], role });
+      expect(
+        [...el.querySelectorAll("a")].some((a) => a.textContent === "See containers"),
+        `${role} should reach the containers`,
+      ).toBe(true);
+    }
   });
 });

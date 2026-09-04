@@ -26,6 +26,10 @@ import { STATION_COMING_IN } from "../../lib/warehouse/stations";
 export function DeliveriesList() {
   const qc = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
+  // Renaming a truck is warehouse work and is open to everyone (ADR-0007).
+  // Deleting one is not — `lead` keeps that button, matching delete_delivery.
+  // Putting it on the company schedule stays supervisor+, matching
+  // schedule_delivery.
   const lead = isForemanPlus(effectiveRole);
   const boss = isSupervisorPlus(effectiveRole);
   const [message, setMessage] = useState<string | null>(null);
@@ -147,21 +151,19 @@ export function DeliveriesList() {
                     "…"
                   )}
                 </span>
-                {lead && (
-                  <button
-                    className="link"
-                    onClick={() => {
-                      setEditing(open ? null : d.id);
-                      setNameDraft(d.label ?? "");
-                      setWhenDraft(
-                        d.expected_at ? d.expected_at.slice(0, 16) : "",
-                      );
-                      setCrewDraft(new Set());
-                    }}
-                  >
-                    {open ? "Close" : "Edit…"}
-                  </button>
-                )}
+                <button
+                  className="link"
+                  onClick={() => {
+                    setEditing(open ? null : d.id);
+                    setNameDraft(d.label ?? "");
+                    setWhenDraft(
+                      d.expected_at ? d.expected_at.slice(0, 16) : "",
+                    );
+                    setCrewDraft(new Set());
+                  }}
+                >
+                  {open ? "Close" : "Edit…"}
+                </button>
               </div>
               {open && (
                 <div className="detail-card wh-card">
@@ -181,23 +183,25 @@ export function DeliveriesList() {
                     >
                       Rename
                     </button>
-                    <button
-                      className="button-like"
-                      style={{ color: "var(--danger)" }}
-                      disabled={remove.isPending}
-                      onClick={() => {
-                        const exp = c ? c.expected - c.arrived : 0;
-                        if (
-                          window.confirm(
-                            `Delete this delivery? ${exp} still-expected package${exp === 1 ? "" : "s"} die with the list; anything already arrived stays real. This can't be undone.`,
-                          )
-                        ) {
-                          remove.mutate(d.id);
-                        }
-                      }}
-                    >
-                      Delete delivery…
-                    </button>
+                    {lead && (
+                      <button
+                        className="button-like"
+                        style={{ color: "var(--danger)" }}
+                        disabled={remove.isPending}
+                        onClick={() => {
+                          const exp = c ? c.expected - c.arrived : 0;
+                          if (
+                            window.confirm(
+                              `Delete this delivery? ${exp} still-expected package${exp === 1 ? "" : "s"} die with the list; anything already arrived stays real. This can't be undone.`,
+                            )
+                          ) {
+                            remove.mutate(d.id);
+                          }
+                        }}
+                      >
+                        Delete delivery…
+                      </button>
+                    )}
                   </div>
                   {boss && (
                     <div style={{ marginTop: 8 }}>

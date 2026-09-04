@@ -130,6 +130,9 @@ export function ContainerDetail() {
   const [searchParams] = useSearchParams();
   const qc = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
+  // Foreman+ gates one thing on this page now: the sweep-delete below.
+  // Registering, renaming and archiving a container is warehouse work and
+  // belongs to whoever is standing in front of it (ADR-0007).
   const lead = isForemanPlus(effectiveRole);
   const [sweeping, setSweeping] = useState(false);
   const [checkinOpen, setCheckinOpen] = useState(false);
@@ -615,16 +618,12 @@ export function ContainerDetail() {
             {moving ? "Cancel move" : "Move"}
           </button>
         )}
-        {lead && (
-          <button className="button-like" onClick={() => setEditing(true)}>
-            Edit
-          </button>
-        )}
-        {lead && (
-          <button className="button-like" onClick={() => setArchiving((v) => !v)}>
-            {archiving ? "Cancel archive" : "Archive container"}
-          </button>
-        )}
+        <button className="button-like" onClick={() => setEditing(true)}>
+          Edit
+        </button>
+        <button className="button-like" onClick={() => setArchiving((v) => !v)}>
+          {archiving ? "Cancel archive" : "Archive container"}
+        </button>
       </div>
 
       {archiving && (

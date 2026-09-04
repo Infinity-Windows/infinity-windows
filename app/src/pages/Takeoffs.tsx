@@ -34,6 +34,11 @@ import {
 export function Takeoffs() {
   const qc = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
+  // ADR-0007: building a takeoff, answering one with a rough when, and
+  // marking it ready are warehouse work — whoever is filling the bundle does
+  // them, at any rank. `lead` survives for one thing only: handing a READY
+  // bundle to somebody other than the person it was built for, which is the
+  // warehouse acting on someone else's behalf, not warehouse work.
   const lead = isForemanPlus(effectiveRole);
   const takeoffs = useQuery({ queryKey: ["takeoffs"], queryFn: listTakeoffs });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
@@ -148,20 +153,18 @@ export function Takeoffs() {
       </header>
       <Explain id="wh-takeoffs">
         A takeoff is a job&rsquo;s supplies, bundled by the warehouse for a
-        named person. Foremen can request one; the warehouse answers with a
-        rough when, marks it ready, and picking it up logs every line against
-        the job — pickup <em>is</em> the take.
+        named person. Anyone on the crew can ask for one; whoever is filling
+        it answers with a rough when, marks it ready, and picking it up logs
+        every line against the job — pickup <em>is</em> the take.
       </Explain>
 
-      {lead && (
-        <button
-          className="button-like active-pill"
-          style={{ marginBottom: 10 }}
-          onClick={() => setCreating(true)}
-        >
-          New takeoff
-        </button>
-      )}
+      <button
+        className="button-like active-pill"
+        style={{ marginBottom: 10 }}
+        onClick={() => setCreating(true)}
+      >
+        New takeoff
+      </button>
 
       <div className="home-projects">
         {active.map((t) => (
@@ -322,7 +325,7 @@ function TakeoffRow({
             </div>
           )}
 
-          {lead && t.status === "requested" && (
+          {t.status === "requested" && (
             <div style={{ marginTop: 8 }}>
               <label className="field-label">Roughly when?</label>
               <div className="row-gap" style={{ flexWrap: "wrap" }}>
@@ -352,7 +355,7 @@ function TakeoffRow({
               </div>
             </div>
           )}
-          {lead && t.status === "acknowledged" && (
+          {t.status === "acknowledged" && (
             <button
               className="button-like active-pill"
               style={{ marginTop: 8 }}
