@@ -393,16 +393,24 @@ function GcLinkPanel({ projectId, project }: { projectId: string; project: Proje
     onSuccess: async (result) => {
       setProblem(null);
       setCopied(false);
-      // "Not configured" is not a failure: the link exists and can be texted.
-      // Saying so is the difference between a foreman copying it and a foreman
-      // pressing the button again.
-      setNote(
-        result.unconfigured
-          ? t("gc.link.emailOff")
-          : result.ok
-            ? t("gc.link.sentTo", { email: result.to ?? email.trim() })
-            : (result.error ?? t("gc.link.emailOff")),
-      );
+      const to = result.to ?? email.trim();
+      let line: string;
+      if (result.unconfigured) {
+        // "Not configured" is not a failure: the link exists and can be texted.
+        // Saying so is the difference between a foreman copying it and a foreman
+        // pressing the button again.
+        line = t("gc.link.emailOff");
+      } else if (!result.ok) {
+        line = result.error ?? t("gc.link.emailOff");
+      } else if (result.from) {
+        // Which of the company's two mailboxes it came from, because the brands
+        // mail from two addresses now and "which one did he get?" is the first
+        // thing the office asks when a builder says nothing arrived.
+        line = t("gc.link.sentToFrom", { email: to, from: result.from });
+      } else {
+        line = t("gc.link.sentTo", { email: to });
+      }
+      setNote(line);
       await queryClient.invalidateQueries({ queryKey: gcLinkKey(projectId) });
     },
     onError: (e) => {

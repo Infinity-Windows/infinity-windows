@@ -398,6 +398,10 @@ export interface SendEmailResult {
   unconfigured?: boolean;
   error?: string;
   to?: string;
+  /** The address it went FROM — which of the company's two mailboxes this
+   * builder just heard from. Present only on a real send, and only from a
+   * function new enough to say, so the card treats it as optional. */
+  from?: string;
 }
 
 /**
