@@ -106,6 +106,11 @@ const CASCADE_COVERED: Record<string, string> = {
   // about this job: the row means nothing without the job, so it goes with it
   // on the final `delete from projects`. Nothing else references it.
   pipeline_nudges: "ON DELETE CASCADE from projects, on the final delete from projects",
+  // Wave Y, 20260982000000. A unit's hand-over log dies with the unit: the row
+  // references project_openings ON DELETE CASCADE (and projects the same way,
+  // so the final delete would take it even if the openings went another road).
+  // Nothing else references it.
+  opening_assignment_events: "ON DELETE CASCADE from project_openings",
 };
 
 function purgeBody(): string {
