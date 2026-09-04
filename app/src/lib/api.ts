@@ -16,7 +16,7 @@ import type {
   WindowUnit,
 } from "./types";
 import { quickJobName, quickTrackingJobCode } from "./quickJobs";
-import { isMissingColumn } from "./schemaErrors";
+import { isMissingColumn, isMissingFunction } from "./schemaErrors";
 import { sortProjectsForList, type ReadyState } from "./pipeline";
 
 const WINDOW_SELECT =
@@ -216,6 +216,10 @@ export interface CreateProjectInput extends ProjectDetailsInput {
    * in — a Monday import, a one-tap tracking job. Omitted means Ready, which
    * is the column's own default and what the full New project form sends. */
   readyState?: ReadyState;
+  /** Wave J (J3): the day the windows are due, carried over from Monday's
+   * `est_arrival` on import. RPC-only like readiness, so it is written after
+   * the insert rather than with it. */
+  materialsEta?: string | null;
 }
 
 const clean = (value: string | null | undefined): string | null =>
@@ -273,16 +277,35 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
   // wave exists to stop. The full New project form is the opposite case: the
   // person filling it in knows, so it defaults Ready with a toggle.
   //
-  // Written after the insert, not with it: ready_state is RPC-only under wave
-  // D's projects grant law, so a value in the INSERT above would 42501. A job
-  // that is briefly Ready between the two writes never matters — nothing reads
-  // it until this function returns.
+  // Written after the insert, not with it: ready_state and materials_eta are
+  // both RPC-only under wave D's projects grant law, so a value in the INSERT
+  // above would 42501. A job that is briefly Ready between the two writes never
+  // matters — nothing reads it until this function returns.
+  //
+  // Both are wrapped so a database that does not have wave J's migration yet
+  // cannot fail a create that has ALREADY happened. The job exists by this
+  // point; throwing here would show the foreman an error for a job that is
+  // sitting in the list behind the dialog, which is the worst of both answers.
+  // It simply arrives without its readiness, and somebody sets it by hand.
+  const created = project as Project;
   if (input.readyState === "not_ready") {
-    await setProjectReadiness(project.id, "not_ready");
-    return { ...(project as Project), ready_state: "not_ready" };
+    try {
+      await setProjectReadiness(created.id, "not_ready");
+      created.ready_state = "not_ready";
+    } catch (err) {
+      if (!isMissingFunction(err)) throw err;
+    }
+  }
+  if (input.materialsEta) {
+    try {
+      await setProjectMaterials(created.id, { eta: input.materialsEta });
+      created.materials_eta = input.materialsEta;
+    } catch (err) {
+      if (!isMissingFunction(err)) throw err;
+    }
   }
 
-  return project as Project;
+  return created;
 }
 
 /** Foreman+: mark a job Ready or Not ready. */

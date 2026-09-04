@@ -127,6 +127,10 @@ export function IncomingMondayJobs() {
                   · <CalendarDays size={11} aria-hidden /> {fmtDate(j.start_date)}
                   {j.end_date && ` – ${fmtDate(j.end_date)}`}
                 </span>
+                {/* Wave J (J3): Monday has always known when the windows are
+                    due and the app has always thrown it away at build time.
+                    Showing it here is how the office sees what carries over. */}
+                {j.est_arrival && <span>· windows {fmtDate(j.est_arrival)}</span>}
               </div>
             </div>
             <div className="row-gap">
@@ -193,6 +197,14 @@ export function IncomingMondayJobs() {
             <p className="muted" style={{ margin: "8px 0 0", fontSize: 11.5 }}>
               Dates and the Monday link carry over. Until install work starts,
               schedule changes in Monday keep updating this project.
+            </p>
+            {/* Wave J (J3): said plainly before the tap, because "Not ready" is
+                a state somebody will have to clear by hand and a foreman should
+                not discover it on the jobs list afterwards. */}
+            <p className="muted" style={{ margin: "4px 0 0", fontSize: 11.5 }}>
+              It lands as <strong>Not ready</strong>
+              {building.est_arrival && <> with the windows due {fmtDate(building.est_arrival)}</>} —
+              mark it ready once somebody has checked the site.
             </p>
           </div>
         </div>

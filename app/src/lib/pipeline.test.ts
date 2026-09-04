@@ -5,6 +5,7 @@ import {
   dueNudges,
   materialsLate,
   needsCall,
+  shortDay,
   sortProjectsForList,
 } from "./pipeline";
 
@@ -46,6 +47,25 @@ describe("daysBetween", () => {
     expect(daysBetween("2026-10-25", "2026-11-08")).toBe(14);
     // And the spring-forward Sunday, 23 hours the other way.
     expect(daysBetween("2026-03-07", "2026-03-08")).toBe(1);
+  });
+});
+
+describe("shortDay", () => {
+  it("prints a card-sized date with no year", () => {
+    expect(shortDay("2026-09-22", "en-US")).toBe("Sep 22");
+  });
+
+  it("does not slip a day backwards across a timezone", () => {
+    // The whole reason these are parsed as LOCAL midnight: `new Date("2026-09-
+    // 22")` is UTC midnight, which prints as Sep 21 anywhere west of Greenwich.
+    expect(shortDay("2026-09-22T00:00:00", "en-US")).toBe("Sep 22");
+  });
+
+  it("renders a missing or unreadable date as nothing, never Invalid Date", () => {
+    expect(shortDay(null)).toBe("");
+    expect(shortDay(undefined)).toBe("");
+    expect(shortDay("")).toBe("");
+    expect(shortDay("soon")).toBe("");
   });
 });
 

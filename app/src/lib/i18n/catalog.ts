@@ -1053,6 +1053,66 @@ export const CATALOG = {
     en: "Taken back off the job — it is in the removed list.",
     es: "Quitada del trabajo — está en la lista de quitadas.",
   },
+
+  // ---- Wave J — the job pipeline ---------------------------------------
+  // (transcripts program, grill 2026-09-03, Q8+Q9). The stretch between
+  // winning a bid and the first window going in: is the job ready, when do
+  // the windows land, and does somebody need to make a phone call. These
+  // strings are read by everybody — an installer scanning the Jobs list wants
+  // to know a job has no glass just as much as the office does — so they are
+  // deliberately short, and dates are rendered by the caller in the device's
+  // own locale rather than being spelled out here.
+  //
+  // The PUSH the 7 AM sweep sends is NOT here and must not be: a notification
+  // is rendered by the operating system long before the app's language layer
+  // gets a say, so push copy stays English by the program's own rule.
+  "pipeline.heading": { en: "Pipeline", es: "Estado del trabajo" },
+  "pipeline.ready": { en: "Ready", es: "Listo" },
+  "pipeline.notReady": { en: "Not ready", es: "No listo" },
+  "pipeline.markReady": { en: "Mark ready", es: "Marcar listo" },
+  "pipeline.markNotReady": { en: "Mark not ready", es: "Marcar no listo" },
+  "pipeline.expectedStart": { en: "Expected start", es: "Inicio previsto" },
+  "pipeline.materialsEta": { en: "Windows ETA", es: "Ventanas llegan" },
+  "pipeline.materialsArrived": { en: "Materials arrived", es: "Material llegó" },
+  "pipeline.arrivedOn": { en: "Arrived {date}", es: "Llegó el {date}" },
+  "pipeline.notArrivedYet": { en: "Not here yet", es: "Todavía no llega" },
+  "pipeline.undoArrived": { en: "They are not here yet", es: "Todavía no llegan" },
+  "pipeline.notSet": { en: "Not set", es: "Sin fecha" },
+  "pipeline.change": { en: "Change", es: "Cambiar" },
+  "pipeline.save": { en: "Save", es: "Guardar" },
+  "pipeline.cancel": { en: "Cancel", es: "Cancelar" },
+  "pipeline.clear": { en: "Clear", es: "Borrar" },
+  "pipeline.saving": { en: "Saving…", es: "Guardando…" },
+  // The wave H seam, said plainly. Once the GC check-in table exists this line
+  // shows the real date instead; until then "none yet" is the honest answer,
+  // and the app has never had anywhere to record one.
+  "pipeline.lastCheckin": { en: "Last GC check-in", es: "Último contacto con el GC" },
+  "pipeline.noCheckinYet": { en: "None yet", es: "Ninguno todavía" },
+  // The chip and the reasons behind it. Each reason is a fragment that reads
+  // on its own, because a job usually has one of them and never all four.
+  "pipeline.needsCall": { en: "Needs a call", es: "Hay que llamar" },
+  "pipeline.reason.notReady": { en: "not ready", es: "no está listo" },
+  "pipeline.reason.materialsMissing": { en: "windows not in", es: "faltan las ventanas" },
+  "pipeline.reason.materialsLate": { en: "windows late", es: "ventanas atrasadas" },
+  "pipeline.reason.noCheckin": { en: "no GC check-in", es: "sin contacto con el GC" },
+  // The job card's own line: "Not ready · start ~Sep 22 · windows ETA Sep 15".
+  "pipeline.card.start": { en: "start ~{date}", es: "inicia ~{date}" },
+  "pipeline.card.eta": { en: "windows ETA {date}", es: "ventanas {date}" },
+  // The New project form's toggle. Ready is the default here and only here:
+  // somebody is filling this in by hand, so they know. A job that ARRIVES —
+  // imported from Monday, built in one tap from the clock-in — is born Not
+  // ready instead, with nobody asked.
+  "pipeline.create.label": { en: "Is this job ready to work?", es: "¿Este trabajo está listo?" },
+  "pipeline.create.hint": {
+    en: "Not ready puts it on the morning reminder until somebody says it is.",
+    es: "No listo lo pone en el aviso de la mañana hasta que alguien diga que sí.",
+  },
+  // Reordering the jobs list. Buttons, not only a drag: a drag needs a mouse,
+  // and this list is read on a phone in gloves.
+  "pipeline.order.up": { en: "Move up", es: "Subir" },
+  "pipeline.order.down": { en: "Move down", es: "Bajar" },
+  "pipeline.order.drag": { en: "Drag to reorder", es: "Arrastra para reordenar" },
+  "pipeline.order.saved": { en: "New order saved.", es: "Nuevo orden guardado." },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

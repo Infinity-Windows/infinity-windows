@@ -90,6 +90,21 @@ export function daysBetween(today: string, day: string | null | undefined): numb
   return Math.round((to.getTime() - from.getTime()) / DAY_MS);
 }
 
+/**
+ * "Sep 22" — the short date the job cards and the Pipeline card print.
+ *
+ * No year, because every date this wave shows is within weeks either way and a
+ * card that reads "start ~Sep 22, 2026" on a phone is a card with less room for
+ * the job's name. Parsed as LOCAL midnight for the reason at the top of this
+ * file. An empty or unreadable date renders as an empty string, never "Invalid
+ * Date" — a job with no start date should look like a job with no start date.
+ */
+export function shortDay(day: string | null | undefined, locale?: string): string {
+  const at = localMidnight(day?.slice(0, 10));
+  if (!at) return "";
+  return at.toLocaleDateString(locale, { month: "short", day: "numeric" });
+}
+
 /** True when the windows have not been marked as arrived on this job. */
 export function materialsMissing(job: PipelineJob): boolean {
   return !job.materials_arrived_at;
