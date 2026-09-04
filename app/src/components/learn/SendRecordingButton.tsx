@@ -31,12 +31,25 @@ export function SendRecordingButton({ style }: { style?: React.CSSProperties }) 
     queryFn: () => getOpenShift(me.data!.id),
     enabled: Boolean(me.data?.id),
   });
+  // The address book is NOT job-independent, which is the whole reason the job
+  // is in the key: foreman_contacts_for_me() reads the caller's own open shift
+  // and answers with the leads on THAT job. Cached under a bare name, an
+  // installer who clocked out of one job and into another kept the old job's
+  // leads in the To: line for an hour while the subject line already named the
+  // new one — the two halves of the same email disagreeing. Nothing invalidates
+  // this key anywhere; the key reacting to the job is what keeps it honest.
+  const jobId = shift.data?.project_id ?? null;
   const contacts = useQuery({
-    queryKey: ["foremanContacts"],
+    queryKey: ["foremanContacts", jobId],
     queryFn: listForemanContacts,
-    // The address book only changes when somebody is hired or moves jobs, and
+    // Within one job it changes only when somebody is hired or moves crews, and
     // an installer taps this button once a week. An hour is plenty.
     staleTime: 60 * 60 * 1000,
+    // Wait until the job is known, or the first load asks twice: once for the
+    // company-wide fallback and again for the real crew a moment later. A shift
+    // query that is switched off because there is no profile reports isFetched
+    // false forever, so the second half of this says "and we never will know".
+    enabled: me.isFetched && (shift.isFetched || !me.data?.id),
   });
 
   // The job's real name if the shift names one, its code otherwise, and
