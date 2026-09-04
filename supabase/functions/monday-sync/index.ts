@@ -329,10 +329,18 @@ async function pullOneFile(
     contentType = res.headers.get("content-type") ?? "application/octet-stream";
     bytes = await res.arrayBuffer();
   } catch (err) {
-    return {
-      ...base,
-      error: `Could not download this file from Monday — ${err instanceof Error ? err.message : String(err)}`,
-    };
+    // THE MESSAGE STAYS ON THE SERVER. Deno puts the request URL into the
+    // message of any network failure ("error sending request for url (…)"),
+    // and the URL here is Monday's one-hour unauthenticated download link —
+    // the one thing this whole design refuses to store or show, because a
+    // person who sees it has another company's document without signing in to
+    // anything. The log is where an engineer reads it.
+    console.error(
+      "monday-sync: download failed for asset",
+      asset.id,
+      err instanceof Error ? err.name : "unknown error",
+    );
+    return { ...base, error: "Could not download this file from Monday. Try again in a minute." };
   }
 
   // Checked again against what actually arrived: Monday's stated size is
@@ -351,7 +359,10 @@ async function pullOneFile(
     .from(bucket)
     .upload(path, new Uint8Array(bytes), { contentType });
   if (upErr) {
-    return { ...base, error: `Could not save this file — ${upErr.message}` };
+    // Storage's own text names buckets and policies. The repo's rule is that
+    // an error tells a person what to do, not what the database returned.
+    console.error("monday-sync: could not store", path, upErr.message);
+    return { ...base, error: "Could not save this file. Try again in a minute." };
   }
 
   // Exactly what uploadPlanset writes for a hand upload, so the Plans page,
@@ -398,7 +409,11 @@ async function pullOneFile(
     if (isMissingTable(insErr) || isMissingColumn(insErr)) {
       return { ...base, error: "Getting files from Monday needs the next database update." };
     }
-    return { ...base, error: `Could not add this file to the job — ${insErr.message}` };
+    // Postgres names constraints in its messages; an installer reading
+    // "project_documents_project_id_fkey" learns nothing and we have leaked
+    // the shape of the schema to do it.
+    console.error("monday-sync: could not file", asset.id, insErr.code, insErr.message);
+    return { ...base, error: "Could not add this file to the job. Try again in a minute." };
   }
 
   return { ...base, ok: true, where };
@@ -577,8 +592,10 @@ async function handlePullFiles(
       const data = await mondayRead(query, { ids: chosen.map((c) => c.asset_id) });
       for (const a of data?.assets ?? []) assets[String(a.id)] = a;
     } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      console.error("monday-sync: Monday refused the file links:", reason);
+      console.error(
+        "monday-sync: Monday refused the file links:",
+        err instanceof Error ? err.message : String(err),
+      );
       assets = {};
       for (const c of chosen) {
         results.push({
@@ -586,7 +603,7 @@ async function handlePullFiles(
           name: onTheRow.get(c.asset_id)?.name ?? "",
           ok: false,
           where: null,
-          error: `Monday would not hand the files over — ${reason}`,
+          error: "Monday would not hand the files over. Try again in a minute.",
         });
       }
     }
@@ -652,10 +669,15 @@ Deno.serve(async (req) => {
     try {
       return await handlePullFiles(req, db, body);
     } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      console.error("monday-sync: pull_files failed:", reason);
+      // The reason is logged, never returned: everything that can reach here
+      // has either Monday's one-hour download link or raw Postgres text in its
+      // message, and this response goes straight onto an office screen.
+      console.error(
+        "monday-sync: pull_files failed:",
+        err instanceof Error ? err.message : String(err),
+      );
       return jsonResponse(
-        { ok: false, error: `Could not get the files — ${reason}`, results: [] },
+        { ok: false, error: "Could not get the files. Try again in a minute.", results: [] },
         500,
       );
     }

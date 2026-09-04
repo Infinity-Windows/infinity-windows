@@ -89,4 +89,31 @@ describe("monday-sync only ever reads STG's board", () => {
       'const ASSET_FIELDS = "id name file_extension file_size created_at"',
     );
   });
+
+  it("never shows a person the link either", () => {
+    // Storing the link was only half of it. The pull FETCHES that link, and
+    // Deno puts the request URL into the message of any network failure
+    // ("error sending request for url (…)") — so echoing a caught error back
+    // to the browser put the live link on an office screen just as surely as
+    // saving it would have. Raw storage and Postgres text went the same way,
+    // against the repo's own rule that an error tells a person what to do.
+    //
+    // Every sentence the pull hands back is therefore fixed, with the detail
+    // logged server-side. A size or a status code spliced into a sentence is
+    // fine — those are facts about the file, not about our machinery — so the
+    // rule is only about splicing an ERROR.
+    const risky = [...src.matchAll(/error:\s*`[^`]*`/g)]
+      .map((m) => m[0])
+      .filter((s) => /\$\{[^}]*\b(err|error|reason|message|String\()/.test(s));
+    expect(
+      risky,
+      "a sentence the pull returns may not splice a runtime error message — " +
+        "log it and answer in plain English instead",
+    ).toEqual([
+      // The board sync's own refusal, and the one deliberate exception: it
+      // exists because the office once saw "Sync failed." and nothing else,
+      // and its text is Monday's answer to a query with no file link in it.
+      "error: `Monday refused the sync — ${reason}`",
+    ]);
+  });
 });
