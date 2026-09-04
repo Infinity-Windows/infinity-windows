@@ -12859,6 +12859,104 @@ $$;
 comment on function public.credential_nudge_audience(uuid) is
   'Who hears that a card is running out: the person it belongs to, plus every supervisor and owner whose login is still switched on. Deliberately NOT filtered on profiles.active, which means "on site today" — the warning is claimed once per expiry date, so a supervisor who happened to be off that one morning would never hear about that card again. Partner logins never (Wave O, O4); removed logins never (retired_at).';
 
+-- And the third audience, which is the one that matters most: this is the only
+-- function in the database that hands a raw email ADDRESS to a browser.
+-- foreman_contacts_for_me (20260984000000) fills the To: line of the "Send a
+-- recording" mailto:, and it filtered on `p.active` alone — the flag a foreman
+-- toggles every morning from the Roster. One tap on the wrong row and a removed
+-- login's address goes into a mail composer, and after a removal that address
+-- is the tombstone `<uid>@removed.invalid`, which is not a mailbox at all.
+-- Restated in full so the whole predicate is readable in one place; the only
+-- change to either branch is the new `p.retired_at is null` line.
+create or replace function public.foreman_contacts_for_me()
+returns table (contact_name text, contact_email text)
+language plpgsql
+stable
+security definer
+set search_path = public, auth, pg_temp
+as $fn$
+declare
+  v_uid uuid := auth.uid();
+  v_project uuid;
+begin
+  if v_uid is null then
+    raise exception 'Sign in first.';
+  end if;
+  if public.is_partner_user() then
+    raise exception 'This is the crew address book, and a builder login is not crew.';
+  end if;
+
+  -- The job the caller is standing on, if any. Newest open shift wins, the
+  -- same way getOpenShift() picks one on the phone.
+  select ts.project_id into v_project
+    from time_shifts ts
+   where ts.profile_id = v_uid
+     and ts.status = 'open'
+     and ts.clock_out_at is null
+   order by ts.clock_in_at desc
+   limit 1;
+
+  if v_project is not null then
+    return query
+      select p.display_name, u.email::text
+        from profiles p
+        join auth.users u on u.id = p.id
+       where p.active
+         and p.retired_at is null
+         and not coalesce(p.is_partner, false)
+         and public._is_lead(p.id)
+         and p.id <> v_uid
+         and u.email is not null
+         and (
+           exists (
+             select 1
+               from schedule_assignments sa
+               join schedule_assignment_members sam on sam.assignment_id = sa.id
+              where sa.project_id = v_project
+                and sam.profile_id = p.id
+                -- Published, not drafted — see pipeline_nudge_audience's own
+                -- note on why a pencilled-in plan must not count.
+                and sa.status in ('published', 'in_progress', 'done')
+                and sa.end_date >= (now() at time zone 'America/Denver')::date
+                and sa.start_date <= (now() at time zone 'America/Denver')::date
+           )
+           or exists (
+             select 1
+               from time_shifts ts2
+              where ts2.project_id = v_project
+                and ts2.profile_id = p.id
+                and ts2.status = 'open'
+                and ts2.clock_out_at is null
+           )
+         )
+       order by p.display_name;
+    -- RETURN QUERY sets FOUND. Somebody answered, so stop here rather than
+    -- adding every other lead in the company to the To: line.
+    if found then
+      return;
+    end if;
+  end if;
+
+  return query
+    select p.display_name, u.email::text
+      from profiles p
+      join auth.users u on u.id = p.id
+     where p.active
+       and p.retired_at is null
+       and not coalesce(p.is_partner, false)
+       and public._is_lead(p.id)
+       and p.id <> v_uid
+       and u.email is not null
+     order by p.display_name;
+end;
+$fn$;
+
+comment on function public.foreman_contacts_for_me() is
+  'The name and email of every foreman-and-up on the job the caller is clocked into, else every active one in the company. A MINIMAL PROJECTION — two columns, nothing else about anybody — because emails live in auth.users where no client role may read them. Refuses partner logins, and never answers with a removed login: its address is a tombstone by then.';
+
+revoke all on function public.foreman_contacts_for_me() from public, anon;
+grant execute on function public.foreman_contacts_for_me() to authenticated, service_role;
+
 
 -- ---------------------------------------------------------------------------
 -- 2. access_requests: a reason, and RLS that means something
@@ -12876,11 +12974,23 @@ comment on function public.credential_nudge_audience(uuid) is
 -- console. The Admin screen's own gate is supervisor+, and this makes the
 -- database agree with it.
 --
--- The four policies below replace that one. SELECT and INSERT stay exactly as
--- permissive as they were — the Admin queue reads it, and the public request
--- form must keep working (the separate `anon can request` INSERT policy from
--- 20260717000000 is left alone; an anonymous visitor has no rank to check).
--- UPDATE and DELETE become supervisor+.
+-- The four policies below replace that one. INSERT stays exactly as permissive
+-- as it was — the public request form must keep working, and the separate
+-- `anon can request` INSERT policy from 20260717000000 is left alone; an
+-- anonymous visitor has no rank to check. SELECT, UPDATE and DELETE all become
+-- supervisor+.
+--
+-- WHY SELECT NARROWED TOO, which the first cut of this migration left wide.
+-- This queue now carries `decision_note`: free text a supervisor types about a
+-- person the crew knows, under a sheet that tells him "only people who can see
+-- this screen ever read it". The screen is gated at supervisor+ in the client
+-- and nowhere else, so with a wide SELECT that sentence was not true — any
+-- installer with a browser console could read the whole queue and the reason
+-- each person was turned down. Nothing in the app reads this table below
+-- supervisor: Admin.tsx and Notifications.tsx are the only two readers and both
+-- are already gated there, and submitAccessRequest is an INSERT with no
+-- read-back (scripts/prove-onboarding.py asserts exactly that shape, and reads
+-- the queue back on the service role).
 
 alter table public.access_requests
   add column if not exists decision_note text;
@@ -12895,7 +13005,7 @@ drop policy if exists "authenticated full access" on public.access_requests;
 drop policy if exists "access_requests_select" on public.access_requests;
 create policy "access_requests_select" on public.access_requests
   for select to authenticated
-  using (not public.is_partner_user() and (true));
+  using (not public.is_partner_user() and public.my_role_rank() >= 2);
 
 -- INSERT stays open to any signed-in user: somebody already inside the app
 -- asking for a different role is the same request as somebody outside asking
@@ -12905,11 +13015,24 @@ create policy "access_requests_insert" on public.access_requests
   for insert to authenticated
   with check (not public.is_partner_user() and (true));
 
+-- The WITH CHECK names the statuses a client may leave behind, and 'approved'
+-- is not one of them. Rank alone is not enough here: 'approved' MEANS "an
+-- account now exists", and a supervisor PATCHing this row to 'approved'
+-- straight at PostgREST would reproduce the exact failure the RPC below was
+-- written to prevent — a row that says approved beside a person who cannot
+-- sign in. Two independent controls now say it: this clause, and
+-- decide_access_request's own refusal. The approve-access-request edge function
+-- writes on the service role, which is not subject to this policy at all, so
+-- the one legitimate writer of 'approved' is unaffected.
 drop policy if exists "access_requests_update_supervisor" on public.access_requests;
 create policy "access_requests_update_supervisor" on public.access_requests
   for update to authenticated
   using (not public.is_partner_user() and public.my_role_rank() >= 2)
-  with check (not public.is_partner_user() and public.my_role_rank() >= 2);
+  with check (
+    not public.is_partner_user()
+    and public.my_role_rank() >= 2
+    and status in ('denied', 'pending')
+  );
 
 drop policy if exists "access_requests_delete_supervisor" on public.access_requests;
 create policy "access_requests_delete_supervisor" on public.access_requests
