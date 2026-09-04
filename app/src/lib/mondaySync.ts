@@ -5,6 +5,7 @@
 
 import { supabase } from "./supabase";
 import { isMissingTable } from "./schemaErrors";
+import { edgeFunctionMessage } from "./edgeErrors";
 import { createProject, type CreateProjectInput } from "./api";
 
 /**
@@ -147,7 +148,10 @@ export async function triggerMondaySync(force = false): Promise<{
   const { data, error } = await supabase.functions.invoke("monday-sync", {
     body: { force },
   });
-  if (error) return { ok: false, error: error.message };
+  // The board sync answers 200 with `ok: false` for the refusals it expects,
+  // so this only fires on a 500 — where the same unwrap still beats showing
+  // "Edge Function returned a non-2xx status code" to the office.
+  if (error) return { ok: false, error: await edgeFunctionMessage(error) };
   return data as { ok: boolean; synced?: number; skipped?: string };
 }
 
@@ -288,7 +292,16 @@ export async function pullMondayFiles(args: {
       files: args.files,
     },
   });
-  if (error) return { ok: false, results: [], error: error.message };
+  // Every refusal the function writes in plain English — "Only a foreman or
+  // above can bring files in from Monday.", "Getting files from Monday needs
+  // the next database update." — comes back with an http status, and
+  // supabase-js answers a non-2xx with the fixed string "Edge Function
+  // returned a non-2xx status code" and throws the body away. Without this
+  // line the office reads that string instead of the sentence, which is the
+  // incident this same function's header already records once.
+  if (error) {
+    return { ok: false, results: [], error: await edgeFunctionMessage(error) };
+  }
   const body = data as { ok?: boolean; results?: MondayPullResult[]; error?: string };
   return {
     ok: Boolean(body?.ok),

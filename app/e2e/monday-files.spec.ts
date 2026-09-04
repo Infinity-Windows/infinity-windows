@@ -337,3 +337,41 @@ test("the Plans page offers only what Monday has and the job does not", async ({
   expect(pull?.project_id).toBe(job.projectId);
   expect(pull?.files).toEqual([{ asset_id: "3100578589", kind: "specs" }]);
 });
+
+test("a refusal from the server is read as the sentence the server wrote", async ({
+  page,
+}) => {
+  // Every whole-request refusal the pull writes — "Only a foreman or above…",
+  // "Getting files from Monday needs the next database update." — comes back
+  // with an http status, and supabase-js answers ANY non-2xx with the fixed
+  // string "Edge Function returned a non-2xx status code" and throws the body
+  // away. That is the incident monday-sync's own header already records once,
+  // and nothing in this suite exercised it because every mock here answers 200.
+  const job = jobFixtures()[0];
+  await useSupabaseFixtures(page, { role: "foreman" });
+
+  void page.route("**/rest/v1/project_plansets**", (r) => json(r, [], 0));
+  void page.route("**/rest/v1/project_documents**", (r) => json(r, [], 0));
+  void page.route("**/rest/v1/monday_jobs**", (r) =>
+    json(r, { ...STAGED_ROW, project_id: job.projectId }, 1),
+  );
+  void page.route("**/functions/v1/monday-sync", (r) => {
+    const body = (r.request().postDataJSON() ?? {}) as Record<string, unknown>;
+    if (body.action !== "pull_files") return json(r, { ok: true, synced: 0 });
+    return r.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        error: "Getting files from Monday needs the next database update.",
+      }),
+    });
+  });
+
+  await page.goto(`/projects/${job.projectId}/upload`);
+  await page.getByTestId("files-on-monday").getByTestId("pull-from-monday").first().click();
+
+  const note = page.getByTestId("monday-pull-note");
+  await expect(note).toContainText("needs the next database update");
+  await expect(note).not.toContainText("non-2xx");
+});
