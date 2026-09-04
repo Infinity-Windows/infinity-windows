@@ -160,6 +160,19 @@ function credentialCopy(row: ClaimedNudge): PushCopy {
   const url = "/my-work";
 
   if (row.kind === "credential_expired") {
+    // Day 0 is claimed by this rule, not by the thirty-day one — see
+    // claim_credential_nudges — so this branch has to say both things. Today is
+    // the last day the card is good, which is a different sentence from "it ran
+    // out last Tuesday": one asks somebody to act before tomorrow, the other
+    // tells them they are already late.
+    if ((row.days_until ?? -1) === 0) {
+      return {
+        title: `${who}: ${card} runs out today`,
+        body: `Today is the last day ${who}'s ${card} is good. Book the renewal before the next gate check.`,
+        tag,
+        url,
+      };
+    }
     return {
       title: `${who}: ${card} has expired`,
       body: `It ran out on ${row.expires_on ?? "the date on the card"}. Book the renewal before the next gate check.`,
@@ -168,8 +181,9 @@ function credentialCopy(row: ClaimedNudge): PushCopy {
     };
   }
 
-  const days = row.days_until ?? 0;
-  const when = days <= 0 ? "expires today" : days === 1 ? "expires tomorrow" : `expires in ${days} days`;
+  // Only 1..30 days reach here; day 0 went to the branch above.
+  const days = row.days_until ?? 1;
+  const when = days === 1 ? "expires tomorrow" : `expires in ${days} days`;
   return {
     title: `${who}: ${card} ${when}`,
     body: `${who}'s ${card} ${when}. Book the renewal now so nobody is turned away at the gate.`,

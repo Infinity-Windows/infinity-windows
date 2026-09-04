@@ -629,7 +629,11 @@ same as "fine". The photo of the card lives in the private `credential-docs`
 bucket where THE PATH IS THE PERMISSION (`<profile_id>/<uuid>.jpg`): the
 cardholder or a supervisor+ may read it, and only the cardholder may write into
 their own folder. The 7 AM sweep says a card is running out thirty days before
-the date and once more after it has gone, riding wave J's existing
+the date and again ON the day it runs out — two pushes, and the second one has
+to be the day itself rather than the morning after, because the day a card runs
+out is the last day somebody can still do something about it before a gate turns
+them away. Both warnings are filed against the expiry date, so they take one
+ledger key each or the second never gets said. It rides wave J's existing
 `pipeline-sweep` as one more rule — the ledger is `credential_nudges` rather
 than `pipeline_nudges` only because that table's `project_id` is NOT NULL and a
 card belongs to a person, not a job.

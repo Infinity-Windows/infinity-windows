@@ -223,8 +223,16 @@ export function expiringSoon(
   });
 }
 
-/** The kinds of warning the sweep can claim. Mirrors the kinds
- * claim_credential_nudges() writes into credential_nudges. */
+/**
+ * The kinds of warning the sweep can claim. Mirrors the kinds
+ * claim_credential_nudges() writes into credential_nudges.
+ *
+ * "credential_expired" covers the day the card runs out as well as the days
+ * after it: the ledger key is the same either way, and the push says which of
+ * the two it is from `daysUntil` rather than from a third kind. A third kind
+ * would have to be pinned to exactly day 0 to stay distinct, and a rule pinned
+ * to one day is a rule a single missed morning loses for good.
+ */
 export type CredentialNudgeKind = "credential_30d" | "credential_expired";
 
 export interface CredentialNudge {
@@ -240,12 +248,23 @@ export interface CredentialNudge {
  * THE READABLE TWIN of claim_credential_nudges(). Same two rules, same windows,
  * same order.
  *
- *   (a) the card is inside its last thirty days — WINDOWED (0..30) rather than
+ *   (a) the card is 1 to 30 days from running out — WINDOWED rather than
  *       "exactly 30 days out", so one missed morning does not silently drop the
  *       warning. The ledger's unique key is what keeps it to once per expiry
  *       date, and a RENEWED card with a new date earns a fresh warning, which
  *       is right.
- *   (b) the card has run out inside the last thirty days.
+ *   (b) today IS the day, or the card has run out inside the last thirty days.
+ *
+ * DAY 0 BELONGS TO (b), and that is the whole reason the boundary is written
+ * out here. Both rules key their ledger row on the same date — the expiry — so
+ * a day claimed by (a) is a day (b) can never speak on. With (a) at 0..30 the
+ * day the card actually runs out fell inside a window claimed up to thirty
+ * mornings earlier, and the only other warning landed the day AFTER the card
+ * lapsed: the last morning somebody could still act was the one morning nothing
+ * was said. The chip's own boundary is different and stays different —
+ * `expiryState` turns amber the moment a card is thirty days out and stays
+ * amber through day 0, because a chip describes a state and a push announces a
+ * moment.
  *
  * A voided card is silent. An UNVERIFIED card still warns: the office not
  * having got round to looking at the paper is not a reason to let somebody's
@@ -264,9 +283,9 @@ export function dueCredentialNudges(
     const days = daysBetween(today, cert.expiresOn);
     if (days === null) continue;
     const kind: CredentialNudgeKind | null =
-      days >= 0 && days <= EXPIRY_WARN_DAYS
+      days >= 1 && days <= EXPIRY_WARN_DAYS
         ? "credential_30d"
-        : days < 0 && days >= -EXPIRED_NUDGE_GRACE_DAYS
+        : days <= 0 && days >= -EXPIRED_NUDGE_GRACE_DAYS
           ? "credential_expired"
           : null;
     if (!kind) continue;

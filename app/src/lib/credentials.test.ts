@@ -210,13 +210,43 @@ describe("expiringSoon — the Heartbeat tile's number", () => {
 
 describe("dueCredentialNudges — the readable twin of claim_credential_nudges()", () => {
   it("claims the last thirty days as a WINDOW, so a missed morning drops nothing", () => {
-    // The SQL says `days_out between 0 and 30`, not "= 30", for exactly this
+    // The SQL says `days_out between 1 and 30`, not "= 30", for exactly this
     // reason; the ledger's unique key is what keeps it to once per expiry date.
-    for (const offset of [0, 1, 15, EXPIRY_WARN_DAYS]) {
+    for (const offset of [1, 2, 15, EXPIRY_WARN_DAYS]) {
       const due = dueCredentialNudges([cert({ expiresOn: day(offset) })], TODAY);
       expect(due.map((d) => d.kind)).toEqual(["credential_30d"]);
       expect(due[0].onDate).toBe(day(offset));
       expect(due[0].daysUntil).toBe(offset);
+    }
+  });
+
+  it("says something ON the day the card runs out, not the morning after", () => {
+    // Both rules key their ledger row on the SAME date — the expiry — so a day
+    // claimed by the thirty-day rule is a day the expiry rule can never speak
+    // on. With the thirty-day window starting at 0 the last morning somebody
+    // could still act was the one morning nothing was said, and the next push
+    // landed a day late, worded as a lapse. Day 0 therefore belongs to the
+    // expiry rule.
+    const due = dueCredentialNudges([cert({ expiresOn: TODAY })], TODAY);
+    expect(due.map((d) => d.kind)).toEqual(["credential_expired"]);
+    expect(due[0].daysUntil).toBe(0);
+    expect(due[0].onDate).toBe(TODAY);
+  });
+
+  it("gives the two pushes one ledger key each, so neither swallows the other", () => {
+    // The spec asks for exactly two pushes over a card's life: one when it
+    // enters the window, one on the day. Their (kind, onDate) pairs must differ
+    // or the second is dropped by `on conflict do nothing`.
+    const entering = dueCredentialNudges([cert({ expiresOn: day(EXPIRY_WARN_DAYS) })], TODAY);
+    const onTheDay = dueCredentialNudges([cert({ expiresOn: TODAY })], TODAY);
+    expect(entering[0].kind).not.toBe(onTheDay[0].kind);
+  });
+
+  it("never claims two kinds for one card on one morning", () => {
+    // The windows are 1..30 and -30..0. An overlap would push twice in a
+    // morning about the same card.
+    for (let offset = -EXPIRED_NUDGE_GRACE_DAYS; offset <= EXPIRY_WARN_DAYS; offset += 1) {
+      expect(dueCredentialNudges([cert({ expiresOn: day(offset) })], TODAY)).toHaveLength(1);
     }
   });
 

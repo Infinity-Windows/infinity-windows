@@ -9720,14 +9720,29 @@ grant execute on function public.credential_nudge_audience(uuid) to service_role
 -- these clauses out in TypeScript, so a change made to one side and not the
 -- other fails a test rather than going quietly live.
 --
--- Two rules:
---   (a) the card enters its last thirty days — WINDOWED (0..30 days out)
+-- Two rules, and the SPEC ASKS FOR TWO PUSHES: one when the card enters its
+-- last thirty days, one on the day it runs out. Both rules key their ledger row
+-- on the SAME on_date (the expiry date), so the two windows must not overlap —
+-- a day claimed by rule (a) is a day rule (b) can never speak on, because the
+-- (certification_id, kind, on_date) row rule (a) wrote weeks earlier is still
+-- there. The first cut of this function had (a) at 0..30 and (b) at -30..-1,
+-- which meant day 0 fell inside a window already claimed on day 30 and the only
+-- other warning landed the morning AFTER the card lapsed. The last day a card
+-- is good — the one morning somebody can still act before a gate turns them
+-- away — was the one day nothing was said. Hence:
+--   (a) 1..30 days out: the card is inside its last thirty days. WINDOWED
 --       rather than "exactly 30", so one missed sweep does not silently drop
 --       the warning; the unique key already guarantees it is said once per
 --       expiry date.
---   (b) the card has run out. Bounded to the last thirty days on purpose: a
---       card that expired in 2019, typed in today as history, must not wake
---       three supervisors' phones about a fact everybody already knows.
+--   (b) -30..0 days out: today IS the day, or the card has already run out.
+--       Day 0 lives here rather than in (a) so it gets a ledger key of its own
+--       and a sentence of its own ("runs out today", credentialCopy in
+--       supabase/functions/pipeline-sweep/index.ts). Windowed backwards for the
+--       same self-healing reason: a sweep that misses the day itself still says
+--       it the next morning, worded as a lapse. Bounded to the last thirty days
+--       on purpose: a card that expired in 2019, typed in today as history,
+--       must not wake three supervisors' phones about a fact everybody already
+--       knows.
 --
 -- A VOIDED card is silent, and so is a card belonging to somebody who is no
 -- longer active. An UNVERIFIED card still warns — the office not having got
@@ -9798,12 +9813,13 @@ begin
     select cd.cid, cd.pid, cd.who, cd.ckind, cd.clabel, cd.exp, cd.days_out,
            'credential_30d'::text as due_kind
       from candidate cd
-     where cd.days_out between 0 and 30
+     where cd.days_out between 1 and 30
     union all
+    -- Day 0 is deliberately on THIS side of the line. See the note above.
     select cd.cid, cd.pid, cd.who, cd.ckind, cd.clabel, cd.exp, cd.days_out,
            'credential_expired'::text as due_kind
       from candidate cd
-     where cd.days_out between -30 and -1
+     where cd.days_out between -30 and 0
   ),
   claimed as (
     insert into credential_nudges (certification_id, kind, on_date)
@@ -9829,7 +9845,7 @@ end;
 $$;
 
 comment on function public.claim_credential_nudges() is
-  'Service-role only (the pipeline-sweep edge function): claims and returns the credential warnings due this company-local morning — a card inside its last thirty days, and a card that has run out within the last thirty. The claim and the decision are one statement, so two overlapping sweeps cannot both push. The readable copy of this rule is dueCredentialNudges in app/src/lib/credentials.ts (Wave O, O4).';
+  'Service-role only (the pipeline-sweep edge function): claims and returns the credential warnings due this company-local morning — a card 1 to 30 days from running out, and a card whose day has come or gone within the last thirty. The two windows do not overlap, because both write the same on_date and a day claimed by one is a day the other can never speak on; day 0 belongs to the second so the last day a card is good gets a warning of its own. The claim and the decision are one statement, so two overlapping sweeps cannot both push. The readable copy of this rule is dueCredentialNudges in app/src/lib/credentials.ts (Wave O, O4).';
 
 revoke all on function public.claim_credential_nudges() from public, anon, authenticated;
 grant execute on function public.claim_credential_nudges() to service_role;
