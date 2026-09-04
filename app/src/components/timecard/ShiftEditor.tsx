@@ -5,7 +5,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "../../lib/errors";
+import { getMyProfile } from "../../lib/install/api";
 import { sendPush } from "../../lib/permissions/pushServer";
+import { changedPunchFields, editPushBody } from "../../lib/timecardNotice";
 import { endFromDuration } from "../../lib/shiftGuard";
 import { showUndoToast } from "../../lib/undoToast";
 import {
@@ -54,6 +56,10 @@ export function ShiftEditor({
   defaultInAt?: string;
 }) {
   const qc = useQueryClient();
+  // Whose punch this is, relative to whoever is editing. A supervisor tidying
+  // up their OWN timecard should not push themselves a notice about it.
+  const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
+  const isMine = Boolean(me.data?.id) && me.data?.id === profileId;
   const [projectId, setProjectId] = useState(shift?.project_id ?? "");
   const [codeId, setCodeId] = useState(shift?.cost_code_id ?? "");
   const [inAt, setInAt] = useState(
@@ -117,18 +123,37 @@ export function ShiftEditor({
         note: note.trim(),
       });
     },
-    onSuccess: () => {
-      // Editing an approved shift un-approves it server-side; tell the crew
-      // member their numbers changed rather than letting payroll surprise
-      // them. Fire-and-forget, same as the approval push.
-      if (mode === "edit" && shift?.status === "approved") {
-        void sendPush({
-          profileIds: [shift.profile_id],
-          title: "Timecard adjusted",
-          body: "Your approved hours were changed and need re-approval.",
-          tag: `timecard-edited-${shift.id}`,
-          url: "/clock",
-        });
+    onSuccess: (saved) => {
+      // K4: EVERY change to somebody else's punch is told to them, not just
+      // the ones that happened to be approved already. The old condition
+      // (status === "approved") meant an edit before approval, or a punch
+      // added on their behalf, moved their pay in silence. Not mine, though:
+      // a supervisor fixing their own punch does not need to push themselves.
+      if (!isMine) {
+        if (mode === "add") {
+          void sendPush({
+            profileIds: [profileId],
+            title: "Punch added to your timecard",
+            body: "A supervisor added a punch for you. Check My timecard.",
+            tag: `timecard-added-${saved.id}`,
+            url: "/timecard",
+          });
+        } else if (shift) {
+          const fields = changedPunchFields(shift, {
+            clock_in_at: saved.clock_in_at,
+            clock_out_at: saved.clock_out_at,
+            break_seconds: saved.break_seconds,
+            project_id: saved.project_id,
+            cost_code_id: saved.cost_code_id,
+          });
+          void sendPush({
+            profileIds: [shift.profile_id],
+            title: "Timecard adjusted",
+            body: editPushBody(fields, shift.status === "approved"),
+            tag: `timecard-edited-${shift.id}`,
+            url: "/timecard",
+          });
+        }
       }
       refresh();
       onDone();
@@ -143,13 +168,17 @@ export function ShiftEditor({
     mutationFn: () => voidShift(shift!.id, note.trim()),
     onSuccess: () => {
       // The crew member should hear it from the app, not from a short check.
-      void sendPush({
-        profileIds: [shift!.profile_id],
-        title: "Timecard punch deleted",
-        body: "A punch on your timecard was deleted. Ask your lead if that's a surprise.",
-        tag: `timecard-deleted-${shift!.id}`,
-        url: "/clock",
-      });
+      // Not when it is their own punch, though (K4) — nobody needs a push
+      // about the thing they just did.
+      if (!isMine) {
+        void sendPush({
+          profileIds: [shift!.profile_id],
+          title: "Timecard punch deleted",
+          body: "A punch on your timecard was deleted. Ask your lead if that's a surprise.",
+          tag: `timecard-deleted-${shift!.id}`,
+          url: "/clock",
+        });
+      }
       refresh();
       onDone();
       showUndoToast({

@@ -610,6 +610,41 @@ export async function listShiftEdits(shiftId: string): Promise<ShiftEdit[]> {
   return (data ?? []) as unknown as ShiftEdit[];
 }
 
+/**
+ * Edits somebody ELSE made to MY punches, newest first (Wave K, K4).
+ *
+ * The durable half of "your timecard was changed": a push can be swiped away
+ * or arrive on a phone that is off, so the same fact also becomes a line in the
+ * notifications feed that stays until the person clears it.
+ *
+ * `edited_by <> me` on purpose — my own corrections are not news to me. Reads
+ * as the worker, which the "own shift read" policy added by 20260976000000
+ * allows; before that migration this table was supervisor-read-only, so on a
+ * database without it the query simply comes back empty and the feed line
+ * never appears.
+ */
+export async function listMyTimecardEdits(
+  profileId: string,
+  sinceIso: string,
+): Promise<ShiftEdit[]> {
+  const { data, error } = await supabase
+    .from("time_shift_edits")
+    .select(
+      "id, shift_id, edited_by, field, old_value, new_value, reason, created_at, editor:profiles!edited_by(display_name), shift:time_shifts!inner(profile_id)",
+    )
+    .eq("shift.profile_id", profileId)
+    .neq("edited_by", profileId)
+    .gte("created_at", sinceIso)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (isMissingTableError(error)) return [];
+  // A database where the worker cannot read this table yet answers with an
+  // empty list rather than an error — the feed line is a courtesy, and a
+  // permission gap must never blank the whole notifications page.
+  if (error) return [];
+  return (data ?? []) as unknown as ShiftEdit[];
+}
+
 /** overtime_rules row: one company default plus per-person overrides. */
 export interface OvertimeRuleRow {
   id: string;

@@ -898,6 +898,20 @@ export const CATALOG = {
   "nudge.on": { en: "Send it", es: "Enviarlo" },
   "nudge.save": { en: "Save", es: "Guardar" },
   "nudge.saving": { en: "Saving\u2026", es: "Guardando\u2026" },
+  // The durable half of "somebody changed your punches" (K4). The push is
+  // English by design; this line is the one that stays, so it speaks both.
+  "notif.timecardChanged.title": {
+    en: "Your timecard was changed",
+    es: "Tu tarjeta de tiempo fue cambiada",
+  },
+  "notif.timecardChanged.subOne": {
+    en: "One change in the last 30 days \u2014 check your hours",
+    es: "Un cambio en los \u00faltimos 30 d\u00edas \u2014 revisa tus horas",
+  },
+  "notif.timecardChanged.subMany": {
+    en: "{count} changes in the last 30 days \u2014 check your hours",
+    es: "{count} cambios en los \u00faltimos 30 d\u00edas \u2014 revisa tus horas",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
