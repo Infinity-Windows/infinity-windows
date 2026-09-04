@@ -15333,17 +15333,24 @@ grant execute on function public.decide_access_request(uuid, text, text)
 -- convention that will be wrong on one, and being wrong quietly is what turns
 -- a spec sheet into a building plan the map then draws from.
 --
--- FOUR THINGS, in the order they depend on each other:
+-- IN THE ORDER THEY DEPEND ON EACH OTHER:
 --
 --   1. monday_jobs.files    — what Monday says is attached to the row. A LIST,
---                             never the bytes and never a URL.
+--                             never the bytes and never a URL. Readable by the
+--                             office, writable by nobody but the sync.
 --   2. project_plansets
 --        .source_asset_id   — which Monday file a planset came from, so the
 --                             same file is never pulled twice.
 --   3. project_documents    — the home a job document has never had, plus the
---      + job-documents        private bucket its bytes live in.
+--      + job-documents        private bucket its bytes live in, plus the
+--                             `money` flag that keeps a signed quote off the
+--                             crew's phones (section 3b).
 --   4. attach_sandbox_guards() — project_documents is project-scoped, so the
 --                             test-login fence has to be re-armed over it.
+--   5. the plansets bucket  — the other half of what the pull writes, and it
+--                             has been open to every signed-in login, partner
+--                             logins included, since 20260715120000
+--                             (section 7).
 --
 -- IDEMPOTENT throughout (if not exists / do update / drop policy if exists
 -- before create), so re-running it changes nothing.
@@ -15674,3 +15681,76 @@ create trigger forget_job_document_bytes
 -- missing; scripts/test_sandbox_guard.py fails CI on a migration that adds a
 -- project-scoped table and forgets this line.
 select public.attach_sandbox_guards();
+
+
+-- ---------------------------------------------------------------------------
+-- 7. The plansets bucket, which this migration starts writing into
+-- ---------------------------------------------------------------------------
+-- HALF OF WHAT THE PULL WRITES GOES SOMEWHERE ELSE. A pulled "LP" or "CU" sheet
+-- is a planset, so it lands in the `plansets` bucket rather than in the private
+-- one above — and that bucket has carried a single policy since
+-- 20260715120000: bucket-wide ALL, to every authenticated user, with no partner
+-- guard and no scoping of any kind.
+--
+--   create policy "authenticated install buckets"
+--     on storage.objects for all to authenticated
+--     using (bucket_id in ('plansets','install-media'))
+--     with check (...);
+--
+-- That predates THE WALL (20260950000000), which went through every crew table
+-- and never touched storage.objects. So a builder's own login — a partner, who
+-- is meant to see one job's readiness and nothing else — can today list,
+-- download, overwrite and DELETE every job's plan sets. This migration is what
+-- makes that material: it starts filing another company's paperwork in there.
+-- docs/security-followups-2026-07-29.md has had the general form of this on its
+-- list since July; the branch that fills the bucket is the branch that fixes it.
+--
+-- Two changes, and deliberately only two:
+--
+--   1. THE PARTNER WALL, on both buckets. Same sentence every crew table
+--      carries, and scripts/test_partner_wall.py is the test that keeps it
+--      there. install-media matters just as much — it holds job photos and the
+--      photographs of receipts.
+--   2. NO CLIENT DELETE ON PLANSETS. Nothing in the app deletes a planset
+--      object: uploads always write a new timestamped path, and purging a job
+--      clears the folder inside purge_project, which is SECURITY DEFINER and
+--      does not answer to these policies. Until this line, any crew member
+--      could delete any job's plan set from a browser console, and the job's
+--      map would simply stop drawing.
+--
+-- WHAT IS DELIBERATELY NOT CHANGED: which crew member may read which job's
+-- plansets. `project_plansets`' own policy is `using (true)` for all non-partner
+-- crew, so the ROWS are already company-wide; scoping the bytes to jobs a
+-- person can see would make the bucket stricter than the table it belongs to,
+-- which reads like a wall without being one and would quietly break a foreman
+-- opening a sandbox job's plans. Scoping both together is a change of its own,
+-- with its own decision to take.
+--
+-- install-media is left bucket-wide for the same reason plus a mechanical one:
+-- its paths are not all job folders ("receipts/…" is one), so there is no
+-- folder rule to write there yet.
+drop policy if exists "authenticated install buckets" on storage.objects;
+
+drop policy if exists "install media crew" on storage.objects;
+create policy "install media crew"
+  on storage.objects for all to authenticated
+  using (bucket_id = 'install-media' and not public.is_partner_user())
+  with check (bucket_id = 'install-media' and not public.is_partner_user());
+
+drop policy if exists "plansets crew read" on storage.objects;
+create policy "plansets crew read"
+  on storage.objects for select to authenticated
+  using (bucket_id = 'plansets' and not public.is_partner_user());
+
+drop policy if exists "plansets crew add" on storage.objects;
+create policy "plansets crew add"
+  on storage.objects for insert to authenticated
+  with check (bucket_id = 'plansets' and not public.is_partner_user());
+
+-- Update, not delete: an upload that retries onto the same path has to be able
+-- to finish, and the offline outbox does replay one.
+drop policy if exists "plansets crew replace" on storage.objects;
+create policy "plansets crew replace"
+  on storage.objects for update to authenticated
+  using (bucket_id = 'plansets' and not public.is_partner_user())
+  with check (bucket_id = 'plansets' and not public.is_partner_user());

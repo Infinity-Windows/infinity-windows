@@ -145,5 +145,82 @@ class TestTheWall(unittest.TestCase):
             self.assertNotIn(table, live)
 
 
+# ---------------------------------------------------------------------------
+# THE BUCKETS
+# ---------------------------------------------------------------------------
+# storage.objects is not in the `public` schema, so the sweep above skips it
+# (NOT_PUBLIC_SCHEMA_TABLES) — and the wall migration itself never touched it.
+# That gap was found the day the Monday pull started filing another company's
+# paperwork in the `plansets` bucket, which had carried one bucket-wide
+# `for all to authenticated` policy since 20260715120000: a builder's own login
+# could list, download, overwrite and delete every job's plan sets.
+#
+# A file in a bucket is as readable as a row in a table, so it gets the same
+# rule and the same standing test. The five names below are the ones that were
+# already unguarded when this test was written; they are a LIST OF WORK LEFT TO
+# DO, not a policy decision, and shortening it is always the right direction.
+# What this catches is the next NEW bucket that forgets the guard.
+STORAGE_WALL_TODO: frozenset[str] = frozenset({
+    "authenticated toolbox records",     # 20260718003000
+    "trip attachments read",             # 20260723020000
+    "trip attachments write",            # 20260723020000
+    "authenticated learning videos",     # 20260816000000
+    "authenticated issue photos",        # 20260922000000
+})
+
+
+class TestTheWallOverStorage(unittest.TestCase):
+    def _readable_storage_policies(self) -> dict[str, object]:
+        states, _unparsed = replay_policies()
+        storage = states.get("storage")
+        if storage is None:
+            self.fail("no storage.objects policies parsed at all — parser broke")
+        # SELECT or ALL, granted to a role list that includes `authenticated`.
+        # A write-only policy (the test-login sandbox fence) is a different
+        # question and is not what the wall is about.
+        return {
+            name: p for name, p in storage.policies.items()
+            if p.command in ("SELECT", "ALL") and "authenticated" in p.roles
+        }
+
+    def test_every_readable_bucket_policy_guards_against_partners(self):
+        missing = [
+            name for name, p in self._readable_storage_policies().items()
+            if name not in STORAGE_WALL_TODO
+            and GUARD not in (p.using + " " + p.check)
+        ]
+        self.assertEqual(
+            missing, [],
+            "a storage.objects policy lets a partner login read a bucket — add "
+            f"`not public.{GUARD}` to it, the same guard every crew table "
+            "carries (THE WALL, 20260950000000)",
+        )
+
+    def test_the_todo_list_is_not_stale(self):
+        live = self._readable_storage_policies()
+        for name in STORAGE_WALL_TODO:
+            self.assertIn(
+                name, live,
+                f"{name!r} is listed as still-to-do but no longer exists — "
+                "delete the line rather than leaving a stale exemption",
+            )
+            self.assertNotIn(
+                GUARD, live[name].using + " " + live[name].check,
+                f"{name!r} has the guard now — take it off the to-do list",
+            )
+
+    def test_the_plansets_bucket_is_walled(self):
+        # Named on purpose: this is the one the Monday pull writes into, and
+        # the bucket-wide policy it replaced is the reason this class exists.
+        live = self._readable_storage_policies()
+        self.assertNotIn(
+            "authenticated install buckets", live,
+            "the bucket-wide plansets/install-media policy is back",
+        )
+        for name in ("plansets crew read", "install media crew"):
+            self.assertIn(name, live)
+            self.assertIn(GUARD, live[name].using)
+
+
 if __name__ == "__main__":
     unittest.main()
