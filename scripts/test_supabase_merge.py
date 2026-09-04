@@ -142,7 +142,10 @@ class TestSchemaParsing(unittest.TestCase):
         # (standard-tracking-jobs slice 3, 20260973000000).
         # +1: company_settings — the single settings row behind the evening
         # "Still on the job?" nudge (Wave K, K2, 20260976000000).
-        self.assertEqual(len(SCHEMA.tables), 117)
+        # +1: pipeline_nudges — the ledger of what the 7 AM job-pipeline sweep
+        # has already said about a job (Wave J, J4, 20260979000000). Wave E
+        # (20260977000000) declared no table of its own.
+        self.assertEqual(len(SCHEMA.tables), 118)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

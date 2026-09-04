@@ -87,6 +87,7 @@ FEATURE_NAMES = {
     'ingest-knowledge': 'adding documents to the brain',
     'manage-crew-access': 'adding and removing crew logins',
     'monday-sync': 'pulling upcoming jobs from Monday.com',
+    'pipeline-sweep': 'the morning job-pipeline reminder',
     'redeem-crew-invite': 'setting up a new crew login from a code',
     'send-push': 'push notifications',
     'still-on-the-job-sweep': 'the evening still-on-the-job nudge',
