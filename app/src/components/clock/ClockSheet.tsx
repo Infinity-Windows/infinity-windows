@@ -28,6 +28,7 @@ import {
 import { ToolboxTalkNagBanner } from "../time/ToolboxTalkNagBanner";
 import { WrongClockBanner } from "../time/WrongClockBanner";
 import { ToolboxSignCard } from "./ToolboxSignCard";
+import { ClockedInByLine } from "./ClockedInByLine";
 import { myTodayCompletion } from "../../lib/toolbox";
 import { getTodayTalk } from "../../lib/ops";
 import { listMyOpeningsAllJobs, startOpeningWork } from "../../lib/install/api";
@@ -722,6 +723,8 @@ export function ClockSheet({
                     {shift.cost_codes.code} — {shift.cost_codes.label}
                   </span>
                 )}
+                {/* Absent unless a supervisor started this punch for them. */}
+                <ClockedInByLine shift={shift} />
               </span>
               <span className="clock-job-chip-arrow" aria-hidden>
                 <ArrowLeftRight size={16} />

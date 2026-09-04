@@ -39,6 +39,7 @@ import { getClockCostCodesForProject } from "../../lib/costCodes";
 import { useT } from "../../lib/i18n";
 import { effectiveClockInMode, normalizeModes, type JobMode } from "../../lib/jobModes";
 import { JobModeBadge } from "../JobModeBadge";
+import { ClockedInByLine } from "./ClockedInByLine";
 
 export function ClockInBlock() {
   const t = useT();
@@ -273,6 +274,8 @@ export function ClockInBlock() {
         <div className="clockin-bar-job">
           <span className="clockin-bar-label">{t("clockblock.onClock")}</span>
           <span className="clockin-bar-name">{jobLine}</span>
+          {/* Absent unless a supervisor started this punch from the roster. */}
+          <ClockedInByLine shift={shift} />
         </div>
         <span className="clockin-bar-timer" aria-label={t("clock.a11y.timeWorked")}>
           {formatClock(workSec)}
