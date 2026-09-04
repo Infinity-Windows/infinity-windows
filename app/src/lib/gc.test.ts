@@ -17,6 +17,7 @@ import {
   GC_BRAND_NAMES,
   firstMissingAnswer,
   gcBrandOf,
+  gcLinkDelivery,
   type GcCheckinDraft,
 } from "./gc";
 
@@ -113,5 +114,43 @@ describe("gcBrandOf", () => {
     // Q20 is the owner's own design and these are his words, ampersand and all.
     expect(GC_BRAND_NAMES.stg).toBe("STG Windows & Doors");
     expect(GC_BRAND_NAMES.forge).toBe("Forge Windows and Doors");
+  });
+});
+
+describe("gcLinkDelivery", () => {
+  // The card used to read its "Sent to …" line off sent_to_email, which is
+  // written when the link is MINTED. So a foreman saw the builder's address on
+  // the card whether or not a mail server had ever seen the message — and the
+  // "email is not configured" note that told him the truth was component state
+  // that vanished the moment he reloaded the job. These cases are that bug.
+
+  it("says an email went only when the send stamped it", () => {
+    expect(
+      gcLinkDelivery({ sent_at: "2026-09-04T10:00:00Z", sent_to_email: "bob@builder.com" }),
+    ).toBe("sent");
+  });
+
+  it("says nothing went when the address is there and the stamp is not", () => {
+    // RESEND_API_KEY unset: create_gc_link wrote the address, send-email
+    // answered "not configured", and nothing left the building.
+    expect(gcLinkDelivery({ sent_at: null, sent_to_email: "bob@builder.com" })).toBe("unsent");
+  });
+
+  it("stays quiet for a link nobody put an address on", () => {
+    // Minted to be copied and texted. There is no email to report either way.
+    expect(gcLinkDelivery({ sent_at: null, sent_to_email: null })).toBe("silent");
+  });
+
+  it("stays quiet for a job with no live link at all", () => {
+    expect(gcLinkDelivery(null)).toBe("silent");
+  });
+
+  it("stays quiet rather than naming a blank address", () => {
+    // Unreachable — send-email refuses a link with no address before it ever
+    // stamps one. An impossible row should make the card quiet, not print
+    // "Sent to ".
+    expect(gcLinkDelivery({ sent_at: "2026-09-04T10:00:00Z", sent_to_email: null })).toBe(
+      "silent",
+    );
   });
 });

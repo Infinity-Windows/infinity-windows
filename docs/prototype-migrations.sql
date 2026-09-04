@@ -9970,9 +9970,23 @@ create table if not exists gc_links (
   -- The credential, hashed. UNIQUE so a hash collision or a double-insert is a
   -- constraint error rather than two links that both open one job.
   token_hash text not null unique,
+  -- A RECORD OF THE NAME WE USED WHEN THIS LINK WENT OUT, not the name the
+  -- page wears today. Every live read — gc_link_open, the send-email function
+  -- — takes projects.gc_brand instead, so tapping the brand pill changes the
+  -- builder's open page and the next email. Kept because "which name did that
+  -- email say" is a real question months later, and the sent mail cannot be
+  -- edited to match a later change of mind.
   brand text not null default 'stg',
+  -- Who the office meant to mail. Written at mint time; it is an INTENT, and
+  -- on its own it is not evidence that anything was delivered.
   sent_to_email text,
   sent_by uuid references profiles(id) on delete set null,
+  -- WRITTEN ONLY BY THE send-email FUNCTION, ONLY ON A REAL 2xx FROM RESEND.
+  -- The first cut stamped it here at mint time alongside sent_to_email, which
+  -- made the card say "Sent to bob@builder.com" for a link no mail server ever
+  -- saw — including the RESEND_API_KEY-unset case, where the only honest thing
+  -- to tell a foreman is "copy it and text it". Null means nothing has left the
+  -- building, and the card says so.
   sent_at timestamptz,
   -- Thirty days. Long enough to survive a builder who reads his email weekly,
   -- short enough that a forwarded text from last spring is dead.
@@ -10123,14 +10137,20 @@ begin
    where gc_links.project_id = p_project_id
      and gc_links.revoked_at is null;
 
-  insert into gc_links (project_id, token_hash, brand, sent_to_email, sent_by, sent_at)
+  -- sent_at IS DELIBERATELY NOT SET HERE. Minting a link sends nothing — the
+  -- send-email edge function does that, and stamps sent_at itself on a real 2xx
+  -- from Resend. Stamping it here (the first cut did, whenever an address was
+  -- supplied) makes every link look delivered the instant it exists, which is
+  -- exactly wrong in the case that matters most: RESEND_API_KEY unset, where
+  -- the function answers "email is not configured" and the foreman needs the
+  -- card to keep telling him to copy the link and text it.
+  insert into gc_links (project_id, token_hash, brand, sent_to_email, sent_by)
   values (
     p_project_id,
     v_hash,
     v_brand,
     nullif(btrim(lower(coalesce(p_email, ''))), ''),
-    auth.uid(),
-    case when nullif(btrim(coalesce(p_email, '')), '') is null then null else now() end
+    auth.uid()
   )
   returning * into v_row;
 

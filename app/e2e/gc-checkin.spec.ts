@@ -64,9 +64,17 @@ const EXISTING_CHECKIN = {
  * "file one and the card stops saying nobody has called" is a real assertion
  * rather than a screenshot of an optimistic update.
  */
-function useGcFixtures(page: Page, seed: Record<string, unknown>[] = []) {
+function useGcFixtures(
+  page: Page,
+  seed: Record<string, unknown>[] = [],
+  links: Record<string, unknown>[] = [],
+) {
   const state = { checkins: [...seed] };
   const calls: { fn: string; body: Record<string, unknown> }[] = [];
+
+  // The GC's link, read by the card under the check-in form. Empty by default,
+  // which is a job nobody has minted a link on.
+  void page.route("**/rest/v1/gc_links**", (r) => json(r, links, links.length));
 
   void page.route("**/rest/v1/rpc/log_gc_checkin", async (r) => {
     const body = r.request().postDataJSON() as Record<string, unknown>;
@@ -200,4 +208,49 @@ test("an installer reads what the GC said and is never offered the button", asyn
   await expect(card.getByText("Outset", { exact: true })).toBeVisible();
   await expect(card.getByText("Stucco")).toBeVisible();
   await expect(card.getByRole("button", { name: /Log a GC check-in/i })).toHaveCount(0);
+});
+
+/** A live link on the job. `sent_at` is the ONLY field that means an email
+ * actually went — `sent_to_email` is who the office MEANT to write to, stamped
+ * when the link was minted. */
+function gcLink(over: Record<string, unknown> = {}) {
+  return {
+    id: "cccccccc-1111-4111-8111-cccccccccccc",
+    project_id: PROJECT_ID,
+    brand: "stg",
+    sent_to_email: "bob@builder.com",
+    sent_at: null,
+    expires_at: "2026-10-04T12:00:00Z",
+    used_at: null,
+    revoked_at: null,
+    created_at: "2026-09-04T12:00:00Z",
+    ...over,
+  };
+}
+
+test("a link nothing was emailed on says so, and says what to do instead", async ({ page }) => {
+  // THIS IS THE SHIPPING STATE OF THE FEATURE: RESEND_API_KEY is not set, so
+  // send-email answers "not configured" and nothing leaves the building. The
+  // card used to read its line off sent_to_email alone and told the foreman
+  // "Sent to bob@builder.com" anyway — and the note under the button that told
+  // him the truth is component state, gone the moment he reloads the job. This
+  // is that reload.
+  await useSupabaseFixtures(page, { role: "foreman" });
+  useGcFixtures(page, [], [gcLink()]);
+  await page.goto(`/projects/${PROJECT_ID}`);
+
+  const card = gcCard(page);
+  await expect(card.getByText(/The link works until/i)).toBeVisible();
+  await expect(card.getByText(/No email went\. Copy the link and text it\./i)).toBeVisible();
+  await expect(card.getByText(/Sent to bob@builder\.com/i)).toHaveCount(0);
+});
+
+test("a link the mail server took names who it went to", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  useGcFixtures(page, [], [gcLink({ sent_at: "2026-09-04T12:01:00Z" })]);
+  await page.goto(`/projects/${PROJECT_ID}`);
+
+  const card = gcCard(page);
+  await expect(card.getByText(/Sent to bob@builder\.com/i)).toBeVisible();
+  await expect(card.getByText(/No email went/i)).toHaveCount(0);
 });

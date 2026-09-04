@@ -250,6 +250,32 @@ export interface GcLink {
 const LINK_COLS =
   "id, project_id, brand, sent_to_email, sent_at, expires_at, used_at, revoked_at, created_at";
 
+/** What the GC card's standing line should say about the email:
+ * `sent` names the address, `unsent` says nothing went, `silent` says nothing
+ * at all. */
+export type GcLinkDelivery = "sent" | "unsent" | "silent";
+
+/** Did an email actually go out on this link?
+ *
+ * ONLY sent_at ANSWERS THAT. sent_to_email is who the office meant to mail,
+ * written when the link was minted, and the first cut of the card read the
+ * line off that address alone — so a link said "Sent to bob@builder.com" the
+ * instant it existed, before any mail was attempted. The case that made it
+ * matter is the one this feature ships in: with RESEND_API_KEY unset the
+ * send-email function answers "email is not configured" and nothing leaves the
+ * building, while the card claimed the builder had been written to. Only the
+ * send-email function writes sent_at, and only on a real 2xx from Resend.
+ *
+ * A sent_at with no address is unreachable (send-email refuses a link with no
+ * address) and reads as `silent` rather than as a claim with a blank name in
+ * it — an impossible row should make the card quiet, not wrong. */
+export function gcLinkDelivery(
+  link: Pick<GcLink, "sent_at" | "sent_to_email"> | null,
+): GcLinkDelivery {
+  if (!link?.sent_to_email) return "silent";
+  return link.sent_at ? "sent" : "unsent";
+}
+
 export interface GcLinkState {
   link: GcLink | null;
   known: boolean;

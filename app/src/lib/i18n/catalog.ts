@@ -1254,6 +1254,13 @@ export const CATALOG = {
   "gc.link.none": { en: "No link has gone out yet.", es: "Todavía no se ha enviado ningún enlace." },
   "gc.link.live": { en: "The link works until {date}.", es: "El enlace funciona hasta el {date}." },
   "gc.link.sentTo": { en: "Sent to {email}", es: "Enviado a {email}" },
+  // Said when the link exists and an address is on it but no email ever went —
+  // which is every link while RESEND_API_KEY is unset. It has to name the next
+  // move, because the card is all the foreman sees after he reloads the job.
+  "gc.link.notSent": {
+    en: "No email went. Copy the link and text it.",
+    es: "No se envió ningún correo. Copia el enlace y mándalo por mensaje.",
+  },
   "gc.link.answered": { en: "He answered on it {date}.", es: "Contestó ahí el {date}." },
   "gc.link.off": { en: "The link is off.", es: "El enlace está apagado." },
   "gc.link.email": { en: "GC's email", es: "Correo del GC" },

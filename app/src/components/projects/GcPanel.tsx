@@ -26,6 +26,7 @@ import {
   gcBrandOf,
   gcCheckinsKey,
   gcCheckinsLatestKey,
+  gcLinkDelivery,
   gcLinkKey,
   gcThreadKey,
   listGcCheckins,
@@ -449,6 +450,17 @@ function GcLinkPanel({ projectId, project }: { projectId: string; project: Proje
     ? gcLinkUrl(window.location.origin, import.meta.env.BASE_URL, minted.token)
     : null;
 
+  // The "nothing was sent" note under the button is component state and is gone
+  // on the next load of the job, so the STANDING line has to carry the truth.
+  // gcLinkDelivery is where the rule lives and where it is tested.
+  const delivery = gcLinkDelivery(live);
+  let sentLine: string | null = null;
+  if (delivery === "sent") {
+    sentLine = t("gc.link.sentTo", { email: live?.sent_to_email ?? "" });
+  } else if (delivery === "unsent") {
+    sentLine = t("gc.link.notSent");
+  }
+
   return (
     <div style={{ marginTop: 16, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
       <h3 style={{ margin: "0 0 6px", fontSize: "1rem" }}>{t("gc.link.heading")}</h3>
@@ -472,7 +484,7 @@ function GcLinkPanel({ projectId, project }: { projectId: string; project: Proje
         {live
           ? t("gc.link.live", { date: shortDay(live.expires_at, lang) })
           : t("gc.link.none")}
-        {live?.sent_to_email ? ` · ${t("gc.link.sentTo", { email: live.sent_to_email })}` : ""}
+        {sentLine ? ` · ${sentLine}` : ""}
         {live?.used_at ? ` · ${t("gc.link.answered", { date: shortDay(live.used_at, lang) })}` : ""}
       </p>
 
