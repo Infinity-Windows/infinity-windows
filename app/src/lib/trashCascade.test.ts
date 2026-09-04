@@ -95,6 +95,10 @@ const CASCADE_COVERED: Record<string, string> = {
   project_opening_pin_moves: "ON DELETE CASCADE from project_openings",
   package_events:
     "package survives (detached); its project_id is ON DELETE SET NULL on the final delete from projects",
+  // Wave J, 20260979000000. The ledger of what the pipeline sweep already said
+  // about this job: the row means nothing without the job, so it goes with it
+  // on the final `delete from projects`. Nothing else references it.
+  pipeline_nudges: "ON DELETE CASCADE from projects, on the final delete from projects",
 };
 
 function purgeBody(): string {

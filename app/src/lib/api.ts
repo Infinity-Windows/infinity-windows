@@ -16,6 +16,8 @@ import type {
   WindowUnit,
 } from "./types";
 import { quickJobName, quickTrackingJobCode } from "./quickJobs";
+import { isMissingColumn } from "./schemaErrors";
+import { sortProjectsForList, type ReadyState } from "./pipeline";
 
 const WINDOW_SELECT =
   "*, window_types(*), locations(*), projects(*)";
@@ -50,15 +52,46 @@ export async function listLocations(): Promise<Location[]> {
   return data;
 }
 
+/**
+ * Wave J (J2): the ONE order every jobs list reads in — the office's hand-made
+ * order first (`sort_order`, nulls last), then the jobs starting soonest
+ * (`start_date`, nulls last), then the name.
+ *
+ * It is applied in two places on purpose. The server does it, so a list is
+ * already right the moment it lands; then `sortProjectsForList` does it again
+ * on the rows, which is what keeps the answer identical on a phone whose
+ * database does not have `sort_order` yet (the fallback below) and while an
+ * optimistic reorder is on screen. The rule itself lives once, in
+ * lib/pipeline.ts, and is unit-tested there.
+ */
+interface Orderable<T> {
+  order(column: string, options?: { ascending?: boolean; nullsFirst?: boolean }): T;
+}
+
+function inPipelineOrder<T extends Orderable<T>>(query: T): T {
+  return query
+    .order("sort_order", { ascending: true, nullsFirst: false })
+    .order("start_date", { ascending: true, nullsFirst: false })
+    .order("name", { ascending: true });
+}
+
 export async function listProjects(): Promise<Project[]> {
-  const { data, error } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .order("name");
-  if (error) throw error;
-  return data;
+  const rows = () =>
+    supabase.from("projects").select("*").eq("status", "active").is("deleted_at", null);
+  const { data, error } = await inPipelineOrder(rows());
+  if (error) {
+    // A phone (or a preview database) that is ahead of migration
+    // 20260979000000 has no sort_order column, and PostgREST refuses the whole
+    // read rather than ignoring the ORDER BY. The Jobs page must still load, so
+    // fall back to the order this list had before wave J.
+    if (isMissingColumn(error, "sort_order")) {
+      const fallback = await rows().order("name");
+      if (fallback.error) throw fallback.error;
+      return sortProjectsForList(fallback.data as Project[]);
+    }
+    throw error;
+  }
+  return sortProjectsForList(data as Project[]);
 }
 
 /**
@@ -78,13 +111,17 @@ export async function listProjects(): Promise<Project[]> {
  * that deliberately reads a trashed row, and it does so separately.
  */
 export async function listProjectsAnyStatus(): Promise<Project[]> {
-  const { data, error } = await supabase
-    .from("projects")
-    .select("*")
-    .is("deleted_at", null)
-    .order("name");
-  if (error) throw error;
-  return data;
+  const rows = () => supabase.from("projects").select("*").is("deleted_at", null);
+  const { data, error } = await inPipelineOrder(rows());
+  if (error) {
+    if (isMissingColumn(error, "sort_order")) {
+      const fallback = await rows().order("name");
+      if (fallback.error) throw fallback.error;
+      return sortProjectsForList(fallback.data as Project[]);
+    }
+    throw error;
+  }
+  return sortProjectsForList(data as Project[]);
 }
 
 /**
@@ -175,6 +212,10 @@ export interface ProjectDetailsInput {
 export interface CreateProjectInput extends ProjectDetailsInput {
   jobCode: string;
   name: string;
+  /** Wave J (J1): 'not_ready' for a job that arrived rather than being filled
+   * in — a Monday import, a one-tap tracking job. Omitted means Ready, which
+   * is the column's own default and what the full New project form sends. */
+  readyState?: ReadyState;
 }
 
 const clean = (value: string | null | undefined): string | null =>
@@ -225,7 +266,68 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
     .single();
   if (projectError) throw projectError;
 
+  // Wave J (J1/J3): a job that ARRIVED rather than being filled in — imported
+  // from Monday, or built in one tap from the clock-in — is born Not ready.
+  // Nobody has walked that site or checked that its windows are ordered, and a
+  // job that claims to be ready when nobody has said so is exactly the lie this
+  // wave exists to stop. The full New project form is the opposite case: the
+  // person filling it in knows, so it defaults Ready with a toggle.
+  //
+  // Written after the insert, not with it: ready_state is RPC-only under wave
+  // D's projects grant law, so a value in the INSERT above would 42501. A job
+  // that is briefly Ready between the two writes never matters — nothing reads
+  // it until this function returns.
+  if (input.readyState === "not_ready") {
+    await setProjectReadiness(project.id, "not_ready");
+    return { ...(project as Project), ready_state: "not_ready" };
+  }
+
   return project as Project;
+}
+
+/** Foreman+: mark a job Ready or Not ready. */
+export async function setProjectReadiness(
+  projectId: string,
+  readyState: ReadyState,
+): Promise<void> {
+  const { error } = await supabase.rpc("set_project_readiness", {
+    p_project_id: projectId,
+    p_ready_state: readyState,
+  });
+  if (error) throw error;
+}
+
+/**
+ * Foreman+: set or clear when the windows are due, and record that they came
+ * (or take that back).
+ *
+ * Nulls mean LEAVE THAT FACT ALONE, which is why clearing the ETA is its own
+ * flag rather than "send null": the one-tap Materials-arrived call has no ETA
+ * to send, and a null that meant "erase" would wipe the date every time
+ * somebody pressed the button.
+ */
+export async function setProjectMaterials(
+  projectId: string,
+  input: { eta?: string | null; clearEta?: boolean; arrived?: boolean },
+): Promise<void> {
+  const { error } = await supabase.rpc("set_project_materials", {
+    p_project_id: projectId,
+    p_materials_eta: input.eta ?? null,
+    p_clear_eta: input.clearEta ?? false,
+    p_arrived: input.arrived ?? null,
+  });
+  if (error) throw error;
+}
+
+/**
+ * Foreman+: write the jobs list order. The WHOLE visible list goes over, in its
+ * new order, and the server writes 1..n — so the result is the same however it
+ * was dragged, and a second foreman's save lands as one coherent order rather
+ * than interleaving with somebody's half-finished one.
+ */
+export async function setProjectsOrder(projectIds: string[]): Promise<void> {
+  const { error } = await supabase.rpc("set_projects_order", { p_ids: projectIds });
+  if (error) throw error;
 }
 
 /**
@@ -255,9 +357,13 @@ export async function createTrackingJob(input: {
     name,
     address: input.address ?? null,
     customerName: input.customerName ?? null,
+    // Wave J (J1): born Not ready. A job made in one tap from the clock-in is
+    // a callback or a service call somebody is standing in front of — nobody
+    // has checked its windows are ordered, so it should not claim they are.
+    readyState: "not_ready",
   });
   await setProjectModes(project.id, ["tracking"]);
-  return { ...project, allowed_modes: ["tracking"] };
+  return { ...project, allowed_modes: ["tracking"], ready_state: "not_ready" };
 }
 
 /**
