@@ -12,12 +12,16 @@ it wrong in either direction breaks the pipeline in a different way: too strict
 and every merge is red forever because of `project_marks`, too loose and a
 migration that never applied ships silently. Both directions are asserted.
 
-This file also carries the standing gate for scripts/migration_lint.py — the
-2026-09-02 finish_unit incident, where a column name that does not exist on
-install_events resolved against the enclosing query and made a subquery return
-the newest install on the whole database. That belongs here because it is the
-same job as the rest of the file: proving the migrations say what the schema
-actually is, ahead of a deploy rather than after one.
+This file also carries the standing gate for scripts/migration_lint.py — both
+of its checks. The first is the 2026-09-02 finish_unit incident, where a column
+name that does not exist on install_events resolved against the enclosing query
+and made a subquery return the newest install on the whole database. The second
+is a re-stated column-grant list that quietly got shorter (wave H against wave
+X's `projects.stories`, 2026-09-04), where a table-level REVOKE takes a
+privilege nobody meant to take and the app degrades so politely that nobody
+finds out. Both belong here because it is the same job as the rest of the file:
+proving the migrations say what the schema actually is, ahead of a deploy
+rather than after one.
 """
 
 from __future__ import annotations
@@ -531,6 +535,227 @@ class MigrationLintTest(unittest.TestCase):
             self.assertGreater(
                 fixer, old,
                 f"{fixer} does not sort after {old}, so it never runs second",
+            )
+
+
+class ShrinkingGrantListTest(unittest.TestCase):
+    """A re-stated column-grant list that quietly got shorter.
+
+    THE PROJECTS GRANT LAW says a migration that drops a `projects` column
+    re-states both grant lists without it. The law is good and its primitive is
+    sharp: a table-level `revoke insert, update` takes every COLUMN-level grant
+    with it, so a re-statement is not "the list I am changing" but "every column
+    that may be written from now on" — including columns a wave that merged
+    last week added and this author never saw.
+
+    Wave X (20260980000000) added `projects.stories` and granted it additively.
+    Wave H (20260981000000) dropped three other columns and re-stated the lists
+    from wave Z, which predates `stories`. H sorts after X, so the deploy would
+    have dropped the privilege — and nothing would have failed, because
+    api.ts's isMissingStoriesColumn reads the 42501 as "not deployed yet",
+    drops the column from the write and retries. The save succeeds. The storey
+    count a foreman typed is gone. Wave X's header predicted the file by name,
+    which is exactly as much as a comment can do; this is the part that stops
+    it.
+    """
+
+    def _hits(self, sql: str, name: str | None = None):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Fixture(Path(tmp))
+            fn = fixture.migration(sql, name)
+            paths = [fixture.migrations / fn]
+            return [
+                (t, p, c, r)
+                for _f, _l, t, p, c, r in migration_lint.shrinking_grants(paths)
+            ]
+
+    def _hits_over(self, files: list[tuple[str, str]]):
+        """Several migrations, judged together in name order."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Fixture(Path(tmp))
+            for name, sql in files:
+                fixture.migration(sql, name)
+            paths = sorted(fixture.migrations.glob("*.sql"))
+            return [
+                (f, t, p, c, r)
+                for f, _l, t, p, c, r in migration_lint.shrinking_grants(paths)
+            ]
+
+    # --- the real shape, across two migrations -----------------------------
+
+    WAVE_X = "grant insert (stories) on projects to authenticated;\n"
+    WAVE_H_LOST = """
+    revoke insert, update on table projects from anon, authenticated;
+    grant insert (job_code, name, notes) on projects to authenticated;
+    """
+    WAVE_H_KEPT = """
+    revoke insert, update on table projects from anon, authenticated;
+    grant insert (job_code, name, notes, stories) on projects to authenticated;
+    """
+
+    def test_the_wave_h_restatement_that_lost_stories_is_caught(self):
+        self.assertEqual(
+            self._hits_over([
+                ("20260980000000_x.sql", self.WAVE_X),
+                ("20260981000000_h.sql", self.WAVE_H_LOST),
+            ]),
+            [("20260981000000_h.sql", "projects", "insert", "stories", "authenticated")],
+        )
+
+    def test_naming_the_column_again_is_clean(self):
+        self.assertEqual(
+            self._hits_over([
+                ("20260980000000_x.sql", self.WAVE_X),
+                ("20260981000000_h.sql", self.WAVE_H_KEPT),
+            ]),
+            [],
+        )
+
+    def test_the_report_names_the_column_the_file_has_to_add(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Fixture(Path(tmp))
+            fixture.migration(self.WAVE_X, "20260980000000_x.sql")
+            fixture.migration(self.WAVE_H_LOST, "20260981000000_h.sql")
+            text = migration_lint.describe_grants(
+                migration_lint.shrinking_grants(sorted(fixture.migrations.glob("*.sql"))),
+            )
+        self.assertIn("stories", text)
+        self.assertIn("20260981000000_h.sql", text)
+
+    # --- and does not cry wolf ---------------------------------------------
+
+    def test_a_revoke_from_another_role_is_not_a_loss(self):
+        """20260729200000 grants profiles columns to `authenticated`, then
+        writes `revoke all ... from anon` to shut a door that was never open.
+        Postgres revokes per grantee; so does this."""
+        self.assertEqual(
+            self._hits("""
+            grant insert (display_name, skill_level) on table public.profiles to authenticated;
+            revoke all on table public.profiles from anon;
+            """),
+            [],
+        )
+
+    def test_a_column_this_migration_drops_is_not_expected_back(self):
+        """Wave Z's own re-statement: it drops bid_amount and target_margin_pct
+        and re-states the lists MINUS both. That is the law working, not a
+        loss — dropping a column drops its ACL with it."""
+        self.assertEqual(
+            self._hits_over([
+                ("20260959000000_d.sql",
+                 "grant update (name, bid_amount) on projects to authenticated;"),
+                ("20260978000000_z.sql", """
+                 alter table projects drop column if exists bid_amount;
+                 revoke insert, update on table projects from anon, authenticated;
+                 grant update (name) on projects to authenticated;
+                 """),
+            ]),
+            [],
+        )
+
+    def test_a_drop_written_after_the_revoke_is_still_a_drop(self):
+        """Statement order is respected, but a column dropped anywhere in the
+        same file is forgiven — the author said the column is going."""
+        self.assertEqual(
+            self._hits_over([
+                ("20260959000000_d.sql",
+                 "grant update (name, bid_amount) on projects to authenticated;"),
+                ("20260978000000_z.sql", """
+                 revoke insert, update on table projects from anon, authenticated;
+                 grant update (name) on projects to authenticated;
+                 alter table projects drop column if exists bid_amount;
+                 """),
+            ]),
+            [],
+        )
+
+    def test_a_column_level_revoke_is_not_a_table_level_one(self):
+        """`revoke insert (status) ...` takes exactly `status` and nothing
+        else — 20260941000000 writes precisely that."""
+        self.assertEqual(
+            self._hits_over([
+                ("20260940000000_a.sql",
+                 "grant insert (name, status) on projects to authenticated;"),
+                ("20260941000000_b.sql",
+                 "revoke insert (status), update (status) on table projects from authenticated;"),
+            ]),
+            [],
+        )
+
+    def test_a_function_grant_does_not_borrow_the_next_statement(self):
+        """`grant execute on function f(a, b) to r;` has no `on <table> to` of
+        its own. A pattern allowed to run past the semicolon would take the
+        next statement's table and invent a grant nobody wrote."""
+        self.assertEqual(
+            self._hits_over([
+                ("20260940000000_a.sql",
+                 "grant insert (name, stories) on projects to authenticated;"),
+                ("20260941000000_b.sql", """
+                 grant execute on function public.set_thing(uuid, text) to authenticated;
+                 revoke insert on table projects from authenticated;
+                 grant insert (name, stories) on projects to authenticated;
+                 """),
+            ]),
+            [],
+        )
+
+    def test_a_table_that_never_used_column_grants_may_revoke_freely(self):
+        """A new table's `revoke all ... ; grant select ...` opening — every
+        table in this schema starts that way and none of them is a hit."""
+        self.assertEqual(
+            self._hits("""
+            grant insert, update on project_pipeline to authenticated;
+            revoke all on project_pipeline from anon, authenticated;
+            grant select on project_pipeline to authenticated;
+            """),
+            [],
+        )
+
+    def test_a_grant_inside_a_comment_is_not_a_grant(self):
+        self.assertEqual(
+            self._hits_over([
+                ("20260940000000_a.sql",
+                 "grant insert (name, stories) on projects to authenticated;"),
+                ("20260941000000_b.sql", """
+                 -- revoke insert on table projects from authenticated;
+                 /* grant insert (name) on projects to authenticated; */
+                 """),
+            ]),
+            [],
+        )
+
+    # --- the standing gate on this repo ------------------------------------
+
+    def test_the_real_migrations_lose_no_column_grant(self):
+        hits = migration_lint.shrinking_grants()
+        self.assertEqual(
+            hits, [],
+            "a migration re-states a column grant list and loses a column:\n"
+            + migration_lint.describe_grants(hits),
+        )
+
+    def test_wave_h_still_names_stories_in_both_lists(self):
+        """The incident, pinned to the real file. Wave H is the migration that
+        re-states these lists today; if a later wave re-states them again it
+        must carry `stories` too, and the gate above is what says so."""
+        sql = (
+            migration_lint.MIGRATIONS_DIR / "20260981000000_gc_handshake.sql"
+        ).read_text()
+        lists = re.findall(
+            r"grant (insert|update) \((.*?)\)\s*\n?\s*on projects to authenticated;",
+            sql,
+            re.S,
+        )
+        self.assertEqual(
+            [priv for priv, _cols in lists], ["insert", "update"],
+            "wave H no longer states both projects grant lists",
+        )
+        for priv, cols in lists:
+            self.assertIn(
+                "stories", cols,
+                f"wave H's projects {priv} list dropped `stories`, which wave X "
+                "granted one migration earlier — the storey count would save "
+                "silently into nothing",
             )
 
 

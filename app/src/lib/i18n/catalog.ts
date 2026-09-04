@@ -1186,6 +1186,123 @@ export const CATALOG = {
     en: "From the traced 3D model.",
     es: "Del modelo 3D trazado.",
   },
+  // ---- Wave H — the GC handshake ----------------------------------------
+  // (transcripts program, grill 2026-09-03, Q10 + Q11 + Q20). Six questions
+  // get asked on every job, and the answers used to live in somebody's memory
+  // of a phone call. These are the CREW side of that — the card on a job's
+  // Overview where the office files what the builder said and hands him a link
+  // to answer it himself.
+  //
+  // The GC'S OWN PAGE IS NOT HERE AND MUST NOT BE. It is customer-facing, it is
+  // English-only in v1 by decision, and it is rendered before the app's
+  // language layer exists at all — a general contractor opening a link from a
+  // text message has never picked a language in this app and never will. The
+  // email it goes out with is English for the same reason. When somebody asks
+  // for Spanish there, it is a translation of the PAGE, not of this catalog.
+  "gc.heading": { en: "GC", es: "Contratista general" },
+  "gc.noCheckins": { en: "Nobody has checked in with the GC yet.", es: "Nadie ha hablado con el contratista general todavía." },
+  "gc.log": { en: "Log a GC check-in", es: "Anotar contacto con el GC" },
+  "gc.lastSpoke": { en: "Last spoke {date}", es: "Último contacto {date}" },
+  "gc.answeredByGc": { en: "The GC answered this himself", es: "El GC contestó él mismo" },
+  "gc.history": { en: "Earlier check-ins", es: "Contactos anteriores" },
+  "gc.showHistory": { en: "Show earlier check-ins", es: "Ver contactos anteriores" },
+  "gc.hideHistory": { en: "Hide earlier check-ins", es: "Ocultar contactos anteriores" },
+  // The six questions. Short labels — this is a form filled in on a phone with
+  // the builder still on the line.
+  "gc.expectedEnd": { en: "House finished", es: "Casa terminada" },
+  "gc.roofOn": { en: "Roof on", es: "Techo puesto" },
+  "gc.framingChecked": { en: "Framing checked?", es: "¿Revisaron el marco?" },
+  "gc.setPreference": { en: "Inset or outset?", es: "¿Adentro o afuera?" },
+  "gc.set.inset": { en: "Inset", es: "Adentro" },
+  "gc.set.outset": { en: "Outset", es: "Afuera" },
+  "gc.set.unknown": { en: "He has not said", es: "No ha dicho" },
+  "gc.exterior": { en: "Going on the outside", es: "Material de afuera" },
+  "gc.interior": { en: "Going on the inside", es: "Material de adentro" },
+  "gc.exteriorHint": { en: "Stucco, stone, siding…", es: "Estuco, piedra, siding…" },
+  "gc.interiorHint": { en: "Drywall, plaster, wood…", es: "Panel de yeso, yeso, madera…" },
+  "gc.yes": { en: "Yes", es: "Sí" },
+  "gc.no": { en: "No", es: "No" },
+  // Who and how — not required, but the first thing anybody wants when the
+  // answers turn out to be wrong.
+  "gc.contactName": { en: "Who you talked to", es: "Con quién hablaste" },
+  "gc.channel": { en: "How", es: "Cómo" },
+  "gc.channel.call": { en: "Call", es: "Llamada" },
+  "gc.channel.text": { en: "Text", es: "Mensaje" },
+  "gc.channel.email": { en: "Email", es: "Correo" },
+  "gc.channel.site": { en: "On site", es: "En la obra" },
+  // Not offered on the form — nobody in the office talked to the builder "on
+  // the link". It is what a check-in the GC filed HIMSELF reads back as.
+  "gc.channel.link": { en: "On his link", es: "En su enlace" },
+  "gc.notes": { en: "Anything else", es: "Algo más" },
+  "gc.save": { en: "File this check-in", es: "Guardar el contacto" },
+  "gc.saving": { en: "Saving…", es: "Guardando…" },
+  "gc.cancel": { en: "Cancel", es: "Cancelar" },
+  "gc.saved": { en: "Filed. The job stops asking for a call.", es: "Guardado. El trabajo deja de pedir una llamada." },
+  // The refusals, one per required answer, in the order the form asks them.
+  // Each one names the box that is empty rather than saying "fill in the form".
+  "gc.missing.expectedEnd": { en: "Say when the GC expects the house to be finished.", es: "Di cuándo espera el GC que la casa esté terminada." },
+  "gc.missing.roofOn": { en: "Say when the roof goes on.", es: "Di cuándo ponen el techo." },
+  "gc.missing.framingChecked": { en: "Say whether the framing has been checked.", es: "Di si ya revisaron el marco." },
+  "gc.missing.setPreference": { en: "Say whether he wants the windows inset, outset, or that he has not said.", es: "Di si quiere las ventanas adentro, afuera, o que no ha dicho." },
+  "gc.missing.exterior": { en: "Say what is going on the outside.", es: "Di qué va por fuera." },
+  "gc.missing.interior": { en: "Say what is going on the inside.", es: "Di qué va por dentro." },
+  "gc.missing.channel": { en: "Say how you talked to the GC.", es: "Di cómo hablaste con el GC." },
+  // H2 — the link we hand the builder, and the thread on it. Crew-facing, so
+  // both languages; the PAGE the link opens and the email that carries it are
+  // English only in v1 and live in GcPage.tsx and the send-email function.
+  "gc.link.heading": { en: "The GC's own link", es: "El enlace del GC" },
+  "gc.link.none": { en: "No link has gone out yet.", es: "Todavía no se ha enviado ningún enlace." },
+  "gc.link.live": { en: "The link works until {date}.", es: "El enlace funciona hasta el {date}." },
+  "gc.link.sentTo": { en: "Sent to {email}", es: "Enviado a {email}" },
+  // Said when the link exists and an address is on it but no email ever went —
+  // which is every link while RESEND_API_KEY is unset. It has to name the next
+  // move, because the card is all the foreman sees after he reloads the job.
+  "gc.link.notSent": {
+    en: "No email went. Copy the link and text it.",
+    es: "No se envió ningún correo. Copia el enlace y mándalo por mensaje.",
+  },
+  "gc.link.answered": { en: "He answered on it {date}.", es: "Contestó ahí el {date}." },
+  "gc.link.off": { en: "The link is off.", es: "El enlace está apagado." },
+  "gc.link.email": { en: "GC's email", es: "Correo del GC" },
+  "gc.link.send": { en: "Send to GC", es: "Enviar al GC" },
+  "gc.link.resend": { en: "Send a fresh link", es: "Enviar un enlace nuevo" },
+  "gc.link.revoke": { en: "Turn the link off", es: "Apagar el enlace" },
+  "gc.link.sending": { en: "Sending…", es: "Enviando…" },
+  "gc.link.needEmail": { en: "Type the GC's email address first.", es: "Escribe primero el correo del GC." },
+  // Said BEFORE the tap, because a fresh link turns the old one off and a
+  // builder who is holding the old one should not find that out by tapping it.
+  "gc.link.confirm": {
+    en: "Send the six questions to {email}? Any earlier link stops working.",
+    es: "¿Enviar las seis preguntas a {email}? Cualquier enlace anterior deja de funcionar.",
+  },
+  "gc.link.copy": { en: "Copy the link", es: "Copiar el enlace" },
+  "gc.link.copied": { en: "Copied.", es: "Copiado." },
+  // The token exists in one place after this and it is the clipboard. Say so
+  // plainly rather than letting somebody discover it by coming back tomorrow.
+  "gc.link.onceOnly": {
+    en: "Copy it now if you want to text it — we cannot show it again. Sending again makes a new one.",
+    es: "Cópialo ahora si quieres mandarlo por mensaje — no podemos volver a mostrarlo. Enviar de nuevo crea uno nuevo.",
+  },
+  "gc.link.emailOff": {
+    en: "Email is not set up yet, so nothing was sent. Copy the link and text it instead.",
+    es: "El correo todavía no está configurado, así que no se envió nada. Copia el enlace y mándalo por mensaje.",
+  },
+  // Which of the company's two names this job's GC hears (Q20).
+  "gc.brand.label": { en: "The GC sees us as", es: "El GC nos ve como" },
+  "gc.brand.stg": { en: "STG Windows & Doors", es: "STG Windows & Doors" },
+  "gc.brand.forge": { en: "Forge Windows and Doors", es: "Forge Windows and Doors" },
+  // The thread. Never crew chat — said on the card, because the two boxes look
+  // alike and sending the wrong one to the wrong audience is the mistake.
+  "gc.thread.heading": { en: "Messages with the GC", es: "Mensajes con el GC" },
+  "gc.thread.notCrewChat": {
+    en: "This goes to the GC, not to the crew.",
+    es: "Esto va al GC, no al equipo.",
+  },
+  "gc.thread.empty": { en: "Nothing yet.", es: "Nada todavía." },
+  "gc.thread.placeholder": { en: "Write to the GC", es: "Escribe al GC" },
+  "gc.thread.send": { en: "Send", es: "Enviar" },
+  "gc.thread.us": { en: "Us", es: "Nosotros" },
+  "gc.thread.them": { en: "The GC", es: "El GC" },
 
   // ---- Who installed this? (wave Y, transcripts program) ----------------
   // The finish step only asks when the unit belongs to somebody else, so

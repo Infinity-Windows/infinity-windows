@@ -14,7 +14,7 @@
 // there since 20260718080000.
 
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Phone } from "lucide-react";
 import {
   setProjectMaterials,
@@ -22,6 +22,7 @@ import {
   updateProject,
 } from "../../lib/api";
 import { formatApiError } from "../../lib/errors";
+import { gcCheckinsKey, listGcCheckins } from "../../lib/gc";
 import { useLanguage, useT } from "../../lib/i18n";
 import { needsCall, shortDay } from "../../lib/pipeline";
 import type { Project } from "../../lib/types";
@@ -94,14 +95,22 @@ export function PipelinePanel({
   });
 
   const busy = readiness.isPending || materials.isPending || start.isPending;
-  // WAVE H SEAM: the GC check-in table (project_gc_checkins) does not exist
-  // yet, so nothing can be known about it. `null` here means UNKNOWN, and
-  // needsCall never counts an unknown against a job — see the fourth argument's
-  // note in lib/pipeline.ts. When H lands, this becomes the job's latest
-  // check-in and the last argument becomes true; nothing else on this card
-  // changes.
-  const lastCheckinAt: string | null = null;
-  const gcCheckinsKnown = false;
+
+  // Wave H (H1) filled the seam wave J left here. The same query key the GC
+  // card uses, so the two cards on one screen share a single read and filing a
+  // check-in clears this card's chip in the same breath.
+  //
+  // `known` is the load-bearing part, and it is not the same as "there are
+  // none". A database that does not have project_gc_checkins yet cannot be
+  // asked, so needsCall is told nothing is known and never counts it against a
+  // job — while a database that HAS the table and no rows is telling us
+  // something real: nobody has ever talked to this builder.
+  const checkins = useQuery({
+    queryKey: gcCheckinsKey(project.id),
+    queryFn: () => listGcCheckins(project.id),
+  });
+  const lastCheckinAt = checkins.data?.rows[0]?.contacted_at ?? null;
+  const gcCheckinsKnown = checkins.data?.known ?? false;
   const call = needsCall(project, todayLocal(), lastCheckinAt, gcCheckinsKnown);
 
   const arrived = project.materials_arrived_at ?? null;
@@ -268,15 +277,16 @@ export function PipelinePanel({
           </div>
         )}
 
-        {/* WAVE H (H1) SEAM. The GC check-in has no table yet, so this reads
-            "None yet" for every job — which is true, and is the only honest
-            thing it can say. H replaces the value with the latest check-in and
-            adds "Log a GC check-in" beside it; the line is here now so the
-            card's shape does not change under a crew that has learned it. */}
+        {/* Wave H (H1): the real date now. Still on the PIPELINE card and not
+            only on the GC card below it, because "when did anybody last talk to
+            this builder" is a pipeline fact — it is one of the four reasons the
+            7 AM push exists. Filing one is done on the GC card. */}
         <div>
           <dt className="field-label">{t("pipeline.lastCheckin")}</dt>
-          <dd style={{ margin: 0 }} className="muted">
-            {t("pipeline.noCheckinYet")}
+          <dd style={{ margin: 0 }} className={lastCheckinAt ? undefined : "muted"}>
+            {lastCheckinAt
+              ? shortDay(lastCheckinAt, lang)
+              : t("pipeline.noCheckinYet")}
           </dd>
         </div>
       </dl>

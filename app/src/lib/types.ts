@@ -103,19 +103,43 @@ export interface Project {
   start_date?: string | null;
   end_date?: string | null;
   notes?: string | null;
-  /** Wave J (J1): is the site ready for us to work? 'not_ready' | 'ready'.
-   * Written only via set_project_readiness() — the column is RPC-only under
-   * wave D's projects grant law. Optional like every field added after this
-   * interface's first fixtures: a real fetch always has it (not null default
-   * 'ready'), and `undefined` means a phone running ahead of the migration,
-   * which lib/pipeline.ts reads as "nothing to say". */
+  /**
+   * NOT COLUMNS ON `projects` — the next three live in the `project_pipeline`
+   * side table and are folded up onto the job by lib/api.ts's
+   * `flattenPipeline`, so every screen reads them the way it did when wave J
+   * put them here.
+   *
+   * They moved in wave H (H0) because `projects` is the one table a builder
+   * (partner) login reads WHOLE for the jobs it was granted, and RLS has no
+   * column-level half — so "your windows are late" was readable by the general
+   * contractor. Anything about how WE are doing needs its own table with its
+   * own policy; `project_financials` set the precedent for the bid.
+   *
+   * `undefined` means the read did not include the embed at all (a phone ahead
+   * of the migration, or a partner-shaped projection), which lib/pipeline.ts
+   * and the Pipeline card both read as "nothing is known" and draw nothing.
+   *
+   * Wave J (J1): is the site ready for us to work? 'not_ready' | 'ready'.
+   * Written only via set_project_readiness() (foreman+).
+   */
   ready_state?: string | null;
-  /** Wave J (J1): the day the windows are expected on this job. Job-level, and
-   * deliberately not package_deliveries.expected_at, which is one truck. */
+  /** Wave J (J1), wave H home: the day the windows are expected on this job.
+   * Job-level, and deliberately not package_deliveries.expected_at, which is
+   * one truck. Written only via set_project_materials() (foreman+). */
   materials_eta?: string | null;
-  /** Wave J (J1): when somebody tapped "Materials arrived". Null means the
-   * windows are still not in. */
+  /** Wave J (J1), wave H home: when somebody tapped "Materials arrived". Null
+   * means the windows are still not in. */
   materials_arrived_at?: string | null;
+  /**
+   * Wave H (H2): which of the company's two names this job's general contractor
+   * hears — 'stg' | 'forge'. A real column on `projects` (unlike the three
+   * above), RPC-only through set_project_gc_brand: it is deliberately off wave
+   * D's grant lists, because choosing what a customer is told we are called is
+   * a foreman's decision and a column grant cannot check a rank. A granted
+   * builder reading it learns which of our names we use with them, which they
+   * already know.
+   */
+  gc_brand?: string | null;
   /** Wave J (J2): the office's hand-made place for this job in the list, 1..n.
    * Null means nobody has placed it, and it sorts after the ones somebody did
    * (lib/pipeline.ts compareProjectsForList). */
