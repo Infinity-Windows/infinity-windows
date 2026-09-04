@@ -80,17 +80,19 @@ describe("role helpers derive from roleRank", () => {
 
 describe("minRoleForPath matches page-level gating", () => {
   it("guards foreman+ surfaces at the foreman floor", () => {
-    for (const path of [
-      "/qc",
-      "/analytics",
-      "/crew",
-      "/receive",
-      "/labels",
-      "/catalog",
-      "/team",
-      "/issues",
-    ]) {
+    for (const path of ["/qc", "/analytics", "/crew", "/catalog", "/team", "/issues"]) {
       expect(minRoleForPath(path)).toBe("foreman");
+    }
+  });
+
+  it("opens the warehouse's own routes to installers (ADR-0007)", () => {
+    // Warehouse actions are crew actions (owner call, 2026-09-04). /labels
+    // prints rack labels from the warehouse page's own fold; /receive and
+    // /storage are signposts onto /warehouse and /storage/tag, both of which
+    // an installer has always been able to open. A floor above the thing it
+    // points at is a door that says no to somebody already inside.
+    for (const path of ["/labels", "/receive", "/storage"]) {
+      expect(minRoleForPath(path)).toBe("installer");
     }
   });
 
