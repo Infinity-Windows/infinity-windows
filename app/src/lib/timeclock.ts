@@ -107,6 +107,15 @@ export interface TimeShift {
    * person (or a supervisor) actually closed.
    */
   closed_reason?: string | null;
+  /**
+   * Who pressed the button, when it was not the crew member themselves
+   * (20260985000000 — clocking the crew in from the roster). NULL keeps its
+   * original meaning, "they did it", which is what every punch made before
+   * that migration is. Optional so a database without the columns yet simply
+   * reads as undefined and the "Clocked in by …" line never appears.
+   */
+  clocked_in_by?: string | null;
+  clocked_out_by?: string | null;
   projects?: { job_code: string; name: string } | null;
   cost_codes?: { code: string; label: string } | null;
   profiles?: { display_name: string } | null;
@@ -836,6 +845,87 @@ export async function closeShiftAsNoWork(
   });
   if (error) throw error;
   return data as TimeShift;
+}
+
+// ---------------------------------------------------------------------------
+// Clocking somebody ELSE in and out (20260985000000)
+//
+// The roster's bulk actions. One request per tap rather than one per person:
+// fourteen calls from a phone on site is fourteen chances for the signal to
+// drop halfway through and leave half a crew on the clock. The server answers
+// one row per person, so the screen can say what happened to each of them
+// instead of "done" — see lib/crewClock.ts for how those answers are read.
+// ---------------------------------------------------------------------------
+
+/** One person's answer from a bulk clock action. */
+export interface CrewClockOutcome {
+  profile_id: string;
+  /** clocked_in | already_on_this_job | moved_from_other_job | clocked_out | already_out | refused:<sentence> */
+  outcome: string;
+}
+
+export interface CrewClockInInput {
+  profileIds: string[];
+  projectId: string;
+  costCodeId: string;
+  note?: string | null;
+  /** Only sent for a job that allows both modes; null on a single-mode job. */
+  mode?: JobMode | null;
+  /** The supervisor's claim that they gave today's toolbox talk. Server-required. */
+  talkAttested: boolean;
+  /** Bring people already on a DIFFERENT job over, instead of skipping them. */
+  moveIfElsewhere: boolean;
+}
+
+/**
+ * Supervisor+ clocks a whole selection in. Throws on a whole-call refusal (not
+ * a supervisor, no attestation); a per-person problem comes back as that
+ * person's `refused:` row and never sinks the rest.
+ */
+export async function clockInCrew(
+  input: CrewClockInInput,
+): Promise<CrewClockOutcome[]> {
+  const { data, error } = await supabase.rpc("clock_in_many", {
+    p_profile_ids: input.profileIds,
+    p_project_id: input.projectId,
+    p_cost_code_id: input.costCodeId,
+    p_note: normalizeNote(input.note),
+    p_mode: input.mode ?? null,
+    p_talk_attested: input.talkAttested,
+    p_move_if_elsewhere: input.moveIfElsewhere,
+  });
+  if (error) throw error;
+  return (data ?? []) as CrewClockOutcome[];
+}
+
+/** Supervisor+ clocks a whole selection out, now. */
+export async function clockOutCrew(
+  profileIds: string[],
+): Promise<CrewClockOutcome[]> {
+  const { data, error } = await supabase.rpc("clock_out_many", {
+    p_profile_ids: profileIds,
+  });
+  if (error) throw error;
+  return (data ?? []) as CrewClockOutcome[];
+}
+
+/**
+ * One person's display name, for "Clocked in by <name>" on a running punch.
+ *
+ * Deliberately NOT folded into SHIFT_SELECT as a fourth `profiles!…` embed:
+ * PostgREST answers a hard error for an embed naming a column the database
+ * does not have yet, so widening that select would take the WHOLE clock down
+ * on any phone that loaded the app before this migration landed. A separate,
+ * failure-tolerant read costs one tiny query and degrades to no line at all.
+ */
+export async function getProfileName(profileId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("display_name")
+    .eq("id", profileId)
+    .maybeSingle();
+  if (error) return null;
+  return (data?.display_name as string | undefined) ?? null;
 }
 
 /**

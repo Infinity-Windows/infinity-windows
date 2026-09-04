@@ -7,7 +7,7 @@
 
 import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
@@ -57,6 +57,13 @@ import {
 import { TimecardPanel } from "../components/timecard/TimecardPanel";
 import { ShiftEditor } from "../components/timecard/ShiftEditor";
 import { TimeByJobReport } from "../components/timecard/TimeByJobReport";
+import { CrewClockBar } from "../components/timecard/CrewClockBar";
+import {
+  allCrewIds,
+  onClockCrewIds,
+  toggleCrewId,
+  type CrewClockMember,
+} from "../lib/crewClock";
 import { fmtTime } from "../components/timecard/format";
 
 function downloadText(text: string, filename: string, mime: string) {
@@ -197,7 +204,7 @@ export function TeamTimecards() {
   );
 
   /** Roster: every active crew member, clocked-in first (longest at top). */
-  const roster = useMemo(() => {
+  const rosterAll = useMemo(() => {
     const byId = new Map(weekSummary.map((r) => [r.profileId, r]));
     const openBy = new Map(liveShifts.map((s) => [s.profile_id, s]));
     const rows = (crew.data ?? [])
@@ -217,9 +224,39 @@ export function TeamTimecards() {
         return a.open.clock_in_at.localeCompare(b.open.clock_in_at);
       return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     });
+    return rows;
+  }, [crew.data, weekSummary, liveShifts]);
+
+  /** What the search box is showing. Selection is kept against the FULL list. */
+  const roster = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return q ? rows.filter((r) => r.name.toLowerCase().includes(q)) : rows;
-  }, [crew.data, weekSummary, liveShifts, search]);
+    return q ? rosterAll.filter((r) => r.name.toLowerCase().includes(q)) : rosterAll;
+  }, [rosterAll, search]);
+
+  // ---- Clocking the crew in and out (owner ask, 2026-09-04) ----
+  // Ticked people, held against the WHOLE roster rather than what the search
+  // box happens to be showing: typing a name to find one person must not
+  // quietly drop the thirteen already ticked out of the next tap.
+  const [selected, setSelected] = useState<string[]>([]);
+  const crewMembers = useMemo<CrewClockMember[]>(
+    () =>
+      rosterAll.map((r) => ({
+        id: r.id,
+        name: r.name,
+        onClock: Boolean(r.open),
+        openProjectId: r.open?.project_id ?? null,
+      })),
+    [rosterAll],
+  );
+  // Somebody who left the roster (deactivated between renders) must not stay
+  // in a selection the bar would then send ids the screen can no longer name.
+  useEffect(() => {
+    setSelected((s) => {
+      const live = new Set(crewMembers.map((m) => m.id));
+      const kept = s.filter((id) => live.has(id));
+      return kept.length === s.length ? s : kept;
+    });
+  }, [crewMembers]);
 
   const clockedCount = roster.filter((r) => r.open).length;
   /** "8.0h wk" / "8.0h pay" — the roster total follows the range on show. */
@@ -646,13 +683,39 @@ export function TeamTimecards() {
         />
       </div>
 
+      {/* Supervisors pick people; foremen only read this page (Q3 keeps every
+          time EDIT at supervisor+, and clocking somebody in is an edit to
+          their pay), so the checkboxes and the bar are simply absent for them. */}
+      {isSup && (
+        <div className="row-gap" style={{ marginTop: 10, flexWrap: "wrap" }}>
+          <button
+            className="button-like"
+            onClick={() => setSelected(allCrewIds(crewMembers))}
+          >
+            {t("crewclock.select.all")}
+          </button>
+          <button
+            className="button-like"
+            onClick={() => setSelected(onClockCrewIds(crewMembers))}
+          >
+            {t("crewclock.select.onClock")}
+          </button>
+          <button
+            className="button-like"
+            disabled={selected.length === 0}
+            onClick={() => setSelected([])}
+          >
+            {t("crewclock.select.clear")}
+          </button>
+        </div>
+      )}
+
       {(crew.isLoading || teamShifts.isLoading) && <SkeletonList rows={4} />}
-      <div className="tcx-roster">
+      <div className={isSup ? "tcx-roster picking" : "tcx-roster"}>
         {roster.map((r) => {
           const live = r.open;
-          return (
+          const row = (
             <button
-              key={r.id}
               type="button"
               className={`tcx-row${live ? " live" : ""}`}
               onClick={() => setSelectedId(r.id)}
@@ -688,6 +751,23 @@ export function TeamTimecards() {
               <ChevronRight size={16} className="muted" aria-hidden />
             </button>
           );
+          if (!isSup) return <Fragment key={r.id}>{row}</Fragment>;
+          return (
+            <div key={r.id} className="tcx-row-pick">
+              {/* 48px of tap target, its own label: a checkbox inside the row
+                  button would be a control inside a control, and on a phone
+                  the wrong one wins. */}
+              <label className="tcx-check">
+                <input
+                  type="checkbox"
+                  aria-label={t("crewclock.select.person", { name: r.name })}
+                  checked={selected.includes(r.id)}
+                  onChange={() => setSelected((s) => toggleCrewId(s, r.id))}
+                />
+              </label>
+              {row}
+            </div>
+          );
         })}
         {roster.length === 0 && !crew.isLoading && (
           <p className="muted">
@@ -695,6 +775,22 @@ export function TeamTimecards() {
           </p>
         )}
       </div>
+
+      {/* Sticky, and deliberately ABOVE the by-job report: it needs page left
+          below it to stay pinned to the bottom of the screen while a long
+          roster scrolls (the same shape the schedule board's publish bar
+          uses). */}
+      {isSup && (
+        <CrewClockBar
+          members={crewMembers}
+          selected={selected}
+          projects={projects.data ?? []}
+          onDone={() => {
+            refresh();
+            setSelected([]);
+          }}
+        />
+      )}
 
       {/* The pay period's hours cut by job & cost code — the billing basis for
           service work (slice 3). Foreman+, same as this whole page. */}

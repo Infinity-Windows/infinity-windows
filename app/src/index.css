@@ -11646,3 +11646,69 @@ button.stage-chip {
 .cred-summary-line {
   font-size: 15px;
 }
+
+/* ============================================================================
+   Clocking the crew in and out from the roster (2026-09-04)
+
+   The owner found fourteen people clocked into OFFICE a minute apart, because
+   somebody had punched fourteen phones in by hand. Team timecards grew a
+   checkbox per row for supervisors and one bar that does the whole list.
+   ========================================================================== */
+
+/* The row and its tick sit side by side: the roster row is itself a button,
+   and a checkbox nested inside a button is a control inside a control — on a
+   phone the wrong one wins. */
+.tcx-row-pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.tcx-row-pick .tcx-row { flex: 1; min-width: 0; }
+
+/* 48px square: the tap target a thumb on a ladder can actually hit. */
+.tcx-check {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.tcx-check:hover { background: rgba(255, 255, 255, 0.05); }
+.tcx-check input { width: 20px; height: 20px; accent-color: #34d399; }
+
+/* Pinned to the bottom of the screen while the roster scrolls past it — the
+   same sticky-bottom shape the schedule board's publish bar uses. Sits above
+   the by-job report so there is page left below it to stick against. */
+.crewclock-bar {
+  position: sticky;
+  bottom: calc(12px + var(--safe-bottom));
+  z-index: 20;
+  margin: 14px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--card-raised, rgba(255, 255, 255, 0.06));
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.crewclock-bar-count {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* On the person's OWN clock: this punch was started by somebody else. */
+.clockin-by {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}

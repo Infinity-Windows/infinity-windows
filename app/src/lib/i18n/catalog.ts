@@ -48,6 +48,12 @@ export const SAFETY_KEYS = [
   "cred.kind.aerial_lift",
   "cred.kind.forklift",
   "cred.kind.fall_protection",
+  // The roster's group sign-in (20260985000000). This checkbox is the entire
+  // reason a bulk clock-in may pass the toolbox gate — a supervisor saying, on
+  // the record, that the talk was given. Its wording has to be exact in both
+  // languages before anybody leans on it.
+  "crewclock.in.attest",
+  "crewclock.in.attestHelp",
 ] as const;
 
 export const CATALOG = {
@@ -1589,6 +1595,110 @@ export const CATALOG = {
   "map.crewLoading": {
     en: "Crew list still loading — try again in a second.",
     es: "La lista del equipo se está cargando. Inténtalo de nuevo en un segundo.",
+  },
+
+  // ---- Clock the crew in and out from the roster (2026-09-04) ------------
+  // The owner found fourteen people clocked into OFFICE a minute apart —
+  // somebody had punched fourteen phones in by hand. Team timecards now has a
+  // checkbox per row and a bar that does the whole list at once.
+  //
+  // Every string here is read by a supervisor rather than an installer, and
+  // supervisors read this app in Spanish too, so the whole block is
+  // translated. The one thing that stays English is the refusal SENTENCE
+  // inside crewclock.outcome.refused: it comes back from the database, the
+  // same way every other server message in this app does.
+  "crewclock.select.all": { en: "Select all", es: "Seleccionar a todos" },
+  "crewclock.select.onClock": {
+    en: "Select everyone on the clock",
+    es: "Seleccionar a todos los que están marcados",
+  },
+  "crewclock.select.clear": { en: "Clear", es: "Quitar la selección" },
+  "crewclock.select.person": { en: "Select {name}", es: "Seleccionar a {name}" },
+  "crewclock.bar.count": {
+    en: "{n} selected",
+    es: "{n} seleccionados",
+  },
+  "crewclock.bar.clockIn": { en: "Clock in…", es: "Marcar entrada…" },
+  "crewclock.bar.clockOut": { en: "Clock out…", es: "Marcar salida…" },
+
+  "crewclock.in.title": {
+    en: "Clock in {n} people",
+    es: "Marcar la entrada de {n} personas",
+  },
+  "crewclock.in.job": { en: "Job", es: "Trabajo" },
+  "crewclock.in.pickJob": { en: "Pick a job", es: "Elige un trabajo" },
+  "crewclock.in.note": {
+    en: "Note for the office (optional)",
+    es: "Nota para la oficina (opcional)",
+  },
+  // SAFETY / toolbox — needs bilingual review. This checkbox is the whole
+  // reason a bulk clock-in is allowed to pass the toolbox gate: it records a
+  // named person's claim that the talk was actually given.
+  "crewclock.in.attest": {
+    en: "I gave today's toolbox talk to everyone selected",
+    es: "Di la charla de seguridad de hoy a todas las personas seleccionadas",
+  },
+  "crewclock.in.attestHelp": {
+    en: "Required. Anyone who hasn't signed today gets today's talk recorded in your name.",
+    es: "Obligatorio. A quien no haya firmado hoy se le registra la charla de hoy a tu nombre.",
+  },
+  "crewclock.in.move": {
+    en: "Move anyone already on another job here",
+    es: "Traer aquí a quien ya esté en otro trabajo",
+  },
+  "crewclock.in.moveOff": {
+    en: "{n} already on another job — they'll be left where they are.",
+    es: "{n} ya están en otro trabajo — se quedarán donde están.",
+  },
+  "crewclock.in.go": { en: "Clock them in", es: "Marcar su entrada" },
+  "crewclock.in.going": { en: "Clocking them in…", es: "Marcando la entrada…" },
+
+  "crewclock.out.title": {
+    en: "Clock out {n} people",
+    es: "Marcar la salida de {n} personas",
+  },
+  "crewclock.out.body": {
+    en: "{n} of the people you picked are on the clock. Their punches end now.",
+    es: "{n} de las personas que elegiste están marcadas. Su turno termina ahora.",
+  },
+  "crewclock.out.nobody": {
+    en: "Nobody you picked is on the clock.",
+    es: "Ninguna de las personas que elegiste está marcada.",
+  },
+  "crewclock.out.go": { en: "Clock them out", es: "Marcar su salida" },
+  "crewclock.out.going": { en: "Clocking them out…", es: "Marcando la salida…" },
+
+  "crewclock.cancel": { en: "Cancel", es: "Cancelar" },
+  "crewclock.results.title": { en: "What happened", es: "Qué pasó" },
+  "crewclock.results.close": { en: "Done", es: "Listo" },
+  "crewclock.outcome.clocked_in": { en: "Clocked in", es: "Entrada marcada" },
+  "crewclock.outcome.already_on_this_job": {
+    en: "Already on this job",
+    es: "Ya estaba en este trabajo",
+  },
+  "crewclock.outcome.moved_from_other_job": {
+    en: "Moved over from another job",
+    es: "Traído de otro trabajo",
+  },
+  "crewclock.outcome.clocked_out": { en: "Clocked out", es: "Salida marcada" },
+  "crewclock.outcome.already_out": {
+    en: "Was already off the clock",
+    es: "Ya estaba fuera de turno",
+  },
+  "crewclock.outcome.refused": { en: "Not done — {reason}", es: "No se hizo — {reason}" },
+  "crewclock.outcome.unknown": { en: "Nothing changed", es: "No cambió nada" },
+  // The database has not been updated yet. Said plainly, because the roster
+  // itself still works and nothing is broken.
+  "crewclock.notReady": {
+    en: "Clocking the crew from this screen isn't switched on yet. It arrives with the next update.",
+    es: "Marcar al equipo desde esta pantalla todavía no está activo. Llega con la próxima actualización.",
+  },
+
+  // On the person's OWN clock, so they can see at a glance that this punch
+  // was not one they started.
+  "clock.clockedInBy": {
+    en: "Clocked in by {name}",
+    es: "Entrada marcada por {name}",
   },
 } satisfies Record<string, CatalogEntry>;
 
