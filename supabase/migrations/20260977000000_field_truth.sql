@@ -345,6 +345,50 @@ grant execute on function add_field_unit(uuid, text, numeric, numeric, text, num
 -- are only offered while the unit carries no work — once somebody has clocked
 -- time or filed an install on it, the row is evidence and the answer is Keep.
 
+-- SPECS ARE KEYED BY MARK BASE, NOT BY OPENING CODE. `specForOpeningCode`
+-- (app/src/lib/install/specs.ts) looks a unit's spec up as
+-- markBase(opening_code).toUpperCase(), and markBase strips the instance
+-- suffix: "1-3" is an instance of mark "1", while "Add-1" and "W-14" are marks
+-- in their own right because a run of LETTERS before the dash is the mark's own
+-- identity (the Mad Moose incident, 2026-09-01 — see markBase's comment).
+--
+-- Renaming a missed unit has to move its spec to the key the app will actually
+-- read it back by, so this mirrors markBase exactly, case for case. Both sides
+-- of every comparison below are upper()ed, which is what indexSpecsByMark does
+-- too, so stored casing never decides whether a spec is found.
+create or replace function public.mark_base(p_code text)
+returns text
+language sql
+immutable
+set search_path = public
+as $$
+  select case
+    -- Letters-then-dash-then-digits is one whole mark, title-cased so the same
+    -- mark always writes the same literal into project_mark_specs.mark_code.
+    when v.trimmed ~ '^[A-Za-z]+-[0-9]+$'
+      then upper(left(split_part(v.trimmed, '-', 1), 1))
+           || lower(substr(split_part(v.trimmed, '-', 1), 2))
+           || '-' || split_part(v.trimmed, '-', 2)
+    -- Otherwise a trailing "-<digits>" is the instance number. Falling back to
+    -- the whole code when stripping leaves nothing matches the TS `|| n`.
+    else coalesce(
+      nullif(regexp_replace(upper(v.trimmed), '-[0-9]+$', ''), ''),
+      upper(v.trimmed)
+    )
+  end
+  from (
+    -- trim(), then strip a leading '#', and nothing else — exactly what the TS
+    -- does, so the two never disagree on an odd code.
+    select regexp_replace(btrim(coalesce(p_code, '')), '^#', '') as trimmed
+  ) v;
+$$;
+
+comment on function public.mark_base(text) is
+  'Mark code behind an opening code (1-3 -> 1, Add-1 -> Add-1). Mirrors markBase in app/src/lib/install/extract.ts; change them together.';
+
+revoke all on function public.mark_base(text) from public, anon;
+grant execute on function public.mark_base(text) to authenticated, service_role;
+
 create or replace function public.field_unit_has_work(p_opening_id uuid)
 returns boolean
 language sql
@@ -366,6 +410,8 @@ as $$
 declare
   v_row project_openings;
   v_old text;
+  v_spec_id uuid;
+  v_new_mark text;
   v_code text := nullif(trim(coalesce(p_code, '')), '');
 begin
   if public.my_role_rank() < 2 then
@@ -395,15 +441,39 @@ begin
    where id = p_opening_id
    returning * into v_row;
 
-  -- The spec row is keyed by mark code, so it moves with the name or the sheet
-  -- loses the size somebody measured. Skipped when the new name already has a
-  -- spec of its own — the paperwork caught up, and that row is the better one.
-  if not exists (
-    select 1 from project_mark_specs
-     where project_id = v_row.project_id and mark_code = v_code
-  ) then
-    update project_mark_specs set mark_code = v_code, updated_at = now()
-     where project_id = v_row.project_id and mark_code = v_old;
+  -- The spec row carries the size somebody measured, so it has to end up under
+  -- the key the sheet will read it back by — mark_base of the new name, not the
+  -- new name. Rename to "1-3" and the sheet looks up mark "1"; a spec left at
+  -- "1-3" is a row nothing ever reads, and the measurement is gone from the
+  -- screen that orders the glass.
+  --
+  -- It is found BY ID and only when it is ours (source 'field'), so a rename
+  -- can never pick up and move a spec the planset put there.
+  v_new_mark := public.mark_base(v_code);
+  select id into v_spec_id
+    from project_mark_specs
+   where project_id = v_row.project_id
+     and upper(mark_code) = upper(public.mark_base(v_old))
+     and source = 'field'
+   limit 1;
+
+  if v_spec_id is not null then
+    if exists (
+      select 1 from project_mark_specs
+       where project_id = v_row.project_id
+         and upper(mark_code) = upper(v_new_mark)
+         and id <> v_spec_id
+    ) then
+      -- The paperwork caught up and that row is the better one. DELETE rather
+      -- than leave ours behind: an orphan sitting at the freed "Missed N" code
+      -- is what the next missed unit on this job would silently inherit its
+      -- width and height from.
+      delete from project_mark_specs where id = v_spec_id;
+    else
+      update project_mark_specs
+         set mark_code = v_new_mark, updated_at = now()
+       where id = v_spec_id;
+    end if;
   end if;
   return v_row;
 end;
@@ -435,8 +505,20 @@ begin
       using errcode = '42501';
   end if;
 
+  -- A missed unit that has been renamed answers to a real code of its own, so
+  -- "merge into <that code>" would otherwise find ITSELF: attachments repointed
+  -- to the same row, a job note reading "W-14 turned out to be W-14", and then
+  -- the row and its spec deleted. The list on the sheet never offers it; the
+  -- refusal belongs in SQL like every other refusal in this file, because the
+  -- RPC is granted to every signed-in account.
+  if v_code = v_row.opening_code then
+    raise exception 'That is the name this one already has — rename it instead.'
+      using errcode = '22023';
+  end if;
+
   select * into v_target from project_openings
-   where project_id = v_row.project_id and opening_code = v_code and removed_at is null
+   where project_id = v_row.project_id and opening_code = v_code
+     and removed_at is null and id <> p_opening_id
    limit 1;
   if not found then
     raise exception 'There is no % on this job to merge it into.', v_code using errcode = 'P0002';
@@ -455,8 +537,27 @@ begin
          (select display_name from profiles where id = auth.uid()),
          v_row.opening_code || ' turned out to be ' || v_target.opening_code || ' — merged.';
 
-  delete from project_mark_specs
-   where project_id = v_row.project_id and mark_code = v_row.opening_code;
+  -- ONLY THE ROW THIS FEATURE CREATED. A merge used to delete any spec whose
+  -- mark_code matched the unit's current code — and after a rename that code is
+  -- a REAL mark, whose spec is the manufacturer's: style, glass, size code,
+  -- u-factor, the drawing coordinates, possibly confirmed by a foreman, and
+  -- read by every other opening of that mark. project_mark_specs has no soft
+  -- delete, so it would simply be gone. Three fences: it must be ours
+  -- (source 'field'), nobody may have confirmed it, and no other live opening
+  -- may still resolve to that mark.
+  delete from project_mark_specs s
+   where s.project_id = v_row.project_id
+     and upper(s.mark_code) = upper(public.mark_base(v_row.opening_code))
+     and s.source = 'field'
+     and coalesce(s.confirmed, false) = false
+     and not exists (
+       select 1 from project_openings o
+        where o.project_id = v_row.project_id
+          and o.id <> p_opening_id
+          and o.removed_at is null
+          and upper(public.mark_base(o.opening_code))
+              = upper(public.mark_base(v_row.opening_code))
+     );
   delete from project_openings where id = p_opening_id;
 
   return v_target;
