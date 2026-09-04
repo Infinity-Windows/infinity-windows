@@ -16,7 +16,7 @@ import { readBodyCapped } from "../../../supabase/functions/_shared/bytes.ts";
  */
 
 /** A body that hands out `count` chunks of `size` bytes, like a download. */
-function bodyOf(chunks: number[]): { body: ReadableStream<Uint8Array> | null } {
+function bodyOf(chunks: number[]) {
   let i = 0;
   let cancelled = false;
   const stream = new ReadableStream<Uint8Array>({

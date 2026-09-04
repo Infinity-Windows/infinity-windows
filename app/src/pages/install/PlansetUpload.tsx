@@ -331,6 +331,156 @@ export function PlansetUpload() {
       };
   };
 
+  /**
+   * What a read hands back: whatever `readPlanset` returns, plus the shape the
+   * upload path takes when there is nothing to read at all — a DWG or DXF,
+   * which is stored and queued for a conversion that does not exist yet.
+   */
+  type ReadOutcome =
+    | Awaited<ReturnType<typeof readPlanset>>
+    | {
+        planset: Planset;
+        kind: PlansetKind;
+        drafts: number;
+        skipped: number;
+        linked: number;
+        converted: boolean;
+      };
+
+  /**
+   * Say what a read found — for a hand upload and for a pulled file alike.
+   *
+   * ONE REPORTER, because there are two ways into `readPlanset` now and only
+   * one of them used to say anything. "Read this file" ran the whole
+   * extraction and then reported a draft count: no spec-page note, so a pulled
+   * specs sheet whose vision pass failed reported success and the "we couldn't
+   * read the detailed specs off this sheet" warning never appeared; no mark
+   * summary either, and a stale note from an earlier upload was left standing
+   * on screen. Splitting the reporting from the reading is what stops the two
+   * paths drifting again — F5's whole point is that a pulled file is read by
+   * exactly the code a hand upload is read by.
+   */
+  const reportReadResult = (result: ReadOutcome) => {
+    queryClient.invalidateQueries({ queryKey: ["plansets", projectId] });
+    queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+    queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
+    queryClient.invalidateQueries({ queryKey: ["markSpecs", projectId] });
+    setProgress(null);
+    setRetryNote(null);
+    setSpecPages(
+      "specPages" in result
+        ? {
+            plansetId: result.planset.id,
+            pages: result.specPages ?? [],
+            visionFailed: Boolean(result.specsVisionFailed),
+          }
+        : null,
+    );
+    const detailSheetCount =
+      "detailSheets" in result ? (result.detailSheets ?? 0) : 0;
+
+    if (result.kind === "building") {
+      if (!result.converted) {
+        setSummary("Building plan stored. CAD conversion is queued.");
+        return;
+      }
+      if ("marks" in result && result.marks?.length) {
+        const outcome = summarizeExtractOutcome({
+          marks: result.marks,
+          inserted: result.drafts,
+          skipped: result.skipped,
+          repeatViewCallouts:
+            "repeatViewCallouts" in result
+              ? (result.repeatViewCallouts ?? 0)
+              : 0,
+          elevationViews:
+            "elevationViews" in result ? (result.elevationViews ?? 0) : 0,
+          source: "none",
+        });
+        const unmatched =
+          "unmatchedPlanMarks" in result ? (result.unmatchedPlanMarks ?? []) : [];
+        setSummary(
+          [
+            `Building plan ready. ${outcome.headline}`,
+            ...outcome.notes,
+            unmatched.length > 0
+              ? `Plan label${unmatched.length > 1 ? "s" : ""} with no CAD window behind ${unmatched.length > 1 ? "them" : "it"}: ${unmatched.map((m) => `#${m}`).join(", ")} — nothing was created for ${unmatched.length > 1 ? "these" : "it"}; check the plans against the signed CADs.`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" "),
+        );
+        return;
+      }
+      setSummary(
+        "Building plan ready for the map. Upload specs or use Load marks on the map.",
+      );
+      return;
+    }
+
+    if (!result.converted) {
+      setSummary("Specs file stored. CAD conversion is queued.");
+      return;
+    }
+
+    if (result.drafts > 0 || result.linked > 0) {
+      const markLine =
+        "marks" in result && result.marks?.length
+          ? summarizeExtractOutcome({
+              marks: result.marks,
+              inserted: result.drafts,
+              skipped: result.skipped,
+              repeatViewCallouts: 0,
+              elevationViews: 0,
+              source: "none",
+            }).headline
+          : null;
+      const sourceNote =
+        "source" in result && result.source === "vision"
+          ? "Counted the pictured cut-sheet cells with a QTY value."
+          : "source" in result && result.source === "details"
+            ? "Pulled from manufacturer detail sheets."
+            : "source" in result && result.source === "merged"
+              ? "Merged schedule table with detail-sheet marks."
+              : null;
+      const unreadNote =
+        "unreadPages" in result && result.unreadPages?.length
+          ? `Could not read page${result.unreadPages.length > 1 ? "s" : ""} ${result.unreadPages.join(", ")} — check ${result.unreadPages.length > 1 ? "those pages" : "that page"} by hand.`
+          : null;
+      const specsSaved = "specs" in result ? (result.specs ?? 0) : 0;
+      setSummary(
+        [
+          markLine,
+          sourceNote,
+          unreadNote,
+          result.drafts > 0 ? `${result.drafts} draft openings.` : null,
+          result.linked > 0 ? `Linked types on ${result.linked} existing openings.` : null,
+          specsSaved > 0 ? `Read detailed specs for ${specsSaved} mark(s).` : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
+      navigate(`/projects/${projectId}/review`);
+    } else if (detailSheetCount > 0) {
+      setSummary(
+        `Indexed ${detailSheetCount} manufacturer detail sheets from the PDF. Open the map to view them beside the 2D floor plan.`,
+      );
+      navigate(`/projects/${projectId}?tab=map`);
+    } else if (result.skipped > 0) {
+      // Nothing new, but the sheet was read fine. Reading the SAME sheet twice
+      // is the ordinary case on this path — somebody presses Read this file on
+      // a planset that has already been read — and "no schedule rows were
+      // found" would be a plain lie about a sheet full of them.
+      setSummary(
+        `Nothing new on this sheet — ${result.skipped} opening${result.skipped > 1 ? "s were" : " was"} already here.`,
+      );
+    } else {
+      setSummary(
+        "PDF saved as a source document. No schedule rows or marked detail sheets were found.",
+      );
+    }
+  };
+
   const upload = useMutation({
     mutationFn: async (args: { file: File; kind: PlansetKind }) => {
       const { file, kind } = args;
@@ -358,118 +508,7 @@ export function PlansetUpload() {
 
       return readPlanset(planset, kind, await file.arrayBuffer());
     },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ["plansets", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
-      queryClient.invalidateQueries({ queryKey: ["markSpecs", projectId] });
-      setProgress(null);
-      setRetryNote(null);
-      setSpecPages(
-        "specPages" in result
-          ? {
-              plansetId: result.planset.id,
-              pages: result.specPages ?? [],
-              visionFailed: Boolean(result.specsVisionFailed),
-            }
-          : null,
-      );
-      const detailSheetCount =
-        "detailSheets" in result ? (result.detailSheets ?? 0) : 0;
-
-      if (result.kind === "building") {
-        if (!result.converted) {
-          setSummary("Building plan stored. CAD conversion is queued.");
-          return;
-        }
-        if ("marks" in result && result.marks?.length) {
-          const outcome = summarizeExtractOutcome({
-            marks: result.marks,
-            inserted: result.drafts,
-            skipped: result.skipped,
-            repeatViewCallouts:
-              "repeatViewCallouts" in result
-                ? (result.repeatViewCallouts ?? 0)
-                : 0,
-            elevationViews:
-              "elevationViews" in result ? (result.elevationViews ?? 0) : 0,
-            source: "none",
-          });
-          const unmatched =
-            "unmatchedPlanMarks" in result ? (result.unmatchedPlanMarks ?? []) : [];
-          setSummary(
-            [
-              `Building plan ready. ${outcome.headline}`,
-              ...outcome.notes,
-              unmatched.length > 0
-                ? `Plan label${unmatched.length > 1 ? "s" : ""} with no CAD window behind ${unmatched.length > 1 ? "them" : "it"}: ${unmatched.map((m) => `#${m}`).join(", ")} — nothing was created for ${unmatched.length > 1 ? "these" : "it"}; check the plans against the signed CADs.`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(" "),
-          );
-          return;
-        }
-        setSummary(
-          "Building plan ready for the map. Upload specs or use Load marks on the map.",
-        );
-        return;
-      }
-
-      if (!result.converted) {
-        setSummary("Specs file stored. CAD conversion is queued.");
-        return;
-      }
-
-      if (result.drafts > 0 || result.linked > 0) {
-        const markLine =
-          "marks" in result && result.marks?.length
-            ? summarizeExtractOutcome({
-                marks: result.marks,
-                inserted: result.drafts,
-                skipped: result.skipped,
-                repeatViewCallouts: 0,
-                elevationViews: 0,
-                source: "none",
-              }).headline
-            : null;
-        const sourceNote =
-          "source" in result && result.source === "vision"
-            ? "Counted the pictured cut-sheet cells with a QTY value."
-            : "source" in result && result.source === "details"
-              ? "Pulled from manufacturer detail sheets."
-              : "source" in result && result.source === "merged"
-                ? "Merged schedule table with detail-sheet marks."
-                : null;
-        const unreadNote =
-          "unreadPages" in result && result.unreadPages?.length
-            ? `Could not read page${result.unreadPages.length > 1 ? "s" : ""} ${result.unreadPages.join(", ")} — check ${result.unreadPages.length > 1 ? "those pages" : "that page"} by hand.`
-            : null;
-        const specsSaved = "specs" in result ? (result.specs ?? 0) : 0;
-        setSummary(
-          [
-            markLine,
-            sourceNote,
-            unreadNote,
-            result.drafts > 0 ? `${result.drafts} draft openings.` : null,
-            result.linked > 0 ? `Linked types on ${result.linked} existing openings.` : null,
-            specsSaved > 0 ? `Read detailed specs for ${specsSaved} mark(s).` : null,
-          ]
-            .filter(Boolean)
-            .join(" "),
-        );
-        navigate(`/projects/${projectId}/review`);
-      } else if (detailSheetCount > 0) {
-        setSummary(
-          `Indexed ${detailSheetCount} manufacturer detail sheets from the PDF. Open the map to view them beside the 2D floor plan.`,
-        );
-        navigate(`/projects/${projectId}?tab=map`);
-      } else {
-        setSummary(
-          "PDF saved as a source document. No schedule rows or marked detail sheets were found.",
-        );
-      }
-    },
+    onSuccess: reportReadResult,
     onError: (e) => setProgress(formatApiError(e)),
   });
 
@@ -491,18 +530,7 @@ export function PlansetUpload() {
       );
       return readPlanset(ps, ps.kind ?? "building", await downloadPlanset(ps));
     },
-    onSuccess: (result) => {
-      setProgress(null);
-      queryClient.invalidateQueries({ queryKey: ["plansets", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
-      queryClient.invalidateQueries({ queryKey: ["markSpecs", projectId] });
-      setSummary(
-        `Read ${result.drafts} draft opening(s)${
-          result.skipped > 0 ? `, ${result.skipped} kept as they were` : ""
-        }.`,
-      );
-    },
+    onSuccess: reportReadResult,
     onError: (e) => {
       setProgress(null);
       setSummary(formatApiError(e));
