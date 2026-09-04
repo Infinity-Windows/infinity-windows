@@ -111,6 +111,11 @@ const CASCADE_COVERED: Record<string, string> = {
   // project_financials — so the final `delete from projects` takes the row, and
   // it dies with the job the same way it did as three columns on it.
   project_pipeline: "ON DELETE CASCADE from projects (the pk is the FK)",
+  // Wave H (H1), 20260981000000. What the builder said about a job is a fact
+  // about that job and nothing else — there is no other job it could belong to
+  // and nobody reads it once the job is gone — so it goes on the final `delete
+  // from projects` rather than being detached like a money record.
+  project_gc_checkins: "ON DELETE CASCADE from projects, on the final delete from projects",
 };
 
 function purgeBody(): string {

@@ -573,6 +573,29 @@ own state of readiness — goes in a table of its own with its own policy, the w
 the bid and target margin moved to `project_financials`. Two waves in a row got
 this wrong in the same direction; the third should not have to.
 
+## The GC handshake
+
+Settled 2026-09-03, wave H (transcripts program, Q10 + Q11 + Q20 — grilled and
+approved; cite, never re-decide). The other end of the pipeline: the general
+contractor, who owns the house, sets the schedule everybody else works to, and
+until now has been talked to entirely by phone with the answers kept in
+somebody's head.
+
+**GC check-in** — one conversation with a job's general contractor, filed. Six
+standing answers, always the same six: when he expects the house finished, when
+the roof goes on, whether the framing has been checked, whether he wants the
+windows inset or outset, and what is going on the outside and the inside.
+Filing one is what "communicated with the GC" MEANS in this app — there is no
+other way to say it happened, and the 7 AM sweep's fourth reason is a job that
+has not had one in a fortnight. Append-only: a changed answer is a second row,
+and the pair is the story ("he said the 14th in August and the 28th in
+September"), which an update would erase. All six are required, because a
+half-filled check-in looks like somebody asked and the next person to open the
+job believes it. The inset/outset answer here is JOB-LEVEL and decides nothing
+about a unit — the per-unit spec field in the signature stays authoritative for
+what actually gets installed where; this is what the builder SAID, which is
+sometimes a different answer.
+
 ## Open questions
 
 None right now — the next ones come from building.

@@ -65,6 +65,7 @@ import { CallForHandsPanel } from "../components/install/CallForHandsPanel";
 import { MissedUnitButton } from "../components/install/MissedUnitButton";
 import { JobCostCodesPanel } from "../components/project/JobCostCodesPanel";
 import { JobModeBadge } from "../components/JobModeBadge";
+import { GcPanel } from "../components/projects/GcPanel";
 import { PipelinePanel } from "../components/projects/PipelinePanel";
 import { ReadinessBadge } from "../components/projects/ReadinessBadge";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
@@ -586,6 +587,12 @@ function OverviewTab({
           question "is this job going to happen on time" is the one somebody
           opens a job to answer, and the customer's phone number is not. */}
       {project && <PipelinePanel project={project} isLead={isLead} />}
+
+      {/* Wave H (H1/H2): the GC card, directly under Pipeline. The two answer
+          the same question from opposite ends — "is this job going to happen on
+          time" and "what did the builder say about it" — and reading one
+          without the other is how the office ends up guessing. */}
+      {project && <GcPanel projectId={projectId} isLead={isLead} />}
 
       {project && <JobDetailsPanel project={project} isLead={isLead} />}
 

@@ -672,6 +672,12 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- reads a `projects` row whole. Same shape as project_financials above —
     # -- project_id IS the primary key, so it is the natural key too.
     "project_pipeline": ("project_id",),
+    # -- One conversation with a job's GC (Wave H, H1, 20260981000000).
+    # -- APPEND-ONLY and no natural key: two check-ins on the same job on the
+    # -- same day are two calls, and a merge that folded them into one would
+    # -- erase the very thing this table exists to keep — that somebody rang
+    # -- twice, and what changed between the two.
+    "project_gc_checkins": None,
     # -- One rate per person per start date, and the table's own UNIQUE says so
     # -- (Wave Z, Z3). Two projects holding the same person's 2026-06-01 rate
     # -- are the same fact, so it dedups cleanly.

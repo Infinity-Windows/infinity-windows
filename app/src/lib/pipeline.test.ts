@@ -152,14 +152,15 @@ describe("needsCall", () => {
   });
 
   it("says nothing about the GC while check-ins are unknown", () => {
-    // The wave H seam. Every caller passes null today, and "no check-in in 14
-    // days" is true of every job in the company until that table exists —
-    // pushing about it would be pushing about nothing.
+    // A phone or a preview database that does not have project_gc_checkins
+    // cannot ask, and "no check-in in 14 days" would then be true of every job
+    // in the company — pushing about it would be pushing about nothing. Wave H
+    // shipped the table; this is the guard for a database that is behind it.
     const r = needsCall(fine({ start_date: "2026-09-12" }), TODAY, null);
     expect(r.reasons).not.toContain("no_gc_checkin");
   });
 
-  it("counts a stale or missing GC check-in once wave H says check-ins are known", () => {
+  it("counts a stale or missing GC check-in once check-ins are known", () => {
     const soon = fine({ start_date: "2026-09-12" });
     expect(needsCall(soon, TODAY, "2026-09-06T09:00:00Z", true).reasons).not.toContain(
       "no_gc_checkin",
@@ -291,6 +292,60 @@ describe("dueNudges — the same rule the sweep runs in SQL", () => {
     );
     expect(due[0].notReady).toBe(false);
     expect(due[0].materialsMissing).toBe(true);
+  });
+});
+
+describe("dueNudges — the GC clause the sweep gained in wave H", () => {
+  // The twin of claim_pipeline_nudges()'s
+  //   or c.last_checkin_day is null
+  //   or c.last_checkin_day <= v_today - 14
+  // added to the (a) branch beside ready_state = 'not_ready'. Change one side
+  // without the other and this block goes red.
+  const soon = { start_date: "2026-09-12" };
+
+  it("warns about a job starting soon that nobody has ever called the builder about", () => {
+    const due = dueNudges(fine(soon), TODAY, null, true);
+    expect(due.map((d) => d.kind)).toEqual(["start_7"]);
+    expect(due[0].noGcCheckin).toBe(true);
+    // The other two reasons are false — this job is ready and nobody promised
+    // it windows. A push that claimed otherwise is how a warning stops
+    // being read.
+    expect(due[0].notReady).toBe(false);
+    expect(due[0].materialsMissing).toBe(false);
+  });
+
+  it("warns when the last check-in is a fortnight old, and not before", () => {
+    // TODAY is 2026-09-08. Thirteen days ago is still fresh; fourteen is
+    // stale. The number is GC_CHECKIN_STALE_DAYS on both sides of the wire —
+    // and `v_today - 14` in claim_pipeline_nudges.
+    expect(dueNudges(fine(soon), TODAY, "2026-08-26T09:00:00Z", true)).toEqual([]);
+    expect(
+      dueNudges(fine(soon), TODAY, "2026-08-25T09:00:00Z", true)[0]?.noGcCheckin,
+    ).toBe(true);
+  });
+
+  it("says nothing about the GC on a database that cannot be asked", () => {
+    // The default. A caller that has not read project_gc_checkins passes
+    // nothing, and a job with no other problem raises no nudge at all.
+    expect(dueNudges(fine(soon), TODAY)).toEqual([]);
+  });
+
+  it("leaves the late-windows nudge alone whatever the GC situation", () => {
+    // Late windows are their own message: "the day they were due has passed".
+    // Padding it with "and nobody has called the builder" would make the one
+    // sentence that matters harder to read.
+    const late = dueNudges(
+      fine({
+        start_date: "2026-12-01",
+        materials_eta: "2026-08-20",
+        materials_arrived_at: null,
+      }),
+      TODAY,
+      null,
+      true,
+    );
+    expect(late.map((d) => d.kind)).toEqual(["materials_late"]);
+    expect(late[0].noGcCheckin).toBe(false);
   });
 });
 

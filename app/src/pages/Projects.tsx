@@ -25,6 +25,7 @@ import { buildDeleteConfirmMessage } from "../lib/projectTrash";
 import { IncomingMondayJobs } from "../components/projects/IncomingMondayJobs";
 import { PipelineLine } from "../components/projects/PipelineLine";
 import { ReadinessBadge } from "../components/projects/ReadinessBadge";
+import { gcCheckinsLatestKey, latestGcCheckins } from "../lib/gc";
 import { needsCall, sortProjectsForList } from "../lib/pipeline";
 import { MessagesSquare } from "lucide-react";
 import type { Project } from "../lib/types";
@@ -94,6 +95,15 @@ export function Projects() {
       if (error) throw error;
       return data;
     },
+  });
+  // Wave H (H1): the fourth reason a job needs a call — nobody has talked to
+  // its builder in a fortnight. ONE query for the whole page rather than one
+  // per card: this list is read on a phone in a driveway, and a query per card
+  // is how it stops loading. `known` is what keeps a database that is behind
+  // the migration from lighting a chip on every job in the company.
+  const checkins = useQuery({
+    queryKey: gcCheckinsLatestKey,
+    queryFn: latestGcCheckins,
   });
   const addProject = useMutation({
     mutationFn: async () => {
@@ -451,7 +461,12 @@ export function Projects() {
           const chatUnread = unread.data?.[p.id] ?? 0;
           const pctColor =
             c.pct >= 80 ? "var(--ok)" : c.pct >= 40 ? "var(--accent)" : "var(--warn)";
-          const call = needsCall(p, today);
+          const call = needsCall(
+            p,
+            today,
+            checkins.data?.byProject[p.id] ?? null,
+            checkins.data?.known ?? false,
+          );
           return (
             // Keeps the exact tag and className `a.project-card` other e2e
             // specs already select (foreman-marks.spec.ts) — the Delete

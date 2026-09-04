@@ -156,7 +156,9 @@ class TestSchemaParsing(unittest.TestCase):
         # off `projects` because a granted builder reads that row whole (Wave H,
         # H0, 20260981000000). The move DROPS three columns from `projects` and
         # adds exactly one table.
-        self.assertEqual(len(SCHEMA.tables), 123)
+        # +1: project_gc_checkins — one filed conversation with a job's general
+        # contractor, the six standing answers (Wave H, H1, 20260981000000).
+        self.assertEqual(len(SCHEMA.tables), 124)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

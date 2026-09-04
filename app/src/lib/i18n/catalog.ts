@@ -1144,6 +1144,65 @@ export const CATALOG = {
     en: "It lands as Not ready, with the windows due {date} — mark it ready once somebody has checked the site.",
     es: "Entra como No listo, con las ventanas para el {date} — márcalo listo cuando alguien haya revisado el sitio.",
   },
+
+  // ---- Wave H — the GC handshake ----------------------------------------
+  // (transcripts program, grill 2026-09-03, Q10 + Q11 + Q20). Six questions
+  // get asked on every job, and the answers used to live in somebody's memory
+  // of a phone call. These are the CREW side of that — the card on a job's
+  // Overview where the office files what the builder said and hands him a link
+  // to answer it himself.
+  //
+  // The GC'S OWN PAGE IS NOT HERE AND MUST NOT BE. It is customer-facing, it is
+  // English-only in v1 by decision, and it is rendered before the app's
+  // language layer exists at all — a general contractor opening a link from a
+  // text message has never picked a language in this app and never will. The
+  // email it goes out with is English for the same reason. When somebody asks
+  // for Spanish there, it is a translation of the PAGE, not of this catalog.
+  "gc.heading": { en: "GC", es: "Contratista general" },
+  "gc.noCheckins": { en: "Nobody has checked in with the GC yet.", es: "Nadie ha hablado con el contratista general todavía." },
+  "gc.log": { en: "Log a GC check-in", es: "Anotar contacto con el GC" },
+  "gc.lastSpoke": { en: "Last spoke {date}", es: "Último contacto {date}" },
+  "gc.answeredByGc": { en: "The GC answered this himself", es: "El GC contestó él mismo" },
+  "gc.history": { en: "Earlier check-ins", es: "Contactos anteriores" },
+  "gc.showHistory": { en: "Show earlier check-ins", es: "Ver contactos anteriores" },
+  "gc.hideHistory": { en: "Hide earlier check-ins", es: "Ocultar contactos anteriores" },
+  // The six questions. Short labels — this is a form filled in on a phone with
+  // the builder still on the line.
+  "gc.expectedEnd": { en: "House finished", es: "Casa terminada" },
+  "gc.roofOn": { en: "Roof on", es: "Techo puesto" },
+  "gc.framingChecked": { en: "Framing checked?", es: "¿Revisaron el marco?" },
+  "gc.setPreference": { en: "Inset or outset?", es: "¿Adentro o afuera?" },
+  "gc.set.inset": { en: "Inset", es: "Adentro" },
+  "gc.set.outset": { en: "Outset", es: "Afuera" },
+  "gc.set.unknown": { en: "He has not said", es: "No ha dicho" },
+  "gc.exterior": { en: "Going on the outside", es: "Material de afuera" },
+  "gc.interior": { en: "Going on the inside", es: "Material de adentro" },
+  "gc.exteriorHint": { en: "Stucco, stone, siding…", es: "Estuco, piedra, siding…" },
+  "gc.interiorHint": { en: "Drywall, plaster, wood…", es: "Panel de yeso, yeso, madera…" },
+  "gc.yes": { en: "Yes", es: "Sí" },
+  "gc.no": { en: "No", es: "No" },
+  // Who and how — not required, but the first thing anybody wants when the
+  // answers turn out to be wrong.
+  "gc.contactName": { en: "Who you talked to", es: "Con quién hablaste" },
+  "gc.channel": { en: "How", es: "Cómo" },
+  "gc.channel.call": { en: "Call", es: "Llamada" },
+  "gc.channel.text": { en: "Text", es: "Mensaje" },
+  "gc.channel.email": { en: "Email", es: "Correo" },
+  "gc.channel.site": { en: "On site", es: "En la obra" },
+  "gc.notes": { en: "Anything else", es: "Algo más" },
+  "gc.save": { en: "File this check-in", es: "Guardar el contacto" },
+  "gc.saving": { en: "Saving…", es: "Guardando…" },
+  "gc.cancel": { en: "Cancel", es: "Cancelar" },
+  "gc.saved": { en: "Filed. The job stops asking for a call.", es: "Guardado. El trabajo deja de pedir una llamada." },
+  // The refusals, one per required answer, in the order the form asks them.
+  // Each one names the box that is empty rather than saying "fill in the form".
+  "gc.missing.expectedEnd": { en: "Say when the GC expects the house to be finished.", es: "Di cuándo espera el GC que la casa esté terminada." },
+  "gc.missing.roofOn": { en: "Say when the roof goes on.", es: "Di cuándo ponen el techo." },
+  "gc.missing.framingChecked": { en: "Say whether the framing has been checked.", es: "Di si ya revisaron el marco." },
+  "gc.missing.setPreference": { en: "Say whether he wants the windows inset, outset, or that he has not said.", es: "Di si quiere las ventanas adentro, afuera, o que no ha dicho." },
+  "gc.missing.exterior": { en: "Say what is going on the outside.", es: "Di qué va por fuera." },
+  "gc.missing.interior": { en: "Say what is going on the inside.", es: "Di qué va por dentro." },
+  "gc.missing.channel": { en: "Say how you talked to the GC.", es: "Di cómo hablaste con el GC." },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
