@@ -218,10 +218,11 @@ class FunctionSecretsTest(unittest.TestCase):
         # J4). Third of the same shape — cron target, VAPID pair, no new
         # secret — so the ANTHROPIC headline sentence below is unmoved.
         # 23: +gc-link and +send-email, the GC handshake (Wave H, H2). gc-link
-        # runs on the VAPID pair it shares with every other pusher, and
-        # send-email's two secrets are BOTH optional — RESEND_API_KEY behind a
-        # truthiness guard and EMAIL_FROM with a real default — so neither
-        # appears in the required union and the ANTHROPIC headline sentence in
+        # runs on the VAPID pair it shares with every other pusher, and every
+        # one of send-email's secrets is OPTIONAL — RESEND_API_KEY and, since
+        # the per-brand senders landed (2026-09-04), all three of EMAIL_FROM,
+        # EMAIL_FROM_STG and EMAIL_FROM_FORGE — so none appears in the required
+        # union and the ANTHROPIC headline sentence in
         # verify-function-secrets.test.sh is unmoved again.
         self.assertEqual(len(names), 23)
         self.assertIn("ask", names)
@@ -239,15 +240,36 @@ class FunctionSecretsTest(unittest.TestCase):
         """The whole point of the optional-guard pattern, pinned.
 
         A deploy must not fail because the owner has not added a Resend key
-        yet. RESEND_API_KEY is read behind `if (Deno.env.get(...))`, which this
-        parser reads as feature detection, and EMAIL_FROM has a working default
-        — so neither is REQUIRED, the secret gate stays green, and the function
+        yet. Every one of this function's secrets is read behind
+        `if (Deno.env.get(...))`, which this parser reads as feature detection
+        — so none is REQUIRED, the secret gate stays green, and the function
         answers "email is not configured" until somebody sets the key.
         """
         r = fs.requirements_for("send-email")
         self.assertEqual(r["required"], [])
         self.assertIn("RESEND_API_KEY", r["optional"])
         self.assertIn("EMAIL_FROM", r["optional"])
+
+    def test_the_per_brand_sender_addresses_are_optional_and_never_required(self):
+        """Two addresses the owner may never set, and a deploy that must not care.
+
+        STG-branded jobs mail from EMAIL_FROM_STG and Forge-branded jobs from
+        EMAIL_FROM_FORGE, each falling back to EMAIL_FROM and then to a
+        built-in address. Every step of that chain has a working answer, so a
+        project with none of them set sends mail exactly as it did before —
+        and putting either name in the required union would fail the deploy
+        secret gate over configuration nobody has to provide.
+        """
+        r = fs.requirements_for("send-email")
+        for var in ("EMAIL_FROM_STG", "EMAIL_FROM_FORGE"):
+            self.assertIn(var, r["optional"])
+            self.assertNotIn(var, r["required"])
+        # And they must not reach the union any other function is checked
+        # against, which is what the deploy actually gates on.
+        union = fs.required_union(fs.all_requirements())
+        self.assertNotIn("EMAIL_FROM_STG", union)
+        self.assertNotIn("EMAIL_FROM_FORGE", union)
+        self.assertNotIn("EMAIL_FROM", union)
 
     def test_gc_link_rides_the_push_pair_and_adds_no_secret(self):
         # It pushes the office when a GC answers, so it needs what every other

@@ -1590,6 +1590,17 @@ export const CATALOG = {
     en: "Crew list still loading — try again in a second.",
     es: "La lista del equipo se está cargando. Inténtalo de nuevo en un segundo.",
   },
+
+  // ---- Which mailbox the GC's email came from (2026-09-04) --------------
+  // STG-branded jobs and Forge-branded jobs mail from two different addresses
+  // now, and the builder sees the From line before he sees anything else. So
+  // the note under the button says which one he got — that is the first thing
+  // the office asks when a builder says nothing ever arrived, and the foreman
+  // who pressed the button is the one who can answer it.
+  "gc.link.sentToFrom": {
+    en: "Sent to {email} from {from}.",
+    es: "Enviado a {email} desde {from}.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

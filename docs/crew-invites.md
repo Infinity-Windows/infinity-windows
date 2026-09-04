@@ -52,6 +52,37 @@ bearing on invites, confirmations or password resets, and it is not a relay:
 nothing else in this app may use it to send anything to anybody. A crew invite
 is still a code the owner texts.
 
+#### Which address that email comes from
+
+The company answers to two names, and each job says which one its builder
+hears. Since 2026-09-04 the From line follows that choice, so an STG job's
+builder gets mail from the STG mailbox and a Forge job's builder gets mail from
+the Forge one. The addresses are settings, not code — the owner can move either
+mailbox without anybody changing this repo.
+
+| Setting            | Used for                                    |
+| ------------------ | ------------------------------------------- |
+| `EMAIL_FROM_STG`   | Jobs whose GC sees us as STG Windows & Doors|
+| `EMAIL_FROM_FORGE` | Jobs whose GC sees us as Forge Windows and Doors |
+| `EMAIL_FROM`       | Both, when one mailbox covers both names    |
+
+**All three are optional and all three are checked in that order** — the
+brand's own address first, then `EMAIL_FROM`, then the built-in
+`office@forgewd.com`. Nothing has to be set for the feature to work, and no
+deploy fails because an address is missing. Set them in the Supabase dashboard
+under Project Settings → Edge Functions → Secrets, the same place
+`RESEND_API_KEY` goes.
+
+Either a bare address (`office@stgwindows.com`) or an address with a name in
+front of it (`STG Windows <office@stgwindows.com>`) is accepted; with a bare
+one, the brand's own name is put in front automatically, which is what the
+builder sees. **Whatever address is used has to be on a domain verified in
+Resend**, or Resend refuses the send — and when it does, the GC card on the job
+shows Resend's own words rather than a shrug. An address that is not an address
+at all is refused before anything is sent, in a sentence naming which of the
+three settings to fix. After a send goes through, the card says which mailbox
+it came from.
+
 `mailer_autoconfirm: false` is why redemption creates the user with
 `email_confirm: true`: a confirmation email nobody can receive is a locked-out
 crew member. The invite is the verification — a supervisor named this person
