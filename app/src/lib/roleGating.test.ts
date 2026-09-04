@@ -98,8 +98,11 @@ describe("minRoleForPath matches page-level gating", () => {
 
   it("opens Supplies to installers — they are the ones taking the caulk", () => {
     // Warehouse tickets 07/08: an installer finds the supply, taps Take, says
-    // how many and which job. Setting a HOME SPOT stays foreman+, enforced by
-    // set_supply_home server-side rather than by the route floor.
+    // how many and which job. Setting a HOME SPOT was the one thing on this
+    // screen that stayed foreman+, enforced by set_supply_home rather than by
+    // the route floor — until ADR-0007 (owner call, 2026-09-04) opened that
+    // RPC with the rest. The floor is installer and now so is everything
+    // behind it.
     expect(minRoleForPath("/supplies")).toBe("installer");
   });
 

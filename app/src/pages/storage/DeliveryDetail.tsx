@@ -3,7 +3,8 @@
 // tap boxes in as they arrive, rapid-split identical twins across conexes
 // by COUNT (they're interchangeable — nobody cares which twin goes where),
 // and read what never came. Material for a job that isn't built yet is
-// fully receivable and storable; a foreman files it onto the job later.
+// fully receivable and storable; anybody on the crew files it onto the job
+// later (file_pending_packages opened with ADR-0007).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";

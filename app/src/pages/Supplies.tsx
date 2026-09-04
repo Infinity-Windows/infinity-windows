@@ -6,7 +6,7 @@
 // pull list in the way. The count is always an estimate and always says so
 // ("about 140 · last counted Aug 3" — onHandLabel enforces the pairing).
 // Counting the shelf corrects it. The old per-job pull list survives below
-// as REQUEST — a foreman planning ahead — and a take that matches a request
+// as REQUEST — anybody planning ahead — and a take that matches a request
 // ticks it off server-side.
 
 import { BackChip } from "../components/BackChip";
