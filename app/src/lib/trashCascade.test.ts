@@ -106,6 +106,24 @@ const CASCADE_COVERED: Record<string, string> = {
   // about this job: the row means nothing without the job, so it goes with it
   // on the final `delete from projects`. Nothing else references it.
   pipeline_nudges: "ON DELETE CASCADE from projects, on the final delete from projects",
+  // Wave H (H0), 20260981000000. Readiness and the materials dates moved off
+  // `projects` into a side table whose primary key IS the FK, exactly like
+  // project_financials — so the final `delete from projects` takes the row, and
+  // it dies with the job the same way it did as three columns on it.
+  project_pipeline: "ON DELETE CASCADE from projects (the pk is the FK)",
+  // Wave H (H1), 20260981000000. What the builder said about a job is a fact
+  // about that job and nothing else — there is no other job it could belong to
+  // and nobody reads it once the job is gone — so it goes on the final `delete
+  // from projects` rather than being detached like a money record.
+  project_gc_checkins: "ON DELETE CASCADE from projects, on the final delete from projects",
+  // Wave H (H2), 20260981000000. A link is a key to ONE job — there is nothing
+  // for it to point at once the job is gone, and leaving one alive would be
+  // leaving a live credential for a purged job.
+  gc_links: "ON DELETE CASCADE from projects, on the final delete from projects",
+  // And the thread on it. gc_messages.gc_link_id is ON DELETE SET NULL so
+  // revoking a link never deletes what the builder said, but project_id is
+  // CASCADE: the conversation is about the job and dies with it.
+  gc_messages: "ON DELETE CASCADE from projects, on the final delete from projects",
 };
 
 function purgeBody(): string {

@@ -24,6 +24,7 @@ import { canAccess, roleRank, ROLE_NAV_V2, type RoutePath } from "./lib/nav";
 import type { CrewRole } from "./lib/install/types";
 import { ClockProvider, useClock } from "./lib/clockContext";
 import { routerBasename } from "./lib/pwa/basePaths";
+import { gcTokenFromPath } from "./lib/gcToken";
 import { authErrorFromHash, isRecoveryLanding } from "./lib/passwordReset";
 import { SetNewPassword } from "./components/SetNewPassword";
 import { ViewAsRoleProvider } from "./lib/viewAsRole";
@@ -80,6 +81,7 @@ import { TypeBrainCard } from "./pages/install/TypeBrainCard";
 import { CatalogImport } from "./pages/CatalogImport";
 import { Crew } from "./pages/Crew";
 import { CrewAccess } from "./pages/CrewAccess";
+import { GcPage } from "./pages/GcPage";
 import { JoinCrew } from "./pages/JoinCrew";
 import { readCodeFromUrl } from "../../supabase/functions/_shared/crewInvites";
 import { MyWork } from "./pages/MyWork";
@@ -261,6 +263,18 @@ function ClockRoute() {
 // password-reset email (type=recovery) or from an expired link (error_code).
 const LANDING_HASH = typeof window !== "undefined" ? window.location.hash : "";
 
+// Wave H (H2): the GC's link, read at IMPORT TIME from the address the browser
+// actually opened. A general contractor has no account here and never will, so
+// his page is decided before the router, before the session, and before the
+// splash — the same reasoning that puts the crew invite's `?join=` code ahead
+// of everything, and for a stronger reason: an invite ends in an account, and
+// this never does. On GitHub Pages the deep path reaches the app at all only
+// because 404.html is a byte-copy of index.html (vite.config.ts).
+const GC_TOKEN =
+  typeof window !== "undefined"
+    ? gcTokenFromPath(window.location.pathname, import.meta.env.BASE_URL)
+    : null;
+
 
 /** Stamps data-section on <html> from the route, driving the section auras
  *  (owner picks 8 + 15): warehouse steel, install coral, office violet,
@@ -296,6 +310,8 @@ export default function App() {
   // here to fix their password, so land them on the sign-in screen that says so.
   const [entered, setEntered] = useState(() => landingNotice != null);
   const [signInMode, setSignInMode] = useState<"signin" | "request">("signin");
+  /** The GC link this load came from, if any. Read once, at import time. */
+  const [gcToken] = useState<string | null>(() => GC_TOKEN);
 
   /**
    * An invite code arriving as `?join=…` on the app's root URL.
@@ -346,6 +362,15 @@ export default function App() {
     });
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  // Wave H (H2): the GC's page, ahead of EVERYTHING — ahead of the "Connecting…"
+  // splash, not only ahead of sign-in. The splash waits on getSession(), which
+  // is a question about a person who does not have an account; a builder tapping
+  // a link from a text message would sit there for it, and on a bad connection
+  // sit there for a while. He is not signing in, so he does not wait for the
+  // answer. Everything this page shows comes from the gc-link edge function on
+  // the service role; the token grants no table access at all.
+  if (gcToken) return <GcPage token={gcToken} />;
 
   if (!ready) {
     return (

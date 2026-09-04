@@ -667,6 +667,27 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- project_id IS the primary key, so it is the natural key too — merge it
     # -- the same way the job it belongs to is merged.
     "project_financials": ("project_id",),
+    # -- One row per job: readiness and the two materials dates, moved off
+    # -- `projects` by wave H (H0, 20260981000000) because a granted builder
+    # -- reads a `projects` row whole. Same shape as project_financials above —
+    # -- project_id IS the primary key, so it is the natural key too.
+    "project_pipeline": ("project_id",),
+    # -- One conversation with a job's GC (Wave H, H1, 20260981000000).
+    # -- APPEND-ONLY and no natural key: two check-ins on the same job on the
+    # -- same day are two calls, and a merge that folded them into one would
+    # -- erase the very thing this table exists to keep — that somebody rang
+    # -- twice, and what changed between the two.
+    "project_gc_checkins": None,
+    # -- A no-login link handed to one job's GC (Wave H, H2). token_hash is
+    # -- UNIQUE and is the only thing that identifies a link, so it IS the
+    # -- natural key: two databases holding the same hash hold the same link,
+    # -- and a union that kept both would leave two rows one token opens.
+    "gc_links": ("token_hash",),
+    # -- One line of the thread with a job's GC (Wave H, H2). No natural key,
+    # -- the same reasoning as project_messages: two identical sentences on the
+    # -- same job are two times somebody said it, and merging them would erase
+    # -- a repeat that meant something.
+    "gc_messages": None,
     # -- One rate per person per start date, and the table's own UNIQUE says so
     # -- (Wave Z, Z3). Two projects holding the same person's 2026-06-01 rate
     # -- are the same fact, so it dedups cleanly.

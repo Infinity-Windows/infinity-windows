@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""Catch column names a migration got wrong that Postgres will not complain about.
+"""Catch the migration mistakes Postgres will not complain about.
+
+TWO CHECKS LIVE HERE, and they share a shape: each one is a way for a migration
+to deploy clean, run without error, and be wrong forever after.
+
+  1. scan_sql / unexpected_hits — a column name a subquery cannot satisfy,
+     which resolves against the ENCLOSING query instead of failing. The
+     2026-09-02 finish_unit incident, described at length below.
+  2. shrinking_grants — a re-stated column-grant list that quietly got
+     shorter, so a table-level REVOKE takes a privilege nobody meant to take.
+     Described at its own definition, near the bottom of this file.
 
 Postgres resolves an unqualified column name a subquery cannot satisfy against
 the ENCLOSING query instead of raising. That is a real SQL feature (correlated
@@ -290,11 +300,209 @@ def describe(hits) -> str:
     )
 
 
+# ---------------------------------------------------------------------------
+# The second check: a re-stated column-grant list that quietly got shorter
+# ---------------------------------------------------------------------------
+"""Catch a table-level REVOKE that drops a column privilege nobody meant to drop.
+
+THE PROJECTS GRANT LAW (wave D, 20260959000000) revokes table-level
+INSERT/UPDATE on `projects` and grants back only the columns the app writes
+directly, by name. Every wave that drops a `projects` column re-states both
+lists. That is good documentation and a bad primitive, because two waves
+developed the same week do not see each other's columns:
+
+  * wave X (20260980000000) added `stories` and granted it ADDITIVELY —
+    `grant insert (stories) on projects to authenticated;` on its own.
+  * wave H (20260981000000) dropped three other columns and re-stated the
+    lists, copying them from wave Z, which predates `stories`.
+
+A table-level `revoke insert, update` takes every COLUMN-level grant of those
+privileges with it. H sorts after X, so the deploy would have left `stories`
+un-granted — and nothing would have gone red, because the app degrades on
+purpose: api.ts reads the 42501 as "that column is not deployed yet", drops
+`stories` from the write and retries. The save succeeds, and the storey count a
+foreman typed is silently gone. Wave X's own header predicted the file that
+would do it; a comment cannot enforce itself, so this does.
+
+THE RULE: when a migration revokes INSERT or UPDATE at the table level, every
+column that an earlier migration granted that privilege on — and that this
+migration does not itself drop — must be named again in that migration's
+grant-back. Re-stating a list is re-stating the WHOLE list.
+
+Deliberately narrow, same as the scanner above:
+
+  * COLUMN grants only. A table-level `grant insert on t to r` is not tracked,
+    so a table that never used column grants can revoke and re-grant freely.
+  * A column this migration drops is not expected back — dropping a column
+    drops its ACL, which is the legitimate reason to re-state a list at all.
+  * PER ROLE. Postgres revokes per grantee, and this check has to as well:
+    20260729200000 grants profiles columns to `authenticated` and then writes
+    `revoke all on table public.profiles from anon;` to shut a door that was
+    never open. Judging on column names alone read that as five lost
+    privileges, which is the kind of false alarm that gets a gate switched off.
+  * Statement order inside a file is respected (a drop before the revoke is
+    seen as a drop), and a column dropped anywhere in the same file is
+    forgiven, so a file that revokes first and drops after is not a hit.
+"""
+
+#: Objects a GRANT/REVOKE can name that are not tables. `grant execute on
+#: function f(...)` would otherwise read as a table called "function".
+_NOT_A_TABLE = {"function", "schema", "sequence", "procedure", "routine", "all", "table"}
+
+#: privs and roles are `[^;]*` so a match can never run past the end of its own
+#: statement into the next one. Without that, `grant execute on function f(...)
+#: to r;` finds no "on <name> to" of its own and happily borrows the one from
+#: the following statement, inventing a grant that was never written.
+_GRANT_RE = re.compile(
+    r"\bgrant\s+(?P<privs>[^;]*?)\s+on\s+(?:table\s+)?(?:public\.)?"
+    r"(?P<table>[a-z_]\w*)\s+to\s+(?P<roles>[^;]*)",
+    re.I | re.S,
+)
+_REVOKE_RE = re.compile(
+    r"\brevoke\s+(?P<privs>[^;]*?)\s+on\s+(?:table\s+)?(?:public\.)?"
+    r"(?P<table>[a-z_]\w*)\s+from\s+(?P<roles>[^;]*)",
+    re.I | re.S,
+)
+_DROP_COLUMN_RE = re.compile(
+    r"\balter\s+table\s+(?:only\s+)?(?:public\.)?(?P<table>[a-z_]\w*)\s+"
+    r"drop\s+column\s+(?:if\s+exists\s+)?(?P<column>[a-z_]\w*)",
+    re.I,
+)
+#: `insert (a, b)` / `update(c)` inside a privilege list.
+_PRIV_COLUMNS_RE = re.compile(r"\b(insert|update)\s*\(([^)]*)\)", re.I)
+#: A bare privilege word with no column list after it — the table-level form.
+_PRIV_BARE_RE = re.compile(r"\b(insert|update|all)\b(?!\s*\()", re.I)
+
+#: Roles whose loss actually breaks the app. A revoke from service_role or from
+#: a role the app never signs in as is not this check's business.
+_APP_ROLES = {"anon", "authenticated", "public"}
+
+
+def _privilege_columns(privs: str) -> dict[str, set[str]]:
+    """`insert (a, b), update (c)` -> {"insert": {"a","b"}, "update": {"c"}}."""
+    out: dict[str, set[str]] = {}
+    for priv, cols in _PRIV_COLUMNS_RE.findall(privs):
+        names = {c.strip().lower() for c in cols.split(",") if c.strip()}
+        out.setdefault(priv.lower(), set()).update(names)
+    return out
+
+
+def _bare_privileges(privs: str) -> set[str]:
+    """The INSERT/UPDATE privileges named WITHOUT a column list."""
+    found = {p.lower() for p in _PRIV_BARE_RE.findall(privs)}
+    return {"insert", "update"} if "all" in found else found & {"insert", "update"}
+
+
+def _roles(text: str) -> set[str]:
+    """The grantees a GRANT/REVOKE names, lowercased."""
+    return {r.strip().lower() for r in text.split(",") if r.strip()}
+
+
+def _events(sql: str):
+    """Every grant / revoke / drop-column in one file, in statement order."""
+    out = []
+    for m in _GRANT_RE.finditer(sql):
+        table = m.group("table").lower()
+        if table not in _NOT_A_TABLE:
+            out.append((
+                m.start(), "grant", table,
+                (_privilege_columns(m.group("privs")), _roles(m.group("roles"))),
+            ))
+    for m in _REVOKE_RE.finditer(sql):
+        table = m.group("table").lower()
+        roles = _roles(m.group("roles")) & _APP_ROLES
+        if table in _NOT_A_TABLE or not roles:
+            continue
+        out.append((
+            m.start(), "revoke", table,
+            (_bare_privileges(m.group("privs")),
+             _privilege_columns(m.group("privs")), roles),
+        ))
+    for m in _DROP_COLUMN_RE.finditer(sql):
+        out.append((m.start(), "drop", m.group("table").lower(), m.group("column").lower()))
+    return sorted(out, key=lambda e: e[0])
+
+
+def shrinking_grants(paths=None) -> list[tuple[str, int, str, str, str, str]]:
+    """Every column privilege a table-level revoke drops without granting back.
+
+    Returns (filename, line, table, privilege, column, role) tuples.
+    """
+    #: (table, privilege, role) -> the columns granted so far, across all files.
+    granted: dict[tuple[str, str, str], set[str]] = {}
+    found: list[tuple[str, str, str, str, str, str]] = []
+
+    for path in _migration_paths(paths):
+        text = _blank_comments(path.read_text())
+        dropped_in_file = {
+            (m.group("table").lower(), m.group("column").lower())
+            for m in _DROP_COLUMN_RE.finditer(text)
+        }
+        # (table, priv, role) -> (line of the revoke, columns it took away)
+        pending: dict[tuple[str, str, str], tuple[int, set[str]]] = {}
+
+        for offset, kind, table, payload in _events(text):
+            if kind == "drop":
+                for key in [k for k in granted if k[0] == table]:
+                    granted[key].discard(payload)
+                for key, (_line, lost) in pending.items():
+                    if key[0] == table:
+                        lost.discard(payload)
+            elif kind == "grant":
+                by_column, roles = payload
+                for priv, cols in by_column.items():
+                    for role in roles:
+                        granted.setdefault((table, priv, role), set()).update(cols)
+                        if (table, priv, role) in pending:
+                            pending[(table, priv, role)][1].difference_update(cols)
+            else:  # revoke
+                bare, by_column, roles = payload
+                for role in roles:
+                    for priv, cols in by_column.items():
+                        # A COLUMN-level revoke takes exactly what it names.
+                        granted.get((table, priv, role), set()).difference_update(cols)
+                    for priv in bare:
+                        lost = granted.pop((table, priv, role), set())
+                        if lost:
+                            line = text.count("\n", 0, offset) + 1
+                            pending[(table, priv, role)] = (line, set(lost))
+
+        for (table, priv, role), (line, lost) in pending.items():
+            for column in sorted(lost):
+                if (table, column) not in dropped_in_file:
+                    found.append((path.name, line, table, priv, column, role))
+
+    return sorted(found)
+
+
+def describe_grants(hits) -> str:
+    """A report a reader can act on without opening this file."""
+    return "\n".join(
+        f"  {fn}:{line} — the table-level `revoke {priv} on {table} from {role}` "
+        f"here takes the column grant on `{table}.{column}` with it, and this "
+        f"migration never grants it back to {role}. Add `{column}` to the "
+        f"`grant {priv} (…) on {table} to {role}` list in this file, or drop "
+        "the column if it is really going"
+        for fn, line, table, priv, column, role in hits
+    )
+
+
 if __name__ == "__main__":
     import sys
 
+    bad = False
     hits = unexpected_hits()
     if hits:
         print(describe(hits))
-        sys.exit(1)
-    print("no silently-resolving column references in supabase/migrations")
+        bad = True
+    else:
+        print("no silently-resolving column references in supabase/migrations")
+
+    shrunk = shrinking_grants()
+    if shrunk:
+        print(describe_grants(shrunk))
+        bad = True
+    else:
+        print("no re-stated grant list loses a column in supabase/migrations")
+
+    sys.exit(1 if bad else 0)

@@ -555,18 +555,70 @@ warning and a moved start date earns a fresh one. Wave H adds a fourth reason
 never counts against a job, because "nobody has logged a check-in" is true of
 every job in the company and is not news.
 
-**What a builder can see of it** — all four of the pipeline facts live as
-columns on `projects`, and `projects` is the one table a builder (partner)
-login reads whole for the jobs they were granted. That is row-level, and there
-is no column-level half to it: a column on `projects` is readable by a granted
-builder, now and forever after. It was allowed here on purpose — the readiness
-and the two materials dates are facts about the builder's own house, and the
-list order is an integer that means nothing outside our list. What a builder
-must never be told is that we are behind, which is why the 7 AM sweep excludes
-partner logins outright. Anything genuinely ours — a price, a margin, a cost, a
-wage — does NOT go in a column on `projects`; it goes in a table of its own
-with its own policy, the way the bid and target margin moved to
-`project_financials`.
+**What a builder can see of it** — nothing, and that was a correction. All four
+pipeline facts started as columns on `projects`, which is the one table a
+builder (partner) login reads whole for the jobs they were granted. That is
+row-level and has no column-level half: a column there is readable by a granted
+builder, now and forever after. Wave J allowed it, reasoning that readiness and
+the materials dates are facts about the builder's own house. Wave H moved three
+of them straight back out (`project_pipeline`, 20260981000000) because the
+reasoning had the question wrong. It is not "is this fact sensitive"; it is "is
+this fact ABOUT US". "Not ready" is a note we write to ourselves about a site
+nobody has walked yet — read by the builder who owns that site, it is an
+accusation, and "your windows still are not here" is the sentence this whole
+handshake exists to let us say ourselves, in our words, at a moment we chose.
+Only `sort_order` stayed: an integer that means nothing outside a list a builder
+cannot see. So anything genuinely ours — a price, a margin, a cost, a wage, our
+own state of readiness — goes in a table of its own with its own policy, the way
+the bid and target margin moved to `project_financials`. Two waves in a row got
+this wrong in the same direction; the third should not have to.
+
+## The GC handshake
+
+Settled 2026-09-03, wave H (transcripts program, Q10 + Q11 + Q20 — grilled and
+approved; cite, never re-decide). The other end of the pipeline: the general
+contractor, who owns the house, sets the schedule everybody else works to, and
+until now has been talked to entirely by phone with the answers kept in
+somebody's head.
+
+**GC check-in** — one conversation with a job's general contractor, filed. Six
+standing answers, always the same six: when he expects the house finished, when
+the roof goes on, whether the framing has been checked, whether he wants the
+windows inset or outset, and what is going on the outside and the inside.
+Filing one is what "communicated with the GC" MEANS in this app — there is no
+other way to say it happened, and the 7 AM sweep's fourth reason is a job that
+has not had one in a fortnight. Append-only: a changed answer is a second row,
+and the pair is the story ("he said the 14th in August and the 28th in
+September"), which an update would erase. All six are required, because a
+half-filled check-in looks like somebody asked and the next person to open the
+job believes it. The inset/outset answer here is JOB-LEVEL and decides nothing
+about a unit — the per-unit spec field in the signature stays authoritative for
+what actually gets installed where; this is what the builder SAID, which is
+sometimes a different answer.
+
+**GC link** — a no-login page one job's general contractor opens from a text or
+an email, answers the same six questions on, and asks a question back through.
+The credential is 32 random bytes, stored only as a sha256 hash, good for 30
+days and revocable; one live link per job, and sending a fresh one turns the old
+one off. THE TOKEN IS A KEY TO AN EDGE FUNCTION, NEVER TO A TABLE — no anon
+policy exists anywhere for it, everything the page reads and writes goes through
+`gc-link` on the service role, and the outward payload is built field by field
+(wave S's projection law). What the GC sees is the job's name, the brand, the
+questions with his own prior answers, and the thread; what he never sees is our
+readiness, our dates, our schedule, our crew or our costs — which is why moving
+the pipeline facts off `projects` had to happen first. An answer arrives as an
+ordinary check-in with `source = gc`, and pushes the same people the 7 AM sweep
+would. His messages live in `gc_messages` and NEVER in crew chat: two audiences,
+two tables, no join.
+
+**Brand (per job)** — which of the company's two names a customer hears on this
+job: STG Windows & Doors or Forge Windows and Doors. `projects.gc_brand`,
+default `stg`, a foreman's choice through `set_project_gc_brand`, and it drives
+the GC page's header and the email's subject and signature. Per JOB rather than
+per company because some builders have only ever known us as STG and some as
+Forge, and the wrong name on an email is the kind of small wrong thing that
+makes somebody wonder who they are dealing with. The partner wall's own STG
+branding is a different thing and this wave does not touch it.
 
 ## Scope at a glance
 
