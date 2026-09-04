@@ -112,15 +112,34 @@ describe("creditToSend", () => {
 
 describe("creditLine", () => {
   const nameOf = (id: string) => CREW.find((c) => c.id === id)?.name ?? null;
+  // What `install_events.installer` ACTUALLY holds. The app fills p_installer
+  // from the signed-in email and always has, so every one of these cases feeds
+  // the real column shape — a test that put "Jed" in there proved nothing and
+  // shipped a Record line reading "filed by jed@forgewd.com".
+  const JED_EMAIL = "jed@forgewd.com";
 
-  it("reads as it always did when nobody else was credited", () => {
-    expect(creditLine({ installer: "Jed", credited_to: null }, nameOf)).toBe("Jed");
+  it("names the filer from their profile, not from the login they filed with", () => {
+    expect(creditLine({ installer: JED_EMAIL, installer_id: "jed" }, nameOf)).toBe("Jed");
   });
 
   it("names both people when one filed for another", () => {
     expect(
-      creditLine({ installer: "Jed", installer_id: "jed", credited_to: "sam" }, nameOf),
+      creditLine(
+        { installer: JED_EMAIL, installer_id: "jed", credited_to: "sam" },
+        nameOf,
+      ),
     ).toBe("Installed by Sam · filed by Jed");
+  });
+
+  it("shows the stored text when the roster cannot name the filer", () => {
+    // A profile that has since gone, or a round filed before ids were stored:
+    // an email a foreman recognises beats no name at all.
+    expect(
+      creditLine({ installer: JED_EMAIL, installer_id: "ghost" }, nameOf),
+    ).toBe(JED_EMAIL);
+    expect(creditLine({ installer: JED_EMAIL, credited_to: null }, nameOf)).toBe(
+      JED_EMAIL,
+    );
   });
 
   it("falls back to the filer's id when no name was typed at file time", () => {
@@ -129,7 +148,7 @@ describe("creditLine", () => {
 
   it("says something rather than nothing for a credited person we cannot name", () => {
     expect(
-      creditLine({ installer: "Jed", credited_to: "who-dis" }, nameOf),
+      creditLine({ installer: JED_EMAIL, installer_id: "jed", credited_to: "who-dis" }, nameOf),
     ).toBe("Installed by someone else · filed by Jed");
   });
 

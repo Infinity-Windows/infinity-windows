@@ -111,9 +111,13 @@ export function creditToSend(input: {
  * The line the Record reads back: "Installed by Sam · filed by Jed" when
  * somebody filed for somebody else, and just the installer otherwise.
  *
- * `installer` is the free-text name the field typed at file time and is what
- * the Record has always shown; the ids are only consulted when they disagree,
- * so a round filed before this column existed reads exactly as it always did.
+ * The filer is named from `installer_id` FIRST. `install_events.installer` is
+ * whatever the client sent as `p_installer`, and what the app has always sent
+ * is the signed-in EMAIL — so trusting the stored text read
+ * "Installed by Sam · filed by jed@forgewd.com", one display name beside one
+ * login. The stored text stays as the fallback, for a round whose filer the
+ * roster can no longer name (a profile deleted, or a phone that never sent an
+ * id): something a person recognises beats nothing.
  */
 export function creditLine(
   event: {
@@ -124,7 +128,8 @@ export function creditLine(
   nameOf: (profileId: string) => string | null | undefined,
 ): string | null {
   const credited = event.credited_to ?? null;
-  const filerName = event.installer ?? (event.installer_id ? nameOf(event.installer_id) : null);
+  const filerName =
+    (event.installer_id ? nameOf(event.installer_id) : null) || event.installer || null;
   if (!credited) return filerName || null;
   const creditedName = nameOf(credited) || "someone else";
   if (!filerName) return `Installed by ${creditedName}`;
