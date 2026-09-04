@@ -7086,10 +7086,12 @@ create table if not exists bank_transactions (
   status text not null default 'unreceipted'
     check (status in ('matched', 'unreceipted', 'ignored')),
   -- What "the same charge" means, so re-importing an overlapping file adds
-  -- nothing: the bank's own id when there is one, else a hash of the three
-  -- things that identify a charge on a statement. Computed by the RPC (never
-  -- by the client) and UNIQUE, so the dedup is the database's job and not a
-  -- read-then-write somebody could race.
+  -- nothing: the bank's own id when there is one, else a hash of date + amount
+  -- + description + CARDHOLDER, plus which occurrence of that hash the line is
+  -- within the file. Computed by the RPC (never by the client) and UNIQUE, so
+  -- the dedup is the database's job and not a read-then-write somebody could
+  -- race. Two crew filling up at the same pump for the same money on the same
+  -- morning are two charges, and so are one person's two identical purchases.
   dedupe_key text not null unique,
   created_at timestamptz not null default now()
 );
@@ -7110,7 +7112,7 @@ comment on table bank_imports is
 comment on table bank_transactions is
   'One charge off a company card statement, and the receipt somebody handed in for it (or the fact that nobody did). No bank credentials are involved anywhere: the handoff is a file a person exports and drops in.';
 comment on column bank_transactions.dedupe_key is
-  'What "the same charge" means across two imports of overlapping files: the bank''s external_id when the export has one, else a hash of date + amount + description. UNIQUE, so re-importing last month adds nothing.';
+  'What "the same charge" means across two imports of overlapping files: the bank''s external_id when the export has one, else a hash of date + amount + description + cardholder with the line''s occurrence number appended. UNIQUE, so re-importing last month adds nothing while two genuinely identical charges stay two charges.';
 
 alter table bank_imports enable row level security;
 alter table bank_transactions enable row level security;
@@ -7171,34 +7173,58 @@ begin
   values (auth.uid(), nullif(btrim(coalesce(p_filename, '')), ''), jsonb_array_length(p_rows))
   returning * into v_import;
 
+  -- WITH ORDINALITY, because the position of a line in the file is the only
+  -- thing that tells two genuinely identical lines apart — see the key below.
   with incoming as (
     select
-      nullif(btrim(coalesce(r ->> 'posted_on', '')), '')::date        as posted_on,
-      (r ->> 'amount_cents')::integer                                  as amount_cents,
-      nullif(btrim(coalesce(r ->> 'description', '')), '')             as description,
-      nullif(btrim(coalesce(r ->> 'vendor_guess', '')), '')            as vendor_guess,
-      nullif(btrim(coalesce(r ->> 'cardholder', '')), '')              as cardholder,
-      nullif(btrim(coalesce(r ->> 'external_id', '')), '')             as external_id
-    from jsonb_array_elements(p_rows) as r
+      nullif(btrim(coalesce(t.r ->> 'posted_on', '')), '')::date       as posted_on,
+      (t.r ->> 'amount_cents')::integer                                as amount_cents,
+      nullif(btrim(coalesce(t.r ->> 'description', '')), '')           as description,
+      nullif(btrim(coalesce(t.r ->> 'vendor_guess', '')), '')          as vendor_guess,
+      nullif(btrim(coalesce(t.r ->> 'cardholder', '')), '')            as cardholder,
+      nullif(btrim(coalesce(t.r ->> 'external_id', '')), '')           as external_id,
+      t.ord                                                            as ord
+    from jsonb_array_elements(p_rows) with ordinality as t(r, ord)
   ),
-  keyed as (
+  -- CARDHOLDER IS PART OF THE KEY. Two people on the crew filling up at the
+  -- same station on the same morning for the same $52.00 is an ordinary
+  -- Tuesday, not a double entry — and the first draft of this hashed only date
+  -- + amount + description, so one of those two charges silently never reached
+  -- the "No receipt yet" list. Real money, gone from the one report this
+  -- feature exists to produce.
+  based as (
     select i.*,
-           coalesce(
-             i.external_id,
-             md5(
-               coalesce(i.posted_on::text, '') || '|' ||
-               i.amount_cents::text || '|' ||
-               lower(coalesce(i.description, ''))
-             )
-           ) as dedupe_key
+           md5(
+             coalesce(i.posted_on::text, '') || '|' ||
+             i.amount_cents::text || '|' ||
+             lower(coalesce(i.description, '')) || '|' ||
+             lower(coalesce(i.cardholder, ''))
+           ) as base
       from incoming i
      where i.amount_cents is not null
   ),
-  -- Two identical lines INSIDE one file are the same charge by this rule, so
-  -- collapse them here: `on conflict` cannot see a duplicate arriving in the
-  -- same statement, and the whole insert would fail on it.
+  -- And even with the cardholder in it, one person CAN buy the same thing
+  -- twice in a day. So a charge with no id of its own is keyed by its base plus
+  -- which occurrence of that base it is — "#1", "#2" — counted in file order.
+  -- That is stable across re-imports (the same file yields the same numbering,
+  -- so `on conflict do nothing` still swallows the whole overlap) while two
+  -- identical lines stay two charges. Rows that carry the bank's own id are
+  -- counted separately, so mixing them into a file cannot shift the numbering
+  -- of the ones that do not.
+  keyed as (
+    select b.*,
+           coalesce(
+             b.external_id,
+             b.base || '#' || row_number() over (
+               partition by b.base, (b.external_id is null) order by b.ord
+             )
+           ) as dedupe_key
+      from based b
+  ),
+  -- What is left to collapse is a file that repeats one of the bank's OWN ids,
+  -- which is the bank claiming those are the same charge. Take it at its word.
   deduped as (
-    select distinct on (dedupe_key) * from keyed order by dedupe_key
+    select distinct on (dedupe_key) * from keyed order by dedupe_key, ord
   ),
   inserted as (
     insert into bank_transactions
@@ -7220,7 +7246,7 @@ end;
 $$;
 
 comment on function public.import_bank_transactions(jsonb, text) is
-  'Cost-seers only: file one dropped-in card statement. Rows arrive already mapped by the browser (the header-mapping step a human confirms), and duplicates — across files and within one file — are dropped by the dedupe_key unique index. row_count is what actually LANDED, not what was in the file.';
+  'Cost-seers only: file one dropped-in card statement. Rows arrive already mapped by the browser (the header-mapping step a human confirms), and a charge already imported from an overlapping file is dropped by the dedupe_key unique index. Two identical lines inside one file are two charges, not one. row_count is what actually LANDED, not what was in the file.';
 
 revoke all on function public.import_bank_transactions(jsonb, text) from public, anon;
 grant execute on function public.import_bank_transactions(jsonb, text) to authenticated;
