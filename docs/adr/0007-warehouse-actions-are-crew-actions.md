@@ -47,6 +47,17 @@ Everything else opens: `mint_packages`, `mint_mark_packages`,
 `takeoff_items` read policies, which hid the shared warehouse inbox from the
 people now working it.
 
+**Slot labels are two doors, not one.** `/labels` prints the rack and slot
+address labels, and that is warehouse work, so the route opens with the rest.
+Retiring a slot and renaming one are on the destructive side and stay
+foreman+. They are the one pair with nowhere on the server to say so:
+`locations` is a plain table whose only policy is the partner wall, there is
+no RPC in front of it, and the route floor was doing the whole job until this
+decision moved it. So the rank is drawn in `pages/Labels.tsx` and named there
+— a client-side wall, written down here because a wall nobody wrote down is
+the thing this ADR keeps finding. A future writer of `locations` has to draw
+it again, or give the table a rank-checked RPC and delete the client rule.
+
 **This supersedes the rank sentences, and only those, in ADR-0006 and
 CONTEXT.md.** ADR-0006 said an area is "set by foreman and up"; everything
 else it decided stands untouched — an area is still a pointer and not a place,
