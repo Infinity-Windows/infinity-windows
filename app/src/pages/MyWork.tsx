@@ -7,6 +7,7 @@ import { RoleMaps } from "../components/RoleMaps";
 import { ClockInBlock } from "../components/clock/ClockInBlock";
 import { LiveSummonsStrip } from "../components/install/LiveSummonsStrip";
 import { LogTodayChip } from "../components/dailyLogs/LogTodayChip";
+import { SendRecordingButton } from "../components/learn/SendRecordingButton";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
   getMyProfile,
@@ -371,6 +372,9 @@ export function MyWork() {
       <LiveSummonsStrip />
       <ClockInBlock />
       <LogTodayChip />
+      {/* Wave U, U2: on the job screen, where somebody who just filmed a unit
+          going in is standing. It names the job they are clocked into. */}
+      <SendRecordingButton style={{ margin: "8px 0" }} />
       <p className="muted">
         {me.data?.display_name ? `${me.data.display_name} — ` : ""}
         {t("mywork.hint")}
