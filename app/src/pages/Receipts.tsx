@@ -14,6 +14,8 @@ import { BackChip } from "../components/BackChip";
 import { BankImportSection } from "../components/receipts/BankImportSection";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { listBankTransactions } from "../lib/bank";
+import { isOwner } from "../lib/install/types";
+import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { formatApiError } from "../lib/errors";
 import { formatCents } from "../lib/aiSpend";
 import { listProjects } from "../lib/api";
@@ -99,11 +101,14 @@ export function Receipts() {
     queryFn: () => listReceipts(filter),
   });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  const { effectiveRole, grants } = useEffectiveRole();
+  const canSeeCosts = isOwner(effectiveRole) || grants.costs === true;
   // Wave Z: which receipts a card charge already answers for, so a row can say
   // "paid on company card" instead of leaving the office to remember.
   const bankTransactions = useQuery({
     queryKey: ["bankTransactions"],
     queryFn: listBankTransactions,
+    enabled: canSeeCosts,
   });
   const paidOnCard = useMemo(
     () =>
@@ -359,8 +364,11 @@ export function Receipts() {
       )}
 
       {/* Wave Z: the company card statement, and the one question it answers —
-          which charges has nobody handed in a receipt for. */}
-      <BankImportSection receipts={sorted} />
+          which charges has nobody handed in a receipt for. Gated on the cost
+          GRANT, not on rank: bank_transactions answers to can_see_costs, so a
+          supervisor without it would get an empty section and no explanation.
+          The database is the wall; this only stops the empty room. */}
+      {canSeeCosts && <BankImportSection receipts={sorted} />}
     </div>
   );
 }
