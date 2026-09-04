@@ -413,6 +413,24 @@ grant execute on function finish_unit(
 -- credited_to on any row. Wave E made the same discovery about flag_kind and
 -- answered it the same way: put the rule on the table too.
 --
+-- TWO questions have to be asked here, not one. credit_refusal answers "may
+-- this person be credited?" — but on a PATCH of somebody ELSE'S row that is
+-- the wrong question, and asking only it leaves three doors wide open:
+--
+--   * Sam PATCHes {"credited_to": "<sam>"} onto Jed's install. Crediting
+--     yourself is always allowed, so the value passes — and Jed's window
+--     lands on Sam's median, Sam's fail rate, Sam's leaderboard row.
+--   * Anybody PATCHes {"credited_to": null} onto a credited install and the
+--     credit a foreman set is silently gone, handing the work back to
+--     whoever typed it in.
+--   * Anybody PATCHes {"installer_id": "<someone>"}, which the RPC has
+--     guarded since this migration but the table never looked at.
+--
+-- So the row's AUTHORITY is checked first — only the person who filed an
+-- install, or a foreman, may change who it is filed under — and only then the
+-- value. Every ordinary update (a void, a memo confirm, an unsubmit) leaves
+-- both columns alone and returns before either question is asked.
+--
 -- It also normalises credit-to-the-filer down to NULL from every door, so
 -- "null means the filer" can never be broken by a caller that spells it out.
 create or replace function public.guard_install_credit()
@@ -422,22 +440,62 @@ security definer
 set search_path = public, pg_temp
 as $$
 declare
+  v_actor uuid := auth.uid();
   v_refusal text;
-  v_opening uuid;
 begin
   if new.credited_to is not null and new.credited_to = new.installer_id then
     new.credited_to := null;
   end if;
 
-  if tg_op = 'UPDATE' and new.credited_to is not distinct from old.credited_to then
-    return new;
-  end if;
-  if new.credited_to is null then
+  -- No JWT is the service role or a migration, not a phone. The key IS the
+  -- fence there, and the 20260716001000 backfill of installer_id runs here.
+  if v_actor is null then
     return new;
   end if;
 
-  v_opening := new.project_opening_id;
-  v_refusal := public.credit_refusal(v_opening, new.credited_to);
+  if tg_op = 'UPDATE' then
+    -- Nothing about who did this is moving: every void, restore, unsubmit and
+    -- memo confirm in the app takes this door and is none of our business.
+    if new.credited_to is not distinct from old.credited_to
+       and new.installer_id is not distinct from old.installer_id then
+      return new;
+    end if;
+
+    -- WHOSE ROW IS THIS. Correcting your own filing is ordinary bookkeeping;
+    -- reaching into somebody else's is the theft this guard exists for.
+    if v_actor is distinct from old.installer_id
+       and not public.is_foreman_plus(v_actor) then
+      raise exception 'Only the person who filed this install, or a foreman, can change who it is filed under.'
+        using errcode = '42501';
+    end if;
+
+    -- WHAT IT IS BEING CHANGED TO. Only the columns that actually moved, so a
+    -- foreman clearing a credit on a round whose filer has since left the crew
+    -- is not refused over a name nobody is touching.
+    if new.installer_id is distinct from old.installer_id then
+      v_refusal := public.credit_refusal(new.project_opening_id, nullif(new.installer_id, v_actor));
+      if v_refusal is not null then
+        raise exception '%', v_refusal using errcode = '42501';
+      end if;
+    end if;
+    if new.credited_to is distinct from old.credited_to then
+      v_refusal := public.credit_refusal(new.project_opening_id, nullif(new.credited_to, v_actor));
+      if v_refusal is not null then
+        raise exception '%', v_refusal using errcode = '42501';
+      end if;
+    end if;
+    return new;
+  end if;
+
+  -- INSERT. Filing under somebody else's name through installer_id is the same
+  -- claim as crediting them, so it answers to the same rule — which is exactly
+  -- what submit_install_event says about its own p_installer_id. A null
+  -- installer_id (the oldest rows' shape) claims nothing and passes.
+  v_refusal := public.credit_refusal(new.project_opening_id, nullif(new.installer_id, v_actor));
+  if v_refusal is not null then
+    raise exception '%', v_refusal using errcode = '42501';
+  end if;
+  v_refusal := public.credit_refusal(new.project_opening_id, nullif(new.credited_to, v_actor));
   if v_refusal is not null then
     raise exception '%', v_refusal using errcode = '42501';
   end if;
@@ -446,7 +504,7 @@ end;
 $$;
 
 comment on function public.guard_install_credit() is
-  'Applies credit_refusal to install_events.credited_to on every write, and folds "credited to the filer" down to NULL. The RPC says it first and better; this is the door a plain PATCH would otherwise walk through.';
+  'Guards who an install is filed under, on every write to install_events. On UPDATE: only the filer or a foreman may change installer_id or credited_to at all, and the new value must pass credit_refusal; an update touching neither column returns untouched. On INSERT: both columns answer to credit_refusal. Also folds "credited to the filer" down to NULL. The RPC says it first and better; this is the door a plain PATCH would otherwise walk through.';
 
 drop trigger if exists install_events_credit_guard on install_events;
 create trigger install_events_credit_guard
