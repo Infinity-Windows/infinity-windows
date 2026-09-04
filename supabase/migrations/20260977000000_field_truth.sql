@@ -85,6 +85,10 @@ alter table project_mark_specs add constraint project_mark_specs_source_check
 -- be ambiguous, so the old callers keep working untouched and the new one
 -- names its kind.
 
+-- NOT security definer, deliberately: the function it replaces was not either,
+-- and it has no reason to bypass RLS — an installer may already update the
+-- openings they can see. Definer here would additionally let a caller flag (and
+-- read back) a REMOVED opening, which is a row nobody is supposed to see.
 create or replace function flag_opening(
   p_opening_id uuid,
   p_note text,
@@ -92,7 +96,6 @@ create or replace function flag_opening(
 )
 returns project_openings
 language plpgsql
-security definer
 set search_path = public
 as $$
 declare
@@ -153,7 +156,6 @@ $$;
 create or replace function flag_opening(p_opening_id uuid, p_note text)
 returns project_openings
 language plpgsql
-security definer
 set search_path = public
 as $$
 begin
@@ -167,7 +169,6 @@ $$;
 create or replace function clear_opening_flag(p_opening_id uuid)
 returns project_openings
 language plpgsql
-security definer
 set search_path = public
 as $$
 declare v_opening project_openings;

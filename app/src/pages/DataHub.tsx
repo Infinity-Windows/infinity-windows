@@ -457,54 +457,6 @@ export function DataHub() {
         </div>
       </div>
 
-      {/* ---- 1b · UNITS DATA OFF (wave E) ---- */}
-      <div className="detail-card">
-        <p className="data-section-kicker">Data quality</p>
-        <h2 style={{ margin: "0 0 6px" }}>{t("datahub.dataOff.title")}</h2>
-        <Explain>{t("datahub.dataOff.explain")}</Explain>
-        {dataOffJobs.length === 0 ? (
-          <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-            {t("datahub.dataOff.none")}
-          </p>
-        ) : (
-          <>
-            {dataOffJobs.map((job) => (
-              <div key={job.projectId} style={{ marginBottom: 10 }}>
-                <div className="databar-row">
-                  <span className="bar-name">
-                    <Link to={`/projects/${job.projectId}?tab=brain`}>
-                      <strong>{job.jobCode}</strong>
-                    </Link>
-                  </span>
-                  <span className="bar-num" style={{ marginLeft: "auto" }}>
-                    {job.units.length}
-                  </span>
-                </div>
-                {job.units.map((u) => (
-                  <div className="databar-row" key={u.openingId}>
-                    <span className="bar-name">
-                      <Link to={`/projects/${job.projectId}/opening/${u.openingId}`}>
-                        {u.code}
-                      </Link>
-                    </span>
-                    <span className="bar-num" style={{ marginLeft: "auto" }}>
-                      {t(DATA_OFF_LABEL_KEYS[u.reason])}
-                      {u.note ? ` · ${u.note}` : ""}
-                      {u.flaggedBy ? ` · ${nameOf(u.flaggedBy)}` : ""}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ))}
-            {dataOffExcluded.length > 0 && (
-              <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
-                {t("datahub.dataOff.excluded", { n: dataOffExcluded.length })}
-              </p>
-            )}
-          </>
-        )}
-      </div>
-
       {/* ---- 2 · WHAT DOES THE WORK TRULY COST? ---- */}
       <div className="detail-card">
         <p className="data-section-kicker">True cost</p>
@@ -755,6 +707,54 @@ export function DataHub() {
               Worth a check before trusting the on-tool numbers above.
             </p>
           </div>
+        )}
+      </div>
+
+      {/* ---- 4b · UNITS DATA OFF (wave E) ---- */}
+      <div className="detail-card">
+        <p className="data-section-kicker">Data quality</p>
+        <h2 style={{ margin: "0 0 6px" }}>{t("datahub.dataOff.title")}</h2>
+        <Explain>{t("datahub.dataOff.explain")}</Explain>
+        {dataOffJobs.length === 0 ? (
+          <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+            {t("datahub.dataOff.none")}
+          </p>
+        ) : (
+          <>
+            {dataOffJobs.map((job) => (
+              <div key={job.projectId} style={{ marginBottom: 10 }}>
+                <div className="databar-row">
+                  <span className="bar-name">
+                    <Link to={`/projects/${job.projectId}?tab=brain`}>
+                      <strong>{job.jobCode}</strong>
+                    </Link>
+                  </span>
+                  <span className="bar-num" style={{ marginLeft: "auto" }}>
+                    {job.units.length}
+                  </span>
+                </div>
+                {job.units.map((u) => (
+                  <div className="databar-row" key={u.openingId}>
+                    <span className="bar-name">
+                      <Link to={`/projects/${job.projectId}/opening/${u.openingId}`}>
+                        {u.code}
+                      </Link>
+                    </span>
+                    <span className="bar-num" style={{ marginLeft: "auto" }}>
+                      {t(DATA_OFF_LABEL_KEYS[u.reason])}
+                      {u.note ? ` · ${u.note}` : ""}
+                      {u.flaggedBy ? ` · ${nameOf(u.flaggedBy)}` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ))}
+            {dataOffExcluded.length > 0 && (
+              <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
+                {t("datahub.dataOff.excluded", { n: dataOffExcluded.length })}
+              </p>
+            )}
+          </>
         )}
       </div>
     </div>
