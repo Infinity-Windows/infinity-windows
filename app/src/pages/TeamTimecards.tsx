@@ -59,6 +59,7 @@ import { ShiftEditor } from "../components/timecard/ShiftEditor";
 import { TimeByJobReport } from "../components/timecard/TimeByJobReport";
 import { CrewClockBar } from "../components/timecard/CrewClockBar";
 import {
+  addCrewIds,
   allCrewIds,
   onClockCrewIds,
   toggleCrewId,
@@ -247,6 +248,19 @@ export function TeamTimecards() {
         openProjectId: r.open?.project_id ?? null,
       })),
     [rosterAll],
+  );
+  // …but the two "select" buttons act on what is ON SCREEN. Handing them the
+  // whole roster meant a supervisor filtered down to one name could tick, and
+  // then clock in, forty-one people in two taps with nothing but a number in
+  // the bar to say so (2026-09-04 review). They ADD rather than replace, so
+  // finding a second name later never unticks the first.
+  const visibleMembers = useMemo<CrewClockMember[]>(() => {
+    const shown = new Set(roster.map((r) => r.id));
+    return crewMembers.filter((m) => shown.has(m.id));
+  }, [crewMembers, roster]);
+  const visibleOnClock = useMemo(
+    () => onClockCrewIds(visibleMembers),
+    [visibleMembers],
   );
   // Somebody who left the roster (deactivated between renders) must not stay
   // in a selection the bar would then send ids the screen can no longer name.
@@ -690,15 +704,19 @@ export function TeamTimecards() {
         <div className="row-gap" style={{ marginTop: 10, flexWrap: "wrap" }}>
           <button
             className="button-like"
-            onClick={() => setSelected(allCrewIds(crewMembers))}
+            disabled={visibleMembers.length === 0}
+            onClick={() =>
+              setSelected((sel) => addCrewIds(sel, allCrewIds(visibleMembers)))
+            }
           >
-            {t("crewclock.select.all")}
+            {t("crewclock.select.all", { n: visibleMembers.length })}
           </button>
           <button
             className="button-like"
-            onClick={() => setSelected(onClockCrewIds(crewMembers))}
+            disabled={visibleOnClock.length === 0}
+            onClick={() => setSelected((sel) => addCrewIds(sel, visibleOnClock))}
           >
-            {t("crewclock.select.onClock")}
+            {t("crewclock.select.onClock", { n: visibleOnClock.length })}
           </button>
           <button
             className="button-like"

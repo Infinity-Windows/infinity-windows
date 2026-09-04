@@ -62,13 +62,12 @@ describe("the roster's bulk clock is fully translated", () => {
     ]) {
       expect(BAR).toContain(`t("${key}")`);
     }
-    for (const key of [
-      "crewclock.select.all",
-      "crewclock.select.onClock",
-      "crewclock.select.clear",
-    ]) {
-      expect(PAGE).toContain(`t("${key}")`);
+    // The two counted ones carry their number, so match the call, not the
+    // whole expression.
+    for (const key of ["crewclock.select.all", "crewclock.select.onClock"]) {
+      expect(PAGE).toContain(`t("${key}", { n:`);
     }
+    expect(PAGE).toContain('t("crewclock.select.clear")');
   });
 
   // The attestation is the one claim in this feature that stands in for a

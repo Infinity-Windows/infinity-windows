@@ -129,6 +129,27 @@ export function onClockCrewIds(members: readonly CrewClockMember[]): string[] {
   return members.filter((m) => m.onClock).map((m) => m.id);
 }
 
+/**
+ * Add ids to a selection without disturbing what is already ticked.
+ *
+ * WHY THIS AND NOT `setSelected(allCrewIds(...))` (2026-09-04 review): the two
+ * "select" buttons sit above a list the search box has already narrowed. Given
+ * the whole roster to work with they would tick forty-one people while three
+ * are on screen — two taps from clocking the entire company into one job, with
+ * nothing but a number in the bar to say so. They are given the VISIBLE rows
+ * instead, and a union rather than a replace, so a name found by an earlier
+ * search is never quietly unticked either. Clearing stays global on purpose:
+ * "Clear" means clear, not "clear the three I can see".
+ */
+export function addCrewIds(
+  selected: readonly string[],
+  ids: readonly string[],
+): string[] {
+  const have = new Set(selected);
+  const added = ids.filter((id) => !have.has(id));
+  return added.length === 0 ? [...selected] : [...selected, ...added];
+}
+
 /** Tick / untick one row, keeping the list stable and free of duplicates. */
 export function toggleCrewId(selected: readonly string[], id: string): string[] {
   return selected.includes(id)

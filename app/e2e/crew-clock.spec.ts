@@ -14,7 +14,10 @@
 //   5. a phone whose database has not applied the migration says so in a plain
 //      sentence, and the roster behind it still works;
 //   6. a foreman — who may read this page but never edit time on it — has no
-//      checkboxes and no bar at all.
+//      checkboxes and no bar at all;
+//   7. "Select all" ticks the people the SEARCH BOX is showing and nobody
+//      else, so a supervisor looking at one filtered row cannot tick — and
+//      then clock in — the whole company in two taps.
 //
 // The shifts and the crew are hand-built here rather than captured, because
 // the whole point is a specific geometry: one person already on the target
@@ -374,6 +377,37 @@ test("a phone whose database has not caught up says so, and the roster still wor
   await expect(page.getByText("Ana Ruiz")).toBeVisible();
 });
 
+test("Select all ticks what the search box is showing, and nothing else", async ({
+  page,
+}) => {
+  // The roster is five people. Filtered to one, "Select all" must mean "all of
+  // these" — the alternative is two taps between a supervisor looking up one
+  // name and the entire company being clocked into one job.
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  await openRoster(page, "supervisor");
+  await expect(page.getByRole("button", { name: "Select all (5)" })).toBeVisible();
+
+  await page.getByPlaceholder("Search the crew…").fill("Ben");
+  await expect(page.getByLabel("Select Ana Ruiz")).toHaveCount(0);
+  // The button says the number it would tick, so it cannot lie about it.
+  const selectAll = page.getByRole("button", { name: "Select all (1)" });
+  await expect(selectAll).toBeVisible();
+  await selectAll.click();
+  await expect(page.locator(".crewclock-bar")).toContainText("1 selected");
+
+  // Clearing the search shows the other four, still unticked.
+  await page.getByPlaceholder("Search the crew…").fill("");
+  await expect(page.getByLabel("Select Ben Cole")).toBeChecked();
+  await expect(page.getByLabel("Select Ana Ruiz")).not.toBeChecked();
+  await expect(page.locator(".crewclock-bar")).toContainText("1 selected");
+
+  // And a second search ADDS rather than replacing: the name found first is
+  // never quietly unticked by the next one.
+  await page.getByPlaceholder("Search the crew…").fill("Cara");
+  await page.getByRole("button", { name: "Select all (1)" }).click();
+  await expect(page.locator(".crewclock-bar")).toContainText("2 selected");
+});
+
 test("a foreman reads the roster and cannot clock anybody", async ({ page }) => {
   await useSupabaseFixtures(page, { role: "foreman" });
   await openRoster(page, "foreman");
@@ -381,5 +415,5 @@ test("a foreman reads the roster and cannot clock anybody", async ({ page }) => 
   // is an edit to their pay. No checkboxes, no bar, nothing to mis-tap.
   await expect(page.getByLabel("Select Ana Ruiz")).toHaveCount(0);
   await expect(page.locator(".crewclock-bar")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Select all" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Select all/ })).toHaveCount(0);
 });

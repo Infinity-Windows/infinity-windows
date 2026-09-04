@@ -1618,10 +1618,17 @@ export const CATALOG = {
   // translated. The one thing that stays English is the refusal SENTENCE
   // inside crewclock.outcome.refused: it comes back from the database, the
   // same way every other server message in this app does.
-  "crewclock.select.all": { en: "Select all", es: "Seleccionar a todos" },
+  // Both select buttons act on the rows the SEARCH BOX is showing, and carry
+  // the number they would tick, so a supervisor filtered down to one name can
+  // never tap "Select all" and quietly get the whole company (2026-09-04
+  // review).
+  "crewclock.select.all": {
+    en: "Select all ({n})",
+    es: "Seleccionar a todos ({n})",
+  },
   "crewclock.select.onClock": {
-    en: "Select everyone on the clock",
-    es: "Seleccionar a todos los que están marcados",
+    en: "Select everyone on the clock ({n})",
+    es: "Seleccionar a todos los que están marcados ({n})",
   },
   "crewclock.select.clear": { en: "Clear", es: "Quitar la selección" },
   "crewclock.select.person": { en: "Select {name}", es: "Seleccionar a {name}" },

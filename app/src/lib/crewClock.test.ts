@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   actuallyChanged,
+  addCrewIds,
   allCrewIds,
   clockTimeLabel,
   clockedInPushBody,
@@ -91,6 +92,35 @@ describe("selection helpers", () => {
     expect(toggleCrewId(["a", "b"], "c")).toEqual(["a", "b", "c"]);
     expect(toggleCrewId(["a", "b", "c"], "b")).toEqual(["a", "c"]);
     expect(toggleCrewId(["a"], "a")).toEqual([]);
+  });
+});
+
+// The roster's two "select" buttons are given the rows the SEARCH BOX is
+// showing, not the whole company. addCrewIds is the half that makes that safe
+// to do repeatedly: it adds, so a name found by a second search never unticks
+// the first one's.
+describe("addCrewIds", () => {
+  it("adds the visible rows without dropping what is already ticked", () => {
+    expect(addCrewIds(["a", "b"], ["c", "d"])).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("never duplicates somebody already selected", () => {
+    expect(addCrewIds(["a", "b"], ["b", "c"])).toEqual(["a", "b", "c"]);
+    expect(addCrewIds(["a"], ["a"])).toEqual(["a"]);
+  });
+
+  it("is a copy, never the same array back", () => {
+    const before = ["a"];
+    const after = addCrewIds(before, []);
+    expect(after).toEqual(["a"]);
+    expect(after).not.toBe(before);
+  });
+
+  // Filtering to one name and tapping "Select all" must tick ONE person, not
+  // the forty-one on the full roster (2026-09-04 review).
+  it("ticks only what was handed to it", () => {
+    const visible = ROSTER.filter((m) => m.name === "Ben");
+    expect(addCrewIds([], allCrewIds(visible))).toEqual(["b"]);
   });
 });
 
