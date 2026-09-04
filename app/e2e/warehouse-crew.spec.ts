@@ -4,8 +4,17 @@
 // of the decision: the person at the tailgate, the person who carried the
 // crate into the conex, the person who drove to the yard for one more tube of
 // caulk. The first half proves the doors that opened; the second proves the
-// four that did not, and proves it twice — the button is not on screen, and
-// the RPC behind it is never called.
+// ones that did not, and proves it twice — the button is not on screen, and
+// the RPC behind it is never called. That second half includes the two doors
+// that end something without an RPC saying so: retiring a rack slot, which is
+// a plain table write, and the Undo on a custom check-in, which is
+// delete_packages wearing a friendlier name.
+//
+// Where a rule has two sides, the foreman side is its OWN test rather than a
+// second act inside the installer's. Re-seeding the sign-in fixtures mid-test
+// registers fresher routes that shadow the warehouse ones, and the page then
+// reads an empty warehouse and fails for a reason that has nothing to do with
+// the rule under test.
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { jobFixtures, useSupabaseFixtures } from "./support/supabaseFixtures";
 
@@ -16,6 +25,22 @@ const PECAN14 = JOBS.find((j) => j.jobCode === "PECAN14")!;
 const C1 = "00000000-0000-4000-8000-00000000c001";
 const D1 = "00000000-0000-4000-8000-00000000d001";
 const SUPPLY = "00000000-0000-4000-8000-0000000005a1";
+const SLOT = "00000000-0000-4000-8000-000000005101";
+
+/** Two rack slots, so /labels has something to print and something to retire. */
+const SLOTS = [
+  {
+    id: SLOT,
+    zone: "S",
+    rack: "03",
+    slot: "B",
+    address: "S-03-B",
+    capacity: 4,
+    active: true,
+    serial: "LOC-000001",
+    display_name: null,
+  },
+];
 
 const CONTAINERS = [
   {
@@ -326,6 +351,113 @@ test("an installer rewrites a set but cannot start one over", async ({ page }) =
     page.getByText("Only a foreman or above can start a set over."),
   ).toBeVisible();
   expect(calls.filter((c) => SHUT_RPCS.includes(c.fn))).toEqual([]);
+});
+
+/** The rack-slot rows /labels prints from, plus a note of every write that
+ *  reached the table. `locations` has no RPC in front of it — the only policy
+ *  on it is the partner wall — so "did an installer write" is the question,
+ *  and the page is the only place that can answer no. */
+async function useSlotFixtures(page: Page) {
+  const writes: string[] = [];
+  await page.route("**/rest/v1/locations**", (r) => {
+    const m = r.request().method();
+    if (m !== "GET" && m !== "HEAD") writes.push(m);
+    return json(r, SLOTS, SLOTS.length);
+  });
+  return writes;
+}
+
+test("an installer prints rack labels but cannot retire or rename a slot", async ({
+  page,
+}) => {
+  // /labels dropped to the installer floor with ADR-0007 because printing a
+  // rack label is warehouse work. Retiring a slot is not — and there is no
+  // server rank to fall back on, so this screen IS the wall.
+  await useSupabaseFixtures(page, { role: "installer" });
+  const calls = await useWarehouseFixtures(page);
+  const writes = await useSlotFixtures(page);
+  await page.goto("/labels");
+
+  await expect(page.getByRole("button", { name: "Print 1 labels" })).toBeVisible();
+  await page.getByLabel("Select S-03-B").check();
+  // The row is genuinely ticked — so the missing Delete is the rule, not an
+  // empty selection.
+  await expect(page.getByRole("button", { name: "Print 1 selected" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Delete 1 selected" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+  expect(writes, "an installer wrote to locations").toEqual([]);
+  expect(calls.filter((c) => SHUT_RPCS.includes(c.fn))).toEqual([]);
+});
+
+test("a foreman on the same slot list gets Delete and Edit", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  await useWarehouseFixtures(page);
+  await useSlotFixtures(page);
+  await page.goto("/labels");
+
+  await page.getByLabel("Select S-03-B").check();
+  await expect(page.getByRole("button", { name: "Delete 1 selected" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
+});
+
+const FRESH = pkg({
+  id: "pkg-fresh",
+  serial: "PKG-000044",
+  short_code: "NN4OPQ",
+  status: "stored",
+  container_id: C1,
+});
+
+/** A container whose custom check-in really does create a row. The check-in
+ *  reads the package list before and after itself to work out what it made,
+ *  so without a list that GROWS there would be nothing to undo and a test
+ *  about the undo would prove nothing. Registered after the warehouse
+ *  fixtures so this list wins. */
+async function useCheckinFixtures(page: Page, calls: { fn: string; body: unknown }[]) {
+  let checkedIn = false;
+  await page.route("**/rest/v1/packages**", (r) => {
+    const rows = checkedIn ? [...ALL, FRESH] : ALL;
+    return json(r, rows, rows.length);
+  });
+  await page.route("**/rest/v1/rpc/custom_checkin", (r) => {
+    checkedIn = true;
+    calls.push({ fn: "custom_checkin", body: r.request().postDataJSON() });
+    return json(r, 1);
+  });
+}
+
+test("an installer's custom check-in is not offered an undo the server refuses", async ({
+  page,
+}) => {
+  // Checking something in has always been open to everybody. Undoing it is
+  // delete_packages, which ADR-0007 kept at foreman+ — so the installer gets
+  // the plain confirmation, and the Undo button is simply not there.
+  await useSupabaseFixtures(page, { role: "installer" });
+  const calls = await useWarehouseFixtures(page);
+  await useCheckinFixtures(page, calls);
+  await page.goto(`/storage/c/${C1}`);
+
+  await page.getByRole("button", { name: "Custom check-in…" }).click();
+  await page.getByRole("button", { name: "Check 1 in here" }).click();
+
+  await expect(page.getByText("Checked 1 in.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Undo" })).toHaveCount(0);
+  expect(calls.filter((c) => c.fn === "custom_checkin")).toHaveLength(1);
+  expect(calls.filter((c) => SHUT_RPCS.includes(c.fn))).toEqual([]);
+});
+
+test("a foreman's same check-in does get the undo", async ({ page }) => {
+  // This is what keeps the test above honest: the same fixtures, the same
+  // tap, and the undo appears — so its absence for an installer is the rule
+  // and not a fixture with nothing to offer.
+  await useSupabaseFixtures(page, { role: "foreman" });
+  const calls = await useWarehouseFixtures(page);
+  await useCheckinFixtures(page, calls);
+  await page.goto(`/storage/c/${C1}`);
+
+  await page.getByRole("button", { name: "Custom check-in…" }).click();
+  await page.getByRole("button", { name: "Check 1 in here" }).click();
+  await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
 });
 
 test("the materials ledger's crate-delete button matches the door behind it", async ({

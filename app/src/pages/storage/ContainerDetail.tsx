@@ -130,7 +130,8 @@ export function ContainerDetail() {
   const [searchParams] = useSearchParams();
   const qc = useQueryClient();
   const { effectiveRole } = useEffectiveRole();
-  // Foreman+ gates one thing on this page now: the sweep-delete below.
+  // Foreman+ gates two things on this page now, and both are delete_packages:
+  // the sweep-delete below, and the Undo on a custom check-in's toast.
   // Registering, renaming and archiving a container is warehouse work and
   // belongs to whoever is standing in front of it (ADR-0007).
   const lead = isForemanPlus(effectiveRole);
@@ -276,7 +277,13 @@ export function ContainerDetail() {
       const createdIds = after
         .filter((p) => p.container_id === id && !before.has(p.id))
         .map((p) => p.id);
-      if (createdIds.length > 0) {
+      // Undo is delete_packages, which ADR-0007 deliberately left at
+      // foreman+. Custom check-in itself is open to everybody, so below
+      // foreman the undo would be a button whose only outcome is the
+      // server's refusal — the same broken-app feeling the "− crate" gate on
+      // JobMaterials exists to prevent. They get the plain confirmation
+      // instead, and a foreman can delete the packages from this page.
+      if (lead && createdIds.length > 0) {
         // The toast carries the confirmation AND the undo — a second, plain
         // copy of the same sentence sitting on the page behind it would just
         // be the scattered pattern pick 25 exists to replace.
@@ -293,9 +300,9 @@ export function ContainerDetail() {
           },
         });
       } else {
-        // No ids to undo (a genuine edge case — see the comment above on
-        // `before`) — fall back to the plain confirmation so the tap still
-        // says something.
+        // Either nobody to undo for (below foreman) or no ids to undo (a
+        // genuine edge case — see the comment above on `before`) — fall back
+        // to the plain confirmation so the tap still says something.
         setSweepReport(doneMessage);
       }
     },
