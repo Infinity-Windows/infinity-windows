@@ -103,6 +103,23 @@ export interface Project {
   start_date?: string | null;
   end_date?: string | null;
   notes?: string | null;
+  /** Wave J (J1): is the site ready for us to work? 'not_ready' | 'ready'.
+   * Written only via set_project_readiness() — the column is RPC-only under
+   * wave D's projects grant law. Optional like every field added after this
+   * interface's first fixtures: a real fetch always has it (not null default
+   * 'ready'), and `undefined` means a phone running ahead of the migration,
+   * which lib/pipeline.ts reads as "nothing to say". */
+  ready_state?: string | null;
+  /** Wave J (J1): the day the windows are expected on this job. Job-level, and
+   * deliberately not package_deliveries.expected_at, which is one truck. */
+  materials_eta?: string | null;
+  /** Wave J (J1): when somebody tapped "Materials arrived". Null means the
+   * windows are still not in. */
+  materials_arrived_at?: string | null;
+  /** Wave J (J2): the office's hand-made place for this job in the list, 1..n.
+   * Null means nobody has placed it, and it sorts after the ones somebody did
+   * (lib/pipeline.ts compareProjectsForList). */
+  sort_order?: number | null;
   estimated_minutes?: number | null;
   estimated_crew?: number | null;
   estimated_at?: string | null;

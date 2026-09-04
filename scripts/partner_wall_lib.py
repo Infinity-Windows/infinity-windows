@@ -52,6 +52,18 @@ MIGRATIONS_DIR = REPO_ROOT / "supabase" / "migrations"
 #:   - projects: a partner needs their granted rows readable (the app shell
 #:     names granted jobs); projects' own policy carries a hand-written
 #:     partner_job_grants exists() clause instead of the mechanical guard.
+#:     READ THIS BEFORE ADDING A COLUMN TO `projects`. That policy is
+#:     row-level, and RLS has no column-level half: a granted builder reads
+#:     the WHOLE row, every column, present and future. THE WALL's own
+#:     comment ("nothing crew-only lives on `projects` itself") was true when
+#:     it was written and is not a guarantee about what lands later. Wave Z
+#:     hit this first — bid_amount and target_margin_pct could not be locked
+#:     where they sat, so 20260978000000 MOVED them to project_financials,
+#:     which carries its own policy. That is the shape to copy: anything a
+#:     builder must not see belongs in its own table, not in a column here.
+#:     Wave J's ready_state / materials_eta / materials_arrived_at /
+#:     sort_order were weighed against this and deliberately left on
+#:     `projects` — see 20260979000000 section 1 for the per-column reasoning.
 #:   - daily_logs: a partner never reads the table at all, under any
 #:     predicate — the S3 projection RPC is the only door, and daily_logs'
 #:     policy (my_role_rank() >= 1) already excludes the installer-ranked

@@ -531,6 +531,13 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
         "region_index",
     ),
     "project_message_reads": ("project_id", "profile_id"),
+    # The "we already said this" ledger behind the 7 AM pipeline sweep (Wave J,
+    # J4, 20260979000000). Its own UNIQUE constraint is the natural key, and
+    # merging on it is what keeps the idempotency honest across a merge: two
+    # databases that each warned about the same job's same start date hold ONE
+    # fact between them, and a union that kept both would let the merged
+    # database warn twice about a job it has already warned about.
+    "pipeline_nudges": ("project_id", "kind", "on_date"),
     "project_planset_pages": ("planset_id", "page_number"),
     # The list of jobs a test/automation login may write. One row per project and
     # the project id IS the primary key, so a merge cannot create a duplicate;

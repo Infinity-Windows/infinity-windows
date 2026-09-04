@@ -58,13 +58,19 @@ describe("createTrackingJob", () => {
     expect(insert.address).toBe("123 Main");
     expect(String(insert.job_code)).toMatch(/^[A-Z0-9-]+$/);
 
-    // Then the ONE legal writer of allowed_modes flips it to tracking.
-    expect(db.rpc).toHaveLength(1);
-    expect(db.rpc[0].fn).toBe("set_project_modes");
-    expect(db.rpc[0].args).toEqual({ p_project_id: "newp", p_modes: ["tracking"] });
+    // Then two RPCs, in this order and for the same reason: both columns are
+    // RPC-only under wave D's projects grant law, so neither can ride the
+    // INSERT. Wave J: a job made in one tap is born Not ready, because nobody
+    // has checked its windows are ordered.
+    expect(db.rpc).toHaveLength(2);
+    expect(db.rpc[0].fn).toBe("set_project_readiness");
+    expect(db.rpc[0].args).toEqual({ p_project_id: "newp", p_ready_state: "not_ready" });
+    expect(db.rpc[1].fn).toBe("set_project_modes");
+    expect(db.rpc[1].args).toEqual({ p_project_id: "newp", p_modes: ["tracking"] });
 
-    // The returned row reads as tracking without a re-fetch.
+    // The returned row reads as tracking, and Not ready, without a re-fetch.
     expect(project.allowed_modes).toEqual(["tracking"]);
+    expect(project.ready_state).toBe("not_ready");
   });
 
   it("auto-names from the address when the name is left blank", async () => {

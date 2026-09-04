@@ -16,8 +16,9 @@ import type {
   WindowUnit,
 } from "./types";
 import { quickJobName, quickTrackingJobCode } from "./quickJobs";
-import { isMissingColumn, isMissingTable } from "./schemaErrors";
+import { isMissingColumn, isMissingFunction, isMissingTable } from "./schemaErrors";
 import type { ScopeCounts } from "./scope";
+import { sortProjectsForList, type ReadyState } from "./pipeline";
 
 const WINDOW_SELECT =
   "*, window_types(*), locations(*), projects(*)";
@@ -52,15 +53,46 @@ export async function listLocations(): Promise<Location[]> {
   return data;
 }
 
+/**
+ * Wave J (J2): the ONE order every jobs list reads in — the office's hand-made
+ * order first (`sort_order`, nulls last), then the jobs starting soonest
+ * (`start_date`, nulls last), then the name.
+ *
+ * It is applied in two places on purpose. The server does it, so a list is
+ * already right the moment it lands; then `sortProjectsForList` does it again
+ * on the rows, which is what keeps the answer identical on a phone whose
+ * database does not have `sort_order` yet (the fallback below) and while an
+ * optimistic reorder is on screen. The rule itself lives once, in
+ * lib/pipeline.ts, and is unit-tested there.
+ */
+interface Orderable<T> {
+  order(column: string, options?: { ascending?: boolean; nullsFirst?: boolean }): T;
+}
+
+function inPipelineOrder<T extends Orderable<T>>(query: T): T {
+  return query
+    .order("sort_order", { ascending: true, nullsFirst: false })
+    .order("start_date", { ascending: true, nullsFirst: false })
+    .order("name", { ascending: true });
+}
+
 export async function listProjects(): Promise<Project[]> {
-  const { data, error } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .order("name");
-  if (error) throw error;
-  return data;
+  const rows = () =>
+    supabase.from("projects").select("*").eq("status", "active").is("deleted_at", null);
+  const { data, error } = await inPipelineOrder(rows());
+  if (error) {
+    // A phone (or a preview database) that is ahead of migration
+    // 20260979000000 has no sort_order column, and PostgREST refuses the whole
+    // read rather than ignoring the ORDER BY. The Jobs page must still load, so
+    // fall back to the order this list had before wave J.
+    if (isMissingColumn(error, "sort_order")) {
+      const fallback = await rows().order("name");
+      if (fallback.error) throw fallback.error;
+      return sortProjectsForList(fallback.data as Project[]);
+    }
+    throw error;
+  }
+  return sortProjectsForList(data as Project[]);
 }
 
 /** The columns of project_scope_counts, named rather than `*` — house rule. */
@@ -179,13 +211,17 @@ async function legacyOpeningCounts(): Promise<Record<string, ScopeCounts>> {
  * that deliberately reads a trashed row, and it does so separately.
  */
 export async function listProjectsAnyStatus(): Promise<Project[]> {
-  const { data, error } = await supabase
-    .from("projects")
-    .select("*")
-    .is("deleted_at", null)
-    .order("name");
-  if (error) throw error;
-  return data;
+  const rows = () => supabase.from("projects").select("*").is("deleted_at", null);
+  const { data, error } = await inPipelineOrder(rows());
+  if (error) {
+    if (isMissingColumn(error, "sort_order")) {
+      const fallback = await rows().order("name");
+      if (fallback.error) throw fallback.error;
+      return sortProjectsForList(fallback.data as Project[]);
+    }
+    throw error;
+  }
+  return sortProjectsForList(data as Project[]);
 }
 
 /**
@@ -279,6 +315,14 @@ export interface ProjectDetailsInput {
 export interface CreateProjectInput extends ProjectDetailsInput {
   jobCode: string;
   name: string;
+  /** Wave J (J1): 'not_ready' for a job that arrived rather than being filled
+   * in — a Monday import, a one-tap tracking job. Omitted means Ready, which
+   * is the column's own default and what the full New project form sends. */
+  readyState?: ReadyState;
+  /** Wave J (J3): the day the windows are due, carried over from Monday's
+   * `est_arrival` on import. RPC-only like readiness, so it is written after
+   * the insert rather than with it. */
+  materialsEta?: string | null;
 }
 
 const clean = (value: string | null | undefined): string | null =>
@@ -293,20 +337,38 @@ const cleanStories = (value: number | null | undefined): number | null => {
 
 type DetailColumns = Record<string, string | number | null>;
 
-/** Shape the shared detail fields into the DB column names. */
+/**
+ * Shape the shared detail fields into the DB column names — ONLY the ones the
+ * caller actually named.
+ *
+ * The distinction is the whole point, and it used to be missing. This function
+ * returned all nine columns every time, and `clean(undefined)` is null, so a
+ * caller who passed one field was silently sending "erase the other eight".
+ * The one caller at the time (the job details form) always passed all nine, so
+ * nothing broke — until wave J's Pipeline card saved an expected start date on
+ * its own and took the job's address, customer, phone, email and notes with it.
+ *
+ * So: absent means LEAVE THAT COLUMN ALONE, and an explicit null (or "") still
+ * means CLEAR IT. The full form is unaffected — it names every field, so it
+ * still sends every column, including the blanks a person deliberately emptied.
+ * On INSERT an omitted column simply takes its default, which is NULL, so
+ * createProject behaves exactly as before.
+ */
 function detailColumns(input: ProjectDetailsInput): DetailColumns {
-  return {
-    address: clean(input.address),
-    customer_name: clean(input.customerName),
-    contact_phone: clean(input.contactPhone),
-    contact_email: clean(input.contactEmail),
-    site_state: clean(input.siteState)?.toUpperCase() ?? null,
-    unit_number: clean(input.unitNumber),
-    start_date: clean(input.startDate),
-    end_date: clean(input.endDate),
-    notes: clean(input.notes),
-    stories: cleanStories(input.stories),
-  };
+  const patch: DetailColumns = {};
+  if (input.address !== undefined) patch.address = clean(input.address);
+  if (input.customerName !== undefined) patch.customer_name = clean(input.customerName);
+  if (input.contactPhone !== undefined) patch.contact_phone = clean(input.contactPhone);
+  if (input.contactEmail !== undefined) patch.contact_email = clean(input.contactEmail);
+  if (input.siteState !== undefined) {
+    patch.site_state = clean(input.siteState)?.toUpperCase() ?? null;
+  }
+  if (input.unitNumber !== undefined) patch.unit_number = clean(input.unitNumber);
+  if (input.startDate !== undefined) patch.start_date = clean(input.startDate);
+  if (input.endDate !== undefined) patch.end_date = clean(input.endDate);
+  if (input.notes !== undefined) patch.notes = clean(input.notes);
+  if (input.stories !== undefined) patch.stories = cleanStories(input.stories);
+  return patch;
 }
 
 /**
@@ -378,7 +440,87 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
   }
   if (projectError) throw projectError;
 
-  return project as Project;
+  // Wave J (J1/J3): a job that ARRIVED rather than being filled in — imported
+  // from Monday, or built in one tap from the clock-in — is born Not ready.
+  // Nobody has walked that site or checked that its windows are ordered, and a
+  // job that claims to be ready when nobody has said so is exactly the lie this
+  // wave exists to stop. The full New project form is the opposite case: the
+  // person filling it in knows, so it defaults Ready with a toggle.
+  //
+  // Written after the insert, not with it: ready_state and materials_eta are
+  // both RPC-only under wave D's projects grant law, so a value in the INSERT
+  // above would 42501. A job that is briefly Ready between the two writes never
+  // matters — nothing reads it until this function returns.
+  //
+  // Both are wrapped so a database that does not have wave J's migration yet
+  // cannot fail a create that has ALREADY happened. The job exists by this
+  // point; throwing here would show the foreman an error for a job that is
+  // sitting in the list behind the dialog, which is the worst of both answers.
+  // It simply arrives without its readiness, and somebody sets it by hand.
+  const created = project as Project;
+  if (input.readyState === "not_ready") {
+    try {
+      await setProjectReadiness(created.id, "not_ready");
+      created.ready_state = "not_ready";
+    } catch (err) {
+      if (!isMissingFunction(err)) throw err;
+    }
+  }
+  if (input.materialsEta) {
+    try {
+      await setProjectMaterials(created.id, { eta: input.materialsEta });
+      created.materials_eta = input.materialsEta;
+    } catch (err) {
+      if (!isMissingFunction(err)) throw err;
+    }
+  }
+
+  return created;
+}
+
+/** Foreman+: mark a job Ready or Not ready. */
+export async function setProjectReadiness(
+  projectId: string,
+  readyState: ReadyState,
+): Promise<void> {
+  const { error } = await supabase.rpc("set_project_readiness", {
+    p_project_id: projectId,
+    p_ready_state: readyState,
+  });
+  if (error) throw error;
+}
+
+/**
+ * Foreman+: set or clear when the windows are due, and record that they came
+ * (or take that back).
+ *
+ * Nulls mean LEAVE THAT FACT ALONE, which is why clearing the ETA is its own
+ * flag rather than "send null": the one-tap Materials-arrived call has no ETA
+ * to send, and a null that meant "erase" would wipe the date every time
+ * somebody pressed the button.
+ */
+export async function setProjectMaterials(
+  projectId: string,
+  input: { eta?: string | null; clearEta?: boolean; arrived?: boolean },
+): Promise<void> {
+  const { error } = await supabase.rpc("set_project_materials", {
+    p_project_id: projectId,
+    p_materials_eta: input.eta ?? null,
+    p_clear_eta: input.clearEta ?? false,
+    p_arrived: input.arrived ?? null,
+  });
+  if (error) throw error;
+}
+
+/**
+ * Foreman+: write the jobs list order. The WHOLE visible list goes over, in its
+ * new order, and the server writes 1..n — so the result is the same however it
+ * was dragged, and a second foreman's save lands as one coherent order rather
+ * than interleaving with somebody's half-finished one.
+ */
+export async function setProjectsOrder(projectIds: string[]): Promise<void> {
+  const { error } = await supabase.rpc("set_projects_order", { p_ids: projectIds });
+  if (error) throw error;
 }
 
 /**
@@ -408,9 +550,13 @@ export async function createTrackingJob(input: {
     name,
     address: input.address ?? null,
     customerName: input.customerName ?? null,
+    // Wave J (J1): born Not ready. A job made in one tap from the clock-in is
+    // a callback or a service call somebody is standing in front of — nobody
+    // has checked its windows are ordered, so it should not claim they are.
+    readyState: "not_ready",
   });
   await setProjectModes(project.id, ["tracking"]);
-  return { ...project, allowed_modes: ["tracking"] };
+  return { ...project, allowed_modes: ["tracking"], ready_state: "not_ready" };
 }
 
 /**
@@ -431,9 +577,17 @@ export interface UpdateProjectInput extends ProjectDetailsInput {
   name?: string;
 }
 
-/** Edit an existing job's Horizon-style details (foreman+ from the hub).
+/**
+ * Edit an existing job's Horizon-style details (foreman+ from the hub).
+ *
+ * PARTIAL: only the fields named in `input` are written. A caller that wants
+ * one date changed sends one date and every other column is left exactly as it
+ * was; a caller that wants a field emptied sends null (or "") for it. See
+ * detailColumns above for the bug that rule exists to stop.
+ *
  * Status is NOT accepted here: projects.status is column-locked (wave D's
- * grant restructure) and changes only through set_project_status(). */
+ * grant restructure) and changes only through set_project_status().
+ */
 export async function updateProject(
   projectId: string,
   input: UpdateProjectInput,
@@ -444,6 +598,9 @@ export async function updateProject(
     if (!name) throw new Error("Project name is required.");
     patch.name = name;
   }
+  // An update naming no columns at all is a caller bug, and PostgREST would
+  // answer it with a 400 nobody could act on. Say what happened instead.
+  if (Object.keys(patch).length === 0) throw new Error("Nothing to save on this job.");
 
   const update = (cols: DetailColumns) =>
     supabase.from("projects").update(cols).eq("id", projectId).select("*").single();

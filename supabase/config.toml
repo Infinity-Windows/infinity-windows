@@ -61,3 +61,11 @@ verify_jwt = false
 # the pg_cron poke carries no auth on purpose and the function decides
 # everything from the database (Wave K, K2).
 verify_jwt = false
+
+[functions.pipeline-sweep]
+# Parameterless, idempotent cron target, the third of the same shape — the
+# hourly pg_cron poke carries no auth on purpose, and every decision (the 7 AM
+# company-local gate, the 14/7-day windows, the once-per-thing claim) is made
+# in claim_pipeline_nudges() rather than in anything a caller could send
+# (Wave J, J4).
+verify_jwt = false

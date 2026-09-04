@@ -509,6 +509,65 @@ to one receipt — always a proposal until somebody presses the button.
 Nothing auto-deletes, and every import is undoable as a batch that keeps
 whatever somebody had already matched.
 
+## The job pipeline
+
+Settled 2026-09-03, wave J (transcripts program, Q8 + Q9 — grilled and
+approved; cite, never re-decide). The stretch between winning a bid and the
+first window going in, which used to live entirely in somebody's head.
+
+**Ready state** — whether the site is ready for us to work: `not_ready` or
+`ready`, and nothing in between. Every job that already existed is `ready`,
+because nobody has ever been able to say otherwise about them and inventing a
+red flag for six months of live work would be a lie. From here, a job that
+somebody FILLS IN is Ready by default — the person typing it knows — and a job
+that ARRIVES is born Not ready: an import from Monday, a tracking job built in
+one tap from the clock-in. Nobody has walked those sites. It is a foreman's
+call to change (`set_project_readiness`), it shows as an amber pill beside the
+mode badge and never on top of it, and a Ready job wears no pill at all —
+absence is the quiet state, so the card missing a sticker is never the one that
+matters.
+
+**Materials ETA** — the day the windows are expected on a job, and separately
+`materials_arrived_at`, the moment somebody said they were here. Job-level, and
+deliberately NOT `package_deliveries.expected_at`, which is one truck's ETA:
+merging them would make an early pallet look like the whole order landing.
+Marking them arrived is one 48px tap and pressing it twice does not move the
+time, because the first tap is when the truck actually showed up. An ETA that
+passes with nothing arrived is the one pipeline fact that matters whatever the
+start date says — late glass is late whether the job starts next week or next
+spring.
+
+**Needs a call** — the app's judgement that somebody should pick up the phone
+about a job, and the single rule behind both the chip on the Jobs page and the
+7 AM push. A job needs a call when it starts within a fortnight and is still
+Not ready or its promised windows have not turned up, or when its promised ETA
+has passed with nothing here. A PROMISE IS HALF THAT RULE: windows only count
+as missing once somebody has put an ETA on the job. Without it there is nothing
+to be late for, and on the morning this shipped there was no ETA anywhere —
+counting a blank as "no windows" would have called every job in the company
+late on day one. The rule is `needsCall` in `app/src/lib/pipeline.ts` and again in
+SQL inside `claim_pipeline_nudges()`, because a sweep has to decide and claim
+in one statement; a test named after that function pins the two together. The
+sweep says each thing ONCE, keyed to the day it is about — a start date, a
+missed ETA — never the day it was sent, so a missed morning does not lose a
+warning and a moved start date earns a fresh one. Wave H adds a fourth reason
+(no GC check-in in 14 days); until its table exists that reason is UNKNOWN and
+never counts against a job, because "nobody has logged a check-in" is true of
+every job in the company and is not news.
+
+**What a builder can see of it** — all four of the pipeline facts live as
+columns on `projects`, and `projects` is the one table a builder (partner)
+login reads whole for the jobs they were granted. That is row-level, and there
+is no column-level half to it: a column on `projects` is readable by a granted
+builder, now and forever after. It was allowed here on purpose — the readiness
+and the two materials dates are facts about the builder's own house, and the
+list order is an integer that means nothing outside our list. What a builder
+must never be told is that we are behind, which is why the 7 AM sweep excludes
+partner logins outright. Anything genuinely ours — a price, a margin, a cost, a
+wage — does NOT go in a column on `projects`; it goes in a table of its own
+with its own policy, the way the bid and target margin moved to
+`project_financials`.
+
 ## Scope at a glance
 
 Settled 2026-09-03, wave X (transcripts program, Q1 — grilled and approved;

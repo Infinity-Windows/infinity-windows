@@ -73,6 +73,8 @@ import { JobCostCodesPanel } from "../components/project/JobCostCodesPanel";
 import { JobModeBadge } from "../components/JobModeBadge";
 import { ScopeLine } from "../components/projects/ScopeLine";
 import { storiesToShow } from "../lib/scope";
+import { PipelinePanel } from "../components/projects/PipelinePanel";
+import { ReadinessBadge } from "../components/projects/ReadinessBadge";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
 import { formatApiError } from "../lib/errors";
 import { useT } from "../lib/i18n";
@@ -295,6 +297,10 @@ export function ProjectDetail() {
             <h1 style={{ fontSize: 26, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {project?.job_code ?? "Job"}
               {project && <JobModeBadge allowed={project.allowed_modes} />}
+              {/* Wave J: beside the mode badge, never on top of it — the two
+                  say different things, and a reader who has learned where the
+                  mode pill sits should still find it there. */}
+              {project && <ReadinessBadge readyState={project.ready_state} />}
             </h1>
             <p className="wh-row-sub" style={{ margin: 0 }}>
               {project?.name}
@@ -598,6 +604,11 @@ function OverviewTab({
           jobLabel={project?.job_code ?? project?.name ?? null}
         />
       )}
+
+      {/* Wave J (J1): the pipeline card. Above Job details on purpose — the
+          question "is this job going to happen on time" is the one somebody
+          opens a job to answer, and the customer's phone number is not. */}
+      {project && <PipelinePanel project={project} isLead={isLead} />}
 
       {project && <JobDetailsPanel project={project} isLead={isLead} />}
 

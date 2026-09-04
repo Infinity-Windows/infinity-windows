@@ -66,9 +66,7 @@ async function fetchBoardItems(): Promise<MondayItem[]> {
   do {
     const query = `query ($board: [ID!], $cursor: String) {
       boards(ids: $board) {
-        items_page(limit: 100, cursor: $cursor,
-          query_params: { rules: [{ column_id: "__grouping__", compare_value: ${JSON.stringify(GROUP_IDS)}, operator: any_of }] }
-        ) {
+        items_page(limit: 100, cursor: $cursor) {
           cursor
           items {
             id
@@ -92,7 +90,12 @@ async function fetchBoardItems(): Promise<MondayItem[]> {
     const json = await res.json();
     if (json.errors?.length) throw new Error(`Monday API: ${JSON.stringify(json.errors)}`);
     const page = json.data?.boards?.[0]?.items_page;
-    out.push(...(page?.items ?? []));
+    // Monday used to accept a query_params rule on the pseudo-column
+    // "__grouping__" to return only the two groups we sync. On 2026-09-04 it
+    // answered "Column not found: __grouping__" (ResourceNotFoundException),
+    // so the board is walked whole — ~150 jobs, two pages — and the group
+    // filter lives here instead. Same rows in, same rows out.
+    out.push(...(page?.items ?? []).filter((item: MondayItem) => GROUP_IDS.includes(item.group?.id)));
     cursor = page?.cursor ?? null;
   } while (cursor);
   return out;
@@ -133,7 +136,19 @@ Deno.serve(async (req) => {
     }
   }
 
-  const items = await fetchBoardItems();
+  // Monday's own refusal (a bad or expired token, a board this token cannot
+  // see, a retired API version) used to escape as a bare "Internal Server
+  // Error", and supabase-js drops the body of any non-2xx — so the office saw
+  // "Sync failed." and nothing else. Answer 200 with ok:false and the reason,
+  // the shape the Jobs page already renders.
+  let items: MondayItem[];
+  try {
+    items = await fetchBoardItems();
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.error("monday-sync: Monday refused the sync:", reason);
+    return jsonResponse({ ok: false, error: `Monday refused the sync — ${reason}` });
+  }
   const now = new Date().toISOString();
 
   const rows = items.map((item) => {
