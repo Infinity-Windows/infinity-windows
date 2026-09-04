@@ -858,6 +858,87 @@ export const CATALOG = {
   "deljob.checking": { en: "Checking…", es: "Comprobando…" },
   "deljob.delete": { en: "Delete…", es: "Eliminar…" },
 
+  // ---- Wave K: time honesty (transcripts program, 2026-09-03) -----------
+  // The far-from-job question (K1). It only ever appears when the app can
+  // actually see the phone is away from the job, and both answers are real
+  // ones — "I'm still here" holds the question for an hour and nothing about
+  // the clock changes. The distance is two keys rather than one so both
+  // languages get their own singular.
+  "farjob.title": { en: "Still at the job?", es: "¿Sigues en el trabajo?" },
+  "farjob.bodyMiles": {
+    en: "You're {miles} miles from {job}. Switch to Travel?",
+    es: "Estás a {miles} millas de {job}. ¿Cambiar a Viaje?",
+  },
+  "farjob.bodyOneMile": {
+    en: "You're {miles} mile from {job}. Switch to Travel?",
+    es: "Estás a {miles} milla de {job}. ¿Cambiar a Viaje?",
+  },
+  "farjob.switch": { en: "Switch to Travel", es: "Cambiar a Viaje" },
+  "farjob.stillHere": { en: "I'm still here", es: "Sigo aquí" },
+  "farjob.note": {
+    en: "Your clock keeps running either way — nothing changes unless you tap.",
+    es: "Tu reloj sigue corriendo de todos modos — nada cambia hasta que toques.",
+  },
+  "farjob.switched": { en: "Switched to Travel", es: "Cambiado a Viaje" },
+  // The supervisor's reading of the same fact (K3). "mi" abbreviates the same
+  // way in both languages, so one key covers one mile and fourteen.
+  //
+  // "from where they clocked in", NOT "from job": the only position a single
+  // shift row carries is its own clock-in, and clocking in away from the site
+  // (the shop, a supply stop, a bad address) is a normal morning. Saying "from
+  // job" would report somebody standing on site as miles away from it.
+  "lastseen.farFromJob": {
+    en: "last seen {miles} mi from where they clocked in · {time}",
+    es: "visto por última vez a {miles} mi de donde marcó entrada · {time}",
+  },
+  // The evening nudge hour, set by a foreman on Team timecards (K2).
+  "nudge.label": {
+    en: "Evening \u201cStill on the job?\u201d reminder at {time}",
+    es: "Recordatorio de la tarde \u201c\u00bfSigues en el trabajo?\u201d a las {time}",
+  },
+  "nudge.aria": {
+    en: "Time of day the evening reminder goes out",
+    es: "Hora a la que sale el recordatorio de la tarde",
+  },
+  "nudge.on": { en: "Send it", es: "Enviarlo" },
+  "nudge.save": { en: "Save", es: "Guardar" },
+  "nudge.saving": { en: "Saving\u2026", es: "Guardando\u2026" },
+  // The durable half of "somebody changed your punches" (K4). The push is
+  // English by design; this line is the one that stays, so it speaks both.
+  "notif.timecardChanged.title": {
+    en: "Your timecard was changed",
+    es: "Tu tarjeta de tiempo fue cambiada",
+  },
+  "notif.timecardChanged.subOne": {
+    en: "One change in the last 30 days \u2014 check your hours",
+    es: "Un cambio en los \u00faltimos 30 d\u00edas \u2014 revisa tus horas",
+  },
+  "notif.timecardChanged.subMany": {
+    en: "{count} changes in the last 30 days \u2014 check your hours",
+    es: "{count} cambios en los \u00faltimos 30 d\u00edas \u2014 revisa tus horas",
+  },
+  // The team timecard's range stepper and the Gusto file (K5). The rest of the
+  // page is older English left alone by design, but every string this wave
+  // WROTE goes through t() \u2014 including the labels a screen reader speaks, which
+  // are the only words a blind foreman gets off the two chevron buttons.
+  "tcx.range.week": { en: "Week", es: "Semana" },
+  "tcx.range.pay": { en: "Pay period", es: "Periodo de pago" },
+  "tcx.range.aria": {
+    en: "Team timecard range",
+    es: "Rango de la tarjeta de tiempo del equipo",
+  },
+  "tcx.range.prev": { en: "Previous", es: "Anterior" },
+  "tcx.range.next": { en: "Next", es: "Siguiente" },
+  "tcx.range.backToNow": { en: "Jump back to now", es: "Volver a ahora" },
+  "tcx.export.gusto": {
+    en: "Export pay period for Gusto",
+    es: "Exportar periodo de pago para Gusto",
+  },
+  "tcx.export.gustoHint": {
+    en: "Switch to Pay period to export for Gusto.",
+    es: "Cambia a Periodo de pago para exportar para Gusto.",
+  },
+
   // ---- Data off + missed units (transcripts program, wave E) -------------
   // Two field-truth flows the crew lives in: saying the paperwork on a unit is
   // wrong ("data off"), and adding a window or door the plans never had. Both

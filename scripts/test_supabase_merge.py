@@ -140,7 +140,9 @@ class TestSchemaParsing(unittest.TestCase):
         # back (20260965000000).
         # +1: project_cost_codes — a job's pickable cost-code subset
         # (standard-tracking-jobs slice 3, 20260973000000).
-        self.assertEqual(len(SCHEMA.tables), 116)
+        # +1: company_settings — the single settings row behind the evening
+        # "Still on the job?" nudge (Wave K, K2, 20260976000000).
+        self.assertEqual(len(SCHEMA.tables), 117)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

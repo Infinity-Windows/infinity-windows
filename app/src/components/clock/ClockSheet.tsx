@@ -232,10 +232,11 @@ export function ClockSheet({
     startFailed?: boolean;
   };
 
-  const shouldQueue = (err: unknown) =>
-    typeof navigator !== "undefined" && navigator.onLine === false
-      ? true
-      : isNetworkError(err);
+  // `isNetworkError` opens with the same `navigator.onLine === false` check
+  // this used to wrap it in, so the wrapper was a second copy of one rule
+  // saying the same thing. There is one copy now, and the far-from-job prompt
+  // (Wave K) queues its switch off exactly this test rather than a third.
+  const shouldQueue = isNetworkError;
 
   const openShiftKey = ["openShift", profileId] as const;
 

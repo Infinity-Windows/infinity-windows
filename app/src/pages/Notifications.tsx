@@ -15,7 +15,7 @@ import {
   listMemosToConfirm,
 } from "../lib/install/api";
 import { listInstalledForQc } from "../lib/ops";
-import { listShiftsToApprove } from "../lib/timeclock";
+import { listMyTimecardEdits, listShiftsToApprove } from "../lib/timeclock";
 import { isSupervisorPlus, isForemanPlus } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { listProjects, listReorderNeeds } from "../lib/api";
@@ -30,6 +30,7 @@ import { listTrips } from "../lib/travel/api";
 import { tripPublishMessage } from "../lib/travel/notify";
 import { tripPhase } from "../lib/travel/status";
 import { listMyMentions } from "../lib/chat/api";
+import { useT } from "../lib/i18n";
 
 interface Note {
   id: string;
@@ -52,6 +53,7 @@ function noteKey(n: Note): string {
 
 export function Notifications() {
   const qcClient = useQueryClient();
+  const t = useT();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const { effectiveRole } = useEffectiveRole();
   const lead = isForemanPlus(effectiveRole);
@@ -100,6 +102,14 @@ export function Notifications() {
     queryKey: ["accessRequests"],
     queryFn: listAccessRequests,
     enabled: admin,
+  });
+  // K4: changes SOMEBODY ELSE made to my own punches, last 30 days. Every
+  // role — this is the one notification that is about a person's own pay.
+  const myEditsSince = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const myTimecardEdits = useQuery({
+    queryKey: ["myTimecardEdits", id],
+    queryFn: () => listMyTimecardEdits(id!, myEditsSince),
+    enabled: Boolean(id),
   });
 
   // Supervisor+ only: surface signals already computed elsewhere so the office
@@ -215,6 +225,24 @@ export function Notifications() {
       sub: msg.body,
       to: `/travel/${t.id}`,
       fp: fingerprint([t.start_date ?? "", t.end_date ?? ""]),
+    });
+  }
+
+  // One line, however many edits — the same batching the schedule digest uses.
+  // Keyed by the edit ids, so a NEW change after this was cleared shows up
+  // again instead of staying hidden behind an old dismissal.
+  const editRows = myTimecardEdits.data ?? [];
+  if (editRows.length > 0) {
+    notes.push({
+      id: "timecard-edits",
+      dot: "warn",
+      title: t("notif.timecardChanged.title"),
+      sub:
+        editRows.length === 1
+          ? t("notif.timecardChanged.subOne")
+          : t("notif.timecardChanged.subMany", { count: editRows.length }),
+      to: "/timecard",
+      fp: fingerprint(editRows.map((e) => e.id).sort()),
     });
   }
 
