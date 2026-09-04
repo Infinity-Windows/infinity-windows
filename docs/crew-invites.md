@@ -14,6 +14,15 @@ wrong person, tap **Cancel** next to their name and add them again.
 
 **Somebody quit:** find them under "Who has access" and tap **Remove**. They
 cannot sign in again. Their hours and finished installs stay on the job records.
+Tap **Let them back in** if they come back.
+
+**A login you want gone for good:** tap **Remove this login…** (owner only).
+It tells you what it is about to do before it does it — "Nothing on file for
+Eduardo, the account will be deleted and the email freed", or "Enrique has 14
+punches and 3 receipts on file, the login will be closed, the email freed, and
+every record kept under his name". Either way **the email address comes free**,
+so you can add that person again and they get a brand-new login. There is no
+undo, and the app never deletes anybody's work.
 
 **Somebody forgot their password:** tap **New password code** next to their name
 and text them the new code. (The "Reset password" button on the sign-in screen
@@ -167,3 +176,39 @@ and refuses to remove yourself.
 `profiles.active` was NOT reused for this: the Roster renders it as
 "On site / Off today" and a foreman toggles it daily. It is availability, not
 permission.
+
+### The third door: `purge_login` frees the email
+
+`remove_access` above leaves everything as it was, **including the address**.
+Supabase Auth holds emails unique across `auth.users` forever, so a banned
+account keeps its address hostage: `create_invite` answers "that email already
+has an account" and there is no way past it. That is why "delete the account and
+start fresh" was impossible, and it is what `purge_login` (owner only,
+20260987000000) fixes. It picks between two shapes **by counting**, never by
+asking:
+
+- **Nothing on file** — `person_record_counts` returns zeroes for every table →
+  `auth.admin.deleteUser`. `profiles.id` references `auth.users` ON DELETE
+  CASCADE, so the profile goes with it, and there is nothing else to lose.
+- **Anything on file** — nothing is deleted, ever. The auth user is banned, the
+  profile is stamped `access_revoked_at` **and** `retired_at`, and the auth
+  user's email is renamed to `<uid>@removed.invalid`. Every record still points
+  at the same profile id, so "who installed this window" still answers, and the
+  Roster shows the person under the name they always had, marked Removed.
+
+`retired_at` is a third column with a third meaning, and the three are easy to
+confuse:
+
+| Column | Means | Reversible |
+| --- | --- | --- |
+| `active` | on site today | a foreman toggles it every morning |
+| `access_revoked_at` | login switched off | yes — "Let them back in" |
+| `retired_at` | login removed for good, email handed back | no — add them again |
+
+The counting lives in SQL rather than in the edge function for a reason worth
+keeping: wave Z's standing rule is that **no edge function may name the wage
+table**, because they hold the service-role key and bypass RLS.
+`app/src/lib/payRates.test.ts` enforces it by scanning every file under
+`supabase/functions`, so the schema lives in the migration and in
+`app/src/lib/purgeWords.ts` — and `app/src/lib/purgeWords.test.ts` reads the
+migration and fails if the two lists ever stop agreeing.
