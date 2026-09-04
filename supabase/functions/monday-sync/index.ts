@@ -133,7 +133,19 @@ Deno.serve(async (req) => {
     }
   }
 
-  const items = await fetchBoardItems();
+  // Monday's own refusal (a bad or expired token, a board this token cannot
+  // see, a retired API version) used to escape as a bare "Internal Server
+  // Error", and supabase-js drops the body of any non-2xx — so the office saw
+  // "Sync failed." and nothing else. Answer 200 with ok:false and the reason,
+  // the shape the Jobs page already renders.
+  let items: MondayItem[];
+  try {
+    items = await fetchBoardItems();
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.error("monday-sync: Monday refused the sync:", reason);
+    return jsonResponse({ ok: false, error: `Monday refused the sync — ${reason}` });
+  }
   const now = new Date().toISOString();
 
   const rows = items.map((item) => {
