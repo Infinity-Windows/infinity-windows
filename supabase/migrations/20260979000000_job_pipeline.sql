@@ -56,9 +56,9 @@ comment on column projects.ready_state is
 comment on column projects.materials_eta is
   'The day the windows are expected on this job (job-level, not a truck ETA). Written by set_project_materials (foreman+).';
 comment on column projects.materials_arrived_at is
-  'When somebody tapped "Materials arrived" on this job. Null means the windows are still not in. Written by set_project_materials (foreman+).';
+  'When somebody tapped "Materials arrived" on this job. Null means the windows are still not in — and, on a job with no materials_eta, that nobody has said anything either way, which is why the sweep needs both. Written by set_project_materials (foreman+). Readable by a builder login granted this job, like every column on this table: it is a fact about their own house, not about our business.';
 comment on column projects.sort_order is
-  'The office''s hand-made order for the jobs list, 1..n, written by set_projects_order (foreman+). Null sorts last, then start_date, then name.';
+  'The office''s hand-made order for the jobs list, 1..n, written by set_projects_order (foreman+). Null sorts last, then start_date, then name. Like every column on this table it is readable by a builder login granted this job (THE WALL, 20260950000000 section 6) — a bare integer with no meaning outside our own list, which is why it is allowed to live here.';
 
 -- THE PROJECTS GRANT LAW (wave D, 20260959000000): table-level INSERT/UPDATE on
 -- projects is revoked, and only the columns the app writes directly are granted
@@ -68,6 +68,41 @@ comment on column projects.sort_order is
 -- (foreman+), and a column-level grant cannot check a rank. `start_date` is
 -- already on wave D's update grant, which is why "expected start" stays an
 -- ordinary inline edit through updateProject and needs nothing here.
+--
+-- WHO CAN READ THEM — decided out loud, because the grant law above is only
+-- about WRITING and silence about reading is how a leak gets shipped.
+--
+-- `projects` is the one table a builder (partner) login reads whole. THE WALL
+-- (20260950000000 section 6) makes that a deliberate, narrow crack: a partner
+-- gets the row for each job they were granted and nothing from any other table.
+-- It is a ROW-level rule, and RLS has no column-level half — wave Z spells the
+-- consequence out at 20260978000000: a column cannot be gated separately from
+-- its table, and revoking column SELECT would break the owner's own `select *`
+-- as surely as a builder's. So a new column on `projects` is readable by a
+-- granted builder, full stop, and the only real choice is whether it may live
+-- here at all.
+--
+-- For these four, yes, and here is the reasoning per column:
+--   ready_state, materials_eta, materials_arrived_at — facts about the
+--     BUILDER'S OWN JOB. "Our windows land on the 15th" is a thing the GC is
+--     usually told on the phone; it is not a number about our business. Wave
+--     J's rule is that a builder is never PUSHED about our problems (see the
+--     audience in section 6), not that the dates are secret.
+--   sort_order — a bare integer with no meaning outside our own list, and the
+--     list it orders is not one a builder can see.
+-- Nothing here is a price, a margin, a cost or a wage.
+--
+-- ANYTHING THAT IS must not be a column on `projects`: put it in a table of its
+-- own with its own policy, the way 20260978000000 moves bid_amount and
+-- target_margin_pct off this table into project_financials. That is the
+-- precedent, and it is the only shape that actually works.
+--
+-- One correction that belongs here rather than in the file it is about: THE
+-- WALL's own comment says "nothing crew-only lives on `projects` itself". That
+-- was true when it was written and it is the sentence a reader will meet first.
+-- 20260950000000 is applied in production, so it is not edited after the fact;
+-- the qualification lives here, in scripts/partner_wall_lib.py beside the
+-- exemption it explains, and in CONTEXT.md.
 
 create index if not exists projects_pipeline_start_idx
   on projects (start_date)

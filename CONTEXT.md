@@ -493,6 +493,19 @@ warning and a moved start date earns a fresh one. Wave H adds a fourth reason
 never counts against a job, because "nobody has logged a check-in" is true of
 every job in the company and is not news.
 
+**What a builder can see of it** — all four of the pipeline facts live as
+columns on `projects`, and `projects` is the one table a builder (partner)
+login reads whole for the jobs they were granted. That is row-level, and there
+is no column-level half to it: a column on `projects` is readable by a granted
+builder, now and forever after. It was allowed here on purpose — the readiness
+and the two materials dates are facts about the builder's own house, and the
+list order is an integer that means nothing outside our list. What a builder
+must never be told is that we are behind, which is why the 7 AM sweep excludes
+partner logins outright. Anything genuinely ours — a price, a margin, a cost, a
+wage — does NOT go in a column on `projects`; it goes in a table of its own
+with its own policy, the way the bid and target margin moved to
+`project_financials`.
+
 ## Open questions
 
 None right now — the next ones come from building.
