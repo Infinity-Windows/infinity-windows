@@ -14,6 +14,10 @@ import {
   unassignOpening,
 } from "../../lib/install/api";
 import { formatApiError } from "../../lib/install/errors";
+import {
+  assignmentText,
+  listProjectAssignmentEvents,
+} from "../../lib/install/assignmentHistory";
 import { openingReadiness } from "../../lib/install/fit";
 import { isInstallInProgress } from "../../lib/install/installTimer";
 import {
@@ -516,6 +520,79 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
       <p className="wh-row-sub">
         {activeCrew.length === 0 ? "Add crew on the Crew screen to assign work." : ""}
       </p>
+      <AssignmentHistoryCard
+        projectId={projectId}
+        openingCodeById={openingCodeById}
+        nameOf={(id) => nameOf(id)}
+      />
+    </div>
+  );
+}
+
+/**
+ * The job's hand-over log (wave Y, Y5): who has had which unit, and who moved
+ * it. Until this wave `assigned_to` was one column that got overwritten, so
+ * the answer to "who had this before?" was simply gone — and every argument
+ * about a unit sitting untouched for two days ran into that.
+ *
+ * Folded shut by default. It is the thing you go and look at when something is
+ * wrong, not a thing to read every morning, and an open list of a hundred
+ * hand-overs would push the actual board off the screen.
+ */
+function AssignmentHistoryCard({
+  projectId,
+  openingCodeById,
+  nameOf,
+}: {
+  projectId: string;
+  openingCodeById: Map<string, string>;
+  nameOf: (id: string) => string | null | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+  const events = useQuery({
+    queryKey: ["projectAssignments", projectId],
+    queryFn: () => listProjectAssignmentEvents(projectId),
+    enabled: open,
+  });
+  const rows = events.data ?? [];
+  return (
+    <div className="detail-card wh-card">
+      {!open ? (
+        <button className="button-like" onClick={() => setOpen(true)}>
+          Assignment history — who has had what
+        </button>
+      ) : (
+        <>
+          <span className="field-label">Assignment history</span>
+          {events.isLoading && <p className="muted">Loading…</p>}
+          {!events.isLoading && rows.length === 0 && (
+            <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
+              Nothing handed out on this job yet.
+            </p>
+          )}
+          <ul className="unit-list" style={{ marginTop: 4 }}>
+            {rows.map((e) => (
+              <li key={e.id} className="muted" style={{ fontSize: 12.5 }}>
+                <strong>{openingCodeById.get(e.opening_id) ?? "unit"}</strong>{" "}
+                {assignmentText(e, nameOf)}
+                {" · "}
+                {new Date(e.changed_at).toLocaleString(undefined, {
+                  weekday: "short",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
+              </li>
+            ))}
+          </ul>
+          <button
+            className="button-like"
+            style={{ marginTop: 10 }}
+            onClick={() => setOpen(false)}
+          >
+            Close history
+          </button>
+        </>
+      )}
     </div>
   );
 }

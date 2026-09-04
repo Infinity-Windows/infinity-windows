@@ -568,6 +568,46 @@ wage — does NOT go in a column on `projects`; it goes in a table of its own
 with its own policy, the way the bid and target margin moved to
 `project_financials`.
 
+## Who did what
+
+Settled 2026-09-04, wave Y (transcripts program, Q2 — grilled and approved;
+cite, never re-decide). Two questions the app could not answer: who actually
+installed this, and who has had it.
+
+**Credited installer** — the person an install is filed UNDER, when that is
+not the person who filed it (`install_events.credited_to`; null means
+`installer_id`, the filer, and is the ordinary case). A foreman finishing a
+unit for an installer whose phone is dead used to move that window onto his
+own record — his median, his fail rate, the figures dispatch ranks him on —
+and off the person who stood on the ladder. Credit is about the RECORD and
+never about time: the finisher's session stays the finisher's, because
+sessions follow the human and the walk to that window was his. Every
+per-person rollup in the database reads `coalesce(credited_to,
+installer_id)`; nothing reads either column alone. A plain installer may
+credit themselves or whoever the unit is assigned to — the one on-site case
+that needs no permission — and a foreman or above may credit any active crew
+member, checked in the RPC and again on the table, because an RPC is not the
+only door. Deliberately NOT restricted to people with a shift on that job: a
+helper who walked over for a four-man lift still installed the window, and a
+rule that refuses the honest answer teaches people to file the dishonest
+one. The Record reads it back as "Installed by Sam · filed by Jed", and the
+sheet only ASKS the question when the unit is on somebody else's list —
+finishing your own work stays one tap.
+
+**Assignment history** — every time a unit changed hands
+(`opening_assignment_events`): who it was on, who it went to, who moved it,
+and from which screen. `assigned_to` is one column that gets overwritten, so
+before this the previous assignee was simply gone, and every "why has this
+been sitting for two days" conversation ran into that wall. Written by a
+TRIGGER on the column rather than by each of the four screens that assign — a
+screen can forget, a trigger cannot — which is also why a plain PATCH is
+recorded like any other hand-over. The screen it came from cannot be worked
+out by the database, so the assigning RPC states it and the trigger records
+what it was told, falling back to "dispatch" when nobody said. Read by
+foreman+ only: an installer sees their own list, not the ledger of everybody
+else's. Read back on the unit's Record beside its sessions, and on the
+Dispatch tab as the job's whole log.
+
 ## Open questions
 
 None right now — the next ones come from building.
