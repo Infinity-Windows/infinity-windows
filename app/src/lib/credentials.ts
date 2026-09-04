@@ -282,6 +282,20 @@ export function dueCredentialNudges(
 }
 
 /**
+ * Today as YYYY-MM-DD in the READER's own timezone — the day every chip and
+ * count on screen is measured against, the same convention lib/payRates.ts uses
+ * for "what day did this shift happen on". The 7 AM sweep uses the COMPANY's
+ * day (America/Denver, spelled out in SQL); the two agree everywhere the crew
+ * actually is, and a phone in another timezone showing its own today is the
+ * right answer for the person holding it.
+ */
+export function todayLocalDay(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
  * Where this person's next document goes: "<profile_id>/<uuid>.jpg".
  *
  * The FIRST FOLDER IS THE PERMISSION — the storage policies read it directly
@@ -317,7 +331,7 @@ export async function listCertifications(profileId?: string): Promise<Certificat
   const { data, error } = await query;
   if (isMissingTable(error, "certifications")) return [];
   if (error) throw error;
-  return ((data ?? []) as CertificationRow[]).map(mapRow).filter(isLive);
+  return ((data ?? []) as unknown as CertificationRow[]).map(mapRow).filter(isLive);
 }
 
 export interface SetCertificationArgs {

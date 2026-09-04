@@ -73,6 +73,22 @@ type PhotoCaptureSheetProps =
       label?: string | null;
       /** Button copy, e.g. "Photo of the finished flashing". */
       prompt: string;
+      /**
+       * Wave O: burn the GPS + timestamp watermark in, or don't. Defaults to
+       * true, which is every existing caller — a phase-proof photo is evidence
+       * about a place and a time, and the stamp IS the proof.
+       *
+       * A photo of an OSHA card is the opposite: it is a picture of a piece of
+       * paper somebody is holding, the stamp says nothing true about the card,
+       * and burning a GPS fix onto a document that already carries a full legal
+       * name adds a fact nobody asked for. It also costs a location lookup —
+       * capturePhotoMeta waits up to eight seconds for a fix — for a photo
+       * taken at a desk.
+       */
+      stamp?: boolean;
+      /** Replaces the "GPS and time are added automatically" line under the
+       * button, for a capture that adds neither. */
+      hint?: string;
     };
 
 /**
@@ -849,6 +865,8 @@ function SinglePhotoCapture({
   onChange,
   label,
   prompt,
+  stamp = true,
+  hint,
 }: Extract<PhotoCaptureSheetProps, { mode: "single" }>) {
   const t = useT();
   const [live, setLive] = useState(false);
@@ -856,6 +874,11 @@ function SinglePhotoCapture({
   const [stamping, setStamping] = useState(false);
 
   const applyPhoto = async (raw: File) => {
+    // An unstamped shot skips the GPS wait entirely — see `stamp` above.
+    if (!stamp) {
+      onChange(raw);
+      return;
+    }
     setStamping(true);
     try {
       const meta = await capturePhotoMeta(label ?? null, 8000);
@@ -877,7 +900,9 @@ function SinglePhotoCapture({
     if (!video) return;
     void grabFrame(video).then((blob) => {
       if (!blob) return;
-      const file = new File([blob], `phase-${Date.now()}.jpg`, { type: "image/jpeg" });
+      const file = new File([blob], `${stamp ? "phase" : "card"}-${Date.now()}.jpg`, {
+        type: "image/jpeg",
+      });
       setLive(false);
       void applyPhoto(file);
     });
@@ -906,7 +931,7 @@ function SinglePhotoCapture({
     <div className="ba-grid one">
       <CaptureSlot
         title={prompt}
-        hint={t("photo.gpsTimeAuto")}
+        hint={hint ?? (stamp ? t("photo.gpsTimeAuto") : undefined)}
         url={url}
         onCamera={() => setLive(true)}
         onFile={pick}

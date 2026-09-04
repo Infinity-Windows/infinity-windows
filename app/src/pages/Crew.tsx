@@ -4,11 +4,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getMyProfile,
   listCapabilityBadges,
+  listClearances,
   listProfiles,
   setCapabilityBadge,
   setProfileGrants,
   updateProfile,
 } from "../lib/install/api";
+import { listCertifications, type Certification } from "../lib/credentials";
+import { CredentialSummary } from "../components/crew/CredentialSummary";
+import { SkillTree } from "../components/crew/SkillTree";
 import { formatApiError } from "../lib/errors";
 import {
   CAPABILITIES,
@@ -157,9 +161,30 @@ export function Crew() {
     queryKey: ["capabilityBadges"],
     queryFn: listCapabilityBadges,
   });
+  // Wave O: one read for the whole roster rather than one per row. Both
+  // degrade to empty on a phone whose database has the app but not yet
+  // 20260983000000, so this page still loads ahead of the migration.
+  const clearances = useQuery({
+    queryKey: ["clearances"],
+    queryFn: listClearances,
+  });
+  const certs = useQuery({
+    queryKey: ["certifications"],
+    queryFn: () => listCertifications(),
+  });
   const badgeSet = new Set(
     (badges.data ?? []).map((b) => `${b.installer_id}:${b.capability}`),
   );
+  const clearanceCounts = new Map<string, number>();
+  for (const c of clearances.data ?? []) {
+    clearanceCounts.set(c.installer_id, (clearanceCounts.get(c.installer_id) ?? 0) + 1);
+  }
+  const certsByPerson = new Map<string, Certification[]>();
+  for (const cert of certs.data ?? []) {
+    const list = certsByPerson.get(cert.profileId);
+    if (list) list.push(cert);
+    else certsByPerson.set(cert.profileId, [cert]);
+  }
   const toggleBadge = useMutation({
     mutationFn: (args: { id: string; capability: Capability; granted: boolean }) =>
       setCapabilityBadge(args.id, args.capability, args.granted),
@@ -225,6 +250,11 @@ export function Crew() {
       <PinSetter />
 
       {grantError && <p className="error">{grantError}</p>}
+
+      {/* Wave O (O5): what a bid asks for. Supervisor+ only — it is a number
+          about the company rather than about a person, and it is written to be
+          copied out of the app. */}
+      {canSetRoles && <CredentialSummary certifications={certs.data ?? []} />}
 
       <h2>Roster</h2>
       <ul className="unit-list">
@@ -311,6 +341,22 @@ export function Crew() {
                       </div>
                     </>
                   )}
+                  {/* Wave O (O3): badges, cleared window types and cards in one
+                      view, on the row they are about. Everyone who can reach
+                      this page can read it; only a supervisor+ can verify or
+                      void a card, and only the cardholder can add their own —
+                      set_certification refuses the rest in SQL either way. */}
+                  <SkillTree
+                    profileId={p.id}
+                    badges={CAPABILITIES.filter((c) => badgeSet.has(`${p.id}:${c}`))}
+                    clearanceCount={clearanceCounts.get(p.id) ?? 0}
+                    certifications={certsByPerson.get(p.id) ?? []}
+                    isSelf={p.id === me.data?.id}
+                    canManage={canSetRoles}
+                    onChanged={() =>
+                      queryClient.invalidateQueries({ queryKey: ["certifications"] })
+                    }
+                  />
                   {/* Only owners manage owners (owner ask, 2026-08-26): a
                       disguised owner's row offers no role controls at all —
                       a supervisor "correcting" the Supervisor pill would
