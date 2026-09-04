@@ -478,8 +478,12 @@ spring.
 **Needs a call** — the app's judgement that somebody should pick up the phone
 about a job, and the single rule behind both the chip on the Jobs page and the
 7 AM push. A job needs a call when it starts within a fortnight and is still
-Not ready or still has no windows, or when its promised ETA has passed with
-nothing here. The rule is `needsCall` in `app/src/lib/pipeline.ts` and again in
+Not ready or its promised windows have not turned up, or when its promised ETA
+has passed with nothing here. A PROMISE IS HALF THAT RULE: windows only count
+as missing once somebody has put an ETA on the job. Without it there is nothing
+to be late for, and on the morning this shipped there was no ETA anywhere —
+counting a blank as "no windows" would have called every job in the company
+late on day one. The rule is `needsCall` in `app/src/lib/pipeline.ts` and again in
 SQL inside `claim_pipeline_nudges()`, because a sweep has to decide and claim
 in one statement; a test named after that function pins the two together. The
 sweep says each thing ONCE, keyed to the day it is about — a start date, a
