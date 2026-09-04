@@ -137,18 +137,18 @@ async function textEdges(page: Page): Promise<number[]> {
   );
 }
 
-async function openJobs(page: Page, role: "foreman" | "installer") {
-  await useSupabaseFixtures(page, { role });
-  await useCardFixtures(page);
-  await page.goto("/projects");
-  await expect(page.locator("a.project-card")).toHaveCount(3);
-  await expect(page.locator("a.project-card").first()).toContainText("Mad Moose");
-}
-
 async function shoot(page: Page, label: string) {
   mkdirSync(SHOTS, { recursive: true });
   await page.screenshot({ path: join(SHOTS, `${label}.png`), fullPage: true });
 }
+
+/**
+ * What each width's foreman run measured, so the installer run below can check
+ * it against the same number. The config runs this file in one worker with
+ * `fullyParallel: false`, so the foreman test has always finished by then;
+ * running one test on its own just leaves this empty and skips the comparison.
+ */
+const foremanEdge = new Map<number, number>();
 
 for (const width of [390, 1024] as const) {
   for (const role of ["foreman", "installer"] as const) {
@@ -158,7 +158,14 @@ for (const width of [390, 1024] as const) {
       test(`every job card starts its text at the same place (${width}px, ${role})`, async ({
         page,
       }) => {
-        await openJobs(page, role);
+        // Inline rather than behind a helper: the fixture setters read as React
+        // hooks to the linter, and it only forgives them inside a test body.
+        await useSupabaseFixtures(page, { role });
+        await useCardFixtures(page);
+        await page.goto("/projects");
+        await expect(page.locator("a.project-card")).toHaveCount(3);
+        await expect(page.locator("a.project-card").first()).toContainText("Mad Moose");
+
         // Taken before the assertion on purpose, so a failing run still leaves
         // the picture that explains it.
         await shoot(page, `${width}-${role}`);
@@ -170,11 +177,19 @@ for (const width of [390, 1024] as const) {
         expect(new Set(edges).size).toBe(1);
 
         // And the reorder rail is only the difference between the roles, not
-        // between the cards: foreman gets three rails, an installer none, and
-        // the reserved column keeps the text edge put either way.
+        // between the cards: foreman gets three rails, an installer none.
         await expect(page.locator(".job-order-rail .job-order-btn")).toHaveCount(
           role === "foreman" ? 6 : 0,
         );
+
+        // THE OTHER POINT: the rail's column is RESERVED whether or not the
+        // rail is in it, so an installer's job names start on exactly the same
+        // pixel a foreman's do. Without the empty spacer this is off by 56.
+        if (role === "foreman") foremanEdge.set(width, edges[0]);
+        else {
+          const theirs = foremanEdge.get(width);
+          if (theirs !== undefined) expect(edges[0]).toBe(theirs);
+        }
       });
     });
   }
