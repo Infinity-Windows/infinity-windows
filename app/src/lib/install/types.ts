@@ -19,6 +19,12 @@ export interface Planset {
   page_count: number | null;
   status: PlansetStatus;
   kind: PlansetKind;
+  /**
+   * The Monday asset this file was pulled from, or null when somebody uploaded
+   * it by hand. Optional because a phone can be running ahead of the migration
+   * that adds the column (Monday files, F4).
+   */
+  source_asset_id?: string | null;
   created_at: string;
 }
 

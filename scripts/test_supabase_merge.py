@@ -168,7 +168,11 @@ class TestSchemaParsing(unittest.TestCase):
         # +2: certifications + credential_nudges — one row per card a crew
         # member holds, and the ledger of what the sweep has already said about
         # one running out (Wave O, O1/O4, 20260983000000).
-        self.assertEqual(len(SCHEMA.tables), 129)
+        # +1: project_documents — a job's paperwork that is not a planset, the
+        # quote and the signed order that used to live only on the Monday item
+        # (Monday files, F6, 20260988000000). The same migration adds columns to
+        # monday_jobs and project_plansets, which are not new tables.
+        self.assertEqual(len(SCHEMA.tables), 130)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

@@ -69,6 +69,7 @@ import { ClockInBlock } from "../components/clock/ClockInBlock";
 import { SpecsTab } from "../components/project/SpecsTab";
 import { CallForHandsPanel } from "../components/install/CallForHandsPanel";
 import { MissedUnitButton } from "../components/install/MissedUnitButton";
+import { JobDocuments } from "../components/projects/JobDocuments";
 import { JobCostCodesPanel } from "../components/project/JobCostCodesPanel";
 import { JobModeBadge } from "../components/JobModeBadge";
 import { GcPanel } from "../components/projects/GcPanel";
@@ -765,6 +766,16 @@ function OverviewTab({
         />
         <OfflineDownloadButton projectId={projectId} />
       </div>
+
+      {/* The job's paperwork that is not a planset — the ironwork sheet, the
+          survey, the signed order. Beside Plans on purpose: this is where
+          somebody looks for it while standing on the site, and until it came
+          across from Monday it existed nowhere the crew could reach.
+          No role gate HERE, and none is wanted: the list is whatever this
+          person is allowed to read, decided in SQL. A document with the
+          company's own price on it answers to `can_see_costs` like every
+          other money table, so a crew phone is never handed one to hide. */}
+      <JobDocuments projectId={projectId} />
 
       <h2>Needed (by type)</h2>
       <p className="muted">

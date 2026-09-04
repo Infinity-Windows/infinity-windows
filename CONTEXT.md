@@ -528,7 +528,10 @@ because nobody has ever been able to say otherwise about them and inventing a
 red flag for six months of live work would be a lie. From here, a job that
 somebody FILLS IN is Ready by default — the person typing it knows — and a job
 that ARRIVES is born Not ready: an import from Monday, a tracking job built in
-one tap from the clock-in. Nobody has walked those sites. It is a foreman's
+one tap from the clock-in. An import from Monday now brings the item's FILES
+with it — a file named "LP" is the building plans, one named "CU" is the specs,
+and everything else is a job document the app keeps (see Monday files).
+Nobody has walked those sites. It is a foreman's
 call to change (`set_project_readiness`), it shows as an amber pill beside the
 mode badge and never on top of it, and a Ready job wears no pill at all —
 absence is the quiet state, so the card missing a sticker is never the one that
@@ -779,6 +782,60 @@ that emptied the library on deploy would have been the same bug as a bad
 migration. An ordinary edit never changes the state either way — publishing is
 always its own deliberate tap. The same draft-first shape wave Q gave the quiz,
 now covering the whole lesson.
+
+
+## Monday files
+
+Settled 2026-09-04 (the owner's own call). The office has always kept a job's
+paperwork on its Monday item and the app has never seen any of it, so somebody
+downloaded each file and uploaded it again by hand. Now it comes with the job.
+
+**Job document** — a job's paperwork that is not a drawing: the quote, the
+signed order, the ironwork sheet. It has a home of its own
+(`project_documents`, the private `job-documents` bucket) because the app had
+exactly two slots for a PDF — the building plan and the specs — and anything
+else was either forced into one of them, where the extractor tried to read a
+window schedule out of a price list, or left on Monday where a crew standing on
+the site cannot reach it. Crew read it on the job's Documents card, through a
+ten-minute signed link; a partner login never sees one, because these are OUR
+documents about a builder's job. Nothing in the app writes one from a browser:
+the pull inside `monday-sync` is the only writer, on the service role.
+
+**Money document** — a job document with the company's own number on it: the
+quote, the bid, the signed order (`project_documents.money`). It is the money
+wall of wave Z applied to paperwork, and it is why a job's Documents card is not
+simply "whoever can see the job": that card was about to hand every crew phone
+the signed quote the wave before had just moved behind `can_see_costs`. The pull
+sorts them by name as it files them (`looksLikeMoneyDocument`), the flag is read
+by the table policy AND by the bucket policy — the bytes are readable exactly
+when the row is, asked by looking for the row rather than by restating its rules
+— and the sort is deliberately wrong in ONE direction: a word that might mean
+money makes a document office-only. Being wrong that way costs a foreman a phone
+call. The ironwork order, the survey, the marked-up sheet — everything without a
+price word in its name — stays on every phone on the job.
+
+**LP / CU** — the office's own shorthand on the Ops Gantt Chart, not a
+convention this app invented. "SV2 - LP.pdf" is the plan set, "SV2 - CU.pdf" is
+the cut sheets, "Summit View 2 - IRON.pdf" is neither. `guessMondayFileKind`
+reads it — plans first, then specs, whole words only, and anything that is not
+a PDF, DWG or DXF is a document whatever it is called. It is a GUESS, shown
+before anything is pulled and always overridable: the shorthand holds on most
+rows, not all, and being wrong quietly is what would turn a signed quote into a
+building plan the map draws from.
+
+**New on Monday** — a file on the job's Monday item that is not yet on the job,
+which is the diff of `monday_jobs.files` against every `source_asset_id` the job
+holds, plansets and documents together. It is shown on the Plans page and pulled
+ONE TAP AT A TIME, never automatically — the owner's rule. The sync keeps the
+list fresh for jobs already built, even after Monday moves the item out of the
+two synced groups, because a late plan set is exactly when this matters.
+
+**The board is STG Windows', not ours.** Every GraphQL operation the connector
+sends is a read, and `app/src/lib/mondayReadOnly.test.ts` fails the build if the
+keyword for a write ever appears in the function. Downloading a file through the
+one-hour link Monday mints is a read and is allowed; that link is never stored,
+because a stored one is a list that 404s and a live unauthenticated link to
+another company's document sitting in a table a foreman can read.
 
 
 ## Open questions
