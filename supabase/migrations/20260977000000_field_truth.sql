@@ -28,7 +28,15 @@ alter table project_openings
   -- a row immune to every re-extraction sweep (#476): the extractor may drop
   -- its own guesses, never a person's. Separate from flag_kind on purpose —
   -- a supervisor clearing the data-off flag must not make the row deletable.
-  add column if not exists field_added boolean not null default false;
+  add column if not exists field_added boolean not null default false,
+  -- WHICH missed unit this was on this job, kept apart from the name it wears.
+  -- The number used to be read back out of opening_code ("Missed 3" → 3), which
+  -- made it depend on a field a supervisor is invited to change: rename
+  -- "Missed 1" to "W-14" and the 1 is free again, so the next unit added is
+  -- "Missed 1" a second time and inherits the first one's spec row — the width
+  -- and height somebody orders glass from. A number nothing renames cannot be
+  -- handed out twice.
+  add column if not exists field_unit_seq int;
 
 alter table project_openings drop constraint if exists project_openings_flag_kind_check;
 alter table project_openings add constraint project_openings_flag_kind_check
@@ -41,6 +49,17 @@ comment on column project_openings.flag_kind is
   'Why this unit''s record is wrong: wrong_size | mirrored | not_as_drawn | not_on_plans | other. Null means no flag. Free-text flags raised before wave E read as ''other''.';
 comment on column project_openings.field_added is
   'True when a person on site added this window or door with add_field_unit. Re-extraction never deletes one.';
+comment on column project_openings.field_unit_seq is
+  'The N this row was issued as "Missed N". Survives renaming and removal so a number is never handed out twice on a job.';
+
+-- Idempotent backfill, for a database where an earlier cut of this migration
+-- already issued codes: read the number back off the name while the name is
+-- still the only place it lives.
+update project_openings
+   set field_unit_seq = (regexp_match(opening_code, '^Missed ([0-9]+)$'))[1]::int
+ where field_added
+   and field_unit_seq is null
+   and opening_code ~ '^Missed [0-9]+$';
 
 -- Every flag already on the database was typed as free text, so the only
 -- honest reason for it is "other" — nobody was ever asked which kind it was.
@@ -279,13 +298,21 @@ begin
       using errcode = '42501';
   end if;
 
-  -- "Missed 1", "Missed 2", … per job. Counts removed ones too, so a code is
-  -- never re-used on a job where somebody already took one back off.
-  select coalesce(max((regexp_match(opening_code, '^Missed ([0-9]+)$'))[1]::int), 0) + 1
+  -- "Missed 1", "Missed 2", … per job. Read off field_unit_seq and not off the
+  -- CODE, because the code is renameable and the number must not be: a job
+  -- where "Missed 1" has been renamed to "W-14", or removed, must still call
+  -- the next one "Missed 2". Every row on the job counts, hidden ones included.
+  --
+  -- The advisory lock is per project and lasts the transaction: two people
+  -- standing in the same house adding a unit in the same second would otherwise
+  -- both read the same max and one of them would meet a raw duplicate-key error
+  -- from project_openings_live_code_key instead of getting their window
+  -- recorded.
+  perform pg_advisory_xact_lock(hashtext('field_unit:' || p_project_id::text));
+  select coalesce(max(field_unit_seq), 0) + 1
     into v_next
     from project_openings
-   where project_id = p_project_id
-     and opening_code ~ '^Missed [0-9]+$';
+   where project_id = p_project_id;
   v_code := 'Missed ' || v_next;
 
   v_style := case when p_kind = 'door'
@@ -295,12 +322,13 @@ begin
   perform set_config('app.field_unit_add', 'on', true);
   insert into project_openings (
     project_id, opening_code, label, page_number, pin_x, pin_y,
-    status, confirmed, flag_kind, flag_note, flagged_by, flagged_at, field_added
+    status, confirmed, flag_kind, flag_note, flagged_by, flagged_at,
+    field_added, field_unit_seq
   ) values (
     p_project_id, v_code, v_style, coalesce(p_page_number, 1),
     p_pin_x, p_pin_y,
     'planned', true, 'not_on_plans',
-    nullif(trim(coalesce(p_note, '')), ''), auth.uid(), now(), true
+    nullif(trim(coalesce(p_note, '')), ''), auth.uid(), now(), true, v_next
   )
   returning * into v_row;
   perform set_config('app.field_unit_add', 'off', true);
@@ -312,7 +340,20 @@ begin
   ) values (
     p_project_id, v_code, v_style, p_width_in, p_height_in, 'field', false
   )
-  on conflict (project_id, mark_code) do nothing;
+  -- AUTHORITATIVE FOR A FIELD ROW. `do nothing` meant a leftover spec under
+  -- this code silently became the new unit's size — a second missed unit
+  -- showing the first one's width and height, which is what a purchase order
+  -- gets cut from. The numbering above should make a collision impossible now;
+  -- if one happens anyway, the measurements somebody just took on site win. A
+  -- row that is not ours, or that a foreman has confirmed, is never touched.
+  on conflict (project_id, mark_code) do update
+     set style = excluded.style,
+         width_in = excluded.width_in,
+         height_in = excluded.height_in,
+         source = 'field',
+         updated_at = now()
+   where project_mark_specs.source = 'field'
+     and coalesce(project_mark_specs.confirmed, false) = false;
 
   if nullif(trim(coalesce(p_photo_path, '')), '') is not null then
     insert into attachments (project_id, project_opening_id, kind, storage_path, created_by)
