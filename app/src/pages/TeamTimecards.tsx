@@ -105,8 +105,13 @@ export function TeamTimecards() {
   const [anchor, setAnchor] = useState<Date>(() => new Date());
   const week = useMemo(() => timecardRange(rangeMode, anchor), [rangeMode, anchor]);
   const stepDays = rangeMode === "pay" ? 14 : 7;
+  // Its OWN cache key — see UnitRecordCard for the whole reason. The app shell
+  // (Layout) holds ["profiles"] with listProfiles on every route, so under the
+  // shared key this list would lose the removed people whenever that observer
+  // refetched last, and a removed person's timecard would go back to reading
+  // "Crew member" with no Removed marker.
   const crew = useQuery({
-    queryKey: ["profiles"],
+    queryKey: ["profilesIncludingRemoved"],
     queryFn: listProfilesIncludingRemoved,
     enabled: isLead,
   });

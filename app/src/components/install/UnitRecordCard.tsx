@@ -70,8 +70,15 @@ export function UnitRecordCard({
     queryFn: () => listOpeningAssignmentEvents(openingId),
     enabled: open,
   });
+  // Its OWN cache key, not the ["profiles"] one twenty other screens share.
+  // React Query caches by key, and every render of every observer on a key
+  // writes its own queryFn onto that one entry — so two lists under one key is
+  // not two lists, it is whichever component rendered last. OpeningSheet, the
+  // screen this card opens on top of, holds ["profiles"] with listProfiles;
+  // sharing the key would mean a removed installer's name stops resolving here
+  // exactly half the time, which is the thing this card was changed to fix.
   const profiles = useQuery({
-    queryKey: ["profiles"],
+    queryKey: ["profilesIncludingRemoved"],
     queryFn: listProfilesIncludingRemoved,
     enabled: open,
     staleTime: 300_000,
