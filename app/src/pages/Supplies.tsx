@@ -482,8 +482,9 @@ function CountForm({
   );
 }
 
-/** Home: the one spot this supply lives (foreman+ — it's the answer the app
- * gives an installer, so somebody accountable sets it). */
+/** Home: the one spot this supply lives. Foreman+ until ADR-0007 — the
+ * person who put the caulk on the shelf is the one who knows which shelf,
+ * and set_supply_home draws the same line now. */
 function HomeForm({
   supply,
   onClose,

@@ -1,8 +1,9 @@
 // Recent trucks, newest first: each delivery is a standby list with an
 // against-the-list score — expected vs arrived — linking to its tailgate
-// screen. Foremen edit here (rename, delete); supervisors also put the
-// truck on the schedule: date + time + who meets it, which lands as a
-// published entry on Scheduling and those members' My Schedule.
+// screen. Any crew member renames a truck here (ADR-0007); deleting one
+// stays foreman+, and supervisors also put the truck on the schedule: date
+// + time + who meets it, which lands as a published entry on Scheduling and
+// those members' My Schedule.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";

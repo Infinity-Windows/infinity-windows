@@ -1,8 +1,10 @@
 // Takeoffs (owner spec + grill, 2026-08-18): the warehouse bundles a job's
-// supplies for a named person. Foreman+ see every takeoff (the shared
-// warehouse inbox — "warehouse manager" is a hat, not a rung); an installer
-// sees the ones for them. Requests come from foremen; ready bundles can be
-// for anyone.
+// supplies for a named person. "Warehouse manager" is a hat, not a rung —
+// and since ADR-0007 (2026-09-04) that is true of the whole screen: every
+// crew member sees the shared warehouse inbox, asks for a bundle, answers a
+// request with a rough when, and marks one ready. The one thing still keyed
+// to a rank is handing a READY bundle to somebody other than the person it
+// was built for.
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -232,7 +234,8 @@ export function Takeoffs() {
               void sendPush({
                 profileIds: foremanIds,
                 title: `Supply request — ${jobCode.get(created.project_id) ?? "a job"}`,
-                body: "A foreman needs a takeoff built.",
+                // Not "a foreman" any more: anyone on the crew can ask.
+                body: "Somebody needs a takeoff built.",
                 tag: `takeoff-${created.id}`,
                 url: "/takeoffs",
               });
