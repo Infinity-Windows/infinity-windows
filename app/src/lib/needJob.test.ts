@@ -56,6 +56,22 @@ describe("needJobAudience", () => {
     const audience = needJobAudience(["s1"], ALL, "i1");
     expect(audience.filter((id) => id === "s1")).toHaveLength(1);
   });
+
+  it("never rings a login that was removed for good", () => {
+    // Both halves of the union have to drop them: the backstop (a removed
+    // supervisor) and the on-shift half (a removed foreman with a shift nobody
+    // closed). The ban means their phone could not sign in anyway — the point
+    // is that "a lead was told" must not be true when nobody was.
+    const gone = [
+      ...ALL,
+      { id: "s2", role: "supervisor", retired_at: "2026-09-04T00:00:00Z" },
+      { id: "f3", role: "foreman", retired_at: "2026-09-04T00:00:00Z" },
+    ];
+    const audience = needJobAudience(["f3"], gone, "i1");
+    expect(audience).not.toContain("s2");
+    expect(audience).not.toContain("f3");
+    expect(audience.sort()).toEqual(["o1", "s1"]);
+  });
 });
 
 describe("requestJobForClockIn", () => {

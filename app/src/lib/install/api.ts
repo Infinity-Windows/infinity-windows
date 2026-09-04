@@ -63,10 +63,11 @@ async function actor(): Promise<string | null> {
 // may read, so `select("*")` against it fails by design. Add a column here only
 // after a migration grants SELECT on it to `authenticated`.
 export const PROFILE_COLS =
-  "id, display_name, skill_level, role, active, language, can_see_costs, can_see_pay, created_at, updated_at";
+  "id, display_name, skill_level, role, active, language, can_see_costs, can_see_pay, retired_at, created_at, updated_at";
 
 /**
- * The same list without wave Z's two grant columns (20260978000000).
+ * The columns a database might not have yet, newest first, with the name the
+ * error will mention.
  *
  * Not a nicety: `profiles` is the FIRST thing every screen reads — the role
  * behind every guard comes from here — so asking for a column a database has
@@ -74,14 +75,18 @@ export const PROFILE_COLS =
  * the whole company. The frontend and the backend deploy as separate
  * workflows, and the backend one has silently failed before, so "the app is
  * live and the migration is not" is a state that really happens.
+ *
+ * Newest first because Postgres names one missing column per error: a database
+ * missing both drops `retired_at`, retries, is told about `can_see_costs`, and
+ * drops that too.
  */
-const PROFILE_COLS_WITHOUT_GRANTS = PROFILE_COLS.replace(
-  ", can_see_costs, can_see_pay",
-  "",
-);
+const OPTIONAL_PROFILE_COLS: readonly { column: string; inList: string }[] = [
+  { column: "retired_at", inList: ", retired_at" },
+  { column: "can_see_costs", inList: ", can_see_costs, can_see_pay" },
+];
 
-/** Narrowed once, for the life of the tab, the first time the database says it
- * has no grant columns. One extra round trip on one read, never on every one. */
+/** Narrowed for the life of the tab, the first time the database says it has
+ * no such column. One extra round trip on one read, never on every one. */
 let profileCols = PROFILE_COLS;
 
 // `data` is `unknown` because a `.select()` given a runtime string (rather than
@@ -90,16 +95,20 @@ let profileCols = PROFILE_COLS;
 async function readProfiles(
   run: (cols: string) => PromiseLike<{ data: unknown; error: unknown }>,
 ): Promise<{ data: unknown; error: unknown }> {
-  const first = await run(profileCols);
-  if (
-    first.error &&
-    profileCols !== PROFILE_COLS_WITHOUT_GRANTS &&
-    isMissingColumn(first.error, "can_see_costs")
-  ) {
-    profileCols = PROFILE_COLS_WITHOUT_GRANTS;
-    return run(profileCols);
+  let result = await run(profileCols);
+  // One retry per optional column, so a database missing all of them still
+  // lands on a list it can answer rather than failing on the second one.
+  for (let attempt = 0; attempt < OPTIONAL_PROFILE_COLS.length; attempt++) {
+    if (!result.error) return result;
+    const dropped = OPTIONAL_PROFILE_COLS.find(
+      (c) =>
+        profileCols.includes(c.inList) && isMissingColumn(result.error, c.column),
+    );
+    if (!dropped) return result;
+    profileCols = profileCols.replace(dropped.inList, "");
+    result = await run(profileCols);
   }
-  return first;
+  return result;
 }
 
 /** Emails that auto-promote to Owner on first/any sign-in. */
@@ -217,7 +226,35 @@ export async function getMyProfile(): Promise<Profile | null> {
   return me;
 }
 
+/**
+ * Everyone this app may still OFFER — the default, and the one every picker,
+ * schedule, push audience and @-mention list should use.
+ *
+ * Removed logins are left out. A person whose login was removed for good
+ * (20260987000000) must not turn up in an assignment picker, on the crew board,
+ * or in a push audience — they are gone, and offering them is how somebody ends
+ * up assigned to nobody. Excluding them HERE rather than at each picker is
+ * deliberate: it makes the safe answer the default, so a picker written next
+ * month gets it without anybody remembering.
+ *
+ * The screens that read back who DID something — the roster, timecards, a
+ * unit's Record — want the removed people too, and call
+ * listProfilesIncludingRemoved() instead.
+ */
 export async function listProfiles(): Promise<Profile[]> {
+  const everyone = await listProfilesIncludingRemoved();
+  return everyone.filter((p) => !p.retired_at);
+}
+
+/**
+ * Everyone who ever had a login, removed people included.
+ *
+ * For the screens that put a NAME on finished work: the roster (which shows a
+ * removed person greyed out and marked Removed), timecards, a unit's Record.
+ * Their name is kept exactly as it was — renaming years of finished work into
+ * "Removed" would be a worse lie than the one it fixed.
+ */
+export async function listProfilesIncludingRemoved(): Promise<Profile[]> {
   const { data, error } = await readProfiles((cols) =>
     supabase
       .from("profiles")
@@ -252,6 +289,14 @@ export interface AccessRequest {
   requested_role: string;
   note: string | null;
   status: "pending" | "approved" | "denied";
+  /** Who decided it. Null while pending, and after a Re-open. */
+  decided_by: string | null;
+  decided_at: string | null;
+  /**
+   * Why, in the decider's own words. Optional, and absent (rather than null)
+   * on a database that predates 20260987000000.
+   */
+  decision_note?: string | null;
   created_at: string;
 }
 
@@ -281,15 +326,64 @@ export async function listAccessRequests(): Promise<AccessRequest[]> {
   return (data ?? []) as AccessRequest[];
 }
 
+/**
+ * Deny a request (with an optional reason) or re-open a denied one.
+ *
+ * Goes through the RPC, not a PATCH: `decide_access_request` is SECURITY
+ * DEFINER, stamps `decided_by` from the verified session rather than from
+ * anything the browser sends, and refuses to write 'approved' at all —
+ * approving means an account now exists, and only the approve-access-request
+ * edge function can make that true. Before 20260987000000 the table's own
+ * policy let ANY signed-in user write any of this, which is the hole this
+ * closes.
+ *
+ * Falls back to the plain update on a database that has not had the migration
+ * yet, so a phone ahead of the deploy can still clear its queue.
+ */
 export async function decideAccessRequest(
   id: string,
-  status: "approved" | "denied",
+  status: "denied" | "pending",
+  note?: string | null,
 ): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabase.rpc("decide_access_request", {
+    p_id: id,
+    p_status: status,
+    p_note: note?.trim() || null,
+  });
+  if (!error) return;
+  if (!isMissingFunction(error)) throw error;
+
+  const { error: fallbackErr } = await supabase
     .from("access_requests")
-    .update({ status, decided_at: new Date().toISOString() })
+    .update({
+      status,
+      decided_at: status === "pending" ? null : new Date().toISOString(),
+    })
     .eq("id", id);
-  if (error) throw error;
+  if (fallbackErr) throw fallbackErr;
+}
+
+/**
+ * File a request from somebody who already has a login.
+ *
+ * Not a client-side write of 'approved' — see decideAccessRequest above. The
+ * edge function does it on the service role and writes the note that stops the
+ * row reading as though this queue made the account.
+ */
+export async function markRequestAlreadyLinked(id: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke(
+    "approve-access-request",
+    { body: { request_id: id, action: "mark_already_linked" } },
+  );
+  if (error) {
+    const context = (error as { context?: Response }).context;
+    if (context && typeof context.json === "function") {
+      const body = await context.json().catch(() => null);
+      if (body?.error) throw new Error(String(body.error));
+    }
+    throw error;
+  }
+  if (data?.error) throw new Error(String(data.error));
 }
 
 export interface ApprovedAccount {
@@ -311,6 +405,26 @@ export interface ApprovedAccount {
  * the `approve-access-request` edge function; it lands them as an installer and
  * hands back a one-time password to pass on.
  */
+/**
+ * An error from the approve function that the screen can act on rather than
+ * only print. Today there is one: the email already has an account, which is
+ * the commonest thing that goes wrong in this queue and the one the Admin
+ * screen offers a one-tap answer to.
+ */
+export class ApproveAccessError extends Error {
+  readonly code: string | null;
+  constructor(message: string, code: string | null) {
+    super(message);
+    this.name = "ApproveAccessError";
+    this.code = code;
+  }
+}
+
+/** True when this request's person already has a login, so nothing was made. */
+export function isAlreadyHasLogin(err: unknown): boolean {
+  return err instanceof ApproveAccessError && err.code === "already_has_login";
+}
+
 export async function approveAccessRequest(
   id: string,
 ): Promise<ApprovedAccount> {
@@ -326,11 +440,21 @@ export async function approveAccessRequest(
     const context = (error as { context?: Response }).context;
     if (context && typeof context.json === "function") {
       const body = await context.json().catch(() => null);
-      if (body?.error) throw new Error(String(body.error));
+      if (body?.error) {
+        throw new ApproveAccessError(
+          String(body.error),
+          typeof body.code === "string" ? body.code : null,
+        );
+      }
     }
     throw error;
   }
-  if (data?.error) throw new Error(String(data.error));
+  if (data?.error) {
+    throw new ApproveAccessError(
+      String(data.error),
+      typeof data.code === "string" ? data.code : null,
+    );
+  }
   return data as ApprovedAccount;
 }
 

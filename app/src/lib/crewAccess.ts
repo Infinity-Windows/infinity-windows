@@ -17,6 +17,11 @@ import type {
   CrewInviteRow,
   CrewRoleName,
 } from "../../../supabase/functions/_shared/crewInvites";
+import type {
+  HistoryCounts,
+  PurgeShape,
+} from "../../../supabase/functions/_shared/purgeLogin";
+import { isMissingColumn } from "./schemaErrors";
 
 /** One person who has (or had) a login. */
 export interface CrewAccessMember {
@@ -26,6 +31,13 @@ export interface CrewAccessMember {
   active: boolean | null;
   /** Non-null means their login has been switched off. */
   access_revoked_at: string | null;
+  /**
+   * Non-null means the login was removed for good and its email handed back —
+   * there is nothing to switch back on. Absent (rather than null) on a database
+   * that predates 20260987000000.
+   */
+  retired_at?: string | null;
+  retired_by?: string | null;
   created_at: string | null;
 }
 
@@ -59,14 +71,35 @@ async function invokeCrewAccess<T>(body: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 
-/** Everyone with a profile, most recently added first. */
+const ACCESS_COLS =
+  "id, display_name, role, active, access_revoked_at, retired_at, retired_by, created_at";
+/** The same list before 20260987000000 widened the view. */
+const ACCESS_COLS_WITHOUT_RETIRED = ACCESS_COLS.replace(
+  ", retired_at, retired_by",
+  "",
+);
+
+/**
+ * Everyone with a profile, by name.
+ *
+ * The retired columns are asked for and dropped on a database that has not had
+ * 20260987000000 yet: the frontend and the backend deploy as separate
+ * workflows and the backend one has silently failed before, so "the app is live
+ * and the migration is not" is a state that really happens. Failing the read
+ * would take the whole Crew access screen — including Add someone — down with
+ * it, which is a worse answer than a screen with no Remove-for-good button.
+ */
 export async function listCrewAccess(): Promise<CrewAccessMember[]> {
-  const { data, error } = await supabase
-    .from("crew_access_directory")
-    .select("id, display_name, role, active, access_revoked_at, created_at")
-    .order("display_name");
-  if (error) throw error;
-  return (data ?? []) as CrewAccessMember[];
+  const read = (cols: string) =>
+    supabase.from("crew_access_directory").select(cols).order("display_name");
+  const first = await read(ACCESS_COLS);
+  if (first.error && isMissingColumn(first.error, "retired_at")) {
+    const second = await read(ACCESS_COLS_WITHOUT_RETIRED);
+    if (second.error) throw second.error;
+    return (second.data ?? []) as unknown as CrewAccessMember[];
+  }
+  if (first.error) throw first.error;
+  return (first.data ?? []) as unknown as CrewAccessMember[];
 }
 
 /**
@@ -131,6 +164,49 @@ export async function removeCrewAccess(userId: string): Promise<void> {
 
 export async function restoreCrewAccess(userId: string): Promise<void> {
   await invokeCrewAccess({ action: "restore_access", user_id: userId });
+}
+
+/** What "Remove this login…" is about to do, before it does any of it. */
+export interface PurgePreview {
+  user_id: string;
+  display_name: string | null;
+  counts: HistoryCounts;
+  shape: PurgeShape;
+}
+
+/**
+ * Count what this person has on file and say which of the two things would
+ * happen. Read-only — it writes nothing, and it runs every refusal the real
+ * call would, so the confirm sheet never promises something the next tap
+ * refuses.
+ */
+export async function previewPurgeLogin(userId: string): Promise<PurgePreview> {
+  return await invokeCrewAccess<PurgePreview>({
+    action: "purge_login_preview",
+    user_id: userId,
+  });
+}
+
+export interface PurgeResult {
+  shape: PurgeShape;
+  email_released: boolean;
+  display_name: string | null;
+}
+
+/**
+ * Remove a login for good.
+ *
+ * Nothing on file → the account is deleted and the email is free. Anything on
+ * file → nothing is deleted: the login is closed, the email is handed back, and
+ * every record stays under the same profile. The server decides which, by
+ * counting — see supabase/functions/_shared/purgeLogin.ts — and says which it
+ * did, so the screen reports what happened rather than what it expected.
+ */
+export async function purgeCrewLogin(userId: string): Promise<PurgeResult> {
+  return await invokeCrewAccess<PurgeResult>({
+    action: "purge_login",
+    user_id: userId,
+  });
 }
 
 export interface InvitePreview {

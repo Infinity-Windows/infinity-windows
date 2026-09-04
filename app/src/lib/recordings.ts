@@ -15,6 +15,7 @@
 
 import { supabase } from "./supabase";
 import { isMissingFunction } from "./schemaErrors";
+import { isTombstoneEmail } from "../../../supabase/functions/_shared/purgeLogin";
 
 /** The minimal projection foreman_contacts_for_me() answers with: a name to
  * show and an address to send to, and deliberately nothing else. */
@@ -57,6 +58,15 @@ export function mailAddresses(contacts: ForemanContact[]): string[] {
   const out: string[] = [];
   for (const c of contacts) {
     const address = (c.contact_email ?? "").trim();
+    // A removed login's address is `<uid>@removed.invalid` — a real-looking
+    // address on the reserved .invalid TLD, so PLAIN_ADDRESS lets it through.
+    // The database is supposed to have dropped it already
+    // (foreman_contacts_for_me filters retired_at, 20260987000000), and this is
+    // the second lock on the one door that hands a raw address to a phone: on a
+    // database that has not had that migration yet, or if `active` is ever
+    // toggled back on by mistake, a mail composer would otherwise open
+    // addressed to a mailbox that cannot exist.
+    if (isTombstoneEmail(address)) continue;
     if (!PLAIN_ADDRESS.test(address)) continue;
     const key = address.toLowerCase();
     if (seen.has(key)) continue;

@@ -12,7 +12,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listProjects } from "../lib/api";
 import { Explain } from "../components/ui/Explain";
-import { listOpenings, listProfiles } from "../lib/install/api";
+import { listOpenings, listProfilesIncludingRemoved } from "../lib/install/api";
 import { listOpeningPhases, flashingOutstanding } from "../lib/install/phases";
 import {
   listOpenRedos,
@@ -94,7 +94,10 @@ const RUNG_LABELS: Record<LadderRung, string> = {
 export function DataHub() {
   const t = useT();
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
-  const profiles = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
+  const profiles = useQuery({
+    queryKey: ["profilesIncludingRemoved"],
+    queryFn: listProfilesIncludingRemoved,
+  });
   const [jobFilter, setJobFilter] = useState<string>("all");
   const [showPeople, setShowPeople] = useState(false);
 

@@ -22,7 +22,7 @@ import {
   assignmentText,
   listProjectAssignmentEvents,
 } from "../../lib/install/assignmentHistory";
-import { listOpenings, listProfiles } from "../../lib/install/api";
+import { listOpenings, listProfilesIncludingRemoved } from "../../lib/install/api";
 import { useT } from "../../lib/i18n";
 
 export function AssignmentHistoryCard({ projectId }: { projectId: string }) {
@@ -41,7 +41,11 @@ export function AssignmentHistoryCard({ projectId }: { projectId: string }) {
     queryFn: () => listOpenings(projectId),
     enabled: open,
   });
-  const crew = useQuery({ queryKey: ["profiles"], queryFn: listProfiles, enabled: open });
+  const crew = useQuery({
+    queryKey: ["profilesIncludingRemoved"],
+    queryFn: listProfilesIncludingRemoved,
+    enabled: open,
+  });
 
   const rows = events.data ?? [];
   const codeOf = (id: string) =>

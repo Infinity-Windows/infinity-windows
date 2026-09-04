@@ -45,6 +45,21 @@ describe("mailAddresses", () => {
       ]),
     ).toEqual([]);
   });
+
+  it("drops a removed login's tombstone address", () => {
+    // `<uid>@removed.invalid` looks like a real address and passes every other
+    // check here, but nobody can receive mail at it — .invalid is reserved so
+    // that it never can be. The database is meant to have dropped it already
+    // (foreman_contacts_for_me filters retired_at); this is the second lock,
+    // for a phone whose database has not had that migration yet, or for a
+    // roster where somebody switched a removed person back to "on site today".
+    expect(
+      mailAddresses([
+        contact("11111111-2222-4333-8444-555555555555@removed.invalid"),
+        contact("jed@forgewd.com"),
+      ]),
+    ).toEqual(["jed@forgewd.com"]);
+  });
 });
 
 describe("buildRecordingMail", () => {

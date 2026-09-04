@@ -19,8 +19,13 @@ import { listClockedInAnywhere } from "./install/summons";
 import { sendPush } from "./permissions/pushServer";
 
 /** The bit of a profile the audience math reads. `role` is left loose (raw
- * string tolerated) — isForemanPlus/isSupervisorPlus already normalise it. */
-type RoledProfile = { id: string; role?: CrewRole | string | null };
+ * string tolerated) — isForemanPlus/isSupervisorPlus already normalise it.
+ * `retired_at` rides along so a removed login can never be rung. */
+type RoledProfile = {
+  id: string;
+  role?: CrewRole | string | null;
+  retired_at?: string | null;
+};
 
 /**
  * Who a "need a job" request rings: every foreman+ currently clocked in (any
@@ -37,7 +42,13 @@ export function needJobAudience(
   profiles: readonly RoledProfile[],
   callerId: string | null | undefined,
 ): string[] {
-  const byId = new Map(profiles.map((p) => [p.id, p]));
+  // A removed login is filtered here as well as by listProfiles, because this
+  // function is the thing under test and the rule belongs where it is proved.
+  // The clocked-in list is ids off open shifts and carries no roles, so a
+  // removed person with a shift nobody closed is only ever excluded by not
+  // being in `byId` — which is exactly what this filter guarantees.
+  const live = profiles.filter((p) => !p.retired_at);
+  const byId = new Map(live.map((p) => [p.id, p]));
   const set = new Set<string>();
   // Foreman+ who are on the clock right now.
   for (const id of clockedInIds) {
@@ -45,7 +56,7 @@ export function needJobAudience(
     if (p && isForemanPlus(p.role)) set.add(id);
   }
   // Every supervisor+, on shift or not — the backstop.
-  for (const p of profiles) {
+  for (const p of live) {
     if (p.id && isSupervisorPlus(p.role)) set.add(p.id);
   }
   if (callerId) set.delete(callerId);
