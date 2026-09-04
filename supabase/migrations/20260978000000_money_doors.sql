@@ -787,6 +787,98 @@ comment on function public.review_receipt(uuid, boolean) is
   'Supervisor+ marks (or unmarks) a receipt reviewed. Reviewing one that names a job posts its single job_costs line (Wave Z, Z4); un-reviewing leaves that line standing, because the money was still spent.';
 
 
+-- ---- who may still edit a receipt once it has posted ----------------------
+-- update_receipt is uploader-OR-supervisor (20260957000000): the installer who
+-- snapped the photo can fix up their own receipt, which is right, because they
+-- are the one who knows what they bought.
+--
+-- It stops being right the moment that receipt becomes a line in the cost
+-- ledger. From then on the same call would move a posted ledger line — its
+-- amount, its date, its label, its billable flag, even which JOB it is on —
+-- through the sync trigger below, which runs as the table owner. A supervisor
+-- reviewed that line; nobody would review it again, and nothing would say it
+-- moved. That is a write path from an installer's phone into the company's
+-- books, and it needs closing at the source rather than in the trigger, so the
+-- refusal is a sentence a person reads instead of a silent no-op.
+--
+-- Supervisor+ keeps the edit, because the spec's own rule is that fixing the
+-- amount afterwards moves the line with it — the office is who does that.
+-- Everything else about this function is byte-for-byte 20260957000000's.
+create or replace function public.update_receipt(
+  p_id uuid,
+  p_project_id uuid,
+  p_pending_job_name text,
+  p_amount_cents int,
+  p_vendor text,
+  p_purchased_on date,
+  p_category text,
+  p_is_passthrough boolean,
+  p_note text
+)
+returns receipts
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_uploader uuid;
+  v_job_cost uuid;
+  v_pending text := nullif(btrim(coalesce(p_pending_job_name, '')), '');
+  v_row receipts;
+begin
+  select uploaded_by, job_cost_id into v_uploader, v_job_cost
+    from receipts where id = p_id;
+  if v_uploader is null then
+    raise exception 'no such receipt';
+  end if;
+  if not (v_uid = v_uploader or public.my_role_rank() >= 2) then
+    raise exception 'only the uploader or a supervisor can edit this receipt'
+      using errcode = '42501';
+  end if;
+  -- Wave Z: posted is posted. The uploader's own edit stops here.
+  if v_job_cost is not null and public.my_role_rank() < 2 then
+    raise exception 'This receipt is already on the job''s costs. Ask the office to change it.'
+      using errcode = '42501';
+  end if;
+  if p_project_id is not null and v_pending is not null then
+    raise exception 'a receipt names a real job or a waiting-job name, never both';
+  end if;
+  if p_category is not null and p_category not in ('gas', 'other') then
+    raise exception 'category must be gas or other';
+  end if;
+  if p_amount_cents is not null and p_amount_cents < 0 then
+    raise exception 'amount cannot be negative';
+  end if;
+
+  update receipts set
+    project_id      = p_project_id,
+    pending_job_name = v_pending,
+    amount_cents    = p_amount_cents,
+    vendor          = nullif(btrim(coalesce(p_vendor, '')), ''),
+    purchased_on    = p_purchased_on,
+    category        = p_category,
+    category_by     = case
+      when p_category is null then null
+      when category is distinct from p_category then 'manual'
+      else category_by
+    end,
+    is_passthrough  = p_is_passthrough,
+    note            = nullif(btrim(coalesce(p_note, '')), '')
+  where id = p_id
+  returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
+comment on function public.update_receipt(uuid, uuid, text, int, text, date, text, boolean, text) is
+  'Uploader-or-supervisor field edits (full-record overwrite, file_daily_log-style). Changing category here pins category_by=''manual'' forever; resending the same category value leaves its provenance untouched. Wave Z: once the receipt has posted to job_costs only a supervisor+ may edit it, because the edit moves a reviewed ledger line.';
+
+revoke all on function public.update_receipt(uuid, uuid, text, int, text, date, text, boolean, text) from public, anon;
+grant execute on function public.update_receipt(uuid, uuid, text, int, text, date, text, boolean, text) to authenticated;
+
+
 -- ---- the posted line follows the receipt ----------------------------------
 -- Editing a receipt's amount after it posted has to move the ledger line with
 -- it, or the two disagree and the receipt photo stops being evidence for the
