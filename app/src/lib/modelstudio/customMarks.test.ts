@@ -89,6 +89,8 @@ describe("buildCustomMarkRegistrationPayload", () => {
       operation: "Window",
       source: "manual",
       confirmed: true,
+      unit_kind: "window",
+      door_kind: null,
     });
   });
 
@@ -96,5 +98,15 @@ describe("buildCustomMarkRegistrationPayload", () => {
     const [mark] = selectNewCustomMarks([{ code: "D-11", kind: "door", wMm: 900, hMm: 2100 }], []);
     const payload = buildCustomMarkRegistrationPayload("proj-1", mark);
     expect(payload.spec.operation).toBe("Door");
+  });
+
+  // A Studio unit is named, not described: there is no style line saying which
+  // door it is. "other" is the honest answer, and the one the counts view has a
+  // bucket for — better than filing every hand-named door as a swing.
+  it("a door is stored as a door of no stated kind", () => {
+    const [mark] = selectNewCustomMarks([{ code: "D-11", kind: "door", wMm: 900, hMm: 2100 }], []);
+    const payload = buildCustomMarkRegistrationPayload("proj-1", mark);
+    expect(payload.spec.unit_kind).toBe("door");
+    expect(payload.spec.door_kind).toBe("other");
   });
 });

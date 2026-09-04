@@ -5,6 +5,7 @@
 import { supabase } from "../supabase";
 import { isMissingTable } from "../schemaErrors";
 import type { ProjectMarkSpec } from "../install/specs";
+import { specKindColumns } from "../install/unitKind";
 
 export type UnitKind = "window" | "door";
 export type Mechanism = "fixed" | "slider" | "bifold" | "casement" | "hung";
@@ -472,21 +473,39 @@ export function specToUnitConfig(spec: ProjectMarkSpec): UnitConfig | null {
   const h = spec.height_in != null ? spec.height_in * IN_TO_MM : null;
   if (!w || !h || w < 200 || h < 200) return null;
   const op = (spec.operation ?? "").trim().toUpperCase();
-  const style = (spec.style ?? "").toLowerCase();
-  const isDoor = /door|slider door|patio/.test(style);
+  // Window-or-door, and WHICH door, both come from the one classifier the
+  // whole app shares (wave X). This file used to answer both questions itself,
+  // and its answers had drifted from everyone else's in two ways worth
+  // remembering:
+  //
+  //   - `/door|patio/` with no word boundary made "Outdoor living room" a
+  //     door, so a fixed pane was drafted as one here while the map, the job
+  //     card and the counts all called it a window.
+  //   - the slide test searched the whole style-plus-operation string, so
+  //     "French Door with sliding screen" came out a slider — the very bug
+  //     (owner, live pilot 2026-09-02: Mad Moose's French doors drew as
+  //     sliders) this line was added to fix. `doorKind` takes the FIRST kind
+  //     word by position instead, because a supplier writes the unit first and
+  //     its neighbours after.
+  //
+  // One rule, one home. Changing how a door is read is now a change to
+  // specKinds.mjs, and it reaches the drawing and the count together.
+  const { unit_kind, door_kind } = specKindColumns(spec);
+  const isDoor = unit_kind === "door";
   const kind: UnitKind = isDoor ? "door" : "window";
   const frameColor = frameColorFromSpecColor(spec.color);
 
-  // A door either SLIDES or SWINGS, and the two are drawn differently — a
-  // slide arrow vs the casement hinge "V". `isDoor` above already counts
-  // sliders as doors; this is the sub-distinction (owner, live pilot
-  // 2026-09-02: Mad Moose's French doors were drawing as sliders). Only a
-  // "slider"/"patio" door slides; a "French Door", a swing/hinged door, a
-  // storefront entry all swing. Read style AND operation so either naming
-  // reaches the same answer. Windows never swing here — this is door-only.
-  const isSlide = /slid|patio/i.test(`${style} ${op}`);
-  const operableMechanism: Mechanism =
-    kind === "door" && !isSlide ? "casement" : "slider";
+  // A door either SLIDES, FOLDS or SWINGS, and the three are drawn
+  // differently — a slide arrow, a zig-zag, the casement hinge "V". A window's
+  // operable panes are always drawn as sliders here; this distinction is
+  // door-only.
+  const operableMechanism: Mechanism = !isDoor
+    ? "slider"
+    : door_kind === "slider"
+      ? "slider"
+      : door_kind === "bifold"
+        ? "bifold"
+        : "casement";
 
   // The extractor's drawing read wins: EXACT per-panel widths (window 16's
   // 30¼ | 88½ | 90 | 87¾ | 17) + per-panel ops + the 90° corner, straight
@@ -542,11 +561,12 @@ export function specToUnitConfig(spec: ProjectMarkSpec): UnitConfig | null {
     panels = [{ widthMm: w, mechanism: "casement", direction: "left" }];
   } else if (/HUNG|SH|DH/.test(op)) {
     panels = [{ widthMm: w, mechanism: "hung" }];
-  } else if (kind === "door" && !isSlide) {
-    // A swinging door with no drawn panels and no operation we recognized
-    // (a bare "French Door") still swings — fall to a single casement leaf,
-    // not a fixed pane. Sliding/patio doors and every window stay "fixed".
-    panels = [{ widthMm: w, mechanism: "casement", direction: "left" }];
+  } else if (kind === "door" && operableMechanism !== "slider") {
+    // A door that does not slide, with no drawn panels and no operation we
+    // recognized (a bare "French Door") still OPENS — fall to a single leaf
+    // drawn the way its kind opens, not a fixed pane. Sliding and patio doors
+    // and every window stay "fixed".
+    panels = [{ widthMm: w, mechanism: operableMechanism, direction: "left" }];
   } else {
     panels = [{ widthMm: w, mechanism: "fixed" }];
   }
@@ -561,8 +581,9 @@ export function specToUnitConfig(spec: ProjectMarkSpec): UnitConfig | null {
  * details live in the config, not the name.
  */
 export function specImportName(spec: ProjectMarkSpec, jobCode?: string | null): string {
-  const style = (spec.style ?? "").toLowerCase();
-  const isDoor = /door|slider door|patio/.test(style);
+  // The same one classifier specToUnitConfig uses, so a mark cannot be named
+  // "Door 4" here and counted as a window on the job card.
+  const isDoor = specKindColumns(spec).unit_kind === "door";
   const base = `${isDoor ? "Door" : "Window"} ${spec.mark_code}`;
   return jobCode ? `${base} · ${jobCode}` : base;
 }

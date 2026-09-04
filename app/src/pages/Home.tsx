@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Bell, MessagesSquare } from "lucide-react";
 import { QueryError, SkeletonList } from "../components/ui/States";
-import { listProjects } from "../lib/api";
+import { listProjects, listScopeCounts } from "../lib/api";
 import { orderMyWork } from "../lib/dispatch";
 import { toDispatchOpening } from "../lib/install/nextOpening";
 import { openingReadiness } from "../lib/install/fit";
@@ -28,11 +28,6 @@ import { listAssignments } from "../lib/schedule/api";
 import { ToolboxTalkNagBanner } from "../components/time/ToolboxTalkNagBanner";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
 import { totalUnread } from "../lib/chat/unread";
-
-interface OpeningCountRow {
-  project_id: string;
-  status: "planned" | "assigned" | "installed";
-}
 
 function initialsFrom(name: string | null | undefined): string {
   if (!name?.trim()) return "∞";
@@ -123,16 +118,9 @@ export function Home() {
     queryFn: () => listAssignments(todayISO, todayISO),
     enabled: foreman,
   });
-  const openingCounts = useQuery({
-    queryKey: ["openingCounts"],
-    queryFn: async (): Promise<OpeningCountRow[]> => {
-      const { data, error } = await supabase
-        .from("project_openings")
-        .select("project_id, status");
-      if (error) throw error;
-      return data as OpeningCountRow[];
-    },
-  });
+  // Wave X: counted in the database, one row per job. This used to pull every
+  // opening row on the company down to the phone to count them here.
+  const openingCounts = useQuery({ queryKey: ["scopeCounts"], queryFn: listScopeCounts });
 
   // The flashing alarm (owner, 2026-08-17): windows waiting on flashing
   // with NOBODY on a flash run is a dispatch failure — it leads the
@@ -212,9 +200,9 @@ export function Home() {
   const crews = (todayCrews.data ?? []).filter((a) => a.status === "published");
 
   const projectCards = (projects.data ?? []).slice(0, 6).map((p) => {
-    const oc = (openingCounts.data ?? []).filter((r) => r.project_id === p.id);
-    const total = oc.length;
-    const installed = oc.filter((r) => r.status === "installed").length;
+    const oc = openingCounts.data?.[p.id];
+    const total = oc?.openings ?? 0;
+    const installed = oc?.installed ?? 0;
     const pct = total > 0 ? Math.round((installed / total) * 100) : 0;
     const pctColor =
       pct >= 80 ? "var(--ok)" : pct >= 40 ? "var(--accent)" : "var(--warn)";
