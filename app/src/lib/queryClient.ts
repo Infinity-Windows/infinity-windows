@@ -39,7 +39,7 @@ export const persister =
 const OFFLINE_KEYS = new Set([
   "projects",
   "openings",
-  "openingCounts",
+  "scopeCounts",
   "projectWindows",
   // "Where is it?" from the last good read. A conex is a metal box with no
   // bars, and the harder half of working in one is READING — you have to find

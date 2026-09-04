@@ -16,6 +16,8 @@ import type {
   WindowUnit,
 } from "./types";
 import { quickJobName, quickTrackingJobCode } from "./quickJobs";
+import { isMissingColumn, isMissingTable } from "./schemaErrors";
+import type { ScopeCounts } from "./scope";
 
 const WINDOW_SELECT =
   "*, window_types(*), locations(*), projects(*)";
@@ -59,6 +61,88 @@ export async function listProjects(): Promise<Project[]> {
     .order("name");
   if (error) throw error;
   return data;
+}
+
+/** The columns of project_scope_counts, named rather than `*` — house rule. */
+const SCOPE_COUNT_COLS =
+  "project_id, openings, installed, windows, doors, door_sliders, door_french, door_bifold, door_swing, door_other, unknown_units";
+
+/** A job with no openings at all still has a row to show: all zeroes. */
+function emptyScope(projectId: string): ScopeCounts {
+  return {
+    project_id: projectId,
+    openings: 0,
+    installed: 0,
+    windows: 0,
+    doors: 0,
+    door_sliders: 0,
+    door_french: 0,
+    door_bifold: 0,
+    door_swing: 0,
+    door_other: 0,
+    unknown_units: 0,
+  };
+}
+
+/**
+ * How many openings, windows and doors every job has — counted in the database
+ * (wave X, `project_scope_counts`), one grouped row per job.
+ *
+ * This REPLACES pulling every opening row on the company down to the phone and
+ * counting them in JavaScript, which is what the jobs list used to do. The view
+ * is SECURITY INVOKER, so a job the reader cannot see cannot appear here.
+ *
+ * A database without the view yet falls back to that old whole-table read, so a
+ * phone ahead of the migration still shows its openings and its progress bar.
+ * That fallback exists only for the gap between this shipping and the migration
+ * deploying — once the view is live everywhere it can go, and nothing else
+ * reads openings that way any more.
+ */
+export async function listScopeCounts(): Promise<Map<string, ScopeCounts>> {
+  const { data, error } = await supabase
+    .from("project_scope_counts")
+    .select(SCOPE_COUNT_COLS);
+  if (error) {
+    if (isMissingTable(error, "project_scope_counts")) return legacyOpeningCounts();
+    throw error;
+  }
+  return new Map((data as ScopeCounts[]).map((row) => [row.project_id, row]));
+}
+
+/** One job's counts. Absent (a job with nothing on it) reads as all zeroes. */
+export async function getScopeCounts(projectId: string): Promise<ScopeCounts> {
+  const { data, error } = await supabase
+    .from("project_scope_counts")
+    .select(SCOPE_COUNT_COLS)
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (error) {
+    if (isMissingTable(error, "project_scope_counts")) {
+      return (await legacyOpeningCounts()).get(projectId) ?? emptyScope(projectId);
+    }
+    throw error;
+  }
+  return (data as ScopeCounts | null) ?? emptyScope(projectId);
+}
+
+/**
+ * The pre-view read: every opening row, counted here. Kept ONLY as the degrade
+ * path above — openings and installed, no kinds, which is exactly what the app
+ * knew before the counts view existed.
+ */
+async function legacyOpeningCounts(): Promise<Map<string, ScopeCounts>> {
+  const { data, error } = await supabase
+    .from("project_openings")
+    .select("project_id, status");
+  if (error) throw error;
+  const byProject = new Map<string, ScopeCounts>();
+  for (const row of (data ?? []) as { project_id: string; status: string }[]) {
+    const counts = byProject.get(row.project_id) ?? emptyScope(row.project_id);
+    counts.openings += 1;
+    if (row.status === "installed") counts.installed += 1;
+    byProject.set(row.project_id, counts);
+  }
+  return byProject;
 }
 
 /**
@@ -170,6 +254,9 @@ export interface ProjectDetailsInput {
   startDate?: string | null;
   endDate?: string | null;
   notes?: string | null;
+  /** Wave X: how many storeys the building has, typed by a person. A traced 3D
+   * model beats it for display and never writes back into it (lib/scope.ts). */
+  stories?: number | null;
 }
 
 export interface CreateProjectInput extends ProjectDetailsInput {
@@ -180,8 +267,17 @@ export interface CreateProjectInput extends ProjectDetailsInput {
 const clean = (value: string | null | undefined): string | null =>
   value?.trim() ? value.trim() : null;
 
+/** A storey count the database will accept, or null. Matches the CHECK. */
+const cleanStories = (value: number | null | undefined): number | null => {
+  if (value == null || !Number.isFinite(value)) return null;
+  const n = Math.round(value);
+  return n >= 1 && n <= 60 ? n : null;
+};
+
+type DetailColumns = Record<string, string | number | null>;
+
 /** Shape the shared detail fields into the DB column names. */
-function detailColumns(input: ProjectDetailsInput): Record<string, string | null> {
+function detailColumns(input: ProjectDetailsInput): DetailColumns {
   return {
     address: clean(input.address),
     customer_name: clean(input.customerName),
@@ -192,7 +288,24 @@ function detailColumns(input: ProjectDetailsInput): Record<string, string | null
     start_date: clean(input.startDate),
     end_date: clean(input.endDate),
     notes: clean(input.notes),
+    stories: cleanStories(input.stories),
   };
+}
+
+/**
+ * `projects.stories` arrives with 20260980000000, and creating or editing a job
+ * has to keep working on a database that has not had it yet — otherwise the app
+ * ships a New-project form nobody can submit. Drop the one column and try
+ * again; every other field the person typed still lands.
+ */
+function withoutStories(patch: DetailColumns): DetailColumns {
+  const copy = { ...patch };
+  delete copy.stories;
+  return copy;
+}
+
+function isMissingStoriesColumn(error: unknown): boolean {
+  return isMissingColumn(error, "stories");
 }
 
 /**
@@ -214,15 +327,18 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
   if (!jobCode) throw new Error("Job code is required.");
   if (!name) throw new Error("Project name is required.");
 
-  const { data: project, error: projectError } = await supabase
-    .from("projects")
-    .insert({
-      job_code: jobCode,
-      name,
-      ...detailColumns(input),
-    })
-    .select("*")
-    .single();
+  const insert = (cols: DetailColumns) =>
+    supabase
+      .from("projects")
+      .insert({ job_code: jobCode, name, ...cols })
+      .select("*")
+      .single();
+
+  const cols = detailColumns(input);
+  let { data: project, error: projectError } = await insert(cols);
+  if (projectError && isMissingStoriesColumn(projectError)) {
+    ({ data: project, error: projectError } = await insert(withoutStories(cols)));
+  }
   if (projectError) throw projectError;
 
   return project as Project;
@@ -285,19 +401,20 @@ export async function updateProject(
   projectId: string,
   input: UpdateProjectInput,
 ): Promise<Project> {
-  const patch: Record<string, string | null> = detailColumns(input);
+  const patch: DetailColumns = detailColumns(input);
   if (input.name !== undefined) {
     const name = input.name.trim();
     if (!name) throw new Error("Project name is required.");
     patch.name = name;
   }
 
-  const { data, error } = await supabase
-    .from("projects")
-    .update(patch)
-    .eq("id", projectId)
-    .select("*")
-    .single();
+  const update = (cols: DetailColumns) =>
+    supabase.from("projects").update(cols).eq("id", projectId).select("*").single();
+
+  let { data, error } = await update(patch);
+  if (error && isMissingStoriesColumn(error)) {
+    ({ data, error } = await update(withoutStories(patch)));
+  }
   if (error) throw error;
   return data as Project;
 }

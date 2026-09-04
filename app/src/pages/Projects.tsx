@@ -3,7 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { LayoutGrid } from "lucide-react";
-import { createProject, getProjectDeleteCounts, listProjects, setProjectModes } from "../lib/api";
+import {
+  createProject,
+  getProjectDeleteCounts,
+  listProjects,
+  listScopeCounts,
+  setProjectModes,
+} from "../lib/api";
 import { deleteJob } from "../lib/jobDeletion";
 import { formatApiError } from "../lib/errors";
 import { useT } from "../lib/i18n";
@@ -12,18 +18,14 @@ import type { JobMode } from "../lib/types";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
 import { getMyProfile } from "../lib/install/api";
 import { isForemanPlus, isSupervisorPlus } from "../lib/install/types";
-import { supabase } from "../lib/supabase";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import { buildDeleteConfirmMessage } from "../lib/projectTrash";
 import { IncomingMondayJobs } from "../components/projects/IncomingMondayJobs";
+import { ScopeLine } from "../components/projects/ScopeLine";
+import { isTrackingOnly } from "../lib/jobModes";
 import { MessagesSquare } from "lucide-react";
 import type { Project } from "../lib/types";
-
-interface OpeningCountRow {
-  project_id: string;
-  status: "planned" | "assigned" | "installed";
-}
 
 type ModeChoice = "data" | "tracking" | "both";
 const modesForChoice = (choice: ModeChoice): JobMode[] =>
@@ -45,6 +47,9 @@ export function Projects() {
   const [contactEmail, setContactEmail] = useState("");
   const [unitNumber, setUnitNumber] = useState("");
   const [siteState, setSiteState] = useState("");
+  // Wave X: how many storeys the building has. Optional — a job often gets
+  // opened before anyone has been to site, and blank is an honest answer.
+  const [stories, setStories] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [notes, setNotes] = useState("");
@@ -58,21 +63,11 @@ export function Projects() {
   // Deleting a job is supervisor+ now (slice 5) — was owner-only. The server
   // enforces the same rank in trash_project; this gates the affordance.
   const canDelete = isSupervisorPlus(effectiveRole);
-  const counts = useQuery({
-    queryKey: ["openingCounts"],
-    // NOTE: this pulls every opening row for every job with no limit or
-    // pagination. It works today but won't scale forever — the real fix is
-    // a server-side aggregate (counts grouped by project), not a client
-    // filter over the whole table. Deferred on purpose; flagging so the
-    // next reader doesn't think it was missed.
-    queryFn: async (): Promise<OpeningCountRow[]> => {
-      const { data, error } = await supabase
-        .from("project_openings")
-        .select("project_id, status");
-      if (error) throw error;
-      return data;
-    },
-  });
+  // Wave X: one grouped row per job, counted in the database
+  // (project_scope_counts). This used to pull EVERY opening row for every job
+  // with no limit and count them here — the "deferred on purpose" note that sat
+  // on it for a year said the real fix was a server-side aggregate. This is it.
+  const counts = useQuery({ queryKey: ["scopeCounts"], queryFn: listScopeCounts });
   const addProject = useMutation({
     mutationFn: async () => {
       const project = await createProject({
@@ -84,6 +79,7 @@ export function Projects() {
         contactEmail,
         unitNumber,
         siteState,
+        stories: stories.trim() === "" ? null : Number(stories),
         startDate,
         endDate,
         notes,
@@ -107,6 +103,7 @@ export function Projects() {
       setContactEmail("");
       setUnitNumber("");
       setSiteState("");
+      setStories("");
       setStartDate("");
       setEndDate("");
       setNotes("");
@@ -120,11 +117,11 @@ export function Projects() {
   });
 
   const countFor = (projectId: string) => {
-    const rows = (counts.data ?? []).filter((r) => r.project_id === projectId);
-    const total = rows.length;
-    const installed = rows.filter((r) => r.status === "installed").length;
+    const row = counts.data?.get(projectId);
+    const total = row?.openings ?? 0;
+    const installed = row?.installed ?? 0;
     const pct = total > 0 ? Math.round((installed / total) * 100) : 0;
-    return { total, installed, pct };
+    return { row, total, installed, pct };
   };
 
   const trash = useMutation({
@@ -280,6 +277,21 @@ export function Projects() {
                   />
                 </label>
                 <label>
+                  <span className="field-label">{t("scope.stories.label")}</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={60}
+                    value={stories}
+                    onChange={(e) => setStories(e.target.value)}
+                    placeholder="2"
+                  />
+                  <span className="wh-row-sub" style={{ display: "block", marginTop: 4 }}>
+                    {t("scope.stories.hint")}
+                  </span>
+                </label>
+                <label>
                   <span className="field-label">Scheduled start</span>
                   <input
                     type="date"
@@ -341,10 +353,10 @@ export function Projects() {
             label="Couldn't load jobs"
           />
         )}
-        {/* If the counts query fails, countFor() quietly falls back to an empty
-            list and every card would show "0 openings / 0 done" — identical to
-            a job nobody has touched. Say so plainly instead of going silent,
-            so a broken read is never mistaken for no work done. */}
+        {/* If the counts query fails, countFor() quietly falls back to zeroes
+            and every card would look like a job nobody has touched. Say so
+            plainly instead of going silent, so a broken read is never mistaken
+            for no work done. */}
         {!projects.isLoading && !projects.isError && counts.isError && (
           <p className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
             Progress unavailable — job list below is current, but "openings done" counts couldn't load.
@@ -381,6 +393,7 @@ export function Projects() {
                     {p.job_code}
                     {p.address ? ` · ${p.address}` : ""}
                   </div>
+                  <ScopeLine counts={c.row} stories={p.stories} trackingOnly={isTrackingOnly(p.allowed_modes)} />
                 </div>
                 <span
                   style={{
@@ -406,13 +419,11 @@ export function Projects() {
                 className="home-project-meta"
                 style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
               >
+                {/* The openings COUNT moved up into the scope line under the
+                    job name (wave X); what is left here is the progress fact,
+                    which the percentage and the bar above are about. */}
                 <span>
-                  <span>
-                    <i className="dot-info" /> {c.total} openings
-                  </span>{" "}
-                  <span>
-                    <i className="dot-ok" /> {c.installed} done
-                  </span>
+                  <i className="dot-ok" /> {c.installed} done
                 </span>
                 {canDelete && (
                   <button
