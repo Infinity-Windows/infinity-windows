@@ -9,6 +9,18 @@
 // purchase far more often than they are two purchases; two charges for
 // different amounts are never the same purchase. So the amount is an equality
 // and the date is the window, not the other way round.
+//
+// The equality includes the SIGN, and that is deliberate. In this app money out
+// is positive and a refund is negative; a receipt's amount can never be
+// negative at all (update_receipt refuses one), so a refund matching a receipt
+// would always be wrong and is never proposed. What made this look like a bug
+// was upstream: most card exports write purchases as negatives, and the import
+// used to carry that convention straight through, so every charge arrived
+// negative and nothing ever matched. That is fixed where it belongs — the
+// mapping step now asks which way round the file is (bankImport.ts,
+// `purchasesAreNegative`) and toBankRows flips it once, so everything
+// downstream reads one convention. Comparing magnitudes here instead would
+// have hidden that and started proposing refunds as if they were purchases.
 
 export interface MatchableTransaction {
   id: string;

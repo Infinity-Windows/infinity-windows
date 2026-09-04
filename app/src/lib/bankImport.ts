@@ -24,6 +24,21 @@ export interface BankFieldMapping {
   description: string | null;
   cardholder: string | null;
   externalId: string | null;
+  /**
+   * Which way round this file writes its money. Most card exports — Chase and
+   * Amex among them — write a PURCHASE as a negative number and a refund as a
+   * positive one, because they are describing what happened to the balance. The
+   * app stores it the other way: a purchase is money out and is positive, so a
+   * refund is the negative one (see 20260978000000, bank_transactions).
+   *
+   * A file read the wrong way round imports every purchase as a negative and
+   * matches nothing at all, because a receipt's amount can never be negative —
+   * update_receipt refuses it. So this is the fifth question the mapping step
+   * asks, guessed from the file itself (`purchasesLookNegative`) and confirmed
+   * by a person like every other one. Optional so a mapping remembered before
+   * this existed still reads.
+   */
+  purchasesAreNegative?: boolean;
 }
 
 /** One charge, in the shape import_bank_transactions expects. */
@@ -141,7 +156,36 @@ export function guessMapping(headers: string[]): BankFieldMapping {
     description: bestHeader(headers, DESCRIPTION_WORDS),
     cardholder: bestHeader(headers, CARDHOLDER_WORDS),
     externalId: bestHeader(headers, ID_WORDS),
+    purchasesAreNegative: false,
   };
+}
+
+/**
+ * Does this file write purchases as negative numbers?
+ *
+ * Answered from the DATA, not the header, because no header says so. A card
+ * statement is overwhelmingly purchases — a month with more refunds than
+ * charges is not a thing — so "most of the amounts are negative" means this
+ * export is describing what happened to the balance rather than what was
+ * spent. A person confirms it in the mapping step either way; this is only the
+ * opening offer, exactly like the column guesses above.
+ */
+export function purchasesLookNegative(
+  parsed: ParsedFile,
+  amountHeader: string | null,
+): boolean {
+  if (!amountHeader) return false;
+  const index = parsed.headers.indexOf(amountHeader);
+  if (index < 0) return false;
+  let negative = 0;
+  let readable = 0;
+  for (const row of parsed.rows) {
+    const cents = parseAmountToCents(row[index] ?? "");
+    if (cents == null || cents === 0) continue;
+    readable++;
+    if (cents < 0) negative++;
+  }
+  return readable > 0 && negative * 2 > readable;
 }
 
 // ------------------------------------------------------------------ values
@@ -262,8 +306,13 @@ export function toBankRows(parsed: ParsedFile, mapping: BankFieldMapping): BankR
 
   const out: BankRowInput[] = [];
   for (const row of parsed.rows) {
-    const cents = parseAmountToCents(at(row, mapping.amount));
-    if (cents == null) continue;
+    const raw = parseAmountToCents(at(row, mapping.amount));
+    if (raw == null) continue;
+    // The file's sign convention, flipped to the app's: money out is positive,
+    // a refund is negative. Done HERE rather than at match time so everything
+    // downstream — the "No receipt yet" list, the auto-match, the ledger line
+    // a match posts — reads one convention and only one.
+    const cents = mapping.purchasesAreNegative ? -raw : raw;
     const description = at(row, mapping.description).trim() || null;
     out.push({
       posted_on: normalizeDate(at(row, mapping.postedOn)),
@@ -346,24 +395,33 @@ export function rememberMapping(filename: string, mapping: BankFieldMapping): vo
  * file like this before, narrowed to columns this file actually has, else the
  * guess. A remembered mapping naming a column that is gone would silently
  * import a blank field.
+ *
+ * Takes the whole parsed file, not just its headers, because the sign question
+ * can only be answered by looking at the amounts.
  */
-export function openingMapping(filename: string, headers: string[]): BankFieldMapping {
-  const remembered = rememberedMapping(filename);
-  if (!remembered) return guessMapping(headers);
-  const keep = (h: string | null) => (h && headers.includes(h) ? h : null);
-  const narrowed: BankFieldMapping = {
-    postedOn: keep(remembered.postedOn),
-    amount: keep(remembered.amount),
-    description: keep(remembered.description),
-    cardholder: keep(remembered.cardholder),
-    externalId: keep(remembered.externalId),
-  };
+export function openingMapping(filename: string, parsed: ParsedFile): BankFieldMapping {
+  const headers = parsed.headers;
   const guess = guessMapping(headers);
+  const remembered = rememberedMapping(filename);
+  const withSign = (m: BankFieldMapping): BankFieldMapping => ({
+    ...m,
+    purchasesAreNegative: purchasesLookNegative(parsed, m.amount),
+  });
+  if (!remembered) return withSign(guess);
+  const keep = (h: string | null) => (h && headers.includes(h) ? h : null);
+  const merged: BankFieldMapping = {
+    postedOn: keep(remembered.postedOn) ?? guess.postedOn,
+    amount: keep(remembered.amount) ?? guess.amount,
+    description: keep(remembered.description) ?? guess.description,
+    cardholder: keep(remembered.cardholder) ?? guess.cardholder,
+    externalId: keep(remembered.externalId) ?? guess.externalId,
+  };
   return {
-    postedOn: narrowed.postedOn ?? guess.postedOn,
-    amount: narrowed.amount ?? guess.amount,
-    description: narrowed.description ?? guess.description,
-    cardholder: narrowed.cardholder ?? guess.cardholder,
-    externalId: narrowed.externalId ?? guess.externalId,
+    ...merged,
+    // What a person confirmed last month for a file like this wins, because
+    // they looked. Only fall back to reading the file when they have never
+    // been asked — a mapping remembered before this question existed.
+    purchasesAreNegative:
+      remembered.purchasesAreNegative ?? purchasesLookNegative(parsed, merged.amount),
   };
 }

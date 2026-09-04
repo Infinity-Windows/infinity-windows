@@ -82,6 +82,10 @@ describe("guessMapping", () => {
       description: "Description",
       cardholder: "Card Holder",
       externalId: "Reference",
+      // Headers cannot answer the sign question — only the amounts can, which
+      // is purchasesLookNegative's job. From the headers alone the safe answer
+      // is "as written".
+      purchasesAreNegative: false,
     });
   });
 
@@ -234,7 +238,7 @@ describe("the remembered mapping", () => {
     };
     rememberMapping("statement-2026-08.csv", confirmed);
     expect(rememberedMapping("statement-2026-09.csv")).toEqual(confirmed);
-    expect(openingMapping("statement-2026-09.csv", parsed.headers).description).toBe(
+    expect(openingMapping("statement-2026-09.csv", parsed).description).toBe(
       "Card Holder",
     );
   });
@@ -248,7 +252,7 @@ describe("the remembered mapping", () => {
       externalId: null,
     });
     const parsed = parseDelimited(SAMPLE);
-    const opening = openingMapping("statement-2026-09.csv", parsed.headers);
+    const opening = openingMapping("statement-2026-09.csv", parsed);
     expect(opening.postedOn).toBe("Posted Date");
     expect(opening.amount).toBe("Amount");
   });

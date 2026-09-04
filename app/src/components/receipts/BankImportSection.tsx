@@ -18,7 +18,6 @@ import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Landmark, Upload } from "lucide-react";
 import { formatApiError } from "../../lib/errors";
-import { formatCents } from "../../lib/aiSpend";
 import { listProfiles } from "../../lib/install/api";
 import { askForReceipt } from "../../lib/receiptsChase";
 import {
@@ -29,6 +28,7 @@ import {
   matchBankTransaction,
   undoBankImport,
   unmatchBankTransaction,
+  formatSignedCents,
   type BankTransaction,
 } from "../../lib/bank";
 import {
@@ -44,13 +44,30 @@ import {
 import { proposeMatches, withoutReceipts } from "../../lib/bankMatch";
 import { listReceipts } from "../../lib/receipts";
 
-const FIELDS: { key: keyof BankFieldMapping; label: string; required?: boolean }[] = [
+/** Only the COLUMN questions. `purchasesAreNegative` is the fifth question the
+ * mapping step asks and it is a checkbox, not a header picker, so it stays out
+ * of this list — and out of the `mapping[field.key]` lookup below, which has to
+ * stay a string. */
+type ColumnField = Exclude<keyof BankFieldMapping, "purchasesAreNegative">;
+
+const FIELDS: { key: ColumnField; label: string; required?: boolean }[] = [
   { key: "postedOn", label: "Date", required: true },
   { key: "amount", label: "Amount", required: true },
   { key: "description", label: "Description" },
   { key: "cardholder", label: "Cardholder" },
   { key: "externalId", label: "Bank's own id" },
 ];
+
+/**
+ * The first readable charge, as it WOULD import. Shown beside the sign
+ * checkbox, because "purchases are negative in this file" is a question about
+ * the file that a person can only answer by seeing the answer: a purchase must
+ * read positive here, a refund negative.
+ */
+function previewAmount(parsed: ParsedFile, mapping: BankFieldMapping): string {
+  const first = toBankRows(parsed, mapping)[0];
+  return first ? formatSignedCents(first.amount_cents) : "—";
+}
 
 export function BankImportSection() {
   const qc = useQueryClient();
@@ -90,7 +107,7 @@ export function BankImportSection() {
       return;
     }
     setPending({ file: file.name, parsed });
-    setMapping(openingMapping(file.name, parsed.headers));
+    setMapping(openingMapping(file.name, parsed));
   };
 
   const doImport = useMutation({
@@ -260,6 +277,30 @@ export function BankImportSection() {
               </select>
             </div>
           ))}
+          {/* The fifth question, and the one no header answers. Chase, Amex and
+              most card exports write a purchase as a NEGATIVE number, because
+              they are describing the balance. Read that way round, every charge
+              imports negative, no receipt can ever equal it (an amount cannot
+              be negative), and the auto-match proposes nothing — forever, with
+              nothing on screen to explain it. Guessed from the file, confirmed
+              by a person, remembered with the rest of the mapping. */}
+          <label className="row-gap" style={{ alignItems: "center", margin: "8px 0" }}>
+            <input
+              type="checkbox"
+              checked={mapping.purchasesAreNegative === true}
+              onChange={(e) =>
+                setMapping({ ...mapping, purchasesAreNegative: e.target.checked })
+              }
+            />
+            <span>Purchases are negative numbers in this file</span>
+          </label>
+          {mapping.amount && (
+            <p className="muted" style={{ fontSize: 12, margin: "0 0 8px" }}>
+              First charge reads as{" "}
+              <strong>{previewAmount(pending.parsed, mapping)}</strong>. A purchase
+              should look positive here; a refund negative.
+            </p>
+          )}
           {unreadableRows(pending.parsed, mapping) > 0 && (
             <p className="warn-text">
               {unreadableRows(pending.parsed, mapping)} row(s) have no amount this
@@ -332,7 +373,7 @@ export function BankImportSection() {
                 <div className="wh-row">
                   <div className="wh-row-main">
                     <span className="wh-row-title">
-                      {formatCents(txn.amountCents)} · {txn.vendorGuess ?? txn.description ?? "Unknown"}
+                      {formatSignedCents(txn.amountCents)} · {txn.vendorGuess ?? txn.description ?? "Unknown"}
                     </span>
                     <span className="wh-row-sub">
                       {txn.postedOn ?? "No date"}
@@ -378,7 +419,7 @@ export function BankImportSection() {
                   <div className="wh-row">
                     <div className="wh-row-main">
                       <span className="wh-row-title">
-                        {formatCents(txn.amountCents)} · {txn.vendorGuess ?? txn.description ?? "Unknown"}
+                        {formatSignedCents(txn.amountCents)} · {txn.vendorGuess ?? txn.description ?? "Unknown"}
                       </span>
                       <span className="wh-row-sub">
                         {txn.postedOn ?? "No date"} · paid on company card

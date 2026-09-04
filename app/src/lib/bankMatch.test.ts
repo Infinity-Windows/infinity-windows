@@ -8,6 +8,7 @@ import {
   type MatchableReceipt,
   type MatchableTransaction,
 } from "./bankMatch";
+import { openingMapping, parseDelimited, toBankRows } from "./bankImport";
 
 function txn(
   id: string,
@@ -158,5 +159,82 @@ describe("withoutReceipts", () => {
       { id: "c", status: "ignored", receiptId: null },
     ];
     expect(withoutReceipts(rows).map((r) => r.id)).toEqual(["a"]);
+  });
+});
+
+// Wave Z review fix. Chase, Amex and most card exports write a PURCHASE as a
+// negative number. The import used to carry that convention straight through, so
+// every charge landed negative, no receipt could ever equal one (a receipt's
+// amount cannot be negative — update_receipt refuses it), and the auto-match
+// proposed nothing at all, forever, with nothing on screen to say why.
+//
+// The fix is upstream, in the mapping step, so these tests drive the whole path:
+// a real negative-signed file -> toBankRows -> proposeMatches.
+describe("a statement that writes purchases as negatives", () => {
+  const CHASE = [
+    "Transaction Date,Post Date,Description,Card Holder,Amount",
+    "08/24/2026,08/25/2026,HOME DEPOT #4512 OREM UT,Maria G,-147.13",
+    "08/25/2026,08/26/2026,SHELL OIL 574123 LEHI,Sam T,-62.40",
+    // The one genuine refund in the month, positive the way the bank writes it.
+    "08/26/2026,08/27/2026,HOME DEPOT #4512 OREM UT,Maria G,20.00",
+  ].join("\n");
+
+  const parsed = parseDelimited(CHASE);
+
+  it("is spotted from the file, so the mapping step opens with the right answer", () => {
+    const mapping = openingMapping("chase-2026-08.csv", parsed);
+    expect(mapping.purchasesAreNegative).toBe(true);
+  });
+
+  it("imports purchases as money OUT and keeps the refund negative", () => {
+    const mapping = openingMapping("chase-2026-08.csv", parsed);
+    const rows = toBankRows(parsed, mapping);
+    expect(rows.map((r) => r.amount_cents)).toEqual([14713, 6240, -2000]);
+  });
+
+  it("matches the receipt the bookkeeper handed in, which is the whole point", () => {
+    const mapping = openingMapping("chase-2026-08.csv", parsed);
+    const rows = toBankRows(parsed, mapping);
+    const charges = rows.map((r, i) => ({
+      id: `t${i}`,
+      amountCents: r.amount_cents,
+      postedOn: r.posted_on,
+      vendorGuess: r.vendor_guess,
+      description: r.description,
+    }));
+    const proposals = proposeMatches(charges, [
+      receipt("r1", 14713, "2026-08-24", "Home Depot"),
+    ]);
+    expect(proposals).toEqual([
+      { transactionId: "t0", receiptId: "r1", daysApart: 1, vendorAgrees: true },
+    ]);
+  });
+
+  it("proposes NOTHING for a refund of the same size — a refund is not a purchase", () => {
+    const mapping = openingMapping("chase-2026-08.csv", parsed);
+    const rows = toBankRows(parsed, mapping);
+    const refund = rows.find((r) => r.amount_cents < 0)!;
+    const proposals = proposeMatches(
+      [
+        {
+          id: "refund",
+          amountCents: refund.amount_cents,
+          postedOn: refund.posted_on,
+          vendorGuess: refund.vendor_guess,
+          description: refund.description,
+        },
+      ],
+      [receipt("r2", 2000, "2026-08-26", "Home Depot")],
+    );
+    expect(proposals).toEqual([]);
+  });
+
+  it("reads an ordinary positive export exactly as before", () => {
+    const plain = parseDelimited(
+      ["Date,Description,Amount", "08/25/2026,HOME DEPOT #4512,147.13"].join("\n"),
+    );
+    const mapping = openingMapping("plain-2026-08.csv", plain);
+    expect(mapping.purchasesAreNegative).toBe(false);
+    expect(toBankRows(plain, mapping)[0].amount_cents).toBe(14713);
   });
 });

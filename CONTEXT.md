@@ -452,13 +452,20 @@ credentials touch this app and none ever will; a live feed is parked with
 the future QuickBooks link. Because no one knows what columns a given
 export uses, the mapping step IS the design: the app guesses which column
 is the date, the amount, the description and the cardholder, and a human
-confirms before anything is imported. "The same charge" is the bank's own
-id when the export has one, else a hash of date + amount + description, so
-re-importing an overlapping file adds nothing. Auto-match pairs equal
-amounts within three days, vendor overlap breaking ties, one charge to one
-receipt — always a proposal until somebody presses the button. Nothing
-auto-deletes, and every import is undoable as a batch that keeps whatever
-somebody had already matched.
+confirms before anything is imported. It asks a fifth question no header
+can answer — whether this file writes a PURCHASE as a negative number,
+which Chase, Amex and most card exports do because they are describing the
+balance. Inside the app money out is positive and a refund is the negative
+one, so the import flips the sign once, at the door, and everything after
+it reads one convention. "The same charge" is the bank's own id when the
+export has one, else a hash of date + amount + description + cardholder
+with the line's occurrence number on the end — so re-importing an
+overlapping file adds nothing, while two crew filling up at the same pump
+for the same money on the same morning stay two charges. Auto-match pairs
+equal amounts within three days, vendor overlap breaking ties, one charge
+to one receipt — always a proposal until somebody presses the button.
+Nothing auto-deletes, and every import is undoable as a batch that keeps
+whatever somebody had already matched.
 
 ## Open questions
 

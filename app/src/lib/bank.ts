@@ -13,6 +13,21 @@ import type { BankRowInput } from "./bankImport";
 
 export type BankTransactionStatus = "matched" | "unreceipted" | "ignored";
 
+/**
+ * A card amount as money, KEEPING its sign.
+ *
+ * `formatCents` (lib/aiSpend) clamps at zero, which is right for a spend meter
+ * and wrong here: a refund is a real line on a statement, stored negative on
+ * purpose, and printing it as "$0" would make the month stop adding up on
+ * screen while it still adds up in the database.
+ */
+export function formatSignedCents(cents: number): string {
+  const value = Number(cents) || 0;
+  const abs = Math.abs(value);
+  const body = abs % 100 === 0 ? `$${abs / 100}` : `$${(abs / 100).toFixed(2)}`;
+  return value < 0 ? `−${body}` : body;
+}
+
 export interface BankTransaction {
   id: string;
   importId: string;

@@ -300,6 +300,66 @@ test("a dropped-in statement is mapped by a human before a single row is importe
   expect(imported[0].p_filename).toBe("statement-2026-08.csv");
 });
 
+// Chase, Amex and most card exports write a PURCHASE as a negative number,
+// because they are describing the balance. Read that way round every charge
+// imports negative, no receipt can ever equal one, and the auto-match proposes
+// nothing at all — forever, with nothing on screen to say why. So the mapping
+// step asks the sign question too, opens with the answer read off the file, and
+// shows what the first charge would import as.
+const NEGATIVE_STATEMENT = [
+  '"Posted Date","Card Holder","Description","Amount","Reference"',
+  '"08/25/2026","Maria G","HOME DEPOT #4512 OREM UT","-147.13","TX-9001"',
+  '"08/26/2026","Sam T","SHELL OIL 574123 LEHI","-62.40","TX-9002"',
+].join("\n");
+
+test("a statement that writes purchases as negatives is spotted and imported as money out", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "supervisor", canSeeCosts: true });
+  await useMoneyFixtures(page);
+
+  const imported: Record<string, unknown>[] = [];
+  await page.route("**/rest/v1/rpc/import_bank_transactions", async (route) => {
+    imported.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "batch-2",
+        filename: "chase-2026-08.csv",
+        imported_at: new Date().toISOString(),
+        row_count: 2,
+        undone_at: null,
+      }),
+    });
+  });
+
+  await page.goto("/receipts");
+  await page
+    .locator('input[type="file"][aria-label="Bank statement file"]')
+    .setInputFiles({
+      name: "chase-2026-08.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from(NEGATIVE_STATEMENT, "utf8"),
+    });
+
+  await expect(page.getByRole("heading", { name: "Which column is which?" })).toBeVisible();
+  // Read off the file, not off the header names — no header says which way
+  // round a statement is written.
+  const sign = page.getByRole("checkbox", {
+    name: "Purchases are negative numbers in this file",
+  });
+  await expect(sign).toBeChecked();
+  // And shown, because this is a question a person can only answer by seeing
+  // the answer: a purchase should read positive.
+  await expect(page.getByText("First charge reads as")).toContainText("$147.13");
+
+  await page.getByRole("button", { name: "Import", exact: true }).click();
+  await expect.poll(() => imported.length).toBe(1);
+  const rows = imported[0].p_rows as Record<string, unknown>[];
+  expect(rows.map((r) => r.amount_cents)).toEqual([14713, 6240]);
+});
+
 test("a supervisor with no cost grant never sees the company card section", async ({
   page,
 }) => {
