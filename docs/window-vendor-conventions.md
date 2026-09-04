@@ -74,12 +74,24 @@ spec sheet's style line first and its operation line second:
 - **french** - "French Door", "French door track(Inward opening)". A pair
   of leaves with 3-point-lock hardware. Black Desert #26, #28-#39.
 - **bifold** - "Bi-Fold" / "bifold" / "bi fold". Leaves fold and stack.
-  No job in this repo has one yet, and the fit view has no fold symbol,
-  so `inferHardware` still draws one as a hinged leaf.
+  No job in this repo has one yet.
 - **swing** - "Swing door", "hinged", "pivot", and the commercial /
   storefront leaves whose operation line says so. Mad Moose's entries.
 - **other** - a door whose paperwork does not say which. Honest, and
   countable; a foreman fixes it at spec review and the count follows.
+
+**Counted but not drawn.** `doorKind` names five kinds; the fit view has
+only `fixed`, `hinge-l`, `hinge-r`, `hinge-t`, `bipart` and `corner-meet`,
+and there is no fold and no pivot among them. So a style line reading
+"bi-fold", "pivot", "hinged" or "swing door" is counted as that kind and
+drawn by `inferHardware` as a plain single pane, because that is the last
+branch it reaches. That is a gap in the DRAWING, not a disagreement about
+the unit - the two read the same words in the same order, and where the
+fit view has no symbol it says nothing rather than inventing one (the same
+call `hung` windows already get). Give the renderer a fold or pivot symbol
+and this is the paragraph to delete. "Patio door" is NOT in this list: it
+is the slider above under another name, and `inferHardware` draws it as
+one.
 
 The style line WINS over the operation line, and both win over the
 operation letters - Mad Moose's French doors drew as sliders once

@@ -217,6 +217,14 @@ function paneGridFromSpec(spec: Pick<ProjectMarkSpec, "extra"> | null | undefine
 /**
  * Panel count + swing from the manufacturer's operation string and style text.
  * Operation letters read from OUTSIDE: X = operating, O = fixed ("XO", "OXXO").
+ *
+ * This DRAWS a unit; `doorKind` (app/src/lib/install/specKinds.mjs) COUNTS the
+ * same unit off the same words, and CLAUDE.md's law is that the two and
+ * docs/window-vendor-conventions.md agree. Where they cannot, the doc says so
+ * out loud: the fit view has only `fixed`, `hinge-*`, `bipart` and
+ * `corner-meet`, so a bifold, a pivot and a commercial swing leaf have no
+ * symbol here and fall through to a plain pane. They are still counted as what
+ * they are — a missing drawing is not a missing answer.
  */
 export function inferHardware(
   operation: string | null,
@@ -231,7 +239,9 @@ export function inferHardware(
     // A symmetric operating pair meeting in the middle parts outward.
     if (lights >= 4 && op === "OXXO") return { lights, open: "bipart" };
     // Sliders read best as bipart's arrow language; hinged pairs as leaves.
-    if (style.includes("slid")) return { lights, open: "bipart" };
+    if (style.includes("slid") || style.includes("patio")) {
+      return { lights, open: "bipart" };
+    }
     return { lights, open: op[0] === "X" ? "hinge-l" : "hinge-r" };
   }
 
@@ -241,7 +251,12 @@ export function inferHardware(
   if (style.includes("french")) return { lights: 2, open: "hinge-r" };
   if (style.includes("casement")) return { lights: 1, open: "hinge-l" };
   if (style.includes("awning")) return { lights: 1, open: "hinge-t" };
-  if (style.includes("slid")) return { lights: 2, open: "bipart" };
+  // "Patio door" is the trade's other name for the sliding door above, and the
+  // rest of the app already reads it that way (doorKind, units.ts). Without it
+  // here the one unit was counted as a slider and drawn as a sealed pane.
+  if (style.includes("slid") || style.includes("patio")) {
+    return { lights: 2, open: "bipart" };
+  }
   // Hung windows travel vertically; the fit view has no vocabulary for that
   // yet, so show the two sashes without a misleading swing symbol.
   if (style.includes("hung")) return { lights: 2, open: "fixed" };
