@@ -163,8 +163,24 @@ export interface Profile {
    */
   can_see_costs?: boolean;
   can_see_pay?: boolean;
+  /**
+   * When this login was removed for good (20260987000000). Non-null means the
+   * account is closed AND its email has been handed back, so there is nobody to
+   * offer: `listProfiles()` leaves these rows out, and only the screens that
+   * read back who DID something ask for them. Absent (rather than null) on a
+   * row a client parsed before the column existed, which reads as "not
+   * removed" — the safe answer, because it shows a person who is still there.
+   */
+  retired_at?: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+/** Their login was removed for good. Distinct from "access switched off". */
+export function isRemovedProfile(
+  p: { retired_at?: string | null } | null | undefined,
+): boolean {
+  return Boolean(p?.retired_at);
 }
 
 export interface ProjectOpening {

@@ -6,7 +6,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { listProfiles } from "../../lib/install/api";
+import { listProfilesIncludingRemoved } from "../../lib/install/api";
 import {
   assignmentTimelineRows,
   listOpeningAssignmentEvents,
@@ -72,7 +72,7 @@ export function UnitRecordCard({
   });
   const profiles = useQuery({
     queryKey: ["profiles"],
-    queryFn: listProfiles,
+    queryFn: listProfilesIncludingRemoved,
     enabled: open,
     staleTime: 300_000,
   });

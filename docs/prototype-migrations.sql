@@ -12546,7 +12546,8 @@ grant execute on function public.foreman_contacts_for_me() to authenticated, ser
 -- 20260987000000_remove_login_start_fresh.sql (mirrored)
 -- Remove a login and start fresh: profiles.retired_at / retired_by, the widened
 -- crew_access_directory, person_record_counts (the count that decides whether a
--- login can be deleted outright), access_requests.decision_note with RLS that
+-- login can be deleted outright), the two nightly push audiences restated to
+-- exclude a removed login outright, access_requests.decision_note with RLS that
 -- finally locks deciding to supervisor+, and decide_access_request — the one
 -- client-side writer of a decision, which can deny, note a reason and re-open,
 -- and can never write 'approved'.
@@ -12737,6 +12738,84 @@ comment on function public.person_record_counts(uuid) is
 
 revoke all on function public.person_record_counts(uuid) from public, anon, authenticated;
 grant execute on function public.person_record_counts(uuid) to service_role;
+
+
+-- ---------------------------------------------------------------------------
+-- 1c. Nobody removed ever hears a push again
+-- ---------------------------------------------------------------------------
+-- Both nightly audiences already exclude a removed person by accident:
+-- pipeline_nudge_audience filters on `pr.active` and credential_nudge_audience
+-- on `pr.access_revoked_at is null`, and purge_login sets both. "By accident"
+-- is the problem. `active` means "on site today" and a foreman toggles it every
+-- morning from the Roster — one tap on the wrong row would put a removed login
+-- back on the 7 AM push list, addressed to a phone whose owner left. So each
+-- one says it outright, beside the filter it already had.
+--
+-- Restated in full (create or replace) rather than patched, so the whole
+-- predicate is readable in one place; the only change to either is the new
+-- `retired_at is null` line.
+create or replace function public.pipeline_nudge_audience(p_project_id uuid)
+returns uuid[]
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select coalesce(array_agg(distinct pr.id), '{}'::uuid[])
+    from profiles pr
+   where pr.active
+     and pr.retired_at is null
+     and not coalesce(pr.is_partner, false)
+     and (
+       public._is_supervisor(pr.id)
+       or (
+         public._is_lead(pr.id)
+         and (
+           exists (
+             select 1
+               from schedule_assignments sa
+               join schedule_assignment_members sam on sam.assignment_id = sa.id
+              where sa.project_id = p_project_id
+                and sam.profile_id = pr.id
+                -- Published, not drafted — a foreman pencilled into a plan
+                -- nobody has published must not be pushed about it.
+                and sa.status in ('published', 'in_progress', 'done')
+                and sa.end_date >= (now() at time zone 'America/Denver')::date
+                and sa.start_date <= (now() at time zone 'America/Denver')::date + 14
+           )
+           or exists (
+             select 1
+               from time_shifts ts
+              where ts.project_id = p_project_id
+                and ts.profile_id = pr.id
+                and ts.status = 'open'
+                and ts.clock_out_at is null
+           )
+         )
+       )
+     );
+$$;
+
+comment on function public.pipeline_nudge_audience(uuid) is
+  'Who hears a pipeline warning about one job: every active supervisor+, plus every foreman on a PUBLISHED assignment for it within the next fortnight or clocked into it right now. A draft assignment does not count — the crew has not been shown it. Partner logins never, and removed logins never (retired_at).';
+
+create or replace function public.credential_nudge_audience(p_profile_id uuid)
+returns uuid[]
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select coalesce(array_agg(distinct pr.id), '{}'::uuid[])
+    from profiles pr
+   where pr.access_revoked_at is null
+     and pr.retired_at is null
+     and not coalesce(pr.is_partner, false)
+     and (pr.id = p_profile_id or public._is_supervisor(pr.id));
+$$;
+
+comment on function public.credential_nudge_audience(uuid) is
+  'Who hears that a card is running out: the person it belongs to, plus every supervisor and owner whose login is still switched on. Deliberately NOT filtered on profiles.active, which means "on site today" — the warning is claimed once per expiry date, so a supervisor who happened to be off that one morning would never hear about that card again. Partner logins never (Wave O, O4); removed logins never (retired_at).';
 
 
 -- ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ import {
   getMyProfile,
   listCapabilityBadges,
   listClearances,
-  listProfiles,
+  listProfilesIncludingRemoved,
   setCapabilityBadge,
   setProfileGrants,
   updateProfile,
@@ -35,6 +35,7 @@ import {
   isOwner,
   isSupervisorPlus,
   isForemanPlus,
+  isRemovedProfile,
   ROLE_LABELS,
   visibleRole,
   type CrewRole,
@@ -156,7 +157,10 @@ function PayRateRow({
 export function Crew() {
   const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
-  const crew = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
+  const crew = useQuery({
+    queryKey: ["profilesIncludingRemoved"],
+    queryFn: listProfilesIncludingRemoved,
+  });
   const badges = useQuery({
     queryKey: ["capabilityBadges"],
     queryFn: listCapabilityBadges,
@@ -197,6 +201,7 @@ export function Crew() {
       updateProfile(args.id, args.patch),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["profilesIncludingRemoved"] });
       queryClient.invalidateQueries({ queryKey: ["myProfile"] });
     },
   });
@@ -224,6 +229,7 @@ export function Crew() {
     onSuccess: () => {
       setGrantError(null);
       queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["profilesIncludingRemoved"] });
       queryClient.invalidateQueries({ queryKey: ["myProfile"] });
       queryClient.invalidateQueries({ queryKey: ["myRealProfile"] });
     },
@@ -259,7 +265,12 @@ export function Crew() {
       <h2>Roster</h2>
       <ul className="unit-list">
         {(crew.data ?? []).map((p) => {
-          const editable = isLead || p.id === me.data?.id;
+          // A removed login is still on this list, under the name it always
+          // had, because every job record points at it — but nothing about it
+          // is editable any more and nothing may be handed to it. See
+          // listProfilesIncludingRemoved.
+          const removed = isRemovedProfile(p);
+          const editable = (isLead || p.id === me.data?.id) && !removed;
           const initials = p.display_name
             .split(/\s+/)
             .map((s) => s[0])
@@ -267,9 +278,16 @@ export function Crew() {
             .slice(0, 2)
             .toUpperCase();
           return (
-            <li key={p.id} className={p.active ? "crew-row live" : "crew-row"}>
+            <li
+              key={p.id}
+              className={p.active && !removed ? "crew-row live" : "crew-row"}
+              style={removed ? { opacity: 0.55 } : undefined}
+            >
               <div className="crew-main">
-                <span className={p.active ? "avatar-chip" : "avatar-chip ghost"} aria-hidden>
+                <span
+                  className={p.active && !removed ? "avatar-chip" : "avatar-chip ghost"}
+                  aria-hidden
+                >
                   {initials || "?"}
                 </span>
                 <input
@@ -296,10 +314,23 @@ export function Crew() {
                         .map((c) => ` · ${CAPABILITY_LABELS[c]}`)
                         .join("")
                     : ""}
-                  {!p.active ? " · off today" : ""}
+                  {!p.active && !removed ? " · off today" : ""}
                 </span>
+                {removed && (
+                  <span
+                    className="muted"
+                    data-testid="crew-removed"
+                    style={{
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      fontSize: 11,
+                    }}
+                  >
+                    Removed
+                  </span>
+                )}
               </div>
-              {isLead && (
+              {isLead && !removed && (
                 <div className="crew-controls">
                   <label className="field-label">Skill</label>
                   <div className="grade-row">

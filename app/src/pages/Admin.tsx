@@ -8,7 +8,7 @@ import {
   getMyProfile,
   isAlreadyHasLogin,
   listAccessRequests,
-  listProfiles,
+  listProfilesIncludingRemoved,
   markRequestAlreadyLinked,
   type AccessRequest,
   type ApprovedAccount,
@@ -38,8 +38,8 @@ export function Admin() {
   // Only to put a name on "who decided". A decision with an id nobody can
   // resolve still shows the date and the note — the roster is the nicety.
   const profiles = useQuery({
-    queryKey: ["profiles"],
-    queryFn: listProfiles,
+    queryKey: ["profilesIncludingRemoved"],
+    queryFn: listProfilesIncludingRemoved,
     enabled: isSupervisorPlus(effectiveRole),
   });
   const nameOf = (id: string | null): string | null => {
@@ -67,6 +67,7 @@ export function Admin() {
       setNewAccount(account);
       queryClient.invalidateQueries({ queryKey: ["accessRequests"] });
       queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["profilesIncludingRemoved"] });
     },
     onError: (err, id) => {
       setNewAccount(null);

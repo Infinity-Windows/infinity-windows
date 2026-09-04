@@ -190,6 +190,9 @@ export function CrewAccess() {
     queryClient.invalidateQueries({ queryKey: ["crewInvites"] });
     queryClient.invalidateQueries({ queryKey: ["crewAccess"] });
     queryClient.invalidateQueries({ queryKey: ["profiles"] });
+    // The roster reads a SECOND list that keeps removed people, so a
+    // removal has to refresh both or the roster stays a version behind.
+    queryClient.invalidateQueries({ queryKey: ["profilesIncludingRemoved"] });
   };
 
   const onIssued = (result: IssuedInvite) => {

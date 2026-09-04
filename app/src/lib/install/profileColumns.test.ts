@@ -25,6 +25,13 @@ const GRANTED_SELECT_COLUMNS = [
   // is the one writer, exactly like role, pin_hash and language before it.
   "can_see_costs",
   "can_see_pay",
+  // 20260987000000 granted SELECT (retired_at, retired_by) to the authenticated
+  // role. Only retired_at is asked for here: the roster needs to know a login
+  // was removed for good, so it can grey the row and keep the person out of
+  // every picker; WHO removed it is an owner's question and is read off
+  // crew_access_directory on the Crew access screen. Never UPDATE — the
+  // manage-crew-access edge function is the one writer, like access_revoked_at.
+  "retired_at",
   "created_at",
   "updated_at",
 ];

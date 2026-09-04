@@ -20,8 +20,13 @@ import {
 } from "../lib/companySettings";
 import { useT } from "../lib/i18n";
 import { SkeletonList } from "../components/ui/States";
-import { listProfiles } from "../lib/install/api";
-import { isForemanPlus, isSupervisorPlus, visibleRole } from "../lib/install/types";
+import { listProfilesIncludingRemoved } from "../lib/install/api";
+import {
+  isForemanPlus,
+  isRemovedProfile,
+  isSupervisorPlus,
+  visibleRole,
+} from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import {
   addDays,
@@ -102,7 +107,7 @@ export function TeamTimecards() {
   const stepDays = rangeMode === "pay" ? 14 : 7;
   const crew = useQuery({
     queryKey: ["profiles"],
-    queryFn: listProfiles,
+    queryFn: listProfilesIncludingRemoved,
     enabled: isLead,
   });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
@@ -201,7 +206,10 @@ export function TeamTimecards() {
     const byId = new Map(weekSummary.map((r) => [r.profileId, r]));
     const openBy = new Map(liveShifts.map((s) => [s.profile_id, s]));
     const rows = (crew.data ?? [])
-      .filter((p) => p.active)
+      // `active` means "on site today" and a foreman toggles it every morning,
+      // so it is not enough on its own: a removed login must never come back
+      // onto the live roster because somebody tapped that toggle.
+      .filter((p) => p.active && !isRemovedProfile(p))
       .map((p) => ({
         id: p.id,
         name: p.display_name,
@@ -275,6 +283,12 @@ export function TeamTimecards() {
     roster.find((r) => r.id === selectedId)?.name ??
     crew.data?.find((c) => c.id === selectedId)?.display_name ??
     "Crew member";
+  // Their login was removed for good, but their punches are still here and
+  // still have to be readable and correctable — a paycheck dispute does not
+  // stop mattering because somebody left.
+  const selectedRemoved = isRemovedProfile(
+    crew.data?.find((c) => c.id === selectedId),
+  );
   const selectedOpen =
     liveShifts.find((s) => s.profile_id === selectedId) ?? null;
 
@@ -297,7 +311,8 @@ export function TeamTimecards() {
             <div style={{ minWidth: 0 }}>
               <h1 style={{ margin: 0, fontSize: 20 }}>{selectedName}</h1>
               <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-                Managing time for {selectedName}
+                {selectedRemoved ? "Removed · " : ""}Managing time for{" "}
+                {selectedName}
               </p>
             </div>
           </div>
