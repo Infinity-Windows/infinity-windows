@@ -9372,19 +9372,36 @@ create policy "pipeline_crew_read" on project_pipeline
 -- THE PROJECTS GRANT LAW (wave D, 20260959000000, re-stated by wave Z): the
 -- table-level INSERT/UPDATE on `projects` is revoked and only the columns the
 -- app writes directly are granted back. Dropping a column drops its privilege
--- with it, so the lists are re-stated here — and their CONTENT is unchanged,
--- because all three dropped columns were deliberately RPC-only and never named
--- in either list. Re-stating them anyway is the law's point: a reader should
--- learn what is writable from the newest migration that touched this table
--- rather than by diffing three of them.
+-- with it, so the lists are re-stated here. Re-stating them is the law's point:
+-- a reader should learn what is writable from the newest migration that touched
+-- this table rather than by diffing three of them.
+--
+-- A RE-STATEMENT IS THE WHOLE WRITABLE SET, NEVER A COPY OF THE LAST ONE.
+-- `stories` is in both lists below and must stay there. Wave X (20260980000000)
+-- granted it one migration number earlier and ADDITIVELY — a bare
+-- `grant insert (stories)` with no revoke of its own. A table-level
+-- `revoke insert, update` takes every COLUMN-level grant of those privileges
+-- with it, so the revoke on the next line un-grants `stories` and only these
+-- lists put it back. Copying wave Z's lists, which predate the column, was the
+-- first cut of this file and it lost the privilege silently: nothing errors,
+-- because api.ts's isMissingStoriesColumn reads the 42501 as "that column is
+-- not deployed yet", drops `stories` from the write and retries — so the save
+-- succeeds and the storey count a foreman typed is quietly gone. Wave X's own
+-- header names this file's hazard; scripts/migration_lint.py
+-- (shrinking_grants) now fails the merge gate on it, which is the only reason
+-- the paragraph above can be trusted by the next wave to restate these lists.
+--
+-- Deliberately absent and staying absent: the three columns dropped above (all
+-- RPC-only, never named here), and gc_brand, which section H2 adds RPC-only
+-- behind set_project_gc_brand.
 revoke insert, update on table projects from anon, authenticated;
 grant insert (job_code, name, address, customer_name, contact_phone,
               contact_email, site_state, unit_number, start_date, end_date,
-              notes)
+              notes, stories)
   on projects to authenticated;
 grant update (name, address, customer_name, contact_phone, contact_email,
               site_state, unit_number, start_date, end_date, notes,
-              estimated_minutes, estimated_crew, estimated_at)
+              estimated_minutes, estimated_crew, estimated_at, stories)
   on projects to authenticated;
 
 -- ---------------------------------------------------------------------------
