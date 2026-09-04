@@ -6,6 +6,7 @@ import {
   configFromTiers,
   constructabilityProblems,
   mirrorUnitConfig,
+  specImportName,
   specToUnitConfig,
   unitTiers,
   type UnitConfig,
@@ -319,5 +320,45 @@ describe("specToUnitConfig door leaf swings vs slides", () => {
     expect(cfg.kind).toBe("window");
     expect(cfg.panels[0].mechanism).toBe("slider");
     expect(cfg.panels[1].mechanism).toBe("fixed");
+  });
+
+  // Studio used to answer both of these questions with its own regexes, and
+  // they had drifted from the answer the job card, the map and the counts give
+  // (wave X review). Both cases below are ones the old rules got wrong.
+  describe("reads the spec the same way the rest of the app does", () => {
+    it("does not turn an OUTDOOR living room into a door", () => {
+      // `/door|patio/` with no word boundary matched "outdoor". The shared
+      // classifier matches whole words only.
+      const spec: ProjectMarkSpec = {
+        ...base,
+        style: "Outdoor living room fixed panel",
+        operation: "Fixed",
+      };
+      expect(specToUnitConfig(spec)!.kind).toBe("window");
+      expect(specImportName(spec)).toBe("Window D-11");
+    });
+
+    it("keeps a French door swinging when a sliding screen is mentioned later", () => {
+      // The old test searched the whole style-plus-operation string for
+      // "slid", so this drew with a slide arrow. Position decides: the
+      // supplier writes the unit first and its neighbours after.
+      const cfg = specToUnitConfig({
+        ...base,
+        style: "Aluminum French Door with sliding screen",
+        operation: "French Door",
+      })!;
+      expect(cfg.kind).toBe("door");
+      expect(cfg.panels[0].mechanism).toBe("casement");
+    });
+
+    it("draws a bifold's leaf as a fold, which the catalog has a symbol for", () => {
+      const cfg = specToUnitConfig({
+        ...base,
+        style: "Thermal break Aluminum Bi-Fold Door (4 panel)",
+        operation: null,
+      })!;
+      expect(cfg.kind).toBe("door");
+      expect(cfg.panels[0].mechanism).toBe("bifold");
+    });
   });
 });
