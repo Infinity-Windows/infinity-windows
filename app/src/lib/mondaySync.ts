@@ -152,6 +152,109 @@ export async function triggerMondaySync(force = false): Promise<{
 }
 
 /**
+ * "17.9 MB" — plain enough that somebody on a phone can tell a marked plan set
+ * from a one-page quote before deciding to pull it over cell signal. Whole
+ * megabytes above 10 MB, one decimal below, kilobytes under a megabyte.
+ */
+export function fileSizeLabel(bytes: number | null | undefined): string {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) return "";
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${Math.round(kb)} KB`;
+  const mb = kb / 1024;
+  return mb >= 10 ? `${Math.round(mb)} MB` : `${mb.toFixed(1)} MB`;
+}
+
+/** What the office decided about one file in the Build form. */
+export interface MondayFileChoice {
+  kind: MondayFileKind;
+  selected: boolean;
+}
+
+/** One file's fate, as the pull reports it back. */
+export interface MondayPullResult {
+  asset_id: string;
+  name: string;
+  ok: boolean;
+  /** Which slot on the job it landed in, when it landed. */
+  where: "plans" | "specs" | "documents" | null;
+  /** True when this exact Monday file was already on the job. */
+  already?: boolean;
+  /** A plain sentence, from the server, when it did not land. */
+  error?: string | null;
+}
+
+/**
+ * The files to ask the server for, in board order.
+ *
+ * Pure and separate from the request below, because this is where a decision
+ * the office made on screen turns into an instruction the server obeys. Two
+ * rules it enforces beyond "what was ticked":
+ *
+ *   * A file with no choice recorded is TAKEN, at whatever the guesser said.
+ *     The form ticks everything by default and un-ticking is the deliberate
+ *     act; a file that somehow never got an entry should behave like the rest
+ *     of them rather than silently going missing.
+ *   * A file that is not a PDF, DWG or DXF is sent as a document whatever the
+ *     picker holds. The picker locks that choice on screen, and this is the
+ *     second lock: a plan slot fed a spreadsheet is a broken map, and the cost
+ *     of being sure here is one line.
+ */
+export function pullRequestFiles(
+  files: MondayFile[],
+  choices: Record<string, MondayFileChoice>,
+): { asset_id: string; kind: MondayFileKind }[] {
+  return files
+    .filter((f) => choices[f.asset_id]?.selected !== false)
+    .map((f) => ({
+      asset_id: f.asset_id,
+      kind: isExtractableFile(f.name, f.ext)
+        ? choices[f.asset_id]?.kind ?? guessMondayFileKind(f.name, f.ext)
+        : ("document" as MondayFileKind),
+    }));
+}
+
+/** How a pull went, in the three numbers the summary sentence needs. */
+export function pullCounts(results: MondayPullResult[]): {
+  pulled: number;
+  failed: number;
+  total: number;
+} {
+  const pulled = results.filter((r) => r.ok).length;
+  return { pulled, failed: results.length - pulled, total: results.length };
+}
+
+/**
+ * Ask monday-sync to fetch the chosen files and put them on the job.
+ *
+ * Server-side on purpose. Monday's download link is minted per request and
+ * lasts an hour, the token that mints it must never reach a browser, and only
+ * the server can check that the asset really is attached to the item the office
+ * tied to this job.
+ */
+export async function pullMondayFiles(args: {
+  mondayJobId: string;
+  projectId: string;
+  files: { asset_id: string; kind: MondayFileKind }[];
+}): Promise<{ ok: boolean; results: MondayPullResult[]; error?: string }> {
+  const { data, error } = await supabase.functions.invoke("monday-sync", {
+    body: {
+      action: "pull_files",
+      monday_job_id: args.mondayJobId,
+      project_id: args.projectId,
+      files: args.files,
+    },
+  });
+  if (error) return { ok: false, results: [], error: error.message };
+  const body = data as { ok?: boolean; results?: MondayPullResult[]; error?: string };
+  return {
+    ok: Boolean(body?.ok),
+    results: Array.isArray(body?.results) ? body.results : [],
+    error: body?.error,
+  };
+}
+
+/**
  * What a staged Monday row becomes when it is built into a real job.
  *
  * Pure, and separate from the write below, so the mapping itself is testable:
@@ -176,17 +279,25 @@ export function buildInputFromMonday(
   };
 }
 
-/** Build a real project from a staged row and link the two. */
+/**
+ * Build a real project from a staged row and link the two.
+ *
+ * Returns the new job's id because the caller pulls the row's files onto it
+ * next. The pull is deliberately NOT done here: a file that fails to come
+ * across must never undo a job the office has already built, so the two are
+ * separate steps with separate failures (Monday files, F3).
+ */
 export async function buildProjectFromMonday(
   job: MondayJob,
   input: CreateProjectInput,
-): Promise<void> {
+): Promise<{ projectId: string }> {
   const project = await createProject(buildInputFromMonday(job, input));
   const { error } = await supabase
     .from("monday_jobs")
     .update({ project_id: project.id })
     .eq("id", job.id);
   if (error) throw error;
+  return { projectId: project.id };
 }
 
 export async function dismissMondayJob(id: string): Promise<void> {
