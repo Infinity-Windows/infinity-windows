@@ -609,6 +609,11 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # nudged back and forth all afternoon and every nudge is a real step in the
     # undo history, so two rows that look alike are two moves, not a duplicate.
     "project_opening_pin_moves": None,
+    # Same shape one row up: one row per time a unit changed hands (Wave Y, Y5,
+    # 20260982000000). A unit can go to Sam, come back, and go to Sam again in
+    # one morning, and all three are real handovers — there is nothing to dedup
+    # on, and merging two databases keeps both sides' history.
+    "opening_assignment_events": None,
     "project_plan_outlines": None,
     # A snapped receipt, like job_notes/opening_notes above: two receipts
     # with the same vendor/amount/date can be two real purchases (gas twice

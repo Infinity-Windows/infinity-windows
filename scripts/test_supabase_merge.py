@@ -152,7 +152,10 @@ class TestSchemaParsing(unittest.TestCase):
         # +1: pipeline_nudges — the ledger of what the 7 AM job-pipeline sweep
         # has already said about a job (Wave J, J4, 20260979000000). Wave E
         # (20260977000000) declared no table of its own.
-        self.assertEqual(len(SCHEMA.tables), 122)
+        # +1: opening_assignment_events — one row per time a unit changed
+        # hands, written by a trigger on project_openings.assigned_to (Wave Y,
+        # Y5, 20260982000000).
+        self.assertEqual(len(SCHEMA.tables), 123)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
