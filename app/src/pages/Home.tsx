@@ -549,10 +549,13 @@ function HomeProjectsGrid({
     <div className="home-projects">
       {cards.map((p) => (
         <Link key={p.id} to={`/projects/${p.id}`} className="project-card home-project">
-          <div className="home-project-head">
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 16, display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+          {/* The same grid and the same type as the Jobs page card, minus the
+              reorder rail — Home never reorders. Two lists of job cards that
+              looked like two different apps is what this shares. */}
+          <div className="home-project-head job-card-head">
+            <div className="job-card-body">
+              <div className="job-card-title">
+                <span className="job-card-name">
                   {p.name}
                 </span>
                 {p.chatUnread > 0 && (
@@ -562,17 +565,9 @@ function HomeProjectsGrid({
                   </span>
                 )}
               </div>
-              <div className="muted" style={{ fontSize: 12 }}>{p.sub}</div>
+              <div className="muted job-card-sub">{p.sub}</div>
             </div>
-            <span
-              style={{
-                fontFamily: "var(--font-display)",
-                fontWeight: 700,
-                fontSize: 15,
-                color: p.pctColor,
-                flex: "none",
-              }}
-            >
+            <span className="job-card-pct" style={{ color: p.pctColor }}>
               {p.pctLabel}
             </span>
           </div>
