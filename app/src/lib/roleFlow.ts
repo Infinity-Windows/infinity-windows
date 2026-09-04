@@ -171,6 +171,16 @@ const INSTALLER: RoleFlow = {
     ],
     [
       {
+        id: "warehouse-keys",
+        label: "The warehouse keys",
+        lines: ["Where in the box, whose job,", "which window, home spots."],
+        asks: "Say where in the conex you put it. Move Boneyard stock onto a job. Fix a window number that went on wrong. Give the caulk a home spot somebody else can find. Mint a window's labels before the truck, and ask for a takeoff or fill one.",
+        wrong: "Only the ENDING actions belong to a foreman — burning a label, deleting a package or a delivery, starting a set over. Everything above is yours, because you are the one holding the box (ADR-0007).",
+        doors: ["/warehouse", "/labels", "/supplies", "/takeoffs"],
+      },
+    ],
+    [
+      {
         id: "problems",
         label: "When something's wrong",
         lines: ["Broken freight, a redo,", "a write that didn't send."],
@@ -203,7 +213,7 @@ const FOREMAN: RoleFlow = {
   role: "foreman",
   title: "How a foreman runs a day",
   lede:
-    "Everything on the installer map is yours too. This map is the part only you carry: the crew, the plans, the warehouse keys, and the answers people wait on.",
+    "Everything on the installer map is yours too. This map is the part only you carry: the crew, the plans, the actions that end something, and the answers people wait on. The everyday warehouse is the whole crew's now (ADR-0007) — you are one of the hands on it, not the gate in front of it.",
   rows: [
     [
       {
@@ -219,7 +229,7 @@ const FOREMAN: RoleFlow = {
         id: "plans",
         label: "The plans",
         lines: ["Spec review confirms", "every window."],
-        asks: "The schedule of windows comes from the plans at spec review — and the tag screen can add one the plans missed, because you can.",
+        asks: "The schedule of windows comes from the plans at spec review — and anybody at the truck can add one the plans missed, straight from the tag screen.",
         wrong: "A window number nobody confirmed becomes a phantom forever — that is why tagging checks the schedule.",
         doors: ["/projects"],
       },
@@ -236,16 +246,17 @@ const FOREMAN: RoleFlow = {
     [
       {
         id: "keys",
-        label: "The warehouse keys",
-        lines: ["Containers, home spots,", "areas, counts."],
-        asks: "Point at where in the box a package sits; give supplies a home a person can find; set the window on a mistagged package; assign Boneyard stock to a job.",
+        label: "The last warehouse doors",
+        lines: ["Burn, delete,", "start a set over."],
+        asks: "Areas, home spots, retagging, assigning Boneyard stock — all of that is the whole crew's since ADR-0007. What is still only yours here is the handful of actions that END something: burn a label that never lived, delete a package and its history with it, delete a delivery, start a set over.",
+        wrong: "These are the ones worth a rank. Everything the crew can now do either warns, refuses, or leaves a movement line you can read back; these four do not come back.",
         doors: ["/storage", "/supplies", "/warehouse"],
       },
       {
         id: "inbox",
         label: "The warehouse inbox",
-        lines: ["Takeoff requests wait", "on your answer."],
-        asks: "Answer with a rough when, mark it ready when it is — their phone hears both. Pickup logs every line against the job.",
+        lines: ["Takeoff requests, and", "whoever picks one up."],
+        asks: "Anyone can ask for a bundle and anyone can fill one. Answer with a rough when, mark it ready when it is — their phone hears both. Pickup logs every line against the job.",
         doors: ["/takeoffs"],
         branch: true,
       },
