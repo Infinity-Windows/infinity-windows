@@ -945,6 +945,33 @@ export const CATALOG = {
     en: "{n} kept out of the averages",
     es: "{n} fuera de los promedios",
   },
+  // What a supervisor does with a missed unit. On the opening sheet, which
+  // every role opens — the installer who added it reads the first two lines and
+  // nothing else, so those are as much a phone string as any other.
+  "missed.explain": {
+    en: "Added from the site. It counts as a real window or door everywhere until somebody says otherwise.",
+    es: "Agregada desde el sitio. Cuenta como una ventana o puerta real en todos lados hasta que alguien diga lo contrario.",
+  },
+  "missed.supervisorDecides": {
+    en: "A supervisor decides whether it keeps this name, is really an existing mark, or comes back off.",
+    es: "Un supervisor decide si conserva este nombre, si en realidad es una marca que ya existe, o si se quita.",
+  },
+  "missed.keepUnderName": { en: "Keep it — under this name", es: "Consérvala — con este nombre" },
+  "missed.nameLabel": { en: "Name for this unit", es: "Nombre de esta unidad" },
+  "missed.saveName": { en: "Save the name", es: "Guardar el nombre" },
+  "missed.orExistingMark": {
+    en: "Or it is really an existing mark",
+    es: "O en realidad es una marca que ya existe",
+  },
+  "missed.mergeInto": { en: "Merge into…", es: "Combinar con…" },
+  "missed.merge": { en: "Merge", es: "Combinar" },
+  "missed.takeOff": { en: "Take it back off the job", es: "Quitarla del trabajo" },
+  "missed.kept": { en: "Kept as {code}.", es: "Guardada como {code}." },
+  "missed.merged": { en: "Merged into {code}.", es: "Combinada con {code}." },
+  "missed.removed": {
+    en: "Taken back off the job — it is in the removed list.",
+    es: "Quitada del trabajo — está en la lista de quitadas.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

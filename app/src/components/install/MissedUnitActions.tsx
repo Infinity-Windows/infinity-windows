@@ -48,17 +48,17 @@ export function MissedUnitActions({
 
   const rename = useMutation({
     mutationFn: () => renameFieldUnit(opening.id, name.trim()),
-    onSuccess: (row) => onDone(`Kept as ${row.opening_code}.`),
+    onSuccess: (row) => onDone(t("missed.kept", { code: row.opening_code })),
     onError,
   });
   const merge = useMutation({
     mutationFn: () => mergeFieldUnit(opening.id, into),
-    onSuccess: (row) => onDone(`Merged into ${row.opening_code}.`),
+    onSuccess: (row) => onDone(t("missed.merged", { code: row.opening_code })),
     onError,
   });
   const remove = useMutation({
     mutationFn: () => removeFieldUnit(opening.id),
-    onSuccess: () => onDone("Taken back off the job — it is in the removed list."),
+    onSuccess: () => onDone(t("missed.removed")),
     onError,
   });
 
@@ -71,36 +71,34 @@ export function MissedUnitActions({
         {t("missed.badge")}
       </p>
       <p className="muted" style={{ margin: "4px 0" }}>
-        Added from the site. It counts as a real window or door everywhere until
-        somebody says otherwise.
+        {t("missed.explain")}
       </p>
       {!canAct ? (
         <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-          A supervisor decides whether it keeps this name, is really an existing
-          mark, or comes back off.
+          {t("missed.supervisorDecides")}
         </p>
       ) : (
         <>
-          <label className="field-label">Keep it — under this name</label>
+          <label className="field-label">{t("missed.keepUnderName")}</label>
           <div className="row-gap">
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              aria-label="Name for this unit"
+              aria-label={t("missed.nameLabel")}
             />
             <button
               className="action-btn"
               disabled={busy || !name.trim() || name.trim() === opening.opening_code}
               onClick={() => rename.mutate()}
             >
-              Save the name
+              {t("missed.saveName")}
             </button>
           </div>
 
-          <label className="field-label">Or it is really an existing mark</label>
+          <label className="field-label">{t("missed.orExistingMark")}</label>
           <div className="row-gap">
             <select value={into} onChange={(e) => setInto(e.target.value)}>
-              <option value="">Merge into…</option>
+              <option value="">{t("missed.mergeInto")}</option>
               {targets.map((o) => (
                 <option key={o.id} value={o.opening_code}>
                   {o.opening_code}
@@ -108,7 +106,7 @@ export function MissedUnitActions({
               ))}
             </select>
             <button className="action-btn" disabled={busy || !into} onClick={() => merge.mutate()}>
-              Merge
+              {t("missed.merge")}
             </button>
           </div>
 
@@ -118,7 +116,7 @@ export function MissedUnitActions({
             disabled={busy}
             onClick={() => remove.mutate()}
           >
-            Take it back off the job
+            {t("missed.takeOff")}
           </button>
         </>
       )}

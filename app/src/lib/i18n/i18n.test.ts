@@ -208,4 +208,35 @@ describe("the crew flow reads fully in Spanish (slice 7)", () => {
     expect(msg).toContain("0 fotos");
     expect(msg).not.toMatch(/opening|package|photo|Delete/);
   });
+
+  // Wave E (transcripts program): the missed-unit card lives on the opening
+  // sheet, which every role opens — an installer reads its first two lines on
+  // a phone. Nine of its strings shipped as English literals with only the
+  // badge translated, which is exactly the leak this file exists to catch.
+  it("says the whole missed-unit card in Spanish, not only its badge", () => {
+    const keys = [
+      "missed.badge",
+      "missed.explain",
+      "missed.supervisorDecides",
+      "missed.keepUnderName",
+      "missed.nameLabel",
+      "missed.saveName",
+      "missed.orExistingMark",
+      "missed.mergeInto",
+      "missed.merge",
+      "missed.takeOff",
+      "missed.removed",
+    ] as const;
+    for (const key of keys) {
+      const es = translate(CATALOG, "es", key);
+      expect(es, `${key} has no Spanish`).not.toBe("");
+      expect(es, `${key} is still English`).not.toBe(translate(CATALOG, "en", key));
+    }
+    expect(translate(CATALOG, "es", "missed.kept", { code: "W-14" })).toBe(
+      "Guardada como W-14.",
+    );
+    expect(translate(CATALOG, "es", "missed.merged", { code: "W-14" })).toBe(
+      "Combinada con W-14.",
+    );
+  });
 });
