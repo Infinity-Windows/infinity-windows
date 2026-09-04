@@ -50,8 +50,14 @@ function cert(over: Record<string, unknown>) {
   };
 }
 
-// Green: comfortably more than thirty days left.
-const GOOD = cert({ id: "00000000-0000-4000-8000-00000000000a" });
+// Green: comfortably more than thirty days left. Carries a stored photo, which
+// is the one thing on a card row that foreman+ may NOT look at — the row says a
+// card exists and when it runs out; the picture is somebody's government-
+// adjacent ID and stays with them and their supervisor.
+const GOOD = cert({
+  id: "00000000-0000-4000-8000-00000000000a",
+  document_path: `${MARIA}/00000000-0000-4000-8000-0000000000aa.jpg`,
+});
 // Amber: exactly on the thirty-day boundary, which is the day the chip is
 // meant to turn — one day either side of this is the assertion worth having.
 const SOON = cert({
@@ -211,6 +217,11 @@ test("a card's chip says what it means, not only what colour it is", async ({ pa
 
   // An unchecked card says so beside its chip.
   await expect(row(page, "Chris").locator(".cred-unchecked")).toHaveText(/Not checked yet/i);
+
+  // A supervisor IS offered the photo — the counterpart of the foreman
+  // assertion further down, so a gate that hid the button from everybody would
+  // fail here rather than pass quietly.
+  await expect(maria.getByRole("button", { name: /^See the card$/ })).toHaveCount(1);
 });
 
 test("marking a card checked sends the verify and nothing else", async ({ page }) => {
@@ -352,6 +363,10 @@ test("a foreman reads every card and is offered no supervisor tap", async ({ pag
   await expect(row(page, "Maria").locator(".cred-chip.ok")).toBeVisible();
   await expect(page.getByRole("button", { name: /^Mark checked$/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Void$/ })).toHaveCount(0);
+  // Nor the PHOTO of a card. The bucket is cardholder-or-supervisor, and it
+  // refuses a read the same way it reports a missing file — so offering the
+  // button here would have been a tap that did nothing at all.
+  await expect(page.getByRole("button", { name: /^See the card$/ })).toHaveCount(0);
   // The summary is a number about the company, and it is written to be copied
   // out of the app, so it stays supervisor+.
   await expect(page.locator(".cred-summary")).toHaveCount(0);

@@ -1262,6 +1262,12 @@ export const CATALOG = {
   },
   "cred.uploading": { en: "Sending the photo…", es: "Enviando la foto…" },
   "cred.viewCard": { en: "See the card", es: "Ver la tarjeta" },
+  // The bucket answers "you may not read this" and "there is nothing here" the
+  // same way, so this one sentence has to cover both without guessing.
+  "cred.viewCard.noLuck": {
+    en: "That photo would not open. Only the person it belongs to, or a supervisor, can see it.",
+    es: "No se pudo abrir esa foto. Solo la persona dueña de la tarjeta, o un supervisor, puede verla.",
+  },
 
   // Supervisor actions on somebody else's card.
   "cred.verify": { en: "Mark checked", es: "Marcar verificada" },

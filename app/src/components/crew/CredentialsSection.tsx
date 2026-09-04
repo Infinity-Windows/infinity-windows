@@ -55,15 +55,25 @@ function ExpiryChip({ cert, today }: { cert: Certification; today: string }) {
 }
 
 /** Opens the stored card in a new tab through a short-lived signed URL. The
- * bucket is private, so there is no link to render until one is asked for. */
+ * bucket is private, so there is no link to render until one is asked for.
+ *
+ * The bucket refuses a read the same way it refuses a missing file — a denied
+ * object simply is not there, as far as the storage API will say — so
+ * credentialDocUrl cannot tell the two apart and hands back null for both. What
+ * it must NOT do is nothing: a button that resolves successfully and opens no
+ * window is a button somebody taps four times and then stops trusting. */
 function CardDocLink({ path }: { path: string }) {
   const t = useT();
   const [error, setError] = useState<string | null>(null);
   const open = useMutation({
     mutationFn: () => credentialDocUrl(path),
     onSuccess: (url) => {
+      if (!url) {
+        setError(t("cred.viewCard.noLuck"));
+        return;
+      }
       setError(null);
-      if (url) window.open(url, "_blank", "noopener,noreferrer");
+      window.open(url, "_blank", "noopener,noreferrer");
     },
     onError: (e) => setError(formatApiError(e)),
   });
@@ -272,7 +282,17 @@ export function CredentialsSection({
             <span className={cert.verifiedAt ? "cred-checked" : "cred-unchecked"}>
               {cert.verifiedAt ? t("cred.verified") : t("cred.unverified")}
             </span>
-            {cert.documentPath && <CardDocLink path={cert.documentPath} />}
+            {/* The ROW is readable to foreman+, the PHOTO is not: the bucket's
+                read policy is the cardholder or a supervisor+, because knowing
+                a card exists and when it runs out is a different thing from
+                being handed a picture of somebody's government-adjacent ID.
+                A foreman was still offered the button, and the bucket answers a
+                refusal the same way it answers a missing file — so the tap did
+                nothing at all. Offer it to the people the policy actually lets
+                through. */}
+            {cert.documentPath && (isSelf || canManage) && (
+              <CardDocLink path={cert.documentPath} />
+            )}
             {/* Nobody checks their own card, whatever their rank — so a
                 supervisor looking at their OWN row is not offered the tap.
                 Un-checking one they already hold IS offered, because taking a
