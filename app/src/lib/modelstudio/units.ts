@@ -473,7 +473,6 @@ export function specToUnitConfig(spec: ProjectMarkSpec): UnitConfig | null {
   const h = spec.height_in != null ? spec.height_in * IN_TO_MM : null;
   if (!w || !h || w < 200 || h < 200) return null;
   const op = (spec.operation ?? "").trim().toUpperCase();
-  const style = (spec.style ?? "").toLowerCase();
   // Window-or-door, and WHICH door, both come from the one classifier the
   // whole app shares (wave X). This file used to answer both questions itself,
   // and its answers had drifted from everyone else's in two ways worth
