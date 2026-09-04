@@ -7,7 +7,10 @@
 // and applies it atomically (supabase/migrations/20260958000000_rewrite_set.sql).
 //
 // No RequireRole wrapper — same pattern the other storage pages use: the
-// view stays open, the server (and `lead` here) gate the write.
+// view stays open. Since ADR-0007 (2026-09-04) so is the write: any crew
+// member declares a set and makes it match. `lead` survives here for the one
+// card that really does delete arrived material — "Start this set over",
+// which is delete_packages under a friendlier name.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
