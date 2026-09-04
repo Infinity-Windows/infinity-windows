@@ -529,3 +529,75 @@ describe("flat elevations: a wall at either end can still reach the strip's cent
     view.destroy();
   });
 });
+
+// map-crew-list-arrives (2026-09-04). The host reads the crew roster in its
+// own query, and that query can resolve AFTER the scene was built. `crew` was
+// captured at mount, so the assign sheet opened empty and stayed empty — and
+// the fix could not be "rebuild the scene when the roster lands", because a
+// rebuild throws away the camera the user was looking through. The sheet asks
+// the host for the list at the moment it opens instead.
+describe("the assign sheet reads the crew when it opens, not when the map was built", () => {
+  function mountWithShim(shim: Record<string, unknown>) {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const view = mountFitView(host, fixture as never, {
+      toast: () => {},
+      flatView: true,
+      ...shim,
+    });
+    return { host, view };
+  }
+
+  /** Pick the first unit and open the assign sheet the way a foreman does. */
+  function openAssignSheet(host: HTMLElement) {
+    host.querySelector<HTMLElement>("#assignBtn")!.click();
+    host.querySelector<HTMLElement>("button.win")!.click();
+    host.querySelector<HTMLElement>("#assignGo")!.click();
+  }
+
+  it("lists a roster that landed after the mount, with no rebuild", () => {
+    // Exactly the field case: empty at mount, real a moment later.
+    let roster: { id: string; name: string; role: string }[] = [];
+    const { host, view } = mountWithShim({
+      crew: roster,
+      getCrew: () => roster,
+      onAssign: () => {},
+    });
+    const stage = host.querySelector<HTMLElement>("#stage")!;
+    stage.dataset.cameraProbe = "kept";
+
+    roster = [{ id: "p-1", name: "sam", role: "installer" }];
+
+    openAssignSheet(host);
+    const chips = host.querySelectorAll("#crew .chk");
+    expect(chips.length).toBe(1);
+    expect(chips[0].getAttribute("data-id")).toBe("p-1");
+    // Nothing was torn down to get there — same host node, same scene.
+    expect(host.querySelector<HTMLElement>("#stage")!.dataset.cameraProbe).toBe("kept");
+    view.destroy();
+  });
+
+  it("still uses the mount-time crew when a host passes no getter", () => {
+    const { host, view } = mountWithShim({
+      crew: [{ id: "p-9", name: "lee", role: "foreman" }],
+      onAssign: () => {},
+    });
+    openAssignSheet(host);
+    expect(host.querySelector("#crew .chk")!.getAttribute("data-id")).toBe("p-9");
+    view.destroy();
+  });
+
+  it("says the list is still coming, in the reader's language, when it is genuinely empty", () => {
+    const { host, view } = mountWithShim({
+      getCrew: () => [],
+      onAssign: () => {},
+      labels: { crewEmpty: "La lista del equipo se está cargando." },
+    });
+    openAssignSheet(host);
+    expect(host.querySelectorAll("#crew .chk").length).toBe(0);
+    expect(host.querySelector("#crew")!.textContent).toBe(
+      "La lista del equipo se está cargando.",
+    );
+    view.destroy();
+  });
+});

@@ -15,7 +15,7 @@ import { useT } from "../../lib/i18n";
 import { formatApiError } from "../../lib/install/errors";
 import { listQcPassedOpeningIds } from "../../lib/ops";
 import { listOpeningPhases } from "../../lib/install/phases";
-import { isForemanPlus, isSupervisorPlus } from "../../lib/install/types";
+import { isForemanPlus, isSupervisorPlus, type Profile } from "../../lib/install/types";
 import { dataOffIds } from "../../lib/install/dataOff";
 import { useEffectiveRole } from "../../lib/useEffectiveRole";
 import {
@@ -33,6 +33,22 @@ import { jobModelFromFeatures } from "../../lib/modelstudio/projects";
 import { listScheduledMarks } from "../../lib/warehouse/warehouseCards";
 import { ProjectMap } from "./ProjectMap";
 import "../../lib/fitview/fitview.css";
+
+/**
+ * The roster in the shape the vendored renderer draws chips from. Pulled out
+ * of the mount effect (2026-09-04) so the same mapping backs BOTH the
+ * mount-time `crew` and the live `getCrew` getter below — one list, so the
+ * assign sheet can never disagree with the map it was opened from.
+ */
+function crewForRenderer(profiles: Profile[] | undefined) {
+  return (profiles ?? [])
+    .filter((p) => p.active)
+    .map((p) => ({
+      id: p.id,
+      name: p.display_name ?? p.id.slice(0, 8),
+      role: p.role,
+    }));
+}
 
 /**
  * The "Maps Interactive" project tab: the ported window-viewer 3D fit view,
@@ -324,13 +340,18 @@ export function MapsInteractive({ project }: { project: Project }) {
         // installer's existing sequence, same as the Sheets view.
         ...(isForemanPlus(effectiveRole)
           ? {
-              crew: (profilesRef.current ?? [])
-                .filter((p) => p.active)
-                .map((p) => ({
-                  id: p.id,
-                  name: p.display_name ?? p.id.slice(0, 8),
-                  role: p.role,
-                })),
+              crew: crewForRenderer(profilesRef.current),
+              // The roster as it stood at mount is only half the story. The
+              // profiles query is its own request, and on a slow phone (or a
+              // loaded CI box) it lands AFTER this effect has already built
+              // the scene — and nothing here re-runs for it, because
+              // rebuilding the scene to pick it up would throw away the
+              // camera the user was looking through. A foreman got an assign
+              // sheet with nobody in it and no way back but leaving the tab
+              // (found in the field, 2026-09-04). So the renderer asks for
+              // the list when the sheet OPENS instead, through this getter,
+              // and the ref is always current by then.
+              getCrew: () => crewForRenderer(profilesRef.current),
               // Wave Y (Y3). Foreman+ only, because the shim only carries it
               // for foreman+ — the renderer draws the button if and only if
               // the callback is there. It picks a PERSON and then opens the
@@ -348,6 +369,11 @@ export function MapsInteractive({ project }: { project: Project }) {
               labels: {
                 recordFor: t("credit.recordFor"),
                 assignOne: t("credit.assignOne"),
+                // The one case getCrew above cannot fix: the sheet opened in
+                // the second before the roster landed. Say so, and say it is
+                // worth another tap — the old line blamed the device being
+                // offline, which is almost never what happened.
+                crewEmpty: t("map.crewLoading"),
               },
               onAssign: (codes: string[], profileId: string | null) => {
                 const all = openingsRef.current ?? [];

@@ -1400,6 +1400,16 @@ export const CATALOG = {
   "assign.historyClose": { en: "Close history", es: "Cerrar historial" },
   // A hand-over whose unit is not in the list this screen loaded.
   "assign.unit": { en: "unit", es: "unidad" },
+
+  // ---- The map's assign sheet with nobody to list (2026-09-04) -----------
+  // The roster is read when this sheet OPENS now, so the only way to see this
+  // line is to open it in the second before the roster lands. The old line
+  // said the device had never been online, which was almost never true and
+  // gave a foreman nothing to do about it; this one says wait a beat.
+  "map.crewLoading": {
+    en: "Crew list still loading — try again in a second.",
+    es: "La lista del equipo se está cargando. Inténtalo de nuevo en un segundo.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
