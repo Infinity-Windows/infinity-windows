@@ -607,6 +607,36 @@ number. The job HEADER applies this rule; a job CARD shows the typed number
 alone, because resolving it needs the job's traced model and pulling every
 listed job's model down to a phone is the whole-table read this wave deleted.
 
+## Recordings by link
+
+Settled 2026-09-03, wave U (transcripts program, Q15 + Q19 — the owner's own
+design, not a recommendation). Installers already film themselves working.
+The app does not collect that footage and is not going to.
+
+**Recording (by link)** — a video of real work that reaches the Learn library
+as a YouTube ADDRESS, never as a file we hold. The installer emails the clip to
+their lead ("Send a recording" opens the phone's mail composer, already
+addressed to the leads on the job they are clocked into, subject "Recording —
+<job> — <date>"); the lead puts it on YouTube; a supervisor pastes the link into
+Learn. There is deliberately no in-app raw-footage inbox and no upload path for
+one: the app would then be holding hours of unwatched video it had to store,
+review and eventually delete. The small direct uploads Learn already supported
+still work — that is the other, older door, and Transcribe is the button that
+only ever shows on it, because YouTube hands a server no captions and never has.
+The transcript for a link is pasted by hand, or pulled in-session by the
+coordinator when somebody asks.
+
+**Draft video** — a lesson a supervisor is still building: the link is in, the
+transcript or the quiz is not. Crews never see one, by row-level security and
+not merely a hidden tab. Supervisors see their drafts as an **Inbox** at the top
+of the Videos tab, each with one-tap **Publish**. New lessons are born drafts;
+every lesson that existed before this rule stays published, because a default
+that emptied the library on deploy would have been the same bug as a bad
+migration. An ordinary edit never changes the state either way — publishing is
+always its own deliberate tap. The same draft-first shape wave Q gave the quiz,
+now covering the whole lesson.
+
+
 ## Open questions
 
 None right now — the next ones come from building.
