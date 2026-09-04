@@ -630,7 +630,7 @@ export async function listMyTimecardEdits(
   const { data, error } = await supabase
     .from("time_shift_edits")
     .select(
-      "id, shift_id, edited_by, field, old_value, new_value, reason, created_at, editor:profiles!edited_by(display_name), shift:time_shifts!inner(profile_id)",
+      "id, shift_id, edited_by, field, old_value, new_value, reason, created_at, editor:edited_by(display_name), shift:time_shifts!inner(profile_id)",
     )
     .eq("shift.profile_id", profileId)
     .neq("edited_by", profileId)

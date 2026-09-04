@@ -83,7 +83,21 @@ export function FarFromJobPrompt({
   const projectId = shift?.project_id ?? null;
   const onClock = isOnTheClock(shift);
 
+  /**
+   * The current shift, held in a ref rather than closed over.
+   *
+   * WHY IT MATTERS: writing the location changes the shift row, the open-shift
+   * query re-reads it, and a `check` that depended on the shift OBJECT would
+   * be a new function every time — re-running the effect, writing again, and
+   * turning a foreground check into a polling loop. The check runs when the app
+   * is opened and at no other time; that is the whole law of this feature, and
+   * the ref is what keeps it true.
+   */
+  const shiftRef = useRef(shift);
+  shiftRef.current = shift;
+
   const check = useCallback(async () => {
+    const shift = shiftRef.current;
     if (!shift || !shiftId || !projectId || !isOnTheClock(shift)) return;
     if (runningRef.current) return;
     runningRef.current = true;
@@ -115,7 +129,7 @@ export function FarFromJobPrompt({
     } finally {
       runningRef.current = false;
     }
-  }, [shift, shiftId, projectId]);
+  }, [shiftId, projectId]);
 
   // On mount, and every time the app is brought back to the foreground. Not a
   // timer: an app in somebody's pocket must not be checking where they are.
