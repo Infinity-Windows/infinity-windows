@@ -174,9 +174,9 @@ const INSTALLER: RoleFlow = {
         id: "warehouse-keys",
         label: "The warehouse keys",
         lines: ["Where in the box, whose job,", "which window, home spots."],
-        asks: "Say where in the conex you put it. Move Boneyard stock onto a job. Fix a window number that went on wrong. Give the caulk a home spot somebody else can find. Mint a window's labels before the truck, and ask for a takeoff or fill one.",
-        wrong: "Only the ENDING actions belong to a foreman — burning a label, deleting a package or a delivery, starting a set over. Everything above is yours, because you are the one holding the box (ADR-0007).",
-        doors: ["/warehouse", "/labels", "/supplies", "/takeoffs"],
+        asks: "Say where in the conex you put it. Move Boneyard stock onto a job. Fix a window number that went on wrong. Give the caulk a home spot somebody else can find. Mint a window's labels on the job's Warehouse tab before the truck, and ask for a takeoff or fill one.",
+        wrong: "Only the ENDING actions belong to a foreman — burning a label, deleting a package or a delivery, starting a set over, retiring or renaming a rack slot. Everything above is yours, because you are the one holding the box (ADR-0007).",
+        doors: ["/warehouse", "/projects", "/labels", "/supplies", "/takeoffs"],
       },
     ],
     [
@@ -248,8 +248,8 @@ const FOREMAN: RoleFlow = {
         id: "keys",
         label: "The last warehouse doors",
         lines: ["Burn, delete,", "start a set over."],
-        asks: "Areas, home spots, retagging, assigning Boneyard stock — all of that is the whole crew's since ADR-0007. What is still only yours here is the handful of actions that END something: burn a label that never lived, delete a package and its history with it, delete a delivery, start a set over.",
-        wrong: "These are the ones worth a rank. Everything the crew can now do either warns, refuses, or leaves a movement line you can read back; these four do not come back.",
+        asks: "Areas, home spots, retagging, assigning Boneyard stock, minting labels — all of that is the whole crew's since ADR-0007. What is still only yours here is the handful of actions that END something: burn a label that never lived, delete a package and its history with it, delete a delivery, start a set over, retire or rename a rack slot.",
+        wrong: "These are the ones worth a rank. Everything the crew can now do either warns, refuses, or leaves a movement line you can read back; these do not come back.",
         doors: ["/storage", "/supplies", "/warehouse"],
       },
       {
