@@ -393,6 +393,10 @@ export function Projects() {
                     {p.job_code}
                     {p.address ? ` · ${p.address}` : ""}
                   </div>
+                  {/* The TYPED storey count, deliberately: the job header
+                      prefers a traced model's own count, and reading one model
+                      per listed job is the whole-table pull this wave removed.
+                      See the note at the top of ScopeLine.tsx. */}
                   <ScopeLine counts={c.row} stories={p.stories} trackingOnly={isTrackingOnly(p.allowed_modes)} />
                 </div>
                 <span
