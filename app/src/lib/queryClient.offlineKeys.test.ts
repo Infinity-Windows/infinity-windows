@@ -1,7 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
-import { shouldPersistQuery } from "./queryClient";
 // api.ts reaches for supabase at import time; nothing here calls the network.
 vi.mock("./supabase", () => ({ supabase: {} }));
+// The job pack's four reads, held still so the pack can be run for real
+// below. Spread over the originals so everything else in these modules —
+// `byProjectId`, which the second describe tests — stays the real thing.
+vi.mock("./api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./api")>()),
+  listProjects: async () => [],
+  getProjectWindows: async () => [],
+}));
+vi.mock("./install/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./install/api")>()),
+  listOpenings: async () => [],
+  listPlansets: async () => [],
+  getTypeBrainStats: async () => ({}),
+  listMarkSpecs: async (projectId: string) => [
+    { id: "spec-1", project_id: projectId, mark_code: "1" },
+  ],
+}));
+import {
+  prefetchJobPack,
+  queryClient,
+  shouldPersistQuery,
+  shouldPersistQueryState,
+} from "./queryClient";
 import { byProjectId } from "./api";
 import type { ScopeCounts } from "./scope";
 
@@ -19,6 +41,11 @@ import type { ScopeCounts } from "./scope";
  *   `needs_flashing = true` came back; the submitted flashing phase that
  *   clears it was not, so Submit went dead on an already-flashed unit and the
  *   install could not even be queued for later.
+ * - markSpecs (installer research item 2, 2026-09-04): the opening was cached
+ *   and the mark's spec was not, so with no signal the unit sheet showed no
+ *   sizes, no hardware, no OXXO layout — and the "no spec sheet for this mark"
+ *   notice is gated on the spec list being non-empty, so it said nothing
+ *   either. The installer got silence at the window and guessed.
  *
  * These pairs are listed together here so the next one is a failing test
  * rather than a field report.
@@ -27,6 +54,7 @@ describe("offline cache: a gate and the fact that clears it travel together", ()
   const PAIRS: Array<[string, string, string]> = [
     ["the toolbox talk", "todayTalk", "toolboxToday"],
     ["the flashing gate", "opening", "openingPhases"],
+    ["what to install", "opening", "markSpecs"],
   ];
 
   for (const [what, raises, clears] of PAIRS) {
@@ -39,6 +67,73 @@ describe("offline cache: a gate and the fact that clears it travel together", ()
   it("still keeps volatile and heavy reads out", () => {
     expect(shouldPersistQuery(["openingPhotos", "opening-1"])).toBe(false);
     expect(shouldPersistQuery([])).toBe(false);
+  });
+
+  // The guard in front of the unit sheet asks the all-jobs list whether this
+  // job is tracking-only. Offline that read never resolves — react-query
+  // pauses a retry rather than failing it — so the guard held a loading screen
+  // and the sheet the whole install loop runs on never appeared. It is a gate
+  // like any other, and its fact has to be on the phone too.
+  it("keeps the list the unit sheet's own guard reads", () => {
+    expect(shouldPersistQuery(["projectsAll"])).toBe(true);
+  });
+});
+
+/**
+ * A query that is still in flight must never be written to disk.
+ *
+ * React Query dehydrates a PENDING query with its in-flight promise attached.
+ * `JSON.stringify` turns a promise into `{}`, and on the next launch hydrate
+ * calls `.then` on that `{}`, throws, and — by design, as a precaution —
+ * discards the whole persisted cache. So one unlucky snapshot taken mid-fetch
+ * threw away every offline answer on the device, including all the ones added
+ * above after real incidents. The offline e2e spec caught it: the cache was
+ * written, and came back empty on the very next load.
+ */
+describe("only answers that actually arrived are written to disk", () => {
+  it("persists a settled answer on a listed key", () => {
+    expect(shouldPersistQueryState(["markSpecs", "project-1"], "success")).toBe(true);
+  });
+
+  it("refuses a query that is still loading, however good its key", () => {
+    expect(shouldPersistQueryState(["markSpecs", "project-1"], "pending")).toBe(false);
+    expect(shouldPersistQueryState(["opening", "opening-1"], "pending")).toBe(false);
+  });
+
+  it("refuses a failed read, and any key not on the list", () => {
+    expect(shouldPersistQueryState(["opening", "opening-1"], "error")).toBe(false);
+    expect(shouldPersistQueryState(["openingPhotos", "opening-1"], "success")).toBe(
+      false,
+    );
+  });
+});
+
+/**
+ * Keeping a key in OFFLINE_KEYS only preserves what somebody has already
+ * opened on this phone. The job pack is the other half of the promise — "the
+ * job is on your phone before the truck leaves" — so a read that matters at
+ * the window has to be in both lists, or the first unit of the day is the one
+ * with no spec card.
+ */
+describe("the job pack downloads what the unit sheet reads at the window", () => {
+  it("warms the mark specs under the key the sheet reads them by", async () => {
+    await prefetchJobPack("project-1");
+
+    // The four it always had.
+    for (const key of [
+      ["projects"],
+      ["openings", "project-1"],
+      ["projectWindows", "project-1"],
+      ["plansets", "project-1"],
+    ]) {
+      expect(queryClient.getQueryData(key), `${key[0]} was not warmed`).toBeDefined();
+    }
+    // The one it was missing, and the reason this test exists. Same key shape
+    // OpeningSheet uses: ["markSpecs", projectId].
+    expect(
+      queryClient.getQueryData(["markSpecs", "project-1"]),
+      "no specs in the cache — the sheet shows no spec card in a dead zone",
+    ).toEqual([{ id: "spec-1", project_id: "project-1", mark_code: "1" }]);
   });
 });
 

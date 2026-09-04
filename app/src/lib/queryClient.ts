@@ -1,7 +1,12 @@
 import { MutationCache, QueryClient } from "@tanstack/react-query";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { getProjectWindows, listProjects } from "./api";
-import { getTypeBrainStats, listOpenings, listPlansets } from "./install/api";
+import {
+  getTypeBrainStats,
+  listMarkSpecs,
+  listOpenings,
+  listPlansets,
+} from "./install/api";
 import { toastError } from "./toast";
 
 // offlineFirst: when there's no connection, queries resolve from the persisted
@@ -38,6 +43,14 @@ export const persister =
 /** Queries worth keeping offline. Excludes heavy/binary and volatile searches. */
 const OFFLINE_KEYS = new Set([
   "projects",
+  // Every job, whatever its status. The unit sheet sits behind a guard that
+  // asks this list whether the job is tracking-only (RequireDataJob in
+  // App.tsx), and a guard that cannot answer holds a loading screen. Offline
+  // that read never resolves — with no connection react-query PAUSES the retry
+  // instead of failing it, so the query stays pending for as long as the phone
+  // has no signal — and the sheet the whole install loop runs on sat at
+  // "Loading…" the entire time. Found by the offline e2e spec, 2026-09-04.
+  "projectsAll",
   "openings",
   "scopeCounts",
   "projectWindows",
@@ -84,6 +97,15 @@ const OFFLINE_KEYS = new Set([
   // fact that clears a gate has to be as offline-durable as the fact that
   // raises it.
   "openingPhases",
+  // The same law, one step on (installer research item 2, 2026-09-04): the
+  // fact that says WHAT to install has to be as durable as the facts that
+  // clear the gates around it. The spec card — sizes, hardware, the OXXO
+  // layout, the paperwork somebody reads standing at the opening — was the one
+  // thing the unit sheet could not show with no signal, and the "no spec sheet
+  // for this mark" notice is itself gated on the spec list being non-empty, so
+  // offline the installer got silence instead of a reason. An installer who
+  // can read the spec checks it; one who cannot, guesses.
+  "markSpecs",
   // Shelf and bin addresses. Without these a supply with a home spot degrades
   // to "home spot set" — which looks configured and tells nobody where to go,
   // in the conex where the answer matters most.
@@ -99,12 +121,43 @@ export function shouldPersistQuery(queryKey: readonly unknown[]): boolean {
 }
 
 /**
+ * The whole test App.tsx applies before writing a query to disk: the right
+ * key, AND an answer that actually arrived.
+ *
+ * The status half is not a nicety — it is what keeps the cache readable at
+ * all. React Query dehydrates a query that is still PENDING with its
+ * in-flight `promise` attached; `JSON.stringify` turns a promise into `{}`,
+ * and on the next launch hydrate calls `.then` on that `{}`, throws, and
+ * discards the ENTIRE persisted cache as a precaution. Passing only a key
+ * test (which is what this replaced) let any query that happened to be
+ * mid-flight when the snapshot was taken poison the whole file — so the
+ * offline lists above, every one of them added after a real field incident,
+ * could silently restore nothing at all. Found by the offline e2e spec
+ * (e2e/offline-spec-card.spec.ts), 2026-09-04.
+ */
+export function shouldPersistQueryState(
+  queryKey: readonly unknown[],
+  status: "pending" | "error" | "success",
+): boolean {
+  return status === "success" && shouldPersistQuery(queryKey);
+}
+
+/**
  * Download a job's full data pack so the install flow works with no signal:
- * openings, unit list, demand, and each type's brain (tips/times/dims).
+ * openings, unit list, demand, each type's brain (tips/times/dims), and the
+ * per-mark specs the installer reads at the window.
  */
 export async function prefetchJobPack(projectId: string): Promise<number> {
   await Promise.all([
     queryClient.prefetchQuery({ queryKey: ["projects"], queryFn: listProjects }),
+    // Keeping the key in OFFLINE_KEYS only preserves a spec list somebody has
+    // already opened. Downloading the job pack is the promise that the phone
+    // has the job on it BEFORE the truck leaves, so the specs have to ride
+    // along or the first unit of the day is the one with no card.
+    queryClient.prefetchQuery({
+      queryKey: ["markSpecs", projectId],
+      queryFn: () => listMarkSpecs(projectId),
+    }),
     queryClient.prefetchQuery({
       queryKey: ["openings", projectId],
       queryFn: () => listOpenings(projectId),
