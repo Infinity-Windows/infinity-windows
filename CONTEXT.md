@@ -702,6 +702,48 @@ and against each finished job on Job history — because "who had the three that
 came back" is a question asked after a job is over, and the Dispatch tab is a
 working screen for jobs that are not.
 
+## Credentials
+
+Settled 2026-09-03, wave O (transcripts program, Q14 — grilled and approved;
+cite, never re-decide). What a crew member is CERTIFIED to do, as opposed to
+what they are good at.
+
+**Certification** — one card somebody holds, with the day it runs out. Six
+named kinds (`osha10`, `osha30`, `first_aid_cpr`, `aerial_lift`, `forklift`,
+`fall_protection`) plus `other` with the name typed in, and naming them is what
+makes the bid summary countable — a company cannot count "4 OSHA 30" if
+everybody spells it differently. Adding your OWN card needs no rank and always
+lands UNCHECKED, because "I have an OSHA 30" is a claim until somebody with a
+rank has looked at the paper; checking it, editing it and voiding it are
+supervisor+, all through `set_certification`. Cards are VOIDED, never deleted:
+"who said this person had an OSHA 30" is exactly the question asked after an
+incident, and a deleted row takes its own history with it. `expires_on` may be
+null, which means the card carries no expiry — a real answer, shown as a grey
+chip rather than a green one, because "nobody said when it runs out" is not the
+same as "fine". The photo of the card lives in the private `credential-docs`
+bucket where THE PATH IS THE PERMISSION (`<profile_id>/<uuid>.jpg`): the
+cardholder or a supervisor+ may read it, and only the cardholder may write into
+their own folder. The 7 AM sweep says a card is running out thirty days before
+the date and again ON the day it runs out — two pushes, and the second one has
+to be the day itself rather than the morning after, because the day a card runs
+out is the last day somebody can still do something about it before a gate turns
+them away. Both warnings are filed against the expiry date, so they take one
+ledger key each or the second never gets said. It rides wave J's existing
+`pipeline-sweep` as one more rule — the ledger is `credential_nudges` rather
+than `pipeline_nudges` only because that table's `project_id` is NOT NULL and a
+card belongs to a person, not a job.
+
+**Skill tree** — one view of everything the app knows a person is allowed to
+do, in the three flavours that had grown up separately and never sat beside
+each other: BADGES (what a foreman said they may take on), CLEARANCES (which
+window types a lead or a passed video quiz signed them off for), and
+CERTIFICATIONS (the cards, with their expiry chips). It renders on the person's
+Roster row, where a supervisor can act on it, and on their own My Work, where
+they read it about themselves and the only write they have is adding a card.
+The tree does not decide anything; it is the place all three answers finally
+show up together, so "can this crew go up in a lift on Tuesday" is one screen
+rather than three.
+
 ## Open questions
 
 None right now — the next ones come from building.

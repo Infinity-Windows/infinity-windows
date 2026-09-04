@@ -163,7 +163,12 @@ class TestSchemaParsing(unittest.TestCase):
         # +1: opening_assignment_events — one row per time a unit changed
         # hands, written by a trigger on project_openings.assigned_to (Wave Y,
         # Y5, 20260982000000).
-        self.assertEqual(len(SCHEMA.tables), 127)
+        # (20260977000000) declared no table of its own, and neither did wave X
+        # (20260980000000).
+        # +2: certifications + credential_nudges — one row per card a crew
+        # member holds, and the ledger of what the sweep has already said about
+        # one running out (Wave O, O1/O4, 20260983000000).
+        self.assertEqual(len(SCHEMA.tables), 129)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 

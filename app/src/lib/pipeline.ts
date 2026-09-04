@@ -67,8 +67,12 @@ export interface NeedsCallResult {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Local midnight for a YYYY-MM-DD day string, or null for anything else. */
-function localMidnight(day: string | null | undefined): Date | null {
+/** Local midnight for a YYYY-MM-DD day string, or null for anything else.
+ *
+ * Exported for lib/credentials.ts, which formats a card's expiry with the year
+ * in it and needs the same parse — one place that knows a day string is local,
+ * rather than a second copy that drifts. */
+export function localMidnight(day: string | null | undefined): Date | null {
   if (!day) return null;
   const iso = day.slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
