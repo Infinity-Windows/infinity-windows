@@ -644,8 +644,11 @@ recorded like any other hand-over. The screen it came from cannot be worked
 out by the database, so the assigning RPC states it and the trigger records
 what it was told, falling back to "dispatch" when nobody said. Read by
 foreman+ only: an installer sees their own list, not the ledger of everybody
-else's. Read back on the unit's Record beside its sessions, and on the
-Dispatch tab as the job's whole log.
+else's. Read back in three places, all the same card and the same rows: on the
+unit's Record beside its sessions, on the Dispatch tab while a job is running,
+and against each finished job on Job history — because "who had the three that
+came back" is a question asked after a job is over, and the Dispatch tab is a
+working screen for jobs that are not.
 
 ## Open questions
 

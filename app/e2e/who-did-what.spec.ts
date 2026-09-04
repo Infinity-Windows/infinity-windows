@@ -387,3 +387,76 @@ test("Y5: the unit Record reads back who it was handed to", async ({ page }) => 
     page.getByText(`Assigned to ${SAM_NAME} by E2E Fixture`),
   ).toBeVisible();
 });
+
+test("Y5: a finished job's hand-over log is on Job history", async ({ page }) => {
+  // The spec says the log is shown "on Job history", and that is where somebody
+  // asks it: not while the job is running (the Dispatch tab answers that) but
+  // afterwards — who had the three that came back. Same card, same rows, so
+  // there is one hand-over log in the app and not two that disagree.
+  await useSupabaseFixtures(page, { role: "supervisor" });
+  const o = opening(3);
+
+  // The job as Job history reads it: finished, and not in the trash. The
+  // fixture router's own `projects` route answers "every job, active", which
+  // would leave the finished list empty.
+  const finished = {
+    id: str(o.project_id),
+    job_code: "BLACK22",
+    name: "Black Desert",
+    address: null,
+    status: "completed",
+    status_changed_at: "2026-08-30T18:00:00Z",
+    is_test: false,
+    deleted_at: null,
+    deleted_by: null,
+  };
+  await page.route("**/rest/v1/projects**", (route) => {
+    // listTrashedProjects and listProjectsAnyStatus are the same table with
+    // opposite deleted_at filters (project-delete.spec.ts branches the same way).
+    const trashedOnly = route.request().url().includes("deleted_at=not.is.null");
+    const rows = trashedOnly ? [] : [finished];
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "content-range": `0-${Math.max(0, rows.length - 1)}/${rows.length}` },
+      body: JSON.stringify(rows),
+    });
+  });
+
+  await page.route("**/rest/v1/opening_assignment_events**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "content-range": "0-0/1" },
+      body: JSON.stringify([
+        {
+          id: "assign-wave-y-history",
+          opening_id: str(o.id),
+          project_id: str(o.project_id),
+          from_profile: null,
+          to_profile: SAM,
+          changed_by: TEST_USER.id,
+          changed_at: "2026-08-29T14:40:00Z",
+          via: "dispatch",
+        },
+      ]),
+    }),
+  );
+
+  await page.goto("/jobs/history");
+  await expect(page.getByRole("link", { name: "BLACK22" })).toBeVisible();
+
+  // Folded shut until asked for: a finished-jobs list is a list, not a ledger.
+  const log = page.getByRole("button", {
+    name: "Assignment history — who has had what",
+  });
+  await expect(log).toBeVisible();
+  await log.click();
+
+  // The unit is named by its mark code, which means the log and the job's
+  // openings were actually joined — not just a row printed with a raw id.
+  await expect(
+    page.getByText(`Assigned to ${SAM_NAME} by E2E Fixture`),
+  ).toBeVisible();
+  await expect(page.getByText(str(o.opening_code), { exact: false })).toBeVisible();
+});

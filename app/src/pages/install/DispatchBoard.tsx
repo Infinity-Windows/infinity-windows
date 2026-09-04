@@ -14,10 +14,7 @@ import {
   unassignOpening,
 } from "../../lib/install/api";
 import { formatApiError } from "../../lib/install/errors";
-import {
-  assignmentText,
-  listProjectAssignmentEvents,
-} from "../../lib/install/assignmentHistory";
+import { AssignmentHistoryCard } from "../../components/install/AssignmentHistoryCard";
 import { openingReadiness } from "../../lib/install/fit";
 import { isInstallInProgress } from "../../lib/install/installTimer";
 import {
@@ -40,7 +37,7 @@ import { installerColorMap } from "../../lib/install/mapDispatch";
 import { toggleExpandedOpening } from "../../lib/install/openingRowAction";
 import { readyStatusLabel, type ProjectOpening } from "../../lib/install/types";
 import { dataOffReasonKey, holdsOffDispatch } from "../../lib/install/dataOff";
-import { useT, type TFn } from "../../lib/i18n";
+import { useT } from "../../lib/i18n";
 import {
   compareIssues,
   KIND_LABELS,
@@ -520,84 +517,7 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
       <p className="wh-row-sub">
         {activeCrew.length === 0 ? "Add crew on the Crew screen to assign work." : ""}
       </p>
-      <AssignmentHistoryCard
-        projectId={projectId}
-        openingCodeById={openingCodeById}
-        nameOf={(id) => nameOf(id)}
-        t={t}
-      />
-    </div>
-  );
-}
-
-/**
- * The job's hand-over log (wave Y, Y5): who has had which unit, and who moved
- * it. Until this wave `assigned_to` was one column that got overwritten, so
- * the answer to "who had this before?" was simply gone — and every argument
- * about a unit sitting untouched for two days ran into that.
- *
- * Folded shut by default. It is the thing you go and look at when something is
- * wrong, not a thing to read every morning, and an open list of a hundred
- * hand-overs would push the actual board off the screen.
- */
-function AssignmentHistoryCard({
-  projectId,
-  openingCodeById,
-  nameOf,
-  t,
-}: {
-  projectId: string;
-  openingCodeById: Map<string, string>;
-  nameOf: (id: string) => string | null | undefined;
-  t: TFn;
-}) {
-  const [open, setOpen] = useState(false);
-  const events = useQuery({
-    queryKey: ["projectAssignments", projectId],
-    queryFn: () => listProjectAssignmentEvents(projectId),
-    enabled: open,
-  });
-  const rows = events.data ?? [];
-  return (
-    <div className="detail-card wh-card">
-      {!open ? (
-        <button className="button-like" onClick={() => setOpen(true)}>
-          {t("assign.historyOpen")}
-        </button>
-      ) : (
-        <>
-          <span className="field-label">{t("assign.history")}</span>
-          {events.isLoading && <p className="muted">{t("assign.historyLoading")}</p>}
-          {!events.isLoading && rows.length === 0 && (
-            <p className="muted" style={{ margin: "4px 0 0", fontSize: 12.5 }}>
-              {t("assign.historyEmpty")}
-            </p>
-          )}
-          <ul className="unit-list" style={{ marginTop: 4 }}>
-            {rows.map((e) => (
-              <li key={e.id} className="muted" style={{ fontSize: 12.5 }}>
-                <strong>
-                  {openingCodeById.get(e.opening_id) ?? t("assign.unit")}
-                </strong>{" "}
-                {assignmentText(e, nameOf, t)}
-                {" · "}
-                {new Date(e.changed_at).toLocaleString(undefined, {
-                  weekday: "short",
-                  hour: "numeric",
-                  minute: "2-digit",
-                })}
-              </li>
-            ))}
-          </ul>
-          <button
-            className="button-like"
-            style={{ marginTop: 10 }}
-            onClick={() => setOpen(false)}
-          >
-            {t("assign.historyClose")}
-          </button>
-        </>
-      )}
+      <AssignmentHistoryCard projectId={projectId} />
     </div>
   );
 }
