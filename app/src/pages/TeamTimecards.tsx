@@ -12,6 +12,12 @@ import { ChevronRight, Search } from "lucide-react";
 import { listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
 import { lastSeenAwayFromJob } from "../lib/farFromJob";
+import {
+  formatLocalTime,
+  getCompanySettings,
+  setEveningNudgeTime,
+  toTimeInput,
+} from "../lib/companySettings";
 import { useT } from "../lib/i18n";
 import { SkeletonList } from "../components/ui/States";
 import { listProfiles } from "../lib/install/api";
@@ -125,6 +131,25 @@ export function TeamTimecards() {
       setZeroReason("");
       refresh();
     },
+  });
+
+  // K2: the evening nudge hour. Read once, edited in place; the inputs follow
+  // the stored row until somebody touches them.
+  const settings = useQuery({
+    queryKey: ["companySettings"],
+    queryFn: getCompanySettings,
+    enabled: isLead,
+  });
+  const [nudgeTime, setNudgeTime] = useState("");
+  const [nudgeOn, setNudgeOn] = useState(true);
+  useEffect(() => {
+    if (!settings.data) return;
+    setNudgeTime(toTimeInput(settings.data.evening_nudge_local_time));
+    setNudgeOn(settings.data.evening_nudge_enabled);
+  }, [settings.data]);
+  const saveNudge = useMutation({
+    mutationFn: () => setEveningNudgeTime(nudgeTime, nudgeOn),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["companySettings"] }),
   });
 
   const runaways = useMemo(
@@ -272,6 +297,46 @@ export function TeamTimecards() {
           </span>
         )}
       </div>
+
+      {/* K2: when the evening "Still on the job?" push goes out. A foreman's
+          call, not a constant — a crew that starts at 5am wants asking earlier.
+          Absent entirely on a database that hasn't applied the migration. */}
+      {settings.data && (
+        <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+          <span className="muted" style={{ fontSize: 12 }}>
+            {t("nudge.label", {
+              time: formatLocalTime(settings.data.evening_nudge_local_time),
+            })}
+          </span>
+          <input
+            type="time"
+            aria-label={t("nudge.aria")}
+            value={nudgeTime}
+            onChange={(e) => setNudgeTime(e.target.value)}
+            style={{ width: 120 }}
+          />
+          <label className="row-gap" style={{ alignItems: "center", fontSize: 12 }}>
+            <input
+              type="checkbox"
+              checked={nudgeOn}
+              onChange={(e) => setNudgeOn(e.target.checked)}
+            />
+            {t("nudge.on")}
+          </label>
+          <button
+            className="button-like"
+            disabled={saveNudge.isPending || !nudgeTime}
+            onClick={() => saveNudge.mutate()}
+          >
+            {saveNudge.isPending ? t("nudge.saving") : t("nudge.save")}
+          </button>
+          {saveNudge.isError && (
+            <p className="error" style={{ flexBasis: "100%", margin: 0 }}>
+              {formatApiError(saveNudge.error)}
+            </p>
+          )}
+        </div>
+      )}
 
       {suspects.length > 0 && (
         <section className="detail-card" style={{ marginTop: 12 }}>

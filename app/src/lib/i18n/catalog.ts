@@ -886,6 +886,18 @@ export const CATALOG = {
     en: "last seen {miles} mi from job · {time}",
     es: "visto por última vez a {miles} mi del trabajo · {time}",
   },
+  // The evening nudge hour, set by a foreman on Team timecards (K2).
+  "nudge.label": {
+    en: "Evening \u201cStill on the job?\u201d reminder at {time}",
+    es: "Recordatorio de la tarde \u201c\u00bfSigues en el trabajo?\u201d a las {time}",
+  },
+  "nudge.aria": {
+    en: "Time of day the evening reminder goes out",
+    es: "Hora a la que sale el recordatorio de la tarde",
+  },
+  "nudge.on": { en: "Send it", es: "Enviarlo" },
+  "nudge.save": { en: "Save", es: "Guardar" },
+  "nudge.saving": { en: "Saving\u2026", es: "Guardando\u2026" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
