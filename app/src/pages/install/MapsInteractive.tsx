@@ -340,6 +340,15 @@ export function MapsInteractive({ project }: { project: Project }) {
               onRecordFor: (win: { id: string; type?: string }) => {
                 setRecordFor({ code: win.id, label: win.type ?? win.id });
               },
+              // The renderer is a vanilla port with no t() of its own, so the
+              // host hands it the two wave-Y button labels already translated.
+              // Read once at mount, like `crew`, `onAssign` and `northDeg`
+              // above: switching language on this tab relabels them the next
+              // time the map is built, not mid-scene.
+              labels: {
+                recordFor: t("credit.recordFor"),
+                assignOne: t("credit.assignOne"),
+              },
               onAssign: (codes: string[], profileId: string | null) => {
                 const all = openingsRef.current ?? [];
                 const ids = codes

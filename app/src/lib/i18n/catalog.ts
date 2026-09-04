@@ -1157,11 +1157,6 @@ export const CATALOG = {
     es: "Esta unidad está en la lista de otra persona. A quien elijas le queda en su historial; el tiempo sigue contando como tuyo.",
   },
   "credit.me": { en: "Me", es: "Yo" },
-  "credit.assignee": { en: "Assigned to them", es: "Le toca a esta persona" },
-  "credit.filedFor": {
-    en: "Filed for {name}",
-    es: "Registrado a nombre de {name}",
-  },
   // The map's door into this (Y3). It goes to the same finish flow with the
   // same photo, grade and flashing gates — nothing is marked done from here.
   "credit.recordFor": { en: "Record install for…", es: "Registrar instalación de…" },

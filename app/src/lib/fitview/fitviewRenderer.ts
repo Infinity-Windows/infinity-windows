@@ -21,6 +21,11 @@
  *                                            installed it, then opens the
  *                                            opening sheet's finish flow.
  *                                            Absent = no such button.
+ *   labels?          { recordFor, assignOne } - wave Y (2026-09-04): the two
+ *                                            buttons above, in the reader's
+ *                                            own language. This file has no
+ *                                            t(); the host does. Absent falls
+ *                                            back to the English below.
  */
 
 // Stories (docs/maps-interactive-stories-design.md): the canonicalizers live
@@ -1845,6 +1850,12 @@ export function mountFitView(host, job, shim) {
     });
   }
 
+  // transcripts-program-spec wave Y (2026-09-04): one translated label, or the
+  // English the prototype would have used.
+  function label(key, fallback) {
+    return (SHIM.labels && SHIM.labels[key]) || fallback;
+  }
+
   function sheetHTML(win) {
     var st = STATUS[win.status];
     var elevRec = ELEVS.filter(function (e) { return e.key === win.elev; })[0];
@@ -1924,9 +1935,9 @@ export function mountFitView(host, job, shim) {
         // a person and the host opens the real finish flow, photo and grade
         // gates and all.
         (SHIM.onRecordFor ?
-          '<button class="btn" data-recordfor>Record install for&#8230;</button>' : '') +
+          '<button class="btn" data-recordfor>' + esc(label("recordFor", "Record install for\u2026")) + '</button>' : '') +
         (SHIM.onAssign ?
-          '<button class="btn" data-assignone>Assign&#8230;</button>' : '') +
+          '<button class="btn" data-assignone>' + esc(label("assignOne", "Assign\u2026")) + '</button>' : '') +
       '</div>';
   }
 
