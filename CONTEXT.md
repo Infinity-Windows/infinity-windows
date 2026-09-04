@@ -509,6 +509,40 @@ to one receipt — always a proposal until somebody presses the button.
 Nothing auto-deletes, and every import is undoable as a batch that keeps
 whatever somebody had already matched.
 
+## Scope at a glance
+
+Settled 2026-09-03, wave X (transcripts program, Q1 — grilled and approved;
+cite, never re-decide). How big a job is, answered before anybody opens it.
+
+**Door kind** — which door a mark is: `slider`, `french`, `bifold`, `swing`, or
+`other`. Read off the supplier's own words by ONE function (`doorKind`,
+`app/src/lib/install/specKinds.mjs`) in the order `inferHardware` reads the same
+sheet in — the style line, then the operation line, then the operation letters,
+of which only OXXO names a kind on its own. A word always beats the letters,
+because reading the letters first is what once drew a run of French doors as
+sliders. The vocabulary is `docs/window-vendor-conventions.md`, and CLAUDE.md's
+law is that the doc, `inferHardware` and the classifier change together. `other`
+is not a gap, it is an answer: the paperwork did not say which, and a foreman
+correcting the spec text moves the mark out of it. It is STORED, on
+`project_mark_specs.door_kind` beside `unit_kind` (window or door), written by
+that one classifier at every specs write path so a mark reads the same whether
+it arrived from extraction, an edit, Studio, or the backfill — and re-running the
+backfill (`scripts/seed-spec-kinds.mjs`, Actions → Run seed script) is what makes
+an old row agree with a changed rule.
+
+**Scope line** — the one sentence a job says about its own size: "40 openings ·
+32 windows · 8 doors · 2 stories" under the name on a job card, and the same
+line with the doors broken out — "8 doors (5 sliders · 2 French · 1 bifold)" —
+under the job code on every tab of the job. Any part the job cannot say is left
+out rather than shown as a zero, because "0 doors" reads as a job somebody has
+checked. A tracking job with nothing on it says "Tracking job". The numbers come
+from `project_scope_counts`, one grouped row per job computed under the reader's
+own row-level security, which replaced pulling every opening row on the company
+down to a phone to count them there. Storeys are the exception to "counted": a
+traced 3D model's storey count wins when there is one, else the number typed on
+the job form, else nothing — and the model never writes back into the typed
+number.
+
 ## Open questions
 
 None right now — the next ones come from building.
