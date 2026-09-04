@@ -122,6 +122,33 @@ describe("error classification", () => {
     expect(isRetryableError({ code: "22P02", message: "bad uuid" })).toBe(false);
   });
 
+  // 2026-09-04: `jwt` used to sit in the permanent-message list beside
+  // "duplicate key" and "permission denied", which made the most temporary
+  // failure there is — an access token that has expired — a verdict. A phone
+  // coming back from a long dead zone dead-lettered a FINISHED install on its
+  // first attempt, and the sheet told the installer their work was refused.
+  //
+  // The word was removed, not replaced: the SQLSTATE check already covers the
+  // auth refusals that are real (42501 permission denied, P0001 for a rule of
+  // our own), and the ones below still stop on the message alone.
+  it("retries an expired token instead of calling it a verdict", () => {
+    expect(isRetryableError({ message: "JWT expired" })).toBe(true);
+    expect(
+      isRetryableError(
+        new Error("invalid JWT: unable to parse or verify signature"),
+      ),
+    ).toBe(true);
+    // …while the refusals that mean it are untouched.
+    expect(
+      isRetryableError(new Error("new row violates row-level security policy")),
+    ).toBe(false);
+    expect(isRetryableError({ code: "42501", message: "permission denied" })).toBe(
+      false,
+    );
+    expect(isRetryableError(new Error("user is not authorized"))).toBe(false);
+    expect(isRetryableError(new Error("forbidden"))).toBe(false);
+  });
+
   it("leaves the errors a retry actually fixes alone", () => {
     expect(isRetryableError(new TypeError("Failed to fetch"))).toBe(true);
     expect(isRetryableError({ code: "503", message: "Service Unavailable" })).toBe(true);

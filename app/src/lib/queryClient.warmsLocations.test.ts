@@ -33,6 +33,9 @@ vi.mock("./install/api", () => ({
   getTypeBrainStats: async () => ({}),
   listOpenings: async () => [],
   listPlansets: async () => [],
+  // The job pack warms these too; queryClient imports it, so the mock has to
+  // name it even though the warehouse pack never calls it.
+  listMarkSpecs: async () => [],
 }));
 
 const { prefetchWarehousePack, queryClient } = await import("./queryClient");
