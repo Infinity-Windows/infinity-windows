@@ -50,13 +50,26 @@ export function joinPlainList(items: string[]): string {
 /**
  * The push body for an edit. Names what moved when we can, and stays honest
  * ("something on your punch") rather than inventing detail when we cannot.
+ *
+ * The approval sentence is read off the punch's status BEFORE and AFTER the
+ * save, never guessed from "it was approved". `edit_shift` re-approves in the
+ * same statement whenever the editor is allowed to approve — and every role
+ * that can reach the RPC at all (supervisor and up) is allowed to — so a punch
+ * that was approved is still approved by the time this push is written. Telling
+ * somebody "it needs approving again" about a punch nobody needs to touch is a
+ * false statement about their pay on the one feature that exists to stop those.
  */
-export function editPushBody(fields: string[], wasApproved: boolean): string {
+export function editPushBody(
+  fields: string[],
+  statusBefore: string | null | undefined,
+  statusAfter: string | null | undefined,
+): string {
   const what = joinPlainList(fields);
   const lead = what
     ? `The ${what} on one of your punches changed.`
     : "Something on one of your punches changed.";
-  return wasApproved
-    ? `${lead} It needs approving again.`
-    : `${lead} Check My timecard.`;
+  if (statusBefore !== "approved") return `${lead} Check My timecard.`;
+  return statusAfter === "approved"
+    ? `${lead} It's still marked approved.`
+    : `${lead} It needs approving again.`;
 }

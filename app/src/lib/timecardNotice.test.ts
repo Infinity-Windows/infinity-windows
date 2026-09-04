@@ -62,18 +62,35 @@ describe("joinPlainList", () => {
 
 describe("editPushBody", () => {
   it("says what moved", () => {
-    expect(editPushBody(["start time"], false)).toBe(
+    expect(editPushBody(["start time"], "submitted", "submitted")).toBe(
       "The start time on one of your punches changed. Check My timecard.",
     );
   });
 
-  it("adds the re-approval line only when the punch had been approved", () => {
-    expect(editPushBody(["break"], true)).toContain("needs approving again");
-    expect(editPushBody(["break"], false)).not.toContain("approving");
+  it("never claims re-approval is needed on a punch the server kept approved", () => {
+    // edit_shift re-approves in the same statement whenever the editor could
+    // approve, and every role that can reach it can. This is the real case, and
+    // the old copy told the worker to chase an approval nobody was waiting on.
+    expect(editPushBody(["break"], "approved", "approved")).toBe(
+      "The break on one of your punches changed. It's still marked approved.",
+    );
+  });
+
+  it("asks for re-approval only when the punch actually lost it", () => {
+    expect(editPushBody(["break"], "approved", "submitted")).toContain(
+      "needs approving again",
+    );
+  });
+
+  it("says nothing about approval for a punch that was never approved", () => {
+    expect(editPushBody(["break"], "submitted", "submitted")).not.toContain(
+      "approv",
+    );
+    expect(editPushBody(["break"], null, "submitted")).not.toContain("approv");
   });
 
   it("stays honest when it cannot name the change", () => {
-    expect(editPushBody([], false)).toBe(
+    expect(editPushBody([], "open", "submitted")).toBe(
       "Something on one of your punches changed. Check My timecard.",
     );
   });

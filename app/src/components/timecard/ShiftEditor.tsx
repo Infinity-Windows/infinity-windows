@@ -149,7 +149,10 @@ export function ShiftEditor({
           void sendPush({
             profileIds: [shift.profile_id],
             title: "Timecard adjusted",
-            body: editPushBody(fields, shift.status === "approved"),
+            // Both statuses, from the row the server actually returned:
+            // edit_shift decides for itself whether the punch keeps its
+            // approval, and the push has to report that, not predict it.
+            body: editPushBody(fields, shift.status, saved.status),
             tag: `timecard-edited-${shift.id}`,
             url: "/timecard",
           });
