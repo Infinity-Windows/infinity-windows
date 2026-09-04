@@ -237,25 +237,69 @@ export async function listShiftsToApprove(): Promise<TimeShift[]> {
   return (data ?? []) as TimeShift[];
 }
 
+/** How many shift rows to ask for at a time; the server may hand back fewer. */
+const TEAM_SHIFT_PAGE = 1000;
+/**
+ * Purely a runaway-loop stop. A server that answered every page full forever
+ * would spin this function; 50 pages is far past any real pay period (Forge's
+ * whole crew punching every few minutes for two weeks does not reach 50,000
+ * rows), so hitting it means something is wrong, not that a company got busy.
+ */
+const TEAM_SHIFT_MAX_PAGES = 50;
+
 /**
  * Every crew member's shifts within a date window, newest first. Foreman+ only
  * surface (installers never see this in the UI). Powers the team roster, the
- * per-person timecard drill-down, and the weekly payroll export.
+ * per-person timecard drill-down, and the payroll exports.
+ *
+ * PAGED, not capped. This used to ask for one page of 1000 and stop, which was
+ * survivable while the screen showed one week and the export carried no
+ * overtime. It stopped being survivable when the same array became the Gusto
+ * file the office uploads to payroll over a fourteen-day period: every
+ * cost-code switch is a close-then-open, so a crew switching codes a few times
+ * a day reaches a thousand punches inside a pay period — and because the order
+ * is newest-first, the rows a cap drops are the OLDEST ones, silently shorting
+ * the first of the two weeks. Nobody would have seen it in the file.
+ *
+ * `id` is the tiebreaker on the sort so paging is deterministic: two punches
+ * clocked in the same second must not be able to swap places between pages and
+ * lose one.
+ *
+ * The stop condition is the EXACT COUNT, asked for once with the first page,
+ * rather than "a page came back shorter than we asked for". PostgREST has its
+ * own max-rows ceiling, so a short page can mean either the end or the server
+ * declining to go further — and reading a server ceiling as "that's all of
+ * them" is precisely the shape of the bug this replaces. A count leaves no room
+ * for that reading. If a database ever answers without one, the short-page rule
+ * is the fallback.
  */
 export async function listTeamShifts(
   sinceIso: string,
   untilIso: string,
 ): Promise<TimeShift[]> {
-  const { data, error } = await supabase
-    .from("time_shifts")
-    .select(SHIFT_SELECT)
-    .gte("clock_in_at", sinceIso)
-    .lt("clock_in_at", untilIso)
-    .neq("status", "voided")
-    .order("clock_in_at", { ascending: false })
-    .limit(1000);
-  if (error) throw error;
-  return (data ?? []) as TimeShift[];
+  const out: TimeShift[] = [];
+  let total: number | null = null;
+  for (let page = 0; page < TEAM_SHIFT_MAX_PAGES; page++) {
+    const from = out.length;
+    const { data, error, count } = await supabase
+      .from("time_shifts")
+      .select(SHIFT_SELECT, page === 0 ? { count: "exact" } : undefined)
+      .gte("clock_in_at", sinceIso)
+      .lt("clock_in_at", untilIso)
+      .neq("status", "voided")
+      .order("clock_in_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + TEAM_SHIFT_PAGE - 1);
+    if (error) throw error;
+    const rows = (data ?? []) as TimeShift[];
+    out.push(...rows);
+    if (rows.length === 0) break;
+    if (total === null && typeof count === "number") total = count;
+    if (total !== null ? out.length >= total : rows.length < TEAM_SHIFT_PAGE) {
+      break;
+    }
+  }
+  return out;
 }
 
 /**

@@ -31,10 +31,12 @@ const AWAY = { lat: 40.96, lng: -111.89, accuracyM: 20 };
 
 const TRAVEL = { id: "cc-travel", code: "900", label: "Travel", active: true };
 
-const clockIn = vi.fn();
+// Rest params on every spy so the module stubs below can forward whatever the
+// component passes without TypeScript objecting to a spread.
+const clockIn = vi.fn((..._args: unknown[]): Promise<unknown> => Promise.resolve({}));
 const getTravelCostCode = vi.fn(async () => TRAVEL);
-const touchShiftLocation = vi.fn(async () => {});
-const enqueueClockIn = vi.fn(async () => "entry-1");
+const touchShiftLocation = vi.fn(async (..._args: unknown[]) => {});
+const enqueueClockIn = vi.fn(async (..._args: unknown[]) => "entry-1");
 
 vi.mock("../../lib/geo", () => ({
   captureGeoIfGranted: vi.fn(async () => AWAY),

@@ -1,19 +1,33 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { JobMode } from "./types";
 
-// clockIn is the only function here that talks to the database; the rest are
-// pure. Mock just supabase.rpc — indirected through `rpc` the same way
-// liveProjects.test.ts does, so the factory closes over the spy safely.
+// clockIn and listTeamShifts are the functions here that talk to the database;
+// the rest are pure. Mock supabase.rpc and supabase.from — indirected through
+// spies the same way liveProjects.test.ts does, so the factory closes over them
+// safely. `from` returns a chainable stub whose terminal `.range()` resolves to
+// whatever `rangeResult` is told to give for that page.
 const rpc = vi.fn();
-vi.mock("./supabase", () => ({
-  supabase: { rpc: (...args: unknown[]) => rpc(...args) },
-  supabaseConfigured: true,
-}));
+const range = vi.fn();
+vi.mock("./supabase", () => {
+  const builder: Record<string, unknown> = {};
+  for (const m of ["select", "gte", "lt", "neq", "order", "eq", "is", "limit"]) {
+    builder[m] = () => builder;
+  }
+  builder.range = (...args: unknown[]) => range(...args);
+  return {
+    supabase: {
+      rpc: (...args: unknown[]) => rpc(...args),
+      from: () => builder,
+    },
+    supabaseConfigured: true,
+  };
+});
 
 import {
   addDays,
   breakTypeLabel,
   clockIn,
+  listTeamShifts,
   currentBreakSeconds,
   elapsedWorkSeconds,
   formatClock,
@@ -317,5 +331,88 @@ describe("clockIn (mode-carrying path, slice 2)", () => {
     expect(rpc.mock.calls[0][1]).not.toHaveProperty("p_mode");
     // note normalised to null when blank/absent
     expect(rpc.mock.calls[0][1]).toHaveProperty("p_note", null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listTeamShifts pages; it does not cap
+// ---------------------------------------------------------------------------
+// WHY THIS IS TESTED: this array becomes the Gusto file the office uploads to
+// payroll. It used to be one .limit(1000) read, and because the sort is
+// newest-first, the punches a cap dropped were the OLDEST — silently shorting
+// the first of a pay period's two weeks in a file nobody could see was short.
+describe("listTeamShifts", () => {
+  const page = (n: number, offset = 0) =>
+    Array.from({ length: n }, (_, i) => ({ id: `s${offset + i}` }));
+
+  beforeEach(() => {
+    range.mockReset();
+  });
+
+  it("keeps reading until it has every punch the count says exist", async () => {
+    range
+      .mockResolvedValueOnce({ data: page(1000, 0), error: null, count: 2037 })
+      .mockResolvedValueOnce({ data: page(1000, 1000), error: null, count: null })
+      .mockResolvedValueOnce({ data: page(37, 2000), error: null, count: null });
+
+    const rows = await listTeamShifts("2026-08-24T00:00:00Z", "2026-09-07T00:00:00Z");
+
+    expect(rows).toHaveLength(2037);
+    // Each window starts where the last one ended, so nothing is skipped.
+    expect(range.mock.calls).toEqual([
+      [0, 999],
+      [1000, 1999],
+      [2000, 2999],
+    ]);
+    // The oldest punch in the period — the one the old cap would have eaten.
+    expect(rows[rows.length - 1]).toEqual({ id: "s2036" });
+  });
+
+  it("does not read a server's own row ceiling as the end of the period", async () => {
+    // PostgREST can hand back fewer rows than were asked for. Treating that as
+    // "that's all of them" is exactly how the old cap hid itself; the count is
+    // what settles it.
+    range
+      .mockResolvedValueOnce({ data: page(500, 0), error: null, count: 1012 })
+      .mockResolvedValueOnce({ data: page(500, 500), error: null, count: null })
+      .mockResolvedValueOnce({ data: page(12, 1000), error: null, count: null });
+
+    const rows = await listTeamShifts("2026-08-24T00:00:00Z", "2026-09-07T00:00:00Z");
+
+    expect(rows).toHaveLength(1012);
+    expect(range).toHaveBeenCalledTimes(3);
+  });
+
+  it("reads a small period in one go", async () => {
+    range.mockResolvedValueOnce({ data: page(4), error: null, count: 4 });
+
+    const rows = await listTeamShifts("2026-08-24T00:00:00Z", "2026-08-31T00:00:00Z");
+
+    expect(rows).toHaveLength(4);
+    expect(range).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops on an empty period without a second read", async () => {
+    range.mockResolvedValueOnce({ data: [], error: null, count: 0 });
+
+    expect(await listTeamShifts("2026-08-24T00:00:00Z", "2026-08-31T00:00:00Z")).toEqual([]);
+    expect(range).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to the short-page rule when a database gives no count", async () => {
+    range.mockResolvedValueOnce({ data: page(6), error: null });
+
+    const rows = await listTeamShifts("2026-08-24T00:00:00Z", "2026-08-31T00:00:00Z");
+
+    expect(rows).toHaveLength(6);
+    expect(range).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws the raw error so formatApiError can speak for it upstream", async () => {
+    range.mockResolvedValueOnce({ data: null, error: { message: "boom" } });
+
+    await expect(
+      listTeamShifts("2026-08-24T00:00:00Z", "2026-08-31T00:00:00Z"),
+    ).rejects.toEqual({ message: "boom" });
   });
 });
