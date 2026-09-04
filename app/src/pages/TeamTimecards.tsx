@@ -8,7 +8,7 @@
 import { BackChip } from "../components/BackChip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { listProjects } from "../lib/api";
 import { formatApiError } from "../lib/errors";
 import { lastSeenAwayFromJob } from "../lib/farFromJob";
@@ -24,15 +24,27 @@ import { listProfiles } from "../lib/install/api";
 import { isForemanPlus, isSupervisorPlus, visibleRole } from "../lib/install/types";
 import { useEffectiveRole } from "../lib/useEffectiveRole";
 import {
+  addDays,
   closeShiftAsNoWork,
   elapsedWorkSeconds,
   listCostCodes,
+  listOvertimeRules,
   listTeamShifts,
   listUnfinishedShifts,
+  punchDay,
+  shiftHours,
   shiftsToExportRows,
   summarizeTeamWeek,
+  timecardRange,
   weekRange,
 } from "../lib/timeclock";
+import { overtimeRuleFromRow, pickOvertimeRule } from "../lib/overtime";
+import { splitOvertimeByPerson } from "../lib/overtimeRollup";
+import {
+  buildGustoCsv,
+  gustoFileName,
+  splitDisplayName,
+} from "../lib/gustoExport";
 import { buildTimecardCsv, buildTimecardTsv } from "../lib/timecardExport";
 import {
   describeDuration,
@@ -81,7 +93,13 @@ export function TeamTimecards() {
   const [zeroingId, setZeroingId] = useState<string | null>(null);
   const [zeroReason, setZeroReason] = useState("");
 
-  const week = useMemo(() => weekRange(new Date()), []);
+  // K5: the page used to be hard-wired to "this week", which is not the shape
+  // payroll is paid in. Week or pay period, with a stepper — the same two
+  // buckets and the same stepper TimecardPanel gives one person.
+  const [rangeMode, setRangeMode] = useState<"week" | "pay">("week");
+  const [anchor, setAnchor] = useState<Date>(() => new Date());
+  const week = useMemo(() => timecardRange(rangeMode, anchor), [rangeMode, anchor]);
+  const stepDays = rangeMode === "pay" ? 14 : 7;
   const crew = useQuery({
     queryKey: ["profiles"],
     queryFn: listProfiles,
@@ -90,8 +108,15 @@ export function TeamTimecards() {
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const costCodes = useQuery({ queryKey: ["costCodes"], queryFn: listCostCodes });
   const teamShifts = useQuery({
-    queryKey: ["teamShifts", week.startIso],
+    queryKey: ["teamShifts", week.startIso, week.endIso],
     queryFn: () => listTeamShifts(week.startIso, week.endIso),
+    enabled: isLead,
+  });
+  // The overtime rules — company default plus any per-person override. Only
+  // the exports use them; the roster still shows plain worked hours.
+  const otRules = useQuery({
+    queryKey: ["overtimeRules"],
+    queryFn: listOvertimeRules,
     enabled: isLead,
   });
   /**
@@ -197,17 +222,54 @@ export function TeamTimecards() {
   }, [crew.data, weekSummary, liveShifts, search]);
 
   const clockedCount = roster.filter((r) => r.open).length;
+  /** "8.0h wk" / "8.0h pay" — the roster total follows the range on show. */
+  const hoursSuffix = rangeMode === "pay" ? "pay" : "wk";
   // `sum`, not `t` — `t` is the translator on this component now.
   const pendingCount = weekSummary.reduce((sum, r) => sum + r.submittedCount, 0);
 
   // ---- Team-wide export (the roster's "Export all") ----
   // T7: shiftsToExportRows (lib/timeclock.ts) is the one shared mapping —
   // see its comment for why it lives there instead of timecardExport.ts.
+  //
+  // K5: the overtime split is no longer empty. Per person, per CALENDAR week,
+  // so a pay period is two weekly buckets and never one 80-hour pool — the
+  // same rule the per-person export has always followed.
+  const overtimeLines = useMemo(() => {
+    const rules = otRules.data ?? [];
+    const rows = (teamShifts.data ?? [])
+      .filter((s) => s.status !== "voided")
+      .map((s) => ({
+        profileId: s.profile_id,
+        employee: s.profiles?.display_name ?? "Crew",
+        day: punchDay(s.clock_in_at),
+        week: weekRange(new Date(s.clock_in_at)).startIso,
+        hours: shiftHours(s),
+      }));
+    return splitOvertimeByPerson(rows, (profileId) => {
+      const row = pickOvertimeRule(rules, profileId);
+      return row ? overtimeRuleFromRow(row) : null;
+    });
+  }, [teamShifts.data, otRules.data]);
+
   const teamPayload = () => ({
     periodLabel: week.label,
     shifts: shiftsToExportRows(teamShifts.data ?? []),
-    overtime: [],
+    overtime: overtimeLines.map(({ employee, regular, overtime, doubleTime }) => ({
+      employee,
+      regular,
+      overtime,
+      doubleTime,
+    })),
   });
+
+  /** The Gusto upload: one row per employee for the whole pay period. */
+  const gustoRows = () =>
+    overtimeLines.map((line) => ({
+      ...splitDisplayName(line.employee),
+      regular: line.regular,
+      overtime: line.overtime,
+      doubleOvertime: line.doubleTime,
+    }));
 
   const selectedName =
     roster.find((r) => r.id === selectedId)?.name ??
@@ -268,6 +330,45 @@ export function TeamTimecards() {
         <BackChip fallback="/" label="Home" />
       </header>
 
+      {/* K5: which stretch of time this whole page is about. */}
+      <div className="seg tcx-tabs" role="tablist" aria-label="Team timecard range">
+        {(["week", "pay"] as const).map((m) => (
+          <button
+            key={m}
+            role="tab"
+            aria-selected={rangeMode === m}
+            className={rangeMode === m ? "active-pill button-like" : "button-like"}
+            onClick={() => setRangeMode(m)}
+          >
+            {m === "week" ? "Week" : "Pay period"}
+          </button>
+        ))}
+      </div>
+      <div className="row-gap" style={{ alignItems: "center" }}>
+        <button
+          className="button-like"
+          onClick={() => setAnchor((d) => addDays(d, -stepDays))}
+          aria-label="Previous"
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <button
+          className="button-like"
+          style={{ flex: 1 }}
+          onClick={() => setAnchor(new Date())}
+          title="Jump back to now"
+        >
+          {week.label}
+        </button>
+        <button
+          className="button-like"
+          onClick={() => setAnchor((d) => addDays(d, stepDays))}
+          aria-label="Next"
+        >
+          <ChevronRight size={18} />
+        </button>
+      </div>
+
       <div className="row-gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
         <button
           className="button-like"
@@ -282,6 +383,27 @@ export function TeamTimecards() {
         >
           Export all (CSV)
         </button>
+        {/* The file the office uploads to Gusto — one row per employee for the
+            whole pay period, so it only means anything in pay-period mode. */}
+        {rangeMode === "pay" ? (
+          <button
+            className="button-like active-pill"
+            onClick={() =>
+              downloadText(
+                buildGustoCsv(gustoRows()),
+                gustoFileName(week.startIso),
+                "text/csv;charset=utf-8",
+              )
+            }
+            disabled={overtimeLines.length === 0}
+          >
+            Export pay period for Gusto
+          </button>
+        ) : (
+          <span className="muted" style={{ fontSize: 11.5 }}>
+            Switch to Pay period to export for Gusto.
+          </span>
+        )}
         <button
           className="button-like"
           onClick={() =>
@@ -341,7 +463,7 @@ export function TeamTimecards() {
       {suspects.length > 0 && (
         <section className="detail-card" style={{ marginTop: 12 }}>
           <h2 style={{ margin: 0, fontSize: 15 }}>
-            Suspect punches this week ({suspects.length})
+            Suspect punches in this {rangeMode === "pay" ? "pay period" : "week"} ({suspects.length})
           </h2>
           <p className="muted" style={{ margin: "2px 0 8px", fontSize: 12 }}>
             Clock-out before clock-in, or a span over 24 hours — almost
@@ -552,10 +674,10 @@ export function TeamTimecards() {
                         {describeDuration(elapsedWorkSeconds(live))}
                       </span>
                       {live.projects?.job_code && ` · ${live.projects.job_code}`}
-                      {` · ${r.hours.toFixed(1)}h wk`}
+                      {` · ${r.hours.toFixed(1)}h ${hoursSuffix}`}
                     </>
                   ) : (
-                    `Off clock · ${r.hours.toFixed(1)}h wk`
+                    `Off clock · ${r.hours.toFixed(1)}h ${hoursSuffix}`
                   )}
                 </span>
               </span>
