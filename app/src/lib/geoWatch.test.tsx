@@ -96,8 +96,9 @@ describe("the warm fix the shutter reads", () => {
   it("refuses a fix older than the staleness cutoff", async () => {
     vi.useFakeTimers();
     const s = fakeSource();
+    const cold = vi.fn(async () => ({}));
     let clock = 1_000_000;
-    const holder = createFixHolder(() => s.source, async () => ({}), () => clock);
+    const holder = createFixHolder(() => s.source, cold, () => clock);
     holder.start();
     s.fire(30.2672, -97.7431);
 
@@ -106,17 +107,69 @@ describe("the warm fix the shutter reads", () => {
 
     clock += 1;
     expect(holder.peek()).toEqual({});
-    // And a stale fix is never stamped: the shutter waits for a new one and
-    // then gives up, rather than burning last hour's coordinates in.
+    // And a stale fix is never stamped: with nothing newer to be had anywhere,
+    // the shutter gives up at the cap rather than burning last hour's
+    // coordinates in.
     const waiting = holder.waitFor();
     await vi.advanceTimersByTimeAsync(SHUTTER_FIX_WAIT_MS);
     await expect(waiting).resolves.toEqual({});
   });
 
+  it("asks the one-shot door too when the fix it held has aged out", async () => {
+    // A phone standing still at a window can go quiet on watchPosition for
+    // minutes, and one in a pocket between windows is throttled outright. The
+    // receiver is warm, though, so getCurrentPosition answers from cache in a
+    // millisecond. Waiting three seconds on a silent watch and then stamping
+    // time-only would throw away coordinates that were there for the asking.
+    const s = fakeSource();
+    const cold = vi.fn(async () => ({ lat: 30.3, lng: -97.8, accuracyM: 11 }));
+    let clock = 1_000_000;
+    const holder = createFixHolder(() => s.source, cold, () => clock);
+    holder.start();
+    s.fire(30.2672, -97.7431);
+    clock += FIX_MAX_AGE_MS + 1;
+
+    // No fake timers on purpose: this must come back without the cap elapsing.
+    await expect(holder.waitFor()).resolves.toEqual({
+      lat: 30.3,
+      lng: -97.8,
+      accuracyM: 11,
+    });
+    expect(cold).toHaveBeenCalledWith(SHUTTER_FIX_WAIT_MS);
+    // And it is held, so the next shutter in the same minute reads it warm and
+    // asks nobody.
+    expect(holder.peek()).toEqual({ lat: 30.3, lng: -97.8, accuracyM: 11 });
+    await expect(holder.waitFor()).resolves.toEqual({
+      lat: 30.3,
+      lng: -97.8,
+      accuracyM: 11,
+    });
+    expect(cold).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps waiting on the watch when the one-shot has nothing either", async () => {
+    vi.useFakeTimers();
+    const s = fakeSource();
+    const cold = vi.fn(async () => ({}));
+    let clock = 1_000_000;
+    const holder = createFixHolder(() => s.source, cold, () => clock);
+    holder.start();
+    s.fire(30.2672, -97.7431);
+    clock += FIX_MAX_AGE_MS + 1;
+
+    const waiting = holder.waitFor();
+    await vi.advanceTimersByTimeAsync(200);
+    // An empty one-shot must not end the wait early — the watch still has the
+    // rest of its three seconds to answer.
+    s.fire(30.9, -97.9, 6);
+    await expect(waiting).resolves.toEqual({ lat: 30.9, lng: -97.9, accuracyM: 6 });
+  });
+
   it("caps the cold-start wait and then stamps time-only", async () => {
     vi.useFakeTimers();
     const s = fakeSource();
-    const holder = createFixHolder(() => s.source, async () => ({}));
+    const cold = vi.fn(async () => ({}));
+    const holder = createFixHolder(() => s.source, cold);
     holder.start();
 
     const waiting = holder.waitFor();
@@ -130,6 +183,10 @@ describe("the warm fix the shutter reads", () => {
 
     await vi.advanceTimersByTimeAsync(1);
     await expect(waiting).resolves.toEqual({});
+    // A phone that has never had a fix has nothing cached to find, so the
+    // shutter does not spend battery on a second high-accuracy request to
+    // learn what the watch is already asking.
+    expect(cold).not.toHaveBeenCalled();
   });
 
   it("answers the moment a fix lands mid-wait", async () => {

@@ -155,6 +155,21 @@ export function createFixHolder(
     // Nobody warmed this up — a caller that never mounted a capture sheet.
     // Fall back to the one-shot lookup, capped at the same short wait.
     if (watchId == null) return coldLookup(timeoutMs);
+    // A fix we HELD and that has since aged out is a different situation from
+    // never having had one, and it must not be treated as the same. This
+    // device's receiver is warm and the platform is almost certainly sitting on
+    // a position younger than captureGeoSoft's 30-second maximumAge that
+    // watchPosition has simply not re-delivered — a phone standing still at a
+    // window, or in a pocket between windows, can go quiet on the watch for
+    // minutes. Waiting only on the watch would spend the full three seconds and
+    // then burn a time-only stamp, throwing away coordinates the device would
+    // have handed over instantly. So knock on the one-shot door as well and
+    // take whichever answers first with coordinates.
+    //
+    // Only when nothing was ever held is the watch alone right: there is no
+    // cached position to find, and a second high-accuracy request would cost
+    // battery to learn what the watch is already asking.
+    const wentStale = held != null;
     return new Promise<GeoFix>((resolve) => {
       let settled = false;
       const done = (fix: GeoFix) => {
@@ -167,6 +182,15 @@ export function createFixHolder(
         clearTimeout(timer);
         done(fix);
       });
+      if (wentStale) {
+        void coldLookup(timeoutMs).then((fix) => {
+          // Only coordinates end the wait early. A one-shot that times out or
+          // comes back empty leaves the watch its full three seconds.
+          if (!hasCoords(fix)) return;
+          held = { fix, at: now() };
+          deliver(fix);
+        });
+      }
     });
   };
 
