@@ -191,7 +191,7 @@ describe("the probe list itself", () => {
  *
  * CASCADE is the half that loses records. A CASCADE column nobody counted makes
  * the person look empty, so the delete SUCCEEDS and takes those rows with it in
- * silence. Written from memory, the first cut of WORK_HISTORY_PROBES named eight
+ * silence. Written from memory, the first cut of WORK_HISTORY_PROBES named nine
  * of the schema's twenty-seven CASCADE columns and left out signed safety talks
  * (`safety_acks`, a different table from `toolbox_completions`), signed
  * timecards, a person's own overtime deal and the badges a foreman signed them

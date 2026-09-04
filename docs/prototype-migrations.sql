@@ -12663,7 +12663,7 @@ grant select on public.crew_access_directory to authenticated;
 -- list is now derived from the schema rather than written from memory: a
 -- CASCADE column that is NOT counted here makes the person look empty, the
 -- delete SUCCEEDS, and their rows go with it without a word. The first cut
--- counted eight of the twenty-seven CASCADE columns and missed, among others,
+-- counted nine of the twenty-seven CASCADE columns and missed, among others,
 -- `safety_acks` (a signed safety talk, a DIFFERENT table from
 -- toolbox_completions), `timecard_periods` (the row carrying the employee's
 -- and the supervisor's signatures on a pay period), `overtime_rules` (a

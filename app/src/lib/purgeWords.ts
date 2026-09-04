@@ -61,7 +61,7 @@ export interface HistoryProbe {
  *   CASCADE — must be in here, or on the test's short allow-list of ephemera.
  *     This is the half that matters. A CASCADE column nobody counted makes the
  *     person look empty, so the delete SUCCEEDS and takes those rows with it
- *     without a word. The first cut of this list named eight of the schema's
+ *     without a word. The first cut of this list named nine of the schema's
  *     twenty-seven CASCADE columns and quietly left out signed safety talks,
  *     signed timecards, a person's own overtime deal and the badges a foreman
  *     signed them off on — all of them exactly what "every record kept under
