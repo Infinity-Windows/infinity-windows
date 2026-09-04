@@ -7300,7 +7300,7 @@ begin
     -- (a) starting soon, and still not ready or still no windows.
     select c.pid,
            c.label,
-           case when c.days_out > 7 then 'start_14' else 'start_7' end as due_kind,
+           case when c.days_out > 7 then 'start_14' else 'start_7' end::text as due_kind,
            (v_today + c.days_out) as due_date,
            c.days_out,
            c.ready = 'not_ready' as flag_not_ready,
@@ -7312,7 +7312,7 @@ begin
     -- (b) the promised day came and went and nothing is here.
     select c.pid,
            c.label,
-           'materials_late' as due_kind,
+           'materials_late'::text as due_kind,
            c.eta as due_date,
            c.days_out,
            c.ready = 'not_ready' as flag_not_ready,
