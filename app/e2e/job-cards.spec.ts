@@ -184,7 +184,7 @@ for (const width of [390, 1024] as const) {
 
         // THE OTHER POINT: the rail's column is RESERVED whether or not the
         // rail is in it, so an installer's job names start on exactly the same
-        // pixel a foreman's do. Without the empty spacer this is off by 56.
+        // pixel a foreman's do — the two roles read one list, not two.
         if (role === "foreman") foremanEdge.set(width, edges[0]);
         else {
           const theirs = foremanEdge.get(width);
