@@ -11,7 +11,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import JSZip from "jszip";
 import { CheckCircle2, Circle, Download, FileArchive } from "lucide-react";
 import { BackChip } from "../components/BackChip";
+import { BankImportSection } from "../components/receipts/BankImportSection";
 import { EmptyState, QueryError, SkeletonList } from "../components/ui/States";
+import { listBankTransactions } from "../lib/bank";
 import { formatApiError } from "../lib/errors";
 import { formatCents } from "../lib/aiSpend";
 import { listProjects } from "../lib/api";
@@ -97,6 +99,21 @@ export function Receipts() {
     queryFn: () => listReceipts(filter),
   });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
+  // Wave Z: which receipts a card charge already answers for, so a row can say
+  // "paid on company card" instead of leaving the office to remember.
+  const bankTransactions = useQuery({
+    queryKey: ["bankTransactions"],
+    queryFn: listBankTransactions,
+  });
+  const paidOnCard = useMemo(
+    () =>
+      new Set(
+        (bankTransactions.data ?? [])
+          .map((t) => t.receiptId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    [bankTransactions.data],
+  );
 
   const sorted = useMemo(() => {
     const rows = [...(receipts.data ?? [])];
@@ -294,6 +311,7 @@ export function Receipts() {
                         says so forever — un-reviewing does not unpost it,
                         because the money was still spent. */}
                     {r.jobCostId ? " · posted to the job" : ""}
+                    {paidOnCard.has(r.id) ? " · paid on company card" : ""}
                   </span>
                 </div>
                 <div className="wh-actions">
@@ -339,6 +357,10 @@ export function Receipts() {
           ))}
         </ul>
       )}
+
+      {/* Wave Z: the company card statement, and the one question it answers —
+          which charges has nobody handed in a receipt for. */}
+      <BankImportSection receipts={sorted} />
     </div>
   );
 }

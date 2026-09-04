@@ -732,6 +732,365 @@ create trigger trg_receipt_syncs_its_job_cost
 
 
 -- ===========================================================================
+-- 5. Z5 — the company card statement, and which charges have no receipt
+-- ===========================================================================
+-- The bookkeeper exports the card feed and wants one answer: which of these
+-- charges has nobody handed in a receipt for? That is the whole feature.
+--
+-- NO BANK CREDENTIALS EVER TOUCH THIS APP. The handoff is a FILE — somebody
+-- downloads the export and drops it in. There is no live feed here and there is
+-- not going to be one; a live connection is parked with the future QuickBooks
+-- link.
+--
+-- Neither table is project-scoped (a card charge is not about a job until it is
+-- matched to a receipt that names one), so neither takes a sandbox guard.
+create table if not exists bank_imports (
+  id uuid primary key default gen_random_uuid(),
+  imported_by uuid references profiles(id) on delete set null,
+  filename text,
+  imported_at timestamptz not null default now(),
+  row_count integer not null default 0,
+  -- Set by undo_bank_import. The batch row SURVIVES the undo, so "we imported
+  -- that file on Tuesday and took it back on Wednesday" is still readable —
+  -- an import that vanished would look like it never happened.
+  undone_at timestamptz
+);
+
+create table if not exists bank_transactions (
+  id uuid primary key default gen_random_uuid(),
+  import_id uuid not null references bank_imports(id) on delete cascade,
+  posted_on date,
+  -- Cents, and NOT NULL: a charge with no amount is not a charge. Signed,
+  -- because a refund is a real line on a statement and forcing it positive
+  -- would make the month stop adding up.
+  amount_cents integer not null,
+  description text,
+  vendor_guess text,
+  cardholder text,
+  -- The bank's own id for the charge when the export carries one.
+  external_id text,
+  receipt_id uuid references receipts(id) on delete set null,
+  status text not null default 'unreceipted'
+    check (status in ('matched', 'unreceipted', 'ignored')),
+  -- What "the same charge" means, so re-importing an overlapping file adds
+  -- nothing: the bank's own id when there is one, else a hash of the three
+  -- things that identify a charge on a statement. Computed by the RPC (never
+  -- by the client) and UNIQUE, so the dedup is the database's job and not a
+  -- read-then-write somebody could race.
+  dedupe_key text not null unique,
+  created_at timestamptz not null default now()
+);
+
+-- One receipt answers for at most one charge. A partial index rather than a
+-- plain UNIQUE, because "no receipt yet" is the normal state and every
+-- unmatched row would otherwise collide on null.
+create unique index if not exists bank_transactions_one_receipt
+  on bank_transactions (receipt_id) where receipt_id is not null;
+
+create index if not exists bank_transactions_import_idx
+  on bank_transactions (import_id);
+create index if not exists bank_transactions_open_idx
+  on bank_transactions (status, posted_on desc);
+
+comment on table bank_imports is
+  'One dropped-in card statement export. Undoable as a batch — undo_bank_import drops the rows nobody matched and unmatches the rest — and the batch row survives the undo so the history reads honestly (Wave Z, Z5).';
+comment on table bank_transactions is
+  'One charge off a company card statement, and the receipt somebody handed in for it (or the fact that nobody did). No bank credentials are involved anywhere: the handoff is a file a person exports and drops in.';
+comment on column bank_transactions.dedupe_key is
+  'What "the same charge" means across two imports of overlapping files: the bank''s external_id when the export has one, else a hash of date + amount + description. UNIQUE, so re-importing last month adds nothing.';
+
+alter table bank_imports enable row level security;
+alter table bank_transactions enable row level security;
+
+-- Revoke first (Supabase's defaults grant `authenticated` everything on a new
+-- public table), then grant back SELECT alone: the five RPCs below are the only
+-- writers, so there is no direct path that could skip their checks.
+revoke all on bank_imports from anon, authenticated;
+revoke all on bank_transactions from anon, authenticated;
+grant select on bank_imports to authenticated;
+grant select on bank_transactions to authenticated;
+grant all on bank_imports to service_role;
+grant all on bank_transactions to service_role;
+
+drop policy if exists "bank_imports_cost_seers" on bank_imports;
+create policy "bank_imports_cost_seers" on bank_imports
+  for select to authenticated
+  using (not public.is_partner_user() and public.can_see_costs(auth.uid()));
+
+drop policy if exists "bank_transactions_cost_seers" on bank_transactions;
+create policy "bank_transactions_cost_seers" on bank_transactions
+  for select to authenticated
+  using (not public.is_partner_user() and public.can_see_costs(auth.uid()));
+
+
+-- ---- import_bank_transactions ---------------------------------------------
+-- Takes the rows the browser read out of the file, already mapped to the four
+-- fields that matter. The MAPPING is deliberately the client's job and a step a
+-- human confirms: nobody here knows what column names any particular export
+-- uses, and guessing them in SQL would bake one bank's spelling into the
+-- database forever.
+--
+-- Dedup is `on conflict (dedupe_key) do nothing`, so importing a file that
+-- overlaps last month's adds only what is genuinely new, and the count of what
+-- landed is the difference — no read-then-write, nothing to race.
+create or replace function public.import_bank_transactions(
+  p_rows jsonb,
+  p_filename text default null
+)
+returns bank_imports
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_import bank_imports;
+  v_added integer;
+begin
+  if not public.can_see_costs(auth.uid()) then
+    raise exception 'Only an owner, or somebody given "Sees costs", can import the card statement.'
+      using errcode = '42501';
+  end if;
+  if p_rows is null or jsonb_typeof(p_rows) <> 'array' then
+    raise exception 'That file did not read as a list of charges.';
+  end if;
+
+  insert into bank_imports (imported_by, filename, row_count)
+  values (auth.uid(), nullif(btrim(coalesce(p_filename, '')), ''), jsonb_array_length(p_rows))
+  returning * into v_import;
+
+  with incoming as (
+    select
+      nullif(btrim(coalesce(r ->> 'posted_on', '')), '')::date        as posted_on,
+      (r ->> 'amount_cents')::integer                                  as amount_cents,
+      nullif(btrim(coalesce(r ->> 'description', '')), '')             as description,
+      nullif(btrim(coalesce(r ->> 'vendor_guess', '')), '')            as vendor_guess,
+      nullif(btrim(coalesce(r ->> 'cardholder', '')), '')              as cardholder,
+      nullif(btrim(coalesce(r ->> 'external_id', '')), '')             as external_id
+    from jsonb_array_elements(p_rows) as r
+  ),
+  keyed as (
+    select i.*,
+           coalesce(
+             i.external_id,
+             md5(
+               coalesce(i.posted_on::text, '') || '|' ||
+               i.amount_cents::text || '|' ||
+               lower(coalesce(i.description, ''))
+             )
+           ) as dedupe_key
+      from incoming i
+     where i.amount_cents is not null
+  ),
+  -- Two identical lines INSIDE one file are the same charge by this rule, so
+  -- collapse them here: `on conflict` cannot see a duplicate arriving in the
+  -- same statement, and the whole insert would fail on it.
+  deduped as (
+    select distinct on (dedupe_key) * from keyed order by dedupe_key
+  ),
+  inserted as (
+    insert into bank_transactions
+      (import_id, posted_on, amount_cents, description, vendor_guess, cardholder,
+       external_id, dedupe_key)
+    select v_import.id, posted_on, amount_cents, description, vendor_guess, cardholder,
+           external_id, dedupe_key
+      from deduped
+    on conflict (dedupe_key) do nothing
+    returning 1
+  )
+  select count(*) into v_added from inserted;
+
+  update bank_imports set row_count = v_added where id = v_import.id
+  returning * into v_import;
+
+  return v_import;
+end;
+$$;
+
+comment on function public.import_bank_transactions(jsonb, text) is
+  'Cost-seers only: file one dropped-in card statement. Rows arrive already mapped by the browser (the header-mapping step a human confirms), and duplicates — across files and within one file — are dropped by the dedupe_key unique index. row_count is what actually LANDED, not what was in the file.';
+
+revoke all on function public.import_bank_transactions(jsonb, text) from public, anon;
+grant execute on function public.import_bank_transactions(jsonb, text) to authenticated;
+
+
+-- ---- match / unmatch / ignore ---------------------------------------------
+-- Matching is the moment a charge and a receipt become one fact. It is also,
+-- per the spec, the moment the Z4 bridge fires: a card charge with a receipt
+-- that names a job is money spent on that job, evidenced twice.
+create or replace function public.match_bank_transaction(
+  p_txn_id uuid,
+  p_receipt_id uuid
+)
+returns bank_transactions
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row bank_transactions;
+begin
+  if not public.can_see_costs(auth.uid()) then
+    raise exception 'Only an owner, or somebody given "Sees costs", can match a card charge.'
+      using errcode = '42501';
+  end if;
+  if not exists (select 1 from receipts where id = p_receipt_id) then
+    raise exception 'That receipt is not here any more.';
+  end if;
+  -- One receipt answers for one charge. The unique index would refuse anyway;
+  -- this turns a constraint-violation string into a sentence a person can act
+  -- on.
+  if exists (
+    select 1 from bank_transactions
+     where receipt_id = p_receipt_id and id <> p_txn_id
+  ) then
+    raise exception 'That receipt is already matched to another charge.';
+  end if;
+
+  update bank_transactions
+     set receipt_id = p_receipt_id, status = 'matched'
+   where id = p_txn_id
+  returning * into v_row;
+
+  if v_row.id is null then
+    raise exception 'no such charge';
+  end if;
+
+  -- The Z4 bridge. Does nothing unless the receipt names a job, has an amount,
+  -- and has not already posted — see _post_receipt_job_cost.
+  perform public._post_receipt_job_cost(p_receipt_id);
+
+  return v_row;
+end;
+$$;
+
+comment on function public.match_bank_transaction(uuid, uuid) is
+  'Cost-seers only: this charge is that receipt. One receipt answers for at most one charge. Matching also fires the Z4 bridge, so a card charge whose receipt names a job reaches the cost ledger.';
+
+create or replace function public.unmatch_bank_transaction(p_txn_id uuid)
+returns bank_transactions
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row bank_transactions;
+begin
+  if not public.can_see_costs(auth.uid()) then
+    raise exception 'Only an owner, or somebody given "Sees costs", can unmatch a card charge.'
+      using errcode = '42501';
+  end if;
+
+  -- Unmatching says "that was the wrong receipt", not "that money was never
+  -- spent". The job cost line the match posted stays exactly where it is, the
+  -- same way un-reviewing does not unpost one.
+  update bank_transactions
+     set receipt_id = null, status = 'unreceipted'
+   where id = p_txn_id
+  returning * into v_row;
+
+  if v_row.id is null then
+    raise exception 'no such charge';
+  end if;
+  return v_row;
+end;
+$$;
+
+create or replace function public.ignore_bank_transaction(
+  p_txn_id uuid,
+  p_ignored boolean default true
+)
+returns bank_transactions
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row bank_transactions;
+begin
+  if not public.can_see_costs(auth.uid()) then
+    raise exception 'Only an owner, or somebody given "Sees costs", can set a card charge aside.'
+      using errcode = '42501';
+  end if;
+
+  -- Set aside, never deleted. A charge somebody decided needs no receipt is
+  -- still a charge, and the statement has to keep adding up.
+  update bank_transactions
+     set status = case
+       when p_ignored then 'ignored'
+       when receipt_id is not null then 'matched'
+       else 'unreceipted'
+     end
+   where id = p_txn_id
+  returning * into v_row;
+
+  if v_row.id is null then
+    raise exception 'no such charge';
+  end if;
+  return v_row;
+end;
+$$;
+
+comment on function public.ignore_bank_transaction(uuid, boolean) is
+  'Cost-seers only: set a charge aside as needing no receipt (or put it back). Never deletes — the statement still has to add up.';
+
+revoke all on function public.match_bank_transaction(uuid, uuid) from public, anon;
+revoke all on function public.unmatch_bank_transaction(uuid) from public, anon;
+revoke all on function public.ignore_bank_transaction(uuid, boolean) from public, anon;
+grant execute on function public.match_bank_transaction(uuid, uuid) to authenticated;
+grant execute on function public.unmatch_bank_transaction(uuid) to authenticated;
+grant execute on function public.ignore_bank_transaction(uuid, boolean) to authenticated;
+
+
+-- ---- undo_bank_import ------------------------------------------------------
+-- Every import is undoable as a batch, because the fix for "I dropped in the
+-- wrong file" must not be forty taps.
+--
+-- Asymmetric on purpose: rows NOBODY touched are dropped, and rows somebody has
+-- since matched or set aside are kept and merely unmatched. A person's decision
+-- about which receipt answers which charge is work, and an undo that threw it
+-- away would be a worse mistake than the one it is undoing.
+create or replace function public.undo_bank_import(p_import_id uuid)
+returns bank_imports
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row bank_imports;
+begin
+  if not public.can_see_costs(auth.uid()) then
+    raise exception 'Only an owner, or somebody given "Sees costs", can undo an import.'
+      using errcode = '42501';
+  end if;
+
+  delete from bank_transactions
+   where import_id = p_import_id
+     and receipt_id is null
+     and status = 'unreceipted';
+
+  update bank_transactions
+     set receipt_id = null, status = 'unreceipted'
+   where import_id = p_import_id;
+
+  update bank_imports set undone_at = now()
+   where id = p_import_id
+  returning * into v_row;
+
+  if v_row.id is null then
+    raise exception 'no such import';
+  end if;
+  return v_row;
+end;
+$$;
+
+comment on function public.undo_bank_import(uuid) is
+  'Cost-seers only: take one whole import back. Charges nobody touched are dropped; charges somebody matched or set aside are kept and unmatched, because a person''s decision is work an undo has no business throwing away. Any job cost lines the matches posted stand — the money was still spent.';
+
+revoke all on function public.undo_bank_import(uuid) from public, anon;
+grant execute on function public.undo_bank_import(uuid) to authenticated;
+
+
+-- ===========================================================================
 -- 99. Re-arm the sandbox fence
 -- ===========================================================================
 -- project_financials carries a `project_id`, which is what makes a table

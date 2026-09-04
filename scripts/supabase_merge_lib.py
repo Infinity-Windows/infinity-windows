@@ -664,6 +664,16 @@ DEDUP_KEYS: dict[str, tuple[str, ...] | None] = {
     # -- (Wave Z, Z3). Two projects holding the same person's 2026-06-01 rate
     # -- are the same fact, so it dedups cleanly.
     "pay_rates": ("profile_id", "effective_from"),
+    # -- One dropped-in card statement (Wave Z, Z5). Two projects that each
+    # -- imported the same file did two separate imports of it — the batch is
+    # -- the EVENT, not the data, so there is no natural key and both rows
+    # -- stand. The charges inside them dedup on their own key below.
+    "bank_imports": None,
+    # -- "The same charge", as the table's own UNIQUE dedupe_key already
+    # -- defines it: the bank's external_id when the export has one, else a
+    # -- hash of date + amount + description. Exactly the question a merge
+    # -- asks, already answered.
+    "bank_transactions": ("dedupe_key",),
 }
 
 #: Tables where combining two projects' rows is meaningless or actively wrong.

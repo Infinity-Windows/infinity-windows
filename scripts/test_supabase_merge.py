@@ -147,7 +147,9 @@ class TestSchemaParsing(unittest.TestCase):
         # 20260978000000).
         # +1: pay_rates — what one person earns per hour, from a given day
         # (Wave Z, Z3, 20260978000000).
-        self.assertEqual(len(SCHEMA.tables), 119)
+        # +2: bank_imports + bank_transactions — the dropped-in card statement
+        # and its charges (Wave Z, Z5, 20260978000000).
+        self.assertEqual(len(SCHEMA.tables), 121)
         for expected in ("window_types", "windows", "profiles", "project_openings"):
             self.assertIn(expected, SCHEMA)
 
