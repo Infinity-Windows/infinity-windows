@@ -1113,6 +1113,20 @@ export const CATALOG = {
   "pipeline.order.down": { en: "Move down", es: "Bajar" },
   "pipeline.order.drag": { en: "Drag to reorder", es: "Arrastra para reordenar" },
   "pipeline.order.saved": { en: "New order saved.", es: "Nuevo orden guardado." },
+  // Building a job from an Incoming-from-Monday proposal (J3). Said BEFORE the
+  // tap, because "Not ready" is a state somebody has to clear by hand and a
+  // foreman should not meet it for the first time on the jobs list afterwards.
+  // Two whole sentences rather than one sentence plus a glued-on clause: word
+  // order is not the same in both languages, and a phrase assembled from parts
+  // reads like a phrase assembled from parts.
+  "pipeline.monday.landsNotReady": {
+    en: "It lands as Not ready — mark it ready once somebody has checked the site.",
+    es: "Entra como No listo — márcalo listo cuando alguien haya revisado el sitio.",
+  },
+  "pipeline.monday.landsNotReadyWithEta": {
+    en: "It lands as Not ready, with the windows due {date} — mark it ready once somebody has checked the site.",
+    es: "Entra como No listo, con las ventanas para el {date} — márcalo listo cuando alguien haya revisado el sitio.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

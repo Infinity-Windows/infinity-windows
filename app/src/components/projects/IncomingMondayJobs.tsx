@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, RefreshCw } from "lucide-react";
 import { formatApiError } from "../../lib/errors";
+import { useT } from "../../lib/i18n";
 import {
   buildProjectFromMonday,
   dismissMondayJob,
@@ -36,6 +37,12 @@ function suggestCode(name: string): string {
 }
 
 export function IncomingMondayJobs() {
+  // Wave J (J3) added two crew-facing lines to this card, and every new
+  // crew-facing string in this program goes through t() with English and
+  // Spanish. The lines this component already had are English-only and stay
+  // that way until somebody translates it whole — a half-translated card is
+  // worse than an untranslated one.
+  const t = useT();
   const qc = useQueryClient();
   const [building, setBuilding] = useState<MondayJob | null>(null);
   const [jobCode, setJobCode] = useState("");
@@ -129,8 +136,12 @@ export function IncomingMondayJobs() {
                 </span>
                 {/* Wave J (J3): Monday has always known when the windows are
                     due and the app has always thrown it away at build time.
-                    Showing it here is how the office sees what carries over. */}
-                {j.est_arrival && <span>· windows {fmtDate(j.est_arrival)}</span>}
+                    Showing it here is how the office sees what carries over.
+                    Same words as the job card's own line, so the fact reads
+                    the same in both places. */}
+                {j.est_arrival && (
+                  <span>· {t("pipeline.card.eta", { date: fmtDate(j.est_arrival) })}</span>
+                )}
               </div>
             </div>
             <div className="row-gap">
@@ -200,11 +211,15 @@ export function IncomingMondayJobs() {
             </p>
             {/* Wave J (J3): said plainly before the tap, because "Not ready" is
                 a state somebody will have to clear by hand and a foreman should
-                not discover it on the jobs list afterwards. */}
+                not discover it on the jobs list afterwards. One whole sentence
+                per case rather than a stem with a clause spliced in, so it can
+                be written properly in both languages. */}
             <p className="muted" style={{ margin: "4px 0 0", fontSize: 11.5 }}>
-              It lands as <strong>Not ready</strong>
-              {building.est_arrival && <> with the windows due {fmtDate(building.est_arrival)}</>} —
-              mark it ready once somebody has checked the site.
+              {building.est_arrival
+                ? t("pipeline.monday.landsNotReadyWithEta", {
+                    date: fmtDate(building.est_arrival),
+                  })
+                : t("pipeline.monday.landsNotReady")}
             </p>
           </div>
         </div>
