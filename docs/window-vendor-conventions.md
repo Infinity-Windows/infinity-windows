@@ -62,6 +62,56 @@ values: `fixed`, `hinge-l`, `hinge-r`, `hinge-t`, `bipart`, `corner-meet`.
 - Hardware color is called out separately from the frame color - on Black
   Desert it is Gold hardware on Clay frames.
 
+### Door kinds (what the app counts)
+
+Wave X, 2026-09-03. A job card now says how many doors a job has and
+which kind they are, so these five names are vocabulary, not just drawing
+hints. `doorKind` (app/src/lib/install/specKinds.mjs) reads them off the
+spec sheet's style line first and its operation line second:
+
+- **slider** - "Sliding Door", "slider", "patio door". Panels run on a
+  track (`open: "bipart"` / `"corner-meet"`). Black Dahlia #29, #30.
+- **french** - "French Door", "French door track(Inward opening)". A pair
+  of leaves with 3-point-lock hardware. Black Desert #26, #28-#39.
+- **bifold** - "Bi-Fold" / "bifold" / "bi fold". Leaves fold and stack.
+  No job in this repo has one yet.
+- **swing** - "Swing door", "hinged", "pivot", and the commercial /
+  storefront leaves whose operation line says so. Mad Moose's entries.
+- **other** - a door whose paperwork does not say which. Honest, and
+  countable; a foreman fixes it at spec review and the count follows.
+
+**Counted but not drawn.** `doorKind` names five kinds; the fit view has
+only `fixed`, `hinge-l`, `hinge-r`, `hinge-t`, `bipart` and `corner-meet`,
+and there is no fold and no pivot among them. So a style line reading
+"bi-fold", "pivot", "hinged" or "swing door" is counted as that kind and
+drawn by `inferHardware` as a plain single pane, because that is the last
+branch it reaches. That is a gap in the DRAWING, not a disagreement about
+the unit - the two read the same words in the same order, and where the
+fit view has no symbol it says nothing rather than inventing one (the same
+call `hung` windows already get). Give the renderer a fold or pivot symbol
+and this is the paragraph to delete. "Patio door" is NOT in this list: it
+is the slider above under another name, and `inferHardware` draws it as
+one.
+
+The style line WINS over the operation line, and both win over the
+operation letters - Mad Moose's French doors drew as sliders once
+(app/src/lib/modelstudio/units.ts, live pilot 2026-09-02) because the
+letters were read first. Where a style names two doors ("Sliding Door
+with ... French Door", #29), the FIRST is the unit: the supplier writes
+the unit and then its neighbours.
+
+An operation line that is nothing but X and O letters names a **slider**,
+whatever the count: X/O is slider panel notation (above) and is used for
+nothing else, so "XO" is a two-panel patio slider just as "OXXO" is the
+four-panel one. `openingUnitKind` already reads those letters that way on
+a door's type code.
+
+Careful with `inferHardware` here: it draws a non-OXXO letter string as a
+hinged leaf, and that is a DRAWING fallback - the fit view has no slide
+arrow for an odd panel count - not a statement that the door swings.
+`doorKind` counts the unit; `inferHardware` draws it. They read the same
+sheet in the same order, and only the drawing has that gap.
+
 ## Thresholds, tracks, sills (from the Strata sheets)
 
 - French doors: "Low threshold", track drawn per swing - "French door track

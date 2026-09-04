@@ -1145,6 +1145,48 @@ export const CATALOG = {
     es: "Entra como No listo, con las ventanas para el {date} — márcalo listo cuando alguien haya revisado el sitio.",
   },
 
+  // ---- Scope at a glance (wave X) ---------------------------------------
+  // The one line a job card and a job header both say: how big this job is and
+  // how much of it is doors. Every count is a one/many pair because the caller
+  // picks the key by number — the framework interpolates {n} but has no plural
+  // rule (same shape as mywork.newUnits.one/.many). Spanish genders follow the
+  // noun: aberturas, ventanas and puertas are all feminine.
+  "scope.openings.one": { en: "{n} opening", es: "{n} abertura" },
+  "scope.openings.many": { en: "{n} openings", es: "{n} aberturas" },
+  "scope.windows.one": { en: "{n} window", es: "{n} ventana" },
+  "scope.windows.many": { en: "{n} windows", es: "{n} ventanas" },
+  "scope.doors.one": { en: "{n} door", es: "{n} puerta" },
+  "scope.doors.many": { en: "{n} doors", es: "{n} puertas" },
+  "scope.stories.one": { en: "{n} story", es: "{n} piso" },
+  "scope.stories.many": { en: "{n} stories", es: "{n} pisos" },
+  // A tracking job has no openings by design — nobody uploads plans for a
+  // service call — so it says what it is instead of showing zeroes.
+  "scope.trackingJob": { en: "Tracking job", es: "Trabajo de seguimiento" },
+  // Which doors, in the job header only. The words are the trade's own; see
+  // docs/window-vendor-conventions.md, "Door kinds".
+  "scope.door.slider.one": { en: "{n} slider", es: "{n} corrediza" },
+  "scope.door.slider.many": { en: "{n} sliders", es: "{n} corredizas" },
+  "scope.door.french.one": { en: "{n} French", es: "{n} francesa" },
+  "scope.door.french.many": { en: "{n} French", es: "{n} francesas" },
+  "scope.door.bifold.one": { en: "{n} bifold", es: "{n} plegable" },
+  "scope.door.bifold.many": { en: "{n} bifolds", es: "{n} plegables" },
+  "scope.door.swing.one": { en: "{n} swing", es: "{n} abatible" },
+  "scope.door.swing.many": { en: "{n} swing", es: "{n} abatibles" },
+  // Not a mistake and not a gap: the paperwork for these never said which kind
+  // of door it is. A foreman fixing the spec text moves them out of here.
+  "scope.door.other.one": { en: "{n} not stated", es: "{n} sin especificar" },
+  "scope.door.other.many": { en: "{n} not stated", es: "{n} sin especificar" },
+  // Storeys on the job form and the Job details panel.
+  "scope.stories.label": { en: "Storeys", es: "Pisos" },
+  "scope.stories.hint": {
+    en: "How many floors the building has. Leave blank if you don't know yet.",
+    es: "Cuántos pisos tiene el edificio. Déjalo en blanco si aún no lo sabes.",
+  },
+  "scope.stories.fromModel": {
+    en: "From the traced 3D model.",
+    es: "Del modelo 3D trazado.",
+  },
+
   // ---- Who installed this? (wave Y, transcripts program) ----------------
   // The finish step only asks when the unit belongs to somebody else, so
   // every one of these is read by a person who is filing for a workmate.

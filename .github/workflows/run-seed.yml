@@ -20,6 +20,12 @@
 #                   drawings and printed sizes.
 #   black22         scripts/seed-black22-fitview.mjs — BLACK22's fit-view
 #                   calibration from the hand-traced prototype model.
+#   spec-kinds      scripts/seed-spec-kinds.mjs — writes unit_kind/door_kind on
+#                   EVERY job's mark specs, so the job cards can say how many
+#                   windows and how many doors. The only seed here that is not
+#                   about one job: those two columns are empty on every row
+#                   written before 20260980000000. Re-run it whenever the
+#                   classifier (app/src/lib/install/specKinds.mjs) changes.
 # Every one of them is plan / --dry-run / --apply and is idempotent: run the
 # dry-run, read it, then run apply.
 name: Run seed script
@@ -36,6 +42,7 @@ on:
           - madmoose-repair
           - madmoose-specs
           - black22
+          - spec-kinds
       mode:
         description: "dry-run shows the diff; apply writes it"
         required: true
@@ -75,6 +82,7 @@ jobs:
             madmoose-repair) script=scripts/seed-madmoose-repair-fitview.mjs ;;
             madmoose-specs)  script=scripts/seed-madmoose-specs-repair.mjs ;;
             black22)         script=scripts/seed-black22-fitview.mjs ;;
+            spec-kinds)      script=scripts/seed-spec-kinds.mjs ;;
             *) echo "Unknown seed: $SEED"; exit 1 ;;
           esac
           case "$MODE" in

@@ -16,7 +16,8 @@ import type {
   WindowUnit,
 } from "./types";
 import { quickJobName, quickTrackingJobCode } from "./quickJobs";
-import { isMissingColumn, isMissingFunction } from "./schemaErrors";
+import { isMissingColumn, isMissingFunction, isMissingTable } from "./schemaErrors";
+import type { ScopeCounts } from "./scope";
 import { sortProjectsForList, type ReadyState } from "./pipeline";
 
 const WINDOW_SELECT =
@@ -92,6 +93,105 @@ export async function listProjects(): Promise<Project[]> {
     throw error;
   }
   return sortProjectsForList(data as Project[]);
+}
+
+/** The columns of project_scope_counts, named rather than `*` — house rule. */
+const SCOPE_COUNT_COLS =
+  "project_id, openings, installed, windows, doors, door_sliders, door_french, door_bifold, door_swing, door_other, unknown_units";
+
+/** A job with no openings at all still has a row to show: all zeroes. */
+function emptyScope(projectId: string): ScopeCounts {
+  return {
+    project_id: projectId,
+    openings: 0,
+    installed: 0,
+    windows: 0,
+    doors: 0,
+    door_sliders: 0,
+    door_french: 0,
+    door_bifold: 0,
+    door_swing: 0,
+    door_other: 0,
+    unknown_units: 0,
+  };
+}
+
+/**
+ * How many openings, windows and doors every job has — counted in the database
+ * (wave X, `project_scope_counts`), one grouped row per job, keyed by job id.
+ *
+ * This REPLACES pulling every opening row on the company down to the phone and
+ * counting them in JavaScript, which is what the jobs list used to do. The view
+ * is SECURITY INVOKER, so a job the reader cannot see cannot appear here.
+ *
+ * A database without the view yet falls back to that old whole-table read, so a
+ * phone ahead of the migration still shows its openings and its progress bar.
+ * That fallback exists only for the gap between this shipping and the migration
+ * deploying — once the view is live everywhere it can go, and nothing else
+ * reads openings that way any more.
+ *
+ * A PLAIN OBJECT, not a Map, and that is not a style choice. `"scopeCounts"` is
+ * in queryClient's OFFLINE_KEYS, so this answer is dehydrated into localStorage
+ * through `JSON.stringify` and read back with `JSON.parse`. A Map stringifies to
+ * `{}` — the keys do not survive — so on the second and every later launch the
+ * restored value would be a truthy object with no `.get`, and the jobs list and
+ * the manager Home would throw through their only error boundary the moment
+ * they rendered, on every launch, because the bad value is restored again each
+ * time. Every other persisted query in this app answers with JSON-native data
+ * for exactly this reason. Keep it that way; `scope.test.ts` guards it.
+ */
+export async function listScopeCounts(): Promise<Record<string, ScopeCounts>> {
+  const { data, error } = await supabase
+    .from("project_scope_counts")
+    .select(SCOPE_COUNT_COLS);
+  if (error) {
+    if (isMissingTable(error, "project_scope_counts")) return legacyOpeningCounts();
+    throw error;
+  }
+  return byProjectId(data as ScopeCounts[]);
+}
+
+/** One job's counts. Absent (a job with nothing on it) reads as all zeroes. */
+export async function getScopeCounts(projectId: string): Promise<ScopeCounts> {
+  const { data, error } = await supabase
+    .from("project_scope_counts")
+    .select(SCOPE_COUNT_COLS)
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (error) {
+    if (isMissingTable(error, "project_scope_counts")) {
+      return (await legacyOpeningCounts())[projectId] ?? emptyScope(projectId);
+    }
+    throw error;
+  }
+  return (data as ScopeCounts | null) ?? emptyScope(projectId);
+}
+
+/** Rows in, one entry per job id out. Exported so a test can round-trip it. */
+export function byProjectId(rows: ScopeCounts[]): Record<string, ScopeCounts> {
+  const out: Record<string, ScopeCounts> = {};
+  for (const row of rows) out[row.project_id] = row;
+  return out;
+}
+
+/**
+ * The pre-view read: every opening row, counted here. Kept ONLY as the degrade
+ * path above — openings and installed, no kinds, which is exactly what the app
+ * knew before the counts view existed.
+ */
+async function legacyOpeningCounts(): Promise<Record<string, ScopeCounts>> {
+  const { data, error } = await supabase
+    .from("project_openings")
+    .select("project_id, status");
+  if (error) throw error;
+  const byProject: Record<string, ScopeCounts> = {};
+  for (const row of (data ?? []) as { project_id: string; status: string }[]) {
+    const counts = byProject[row.project_id] ?? emptyScope(row.project_id);
+    counts.openings += 1;
+    if (row.status === "installed") counts.installed += 1;
+    byProject[row.project_id] = counts;
+  }
+  return byProject;
 }
 
 /**
@@ -207,6 +307,9 @@ export interface ProjectDetailsInput {
   startDate?: string | null;
   endDate?: string | null;
   notes?: string | null;
+  /** Wave X: how many storeys the building has, typed by a person. A traced 3D
+   * model beats it for display and never writes back into it (lib/scope.ts). */
+  stories?: number | null;
 }
 
 export interface CreateProjectInput extends ProjectDetailsInput {
@@ -225,6 +328,15 @@ export interface CreateProjectInput extends ProjectDetailsInput {
 const clean = (value: string | null | undefined): string | null =>
   value?.trim() ? value.trim() : null;
 
+/** A storey count the database will accept, or null. Matches the CHECK. */
+const cleanStories = (value: number | null | undefined): number | null => {
+  if (value == null || !Number.isFinite(value)) return null;
+  const n = Math.round(value);
+  return n >= 1 && n <= 60 ? n : null;
+};
+
+type DetailColumns = Record<string, string | number | null>;
+
 /**
  * Shape the shared detail fields into the DB column names — ONLY the ones the
  * caller actually named.
@@ -242,8 +354,8 @@ const clean = (value: string | null | undefined): string | null =>
  * On INSERT an omitted column simply takes its default, which is NULL, so
  * createProject behaves exactly as before.
  */
-function detailColumns(input: ProjectDetailsInput): Record<string, string | null> {
-  const patch: Record<string, string | null> = {};
+function detailColumns(input: ProjectDetailsInput): DetailColumns {
+  const patch: DetailColumns = {};
   if (input.address !== undefined) patch.address = clean(input.address);
   if (input.customerName !== undefined) patch.customer_name = clean(input.customerName);
   if (input.contactPhone !== undefined) patch.contact_phone = clean(input.contactPhone);
@@ -255,7 +367,44 @@ function detailColumns(input: ProjectDetailsInput): Record<string, string | null
   if (input.startDate !== undefined) patch.start_date = clean(input.startDate);
   if (input.endDate !== undefined) patch.end_date = clean(input.endDate);
   if (input.notes !== undefined) patch.notes = clean(input.notes);
+  if (input.stories !== undefined) patch.stories = cleanStories(input.stories);
   return patch;
+}
+
+/**
+ * `projects.stories` arrives with 20260980000000, and creating or editing a job
+ * has to keep working on a database that has not had it yet — otherwise the app
+ * ships a New-project form nobody can submit. Drop the one column and try
+ * again; every other field the person typed still lands.
+ */
+function withoutStories(patch: DetailColumns): DetailColumns {
+  const copy = { ...patch };
+  delete copy.stories;
+  return copy;
+}
+
+/**
+ * Two ways `stories` can be unusable, and from the form they look identical.
+ *
+ * The column may not exist yet — the migration has not deployed. Or it may
+ * exist and not be WRITABLE: table-level INSERT/UPDATE on `projects` is revoked
+ * and the writable columns are granted back by name (wave D's law,
+ * 20260959000000), and any wave that re-states those lists without `stories`
+ * takes the privilege away. Wave Z (20260978000000) re-states both lists, which
+ * is why 20260980000000's grant has to be the later statement — and why this
+ * retry must not depend on that having gone right. A refused privilege is a
+ * 42501, not a missing column, and without this the New-job form and the Job
+ * details save would simply stop working rather than dropping one number.
+ *
+ * The message has to name the column, so that a row-level-security refusal —
+ * also a 42501, and a real "no" — still reaches the person as an error instead
+ * of being quietly retried into the same refusal.
+ */
+function isMissingStoriesColumn(error: unknown): boolean {
+  if (isMissingColumn(error, "stories")) return true;
+  const e = error as { code?: unknown; message?: unknown };
+  const message = typeof e?.message === "string" ? e.message.toLowerCase() : "";
+  return e?.code === "42501" && message.includes("stories");
 }
 
 /**
@@ -277,15 +426,18 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
   if (!jobCode) throw new Error("Job code is required.");
   if (!name) throw new Error("Project name is required.");
 
-  const { data: project, error: projectError } = await supabase
-    .from("projects")
-    .insert({
-      job_code: jobCode,
-      name,
-      ...detailColumns(input),
-    })
-    .select("*")
-    .single();
+  const insert = (cols: DetailColumns) =>
+    supabase
+      .from("projects")
+      .insert({ job_code: jobCode, name, ...cols })
+      .select("*")
+      .single();
+
+  const cols = detailColumns(input);
+  let { data: project, error: projectError } = await insert(cols);
+  if (projectError && isMissingStoriesColumn(projectError)) {
+    ({ data: project, error: projectError } = await insert(withoutStories(cols)));
+  }
   if (projectError) throw projectError;
 
   // Wave J (J1/J3): a job that ARRIVED rather than being filled in — imported
@@ -440,7 +592,7 @@ export async function updateProject(
   projectId: string,
   input: UpdateProjectInput,
 ): Promise<Project> {
-  const patch: Record<string, string | null> = detailColumns(input);
+  const patch: DetailColumns = detailColumns(input);
   if (input.name !== undefined) {
     const name = input.name.trim();
     if (!name) throw new Error("Project name is required.");
@@ -450,12 +602,13 @@ export async function updateProject(
   // answer it with a 400 nobody could act on. Say what happened instead.
   if (Object.keys(patch).length === 0) throw new Error("Nothing to save on this job.");
 
-  const { data, error } = await supabase
-    .from("projects")
-    .update(patch)
-    .eq("id", projectId)
-    .select("*")
-    .single();
+  const update = (cols: DetailColumns) =>
+    supabase.from("projects").update(cols).eq("id", projectId).select("*").single();
+
+  let { data, error } = await update(patch);
+  if (error && isMissingStoriesColumn(error)) {
+    ({ data, error } = await update(withoutStories(patch)));
+  }
   if (error) throw error;
   return data as Project;
 }

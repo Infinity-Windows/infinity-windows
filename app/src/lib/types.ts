@@ -123,6 +123,10 @@ export interface Project {
   estimated_minutes?: number | null;
   estimated_crew?: number | null;
   estimated_at?: string | null;
+  /** Wave X: how many storeys the building has, typed on the job form. Null
+   * means nobody said. A job with a traced 3D model shows that model's storey
+   * count instead, and the model NEVER writes back here (lib/scope.ts). */
+  stories?: number | null;
 }
 
 export interface ProjectWindow {

@@ -9,6 +9,7 @@ import {
   deleteTestProject,
   ensureStagingBays,
   getProjectWindows,
+  getScopeCounts,
   listLocations,
   listReorderNeeds,
   setProjectTest,
@@ -19,7 +20,12 @@ import {
 import { totalReorder } from "../lib/loadout";
 import { missingStagingSlots, stagingBaysFor } from "../lib/staging";
 import { pushToast, toastError } from "../lib/toast";
-import { listOpenings, promoteProjectToData, saveJobEstimate } from "../lib/install/api";
+import {
+  listOpenings,
+  listPlanOutlines,
+  promoteProjectToData,
+  saveJobEstimate,
+} from "../lib/install/api";
 import {
   compareIssues,
   KIND_LABELS,
@@ -65,6 +71,8 @@ import { CallForHandsPanel } from "../components/install/CallForHandsPanel";
 import { MissedUnitButton } from "../components/install/MissedUnitButton";
 import { JobCostCodesPanel } from "../components/project/JobCostCodesPanel";
 import { JobModeBadge } from "../components/JobModeBadge";
+import { ScopeLine } from "../components/projects/ScopeLine";
+import { storiesToShow } from "../lib/scope";
 import { PipelinePanel } from "../components/projects/PipelinePanel";
 import { ReadinessBadge } from "../components/projects/ReadinessBadge";
 import { useUnreadCounts } from "../lib/chat/useUnreadCounts";
@@ -124,6 +132,20 @@ export function ProjectDetail() {
     queryKey: ["openings", projectId],
     queryFn: () => listOpenings(projectId),
   });
+  // Wave X: how big this job is, counted in the database. Shown under the job
+  // code on every tab, so it is fetched here rather than inside Overview.
+  const scope = useQuery({
+    queryKey: ["scopeCounts", projectId],
+    queryFn: () => getScopeCounts(projectId),
+  });
+  // Same key MarkElevationCrop uses, so opening a spec card has already warmed
+  // this. Only ONE thing is read from it: whether somebody has traced a model,
+  // and how many storeys they drew.
+  const outlines = useQuery({
+    queryKey: ["planOutlines", projectId],
+    queryFn: () => listPlanOutlines(projectId),
+  });
+  const storiesShown = storiesToShow(outlines.data, project?.stories);
   // The job's material, in the package chain's own terms (ticket 21). Same
   // query key every warehouse screen uses, so it is a cache hit on a phone
   // that has been anywhere near the warehouse today.
@@ -284,6 +306,7 @@ export function ProjectDetail() {
               {project?.name}
               {project?.address ? ` — ${project.address}` : ""}
             </p>
+            <ScopeLine counts={scope.data} stories={storiesShown} trackingOnly={trackingOnly} showDoorKinds style={{ marginTop: 2 }} />
           </div>
         </div>
         <DirectionsButton address={project?.address} />
@@ -1015,6 +1038,7 @@ function JobDetailsPanel({
   project: Project;
   isLead: boolean;
 }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(project.name);
@@ -1027,6 +1051,12 @@ function JobDetailsPanel({
   const [startDate, setStartDate] = useState(project.start_date?.slice(0, 10) ?? "");
   const [endDate, setEndDate] = useState(project.end_date?.slice(0, 10) ?? "");
   const [notes, setNotes] = useState(project.notes ?? "");
+  // Wave X: typed, never derived. When the job has a traced 3D model the header
+  // line shows the MODEL's storey count instead of this — but the model never
+  // writes back here, so what a person typed stays what a person typed.
+  const [stories, setStories] = useState(
+    project.stories != null ? String(project.stories) : "",
+  );
 
   const resetForm = () => {
     setName(project.name);
@@ -1039,6 +1069,7 @@ function JobDetailsPanel({
     setStartDate(project.start_date?.slice(0, 10) ?? "");
     setEndDate(project.end_date?.slice(0, 10) ?? "");
     setNotes(project.notes ?? "");
+    setStories(project.stories != null ? String(project.stories) : "");
   };
 
   const save = useMutation({
@@ -1054,9 +1085,11 @@ function JobDetailsPanel({
         startDate,
         endDate,
         notes,
+        stories: stories.trim() === "" ? null : Number(stories),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["projectsAll"] });
       setEditing(false);
       pushToast("Job details saved.", "info");
     },
@@ -1069,6 +1102,10 @@ function JobDetailsPanel({
     { label: "Email", value: project.contact_email ?? "" },
     { label: "Site address", value: project.address ?? "" },
     { label: "Building / unit / lot", value: project.unit_number ?? "" },
+    {
+      label: t("scope.stories.label"),
+      value: project.stories != null ? String(project.stories) : "",
+    },
     { label: "State", value: project.site_state ?? "" },
     { label: "Bid / target start", value: fmtDay(project.start_date) },
     { label: "Bid / target completion", value: fmtDay(project.end_date) },
@@ -1198,6 +1235,18 @@ function JobDetailsPanel({
               value={unitNumber}
               onChange={(e) => setUnitNumber(e.target.value)}
               placeholder="Building 14 · Lots 173–183"
+            />
+          </label>
+          <label>
+            <span className="field-label">{t("scope.stories.label")}</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={60}
+              value={stories}
+              onChange={(e) => setStories(e.target.value)}
+              placeholder="2"
             />
           </label>
           <label>

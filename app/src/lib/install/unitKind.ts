@@ -1,5 +1,3 @@
-import { indexSpecsByMark, specForOpeningCode } from "./specs";
-
 /**
  * Is this opening a window or a door?
  *
@@ -17,12 +15,21 @@ import { indexSpecsByMark, specForOpeningCode } from "./specs";
  *
  * Shared so the map pin, the map's list, dispatch, the plan editor, the review
  * screen and the issues list can never colour the same opening two ways.
+ *
+ * Wave X moved the word-matching itself into `specKinds.mjs` — plain JavaScript
+ * so the backfill script runs the very same function — and re-exports it here,
+ * which is where every caller in the app has always imported it from. Wave X's
+ * `doorKind` (which door: slider, French, bifold, swing) lives there too.
  */
+import { indexSpecsByMark, specForOpeningCode } from "./specs";
+import { unitKindFromDescription } from "./specKinds.mjs";
 
-// Whole words only, singular or plural. The boundaries matter: "outdoor living"
-// and "indoor" must not turn a window into a door.
-const DOOR_WORD = /\bdoors?\b/i;
-const WINDOW_WORD = /\bwindows?\b/i;
+export { doorKind, specKindColumns, unitKindFromDescription } from "./specKinds.mjs";
+export type {
+  DoorKind,
+  SpecKindColumns,
+  SpecKindInput,
+} from "./specKinds.mjs";
 
 /**
  * The little an opening has to carry to be classified. Structural rather than
@@ -36,26 +43,6 @@ export interface UnitKindOpening {
     type_code?: string | null;
     name?: string | null;
   } | null;
-}
-
-/**
- * Window or door from a spec description, or null when the words aren't there.
- *
- * Door wins when a description says both, which is common and deliberate:
- * "French Door with Thermal break Fixed Window" is one door unit with a fixed
- * light beside it (six of Black Desert's marks read like this). A crew hangs
- * that as a door, so it is a door.
- *
- * Null means "this description doesn't say" — for a caller to fall back on,
- * rather than a guess dressed up as an answer.
- */
-export function unitKindFromDescription(
-  description: string | null | undefined,
-): "door" | "window" | null {
-  if (!description) return null;
-  if (DOOR_WORD.test(description)) return "door";
-  if (WINDOW_WORD.test(description)) return "window";
-  return null;
 }
 
 /**
