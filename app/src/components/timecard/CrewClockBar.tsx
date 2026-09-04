@@ -128,9 +128,9 @@ export function CrewClockBar({
    * The attestation is a statement about THIS group of people, made now — a
    * box left ticked from the last batch would let the second one through
    * without anybody saying anything, which is the whole thing the tick exists
-   * to prevent. "Move anyone already on another job here" resets for the same
-   * reason: off by default means off every time, not off once. The job, the
-   * cost code and the note are conveniences and stay put.
+   * to prevent. The move box resets for the same reason: off by default means
+   * off every time, not off once. The job, the cost code and the note are
+   * conveniences and stay put.
    */
   const open = (which: "in" | "out") => {
     setResults(null);

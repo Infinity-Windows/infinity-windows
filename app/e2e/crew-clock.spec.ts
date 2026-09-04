@@ -2,16 +2,18 @@
 //
 // The owner opened Team timecards and found fourteen people clocked into
 // OFFICE a minute apart, because somebody had punched fourteen phones in by
-// hand. Five things this proves against the real page rather than a unit test:
+// hand. Six things this proves against the real page rather than a unit test:
 //
 //   1. a supervisor ticks three people and clocks them in — and the request
 //      that leaves the phone carries exactly those three ids, the job, the
 //      cost code and the attestation, in ONE call rather than three;
 //   2. the attestation really is a gate: no tick, no button;
-//   3. somebody already on ANOTHER job is left alone and named, until "Move
-//      anyone already on another job here" is ticked, and then they are sent;
+//   3. somebody already on ANOTHER job is left alone and named until the move
+//      box is ticked, and then they are sent;
 //   4. Clock out counts only the people who are actually on the clock;
-//   5. a foreman — who may read this page but never edit time on it — has no
+//   5. a phone whose database has not applied the migration says so in a plain
+//      sentence, and the roster behind it still works;
+//   6. a foreman — who may read this page but never edit time on it — has no
 //      checkboxes and no bar at all.
 //
 // The shifts and the crew are hand-built here rather than captured, because
@@ -149,7 +151,7 @@ interface RpcCall {
  * most recently added route). Returns the list the RPC calls land in, so a
  * test can assert what actually left the phone.
  */
-async function useCrewFixtures(page: Page, role: string): Promise<RpcCall[]> {
+async function crewFixtures(page: Page, role: string): Promise<RpcCall[]> {
   const calls: RpcCall[] = [];
   const people = crew(role);
 
@@ -207,9 +209,15 @@ async function useCrewFixtures(page: Page, role: string): Promise<RpcCall[]> {
 
 test.use({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 
+/**
+ * The rest of the roster's setup, once the caller has installed the shared
+ * fixtures. Split this way on purpose: useSupabaseFixtures is `use`-prefixed,
+ * so calling it from a named helper reads to the linter as a React hook in a
+ * non-component — every other spec in this tree calls it from the test's own
+ * arrow function, and so does each test below.
+ */
 async function openRoster(page: Page, role: "supervisor" | "foreman") {
-  await useSupabaseFixtures(page, { role });
-  const calls = await useCrewFixtures(page, role);
+  const calls = await crewFixtures(page, role);
   await page.goto("/team-timecards");
   await expect(page.getByText("Ana Ruiz")).toBeVisible();
   return calls;
@@ -229,6 +237,7 @@ async function openClockInSheet(page: Page) {
 test("a supervisor ticks three people and clocks them in, in one request", async ({
   page,
 }) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
   const calls = await openRoster(page, "supervisor");
 
   await page.getByLabel("Select Ana Ruiz").check();
@@ -259,6 +268,7 @@ test("a supervisor ticks three people and clocks them in, in one request", async
 });
 
 test("no toolbox attestation, no clock-in", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
   await openRoster(page, "supervisor");
   await page.getByLabel("Select Cara Diaz").check();
 
@@ -274,6 +284,7 @@ test("no toolbox attestation, no clock-in", async ({ page }) => {
 test("somebody already on another job is left alone until Move is ticked", async ({
   page,
 }) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
   const calls = await openRoster(page, "supervisor");
   await page.getByLabel("Select Ben Cole").check();
   await page.getByLabel("Select Cara Diaz").check();
@@ -310,6 +321,7 @@ test("somebody already on another job is left alone until Move is ticked", async
 });
 
 test("clock out counts only the people actually on the clock", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "supervisor" });
   const calls = await openRoster(page, "supervisor");
   await page.getByLabel("Select Ana Ruiz").check();
   await page.getByLabel("Select Ben Cole").check();
@@ -336,6 +348,7 @@ test("a phone whose database has not caught up says so, and the roster still wor
   // one has silently failed before, so "the app is live and the migration is
   // not" is a state that really happens. PGRST202 is exactly what the live
   // project answered when this branch was probed (2026-09-04).
+  await useSupabaseFixtures(page, { role: "supervisor" });
   await openRoster(page, "supervisor");
   await page.route("**/rest/v1/rpc/clock_out_many*", (r) =>
     r.fulfill({
@@ -362,6 +375,7 @@ test("a phone whose database has not caught up says so, and the roster still wor
 });
 
 test("a foreman reads the roster and cannot clock anybody", async ({ page }) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
   await openRoster(page, "foreman");
   // Q3's line: every time EDIT is supervisor+, and starting somebody's punch
   // is an edit to their pay. No checkboxes, no bar, nothing to mis-tap.
