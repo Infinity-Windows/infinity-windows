@@ -98,6 +98,61 @@ test("only an owner is offered the two grant checkboxes, and ticking one sends s
   expect(granted[0]).toMatchObject({ p_costs: true, p_pay: null });
 });
 
+// The nav and the page have to agree about who may walk in. canAccess() opens
+// /ai-spend for a cost-grant holder and menuForRole() draws the row, so a page
+// that still gated on isOwner() drew a link onto a wall — a granted person
+// tapped "AI spend" in the drawer and landed on "ask an owner". That is exactly
+// the failure a unit test on nav.ts cannot see, because both halves pass on
+// their own.
+test("a granted foreman who taps AI spend lands on the screen, not a refusal", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "foreman", canSeeCosts: true });
+  await useMoneyFixtures(page);
+  await page.route("**/rest/v1/rpc/ai_spend_overview", (r) =>
+    json(r, {
+      // can_edit false: the grant opens the WINDOW onto the meter. Moving the
+      // limits is still the owner's, decided by the RPC and not by this screen.
+      can_edit: false,
+      limits: {
+        per_user_daily_calls: 40,
+        monthly_cap_cents: 5000,
+        content_multiplier: 1,
+        min_role: "installer",
+        alert_at_pct: 80,
+        enforced: true,
+        timezone: "America/Denver",
+        updated_at: "2026-09-01T00:00:00Z",
+      },
+      month: {
+        usage_month: "2026-09-01",
+        calls: 12,
+        spent_micros: 1_200_000,
+        reserved_micros: 0,
+        cap_micros: 50_000_000,
+      },
+      people: [],
+      functions: [],
+      alerts: [],
+    }),
+  );
+
+  await page.goto("/ai-spend");
+  await expect(page.getByRole("heading", { name: "AI spend" })).toBeVisible();
+  await expect(page.getByText("Not available for your role")).toHaveCount(0);
+  await expect(page.getByText("Ask an owner to turn on", { exact: false })).toHaveCount(0);
+});
+
+test("a foreman with no grant is told how to get in, and told nothing else", async ({
+  page,
+}) => {
+  await useSupabaseFixtures(page, { role: "foreman" });
+  await useMoneyFixtures(page);
+
+  await page.goto("/ai-spend");
+  await expect(page.getByText("Not available for your role")).toBeVisible();
+});
+
 test("a supervisor sees no grant checkboxes at all — money is an owner's to hand out", async ({
   page,
 }) => {
