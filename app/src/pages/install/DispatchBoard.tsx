@@ -35,6 +35,7 @@ import { EmptyState } from "../../components/ui/States";
 import { installerColorMap } from "../../lib/install/mapDispatch";
 import { toggleExpandedOpening } from "../../lib/install/openingRowAction";
 import { readyStatusLabel, type ProjectOpening } from "../../lib/install/types";
+import { isDataOff } from "../../lib/install/dataOff";
 import {
   compareIssues,
   KIND_LABELS,
@@ -236,8 +237,11 @@ export function DispatchBoard({ projectId }: { projectId: string }) {
         continue;
       }
       // Flagged openings are handled through the issues list below and stay out
-      // of the assignable columns until the flag is resolved.
-      if (o.flag_note) continue;
+      // of the assignable columns until the flag is resolved. Read through
+      // isDataOff (wave E) rather than off flag_note: a data-off flag can carry
+      // a reason and NO note, and a unit whose record is wrong is exactly the
+      // one a lead should look at before sending somebody to it.
+      if (isDataOff(o)) continue;
       if (o.assigned_to) {
         const list = byInstaller.get(o.assigned_to) ?? [];
         list.push(o);

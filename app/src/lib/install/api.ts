@@ -25,6 +25,7 @@ import {
   type PinMove,
 } from "./pinHistory";
 import { foremanOnlyRefusal, REMOVED_LIST_DENIED } from "./openingAccess";
+import type { DataOffKind } from "./dataOff";
 import type { CustomMarkRegistrationPayload } from "../modelstudio/customMarks";
 import type {
   InstallEvent,
@@ -397,14 +398,125 @@ export async function startOpeningWork(openingId: string): Promise<ProjectOpenin
   return data as ProjectOpening;
 }
 
-/** Flag an opening to the lead with a reason (empty note clears the flag). */
+/**
+ * Flag an opening to the lead (empty note and no kind clears the flag).
+ *
+ * Wave E gave the flag a REASON. The reason rides a THREE-argument overload
+ * rather than a defaulted third parameter, because PostgREST picks an overload
+ * by the set of argument names it is sent and a defaulted parameter would make
+ * every old two-argument call ambiguous. A phone running ahead of the server
+ * has no three-argument form to call, so it falls back to the old one: the
+ * flag is still raised, and the reason reads as "other" until the migration
+ * lands — which is what every pre-wave-E flag reads as anyway.
+ */
 export async function flagOpening(
   openingId: string,
   note: string | null,
+  kind?: DataOffKind | null,
 ): Promise<ProjectOpening> {
+  if (kind) {
+    const withKind = await supabase.rpc("flag_opening", {
+      p_opening_id: openingId,
+      p_note: note,
+      p_kind: kind,
+    });
+    if (!withKind.error) return withKind.data as ProjectOpening;
+    if (!isMissingSchemaFunction(withKind.error)) throw withKind.error;
+  }
   const { data, error } = await supabase.rpc("flag_opening", {
     p_opening_id: openingId,
     p_note: note,
+  });
+  if (error) throw error;
+  return data as ProjectOpening;
+}
+
+/**
+ * Take a data-off flag back down. Foreman+ in SQL, because clearing it is a
+ * claim that somebody went and checked — see clear_opening_flag. Degrades to
+ * the old "flag with an empty note" clear on a database without the RPC.
+ */
+export async function clearOpeningFlag(openingId: string): Promise<ProjectOpening> {
+  const cleared = await supabase.rpc("clear_opening_flag", {
+    p_opening_id: openingId,
+  });
+  if (!cleared.error) return cleared.data as ProjectOpening;
+  if (!isMissingSchemaFunction(cleared.error)) throw cleared.error;
+  return flagOpening(openingId, null);
+}
+
+// --- A window or door nobody drew (wave E) ---------------------------------
+
+export interface FieldUnitInput {
+  projectId: string;
+  kind: "window" | "door";
+  widthIn: number;
+  heightIn: number;
+  /** "bucket/path" of a photo already uploaded, or null. */
+  photoPath?: string | null;
+  /** Where it was tapped on the plan, both 0–1. Null on a job with no map. */
+  pinX?: number | null;
+  pinY?: number | null;
+  /** Which sheet the tap was on — meaningless without a pin. */
+  pageNumber?: number | null;
+  note?: string | null;
+}
+
+/**
+ * Add a window or door the paperwork never had. The server checks PRESENCE,
+ * not rank: an open shift on that job is the permission, because the person
+ * looking at the hole is the person who should be able to record it.
+ */
+export async function addFieldUnit(input: FieldUnitInput): Promise<ProjectOpening> {
+  const { data, error } = await supabase.rpc("add_field_unit", {
+    p_project_id: input.projectId,
+    p_kind: input.kind,
+    p_width_in: input.widthIn,
+    p_height_in: input.heightIn,
+    p_photo_path: input.photoPath ?? null,
+    p_pin_x: input.pinX ?? null,
+    p_pin_y: input.pinY ?? null,
+    p_note: input.note ?? null,
+    p_page_number: input.pageNumber ?? null,
+  });
+  if (error) throw error;
+  return data as ProjectOpening;
+}
+
+/** Keep it, under a name the paperwork now uses. Supervisor+. */
+export async function renameFieldUnit(
+  openingId: string,
+  code: string,
+): Promise<ProjectOpening> {
+  const { data, error } = await supabase.rpc("rename_field_unit", {
+    p_opening_id: openingId,
+    p_code: code,
+  });
+  if (error) throw error;
+  return data as ProjectOpening;
+}
+
+/** It turned out to be a mark we already had. Refused once anyone has worked it. */
+export async function mergeFieldUnit(
+  openingId: string,
+  intoCode: string,
+): Promise<ProjectOpening> {
+  const { data, error } = await supabase.rpc("merge_field_unit", {
+    p_opening_id: openingId,
+    p_into_code: intoCode,
+  });
+  if (error) throw error;
+  return data as ProjectOpening;
+}
+
+/** Take it back off the job — the ordinary soft delete, restorable. */
+export async function removeFieldUnit(
+  openingId: string,
+  reason?: string | null,
+): Promise<ProjectOpening> {
+  const { data, error } = await supabase.rpc("remove_field_unit", {
+    p_opening_id: openingId,
+    p_reason: reason ?? null,
   });
   if (error) throw error;
   return data as ProjectOpening;

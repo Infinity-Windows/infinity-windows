@@ -242,6 +242,19 @@ export interface ProjectOpening {
   flagged_by: string | null;
   flagged_at: string | null;
   /**
+   * WHY the record on this unit is wrong (wave E): wrong_size | mirrored |
+   * not_as_drawn | not_on_plans | other. Optional because the column arrives
+   * with 20260977000000 — a phone reading a database without it sees a flag
+   * with no reason, which `dataOffKind` reads as "other", exactly like every
+   * free-text flag raised before reasons existed.
+   */
+  flag_kind?: string | null;
+  /**
+   * Added by somebody standing on the job (add_field_unit) rather than read
+   * off a planset. Re-extraction never deletes one — see planDraftPersistence.
+   */
+  field_added?: boolean | null;
+  /**
    * Set when a foreman removes this window or door. Rows carrying it are hidden
    * by row level security, so anything reached from a browser only ever sees
    * null here — the field exists for the removed list, which reads them through

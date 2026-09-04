@@ -857,6 +857,80 @@ export const CATALOG = {
   },
   "deljob.checking": { en: "Checking…", es: "Comprobando…" },
   "deljob.delete": { en: "Delete…", es: "Eliminar…" },
+
+  // ---- Data off + missed units (transcripts program, wave E) -------------
+  // Two field-truth flows the crew lives in: saying the paperwork on a unit is
+  // wrong ("data off"), and adding a window or door the plans never had. Both
+  // are installer-facing on a phone, so both ship in Spanish from day one.
+  "dataoff.title": { en: "Data off", es: "Datos incorrectos" },
+  "dataoff.help": {
+    en: "The window is fine but the paperwork isn't. Say so — it never stops you finishing.",
+    es: "La ventana está bien pero el papeleo no. Dilo — nunca te impide terminar.",
+  },
+  "dataoff.pickReason": { en: "What's off?", es: "¿Qué está mal?" },
+  "dataoff.reason.wrongSize": { en: "Wrong size", es: "Medida equivocada" },
+  "dataoff.reason.mirrored": { en: "Mirrored", es: "Al revés (espejo)" },
+  "dataoff.reason.notAsDrawn": { en: "Not as drawn", es: "No es como está dibujado" },
+  "dataoff.reason.notOnPlans": { en: "Not on the plans", es: "No está en los planos" },
+  "dataoff.reason.other": { en: "Something else", es: "Otra cosa" },
+  "dataoff.notePlaceholder": {
+    en: "What did you find? (optional)",
+    es: "¿Qué encontraste? (opcional)",
+  },
+  "dataoff.save": { en: "Mark data off", es: "Marcar datos incorrectos" },
+  "dataoff.saving": { en: "Saving…", es: "Guardando…" },
+  "dataoff.saved": {
+    en: "Marked data off. Finish the window as normal.",
+    es: "Marcado datos incorrectos. Termina la ventana como siempre.",
+  },
+  "dataoff.flagged": { en: "Data off:", es: "Datos incorrectos:" },
+  "dataoff.by": { en: "flagged by {who}", es: "marcado por {who}" },
+  "dataoff.clear": { en: "Clear the flag", es: "Quitar la marca" },
+  "dataoff.cleared": { en: "Flag cleared.", es: "Marca quitada." },
+  "dataoff.askForeman": {
+    en: "Your foreman clears this once the paperwork is fixed.",
+    es: "Tu supervisor la quita cuando se arregla el papeleo.",
+  },
+  "missed.add": { en: "Add a missed unit", es: "Agregar una unidad faltante" },
+  "missed.title": {
+    en: "A window or door that isn't on the plans",
+    es: "Una ventana o puerta que no está en los planos",
+  },
+  "missed.help": {
+    en: "Add it now so it gets ordered and installed. Your supervisor is told straight away.",
+    es: "Agrégala ahora para que se pida y se instale. Se avisa a tu supervisor de inmediato.",
+  },
+  "missed.kind": { en: "Is it a window or a door?", es: "¿Es una ventana o una puerta?" },
+  "missed.window": { en: "Window", es: "Ventana" },
+  "missed.door": { en: "Door", es: "Puerta" },
+  "missed.width": { en: "Width (inches)", es: "Ancho (pulgadas)" },
+  "missed.height": { en: "Height (inches)", es: "Alto (pulgadas)" },
+  "missed.photo": { en: "Photo of the opening", es: "Foto de la abertura" },
+  "missed.notePlaceholder": {
+    en: "Where is it? Anything the office should know",
+    es: "¿Dónde está? Algo que la oficina deba saber",
+  },
+  "missed.tapTheMap": {
+    en: "Tap the plan where it is, then fill this in.",
+    es: "Toca el plano donde está, luego llena esto.",
+  },
+  "missed.placed": { en: "Placed on the plan.", es: "Colocada en el plano." },
+  "missed.unplaced": {
+    en: "No plan for this job yet — it will be added without a spot on the drawing.",
+    es: "Este trabajo aún no tiene plano — se agregará sin lugar en el dibujo.",
+  },
+  "missed.submit": { en: "Add it", es: "Agregarla" },
+  "missed.submitting": { en: "Adding…", es: "Agregando…" },
+  "missed.added": {
+    en: "Added as {code}. Your supervisor has been told.",
+    es: "Agregada como {code}. Ya se avisó a tu supervisor.",
+  },
+  "missed.needSize": {
+    en: "Give a width and a height so it can be ordered.",
+    es: "Pon un ancho y un alto para poder pedirla.",
+  },
+  "missed.cancel": { en: "Cancel", es: "Cancelar" },
+  "missed.badge": { en: "Missed unit", es: "Unidad faltante" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */
