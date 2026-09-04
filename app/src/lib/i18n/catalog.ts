@@ -917,6 +917,27 @@ export const CATALOG = {
     en: "{count} changes in the last 30 days \u2014 check your hours",
     es: "{count} cambios en los \u00faltimos 30 d\u00edas \u2014 revisa tus horas",
   },
+  // The team timecard's range stepper and the Gusto file (K5). The rest of the
+  // page is older English left alone by design, but every string this wave
+  // WROTE goes through t() \u2014 including the labels a screen reader speaks, which
+  // are the only words a blind foreman gets off the two chevron buttons.
+  "tcx.range.week": { en: "Week", es: "Semana" },
+  "tcx.range.pay": { en: "Pay period", es: "Periodo de pago" },
+  "tcx.range.aria": {
+    en: "Team timecard range",
+    es: "Rango de la tarjeta de tiempo del equipo",
+  },
+  "tcx.range.prev": { en: "Previous", es: "Anterior" },
+  "tcx.range.next": { en: "Next", es: "Siguiente" },
+  "tcx.range.backToNow": { en: "Jump back to now", es: "Volver a ahora" },
+  "tcx.export.gusto": {
+    en: "Export pay period for Gusto",
+    es: "Exportar periodo de pago para Gusto",
+  },
+  "tcx.export.gustoHint": {
+    en: "Switch to Pay period to export for Gusto.",
+    es: "Cambia a Periodo de pago para exportar para Gusto.",
+  },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

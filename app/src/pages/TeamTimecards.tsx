@@ -331,7 +331,7 @@ export function TeamTimecards() {
       </header>
 
       {/* K5: which stretch of time this whole page is about. */}
-      <div className="seg tcx-tabs" role="tablist" aria-label="Team timecard range">
+      <div className="seg tcx-tabs" role="tablist" aria-label={t("tcx.range.aria")}>
         {(["week", "pay"] as const).map((m) => (
           <button
             key={m}
@@ -340,7 +340,7 @@ export function TeamTimecards() {
             className={rangeMode === m ? "active-pill button-like" : "button-like"}
             onClick={() => setRangeMode(m)}
           >
-            {m === "week" ? "Week" : "Pay period"}
+            {m === "week" ? t("tcx.range.week") : t("tcx.range.pay")}
           </button>
         ))}
       </div>
@@ -348,7 +348,7 @@ export function TeamTimecards() {
         <button
           className="button-like"
           onClick={() => setAnchor((d) => addDays(d, -stepDays))}
-          aria-label="Previous"
+          aria-label={t("tcx.range.prev")}
         >
           <ChevronLeft size={18} />
         </button>
@@ -356,14 +356,14 @@ export function TeamTimecards() {
           className="button-like"
           style={{ flex: 1 }}
           onClick={() => setAnchor(new Date())}
-          title="Jump back to now"
+          title={t("tcx.range.backToNow")}
         >
           {week.label}
         </button>
         <button
           className="button-like"
           onClick={() => setAnchor((d) => addDays(d, stepDays))}
-          aria-label="Next"
+          aria-label={t("tcx.range.next")}
         >
           <ChevronRight size={18} />
         </button>
@@ -397,11 +397,11 @@ export function TeamTimecards() {
             }
             disabled={overtimeLines.length === 0}
           >
-            Export pay period for Gusto
+            {t("tcx.export.gusto")}
           </button>
         ) : (
           <span className="muted" style={{ fontSize: 11.5 }}>
-            Switch to Pay period to export for Gusto.
+            {t("tcx.export.gustoHint")}
           </span>
         )}
         <button

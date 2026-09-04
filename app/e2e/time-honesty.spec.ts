@@ -142,6 +142,10 @@ test("the team timecard steps to a pay period, and only a pay period offers the 
   await useTimeFixtures(page);
   await page.goto("/team-timecards");
 
+  // The English below now comes out of the catalog (tcx.range.*, tcx.export.*)
+  // rather than a literal, and reads identically — a Spanish reader gets the
+  // Spanish, which TeamTimecards.i18n.test.ts is what proves.
+  //
   // A week to begin with: no Gusto button, and the page says where to find it.
   await expect(page.getByRole("tab", { name: "Week" })).toHaveAttribute(
     "aria-selected",
