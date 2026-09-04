@@ -569,6 +569,13 @@ export function OpeningSheet() {
       }),
     [myId, opening.data?.assigned_to, effectiveRole, crew.data],
   );
+  // Shown whenever somebody OTHER than the person holding the phone is about to
+  // be credited — the unit being on their list, or the map having named them on
+  // the way in. A credit nobody can see is a credit nobody can correct, and the
+  // map's "Record install for…" arrives with one already made.
+  const showCreditPicker =
+    creditPeople.length > 1 &&
+    (askWhoInstalled || (creditedTo != null && creditedTo !== myId));
   // Seed once the answer is knowable: the person the map named if there is
   // one, otherwise the assignee. Left alone afterwards so a deliberate change
   // is never quietly overwritten by a refetch.
@@ -2622,7 +2629,7 @@ export function OpeningSheet() {
               asks rather than assuming. The person picked gets the install on
               their record; the SESSION stays with whoever is standing here,
               because sessions follow the human (CONTEXT.md). */}
-          {askWhoInstalled && creditPeople.length > 1 && (
+          {showCreditPicker && (
             <div className="detail-card" style={{ marginTop: 10 }}>
               <span className="field-label">{t("credit.who")}</span>
               <p className="muted" style={{ margin: "2px 0 8px", fontSize: 12.5 }}>
