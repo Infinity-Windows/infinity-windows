@@ -567,6 +567,36 @@ describe("hardware inference", () => {
   it("unknown reads as fixed", () => {
     expect(inferHardware(null, "")).toEqual({ lights: 1, open: "fixed" });
   });
+
+  // CLAUDE.md's law: this function, docs/window-vendor-conventions.md and the
+  // classifier agree. Wave X's review caught the doc claiming a bifold drew as
+  // a hinged leaf when it drew as a plain pane, so the agreement is asserted
+  // here in both directions rather than described in prose nobody re-runs.
+  it("draws a patio door as the slider the counter says it is", () => {
+    // "Patio door" and "Sliding Door" are one unit under two names, and the
+    // counter has always read them the same way. The drawing did not.
+    expect(inferHardware(null, "Aluminum patio door")).toEqual({
+      lights: 2,
+      open: "bipart",
+    });
+    expect(inferHardware("XO", "Aluminum patio door")).toEqual({
+      lights: 2,
+      open: "bipart",
+    });
+  });
+
+  it("has no symbol for a fold or a pivot, and draws a plain pane instead", () => {
+    // Counted but not drawn — see the doc's "Counted but not drawn" note. If
+    // the fit view ever gains a fold or pivot symbol, this test and that
+    // paragraph are what say so.
+    for (const style of [
+      "Thermal break Aluminum Bi-Fold Door (4 panel)",
+      "Aluminum pivot door",
+      "Commercial swing door, full glass leaf",
+    ]) {
+      expect(inferHardware(null, style)).toEqual({ lights: 1, open: "fixed" });
+    }
+  });
 });
 
 describe("door detection", () => {

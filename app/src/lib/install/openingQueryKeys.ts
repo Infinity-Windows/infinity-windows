@@ -15,7 +15,7 @@ export function invalidateOpeningQueries(
 ): void {
   queryClient.invalidateQueries({ queryKey: ["opening"] });
   queryClient.invalidateQueries({ queryKey: ["myOpenings"] });
-  queryClient.invalidateQueries({ queryKey: ["openingCounts"] });
+  queryClient.invalidateQueries({ queryKey: ["scopeCounts"] });
   if (!projectId) return;
   queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
   queryClient.invalidateQueries({ queryKey: ["dispatch", projectId] });

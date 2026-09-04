@@ -16,6 +16,7 @@
 // WHAT to send them.
 
 import { normalizeMarkCode } from "../fitview/adapter";
+import { specKindColumns } from "../install/unitKind";
 
 /** One unit named as a mark in Studio, not yet known to reach confirm. */
 export interface CustomMarkDraft {
@@ -98,6 +99,9 @@ export interface CustomMarkRegistrationPayload {
     operation: "Window" | "Door";
     source: "manual";
     confirmed: true;
+    /** Wave X — see below. Written by the app's one classifier. */
+    unit_kind: "window" | "door" | null;
+    door_kind: "slider" | "french" | "bifold" | "swing" | "other" | null;
   };
 }
 
@@ -105,6 +109,7 @@ export function buildCustomMarkRegistrationPayload(
   projectId: string,
   mark: CustomMarkAddition,
 ): CustomMarkRegistrationPayload {
+  const operation = mark.kind === "door" ? "Door" : "Window";
   return {
     markCode: mark.code,
     opening: { opening_code: mark.code, confirmed: true },
@@ -113,9 +118,14 @@ export function buildCustomMarkRegistrationPayload(
       mark_code: mark.code,
       width_in: mark.widthIn,
       height_in: mark.heightIn,
-      operation: mark.kind === "door" ? "Door" : "Window",
+      operation,
       source: "manual",
       confirmed: true,
+      // Wave X: through the SAME classifier every other specs write path uses,
+      // rather than mapping kind straight across. A Studio unit carries no
+      // style line, so a door registered here reads as "other" until somebody
+      // says which — which is exactly what the paperwork says about it.
+      ...specKindColumns({ operation }),
     },
   };
 }
