@@ -39,6 +39,15 @@ export const SAFETY_KEYS = [
   "toolbox.signTalk",
   "toolbox.signing",
   "opening.action.signToolbox",
+  // Wave O: the names of the safety cards themselves. A crew member reads these
+  // to decide whether the card in their wallet is the one being asked for, and
+  // "protección contra caídas" is the phrase a fall-protection class is sold
+  // under in Spanish — worth a bilingual crew member's eyes before it is
+  // trusted.
+  "cred.kind.first_aid_cpr",
+  "cred.kind.aerial_lift",
+  "cred.kind.forklift",
+  "cred.kind.fall_protection",
 ] as const;
 
 export const CATALOG = {
@@ -1185,6 +1194,111 @@ export const CATALOG = {
   "scope.stories.fromModel": {
     en: "From the traced 3D model.",
     es: "Del modelo 3D trazado.",
+  },
+
+  // ---- Credentials (wave O) ---------------------------------------------
+  // The cards a crew member holds and the day each one runs out. The KIND
+  // names are the trade's and the regulator's own — OSHA 10 is called OSHA 10
+  // in both languages, and translating it would leave somebody hunting for a
+  // card they hold — so those two entries are deliberately identical, the same
+  // way picker.english names itself in its own language. The rest are the
+  // words a Spanish-reading installer would recognise on the class certificate
+  // and are flagged in SAFETY_KEYS for the owner's bilingual review.
+  "cred.kind.osha10": { en: "OSHA 10", es: "OSHA 10" },
+  "cred.kind.osha30": { en: "OSHA 30", es: "OSHA 30" },
+  "cred.kind.first_aid_cpr": {
+    en: "First aid / CPR",
+    es: "Primeros auxilios / RCP",
+  },
+  "cred.kind.aerial_lift": { en: "Aerial lift", es: "Plataforma elevadora" },
+  "cred.kind.forklift": { en: "Forklift", es: "Montacargas" },
+  "cred.kind.fall_protection": {
+    en: "Fall protection",
+    es: "Protección contra caídas",
+  },
+  "cred.kind.other": { en: "Other", es: "Otra" },
+
+  // The section itself, on a Roster row and on My Work.
+  "cred.heading": { en: "Credentials", es: "Certificaciones" },
+  "cred.none": { en: "No cards on file yet.", es: "Todavía no hay tarjetas." },
+  "cred.skillTree": { en: "Skill tree", es: "Árbol de habilidades" },
+  "cred.badges": { en: "Badges", es: "Insignias" },
+  "cred.clearances.one": { en: "{n} type cleared", es: "{n} tipo aprobado" },
+  "cred.clearances.many": { en: "{n} types cleared", es: "{n} tipos aprobados" },
+  "cred.nothingYet": {
+    en: "Nothing on file yet — badges, cleared window types and cards all show up here.",
+    es: "Todavía no hay nada — las insignias, los tipos aprobados y las tarjetas aparecen aquí.",
+  },
+
+  // The expiry chips. Deliberately four different sentences rather than one
+  // with a number swapped in: "no expiry" and "ran out" are not the same
+  // sentence with a different number, and a phrase assembled from parts reads
+  // like a phrase assembled from parts in Spanish.
+  "cred.chip.noExpiry": { en: "No expiry", es: "Sin vencimiento" },
+  "cred.chip.good": { en: "Good until {date}", es: "Válida hasta el {date}" },
+  "cred.chip.soon": { en: "Runs out {date}", es: "Vence el {date}" },
+  "cred.chip.expired": { en: "Expired {date}", es: "Venció el {date}" },
+  "cred.unverified": { en: "Not checked yet", es: "Sin verificar" },
+  "cred.verified": { en: "Checked", es: "Verificada" },
+
+  // Adding a card.
+  "cred.add": { en: "Add a card", es: "Agregar tarjeta" },
+  "cred.addMine": { en: "Add my card", es: "Agregar mi tarjeta" },
+  "cred.whichCard": { en: "Which card is it?", es: "¿Qué tarjeta es?" },
+  "cred.nameIt": { en: "Name the card", es: "Nombre de la tarjeta" },
+  "cred.issued": { en: "Issued", es: "Emitida" },
+  "cred.expires": { en: "Runs out", es: "Vence" },
+  "cred.expiresHint": {
+    en: "Leave blank if the card has no expiry date on it.",
+    es: "Déjalo en blanco si la tarjeta no tiene fecha de vencimiento.",
+  },
+  "cred.photo": { en: "Photo of the card", es: "Foto de la tarjeta" },
+  "cred.photoHint": {
+    en: "No stamp on this one — it is a photo of a card, not proof of where you stood.",
+    es: "Esta foto no lleva sello — es una tarjeta, no una prueba de dónde estabas.",
+  },
+  "cred.save": { en: "Save card", es: "Guardar tarjeta" },
+  "cred.saving": { en: "Saving…", es: "Guardando…" },
+  "cred.cancel": { en: "Cancel", es: "Cancelar" },
+  "cred.mineLandUnverified": {
+    en: "A card you add yourself waits for a supervisor to check it.",
+    es: "Una tarjeta que agregas tú espera a que un supervisor la revise.",
+  },
+  "cred.uploading": { en: "Sending the photo…", es: "Enviando la foto…" },
+  "cred.viewCard": { en: "See the card", es: "Ver la tarjeta" },
+
+  // Supervisor actions on somebody else's card.
+  "cred.verify": { en: "Mark checked", es: "Marcar verificada" },
+  "cred.unverify": { en: "Undo checked", es: "Quitar verificada" },
+  "cred.void": { en: "Void", es: "Anular" },
+  "cred.voidConfirm": {
+    en: "Void this card? It stays on file and stops counting anywhere.",
+    es: "¿Anular esta tarjeta? Queda en el archivo y deja de contar en todas partes.",
+  },
+
+  // O5 — the bid summary, supervisor+ on the Roster.
+  "cred.summary.heading": { en: "Credential summary", es: "Resumen de certificaciones" },
+  "cred.summary.hint": {
+    en: "Checked cards that have not run out. No names — this line is written to be pasted into a bid.",
+    es: "Tarjetas verificadas que no han vencido. Sin nombres — esta línea es para pegarla en una propuesta.",
+  },
+  "cred.summary.none": {
+    en: "No checked cards on file yet.",
+    es: "Todavía no hay tarjetas verificadas.",
+  },
+  "cred.summary.copy": { en: "Copy as text", es: "Copiar como texto" },
+  "cred.summary.copied": { en: "Copied", es: "Copiado" },
+
+  // O4 — the Heartbeat tile. Thirty days rather than "this month" so the tile
+  // and the 7 AM push are counting the same cards; a calendar month would hide
+  // a card expiring on the 2nd from anybody reading this on the 30th.
+  "cred.expiring.one": {
+    en: "1 credential runs out within 30 days",
+    es: "1 certificación vence en 30 días o menos",
+  },
+  "cred.expiring.many": {
+    en: "{n} credentials run out within 30 days",
+    es: "{n} certificaciones vencen en 30 días o menos",
   },
 } satisfies Record<string, CatalogEntry>;
 
