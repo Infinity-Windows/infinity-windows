@@ -6710,6 +6710,14 @@ alter table receipts
 alter table receipts
   add column if not exists job_cost_id uuid references job_costs(id) on delete set null;
 
+-- The other half of "one receipt, one line, ever", said in the schema rather
+-- than only in the function. `_post_receipt_job_cost` takes a row lock so two
+-- concurrent posts cannot both insert; this makes a duplicate impossible even
+-- if some future caller forgets the lock. Partial, because "not posted yet" is
+-- the normal state and every unposted receipt would otherwise collide on null.
+create unique index if not exists receipts_one_job_cost
+  on receipts (job_cost_id) where job_cost_id is not null;
+
 -- "Bill this to the customer?" travels with the money. Nullable on purpose,
 -- exactly like receipts.is_passthrough: null means nobody has answered yet, and
 -- printing "not billable" over an unanswered question would be a claim the app
@@ -6795,7 +6803,15 @@ declare
   v_label text;
   v_cost_id uuid;
 begin
-  select * into r from receipts where id = p_receipt_id;
+  -- FOR UPDATE, and it is the whole reason "one receipt, one line, ever" is a
+  -- rule rather than a hope. Without it this is a read-then-write: review_receipt
+  -- and match_bank_transaction can run against the same receipt at the same
+  -- moment, both see job_cost_id null in their own READ COMMITTED snapshot, both
+  -- insert a ledger line, and the second `update receipts` overwrites the first
+  -- one's stamp — leaving an orphaned duplicate the job is billed for twice. The
+  -- lock makes the second caller wait, re-read the committed stamp, and return
+  -- the line that already exists. A disabled button in the client is not a lock.
+  select * into r from receipts where id = p_receipt_id for update;
   if not found then return null; end if;
   -- Already posted. THE rule of this section: one receipt, one line, ever.
   if r.job_cost_id is not null then return r.job_cost_id; end if;
