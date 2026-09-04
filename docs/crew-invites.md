@@ -24,6 +24,13 @@ every record kept under his name". Either way **the email address comes free**,
 so you can add that person again and they get a brand-new login. There is no
 undo, and the app never deletes anybody's work.
 
+It refuses four things outright, and says which one it is: your own login, the
+last owner with access, a builder's login (those come and go with the job
+grants), and the automation login the automated checks sign in with. It also
+refuses — before anything happens to the account — if the app is running ahead
+of its database and could not write the removal down. Switch that person's
+access off for now and remove the login after the next deploy.
+
 **Somebody forgot their password:** tap **New password code** next to their name
 and text them the new code. (The "Reset password" button on the sign-in screen
 sends an email, and this app has no email sender, so it will not work.)

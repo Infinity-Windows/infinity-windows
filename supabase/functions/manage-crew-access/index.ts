@@ -62,8 +62,11 @@ import {
   roleRank,
 } from "../_shared/crewInvites.ts";
 import {
+  ALREADY_REMOVED,
   type HistoryCounts,
+  isTombstoneEmail,
   type PurgeShape,
+  purgeRowRefusal,
   shapeFor,
   tombstoneEmail,
   UNKNOWN_RECORDS,
@@ -173,6 +176,10 @@ interface PurgeTarget {
   display_name: string | null;
   role: string;
   is_partner: boolean;
+  /** The QA login the end-to-end checks sign in with. Never removable. */
+  is_test: boolean;
+  /** Absent on a database that predates 20260987000000 — see readPurgeTarget. */
+  retired_at?: string | null;
 }
 
 interface MemberRow {
@@ -210,10 +217,6 @@ async function readMember(
     .maybeSingle();
   return narrow.data as unknown as MemberRow | null;
 }
-
-/** The one sentence a removed login gets, wherever somebody tries to revive it. */
-const ALREADY_REMOVED =
-  'That login was removed for good, so there is nothing to switch back on. Add them again under "Add someone" and they\'ll get a fresh login.';
 
 /**
  * How many rows of work, money and safety record this person has, in one call.
@@ -253,6 +256,53 @@ async function countHistory(
 }
 
 /**
+ * The person this door is pointed at, and whether the database can record what
+ * the door is about to do.
+ *
+ * `retired_at` is asked for FIRST and the narrow read is the fallback, exactly
+ * like readMember. The difference is what the answer is used for: readMember
+ * degrades so the rest of the Crew access screen keeps working, while here a
+ * missing column is a REFUSAL. Removing a login is irreversible, and half of it
+ * — banned, email handed back, nothing on the profile saying so — is worse than
+ * none of it. See purgeRowRefusal.
+ */
+async function readPurgeTarget(
+  supabase: ServiceClient,
+  userId: string,
+): Promise<{ target: PurgeTarget | null; canRecordRetirement: boolean }> {
+  const wide = await supabase
+    .from("profiles")
+    .select("id, display_name, role, is_partner, is_test, retired_at")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!wide.error) {
+    return {
+      target: wide.data as unknown as PurgeTarget | null,
+      canRecordRetirement: true,
+    };
+  }
+  const narrow = await supabase
+    .from("profiles")
+    .select("id, display_name, role, is_partner, is_test")
+    .eq("id", userId)
+    .maybeSingle();
+  return {
+    target: narrow.data as unknown as PurgeTarget | null,
+    canRecordRetirement: false,
+  };
+}
+
+/** Has this account's address already been handed back to a tombstone? */
+async function hasTombstoneEmail(
+  supabase: ServiceClient,
+  userId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase.auth.admin.getUserById(userId);
+  if (error) return false;
+  return isTombstoneEmail(data?.user?.email ?? null);
+}
+
+/**
  * Everything that refuses a purge, in one place so the preview and the real
  * thing cannot drift: the preview must be able to say "this is not going to
  * work" before the owner commits to a sentence that promises it will.
@@ -263,6 +313,7 @@ async function purgeRefusal(
   supabase: ServiceClient,
   args: {
     target: PurgeTarget;
+    canRecordRetirement: boolean;
     callerId: string | null;
     callerRole: string | null;
     callerIsService: boolean;
@@ -288,16 +339,16 @@ async function purgeRefusal(
   const verdict = canManageMember(callerRole, target.role);
   if (!verdict.ok) return { error: verdict.message, status: 403 };
 
-  // A builder's login is not a crew login and is not managed from this screen —
-  // it is granted and taken away with the job grants, and deleting one here
-  // would silently drop a builder off jobs nobody on this screen can see.
-  if (target.is_partner) {
-    return {
-      error:
-        "That's a builder's login, not a crew login. Take it away from the builder's own jobs instead.",
-      status: 409,
-    };
-  }
+  // Builder login, automation login, an account already removed, and a database
+  // that cannot record the removal. Kept pure and together in _shared so the
+  // whole ladder can be read and tested in one piece — this is a one-way door.
+  const rowRefusal = purgeRowRefusal({
+    isPartner: Boolean(target.is_partner),
+    isTest: Boolean(target.is_test),
+    alreadyRetired: Boolean(target.retired_at),
+    canRecordRetirement: args.canRecordRetirement,
+  });
+  if (rowRefusal) return rowRefusal;
 
   // Never lock the company out of its own app — the same rule remove_access
   // carries, and it matters more here because there is no undo.
@@ -545,6 +596,12 @@ Deno.serve(async (req) => {
             cors,
           );
         }
+        // Same fact, read off the address rather than the flag: a code for a
+        // tombstone is a code for an account nobody can sign in to. This is the
+        // case where the profile row never got its retired_at stamp.
+        if (isTombstoneEmail(userLookup.user.email)) {
+          return jsonResponse({ error: ALREADY_REMOVED }, 409, cors);
+        }
 
         const { code, invite } = await issueInvite(supabase, {
           displayName: targetRow.display_name,
@@ -656,6 +713,15 @@ Deno.serve(async (req) => {
         if (target.retired_at) {
           return jsonResponse({ error: ALREADY_REMOVED }, 409, cors);
         }
+        // Belt and braces, and it earns its round trip. `retired_at` is the
+        // flag, but the ADDRESS is the fact: if this account's email is already
+        // a tombstone then its removal happened, whatever the profile row says
+        // — a stamp that failed, or a database that had no column to stamp.
+        // Un-banning it would put a login nobody can sign in to back on the
+        // roster as though it worked.
+        if (await hasTombstoneEmail(supabase, userId)) {
+          return jsonResponse({ error: ALREADY_REMOVED }, 409, cors);
+        }
 
         const { error: banErr } = await supabase.auth.admin.updateUserById(
           userId,
@@ -687,17 +753,17 @@ Deno.serve(async (req) => {
         if (!userId) {
           return jsonResponse({ error: "user_id is required" }, 400, cors);
         }
-        const { data: target } = await supabase
-          .from("profiles")
-          .select("id, display_name, role, is_partner")
-          .eq("id", userId)
-          .maybeSingle();
+        const { target, canRecordRetirement } = await readPurgeTarget(
+          supabase,
+          userId,
+        );
         if (!target) {
           return jsonResponse({ error: "No such crew member." }, 404, cors);
         }
-        const row = target as unknown as PurgeTarget;
+        const row = target;
         const refusal = await purgeRefusal(supabase, {
           target: row,
+          canRecordRetirement,
           callerId,
           callerRole,
           callerIsService,
@@ -745,17 +811,17 @@ Deno.serve(async (req) => {
         if (!userId) {
           return jsonResponse({ error: "user_id is required" }, 400, cors);
         }
-        const { data: target } = await supabase
-          .from("profiles")
-          .select("id, display_name, role, is_partner")
-          .eq("id", userId)
-          .maybeSingle();
+        const { target, canRecordRetirement } = await readPurgeTarget(
+          supabase,
+          userId,
+        );
         if (!target) {
           return jsonResponse({ error: "No such crew member." }, 404, cors);
         }
-        const row = target as unknown as PurgeTarget;
+        const row = target;
         const refusal = await purgeRefusal(supabase, {
           target: row,
+          canRecordRetirement,
           callerId,
           callerRole,
           callerIsService,
@@ -824,23 +890,17 @@ Deno.serve(async (req) => {
             updated_at: now,
           })
           .eq("id", userId);
-        // A database that has not had 20260987000000 yet has no retired_at.
-        // The login is already closed and the email already freed at this
-        // point, so the honest thing is to finish the part that CAN be done
-        // rather than fail after a ban that cannot be taken back.
-        if (profErr) {
-          const message = String(
-            (profErr as { message?: string }).message ?? profErr,
-          );
-          if (!/retired_at|retired_by|PGRST204/i.test(message)) {
-            throw new Error(message);
-          }
-          const { error: fallbackErr } = await supabase
-            .from("profiles")
-            .update({ access_revoked_at: now, active: false, updated_at: now })
-            .eq("id", userId);
-          if (fallbackErr) throw new Error(fallbackErr.message);
-        }
+        // NO FALLBACK HERE, DELIBERATELY. This used to catch a missing
+        // retired_at column and write the rest of the stamp anyway, reasoning
+        // that the ban and the tombstone had already happened so finishing what
+        // it could was the honest thing. It was not: what it left behind was a
+        // banned account with a tombstone address that reads as an ordinary
+        // switched-off login, sitting in "Access switched off" under a working
+        // "Let them back in" button. purgeRowRefusal now refuses the whole
+        // removal before anything is banned when the column is not there, so
+        // the only way to reach this line is a real failure — which belongs on
+        // screen, not swallowed.
+        if (profErr) throw new Error(profErr.message);
 
         return jsonResponse(
           {

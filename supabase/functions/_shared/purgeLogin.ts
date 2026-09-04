@@ -84,3 +84,75 @@ export function tombstoneEmail(userId: string): string {
 export function isTombstoneEmail(email: string | null | undefined): boolean {
   return /@removed\.invalid$/i.test((email ?? "").trim());
 }
+
+/**
+ * The sentence a removed login gets wherever somebody tries to revive it.
+ *
+ * Lives here rather than in manage-crew-access because three doors say it —
+ * "Let them back in", "New password code" and a second attempt at removal —
+ * and they must say the same thing.
+ */
+export const ALREADY_REMOVED =
+  'That login was removed for good, so there is nothing to switch back on. Add them again under "Add someone" and they\'ll get a fresh login.';
+
+/** Removing the login the automated checks sign in with. */
+export const PURGE_TEST_LOGIN_REFUSED =
+  "That's the automation login the tests sign in with, not a person's login. " +
+  "Removing it would break the checks that run before every deploy.";
+
+/** The database is behind the app, so a removal could not be written down. */
+export const PURGE_CANNOT_RECORD =
+  "This needs the app's latest database update, which hasn't landed yet. " +
+  "Switch their access off for now and remove the login after the next deploy.";
+
+/**
+ * Everything the third door refuses on the strength of the target row alone.
+ *
+ * Pure and separate from the endpoint so it can be read and tested in one
+ * piece: this is a ONE-WAY DOOR, and the refusals are the only thing standing
+ * between a wrong tap and a login nobody can rebuild.
+ *
+ * `canRecordRetirement` is the one that is not about the person. On a database
+ * that has not had 20260987000000 yet there is no `profiles.retired_at` to
+ * stamp, and the removal would still run: the account gets banned, its email
+ * gets handed back, and then the write that says "removed for good" fails. What
+ * is left looks exactly like an ordinary switched-off account — it sits in
+ * "Access switched off" under a working "Let them back in" button, which
+ * un-bans an account whose only address is now `<uid>@removed.invalid`. Nobody
+ * can sign in to it and nothing says why. The backend deploys as its own
+ * workflow and has silently failed before, so this is not a hypothetical. The
+ * refusal is checked BEFORE anything is banned or renamed, and the preview runs
+ * the same ladder, so the sheet says so before the owner commits.
+ */
+export function purgeRowRefusal(args: {
+  isPartner: boolean;
+  isTest: boolean;
+  alreadyRetired: boolean;
+  canRecordRetirement: boolean;
+}): { error: string; status: number } | null {
+  // A builder's login is not a crew login and is not managed from this screen —
+  // it is granted and taken away with the job grants, and deleting one here
+  // would silently drop a builder off jobs nobody on this screen can see.
+  if (args.isPartner) {
+    return {
+      error:
+        "That's a builder's login, not a crew login. Take it away from the builder's own jobs instead.",
+      status: 409,
+    };
+  }
+  // The shared QA login. Either shape ends it for good — the delete removes the
+  // account, and the retire hands its address to a tombstone — so the password
+  // in ~/.config/infinity-windows/test-installer.env would stop working and
+  // every end-to-end check that signs in with it would stay red until somebody
+  // re-provisioned it by hand. docs/test-account.md.
+  if (args.isTest) {
+    return { error: PURGE_TEST_LOGIN_REFUSED, status: 409 };
+  }
+  if (args.alreadyRetired) {
+    return { error: ALREADY_REMOVED, status: 409 };
+  }
+  if (!args.canRecordRetirement) {
+    return { error: PURGE_CANNOT_RECORD, status: 409 };
+  }
+  return null;
+}
