@@ -155,21 +155,31 @@ async function loadLiveContext(
   // be enforced here in code — nothing else stops the AI leaking restricted data.
   // Unknown/missing role degrades to installer (rank 0), never over-exposes.
   let role: string | null = null;
+  let canSeeCosts = false;
   if (userId) {
     try {
       const { data } = await supabase
         .from("profiles")
-        .select("role")
+        .select("role, can_see_costs")
         .eq("id", userId)
         .maybeSingle();
       role = (data?.role as string | undefined) ?? null;
+      canSeeCosts = (data?.can_see_costs as boolean | undefined) === true;
     } catch (_e) {
-      // no-op: role unavailable → treated as installer floor below.
+      // no-op: role unavailable → treated as installer floor below. The
+      // can_see_costs column arrives with 20260978000000; a database without it
+      // errors here and leaves the grant false, which is the safe answer.
     }
   }
   const rank = guideRank(role);
   const isForemanPlus = rank >= 1;
-  const isManagement = rank >= 2; // supervisor+ — the financials/sensitive gate.
+  // Wave Z: this function runs on the SERVICE ROLE key, so RLS is not the wall
+  // here — this line is. Locking job_costs and project_financials in SQL would
+  // have done nothing about the AI helper, which reads them past every policy.
+  // So the financials gate moves to the same rule the database now uses: an
+  // owner, or somebody the owner granted "Sees costs". A supervisor without the
+  // grant no longer gets bids and margins read out to them by the assistant.
+  const isManagement = rank >= 3 || canSeeCosts;
   if (role) live.role = role;
 
   // (A) Role-aware app guide: only the tabs this user's role can reach.
@@ -510,26 +520,44 @@ async function loadLiveContext(
     }
   }
 
-  // (Financials / sensitive) MANAGEMENT-ONLY (supervisor+). Bids, costs and
-  // margins are NEVER fetched for installer/foreman — the block simply doesn't
-  // run for them, so the model can't be given data it must not reveal.
+  // (Financials / sensitive) COST-SEERS ONLY — an owner, or somebody the owner
+  // granted "Sees costs" (wave Z). Bids, costs and margins are NEVER fetched
+  // for anyone else: the block simply doesn't run for them, so the model can't
+  // be given data it must not reveal.
   if (isManagement) {
     try {
-      const { data: projs } = await supabase
-        .from("projects")
-        .select("id, name, job_code, bid_amount, target_margin_pct")
-        .eq("status", "active")
-        .is("deleted_at", null)
+      // Wave Z: the bid lives in project_financials now, not on `projects`.
+      // Read FROM the financials table so "biggest bids first" is still a
+      // top-level order (PostgREST cannot order a parent by an embedded
+      // column), with the job embedded `!inner` to keep the active/not-trashed
+      // filter and the job's own name in one query.
+      type JobRow = { id: string; name?: string; job_code?: string };
+      const { data: fins } = await supabase
+        .from("project_financials")
+        .select("bid_amount, target_margin_pct, projects!inner(id, name, job_code)")
+        .eq("projects.status", "active")
+        .is("projects.deleted_at", null)
         .not("bid_amount", "is", null)
         .order("bid_amount", { ascending: false })
         .limit(15);
-      const rows = (projs ?? []) as Array<{
-        id: string;
-        name?: string;
-        job_code?: string;
+      const rows = ((fins ?? []) as Array<{
         bid_amount?: number | null;
         target_margin_pct?: number | null;
-      }>;
+        projects?: JobRow | JobRow[] | null;
+      }>)
+        .map((r) => {
+          const job = Array.isArray(r.projects) ? r.projects[0] : r.projects;
+          return job
+            ? {
+                id: job.id,
+                name: job.name,
+                job_code: job.job_code,
+                bid_amount: r.bid_amount ?? null,
+                target_margin_pct: r.target_margin_pct ?? null,
+              }
+            : null;
+        })
+        .filter((r): r is NonNullable<typeof r> => r !== null);
       if (rows.length > 0) {
         const ids = rows.map((r) => r.id);
         const costsByProject = new Map<string, number>();

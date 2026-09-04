@@ -447,6 +447,68 @@ the honest answer. `field_added` makes it
 immune to every re-extraction sweep, permanently and independently of its
 flag: the extractor may drop its own guesses, never a person's record.
 
+## Money
+
+Settled 2026-09-03, wave Z (grilled, Q3/Q4/Q5/Q16/Q17 — cite, never
+re-decide). Money stopped being a rank and became a grant, and the
+database started saying no.
+
+**Sees costs / Sees pay** — the two things an owner can hand somebody
+without making them an owner (`profiles.can_see_costs`,
+`profiles.can_see_pay`). Sees costs opens the money tables — job costs,
+change orders, a job's bid and target margin, receipts, the AI spend
+meters — and with them /costing, /ai-spend and /receipts. Sees pay opens
+pay rates and nothing else, because an office manager who books job costs
+has no business reading what the crew earns. Neither is a role and neither
+moves a role: the nav floors are unchanged, and a grant can only ever open
+a door. Read back in SQL by `can_see_costs(uid)` / `can_see_pay(uid)`
+(owner, or the flag), which is what every money policy calls — widening who
+sees costs is one function, not fifteen policies. Written only by the
+owner-only `set_profile_grants`, and never given to a partner login. Before
+this wave the lock was the nav floor, which is not a lock: it is a hidden
+button, and every crew phone could read the company's bids.
+
+**Pay rate** — what one person earns per hour, from a given day
+(`pay_rates`). A HISTORY, not a current value: a raise in March must never
+reprice January, so the rate that counts for a shift is the one that was in
+force the day it was worked. One row per person per start date, and no end
+date — a rate runs until the next one begins, so ending one is writing the
+next. Somebody with no rate on file is still costed, off the old role
+table, and their line on the Cost screen says "estimated — no rate on
+file" rather than passing a guess off as a fact. Readable only with Sees
+pay; deliberately NOT readable by the person themselves, because payroll is
+where you learn what you earn.
+
+**Receipt posts to the job** — reviewing a receipt that names a job makes
+exactly ONE `job_costs` line: materials, the amount off the receipt, dated
+when it was bought, labelled with the vendor and the note, carrying
+"billable to customer" through from the receipt's passthrough answer. One
+receipt, one line, ever — `receipts.job_cost_id` is set once and never
+cleared, so un-reviewing leaves the line standing (the money was still
+spent) and the receipt reads "posted" from then on. Editing the amount
+afterwards moves the line with it, in one place, by trigger. A card charge
+matched to a receipt that names a job posts through the same bridge.
+
+**Company card** — the statement, as a dropped-in FILE. No bank
+credentials touch this app and none ever will; a live feed is parked with
+the future QuickBooks link. Because no one knows what columns a given
+export uses, the mapping step IS the design: the app guesses which column
+is the date, the amount, the description and the cardholder, and a human
+confirms before anything is imported. It asks a fifth question no header
+can answer — whether this file writes a PURCHASE as a negative number,
+which Chase, Amex and most card exports do because they are describing the
+balance. Inside the app money out is positive and a refund is the negative
+one, so the import flips the sign once, at the door, and everything after
+it reads one convention. "The same charge" is the bank's own id when the
+export has one, else a hash of date + amount + description + cardholder
+with the line's occurrence number on the end — so re-importing an
+overlapping file adds nothing, while two crew filling up at the same pump
+for the same money on the same morning stay two charges. Auto-match pairs
+equal amounts within three days, vendor overlap breaking ties, one charge
+to one receipt — always a proposal until somebody presses the button.
+Nothing auto-deletes, and every import is undoable as a batch that keeps
+whatever somebody had already matched.
+
 ## Open questions
 
 None right now — the next ones come from building.

@@ -152,12 +152,14 @@ function RequireRole({
   minRole?: CrewRole;
   children: ReactNode;
 }) {
-  const { effectiveRole: role, isLoading } = useEffectiveRole();
+  const { effectiveRole: role, isLoading, grants } = useEffectiveRole();
   if (!ROLE_NAV_V2) return <>{children}</>;
   if (isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
+  // `minRole` routes are detail pages with no registry entry, so no money grant
+  // can open one — Wave Z's grant only ever unlocks a named money destination.
   const allowed = minRole
     ? roleRank(role) >= roleRank(minRole)
-    : canAccess(role, path ?? "");
+    : canAccess(role, path ?? "", grants);
   if (allowed) return <>{children}</>;
   return (
     <div className="page">

@@ -1,6 +1,19 @@
 import { supabase } from "./supabase";
+import { isMissingTable } from "./schemaErrors";
+import {
+  indexPayRates,
+  listPayRates,
+  localDayOf,
+  rateInEffect,
+  type PayRate,
+} from "./payRates";
 
-/** Default hourly labor rates by role (company setting; edit as needed). */
+/**
+ * The FALLBACK hourly rates, by role. Wave Z made real per-person rates the
+ * truth (pay_rates, lib/payRates.ts); these four numbers are what a person with
+ * no rate on file is priced at, and Costing marks any line that used them
+ * "estimated — no rate on file" rather than passing a guess off as a cost.
+ */
 export const HOURLY_RATE: Record<string, number> = {
   installer: 35,
   foreman: 50,
@@ -18,20 +31,85 @@ export interface LaborShift {
   clock_out_at: string | null;
   break_seconds: number;
   role: string;
+  /** Wave Z: who worked it, so the shift can be priced at THEIR rate. */
+  profile_id?: string | null;
+  profile_name?: string | null;
 }
 
-/** Derived labor cost + hours per project from clocked-out shifts. */
-export function computeLabor(shifts: LaborShift[]): Map<string, { hours: number; cost: number }> {
-  const out = new Map<string, { hours: number; cost: number }>();
+/** One person's hours and cost on one job, and whether the cost is real. */
+export interface LaborPerson {
+  profileId: string;
+  name: string;
+  hours: number;
+  cost: number;
+  /** True when any of these hours were priced off the role table because the
+   * person had no rate on file that day. The line says so on screen. */
+  estimated: boolean;
+}
+
+export interface LaborTotals {
+  hours: number;
+  cost: number;
+  people: LaborPerson[];
+  /** True when ANY person on this job was priced off the role table. */
+  estimated: boolean;
+}
+
+/**
+ * Derived labor cost + hours per project from clocked-out shifts.
+ *
+ * `rates` (from indexPayRates) prices each shift at what that person earned ON
+ * THE DAY THEY WORKED IT. Without it — or for a person with no rate that day —
+ * the role table above stands in and the line is marked estimated. Passing no
+ * rates at all is the pre-wave-Z behaviour exactly, which is what keeps this
+ * usable from anywhere that has no business reading pay.
+ */
+export function computeLabor(
+  shifts: LaborShift[],
+  rates?: Map<string, PayRate[]>,
+): Map<string, LaborTotals> {
+  const out = new Map<string, LaborTotals>();
+  // Per-project, per-person accumulation, so the screen can show which line is
+  // a real cost and which is a guess.
+  const byPerson = new Map<string, Map<string, LaborPerson>>();
+
   for (const s of shifts) {
     if (!s.project_id || !s.clock_out_at) continue;
     const ms = new Date(s.clock_out_at).getTime() - new Date(s.clock_in_at).getTime();
     const hours = Math.max(0, ms / 3600000 - (s.break_seconds ?? 0) / 3600);
-    const rate = HOURLY_RATE[s.role] ?? HOURLY_RATE.installer;
-    const cur = out.get(s.project_id) ?? { hours: 0, cost: 0 };
+
+    const onFile = s.profile_id
+      ? rateInEffect(rates?.get(s.profile_id), localDayOf(s.clock_in_at))
+      : null;
+    const rate = onFile ? onFile.hourlyCents / 100 : HOURLY_RATE[s.role] ?? HOURLY_RATE.installer;
+
+    const cur = out.get(s.project_id) ?? { hours: 0, cost: 0, people: [], estimated: false };
     cur.hours += hours;
     cur.cost += hours * rate;
+    if (!onFile) cur.estimated = true;
     out.set(s.project_id, cur);
+
+    const who = s.profile_id ?? "unknown";
+    const people = byPerson.get(s.project_id) ?? new Map<string, LaborPerson>();
+    const line = people.get(who) ?? {
+      profileId: who,
+      name: s.profile_name ?? "Someone",
+      hours: 0,
+      cost: 0,
+      estimated: false,
+    };
+    line.hours += hours;
+    line.cost += hours * rate;
+    if (!onFile) line.estimated = true;
+    people.set(who, line);
+    byPerson.set(s.project_id, people);
+  }
+
+  for (const [projectId, people] of byPerson) {
+    const totals = out.get(projectId);
+    if (totals) {
+      totals.people = [...people.values()].sort((a, b) => b.hours - a.hours);
+    }
   }
   return out;
 }
@@ -43,6 +121,9 @@ export interface JobCost {
   label: string | null;
   amount: number;
   cost_date: string;
+  /** Wave Z: passed through to the customer. Copied from the receipt that
+   * posted this line and kept in step with it; null = nobody has answered. */
+  billable?: boolean | null;
 }
 
 export interface ChangeOrder {
@@ -61,11 +142,29 @@ export interface JobCosting {
   revenue: number; // bid + change orders
   manualCosts: number; // job_costs entries
   laborHours: number; // derived from time_shifts
-  laborCost: number; // derived from time_shifts x rate
+  laborCost: number; // derived from time_shifts x each person's rate that day
   costs: number; // manualCosts + laborCost
   margin: number; // revenue - costs
   marginPct: number;
   targetMarginPct: number | null;
+  /** Wave Z: somebody on this job had no pay rate on file, so part of the
+   * labor cost is the role table's guess rather than what they earn. */
+  laborEstimated?: boolean;
+  /** Per-person labor, so the screen can name who is estimated. */
+  laborPeople?: LaborPerson[];
+  /**
+   * Wave Z: whether the person READING this could see pay rates at all.
+   *
+   * False and every line is estimated for one reason — RLS handed this reader
+   * no `pay_rates` rows — which is a completely different sentence from "that
+   * person has no rate on file". The two grants are separate on purpose (a
+   * bookkeeper who books job costs has no business reading what the crew
+   * earns), so "Sees costs without Sees pay" is the ordinary everyday case,
+   * not a corner. Without this flag the screen tells a bookkeeper a rate is
+   * missing when it is not, and quietly shows them a different margin from
+   * the owner's with no explanation.
+   */
+  laborRatesVisible?: boolean;
 }
 
 export async function listJobCosts(projectId: string): Promise<JobCost[]> {
@@ -113,36 +212,75 @@ export async function addChangeOrder(
   if (error) throw error;
 }
 
+/**
+ * The bid and target margin, which live in `project_financials` since wave Z
+ * (20260978000000) — they used to be two columns on `projects`, where they
+ * could not be gated: a column rides its table's policy, and `projects` has to
+ * stay readable by every crew login.
+ *
+ * One row per job, so this is an upsert on the primary key.
+ */
 export async function setBid(
   projectId: string,
   bid: number,
   targetMarginPct: number | null,
 ): Promise<void> {
-  const { error } = await supabase
-    .from("projects")
-    .update({ bid_amount: bid, target_margin_pct: targetMarginPct })
-    .eq("id", projectId);
+  const { error } = await supabase.from("project_financials").upsert(
+    {
+      project_id: projectId,
+      bid_amount: bid,
+      target_margin_pct: targetMarginPct,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "project_id" },
+  );
   if (error) throw error;
 }
 
-/** Company-wide costing rollup across active jobs. */
-export async function getCompanyCosting(): Promise<JobCosting[]> {
-  const [projRes, costRes, coRes, shiftRes] = await Promise.all([
-    supabase.from("projects").select("id, job_code, name, bid_amount, target_margin_pct"),
+/**
+ * Company-wide costing rollup across active jobs.
+ *
+ * `canSeePay` is what the CALLER knows about itself — owner, or granted "Sees
+ * pay rates". It is not a second lock (RLS already refuses the rows); it is how
+ * the screen tells "nobody has set this person's rate" apart from "you are not
+ * allowed to read it". Both produce the same fallback to the role table and the
+ * same estimate, and only one of them is the reader's problem to fix.
+ */
+export async function getCompanyCosting(
+  opts: { canSeePay?: boolean } = {},
+): Promise<JobCosting[]> {
+  const [projRes, finRes, costRes, coRes, shiftRes] = await Promise.all([
+    supabase.from("projects").select("id, job_code, name"),
+    // Wave Z: the bid moved off `projects` into its own gated table. Degrades
+    // to "no bids on file" on a database that has the app but not yet
+    // 20260978000000 — the screen empties, it never white-screens.
+    supabase.from("project_financials").select("project_id, bid_amount, target_margin_pct"),
     supabase.from("job_costs").select("project_id, amount"),
     supabase.from("change_orders").select("project_id, amount"),
     supabase
       .from("time_shifts")
       // Named via `profile_id`: a shift also links to its approver, editor and
       // rejecter, so a bare `profiles(...)` is ambiguous and fails the query.
+      // One literal, not a concatenation: PostgREST's row types are inferred
+      // from the string itself, and a `+` here turns every field below into
+      // `unknown`.
       .select(
-        "project_id, clock_in_at, clock_out_at, break_seconds, profiles!profile_id(role)",
+        "project_id, profile_id, clock_in_at, clock_out_at, break_seconds, profiles!profile_id(role, display_name)",
       ),
   ]);
   if (projRes.error) throw projRes.error;
+  if (finRes.error && !isMissingTable(finRes.error, "project_financials")) throw finRes.error;
   if (costRes.error) throw costRes.error;
   if (coRes.error) throw coRes.error;
   if (shiftRes.error) throw shiftRes.error;
+
+  const finByProj = new Map<string, { bid: number; target: number | null }>();
+  for (const f of finRes.data ?? []) {
+    finByProj.set(f.project_id, {
+      bid: Number(f.bid_amount ?? 0),
+      target: f.target_margin_pct ?? null,
+    });
+  }
 
   const costByProj = new Map<string, number>();
   for (const c of costRes.data ?? []) {
@@ -152,6 +290,16 @@ export async function getCompanyCosting(): Promise<JobCosting[]> {
   for (const c of coRes.data ?? []) {
     coByProj.set(c.project_id, (coByProj.get(c.project_id) ?? 0) + Number(c.amount));
   }
+  // Wave Z: real per-person rates where they exist. Read separately (not
+  // embedded) because pay_rates has its OWN grant — an owner sees rates, a
+  // "Sees costs" bookkeeper does not, and RLS simply hands the second one no
+  // rows, so their Costing screen falls back to the role table and says so.
+  //
+  // Not asked for at all without the grant: the read would come back empty
+  // anyway, and skipping it keeps the screen from implying it tried.
+  const canSeePay = opts.canSeePay !== false;
+  const rates = canSeePay ? indexPayRates(await listPayRates()) : undefined;
+
   const labor = computeLabor(
     (shiftRes.data ?? []).map((s) => ({
       project_id: s.project_id,
@@ -159,15 +307,19 @@ export async function getCompanyCosting(): Promise<JobCosting[]> {
       clock_out_at: s.clock_out_at,
       break_seconds: s.break_seconds ?? 0,
       role: (s.profiles as { role?: string } | null)?.role ?? "installer",
+      profile_id: s.profile_id,
+      profile_name: (s.profiles as { display_name?: string } | null)?.display_name ?? null,
     })),
+    rates,
   );
 
   return (projRes.data ?? []).map((p) => {
-    const bid = Number(p.bid_amount ?? 0);
+    const fin = finByProj.get(p.id);
+    const bid = fin?.bid ?? 0;
     const changeOrders = coByProj.get(p.id) ?? 0;
     const revenue = bid + changeOrders;
     const manualCosts = costByProj.get(p.id) ?? 0;
-    const lab = labor.get(p.id) ?? { hours: 0, cost: 0 };
+    const lab = labor.get(p.id) ?? { hours: 0, cost: 0, people: [], estimated: false };
     const costs = manualCosts + lab.cost;
     const margin = revenue - costs;
     return {
@@ -183,7 +335,10 @@ export async function getCompanyCosting(): Promise<JobCosting[]> {
       costs: Math.round(costs),
       margin: Math.round(margin),
       marginPct: revenue > 0 ? Math.round((margin / revenue) * 1000) / 10 : 0,
-      targetMarginPct: p.target_margin_pct ?? null,
+      targetMarginPct: fin?.target ?? null,
+      laborEstimated: lab.estimated,
+      laborPeople: lab.people,
+      laborRatesVisible: canSeePay,
     };
   });
 }

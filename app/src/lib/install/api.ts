@@ -58,8 +58,48 @@ async function actor(): Promise<string | null> {
 // Never select the PIN to the client; it's verified server-side via RPC. Since
 // 20260729200000_profiles_rls_lockdown.sql the database enforces this too — the
 // authenticated role holds column privileges on exactly this list.
+// Explicit on purpose, forever: `profiles` holds pin_hash, which no client role
+// may read, so `select("*")` against it fails by design. Add a column here only
+// after a migration grants SELECT on it to `authenticated`.
 export const PROFILE_COLS =
-  "id, display_name, skill_level, role, active, language, created_at, updated_at";
+  "id, display_name, skill_level, role, active, language, can_see_costs, can_see_pay, created_at, updated_at";
+
+/**
+ * The same list without wave Z's two grant columns (20260978000000).
+ *
+ * Not a nicety: `profiles` is the FIRST thing every screen reads — the role
+ * behind every guard comes from here — so asking for a column a database has
+ * not got yet does not empty one screen, it white-screens the whole app for
+ * the whole company. The frontend and the backend deploy as separate
+ * workflows, and the backend one has silently failed before, so "the app is
+ * live and the migration is not" is a state that really happens.
+ */
+const PROFILE_COLS_WITHOUT_GRANTS = PROFILE_COLS.replace(
+  ", can_see_costs, can_see_pay",
+  "",
+);
+
+/** Narrowed once, for the life of the tab, the first time the database says it
+ * has no grant columns. One extra round trip on one read, never on every one. */
+let profileCols = PROFILE_COLS;
+
+// `data` is `unknown` because a `.select()` given a runtime string (rather than
+// a literal) loses PostgREST's row inference — the callers below cast, exactly
+// as they already did when they passed the constant straight in.
+async function readProfiles(
+  run: (cols: string) => PromiseLike<{ data: unknown; error: unknown }>,
+): Promise<{ data: unknown; error: unknown }> {
+  const first = await run(profileCols);
+  if (
+    first.error &&
+    profileCols !== PROFILE_COLS_WITHOUT_GRANTS &&
+    isMissingColumn(first.error, "can_see_costs")
+  ) {
+    profileCols = PROFILE_COLS_WITHOUT_GRANTS;
+    return run(profileCols);
+  }
+  return first;
+}
 
 /** Emails that auto-promote to Owner on first/any sign-in. */
 const OWNER_BOOTSTRAP_EMAILS = new Set([
@@ -82,11 +122,9 @@ export async function ensureMyProfile(): Promise<Profile | null> {
   const user = userData.user;
   if (!user) return null;
 
-  const { data: existing, error } = await supabase
-    .from("profiles")
-    .select(PROFILE_COLS)
-    .eq("id", user.id)
-    .maybeSingle();
+  const { data: existing, error } = await readProfiles((cols) =>
+    supabase.from("profiles").select(cols).eq("id", user.id).maybeSingle(),
+  );
   if (error) throw error;
 
   const bootstrapOwner = isOwnerBootstrapEmail(user.email);
@@ -99,11 +137,13 @@ export async function ensureMyProfile(): Promise<Profile | null> {
     // `role` is deliberately not sent. The authenticated role has no INSERT
     // privilege on profiles.role, so every new account lands on the 'installer'
     // column default and only a supervisor can lift it from there.
-    const { data: created, error: insErr } = await supabase
-      .from("profiles")
-      .insert({ id: user.id, display_name: displayName })
-      .select(PROFILE_COLS)
-      .single();
+    const { data: created, error: insErr } = await readProfiles((cols) =>
+      supabase
+        .from("profiles")
+        .insert({ id: user.id, display_name: displayName })
+        .select(cols)
+        .single(),
+    );
     if (insErr) throw insErr;
     profile = created as Profile;
   }
@@ -122,11 +162,9 @@ export async function ensureMyProfile(): Promise<Profile | null> {
     // other failure is real and should surface.
     if (bootErr && !isMissingFunction(bootErr)) throw bootErr;
     if (!bootErr) {
-      const { data: reread, error: rereadErr } = await supabase
-        .from("profiles")
-        .select(PROFILE_COLS)
-        .eq("id", user.id)
-        .maybeSingle();
+      const { data: reread, error: rereadErr } = await readProfiles((cols) =>
+        supabase.from("profiles").select(cols).eq("id", user.id).maybeSingle(),
+      );
       if (rereadErr) throw rereadErr;
       profile = (reread as Profile | null) ?? profile;
     }
@@ -140,11 +178,9 @@ export async function getRealProfile(): Promise<Profile | null> {
   const { data: userData } = await supabase.auth.getUser();
   const user = userData.user;
   if (!user) return null;
-  const { data, error } = await supabase
-    .from("profiles")
-    .select(PROFILE_COLS)
-    .eq("id", user.id)
-    .maybeSingle();
+  const { data, error } = await readProfiles((cols) =>
+    supabase.from("profiles").select(cols).eq("id", user.id).maybeSingle(),
+  );
   if (error) throw error;
   return data as Profile | null;
 }
@@ -168,11 +204,9 @@ export async function getMyProfile(): Promise<Profile | null> {
       const raw = sessionStorage.getItem("infinity.viewAsPerson");
       const preview = raw ? (JSON.parse(raw) as { id?: string }) : null;
       if (preview?.id && preview.id !== me.id) {
-        const { data: other } = await supabase
-          .from("profiles")
-          .select(PROFILE_COLS)
-          .eq("id", preview.id)
-          .maybeSingle();
+        const { data: other } = await readProfiles((cols) =>
+          supabase.from("profiles").select(cols).eq("id", preview.id).maybeSingle(),
+        );
         if (other) return other as Profile;
       }
     } catch {
@@ -183,13 +217,15 @@ export async function getMyProfile(): Promise<Profile | null> {
 }
 
 export async function listProfiles(): Promise<Profile[]> {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select(PROFILE_COLS)
-    .order("role", { ascending: false })
-    .order("display_name");
+  const { data, error } = await readProfiles((cols) =>
+    supabase
+      .from("profiles")
+      .select(cols)
+      .order("role", { ascending: false })
+      .order("display_name"),
+  );
   if (error) throw error;
-  return data as Profile[];
+  return (data ?? []) as Profile[];
 }
 
 /** PIN status/verify happen server-side; the value never reaches the client. */
@@ -333,6 +369,25 @@ export async function updateProfile(
       .eq("id", id);
     if (error) throw error;
   }
+}
+
+/**
+ * Wave Z: hand somebody (or take back) "Sees costs" / "Sees pay rates".
+ * Owner-only, refused in SQL — `profiles.can_see_costs` and `.can_see_pay` are
+ * readable but never directly writable, exactly like `role` and `language`, so
+ * set_profile_grants is the one door. Pass null for a grant to leave it alone,
+ * which is what lets the Roster's two checkboxes flip independently.
+ */
+export async function setProfileGrants(
+  id: string,
+  grants: { costs?: boolean | null; pay?: boolean | null },
+): Promise<void> {
+  const { error } = await supabase.rpc("set_profile_grants", {
+    p_profile_id: id,
+    p_costs: grants.costs ?? null,
+    p_pay: grants.pay ?? null,
+  });
+  if (error) throw error;
 }
 
 async function actorId(): Promise<string | null> {
