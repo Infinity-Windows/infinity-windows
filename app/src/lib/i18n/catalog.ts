@@ -1189,6 +1189,9 @@ export const CATALOG = {
   "gc.channel.text": { en: "Text", es: "Mensaje" },
   "gc.channel.email": { en: "Email", es: "Correo" },
   "gc.channel.site": { en: "On site", es: "En la obra" },
+  // Not offered on the form — nobody in the office talked to the builder "on
+  // the link". It is what a check-in the GC filed HIMSELF reads back as.
+  "gc.channel.link": { en: "On his link", es: "En su enlace" },
   "gc.notes": { en: "Anything else", es: "Algo más" },
   "gc.save": { en: "File this check-in", es: "Guardar el contacto" },
   "gc.saving": { en: "Saving…", es: "Guardando…" },

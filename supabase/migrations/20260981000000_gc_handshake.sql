@@ -325,7 +325,11 @@ create table if not exists project_gc_checkins (
 
 alter table project_gc_checkins drop constraint if exists project_gc_checkins_channel_check;
 alter table project_gc_checkins add constraint project_gc_checkins_channel_check
-  check (channel in ('call', 'text', 'email', 'site'));
+  -- 'link' is the GC answering on his own page (H2). It is deliberately NOT
+  -- offered to a crew member by log_gc_checkin below — nobody in the office
+  -- ever talked to the builder "on the link" — so the constraint is wider than
+  -- the RPC on purpose rather than by accident.
+  check (channel in ('call', 'text', 'email', 'site', 'link'));
 
 alter table project_gc_checkins drop constraint if exists project_gc_checkins_set_pref_check;
 alter table project_gc_checkins add constraint project_gc_checkins_set_pref_check
@@ -832,6 +836,11 @@ language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
+-- The OUT columns (brand, expires_at) share their names with real columns of
+-- gc_links. Ambiguity between an OUT parameter and a column is a plpgsql
+-- RUNTIME error, not a compile one, so make the column win — the same pragma
+-- and the same reason as claim_pipeline_nudges above.
+#variable_conflict use_column
 declare
   v_token text;
   v_hash text;
@@ -1054,6 +1063,8 @@ language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
+-- OUT columns project_id / brand / state share names with real columns.
+#variable_conflict use_column
 declare
   v_link gc_links;
 begin
@@ -1108,6 +1119,9 @@ language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
+-- OUT column project_id shares its name with a real column on both tables
+-- touched below.
+#variable_conflict use_column
 declare
   v_link gc_links;
 begin
@@ -1146,7 +1160,10 @@ begin
     null,
     now(),
     nullif(btrim(coalesce(p_contact_name, '')), ''),
-    'email',
+    -- He typed it on the page we sent him, which is neither a call nor an
+    -- email. Recording it as one of those would put a conversation in the
+    -- record that never happened.
+    'link',
     p_expected_end_date,
     p_roof_on_date,
     p_framing_checked,
@@ -1186,6 +1203,9 @@ language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
+-- OUT column project_id shares its name with a real column on both tables
+-- touched below.
+#variable_conflict use_column
 declare
   v_link gc_links;
 begin

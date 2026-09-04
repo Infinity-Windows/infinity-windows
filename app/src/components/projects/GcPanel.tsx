@@ -61,6 +61,9 @@ const CHANNEL_KEYS: Record<string, TKey> = {
   text: "gc.channel.text",
   email: "gc.channel.email",
   site: "gc.channel.site",
+  // Written only by the GC answering on his own page (gc_link_answer), never
+  // offered on the form above — which is why GC_CHANNELS does not carry it.
+  link: "gc.channel.link",
 };
 
 const SET_KEYS: Record<string, TKey> = {
