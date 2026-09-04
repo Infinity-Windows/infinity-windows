@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildInputFromMonday,
+  filesNewOnMonday,
   filesOnMonday,
   fileSizeLabel,
   guessMondayFileKind,
@@ -325,5 +326,49 @@ describe("fileSizeLabel", () => {
     expect(fileSizeLabel(null)).toBe("");
     expect(fileSizeLabel(undefined)).toBe("");
     expect(fileSizeLabel(Number.NaN)).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// What is new on Monday (Monday files, F5)
+// ---------------------------------------------------------------------------
+
+describe("filesNewOnMonday", () => {
+  it("offers everything on a job that has pulled nothing", () => {
+    expect(filesNewOnMonday(hc24, []).map((f) => f.asset_id)).toEqual([
+      "3100578588",
+      "3100578589",
+      "3100578592",
+    ]);
+  });
+
+  it("hides a file already here as a planset", () => {
+    expect(filesNewOnMonday(hc24, ["3100578592"]).map((f) => f.asset_id)).toEqual([
+      "3100578588",
+      "3100578589",
+    ]);
+  });
+
+  it("hides a file already here as a document", () => {
+    // The two lists are asked together on purpose: a file pulled as a document
+    // must not keep offering itself as a plan.
+    expect(filesNewOnMonday(hc24, ["3100578588"]).map((f) => f.asset_id)).toEqual([
+      "3100578589",
+      "3100578592",
+    ]);
+  });
+
+  it("says nothing is new once everything has been pulled", () => {
+    expect(filesNewOnMonday(hc24, hc24.map((f) => f.asset_id))).toEqual([]);
+  });
+
+  it("ignores the nulls a hand upload leaves behind", () => {
+    // Every planset uploaded before this feature carries a null source_asset_id,
+    // and hundreds of nulls must not match a file with no id.
+    expect(filesNewOnMonday(hc24, [null, undefined, ""]).length).toBe(3);
+  });
+
+  it("a job with no Monday row has nothing new", () => {
+    expect(filesNewOnMonday([], ["3100578592"])).toEqual([]);
   });
 });

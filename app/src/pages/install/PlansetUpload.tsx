@@ -46,8 +46,21 @@ import {
   extractCadDetailPages,
   splitCalloutsByFloorPlan,
 } from "../../lib/install/planDetails";
-import type { Planset, PlansetKind } from "../../lib/install/types";
+import { isForemanPlus, type Planset, type PlansetKind } from "../../lib/install/types";
 import { claimUnsavedWork } from "../../lib/pwa/unsavedWork";
+import { useEffectiveRole } from "../../lib/useEffectiveRole";
+import { useT } from "../../lib/i18n";
+import { jobDocumentAssetIds } from "../../lib/jobDocuments";
+import {
+  fileSizeLabel,
+  filesNewOnMonday,
+  filesOnMonday,
+  guessMondayFileKind,
+  isExtractableFile,
+  mondayJobForProject,
+  pullMondayFiles,
+  type MondayFileKind,
+} from "../../lib/mondaySync";
 import { PlansetViewer } from "./PlansetViewer";
 
 function fileName(ps: Planset): string {
@@ -79,6 +92,14 @@ export function PlansetUpload() {
   const [livePages, setLivePages] = useState<StoredPageProgress[] | null>(null);
   const cancelRun = useRef(false);
 
+  const t = useT();
+  const { effectiveRole } = useEffectiveRole();
+  const isLead = isForemanPlus(effectiveRole);
+  // Which Monday file the office is pointing at each slot, and which pull is
+  // running. Keyed by asset id; seeded from the guesser as the list renders.
+  const [mondayKinds, setMondayKinds] = useState<Record<string, MondayFileKind>>({});
+  const [mondayNote, setMondayNote] = useState<string | null>(null);
+
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const project = projects.data?.find((p) => p.id === projectId);
   const plansets = useQuery({
@@ -86,6 +107,20 @@ export function PlansetUpload() {
     queryFn: () => listPlansets(projectId),
   });
   const types = useQuery({ queryKey: ["windowTypes"], queryFn: listWindowTypes });
+
+  // The staged Monday row this job was built from, if there is one. Both
+  // queries degrade to nothing when their table or column is not there yet, so
+  // a phone ahead of the migration still opens this page.
+  const mondayJob = useQuery({
+    queryKey: ["mondayJobForProject", projectId],
+    queryFn: () => mondayJobForProject(projectId),
+    enabled: isLead && !!projectId,
+  });
+  const documentAssetIds = useQuery({
+    queryKey: ["jobDocumentAssetIds", projectId],
+    queryFn: () => jobDocumentAssetIds(projectId),
+    enabled: isLead && !!projectId,
+  });
 
   const building = (plansets.data ?? []).filter(
     (p) => (p.kind ?? "building") === "building",
@@ -160,35 +195,26 @@ export function PlansetUpload() {
     };
   }, [runningPlansetId]);
 
-  const upload = useMutation({
-    mutationFn: async (args: { file: File; kind: PlansetKind }) => {
-      const { file, kind } = args;
-      const format = plansetFormatFromName(file.name);
-      if (!format) throw new Error("Choose a PDF, DWG, or DXF file.");
-
-      setSummary(null);
-      setProgress(
-        kind === "building"
-          ? "Uploading building plan…"
-          : "Uploading specs / schedule…",
-      );
-      const planset = await uploadPlanset(projectId, file, kind);
-
-      if (format !== "pdf") {
-        return {
-          planset,
-          kind,
-          drafts: 0,
-          skipped: 0,
-          linked: 0,
-          converted: false,
-        };
-      }
-
+  /**
+   * Read a planset that is already stored: marks off a building plan, or the
+   * whole schedule-and-specs run off a specs sheet.
+   *
+   * Lifted out of the upload path unchanged (Monday files, F5) so that a file
+   * the SERVER put here — pulled from the job's Monday item, and therefore
+   * never read by anybody's browser — can be read by exactly the code that
+   * reads a hand upload. Without this a pulled plan set would sit on this page
+   * looking fine with nothing behind it on the map, which is indistinguishable
+   * from a broken extraction.
+   */
+  const readPlanset = async (
+    planset: Planset,
+    kind: PlansetKind,
+    bytes: ArrayBuffer,
+  ) => {
       const { extractAllText, extractPlanMarkCallouts, loadPdf } = await import(
         "../../lib/install/pdf"
       );
-      const doc = await loadPdf(await file.arrayBuffer());
+      const doc = await loadPdf(bytes);
       await updatePlanset(planset.id, {
         status: kind === "specs" ? "extracting" : "ready",
         page_count: doc.numPages,
@@ -303,6 +329,34 @@ export function PlansetUpload() {
         marks,
         detailSheets: detailSheets.size,
       };
+  };
+
+  const upload = useMutation({
+    mutationFn: async (args: { file: File; kind: PlansetKind }) => {
+      const { file, kind } = args;
+      const format = plansetFormatFromName(file.name);
+      if (!format) throw new Error("Choose a PDF, DWG, or DXF file.");
+
+      setSummary(null);
+      setProgress(
+        kind === "building"
+          ? "Uploading building plan…"
+          : "Uploading specs / schedule…",
+      );
+      const planset = await uploadPlanset(projectId, file, kind);
+
+      if (format !== "pdf") {
+        return {
+          planset,
+          kind,
+          drafts: 0,
+          skipped: 0,
+          linked: 0,
+          converted: false,
+        };
+      }
+
+      return readPlanset(planset, kind, await file.arrayBuffer());
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["plansets", projectId] });
@@ -417,6 +471,74 @@ export function PlansetUpload() {
       }
     },
     onError: (e) => setProgress(formatApiError(e)),
+  });
+
+  /**
+   * Read a planset the SERVER put here.
+   *
+   * A pull writes the row and the bytes and stops — no browser has ever opened
+   * the file, so a pulled plan set arrives at status 'uploaded' with no marks
+   * behind it. This is the button that reads it, running exactly the code an
+   * upload runs. Without it a pulled plan is dead weight on this page.
+   */
+  const readNow = useMutation({
+    mutationFn: async (ps: Planset) => {
+      setSummary(null);
+      setProgress(
+        (ps.kind ?? "building") === "building"
+          ? "Reading mark callouts on the building plan…"
+          : "Reading the window/door schedule…",
+      );
+      return readPlanset(ps, ps.kind ?? "building", await downloadPlanset(ps));
+    },
+    onSuccess: (result) => {
+      setProgress(null);
+      queryClient.invalidateQueries({ queryKey: ["plansets", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["openings", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["windowTypes"] });
+      queryClient.invalidateQueries({ queryKey: ["markSpecs", projectId] });
+      setSummary(
+        `Read ${result.drafts} draft opening(s)${
+          result.skipped > 0 ? `, ${result.skipped} kept as they were` : ""
+        }.`,
+      );
+    },
+    onError: (e) => {
+      setProgress(null);
+      setSummary(formatApiError(e));
+    },
+  });
+
+  /** Bring one file across from the job's Monday item. Never automatic. */
+  const pullFromMonday = useMutation({
+    mutationFn: async (args: { assetId: string; kind: MondayFileKind }) => {
+      const job = mondayJob.data;
+      if (!job) throw new Error("This job is not linked to a Monday job.");
+      setMondayNote(null);
+      return pullMondayFiles({
+        mondayJobId: job.id,
+        projectId,
+        files: [{ asset_id: args.assetId, kind: args.kind }],
+      });
+    },
+    onSuccess: (r) => {
+      const one = r.results[0];
+      setMondayNote(
+        one?.ok
+          ? one.already
+            ? t("mondayFiles.result.already")
+            : one.where === "plans"
+              ? t("mondayFiles.result.toPlans")
+              : one.where === "specs"
+                ? t("mondayFiles.result.toSpecs")
+                : t("mondayFiles.result.toDocuments")
+          : one?.error?.trim() || r.error?.trim() || t("mondayFiles.result.failed"),
+      );
+      queryClient.invalidateQueries({ queryKey: ["plansets", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["jobDocuments", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["jobDocumentAssetIds", projectId] });
+    },
+    onError: (e) => setMondayNote(formatApiError(e)),
   });
 
   // Re-read only the pages that failed (or the whole sheet when the vision call
@@ -552,6 +674,23 @@ export function PlansetUpload() {
       resumable ||
       barProgress.attempted > 0);
 
+  /**
+   * Files Monday has on this job that the app does not.
+   *
+   * Foreman+ only, and empty for everyone else — this route is already a
+   * foreman+ route, and the gate is restated here so the block cannot outlive
+   * that guard if the page is ever reachable another way. Nothing is pulled
+   * until somebody taps Get: the owner's decision (2026-09-04) was that a file
+   * appearing on Monday is a thing to be TOLD about, never a thing that quietly
+   * lands on a job.
+   */
+  const newOnMonday = isLead
+    ? filesNewOnMonday(filesOnMonday(mondayJob.data ?? { files: null }), [
+        ...(plansets.data ?? []).map((ps) => ps.source_asset_id),
+        ...(documentAssetIds.data ?? []),
+      ])
+    : [];
+
   const openPlanset = async (ps: Planset) => {
     setViewError(null);
     if (plansetIsViewable(ps)) {
@@ -618,6 +757,29 @@ export function PlansetUpload() {
                 {plansetIsViewable(ps) ? "View ›" : "Download ›"}
               </span>
             </button>
+            {/* Where this file came from. Worth one small word: a plan set
+                nobody in the office remembers uploading is a plan set somebody
+                will otherwise go looking for the upload of. */}
+            {ps.source_asset_id && (
+              <span className="muted" style={{ fontSize: 11 }} data-testid="from-monday">
+                {t("mondayFiles.fromMonday")}
+              </span>
+            )}
+            {/* A file the server put here has never been opened by a browser,
+                so it is still 'uploaded' and nothing has been read off it. */}
+            {ps.status === "uploaded" && plansetIsViewable(ps) && (
+              <button
+                type="button"
+                className="link"
+                data-testid="read-planset"
+                disabled={readNow.isPending || upload.isPending}
+                onClick={() => readNow.mutate(ps)}
+              >
+                {readNow.isPending && readNow.variables?.id === ps.id
+                  ? t("mondayFiles.extracting")
+                  : t("mondayFiles.extract")}
+              </button>
+            )}
             {kind === "specs" && ps.status === "ready" && plansetIsViewable(ps) && (
               <button
                 type="button"
@@ -664,6 +826,64 @@ export function PlansetUpload() {
         "Specs / schedule",
         "Window & door schedule table — mark, size, type, color. Creates/links openings.",
         specs,
+      )}
+
+      {newOnMonday.length > 0 && (
+        <section className="planset-slot" data-testid="files-on-monday">
+          <h2>{t("mondayFiles.new.heading")}</h2>
+          <p className="muted">{t("mondayFiles.new.blurb")}</p>
+          <ul className="unit-list">
+            {newOnMonday.map((f) => {
+              const locked = !isExtractableFile(f.name, f.ext);
+              const kind = locked
+                ? "document"
+                : mondayKinds[f.asset_id] ?? guessMondayFileKind(f.name, f.ext);
+              const size = fileSizeLabel(f.size);
+              const busy =
+                pullFromMonday.isPending &&
+                pullFromMonday.variables?.assetId === f.asset_id;
+              return (
+                <li key={f.asset_id} className="find-row" style={{ flexWrap: "wrap", gap: 6 }}>
+                  <span style={{ minWidth: 0, flex: 1 }}>
+                    {f.name}
+                    {size && <span className="muted" style={{ fontSize: 11.5 }}> · {size}</span>}
+                  </span>
+                  <select
+                    value={kind}
+                    disabled={locked || pullFromMonday.isPending}
+                    aria-label={`${f.name} — ${t("mondayFiles.new.heading")}`}
+                    onChange={(e) =>
+                      setMondayKinds((prev) => ({
+                        ...prev,
+                        [f.asset_id]: e.target.value as MondayFileKind,
+                      }))
+                    }
+                  >
+                    <option value="building">{t("mondayFiles.kind.building")}</option>
+                    <option value="specs">{t("mondayFiles.kind.specs")}</option>
+                    <option value="document">{t("mondayFiles.kind.document")}</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="button-like active-pill"
+                    data-testid="pull-from-monday"
+                    disabled={pullFromMonday.isPending}
+                    onClick={() =>
+                      pullFromMonday.mutate({ assetId: f.asset_id, kind })
+                    }
+                  >
+                    {busy ? t("mondayFiles.new.pulling") : t("mondayFiles.new.pull")}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+      {mondayNote && (
+        <p className="ok" data-testid="monday-pull-note">
+          {mondayNote}
+        </p>
       )}
 
       {progress && <p className="scanner-hint">{progress}</p>}

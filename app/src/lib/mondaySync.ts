@@ -225,6 +225,49 @@ export function pullCounts(results: MondayPullResult[]): {
 }
 
 /**
+ * Files Monday has on this job that the app does not.
+ *
+ * Pure, because this is the whole of "new on Monday": the office adds a revised
+ * plan set to the item weeks after the job was built, and the only way anyone
+ * finds out today is by opening Monday. `alreadyHere` is every source_asset_id
+ * on the job — plansets and documents together, because a file pulled as a
+ * document must not keep offering itself as a plan.
+ */
+export function filesNewOnMonday(
+  files: MondayFile[],
+  alreadyHere: (string | null | undefined)[],
+): MondayFile[] {
+  const here = new Set(
+    alreadyHere.filter((id): id is string => typeof id === "string" && id !== ""),
+  );
+  return files.filter((f) => !here.has(f.asset_id));
+}
+
+/**
+ * The staged Monday row this job was built from, or null.
+ *
+ * Degrades to null rather than throwing when the table or the files column is
+ * not there yet: a phone running ahead of the migration still has to be able to
+ * open the Plans page.
+ */
+export async function mondayJobForProject(
+  projectId: string,
+): Promise<MondayJob | null> {
+  const { data, error } = await supabase
+    .from("monday_jobs")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("synced_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    if (isMissingTable(error, "monday_jobs")) return null;
+    throw error;
+  }
+  return (data as MondayJob | null) ?? null;
+}
+
+/**
  * Ask monday-sync to fetch the chosen files and put them on the job.
  *
  * Server-side on purpose. Monday's download link is minted per request and
