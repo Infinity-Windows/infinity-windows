@@ -290,6 +290,10 @@ export function Receipts() {
                     {" · "}
                     {r.jobCode ?? r.pendingJobName ?? "No job"}
                     {r.uploaderName ? ` · ${r.uploaderName}` : ""}
+                    {/* Wave Z: once a receipt has become a job cost line it
+                        says so forever — un-reviewing does not unpost it,
+                        because the money was still spent. */}
+                    {r.jobCostId ? " · posted to the job" : ""}
                   </span>
                 </div>
                 <div className="wh-actions">

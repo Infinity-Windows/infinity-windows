@@ -465,6 +465,273 @@ grant execute on function public.set_pay_rate(uuid, integer, date) to authentica
 
 
 -- ===========================================================================
+-- 4. Z4 — a reviewed receipt becomes a job cost, exactly once
+-- ===========================================================================
+-- Nothing has ever written `receipts` into `job_costs`. A crew member snaps a
+-- receipt, a supervisor reviews it, and the money never reaches the job it was
+-- spent on — the office retyped it, or nobody did. This is the bridge.
+--
+-- The whole rule, in one sentence: ONE receipt makes AT MOST ONE job cost line,
+-- ever. `receipts.job_cost_id` is what enforces it — set once, never cleared —
+-- so un-reviewing does not delete the line, re-reviewing does not post a second
+-- one, and the receipt reads "posted" from then on.
+
+-- Which kind of purchase this was, from the same cost-code library the clock
+-- uses. Nullable: a receipt filed in a hurry with no code is still a receipt,
+-- and the office can set it later.
+alter table receipts
+  add column if not exists cost_code_id uuid references cost_codes(id) on delete set null;
+
+-- The line this receipt became. ON DELETE SET NULL rather than cascade: if a
+-- cost line is ever removed, the receipt itself must survive — it is a photo of
+-- a real purchase, and 20260959000000 already treats receipts as a record with
+-- retention weight.
+alter table receipts
+  add column if not exists job_cost_id uuid references job_costs(id) on delete set null;
+
+-- "Bill this to the customer?" travels with the money. Nullable on purpose,
+-- exactly like receipts.is_passthrough: null means nobody has answered yet, and
+-- printing "not billable" over an unanswered question would be a claim the app
+-- has no right to make.
+alter table job_costs
+  add column if not exists billable boolean;
+
+comment on column receipts.job_cost_id is
+  'The job_costs line this receipt became, stamped by review_receipt. Set once and never cleared — it is what makes "one receipt, at most one cost line, ever" true across un-reviewing, re-reviewing, and a later bank match (Wave Z, Z4).';
+comment on column job_costs.billable is
+  'Passed through to the customer? Copied from the receipt''s is_passthrough and kept in step with it. Null means nobody has answered yet.';
+
+create index if not exists receipts_cost_code_idx on receipts (cost_code_id);
+
+-- ---- set_receipt_cost_code ------------------------------------------------
+-- A narrow writer rather than a tenth argument on update_receipt. That
+-- function's full-record contract exists so a field edit cannot race the
+-- fill-missing-only extraction — a real hazard for amount/vendor/date, which a
+-- machine also writes. Nothing but a human ever writes a cost code, so it needs
+-- no such protection, and adding an argument would mean DROPPING and recreating
+-- update_receipt (a new argument list is a different function to Postgres, so
+-- `create or replace` would leave an ambiguous overload behind) and would let
+-- any phone still running yesterday's bundle blank the code on its next save.
+create or replace function public.set_receipt_cost_code(
+  p_id uuid,
+  p_cost_code_id uuid
+)
+returns receipts
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_uploader uuid;
+  v_row receipts;
+begin
+  select uploaded_by into v_uploader from receipts where id = p_id;
+  if v_uploader is null then
+    raise exception 'no such receipt';
+  end if;
+  -- The same floor update_receipt uses: the person who filed it, or the office.
+  if not (v_uid = v_uploader or public.my_role_rank() >= 2) then
+    raise exception 'only the uploader or a supervisor can change this receipt'
+      using errcode = '42501';
+  end if;
+  if p_cost_code_id is not null
+     and not exists (select 1 from cost_codes where id = p_cost_code_id) then
+    raise exception 'that is not a cost code we have';
+  end if;
+
+  update receipts set cost_code_id = p_cost_code_id
+   where id = p_id
+  returning * into v_row;
+
+  return v_row;
+end;
+$$;
+
+comment on function public.set_receipt_cost_code(uuid, uuid) is
+  'Uploader-or-supervisor: which kind of purchase this receipt was. A narrow writer on purpose — see the function body for why it is not a tenth argument on update_receipt.';
+
+revoke all on function public.set_receipt_cost_code(uuid, uuid) from public, anon;
+grant execute on function public.set_receipt_cost_code(uuid, uuid) to authenticated;
+
+
+-- ---- the bridge itself ----------------------------------------------------
+-- Internal: called by review_receipt, and by match_bank_transaction in Z5.
+-- Never granted to any client role — a definer function calling it runs as the
+-- table owner, which is the only caller it should ever have.
+--
+-- Refuses to post silently when it cannot: no job means the money is not on a
+-- job, and no amount means there is nothing to post. Both return null and leave
+-- the receipt exactly as it was.
+create or replace function public._post_receipt_job_cost(p_receipt_id uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  r receipts;
+  v_label text;
+  v_cost_id uuid;
+begin
+  select * into r from receipts where id = p_receipt_id;
+  if not found then return null; end if;
+  -- Already posted. THE rule of this section: one receipt, one line, ever.
+  if r.job_cost_id is not null then return r.job_cost_id; end if;
+  if r.project_id is null then return null; end if;
+  if r.amount_cents is null then return null; end if;
+
+  -- The vendor is what a person reading the ledger recognises; the note is what
+  -- they wrote to explain it. Both, when both exist.
+  v_label := coalesce(nullif(btrim(r.vendor), ''), 'Receipt');
+  if nullif(btrim(coalesce(r.note, '')), '') is not null then
+    v_label := v_label || ' — ' || btrim(r.note);
+  end if;
+
+  insert into job_costs (project_id, category, label, amount, cost_date, billable, created_by)
+  values (
+    r.project_id,
+    -- Every receipt posts as `materials`. Gas is the other category a receipt
+    -- carries, and gas on a job IS a material cost of that job; splitting it
+    -- into `other` would just make two lines nobody can add up.
+    'materials',
+    v_label,
+    r.amount_cents / 100.0,
+    coalesce(r.purchased_on, current_date),
+    r.is_passthrough,
+    coalesce(r.reviewed_by, r.uploaded_by)
+  )
+  returning id into v_cost_id;
+
+  update receipts set job_cost_id = v_cost_id where id = p_receipt_id;
+  return v_cost_id;
+end;
+$$;
+
+comment on function public._post_receipt_job_cost(uuid) is
+  'Internal: turn a receipt into its ONE job_costs line and stamp receipts.job_cost_id. Returns the existing line id if it already posted, or null when there is no job or no amount to post. Called by review_receipt and by match_bank_transaction — never by a client.';
+
+revoke all on function public._post_receipt_job_cost(uuid) from public, anon, authenticated;
+
+
+-- ---- review_receipt now posts ---------------------------------------------
+-- Same signature, so every caller and every grant is untouched.
+create or replace function public.review_receipt(
+  p_id uuid,
+  p_reviewed boolean default true
+)
+returns receipts
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row receipts;
+begin
+  if public.my_role_rank() < 2 then
+    raise exception 'only a supervisor or above can review a receipt'
+      using errcode = '42501';
+  end if;
+
+  -- Reviewing a receipt that is on a job and has no amount would mark it
+  -- correct and post nothing, which is the quiet failure this bridge exists to
+  -- end. Say so instead. A JOBLESS receipt (gas, the common case) reviews fine
+  -- with or without an amount — there is nothing for it to post to.
+  if p_reviewed and exists (
+    select 1 from receipts
+     where id = p_id and project_id is not null
+       and amount_cents is null and job_cost_id is null
+  ) then
+    raise exception 'Add the amount before you review this one — the job cost line needs it.';
+  end if;
+
+  update receipts set
+    reviewed_by = case when p_reviewed then auth.uid() else null end,
+    reviewed_at = case when p_reviewed then now() else null end
+  where id = p_id
+  returning * into v_row;
+
+  if v_row.id is null then
+    raise exception 'no such receipt';
+  end if;
+
+  if p_reviewed then
+    -- Un-reviewing deliberately does NOT unpost. The money left the company
+    -- whatever the office later decides about the paperwork, and deleting a
+    -- ledger line because somebody unticked a box is how a ledger stops being
+    -- one. The receipt reads "posted" from here on.
+    perform public._post_receipt_job_cost(p_id);
+    select * into v_row from receipts where id = p_id;
+  end if;
+
+  return v_row;
+end;
+$$;
+
+comment on function public.review_receipt(uuid, boolean) is
+  'Supervisor+ marks (or unmarks) a receipt reviewed. Reviewing one that names a job posts its single job_costs line (Wave Z, Z4); un-reviewing leaves that line standing, because the money was still spent.';
+
+
+-- ---- the posted line follows the receipt ----------------------------------
+-- Editing a receipt's amount after it posted has to move the ledger line with
+-- it, or the two disagree and the receipt photo stops being evidence for the
+-- number. A trigger rather than a line inside update_receipt, because
+-- apply_receipt_extraction writes the same fields and a rule enforced in two
+-- writers is a rule enforced in neither.
+create or replace function public.sync_receipt_job_cost()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_label text;
+begin
+  v_label := coalesce(nullif(btrim(new.vendor), ''), 'Receipt');
+  if nullif(btrim(coalesce(new.note, '')), '') is not null then
+    v_label := v_label || ' — ' || btrim(new.note);
+  end if;
+
+  update job_costs set
+    project_id = coalesce(new.project_id, project_id),
+    label      = v_label,
+    amount     = coalesce(new.amount_cents / 100.0, amount),
+    cost_date  = coalesce(new.purchased_on, cost_date),
+    billable   = new.is_passthrough
+  where id = new.job_cost_id;
+
+  return null;
+end;
+$$;
+
+comment on function public.sync_receipt_job_cost() is
+  'Keeps a posted receipt''s job_costs line in step with the receipt: one source of truth for the amount, the date, the vendor and the bill-to-customer flag (Wave Z, Z4).';
+
+revoke all on function public.sync_receipt_job_cost() from public, anon, authenticated;
+
+drop trigger if exists trg_receipt_syncs_its_job_cost on receipts;
+create trigger trg_receipt_syncs_its_job_cost
+  after update on receipts
+  for each row
+  when (
+    new.job_cost_id is not null
+    -- Unchanged, so this is an edit to an ALREADY posted receipt — not the
+    -- stamp _post_receipt_job_cost just made, whose line was built from these
+    -- very values a moment ago.
+    and old.job_cost_id is not distinct from new.job_cost_id
+    and (
+      old.amount_cents is distinct from new.amount_cents
+      or old.purchased_on is distinct from new.purchased_on
+      or old.vendor is distinct from new.vendor
+      or old.note is distinct from new.note
+      or old.is_passthrough is distinct from new.is_passthrough
+      or old.project_id is distinct from new.project_id
+    )
+  )
+  execute function public.sync_receipt_job_cost();
+
+
+-- ===========================================================================
 -- 99. Re-arm the sandbox fence
 -- ===========================================================================
 -- project_financials carries a `project_id`, which is what makes a table

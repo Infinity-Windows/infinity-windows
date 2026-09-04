@@ -9,6 +9,7 @@ import {
   addJobCost,
   bidForMargin,
   getCompanyCosting,
+  listJobCosts,
   setBid,
   toCsv,
 } from "../lib/costing";
@@ -41,7 +42,19 @@ export function Costing() {
   const [calcCost, setCalcCost] = useState("");
   const [calcMargin, setCalcMargin] = useState("20");
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["companyCosting"] });
+  // Wave Z: the selected job's own cost lines, so a receipt that posted itself
+  // is visible as a line rather than only as a bigger total — and so the
+  // "billable to customer" flag it carried over has somewhere to show.
+  const jobLines = useQuery({
+    queryKey: ["jobCosts", sel],
+    queryFn: () => listJobCosts(sel),
+    enabled: canSeeCosts && Boolean(sel),
+  });
+
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ["companyCosting"] });
+    void queryClient.invalidateQueries({ queryKey: ["jobCosts"] });
+  };
   const addCost = useMutation({
     mutationFn: () => addJobCost(sel, costCat, Number(costAmt)),
     onSuccess: () => { setCostAmt(""); refresh(); },
@@ -220,6 +233,16 @@ export function Costing() {
             <span>Manual costs</span>
             <strong>{money(selJob.manualCosts)}</strong>
           </div>
+          {(jobLines.data ?? []).map((line) => (
+            <div className="cost-kv" key={line.id}>
+              <span>
+                {line.cost_date} · {line.category}
+                {line.label ? ` · ${line.label}` : ""}
+                {line.billable ? " · billable to customer" : ""}
+              </span>
+              <strong>{money(Number(line.amount))}</strong>
+            </div>
+          ))}
         </div>
       )}
 

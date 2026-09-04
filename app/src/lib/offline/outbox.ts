@@ -368,6 +368,8 @@ export function enqueueReceiptAnswer(input: {
   projectId?: string | null;
   pendingJobName?: string | null;
   isPassthrough?: boolean | null;
+  /** Wave Z: which kind of purchase, picked in the same one question. */
+  costCodeId?: string | null;
 }): Promise<string> {
   return enqueue({
     op: "receipt_answer",
@@ -377,6 +379,7 @@ export function enqueueReceiptAnswer(input: {
       projectId: input.projectId ?? null,
       pendingJobName: input.pendingJobName ?? null,
       isPassthrough: input.isPassthrough ?? null,
+      costCodeId: input.costCodeId ?? null,
     },
   });
 }

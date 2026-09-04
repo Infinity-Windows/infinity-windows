@@ -121,6 +121,9 @@ export interface JobCost {
   label: string | null;
   amount: number;
   cost_date: string;
+  /** Wave Z: passed through to the customer. Copied from the receipt that
+   * posted this line and kept in step with it; null = nobody has answered. */
+  billable?: boolean | null;
 }
 
 export interface ChangeOrder {
