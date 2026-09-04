@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getRealProfile } from "./install/api";
 import type { CrewRole } from "./install/types";
+import type { MoneyGrants } from "./nav";
 import { effectiveRole, useViewAsRole } from "./viewAsRoleContext";
 
 export interface EffectiveRole {
@@ -16,6 +17,17 @@ export interface EffectiveRole {
    * null as "no permissions", which would flash a denial at every allowed user.
    */
   isLoading: boolean;
+  /**
+   * Wave Z: the money grants to gate the UI with — the REAL person's grants,
+   * except while previewing another role, when both read false.
+   *
+   * That exception is what keeps "view as role" faithful. The grants live on a
+   * person, not a rank, so an owner previewing "installer" would otherwise keep
+   * seeing the Cost tab and conclude installers can reach it. Dropping them for
+   * the duration shows the preview the doors a person of that rank with no
+   * grant actually gets — which is the question the preview is asked.
+   */
+  grants: MoneyGrants;
 }
 
 /**
@@ -38,5 +50,11 @@ export function useEffectiveRole(): EffectiveRole {
     effectiveRole: role,
     isPreviewing,
     isLoading: me.isLoading,
+    grants: isPreviewing
+      ? {}
+      : {
+          costs: me.data?.can_see_costs === true,
+          pay: me.data?.can_see_pay === true,
+        },
   };
 }

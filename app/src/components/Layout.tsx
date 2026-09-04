@@ -144,7 +144,15 @@ export function Layout() {
     await supabase.auth.signOut();
   };
 
-  const sections = menuForRole(role);
+  // Wave Z: the money grants come off the REAL profile and are dropped while
+  // previewing another role, so the drawer a preview draws is the one that
+  // role really gets — same rule useEffectiveRole applies to the route guard.
+  const sections = menuForRole(
+    role,
+    role === realMe.data?.role
+      ? { costs: realMe.data?.can_see_costs === true, pay: realMe.data?.can_see_pay === true }
+      : {},
+  );
   const isActionActive = (action: MenuAction) => (action === "open-clock" ? clock.isOpen : false);
   const onMenuAction = (action: MenuAction) => {
     if (action === "open-clock") {

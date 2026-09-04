@@ -155,6 +155,14 @@ export interface Profile {
    * layer rather than trusting it raw.
    */
   language?: "en" | "es";
+  /**
+   * Wave Z: the two money grants an owner hands out (20260978000000). NOT NULL
+   * DEFAULT false in the database, so a fresh read always has them; typed
+   * optional only for a row a client parsed before the columns existed — which
+   * reads as `undefined`, i.e. no grant, which is the safe answer.
+   */
+  can_see_costs?: boolean;
+  can_see_pay?: boolean;
   created_at?: string;
   updated_at?: string;
 }

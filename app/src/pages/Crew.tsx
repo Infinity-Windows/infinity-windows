@@ -1,12 +1,15 @@
 import { BackChip } from "../components/BackChip";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getMyProfile,
   listCapabilityBadges,
   listProfiles,
   setCapabilityBadge,
+  setProfileGrants,
   updateProfile,
 } from "../lib/install/api";
+import { formatApiError } from "../lib/errors";
 import {
   CAPABILITIES,
   CAPABILITY_LABELS,
@@ -65,6 +68,22 @@ export function Crew() {
   const { effectiveRole } = useEffectiveRole();
   const isLead = isForemanPlus(effectiveRole);
   const canSetRoles = isSupervisorPlus(effectiveRole);
+  // Wave Z: only an owner hands out money. Same floor as set_profile_grants,
+  // which refuses everyone else server-side — this just doesn't offer the tap.
+  const canSetGrants = isOwner(effectiveRole);
+
+  const [grantError, setGrantError] = useState<string | null>(null);
+  const setGrants = useMutation({
+    mutationFn: (args: { id: string; costs?: boolean; pay?: boolean }) =>
+      setProfileGrants(args.id, { costs: args.costs, pay: args.pay }),
+    onSuccess: () => {
+      setGrantError(null);
+      queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["myProfile"] });
+      queryClient.invalidateQueries({ queryKey: ["myRealProfile"] });
+    },
+    onError: (e) => setGrantError(formatApiError(e)),
+  });
 
   return (
     <div className="page">
@@ -84,6 +103,8 @@ export function Crew() {
       )}
 
       <PinSetter />
+
+      {grantError && <p className="error">{grantError}</p>}
 
       <h2>Roster</h2>
       <ul className="unit-list">
@@ -191,6 +212,40 @@ export function Crew() {
                             {ROLE_LABELS[r]}
                           </button>
                         ))}
+                      </div>
+                    </>
+                  )}
+                  {/* Wave Z: money is a grant, not a rank. An owner can let one
+                      supervisor read the cost books without making them an
+                      owner, and can hand pay rates to somebody who never sees a
+                      job's margin. Owners themselves always see both, so their
+                      own row shows no checkboxes to mislead anyone. */}
+                  {canSetGrants && p.role !== "owner" && (
+                    <>
+                      <label className="field-label">Money</label>
+                      <div className="row-gap" style={{ flexWrap: "wrap" }}>
+                        <label className="row-gap" style={{ alignItems: "center", gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={p.can_see_costs === true}
+                            disabled={setGrants.isPending}
+                            onChange={(e) =>
+                              setGrants.mutate({ id: p.id, costs: e.target.checked })
+                            }
+                          />
+                          Sees costs
+                        </label>
+                        <label className="row-gap" style={{ alignItems: "center", gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={p.can_see_pay === true}
+                            disabled={setGrants.isPending}
+                            onChange={(e) =>
+                              setGrants.mutate({ id: p.id, pay: e.target.checked })
+                            }
+                          />
+                          Sees pay rates
+                        </label>
                       </div>
                     </>
                   )}

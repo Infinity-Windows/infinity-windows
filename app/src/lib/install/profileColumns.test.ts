@@ -19,6 +19,12 @@ const GRANTED_SELECT_COLUMNS = [
   // 20260968000000_profile_language.sql granted SELECT (language) to the
   // authenticated role — a person may read their own app-language preference.
   "language",
+  // 20260978000000_money_doors.sql granted SELECT on the two money grants
+  // (wave Z, Z1). Readable so the Roster can draw the checkboxes and canAccess
+  // can open /costing for a granted person; never UPDATE — set_profile_grants
+  // is the one writer, exactly like role, pin_hash and language before it.
+  "can_see_costs",
+  "can_see_pay",
   "created_at",
   "updated_at",
 ];
