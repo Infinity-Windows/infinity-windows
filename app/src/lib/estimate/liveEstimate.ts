@@ -19,6 +19,7 @@ import {
   combineEvidence,
   estimateForSignature,
   installEventsEvidence,
+  partitionDataOff,
   sessionsEvidence,
   type CohortEstimate,
   type CohortEvidence,
@@ -41,6 +42,12 @@ export function useCohortEvidence(): {
   evidence: CohortEvidence[];
   sessions: CohortEvidence[];
   legacy: CohortEvidence[];
+  /**
+   * Wave E: the samples this hook REFUSED to hand out, each with the reason
+   * its unit's record was flagged wrong. Read by the Data Tab so the pool can
+   * never shrink without somebody being able to say by how much and why.
+   */
+  dataOff: { unitId?: string; sigKey: string; reason: string }[];
 } {
   const sessions = useQuery({
     queryKey: ["cohortEvidence", "sessions"],
@@ -53,9 +60,22 @@ export function useCohortEvidence(): {
     staleTime: 60_000,
   });
   return useMemo(() => {
-    const s = sessions.data ?? [];
-    const l = legacy.data ?? [];
-    return { evidence: combineEvidence(s, l), sessions: s, legacy: l };
+    // THE ONE PLACE data-off units leave the estimating world (wave E, Q12).
+    // Every screen that estimates — the foreman's job list, the Data Tab, the
+    // Studio's live line and its catalog badge — takes its pool from this
+    // hook, so filtering here is filtering everywhere, and nothing downstream
+    // has to remember the rule. Both raw pools are filtered too: `sessions` is
+    // what the Data Tab reads actual minutes from, and an actual with no
+    // estimate beside it would put a flagged unit straight back into the
+    // estimate-vs-actual health count by the back door.
+    const s = partitionDataOff(sessions.data ?? []);
+    const l = partitionDataOff(legacy.data ?? []);
+    return {
+      evidence: combineEvidence(s.usable, l.usable),
+      sessions: s.usable,
+      legacy: l.usable,
+      dataOff: [...s.excluded, ...l.excluded],
+    };
   }, [sessions.data, legacy.data]);
 }
 

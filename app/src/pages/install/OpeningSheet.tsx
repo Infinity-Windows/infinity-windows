@@ -17,9 +17,11 @@ import {
   addJobNote,
   addOpeningNote,
   assignWindowToOpening,
+  clearOpeningFlag,
   flagOpening,
   getMyProfile,
   getOpening,
+  listOpenings,
   getTypeBrainStats,
   listMarkSpecs,
   listMyOpeningsAllJobs,
@@ -107,9 +109,13 @@ import {
 import {
   MEMO_TOPICS,
   isForemanPlus,
+  isSupervisorPlus,
   openingStatusLabel,
   type MemoTopics,
 } from "../../lib/install/types";
+import { DataOffCard } from "../../components/install/DataOffCard";
+import { MissedUnitActions } from "../../components/install/MissedUnitActions";
+import type { DataOffKind } from "../../lib/install/dataOff";
 import { claimUnsavedWork } from "../../lib/pwa/unsavedWork";
 import { indexSpecsByMark, specForOpeningCode } from "../../lib/install/specs";
 import { SpecCard } from "../../components/install/SpecCard";
@@ -310,7 +316,6 @@ export function OpeningSheet() {
     height: null,
   });
   const [conditionNote, setConditionNote] = useState("");
-  const [flagText, setFlagText] = useState("");
   const [jobNoteText, setJobNoteText] = useState("");
   const [complicationText, setComplicationText] = useState("");
   const [noteText, setNoteText] = useState("");
@@ -330,7 +335,6 @@ export function OpeningSheet() {
     grade !== null ||
     minutesTouched ||
     conditionNote.trim() !== "" ||
-    flagText.trim() !== "" ||
     jobNoteText.trim() !== "" ||
     complicationText.trim() !== "" ||
     noteText.trim() !== "" ||
@@ -355,6 +359,19 @@ export function OpeningSheet() {
   const opening = useQuery({
     queryKey: ["opening", openingId],
     queryFn: () => getOpening(openingId),
+  });
+
+  // Who's on the crew — only so a data-off flag can say whose it is by name
+  // rather than by a uuid nobody recognises. Shared query key, so it rides
+  // whatever the rest of the app has already fetched.
+  const crew = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
+
+  // The job's other windows and doors, for the merge-a-missed-unit picker.
+  // Only fetched when this IS a missed unit — every other sheet pays nothing.
+  const jobOpenings = useQuery({
+    queryKey: ["openings", projectId],
+    queryFn: () => listOpenings(projectId),
+    enabled: Boolean(opening.data?.field_added),
   });
 
   // Stream this job's openings so a phone left open on a window notices when
@@ -934,11 +951,23 @@ export function OpeningSheet() {
     onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
   });
 
+  // "Data off" (wave E): a reason and, when there is one, a note. The reason is
+  // the part that can be counted, which is the whole point — a free-text flag
+  // could never tell "wrong size" from "came mirrored".
   const flag = useMutation({
-    mutationFn: (note: string | null) => flagOpening(openingId, note),
-    onSuccess: (_d, note) => {
-      setMessage({ text: note ? "Flagged to your lead." : "Flag cleared.", tone: "ok" });
-      setFlagText("");
+    mutationFn: (args: { kind: DataOffKind; note: string }) =>
+      flagOpening(openingId, args.note || null, args.kind),
+    onSuccess: () => {
+      setMessage({ text: t("dataoff.saved"), tone: "ok" });
+      refresh();
+    },
+    onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
+  });
+
+  const clearFlag = useMutation({
+    mutationFn: () => clearOpeningFlag(openingId),
+    onSuccess: () => {
+      setMessage({ text: t("dataoff.cleared"), tone: "ok" });
       refresh();
     },
     onError: (e) => setMessage({ text: formatApiError(e), tone: "error" }),
@@ -2236,37 +2265,43 @@ export function OpeningSheet() {
         </>
       )}
 
-      {/* --- Exceptions: flag + site note (not during install screen) --- */}
+      {/*
+        Data off (wave E). OUTSIDE the `!installed && stage !== "install"` gate
+        below on purpose: the flag is about the RECORD, not the work, so it can
+        be raised while installing and it stays readable — and clearable —
+        after the window is in and QC has passed. It never blocks Finish.
+      */}
+      <DataOffCard
+        opening={o}
+        flaggedByName={
+          o.flagged_by
+            ? (crew.data ?? []).find((p) => p.id === o.flagged_by)?.display_name ?? null
+            : null
+        }
+        canClear={isForemanPlus(effectiveRole)}
+        busy={flag.isPending || clearFlag.isPending}
+        onFlag={(kind, note) => flag.mutate({ kind, note })}
+        onClear={() => clearFlag.mutate()}
+      />
+
+      {/* --- Missed unit: what a supervisor does with one (wave E) --- */}
+      {o.field_added && (
+        <MissedUnitActions
+          opening={o}
+          openings={jobOpenings.data ?? []}
+          canAct={isSupervisorPlus(effectiveRole)}
+          onDone={(message) => {
+            setMessage({ text: message, tone: "ok" });
+            refresh();
+          }}
+          onError={(e) => setMessage({ text: formatApiError(e), tone: "error" })}
+        />
+      )}
+
+      {/* --- Exceptions: site note (not during install screen) --- */}
       {!installed && stage !== "install" && (
         <details className="more-actions">
-          <summary className="muted">Flag a problem / site note</summary>
-          {o.flag_note ? (
-            <div className="fit-verdict fit-too_small">
-              <strong>Flagged:</strong> {o.flag_note}{" "}
-              <button className="link" onClick={() => flag.mutate(null)}>
-                Clear
-              </button>
-            </div>
-          ) : (
-            <>
-              <p className="muted">
-                Stuck or something's wrong? Send it to your lead — it shows in
-                their dispatch blockers.
-              </p>
-              <input
-                value={flagText}
-                onChange={(e) => setFlagText(e.target.value)}
-                placeholder="e.g. wrong unit delivered, access blocked"
-              />
-              <button
-                className="action-btn"
-                disabled={!flagText.trim() || flag.isPending}
-                onClick={() => flag.mutate(flagText.trim())}
-              >
-                Flag to lead
-              </button>
-            </>
-          )}
+          <summary className="muted">Site note / complication</summary>
 
           <label className="field-label">Site note for the lead (optional)</label>
           <input

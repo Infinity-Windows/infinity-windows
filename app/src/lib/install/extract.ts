@@ -741,6 +741,12 @@ export interface ExistingOpeningLite {
    * issue, a task session or a service case.
    */
   referenced?: boolean;
+  /**
+   * Added by a person standing on the job (add_field_unit, wave E) rather than
+   * read off a planset. See `isProtected` in planDraftPersistence: this is
+   * absolute, and it does not go away when a supervisor clears the unit's flag.
+   */
+  field_added?: boolean;
 }
 
 /**
@@ -846,8 +852,15 @@ export function planDraftPersistence(
   // guessed qty=1 rows must never supersede building counts.
   specsAuthoritative = false,
 ): DraftPersistencePlan {
+  // `field_added` is listed FIRST and stands alone (wave E): a window somebody
+  // added while standing in front of it is not a draft this planner may
+  // reconsider, whatever its status, whoever has or has not worked it, and
+  // whether or not a supervisor has since cleared its data-off flag. The line
+  // this whole function draws — the extractor may drop its own guesses, a
+  // person's record is never dropped — is the same line #476 was written for;
+  // a field-added row is simply the most literal case of it.
   const isProtected = (o: ExistingOpeningLite) =>
-    o.confirmed || o.status !== "planned" || hasFieldWork(o);
+    o.field_added === true || o.confirmed || o.status !== "planned" || hasFieldWork(o);
 
   const incomingMarks = new Set(drafts.map((d) => markBase(d.opening_code)));
 

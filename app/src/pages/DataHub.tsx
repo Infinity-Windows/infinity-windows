@@ -35,6 +35,12 @@ import {
   weeklyTrend,
 } from "../lib/data/insights";
 import { estimateJobUnits } from "../lib/estimate/cohorts";
+import {
+  DATA_OFF_LABEL_KEYS,
+  dataOffRate,
+  dataOffUnits,
+} from "../lib/install/dataOff";
+import { useT } from "../lib/i18n";
 import { useCohortEvidence } from "../lib/estimate/liveEstimate";
 import type { ProjectOpening } from "../lib/install/types";
 import type { ProjectMarkSpec } from "../lib/install/specs";
@@ -86,6 +92,7 @@ const RUNG_LABELS: Record<LadderRung, string> = {
 };
 
 export function DataHub() {
+  const t = useT();
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: listProfiles });
   const [jobFilter, setJobFilter] = useState<string>("all");
@@ -171,7 +178,12 @@ export function DataHub() {
       ),
   });
 
-  const { evidence, sessions: sessionsEv, legacy: legacyEv } = useCohortEvidence();
+  const {
+    evidence,
+    sessions: sessionsEv,
+    legacy: legacyEv,
+    dataOff: dataOffExcluded,
+  } = useCohortEvidence();
 
   const all = bundles.data ?? [];
   const allSessions = useMemo(() => all.flatMap((b) => b.sessions), [all]);
@@ -188,6 +200,24 @@ export function DataHub() {
     0,
   );
   const unitsTotal = all.reduce((t, b) => t + b.openings.length, 0);
+
+  // Wave E: the units whose paperwork the crew says is wrong, per job. Read
+  // off the openings this page already has — no extra query — and the rate is
+  // shown beside the rework rate because they answer the same question from
+  // two sides: how often is the work redone, how often is the record wrong.
+  // Not memoised on purpose: `all` is a fresh array every render (every other
+  // useMemo on this page already carries that lint warning for the same
+  // reason), and a filter over a few hundred openings is cheaper than one more
+  // suppressed warning would be to read.
+  const dataOffJobs = all
+    .map((b) => ({
+      projectId: b.projectId,
+      jobCode: b.jobCode,
+      units: dataOffUnits(b.openings),
+    }))
+    .filter((j) => j.units.length > 0);
+  const dataOffTotal = dataOffJobs.reduce((t, j) => t + j.units.length, 0);
+  const dataOffPct = dataOffRate(dataOffTotal, unitsTotal);
 
   // The five costliest windows across scope — each links to its sheet,
   // where the Record answers "why so much?" with photos and a timeline.
@@ -408,6 +438,12 @@ export function DataHub() {
           <span className={`data-chip${rework.units > 0 ? " chip-hot" : ""}`}>
             Units redone <strong>{rework.units}</strong>
             {rework.units > 0 && <span>· {fmtH(rework.minutes)} spent fixing</span>}
+          </span>
+          <span className={`data-chip${dataOffTotal > 0 ? " chip-hot" : ""}`}>
+            {t("datahub.dataOff.chip")} <strong>{dataOffTotal}</strong>
+            {dataOffPct != null && dataOffTotal > 0 && (
+              <span>· {Math.round(dataOffPct * 100)}% of units</span>
+            )}
           </span>
           <span className={`data-chip${openRedos > 0 ? " chip-hot" : ""}`}>
             Waiting on a redo <strong>{openRedos}</strong>
@@ -671,6 +707,54 @@ export function DataHub() {
               Worth a check before trusting the on-tool numbers above.
             </p>
           </div>
+        )}
+      </div>
+
+      {/* ---- 4b · UNITS DATA OFF (wave E) ---- */}
+      <div className="detail-card">
+        <p className="data-section-kicker">Data quality</p>
+        <h2 style={{ margin: "0 0 6px" }}>{t("datahub.dataOff.title")}</h2>
+        <Explain>{t("datahub.dataOff.explain")}</Explain>
+        {dataOffJobs.length === 0 ? (
+          <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+            {t("datahub.dataOff.none")}
+          </p>
+        ) : (
+          <>
+            {dataOffJobs.map((job) => (
+              <div key={job.projectId} style={{ marginBottom: 10 }}>
+                <div className="databar-row">
+                  <span className="bar-name">
+                    <Link to={`/projects/${job.projectId}?tab=brain`}>
+                      <strong>{job.jobCode}</strong>
+                    </Link>
+                  </span>
+                  <span className="bar-num" style={{ marginLeft: "auto" }}>
+                    {job.units.length}
+                  </span>
+                </div>
+                {job.units.map((u) => (
+                  <div className="databar-row" key={u.openingId}>
+                    <span className="bar-name">
+                      <Link to={`/projects/${job.projectId}/opening/${u.openingId}`}>
+                        {u.code}
+                      </Link>
+                    </span>
+                    <span className="bar-num" style={{ marginLeft: "auto" }}>
+                      {t(DATA_OFF_LABEL_KEYS[u.reason])}
+                      {u.note ? ` · ${u.note}` : ""}
+                      {u.flaggedBy ? ` · ${nameOf(u.flaggedBy)}` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ))}
+            {dataOffExcluded.length > 0 && (
+              <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
+                {t("datahub.dataOff.excluded", { n: dataOffExcluded.length })}
+              </p>
+            )}
+          </>
         )}
       </div>
     </div>

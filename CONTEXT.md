@@ -405,6 +405,48 @@ clears the installer for…"); a first pass grants it through the same write
 `setClearance` performs — the hook the app had built but never called until
 this wave wired it up.
 
+## Field truth
+
+Settled 2026-09-03, wave E (transcripts program, Q12 + Q18 — grilled and
+approved; cite, never re-decide). What the crew says about a unit when the
+paperwork and the building disagree.
+
+**Data off** — the unit is fine, its RECORD is wrong. One tap on the opening
+sheet, a reason (`flag_kind`: wrong size, mirrored, not as drawn, not on the
+plans, something else) and an optional note, on the same `flag_note` /
+`flagged_by` / `flagged_at` columns the free-text flag always used — so every
+flag raised before reasons existed reads as "something else", because nobody
+was ever asked which kind it was and guessing one would invent history. It
+NEVER blocks Finish: "done, data off" is the ordinary case, and the whole
+point is that saying so costs nothing. It is about the record and not the
+work, so it outlives the install and the QC pass — amber on the map beats
+green — and stays until a foreman clears it, which is a claim that somebody
+went and checked (`clear_opening_flag` is foreman+; raising one is anyone).
+A data-off unit's install never enters a cohort average or the estimating
+health counts: the minutes are real, but what they are minutes OF is not.
+Excluded WITH its reason and counted as the data-off rate, so the evidence
+pool can never quietly shrink with nobody able to say by how much.
+
+**Missed unit** — a window or door the paperwork never had, added by whoever
+is standing in front of it. `add_field_unit` checks PRESENCE, not rank: an
+open shift on that job is the permission, because the person who can see the
+hole is the person who should be able to record it. It becomes a real opening
+coded "Missed N" with its own mark spec (source `field`), a photo, and
+`flag_kind = not_on_plans`; it lands where the map was tapped, or unplaced
+when there is no map. The N is issued once per job and never handed out
+again — not after a rename, not after a removal — because the number is what
+its measurements are filed under, and two units sharing one would put the
+first one's width and height on the second one's glass order. That flag is
+also the one data-off reason that never holds a unit back from being
+dispatched: it is not doubt about the record, it IS the record. Every
+supervisor and every lead on the job is pushed the same minute. A supervisor
+then Keeps it (renaming it once the paperwork catches up), Merges it into the
+mark it turned out to be, or Removes it — the last two only while it carries
+no sessions and no install, because after that the row is evidence and Keep is
+the honest answer. `field_added` makes it
+immune to every re-extraction sweep, permanently and independently of its
+flag: the extractor may drop its own guesses, never a person's record.
+
 ## Open questions
 
 None right now — the next ones come from building.

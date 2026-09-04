@@ -19,6 +19,9 @@ import {
 import { listServiceCases } from "../lib/service";
 import { listQcStatusForOpenings } from "../lib/ops";
 import { formatApiError } from "../lib/errors";
+import { isMissingColumn } from "../lib/schemaErrors";
+import { useT } from "../lib/i18n";
+import { dataOffReasonKey } from "../lib/install/dataOff";
 import {
   openingUnitKind,
   openingUnitKindResolver,
@@ -33,6 +36,14 @@ interface ProjectLite {
 interface OpeningLite {
   id: string;
   opening_code: string;
+  /** Wave E: added on site rather than read off a planset. Optional because
+   *  the column arrives with 20260977000000 — absent reads as "not one". */
+  field_added?: boolean | null;
+  /** Wave E: why the record on this unit is wrong. Same migration, so the same
+   *  peel-back covers it. Read when a flag issue carries no typed note — the
+   *  reason lives here and never in the note. */
+  flag_kind?: string | null;
+  flag_note?: string | null;
   window_types: {
     category: string | null;
     type_code: string | null;
@@ -55,16 +66,28 @@ async function fetchIssueRefs(): Promise<{
   markSpecs: MarkSpecLite[];
   profiles: ProfileLite[];
 }> {
-  const [projRes, openRes, specRes, profRes] = await Promise.all([
+  // `field_added` and `flag_kind` both arrive with 20260977000000, so one rung
+  // covers both. `flag_note` predates the wave and is always asked for.
+  const openingCols = (waveE: boolean) =>
+    `id, opening_code, flag_note, ${waveE ? "field_added, flag_kind, " : ""}` +
+    "window_types(category, type_code, name)";
+  const [projRes, openFirst, specRes, profRes] = await Promise.all([
     supabase.from("projects").select("id, job_code, name, status"),
-    supabase
-      .from("project_openings")
-      .select("id, opening_code, window_types(category, type_code, name)"),
+    supabase.from("project_openings").select(openingCols(true)),
     // The descriptions decide window vs door. A mark code only means anything
     // inside its own job, so the project id comes with it.
     supabase.from("project_mark_specs").select("project_id, mark_code, style"),
     supabase.from("profiles").select("id, display_name"),
   ]);
+  // A phone ahead of the migration still gets its issues list; it simply has
+  // no missed-unit badge to draw and no reason to read off a flag, which is
+  // the truth on that database.
+  const openRes =
+    openFirst.error &&
+    (isMissingColumn(openFirst.error, "field_added") ||
+      isMissingColumn(openFirst.error, "flag_kind"))
+      ? await supabase.from("project_openings").select(openingCols(false))
+      : openFirst;
   if (projRes.error) throw projRes.error;
   if (openRes.error) throw openRes.error;
   if (specRes.error) throw specRes.error;
@@ -84,6 +107,7 @@ function fmtWhen(iso: string | null): string {
 }
 
 export function Issues() {
+  const t = useT();
   const queryClient = useQueryClient();
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const [kindFilter, setKindFilter] = useState<string>("all");
@@ -250,6 +274,14 @@ export function Issues() {
       .split(" \u2022 ")
       .map((t) => t.trim())
       .filter(Boolean);
+    // A data-off flag can be raised with a reason and no note. The reason is
+    // stored on the OPENING \u2014 the issue's note only ever holds what a person
+    // typed \u2014 so read it from there and say it in the reader's language rather
+    // than leaving the card with a kind chip and nothing under it.
+    const reasonKey =
+      i.kind === "flag" && noteParts.length === 0
+        ? dataOffReasonKey(opening)
+        : null;
     return (
       <li
         key={i.id}
@@ -277,6 +309,12 @@ export function Issues() {
                 {isDoor ? "▮" : "▯"} {opening.opening_code}
               </Link>
             )}
+            {/* Wave E: a unit somebody found on site rather than one the plans
+                had. Says so here because Keep / Merge / Remove is a decision,
+                and the link above is where it gets made. */}
+            {opening?.field_added && (
+              <span className="issue-kind kind-flag">{t("missed.badge")}</span>
+            )}
           </div>
           {noteParts.length > 1 ? (
             <ul className="issue-note-list">
@@ -285,7 +323,11 @@ export function Issues() {
               ))}
             </ul>
           ) : (
-            noteParts[0] && <p className="issue-note">{noteParts[0]}</p>
+            (noteParts[0] ?? (reasonKey ? t(reasonKey) : null)) && (
+              <p className="issue-note">
+                {noteParts[0] ?? (reasonKey ? t(reasonKey) : null)}
+              </p>
+            )
           )}
           {i.photo_path && (
             <button

@@ -56,6 +56,7 @@ export interface FitViewWindow {
   /**
    * Role-aware status color for the crew-facing view (glowFor): red =
    * assigned & waiting, yellow = installed & awaiting QC, green = QC passed,
+   * amber = the record is wrong ("data off", wave E — outranks the rest),
    * "none" = the plain blue. Absent on jobs built without a view context —
    * the tracer and old fixtures keep the prototype's status colors.
    */
@@ -72,7 +73,7 @@ export interface FitViewWindow {
   pane_grid?: unknown;
 }
 
-export type FitViewGlow = "red" | "yellow" | "green" | "none";
+export type FitViewGlow = "red" | "yellow" | "green" | "amber" | "none";
 
 /**
  * Who is looking at the model. Drives two crew-facing conveniences the
@@ -89,6 +90,12 @@ export interface FitViewViewContext {
   qcPassedOpeningIds: Set<string>;
   /** Opening ids with a SUBMITTED flashing phase (photo on record). */
   flashedOpeningIds?: Set<string>;
+  /**
+   * Wave E: opening ids whose RECORD is flagged wrong ("data off"). Amber, and
+   * it outranks every other glow — see glowFor. Optional, so the tracer and
+   * every existing caller keep the three colors they had.
+   */
+  dataOffOpeningIds?: Set<string>;
 }
 
 /**
@@ -112,12 +119,21 @@ export function flashFor(
  * Yellow (installed) and red (assigned, waiting) are the viewer's own
  * windows unless they hold the manager view — another installer's workload
  * is not this installer's signal.
+ *
+ * AMBER OUTRANKS EVERYTHING (wave E). A data-off flag is about the RECORD,
+ * not the work, so it survives the install and it survives QC: green would
+ * otherwise paint "this one is finished and correct" over a unit whose
+ * paperwork the crew has already said is wrong, which is the exact lie this
+ * wave exists to stop. It is universal for the same reason green is — a wrong
+ * record is everybody's problem, not just its assignee's — and it stays until
+ * a foreman clears the flag.
  */
 export function glowFor(
   live: { id: string; status: string; assigned_to: string | null } | undefined,
   view: FitViewViewContext,
 ): FitViewGlow {
   if (!live) return "none";
+  if (view.dataOffOpeningIds?.has(live.id)) return "amber";
   if (view.qcPassedOpeningIds.has(live.id)) return "green";
   const mine = view.viewerId !== null && live.assigned_to === view.viewerId;
   if (live.status === "installed") return view.managerView || mine ? "yellow" : "none";

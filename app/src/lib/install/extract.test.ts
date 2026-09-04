@@ -494,6 +494,45 @@ describe("planDraftPersistence (per-slot re-extract, root-cause fix)", () => {
     ...over,
   });
 
+  // Wave E. THE FAILURE THIS PINS: a missed unit somebody added standing on
+  // the job is an unconfirmed, planned opening carrying no field work and no
+  // planset_id — which is the exact shape a same-kind sweep deletes. The
+  // extractor may drop its own guesses; it may never drop a person's window.
+  it("a field-added unit survives a re-extract of its own slot", () => {
+    const fieldUnit = existing("Missed 1", "building", {
+      id: "field:Missed 1",
+      planset_id: null,
+      field_added: true,
+    });
+    const staleDraft = existing("7-1", "building", {
+      id: "building:7-1",
+      planset_id: null,
+    });
+    const plan = planDraftPersistence(
+      [fieldUnit, staleDraft],
+      [draft("7-1"), draft("8-1")],
+      "building",
+    );
+    expect(plan.deleteIds).toContain("building:7-1");
+    expect(plan.deleteIds).not.toContain("field:Missed 1");
+  });
+
+  it("an authoritative specs read never supersedes a field-added unit", () => {
+    // Even when the CAD sheet lists a mark of the same name: CAD wins over
+    // the EXTRACTOR's counting, never over a person's own record.
+    const fieldUnit = existing("Missed 1", "building", {
+      id: "field:Missed 1",
+      field_added: true,
+    });
+    const plan = planDraftPersistence(
+      [fieldUnit],
+      [draft("Missed 1")],
+      "specs",
+      true,
+    );
+    expect(plan.deleteIds).toHaveLength(0);
+  });
+
   it("a WEAK specs read does NOT wipe building-plan openings (105 stays 105)", () => {
     // 105 building openings already exist; a detail-page read with guessed
     // quantities lists 3 marks. Without explicit QTY authority it changes

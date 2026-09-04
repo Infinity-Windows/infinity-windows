@@ -157,17 +157,22 @@ export function mountFitView(host, job, shim) {
   // red = assigned & waiting, yellow = installed & awaiting QC, green = QC
   // passed, none = plain blue. A job whose windows carry no `glow` renders
   // with the prototype's STATUS colors exactly as before.
+  // 2026-09-03, transcripts-program-spec wave E: amber joins the glow palette
+  // for a unit whose RECORD is wrong ("data off"). One entry in each of the
+  // two tables below; nothing else in this file changes.
   var GLOWC = {
     red:    "--gl-red",
     yellow: "--gl-yellow",
     green:  "--gl-green",
+    amber:  "--gl-amber",
     none:   "--st-tofit"
   };
   var GLOW_LEGEND = [
     ["--st-tofit",  "Unassigned / other"],
     ["--gl-red",    "Assigned - to install"],
     ["--gl-yellow", "Installed - awaiting QC"],
-    ["--gl-green",  "QC passed"]
+    ["--gl-green",  "QC passed"],
+    ["--gl-amber",  "Data off - record is wrong"]
   ];
   function colorVar(w) {
     return (w.glow && GLOWC[w.glow]) ? GLOWC[w.glow] : STATUS[w.status].css;
