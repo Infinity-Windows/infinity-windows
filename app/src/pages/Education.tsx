@@ -20,6 +20,7 @@ import {
   recordCard,
 } from "../lib/learn";
 import { awardPoints, POINT_RULES } from "../lib/points";
+import { SendRecordingButton } from "../components/learn/SendRecordingButton";
 import { VideoLibrary } from "../components/learn/VideoLibrary";
 
 type Tab = "daily" | "quiz" | "sequence" | "glossary" | "videos";
@@ -63,6 +64,12 @@ export function Education() {
           <span>terms</span>
         </div>
       </div>
+
+      {/* Wave U, U2: the way a recording actually reaches this library — the
+          installer mails the clip to their lead. Above the tabs because it has
+          nothing to do with which tab is open, and because the person reaching
+          for it has a video in their camera roll right now. */}
+      <SendRecordingButton style={{ marginTop: 4 }} />
 
       <nav className="hub-tabs">
         {(["daily", "quiz", "sequence", "glossary", "videos"] as Tab[]).map((t) => (

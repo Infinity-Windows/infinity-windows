@@ -157,14 +157,21 @@ async function loadBitmap(blob: Blob): Promise<{
 }
 
 /**
- * Return a new JPEG Blob with the GPS/timestamp overlay burned into the bottom.
- * On any environment without a usable canvas (or on decode failure) the ORIGINAL
- * blob is returned unchanged so capture never breaks.
+ * Decode, downscale to `maxDimension`, optionally draw on top, and re-encode as
+ * a JPEG. On any environment without a usable canvas (or on decode failure) the
+ * ORIGINAL blob is returned unchanged so capture never breaks.
+ *
+ * The overlay is the ONLY difference between a stamped photo and a plain one.
+ * Pulling it out to a callback is what lets an unstamped capture keep the half
+ * that has nothing to do with stamping: a phone hands over a 12-megapixel file
+ * in whatever container it likes, and every upload in this app has always
+ * counted on that being shrunk and re-encoded before it goes anywhere. "No
+ * watermark" must not quietly mean "no processing".
  */
-export async function stampPhoto(
+async function renderToJpeg(
   blob: Blob,
-  meta: StampMeta,
-  options: StampOptions = {},
+  options: StampOptions,
+  overlay?: (ctx: CanvasRenderingContext2D, w: number, h: number) => void,
 ): Promise<Blob> {
   if (typeof document === "undefined") return blob;
   const canvas = document.createElement("canvas");
@@ -183,6 +190,28 @@ export async function stampPhoto(
     canvas.height = h;
     bitmap.draw(ctx, w, h);
 
+    overlay?.(ctx, w, h);
+
+    const out = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((b) => resolve(b), "image/jpeg", options.quality ?? DEFAULT_QUALITY);
+    });
+    return out ?? blob;
+  } finally {
+    bitmap.close();
+  }
+}
+
+/**
+ * Return a new JPEG Blob with the GPS/timestamp overlay burned into the bottom.
+ * On any environment without a usable canvas (or on decode failure) the ORIGINAL
+ * blob is returned unchanged so capture never breaks.
+ */
+export async function stampPhoto(
+  blob: Blob,
+  meta: StampMeta,
+  options: StampOptions = {},
+): Promise<Blob> {
+  return renderToJpeg(blob, options, (ctx, w, h) => {
     const lines = composeStampLines(meta);
     const fontSize = Math.max(16, Math.round(w * 0.028));
     const pad = Math.round(fontSize * 0.6);
@@ -200,14 +229,16 @@ export async function stampPhoto(
     lines.forEach((line, i) => {
       ctx.fillText(line, pad, h - barHeight + pad + i * lineHeight);
     });
+  });
+}
 
-    const out = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob((b) => resolve(b), "image/jpeg", options.quality ?? DEFAULT_QUALITY);
-    });
-    return out ?? blob;
-  } finally {
-    bitmap.close();
-  }
+/**
+ * The same shrink and re-encode with NOTHING drawn on top — for a photo of a
+ * piece of paper, where a GPS fix says nothing true and a full legal name is
+ * already on the page.
+ */
+export async function shrinkPhoto(blob: Blob, options: StampOptions = {}): Promise<Blob> {
+  return renderToJpeg(blob, options);
 }
 
 /** Stamp a File and return a new JPEG File (keeps a sensible .jpg name). */
@@ -216,7 +247,15 @@ export async function stampPhotoFile(
   meta: StampMeta,
   options?: StampOptions,
 ): Promise<File> {
-  const stamped = await stampPhoto(file, meta, options);
-  const base = file.name.replace(/\.[^./\\]+$/, "");
-  return new File([stamped], `${base || "photo"}.jpg`, { type: "image/jpeg" });
+  return asJpegFile(file, await stampPhoto(file, meta, options));
+}
+
+/** Shrink a File and return a new JPEG File, same naming as stampPhotoFile. */
+export async function shrinkPhotoFile(file: File, options?: StampOptions): Promise<File> {
+  return asJpegFile(file, await shrinkPhoto(file, options));
+}
+
+function asJpegFile(original: File, out: Blob): File {
+  const base = original.name.replace(/\.[^./\\]+$/, "");
+  return new File([out], `${base || "photo"}.jpg`, { type: "image/jpeg" });
 }

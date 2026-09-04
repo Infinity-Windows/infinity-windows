@@ -11488,3 +11488,1056 @@ grant execute on function unassign_opening(uuid) to authenticated, service_role;
 -- fence belongs on it. Idempotent: a table already correctly guarded is left
 -- alone. scripts/test_sandbox_guard.py fails CI for exactly this omission.
 select public.attach_sandbox_guards();
+
+
+-- ===========================================================================
+-- 20260983000000_credentials.sql (mirrored)
+-- Credentials, wave O of the transcripts program: the cards a crew member
+-- holds and the day each one runs out. Adds TWO tables — certifications (one
+-- row per card; voided, never deleted) and credential_nudges (the sibling of
+-- pipeline_nudges, separate because that table's project_id is NOT NULL and a
+-- card is about a person) — plus the private credential-docs bucket, the one
+-- writer set_certification (self may add their own unverified; supervisor+
+-- verifies, edits and voids), and claim_credential_nudges, which rides wave J's
+-- existing 7 AM pipeline-sweep as one more rule rather than a second cron.
+-- Deploy AFTER 20260982000000 (wave Y).
+-- ===========================================================================
+
+-- Wave O — Credentials (transcripts program, grill of 2026-09-03, Q14).
+--
+-- The app has always known what somebody is GOOD at — a skill tier, a
+-- capability badge, a training clearance per window type. It has never known
+-- what somebody is CERTIFIED to do, and those are the pieces of paper a general
+-- contractor asks for at the gate and a bid asks for on page two: OSHA 10,
+-- OSHA 30, first aid, aerial lift, forklift, fall protection.
+--
+-- Every one of them expires, and nothing in this schema has ever had an expiry
+-- date. That is the whole reason this is a table rather than another list of
+-- flags: a certification is a fact WITH A DEADLINE, and the deadline is what
+-- the 7 AM sweep says out loud thirty days before a card runs out.
+--
+-- Four things here, in the order they depend on each other:
+--
+--   1. certifications          — one row per card, per person.
+--   2. credential-docs         — a PRIVATE bucket for the photo of the card.
+--   3. set_certification       — the one writer: self may add their own
+--                                (unverified), supervisor+ verifies, edits
+--                                and voids.
+--   4. credential_nudges +     — the "we already said this" ledger and the
+--      claim_credential_nudges   rule the pipeline sweep runs, wave J's J5
+--                                extension point taken up exactly as written.
+--
+-- MERGE ORDER: this is 20260983000000 and it lands AFTER 20260981000000 (wave
+-- H, the GC handshake) and 20260982000000 (wave Y, who did what). It shares no
+-- object with either — H touches project_gc_checkins and the pipeline sweep's
+-- start-date clause, Y touches install credit — so the order matters only
+-- because migration numbers must land in sequence, one deploy at a time.
+--
+-- NOT PROJECT-SCOPED, on purpose. A certification belongs to a person, not a
+-- job, so there is no project_id, no `attach_sandbox_guards()` call, and a test
+-- login has no sandbox row to be fenced into. What stops a test login writing a
+-- card is set_certification's own rules, which are about identity and rank.
+--
+-- IDEMPOTENT throughout (create ... if not exists / create or replace / drop
+-- policy if exists before create / on conflict), so re-running it changes
+-- nothing.
+
+
+-- ---------------------------------------------------------------------------
+-- 1. O1 — certifications
+-- ---------------------------------------------------------------------------
+-- WHY A KIND LIST AND AN `other_label`. The six named kinds are the cards this
+-- company is actually asked for, and naming them is what makes O5's summary
+-- countable: "4 OSHA 30 · 12 OSHA 10 · 6 aerial lift" is only possible if
+-- everybody spells OSHA 30 the same way. `other` plus a free-text label is the
+-- escape hatch, so a card nobody anticipated is still recorded rather than
+-- squeezed into the wrong bucket — and it counts as "other", never as one of
+-- the six.
+--
+-- WHY expires_on IS NULLABLE. Some cards genuinely never expire (an OSHA 10
+-- wallet card has no printed expiry in most states). Null means "no expiry on
+-- the card", which is a real answer, and the chip on screen says so in grey
+-- rather than pretending the card is fine forever in green. Nothing with a null
+-- expiry can ever be nudged about, which is correct.
+--
+-- WHY voided_at RATHER THAN DELETE. A card entered against the wrong person, or
+-- a card that turned out to be a photo of somebody else's, has to stop counting
+-- — but a deleted row takes its history with it, and "who said this person had
+-- an OSHA 30" is exactly the question asked after an incident. Void, never
+-- delete: the row stays, and every read filters it out.
+create table if not exists certifications (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  kind text not null check (
+    kind in (
+      'osha10',
+      'osha30',
+      'first_aid_cpr',
+      'aerial_lift',
+      'forklift',
+      'fall_protection',
+      'other'
+    )
+  ),
+  -- Only meaningful when kind = 'other'; the RPC clears it otherwise so a kind
+  -- corrected from 'other' to 'osha30' does not keep a stale label beside it.
+  other_label text,
+  issued_on date,
+  -- Null = the card carries no expiry. See the note above.
+  expires_on date,
+  -- "<profile_id>/<uuid>.jpg" inside the credential-docs bucket. A path, never
+  -- a URL: the bucket is private and every read is a short-lived signed URL.
+  document_path text,
+  verified_by uuid references profiles(id) on delete set null,
+  verified_at timestamptz,
+  created_by uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  voided_at timestamptz
+);
+
+-- Every read is "this person's cards" or "everybody's cards, soonest expiry
+-- first"; both are served by this.
+create index if not exists certifications_profile_idx
+  on certifications (profile_id, expires_on);
+
+-- The sweep's own read: the cards expiring around today, across the company.
+create index if not exists certifications_expiry_idx
+  on certifications (expires_on)
+  where voided_at is null;
+
+comment on table certifications is
+  'One card per row: OSHA 10/30, first aid, aerial lift, forklift, fall protection, or other. A fact with a deadline — expires_on is what the 7 AM sweep warns about thirty days out and again on the day. Voided, never deleted. Written only by set_certification (Wave O, O1).';
+
+alter table certifications enable row level security;
+
+-- Revoke BEFORE granting. This project's default privileges hand every new
+-- table in `public` the full set to `authenticated`, and RLS is not the wall on
+-- its own: without this, a permissive policy added later by anybody would turn
+-- a table with no write policy into a write hole. set_certification, SECURITY
+-- DEFINER, is the only writer there is.
+revoke all on certifications from anon, authenticated;
+grant select on certifications to authenticated;
+grant all on certifications to service_role;
+
+-- WHO READS WHAT.
+--   * Your own cards, always. Unlike a pay rate (which the app deliberately
+--     does not show you, because payroll already does), your OSHA card is a
+--     thing you are asked for at a gate and a thing you have to renew. A person
+--     who cannot see their own expiry date cannot do anything about it, and O3
+--     puts exactly this list on My Work.
+--   * Foreman and above, everybody's. A foreman is who gets told at the gate
+--     that half the crew cannot go up in the lift today.
+--   * A partner (builder) login, never. The mechanical wall guard every crew
+--     table has carried since 20260950000000; scripts/test_partner_wall.py
+--     fails on a new table without it.
+drop policy if exists "certifications_select" on certifications;
+create policy "certifications_select" on certifications
+  for select to authenticated
+  using (
+    not public.is_partner_user()
+    and (profile_id = auth.uid() or public.my_role_rank() >= 1)
+  );
+
+
+-- ---------------------------------------------------------------------------
+-- 2. O1/O2 — the private bucket for the photo of the card
+-- ---------------------------------------------------------------------------
+-- A photo of an OSHA card carries a full legal name and a card number. It is
+-- not a job photo, so it does not live in install-media with them, and it is
+-- not public under any circumstances.
+--
+-- SIZE CAP: 10 MB per file, which is roughly four times a phone camera JPEG at
+-- full resolution and comfortably clears a scanned PDF of a two-sided card.
+-- Stated rather than left to the project default so nobody has to guess, and
+-- low enough that a mis-picked video is refused by the bucket instead of
+-- costing the company storage forever. MIME types are pinned to the four things
+-- a card can honestly be.
+--
+-- `do update` rather than `do nothing` on conflict: re-running this migration
+-- against a bucket somebody widened by hand puts the cap and the type list
+-- back, which is the point of an idempotent migration.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'credential-docs',
+  'credential-docs',
+  false,
+  10485760,
+  array['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+)
+on conflict (id) do update
+  set public = false,
+      file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+-- THE PATH IS THE PERMISSION. Every object is "<profile_id>/<uuid>.<ext>", so
+-- the first folder name IS the person the card belongs to, and the policies
+-- below can be written against it without reading the certifications table at
+-- all. That is deliberate: a storage policy that joins back to a business table
+-- is a storage policy that breaks the day the business table's own policy
+-- changes.
+--
+-- Read: the cardholder, or a supervisor+. NOT every foreman — a foreman needs
+-- to know a card exists and when it runs out (the row is readable to them), and
+-- that is a different thing from being handed a photograph of somebody's
+-- government-adjacent ID. The person verifying is supervisor+ by O1's own
+-- rule, and they are the only one who needs to look at the paper.
+--
+-- Write: the cardholder, their own folder, and nobody else. A supervisor
+-- collecting cards at a toolbox talk therefore cannot upload on somebody's
+-- behalf — see the PR body; the honest reading of the spec is that the person
+-- owns their own document, and the alternative hands one account the ability to
+-- write into every crew member's private folder.
+drop policy if exists "credential docs read" on storage.objects;
+create policy "credential docs read"
+  on storage.objects for select to authenticated
+  using (
+    bucket_id = 'credential-docs'
+    and not public.is_partner_user()
+    and (
+      (storage.foldername(name))[1] = auth.uid()::text
+      or public.my_role_rank() >= 2
+    )
+  );
+
+drop policy if exists "credential docs write own" on storage.objects;
+create policy "credential docs write own"
+  on storage.objects for insert to authenticated
+  with check (
+    bucket_id = 'credential-docs'
+    and not public.is_partner_user()
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- Update covers a re-upload to the same path (a retaken photo). Delete is
+-- deliberately absent: nothing in the app deletes a credential document, for
+-- the same reason nothing deletes a certification row.
+drop policy if exists "credential docs replace own" on storage.objects;
+create policy "credential docs replace own"
+  on storage.objects for update to authenticated
+  using (
+    bucket_id = 'credential-docs'
+    and not public.is_partner_user()
+    and (storage.foldername(name))[1] = auth.uid()::text
+  )
+  with check (
+    bucket_id = 'credential-docs'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+
+-- ---------------------------------------------------------------------------
+-- 3. O1 — set_certification: the only writer
+-- ---------------------------------------------------------------------------
+-- One function for add, edit, verify and void, because they are the same row
+-- and splitting them into four RPCs would mean four places to get the rank
+-- check right.
+--
+-- WHO MAY DO WHAT, and it is not a single rank:
+--   * ADD YOUR OWN CARD: anybody, including an installer. This is the whole
+--     point — a crew member photographs the card in their wallet at a toolbox
+--     talk instead of the office chasing it. It lands UNVERIFIED whatever the
+--     caller asks for, so "I have an OSHA 30" is a claim until somebody with a
+--     rank has looked at the paper.
+--   * ADD SOMEBODY ELSE'S: supervisor+, and they may verify it in the same
+--     call, because they are holding the card.
+--   * EDIT, VERIFY, UNVERIFY, VOID: supervisor+ only. An installer cannot
+--     correct their own typo, which is a deliberate cost: a row somebody can
+--     edit after it was verified is a row that means nothing.
+--   * VERIFY YOUR OWN CARD: nobody, at any rank. Both paths refuse it — the
+--     insert with `v_target <> v_me`, the update with its own check further
+--     down. "Checked" has to mean a second person looked at the paper, or it
+--     means nothing at all, and every supervisor and owner clears the rank bar.
+--
+-- PARTIAL BY DEFAULT, like updateProject learned to be in wave J: on an edit, a
+-- null argument means "leave that column alone", never "set it to null". A date
+-- is CLEARED through its own explicit flag, so one tap on Verify cannot wipe an
+-- expiry date the caller never mentioned. That bug has been shipped in this
+-- repo once already (20260979000000's own PR fixed it for job details); this
+-- function does not get to ship it again.
+create or replace function public.set_certification(
+  p_id uuid default null,
+  p_profile_id uuid default null,
+  p_kind text default null,
+  p_other_label text default null,
+  p_issued_on date default null,
+  p_expires_on date default null,
+  p_document_path text default null,
+  p_verified boolean default null,
+  p_voided boolean default null,
+  p_clear_issued boolean default false,
+  p_clear_expires boolean default false
+)
+returns certifications
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row certifications;
+  v_rank int := public.my_role_rank();
+  v_me uuid := auth.uid();
+  v_target uuid;
+begin
+  if v_me is null then
+    raise exception 'Sign in before adding a card.' using errcode = '42501';
+  end if;
+
+  -- THE PARTNER WALL, and it has to be here rather than only on the table. Both
+  -- policies below carry `not is_partner_user()`, but a policy is a READ and
+  -- WRITE gate for direct table access, and this function is SECURITY DEFINER —
+  -- it writes straight past every policy on the table. A builder login is
+  -- pinned to role 'installer' (20260950000000), which is rank 0, which is
+  -- exactly the rank "anybody may add their OWN card" was written for. Without
+  -- this line a GC could file certifications against themselves: rows they
+  -- could never read back, but rows the company's own screens and the 7 AM
+  -- sweep would count as crew.
+  if public.is_partner_user() then
+    raise exception 'Not available for your account.' using errcode = '42501';
+  end if;
+
+  -- ---------------------------------------------------------------- new card
+  if p_id is null then
+    v_target := coalesce(p_profile_id, v_me);
+    if v_target <> v_me and v_rank < 2 then
+      raise exception 'Only a supervisor can add a card for somebody else.'
+        using errcode = '42501';
+    end if;
+    if p_kind is null then
+      raise exception 'Say which card this is.';
+    end if;
+    if not exists (select 1 from profiles where id = v_target) then
+      raise exception 'That person is not on the crew list.';
+    end if;
+    if p_kind = 'other' and coalesce(btrim(p_other_label), '') = '' then
+      raise exception 'Name the card, since it is not one of the listed ones.';
+    end if;
+    if p_issued_on is not null and p_expires_on is not null
+       and p_expires_on < p_issued_on then
+      raise exception 'A card cannot run out before the day it was issued.';
+    end if;
+
+    insert into certifications (
+      profile_id, kind, other_label, issued_on, expires_on, document_path,
+      created_by,
+      -- Your own card is never self-verified, whatever the call asks for.
+      verified_by,
+      verified_at
+    )
+    values (
+      v_target,
+      p_kind,
+      case when p_kind = 'other' then nullif(btrim(p_other_label), '') else null end,
+      p_issued_on,
+      p_expires_on,
+      nullif(btrim(p_document_path), ''),
+      v_me,
+      case when p_verified is true and v_rank >= 2 and v_target <> v_me then v_me end,
+      case when p_verified is true and v_rank >= 2 and v_target <> v_me then now() end
+    )
+    returning * into v_row;
+    return v_row;
+  end if;
+
+  -- ------------------------------------------------------------ existing card
+  if v_rank < 2 then
+    raise exception 'Only a supervisor can change or verify a card.'
+      using errcode = '42501';
+  end if;
+
+  select * into v_row from certifications where id = p_id;
+  if not found then
+    raise exception 'That card is not on file any more.';
+  end if;
+
+  -- YOUR OWN CARD IS NEVER SELF-CHECKED, and this is the half that was missing.
+  -- The insert path above refuses it (`v_target <> v_me`), so an installer
+  -- adding their own card always lands unchecked — but every supervisor and
+  -- owner is rank 2+, and the rank check a few lines up was the ONLY gate on
+  -- this path. One tap on their own Roster row and the claim checked itself,
+  -- which is the one thing "checked" is supposed to mean it is not. Somebody
+  -- else has to look at the paper, whatever rank the holder happens to be.
+  --
+  -- UNchecking your own card stays allowed: taking a claim back is not the same
+  -- as making one, and a supervisor who realises their own card is out of date
+  -- should not have to find a colleague to say so. Everything else on this path
+  -- — a date, a kind, a void — is a correction, not a claim, and stays open.
+  if p_verified is true and v_row.profile_id = v_me then
+    raise exception 'Somebody else has to check your own card.'
+      using errcode = '42501';
+  end if;
+
+  update certifications set
+    kind = coalesce(p_kind, kind),
+    other_label = case
+      when coalesce(p_kind, kind) <> 'other' then null
+      when p_other_label is not null then nullif(btrim(p_other_label), '')
+      else other_label
+    end,
+    issued_on = case
+      when p_clear_issued then null
+      else coalesce(p_issued_on, issued_on)
+    end,
+    expires_on = case
+      when p_clear_expires then null
+      else coalesce(p_expires_on, expires_on)
+    end,
+    document_path = coalesce(nullif(btrim(p_document_path), ''), document_path),
+    -- Verify and unverify are the same argument. Absent leaves the row alone,
+    -- so an edit to a date does not quietly re-stamp who verified it.
+    verified_by = case
+      when p_verified is true then v_me
+      when p_verified is false then null
+      else verified_by
+    end,
+    verified_at = case
+      when p_verified is true then now()
+      when p_verified is false then null
+      else verified_at
+    end,
+    voided_at = case
+      when p_voided is true then coalesce(voided_at, now())
+      when p_voided is false then null
+      else voided_at
+    end
+  where id = p_id
+  returning * into v_row;
+
+  if v_row.issued_on is not null and v_row.expires_on is not null
+     and v_row.expires_on < v_row.issued_on then
+    raise exception 'A card cannot run out before the day it was issued.';
+  end if;
+
+  return v_row;
+end;
+$$;
+
+comment on function public.set_certification(uuid, uuid, text, text, date, date, text, boolean, boolean, boolean, boolean) is
+  'The one writer for certifications. A partner (builder/GC) login is refused outright — SECURITY DEFINER writes past the table''s own partner guard, so the wall is repeated in here. Adding your OWN card needs no rank and always lands unverified; adding somebody else''s, and every edit, verification and void, is supervisor+. NOBODY checks their own card, whatever their rank — un-checking it is allowed, because taking a claim back is not making one. Partial: a null argument leaves that column alone, and a date is cleared through its own flag so verifying cannot wipe an expiry (Wave O, O1).';
+
+revoke all on function public.set_certification(uuid, uuid, text, text, date, date, text, boolean, boolean, boolean, boolean) from public, anon;
+grant execute on function public.set_certification(uuid, uuid, text, text, date, date, text, boolean, boolean, boolean, boolean) to authenticated;
+
+
+-- ---------------------------------------------------------------------------
+-- 4. O4 — credential_nudges: a SIBLING ledger, and why it is not pipeline_nudges
+-- ---------------------------------------------------------------------------
+-- Wave J's section 8 invites this wave to write its kinds into pipeline_nudges,
+-- and that was the plan. It does not fit, for one concrete reason that only
+-- shows up when you read the table: pipeline_nudges.project_id is
+-- `not null references projects(id)`, and its idempotency is the UNIQUE
+-- (project_id, kind, on_date). A credential belongs to a PERSON, not a job.
+--
+-- The two ways to force it in are both worse:
+--   * Make project_id nullable. Postgres treats NULLs as DISTINCT in a unique
+--     constraint, so (null, 'credential_30d', '2026-10-01') would never
+--     conflict with itself and every sweep would push again. The one property
+--     the ledger exists for would be gone — silently, and only for the rows
+--     that used the null.
+--   * Hang the warning off some arbitrary project. There isn't one; a card is
+--     not about a job.
+--
+-- So: the same SHAPE, a table of its own, keyed on the thing the warning is
+-- actually about. The spec's own idempotency key — (certification_id, kind,
+-- on_date) — is this table's UNIQUE, word for word. Everything else follows
+-- wave J exactly: on_date is the day the nudge is ABOUT (the expiry date), not
+-- the day it was sent, so a missed morning still says it once, and a RENEWED
+-- card with a new expiry date earns a fresh warning, which is right.
+--
+-- `kind` carries no check constraint, for the same reason J's does not: a
+-- later rule about credentials should need no migration.
+create table if not exists credential_nudges (
+  id uuid primary key default gen_random_uuid(),
+  certification_id uuid not null references certifications(id) on delete cascade,
+  kind text not null,
+  on_date date not null,
+  created_at timestamptz not null default now(),
+  unique (certification_id, kind, on_date)
+);
+
+create index if not exists credential_nudges_cert_idx
+  on credential_nudges (certification_id, created_at desc);
+
+comment on table credential_nudges is
+  'One row per warning already sent about one card. The sibling of pipeline_nudges, separate only because that table''s project_id is NOT NULL and a certification is about a person: making it nullable would break the unique key that IS the idempotency. on_date is the expiry the warning is about, never the day it was sent (Wave O, O4).';
+
+alter table credential_nudges enable row level security;
+
+revoke all on credential_nudges from anon, authenticated;
+grant select on credential_nudges to authenticated;
+grant all on credential_nudges to service_role;
+
+-- Readable by signed-in crew, never a partner login (the mechanical wall
+-- guard). No insert/update/delete policy at all: the sweep is the only writer
+-- and it writes as the service role.
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where tablename = 'credential_nudges' and policyname = 'crew read'
+  ) then
+    create policy "crew read" on credential_nudges
+      for select to authenticated
+      using (not public.is_partner_user() and (true));
+  end if;
+end;
+$$;
+
+
+-- ---------------------------------------------------------------------------
+-- 5. O4 — who hears about an expiring card
+-- ---------------------------------------------------------------------------
+-- The person whose card it is, and every supervisor and owner. Not foremen at
+-- large: a foreman reading every morning that somebody on another crew has a
+-- forklift card running out is how a crew learns to swipe this app's
+-- notifications away without reading them, and the supervisors are the ones who
+-- book the renewal class.
+--
+-- NOT `profiles.active`, and this is the trap. In this app `active` means "on
+-- site TODAY" — the Roster renders it as "On site / Off today" and a foreman
+-- flips it every morning (20260730010000 says so in as many words: "It is
+-- availability, not permission"). Filtering the audience on it would mean a
+-- supervisor who happened to be marked off on the ONE morning a card entered
+-- its window never hears about that card at all: the warning is claimed once
+-- per expiry date and the ledger stops it ever being claimed again, so the
+-- recipient list is frozen the first time it is computed. Being off sick on a
+-- Tuesday is not a reason to be cut out of a deadline for good.
+--
+-- `access_revoked_at` is the column that means what "inactive" was reaching
+-- for: the login has been switched off, the person has left, and it does not
+-- change from one day to the next. Partner logins never.
+create or replace function public.credential_nudge_audience(p_profile_id uuid)
+returns uuid[]
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select coalesce(array_agg(distinct pr.id), '{}'::uuid[])
+    from profiles pr
+   where pr.access_revoked_at is null
+     and not coalesce(pr.is_partner, false)
+     and (pr.id = p_profile_id or public._is_supervisor(pr.id));
+$$;
+
+comment on function public.credential_nudge_audience(uuid) is
+  'Who hears that a card is running out: the person it belongs to, plus every supervisor and owner whose login is still switched on. Deliberately NOT filtered on profiles.active, which means "on site today" — the warning is claimed once per expiry date, so a supervisor who happened to be off that one morning would never hear about that card again. Partner logins never (Wave O, O4).';
+
+revoke all on function public.credential_nudge_audience(uuid) from public, anon, authenticated;
+grant execute on function public.credential_nudge_audience(uuid) to service_role;
+
+
+-- ---------------------------------------------------------------------------
+-- 6. O4 — claim_credential_nudges: the decision and the claim, in one statement
+-- ---------------------------------------------------------------------------
+-- Shaped deliberately like claim_pipeline_nudges (20260979000000 section 7),
+-- because wave J asked for exactly that: same service-role-only guard, same
+-- 7 AM company-local gate, same insert-on-conflict-do-nothing-returning claim
+-- so two overlapping sweeps cannot both push.
+--
+-- THE RULE LIVES TWICE, AND THE COPIES ARE PINNED TOGETHER.
+-- app/src/lib/credentials.ts holds the readable version (expiryState /
+-- dueCredentialNudges) which drives the chips and the Heartbeat tile;
+-- credentials.test.ts carries a test named after this function that spells
+-- these clauses out in TypeScript, so a change made to one side and not the
+-- other fails a test rather than going quietly live.
+--
+-- Two rules, and the SPEC ASKS FOR TWO PUSHES: one when the card enters its
+-- last thirty days, one on the day it runs out. Both rules key their ledger row
+-- on the SAME on_date (the expiry date), so the two windows must not overlap —
+-- a day claimed by rule (a) is a day rule (b) can never speak on, because the
+-- (certification_id, kind, on_date) row rule (a) wrote weeks earlier is still
+-- there. The first cut of this function had (a) at 0..30 and (b) at -30..-1,
+-- which meant day 0 fell inside a window already claimed on day 30 and the only
+-- other warning landed the morning AFTER the card lapsed. The last day a card
+-- is good — the one morning somebody can still act before a gate turns them
+-- away — was the one day nothing was said. Hence:
+--   (a) 1..30 days out: the card is inside its last thirty days. WINDOWED
+--       rather than "exactly 30", so one missed sweep does not silently drop
+--       the warning; the unique key already guarantees it is said once per
+--       expiry date.
+--   (b) -30..0 days out: today IS the day, or the card has already run out.
+--       Day 0 lives here rather than in (a) so it gets a ledger key of its own
+--       and a sentence of its own ("runs out today", credentialCopy in
+--       supabase/functions/pipeline-sweep/index.ts). Windowed backwards for the
+--       same self-healing reason: a sweep that misses the day itself still says
+--       it the next morning, worded as a lapse. Bounded to the last thirty days
+--       on purpose: a card that expired in 2019, typed in today as history,
+--       must not wake three supervisors' phones about a fact everybody already
+--       knows.
+--
+-- A VOIDED card is silent, and so is a card belonging to somebody whose login
+-- has been switched off. A card belonging to somebody merely marked "off today"
+-- is NOT silent — see the candidate CTE, where that distinction is the whole
+-- note. An UNVERIFIED card still warns — the office not having got
+-- round to looking at the paper is not a reason to let the crew member's OSHA
+-- card lapse, and the push says nothing about whether it was verified.
+create or replace function public.claim_credential_nudges()
+returns table (
+  certification_id uuid,
+  profile_id uuid,
+  person_name text,
+  cert_kind text,
+  cert_label text,
+  kind text,
+  days_until int,
+  expires_on date,
+  profile_ids uuid[]
+)
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+-- Several OUT parameters share their names with real columns below
+-- (certification_id, profile_id, kind, expires_on). Ambiguity between an OUT
+-- parameter and a column is a plpgsql RUNTIME error, not a compile one, so it
+-- would first appear at 7 AM in production. Every reference below is
+-- table-qualified AND this pragma makes the column win regardless.
+#variable_conflict use_column
+declare
+  v_tz constant text := 'America/Denver';
+  v_today date;
+  v_hour int;
+begin
+  if auth.uid() is not null then
+    raise exception 'The credential reminder sends itself — nobody needs to press anything.';
+  end if;
+
+  v_today := (now() at time zone v_tz)::date;
+  v_hour := extract(hour from (now() at time zone v_tz))::int;
+
+  -- Before 7 AM company time there is nothing due. The sweep pokes hourly
+  -- rather than once at a fixed UTC hour so "the morning" stays the crew's
+  -- morning through both halves of the year; the claim is what makes a repeated
+  -- poke free.
+  if v_hour < 7 then
+    return;
+  end if;
+
+  return query
+  with candidate as (
+    select c.id as cid,
+           c.profile_id as pid,
+           coalesce(nullif(btrim(pr.display_name), ''), 'Somebody') as who,
+           c.kind as ckind,
+           case
+             when c.kind = 'other' then coalesce(nullif(btrim(c.other_label), ''), 'certification')
+             else c.kind
+           end as clabel,
+           c.expires_on as exp,
+           (c.expires_on - v_today)::int as days_out
+      from certifications c
+      join profiles pr on pr.id = c.profile_id
+     where c.voided_at is null
+       and c.expires_on is not null
+       -- Same column, same reason as the audience above: a card belonging to
+       -- somebody who is off site today still runs out on the day it runs out,
+       -- and each rule fires once per expiry date, so a morning skipped here is
+       -- a warning lost rather than delayed. `access_revoked_at` — the login
+       -- has been switched off — is the one that means "no longer ours".
+       and pr.access_revoked_at is null
+       and not coalesce(pr.is_partner, false)
+  ),
+  due as (
+    select cd.cid, cd.pid, cd.who, cd.ckind, cd.clabel, cd.exp, cd.days_out,
+           'credential_30d'::text as due_kind
+      from candidate cd
+     where cd.days_out between 1 and 30
+    union all
+    -- Day 0 is deliberately on THIS side of the line. See the note above.
+    select cd.cid, cd.pid, cd.who, cd.ckind, cd.clabel, cd.exp, cd.days_out,
+           'credential_expired'::text as due_kind
+      from candidate cd
+     where cd.days_out between -30 and 0
+  ),
+  claimed as (
+    insert into credential_nudges (certification_id, kind, on_date)
+    select d.cid, d.due_kind, d.exp from due d
+    on conflict (certification_id, kind, on_date) do nothing
+    returning credential_nudges.certification_id as claimed_cid,
+              credential_nudges.kind as claimed_kind
+  )
+  select d.cid,
+         d.pid,
+         d.who,
+         d.ckind,
+         d.clabel,
+         d.due_kind,
+         d.days_out,
+         d.exp,
+         public.credential_nudge_audience(d.pid)
+    from due d
+    join claimed cl
+      on cl.claimed_cid = d.cid
+     and cl.claimed_kind = d.due_kind;
+end;
+$$;
+
+comment on function public.claim_credential_nudges() is
+  'Service-role only (the pipeline-sweep edge function): claims and returns the credential warnings due this company-local morning — a card 1 to 30 days from running out, and a card whose day has come or gone within the last thirty. The two windows do not overlap, because both write the same on_date and a day claimed by one is a day the other can never speak on; day 0 belongs to the second so the last day a card is good gets a warning of its own. The claim and the decision are one statement, so two overlapping sweeps cannot both push. The readable copy of this rule is dueCredentialNudges in app/src/lib/credentials.ts (Wave O, O4).';
+
+revoke all on function public.claim_credential_nudges() from public, anon, authenticated;
+grant execute on function public.claim_credential_nudges() to service_role;
+
+-- NO NEW CRON, and no new edge function. Wave J's `pipeline-sweep` already
+-- pokes hourly and already loops over a LIST of rules; this wave adds one entry
+-- to that list (supabase/functions/pipeline-sweep/index.ts) and nothing else.
+-- A second cron job would push at almost the same minute as the first, from a
+-- second function nobody remembers to watch.
+
+-- ===========================================================================
+-- 20260984000000_recordings_by_link.sql (mirrored)
+-- Recordings by link, wave U of the transcripts program: learning_videos.status
+-- (draft | published) with the crew read policy that enforces it,
+-- save_learning_video / publish_learning_video, and foreman_contacts_for_me —
+-- the minimal name+email projection the "Send a recording" button addresses.
+-- ===========================================================================
+
+-- Recordings by link, wave U of the transcripts program (owner's design,
+-- Q15 + Q19 — cited, never re-decided).
+--
+-- WHAT THE OWNER ACTUALLY ASKED FOR, and what this deliberately does NOT build:
+-- installers already film themselves working. The app is not going to collect
+-- that raw footage. An installer emails the video to their lead, the lead puts
+-- it on YouTube, and the app gets the LINK. So there is no new upload path
+-- here, no raw-footage inbox, and no file size cap to argue about — three
+-- features that would each have needed storage, review and a retention policy
+-- to hold footage nobody wanted to keep.
+--
+-- Three things, in the order they depend on each other:
+--
+--   1. learning_videos.status — draft | published. A lesson is now born a
+--      DRAFT: a link with nothing else on it is not a lesson, and a half-built
+--      one appearing in the crew's library the second it is saved is how the
+--      library fills with untitled fragments. Crews read published rows only;
+--      supervisors read everything, which is what makes the Inbox on the Videos
+--      tab possible.
+--
+--   2. save_learning_video learns that column, and publish_learning_video is
+--      the one-tap flip at the end of the flow (paste the link, paste the
+--      transcript, Generate summary & quiz, Approve, Publish).
+--
+--   3. foreman_contacts_for_me — the address the "Send a recording" button
+--      needs. Emails live in auth.users, which no client role may read, so the
+--      only way an installer's phone can address their lead is a SECURITY
+--      DEFINER function that answers with a MINIMAL PROJECTION: a display name
+--      and an email, for foreman-and-up only, and nothing else about anybody.
+--      Never the profiles row (wave S's projection law: build an outward
+--      payload field by field, never spread-and-delete).
+--
+-- IDEMPOTENT throughout: add-column-if-not-exists, drop-then-add for the check
+-- constraint, drop-then-create for the policy, create-or-replace for every
+-- function. Safe to run twice.
+--
+-- MERGE ORDER: after 20260981000000 (wave H), 20260982000000 (wave Y) and
+-- 20260983000000 (wave O). Numbers land in order, one deploy at a time. This
+-- file touches learning_videos and nothing any of those three touch, so the
+-- only real constraint is the number.
+--
+-- NO NEW TABLE, so there is nothing here for attach_sandbox_guards() to arm and
+-- nothing new for the partner wall to sweep — the existing learning_videos
+-- policy already carries the is_partner_user() guard (20260950000000) and the
+-- replacement below keeps it.
+
+
+-- ---------------------------------------------------------------------------
+-- 1. U1 — draft until published
+-- ---------------------------------------------------------------------------
+--
+-- DEFAULT 'published', which reads backwards until you remember what a default
+-- does to rows that already exist: every lesson in the library today was made
+-- under the old rule, was visible to crews yesterday, and must still be visible
+-- to them tomorrow. A default of 'draft' would have silently emptied the whole
+-- Learn library on deploy. NEW rows land 'draft' one layer up, inside
+-- save_learning_video, where the app's own writer can tell the difference
+-- between "somebody just made this" and "this was always here".
+
+alter table learning_videos
+  add column if not exists status text not null default 'published';
+
+alter table learning_videos drop constraint if exists learning_videos_status_check;
+alter table learning_videos add constraint learning_videos_status_check
+  check (status in ('draft', 'published'));
+
+comment on column learning_videos.status is
+  'draft while a supervisor is still building the lesson (link pasted, transcript missing, quiz not approved); published once it is ready for crews. Crews read published rows only — see the "crew read" policy. New rows are born draft by save_learning_video; the column default is published so every lesson that existed before this migration stays visible.';
+
+-- The crew read policy, replaced rather than added to: two select policies OR
+-- together in Postgres, so a second permissive policy saying "supervisors see
+-- everything" alongside an unchanged "everyone sees everything" would have
+-- changed nothing at all. One policy, both rules.
+--
+-- The partner guard is carried over verbatim from THE WALL (20260950000000).
+-- test_partner_wall.py replays every migration in this repo and fails if a
+-- live select policy on this table loses it.
+drop policy if exists "crew read" on learning_videos;
+create policy "crew read" on learning_videos
+  for select to authenticated
+  using (
+    not public.is_partner_user()
+    and (status = 'published' or public.my_role_rank() >= 2)
+  );
+
+
+-- ---------------------------------------------------------------------------
+-- 2. U1 — the writer learns the column
+-- ---------------------------------------------------------------------------
+--
+-- The older signatures go first. `create or replace` with a different argument
+-- list makes an OVERLOAD, not a replacement, and a pile of near-identical
+-- overloads is how PostgREST starts answering PGRST203 ("could not choose the
+-- best candidate function") to a supervisor who only wanted to save a video.
+-- The app is the only caller and it always sends the whole argument set, so
+-- exactly one signature should exist.
+drop function if exists public.save_learning_video(
+  uuid, text, uuid, text, text, text, text, text, boolean);
+drop function if exists public.save_learning_video(
+  uuid, text, uuid, text, text, text, text, text, boolean, uuid);
+
+create or replace function public.save_learning_video(
+  p_id uuid,
+  p_title text,
+  p_window_type uuid default null,
+  p_topic text default null,
+  p_video_path text default null,
+  p_youtube_url text default null,
+  p_summary text default null,
+  p_transcript text default null,
+  p_active boolean default true,
+  p_grants_clearance uuid default null,
+  p_status text default null
+)
+returns learning_videos
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_role text;
+  v_status text;
+  v_row learning_videos;
+begin
+  select role into v_role from profiles where id = auth.uid();
+  if v_role is null or v_role in ('installer', 'foreman') then
+    raise exception 'only a supervisor or above can manage training videos';
+  end if;
+  if p_title is null or length(trim(p_title)) = 0 then
+    raise exception 'a training video needs a title';
+  end if;
+  if p_video_path is null and nullif(trim(coalesce(p_youtube_url, '')), '') is null then
+    raise exception 'upload a video or paste a YouTube address';
+  end if;
+
+  v_status := nullif(trim(coalesce(p_status, '')), '');
+  if v_status is not null and v_status not in ('draft', 'published') then
+    raise exception 'a training video is either a draft or published';
+  end if;
+
+  if p_id is null then
+    insert into learning_videos (
+      title, window_type_id, topic, video_path, youtube_url,
+      summary, transcript, active, created_by, grants_clearance, status
+    )
+    values (
+      trim(p_title), p_window_type, nullif(trim(coalesce(p_topic, '')), ''),
+      p_video_path, nullif(trim(coalesce(p_youtube_url, '')), ''),
+      p_summary, p_transcript, coalesce(p_active, true), auth.uid()::text,
+      p_grants_clearance,
+      -- A brand new lesson is a DRAFT unless the caller says otherwise. The
+      -- column default cannot do this job: it has to stay 'published' so the
+      -- lessons that predate this migration keep working.
+      coalesce(v_status, 'draft')
+    )
+    returning * into v_row;
+  else
+    update learning_videos
+    set title = trim(p_title),
+        window_type_id = p_window_type,
+        topic = nullif(trim(coalesce(p_topic, '')), ''),
+        video_path = p_video_path,
+        youtube_url = nullif(trim(coalesce(p_youtube_url, '')), ''),
+        summary = p_summary,
+        transcript = p_transcript,
+        active = coalesce(p_active, true),
+        grants_clearance = p_grants_clearance,
+        -- Silence means "leave it where it is". An ordinary edit of a
+        -- published lesson must not quietly unpublish it, and an edit of a
+        -- draft must not publish it — publishing is its own deliberate tap.
+        status = coalesce(v_status, learning_videos.status),
+        updated_at = now()
+    where id = p_id
+    returning * into v_row;
+    if not found then
+      raise exception 'training video not found';
+    end if;
+  end if;
+  return v_row;
+end;
+$$;
+
+comment on function public.save_learning_video(uuid, text, uuid, text, text, text, text, text, boolean, uuid, text) is
+  'Create or update a training video (supervisor+). A new row is born draft; an edit leaves status exactly as it found it, so publishing is always its own deliberate act.';
+
+revoke all on function public.save_learning_video(uuid, text, uuid, text, text, text, text, text, boolean, uuid, text) from public, anon;
+grant execute on function public.save_learning_video(uuid, text, uuid, text, text, text, text, text, boolean, uuid, text) to authenticated, service_role;
+
+
+-- ---------------------------------------------------------------------------
+-- 3. U1 — Publish
+-- ---------------------------------------------------------------------------
+--
+-- One tap at the end of the flow. Its own function rather than a flag on the
+-- save above because that is what the Inbox needs: a supervisor scrolling a
+-- list of drafts publishes one without opening it, and nothing else about the
+-- row changes.
+
+create or replace function public.publish_learning_video(p_id uuid)
+returns learning_videos
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row learning_videos;
+begin
+  if public.my_role_rank() < 2 then
+    raise exception 'Only a supervisor or above can publish a training video.';
+  end if;
+
+  update learning_videos
+  set status = 'published',
+      updated_at = now()
+  where id = p_id
+  returning * into v_row;
+
+  if not found then
+    raise exception 'That training video is not there any more.';
+  end if;
+  return v_row;
+end;
+$$;
+
+comment on function public.publish_learning_video(uuid) is
+  'Flip one training video from draft to published so crews can see it. Supervisor+ only.';
+
+revoke all on function public.publish_learning_video(uuid) from public, anon;
+grant execute on function public.publish_learning_video(uuid) to authenticated, service_role;
+
+
+-- ---------------------------------------------------------------------------
+-- 4. U2 — who to send a recording to
+-- ---------------------------------------------------------------------------
+--
+-- The button on Learn and on My Work opens the phone's mail composer already
+-- addressed to the installer's lead. To do that it needs an email address, and
+-- there is no email address anywhere a client can read: `profiles` has no email
+-- column at all (20260715240000) and the addresses live in `auth.users`, which
+-- the `authenticated` role cannot touch. Hence this function.
+--
+-- MINIMAL PROJECTION, and only that. It returns a display name and an email,
+-- for foreman-and-above, and nothing else — never a profiles row, never a
+-- phone, never a rank, never an id. Two named columns are the whole contract,
+-- so a future column on `profiles` cannot leak through it by accident, which is
+-- exactly what a `select p.*` here would have guaranteed one day.
+--
+-- WHO COUNTS AS "ON THE JOB": the same answer wave J's pipeline sweep gives
+-- (pipeline_nudge_audience, 20260979000000) — a lead on a PUBLISHED assignment
+-- covering today, or one standing on the job right now with an open shift. A
+-- draft assignment does not count; the crew has not been shown it. When the
+-- caller is not clocked into a job, or nobody on it qualifies, it falls back to
+-- every active lead in the company — an installer with a video always has
+-- somebody to send it to, which is the whole point.
+--
+-- Partners are refused outright. A builder login is not crew and must never be
+-- handed the crew's address book.
+--
+-- The two returned columns are named contact_name / contact_email rather than
+-- display_name / email on purpose. It says what they are — a contact card, not
+-- a profiles row — and it keeps every identifier inside the body unambiguous:
+-- an OUT parameter sharing a name with a column of a table the body queries is
+-- the classic way a plpgsql function that reads fine refuses to compile.
+create or replace function public.foreman_contacts_for_me()
+returns table (contact_name text, contact_email text)
+language plpgsql
+stable
+security definer
+set search_path = public, auth, pg_temp
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_project uuid;
+begin
+  if v_uid is null then
+    raise exception 'Sign in first.';
+  end if;
+  if public.is_partner_user() then
+    raise exception 'This is the crew address book, and a builder login is not crew.';
+  end if;
+
+  -- The job the caller is standing on, if any. Newest open shift wins, the
+  -- same way getOpenShift() picks one on the phone.
+  select ts.project_id into v_project
+    from time_shifts ts
+   where ts.profile_id = v_uid
+     and ts.status = 'open'
+     and ts.clock_out_at is null
+   order by ts.clock_in_at desc
+   limit 1;
+
+  if v_project is not null then
+    return query
+      select p.display_name, u.email::text
+        from profiles p
+        join auth.users u on u.id = p.id
+       where p.active
+         and not coalesce(p.is_partner, false)
+         and public._is_lead(p.id)
+         and p.id <> v_uid
+         and u.email is not null
+         and (
+           exists (
+             select 1
+               from schedule_assignments sa
+               join schedule_assignment_members sam on sam.assignment_id = sa.id
+              where sa.project_id = v_project
+                and sam.profile_id = p.id
+                -- Published, not drafted — see pipeline_nudge_audience's own
+                -- note on why a pencilled-in plan must not count.
+                and sa.status in ('published', 'in_progress', 'done')
+                and sa.end_date >= (now() at time zone 'America/Denver')::date
+                and sa.start_date <= (now() at time zone 'America/Denver')::date
+           )
+           or exists (
+             select 1
+               from time_shifts ts2
+              where ts2.project_id = v_project
+                and ts2.profile_id = p.id
+                and ts2.status = 'open'
+                and ts2.clock_out_at is null
+           )
+         )
+       order by p.display_name;
+    -- RETURN QUERY sets FOUND. Somebody answered, so stop here rather than
+    -- adding every other lead in the company to the To: line.
+    if found then
+      return;
+    end if;
+  end if;
+
+  return query
+    select p.display_name, u.email::text
+      from profiles p
+      join auth.users u on u.id = p.id
+     where p.active
+       and not coalesce(p.is_partner, false)
+       and public._is_lead(p.id)
+       and p.id <> v_uid
+       and u.email is not null
+     order by p.display_name;
+end;
+$$;
+
+comment on function public.foreman_contacts_for_me() is
+  'The name and email of every foreman-and-up on the job the caller is clocked into, else every active one in the company. A MINIMAL PROJECTION — two columns, nothing else about anybody — because emails live in auth.users where no client role may read them. Refuses partner logins.';
+
+revoke all on function public.foreman_contacts_for_me() from public, anon;
+grant execute on function public.foreman_contacts_for_me() to authenticated, service_role;

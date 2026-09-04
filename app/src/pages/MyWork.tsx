@@ -1,4 +1,4 @@
-import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Plane, Truck } from "lucide-react";
@@ -7,6 +7,7 @@ import { RoleMaps } from "../components/RoleMaps";
 import { ClockInBlock } from "../components/clock/ClockInBlock";
 import { LiveSummonsStrip } from "../components/install/LiveSummonsStrip";
 import { LogTodayChip } from "../components/dailyLogs/LogTodayChip";
+import { SendRecordingButton } from "../components/learn/SendRecordingButton";
 import { DirectionsButton } from "../components/maps/DirectionsButton";
 import {
   getMyProfile,
@@ -49,6 +50,13 @@ import { listVehicleLinksForAssignments } from "../lib/vehicles/api";
 import { vehicleTitle } from "../lib/vehicles/display";
 import { listTrips } from "../lib/travel/api";
 import { useT } from "../lib/i18n";
+import { listCertifications } from "../lib/credentials";
+import {
+  listCapabilityBadges,
+  listClearances,
+} from "../lib/install/api";
+import { SkillTree } from "../components/crew/SkillTree";
+import type { Capability } from "../lib/dispatch";
 
 function todayLocalISO(): string {
   const d = new Date();
@@ -59,6 +67,7 @@ function todayLocalISO(): string {
 export function MyWork() {
   const navigate = useNavigate();
   const t = useT();
+  const queryClient = useQueryClient();
   const me = useQuery({ queryKey: ["myProfile"], queryFn: getMyProfile });
   const openings = useQuery({
     queryKey: ["myOpenings", me.data?.id],
@@ -70,6 +79,27 @@ export function MyWork() {
     queryFn: () => listMemosToConfirm(me.data!.id),
     enabled: Boolean(me.data?.id),
   });
+  // Wave O (O3): what the app knows I am allowed to do — my badges, the window
+  // types I am cleared for, and my own cards. Read-only about myself except for
+  // adding a card, which is the one write set_certification lets anybody make.
+  // All three degrade to empty on a phone whose database has the app but not
+  // yet 20260983000000, so this page still loads ahead of the migration.
+  const myBadges = useQuery({
+    queryKey: ["capabilityBadges"],
+    queryFn: listCapabilityBadges,
+    enabled: Boolean(me.data?.id),
+  });
+  const myClearances = useQuery({
+    queryKey: ["clearances"],
+    queryFn: listClearances,
+    enabled: Boolean(me.data?.id),
+  });
+  const myCerts = useQuery({
+    queryKey: ["certifications", me.data?.id],
+    queryFn: () => listCertifications(me.data!.id),
+    enabled: Boolean(me.data?.id),
+  });
+
   const todayISO = todayLocalISO();
   const openShift = useQuery({
     queryKey: ["openShift", me.data?.id],
@@ -371,6 +401,9 @@ export function MyWork() {
       <LiveSummonsStrip />
       <ClockInBlock />
       <LogTodayChip />
+      {/* Wave U, U2: on the job screen, where somebody who just filmed a unit
+          going in is standing. It names the job they are clocked into. */}
+      <SendRecordingButton style={{ margin: "8px 0" }} />
       <p className="muted">
         {me.data?.display_name ? `${me.data.display_name} — ` : ""}
         {t("mywork.hint")}
@@ -641,6 +674,26 @@ export function MyWork() {
             ))}
           </ul>
         </>
+      )}
+
+      {me.data?.id && (
+        <SkillTree
+          profileId={me.data.id}
+          badges={(myBadges.data ?? [])
+            .filter((b) => b.installer_id === me.data!.id)
+            .map((b) => b.capability as Capability)}
+          clearanceCount={
+            (myClearances.data ?? []).filter((c) => c.installer_id === me.data!.id).length
+          }
+          certifications={myCerts.data ?? []}
+          isSelf
+          // Read-only about myself: nobody checks their own card, whatever the
+          // UI offered — set_certification refuses it in SQL.
+          canManage={false}
+          onChanged={() =>
+            queryClient.invalidateQueries({ queryKey: ["certifications"] })
+          }
+        />
       )}
 
       <RoleMaps />

@@ -3,6 +3,9 @@ import {
   composeStampLines,
   formatCoords,
   formatStampTime,
+  shrinkPhoto,
+  shrinkPhotoFile,
+  stampPhoto,
   toPhotoMetaFields,
   type StampMeta,
 } from "./stampPhoto";
@@ -89,5 +92,33 @@ describe("toPhotoMetaFields", () => {
       accuracyM: null,
       takenAt: "2026-07-21T13:16:00.000Z",
     });
+  });
+});
+
+describe("stampPhoto and shrinkPhoto share one render, and both degrade", () => {
+  // The two differ by an overlay and nothing else. shrinkPhoto exists so an
+  // unstamped capture — a photo of a card, where a GPS fix says nothing true —
+  // still gets the shrink and re-encode every upload in this app counts on;
+  // "no watermark" must not quietly mean "no processing".
+  const blob = new Blob(["not a decodable image"], { type: "image/jpeg" });
+  const meta: StampMeta = { takenAt: new Date("2026-07-21T13:16:00Z") };
+
+  it("hands the ORIGINAL back when there is no canvas or the bytes will not decode", async () => {
+    // Capture must never break because a browser could not draw. Both paths
+    // return the input untouched rather than a null or a throw.
+    await expect(shrinkPhoto(blob)).resolves.toBe(blob);
+    await expect(stampPhoto(blob, meta)).resolves.toBe(blob);
+  });
+
+  it("keeps a sensible .jpg name and type on the File wrappers", async () => {
+    const picked = new File([blob], "IMG_4821.HEIC", { type: "image/heic" });
+    const out = await shrinkPhotoFile(picked);
+    expect(out.name).toBe("IMG_4821.jpg");
+    expect(out.type).toBe("image/jpeg");
+  });
+
+  it("does not leave a file with no name at all", async () => {
+    const out = await shrinkPhotoFile(new File([blob], "", { type: "image/jpeg" }));
+    expect(out.name).toBe("photo.jpg");
   });
 });

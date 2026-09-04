@@ -20,6 +20,13 @@ import { coverageLine } from "../lib/dailyLogCoverage";
 import { formatApiError } from "../lib/errors";
 import { describeDuration } from "../lib/shiftGuard";
 import { useRealtimeAllOpenings } from "../lib/useRealtimeOpenings";
+import { useT } from "../lib/i18n";
+import {
+  expiringSoon,
+  listCertifications,
+  todayLocalDay,
+} from "../lib/credentials";
+import { isForemanPlus } from "../lib/install/types";
 
 /** "32 min" / "45s" for a duration in seconds. */
 function fmtDur(sec: number): string {
@@ -54,8 +61,20 @@ interface LiveTask extends HeartbeatTask {
 
 export function Heartbeat() {
   const queryClient = useQueryClient();
+  const t = useT();
   const { effectiveRole: role } = useEffectiveRole();
   const canWrite = isSupervisorPlus(role);
+  // Wave O (O4): the same thirty-day window the 7 AM push uses, so the tile and
+  // the notification are never counting different cards. Foreman+ because that
+  // is who certifications' policy lets read everybody's rows; degrades to empty
+  // — and therefore to no tile at all — ahead of the migration.
+  const canSeeCredentials = isForemanPlus(role);
+  const certs = useQuery({
+    queryKey: ["certifications"],
+    queryFn: () => listCertifications(),
+    enabled: canSeeCredentials,
+  });
+  const expiring = expiringSoon(certs.data ?? [], todayLocalDay());
 
   const hb = useQuery({ queryKey: ["heartbeat"], queryFn: getHeartbeat });
   useRealtimeAllOpenings(true);
@@ -133,6 +152,14 @@ export function Heartbeat() {
         {anomalyCount > 0 ? ` · ${anomalyCount} running long` : ""}
         {staleCount > 0 ? ` · ${staleCount} never finished` : ""}.
       </p>
+
+      {canSeeCredentials && expiring.length > 0 && (
+        <p className="muted cred-expiring-tile" style={{ fontWeight: 650 }}>
+          {expiring.length === 1
+            ? t("cred.expiring.one")
+            : t("cred.expiring.many", { n: expiring.length })}
+        </p>
+      )}
 
       {canSeeCoverage && weeklyCoverage.data && (
         <p className="muted" style={{ fontWeight: 650 }}>
