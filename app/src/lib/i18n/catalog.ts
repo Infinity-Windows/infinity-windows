@@ -1601,6 +1601,16 @@ export const CATALOG = {
     en: "Sent to {email} from {from}.",
     es: "Enviado a {email} desde {from}.",
   },
+
+  // ---- A login that was removed for good (2026-09-04) -------------------
+  // One word, on two lead screens: the Roster row and the timecard header. It
+  // has to be distinguishable from "off today" (availability) and from "access
+  // switched off" (reversible) — this one means the login is gone and the
+  // email has been handed back, and there is nothing to switch back on. "Dado
+  // de baja" is what a crew actually says about somebody taken off the books;
+  // "eliminado" would read as though the PERSON's record had been deleted,
+  // which is the exact thing this feature refuses to do.
+  "crew.removedLogin": { en: "Removed", es: "Dado de baja" },
 } satisfies Record<string, CatalogEntry>;
 
 /** Every key the catalog knows. Later slices widen this by adding entries. */

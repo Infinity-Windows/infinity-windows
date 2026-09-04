@@ -31,6 +31,7 @@ import {
 } from "../lib/payRates";
 import { PinSetter } from "../components/PinGate";
 import { SavedCrewsSection } from "../components/schedule/SavedCrewsSection";
+import { useT } from "../lib/i18n";
 import {
   isOwner,
   isSupervisorPlus,
@@ -206,6 +207,7 @@ export function Crew() {
     },
   });
 
+  const t = useT();
   const { effectiveRole, grants } = useEffectiveRole();
   const isLead = isForemanPlus(effectiveRole);
   const canSetRoles = isSupervisorPlus(effectiveRole);
@@ -326,7 +328,7 @@ export function Crew() {
                       fontSize: 11,
                     }}
                   >
-                    Removed
+                    {t("crew.removedLogin")}
                   </span>
                 )}
               </div>

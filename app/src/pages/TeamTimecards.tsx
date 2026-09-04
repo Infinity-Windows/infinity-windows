@@ -311,8 +311,8 @@ export function TeamTimecards() {
             <div style={{ minWidth: 0 }}>
               <h1 style={{ margin: 0, fontSize: 20 }}>{selectedName}</h1>
               <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-                {selectedRemoved ? "Removed · " : ""}Managing time for{" "}
-                {selectedName}
+                {selectedRemoved ? `${t("crew.removedLogin")} · ` : ""}
+                Managing time for {selectedName}
               </p>
             </div>
           </div>
